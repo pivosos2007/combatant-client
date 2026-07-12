@@ -1,0 +1,22 @@
+{
+  "required": true,
+  "plugin": "combatant.client.mixins.CombatantMixinPlugin",
+  "minVersion": "0.8",
+  "package": "combatant.client.mixins",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "CommandEncoderDiagnosticsMixin",
+    "RenderPassWrapperDiagnosticsMixin",
+    "VulkanBackendMixin",
+    "VulkanCheckpointDiagnosticsMixin",
+    "VulkanCommandEncoderDiagnosticsMixin",
+    "VulkanDebugMessageMixin",
+    "VulkanDeviceDiagnosticsMixin",
+    "VulkanQueueSubmissionMixin",
+    "VulkanRenderPassDiagnosticsMixin",
+    "VulkanRenderPipelineDiagnosticsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

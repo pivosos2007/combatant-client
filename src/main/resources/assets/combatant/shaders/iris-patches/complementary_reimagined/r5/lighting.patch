@@ -1,0 +1,40 @@
+@patch 2
+@require_function DoLighting
+@require_ident lightmap
+@require_ident minLighting
+@require_ident darknessLightFactor
+@require_hash 198c38564559ab224c3616a2a7b4a8947fa62d2e7a970103017b95fd06b94b22
+@require_hash 6f70f1b5528262776dcef7ec3997df09c8b9af515db2744743e26480b0dac711
+
+@insert_before_function DoLighting
+#ifndef COMBATANT_FULLBRIGHT_UNIFORMS_DECLARED
+#define COMBATANT_FULLBRIGHT_UNIFORMS_DECLARED
+uniform bool combatantFullbrightEnabled;
+uniform float combatantFullbrightMinLight;
+uniform float combatantOverrideAmbientLight;
+#endif
+
+@end
+
+@insert_after_function_open DoLighting
+    float combatantFullbrightStrength = combatantFullbrightEnabled ? clamp(combatantFullbrightMinLight, 0.0, 1.0) : 0.0;
+    float combatantAmbientOverrideStrength = clamp(combatantOverrideAmbientLight, 0.0, 1.0);
+    float combatantEffectiveLightStrength = max(combatantFullbrightStrength, combatantAmbientOverrideStrength);
+    if (combatantEffectiveLightStrength > 0.0) {
+        lightmap = max(lightmap, vec2(combatantEffectiveLightStrength));
+    }
+
+@end
+
+@insert_after_hash 198c38564559ab224c3616a2a7b4a8947fa62d2e7a970103017b95fd06b94b22
+    if (combatantEffectiveLightStrength > 0.0) {
+        minLighting = max(minLighting, vec3(pow2(combatantEffectiveLightStrength)));
+    }
+@end
+
+@insert_before_hash 6f70f1b5528262776dcef7ec3997df09c8b9af515db2744743e26480b0dac711
+    float combatantDarknessLightFactor = mix(darknessLightFactor, 0.0, combatantEffectiveLightStrength);
+    color.rgb *= pow2(1.0 - combatantDarknessLightFactor);
+@end
+
+@remove_line_hash 6f70f1b5528262776dcef7ec3997df09c8b9af515db2744743e26480b0dac711

@@ -1,0 +1,93 @@
+@patch 2
+@require_ident screenPos1
+@require_ident lightFog
+@require_ident volumetricEffect
+@require_call GetBloomFog
+@require_hash 44a431424820bc74930238e468887efc59a07ea3a6af1ccb8c26998124810aad
+@require_hash 76c77fdbcc40f9aa86445f791963258aff2e988af8357d2ef56eff81e2e5ef3c
+@require_hash 66f7777d5e3c5e6d73f190330c204ab666bedb95742804616f9d22ed9a74b96a
+@require_hash aaed6040ac1863b853475599111e60a963468da1b3ea1b035d73e720929a82d8
+@require_hash 57988c23b79933a6e5cc7a01d6bb9e037cc6e95a4cef457de72823e372c4f3c8
+@require_hash 52e964df49ed95ee9b9458b2ddeb2de3f5228d52fdb3e090e96af0283baa9afa
+@require_hash dff672ad281b811a955db023bb9ca21cea88e2d6d92aa2c80be8184f5c71b0ed
+
+@insert_zone declarations
+#ifndef COMBATANT_WORLD_TWEAKS_FOG_UNIFORMS_DECLARED
+#define COMBATANT_WORLD_TWEAKS_FOG_UNIFORMS_DECLARED
+uniform bool combatantWorldTweaksFogControl;
+uniform bool combatantWorldTweaksFogModify;
+uniform float combatantWorldTweaksFogStart;
+uniform float combatantWorldTweaksFogEnd;
+uniform vec3 combatantWorldTweaksFogColor;
+uniform int combatantWorldTweaksFogDisableMask;
+#endif
+
+#ifndef COMBATANT_FULLBRIGHT_UNIFORMS_DECLARED
+#define COMBATANT_FULLBRIGHT_UNIFORMS_DECLARED
+uniform bool combatantFullbrightEnabled;
+uniform float combatantFullbrightMinLight;
+uniform float combatantOverrideAmbientLight;
+#endif
+
+float combatantComposite1FogAmount(float distanceToCamera, float sceneDepth) {
+    float combatantFogRange = max(combatantWorldTweaksFogEnd - combatantWorldTweaksFogStart, 1.0);
+    float combatantFog = smoothstep(0.0, 1.0, clamp((distanceToCamera - combatantWorldTweaksFogStart) / combatantFogRange, 0.0, 1.0));
+    if (sceneDepth >= 0.999999) combatantFog *= 0.16;
+    return combatantFog;
+}
+
+void combatantComposite1ApplyFog(inout vec3 value, float distanceToCamera, float sceneDepth) {
+    value = mix(value, combatantWorldTweaksFogColor, combatantComposite1FogAmount(distanceToCamera, sceneDepth));
+}
+@end
+
+@insert_before_ident screenPos1 1
+    if (combatantWorldTweaksFogControl && combatantWorldTweaksFogModify && isEyeInWater != 1 && z0 != z1) {
+        combatantComposite1ApplyFog(color, lViewPos, z0); // combatantComposite1TranslucentFog
+    }
+
+@end
+
+@insert_after_hash 76c77fdbcc40f9aa86445f791963258aff2e988af8357d2ef56eff81e2e5ef3c 3
+        float combatantUnderwaterFullbright = max(
+            combatantFullbrightEnabled ? clamp(combatantFullbrightMinLight, 0.0, 1.0) : 0.0,
+            clamp(combatantOverrideAmbientLight, 0.0, 1.0)
+        );
+        bool combatantCustomUnderwaterFog = combatantWorldTweaksFogControl && combatantWorldTweaksFogModify;
+        bool combatantDisableUnderwaterFog = combatantWorldTweaksFogControl && (combatantWorldTweaksFogDisableMask & 1) != 0;
+        vec3 combatantUnderwaterBaseMult = vec3(0.97, 0.985, 1.0);
+        vec3 combatantUnderwaterMult = mix(combatantUnderwaterBaseMult * 0.98, vec3(1.0), combatantUnderwaterFullbright);
+
+        if (combatantCustomUnderwaterFog) {
+            combatantComposite1ApplyFog(color, lViewPos, z0);
+        } else if (!combatantDisableUnderwaterFog) {
+            if (z0 == 1.0) {
+                float combatantUnderwaterFogTint = 0.08 * (1.0 - combatantUnderwaterFullbright);
+                color.rgb = mix(color.rgb, waterFogColor, combatantUnderwaterFogTint);
+            }
+            color.rgb *= combatantUnderwaterMult;
+            volumetricEffect.rgb *= mix(vec3(0.94), vec3(1.0), combatantUnderwaterFullbright);
+        }
+@end
+
+@remove_line_hash 66f7777d5e3c5e6d73f190330c204ab666bedb95742804616f9d22ed9a74b96a
+@remove_line_hash aaed6040ac1863b853475599111e60a963468da1b3ea1b035d73e720929a82d8
+@remove_line_hash 57988c23b79933a6e5cc7a01d6bb9e037cc6e95a4cef457de72823e372c4f3c8
+@remove_line_hash 52e964df49ed95ee9b9458b2ddeb2de3f5228d52fdb3e090e96af0283baa9afa
+
+@insert_before_hash dff672ad281b811a955db023bb9ca21cea88e2d6d92aa2c80be8184f5c71b0ed
+        if (!combatantCustomUnderwaterFog && !combatantDisableUnderwaterFog) {
+            lightFog *= combatantUnderwaterMult;
+        }
+@end
+
+@remove_line_hash dff672ad281b811a955db023bb9ca21cea88e2d6d92aa2c80be8184f5c71b0ed
+
+@insert_before_hash 44a431424820bc74930238e468887efc59a07ea3a6af1ccb8c26998124810aad
+        color *= (
+            combatantWorldTweaksFogControl
+            && (combatantWorldTweaksFogModify || (isEyeInWater == 1 && (combatantWorldTweaksFogDisableMask & 1) != 0))
+        ) ? 1.0 : GetBloomFog(lViewPos);
+@end
+
+@remove_line_hash 44a431424820bc74930238e468887efc59a07ea3a6af1ccb8c26998124810aad

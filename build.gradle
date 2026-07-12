@@ -1,0 +1,388 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17.12'
+    id 'maven-publish'
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        url = 'https://maven.fabricmc.net/'
+    }
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "Modrinth"
+                url = "https://api.modrinth.com/maven"
+            }
+        }
+        filter {
+            includeGroup "maven.modrinth"
+        }
+    }
+    maven {
+        // ViaFabricPlus / ViaVersion
+        url = 'https://repo.viaversion.com/everything'
+    }
+    maven {
+        // ViaBedrock snapshots (dependency of ViaFabricPlus)
+        url = 'https://repo.opencollab.dev/maven-snapshots/'
+    }
+    maven {
+        // ViaBedrock snapshots (alt repo used by Via* stack)
+        url = 'https://maven.lenni0451.net/snapshots'
+    }
+    maven {
+        // JitPack (for com.github.* artifacts like CubeConverter)
+        url = 'https://jitpack.io'
+    }
+    maven {
+        url = uri("$rootDir/local-maven")
+    }
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+def combatantVulkanDebugEnabled = providers.gradleProperty("combatantVulkanDebug")
+        .map { it.toBoolean() }
+        .orElse(false)
+def combatantDevTaskRequested = gradle.startParameter.taskNames.any { it == "buildDev" || it.endsWith(":buildDev") }
+def combatantDevEnabled = providers.gradleProperty("combatantDev")
+        .orElse(providers.gradleProperty("dev"))
+        .orElse(providers.gradleProperty("devBuild"))
+        .orElse(combatantDevTaskRequested ? "true" : "false")
+        .map { it.toBoolean() }
+        .orElse(false)
+def svgMsdfGeneratedResources = layout.buildDirectory.dir("generated/resources/svgMsdf")
+def javetNativeGeneratedResources = layout.buildDirectory.dir("generated/resources/javetNatives")
+def javetVersion = "5.0.9"
+def targetJavaVersion = 25
+
+sourceSets {
+    main {
+        resources.srcDir(svgMsdfGeneratedResources)
+    }
+    svgMsdfTool {
+        java.srcDir("src/svgMsdfTool/java")
+        compileClasspath += sourceSets.main.output.classesDirs + sourceSets.main.compileClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+    dev {
+        java.srcDir("src/dev/java")
+        resources.srcDir("src/dev/resources")
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+    vulkanDebug {
+        java.srcDir("src/vulkanDebug/java")
+        resources.srcDir("src/vulkanDebug/resources")
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+configurations {
+    bundledLibrary
+    javetNativeBundle
+    compileOnly.extendsFrom bundledLibrary
+    runtimeOnly.extendsFrom bundledLibrary
+    devImplementation.extendsFrom implementation
+    devCompileOnly.extendsFrom compileOnly
+    devAnnotationProcessor.extendsFrom annotationProcessor
+    vulkanDebugImplementation.extendsFrom implementation
+    vulkanDebugCompileOnly.extendsFrom compileOnly
+    vulkanDebugAnnotationProcessor.extendsFrom annotationProcessor
+}
+
+loom {
+    mods {
+        "combatant" {
+            sourceSet sourceSets.main
+            if (combatantDevEnabled.get()) {
+                sourceSet sourceSets.dev
+            }
+            if (combatantVulkanDebugEnabled.get()) {
+                sourceSet sourceSets.vulkanDebug
+            }
+        }
+    }
+}
+
+dependencies {
+    compileOnly 'org.projectlombok:lombok:1.18.46'
+    annotationProcessor 'org.projectlombok:lombok:1.18.46'
+    testCompileOnly 'org.projectlombok:lombok:1.18.46'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.46'
+    devCompileOnly 'org.projectlombok:lombok:1.18.46'
+    devAnnotationProcessor 'org.projectlombok:lombok:1.18.46'
+    vulkanDebugCompileOnly 'org.projectlombok:lombok:1.18.46'
+    vulkanDebugAnnotationProcessor 'org.projectlombok:lombok:1.18.46'
+
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+
+    // Renderer targets. Sodium is required; Iris stays optional but available in dev runtime.
+    compileOnly "maven.modrinth:sodium:${project.sodium_version}"
+    compileOnly "maven.modrinth:iris:${project.iris_version}"
+    compileOnly "maven.modrinth:immediatelyfast:${project.immediatelyfast_version}"
+    if (providers.gradleProperty("withOptionalModRuntime").map { it.toBoolean() }.orElse(false).get()) {
+        runtimeOnly "maven.modrinth:sodium:${project.sodium_version}"
+        runtimeOnly "maven.modrinth:iris:${project.iris_version}"
+        runtimeOnly "maven.modrinth:immediatelyfast:${project.immediatelyfast_version}"
+    }
+
+    // Dev-only Xaero API for optional triangulator waypoint compat.
+    // Pulled from Modrinth Maven so IDE sources/classes follow the selected MC version.
+    compileOnly "maven.modrinth:xaeros-minimap:${project.xaero_minimap_version}"
+    compileOnly "maven.modrinth:xaeros-world-map:${project.xaero_worldmap_version}"
+
+    // ViaFabricPlus (optional)
+    compileOnly "com.viaversion:viafabricplus-api:${project.viafabricplus_version}"
+    if (providers.gradleProperty("withViaFabricPlusRuntime").map { it.toBoolean() }.orElse(false).get()) {
+        // Dev/runtime only (not bundled) to test locally.
+        runtimeOnly "com.viaversion:viafabricplus:${project.viafabricplus_version}"
+    }
+
+    // Entity Culling (optional): typed compile-time API for shader ESP visibility compat.
+    compileOnly "maven.modrinth:entityculling:${project.entityculling_version}"
+
+    bundledLibrary "de.marhali:json5-java:3.0.0"
+
+    // Linux MPRIS backend for the built-in media session service.
+    bundledLibrary "com.github.hypfvieh:dbus-java-core:4.3.1"
+    bundledLibrary "com.github.hypfvieh:dbus-java-transport-native-unixsocket:4.3.1"
+
+    // Provided by Minecraft runtime; keep it out of the bundled jar.
+    compileOnly 'com.google.code.gson:gson:2.10.1'
+
+    // Provided by Minecraft/Fabric runtime; do not shade it into the mod jar.
+    compileOnly 'org.slf4j:slf4j-api:2.0.17'
+
+    bundledLibrary 'io.github.classgraph:classgraph:4.8.165'
+
+    // Javet core only. Native V8 binaries are copied into resources/javet/natives.
+    bundledLibrary "com.caoccao.javet:javet:${javetVersion}"
+
+    // Javet in minimal V8 mode only: no Node runtime and no ARM native payloads.
+    // ARM builds can be added later behind a separate opt-in distribution profile.
+    javetNativeBundle "com.caoccao.javet:javet-v8-windows-x86_64:${javetVersion}"
+    javetNativeBundle "com.caoccao.javet:javet-v8-linux-x86_64:${javetVersion}"
+    javetNativeBundle "com.caoccao.javet:javet-v8-macos-x86_64:${javetVersion}"
+
+}
+
+tasks.register("validateIrisPatches", JavaExec) {
+    group = "verification"
+    description = "Compiles bundled Iris patch manifests against a shaderpack zip without modifying it."
+    dependsOn classes
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "combatant.client.render.iris.patch.ShaderPatchCompilerCli"
+    doFirst {
+        if (!project.hasProperty("shaderpack")) {
+            throw new GradleException("Pass -Pshaderpack=<path-to-shaderpack.zip>")
+        }
+        args project.property("shaderpack")
+    }
+}
+
+tasks.register("generateSvgMsdf", Exec) {
+    group = "render assets"
+    description = "Generates MTSDF texture assets for tintable SVG icons."
+    dependsOn tasks.named("compileSvgMsdfToolJava")
+
+    def inputDir = file("src/main/resources/assets/combatant/svg")
+    def outputDir = svgMsdfGeneratedResources.map { it.dir("assets/combatant/svg/msdf") }
+    def script = file("tools/msdf/GenerateSvgMsdf.ps1")
+    def preprocessorClasspath = sourceSets.svgMsdfTool.output.classesDirs.asPath +
+            File.pathSeparator + sourceSets.main.output.classesDirs.asPath +
+            File.pathSeparator + sourceSets.main.compileClasspath.asPath
+    def generatorJava = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+    inputs.files(fileTree(inputDir) {
+        include "**/*.svg"
+        exclude "msdf/**"
+    })
+    inputs.file(script)
+    outputs.dir(outputDir)
+    onlyIf {
+        if (!script.isFile()) {
+            logger.warn("SVG MSDF generator missing: ${script}")
+            return false
+        }
+        return true
+    }
+    doFirst {
+        outputDir.get().asFile.mkdirs()
+    }
+    commandLine "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", script.absolutePath,
+            "-InputRoot", inputDir.path,
+            "-OutRoot", outputDir.get().asFile.path,
+            "-PreprocessorClasspath", preprocessorClasspath,
+            "-JavaExe", generatorJava.get().executablePath.asFile.absolutePath
+}
+
+
+tasks.register("unpackJavetNatives", Copy) {
+    group = "runtime assets"
+    description = "Copies bundled Javet V8 native binaries into generated resources."
+    into javetNativeGeneratedResources.map { it.dir("javet/natives") }
+    from({ configurations.javetNativeBundle.collect { zipTree(it) } }) {
+        include "**/*.dll", "**/*.so", "**/*.dylib"
+        eachFile { details ->
+            details.path = details.name
+        }
+        includeEmptyDirs = false
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.register("syncJavetNatives", Copy) {
+    group = "runtime assets"
+    description = "Copies Javet V8 native binaries into src/main/resources/javet/natives for committing/debugging."
+    into file("src/main/resources/javet/natives")
+    from({ configurations.javetNativeBundle.collect { zipTree(it) } }) {
+        include "**/*.dll", "**/*.so", "**/*.dylib"
+        eachFile { details ->
+            details.path = details.name
+        }
+        includeEmptyDirs = false
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    dependsOn tasks.named("generateSvgMsdf")
+    dependsOn tasks.named("unpackJavetNatives")
+    from(javetNativeGeneratedResources)
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", project.minecraft_version
+    inputs.property "combatant_dev", combatantDevEnabled.get()
+    inputs.property "combatant_vulkan_debug", combatantVulkanDebugEnabled.get()
+    filteringCharset "UTF-8"
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+                "minecraft_version": project.minecraft_version,
+                "loader_version": project.loader_version
+    }
+
+    doLast {
+        if (!combatantDevEnabled.get() && !combatantVulkanDebugEnabled.get()) return
+        def metadataFile = new File(destinationDir, "fabric.mod.json")
+        def metadata = new groovy.json.JsonSlurper().parse(metadataFile)
+        def mixins = metadata.mixins instanceof java.util.Collection
+                ? new ArrayList(metadata.mixins)
+                : new ArrayList()
+        if (combatantDevEnabled.get() && !mixins.contains("combatant-dev.mixins.json")) {
+            mixins.add("combatant-dev.mixins.json")
+        }
+        if (!mixins.contains("combatant-vulkan-debug.mixins.json")) {
+            if (combatantVulkanDebugEnabled.get()) {
+                mixins.add("combatant-vulkan-debug.mixins.json")
+            }
+        }
+        metadata.mixins = mixins
+        metadataFile.setText(
+                groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(metadata)) + System.lineSeparator(),
+                "UTF-8"
+        )
+    }
+}
+
+tasks.named("processDevResources") {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.withType(JavaCompile).configureEach {
+    // ensure that the encoding is set to UTF-8, no matter what the system default is
+    // this fixes some edge cases with special characters not displaying correctly
+    // see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
+    // If Javadoc is generated, this must be specified in that task too.
+    it.options.encoding = "UTF-8"
+    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
+        it.options.release.set(targetJavaVersion)
+    }
+}
+
+java {
+    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
+    if (JavaVersion.current() < javaVersion) {
+        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+    // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+    // if it is present.
+    // If you remove this line, sources will not be generated.
+    withSourcesJar()
+}
+
+tasks.matching { it.name == "sourcesJar" }.configureEach {
+    dependsOn tasks.named("generateSvgMsdf")
+    exclude("javet/natives/**")
+}
+
+jar {
+    manifest {
+        attributes("Multi-Release": "true")
+    }
+
+    from("LICENSE") {
+        rename { "${it}_${project.archives_base_name}" }
+    }
+    from {
+        configurations.bundledLibrary.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    exclude "com/google/gson/**"
+    exclude "org/slf4j/**"
+    exclude "META-INF/*.RSA", "META-INF/*.SF", "META-INF/*.DSA"
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    if (combatantDevEnabled.get()) {
+        dependsOn tasks.named("compileDevJava"), tasks.named("processDevResources")
+        from(sourceSets.dev.output)
+    }
+    if (combatantVulkanDebugEnabled.get()) {
+        dependsOn tasks.named("compileVulkanDebugJava"), tasks.named("processVulkanDebugResources")
+        from(sourceSets.vulkanDebug.output)
+    }
+}
+
+// Gradle cannot accept an arbitrary global `--dev` flag for the built-in `build` task
+// from build.gradle itself. Use this alias or `-PcombatantDev=true`.
+tasks.register("buildDev") {
+    group = "build"
+    description = "Builds Combatant with development source set and dev metadata enabled."
+    dependsOn "build"
+}
+
+// configure the maven publication
+publishing {
+    publications {
+        create("mavenJava", MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
+
+    // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/pivosos2007/combatant-client")
+            credentials {
+                username = findProperty("gpr.user") ?: System.getenv("GITHUB_ACTOR") ?: ""
+                password = findProperty("gpr.key") ?: System.getenv("GITHUB_TOKEN") ?: System.getenv("GH_TOKEN") ?: ""
+            }
+        }
+    }
+}

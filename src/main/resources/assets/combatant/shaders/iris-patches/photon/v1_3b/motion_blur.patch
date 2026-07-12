@@ -1,0 +1,38 @@
+@patch 2
+@require_function main
+@require_ident scene_color
+@require_uniform colortex0
+
+@insert_zone declarations
+uniform bool combatantSuppressShaderpackMotionBlur;
+uniform sampler2D colortex11;
+
+@end
+
+@insert_after_function_open main
+    if (combatantSuppressShaderpackMotionBlur) {
+        scene_color = texelFetch(colortex0, ivec2(gl_FragCoord.xy), 0).rgb;
+        return;
+    }
+
+@end
+
+@insert_before_hash c457646c5b8fbc05a6af08576060fa8407243f144aebaaa1f8568fbe317487ef
+    float combatantMotionCloudTransmittance = texelFetch(colortex11, view_texel, 0).a;
+    if (depth <= 0.001 || depth >= 0.999 || combatantMotionCloudTransmittance != 1.0) {
+        vec3 combatantMotionSkyColor = texelFetch(colortex0, texel, 0).rgb;
+        scene_color = combatantMotionSkyColor;
+        return;
+    }
+
+@end
+
+@replace_line_hash e1d6d7148b22846d3dcffd3f701a78cf65a444ada7151311a22452724f264ae3
+        float combatantMotionTapCloudTransmittance = texelFetch(colortex11, view_tap, 0).a;
+        float weight = (clamp01(pos) == pos && depth > max(hand_depth, 0.001) && depth < 0.999 && combatantMotionTapCloudTransmittance == 1.0) ? 1.0 : 0.0;
+@end
+
+@replace_line_hash 482cbf201e7d21c755826f352cf8b8dc5726687bfe3c0aae9debda2b7603e694
+    vec3 combatantMotionFallbackColor = texelFetch(colortex0, texel, 0).rgb;
+    scene_color = weight_sum > 0.0 ? color_sum * rcp(weight_sum) : combatantMotionFallbackColor;
+@end

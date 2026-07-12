@@ -1,0 +1,56 @@
+@patch 2
+@require_function DoBorderFog
+@require_function DoAtmosphericFog
+@require_function DoFog
+@require_ident isEyeInWater
+
+@insert_before_function DoFog
+#ifndef COMBATANT_WORLD_TWEAKS_FOG_UNIFORMS_DECLARED
+#define COMBATANT_WORLD_TWEAKS_FOG_UNIFORMS_DECLARED
+uniform bool combatantWorldTweaksFogControl;
+uniform bool combatantWorldTweaksFogModify;
+uniform float combatantWorldTweaksFogStart;
+uniform float combatantWorldTweaksFogEnd;
+uniform vec3 combatantWorldTweaksFogColor;
+uniform int combatantWorldTweaksFogDisableMask;
+#endif
+
+bool combatantDisableComplementaryFog() {
+    if (!combatantWorldTweaksFogControl) return false;
+    if (combatantWorldTweaksFogModify) return true;
+    if (isEyeInWater == 1 && (combatantWorldTweaksFogDisableMask & 1) != 0) return true;
+    if (isEyeInWater == 2 && (combatantWorldTweaksFogDisableMask & 2) != 0) return true;
+    if (isEyeInWater == 3 && (combatantWorldTweaksFogDisableMask & 4) != 0) return true;
+    #ifdef OVERWORLD
+        if ((combatantWorldTweaksFogDisableMask & 8) != 0) return true;
+    #endif
+    #ifdef NETHER
+        if ((combatantWorldTweaksFogDisableMask & 16) != 0) return true;
+    #endif
+    #ifdef END
+        if ((combatantWorldTweaksFogDisableMask & 32) != 0) return true;
+    #endif
+    return (combatantWorldTweaksFogDisableMask & 192) != 0;
+}
+
+void combatantApplyWorldTweaksFog(inout vec3 color, float lViewPos, float sceneDepth) {
+    float combatantFogRange = max(combatantWorldTweaksFogEnd - combatantWorldTweaksFogStart, 1.0);
+    float combatantFogDistance = min(lViewPos, combatantWorldTweaksFogEnd);
+    float combatantFog = smoothstep(0.0, 1.0, clamp((combatantFogDistance - combatantWorldTweaksFogStart) / combatantFogRange, 0.0, 1.0));
+    if (sceneDepth >= 0.999999) combatantFog *= 0.16;
+    color = mix(color, combatantWorldTweaksFogColor, combatantFog);
+}
+
+void combatantApplyWorldTweaksFog(inout vec4 color, float lViewPos, float sceneDepth) {
+    float combatantFogRange = max(combatantWorldTweaksFogEnd - combatantWorldTweaksFogStart, 1.0);
+    float combatantFogDistance = min(lViewPos, combatantWorldTweaksFogEnd);
+    float combatantFog = smoothstep(0.0, 1.0, clamp((combatantFogDistance - combatantWorldTweaksFogStart) / combatantFogRange, 0.0, 1.0));
+    if (sceneDepth >= 0.999999) combatantFog *= 0.16;
+    color.rgb = mix(color.rgb, combatantWorldTweaksFogColor, combatantFog);
+}
+
+@end
+
+@insert_after_function_open DoFog
+    if (combatantDisableComplementaryFog()) return;
+@end

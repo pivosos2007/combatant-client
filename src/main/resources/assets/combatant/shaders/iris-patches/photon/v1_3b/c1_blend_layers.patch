@@ -1,0 +1,37 @@
+@patch 2
+@require_ident view_distance
+@require_ident is_sky
+@require_ident fog_transmittance
+@require_ident fog_scattering
+@require_hash be5ef0bea5057e7d62bad71bec7721dc0048bffd6e941be27511a801bbe48a0a
+
+@insert_zone declarations
+#ifndef COMBATANT_WORLD_TWEAKS_FOG_UNIFORMS_DECLARED
+#define COMBATANT_WORLD_TWEAKS_FOG_UNIFORMS_DECLARED
+uniform bool combatantWorldTweaksFogControl;
+uniform bool combatantWorldTweaksFogModify;
+uniform float combatantWorldTweaksFogStart;
+uniform float combatantWorldTweaksFogEnd;
+uniform vec3 combatantWorldTweaksFogColor;
+uniform int combatantWorldTweaksFogDisableMask;
+#endif
+
+float combatantPhotonWorldTweaksFogAmount(float distanceToCamera, bool sky) {
+    float fogRange = max(combatantWorldTweaksFogEnd - combatantWorldTweaksFogStart, 1.0);
+    float fogDistance = min(distanceToCamera, combatantWorldTweaksFogEnd);
+    float fog = smoothstep(0.0, 1.0, clamp((fogDistance - combatantWorldTweaksFogStart) / fogRange, 0.0, 1.0));
+    if (sky) fog *= 0.16;
+    return fog;
+}
+
+void combatantPhotonApplyWorldTweaksFog(inout vec3 color, float distanceToCamera, bool sky) {
+    color = mix(color, combatantWorldTweaksFogColor, combatantPhotonWorldTweaksFogAmount(distanceToCamera, sky));
+} // combatantPhotonApplyWorldTweaksFog
+@end
+
+@insert_after_hash be5ef0bea5057e7d62bad71bec7721dc0048bffd6e941be27511a801bbe48a0a
+    if (combatantWorldTweaksFogControl && combatantWorldTweaksFogModify) {
+        combatantPhotonApplyWorldTweaksFog(fragment_color, view_distance, is_sky);
+    }
+
+@end

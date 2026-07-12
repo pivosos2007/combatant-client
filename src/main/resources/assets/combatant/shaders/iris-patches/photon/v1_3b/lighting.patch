@@ -1,0 +1,31 @@
+@patch 2
+@require_function get_diffuse_lighting
+@require_ident light_levels
+@require_ident shadows
+@require_ident darknessFactor
+@require_ident nightVision
+
+@insert_before_function get_diffuse_lighting
+#ifndef COMBATANT_FULLBRIGHT_UNIFORMS_DECLARED
+#define COMBATANT_FULLBRIGHT_UNIFORMS_DECLARED
+uniform bool combatantFullbrightEnabled;
+uniform float combatantFullbrightMinLight;
+uniform float combatantOverrideAmbientLight;
+#endif
+
+@end
+
+@insert_after_function_open get_diffuse_lighting
+    float combatantPhotonFullbrightStrength = max(
+        combatantFullbrightEnabled ? clamp(combatantFullbrightMinLight, 0.0, 1.0) : 0.0,
+        clamp(combatantOverrideAmbientLight, 0.0, 1.0)
+    );
+    if (combatantPhotonFullbrightStrength > 0.0) {
+        light_levels = max(light_levels, vec2(combatantPhotonFullbrightStrength));
+        ao = max(ao, combatantPhotonFullbrightStrength);
+        float combatantPhotonFullbrightSquared = combatantPhotonFullbrightStrength * combatantPhotonFullbrightStrength;
+        shadows = max(shadows, vec3(combatantPhotonFullbrightSquared));
+        sss_depth = max(sss_depth, 0.0);
+    }
+
+@end

@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Build release jar
+        run: .\gradlew.bat build
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $version = $tag.TrimStart("v")
+          $artifact = "build/libs/combatant-$version.jar"
+          if (-not (Test-Path $artifact)) {
+            throw "Release artifact not found: $artifact"
+          }
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $artifact --clobber
+          } else {
+            gh release create $tag $artifact --verify-tag --title "Combatant $version" --notes "Combatant $version public release."
+          }

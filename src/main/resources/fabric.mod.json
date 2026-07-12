@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "combatant",
+  "version": "0.1.0",
+  "name": "Combatant Client",
+  "description": "w4da",
+  "authors": [
+    "pivosos2007"
+  ],
+  "contact": {
+  },
+  "license": "GPL-3",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "combatant.client.Combatant"
+    ]
+  },
+  "mixins": [
+    "combatant.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": "*",
+    "minecraft": "26.2"
+  },
+  "suggests": {
+    "sodium": "*",
+    "iris": "*",
+    "immediatelyfast": "*",
+    "viafabricplus": "*"
+  }
+}

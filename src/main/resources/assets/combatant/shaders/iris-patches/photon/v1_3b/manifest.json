@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "id": "photon.v1_3b",
+  "priority": 450,
+  "identity": {
+    "family": "photon",
+    "policy": "pack_name_and_structural_probes",
+    "profile": "photon",
+    "packNameRegex": ".*photon.*"
+  },
+  "compatibility": {
+    "policy": "pack_name_gated_structural_probes",
+    "verifiedShaderpackVersions": [
+      "v1.3b"
+    ],
+    "verifiedMinecraftVersions": [
+      "1.21.11"
+    ],
+    "verifiedIrisVersions": [
+      "1.10.7+1.21.11-fabric"
+    ],
+    "features": [
+      "fullbright",
+      "worldtweaks_fog",
+      "underwater_fog",
+      "shaderpack_motion_blur_suppression"
+    ]
+  },
+  "targets": [
+    {
+      "path": "/program/c0_vl.fsh",
+      "patch": "c0_vl.patch",
+      "marker": "combatantPhotonSoftenWaterFog"
+    },
+    {
+      "path": "/program/c1_blend_layers.fsh",
+      "patch": "c1_blend_layers.patch",
+      "marker": "combatantPhotonApplyWorldTweaksFog"
+    },
+    {
+      "path": "/include/lighting/diffuse_lighting.glsl",
+      "patch": "lighting.patch",
+      "marker": "combatantPhotonFullbrightStrength"
+    },
+    {
+      "path": "/program/c16_motion_blur.fsh",
+      "patch": "motion_blur.patch",
+      "marker": "combatantSuppressShaderpackMotionBlur"
+    }
+  ]
+}

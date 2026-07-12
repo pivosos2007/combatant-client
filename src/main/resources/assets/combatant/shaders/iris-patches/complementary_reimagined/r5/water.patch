@@ -1,0 +1,28 @@
+@patch 2
+@require_ident mat
+@require_ident translucentMult
+@require_call DoFog
+@require_ident glColor
+@require_hash 98a8ecbdc8e127052fe7c968dc602301791bb3069ced369c924e1ff7d3e04f92
+
+@insert_zone declarations
+#ifndef COMBATANT_WORLD_TWEAKS_FOG_UNIFORMS_DECLARED
+#define COMBATANT_WORLD_TWEAKS_FOG_UNIFORMS_DECLARED
+uniform bool combatantWorldTweaksFogControl;
+uniform bool combatantWorldTweaksFogModify;
+uniform float combatantWorldTweaksFogStart;
+uniform float combatantWorldTweaksFogEnd;
+uniform vec3 combatantWorldTweaksFogColor;
+uniform int combatantWorldTweaksFogDisableMask;
+#endif
+
+@end
+
+@insert_after_hash 98a8ecbdc8e127052fe7c968dc602301791bb3069ced369c924e1ff7d3e04f92
+    if (combatantWorldTweaksFogControl && combatantWorldTweaksFogModify) {
+        float combatantWaterSurfaceFogRange = max(combatantWorldTweaksFogEnd - combatantWorldTweaksFogStart, 1.0);
+        float combatantWaterSurfaceFog = smoothstep(0.0, 1.0, clamp((lViewPos - combatantWorldTweaksFogStart) / combatantWaterSurfaceFogRange, 0.0, 1.0));
+        color.a = mix(color.a, 1.0, combatantWaterSurfaceFog);
+        translucentMult.rgb = mix(translucentMult.rgb, vec3(0.0), combatantWaterSurfaceFog);
+    } // combatantWaterSurfaceFog
+@end

@@ -1,0 +1,32 @@
+@patch 2
+@require_function main
+@require_ident MOTION_BLUR_EFFECT
+@require_ident MOTION_BLURRING_STRENGTH
+@require_uniform colortex0
+@require_uniform depthtex0
+
+@insert_zone declarations
+uniform bool combatantSuppressShaderpackMotionBlur;
+
+@end
+
+@replace_line_hash f0b1efea375e99f7eb451fbe3c21fe59d260c1eb9c034c7522b8f269690edef6
+        float combatantMotionCenterDepth = texture2D(depthtex0, texCoord).r;
+        float combatantMotionCenterCloudDepth = texelFetch(colortex5, texelCoord, 0).a;
+        if (z <= 0.56 || z >= 0.999 || combatantMotionCenterDepth <= 0.001 || combatantMotionCenterDepth >= 0.999 || combatantMotionCenterCloudDepth != 1.0) {
+@end
+
+@insert_after_hash e5016804e90f4ce2655161db06f0b0b48b92bf5e158f841c226a26ea3d2e5857
+            if (combatantSuppressShaderpackMotionBlur) velocity = vec2(0.0);
+@end
+
+@insert_after_hash cdfeb6b2c575899a59b37a61d41eefae85abd6cbce3ba90ed0263aefcdcf0b52
+                ivec2 combatantMotionTapTexel = ivec2(coordb * (vec2(viewWidth, viewHeight) - vec2(1.0)));
+                float combatantMotionTapDepth = texelFetch(depthtex0, combatantMotionTapTexel, 0).r;
+                float combatantMotionTapCloudDepth = texelFetch(colortex5, combatantMotionTapTexel, 0).a;
+                if (combatantMotionTapDepth <= 0.001 || combatantMotionTapDepth >= 0.999 || combatantMotionTapCloudDepth != 1.0) continue;
+@end
+
+@replace_line_hash 86fc0536f7fd9675a50ca4155385b1f297ad36187ab856d5bad191927040cb62
+            color = mbwg > 0.0 ? color / mbwg : texelFetch(colortex0, texelCoord, 0).rgb;
+@end

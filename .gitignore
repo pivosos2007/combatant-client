@@ -1,0 +1,45 @@
+# === Gradle ===
+.gradle/
+build/
+out/
+
+# === IntelliJ IDEA / Eclipse / VSCode ===
+.idea/*
+!.idea/misc.xml
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+
+# === Logs / Cache ===
+logs/
+run/
+cache/
+*.log
+
+# === OS-specific ===
+Thumbs.db
+.DS_Store
+
+# === Exported / Generated files ===
+exports/
+export/
+export_cache/
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.zip
+/local-maven/
+/to-do-list
+/.tmp/
+/.tmp_mc/
+/.tmp_sodium/
+/.tmp_iris/
+/.tmp_photon/
+/.tmp_complementary/
+/!new_temp_assets/
+/src/main/resources/javet/natives/libjavet-v8-linux-x86_64.v.5.0.9.so
+/src/main/resources/javet/natives/libjavet-v8-macos-x86_64.v.5.0.9.dylib
+/src/main/resources/javet/natives/libjavet-v8-windows-x86_64.v.5.0.9.dll
+/RELEASE_CHECKLIST.md
+/.claude/

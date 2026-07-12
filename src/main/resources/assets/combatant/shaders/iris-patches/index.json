@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "manifests": [
+    "assets/combatant/shaders/iris-patches/complementary_reimagined/r5/manifest.json",
+    "assets/combatant/shaders/iris-patches/photon/v1_3b/manifest.json"
+  ]
+}

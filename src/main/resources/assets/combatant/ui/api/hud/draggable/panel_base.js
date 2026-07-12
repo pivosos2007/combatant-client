@@ -1,0 +1,407 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+function n(value, fallback) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function c(value, fallback) {
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function s(value) {
+  return Number.isFinite(value) ? value.toFixed(2) : "0";
+}
+
+function cls(...parts) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function abs(x, y, w, h, extra) {
+  return cls("absolute", `x-${s(x)}`, `y-${s(y)}`, `w-${s(w)}`, `h-${s(h)}`, extra);
+}
+
+function prop(obj, key, fallback) {
+  if (!obj) return fallback;
+  const direct = obj[key];
+  if (direct !== undefined && direct !== null) return direct;
+  if (typeof obj.get === "function") {
+    const value = obj.get(key);
+    return value !== undefined && value !== null ? value : fallback;
+  }
+  return fallback;
+}
+
+function arr(value) {
+  if (!value) return [];
+  try {
+    return Array.from(value);
+  } catch (_) {
+    return [];
+  }
+}
+
+function color(obj, key, fallback) {
+  return c(prop(obj, key, fallback), fallback);
+}
+
+function alpha(hex, amount) {
+  const src = c(hex, "#00000000");
+  if (!src.startsWith("#") || src.length !== 9) return src;
+  const raw = Number.parseInt(src.slice(1), 16);
+  const nextA = Math.max(0, Math.min(255, Math.round(((raw >>> 24) & 255) * amount)));
+  return "#" + (((nextA << 24) | (raw & 0x00ffffff)) >>> 0).toString(16).padStart(8, "0").toUpperCase();
+}
+
+function alpha01(hex) {
+  const src = c(hex, "#00000000");
+  if (!src.startsWith("#") || src.length !== 9) return 1;
+  const raw = Number.parseInt(src.slice(1), 16);
+  return Math.max(0, Math.min(1, ((raw >>> 24) & 255) / 255));
+}
+
+function font(family, scale, type) {
+  const suffix = type ? `-${type}` : "";
+  return `font-${family}${suffix}-${s(scale)}`;
+}
+
+export class HudPanelLayout {
+  constructor(ctx) {
+    this.ctx = ctx || {};
+    this.p = this.ctx.props || {};
+    this.pal = prop(this.p, "palette", {});
+    this.v = prop(this.p, "variant", {});
+    this.base = {
+      headerH: 15.5,
+      bodyY: n(prop(this.v, "bodyY", 18.5), 18.5),
+      radius: 4.0,
+      stroke: 0.55,
+      softness: 1.0,
+      headerDividerY: 5.0,
+      headerDividerH: 6.0,
+    };
+  }
+
+  bs() {
+    return n(this.p.baseScale, 1);
+  }
+
+  fs() {
+    return n(this.p.fontScale, 1);
+  }
+
+  w() {
+    return n(this.p.width, this.ctx.width || 100);
+  }
+
+  h() {
+    return n(this.p.height, this.ctx.height || 30);
+  }
+
+  panelShape(key, x, y, w, h, radii, colors, stroke, strokeW, extra = {}) {
+    return ui.shape({
+      key,
+      shape: "rounded-corners",
+      class: abs(x, y, w, h),
+      radiusTL: n(radii[0], 0),
+      radiusTR: n(radii[1], 0),
+      radiusBR: n(radii[2], 0),
+      radiusBL: n(radii[3], 0),
+      softness: this.base.softness,
+      topLeftColor: colors[0],
+      topRightColor: colors[1],
+      bottomRightColor: colors[2],
+      bottomLeftColor: colors[3],
+      stroke,
+      strokeWidth: strokeW,
+      ...extra,
+    });
+  }
+
+  glintShape(key, x, y, w, h, radii, paintAlpha) {
+    return this.panelShape(
+      key,
+      x,
+      y,
+      w,
+      h,
+      radii,
+      [
+        alpha("#FFFFFFFF", 0.065 * paintAlpha),
+        alpha("#FFFFFFFF", 0.065 * paintAlpha),
+        alpha("#FFFFFFFF", 0),
+        alpha("#FFFFFFFF", 0),
+      ],
+      "#00000000",
+      0
+    );
+  }
+
+  blurShape(key, x, y, w, h, radii) {
+    return ui.shape({
+      key,
+      shape: "rounded-corners",
+      class: abs(x, y, w, h),
+      radiusTL: n(radii[0], 0),
+      radiusTR: n(radii[1], 0),
+      radiusBR: n(radii[2], 0),
+      radiusBL: n(radii[3], 0),
+      fill: "#00000000",
+      blur: true,
+      blurAlpha: n(this.p.blurAlpha, 0.55),
+      blurBrightness: 1,
+    });
+  }
+
+  isUnifiedDivider() {
+    return c(this.p.layout, "Split Header") === "Unified Divider";
+  }
+
+  chrome() {
+    return this.isUnifiedDivider() ? this.chromeUnifiedDivider() : this.chromeSplitHeader();
+  }
+
+  chromeSplitHeader() {
+    const w = this.w();
+    const h = this.h();
+    const bs = this.bs();
+    const headerH = this.base.headerH * bs;
+    const bodyY = this.base.bodyY * bs;
+    const bodyH = Math.max(0, h - bodyY);
+    const r = this.base.radius * bs;
+    const strokeW = Math.max(0.35 * n(this.p.drawScale, 1), 0.42 * bs);
+    const headerPrimary = color(this.pal, "headerLeft", "#E522242C");
+    const headerSecondary = color(this.pal, "headerRight", "#E50E1015");
+    const bodyPrimary = color(this.pal, "bodyLeft", "#E522242C");
+    const bodySecondary = color(this.pal, "bodyRight", "#E50E1015");
+    const outline = color(this.pal, "outline", "#665A5A5A");
+    const headerPaintAlpha = Math.max(alpha01(headerPrimary), alpha01(headerSecondary));
+    const bodyPaintAlpha = Math.max(alpha01(bodyPrimary), alpha01(bodySecondary));
+    const strokeAlpha = Math.min(0.38, Math.max(alpha01(outline) * 0.48, Math.max(headerPaintAlpha, bodyPaintAlpha) * 0.30));
+    const stroke = alpha(outline, strokeAlpha);
+    const strokeStart = alpha("#FFFFFFFF", 0.10 * strokeAlpha);
+    const strokeEnd = stroke;
+    const nodes = [];
+
+    if (this.p.blur === true) {
+      nodes.push(this.blurShape("blur:header", 0, 0, w, headerH, [r, r, 0, 0]));
+      if (bodyH > 0) {
+        nodes.push(this.blurShape("blur:body", 0, bodyY, w, bodyH, [0, 0, r, r]));
+      }
+    }
+
+    nodes.push(this.panelShape(
+      "header",
+      0,
+      0,
+      w,
+      headerH,
+      [r, r, 0, 0],
+      [headerPrimary, headerPrimary, headerSecondary, headerSecondary],
+      stroke,
+      strokeW,
+      {
+        strokeStartColor: strokeStart,
+        strokeEndColor: strokeEnd,
+        strokeAngle: 90,
+      }
+    ));
+    nodes.push(this.glintShape(
+      "header:top-glint",
+      1,
+      1,
+      Math.max(0, w - 2),
+      Math.max(1, headerH * 0.42),
+      [Math.max(0, r - 1), Math.max(0, r - 1), 0, 0],
+      headerPaintAlpha
+    ));
+    if (bodyH > 0) {
+      nodes.push(this.panelShape(
+        "body",
+        0,
+        bodyY,
+        w,
+        bodyH,
+        [0, 0, r, r],
+        [bodyPrimary, bodyPrimary, bodySecondary, bodySecondary],
+        stroke,
+        strokeW,
+        {
+          strokeStartColor: strokeStart,
+          strokeEndColor: strokeEnd,
+          strokeAngle: 90,
+        }
+      ));
+      nodes.push(this.glintShape(
+        "body:top-glint",
+        1,
+        bodyY + 1,
+        Math.max(0, w - 2),
+        Math.max(1, bodyH * 0.18),
+        [0, 0, 0, 0],
+        bodyPaintAlpha
+      ));
+    }
+
+    nodes.push(this.headerIconDivider());
+
+    return nodes;
+  }
+
+  chromeUnifiedDivider() {
+    const w = this.w();
+    const h = this.h();
+    const bs = this.bs();
+    const headerH = this.base.headerH * bs;
+    const r = this.base.radius * bs;
+    const strokeW = Math.max(0.35 * n(this.p.drawScale, 1), 0.42 * bs);
+    const primary = color(this.pal, "bodyLeft", color(this.pal, "headerLeft", "#E522242C"));
+    const secondary = color(this.pal, "bodyRight", color(this.pal, "headerRight", "#E50E1015"));
+    const outline = color(this.pal, "outline", "#665A5A5A");
+    const paintAlpha = Math.max(alpha01(primary), alpha01(secondary));
+    const strokeAlpha = Math.min(0.34, Math.max(alpha01(outline) * 0.42, paintAlpha * 0.26));
+    const stroke = alpha(outline, strokeAlpha);
+    const strokeStart = alpha("#FFFFFFFF", 0.09 * strokeAlpha);
+    const strokeEnd = stroke;
+    const dividerAlpha = Math.min(0.42, Math.max(0.12, paintAlpha * 0.38));
+    const nodes = [];
+
+    if (this.p.blur === true) {
+      nodes.push(this.blurShape("blur:plate", 0, 0, w, h, [r, r, r, r]));
+    }
+
+    nodes.push(this.panelShape(
+      "plate",
+      0,
+      0,
+      w,
+      h,
+      [r, r, r, r],
+      [primary, primary, secondary, secondary],
+      stroke,
+      strokeW,
+      {
+        strokeStartColor: strokeStart,
+        strokeEndColor: strokeEnd,
+        strokeAngle: 90,
+      }
+    ));
+    nodes.push(this.glintShape(
+      "plate:top-glint",
+      1,
+      1,
+      Math.max(0, w - 2),
+      Math.max(1, Math.min(h * 0.34, headerH * 0.52)),
+      [Math.max(0, r - 1), Math.max(0, r - 1), 0, 0],
+      paintAlpha
+    ));
+    nodes.push(ui.connector({
+      key: "header:separator",
+      connector: "line",
+      class: abs(6 * bs, headerH + 1.4 * bs, Math.max(1, w - 12 * bs), 1),
+      x1: 0,
+      y1: 0.5,
+      x2: Math.max(1, w - 12 * bs),
+      y2: 0.5,
+      stroke: alpha(color(this.pal, "divider", "#66FFFFFF"), dividerAlpha),
+      strokeWidth: Math.max(0.5 * n(this.p.drawScale, 1), 0.55 * bs),
+    }));
+    nodes.push(this.headerIconDivider(alpha(color(this.pal, "divider", "#66FFFFFF"), dividerAlpha * 0.85)));
+
+    return nodes;
+  }
+
+  headerIconDivider(fillOverride) {
+    const bs = this.bs();
+    return ui.shape({
+      key: "header:divider",
+      shape: "rounded",
+      class: abs(n(prop(this.v, "headerDividerX", 18), 18) * bs, this.base.headerDividerY * bs, Math.max(0.5 * n(this.p.drawScale, 1), 0.5 * bs), this.base.headerDividerH * bs),
+      radius: 0.5 * bs,
+      fill: fillOverride || color(this.pal, "divider", "#66FFFFFF"),
+    });
+  }
+
+  header(counterLabel = "Active:") {
+    const bs = this.bs();
+    const fs = this.fs();
+    const w = this.w();
+    const headerH = this.base.headerH * bs;
+    const rowTextH = n(this.p.rowTextHeight, 8);
+    const titleH = n(this.p.headerTextHeight, 8);
+    const iconH = n(this.p.headerIconHeight, 8);
+    const iconScale = Math.max(0.25, n(prop(this.v, "headerIconScale", 1), 1));
+    const count = String(Math.max(0, Math.round(n(this.p.activeCount, 0))));
+    const counterLabelText = c(counterLabel, "Active:");
+    const measuredCountValueW = n(this.p.countValueWidth, 0);
+    const measuredCountLabelW = n(this.p.countLabelWidth, 0);
+    const countValueW = Math.max(8 * bs, measuredCountValueW > 0 ? measuredCountValueW + 1.5 * bs : count.length * 6.5 * fs + 5.5 * bs);
+    const countLabelW = Math.max(26 * fs, measuredCountLabelW > 0 ? measuredCountLabelW + 1.5 * bs : counterLabelText.length * 5.9 * fs + 1.5 * bs);
+    const countGap = Math.max(3.2 * bs, 3.0 * fs);
+    const countValueX = w - countValueW - n(prop(this.v, "countValueOffset", 3), 3) * bs;
+    const countLabelX = countValueX - countLabelW - countGap;
+    const countY = (headerH - rowTextH) * 0.5 + 0.8 * bs;
+    const titleX = n(prop(this.v, "titleTextX", 22), 22) * bs;
+    const titleW = Math.max(0, countLabelX - titleX - 4 * bs);
+    const titleY = (headerH - titleH) * 0.5 + 0.25 * bs;
+    const iconY = (headerH - iconH) * 0.5 - 0.1 * bs;
+
+    return [
+      ui.text({
+        key: "header:count-label",
+        text: counterLabelText,
+        color: color(this.pal, "text", "#FFFFFFFF"),
+        class: cls(abs(countLabelX, countY, countLabelW, rowTextH + 4 * bs), font("OnestMedium", fs * 0.92), `text-${color(this.pal, "text", "#FFFFFFFF")}`),
+      }),
+      ui.text({
+        key: "header:count-value",
+        text: count,
+        color: color(this.pal, "counter", "#FFFFFFFF"),
+        class: cls(abs(countValueX, countY, countValueW, rowTextH + 4 * bs), font("OnestMedium", fs * 0.92), `text-${color(this.pal, "counter", "#FFFFFFFF")}`),
+      }),
+      ui.text({
+        key: "header:icon",
+        text: c(this.p.headerIcon, ""),
+        color: c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF")),
+        class: cls(abs(n(prop(this.v, "titleIconX", 5), 5) * bs, iconY, 12 * bs * iconScale, iconH + 4 * bs), font(c(prop(this.v, "headerIconFont", "IconsNur"), "IconsNur"), fs * iconScale), `text-${c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))}`),
+      }),
+      ui.text({
+        key: "header:title",
+        text: c(this.p.title, ""),
+        color: color(this.pal, "titleText", "#FFFFFFFF"),
+        class: cls(abs(titleX, titleY, titleW, titleH + 4 * bs), font("Inter", fs, "bold"), `text-${color(this.pal, "titleText", "#FFFFFFFF")}`),
+      }),
+    ];
+  }
+
+  renderContent() {
+    return [];
+  }
+
+  counterLabel() {
+    return "Active:";
+  }
+
+  render() {
+    const w = this.w();
+    const h = this.h();
+    return ui.root({
+      key: `panel:${c(this.p.id, "panel")}`,
+      class: cls(
+        `w-${s(w)}`,
+        `h-${s(h)}`,
+        `rounded-${s(this.base.radius * this.bs())}`,
+        "shadow-panel"
+      ),
+      children: [
+        ...this.chrome(),
+        ...this.header(this.counterLabel()),
+        ...this.renderContent(),
+      ],
+    });
+  }
+}

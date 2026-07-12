@@ -1,0 +1,25 @@
+@patch 2
+@require_ident texCoord
+@require_call DoFog
+@require_ident lViewPos
+@require_ident z0
+
+@insert_zone declarations
+#ifndef COMBATANT_WORLD_TWEAKS_FOG_UNIFORMS_DECLARED
+#define COMBATANT_WORLD_TWEAKS_FOG_UNIFORMS_DECLARED
+uniform bool combatantWorldTweaksFogControl;
+uniform bool combatantWorldTweaksFogModify;
+uniform float combatantWorldTweaksFogStart;
+uniform float combatantWorldTweaksFogEnd;
+uniform vec3 combatantWorldTweaksFogColor;
+uniform int combatantWorldTweaksFogDisableMask;
+#endif
+
+@end
+
+@insert_before_drawbuffers 1
+    if (combatantWorldTweaksFogControl && combatantWorldTweaksFogModify && isEyeInWater != 1) {
+        combatantApplyWorldTweaksFog(color, lViewPos, z0);
+    }
+
+@end

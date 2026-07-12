@@ -1,0 +1,6 @@
+@patch 2
+@require_define SHADER_STYLE
+
+@insert_after_define SHADER_STYLE
+    #define COMBATANT_POST_EFFECT_OWNERSHIP
+@end

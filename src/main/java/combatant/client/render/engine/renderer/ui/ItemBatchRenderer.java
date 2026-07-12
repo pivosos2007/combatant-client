@@ -1,0 +1,673 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+package combatant.client.render.engine.renderer.ui;
+
+import com.mojang.blaze3d.ProjectionType;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.blaze3d.textures.GpuTextureView;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.render.GuiItemAtlas;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
+import net.minecraft.client.renderer.item.TrackingItemStackRenderState;
+import net.minecraft.util.ARGB;
+import net.minecraft.util.CommonColors;
+import net.minecraft.util.Mth;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
+import combatant.client.render.engine.color.RenderColor;
+import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
+import combatant.client.render.engine.profiler.RenderCostProfiler;
+import combatant.client.render.engine.renderer.MeshRenderer;
+import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
+
+import static combatant.client.render.engine.renderer.Renderer2D.ITEM_OVERLAY_COOLDOWN;
+import static combatant.client.render.engine.renderer.Renderer2D.ITEM_OVERLAY_COUNT;
+import static combatant.client.render.engine.renderer.Renderer2D.ITEM_OVERLAY_DURABILITY;
+import static combatant.client.render.engine.renderer.Renderer2D.ITEM_OVERLAY_DURABILITY_TEXT;
+
+public final class ItemBatchRenderer {
+    private static final int ITEM_DURABILITY_TRACK_COLOR = 0x72000000;
+    private static final int ITEM_DURABILITY_TRACK_HIGHLIGHT = 0x26FFFFFF;
+    private static final int ITEM_OVERLAY_PREALLOCATED_ITEMS = Math.max(32,
+            Integer.getInteger("combatant.render.itemOverlay.preallocatedItems", 256));
+
+    private static FeatureRenderDispatcher itemFeatureDispatcher;
+    private static GuiItemAtlas itemAtlas;
+    private static int itemAtlasSlotTextureSize;
+    private static int itemAtlasTextureSize;
+    private static MeshBuilder itemBlitMesh;
+    private static MeshBuilder itemDurabilityGlowMesh;
+    private static MeshBuilder itemDurabilityRoundedMesh;
+    private static MeshBuilder itemCooldownMesh;
+
+    static float clampRoundedRadius(float radius, double w, double h) {
+        return (float) Mth.clamp(radius, 0.0f, (float) Math.min(w, h) * 0.5f);
+    }
+
+    public static void init() {
+        itemBlitMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_TEXTURED, 1);
+        itemDurabilityGlowMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_ROUNDED_GLOW_BATCH, 1);
+        itemDurabilityRoundedMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_ROUNDED_BATCH, 3);
+        itemCooldownMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_COLORED, 1);
+    }
+
+    private static MeshBuilder createItemOverlayMesh(RenderPipeline pipeline, int quadsPerItem) {
+        int quads = Math.max(1, ITEM_OVERLAY_PREALLOCATED_ITEMS * Math.max(1, quadsPerItem));
+        return new MeshBuilder(pipeline.getVertexFormatBinding(0), pipeline.getPrimitiveTopology(), quads * 4, quads * 6);
+    }
+
+    private static MeshBuilder beginItemOverlayMesh(MeshBuilder mesh, int commandCount, int quadsPerCommand) {
+        if (mesh.isBuilding()) {
+            mesh.end();
+        }
+
+        int quads = Math.max(1, Math.max(ITEM_OVERLAY_PREALLOCATED_ITEMS, commandCount) * Math.max(1, quadsPerCommand));
+        mesh.reserve(quads * 4, quads * 6);
+        mesh.begin();
+        return mesh;
+    }
+
+    private static MeshBuilder beginItemBlitMesh(int commandCount) {
+        if (itemBlitMesh == null) {
+            itemBlitMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_TEXTURED, 1);
+        }
+        return beginItemOverlayMesh(itemBlitMesh, commandCount, 1);
+    }
+
+    private static MeshBuilder beginItemDurabilityGlowMesh(int commandCount) {
+        if (itemDurabilityGlowMesh == null) {
+            itemDurabilityGlowMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_ROUNDED_GLOW_BATCH, 1);
+        }
+        return beginItemOverlayMesh(itemDurabilityGlowMesh, commandCount, 1);
+    }
+
+    private static MeshBuilder beginItemDurabilityRoundedMesh(int commandCount) {
+        if (itemDurabilityRoundedMesh == null) {
+            itemDurabilityRoundedMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_ROUNDED_BATCH, 3);
+        }
+        return beginItemOverlayMesh(itemDurabilityRoundedMesh, commandCount, 3);
+    }
+
+    private static MeshBuilder beginItemCooldownMesh(int commandCount) {
+        if (itemCooldownMesh == null) {
+            itemCooldownMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_COLORED, 1);
+        }
+        return beginItemOverlayMesh(itemCooldownMesh, commandCount, 1);
+    }
+
+    static int flush(ItemBatch batch) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gameRenderer == null || batch.isEmpty()) {
+            return 0;
+        }
+
+        try (RenderCostProfiler.Scope ignoredItems = RenderCostProfiler.itemRender("item_batch:" + batch.commands.size())) {
+            int drawCalls = 0;
+            Object2ObjectOpenHashMap<ItemResolveKey, TrackingItemStackRenderState> resolved = batch.resolvedStates;
+            resolved.clear();
+            GpuTextureView previousOutputColor = RenderSystem.outputColorTextureOverride;
+            GpuTextureView previousOutputDepth = RenderSystem.outputDepthTextureOverride;
+            try {
+                FeatureRenderDispatcher dispatcher = getItemFeatureDispatcher(mc);
+                ObjectOpenHashSet<Object> modelIdentities = new ObjectOpenHashSet<>();
+                for (ItemDrawCommand command : batch.commands) {
+                    if (command.stack.isEmpty() || !command.drawItem || command.alpha <= 0.001f) {
+                        continue;
+                    }
+
+                    TrackingItemStackRenderState renderState = resolved.computeIfAbsent(
+                            new ItemResolveKey(command.player, command.stack, command.seed),
+                            key -> {
+                                try (RenderCostProfiler.Scope ignoredResolve = RenderCostProfiler.itemRender("resolve_model")) {
+                                    TrackingItemStackRenderState state = new TrackingItemStackRenderState();
+                                    mc.getItemModelResolver().updateForTopItem(
+                                            state,
+                                            command.stack,
+                                            ItemDisplayContext.GUI,
+                                            command.player != null ? command.player.level() : mc.level,
+                                            command.player,
+                                            command.seed
+                                    );
+                                    return state;
+                                }
+                            }
+                    );
+
+                    if (!renderState.isEmpty()) {
+                        modelIdentities.add(renderState.getModelIdentity());
+                    }
+                }
+
+                GuiItemAtlas atlas = null;
+                MeshBuilder itemMesh = null;
+                GpuSampler itemSampler = null;
+                if (!modelIdentities.isEmpty()) {
+                    atlas = ensureItemAtlas(mc, dispatcher, modelIdentities);
+                    itemMesh = beginItemBlitMesh(batch.commands.size());
+                    itemSampler = RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST);
+                }
+
+                GpuTextureView itemAtlasTextureView = null;
+                GpuBufferSlice previousProjection = RenderSystem.getProjectionMatrixBuffer();
+                ProjectionType previousProjectionType = RenderSystem.getProjectionType();
+                try {
+                    for (ItemDrawCommand command : batch.commands) {
+                        if (atlas == null || itemMesh == null || itemSampler == null || command.stack.isEmpty() || !command.drawItem || command.alpha <= 0.001f) {
+                            continue;
+                        }
+
+                        TrackingItemStackRenderState renderState = resolved.get(new ItemResolveKey(command.player, command.stack, command.seed));
+                        if (renderState == null || renderState.isEmpty()) {
+                            continue;
+                        }
+
+                        try (RenderCostProfiler.Scope ignoredReplay = RenderCostProfiler.itemRender("atlas_model")) {
+                            GuiItemAtlas.SlotView slot = atlas.getOrUpdate(renderState);
+                            if (slot != null && slot.textureView() != null) {
+                                itemAtlasTextureView = slot.textureView();
+                                appendItemAtlasBlit(itemMesh, command, slot);
+                            }
+                        }
+                    }
+                } finally {
+                    if (previousProjection != null && previousProjectionType != null) {
+                        RenderSystem.setProjectionMatrix(previousProjection, previousProjectionType);
+                    }
+                    RenderSystem.outputColorTextureOverride = previousOutputColor;
+                    RenderSystem.outputDepthTextureOverride = previousOutputDepth;
+                }
+
+                if (submitItemBlitMesh(mc, itemMesh, itemAtlasTextureView, itemSampler)) {
+                    drawCalls++;
+                }
+                if (atlas != null) {
+                    atlas.endFrame();
+                }
+
+                MeshBuilder durabilityGlowMesh = null;
+                MeshBuilder durabilityRoundedMesh = null;
+                MeshBuilder cooldownMesh = null;
+                for (ItemDrawCommand command : batch.commands) {
+                    if (hasItemDurabilityBar(command)) {
+                        if (durabilityGlowMesh == null) {
+                            durabilityGlowMesh = beginItemDurabilityGlowMesh(batch.commands.size());
+                        }
+                        if (durabilityRoundedMesh == null) {
+                            durabilityRoundedMesh = beginItemDurabilityRoundedMesh(batch.commands.size());
+                        }
+                        appendItemDurabilityBar(command, durabilityGlowMesh, durabilityRoundedMesh);
+                    }
+
+                    if (hasItemCooldownOverlay(mc, command)) {
+                        if (cooldownMesh == null) {
+                            cooldownMesh = beginItemCooldownMesh(batch.commands.size());
+                        }
+                        appendItemCooldownOverlayQuads(mc, command, cooldownMesh);
+                    }
+                }
+
+                if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_ROUNDED_GLOW_BATCH, durabilityGlowMesh, true)) {
+                    drawCalls++;
+                }
+                if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_ROUNDED_BATCH, durabilityRoundedMesh, true)) {
+                    drawCalls++;
+                }
+                if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_COLORED, cooldownMesh, false)) {
+                    drawCalls++;
+                }
+
+                TextRenderer overlayTextRenderer = null;
+                float overlayTextScale = Float.NaN;
+                try {
+                    for (ItemDrawCommand command : batch.commands) {
+                        if (hasItemDurabilityText(command)) {
+                            String durabilityText = getItemDurabilityText(command);
+                            if (durabilityText != null && !durabilityText.isEmpty()) {
+                                float textScale = Math.max(0.0001f, command.scaleX * 0.44f);
+                                if (overlayTextRenderer == null) {
+                                    overlayTextRenderer = TextRenderer.get();
+                                }
+                                if (!overlayTextRenderer.isBuilding() || Float.compare(overlayTextScale, textScale) != 0) {
+                                    if (overlayTextRenderer.isBuilding()) {
+                                        overlayTextRenderer.end();
+                                    }
+                                    overlayTextRenderer.begin(textScale, false, false);
+                                    overlayTextScale = textScale;
+                                }
+
+                                float textW = (float) overlayTextRenderer.getWidth(durabilityText, false);
+                                float textX = command.x + (16.0f * command.scaleX - textW) * 0.5f;
+                                float textY = command.y + 11.0f * command.scaleX;
+                                overlayTextRenderer.render(durabilityText, textX, textY,
+                                        new RenderColor(multiplyAlpha(getItemDurabilityTextColor(command), command.alpha)), true);
+                            }
+                        }
+
+                        String overlayText = getItemOverlayText(command);
+                        if (overlayText == null || overlayText.isEmpty()) {
+                            continue;
+                        }
+
+                        float textScale = Math.max(0.0001f, command.scaleX * 0.5f);
+                        if (overlayTextRenderer == null) {
+                            overlayTextRenderer = TextRenderer.get();
+                        }
+                        if (!overlayTextRenderer.isBuilding() || Float.compare(overlayTextScale, textScale) != 0) {
+                            if (overlayTextRenderer.isBuilding()) {
+                                overlayTextRenderer.end();
+                            }
+                            overlayTextRenderer.begin(textScale, false, false);
+                            overlayTextScale = textScale;
+                        }
+
+                        float textX = command.x + 19.0f * command.scaleX - 2.0f * command.scaleX
+                                - (float) overlayTextRenderer.getWidth(overlayText, false);
+                        float textY = command.y + 9.0f * command.scaleX;
+                        overlayTextRenderer.render(overlayText, textX, textY, new RenderColor(multiplyAlpha(CommonColors.WHITE, command.alpha)), true);
+                    }
+                } finally {
+                    if (overlayTextRenderer != null && overlayTextRenderer.isBuilding()) {
+                        overlayTextRenderer.end();
+                    }
+                }
+            } finally {
+                RenderSystem.outputColorTextureOverride = previousOutputColor;
+                RenderSystem.outputDepthTextureOverride = previousOutputDepth;
+                resolved.clear();
+            }
+
+            return drawCalls;
+        }
+    }
+
+    private static GuiItemAtlas ensureItemAtlas(Minecraft mc,
+                                               FeatureRenderDispatcher dispatcher,
+                                               ObjectOpenHashSet<Object> modelIdentities) {
+        int guiScale = Math.max(1, (int) Math.round(mc.getWindow().getGuiScale()));
+        int slotTextureSize = Math.max(16, 16 * guiScale);
+        int requiredTextureSize = GuiItemAtlas.computeTextureSizeFor(slotTextureSize, Math.max(1, modelIdentities.size()));
+
+        if (itemAtlas != null
+                && itemAtlasSlotTextureSize == slotTextureSize
+                && itemAtlasTextureSize >= requiredTextureSize
+                && !itemAtlas.tryPrepareFor(modelIdentities)) {
+            closeItemAtlas();
+        }
+
+        if (itemAtlas == null || itemAtlasSlotTextureSize != slotTextureSize || itemAtlasTextureSize < requiredTextureSize) {
+            closeItemAtlas();
+            itemAtlas = new GuiItemAtlas(dispatcher, requiredTextureSize, slotTextureSize);
+            itemAtlasSlotTextureSize = slotTextureSize;
+            itemAtlasTextureSize = requiredTextureSize;
+        }
+
+        return itemAtlas;
+    }
+
+    private static void closeItemAtlas() {
+        if (itemAtlas != null) {
+            itemAtlas.close();
+            itemAtlas = null;
+        }
+        itemAtlasSlotTextureSize = 0;
+        itemAtlasTextureSize = 0;
+    }
+
+    private static FeatureRenderDispatcher getItemFeatureDispatcher(Minecraft mc) {
+        if (itemFeatureDispatcher == null) {
+            itemFeatureDispatcher = new FeatureRenderDispatcher(
+                    mc.gameRenderer.renderBuffers(),
+                    mc.getModelManager(),
+                    mc.getAtlasManager(),
+                    mc.font,
+                    mc.gameRenderer.gameRenderState()
+            );
+        }
+        return itemFeatureDispatcher;
+    }
+
+    private static boolean hasItemDurabilityBar(ItemDrawCommand command) {
+        int overlayFlags = command.overlayFlags;
+        return (overlayFlags & ITEM_OVERLAY_DURABILITY) != 0
+                && (overlayFlags & ITEM_OVERLAY_DURABILITY_TEXT) == 0
+                && isItemDurabilityOverlayVisible(command);
+    }
+
+    private static boolean hasItemDurabilityText(ItemDrawCommand command) {
+        return (command.overlayFlags & ITEM_OVERLAY_DURABILITY_TEXT) != 0
+                && isItemDurabilityOverlayVisible(command);
+    }
+
+    private static boolean isItemDurabilityOverlayVisible(ItemDrawCommand command) {
+        ItemStack stack = command.stack;
+        if (stack == null || stack.isEmpty() || !stack.isDamageableItem() || !stack.isBarVisible()) {
+            return false;
+        }
+        int threshold = Mth.clamp(command.durabilityThresholdPercent, 0, 100);
+        return durabilityPercentInt(stack) <= threshold;
+    }
+
+    private static boolean hasItemCooldownOverlay(Minecraft mc, ItemDrawCommand command) {
+        if ((command.overlayFlags & ITEM_OVERLAY_COOLDOWN) == 0) {
+            return false;
+        }
+        LocalPlayer player = mc.player;
+        float progress = player == null
+                ? 0.0f
+                : player.getCooldowns().getCooldownPercent(command.stack, mc.getDeltaTracker().getGameTimeDeltaPartialTick(true));
+        return progress > 0.0f;
+    }
+
+    private static void appendItemDurabilityBar(ItemDrawCommand command, MeshBuilder glowMesh, MeshBuilder roundedMesh) {
+        ItemStack stack = command.stack;
+        float x = command.x;
+        float y = command.y;
+        float scale = command.scaleX;
+        float barX = x + 2.0f * scale;
+        float barY = y + 13.15f * scale;
+        float barW = 13.0f * scale;
+        float barH = Math.max(1.35f * scale, 1.0f);
+        float radius = Math.max(0.85f * scale, barH * 0.5f);
+        float pct = durabilityPercent(stack);
+        float fillW = Mth.clamp(barW * pct, 0.0f, barW);
+        if (fillW <= 0.01f) {
+            return;
+        }
+
+        int base = ARGB.opaque(stack.getBarColor());
+        int bright = adjustRgb(base, 1.18f);
+        int deep = adjustRgb(base, 0.74f);
+        int glow = multiplyAlpha(withAlpha(base, Mth.clamp(96 + Math.round((1.0f - pct) * 48.0f), 96, 144)), command.alpha);
+        int innerGlow = multiplyAlpha(withAlpha(adjustRgb(base, 1.35f), 118), command.alpha);
+        int trackTop = multiplyAlpha(ITEM_DURABILITY_TRACK_HIGHLIGHT, command.alpha);
+        int trackBottom = multiplyAlpha(ITEM_DURABILITY_TRACK_COLOR, command.alpha);
+        int brightAlpha = multiplyAlpha(bright, command.alpha);
+        int deepAlpha = multiplyAlpha(deep, command.alpha);
+
+        appendRoundedGlowQuad(glowMesh, barX, barY, fillW, barH, radius, Math.max(3.0f * scale, 2.0f), glow);
+        appendRoundedRectQuad(roundedMesh, barX, barY, barW, barH,
+                barX, barY, barW, barH,
+                radius, trackTop, trackTop, trackBottom, trackBottom);
+        appendRoundedRectQuad(roundedMesh, barX, barY, fillW, barH,
+                barX, barY, barW, barH,
+                radius, brightAlpha, brightAlpha, deepAlpha, deepAlpha);
+        appendRoundedRectQuad(roundedMesh, barX, barY, Math.min(fillW, Math.max(1.2f * scale, fillW * 0.28f)), barH,
+                barX, barY, barW, barH,
+                radius, innerGlow, multiplyAlpha(withAlpha(innerGlow, 70), command.alpha), multiplyAlpha(withAlpha(innerGlow, 34), command.alpha), multiplyAlpha(withAlpha(innerGlow, 58), command.alpha));
+    }
+
+    private static void appendItemCooldownOverlayQuads(Minecraft mc, ItemDrawCommand command, MeshBuilder mesh) {
+        if ((command.overlayFlags & ITEM_OVERLAY_COOLDOWN) == 0) {
+            return;
+        }
+        LocalPlayer player = mc.player;
+        float progress = player == null
+                ? 0.0f
+                : player.getCooldowns().getCooldownPercent(command.stack, mc.getDeltaTracker().getGameTimeDeltaPartialTick(true));
+        if (progress > 0.0f) {
+            float scale = command.scaleX;
+            float top = command.y + Mth.floor(16.0f * (1.0f - progress)) * scale;
+            float height = Mth.ceil(16.0f * progress) * scale;
+            appendQuad(mesh, command.x, top, 16.0f * scale, height, multiplyAlpha(Integer.MAX_VALUE, command.alpha));
+        }
+    }
+
+    private static @Nullable String getItemOverlayText(ItemStack stack, int overlayFlags, @Nullable String stackCountText) {
+        if (stack == null || stack.isEmpty()) return null;
+        if ((overlayFlags & ITEM_OVERLAY_COUNT) != 0 && (stack.getCount() != 1 || stackCountText != null)) {
+            return stackCountText == null ? String.valueOf(stack.getCount()) : stackCountText;
+        }
+        return null;
+    }
+
+    private static @Nullable String getItemOverlayText(ItemDrawCommand command) {
+        return getItemOverlayText(command.stack, command.overlayFlags, command.stackCountText);
+    }
+
+    private static @Nullable String getItemDurabilityText(ItemDrawCommand command) {
+        if (!hasItemDurabilityText(command)) {
+            return null;
+        }
+        return durabilityPercentInt(command.stack) + "%";
+    }
+
+    private static int getItemDurabilityTextColor(ItemDrawCommand command) {
+        int pct = durabilityPercentInt(command.stack);
+        int threshold = Mth.clamp(command.durabilityTextColorThresholdPercent, 0, 100);
+        if (pct <= threshold) {
+            return ARGB.opaque(command.stack.getBarColor());
+        }
+        return CommonColors.WHITE;
+    }
+
+    private static boolean submitItemBlitMesh(Minecraft mc,
+                                              @Nullable MeshBuilder mesh,
+                                              @Nullable GpuTextureView atlasTextureView,
+                                              @Nullable GpuSampler sampler) {
+        if (mesh == null || sampler == null || atlasTextureView == null) {
+            return false;
+        }
+        if (mesh.isBuilding()) {
+            mesh.end();
+        }
+        if (mesh.getIndicesCount() <= 0) {
+            return false;
+        }
+
+        MeshRenderer.begin()
+                .attachments(mc.gameRenderer.mainRenderTarget().getColorTextureView(), null)
+                .pipeline(CombatantRenderPipelines.UI_TEXTURED)
+                .mesh(mesh)
+                .sampler("u_Texture", atlasTextureView, sampler)
+                .end();
+        return true;
+    }
+
+    private static void appendItemAtlasBlit(MeshBuilder mesh, ItemDrawCommand command, GuiItemAtlas.SlotView slot) {
+        mesh.ensureQuadCapacity();
+
+        double x0;
+        double y0;
+        double x1;
+        double y1;
+        double x2;
+        double y2;
+        double x3;
+        double y3;
+
+        if (command.pivoted) {
+            x0 = transformItemX(command, 0.0f);
+            y0 = transformItemY(command, 0.0f);
+            x1 = transformItemX(command, 0.0f);
+            y1 = transformItemY(command, 16.0f);
+            x2 = transformItemX(command, 16.0f);
+            y2 = transformItemY(command, 16.0f);
+            x3 = transformItemX(command, 16.0f);
+            y3 = transformItemY(command, 0.0f);
+        } else {
+            x0 = command.x;
+            y0 = command.y;
+            x1 = command.x;
+            y1 = command.y + 16.0f * command.scaleY;
+            x2 = command.x + 16.0f * command.scaleX;
+            y2 = command.y + 16.0f * command.scaleY;
+            x3 = command.x + 16.0f * command.scaleX;
+            y3 = command.y;
+        }
+
+        int alpha = Mth.clamp(Math.round(command.alpha * 255.0f), 0, 255);
+        int i1 = mesh.vec2(x0, y0).raw2(slot.u0(), slot.v0()).color(255, 255, 255, alpha).next();
+        int i2 = mesh.vec2(x1, y1).raw2(slot.u0(), slot.v1()).color(255, 255, 255, alpha).next();
+        int i3 = mesh.vec2(x2, y2).raw2(slot.u1(), slot.v1()).color(255, 255, 255, alpha).next();
+        int i4 = mesh.vec2(x3, y3).raw2(slot.u1(), slot.v0()).color(255, 255, 255, alpha).next();
+        mesh.quad(i1, i2, i3, i4);
+    }
+
+    private static double transformItemX(ItemDrawCommand command, float localX) {
+        return command.x + command.pivotX + (localX - command.pivotX) * command.scaleX;
+    }
+
+    private static double transformItemY(ItemDrawCommand command, float localY) {
+        return command.y + command.pivotY + (localY - command.pivotY) * command.scaleY;
+    }
+
+    private static boolean submitItemOverlayMesh(Minecraft mc,
+                                                 RenderPipeline pipeline,
+                                                 @Nullable MeshBuilder mesh,
+                                                 boolean uiBatchUniform) {
+        if (mesh == null) {
+            return false;
+        }
+        if (mesh.isBuilding()) {
+            mesh.end();
+        }
+        if (mesh.getIndicesCount() <= 0) {
+            return false;
+        }
+
+        MeshRenderer renderer = MeshRenderer.begin()
+                .attachments(mc.gameRenderer.mainRenderTarget().getColorTextureView(), null)
+                .pipeline(pipeline)
+                .mesh(mesh);
+        if (uiBatchUniform) {
+            UIBatchUniforms.update(mc.getWindow().getWidth(), mc.getWindow().getHeight());
+            renderer.uniform("UIBatch", UIBatchUniforms.get());
+        }
+        renderer.end();
+        return true;
+    }
+
+    private static void appendRoundedRectQuad(MeshBuilder mesh,
+                                              double x,
+                                              double y,
+                                              double w,
+                                              double h,
+                                              double maskX,
+                                              double maskY,
+                                              double maskW,
+                                              double maskH,
+                                              float radius,
+                                              int cTopLeft,
+                                              int cTopRight,
+                                              int cBottomRight,
+                                              int cBottomLeft) {
+        if (w <= 0.0 || h <= 0.0 || maskW <= 0.0 || maskH <= 0.0) {
+            return;
+        }
+        mesh.ensureQuadCapacity();
+
+        int tlA = (cTopLeft >>> 24) & 0xFF;
+        int tlR = (cTopLeft >>> 16) & 0xFF;
+        int tlG = (cTopLeft >>> 8) & 0xFF;
+        int tlB = cTopLeft & 0xFF;
+        int trA = (cTopRight >>> 24) & 0xFF;
+        int trR = (cTopRight >>> 16) & 0xFF;
+        int trG = (cTopRight >>> 8) & 0xFF;
+        int trB = cTopRight & 0xFF;
+        int brA = (cBottomRight >>> 24) & 0xFF;
+        int brR = (cBottomRight >>> 16) & 0xFF;
+        int brG = (cBottomRight >>> 8) & 0xFF;
+        int brB = cBottomRight & 0xFF;
+        int blA = (cBottomLeft >>> 24) & 0xFF;
+        int blR = (cBottomLeft >>> 16) & 0xFF;
+        int blG = (cBottomLeft >>> 8) & 0xFF;
+        int blB = cBottomLeft & 0xFF;
+        float clampedRadius = clampRoundedRadius(radius, maskW, maskH);
+
+        int i1 = mesh.vec2(x, y).local2(x, y).color(tlR, tlG, tlB, tlA).vec4(maskX, maskY, maskW, maskH).vec4(clampedRadius, 0.0f, 0f, 0f).next();
+        int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(blR, blG, blB, blA).vec4(maskX, maskY, maskW, maskH).vec4(clampedRadius, 0.0f, 0f, 0f).next();
+        int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(brR, brG, brB, brA).vec4(maskX, maskY, maskW, maskH).vec4(clampedRadius, 0.0f, 0f, 0f).next();
+        int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(trR, trG, trB, trA).vec4(maskX, maskY, maskW, maskH).vec4(clampedRadius, 0.0f, 0f, 0f).next();
+        mesh.quad(i1, i2, i3, i4);
+    }
+
+    private static void appendRoundedGlowQuad(MeshBuilder mesh,
+                                              double x,
+                                              double y,
+                                              double w,
+                                              double h,
+                                              float radius,
+                                              float glow,
+                                              int argb) {
+        if (w <= 0.0 || h <= 0.0 || glow <= 0.0f) {
+            return;
+        }
+        mesh.ensureQuadCapacity();
+
+        int a = (argb >>> 24) & 0xFF;
+        int r = (argb >>> 16) & 0xFF;
+        int g = (argb >>> 8) & 0xFF;
+        int b = argb & 0xFF;
+        float clampedRadius = clampRoundedRadius(radius, w, h);
+
+        double gx = x - glow;
+        double gy = y - glow;
+        double gw = w + glow * 2.0;
+        double gh = h + glow * 2.0;
+
+        int i1 = mesh.vec2(gx, gy).local2(gx, gy).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glow, 0f).next();
+        int i2 = mesh.vec2(gx, gy + gh).local2(gx, gy + gh).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glow, 0f).next();
+        int i3 = mesh.vec2(gx + gw, gy + gh).local2(gx + gw, gy + gh).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glow, 0f).next();
+        int i4 = mesh.vec2(gx + gw, gy).local2(gx + gw, gy).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glow, 0f).next();
+        mesh.quad(i1, i2, i3, i4);
+    }
+
+    private static float durabilityPercent(ItemStack stack) {
+        int max = stack.getMaxDamage();
+        if (max <= 0) {
+            return 1.0f;
+        }
+        return Mth.clamp((max - stack.getDamageValue()) / (float) max, 0.0f, 1.0f);
+    }
+
+    private static int durabilityPercentInt(ItemStack stack) {
+        return Math.round(durabilityPercent(stack) * 100.0f);
+    }
+
+    private static int withAlpha(int argb, int alpha) {
+        return (Mth.clamp(alpha, 0, 255) << 24) | (argb & 0x00FFFFFF);
+    }
+
+    private static int multiplyAlpha(int argb, float alphaFactor) {
+        int alpha = (argb >>> 24) & 0xFF;
+        return withAlpha(argb, Math.round(alpha * Mth.clamp(alphaFactor, 0.0f, 1.0f)));
+    }
+
+    private static int adjustRgb(int argb, float factor) {
+        int a = (argb >>> 24) & 0xFF;
+        int r = Mth.clamp(Math.round(((argb >>> 16) & 0xFF) * factor), 0, 255);
+        int g = Mth.clamp(Math.round(((argb >>> 8) & 0xFF) * factor), 0, 255);
+        int b = Mth.clamp(Math.round((argb & 0xFF) * factor), 0, 255);
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private static void appendQuad(MeshBuilder mesh, double x, double y, double width, double height, int argb) {
+        mesh.ensureQuadCapacity();
+
+        int a = (argb >>> 24) & 0xFF;
+        int r = (argb >>> 16) & 0xFF;
+        int g = (argb >>> 8) & 0xFF;
+        int b = argb & 0xFF;
+        int i1 = mesh.vec2(x, y).color(r, g, b, a).next();
+        int i2 = mesh.vec2(x, y + height).color(r, g, b, a).next();
+        int i3 = mesh.vec2(x + width, y + height).color(r, g, b, a).next();
+        int i4 = mesh.vec2(x + width, y).color(r, g, b, a).next();
+        mesh.quad(i1, i2, i3, i4);
+    }
+
+}
