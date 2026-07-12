@@ -56,6 +56,15 @@ Recommended version:
 
 - [`sodium-fabric-0.9.0+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.0-fabric)
 
+## Renderer backends
+
+Combatant supports both renderer backends available for Minecraft 26.2:
+
+- OpenGL
+- Vulkan
+
+Shaderpack-related Combatant features are currently supported only on the OpenGL backend. This is an Iris-side limitation.
+
 ## Project status
 
 Active development will slow down substantially because I (primary maintainer) am leaving for military service.
