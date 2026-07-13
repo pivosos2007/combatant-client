@@ -1048,6 +1048,7 @@ public class NameTags extends Module {
         cachedHpTr = null;
         cachedLevelTr = null;
         cachedTimeTr = null;
+        enchantCache.clear();
     }
 
     private boolean shouldShowDistanceText(Player player) {
@@ -1584,8 +1585,8 @@ public class NameTags extends Module {
             }
 
             String text = singleLevel && level == 1
-                    ? meta.label()
-                    : meta.label() + level;
+                    ? meta.shortName()
+                    : meta.shortName() + level;
 
             int color = overMax
                     ? IllegalItemUtil.illegalColor()

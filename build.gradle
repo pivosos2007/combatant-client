@@ -117,6 +117,9 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok:1.18.46'
     testCompileOnly 'org.projectlombok:lombok:1.18.46'
     testAnnotationProcessor 'org.projectlombok:lombok:1.18.46'
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     devCompileOnly 'org.projectlombok:lombok:1.18.46'
     devAnnotationProcessor 'org.projectlombok:lombok:1.18.46'
     vulkanDebugCompileOnly 'org.projectlombok:lombok:1.18.46'
@@ -175,6 +178,10 @@ dependencies {
     javetNativeBundle "com.caoccao.javet:javet-v8-linux-x86_64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-macos-x86_64:${javetVersion}"
 
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
 }
 
 tasks.register("validateIrisPatches", JavaExec) {

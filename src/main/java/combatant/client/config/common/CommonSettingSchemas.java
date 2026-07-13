@@ -47,6 +47,7 @@ public enum CommonSettingSchemas {
     public static final CommonSettingSchema TEXT_COLOR = key("text_color");
     public static final CommonSettingSchema SLIDE_DELAY = key("slide_delay");
     public static final CommonSettingSchema FADE_TIME = key("fade_time");
+    public static final CommonSettingSchema MODE = key("mode");
 
     // Sprint Reset
     public static final CommonSettingSchema COMBAT_CRITICALS = key("combat.criticals");
@@ -101,6 +102,7 @@ public enum CommonSettingSchemas {
     public static final CommonSettingSchema PLACEMENT_BREAK_RANGE = key("placement.break_range", "break_range");
     public static final CommonSettingSchema PLACEMENT_BREAK_WALL_RANGE = key("placement.break_wall_range", "break_wall_range");
     public static final CommonSettingSchema PLACEMENT_MODE = key("placement.mode", "placement_mode");
+    public static final CommonSettingSchema PLACEMENT_SPEED = key("placement.speed", "placement_speed");
     public static final CommonSettingSchema PLACEMENT_DELAY = key("placement.delay", "place_delay");
     public static final CommonSettingSchema PLACEMENT_BREAK_DELAY = key("placement.break_delay", "break_delay", "explode_delay");
     public static final CommonSettingSchema PLACEMENT_PREDICTION = key("placement.prediction", "predict_ticks");

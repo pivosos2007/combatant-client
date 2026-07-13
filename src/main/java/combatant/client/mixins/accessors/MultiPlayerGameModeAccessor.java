@@ -22,6 +22,9 @@ public interface MultiPlayerGameModeAccessor {
     @Accessor("destroyProgress")
     float combatant$getCurrentBreakingProgress();
 
+    @Accessor("destroyProgress")
+    void combatant$setCurrentBreakingProgress(float progress);
+
     @Accessor("destroyDelay")
     int combatant$getBlockBreakingCooldown();
 

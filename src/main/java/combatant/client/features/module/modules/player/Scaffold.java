@@ -13,6 +13,7 @@
 
 package combatant.client.features.module.modules.player;
 
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.*;
 import combatant.client.events.impl.*;
 import combatant.client.features.module.*;
@@ -127,6 +128,8 @@ public class Scaffold extends Module {
             new BooleanValue("eagle", false);
     private final BooleanValue eagleOnlyOnGround =
             new BooleanValue("eagle_only_on_ground", true);
+    private final NumberValue<Double> placementSpeed =
+            new NumberValue<>("placement_speed", 6.0, 1.0, 20.0);
     private final NumberValue<Integer> delay =
             new NumberValue<>("delay", 0, 0, 20);
     private final NumberValue<Integer> autoBlockSlotResetDelay =
@@ -283,6 +286,7 @@ public class Scaffold extends Module {
             new NumberValue<>("sigmoid_decel_midpoint", 0.3f, 0.0f, 1.0f);
     private final ScaffoldMovementPlanner movementPlanner = new ScaffoldMovementPlanner();
     private final ScaffoldMovementPrediction movementPrediction = new ScaffoldMovementPrediction();
+    private final ScaffoldPlacementGate placementGate = new ScaffoldPlacementGate();
     private final InterpolationAngleSmooth interpolationSmooth = new InterpolationAngleSmooth(
             interpHorMin, interpHorMax, interpVertMin, interpVertMax, interpDirMin, interpDirMax, interpMidpoint
     );
@@ -305,15 +309,12 @@ public class Scaffold extends Module {
     private int placementY;
     private int delayLeft;
     private boolean wasPlaced;
-    private int placedBlocksSinceEagleReset;
     private int towerAirTicks;
     private double towerJumpBaseY = Double.NaN;
     private boolean rawForward;
     private boolean rawBackward;
     private boolean rawLeft;
     private boolean rawRight;
-    private int forceSneakTicks;
-    private int normalAngleSmoothLedgeHoldTicks;
     private int strafeMoveTicks;
     private int ticksUntilTellyJump;
     private int tellyJumpTicks;
@@ -551,6 +552,7 @@ public class Scaffold extends Module {
         defs.add(SettingDef.number(autoBlockDoNotUseBelowCount).visibleWhen(autoBlock::get));
         defs.add(SettingDef.bool(prediction));
         defs.add(SettingDef.bool(considerInventory).visibleWhen(() -> rotationTiming.get() == RotationTiming.NORMAL));
+        defs.add(SettingDef.number(placementSpeed).common(CommonSettingSchemas.PLACEMENT_SPEED));
         defs.add(SettingDef.number(delay));
         defs.add(SettingDef.bool(down));
         defs.add(SettingDef.bool(eagle));
@@ -597,13 +599,11 @@ public class Scaffold extends Module {
         if (player == null) return;
         placementY = player.getBlockY() - 1;
         delayLeft = 0;
+        placementGate.reset();
         wasPlaced = false;
         currentTarget = null;
-        placedBlocksSinceEagleReset = 0;
         towerAirTicks = 0;
         towerJumpBaseY = Double.NaN;
-        forceSneakTicks = 0;
-        normalAngleSmoothLedgeHoldTicks = 0;
         strafeMoveTicks = 0;
         ticksUntilTellyJump = 0;
         tellyJumpTicks = randomTellyJumpTicks();
@@ -629,11 +629,9 @@ public class Scaffold extends Module {
         currentTarget = null;
         wasPlaced = false;
         delayLeft = 0;
-        placedBlocksSinceEagleReset = 0;
+        placementGate.reset();
         towerAirTicks = 0;
         towerJumpBaseY = Double.NaN;
-        forceSneakTicks = 0;
-        normalAngleSmoothLedgeHoldTicks = 0;
         strafeMoveTicks = 0;
         ticksUntilTellyJump = 0;
         tellyJumpTicks = 0;
@@ -989,16 +987,29 @@ public class Scaffold extends Module {
         }
 
         handleNormalStrictMoonwalkInput(player, event);
-        handleNormalAngleSmoothLedge(player, event);
-
-        if (forceSneakTicks > 0) {
-            event.setSneak(true);
-            forceSneakTicks--;
-        }
 
         if (shouldEagle(player, event) && !event.isSneak()) {
             event.setSneak(true);
         }
+    }
+
+    @EventHandler
+    private void onSafeWalk(PlayerSafeWalkEvent event) {
+        LocalPlayer player = player();
+        boolean canOperate = canOperate(player);
+        if (!ScaffoldPlacementGate.shouldSafeWalk(
+                isEnabled(),
+                eagle.get(),
+                canOperate,
+                canOperate && player.onGround(),
+                canOperate && player.getAbilities().flying,
+                canOperate && shouldGoDown(player),
+                canOperate && blockCount(player) > 0
+        )) return;
+
+        // Eagle must never depend on rotation smoothing or placement cadence. Vanilla edge
+        // clipping keeps the player on the current block while the one-tick Eagle pulse ends.
+        event.setSafeWalk(true);
     }
 
     @EventHandler
@@ -1049,7 +1060,7 @@ public class Scaffold extends Module {
     }
 
     private boolean executeOnTickPlacement(LocalPlayer player) {
-        if (!canOperate(player) || currentTarget == null || delayLeft > 0) return false;
+        if (!canOperate(player) || currentTarget == null || !isPlacementCadenceReady()) return false;
         if (isTargetStaleForPlayer(player, currentTarget)) {
             debugLog(
                     "target-cleared reason=stale-window target=%s playerPos=%s vel=%s onGround=%s",
@@ -1136,7 +1147,8 @@ public class Scaffold extends Module {
             BlockHitResult hitResult
     ) {
         LocalPlayer player = player();
-        if (!isEnabled() || player == null || target == null || hitResult == null || hand == null || delayLeft > 0) {
+        if (!isEnabled() || player == null || target == null || hitResult == null || hand == null
+                || !isPlacementCadenceReady()) {
             return;
         }
         if (currentTarget != target) {
@@ -1292,7 +1304,7 @@ public class Scaffold extends Module {
     }
 
     private boolean tryPlace(LocalPlayer player, InteractionHand hand, BlockHitResult hitResult) {
-        if (player == null || currentTarget == null || hitResult == null) return false;
+        if (player == null || currentTarget == null || hitResult == null || !isPlacementCadenceReady()) return false;
 
         Vec3 previousFallOffPos = currentOptimalLine != null
                 ? movementPrediction.getFallOffPositionOnLine(player, currentOptimalLine)
@@ -1327,19 +1339,15 @@ public class Scaffold extends Module {
                 describeTarget(currentTarget)
         );
         wasPlaced = true;
-        placedBlocksSinceEagleReset++;
-        if (placedBlocksSinceEagleReset > blocksToEagle.get()) {
-            placedBlocksSinceEagleReset = 0;
-        }
         debugPendingPlacedPos = currentTarget.getPlacedBlockPos();
         debugPendingPlacedTicks = 3;
         debugPendingPlacedAttempt = debugAttemptCounter;
         debugPendingPlacedSeenSolid = false;
         movementPlanner.trackPlacedBlock(currentTarget.getPlacedBlockPos());
         movementPrediction.onPlace(currentOptimalLine, previousFallOffPos, player.position());
-        normalAngleSmoothLedgeHoldTicks = 0;
         lastPlacedRenderPos = currentTarget.getPlacedBlockPos();
         lastPlacedRenderMillis = System.currentTimeMillis();
+        placementGate.recordSuccessfulPlacement(System.nanoTime(), blocksToEagle.get());
         delayLeft = delay.get();
         currentTarget = null;
         return true;
@@ -1932,120 +1940,21 @@ public class Scaffold extends Module {
     }
 
     private boolean shouldEagle(LocalPlayer player, MovementInputEvent event) {
-        if (!eagle.get() || player == null) return false;
-        if (shouldGoDown(player)) return false;
-        if (eagleOnlyOnGround.get() && !player.onGround()) return false;
-        if (player.getAbilities().flying) return false;
+        if (player == null || event == null) return false;
 
-        boolean normalAngleSmooth = isNormalAngleSmoothLedgeControl();
-        if (normalAngleSmooth && isCurrentScaffoldTargetReady(player, currentTarget)) {
-            return false;
-        }
-
-        double distance = normalAngleSmooth
-                ? Math.min(eagleEdgeDistance.get(), 0.24)
-                : eagleEdgeDistance.get();
-        EagleUtil.EdgeCheck edgeCheck = EagleUtil.checkEdge(player, event, distance);
-        if (edgeCheck.diagonalRescue()) {
-            return true;
-        }
-
-        return placedBlocksSinceEagleReset == 0 && edgeCheck.closeToEdge();
-    }
-
-    private void handleNormalAngleSmoothLedge(LocalPlayer player, MovementInputEvent event) {
-        if (player == null || event == null) return;
-        if (technique.get() != Technique.NORMAL || rotationTiming.get() != RotationTiming.NORMAL) return;
-        if (angleSmoothMode.get() == AngleSmoothMode.NONE) return;
-        if (shouldGoDown(player) || player.getAbilities().flying) return;
-
-        ScaffoldPlacementTarget target = currentTarget;
-        if (target == null) {
-            if (normalAngleSmoothLedgeHoldTicks > 0) {
-                event.setSneak(true);
-                event.setSprint(false);
-                normalAngleSmoothLedgeHoldTicks--;
-            }
-            return;
-        }
-
-        EagleUtil.EdgeCheck edgeCheck = EagleUtil.checkEdge(
-                player,
-                event,
-                Math.max(Math.min(eagleEdgeDistance.get(), 0.24), 0.18),
-                Math.min(1.0, TickDelta.get() + 0.85)
+        EagleUtil.EdgeCheck edgeCheck = EagleUtil.checkEdge(player, event, eagleEdgeDistance.get());
+        return placementGate.consumeEaglePulse(
+                eagle.get(),
+                edgeCheck.closeToEdge(),
+                eagleOnlyOnGround.get(),
+                player.onGround(),
+                player.getAbilities().flying,
+                shouldGoDown(player)
         );
-
-        Rotation targetRotation = target.getRotation();
-        Rotation currentRotation = RotationManager.INSTANCE.getCurrentRotation();
-        if (currentRotation == null) {
-            currentRotation = RotationManager.INSTANCE.getServerRotation();
-        }
-        if (targetRotation == null || currentRotation == null) {
-            return;
-        }
-
-        boolean ready = isCurrentScaffoldTargetReady(player, target, currentRotation);
-
-        int ticks = estimateTicksUntilRotationReady(currentRotation, targetRotation);
-        boolean falloffImminent = isNormalAngleSmoothFalloffImminent(player, ticks);
-        if ((falloffImminent || edgeCheck.closeToEdge()) && !ready) {
-            normalAngleSmoothLedgeHoldTicks = Math.max(
-                    normalAngleSmoothLedgeHoldTicks,
-                    Math.max(2, ticks + 1)
-            );
-        }
-
-        if (normalAngleSmoothLedgeHoldTicks <= 0) {
-            return;
-        }
-
-        event.setSneak(true);
-        event.setSprint(false);
-        normalAngleSmoothLedgeHoldTicks--;
     }
 
-    private boolean isNormalAngleSmoothFalloffImminent(LocalPlayer player, int ticksUntilReady) {
-        if (player == null || currentOptimalLine == null) return false;
-
-        Vec3 fallOff = movementPrediction.getFallOffPositionOnLine(player, currentOptimalLine);
-        if (fallOff == null) return false;
-
-        Vec3 nearest = currentOptimalLine.getNearestPointTo(player.position());
-        Vec3 direction = currentOptimalLine.direction().normalize();
-        double distance = fallOff.subtract(nearest).dot(direction);
-        if (distance < -0.05) return true;
-
-        double speed = Math.max(horizontalSpeed(player.getDeltaMovement()), 0.05);
-        double leadTicks = Math.max(1.5, ticksUntilReady + 1.0 + TickDelta.get());
-        double threshold = Math.max(0.18, Math.min(0.85, speed * leadTicks + 0.06));
-        return distance <= threshold;
-    }
-
-    private boolean isNormalAngleSmoothLedgeControl() {
-        return technique.get() == Technique.NORMAL
-                && rotationTiming.get() == RotationTiming.NORMAL
-                && angleSmoothMode.get() != AngleSmoothMode.NONE;
-    }
-
-    private boolean isCurrentScaffoldTargetReady(LocalPlayer player, ScaffoldPlacementTarget target) {
-        Rotation currentRotation = RotationManager.INSTANCE.getCurrentRotation();
-        if (currentRotation == null) {
-            currentRotation = RotationManager.INSTANCE.getServerRotation();
-        }
-        return isCurrentScaffoldTargetReady(player, target, currentRotation);
-    }
-
-    private boolean isCurrentScaffoldTargetReady(
-            LocalPlayer player,
-            ScaffoldPlacementTarget target,
-            Rotation currentRotation
-    ) {
-        if (player == null || target == null || currentRotation == null) return false;
-
-        BlockHitResult currentHit = traceScaffoldTarget(player, currentRotation);
-        return target.matches(currentHit)
-                && isValidCrosshairTarget(player, currentHit);
+    private boolean isPlacementCadenceReady() {
+        return placementGate.isPlacementReady(System.nanoTime(), placementSpeed.get(), delayLeft);
     }
 
     private void handleTower(LocalPlayer player) {
@@ -2157,7 +2066,6 @@ public class Scaffold extends Module {
         event.setLeft(corrected.left());
         event.setRight(corrected.right());
         event.setJump(corrected.jump());
-        event.setSneak(corrected.shift());
         event.setSprint(corrected.sprint() && corrected.forward() && !corrected.backward());
     }
 
@@ -2436,15 +2344,6 @@ public class Scaffold extends Module {
             case ACCELERATION -> accelerationSmooth;
             case NONE -> null;
         };
-    }
-
-    private int estimateTicksUntilRotationReady(Rotation currentRotation, Rotation targetRotation) {
-        AngleSmooth smooth = selectAngleSmooth();
-        if (smooth == null || currentRotation == null || targetRotation == null) {
-            return 1;
-        }
-
-        return Math.max(1, Math.min(6, smooth.calculateTicks(currentRotation, targetRotation)));
     }
 
     public enum RotationTiming {

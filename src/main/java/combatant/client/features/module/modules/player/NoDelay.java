@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.player;
 
+import combatant.client.config.common.CommonSettingSchemas;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -23,6 +24,7 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
@@ -43,6 +45,8 @@ import java.util.Map;
 )
 public final class NoDelay extends Module {
 
+    private static final float VULCAN_297_MIN_SERVER_ACCEPT_PROGRESS = 0.7f;
+
     private static final String SETTING_TYPES = "types";
     private static final String SETTING_USE_DELAY = "use_delay";
     private static final String SETTING_DELAY_MS = "delay_ms";
@@ -50,6 +54,7 @@ public final class NoDelay extends Module {
     private static final String SETTING_INTERACT_DELAY_MS = "interact_delay_ms";
     private static final String SETTING_INTERACT_INTERVAL_MS = "interact_interval_ms";
     private static final String SETTING_BLOCK_PLACE_COOLDOWN_TICKS = "block_place_cooldown_ticks";
+    private static final String SETTING_FAST_BREAK_MODE = "fast_break_mode";
     private static final String SETTING_FAST_BREAK_PROGRESS = "fast_break_progress";
 
     private static final String TYPE_JUMP = "Jump";
@@ -79,6 +84,15 @@ public final class NoDelay extends Module {
     private final NumberValue<Integer> blockPlaceCooldownTicks =
             visibleWhen(num("noDelayBlockPlaceCooldownTicks", SETTING_BLOCK_PLACE_COOLDOWN_TICKS, 0, 0, 6),
                     () -> types.get(TYPE_BLOCK_PLACE));
+    private final EnumValue<FastBreakMode> fastBreakMode =
+            visibleWhen(enumCommon(
+                            "noDelayFastBreakMode",
+                            SETTING_FAST_BREAK_MODE,
+                            CommonSettingSchemas.MODE,
+                            FastBreakMode.NORMAL,
+                            FastBreakMode.values()
+                    ),
+                    () -> types.get(TYPE_FAST_BREAK));
     private final NumberValue<Float> fastBreakProgress =
             visibleWhen(num("noDelayFastBreakProgress", SETTING_FAST_BREAK_PROGRESS, 0.5f, 0.1f, 1.0f),
                     () -> types.get(TYPE_FAST_BREAK));
@@ -234,8 +248,22 @@ public final class NoDelay extends Module {
         if (pos == null) return;
 
         float progress = accessor.combatant$getCurrentBreakingProgress();
-        if (progress < fastBreakProgress.get()) return;
+        float requiredProgress = fastBreakMode.get() == FastBreakMode.VULCAN_297
+                ? Math.max(fastBreakProgress.get(), VULCAN_297_MIN_SERVER_ACCEPT_PROGRESS)
+                : fastBreakProgress.get();
+        if (progress < requiredProgress) return;
         if (pos.equals(lastBoostedBreakPos)) return;
+
+        if (fastBreakMode.get() == FastBreakMode.VULCAN_297) {
+            // A vanilla server accepts STOP once its own progress reaches 0.7; clamping the trigger
+            // above keeps legacy 0.5 configs from falling back to server-side delayed destruction.
+            // Let vanilla finish the break during handleKeybinds on the next tick. Its STOP packet
+            // is then sent before LocalPlayer emits movement, outside Vulcan 2.9.7 BadPackets N's
+            // "movement -> <5 ms dig -> 40..100 ms movement" timing window.
+            accessor.combatant$setCurrentBreakingProgress(1.0f);
+            lastBoostedBreakPos = pos.immutable();
+            return;
+        }
 
         Direction direction = resolveBreakingDirection(pos);
         mc.getConnection().send(
@@ -306,6 +334,22 @@ public final class NoDelay extends Module {
         THROWABLE,
         BONE_MEAL_BLOCK,
         ITEM_FRAME
+    }
+
+    private enum FastBreakMode implements EnumValue.IdProvider {
+        NORMAL("normal"),
+        VULCAN_297("vulcan_297");
+
+        private final String id;
+
+        FastBreakMode(String id) {
+            this.id = id;
+        }
+
+        @Override
+        public String getId() {
+            return id;
+        }
     }
 
     private record UseContext(InteractionHand hand, UseTarget target, BlockHitResult blockHit,

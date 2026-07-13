@@ -98,7 +98,7 @@ public enum PickerCatalogFactory {
         List<PickerEntryData> out = new ArrayList<>();
         for (EnchantMeta meta : EnchantRegistry.REGISTRY.values()) {
             String id = "minecraft:" + meta.key();
-            out.add(new PickerEntryData(id, humanizeSnakeCase(meta.key()), ItemStack.EMPTY));
+            out.add(new PickerEntryData(id, meta.localizedName(), ItemStack.EMPTY));
         }
         out.sort(ENTRY_ORDER);
         return out;
