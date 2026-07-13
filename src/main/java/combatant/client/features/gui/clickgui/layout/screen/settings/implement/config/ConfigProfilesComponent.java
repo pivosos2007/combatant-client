@@ -23,6 +23,7 @@ import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.logging.DebugLog;
 
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -443,7 +444,16 @@ public final class ConfigProfilesComponent {
             String empty = ClickGuiSearch.isActive() && !ClickGuiSearch.getText().isBlank()
                     ? ClickGuiI18n.tr("clickgui.settings.config.empty.no_matches", "No matching configs.")
                     : ClickGuiI18n.tr("clickgui.settings.config.empty.none_saved", "No saved configs.");
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), empty, x + 4f * scale, y + 4f * scale, 7.4f * scale, palette.panelMuted(), false);
+            float emptySize = 8.0f * scale;
+            float emptyW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), empty, emptySize);
+            ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), empty, x + (w - emptyW) * 0.5f, y + h * 0.42f, emptySize, palette.panelMuted(), false);
+            if (!ClickGuiSearch.isActive() || ClickGuiSearch.getText().isBlank()) {
+                String hint = ClickGuiI18n.tr("clickgui.settings.config.empty.drop_hint", "Drop .cbcfg files here, or put them anywhere under config/combatant/profiles/.");
+                float hintSize = 6.9f * scale;
+                String fitted = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), hint, hintSize, w - 18f * scale);
+                float hintW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), fitted, hintSize);
+                ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), fitted, x + (w - hintW) * 0.5f, y + h * 0.42f + 13f * scale, hintSize, palette.panelMuted(), false);
+            }
             return;
         }
         boolean clipped = ScissorFunction.pushRaw(x, y, w, h);
@@ -534,6 +544,35 @@ public final class ConfigProfilesComponent {
         if (!isRenaming()) return false;
         if (chr >= 32 && chr != 127 && editingText.length() < 48) {
             editingText += chr;
+        }
+        return true;
+    }
+
+    public boolean importDroppedFiles(List<Path> paths) {
+        if (paths == null || paths.isEmpty()) return false;
+        int imported = 0;
+        int failed = 0;
+        ConfigProfileMeta last = null;
+        for (Path path : paths) {
+            try {
+                ConfigProfileStorage.ImportResult result = ConfigProfileService.INSTANCE.importProfileFile(path, false);
+                imported++;
+                last = result.meta();
+            } catch (Exception e) {
+                failed++;
+                DebugLog.error("Failed to import dropped config profile %s", e, path == null ? "<null>" : path.toAbsolutePath());
+            }
+        }
+        if (last != null) {
+            switchType(last.type());
+            selected = last;
+        }
+        if (imported > 0 && failed > 0) {
+            setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.imported_partial", "Imported: %s, failed: %s", imported, failed));
+        } else if (imported > 0) {
+            setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.imported", "Imported: %s", imported));
+        } else {
+            setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.import_failed", "Import failed"));
         }
         return true;
     }

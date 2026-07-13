@@ -47,6 +47,7 @@ import combatant.client.util.input.KeyUtil;
 import combatant.client.util.text.ClipboardUtil;
 import combatant.client.util.wav.ClickGuiSounds;
 
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
@@ -326,6 +327,12 @@ public enum ClickGuiRenderer {
             return false;
         }
         return getActiveSection().charTyped(c, 0);
+    }
+
+    public static boolean onFilesDrop(List<Path> paths) {
+        if (!ModuleManager.isEnabled("clickgui")) return false;
+        if (textEditor != null || picker != null) return false;
+        return getActiveSection().onFilesDrop(paths);
     }
 
     public static boolean onKey(int key, int scancode, int action, int mods) {

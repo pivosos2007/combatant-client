@@ -13,6 +13,7 @@ import combatant.client.util.logging.DebugLog;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -50,6 +51,7 @@ public final class ConfigProfileStorage {
     }
 
     public List<ConfigProfileMeta> list(ConfigProfileType type) {
+        normalizeLooseProfiles();
         List<ConfigProfileMeta> out = new ArrayList<>();
         Path dir = directory(type);
         if (!Files.isDirectory(dir)) return out;
@@ -68,6 +70,31 @@ public final class ConfigProfileStorage {
         }
         out.sort(Comparator.comparingLong(ConfigProfileMeta::updatedAt).reversed());
         return out;
+    }
+
+    public ImportResult importProfileFile(Path source, boolean moveSource) throws IOException {
+        if (source == null) throw new IllegalArgumentException("profile path is null");
+        if (!Files.isRegularFile(source)) throw new IOException("profile is not a regular file: " + source);
+        String fileName = source.getFileName() == null ? "" : source.getFileName().toString();
+        if (!fileName.toLowerCase(Locale.ROOT).endsWith(EXTENSION)) {
+            throw new IOException("not a " + EXTENSION + " profile: " + source);
+        }
+
+        byte[] bytes = Files.readAllBytes(source);
+        ConfigProfileMeta meta = codec.read(bytes).meta();
+        Path dest = file(meta.type(), meta.getId());
+        Files.createDirectories(dest.getParent());
+
+        Path sourceAbs = source.toAbsolutePath().normalize();
+        Path destAbs = dest.toAbsolutePath().normalize();
+        if (!sourceAbs.equals(destAbs)) {
+            if (moveSource) {
+                Files.move(source, dest, StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                Files.write(dest, bytes);
+            }
+        }
+        return new ImportResult(meta, dest);
     }
 
     public ConfigProfileSnapshot read(ConfigProfileType type, String idOrName) throws IOException {
@@ -117,5 +144,36 @@ public final class ConfigProfileStorage {
         String id = sanitizeFileName(idOrName);
         if (!id.endsWith(EXTENSION)) id += EXTENSION;
         return directory(type).resolve(id);
+    }
+
+    private void normalizeLooseProfiles() {
+        if (!Files.isDirectory(ROOT)) return;
+        List<Path> candidates = new ArrayList<>();
+        try (var stream = Files.walk(ROOT)) {
+            stream.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(EXTENSION))
+                    .forEach(candidates::add);
+        } catch (IOException e) {
+            DebugLog.error("Failed to scan loose config profiles %s", e, ROOT.toAbsolutePath());
+            return;
+        }
+
+        for (Path candidate : candidates) {
+            try {
+                ConfigProfileMeta meta = codec.read(Files.readAllBytes(candidate)).meta();
+                Path dest = file(meta.type(), meta.getId());
+                Path candidateAbs = candidate.toAbsolutePath().normalize();
+                Path destAbs = dest.toAbsolutePath().normalize();
+                if (candidateAbs.equals(destAbs)) continue;
+                Files.createDirectories(dest.getParent());
+                Files.move(candidate, dest, StandardCopyOption.REPLACE_EXISTING);
+                DebugLog.config("Moved config profile %s -> %s", candidateAbs, destAbs);
+            } catch (Exception e) {
+                DebugLog.error("Failed to normalize config profile %s", e, candidate.toAbsolutePath());
+            }
+        }
+    }
+
+    public record ImportResult(ConfigProfileMeta meta, Path path) {
     }
 }

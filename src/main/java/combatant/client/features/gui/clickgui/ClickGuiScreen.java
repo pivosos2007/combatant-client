@@ -13,6 +13,9 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import combatant.client.features.module.ModuleManager;
 
+import java.nio.file.Path;
+import java.util.List;
+
 public final class ClickGuiScreen extends Screen {
 
     public ClickGuiScreen() {
@@ -51,6 +54,13 @@ public final class ClickGuiScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         ClickGuiRenderer.onMouseScrollScaled(mouseX, mouseY, verticalAmount);
         return true;
+    }
+
+    @Override
+    public void onFilesDrop(List<Path> paths) {
+        if (!ClickGuiRenderer.onFilesDrop(paths)) {
+            super.onFilesDrop(paths);
+        }
     }
 
     @Override

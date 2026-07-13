@@ -35,6 +35,14 @@ Unless a file-level notice states otherwise:
 - License text: `THIRD_PARTY_LICENSES/GPL-3.0-only.txt`
 - Scope: identified portions of the early font/text, mesh, texture, vertex-format, render-pipeline and base shader foundation, plus selected movement/event/accessor files. Exact files carry a Meteor Client attribution header.
 
+## ThunderHack Recode
+
+- Upstream: https://github.com/Pan4ur/ThunderHack-Recode
+- Copyright: 2023-2024 Pan4ur & 06ED
+- License: GNU GPL version 3
+- License text: `THIRD_PARTY_LICENSES/GPL-3.0-only.txt`
+- Scope: selected Combatant module, utility, mixin, and UI/rendering code. Exact files with direct ThunderHack Recode lineage carry a file-level attribution header.
+
 ## MediaPlayerInfo
 
 - Upstream: https://github.com/Redstonecrafter0/MediaPlayerInfo
@@ -85,6 +93,38 @@ The SVG files themselves are not modified solely to inject headers. The reposito
 - License text: `THIRD_PARTY_LICENSES/Onest-OFL-1.1.txt`
 - Scope: bundled Onest UI font files under `resources/assets/combatant/font/onest_*.ttf` and their generated MSDF atlases under `resources/assets/combatant/font/msdf/onest_*`.
 
+## Bundled fonts
+
+- **Inter**
+  - Upstream: https://github.com/rsms/inter
+  - Copyright: Rasmus Andersson and Inter contributors
+  - License: SIL Open Font License version 1.1
+  - License text: `THIRD_PARTY_LICENSES/Onest-OFL-1.1.txt`
+  - Scope: `resources/assets/combatant/font/inter_*.ttf` and generated MSDF atlases.
+- **Comfortaa**
+  - Upstream: https://github.com/googlefonts/comfortaa
+  - Copyright: Johan Aakerlund and Comfortaa contributors
+  - License: SIL Open Font License version 1.1
+  - License text: `THIRD_PARTY_LICENSES/Onest-OFL-1.1.txt`
+  - Scope: `resources/assets/combatant/font/comfortaa.ttf` and generated MSDF atlas.
+- **Iosevka**
+  - Upstream: https://github.com/be5invis/Iosevka
+  - Copyright: Renzhi Li / Belleve Invis and Iosevka contributors
+  - License: SIL Open Font License version 1.1
+  - License text: `THIRD_PARTY_LICENSES/Onest-OFL-1.1.txt`
+  - Scope: `resources/assets/combatant/font/iosevka-*.ttf` and generated MSDF atlases.
+- **Montserrat**
+  - Upstream: https://github.com/JulietaUla/Montserrat
+  - Copyright: The Montserrat Project Authors
+  - License: SIL Open Font License version 1.1
+  - License text: `THIRD_PARTY_LICENSES/Onest-OFL-1.1.txt`
+  - Scope: `resources/assets/combatant/font/monsterrat.ttf` and generated MSDF atlas. The local filename keeps the historical spelling.
+- **ProFont**
+  - Upstream: https://tobiasjung.name/profont/
+  - Copyright: ProFont authors and contributors
+  - License: MIT License
+  - License text: `THIRD_PARTY_LICENSES/MIT.txt`
+  - Scope: `resources/assets/combatant/font/profont.ttf` and generated MSDF atlas.
 ## Sodium and Iris
 
 Local source comments identify Sodium compact terrain vertex packing and Iris shader-extension concepts where applicable. Sodium, Iris, and other separately distributed runtime dependencies retain their own licenses and notices.

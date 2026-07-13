@@ -12,6 +12,9 @@ import combatant.client.features.gui.clickgui.layout.screen.settings.MenuScreen;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.TextRenderer;
 
+import java.nio.file.Path;
+import java.util.List;
+
 public enum SettingsTabRuntime {
     ;
     private static final MenuScreen SCREEN = new MenuScreen();
@@ -50,6 +53,10 @@ public enum SettingsTabRuntime {
 
     public static boolean charTyped(char chr, int modifiers) {
         return SCREEN.charTyped(chr, modifiers);
+    }
+
+    public static boolean onFilesDrop(List<Path> paths) {
+        return SCREEN.onFilesDrop(paths);
     }
 
     public static void renderEditor(Renderer2D rendererIn,

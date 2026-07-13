@@ -8,6 +8,7 @@
 package combatant.client.config.profile;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 
 public final class ConfigProfileService {
@@ -84,6 +85,10 @@ public final class ConfigProfileService {
 
     public boolean delete(ConfigProfileType type, String idOrName) throws IOException {
         return storage.delete(type, idOrName);
+    }
+
+    public ConfigProfileStorage.ImportResult importProfileFile(Path source, boolean moveSource) throws IOException {
+        return storage.importProfileFile(source, moveSource);
     }
 
     private ConfigProfileMeta find(ConfigProfileType type, String name) {

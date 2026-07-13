@@ -7,6 +7,9 @@
 
 package combatant.client.features.gui.clickgui.sections;
 
+import java.nio.file.Path;
+import java.util.List;
+
 public interface ClickGuiSection {
     void layout(float x, float y, float w, float h);
 
@@ -24,6 +27,10 @@ public interface ClickGuiSection {
 
     boolean charTyped(char chr, int modifiers);
 
+    default boolean onFilesDrop(List<Path> paths) {
+        return false;
+    }
+
     void onSelected();
 
     void onDeselected();
@@ -32,4 +39,3 @@ public interface ClickGuiSection {
         return true;
     }
 }
-

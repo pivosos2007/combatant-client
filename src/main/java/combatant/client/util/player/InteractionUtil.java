@@ -1,6 +1,8 @@
 /*
  * This file is part of the Combatant Client distribution.
  * Copyright (c) 2026 pivosos2007.
+ * Portions derived from ThunderHack Recode, copyright (c) 2023-2024 Pan4ur & 06ED.
+ * Upstream: https://github.com/Pan4ur/ThunderHack-Recode
  *
  * Licensed under the GNU General Public License v3.0.
  */

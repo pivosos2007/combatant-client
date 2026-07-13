@@ -20,13 +20,24 @@ Combatant's current UI batching, renderer organization, post-processing, effects
 
 Upstream: https://github.com/MeteorDevelopment/meteor-client
 
+## ThunderHack Recode
+
+ThunderHack Recode is an upstream source or implementation reference for selected Combatant modules, utility code, and UI/HUD behavior. Combatant's affected code has been ported to a different Minecraft version and integrated into Combatant's own module, config, event, and rendering systems.
+
+Upstream: https://github.com/Pan4ur/ThunderHack-Recode
+
 ## Other acknowledged upstream work
 
 - **MediaPlayerInfo** by Redstonecrafter0: modified Java/native integration under AGPL-3.0-only.
 - **In-Game Account Switcher**: portions of the Microsoft authentication flow under LGPL-3.0-or-later.
 - **InvMove** by PieKing1215: portions of inventory movement and screen classification under LGPL-3.0.
 - **ExploitPreventer** by Niklas S.: selected protection logic originating under the MIT License.
+- **Inter** by Rasmus Andersson: bundled UI font under the SIL Open Font License 1.1.
+- **Comfortaa** by Johan Aakerlund: bundled UI font under the SIL Open Font License 1.1.
+- **Iosevka** by Renzhi Li / Belleve Invis: bundled monospace font under the SIL Open Font License 1.1.
+- **Montserrat** by the Montserrat Project Authors: bundled UI font under the SIL Open Font License 1.1.
 - **Onest** by the Onest Project Authors: bundled UI font under the SIL Open Font License 1.1.
+- **ProFont**: bundled monospace font under the MIT License.
 - **Lucide**: the bundled SVG interface icon set under the Lucide ISC license, including the Feather MIT notice where applicable.
 - **Sodium / Iris**: implementation concepts explicitly credited in local source comments where applicable.
 

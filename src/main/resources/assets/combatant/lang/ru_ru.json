@@ -1527,6 +1527,8 @@
   "setting.esp.shader_smoke_octaves": "Детализация дыма",
   "setting.esp.shader_smoke_contrast": "Контраст дыма",
   "setting.reimaginedvisual.skybox_shader.iris_blocked": "Iris загружен",
+  "setting.reimaginedvisual.depth_of_field.iris_blocked": "Iris shaderpack pipeline is active",
+  "setting.main_config.msaa3d.iris_blocked": "Iris shaderpack pipeline is active",
   "setting.main_config.menuClockShowSeconds": "Показывать секунды часов",
   "clickgui.settings.relations.online_picker.mode_name.friend": "друг",
   "clickgui.settings.relations.online_picker.mode_name.enemy": "враг",

@@ -20,6 +20,10 @@ Combatant is already usable, but it is not feature-complete. Some areas still ne
 
 ![Combatant theme menu](img-readme/themes.png)
 
+## Guides
+
+- [`Configs and HUD Guide`](CONFIGS_AND_HUD.md) - config profiles, `.cbcfg` files, loading profiles, and HUD element setup.
+
 ## Logo wanted
 
 Combatant does not have a proper project logo yet.

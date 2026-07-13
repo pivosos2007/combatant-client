@@ -35,6 +35,7 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -429,6 +430,11 @@ public final class MenuScreen {
         }
 
         return settingsPanel.charTyped(chr, modifiers);
+    }
+
+    public boolean onFilesDrop(List<Path> paths) {
+        if (!isInteractive() || category != Category.CONFIGS) return false;
+        return configProfilesComponent.importDroppedFiles(paths);
     }
 
     private void layout(float areaX, float areaY, float areaW, float areaH) {

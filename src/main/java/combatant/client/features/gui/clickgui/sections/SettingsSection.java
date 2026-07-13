@@ -10,6 +10,9 @@ package combatant.client.features.gui.clickgui.sections;
 import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.sections.settings.SettingsTabRuntime;
 
+import java.nio.file.Path;
+import java.util.List;
+
 public final class SettingsSection implements ClickGuiSection {
     private float x;
     private float y;
@@ -78,6 +81,11 @@ public final class SettingsSection implements ClickGuiSection {
     }
 
     @Override
+    public boolean onFilesDrop(List<Path> paths) {
+        return SettingsTabRuntime.onFilesDrop(paths);
+    }
+
+    @Override
     public void onSelected() {
         SettingsTabRuntime.open();
         SettingsTabRuntime.markDirty();
@@ -94,4 +102,3 @@ public final class SettingsSection implements ClickGuiSection {
         return SettingsTabRuntime.isVisible();
     }
 }
-
