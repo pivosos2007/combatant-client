@@ -201,6 +201,15 @@ public final class SodiumGlMsaaControl implements MsaaControl {
         if (src == null || dst == null || GlBackendAccess.current() == null) {
             return false;
         }
+
+        // Keep color and depth resolves independent. A combined multisample blit is legal,
+        // but several GL drivers complete its color resolve while leaving depth unchanged.
+        if (color && depth) {
+            boolean depthResolved = resolve(src, dst, false, true);
+            boolean colorResolved = resolve(src, dst, true, false);
+            return depthResolved && colorResolved;
+        }
+
         if (color && (src.getColorTexture() == null || dst.getColorTexture() == null)) {
             return false;
         }

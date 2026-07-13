@@ -43,6 +43,7 @@ public final class ModulesMenuScreen {
     private static final float SEPARATOR_H = 4.0f;
     private static final float MODULE_ROW_H = 20.0f;
     private static final float PANEL_RADIUS = 10.0f;
+    private static final float TEXT_LEFT_PADDING = 10.0f;
 
     private static final float LIQUID_GLASS_LOGICAL_SCALE = 3.0f;
     private static float ACTIVE_PORT_SCALE = LIQUID_GLASS_LOGICAL_SCALE;
@@ -435,7 +436,7 @@ public final class ModulesMenuScreen {
         panel.settingHits.clear();
 
         float titleY = panel.y + middle(textHeight(semibold, 9.0f * scale), HEADER_H * scale) + 0.5f * scale;
-        ClickGuiRenderer.drawText(semibold, panel.category.title(), panel.x + 10.0f * scale, titleY, 9.0f * scale, text, false);
+        ClickGuiRenderer.drawText(semibold, panel.category.title(), panel.x + TEXT_LEFT_PADDING * scale, titleY, 9.0f * scale, text, false);
         drawCategoryIcon(panel, muted);
 
         if (panel.swap < 0.999f) {
@@ -533,7 +534,7 @@ public final class ModulesMenuScreen {
 
         int nameColor = mix(withAlpha(ModulesMenuStyle.textMuted(), alpha), withAlpha(ModulesMenuStyle.text(), alpha), 0.25f + 0.75f * enabled + 0.20f * hoverAnim);
 
-        float nameX = x + (10.0f + 2.0f * enabled) * scale;
+        float nameX = x + (TEXT_LEFT_PADDING + 2.0f * enabled) * scale;
         float nameY = y + middle(textHeight(regular, 8.0f * scale), h) - 0.5f * scale;
         float nameMaxW = moduleListEdit
                 ? Math.max(12.0f * scale, moduleListX - nameX - 5.0f * scale)
@@ -670,7 +671,7 @@ public final class ModulesMenuScreen {
         ClickGuiRenderer.drawText(
                 regular,
                 title,
-                pageX + 9.0f * scale,
+                pageX + TEXT_LEFT_PADDING * scale,
                 settingsTop + middle(textHeight(regular, 8.0f * scale), HEADER_H * scale) - scale,
                 8.0f * scale,
                 withAlpha(ModulesMenuStyle.text(), alpha),

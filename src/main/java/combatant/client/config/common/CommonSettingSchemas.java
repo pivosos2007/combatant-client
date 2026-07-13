@@ -57,6 +57,7 @@ public enum CommonSettingSchemas {
     public static final CommonSettingSchema COMBAT_CPS_MIN = key("combat.cps_min");
     public static final CommonSettingSchema COMBAT_CPS_MAX = key("combat.cps_max");
     public static final CommonSettingSchema COMBAT_PROTOCOL = key("combat.protocol");
+    public static final CombatProtocolHeuristicSources COMBAT_PROTOCOL_HEURISTICS = new CombatProtocolHeuristicSources();
     public static final CommonSettingSchema COMBAT_RANGE = key("combat.range", "target_range", "range");
     public static final CommonSettingSchema COMBAT_REACH_MODE = key("combat.reach_mode");
     public static final CommonSettingSchema COMBAT_RANGE_INCREMENT = key("combat.range_increment");

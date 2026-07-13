@@ -41,7 +41,6 @@ public enum DepthOfFieldUniforms {
                               float maxRadius,
                               int taps,
                               float edgeProtection,
-                              float msaaResolveFactor,
                               boolean debugCoc,
                               boolean mainDepth,
                               boolean translucentDepth,
@@ -60,7 +59,6 @@ public enum DepthOfFieldUniforms {
         DATA.maxRadius = maxRadius;
         DATA.taps = taps;
         DATA.edgeProtection = edgeProtection;
-        DATA.msaaResolveFactor = msaaResolveFactor;
         DATA.debugCoc = debugCoc ? 1.0f : 0.0f;
         DATA.mainDepth = mainDepth ? 1.0f : 0.0f;
         DATA.translucentDepth = translucentDepth ? 1.0f : 0.0f;
@@ -87,7 +85,6 @@ public enum DepthOfFieldUniforms {
         private float maxRadius;
         private int taps;
         private float edgeProtection;
-        private float msaaResolveFactor;
         private float debugCoc;
         private float mainDepth;
         private float translucentDepth;
@@ -113,7 +110,7 @@ public enum DepthOfFieldUniforms {
                     .putFloat(taps)
                     .putFloat(edgeProtection)
                     .putFloat(debugCoc)
-                    .putFloat(msaaResolveFactor)
+                    .putFloat(0.0f)
                     .putFloat(0.0f)
                     .putFloat(0.0f)
                     .putFloat(mainDepth)

@@ -22,7 +22,7 @@ layout (std140) uniform DepthOfField {
     vec4 u_Screen;       // invW, invH, width, height
     vec4 u_Focus;        // mode, fallbackFocusDistance, farStart, farTransition
     vec4 u_Params;       // strength, maxRadiusPx, taps, edgeProtection
-    vec4 u_State;        // debugCoc, msaaResolveFactor, reserved, reserved
+    vec4 u_State;        // debugCoc, reserved, reserved, reserved
     vec4 u_DepthA;       // main, translucent, item_entity, particles availability
     vec4 u_DepthB;       // weather, clouds, reserved, reserved availability
 };
@@ -39,10 +39,6 @@ bool depthEnabled(float v) {
 
 bool validRawDepth(float d) {
     return d == d && d > DEPTH_NEAR_EPS && d < DEPTH_FAR_EPS;
-}
-
-float msaaResolveFactor() {
-    return clamp(u_State.y, 0.0, 1.0);
 }
 
 bool hasEnabledDepthSource() {
@@ -73,32 +69,6 @@ float readSceneDepth(vec2 uv) {
     d = mergeDepth(d, texture(u_WeatherDepth, uv).r, u_DepthB.x);
     d = mergeDepth(d, texture(u_CloudsDepth, uv).r, u_DepthB.y);
     return d;
-}
-
-float readDofDepth(vec2 uv) {
-    float center = readSceneDepth(uv);
-    float msaa = msaaResolveFactor();
-    if (msaa <= 0.001) {
-        return center;
-    }
-
-    vec2 texel = u_Screen.xy;
-    float farthest = validRawDepth(center) ? center : 0.0;
-    float d;
-
-    d = readSceneDepth(clamp(uv + vec2(texel.x, 0.0), vec2(0.0), vec2(1.0)));
-    if (validRawDepth(d)) farthest = max(farthest, d);
-    d = readSceneDepth(clamp(uv - vec2(texel.x, 0.0), vec2(0.0), vec2(1.0)));
-    if (validRawDepth(d)) farthest = max(farthest, d);
-    d = readSceneDepth(clamp(uv + vec2(0.0, texel.y), vec2(0.0), vec2(1.0)));
-    if (validRawDepth(d)) farthest = max(farthest, d);
-    d = readSceneDepth(clamp(uv - vec2(0.0, texel.y), vec2(0.0), vec2(1.0)));
-    if (validRawDepth(d)) farthest = max(farthest, d);
-
-    if (!validRawDepth(farthest)) {
-        return center;
-    }
-    return validRawDepth(center) ? mix(center, farthest, msaa * 0.80) : farthest;
 }
 
 vec3 reconstructViewPosition(vec2 uv, float rawDepth) {
@@ -134,7 +104,7 @@ float reconstructDistance(vec2 uv, float rawDepth) {
 }
 
 void accumulateFocusSample(vec2 uv, inout float sum, inout float count) {
-    float d = readDofDepth(uv);
+    float d = readSceneDepth(uv);
     if (!validRawDepth(d)) {
         return;
     }
@@ -189,15 +159,14 @@ float depthCompatibility(float centerDistance, float sampleDistance) {
     }
 
     float protection = clamp(u_Params.w, 0.0, 1.0);
-    float msaa = msaaResolveFactor();
     float relBase = max(centerDistance, 1.0);
     float relativeDelta = abs(sampleDistance - centerDistance) / relBase;
-    float softWidth = mix(0.10, mix(0.018, 0.042, msaa), protection);
+    float softWidth = mix(0.10, 0.018, protection);
     float weight = 1.0 - smoothstep(softWidth, softWidth * 3.0, relativeDelta);
 
     if (sampleDistance + 0.001 < centerDistance) {
         float foregroundDelta = (centerDistance - sampleDistance) / relBase;
-        float fgWidth = mix(0.07, mix(0.010, 0.028, msaa), protection);
+        float fgWidth = mix(0.07, 0.010, protection);
         weight *= 1.0 - smoothstep(fgWidth, fgWidth * 3.0, foregroundDelta);
     }
 
@@ -226,18 +195,14 @@ vec3 depthAwareBlur(vec2 uv, float centerDistance, float centerCoc, float radius
             continue;
         }
 
-        float sampleRawDepth = readDofDepth(sampleUv);
+        float sampleRawDepth = readSceneDepth(sampleUv);
         if (!validRawDepth(sampleRawDepth)) {
             continue;
         }
 
         float sampleDistance = reconstructDistance(sampleUv, sampleRawDepth);
         float sampleCoc = computeCoc(sampleDistance, focus);
-        float cocWeight = mix(
-                smoothstep(0.0, 0.30, max(centerCoc, sampleCoc)),
-                max(centerCoc, sampleCoc),
-                msaaResolveFactor() * 0.55
-        );
+        float cocWeight = smoothstep(0.0, 0.30, max(centerCoc, sampleCoc));
         float depthWeight = depthCompatibility(centerDistance, sampleDistance);
         float radialWeight = 1.0 - r * 0.35;
         float weight = radialWeight * depthWeight * cocWeight;
@@ -257,7 +222,7 @@ void main() {
     vec2 uv = v_TexCoord;
     vec4 base = texture(u_Texture, uv);
 
-    float rawDepth = readDofDepth(uv);
+    float rawDepth = readSceneDepth(uv);
     bool validDepth = validRawDepth(rawDepth);
     bool anyDepthSource = hasEnabledDepthSource();
 
@@ -289,8 +254,7 @@ void main() {
     float distanceToCamera = reconstructDistance(uv, rawDepth);
     float focus = focusDistance();
     float coc = computeCoc(distanceToCamera, focus);
-    float msaa = msaaResolveFactor();
-    float radiusPx = clamp(coc * maxRadius, 0.0, maxRadius) * mix(1.0, 1.08, msaa);
+    float radiusPx = clamp(coc * maxRadius, 0.0, maxRadius);
 
     if (u_State.x > 0.5) {
         color = vec4(vec3(clamp(coc, 0.0, 1.0)), 1.0);

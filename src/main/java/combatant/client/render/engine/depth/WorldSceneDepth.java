@@ -50,16 +50,10 @@ public enum WorldSceneDepth {
         valid |= MAIN.capture(source, width, height);
     }
 
-    /**
-     * Updates the main world depth from the resolved Minecraft main framebuffer after the
-     * world MSAA target has been resolved back into the vanilla framebuffer. This is not a
-     * fallback source: it is the final world main depth for the same PRE_HAND scene that DoF
-     * samples. The frame-graph capture can see the temporary MSAA world target on Sodium/MSAA
-     * setups; sampling that path later as a regular depth texture can produce clear depth.
-     */
-    public static void captureResolvedMain(RenderTarget source) {
+    /** Captures the final PRE_HAND main depth, resolving an MSAA source when necessary. */
+    public static boolean captureResolvedMain(RenderTarget source) {
         if (source == null) {
-            return;
+            return false;
         }
         int w = Math.max(1, source.width);
         int h = Math.max(1, source.height);
@@ -67,7 +61,9 @@ public enum WorldSceneDepth {
             width = w;
             height = h;
         }
-        valid |= MAIN.capture(source, width, height);
+        boolean captured = MAIN.capture(source, width, height);
+        valid |= captured;
+        return captured;
     }
 
     public static void captureTranslucent(RenderTarget source) {

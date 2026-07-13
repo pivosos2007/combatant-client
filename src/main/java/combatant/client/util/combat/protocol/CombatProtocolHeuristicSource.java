@@ -8,8 +8,7 @@
 package combatant.client.util.combat.protocol;
 
 public enum CombatProtocolHeuristicSource {
-    CHAT("chat"),
-    GAME_MESSAGE("game_message"),
+    MESSAGES("messages"),
     OVERLAY("overlay"),
     BOSSBAR("bossbar");
 

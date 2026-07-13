@@ -155,6 +155,14 @@ public final class SettingDef {
         return new SettingDef(Kind.COOLDOWN_RULES, value.getName(), value);
     }
 
+    public static SettingDef protocolHeuristics(String id, BooleanMapValue value) {
+        return new SettingDef(Kind.PROTOCOL_HEURISTICS, id, value);
+    }
+
+    public static SettingDef protocolHeuristics(BooleanMapValue value) {
+        return new SettingDef(Kind.PROTOCOL_HEURISTICS, value.getName(), value);
+    }
+
     public static SettingDef group(String id, BooleanMapValue value) {
         return new SettingDef(Kind.GROUP, id, value);
     }
@@ -356,6 +364,7 @@ public final class SettingDef {
         TEXT,
         TEXT_LIST,
         COOLDOWN_RULES,
+        PROTOCOL_HEURISTICS,
         GROUP,
         BIND
     }

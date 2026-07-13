@@ -20,6 +20,7 @@ import org.lwjgl.glfw.GLFW;
 import combatant.client.config.ConfigSerializer;
 import combatant.client.features.gui.clickgui.editor.ClickGuiTextEditorState;
 import combatant.client.features.gui.clickgui.picker.ClickGuiPickerState;
+import combatant.client.features.gui.clickgui.protocol.CombatProtocolHeuristicsEditorState;
 import combatant.client.features.gui.clickgui.sections.ClickGuiSection;
 import combatant.client.features.gui.clickgui.sections.ModulesSection;
 import combatant.client.features.gui.clickgui.sections.SettingsSection;
@@ -114,6 +115,7 @@ public enum ClickGuiRenderer {
     private static CompletableFuture<Void> pendingSaveTask;
     private static ClickGuiTextEditorState textEditor = null;
     private static ClickGuiPickerState picker = null;
+    private static CombatProtocolHeuristicsEditorState protocolHeuristicsEditor = null;
     private static TextSetting inlineTextOwner = null;
     private static StringBuilder inlineTextBuffer = null;
     private static float inlineTextX, inlineTextY, inlineTextW, inlineTextH;
@@ -132,6 +134,9 @@ public enum ClickGuiRenderer {
         updateMouse(x, y, false);
         if (picker != null) {
             picker.handleMouseMove(mouseX, mouseY);
+        }
+        if (protocolHeuristicsEditor != null) {
+            protocolHeuristicsEditor.handleMouseMove(mouseX, mouseY);
         }
         if (textEditor != null) {
             textEditor.handleMouseMove(mouseX, mouseY);
@@ -152,6 +157,9 @@ public enum ClickGuiRenderer {
         updateMouse(x, y, true);
         if (picker != null) {
             picker.handleMouseMove(mouseX, mouseY);
+        }
+        if (protocolHeuristicsEditor != null) {
+            protocolHeuristicsEditor.handleMouseMove(mouseX, mouseY);
         }
         if (textEditor != null) {
             textEditor.handleMouseMove(mouseX, mouseY);
@@ -233,6 +241,15 @@ public enum ClickGuiRenderer {
             return;
         }
 
+        if (protocolHeuristicsEditor != null) {
+            if (pressed) {
+                protocolHeuristicsEditor.handleMouseDown(mouseX, mouseY, button);
+            } else {
+                protocolHeuristicsEditor.handleMouseUp(mouseX, mouseY, button);
+            }
+            return;
+        }
+
         if (pressed && handleTabClick(mouseX, mouseY)) {
             return;
         }
@@ -262,6 +279,11 @@ public enum ClickGuiRenderer {
 
         if (textEditor != null) {
             textEditor.scroll(delta);
+            return;
+        }
+
+        if (protocolHeuristicsEditor != null) {
+            protocolHeuristicsEditor.scroll(delta);
             return;
         }
 
@@ -319,6 +341,9 @@ public enum ClickGuiRenderer {
             }
             return false;
         }
+        if (protocolHeuristicsEditor != null) {
+            return protocolHeuristicsEditor.charTyped(c);
+        }
         if (inlineTextOwner != null && inlineTextBuffer != null) {
             if (StringUtil.isAllowedChatCharacter(c)) {
                 inlineTextBuffer.append(c);
@@ -331,7 +356,7 @@ public enum ClickGuiRenderer {
 
     public static boolean onFilesDrop(List<Path> paths) {
         if (!ModuleManager.isEnabled("clickgui")) return false;
-        if (textEditor != null || picker != null) return false;
+        if (textEditor != null || picker != null || protocolHeuristicsEditor != null) return false;
         return getActiveSection().onFilesDrop(paths);
     }
 
@@ -361,6 +386,10 @@ public enum ClickGuiRenderer {
                 }
             }
             return true;
+        }
+
+        if (protocolHeuristicsEditor != null) {
+            return protocolHeuristicsEditor.keyPressed(key, scancode, action, mods);
         }
 
         if (picker != null) {
@@ -595,10 +624,14 @@ public enum ClickGuiRenderer {
                 }
 
                 if (pickerScreenActive) {
-                    try (ProfilerPhase.Scope pickerScope = ProfilerPhase.scope("2d:clickgui:picker");
-                         RenderProfiler2D.Section ignoredPicker = RenderProfiler2D.section("picker");
-                         TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("2d:clickgui:picker")) {
-                        renderPicker(vw, vh);
+                    try (ProfilerPhase.Scope pickerScope = ProfilerPhase.scope("2d:clickgui:modal");
+                         RenderProfiler2D.Section ignoredPicker = RenderProfiler2D.section("modal");
+                         TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("2d:clickgui:modal")) {
+                        if (protocolHeuristicsEditor != null) {
+                            protocolHeuristicsEditor.render(vw, vh);
+                        } else {
+                            renderPicker(vw, vh);
+                        }
                     }
                     try (ProfilerPhase.Scope textEditorScope = ProfilerPhase.scope("2d:clickgui:text_editor");
                          RenderProfiler2D.Section ignoredTextEditor = RenderProfiler2D.section("text_editor");
@@ -965,7 +998,7 @@ public enum ClickGuiRenderer {
                 lifecycleAnim,
                 activeLabel,
                 tabs.size(),
-                picker != null
+                picker != null || protocolHeuristicsEditor != null
         );
     }
 
@@ -1570,7 +1603,7 @@ public enum ClickGuiRenderer {
     }
 
     public static boolean isPickerActive() {
-        return picker != null;
+        return picker != null || protocolHeuristicsEditor != null;
     }
 
     public static boolean isBlockingModuleKeybinds() {
@@ -1578,6 +1611,7 @@ public enum ClickGuiRenderer {
         if (waitingForKey) return true;
         if (textEditor != null) return true;
         if (inlineTextOwner != null) return true;
+        if (protocolHeuristicsEditor != null) return true;
         if (picker != null && picker.isListening()) return true;
         return ClickGuiSearch.isActive();
     }
@@ -1765,8 +1799,22 @@ public enum ClickGuiRenderer {
         if (owner == null) return;
         clearInlineText();
         ClickGuiSearch.deactivate();
+        protocolHeuristicsEditor = null;
         picker = new ClickGuiPickerState(owner, title, mode);
         openPickerScreen();
+    }
+
+    public static void openProtocolHeuristicsEditor(ProtocolHeuristicsSetting owner, String title) {
+        if (owner == null) return;
+        clearInlineText();
+        ClickGuiSearch.deactivate();
+        picker = null;
+        protocolHeuristicsEditor = new CombatProtocolHeuristicsEditorState(owner, title);
+        openPickerScreen();
+    }
+
+    public static void closeProtocolHeuristicsEditor() {
+        closePicker();
     }
 
     public static void closePickerScreen() {
@@ -1775,6 +1823,8 @@ public enum ClickGuiRenderer {
 
     private static void closePicker() {
         picker = null;
+        protocolHeuristicsEditor = null;
+        textEditor = null;
         if (MC != null && ClientScreen.current() instanceof ClickGuiPickerScreen) {
             if (mainScreen == null) {
                 mainScreen = new ClickGuiScreen();
@@ -1785,6 +1835,7 @@ public enum ClickGuiRenderer {
 
     private static void clearPicker() {
         picker = null;
+        protocolHeuristicsEditor = null;
     }
 
     private static synchronized void requestConfigSave() {

@@ -517,6 +517,17 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
         return common(group(configName, settingId, schema.defaults()), schema);
     }
 
+    protected final BooleanMapValue protocolHeuristics(String configName,
+                                                       String settingId,
+                                                       CommonBooleanGroupSchema schema) {
+        Map<String, Boolean> defaults = schema == null ? Map.of() : schema.defaults();
+        BooleanMapValue value = new BooleanMapValue(configName, defaults);
+        SettingDef def = SettingDef.protocolHeuristics(settingId, value);
+        if (schema != null) def.common(schema);
+        declare(value, def);
+        return value;
+    }
+
     protected final <E extends Enum<E>> EnumValue<E> enumCommon(String configName,
                                                                 CommonSettingSchema schema,
                                                                 E def) {

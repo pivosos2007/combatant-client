@@ -188,10 +188,10 @@ public class KillAura extends Module {
                     ProtocolMode.values()
             );
     private final BooleanMapValue protocolHeuristicSources =
-            visibleWhen(group(
+            visibleWhen(protocolHeuristics(
                     "killauraProtocolHeuristics",
                     "protocol_heuristics",
-                    CombatProtocolHeuristics.defaultSourceToggles()
+                    CommonSettingSchemas.COMBAT_PROTOCOL_HEURISTICS
             ), () -> protocolMode.get() == ProtocolMode.AUTO);
     private final EnumValue<SprintResetMode> sprintResetMode =
             enumCommon(

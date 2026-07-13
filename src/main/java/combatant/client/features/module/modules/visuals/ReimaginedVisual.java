@@ -21,7 +21,6 @@ import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.depth.WorldSceneDepth;
-import combatant.client.render.engine.msaa.MsaaWorldTarget;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.uniform.impl.DepthOfFieldUniforms;
@@ -401,7 +400,6 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
                 dofMaxRadius.get(),
                 dofQuality.get().taps(),
                 0.85f,
-                dofMsaaResolveFactor(),
                 dofDebugCoc.get(),
                 depth.hasMain(),
                 depth.hasTranslucent(),
@@ -506,11 +504,6 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
             case PRE_TRANSLUCENT -> DepthBindings.single(context.preTranslucentDepth());
             case OFF -> DepthBindings.empty();
         };
-    }
-
-    private static float dofMsaaResolveFactor() {
-        int samples = MsaaWorldTarget.getSamples();
-        return samples > 1 ? Math.min(1.0f, 1.0f - (1.0f / samples)) : 0.0f;
     }
 
     private DepthBindings resolveWorldSceneDepth() {

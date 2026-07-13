@@ -150,7 +150,9 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     @Unique
     private static boolean combatant$needsResolvedMainDepth() {
         ReimaginedVisual module = Modules.get(ReimaginedVisual.class);
-        return module != null && module.needsResolvedMainDepthCapture();
+        if (module == null) return false;
+        if (module.needsResolvedMainDepthCapture()) return true;
+        return MainConfig.get().getMsaa3dSamples() > 1 && module.isActive();
     }
 
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
@@ -490,8 +492,13 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
         ProfilerPhase.begin("3d:post_pre_hand");
         try (TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("3d:post_pre_hand")) {
             if (minecraft != null) {
+                boolean needsResolvedDepth = !IrisRuntime.isShaderpackRendererActive()
+                        && combatant$needsResolvedMainDepth();
+                boolean capturedMsaaDepth = needsResolvedDepth
+                        && MsaaWorldTarget.isActive()
+                        && WorldSceneDepth.captureResolvedMain(MsaaWorldTarget.getMsaaFramebuffer());
                 MsaaWorldTarget.resolveToMain(minecraft);
-                if (!IrisRuntime.isShaderpackRendererActive() && combatant$needsResolvedMainDepth()) {
+                if (needsResolvedDepth && !capturedMsaaDepth) {
                     WorldSceneDepth.captureResolvedMain(minecraft.gameRenderer.mainRenderTarget());
                 }
                 CombatantVisuals.renderWorldBase(minecraft, tickCounter.getGameTimeDeltaPartialTick(true));
@@ -513,7 +520,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             return;
         }
 
-        MsaaWorldTarget.begin(minecraft, MainConfig.get().getMsaa3dSamples(), false);
+        MsaaWorldTarget.begin(minecraft, MainConfig.get().getMsaa3dSamples(), false, true);
         try {
             combatant$renderWorldEngine(tickCounter);
             combatant$renderPostProcessWorld(tickCounter);

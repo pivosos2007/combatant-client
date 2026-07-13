@@ -221,10 +221,10 @@ public class AutoAttack extends Module {
                     ProtocolMode.values()
             ), () -> objective.get() != ObjectiveType.BLOCK);
     private final BooleanMapValue protocolHeuristicSources =
-            visibleWhen(group(
+            visibleWhen(protocolHeuristics(
                     "autoattack_protocol_heuristics",
                     "protocol_heuristics",
-                    CombatProtocolHeuristics.defaultSourceToggles()
+                    CommonSettingSchemas.COMBAT_PROTOCOL_HEURISTICS
             ), () -> objective.get() != ObjectiveType.BLOCK && protocolMode.get() == ProtocolMode.AUTO);
     private long lastFinishBreak = 0L;
     private int postUseDelayTicks = 0;

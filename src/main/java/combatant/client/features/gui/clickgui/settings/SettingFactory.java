@@ -42,6 +42,8 @@ public enum SettingFactory {
                     : null;
             case COOLDOWN_RULES -> def.value() instanceof ItemCooldownRulesValue v
                     ? new CooldownRulesSetting(def.getId(), v) : null;
+            case PROTOCOL_HEURISTICS -> def.value() instanceof BooleanMapValue v
+                    ? new ProtocolHeuristicsSetting(def.getId(), v) : null;
             case GROUP -> def.value() instanceof BooleanMapValue v
                     ? new GroupSetting(def.getId(), v) : null;
             case BIND -> def.value() instanceof KeyBindValue v

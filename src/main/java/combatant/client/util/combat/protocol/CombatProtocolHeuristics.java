@@ -27,13 +27,6 @@ public final class CombatProtocolHeuristics {
     public static final CombatProtocolHeuristics INSTANCE = new CombatProtocolHeuristics();
 
     private static final long SIGNAL_TTL_MS = 300_000L;
-    private static final Pattern[] LEGACY_PATTERNS = compile(
-            "\\b1[._\\s-]+8(?:\\b|\\+)"
-    );
-    private static final Pattern[] MODERN_PATTERNS = compile(
-            "\\b1[._\\s-]+(?:9|[1-9][0-9])(?:[._\\s-]+[0-9]+)*(?:\\b|\\+)"
-    );
-
     private final Object lock = new Object();
     private final EnumMap<CombatProtocolHeuristicSource, Signal> signals =
             new EnumMap<>(CombatProtocolHeuristicSource.class);
@@ -78,10 +71,7 @@ public final class CombatProtocolHeuristics {
     @EventHandler
     public void onChat(PvpChatEvent event) {
         if (event == null || event.message == null) return;
-        CombatProtocolHeuristicSource source = event.source == PvpChatEvent.Source.CHAT_MESSAGE
-                ? CombatProtocolHeuristicSource.CHAT
-                : CombatProtocolHeuristicSource.GAME_MESSAGE;
-        accept(source, event.message, event.timeMs);
+        accept(CombatProtocolHeuristicSource.MESSAGES, event.message, event.timeMs);
     }
 
     @EventHandler
@@ -94,7 +84,7 @@ public final class CombatProtocolHeuristics {
 
     public void accept(CombatProtocolHeuristicSource source, String raw, long timeMs) {
         if (source == null || raw == null || raw.isBlank()) return;
-        Boolean legacy = detectLegacy(raw);
+        Boolean legacy = detectLegacy(source, raw);
         if (legacy == null) return;
 
         synchronized (lock) {
@@ -108,11 +98,25 @@ public final class CombatProtocolHeuristics {
     }
 
     public static Boolean detectLegacy(String raw) {
+        return detectLegacy(CombatProtocolHeuristicSource.BOSSBAR, raw);
+    }
+
+    public static Boolean detectLegacy(CombatProtocolHeuristicSource source, String raw) {
         String text = normalize(raw);
         if (text.isBlank()) return null;
 
-        boolean legacy = matchesAny(text, LEGACY_PATTERNS);
-        boolean modern = matchesAny(text, MODERN_PATTERNS);
+        CombatProtocolHeuristicSource resolvedSource = source == null
+                ? CombatProtocolHeuristicSource.BOSSBAR
+                : source;
+        CombatProtocolHeuristicsConfig config = CombatProtocolHeuristicsConfig.get();
+        boolean legacy = matchesAny(text, compile(config.patterns(
+                resolvedSource,
+                CombatProtocolHeuristicsConfig.ProtocolFamily.LEGACY
+        )));
+        boolean modern = matchesAny(text, compile(config.patterns(
+                resolvedSource,
+                CombatProtocolHeuristicsConfig.ProtocolFamily.MODERN
+        )));
         if (legacy == modern) return null;
         return legacy;
     }
@@ -135,9 +139,13 @@ public final class CombatProtocolHeuristics {
         return false;
     }
 
-    private static Pattern[] compile(String... patterns) {
-        if (patterns == null || patterns.length == 0) return new Pattern[0];
-        return List.of(patterns).stream()
+    private static Pattern[] compile(Iterable<String> patterns) {
+        if (patterns == null) return new Pattern[0];
+        List<String> values = new java.util.ArrayList<>();
+        for (String pattern : patterns) {
+            if (pattern != null && !pattern.isBlank()) values.add(pattern);
+        }
+        return values.stream()
                 .map(CombatProtocolHeuristics::compileOne)
                 .filter(pattern -> pattern != null)
                 .toArray(Pattern[]::new);

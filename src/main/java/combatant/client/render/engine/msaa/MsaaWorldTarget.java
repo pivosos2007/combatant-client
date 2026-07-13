@@ -33,6 +33,13 @@ public enum MsaaWorldTarget {
     }
 
     public static void begin(Minecraft mc, int sampleCount, boolean needDepthResolve) {
+        begin(mc, sampleCount, needDepthResolve, false);
+    }
+
+    public static void begin(Minecraft mc,
+                             int sampleCount,
+                             boolean needDepthResolve,
+                             boolean preserveMainColor) {
         requestedSamples = sampleCount;
         resolveDepth = needDepthResolve;
         if (mc == null) {
@@ -67,6 +74,10 @@ public enum MsaaWorldTarget {
             return;
         }
 
+        boolean reusableTarget = msaa != null
+                && allocationRequestSamples == sampleCount
+                && width == w
+                && height == h;
         ensureBuffer(w, h, sampleCount);
         if (msaa == null) {
             state = "alloc_failed";
@@ -80,6 +91,30 @@ public enum MsaaWorldTarget {
             shutdown(mc);
             return;
         }
+
+        if (preserveMainColor) {
+            if (!reusableTarget) {
+                state = "seed_unavailable";
+                active = false;
+                return;
+            }
+            boolean seeded = CombatantRenderSystem.rhi().msaa().resolve(main, msaa, true, false);
+            if (!seeded) {
+                lastResolveOk = false;
+                state = "seed_failed";
+                active = false;
+                DebugLog.warnOnChange(
+                        "msaa.world.seed_failed",
+                        sampleCount + "|" + w + "x" + h,
+                        "[MSAA] could not preserve post-processed main color for the late world pass; rendering that pass without MSAA. requested=%d size=%dx%d",
+                        sampleCount,
+                        w,
+                        h
+                );
+                return;
+            }
+        }
+
         try {
             CombatantRenderSystem.rhi().msaa().prepareTarget(msaa, main, true, needDepthResolve);
         } catch (Throwable t) {
