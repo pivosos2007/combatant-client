@@ -18,7 +18,7 @@ uniform sampler2D u_WeatherDepth;
 uniform sampler2D u_CloudsDepth;
 
 layout (std140) uniform DepthOfField {
-    mat4 u_InverseViewProjection;
+    mat4 u_Projection;
     vec4 u_Screen;       // invW, invH, width, height
     vec4 u_Focus;        // mode, fallbackFocusDistance, farStart, farTransition
     vec4 u_Params;       // strength, maxRadiusPx, taps, edgeProtection
@@ -101,17 +101,36 @@ float readDofDepth(vec2 uv) {
     return validRawDepth(center) ? mix(center, farthest, msaa * 0.80) : farthest;
 }
 
-vec3 reconstructRelative(vec2 uv, float depth) {
-    vec4 ndc = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-    vec4 rel = u_InverseViewProjection * ndc;
-    return rel.xyz / max(abs(rel.w), 0.000001);
+vec3 reconstructViewPosition(vec2 uv, float rawDepth) {
+    float m22 = u_Projection[2][2];
+    float m23 = u_Projection[2][3];
+    float m32 = u_Projection[3][2];
+    float m33 = u_Projection[3][3];
+    float denom = rawDepth * m23 - m22;
+    if (abs(denom) < 0.000001) {
+        denom = denom < 0.0 ? -0.000001 : 0.000001;
+    }
+
+    float z = (m32 - rawDepth * m33) / denom;
+    float clipW = m23 * z + m33;
+    vec2 ndc = uv * 2.0 - 1.0;
+    float rhsX = ndc.x * clipW - u_Projection[2][0] * z - u_Projection[3][0];
+    float rhsY = ndc.y * clipW - u_Projection[2][1] * z - u_Projection[3][1];
+    float det = u_Projection[0][0] * u_Projection[1][1] - u_Projection[1][0] * u_Projection[0][1];
+    if (abs(det) < 0.000001) {
+        det = det < 0.0 ? -0.000001 : 0.000001;
+    }
+
+    float x = (rhsX * u_Projection[1][1] - u_Projection[1][0] * rhsY) / det;
+    float y = (u_Projection[0][0] * rhsY - rhsX * u_Projection[0][1]) / det;
+    return vec3(x, y, z);
 }
 
-float reconstructDistance(vec2 uv, float depth) {
-    if (!validRawDepth(depth)) {
+float reconstructDistance(vec2 uv, float rawDepth) {
+    if (!validRawDepth(rawDepth)) {
         return INVALID_DISTANCE;
     }
-    return length(reconstructRelative(uv, depth));
+    return length(reconstructViewPosition(uv, rawDepth));
 }
 
 void accumulateFocusSample(vec2 uv, inout float sum, inout float count) {
@@ -159,8 +178,7 @@ float computeCoc(float distanceToCamera, float focus) {
     }
     float farStart = max(u_Focus.z, 0.0);
     float farTransition = max(u_Focus.w, 0.001);
-    float delta = distanceToCamera - focus;
-    float coc = smoothstep(farStart, farStart + farTransition, delta);
+    float coc = smoothstep(farStart, farStart + farTransition, distanceToCamera);
     coc = pow(clamp(coc, 0.0, 1.0), 1.35);
     return coc * max(u_Params.x, 0.0);
 }

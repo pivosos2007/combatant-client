@@ -74,6 +74,8 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
     private static final String SETTING_DOF_DEBUG_COC = "dof_debug_coc";
     private static final String IRIS_SHADER_SKYBOX_REASON_KEY = "setting.reimaginedvisual.skybox_shader.iris_blocked";
     private static final String IRIS_SHADER_SKYBOX_REASON_FALLBACK = "Iris is loaded; ReimaginedVisual shader skybox is not used.";
+    private static final String IRIS_DOF_REASON_KEY = "setting.reimaginedvisual.depth_of_field.iris_blocked";
+    private static final String IRIS_DOF_REASON_FALLBACK = "Iris shaderpack pipeline is active.";
     private static final Map<String, Boolean> DEFAULT_EFFECTS = createDefaultEffects();
     private static final Map<String, Boolean> DEFAULT_SKYBOX_SHADER_LAYERS = createDefaultSkyboxShaderLayers();
     private final Matrix4f dofProjection = new Matrix4f();
@@ -153,26 +155,26 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
     private boolean lastWavyVegetationActive;
     private int lastWavyVegetationSettingsPacked;
     private final EnumValue<DepthOfFieldDepthSource> dofDepthSource =
-            visibleWhen(enumSetting("reimaginedVisualDofDepthSource", SETTING_DOF_DEPTH_SOURCE, DepthOfFieldDepthSource.WORLD_SCENE, DepthOfFieldDepthSource.values()),
-                    this::isDepthOfFieldSettingsVisible);
+            depthOfFieldNotAppliedWithIris(visibleWhen(enumSetting("reimaginedVisualDofDepthSource", SETTING_DOF_DEPTH_SOURCE, DepthOfFieldDepthSource.WORLD_SCENE, DepthOfFieldDepthSource.values()),
+                    this::isDepthOfFieldSettingsVisible));
     private final NumberValue<Float> dofFarStart =
-            visibleWhen(num("reimaginedVisualDofFarStart", SETTING_DOF_FAR_START, 4.0f, 0.0f, 512.0f),
-                    this::isDepthOfFieldSettingsVisible);
+            depthOfFieldNotAppliedWithIris(visibleWhen(num("reimaginedVisualDofFarStart", SETTING_DOF_FAR_START, 4.0f, 0.0f, 512.0f),
+                    this::isDepthOfFieldSettingsVisible));
     private final NumberValue<Float> dofFarTransition =
-            visibleWhen(num("reimaginedVisualDofFarTransition", SETTING_DOF_FAR_TRANSITION, 24.0f, 1.0f, 1024.0f),
-                    this::isDepthOfFieldSettingsVisible);
+            depthOfFieldNotAppliedWithIris(visibleWhen(num("reimaginedVisualDofFarTransition", SETTING_DOF_FAR_TRANSITION, 24.0f, 1.0f, 1024.0f),
+                    this::isDepthOfFieldSettingsVisible));
     private final NumberValue<Float> dofStrength =
-            visibleWhen(num("reimaginedVisualDofStrength", SETTING_DOF_STRENGTH, 0.65f, 0.0f, 1.5f),
-                    this::isDepthOfFieldSettingsVisible);
+            depthOfFieldNotAppliedWithIris(visibleWhen(num("reimaginedVisualDofStrength", SETTING_DOF_STRENGTH, 0.65f, 0.0f, 1.5f),
+                    this::isDepthOfFieldSettingsVisible));
     private final NumberValue<Float> dofMaxRadius =
-            visibleWhen(num("reimaginedVisualDofMaxRadius", SETTING_DOF_MAX_RADIUS, 8.0f, 0.0f, 32.0f),
-                    this::isDepthOfFieldSettingsVisible);
+            depthOfFieldNotAppliedWithIris(visibleWhen(num("reimaginedVisualDofMaxRadius", SETTING_DOF_MAX_RADIUS, 8.0f, 0.0f, 32.0f),
+                    this::isDepthOfFieldSettingsVisible));
     private final EnumValue<DepthOfFieldQuality> dofQuality =
-            visibleWhen(enumSetting("reimaginedVisualDofQuality", SETTING_DOF_QUALITY, DepthOfFieldQuality.MEDIUM, DepthOfFieldQuality.values()),
-                    this::isDepthOfFieldSettingsVisible);
+            depthOfFieldNotAppliedWithIris(visibleWhen(enumSetting("reimaginedVisualDofQuality", SETTING_DOF_QUALITY, DepthOfFieldQuality.MEDIUM, DepthOfFieldQuality.values()),
+                    this::isDepthOfFieldSettingsVisible));
     private final BooleanValue dofDebugCoc =
-            visibleWhen(bool("reimaginedVisualDofDebugCoc", SETTING_DOF_DEBUG_COC, false),
-                    this::isDepthOfFieldSettingsVisible);
+            depthOfFieldNotAppliedWithIris(visibleWhen(bool("reimaginedVisualDofDebugCoc", SETTING_DOF_DEBUG_COC, false),
+                    this::isDepthOfFieldSettingsVisible));
     private boolean depthSamplerSupported = true;
 
     {
@@ -337,7 +339,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
                 && mc != null
                 && mc.player != null
                 && mc.level != null
-                && !IrisRuntime.isShaderpackRendererActive()
+                && !isDepthOfFieldBlockedByIris()
                 && depthSamplerSupported
                 && dofDepthSource.get() != DepthOfFieldDepthSource.OFF;
     }
@@ -437,13 +439,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
         if (projection == null) {
             projection = RenderState.worldProjection;
         }
-        Matrix4f view = CombatantWorldMatrices.positionMatrix();
-        if (view != null) {
-            projection.mul(view, dofProjection);
-        } else {
-            dofProjection.set(projection);
-        }
-        dofProjection.invert();
+        dofProjection.set(projection);
     }
 
     @Override
@@ -560,6 +556,19 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
 
     private <V extends ConfigValue<?>> V shaderSkyboxNotAppliedWithIris(V value) {
         return notAppliedWhen(value, this::isShaderSkyboxBlockedByIris, this::shaderSkyboxIrisReason);
+    }
+
+    private boolean isDepthOfFieldBlockedByIris() {
+        return IrisRuntime.isShaderpackRendererActive();
+    }
+
+    private String depthOfFieldIrisReason() {
+        String translated = I18n.get(IRIS_DOF_REASON_KEY);
+        return IRIS_DOF_REASON_KEY.equals(translated) ? IRIS_DOF_REASON_FALLBACK : translated;
+    }
+
+    private <V extends ConfigValue<?>> V depthOfFieldNotAppliedWithIris(V value) {
+        return notAppliedWhen(value, this::isDepthOfFieldBlockedByIris, this::depthOfFieldIrisReason);
     }
 
     private boolean isDepthOfFieldSettingsVisible() {

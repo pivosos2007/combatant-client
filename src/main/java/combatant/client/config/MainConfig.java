@@ -9,12 +9,14 @@ package combatant.client.config;
 
 import combatant.client.config.values.*;
 import combatant.client.config.values.*;
+import combatant.client.render.iris.IrisRuntime;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.logging.DebugMode;
 import combatant.client.util.player.inventory.InventorySearchScope;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.player.inventory.InventorySwapVisibility;
+import net.minecraft.client.resources.language.I18n;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -24,6 +26,8 @@ import java.util.Set;
 public final class MainConfig implements ConfigObject, ConfigNameProvider, SettingOwner {
 
     public static final MainConfig INSTANCE = new MainConfig();
+    private static final String IRIS_MSAA_REASON_KEY = "setting.main_config.msaa3d.iris_blocked";
+    private static final String IRIS_MSAA_REASON_FALLBACK = "Iris shaderpack pipeline is active.";
 
     //@CFGComment("Debug logging mode: off / error_only / error_and_warnings / info / config / render_thread / stencil / serverdebug / all")
     private final ModeValue debug =
@@ -196,6 +200,7 @@ public final class MainConfig implements ConfigObject, ConfigNameProvider, Setti
     }
 
     public int getMsaa3dSamples() {
+        if (IrisRuntime.isShaderpackRendererActive()) return 0;
         String v = msaa3d.get();
         if (v == null) return 0;
         if (v.equalsIgnoreCase("2x")) return 2;
@@ -335,11 +340,17 @@ public final class MainConfig implements ConfigObject, ConfigNameProvider, Setti
 
     public List<SettingDef> getImageSettingDefs() {
         List<SettingDef> list = new ArrayList<>();
-        list.add(SettingDef.mode(msaa3d));
+        list.add(SettingDef.mode(msaa3d)
+                .unavailableWhen(IrisRuntime::isShaderpackRendererActive, MainConfig::irisMsaaReason));
         list.add(SettingDef.mode(menuBg));
         list.add(SettingDef.bool(menuClockShowSeconds));
         list.add(SettingDef.bool(menuBgUseTheme));
         return list;
+    }
+
+    private static String irisMsaaReason() {
+        String translated = I18n.get(IRIS_MSAA_REASON_KEY);
+        return IRIS_MSAA_REASON_KEY.equals(translated) ? IRIS_MSAA_REASON_FALLBACK : translated;
     }
 
     public List<SettingDef> getMiscellaneousSettingDefs() {
