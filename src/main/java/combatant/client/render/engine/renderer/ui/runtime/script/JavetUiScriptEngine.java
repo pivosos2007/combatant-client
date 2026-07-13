@@ -121,7 +121,7 @@ final class JavetUiScriptEngine implements UiScriptEngine {
                 ? context
                 : new UiScriptRenderContext(0L, 0.0, 0.0, 0.0f, 0.0f, null);
         Map<String, Object> map = new LinkedHashMap<>(6);
-        map.put("frame", ctx.frame());
+        map.put("frame", jsNumber(ctx.frame()));
         map.put("time", ctx.time());
         map.put("delta", ctx.delta());
         map.put("width", ctx.width());
@@ -130,7 +130,7 @@ final class JavetUiScriptEngine implements UiScriptEngine {
         return map;
     }
 
-    private static Object plainValue(Object value) {
+    static Object plainValue(Object value) {
         if (value instanceof Map<?, ?> rawMap) {
             Map<String, Object> map = new LinkedHashMap<>(rawMap.size());
             for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
@@ -154,7 +154,19 @@ final class JavetUiScriptEngine implements UiScriptEngine {
             }
             return list;
         }
+        if (value instanceof Long number) {
+            return jsNumber(number);
+        }
         return value;
+    }
+
+    private static Number jsNumber(long value) {
+        if (value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE) {
+            return (int) value;
+        }
+        // UI scripts operate on JavaScript Number values. Passing Long directly makes
+        // Javet expose it as bigint, which fails ordinary numeric guards (`typeof === "number"`).
+        return (double) value;
     }
 
     private void closeRuntime() {

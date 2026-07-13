@@ -117,6 +117,9 @@ public final class TargetHud extends DraggableHudElement {
     private static final long HIT_FLASH_MS = 220L;
     private static final float HEALTH_SPEED = 6.0f;
     private static final float BAR_SPEED = 4.0f;
+    private static final float BAR_TAIL_FADE_LENGTH = BAR_HEIGHT;
+    private static final float ARC_TAIL_FADE_DEGREES = 20.0f;
+    private static final float PROGRESS_SNAP_EPSILON = 0.0005f;
     private static final float DISTANCE_SPEED = 7.0f;
     private static final float EQUIPMENT_SPEED = 7.0f;
     private static final float HEALTH_TEXT_STEP = 0.25f;
@@ -312,21 +315,21 @@ public final class TargetHud extends DraggableHudElement {
         return colors;
     }
 
-    private static int drawAnimatedArcGradient(Renderer2D renderer,
-                                               float centerX,
-                                               float centerY,
-                                               float radius,
-                                               float thickness,
-                                               float startAngle,
-                                               float sweep,
-                                               float softness,
-                                               float alphaFactor,
-                                               int startColor,
-                                               int endColor,
-                                               float baseAngle,
-                                               float speedMs,
-                                               long elapsedMs,
-                                               float phaseOffset) {
+    private static void drawAnimatedArcGradient(Renderer2D renderer,
+                                                float centerX,
+                                                float centerY,
+                                                float radius,
+                                                float thickness,
+                                                float startAngle,
+                                                float sweep,
+                                                float softness,
+                                                float alphaFactor,
+                                                int startColor,
+                                                int endColor,
+                                                float baseAngle,
+                                                float speedMs,
+                                                long elapsedMs,
+                                                float phaseOffset) {
         float safeSpeed = Math.max(1.0f, speedMs);
         float phase = (elapsedMs / safeSpeed) * (float) Math.PI * 2.0f + phaseOffset;
         float animatedAngle = baseAngle
@@ -355,24 +358,11 @@ public final class TargetHud extends DraggableHudElement {
                 offsetPx
         );
 
-        float endPhase = phase + (sweep / 360.0f) * (float) Math.PI * 2.0f;
-        float endMix = ((float) Math.sin(endPhase) + 1.0f) * 0.5f;
-        return HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(startColor, endColor, endMix), alphaFactor);
     }
 
-    private static void drawArcEndCap(Renderer2D renderer,
-                                      float centerX,
-                                      float centerY,
-                                      float radius,
-                                      float thickness,
-                                      float angleDeg,
-                                      int color,
-                                      float softness) {
-        float rad = (float) Math.toRadians(angleDeg);
-        float capX = centerX + (float) Math.sin(rad) * radius;
-        float capY = centerY - (float) Math.cos(rad) * radius;
-        float capRadius = Math.max(0.01f, thickness * 0.5f);
-        renderer.circle(capX, capY, capRadius, Math.max(softness, 0.8f), color);
+    private static float tailFade(float visibleLength, float fadeLength) {
+        if (fadeLength <= 0.0f) return visibleLength > 0.0f ? 1.0f : 0.0f;
+        return AnimationUtility.smoothstep(AnimationUtility.clamp01(visibleLength / fadeLength));
     }
 
     private static float measureText(TextRenderer renderer, String text, float scale) {
@@ -900,11 +890,14 @@ public final class TargetHud extends DraggableHudElement {
         float targetHealthFraction = AnimationUtility.clamp01(health / maxHealth);
         float targetAbsorptionFraction = AnimationUtility.clamp01(absorption / maxHealth);
         healthAnimation = AnimationUtility.approach(healthAnimation, targetHealthFraction, dt, BAR_SPEED);
+        healthAnimation = AnimationUtility.snap(healthAnimation, targetHealthFraction, PROGRESS_SNAP_EPSILON);
         if (targetHealthFraction > trailAnimation) {
             trailAnimation = targetHealthFraction;
         }
         trailAnimation = AnimationUtility.approach(trailAnimation, targetHealthFraction, dt, BAR_SPEED - 0.5f);
+        trailAnimation = AnimationUtility.snap(trailAnimation, targetHealthFraction, PROGRESS_SNAP_EPSILON);
         absorptionAnimation = AnimationUtility.approach(absorptionAnimation, targetAbsorptionFraction, dt, BAR_SPEED);
+        absorptionAnimation = AnimationUtility.snap(absorptionAnimation, targetAbsorptionFraction, PROGRESS_SNAP_EPSILON);
 
         boolean selfTarget = target == mc.player;
         if (!selfTarget) {
@@ -1000,38 +993,32 @@ public final class TargetHud extends DraggableHudElement {
         float trailPercent = AnimationUtility.clamp01(trailAnimation);
         float healthPercent = AnimationUtility.clamp01(healthAnimation);
         if (trailPercent > healthPercent + 0.001f) {
-            renderer.roundedRect(
-                    barX, barY, barWidth * trailPercent, barHeight, barRadius, 1.0f,
-                    HudRenderUtil.scaleAlpha(uiTrail, alphaFactor)
+            float trailFade = tailFade(BAR_WIDTH * trailPercent, BAR_TAIL_FADE_LENGTH);
+            int trailColor = HudRenderUtil.scaleAlpha(uiTrail, alphaFactor * trailFade);
+            renderer.roundedProgressRectGradient(
+                    barX, barY, barWidth, barHeight, barRadius, 1.0f,
+                    trailPercent, false, trailColor, trailColor, 0.0f, 0.0f
             );
         }
 
         long elapsedMs = Math.max(0L, now - waveStartMs);
 
-        if (healthPercent > 0.01f) {
-            int[] healthWave = buildWaveColors(elapsedMs, 1500f, alphaFactor, uiHealthStart, uiHealthEnd);
-            renderer.roundedRectGradientQuad(
-                    barX,
-                    barY,
-                    Math.max(barHeight, barWidth * healthPercent),
-                    barHeight,
-                    barRadius,
-                    1.0f,
-                    healthWave[0], healthWave[1], healthWave[2], healthWave[3]
+        if (healthPercent > 0.0001f) {
+            float healthFade = tailFade(BAR_WIDTH * healthPercent, BAR_TAIL_FADE_LENGTH);
+            int[] healthWave = buildWaveColors(elapsedMs, 1500f, alphaFactor * healthFade, uiHealthStart, uiHealthEnd);
+            renderer.roundedProgressRectGradient(
+                    barX, barY, barWidth, barHeight, barRadius, 1.0f,
+                    healthPercent, false, healthWave[0], healthWave[2], 90.0f, 0.0f
             );
         }
 
         float absorptionPercent = AnimationUtility.clamp01(absorptionAnimation);
-        if (absorptionPercent > 0.01f) {
-            int[] absorptionWave = buildWaveColors(elapsedMs, 1200f, alphaFactor, uiAbsorptionStart, uiAbsorptionEnd);
-            renderer.roundedRectGradientQuad(
-                    barX,
-                    barY,
-                    Math.max(barHeight, barWidth * absorptionPercent),
-                    barHeight,
-                    barRadius,
-                    1.0f,
-                    absorptionWave[0], absorptionWave[1], absorptionWave[2], absorptionWave[3]
+        if (absorptionPercent > 0.0001f) {
+            float absorptionFade = tailFade(BAR_WIDTH * absorptionPercent, BAR_TAIL_FADE_LENGTH);
+            int[] absorptionWave = buildWaveColors(elapsedMs, 1200f, alphaFactor * absorptionFade, uiAbsorptionStart, uiAbsorptionEnd);
+            renderer.roundedProgressRectGradient(
+                    barX, barY, barWidth, barHeight, barRadius, 1.0f,
+                    absorptionPercent, false, absorptionWave[0], absorptionWave[2], 90.0f, 0.0f
             );
         }
     }
@@ -1145,8 +1132,9 @@ public final class TargetHud extends DraggableHudElement {
         float healthPercent = AnimationUtility.clamp01(healthAnimation);
 
         float healthSweep = 360.0f * healthPercent;
-        if (healthSweep > 0.5f) {
-            int healthColor = drawAnimatedArcGradient(
+        if (healthSweep > 0.001f) {
+            float healthFade = tailFade(healthSweep, ARC_TAIL_FADE_DEGREES);
+            drawAnimatedArcGradient(
                     renderer,
                     centerX,
                     centerY,
@@ -1155,7 +1143,7 @@ public final class TargetHud extends DraggableHudElement {
                     0.0f,
                     healthSweep,
                     softness,
-                    alphaFactor,
+                    alphaFactor * healthFade,
                     uiHealthStart,
                     uiHealthEnd,
                     uiHealthGradientAngle,
@@ -1163,15 +1151,14 @@ public final class TargetHud extends DraggableHudElement {
                     now - waveStartMs,
                     0.0f
             );
-            drawArcEndCap(renderer, centerX, centerY, radius, thickness, healthSweep,
-                    HudRenderUtil.mixColor(healthColor, 0xFFFFFFFF, 0.16f), softness);
         }
 
         float absorptionPercent = AnimationUtility.clamp01(absorptionAnimation);
         float absorptionSweep = 360.0f * absorptionPercent;
-        if (absorptionSweep > 0.5f) {
+        if (absorptionSweep > 0.001f) {
             float absorptionThickness = Math.max(1.6f * scaleFactor, thickness * 0.9f);
-            int absorptionColor = drawAnimatedArcGradient(
+            float absorptionFade = tailFade(absorptionSweep, ARC_TAIL_FADE_DEGREES);
+            drawAnimatedArcGradient(
                     renderer,
                     centerX,
                     centerY,
@@ -1180,7 +1167,7 @@ public final class TargetHud extends DraggableHudElement {
                     0.0f,
                     absorptionSweep,
                     softness,
-                    alphaFactor,
+                    alphaFactor * absorptionFade,
                     uiAbsorptionStart,
                     uiAbsorptionEnd,
                     uiAbsorptionGradientAngle,
@@ -1188,8 +1175,6 @@ public final class TargetHud extends DraggableHudElement {
                     now - waveStartMs,
                     1.35f
             );
-            drawArcEndCap(renderer, centerX, centerY, radius, absorptionThickness, absorptionSweep,
-                    HudRenderUtil.mixColor(absorptionColor, 0xFFFFFFFF, 0.18f), softness);
         }
 
         TextRenderer hpRenderer = Fonts.renderer("Inter", FontInfo.Type.Bold, textRenderer);

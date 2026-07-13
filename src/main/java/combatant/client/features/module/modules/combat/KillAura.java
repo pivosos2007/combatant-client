@@ -35,7 +35,6 @@ import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.aiming.features.processors.LazyAimProcessor;
 import combatant.client.util.aiming.features.processors.RotationProcessor;
 import combatant.client.util.aiming.features.processors.ShakeAimProcessor;
-import combatant.client.util.aiming.features.processors.ShortStopRotationProcessor;
 import combatant.client.util.aiming.features.processors.anglesmooth.AngleSmooth;
 import combatant.client.util.aiming.features.processors.anglesmooth.impl.LinearAngleSmooth;
 import combatant.client.util.aiming.features.processors.anglesmooth.impl.SigmoidAngleSmooth;
@@ -500,44 +499,6 @@ public class KillAura extends Module {
             ), () -> usesRotationSettings() && shakeAimEnabled.get());
     private final ShakeAimProcessor shakeAimProcessor = new ShakeAimProcessor(
             shakeAimYawAmplitude, shakeAimPitchAmplitude, shakeAimSpeed
-    );
-    // ShortStop
-    private final BooleanValue shortStopEnabled =
-            visibleWhen(boolCommon(
-                    "shortStopEnabled",
-                    "short_stop_enabled",
-                    CommonSettingSchemas.SHORT_STOP_ENABLED,
-                    false
-            ), this::usesRotationSettings);
-    private final NumberValue<Integer> shortStopRate =
-            visibleWhen(numCommon(
-                    "shortStopRate",
-                    "short_stop_rate",
-                    CommonSettingSchemas.SHORT_STOP_RATE,
-                    3,
-                    1,
-                    25
-            ), () -> usesRotationSettings() && shortStopEnabled.get());
-    private final NumberValue<Integer> shortStopDurMin =
-            visibleWhen(numCommon(
-                    "shortStopDurationMin",
-                    "short_stop_duration_min",
-                    CommonSettingSchemas.SHORT_STOP_DURATION_MIN,
-                    1,
-                    1,
-                    5
-            ), () -> usesRotationSettings() && shortStopEnabled.get());
-    private final NumberValue<Integer> shortStopDurMax =
-            visibleWhen(numCommon(
-                    "shortStopDurationMax",
-                    "short_stop_duration_max",
-                    CommonSettingSchemas.SHORT_STOP_DURATION_MAX,
-                    2,
-                    1,
-                    5
-            ), () -> usesRotationSettings() && shortStopEnabled.get());
-    private final ShortStopRotationProcessor shortStopProcessor = new ShortStopRotationProcessor(
-            shortStopEnabled, shortStopRate, shortStopDurMin, shortStopDurMax
     );
     private final BooleanMapValue toggles = common(
             group("killaura_toggles", "toggles", targetFilterDefaults()),
@@ -1109,9 +1070,6 @@ public class KillAura extends Module {
         }
         if (!spookyMode && shakeAimEnabled.get()) {
             processors.add(shakeAimProcessor);
-        }
-        if (shortStopEnabled.get()) {
-            processors.add(shortStopProcessor);
         }
         boolean freeCorrection = correctionType.get() == CorrectionType.FREE;
         MovementCorrection movementCorrection;

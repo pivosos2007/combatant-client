@@ -177,11 +177,6 @@ public enum CommonSettingSchemas {
     public static final CommonSettingSchema SHAKE_AIM_YAW_AMPLITUDE = key("rotation.shake_aim.yaw_amplitude");
     public static final CommonSettingSchema SHAKE_AIM_PITCH_AMPLITUDE = key("rotation.shake_aim.pitch_amplitude");
     public static final CommonSettingSchema SHAKE_AIM_SPEED = key("rotation.shake_aim.speed");
-    // ShortStop
-    public static final CommonSettingSchema SHORT_STOP_ENABLED = key("rotation.short_stop.enabled");
-    public static final CommonSettingSchema SHORT_STOP_RATE = key("rotation.short_stop.rate");
-    public static final CommonSettingSchema SHORT_STOP_DURATION_MIN = key("rotation.short_stop.duration_min");
-    public static final CommonSettingSchema SHORT_STOP_DURATION_MAX = key("rotation.short_stop.duration_max");
     // Fail
     public static final CommonSettingSchema FAIL_ENABLED = key("rotation.fail.enabled");
     public static final CommonSettingSchema FAIL_RATE = key("rotation.fail.rate");
