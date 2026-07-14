@@ -67,6 +67,15 @@ Before opening a pull request:
 
 For large changes, open an issue or draft pull request first and describe the intended result.
 
+## Supported languages
+
+Combatant currently ships translations for:
+
+- `en_us`
+- `ru_ru`
+
+When adding modules or other user-facing features, `en_us` localization is required. `ru_ru` localization is recommended if you know Russian.
+
 ## Code quality
 
 Submitted code should:
