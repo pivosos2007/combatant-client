@@ -9,6 +9,7 @@ package combatant.client.features.command.impl;
 
 import combatant.client.features.command.ClientCommand;
 import combatant.client.features.command.CommandContext;
+import combatant.client.features.command.CommandInfo;
 import combatant.client.features.command.CommandOutput;
 import combatant.client.render.engine.profiler.FrameStutterProfiler;
 import combatant.client.render.engine.profiler.JfrProfiler;
@@ -21,22 +22,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
+@CommandInfo(
+        id = "profiler",
+        aliases = "prof",
+        usage = "@profiler [2d|3d|all|sample|stutter|tracy|jfr] ...",
+        descriptionKey = "command.profiler.description"
+)
 public final class ProfilerCommand implements ClientCommand {
-
-    @Override
-    public String name() {
-        return "profiler";
-    }
-
-    @Override
-    public List<String> aliases() {
-        return List.of("prof");
-    }
-
-    @Override
-    public String usage() {
-        return "@profiler [2d|3d|all|sample|stutter|tracy|jfr] ...";
-    }
 
     @Override
     public boolean isAvailable() {
@@ -58,7 +50,7 @@ public final class ProfilerCommand implements ClientCommand {
                 || target.equalsIgnoreCase("stutter")
                 || target.equalsIgnoreCase("tracy")
                 || target.equalsIgnoreCase("jfr"))) {
-            CommandOutput.send("Usage: " + usage());
+            CommandOutput.send("Usage: " + metadata().usage());
             return true;
         }
 
@@ -74,7 +66,7 @@ public final class ProfilerCommand implements ClientCommand {
         if (target.equalsIgnoreCase("tracy")) {
             boolean enable = mode == null || mode.equalsIgnoreCase("on");
             if (mode != null && !mode.equalsIgnoreCase("on") && !mode.equalsIgnoreCase("off")) {
-                CommandOutput.send("Usage: " + usage());
+                CommandOutput.send("Usage: " + metadata().usage());
                 return true;
             }
             boolean active = TracyProfiler.setEnabled(enable);
@@ -101,13 +93,13 @@ public final class ProfilerCommand implements ClientCommand {
         boolean modeIsTarget = modeTarget != null;
 
         if (!modeIsOutput && !modeIsTarget) {
-            CommandOutput.send("Usage: " + usage());
+            CommandOutput.send("Usage: " + metadata().usage());
             return true;
         }
 
         String t = target.toLowerCase();
         if (!t.equals("sample") && !modeIsOutput) {
-            CommandOutput.send("Usage: " + usage());
+            CommandOutput.send("Usage: " + metadata().usage());
             return true;
         }
         if (t.equals("2d")) {

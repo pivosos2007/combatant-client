@@ -23,10 +23,10 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
     private static final Set<String> DISABLED_SODIUM_SHADOW_GRAPH_MIXINS = Set.of();
     private static final Set<String> OPTIONAL_SODIUM_MIXINS = Set.of(
             "combatant.client.mixins.sodium.SodiumBlockRendererMixin",
+            "combatant.client.mixins.sodium.SodiumBlockVisibilityMixin",
+            "combatant.client.mixins.sodium.SodiumChunkMeshFormatsMixin",
             "combatant.client.mixins.sodium.SodiumChunkBuilderMeshingTaskMixin",
             "combatant.client.mixins.sodium.SodiumChunkVertexMixin",
-            "combatant.client.mixins.sodium.SodiumRenderSectionManagerVertexFormatMixin",
-            "combatant.client.mixins.sodium.SodiumRenderRegionArenasVertexFormatMixin",
             "combatant.client.mixins.sodium.SodiumShaderChunkRendererMixin",
             "combatant.client.mixins.sodium.SodiumVertexConsumerTrackerMixin"
     );
@@ -42,10 +42,9 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
     );
     private static final Set<String> DISABLED_WITH_IRIS_MIXINS = Set.of(
             "combatant.client.mixins.sodium.SodiumBlockRendererMixin",
+            "combatant.client.mixins.sodium.SodiumChunkMeshFormatsMixin",
             "combatant.client.mixins.sodium.SodiumChunkBuilderMeshingTaskMixin",
             "combatant.client.mixins.sodium.SodiumChunkVertexMixin",
-            "combatant.client.mixins.sodium.SodiumRenderRegionArenasVertexFormatMixin",
-            "combatant.client.mixins.sodium.SodiumRenderSectionManagerVertexFormatMixin",
             "combatant.client.mixins.sodium.SodiumShaderChunkRendererMixin"
     );
     private static final Set<String> OPTIONAL_XAERO_MINIMAP_MIXINS = Set.of(

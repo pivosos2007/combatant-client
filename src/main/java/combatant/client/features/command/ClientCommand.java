@@ -10,14 +10,45 @@ package combatant.client.features.command;
 import java.util.List;
 
 public interface ClientCommand {
-    String name();
-
-    default List<String> aliases() {
-        return List.of();
+    default CommandMetadata metadata() {
+        return CommandMetadata.from(this);
     }
 
+    /**
+     * Legacy addon API v0 metadata hook. New commands must use {@link CommandInfo}.
+     */
+    @Deprecated(forRemoval = true)
+    default String name() {
+        return CommandMetadata.fromAnnotation(getClass()).id();
+    }
+
+    /**
+     * Legacy addon API v0 metadata hook. New commands must use {@link CommandInfo}.
+     */
+    @Deprecated(forRemoval = true)
+    default List<String> aliases() {
+        CommandMetadata metadata = CommandMetadata.annotated(getClass());
+        return metadata == null ? List.of() : metadata.aliases();
+    }
+
+    /**
+     * Legacy addon API v0 metadata hook. New commands must use {@link CommandInfo}.
+     */
+    @Deprecated(forRemoval = true)
+    @SuppressWarnings("removal")
     default String usage() {
-        return name();
+        CommandMetadata metadata = CommandMetadata.annotated(getClass());
+        return metadata == null ? name() : metadata.usage();
+    }
+
+    /**
+     * Legacy addon API v0 metadata hook. New commands must use {@link CommandInfo}.
+     */
+    @Deprecated(forRemoval = true)
+    @SuppressWarnings("removal")
+    default String description() {
+        CommandMetadata metadata = CommandMetadata.annotated(getClass());
+        return metadata == null ? usage() : metadata.description();
     }
 
     default boolean isAvailable() {

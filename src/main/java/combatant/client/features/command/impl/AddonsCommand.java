@@ -12,22 +12,18 @@ import combatant.client.addon.AddonManager;
 import combatant.client.addon.AddonSnapshot;
 import combatant.client.features.command.ClientCommand;
 import combatant.client.features.command.CommandContext;
+import combatant.client.features.command.CommandInfo;
 import combatant.client.features.command.CommandOutput;
 
 import java.util.List;
 import java.util.Locale;
 
+@CommandInfo(
+        id = "addons",
+        usage = "@addons [list|scan|enable|disable] [id]",
+        descriptionKey = "command.addons.description"
+)
 public final class AddonsCommand implements ClientCommand {
-    @Override
-    public String name() {
-        return "addons";
-    }
-
-    @Override
-    public String usage() {
-        return "@addons [list|scan|enable|disable] [id]";
-    }
-
     @Override
     public List<String> suggest(CommandContext ctx, int argIndex, String token) {
         String lower = token == null ? "" : token.toLowerCase(Locale.ROOT);
@@ -59,7 +55,7 @@ public final class AddonsCommand implements ClientCommand {
         if ("enable".equalsIgnoreCase(action) || "disable".equalsIgnoreCase(action)) {
             String id = ctx.arg(1);
             if (id == null || id.isBlank()) {
-                CommandOutput.send("Usage: " + usage());
+                CommandOutput.send("Usage: " + metadata().usage());
                 return true;
             }
             boolean enabled = "enable".equalsIgnoreCase(action);
@@ -69,7 +65,7 @@ public final class AddonsCommand implements ClientCommand {
                     : "Addon not found: " + id);
             return true;
         }
-        CommandOutput.send("Usage: " + usage());
+        CommandOutput.send("Usage: " + metadata().usage());
         return true;
     }
 

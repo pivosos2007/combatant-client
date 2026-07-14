@@ -10,6 +10,7 @@ package combatant.client.features.gui.chat;
 import combatant.client.util.item.TopEnchantUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -147,7 +148,7 @@ public enum ChatHoverUtil {
 
         lines.add(new ColoredLine("ID: " + BuiltInRegistries.ITEM.getKey(copy.getItem()), 0xFF888888));
         if (fromCache) {
-            lines.add(new ColoredLine("Кэширован", 0xFFFFD700));
+            lines.add(new ColoredLine(I18n.get("better_chat.hover.cached"), 0xFFFFD700));
         }
         return new HoverTip(lines, null, fromCache, copy);
     }
@@ -164,9 +165,9 @@ public enum ChatHoverUtil {
                     .anyMatch(e -> e.getProfile() != null && e.getProfile().id().equals(content.uuid));
         }
         if (online) {
-            lines.add(new ColoredLine("Онлайн игрок", 0xFF8CF0FF));
+            lines.add(new ColoredLine(I18n.get("better_chat.hover.online_player"), 0xFF8CF0FF));
         } else if (fromCache) {
-            lines.add(new ColoredLine("Кэширован", 0xFFFFD700));
+            lines.add(new ColoredLine(I18n.get("better_chat.hover.cached"), 0xFFFFD700));
         }
         return new HoverTip(lines, content.uuid.toString(), fromCache, ItemStack.EMPTY);
     }
@@ -187,7 +188,7 @@ public enum ChatHoverUtil {
         String uuid = entry.getProfile().id().toString();
         List<ColoredLine> lines = List.of(
                 new ColoredLine(name, 0),
-                new ColoredLine("Онлайн игрок", 0xFF8CF0FF),
+                new ColoredLine(I18n.get("better_chat.hover.online_player"), 0xFF8CF0FF),
                 new ColoredLine("UUID: " + uuid, 0xFF888888)
         );
         return new HoverTip(lines, uuid, false, ItemStack.EMPTY);

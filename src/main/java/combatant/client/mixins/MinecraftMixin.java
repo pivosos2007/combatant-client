@@ -307,22 +307,19 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
 
-        if (!Modules.enabled(NoInteract.class))
-            return;
+        NoInteract noInteract = Modules.get(NoInteract.class);
+        if (noInteract == null || !noInteract.shouldBlockBlockInteraction()) return;
 
         var hit = mc.hitResult;
-
         if (hit instanceof EntityHitResult) return;
 
         Vec3 camPos = mc.player.getEyePosition(tickDelta);
-
         mc.hitResult = new BlockHitResult(
                 camPos,
                 Direction.UP,
                 BlockPos.ZERO,
                 false
         );
-
         mc.crosshairPickEntity = null;
     }
 

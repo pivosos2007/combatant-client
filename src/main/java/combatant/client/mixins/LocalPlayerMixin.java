@@ -669,10 +669,6 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         }
 
         LocalPlayer player = (LocalPlayer) (Object) this;
-
-        // ---------------------------------
-        // No stun (hurt-time input freeze)
-        // ---------------------------------
         if (ns.isFunctionEnabled(NoStun.fnNoHurtStun())) {
             if (player.hurtTime == 0) {
                 lastInput = player.input.keyPresses;
@@ -767,7 +763,6 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
 
         LocalPlayer p = (LocalPlayer) (Object) this;
 
-        // если буст в процессе — продолжаем применять постепенно
         if (boostTicks > 0) {
             boostTicks--;
 
@@ -775,7 +770,6 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
             double vx = vel.x + boostX;
             double vz = vel.z + boostZ;
 
-            // лимит скорости
             double max = 0.48;
             double h = Math.hypot(vx, vz);
             if (h > max) {
@@ -788,11 +782,9 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
             return;
         }
 
-        // ищем сущности рядом
         List<Entity> nearby = p.level().getEntities(p, p.getBoundingBox().inflate(0.15), e -> e instanceof LivingEntity);
         if (nearby.isEmpty()) return;
 
-        // направление движения
         Vec3 vel = p.getDeltaMovement();
         double dirX = vel.x;
         double dirZ = vel.z;
@@ -805,10 +797,8 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         dirX /= len;
         dirZ /= len;
 
-        // сила буста
         double boost = speed.entityBoostStrength.get();
 
-        // разбиваем буст на 3 тика
         boostX = (dirX * boost) / 3.0;
         boostZ = (dirZ * boost) / 3.0;
         boostTicks = 3;
@@ -849,23 +839,12 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
             double dirZ = mz * Mth.cos(rad) + mx * Mth.sin(rad);
 
             Vec3 vel = p.getDeltaMovement();
-
-            // ================================================
-            // ВАЖНО: конвертация UI → internal
-            //
-            // UI = 1.25 → internal = 1.04
-            // internal = ui * 0.832
-            // ================================================
             double ui = speed.jumpAcceleration.get();
             double internal = ui * 0.832;
-
-            // OmniSprint ванильная сила = 0.33
             double strength = 0.33 * internal;
 
             double vx = dirX * strength;
             double vz = dirZ * strength;
-
-            // безопасный OmniSprint cap
             double max = 0.42;
             double h = Math.hypot(vx, vz);
 
@@ -883,18 +862,10 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
 
     @Inject(method = "modifyInput", at = @At("RETURN"), cancellable = true)
     private void applyLegitSpeed(Vec2 input, CallbackInfoReturnable<Vec2> cir) {
-
-        // Speed OFF → выходим
         Speed speed = Modules.get(Speed.class);
         if (speed == null || !speed.isEnabled()) return;
-
-        // LEGIT режим выключен → ничего не делаем
         if (!speed.enabled("legit_speed")) return;
-
-        // Базовое значение
         Vec2 base = cir.getReturnValue();
-
-        // Применяем множитель
         float mult = speed.legitMultiplier.get();
         cir.setReturnValue(base.scale(mult));
     }
@@ -931,7 +902,3 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         }
     }
 }
-
-
-
-

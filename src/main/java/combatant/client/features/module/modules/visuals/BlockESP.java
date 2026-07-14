@@ -138,17 +138,7 @@ public class BlockESP extends Module {
                     TextListSetting.PickerMode.BLOCKS
             );
 
-    private final ItemIdSetValue transparentBlocksValue =
-            common(
-                    itemList(
-                            "blockEspTransparentBlocks",
-                            "transparent_blocks",
-                            TextListSetting.PickerMode.BLOCKS
-                    ),
-                    CommonSettingSchemas.ESP_TRANSPARENT_BLOCKS.commonI18nKey()
-            );
-
-    private final BlockScanContext scanContext = new BlockScanContext(mc, searchBlocksValue, transparentBlocksValue);
+    private final BlockScanContext scanContext = new BlockScanContext(mc, searchBlocksValue);
 
     private final BooleanValue useTracersValue =
             boolCommon(
@@ -197,7 +187,7 @@ public class BlockESP extends Module {
                     "cluster_tracers",
                     false
             ), useTracersValue::get);
-    private final Map<BlockPos, BlockState> observedTargetStates = new ConcurrentHashMap<>();
+    private final Map<BlockPos, ObservedTarget> observedTargetStates = new ConcurrentHashMap<>();
     private final Set<Long> loggedTargets = ConcurrentHashMap.newKeySet();
     private final ArrayDeque<BlockPos> reconcileQueue = new ArrayDeque<>();
     private final Set<Long> queuedReconcileTargets = ConcurrentHashMap.newKeySet();
@@ -217,6 +207,7 @@ public class BlockESP extends Module {
         scanContext.refresh();
         lastSearchBlocksHash = currentSearchBlocksHash();
         publishFastScanSnapshot();
+        BlockObservationHub.requestSodiumRebuild(mc, scanBlockRadius());
         requestLocalSectionScan(true);
     }
 
@@ -256,6 +247,7 @@ public class BlockESP extends Module {
             lastSearchBlocksHash = searchBlocksHash;
             fastSnapshotGeneration++;
             publishFastScanSnapshot();
+            BlockObservationHub.requestSodiumRebuild(mc, scanBlockRadius());
             requestLocalSectionScan(true);
         }
 
@@ -293,7 +285,7 @@ public class BlockESP extends Module {
         if (!isEnabled() || !scanContext.isConfiguredTarget(state)) {
             return;
         }
-        acceptObservedCandidate(BlockPos.asLong(x, y, z), state, "sodium-direct");
+        acceptObservedCandidate(BlockPos.asLong(x, y, z), state, "sodium-direct", RenderStatus.HIDDEN);
     }
 
     public void acceptWorldBlockUpdate(BlockPos pos, BlockState state) {
@@ -360,13 +352,24 @@ public class BlockESP extends Module {
     }
 
     private void recordTargetCandidate(BlockPos rawPos, BlockState state) {
+        recordTargetCandidate(rawPos, state, RenderStatus.PRESERVE);
+    }
+
+    private void recordTargetCandidate(BlockPos rawPos, BlockState state, RenderStatus renderStatus) {
         if (rawPos == null || state == null) {
             return;
         }
 
         BlockPos pos = rawPos.immutable();
         RenderSectionBlockScanner.recordBlock(pos, state);
-        observedTargetStates.put(pos, state);
+        observedTargetStates.compute(pos, (ignored, previous) -> {
+            boolean rendered = switch (renderStatus) {
+                case PRESERVE -> previous != null && previous.rendered();
+                case HIDDEN -> false;
+                case VISIBLE -> true;
+            };
+            return new ObservedTarget(state, rendered);
+        });
         enqueueReconcile(pos);
     }
 
@@ -391,7 +394,8 @@ public class BlockESP extends Module {
             return;
         }
 
-        boolean visible = scanContext.hasTransparentNeighbor(pos);
+        ObservedTarget observed = observedTargetStates.get(pos);
+        boolean visible = observed != null && observed.rendered();
         if (!acceptsMode(pos, visible)) {
             renderTargets.remove(pos);
             return;
@@ -424,13 +428,25 @@ public class BlockESP extends Module {
                 SODIUM_CANDIDATE_DRAIN_BUDGET_PER_TICK,
                 candidate -> {
                     if (candidate.generation() == fastSnapshotGeneration) {
-                        acceptObservedCandidate(candidate.packedPos(), candidate.state(), candidate.source().name().toLowerCase());
+                        RenderStatus renderStatus = candidate.source() == BlockEspSodiumCandidateCollector.CandidateSource.SODIUM_BUFFERED_QUAD
+                                ? RenderStatus.VISIBLE
+                                : RenderStatus.HIDDEN;
+                        acceptObservedCandidate(
+                                candidate.packedPos(),
+                                candidate.state(),
+                                candidate.source().name().toLowerCase(),
+                                renderStatus
+                        );
                     }
                 }
         );
     }
 
     private void acceptObservedCandidate(long packedPos, BlockState hintedState, String source) {
+        acceptObservedCandidate(packedPos, hintedState, source, RenderStatus.PRESERVE);
+    }
+
+    private void acceptObservedCandidate(long packedPos, BlockState hintedState, String source, RenderStatus renderStatus) {
         if (mc.level == null || mc.player == null) {
             return;
         }
@@ -448,7 +464,7 @@ public class BlockESP extends Module {
             return;
         }
 
-        recordTargetCandidate(pos, state);
+        recordTargetCandidate(pos, state, renderStatus);
         updateObservedTarget(pos, state, source);
     }
 
@@ -480,17 +496,18 @@ public class BlockESP extends Module {
             BlockPos pos = reconcileQueue.removeFirst();
             queuedReconcileTargets.remove(pos.asLong());
 
-            BlockState state = observedTargetStates.get(pos);
-            if (state == null) {
+            ObservedTarget observed = observedTargetStates.get(pos);
+            if (observed == null) {
                 processed++;
                 continue;
             }
+            BlockState state = observed.state();
 
             if (mc.level != null && withinDistance(pos)) {
                 BlockState currentState = mc.level.getBlockState(pos);
                 if (scanContext.isConfiguredTarget(currentState)) {
                     if (currentState != state) {
-                        observedTargetStates.put(pos, currentState);
+                        observedTargetStates.put(pos, new ObservedTarget(currentState, observed.rendered()));
                         state = currentState;
                     }
                 } else if (!deobfuscationScanner.hasPositiveState(pos)) {
@@ -628,13 +645,9 @@ public class BlockESP extends Module {
     }
 
     private boolean acceptsMode(BlockPos pos, boolean visible) {
-        BlockScanMode mode = modeValue.get();
-        int maxRange = limitDistanceValue.get() ? maxDistanceValue.get() : 256;
-        return switch (mode) {
-            case LEGIT -> visible && mc.player != null
-                    && scanContext.hasPath(mc.player.getEyePosition(), pos, limitDistanceValue.get(), maxRange);
-            case LOS, LOS_UNLOCKED -> visible;
-            case AGGRESSIVE -> true;
+        return switch (modeValue.get()) {
+            case LOS -> visible;
+            case UNRESTRICTED -> true;
         };
     }
 
@@ -670,7 +683,9 @@ public class BlockESP extends Module {
                     }
                     state = current;
                     if (!state.equals(target.state)) {
-                        observedTargetStates.put(target.pos, state);
+                        ObservedTarget observed = observedTargetStates.get(target.pos);
+                        boolean rendered = observed != null && observed.rendered();
+                        observedTargetStates.put(target.pos, new ObservedTarget(state, rendered));
                         target.state = state;
                     }
                 }
@@ -807,5 +822,14 @@ public class BlockESP extends Module {
         BlockState state;
         AABB box;
         boolean visible;
+    }
+
+    private enum RenderStatus {
+        PRESERVE,
+        HIDDEN,
+        VISIBLE
+    }
+
+    private record ObservedTarget(BlockState state, boolean rendered) {
     }
 }

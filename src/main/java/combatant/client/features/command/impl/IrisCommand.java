@@ -9,6 +9,7 @@ package combatant.client.features.command.impl;
 
 import combatant.client.features.command.ClientCommand;
 import combatant.client.features.command.CommandContext;
+import combatant.client.features.command.CommandInfo;
 import combatant.client.features.command.CommandOutput;
 import combatant.client.render.iris.IrisCompatibilityFeature;
 import combatant.client.render.iris.IrisCompatibilityProfile;
@@ -20,24 +21,15 @@ import combatant.client.runtime.RuntimeGate;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@CommandInfo(
+        id = "iris",
+        aliases = "shaderpack",
+        usage = "@iris",
+        descriptionKey = "command.iris.description"
+)
 public final class IrisCommand implements ClientCommand {
     private static String formatFeature(IrisCompatibilityFeature feature) {
         return feature.name().toLowerCase(java.util.Locale.ROOT);
-    }
-
-    @Override
-    public String name() {
-        return "iris";
-    }
-
-    @Override
-    public List<String> aliases() {
-        return List.of("shaderpack");
-    }
-
-    @Override
-    public String usage() {
-        return "@iris";
     }
 
     @Override

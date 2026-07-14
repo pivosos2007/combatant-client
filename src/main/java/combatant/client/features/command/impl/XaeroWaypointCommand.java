@@ -10,6 +10,7 @@ package combatant.client.features.command.impl;
 import combatant.client.compat.xaero.XaeroWaypointStore;
 import combatant.client.features.command.ClientCommand;
 import combatant.client.features.command.CommandContext;
+import combatant.client.features.command.CommandInfo;
 import combatant.client.features.command.CommandOutput;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -17,27 +18,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+@CommandInfo(
+        id = "xaero",
+        aliases = {"xmark", "xwp", "waypoint", "marker"},
+        usage = "@xaero here [name...] | @xaero [add] <x|~> <y|~> <z|~> [name...] | @xaero remove [all|#|name] | @xaero list",
+        descriptionKey = "command.xaero.description"
+)
 public final class XaeroWaypointCommand implements ClientCommand {
-    @Override
-    public String name() {
-        return "xaero";
-    }
-
-    @Override
-    public List<String> aliases() {
-        return List.of("xmark", "xwp", "waypoint", "marker");
-    }
-
-    @Override
-    public String usage() {
-        return "@xaero [add] <x> <y> <z> [name...] | @xaero remove [all|#|name] | @xaero list";
-    }
+    private static final String CURRENT_COORDINATE = "~";
 
     @Override
     public boolean execute(CommandContext ctx) {
         String first = ctx.arg(0);
         if (first == null || first.isBlank()) {
-            CommandOutput.warning("Usage: " + usage());
+            CommandOutput.warning("Usage: " + metadata().usage());
             return true;
         }
 
@@ -62,21 +56,57 @@ public final class XaeroWaypointCommand implements ClientCommand {
             return true;
         }
 
-        int offset = ("add".equals(action) || "mark".equals(action) || "set".equals(action)) ? 1 : 0;
+        boolean explicitAdd = "add".equals(action) || "mark".equals(action) || "set".equals(action);
+        if (isCurrentPositionKeyword(action)) {
+            return addAtCurrentPosition(ctx, 1);
+        }
+        if (explicitAdd && isCurrentPositionKeyword(ctx.arg(1))) {
+            return addAtCurrentPosition(ctx, 2);
+        }
+
+        int offset = explicitAdd ? 1 : 0;
         if (ctx.args().size() - offset < 3) {
-            CommandOutput.warning("Usage: " + usage());
+            CommandOutput.warning("Usage: " + metadata().usage());
             return true;
         }
 
-        Integer x = parseInt(ctx.arg(offset));
-        Integer y = parseInt(ctx.arg(offset + 1));
-        Integer z = parseInt(ctx.arg(offset + 2));
+        boolean needsCurrentPosition = isCurrentCoordinate(ctx.arg(offset))
+                || isCurrentCoordinate(ctx.arg(offset + 1))
+                || isCurrentCoordinate(ctx.arg(offset + 2));
+        if (needsCurrentPosition && (ctx.mc() == null || ctx.mc().player == null)) {
+            CommandOutput.error("Current player position is unavailable.");
+            return true;
+        }
+
+        int currentX = needsCurrentPosition ? ctx.mc().player.getBlockX() : 0;
+        int currentY = needsCurrentPosition ? ctx.mc().player.getBlockY() : 0;
+        int currentZ = needsCurrentPosition ? ctx.mc().player.getBlockZ() : 0;
+        Integer x = parseCoordinate(ctx.arg(offset), currentX);
+        Integer y = parseCoordinate(ctx.arg(offset + 1), currentY);
+        Integer z = parseCoordinate(ctx.arg(offset + 2), currentZ);
         if (x == null || y == null || z == null) {
-            CommandOutput.error("Invalid coordinates. Expected: x y z, for example @xaero 120 64 -300");
+            CommandOutput.error("Invalid coordinates. Use an integer or ~ for the current coordinate.");
             return true;
         }
 
         String name = joinName(ctx.args(), offset + 3);
+        return addMarker(x, y, z, name);
+    }
+
+    private static boolean addAtCurrentPosition(CommandContext ctx, int nameOffset) {
+        if (ctx.mc() == null || ctx.mc().player == null) {
+            CommandOutput.error("Current player position is unavailable.");
+            return true;
+        }
+        return addMarker(
+                ctx.mc().player.getBlockX(),
+                ctx.mc().player.getBlockY(),
+                ctx.mc().player.getBlockZ(),
+                joinName(ctx.args(), nameOffset)
+        );
+    }
+
+    private static boolean addMarker(int x, int y, int z, String name) {
         XaeroWaypointStore.AddResult result = XaeroWaypointStore.addFromCurrentDimension(x, y, z, name, true);
         if (result.success()) {
             CommandOutput.success(result.message());
@@ -91,7 +121,7 @@ public final class XaeroWaypointCommand implements ClientCommand {
         String lower = token == null ? "" : token.toLowerCase(Locale.ROOT);
         if (argIndex == 1) {
             List<String> out = new ArrayList<>();
-            for (String value : List.of("add", "remove", "clear", "list")) {
+            for (String value : List.of("add", "here", "remove", "clear", "list", CURRENT_COORDINATE)) {
                 if (lower.isEmpty() || value.startsWith(lower)) out.add(value);
             }
             return out;
@@ -111,7 +141,22 @@ public final class XaeroWaypointCommand implements ClientCommand {
                 return out;
             }
         }
+        if (isCoordinateArgument(ctx, argIndex)) {
+            return CURRENT_COORDINATE.startsWith(lower) ? List.of(CURRENT_COORDINATE) : List.of();
+        }
         return List.of();
+    }
+
+    private static boolean isCoordinateArgument(CommandContext ctx, int argIndex) {
+        String first = ctx.arg(0);
+        if (first == null) return false;
+        String action = first.toLowerCase(Locale.ROOT);
+        if (isCurrentPositionKeyword(action)) return false;
+        if ("add".equals(action) || "mark".equals(action) || "set".equals(action)) {
+            return !isCurrentPositionKeyword(ctx.arg(1)) && argIndex >= 2 && argIndex <= 4;
+        }
+        if (List.of("remove", "delete", "rm", "clear", "list").contains(action)) return false;
+        return argIndex >= 1 && argIndex <= 3;
     }
 
     private static void listMarkers() {
@@ -134,13 +179,26 @@ public final class XaeroWaypointCommand implements ClientCommand {
         return loader.isModLoaded("xaerominimap") || loader.isModLoaded("xaeroworldmap");
     }
 
-    private static Integer parseInt(String value) {
+    static Integer parseCoordinate(String value, int currentCoordinate) {
         if (value == null || value.isBlank()) return null;
+        if (isCurrentCoordinate(value)) return currentCoordinate;
         try {
             return Integer.parseInt(value.trim());
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    private static boolean isCurrentCoordinate(String value) {
+        return CURRENT_COORDINATE.equals(value == null ? null : value.trim());
+    }
+
+    private static boolean isCurrentPositionKeyword(String value) {
+        if (value == null) return false;
+        return switch (value.toLowerCase(Locale.ROOT)) {
+            case "here", "current", "position", "pos" -> true;
+            default -> false;
+        };
     }
 
     private static String joinName(List<String> args, int start) {

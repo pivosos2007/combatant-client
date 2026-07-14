@@ -1693,6 +1693,8 @@ public enum BetterChatRenderer {
             } else if (evt instanceof ClickEvent.CopyToClipboard) {
                 ClipboardUtil.copy(val);
                 return true;
+            } else if (evt instanceof ClickEvent.RunCommand && val.startsWith("@")) {
+                return CommandManager.handle(val);
             } else if (evt instanceof ClickEvent.SuggestCommand || evt instanceof ClickEvent.RunCommand) {
                 // Убираем нежелательный автокомплит: без Ctrl не подставляем команды в поле ввода.
                 if (!ctrlDown) return false;

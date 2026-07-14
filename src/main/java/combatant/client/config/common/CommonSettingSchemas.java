@@ -141,7 +141,6 @@ public enum CommonSettingSchemas {
     public static final CommonSettingSchema ESP_MAX_DISTANCE = key("esp.max_distance", "max_distance");
     public static final CommonSettingSchema ESP_SCAN_DELAY = key("esp.scan_delay", "scan_delay");
     public static final CommonSettingSchema ESP_MAX_TARGETS = key("esp.max_targets", "max_targets");
-    public static final CommonSettingSchema ESP_TRANSPARENT_BLOCKS = key("esp.transparent_blocks");
     public static final CommonSettingSchema ESP_USE_TRACERS = key("esp.use_tracers");
     public static final CommonSettingSchema ESP_LINE_WIDTH = key("esp.line_width", "line_width");
     public static final CommonSettingSchema ESP_OUTLINE_SHAPE = key("esp.outline_shape", "outline_shape");

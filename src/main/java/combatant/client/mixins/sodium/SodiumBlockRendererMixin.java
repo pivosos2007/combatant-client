@@ -22,7 +22,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.render.helpers.SodiumSurfaceFlagContext;
 import combatant.client.render.sodium.terrain.CombatantChunkVertexExtension;
-import combatant.client.util.block.BlockObservationHub;
 
 @Pseudo
 @Mixin(targets = "net.caffeinemc.mods.sodium.client.render.chunk.compile.pipeline.BlockRenderer")
@@ -30,7 +29,6 @@ public abstract class SodiumBlockRendererMixin {
 
     @Inject(method = "renderModel", at = @At("HEAD"), remap = false)
     private void combatant$pushSurfaceState(BlockStateModel model, BlockState state, BlockPos pos, BlockPos origin, CallbackInfo ci) {
-        BlockObservationHub.observeSodiumRenderedBlock(pos, state);
         SodiumSurfaceFlagContext.pushForState(state, origin);
     }
 

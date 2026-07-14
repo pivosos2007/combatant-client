@@ -95,7 +95,7 @@ final class CombatantAddonContextImpl implements CombatantAddonContext {
     public void registerCommand(ClientCommand command) {
         if (command == null) return;
         CommandManager.register(new AddonClientCommand(addonId(), command));
-        registration.commands.add(command.name());
+        registration.commands.add(command.metadata().id());
     }
 
     @Override
@@ -156,18 +156,36 @@ final class CombatantAddonContextImpl implements CombatantAddonContext {
 
     private record AddonClientCommand(String addonId, ClientCommand delegate) implements ClientCommand {
         @Override
+        public combatant.client.features.command.CommandMetadata metadata() {
+            return delegate.metadata();
+        }
+
+        @Deprecated(forRemoval = true)
+        @Override
+        @SuppressWarnings("removal")
         public String name() {
             return delegate.name();
         }
 
+        @Deprecated(forRemoval = true)
         @Override
+        @SuppressWarnings("removal")
         public java.util.List<String> aliases() {
             return delegate.aliases();
         }
 
+        @Deprecated(forRemoval = true)
         @Override
+        @SuppressWarnings("removal")
         public String usage() {
             return delegate.usage();
+        }
+
+        @Deprecated(forRemoval = true)
+        @Override
+        @SuppressWarnings("removal")
+        public String description() {
+            return delegate.description();
         }
 
         @Override

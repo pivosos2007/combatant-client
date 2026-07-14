@@ -23,6 +23,7 @@ Combatant is already usable, but it is not feature-complete. Some areas still ne
 ## Guides
 
 - [`Configs and HUD Guide`](CONFIGS_AND_HUD.md) - config profiles, `.cbcfg` files, loading profiles, and HUD element setup.
+- [`Client Commands`](CLIENT_COMMANDS.md) - command syntax, aliases, descriptions, and optional mod requirements.
 
 ## Logo wanted
 
@@ -51,9 +52,13 @@ Combatant requires:
 - Fabric Loader 0.19.3
 - Fabric API [`0.152.2+26.2`](https://modrinth.com/mod/fabric-api/version/0.152.2%2B26.2)
 - Java 25
-- Sodium, preferably [`sodium-fabric-0.9.0+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.0-fabric)
+- Sodium [`sodium-fabric-0.9.1+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.1-fabric)
 
 Addon/API projects should target the same Minecraft, Fabric Loader, Fabric API, Java, and Sodium versions as the client.
+
+## Supported mods
+
+Combatant includes optional compatibility integrations for Iris, ImmediatelyFast, ViaFabricPlus, Entity Culling, Xaero's Minimap, and Xaero's World Map. The Xaero integration can create, list, and remove waypoints through the `@xaero` command; see the complete [`Client Commands`](CLIENT_COMMANDS.md) reference for its syntax and all other client commands.
 
 ## How to install
 
@@ -62,8 +67,8 @@ Addon/API projects should target the same Minecraft, Fabric Loader, Fabric API, 
 3. Download the Combatant jar from the GitHub release.
 4. Download the required dependency jars:
    - Fabric API [`0.152.2+26.2`](https://modrinth.com/mod/fabric-api/version/0.152.2%2B26.2)
-   - Sodium [`sodium-fabric-0.9.0+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.0-fabric)
-5. Put `combatant-0.1.0.jar`, Fabric API, and Sodium into your Minecraft `mods` folder.
+   - Sodium [`sodium-fabric-0.9.1+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.1-fabric)
+5. Put `combatant-0.1.1.jar`, Fabric API, and Sodium into your Minecraft `mods` folder.
 6. Start the Fabric 26.2 profile.
 
 ## Renderer backends

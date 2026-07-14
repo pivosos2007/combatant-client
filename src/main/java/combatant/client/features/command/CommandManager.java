@@ -9,13 +9,14 @@ package combatant.client.features.command;
 
 import com.mojang.brigadier.context.StringRange;
 import com.mojang.brigadier.suggestion.Suggestion;
+import combatant.client.util.logging.DebugLog;
+import io.github.classgraph.ClassGraph;
+import io.github.classgraph.ClassInfo;
+import io.github.classgraph.ScanResult;
 import net.minecraft.client.Minecraft;
-import combatant.client.features.command.impl.AddonsCommand;
-import combatant.client.features.command.impl.IrisCommand;
-import combatant.client.features.command.impl.ProfilerCommand;
-import combatant.client.features.command.impl.RuntimeCommand;
-import combatant.client.features.command.impl.XaeroWaypointCommand;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -26,22 +27,28 @@ public enum CommandManager {
     private static final List<ClientCommand> COMMANDS = new ArrayList<>();
     private static boolean initialized;
 
-    public static void init() {
+    public static synchronized void init() {
         if (initialized) return;
         initialized = true;
-        register(new RuntimeCommand());
-        register(new AddonsCommand());
-        register(new IrisCommand());
-        register(new ProfilerCommand());
-        register(new XaeroWaypointCommand());
+        discover("combatant.client.features.command.impl");
     }
 
     public static List<ClientCommand> getCommands() {
+        if (!initialized) init();
         return Collections.unmodifiableList(COMMANDS);
     }
 
     public static void register(ClientCommand cmd) {
         if (cmd == null) return;
+        CommandMetadata metadata = cmd.metadata();
+        if (findRegistered(metadata.id()) != null) {
+            throw new IllegalArgumentException("Duplicate client command: @" + metadata.id());
+        }
+        for (String alias : metadata.aliases()) {
+            if (findRegistered(alias) != null) {
+                throw new IllegalArgumentException("Duplicate client command alias: @" + alias);
+            }
+        }
         COMMANDS.add(cmd);
     }
 
@@ -58,7 +65,10 @@ public enum CommandManager {
         String name = parts[0].toLowerCase();
 
         ClientCommand cmd = find(name);
-        if (cmd == null) return false;
+        if (cmd == null) {
+            CommandOutput.error("Unknown client command: @" + name + ". Use @help.");
+            return true;
+        }
         if (!cmd.isAvailable()) {
             return true; // silently ignore when command is disabled
         }
@@ -111,10 +121,17 @@ public enum CommandManager {
         return out;
     }
 
-    private static ClientCommand find(String name) {
+    public static ClientCommand find(String name) {
+        if (!initialized) init();
+        return findRegistered(name);
+    }
+
+    private static ClientCommand findRegistered(String name) {
+        if (name == null || name.isBlank()) return null;
         for (ClientCommand cmd : COMMANDS) {
-            if (cmd.name().equalsIgnoreCase(name)) return cmd;
-            for (String alias : cmd.aliases()) {
+            CommandMetadata metadata = cmd.metadata();
+            if (metadata.id().equalsIgnoreCase(name)) return cmd;
+            for (String alias : metadata.aliases()) {
                 if (alias.equalsIgnoreCase(name)) return cmd;
             }
         }
@@ -135,10 +152,11 @@ public enum CommandManager {
         List<String> out = new ArrayList<>();
         for (ClientCommand cmd : COMMANDS) {
             if (!cmd.isAvailable()) continue;
-            if (lower.isEmpty() || cmd.name().startsWith(lower)) {
-                out.add(cmd.name());
+            CommandMetadata metadata = cmd.metadata();
+            if (lower.isEmpty() || metadata.id().startsWith(lower)) {
+                out.add(metadata.id());
             }
-            for (String alias : cmd.aliases()) {
+            for (String alias : metadata.aliases()) {
                 if (alias == null || alias.isBlank()) continue;
                 if (lower.isEmpty() || alias.startsWith(lower)) {
                     out.add(alias);
@@ -154,5 +172,41 @@ public enum CommandManager {
             if (!Character.isWhitespace(c)) return i;
         }
         return -1;
+    }
+
+    private static void discover(String basePackage) {
+        try (ScanResult scan = new ClassGraph()
+                .enableClassInfo()
+                .enableAnnotationInfo()
+                .acceptPackages(basePackage)
+                .scan()) {
+            scan.getClassesWithAnnotation(CommandInfo.class.getName()).stream()
+                    .map(ClassInfo::getName)
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .forEach(CommandManager::loadCandidate);
+        }
+    }
+
+    private static void loadCandidate(String className) {
+        try {
+            Class<?> type = Class.forName(className, false, CommandManager.class.getClassLoader());
+            if (!ClientCommand.class.isAssignableFrom(type)) {
+                DebugLog.config("Skipping annotated non-command: %s", type.getName());
+                return;
+            }
+            int modifiers = type.getModifiers();
+            if (Modifier.isAbstract(modifiers) || Modifier.isInterface(modifiers) || type.isAnnotation()) {
+                DebugLog.config("Skipping non-concrete command class: %s", type.getName());
+                return;
+            }
+            Constructor<?> constructor = type.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            register((ClientCommand) constructor.newInstance());
+            DebugLog.config("Loaded command: %s", type.getName());
+        } catch (NoSuchMethodException exception) {
+            DebugLog.error("Failed to load command %s: no no-args constructor", exception, className);
+        } catch (Throwable throwable) {
+            DebugLog.error("Failed to load command: %s", throwable, className);
+        }
     }
 }

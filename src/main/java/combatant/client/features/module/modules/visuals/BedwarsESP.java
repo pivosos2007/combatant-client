@@ -59,10 +59,8 @@ public class BedwarsESP extends Module {
                     "mode",
                     CommonSettingSchemas.ESP_SCAN_MODE,
                     BlockScanMode.LOS,
-                    BlockScanMode.LEGIT,
                     BlockScanMode.LOS,
-                    BlockScanMode.LOS_UNLOCKED,
-                    BlockScanMode.AGGRESSIVE
+                    BlockScanMode.UNRESTRICTED
             );
 
     private final BooleanValue limitDistanceValue =
@@ -93,17 +91,7 @@ public class BedwarsESP extends Module {
                     256
             );
 
-    private final ItemIdSetValue transparentBlocksValue =
-            common(
-                    itemList(
-                            "bedwars_esp_transparent_blocks",
-                            "transparent_blocks",
-                            TextListSetting.PickerMode.BLOCKS
-                    ),
-                    CommonSettingSchemas.ESP_TRANSPARENT_BLOCKS.commonI18nKey()
-            );
-
-    private final BlockScanContext scanContext = new BlockScanContext(mc, null, transparentBlocksValue);
+    private final BlockScanContext scanContext = new BlockScanContext(mc, null);
 
     private final BooleanValue useTracersValue =
             boolCommon(
@@ -190,7 +178,7 @@ public class BedwarsESP extends Module {
                     "other_opening_color",
                     "#40FFC247"
             ), showOpeningsValue::get);
-    private final Map<BlockPos, BlockState> observedBedStates = new ConcurrentHashMap<>();
+    private final Map<BlockPos, ObservedBed> observedBedStates = new ConcurrentHashMap<>();
     private final Map<BlockPos, BlockPos> bedPartToKey = new ConcurrentHashMap<>();
     private final Set<Long> loggedBeds = ConcurrentHashMap.newKeySet();
     private volatile Map<BlockPos, BedRenderTarget> renderTargets = new ConcurrentHashMap<>();
@@ -286,6 +274,7 @@ public class BedwarsESP extends Module {
     public void onEnable() {
         resetRuntimeState();
         scanContext.refresh();
+        BlockObservationHub.requestSodiumRebuild(mc, scanBlockRadius());
         requestLocalSectionScan();
     }
 
@@ -403,7 +392,14 @@ public class BedwarsESP extends Module {
         if (!isEnabled() || !BedBlockUtil.isBed(state)) {
             return;
         }
-        recordObservedBlock(new BlockPos(x, y, z), state, false);
+        recordObservedBlock(new BlockPos(x, y, z), state, false, RenderStatus.HIDDEN);
+    }
+
+    public void acceptSodiumRenderedBlockState(BlockPos pos, BlockState state) {
+        if (!isEnabled() || !BedBlockUtil.isBed(state)) {
+            return;
+        }
+        recordObservedBlock(pos, state, false, RenderStatus.VISIBLE);
     }
 
     public void acceptWorldBlockUpdate(BlockPos pos, BlockState state) {
@@ -414,10 +410,17 @@ public class BedwarsESP extends Module {
     }
 
     private void recordObservedBlock(BlockPos rawPos, BlockState state) {
-        recordObservedBlock(rawPos, state, false);
+        recordObservedBlock(rawPos, state, false, RenderStatus.PRESERVE);
     }
 
     private void recordObservedBlock(BlockPos rawPos, BlockState state, boolean forgetScannedSection) {
+        recordObservedBlock(rawPos, state, forgetScannedSection, RenderStatus.PRESERVE);
+    }
+
+    private void recordObservedBlock(BlockPos rawPos,
+                                     BlockState state,
+                                     boolean forgetScannedSection,
+                                     RenderStatus renderStatus) {
         if (rawPos == null || state == null) {
             return;
         }
@@ -433,7 +436,14 @@ public class BedwarsESP extends Module {
         }
 
         RenderSectionBlockScanner.recordBlock(pos, state);
-        observedBedStates.put(pos, state);
+        observedBedStates.compute(pos, (ignored, previous) -> {
+            boolean rendered = switch (renderStatus) {
+                case PRESERVE -> previous != null && previous.rendered();
+                case HIDDEN -> false;
+                case VISIBLE -> true;
+            };
+            return new ObservedBed(state, rendered);
+        });
     }
 
     private void updateObservedBed(BlockPos pos, BlockState state, String source) {
@@ -442,7 +452,8 @@ public class BedwarsESP extends Module {
             return;
         }
 
-        boolean visible = scanContext.hasTransparentNeighbor(pos);
+        ObservedBed observed = observedBedStates.get(pos);
+        boolean visible = observed != null && observed.rendered();
         if (!acceptsMode(pos, visible)) {
             removeBedByPart(pos);
             return;
@@ -489,14 +500,15 @@ public class BedwarsESP extends Module {
     }
 
     private void reconcileObservedBeds(String source) {
-        for (Map.Entry<BlockPos, BlockState> entry : observedBedStates.entrySet()) {
+        for (Map.Entry<BlockPos, ObservedBed> entry : observedBedStates.entrySet()) {
             BlockPos pos = entry.getKey();
-            BlockState state = entry.getValue();
+            ObservedBed observed = entry.getValue();
+            BlockState state = observed.state();
             if (mc.level != null && withinDistance(pos)) {
                 BlockState currentState = mc.level.getBlockState(pos);
                 if (BedBlockUtil.isBed(currentState)) {
                     if (currentState != state) {
-                        observedBedStates.put(pos, currentState);
+                        observedBedStates.put(pos, new ObservedBed(currentState, observed.rendered()));
                         state = currentState;
                     }
                 } else {
@@ -598,12 +610,9 @@ public class BedwarsESP extends Module {
     }
 
     private boolean acceptsMode(BlockPos pos, boolean visible) {
-        int maxRange = limitDistanceValue.get() ? maxDistanceValue.get() : 256;
         return switch (modeValue.get()) {
-            case LEGIT -> visible && mc.player != null
-                    && scanContext.hasPath(mc.player.getEyePosition(), pos, limitDistanceValue.get(), maxRange);
-            case LOS, LOS_UNLOCKED -> visible;
-            case AGGRESSIVE -> true;
+            case LOS -> visible;
+            case UNRESTRICTED -> true;
         };
     }
 
@@ -786,7 +795,7 @@ public class BedwarsESP extends Module {
                                      Set<BlockPos> reachable,
                                      Set<BlockPos> bedSet,
                                      BlockPos pos) {
-        if (bedSet.contains(pos) || !scanContext.isTransparent(pos)) {
+        if (bedSet.contains(pos) || !scanContext.isPassable(pos)) {
             return;
         }
         BlockPos immutable = pos.immutable();
@@ -817,6 +826,15 @@ public class BedwarsESP extends Module {
         private boolean self;
         private boolean visible;
         private int teamColorRgb = -1;
+    }
+
+    private enum RenderStatus {
+        PRESERVE,
+        HIDDEN,
+        VISIBLE
+    }
+
+    private record ObservedBed(BlockState state, boolean rendered) {
     }
 
     private record FaceKey(BlockPos pos, net.minecraft.core.Direction face) {

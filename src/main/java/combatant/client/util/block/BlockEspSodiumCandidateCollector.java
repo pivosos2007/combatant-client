@@ -11,6 +11,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -27,8 +28,8 @@ public enum BlockEspSodiumCandidateCollector {
     private static final int MAX_QUEUED_CANDIDATES = 32768;
 
     private static final Snapshot DISABLED = new Snapshot(false, Set.of(), false, 0, 0, 0, 0, 0);
-    private static final ConcurrentLinkedQueue<Candidate> CANDIDATES = new ConcurrentLinkedQueue<>();
-    private static final Set<Long> QUEUED_KEYS = ConcurrentHashMap.newKeySet();
+    private static final ConcurrentLinkedQueue<Long> CANDIDATE_KEYS = new ConcurrentLinkedQueue<>();
+    private static final Map<Long, Candidate> PENDING_CANDIDATES = new ConcurrentHashMap<>();
     private static final AtomicInteger QUEUED_COUNT = new AtomicInteger();
     private static volatile Snapshot snapshot = DISABLED;
 
@@ -66,8 +67,8 @@ public enum BlockEspSodiumCandidateCollector {
     }
 
     public static void clear() {
-        CANDIDATES.clear();
-        QUEUED_KEYS.clear();
+        CANDIDATE_KEYS.clear();
+        PENDING_CANDIDATES.clear();
         QUEUED_COUNT.set(0);
     }
 
@@ -76,7 +77,7 @@ public enum BlockEspSodiumCandidateCollector {
     }
 
     public static void observeSodiumRenderedBlock(int x, int y, int z, BlockState state) {
-        offer(x, y, z, state, CandidateSource.SODIUM_RENDER_MODEL);
+        offer(x, y, z, state, CandidateSource.SODIUM_BUFFERED_QUAD);
     }
 
     private static void offer(int x, int y, int z, BlockState state, CandidateSource source) {
@@ -94,18 +95,29 @@ public enum BlockEspSodiumCandidateCollector {
         }
 
         long packedPos = BlockPos.asLong(x, y, z);
-        if (!QUEUED_KEYS.add(packedPos)) {
-            return;
+        Candidate candidate = new Candidate(packedPos, state, source, current.generation);
+        while (true) {
+            Candidate pending = PENDING_CANDIDATES.putIfAbsent(packedPos, candidate);
+            if (pending == null) {
+                break;
+            }
+            if (source != CandidateSource.SODIUM_BUFFERED_QUAD
+                    || pending.source == CandidateSource.SODIUM_BUFFERED_QUAD) {
+                return;
+            }
+            if (PENDING_CANDIDATES.replace(packedPos, pending, candidate)) {
+                return;
+            }
         }
 
         int queued = QUEUED_COUNT.incrementAndGet();
         if (queued > MAX_QUEUED_CANDIDATES) {
             QUEUED_COUNT.decrementAndGet();
-            QUEUED_KEYS.remove(packedPos);
+            PENDING_CANDIDATES.remove(packedPos, candidate);
             return;
         }
 
-        CANDIDATES.add(new Candidate(packedPos, state, source, current.generation));
+        CANDIDATE_KEYS.add(packedPos);
     }
 
     public static int drain(int maxCandidates, CandidateConsumer consumer) {
@@ -115,13 +127,16 @@ public enum BlockEspSodiumCandidateCollector {
 
         int drained = 0;
         while (drained < maxCandidates) {
-            Candidate candidate = CANDIDATES.poll();
-            if (candidate == null) {
+            Long packedPos = CANDIDATE_KEYS.poll();
+            if (packedPos == null) {
                 break;
             }
 
+            Candidate candidate = PENDING_CANDIDATES.remove(packedPos);
+            if (candidate == null) {
+                continue;
+            }
             QUEUED_COUNT.decrementAndGet();
-            QUEUED_KEYS.remove(candidate.packedPos);
             consumer.accept(candidate);
             drained++;
         }
@@ -130,7 +145,7 @@ public enum BlockEspSodiumCandidateCollector {
 
     public enum CandidateSource {
         SODIUM_SECTION_SCAN,
-        SODIUM_RENDER_MODEL
+        SODIUM_BUFFERED_QUAD
     }
 
     @FunctionalInterface

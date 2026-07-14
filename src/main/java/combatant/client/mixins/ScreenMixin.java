@@ -11,6 +11,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -19,6 +20,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.config.MainConfig;
+import combatant.client.features.command.CommandManager;
 import combatant.client.features.gui.hud.nondraggable.impl.BetterButtons;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.NoRender;
@@ -33,6 +35,19 @@ import combatant.client.util.NarratorBlocker;
 public abstract class ScreenMixin {
     @Unique
     private RenderPhaseScope combatant$screenPhaseScope;
+
+    @Inject(method = "defaultHandleGameClickEvent", at = @At("HEAD"), cancellable = true)
+    private static void combatant$runClientChatCommand(ClickEvent event,
+                                                       Minecraft client,
+                                                       Screen screen,
+                                                       CallbackInfo ci) {
+        if (!(event instanceof ClickEvent.RunCommand run)) return;
+        String command = run.command();
+        if (command == null || !command.startsWith("@")) return;
+        if (CommandManager.handle(command)) {
+            ci.cancel();
+        }
+    }
 
     @Inject(method = "extractMenuBackgroundTexture", at = @At("HEAD"), cancellable = true)
     private static void combatant$replaceMenuBackground(GuiGraphicsExtractor context,
@@ -142,5 +157,4 @@ public abstract class ScreenMixin {
         }
     }
 }
-
 

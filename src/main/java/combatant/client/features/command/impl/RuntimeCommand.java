@@ -9,6 +9,7 @@ package combatant.client.features.command.impl;
 
 import combatant.client.features.command.ClientCommand;
 import combatant.client.features.command.CommandContext;
+import combatant.client.features.command.CommandInfo;
 import combatant.client.features.command.CommandOutput;
 import combatant.client.runtime.ClientRuntime;
 import combatant.client.runtime.ClientRuntimeState;
@@ -16,22 +17,13 @@ import combatant.client.runtime.ClientRuntimeState;
 import java.nio.file.Path;
 import java.util.List;
 
+@CommandInfo(
+        id = "runtime",
+        aliases = {"panic", "jarreplace"},
+        usage = "@runtime [status|panic|resume|jar|source]",
+        descriptionKey = "command.runtime.description"
+)
 public final class RuntimeCommand implements ClientCommand {
-    @Override
-    public String name() {
-        return "runtime";
-    }
-
-    @Override
-    public List<String> aliases() {
-        return List.of("panic", "jarreplace");
-    }
-
-    @Override
-    public String usage() {
-        return "@runtime [status|panic|resume|jar|source]";
-    }
-
     @Override
     public boolean execute(CommandContext ctx) {
         String action = ctx.arg(0);
@@ -65,7 +57,7 @@ public final class RuntimeCommand implements ClientCommand {
                     + ClientRuntime.loaderBridge().describeClassSource("combatant.client.Combatant"));
             return true;
         }
-        CommandOutput.send("Usage: " + usage());
+        CommandOutput.send("Usage: " + metadata().usage());
         return true;
     }
 
