@@ -157,7 +157,7 @@ public enum ChatHoverUtil {
         if (content == null) return null;
         List<ColoredLine> lines = new ArrayList<>();
         content.name.ifPresent(t -> lines.add(new ColoredLine(t.getString(), 0)));
-        lines.add(new ColoredLine("Сущность: " + content.type.getDescription().getString(), 0));
+        lines.add(new ColoredLine(I18n.get("better_chat.hover.entity", content.type.getDescription().getString()), 0));
         lines.add(new ColoredLine("UUID: " + content.uuid, 0xFF888888));
         boolean online = false;
         if (mc != null && mc.player != null && mc.player.connection != null) {

@@ -19,6 +19,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -1590,9 +1591,9 @@ public enum BetterChatRenderer {
 
         if (selection.appliesTo(pick.line().messageIndex()) && selection.hasRange()) {
             String selected = selectedText();
-            entries.add(new ContextMenu.MenuEntry("Скопировать выделение", () -> ClipboardUtil.copy(selected)));
+            entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_selection"), () -> ClipboardUtil.copy(selected)));
         } else {
-            entries.add(new ContextMenu.MenuEntry("Скопировать сообщение", () -> ClipboardUtil.copy(full)));
+            entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_message"), () -> ClipboardUtil.copy(full)));
         }
 
         List<String> nickCandidates = ChatNameUtil.extractNicks(full);
@@ -1607,19 +1608,19 @@ public enum BetterChatRenderer {
         }
         if (isOnlinePlayer(targetNick)) {
             String nickToTell = targetNick;
-            entries.add(new ContextMenu.MenuEntry("Ответить", () -> prefillTell(nickToTell)));
+            entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.reply"), () -> prefillTell(nickToTell)));
         }
 
         if (hoverEntityUuid != null && !hoverEntityUuid.isEmpty()) {
             String uuidToCopy = hoverEntityUuid;
-            entries.add(new ContextMenu.MenuEntry("Скопировать UUID", () -> ClipboardUtil.copy(uuidToCopy)));
+            entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_uuid"), () -> ClipboardUtil.copy(uuidToCopy)));
         }
 
         if (tsEnabled) {
-            entries.add(new ContextMenu.MenuEntry("Скопировать время", () -> ClipboardUtil.copy(formatTimestamp(ts, settings.timestampSeconds()))));
-            entries.add(new ContextMenu.MenuEntry("Скопировать дату", () -> ClipboardUtil.copy(formatDate(ts))));
+            entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_time"), () -> ClipboardUtil.copy(formatTimestamp(ts, settings.timestampSeconds()))));
+            entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_date"), () -> ClipboardUtil.copy(formatDate(ts))));
             if (tsUnix) {
-                entries.add(new ContextMenu.MenuEntry("Скопировать Unix", () -> ClipboardUtil.copy(String.valueOf(ts / 1000L))));
+                entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_unix"), () -> ClipboardUtil.copy(String.valueOf(ts / 1000L))));
             }
         }
 
@@ -2586,7 +2587,10 @@ public enum BetterChatRenderer {
         List<ChatHoverUtil.ColoredLine> lines = new ArrayList<>();
         LocalDateTime dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(ms), ZoneId.systemDefault());
         if (showDate) {
-            lines.add(new ChatHoverUtil.ColoredLine("Дата: " + dt.format(DateTimeFormatter.ofPattern("dd.MM.yyyy")), 0));
+            lines.add(new ChatHoverUtil.ColoredLine(I18n.get(
+                    "better_chat.hover.date",
+                    dt.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+            ), 0));
         }
         if (showUnix) {
             lines.add(new ChatHoverUtil.ColoredLine("Unix: " + (ms / 1000L), 0xFF888888));
