@@ -43,15 +43,6 @@ Combatant includes:
 
 A complete feature list and detailed documentation will be added separately.
 
-## Supported languages
-
-Combatant currently ships translations for:
-
-- `en_us`
-- `ru_ru`
-
-When adding modules or other user-facing features, `en_us` localization is required. `ru_ru` localization is recommended if you know Russian.
-
 ## Requirements
 
 Combatant requires:
