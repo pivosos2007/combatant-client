@@ -104,7 +104,7 @@ Combatant includes an addon loader and a versioned addon API.
 
 Use the [`combatant-addon-template`](https://github.com/pivosos2007/combatant-addon-template) repository for a minimal addon project structure, examples, and build instructions.
 
-The addon API should be considered usable but not stability-guaranteed until the first tagged public release.
+The addon API should be considered usable but not stability-guaranteed until the version 1.0.0.
 
 ## Shaderpack patches
 
