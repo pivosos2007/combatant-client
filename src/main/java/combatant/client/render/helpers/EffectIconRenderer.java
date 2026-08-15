@@ -19,9 +19,13 @@ public enum EffectIconRenderer {
      * Draws a status effect icon via DrawContext if the sprite is available.
      */
     public static void draw(GuiGraphicsExtractor ctx, MobEffectInstance effect, int x, int y, int size) {
+        draw(ctx, effect, x, y, size, 0xFFFFFFFF);
+    }
+
+    public static void draw(GuiGraphicsExtractor ctx, MobEffectInstance effect, int x, int y, int size, int argb) {
         if (effect == null) return;
         Identifier texture = Hud.getMobEffectSprite(effect.getEffect());
-        GuiSpriteBatch.draw(texture, x, y, size, size, 0xFFFFFFFF);
+        GuiSpriteBatch.draw(texture, x, y, size, size, argb);
     }
 
     public static void beginBatch() {

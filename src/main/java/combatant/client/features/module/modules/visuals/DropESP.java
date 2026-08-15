@@ -25,11 +25,18 @@ import combatant.client.features.module.HudPhase;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
+import combatant.client.features.module.WorldPhase;
 import combatant.client.mixininterface.IEntity;
 import combatant.client.render.engine.color.RenderColor;
+import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.engine.renderer.ui.ItemBatchRenderer;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.text.VanillaTextRenderer;
+import combatant.client.render.engine.text.WorldTextRenderer;
+import combatant.client.render.engine.world.WorldBillboardRenderer;
+import combatant.client.render.engine.world.WorldUiPresentationService;
 import combatant.client.render.helpers.MatteHudStyle;
 import combatant.client.render.helpers.ScreenProjection;
 import combatant.client.render.helpers.ScreenSpaceOverlay2D;
@@ -51,6 +58,7 @@ public class DropESP extends Module {
     private static final String SETTING_TEXT_SHADOW = "text_shadow";
     private static final String SETTING_FRAME = "frame";
     private static final String SETTING_ITEM_ICON = "item_icon";
+    private static final String SETTING_PRESENTATION_MODE = "presentation_mode";
     private static final double ITEM_BOX_EXPAND_XZ = 0.05;
     private static final double ITEM_BOX_EXPAND_TOP = 0.15;
     private static final double MATTE_LABEL_PAD_X = 3.5;
@@ -58,8 +66,13 @@ public class DropESP extends Module {
     private static final double MATTE_ICON_SIZE = 14.0;
     private static final double MATTE_ICON_GAP = 4.0;
     private static final float MATTE_ICON_SCALE = (float) (MATTE_ICON_SIZE / 16.0);
+    private static final WorldUiPresentationService.Policy WORLD_PRESENTATION_POLICY =
+            new WorldUiPresentationService.Policy(0.0165, 12.0, 18.0, 32.0, 0.45, 4.00);
     private final Minecraft mc = Minecraft.getInstance();
     private final ModeValue modeValue = modeSetting("dropEspMode", SETTING_MODE, "Matte", "Vanilla", "New", "Matte");
+    private final EnumValue<WorldUiPresentationService.Mode> presentationMode =
+            enumSetting("dropEspPresentationMode", SETTING_PRESENTATION_MODE,
+                    WorldUiPresentationService.Mode.HYBRID, WorldUiPresentationService.Mode.values());
     private final BooleanValue limitCommonDistanceValue = bool("dropEspLimitCommonDistance", SETTING_LIMIT_COMMON_DISTANCE, true);
     private final NumberValue<Integer> commonMaxDistanceValue =
             visibleWhen(num("dropEspCommonMaxDistance", SETTING_COMMON_MAX_DISTANCE, 32, 4, 256), limitCommonDistanceValue::get);
@@ -68,7 +81,8 @@ public class DropESP extends Module {
     private final BooleanValue frameValue =
             visibleWhen(bool("dropEspFrame", SETTING_FRAME, true), this::isOverlayMode);
     private final BooleanValue itemIconValue =
-            visibleWhen(bool("dropEspItemIcon", SETTING_ITEM_ICON, true), this::isMatteMode);
+            visibleWhen(bool("dropEspItemIcon", SETTING_ITEM_ICON, true),
+                    () -> isMatteMode() || presentationMode.get() != WorldUiPresentationService.Mode.SCREEN);
     private final RGBColorValue specialColorValue = colorNoAlpha("dropEspSpecialColor", SETTING_SPECIAL_ITEMS_COLOR, "#FFAA00");
     private final ItemIdSetValue topIgnore = TopEnchantUtil.ignoreValue();
     private final ItemIdSetValue specialItemsValue =
@@ -91,14 +105,75 @@ public class DropESP extends Module {
         return Double.compare(b.distSq(), a.distSq());
     }
 
+    private static int compareDropWorldRenderOrder(DropWorldEntry a, DropWorldEntry b) {
+        int rarity = Integer.compare(a.sortPriority(), b.sortPriority());
+        if (rarity != 0) return rarity;
+        return Double.compare(b.distSq(), a.distSq());
+    }
+
     @Override
     public HudPhase getHudPhase() {
         return HudPhase.FIRST;
     }
 
     @Override
+    public WorldPhase getWorldPhase() {
+        return WorldPhase.END_MAIN;
+    }
+
+    @Override
+    public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
+        if (!isEnabled() || renderer == null || mc.level == null || mc.player == null) return;
+        if (presentationMode.get() == WorldUiPresentationService.Mode.SCREEN) return;
+
+        TextRenderer labelRenderer = ScreenSpaceOverlay2D.labelRenderer(TextRenderer.get());
+        Vec3 cameraPos = mc.gameRenderer != null && mc.gameRenderer.mainCamera() != null
+                ? mc.gameRenderer.mainCamera().position()
+                : mc.player.getEyePosition(tickDelta);
+        java.util.List<DropWorldEntry> entries = new java.util.ArrayList<>();
+        java.util.List<ItemBatchRenderer.WorldItemRow> itemRows = new java.util.ArrayList<>();
+
+        for (ItemEntity item : mc.level.getEntitiesOfClass(
+                ItemEntity.class,
+                mc.player.getBoundingBox().inflate(64),
+                e -> true
+        )) {
+            Vec3 pos = obtainEntityLerpedPos(item, tickDelta);
+            double distSq = pos.distanceToSqr(cameraPos);
+            double dist = Math.sqrt(distSq);
+            if (!passesDistanceFilter(item, dist)) continue;
+            WorldUiPresentationService.Snapshot presentation = resolvePresentation(dist);
+            if (presentation.worldAlpha() <= 0.001f) continue;
+
+            ItemStack stack = item.getItem().copy();
+            String text = stack.getHoverName().getString() + " x" + stack.getCount();
+            Vec3 anchor = new Vec3(pos.x, pos.y + Math.max(0.35, item.getBbHeight() + 0.18), pos.z);
+            entries.add(new DropWorldEntry(
+                    resolveSortPriority(stack), distSq, anchor, presentation.worldUnitsPerPixel(),
+                    presentation.worldAlpha(), stack, text, resolveDisplayColor(stack)));
+        }
+
+        entries.sort(DropESP::compareDropWorldRenderOrder);
+        for (int i = 0; i < entries.size(); i++) {
+            DropWorldEntry entry = entries.get(i);
+            itemRows.add(new ItemBatchRenderer.WorldItemRow(null,
+                    itemIconValue.get() ? new ItemStack[]{entry.stack()} : new ItemStack[0], i));
+        }
+        java.util.List<ItemBatchRenderer.WorldItemSprite[]> sprites =
+                ItemBatchRenderer.resolveWorldItemSprites(itemRows);
+        WorldBillboardRenderer.Basis basis = WorldBillboardRenderer.currentBasis();
+        for (int i = 0; i < entries.size(); i++) {
+            ItemBatchRenderer.WorldItemSprite sprite = i < sprites.size() && sprites.get(i).length > 0
+                    ? sprites.get(i)[0]
+                    : null;
+            renderWorldDrop(renderer, basis, labelRenderer, entries.get(i), sprite);
+        }
+    }
+
+    @Override
     public void onRenderHudEngine(Renderer2D renderer, TextRenderer textRenderer, GuiGraphicsExtractor ctx, float tickDelta) {
         if (!isEnabled() || mc.level == null || mc.player == null) return;
+        if (presentationMode.get() == WorldUiPresentationService.Mode.WORLD) return;
 
         boolean matteMode = isMatteMode();
         boolean overlayMode = isOverlayMode();
@@ -125,6 +200,8 @@ public class DropESP extends Module {
             double distSq = pos.distanceToSqr(cameraPos);
             double dist = Math.sqrt(distSq);
             if (!passesDistanceFilter(item, dist)) continue;
+            float presentationAlpha = resolvePresentation(dist).screenAlpha();
+            if (presentationAlpha <= 0.001f) continue;
 
             ItemStack stack = item.getItem();
             String text = stack.getHoverName().getString() + " x" + stack.getCount();
@@ -147,7 +224,8 @@ public class DropESP extends Module {
                 ScreenSpaceOverlay2D.LabelEntry label = matteMode
                         ? null
                         : ScreenSpaceOverlay2D.createCenteredLabel(labelRenderer, text, color, rect);
-                overlayEntries.add(new DropOverlayEntry(sortPriority, distSq, rect, color, matteLabel, label));
+                overlayEntries.add(new DropOverlayEntry(
+                        sortPriority, distSq, rect, color, matteLabel, label, presentationAlpha));
             } else {
                 AABB box = item.getBoundingBox().move(
                         pos.x - item.getX(),
@@ -166,7 +244,8 @@ public class DropESP extends Module {
 
                 double x = screen.x - (labelRenderer.getWidth(text, true) / 2.0);
                 double y = screen.y;
-                vanillaEntries.add(new DropVanillaEntry(sortPriority, distSq, ScreenSpaceOverlay2D.labelAt(text, x, y, color)));
+                vanillaEntries.add(new DropVanillaEntry(
+                        sortPriority, distSq, ScreenSpaceOverlay2D.labelAt(text, x, y, color), presentationAlpha));
             }
         }
 
@@ -184,7 +263,7 @@ public class DropESP extends Module {
             }
         } else {
             for (DropVanillaEntry entry : vanillaEntries) {
-                renderSingleLabel(labelRenderer, entry.label(), true, textScale);
+                renderSingleLabel(labelRenderer, entry.label(), true, textScale, entry.alpha());
                 Renderer2D.flushBatch(Renderer2D.FlushReason.EXPLICIT);
             }
         }
@@ -195,43 +274,50 @@ public class DropESP extends Module {
                                         DropOverlayEntry entry,
                                         boolean matteMode,
                                         double textScale) {
-        ScreenSpaceOverlay2D.ScreenRect rect = entry.rect();
-        if (frameValue.get()) {
-            if (matteMode) {
-                MatteHudStyle.drawFrame(renderer, rect.minX(), rect.minY(), rect.width(), rect.height(), entry.color(), 1.0f);
-            } else {
-                ScreenSpaceOverlay2D.drawFrame(renderer, rect, entry.color());
+        double previousAlpha = renderer.getAlpha();
+        renderer.setAlpha(previousAlpha * entry.alpha());
+        try {
+            ScreenSpaceOverlay2D.ScreenRect rect = entry.rect();
+            if (frameValue.get()) {
+                if (matteMode) {
+                    MatteHudStyle.drawFrame(renderer, rect.minX(), rect.minY(), rect.width(), rect.height(), entry.color(), 1.0f);
+                } else {
+                    ScreenSpaceOverlay2D.drawFrame(renderer, rect, entry.color());
+                }
             }
-        }
 
-        if (matteMode) {
-            DropLabelEntry label = entry.matteLabel();
-            if (label == null) return;
-            MatteHudStyle.drawPlate(renderer, label.x(), label.y(), label.width(), label.height(), 2.0f, 1.0f);
-            if (label.icon()) {
-                renderer.item(label.stack(), label.iconX(), label.iconY(), MATTE_ICON_SCALE, 0, Renderer2D.ITEM_OVERLAY_NONE, null);
+            if (matteMode) {
+                DropLabelEntry label = entry.matteLabel();
+                if (label == null) return;
+                MatteHudStyle.drawPlate(renderer, label.x(), label.y(), label.width(), label.height(), 2.0f, 1.0f);
+                if (label.icon()) {
+                    renderer.item(label.stack(), label.iconX(), label.iconY(), MATTE_ICON_SCALE, 0, Renderer2D.ITEM_OVERLAY_NONE, null);
+                }
+                renderSingleDropLabel(labelRenderer, label, textScale, entry.alpha());
+            } else {
+                ScreenSpaceOverlay2D.LabelEntry label = entry.label();
+                if (label == null) return;
+                if (textShadowValue.get()) {
+                    ScreenSpaceOverlay2D.renderLabelBackplate(renderer, label);
+                }
+                renderSingleLabel(labelRenderer, label, false, textScale, entry.alpha());
             }
-            renderSingleDropLabel(labelRenderer, label, textScale);
-        } else {
-            ScreenSpaceOverlay2D.LabelEntry label = entry.label();
-            if (label == null) return;
-            if (textShadowValue.get()) {
-                ScreenSpaceOverlay2D.renderLabelBackplate(renderer, label);
-            }
-            renderSingleLabel(labelRenderer, label, false, textScale);
+        } finally {
+            renderer.setAlpha(previousAlpha);
         }
 
         Renderer2D.flushBatch(Renderer2D.FlushReason.EXPLICIT);
     }
 
-    private void renderSingleDropLabel(TextRenderer labelRenderer, DropLabelEntry label, double textScale) {
+    private void renderSingleDropLabel(TextRenderer labelRenderer, DropLabelEntry label, double textScale, float alpha) {
         boolean renderStarted = false;
         if (!labelRenderer.isBuilding()) {
             labelRenderer.begin(textScale);
             renderStarted = true;
         }
         try {
-            labelRenderer.render(label.text(), label.textX(), label.textY(), new RenderColor(label.color()), false);
+            labelRenderer.render(label.text(), label.textX(), label.textY(),
+                    new RenderColor(MatteHudStyle.scaleAlpha(label.color(), alpha)), false);
         } finally {
             if (renderStarted) labelRenderer.end();
         }
@@ -240,14 +326,15 @@ public class DropESP extends Module {
     private void renderSingleLabel(TextRenderer labelRenderer,
                                    ScreenSpaceOverlay2D.LabelEntry label,
                                    boolean shadow,
-                                   double textScale) {
+                                   double textScale,
+                                   float alpha) {
         boolean renderStarted = false;
         if (!labelRenderer.isBuilding()) {
             labelRenderer.begin(textScale);
             renderStarted = true;
         }
         try {
-            ScreenSpaceOverlay2D.renderLabels(labelRenderer, java.util.List.of(label), shadow);
+            ScreenSpaceOverlay2D.renderLabels(labelRenderer, java.util.List.of(label), shadow, alpha);
         } finally {
             if (renderStarted) labelRenderer.end();
         }
@@ -275,6 +362,36 @@ public class DropESP extends Module {
         return new DropLabelEntry(stack, text, x, y, width, height, icon, iconX, iconY, textX, textY, color);
     }
 
+    private void renderWorldDrop(Renderer3D renderer,
+                                 WorldBillboardRenderer.Basis basis,
+                                 TextRenderer labelRenderer,
+                                 DropWorldEntry entry,
+                                 ItemBatchRenderer.WorldItemSprite itemSprite) {
+        double textScale = ScreenSpaceOverlay2D.TEXT_SCALE;
+        WorldTextRenderer.Metrics metrics = WorldTextRenderer.measure(labelRenderer, entry.text(), textScale, false);
+        boolean icon = itemIconValue.get() && itemSprite != null;
+        double iconBlock = icon ? MATTE_ICON_SIZE + MATTE_ICON_GAP : 0.0;
+        double width = metrics.width() + iconBlock + MATTE_LABEL_PAD_X * 2.0;
+        double height = Math.max(
+                metrics.height() + MATTE_LABEL_PAD_Y * 2.0,
+                icon ? MATTE_ICON_SIZE + MATTE_LABEL_PAD_Y * 2.0 : 0.0);
+        double x = -width * 0.5;
+        double y = -height;
+        WorldBillboardRenderer.mattePlate(renderer, basis, entry.anchor(), x, y, width, height,
+                2.0, 4.0, entry.worldScale(), entry.alpha());
+
+        double cursorX = x + MATTE_LABEL_PAD_X;
+        if (icon) {
+            double iconY = y + (height - MATTE_ICON_SIZE) * 0.5;
+            WorldBillboardRenderer.item(renderer, basis, entry.anchor(), itemSprite,
+                    cursorX, iconY, MATTE_ICON_SIZE, entry.worldScale(), entry.alpha());
+            cursorX += iconBlock;
+        }
+        double textY = y + (height - metrics.height()) * 0.5;
+        WorldBillboardRenderer.text(renderer, basis, labelRenderer, entry.text(), entry.anchor(),
+                cursorX, textY, textScale, entry.worldScale(), entry.color(), entry.alpha(), true);
+    }
+
     private boolean passesDistanceFilter(ItemEntity item, double dist) {
 
         String id = BuiltInRegistries.ITEM.getKey(item.getItem().getItem()).toString().toLowerCase();
@@ -300,6 +417,15 @@ public class DropESP extends Module {
         }
 
         return true;
+    }
+
+    private WorldUiPresentationService.Snapshot resolvePresentation(double distance) {
+        double projectionYScale = RenderState.worldProjection.m11();
+        double logicalHeight = mc != null && mc.getWindow() != null
+                ? mc.getWindow().getGuiScaledHeight()
+                : 0.0;
+        return WorldUiPresentationService.resolve(
+                presentationMode.get(), distance, WORLD_PRESENTATION_POLICY, projectionYScale, logicalHeight);
     }
 
     @Override
@@ -380,10 +506,20 @@ public class DropESP extends Module {
 
 
     private record DropOverlayEntry(int sortPriority, double distSq, ScreenSpaceOverlay2D.ScreenRect rect, int color,
-                                    DropLabelEntry matteLabel, ScreenSpaceOverlay2D.LabelEntry label) {
+                                    DropLabelEntry matteLabel, ScreenSpaceOverlay2D.LabelEntry label, float alpha) {
     }
 
-    private record DropVanillaEntry(int sortPriority, double distSq, ScreenSpaceOverlay2D.LabelEntry label) {
+    private record DropVanillaEntry(int sortPriority, double distSq, ScreenSpaceOverlay2D.LabelEntry label, float alpha) {
+    }
+
+    private record DropWorldEntry(int sortPriority,
+                                  double distSq,
+                                  Vec3 anchor,
+                                  double worldScale,
+                                  float alpha,
+                                  ItemStack stack,
+                                  String text,
+                                  int color) {
     }
 
     private record DropLabelEntry(ItemStack stack, String text, double x, double y, double width, double height,

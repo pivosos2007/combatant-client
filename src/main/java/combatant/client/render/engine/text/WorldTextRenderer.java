@@ -32,6 +32,16 @@ public enum WorldTextRenderer {
                                        String text,
                                        Vec3 anchor,
                                        Options options) {
+        return drawBillboard(renderer, textRenderer, text, anchor, options, null, null);
+    }
+
+    public static double drawBillboard(Renderer3D renderer,
+                                       TextRenderer textRenderer,
+                                       String text,
+                                       Vec3 anchor,
+                                       Options options,
+                                       Vec3 resolvedRight,
+                                       Vec3 resolvedDown) {
         if (renderer == null || text == null || text.isEmpty() || anchor == null) return 0.0;
         Options resolved = options != null ? options : Options.defaults();
         if (resolved.worldScale() <= 0.0) return 0.0;
@@ -79,10 +89,14 @@ public enum WorldTextRenderer {
         MeshBuilder mesh = renderer.batch(pipeline, effectiveDepth, bindings);
         if (mesh == null) return 0.0;
 
-        Vector3f rightVector = new Vector3f(1f, 0f, 0f).rotate(RenderState.cameraRotation);
-        Vector3f upVector = new Vector3f(0f, 1f, 0f).rotate(RenderState.cameraRotation);
-        Vec3 right = new Vec3(rightVector.x, rightVector.y, rightVector.z);
-        Vec3 up = new Vec3(-upVector.x, -upVector.y, -upVector.z);
+        Vec3 right = resolvedRight;
+        Vec3 up = resolvedDown;
+        if (right == null || up == null) {
+            Vector3f rightVector = new Vector3f(1f, 0f, 0f).rotate(RenderState.cameraRotation);
+            Vector3f upVector = new Vector3f(0f, 1f, 0f).rotate(RenderState.cameraRotation);
+            right = new Vec3(rightVector.x, rightVector.y, rightVector.z);
+            up = new Vec3(-upVector.x, -upVector.y, -upVector.z);
+        }
 
         double offsetX = resolved.offsetX();
         double offsetY = resolved.offsetY();
@@ -97,6 +111,21 @@ public enum WorldTextRenderer {
         emitString(mesh, font, text, startX, 0.0, glyphScale, anchor, right, up,
                 offsetX, offsetY, worldScale, resolved.color());
         return width * worldScale;
+    }
+
+    /** Exact logical metrics used by the billboard backend for a requested font scale. */
+    public static Metrics measure(TextRenderer textRenderer, String text, double scale, boolean big) {
+        CustomTextRenderer custom = resolve(textRenderer);
+        if (custom == null) return new Metrics(0.0, 0.0);
+        CustomTextRenderer.GlyphSelection selection = custom.prepareGlyphFont(scale, big);
+        GlyphFont font = selection.font();
+        if (font == null) return new Metrics(0.0, 0.0);
+        String safeText = text == null ? "" : text;
+        double glyphScale = selection.glyphScale();
+        return new Metrics(
+                font.getWidth(safeText, safeText.length()) * glyphScale,
+                (font.height() + 1.0) * glyphScale
+        );
     }
 
     private static void emitString(MeshBuilder mesh,
@@ -206,5 +235,8 @@ public enum WorldTextRenderer {
     }
 
     private record MsdfUniformKey(float pxRange, int atlasWidth, int atlasHeight) {
+    }
+
+    public record Metrics(double width, double height) {
     }
 }

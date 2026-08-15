@@ -21,6 +21,7 @@ import combatant.client.render.engine.profiler.RenderProfiler2D;
 import combatant.client.render.engine.profiler.RenderProfiler3D;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.engine.renderer.ui.ItemBatchRenderer;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.runtime.RuntimeShutdownContext;
@@ -294,16 +295,20 @@ public enum ModuleManager {
         Module[] phaseModules = WORLD_PHASE_SNAPSHOTS.get(phase);
         if (phaseModules == null) return;
 
-        for (Module m : phaseModules) {
-            if (m.isEnabled()) {
-                try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("3d:module:" + m.name());
-                     RenderProfiler3D.Section ignored = RenderProfiler3D.section("module:" + m.name())) {
-                    if (ModuleExtensionManager.beforeWorldRender(m, renderer, depthRenderer, tickDelta)) {
-                        m.onRenderWorldEngine(renderer, depthRenderer, tickDelta);
-                        ModuleExtensionManager.afterWorldRender(m, renderer, depthRenderer, tickDelta);
+        try {
+            for (Module m : phaseModules) {
+                if (m.isEnabled()) {
+                    try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("3d:module:" + m.name());
+                         RenderProfiler3D.Section ignored = RenderProfiler3D.section("module:" + m.name())) {
+                        if (ModuleExtensionManager.beforeWorldRender(m, renderer, depthRenderer, tickDelta)) {
+                            m.onRenderWorldEngine(renderer, depthRenderer, tickDelta);
+                            ModuleExtensionManager.afterWorldRender(m, renderer, depthRenderer, tickDelta);
+                        }
                     }
                 }
             }
+        } finally {
+            ItemBatchRenderer.finishWorldItemFrame();
         }
     }
 

@@ -139,11 +139,20 @@ public enum ScreenSpaceOverlay2D {
     }
 
     public static void renderLabels(TextRenderer textRenderer, List<LabelEntry> labels, boolean shadow) {
+        renderLabels(textRenderer, labels, shadow, 1.0f);
+    }
+
+    public static void renderLabels(TextRenderer textRenderer,
+                                    List<LabelEntry> labels,
+                                    boolean shadow,
+                                    float alpha) {
         for (LabelEntry label : labels) {
-            double nextX = textRenderer.render(label.leftText, label.x, label.y, new RenderColor(label.leftColor), shadow);
+            double nextX = textRenderer.render(label.leftText, label.x, label.y,
+                    new RenderColor(scaleAlpha(label.leftColor, alpha)), shadow);
             if (label.rightText != null) {
                 double rightX = label.leftWidth > 0.0 ? label.x + label.leftWidth + label.gap : nextX + label.gap;
-                textRenderer.render(label.rightText, rightX, label.y, new RenderColor(label.rightColor), shadow);
+                textRenderer.render(label.rightText, rightX, label.y,
+                        new RenderColor(scaleAlpha(label.rightColor, alpha)), shadow);
             }
         }
     }
@@ -175,6 +184,11 @@ public enum ScreenSpaceOverlay2D {
     private static int withAlpha(int argb, int alpha) {
         int clamped = Math.max(0, Math.min(255, alpha));
         return (clamped << 24) | (argb & 0x00FFFFFF);
+    }
+
+    private static int scaleAlpha(int argb, float alpha) {
+        int source = (argb >>> 24) & 0xFF;
+        return withAlpha(argb, Math.round(source * Math.max(0.0f, Math.min(1.0f, alpha))));
     }
 
     private static double snapText(double value) {

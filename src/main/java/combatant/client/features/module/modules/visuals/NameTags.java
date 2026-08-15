@@ -46,10 +46,16 @@ import combatant.client.features.relations.PlayerRelations;
 import combatant.client.mixininterface.IEntity;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.color.RenderColor;
+import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.engine.renderer.ui.ItemBatchRenderer;
 import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.text.WorldTextRenderer;
+import combatant.client.render.engine.world.WorldBillboardRenderer;
+import combatant.client.render.engine.world.WorldUiPresentationService;
 import combatant.client.util.item.EnchantMeta;
 import combatant.client.util.item.EnchantRegistry;
 import combatant.client.util.item.IllegalItemUtil;
@@ -90,7 +96,6 @@ public class NameTags extends Module {
     private static final float SMALL_TEXT_SCALE = 0.82f;
     private static final int NAMEPLATE_PAD_X = 4;
     private static final int NAMEPLATE_PAD_Y = 2;
-    private static final float NAMEPLATE_RADIUS = 7.0f;
     private static final float MATTE_NAMEPLATE_RADIUS = 4.0f;
     private static final float MATTE_HEAD_MIN_SIZE = 12.0f;
     private static final float MATTE_HEAD_DIVIDER_GAP = 4.0f;
@@ -108,14 +113,10 @@ public class NameTags extends Module {
     private static final float NAMEPLATE_SHADOW_BLUR = 4.6f;
     private static final float NAMEPLATE_SHADOW_INNER_ALPHA = 0.18f;
     private static final float NAMEPLATE_TEXT_SHADOW_OFFSET = 0.0f;
-    private static final int NAMEPLATE_GLASS_TINT = 0xFFFFFFFF;
-    private static final int NAMEPLATE_GLASS_VEIL = 0x2A141414;
-    private static final float NAMEPLATE_GLASS_THICKNESS = 11.0f;
-    private static final float NAMEPLATE_GLASS_FRESNEL_POWER = -18.0f;
-    private static final float NAMEPLATE_GLASS_FRESNEL_ALPHA = 1.0f;
-    private static final float NAMEPLATE_GLASS_BASE_ALPHA = 0.82f;
-    private static final float NAMEPLATE_GLASS_FRESNEL_MIX = 0.38f;
-    private static final float NAMEPLATE_GLASS_DISTORT = 0.135f;
+    private static final float ENCHANT_TEXT_MIN_GAP = 2.0f;
+    private static final int ENCHANT_NAME_MAX_CODEPOINTS = 2;
+    private static final WorldUiPresentationService.Policy WORLD_PRESENTATION_POLICY =
+            WorldUiPresentationService.Policy.defaults();
     private static final int DIST_TEXT_GAP = 5;
     private static final int PING_TEXT_GAP = 4;
     private static final float ENCHANT_TEXT_SHADOW_OFFSET = 0.7f;
@@ -167,7 +168,7 @@ public class NameTags extends Module {
     private static final String SETTING_HP_DECIMALS = "hp_decimals";
     private static final String SETTING_HP_COLOR_MODE = "hp_color_mode";
     private static final String SETTING_NAMEPLATE_ALPHA = "nameplate_alpha";
-    private static final String SETTING_NAMEPLATE_STYLE = "nameplate_style";
+    private static final String SETTING_PRESENTATION_MODE = "presentation_mode";
     private static final String SETTING_PLAYER_HEAD = "player_head";
     private static final String SETTING_NAMEPLATE_EXTRAS = "nameplate_extras";
     private static final float NAMEPLATE_LIFT_MAX = 12f;
@@ -181,6 +182,8 @@ public class NameTags extends Module {
     private final Minecraft mc = Minecraft.getInstance();
     private final ItemIdSetValue topIgnore = TopEnchantUtil.ignoreValue();
     private final List<RenderEntry> renderQueue = new ArrayList<>();
+    private final List<WorldRenderEntry> worldRenderQueue = new ArrayList<>();
+    private final List<ItemBatchRenderer.WorldItemRow> worldItemRows = new ArrayList<>();
     private final List<Player> playerBuffer = new ArrayList<>();
     private final Map<UUID, ItemStack[]> slotCache = new HashMap<>();
     private final Map<UUID, EffectCache> effectCache = new HashMap<>();
@@ -217,9 +220,8 @@ public class NameTags extends Module {
     private final NumberValue<Integer> nameplateAlpha =
             visibleWhen(num("nameTagsNameplateAlpha", SETTING_NAMEPLATE_ALPHA, 180, 0, 255),
                     () -> toggles.get("Show nameplate"));
-    private final EnumValue<NameplateStyle> nameplateStyle =
-            visibleWhen(enumSetting("nameTagsNameplateStyle", SETTING_NAMEPLATE_STYLE, NameplateStyle.LIQUID_GLASS, NameplateStyle.values()),
-                    () -> toggles.get("Show nameplate"));
+    private final EnumValue<PresentationMode> presentationMode =
+            enumSetting("nameTagsPresentationMode", SETTING_PRESENTATION_MODE, PresentationMode.HYBRID, PresentationMode.values());
     private final BooleanValue playerHead =
             visibleWhen(bool("nameTagsPlayerHead", SETTING_PLAYER_HEAD, false),
                     () -> toggles.get("Show nameplate"));
@@ -304,6 +306,7 @@ public class NameTags extends Module {
     private transient TextRenderer cachedHpTr;
     private transient TextRenderer cachedLevelTr;
     private transient TextRenderer cachedTimeTr;
+    private transient float foregroundAlpha = 1.0f;
 
     {
         setting(SettingDef.bool(totemPopCounter)
@@ -486,12 +489,76 @@ public class NameTags extends Module {
     }
 
     @Override
+    public WorldPhase getWorldPhase() {
+        return WorldPhase.END_MAIN;
+    }
+
+    @Override
+    public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
+        if (!isEnabled() || renderer == null || mc.level == null || mc.player == null) return;
+        if (presentationMode.get() == PresentationMode.TWO_D) return;
+
+        ensureFontCache(TextRenderer.get());
+        worldRenderQueue.clear();
+        worldItemRows.clear();
+        seenIds.clear();
+        Vec3 cameraPos = mc.gameRenderer != null && mc.gameRenderer.mainCamera() != null
+                ? mc.gameRenderer.mainCamera().position()
+                : mc.player.position();
+        WorldBillboardRenderer.Basis basis = WorldBillboardRenderer.currentBasis();
+
+        for (Player player : mc.level.players()) {
+            if (!shouldRender(player)) continue;
+            seenIds.add(player.getUUID());
+            Vec3 pos = obtainEntityLerpedPos(player, tickDelta);
+            double dist = cameraPos.distanceTo(pos);
+            WorldUiPresentationService.Snapshot presentation = resolvePresentation(dist);
+            float alpha = presentation.worldAlpha();
+            if (alpha <= 0.001f) continue;
+
+            boolean renderNameplate = toggles.get("Show nameplate")
+                    && (!distanceToggles.get("nameplate") || dist <= plateDistance.get());
+            boolean renderSlots = toggles.get("Show armor row")
+                    && (!distanceToggles.get("slots") || dist <= slotsDistance.get());
+            if (!renderNameplate && !renderSlots) continue;
+
+            double adaptiveScale = presentation.worldUnitsPerPixel();
+            Vec3 anchor = new Vec3(pos.x, pos.y + player.getBbHeight() + 0.68, pos.z);
+            ItemStack[] slots = renderSlots ? getCachedEquipmentSlots(player) : EMPTY_SLOTS;
+            List<List<EnchantLine>> enchantLines = List.of();
+            if (renderSlots) enchantLines = resolveEnchantCache(player, slots).lines;
+            worldRenderQueue.add(new WorldRenderEntry(
+                    player, anchor, dist, adaptiveScale, alpha, renderNameplate, renderSlots, slots, enchantLines));
+        }
+
+        worldRenderQueue.sort(Comparator.comparingDouble(WorldRenderEntry::distance).reversed());
+        for (int i = 0; i < worldRenderQueue.size(); i++) {
+            WorldRenderEntry entry = worldRenderQueue.get(i);
+            worldItemRows.add(new ItemBatchRenderer.WorldItemRow(entry.player(), entry.slots(), i * 31));
+        }
+        List<ItemBatchRenderer.WorldItemSprite[]> itemSprites =
+                ItemBatchRenderer.resolveWorldItemSprites(worldItemRows);
+        for (int i = 0; i < worldRenderQueue.size(); i++) {
+            ItemBatchRenderer.WorldItemSprite[] rowSprites = i < itemSprites.size()
+                    ? itemSprites.get(i)
+                    : new ItemBatchRenderer.WorldItemSprite[0];
+            renderWorldNameTag(renderer, basis, worldRenderQueue.get(i), rowSprites);
+        }
+        if (presentationMode.get() == PresentationMode.THREE_D) pruneCaches();
+    }
+
+    @Override
     public void onRender2D(GuiGraphicsExtractor ctx, float tickDelta) {
     }
 
     @Override
     public void onRenderHudEngine(Renderer2D renderer, TextRenderer textRenderer, GuiGraphicsExtractor ctx, float tickDelta) {
         if (!isEnabled() || mc.level == null || mc.player == null) return;
+
+        if (presentationMode.get() == PresentationMode.THREE_D) {
+            renderQueue.clear();
+            return;
+        }
 
         ensureFontCache(textRenderer);
 
@@ -566,6 +633,8 @@ public class NameTags extends Module {
             Vec3 pos = obtainEntityLerpedPos(player, tickDelta);
             double dist = (cameraPos == null) ? 0.0 : cameraPos.distanceTo(pos);
             if (!hasUnlimited && maxCutoff > 0.0 && dist > maxCutoff) continue;
+            float presentationAlpha = resolvePresentation(dist).screenAlpha();
+            if (presentationAlpha <= 0.001f) continue;
 
             AABB box = player.getBoundingBox().move(pos.subtract(player.position()));
             Vec3 anchor = new Vec3(box.getCenter().x, box.maxY + 0.5, box.getCenter().z);
@@ -631,7 +700,8 @@ public class NameTags extends Module {
             itemsY -= sectionLift;
             renderQueue.add(new RenderEntry(player, dist, distOffset, centerX, nameY, itemsY, rect,
                     renderSlots, renderNameplate, renderEffects, labelInfo, infoColor, nameplateLayout,
-                    slots, enchantLines, maxEnchantLines, effects, totemPopCount, totemPopAnimation));
+                    slots, enchantLines, maxEnchantLines, effects, totemPopCount, totemPopAnimation,
+                    presentationAlpha));
         }
 
         pruneCaches();
@@ -694,8 +764,169 @@ public class NameTags extends Module {
         return max * eased;
     }
 
-    private boolean isMatteNameplate() {
-        return nameplateStyle.get() == NameplateStyle.MATTE;
+    private WorldUiPresentationService.Snapshot resolvePresentation(double distance) {
+        WorldUiPresentationService.Mode mode = switch (presentationMode.get()) {
+            case TWO_D -> WorldUiPresentationService.Mode.SCREEN;
+            case THREE_D -> WorldUiPresentationService.Mode.WORLD;
+            case HYBRID -> WorldUiPresentationService.Mode.HYBRID;
+        };
+        double projectionYScale = RenderState.worldProjection.m11();
+        double logicalHeight = mc != null && mc.getWindow() != null
+                ? mc.getWindow().getGuiScaledHeight()
+                : 0.0;
+        return WorldUiPresentationService.resolve(
+                mode, distance, WORLD_PRESENTATION_POLICY, projectionYScale, logicalHeight);
+    }
+
+    private void renderWorldNameTag(Renderer3D renderer,
+                                    WorldBillboardRenderer.Basis basis,
+                                    WorldRenderEntry entry,
+                                    ItemBatchRenderer.WorldItemSprite[] itemSprites) {
+        Player player = entry.player();
+        TextRenderer nameRenderer = cachedNameTr != null ? cachedNameTr : TextRenderer.get();
+        TextRenderer hpRenderer = cachedHpTr != null ? cachedHpTr : nameRenderer;
+        double itemY = -equipIconSize() * 0.5;
+
+        if (entry.renderNameplate()) {
+            LabelInfo info = buildLabelInfo(player);
+            String ping = info.pingText();
+            String prefix = info.pvpPrefix();
+            String hp = formatNameplateHp(info.hp());
+            String distance = shouldShowDistanceText(player) ? (int) Math.round(entry.distance()) + "m" : "";
+            double pingWidth = worldTextWidth(nameRenderer, ping, NAMEPLATE_SCALE);
+            double prefixWidth = worldTextWidth(nameRenderer, prefix, NAMEPLATE_SCALE);
+            double nameWidth = shouldUseTabNames()
+                    ? worldStyledTextWidth(nameRenderer, info.styledName(), NAMEPLATE_SCALE, CategoryService.getColor(player))
+                    : worldTextWidth(nameRenderer, info.name(), NAMEPLATE_SCALE);
+            double hpWidth = worldTextWidth(hpRenderer, hp, NAMEPLATE_SCALE);
+            double distanceWidth = worldTextWidth(nameRenderer, distance, NAMEPLATE_SCALE);
+            double textHeight = Math.max(
+                    WorldTextRenderer.measure(nameRenderer, "Ag", NAMEPLATE_SCALE, false).height(),
+                    WorldTextRenderer.measure(hpRenderer, "Ag", NAMEPLATE_SCALE, false).height());
+            double contentWidth = pingWidth + (pingWidth > 0.0 ? PING_TEXT_GAP : 0.0)
+                    + prefixWidth + nameWidth
+                    + (hpWidth > 0.0 ? HP_TEXT_GAP : 0.0) + hpWidth
+                    + (distanceWidth > 0.0 ? DIST_TEXT_GAP : 0.0) + distanceWidth;
+            double bgX = -contentWidth * 0.5 - NAMEPLATE_PAD_X;
+            double bgY = -NAMEPLATE_PAD_Y;
+            double bgW = contentWidth + NAMEPLATE_PAD_X * 2.0;
+            double bgH = textHeight + NAMEPLATE_PAD_Y * 2.0;
+            double radius = Math.min(MATTE_NAMEPLATE_RADIUS, Math.max(2.5, bgH * 0.30));
+            float materialAlpha = (clampAlpha(nameplateAlpha.get()) / 255.0f) * entry.alpha();
+
+            WorldBillboardRenderer.mattePlate(renderer, basis, entry.anchor(), bgX, bgY, bgW, bgH,
+                    radius, NAMEPLATE_SHADOW_BLUR, entry.worldScale(), materialAlpha);
+
+            double cursorX = -contentWidth * 0.5;
+            if (!ping.isEmpty()) {
+                drawWorldText(renderer, basis, nameRenderer, ping, entry.anchor(), cursorX, 0.0,
+                        NAMEPLATE_SCALE, entry.worldScale(), resolvePingColor(info.ping()), entry.alpha());
+                cursorX += pingWidth + PING_TEXT_GAP;
+            }
+            if (!prefix.isEmpty()) {
+                drawWorldText(renderer, basis, nameRenderer, prefix, entry.anchor(), cursorX, 0.0,
+                        NAMEPLATE_SCALE, entry.worldScale(), pvpPrefixColor.getArgb(), entry.alpha());
+                cursorX += prefixWidth;
+            }
+            if (shouldUseTabNames()) {
+                cursorX = drawWorldStyledText(renderer, basis, nameRenderer, info.styledName(), entry.anchor(), cursorX, 0.0,
+                        NAMEPLATE_SCALE, entry.worldScale(), CategoryService.getColor(player), entry.alpha());
+            } else {
+                drawWorldText(renderer, basis, nameRenderer, info.name(), entry.anchor(), cursorX, 0.0,
+                        NAMEPLATE_SCALE, entry.worldScale(), CategoryService.getColor(player), entry.alpha());
+                cursorX += nameWidth;
+            }
+            if (!hp.isEmpty()) {
+                cursorX += HP_TEXT_GAP;
+                drawWorldText(renderer, basis, hpRenderer, hp, entry.anchor(), cursorX, 0.0,
+                        NAMEPLATE_SCALE, entry.worldScale(), info.infoColor(), entry.alpha());
+                cursorX += hpWidth;
+            }
+            if (!distance.isEmpty()) {
+                cursorX += DIST_TEXT_GAP;
+                drawWorldText(renderer, basis, nameRenderer, distance, entry.anchor(), cursorX, 0.0,
+                        NAMEPLATE_SCALE, entry.worldScale(), 0xFFD0D0D0, entry.alpha());
+            }
+            itemY = bgY - equipIconSize() - 7.0;
+        }
+
+        if (!entry.renderSlots()) return;
+        int iconSize = equipIconSize();
+        EquipmentLayout equipment = computeEquipmentLayout(
+                nameRenderer, entry.slots(), entry.enchantLines(), 0.0, iconSize, equipIconGap(), SMALL_TEXT_SCALE);
+        double enchantHeight = WorldTextRenderer.measure(nameRenderer, "Ag", SMALL_TEXT_SCALE, false).height();
+        for (int i = 0; i < entry.slots().length; i++) {
+            ItemStack stack = entry.slots()[i];
+            if (stack == null || stack.isEmpty()) continue;
+            double itemX = equipment.centers()[i] - iconSize * 0.5;
+            if (i < itemSprites.length) {
+                WorldBillboardRenderer.item(renderer, basis, entry.anchor(), itemSprites[i],
+                        itemX, itemY, iconSize, entry.worldScale(), entry.alpha());
+            }
+            List<EnchantLine> lines = i < entry.enchantLines().size() ? entry.enchantLines().get(i) : List.of();
+            for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
+                EnchantLine line = lines.get(lineIndex);
+                double width = worldTextWidth(nameRenderer, line.text(), SMALL_TEXT_SCALE);
+                double lineY = itemY - 3.0 - enchantHeight * (lineIndex + 1);
+                drawWorldText(renderer, basis, nameRenderer, line.text(), entry.anchor(),
+                        equipment.centers()[i] - width * 0.5, lineY,
+                        SMALL_TEXT_SCALE, entry.worldScale(), line.color(), entry.alpha());
+            }
+        }
+    }
+
+    private static double worldTextWidth(TextRenderer renderer, String text, double scale) {
+        if (text == null || text.isEmpty()) return 0.0;
+        return WorldTextRenderer.measure(renderer, text, scale, false).width();
+    }
+
+    private static double worldStyledTextWidth(TextRenderer renderer,
+                                               Component text,
+                                               double scale,
+                                               int defaultColor) {
+        if (text == null) return 0.0;
+        double width = 0.0;
+        for (TextRenderUtil.Part part : TextRenderUtil.flattenStyled(text, defaultColor)) {
+            width += worldTextWidth(renderer, part.text(), scale);
+        }
+        return width;
+    }
+
+    private static void drawWorldText(Renderer3D renderer,
+                                      WorldBillboardRenderer.Basis basis,
+                                      TextRenderer textRenderer,
+                                      String text,
+                                      Vec3 anchor,
+                                      double pixelX,
+                                      double pixelY,
+                                      double textScale,
+                                      double worldScale,
+                                      int argb,
+                                      float alpha) {
+        if (text == null || text.isEmpty() || alpha <= 0.001f) return;
+        WorldBillboardRenderer.text(renderer, basis, textRenderer, text, anchor, pixelX, pixelY,
+                textScale, worldScale, argb, alpha, true);
+    }
+
+    private static double drawWorldStyledText(Renderer3D renderer,
+                                              WorldBillboardRenderer.Basis basis,
+                                              TextRenderer textRenderer,
+                                              Component text,
+                                              Vec3 anchor,
+                                              double pixelX,
+                                              double pixelY,
+                                              double textScale,
+                                              double worldScale,
+                                              int defaultColor,
+                                              float alpha) {
+        double cursor = pixelX;
+        if (text == null) return cursor;
+        for (TextRenderUtil.Part part : TextRenderUtil.flattenStyled(text, defaultColor)) {
+            drawWorldText(renderer, basis, textRenderer, part.text(), anchor, cursor, pixelY,
+                    textScale, worldScale, part.color(), alpha);
+            cursor += worldTextWidth(textRenderer, part.text(), textScale);
+        }
+        return cursor;
     }
 
     private void drawNameplateBackground(Renderer2D renderer, Player player, NameplateLayout layout) {
@@ -703,46 +934,13 @@ public class NameTags extends Module {
         int alpha = clampAlpha(nameplateAlpha.get());
         if (alpha <= 0) return;
 
-        float globalAlpha = alpha / 255.0f;
-        if (isMatteNameplate()) {
-            MatteHudStyle.drawPlate(renderer, layout.bgX(), layout.bgY(), layout.bgW(), layout.bgH(), nameplateRadius(layout), globalAlpha);
-            return;
-        }
-
-        float radius = nameplateRadius(layout);
-        Renderer2D.COLOR.liquidGlassRect(
-                layout.bgX(),
-                layout.bgY(),
-                layout.bgW(),
-                layout.bgH(),
-                radius,
-                NAMEPLATE_GLASS_THICKNESS,
-                NAMEPLATE_GLASS_TINT,
-                globalAlpha,
-                NAMEPLATE_GLASS_FRESNEL_POWER,
-                NAMEPLATE_GLASS_FRESNEL_ALPHA,
-                NAMEPLATE_GLASS_BASE_ALPHA,
-                NAMEPLATE_GLASS_FRESNEL_MIX,
-                NAMEPLATE_GLASS_DISTORT,
-                0.0f
-        );
-        renderer.roundedRect(
-                layout.bgX(),
-                layout.bgY(),
-                layout.bgW(),
-                layout.bgH(),
-                radius,
-                1.0f,
-                HudRenderUtil.scaleAlpha(NAMEPLATE_GLASS_VEIL, globalAlpha)
-        );
+        float globalAlpha = (alpha / 255.0f) * foregroundAlpha;
+        MatteHudStyle.drawPlate(renderer, layout.bgX(), layout.bgY(), layout.bgW(), layout.bgH(), nameplateRadius(layout), globalAlpha);
     }
 
     private float nameplateRadius(NameplateLayout layout) {
-        if (layout == null) return isMatteNameplate() ? MATTE_NAMEPLATE_RADIUS : NAMEPLATE_RADIUS;
-        if (isMatteNameplate()) {
-            return Math.min(MATTE_NAMEPLATE_RADIUS, Math.max(2.5f, layout.bgH() * 0.30f));
-        }
-        return Math.min(NAMEPLATE_RADIUS, Math.max(4.5f, layout.bgH() * 0.5f));
+        if (layout == null) return MATTE_NAMEPLATE_RADIUS;
+        return Math.min(MATTE_NAMEPLATE_RADIUS, Math.max(2.5f, layout.bgH() * 0.30f));
     }
 
     private boolean shouldRenderPlayerHead(Player player) {
@@ -822,6 +1020,21 @@ public class NameTags extends Module {
     }
 
     private void renderNameTagForeground(Renderer2D renderer, GuiGraphicsExtractor ctx, TextRenderer textRenderer, RenderEntry entry) {
+        float alpha = Math.max(0.0f, Math.min(1.0f, entry.presentationAlpha()));
+        if (alpha <= 0.001f) return;
+        double previousRendererAlpha = renderer.getAlpha();
+        float previousForegroundAlpha = foregroundAlpha;
+        foregroundAlpha = alpha;
+        renderer.setAlpha(previousRendererAlpha * alpha);
+        try {
+            renderNameTagForegroundContent(renderer, ctx, textRenderer, entry);
+        } finally {
+            renderer.setAlpha(previousRendererAlpha);
+            foregroundAlpha = previousForegroundAlpha;
+        }
+    }
+
+    private void renderNameTagForegroundContent(Renderer2D renderer, GuiGraphicsExtractor ctx, TextRenderer textRenderer, RenderEntry entry) {
         Player player = entry.player();
         int centerX = entry.centerX();
         int nameY = entry.nameY();
@@ -835,9 +1048,13 @@ public class NameTags extends Module {
         }
 
         final int effectsLift = scaleRow(computeEnchantLift(textRenderer, entry.maxEnchantLines()));
+        EquipmentLayout equipmentLayout = entry.renderSlots()
+                ? computeEquipmentLayout(textRenderer, entry.slots(), entry.enchantLines(), centerX,
+                equipIconSize(), equipIconGap(), SMALL_TEXT_SCALE)
+                : EquipmentLayout.empty();
 
         if (entry.renderSlots()) {
-            drawEquipmentRow(ctx, entry.player(), entry.slots(), centerX, itemsY);
+            drawEquipmentRow(ctx, entry.player(), entry.slots(), equipmentLayout, itemsY);
         }
 
         if (entry.renderEffects()) {
@@ -851,7 +1068,7 @@ public class NameTags extends Module {
         boolean startedBaseText = beginTextRenderer(textRenderer, SMALL_TEXT_SCALE);
         try {
             if (entry.renderSlots()) {
-                drawEquipmentRowText(textRenderer, entry.slots(), entry.enchantLines(), centerX, itemsY);
+                drawEquipmentRowText(textRenderer, entry.slots(), entry.enchantLines(), equipmentLayout, itemsY);
             }
 
             if (entry.renderEffects()) {
@@ -930,7 +1147,7 @@ public class NameTags extends Module {
         if (count <= 0 || animation <= 0.001f) return;
 
         float anim = AnimationUtility.easeInOutCubic(animation);
-        float globalAlpha = (clampAlpha(nameplateAlpha.get()) / 255.0f) * anim;
+        float globalAlpha = (clampAlpha(nameplateAlpha.get()) / 255.0f) * anim * foregroundAlpha;
         if (globalAlpha <= 0.001f) return;
 
         drawNameplateDivider(
@@ -986,7 +1203,7 @@ public class NameTags extends Module {
         if (ctx == null || layout == null || !layout.renderHead()) return;
         if (!(player instanceof AbstractClientPlayer clientPlayer)) return;
 
-        int alpha = clampAlpha(nameplateAlpha.get());
+        int alpha = Math.round(clampAlpha(nameplateAlpha.get()) * foregroundAlpha);
         if (alpha <= 0) return;
         float globalAlpha = alpha / 255.0f;
 
@@ -1021,9 +1238,7 @@ public class NameTags extends Module {
                                       float height,
                                       float globalAlpha) {
         if (renderer == null || width <= 0.0f || height <= 0.0f || globalAlpha <= 0.001f) return;
-        int color = isMatteNameplate()
-                ? MatteHudStyle.strokeColor(globalAlpha * 0.82f)
-                : MatteHudStyle.withAlpha(0xFFFFFF, Math.round(58.0f * globalAlpha));
+        int color = MatteHudStyle.strokeColor(globalAlpha * 0.82f);
         float drawWidth = Math.max(0.8f, width);
         renderer.roundedRect(
                 x + (width - drawWidth) * 0.5f,
@@ -1149,16 +1364,17 @@ public class NameTags extends Module {
         totemPopLastCounts.keySet().removeIf(id -> !seenIds.contains(id));
     }
 
-    private void drawEquipmentRow(GuiGraphicsExtractor ctx, Player player, ItemStack[] slots, int centerX, int y) {
+    private void drawEquipmentRow(GuiGraphicsExtractor ctx,
+                                  Player player,
+                                  ItemStack[] slots,
+                                  EquipmentLayout layout,
+                                  int y) {
         int iconSize = equipIconSize();
-        int gap = equipIconGap();
-        int rowWidth = slots.length * (iconSize + gap) - gap;
-        int startX = centerX - rowWidth / 2;
         int seed = 0;
 
         for (int i = 0; i < slots.length; i++) {
             ItemStack stack = slots[i];
-            int x = startX + i * (iconSize + gap);
+            float x = (float) (layout.centers()[i] - iconSize * 0.5);
             if (stack.isEmpty()) continue;
 
             float scale = iconSize / 16f;
@@ -1198,15 +1414,12 @@ public class NameTags extends Module {
     }
 
     private void drawEquipmentRowText(TextRenderer textRenderer, ItemStack[] slots, List<List<EnchantLine>> enchantLines,
-                                      int centerX, int y) {
+                                      EquipmentLayout layout, int y) {
         int iconSize = equipIconSize();
-        int gap = equipIconGap();
-        int rowWidth = slots.length * (iconSize + gap) - gap;
-        int startX = centerX - rowWidth / 2;
 
         for (int i = 0; i < slots.length; i++) {
             ItemStack stack = slots[i];
-            int x = startX + i * (iconSize + gap);
+            double center = layout.centers()[i];
             if (stack.isEmpty()) continue;
 
             List<EnchantLine> ench = enchantLines.get(i);
@@ -1216,7 +1429,7 @@ public class NameTags extends Module {
                 for (int idx = 0; idx < ench.size(); idx++) {
                     EnchantLine line = ench.get(idx);
                     int lineY = startY - idx * lineHeight;
-                    int textX = x + iconSize / 2 - (int) textRenderer.getWidth(line.text(), true) / 2;
+                    int textX = (int) Math.round(center - textRenderer.getWidth(line.text(), true) * 0.5);
                     renderEquipmentText(textRenderer, line.text(), textX, lineY, line.color());
                 }
             }
@@ -1224,27 +1437,65 @@ public class NameTags extends Module {
         }
     }
 
+    private EquipmentLayout computeEquipmentLayout(TextRenderer textRenderer,
+                                                    ItemStack[] slots,
+                                                    List<List<EnchantLine>> enchantLines,
+                                                    double centerX,
+                                                    int iconSize,
+                                                    int requestedGap,
+                                                    double enchantTextScale) {
+        if (slots == null || slots.length == 0) return EquipmentLayout.empty();
+        double[] widths = new double[slots.length];
+        double totalWidth = 0.0;
+        double gap = Math.max(ENCHANT_TEXT_MIN_GAP, requestedGap);
+        for (int i = 0; i < slots.length; i++) {
+            double columnWidth = iconSize;
+            List<EnchantLine> lines = enchantLines != null && i < enchantLines.size()
+                    ? enchantLines.get(i)
+                    : List.of();
+            for (EnchantLine line : lines) {
+                columnWidth = Math.max(columnWidth,
+                        worldTextWidth(textRenderer, line.text(), enchantTextScale));
+            }
+            widths[i] = columnWidth;
+            totalWidth += columnWidth;
+        }
+        totalWidth += Math.max(0, slots.length - 1) * gap;
+
+        double[] centers = new double[slots.length];
+        double cursor = centerX - totalWidth * 0.5;
+        for (int i = 0; i < widths.length; i++) {
+            centers[i] = cursor + widths[i] * 0.5;
+            cursor += widths[i] + gap;
+        }
+        return new EquipmentLayout(centers, totalWidth);
+    }
+
+    private int foregroundColor(int argb) {
+        return MatteHudStyle.scaleAlpha(argb, foregroundAlpha);
+    }
+
     private void renderEquipmentText(TextRenderer textRenderer, String text, double x, double y, int color) {
-        RenderColor shadow = new RenderColor(0xB0000000);
+        RenderColor shadow = new RenderColor(foregroundColor(0xB0000000));
         double o = ENCHANT_TEXT_SHADOW_OFFSET;
         textRenderer.render(text, x + o, y, shadow, false);
         textRenderer.render(text, x - o, y, shadow, false);
         textRenderer.render(text, x, y + o, shadow, false);
         textRenderer.render(text, x, y - o, shadow, false);
-        textRenderer.render(text, x, y, new RenderColor(color), false);
+        textRenderer.render(text, x, y, new RenderColor(foregroundColor(color)), false);
     }
 
     private void renderNameplateText(TextRenderer textRenderer, String text, double x, double y, int color) {
         if (text == null || text.isEmpty()) return;
         if (NAMEPLATE_TEXT_SHADOW_OFFSET > 0.001f) {
-            RenderColor shadow = new RenderColor(0x42000000);
+            RenderColor shadow = new RenderColor(foregroundColor(0x42000000));
             double o = NAMEPLATE_TEXT_SHADOW_OFFSET;
             textRenderer.render(text, x + o, y, shadow, false);
             textRenderer.render(text, x - o, y, shadow, false);
             textRenderer.render(text, x, y + o, shadow, false);
             textRenderer.render(text, x, y - o, shadow, false);
         }
-        textRenderer.render(text, x, y, new RenderColor(color), false);
+        textRenderer.render(text, x, y, new RenderColor(foregroundColor(color)), false);
     }
 
     private void renderStyledNameplateText(TextRenderer textRenderer, Component text, double x, double y, int defaultColor) {
@@ -1277,7 +1528,7 @@ public class NameTags extends Module {
         int cursorY = y;
         EffectIconRenderer.beginBatch();
         for (MobEffectInstance inst : effects) {
-            EffectIconRenderer.draw(ctx, inst, x, cursorY, ICON_SIZE);
+            EffectIconRenderer.draw(ctx, inst, x, cursorY, ICON_SIZE, foregroundColor(0xFFFFFFFF));
             cursorY += EFFECT_LINE_HEIGHT;
         }
         EffectIconRenderer.endBatch();
@@ -1296,14 +1547,14 @@ public class NameTags extends Module {
 
             if (!dur.isEmpty()) {
                 String seg = dur + " ";
-                textRenderer.render(seg, textX, textY, new RenderColor(0xFFFFFFFF), true);
+                textRenderer.render(seg, textX, textY, new RenderColor(foregroundColor(0xFFFFFFFF)), true);
                 textX += (int) textRenderer.getWidth(seg, true);
             }
-            textRenderer.render(name, textX, textY, new RenderColor(0xFFFFFFFF), true);
+            textRenderer.render(name, textX, textY, new RenderColor(foregroundColor(0xFFFFFFFF)), true);
             textX += (int) textRenderer.getWidth(name, true);
             if (level > 1) {
                 String lvl = " " + level;
-                textRenderer.render(lvl, textX, textY, new RenderColor(EFFECT_LEVEL_COLOR), true);
+                textRenderer.render(lvl, textX, textY, new RenderColor(foregroundColor(EFFECT_LEVEL_COLOR)), true);
             }
             cursorY += EFFECT_LINE_HEIGHT;
         }
@@ -1336,7 +1587,7 @@ public class NameTags extends Module {
                 int timeW = (int) timeTr.getWidth(dur, true);
                 int timeX = iconX + (ICON_SIZE - timeW) / 2;
                 int timeY = iconY - timeHeight - 1;
-                timeTr.render(dur, timeX, timeY, new RenderColor(EFFECT_TIME_COLOR), true);
+                timeTr.render(dur, timeX, timeY, new RenderColor(foregroundColor(EFFECT_TIME_COLOR)), true);
             }
 
             if (level > 1) {
@@ -1346,7 +1597,7 @@ public class NameTags extends Module {
                 int levelY = !dur.isEmpty()
                         ? (iconY - timeHeight - 1 - levelHeight - 1)
                         : (iconY - levelHeight - 1);
-                levelTr.render(lvl, levelX, levelY, new RenderColor(EFFECT_LEVEL_STACK_COLOR), true);
+                levelTr.render(lvl, levelX, levelY, new RenderColor(foregroundColor(EFFECT_LEVEL_STACK_COLOR)), true);
             }
             cursorY += EFFECT_LINE_HEIGHT;
         }
@@ -1392,7 +1643,7 @@ public class NameTags extends Module {
                 int timeY = (level > 1)
                         ? (iconY - levelHeight - levelGap - timeHeight - timeGap)
                         : (iconY - timeHeight - levelGap);
-                timeTr.render(dur, timeX, timeY, new RenderColor(EFFECT_TIME_COLOR), true);
+                timeTr.render(dur, timeX, timeY, new RenderColor(foregroundColor(EFFECT_TIME_COLOR)), true);
             }
 
             if (level > 1) {
@@ -1400,7 +1651,7 @@ public class NameTags extends Module {
                 int levelW = (int) levelTr.getWidth(lvl, true);
                 int levelX = iconX + (iconSize - levelW) / 2;
                 int levelY = iconY - levelHeight - levelGap;
-                levelTr.render(lvl, levelX, levelY, new RenderColor(EFFECT_LEVEL_STACK_COLOR), true);
+                levelTr.render(lvl, levelX, levelY, new RenderColor(foregroundColor(EFFECT_LEVEL_STACK_COLOR)), true);
             }
         }
 
@@ -1420,7 +1671,7 @@ public class NameTags extends Module {
 
         for (int i = 0; i < effects.size(); i++) {
             int x = startX + i * (iconSize + gap);
-            EffectIconRenderer.draw(ctx, effects.get(i), x, y, iconSize);
+            EffectIconRenderer.draw(ctx, effects.get(i), x, y, iconSize, foregroundColor(0xFFFFFFFF));
         }
     }
 
@@ -1584,9 +1835,10 @@ public class NameTags extends Module {
                 continue;
             }
 
+            String shortName = limitCodePoints(meta.shortName(), ENCHANT_NAME_MAX_CODEPOINTS);
             String text = singleLevel && level == 1
-                    ? meta.shortName()
-                    : meta.shortName() + level;
+                    ? shortName
+                    : shortName + level;
 
             int color = overMax
                     ? IllegalItemUtil.illegalColor()
@@ -1596,6 +1848,13 @@ public class NameTags extends Module {
         }
 
         return parts;
+    }
+
+    private static String limitCodePoints(String value, int maxCodePoints) {
+        if (value == null || value.isEmpty() || maxCodePoints <= 0) return "";
+        int count = value.codePointCount(0, value.length());
+        if (count <= maxCodePoints) return value;
+        return value.substring(0, value.offsetByCodePoints(0, maxCodePoints));
     }
 
     private boolean isEnchantEnabled(String category, String path) {
@@ -1670,7 +1929,8 @@ public class NameTags extends Module {
             if (!prefix.isEmpty()) {
                 int textX = startX + ICON_SIZE + 6;
                 int textY = y + 4;
-                textRenderer.render(prefix + " ", textX, textY, new RenderColor(snapshot.cooling() ? timeColor : OPP_TIME_COLOR_GRACE), true);
+                textRenderer.render(prefix + " ", textX, textY,
+                        new RenderColor(foregroundColor(snapshot.cooling() ? timeColor : OPP_TIME_COLOR_GRACE)), true);
             }
 
             y += EFFECT_LINE_HEIGHT;
@@ -1744,9 +2004,21 @@ public class NameTags extends Module {
         return max;
     }
 
-    private enum NameplateStyle implements EnumValue.IdProvider {
-        LIQUID_GLASS,
-        MATTE
+    private enum PresentationMode implements EnumValue.IdProvider {
+        TWO_D("2d"),
+        THREE_D("3d"),
+        HYBRID("hybrid");
+
+        private final String id;
+
+        PresentationMode(String id) {
+            this.id = id;
+        }
+
+        @Override
+        public String id() {
+            return id;
+        }
     }
 
     private static final class EffectCache {
@@ -1777,12 +2049,30 @@ public class NameTags extends Module {
     private record EnchantLine(String text, int color) {
     }
 
+    private record EquipmentLayout(double[] centers, double rowWidth) {
+        private static EquipmentLayout empty() {
+            return new EquipmentLayout(new double[0], 0.0);
+        }
+    }
+
+    private record WorldRenderEntry(Player player,
+                                    Vec3 anchor,
+                                    double distance,
+                                    double worldScale,
+                                    float alpha,
+                                    boolean renderNameplate,
+                                    boolean renderSlots,
+                                    ItemStack[] slots,
+                                    List<List<EnchantLine>> enchantLines) {
+    }
+
     private record RenderEntry(Player player, double dist, float distOffset, int centerX, int nameY, int itemsY,
                                ScreenRect rect, boolean renderSlots, boolean renderNameplate,
                                boolean renderEffects, LabelInfo labelInfo, int infoColor,
                                NameplateLayout nameplateLayout,
                                ItemStack[] slots, List<List<EnchantLine>> enchantLines, int maxEnchantLines,
-                               List<MobEffectInstance> effects, int totemPopCount, float totemPopAnimation) {
+                               List<MobEffectInstance> effects, int totemPopCount, float totemPopAnimation,
+                               float presentationAlpha) {
     }
 
     private record LabelInfo(String pvpPrefix, Component styledName, String name, int ping, String pingText, String hp,

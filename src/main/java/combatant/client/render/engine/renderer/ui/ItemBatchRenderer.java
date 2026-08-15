@@ -26,6 +26,7 @@ import net.minecraft.util.CommonColors;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.entity.player.Player;
 import org.jetbrains.annotations.Nullable;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
@@ -34,6 +35,9 @@ import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static combatant.client.render.engine.renderer.Renderer2D.ITEM_OVERLAY_COOLDOWN;
 import static combatant.client.render.engine.renderer.Renderer2D.ITEM_OVERLAY_COUNT;
@@ -50,10 +54,98 @@ public final class ItemBatchRenderer {
     private static GuiItemAtlas itemAtlas;
     private static int itemAtlasSlotTextureSize;
     private static int itemAtlasTextureSize;
+    private static boolean worldItemFrameOpen;
     private static MeshBuilder itemBlitMesh;
     private static MeshBuilder itemDurabilityGlowMesh;
     private static MeshBuilder itemDurabilityRoundedMesh;
     private static MeshBuilder itemCooldownMesh;
+
+    /** Resolve all billboard item rows against one atlas layout so their UVs stay valid for the whole world pass. */
+    public static List<WorldItemSprite[]> resolveWorldItemSprites(List<WorldItemRow> rows) {
+        if (rows == null || rows.isEmpty()) return List.of();
+        Minecraft mc = Minecraft.getInstance();
+        List<WorldItemSprite[]> sprites = new ArrayList<>(rows.size());
+        for (WorldItemRow row : rows) {
+            sprites.add(new WorldItemSprite[row == null || row.stacks() == null ? 0 : row.stacks().length]);
+        }
+        if (mc == null || mc.gameRenderer == null || mc.level == null) return sprites;
+
+        GpuTextureView previousOutputColor = RenderSystem.outputColorTextureOverride;
+        GpuTextureView previousOutputDepth = RenderSystem.outputDepthTextureOverride;
+        GpuBufferSlice previousProjection = RenderSystem.getProjectionMatrixBuffer();
+        ProjectionType previousProjectionType = RenderSystem.getProjectionType();
+        try {
+            List<TrackingItemStackRenderState[]> states = new ArrayList<>(rows.size());
+            ObjectOpenHashSet<Object> identities = new ObjectOpenHashSet<>();
+            for (WorldItemRow row : rows) {
+                ItemStack[] stacks = row == null || row.stacks() == null ? new ItemStack[0] : row.stacks();
+                TrackingItemStackRenderState[] rowStates = new TrackingItemStackRenderState[stacks.length];
+                states.add(rowStates);
+                for (int i = 0; i < stacks.length; i++) {
+                    ItemStack stack = stacks[i];
+                    if (stack == null || stack.isEmpty()) continue;
+                    TrackingItemStackRenderState state = new TrackingItemStackRenderState();
+                    Player player = row != null ? row.player() : null;
+                    int seedBase = row != null ? row.seedBase() : 0;
+                    mc.getItemModelResolver().updateForTopItem(
+                            state,
+                            stack,
+                            ItemDisplayContext.GUI,
+                            player != null ? player.level() : mc.level,
+                            player,
+                            seedBase + i
+                    );
+                    if (!state.isEmpty()) {
+                        rowStates[i] = state;
+                        identities.add(state.getModelIdentity());
+                    }
+                }
+            }
+            if (identities.isEmpty()) return sprites;
+
+            GuiItemAtlas atlas = ensureItemAtlas(mc, getItemFeatureDispatcher(mc), identities);
+            worldItemFrameOpen = true;
+            GpuSampler sampler = RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST);
+            for (int rowIndex = 0; rowIndex < states.size(); rowIndex++) {
+                TrackingItemStackRenderState[] rowStates = states.get(rowIndex);
+                WorldItemSprite[] rowSprites = sprites.get(rowIndex);
+                for (int i = 0; i < rowStates.length; i++) {
+                    TrackingItemStackRenderState state = rowStates[i];
+                    if (state == null) continue;
+                    GuiItemAtlas.SlotView slot = atlas.getOrUpdate(state);
+                    if (slot != null && slot.textureView() != null) {
+                        rowSprites[i] = new WorldItemSprite(
+                                slot.textureView(), sampler, slot.u0(), slot.v0(), slot.u1(), slot.v1());
+                    }
+                }
+            }
+            return sprites;
+        } catch (RuntimeException ignored) {
+            return sprites;
+        } finally {
+            if (previousProjection != null && previousProjectionType != null) {
+                RenderSystem.setProjectionMatrix(previousProjection, previousProjectionType);
+            }
+            RenderSystem.outputColorTextureOverride = previousOutputColor;
+            RenderSystem.outputDepthTextureOverride = previousOutputDepth;
+        }
+    }
+
+    public static void finishWorldItemFrame() {
+        if (worldItemFrameOpen && itemAtlas != null) itemAtlas.endFrame();
+        worldItemFrameOpen = false;
+    }
+
+    public record WorldItemRow(@Nullable Player player, ItemStack[] stacks, int seedBase) {
+    }
+
+    public record WorldItemSprite(GpuTextureView textureView,
+                                  GpuSampler sampler,
+                                  float u0,
+                                  float v0,
+                                  float u1,
+                                  float v1) {
+    }
 
     static float clampRoundedRadius(float radius, double w, double h) {
         return (float) Mth.clamp(radius, 0.0f, (float) Math.min(w, h) * 0.5f);
@@ -300,7 +392,8 @@ public final class ItemBatchRenderer {
                                                ObjectOpenHashSet<Object> modelIdentities) {
         int guiScale = Math.max(1, (int) Math.round(mc.getWindow().getGuiScale()));
         int slotTextureSize = Math.max(16, 16 * guiScale);
-        int requiredTextureSize = GuiItemAtlas.computeTextureSizeFor(slotTextureSize, Math.max(1, modelIdentities.size()));
+        int requiredTextureSize = GuiItemAtlas.computeTextureSizeFor(
+                slotTextureSize, Math.max(ITEM_OVERLAY_PREALLOCATED_ITEMS, modelIdentities.size()));
 
         if (itemAtlas != null
                 && itemAtlasSlotTextureSize == slotTextureSize
@@ -326,6 +419,7 @@ public final class ItemBatchRenderer {
         }
         itemAtlasSlotTextureSize = 0;
         itemAtlasTextureSize = 0;
+        worldItemFrameOpen = false;
     }
 
     private static FeatureRenderDispatcher getItemFeatureDispatcher(Minecraft mc) {
