@@ -88,6 +88,7 @@ import combatant.client.util.time.TimerController;
         value = ClientBoundLevel.FULL,
         packages = "combatant.client",
         resources = "assets/combatant",
+        exposedPackages = "combatant.client.mixins",
         isolatedEntrypoints = "combatant.client.runtime.isolated.CombatantIsolatedRuntime",
         isolatedPackages = "combatant.client.runtime.isolated"
 )

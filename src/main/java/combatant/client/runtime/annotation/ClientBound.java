@@ -21,6 +21,8 @@ public @interface ClientBound {
 
     String[] resources() default {};
 
+    String[] exposedPackages() default {};
+
     String[] isolatedEntrypoints() default {};
 
     String[] isolatedPackages() default {};

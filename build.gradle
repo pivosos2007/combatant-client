@@ -184,6 +184,12 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+// Packaging is intentionally independent from verification. Tests remain available through
+// the explicit `test` / `check` tasks, but the normal `build` path only assembles artifacts.
+tasks.named('build') {
+    setDependsOn([tasks.named('assemble')])
+}
+
 tasks.register("validateIrisPatches", JavaExec) {
     group = "verification"
     description = "Compiles bundled Iris patch manifests against a shaderpack zip without modifying it."

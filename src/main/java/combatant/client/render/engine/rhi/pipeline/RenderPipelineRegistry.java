@@ -9,6 +9,8 @@ package combatant.client.render.engine.rhi.pipeline;
 
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import combatant.client.mixininterface.IRenderPipeline;
+import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
 import net.minecraft.resources.Identifier;
 
 import java.util.Collection;
@@ -38,15 +40,32 @@ public final class RenderPipelineRegistry {
         boolean lineMode = primitive == com.mojang.blaze3d.PrimitiveTopology.LINES
                 || primitive == com.mojang.blaze3d.PrimitiveTopology.DEBUG_LINES
                 || primitive == com.mojang.blaze3d.PrimitiveTopology.DEBUG_LINE_STRIP;
+        PipelineMetadata metadata = pipeline instanceof IRenderPipeline combatantPipeline
+                ? combatantPipeline.combatant$getMetadata()
+                : PipelineMetadata.builder(PipelineDomain.UNKNOWN).build();
+        if (metadata == null) metadata = PipelineMetadata.builder(PipelineDomain.UNKNOWN).build();
+        boolean clipSupport = pipeline instanceof IRenderPipeline combatantPipeline
+                && combatantPipeline.combatant$getShapeClipContract() != ShapeClipRenderPassContract.NONE;
+        DepthPolicy depth = metadata.depthPolicy() != DepthPolicy.NONE
+                ? metadata.depthPolicy()
+                : inferDepthPolicy(key.path(), pipeline);
+        metadata = metadata.toBuilder()
+                .lineMode(lineMode)
+                .clipSupport(metadata.clipSupport() || clipSupport)
+                .depthPolicy(depth)
+                .build();
+
+        UniformLayoutSpec.Builder uniforms = UniformLayoutSpec.builder();
+        metadata.requiredUniforms().forEach(uniforms::uniform);
+        metadata.samplers().forEach(uniforms::sampler);
 
         return RenderPipelineSpec.builder(key)
-                .vertexLayout(VertexLayoutSpec.of(key.path(), format, primitive))
-                .depth(inferDepthPolicy(key.path(), pipeline))
+                .vertexLayout(VertexLayoutSpec.of(metadata.vertexLayoutId(), format, primitive))
+                .depth(depth)
                 .vertexShader(id(pipeline != null ? pipeline.getVertexShader() : null))
                 .fragmentShader(id(pipeline != null ? pipeline.getFragmentShader() : null))
-                .metadata(PipelineMetadata.builder(PipelineDomain.UNKNOWN)
-                        .lineMode(lineMode)
-                        .build())
+                .uniforms(uniforms.build())
+                .metadata(metadata)
                 .build();
     }
 

@@ -716,7 +716,7 @@ public final class Renderer2D {
 
     public void roundedRect(double x, double y, double w, double h,
                             float radius, float softness, int argb) {
-        roundedRectMasked(x, y, w, h, x, y, w, h, radius, 0.0f, argb);
+        roundedRectMasked(x, y, w, h, x, y, w, h, radius, softness, argb);
     }
 
     public void roundedRect(double x, double y, double w, double h,
@@ -1026,7 +1026,7 @@ public final class Renderer2D {
     public void roundedRectMasked(double x, double y, double w, double h,
                                   double maskX, double maskY, double maskW, double maskH,
                                   float radius, float softness, int argb) {
-        roundedRectMaskedQuad(x, y, w, h, maskX, maskY, maskW, maskH, radius, 0.0f, argb, argb, argb, argb);
+        roundedRectMaskedQuad(x, y, w, h, maskX, maskY, maskW, maskH, radius, softness, argb, argb, argb, argb);
     }
 
     public void roundedRectStroke(double x, double y, double w, double h,
@@ -1519,7 +1519,7 @@ public final class Renderer2D {
     public void roundedRectGradientQuad(double x, double y, double w, double h,
                                         float radius, float softness,
                                         int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
-        roundedRectMaskedQuad(x, y, w, h, x, y, w, h, radius, 0.0f, cTopLeft, cTopRight, cBottomRight, cBottomLeft);
+        roundedRectMaskedQuad(x, y, w, h, x, y, w, h, radius, softness, cTopLeft, cTopRight, cBottomRight, cBottomLeft);
     }
 
     public void roundedRectGradientQuad(double x, double y, double w, double h,
@@ -1535,29 +1535,13 @@ public final class Renderer2D {
         shape(UiShape.roundedRect(maskX, maskY, maskW, maskH, radius), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft));
         boolean auto = beginAutoBatch();
         boolean warped = RenderWarpStack.active();
-        DrawBatch batch = UI_BATCHER.getOrCreate(warped ? UiBatchType.SHAPE_WARPED : UiBatchType.ROUNDED, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(warped ? UiBatchType.SHAPE_WARPED : UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
-        int tlA = (cTopLeft >>> 24) & 0xFF;
-        int tlR = (cTopLeft >>> 16) & 0xFF;
-        int tlG = (cTopLeft >>> 8) & 0xFF;
-        int tlB = cTopLeft & 0xFF;
-        int trA = (cTopRight >>> 24) & 0xFF;
-        int trR = (cTopRight >>> 16) & 0xFF;
-        int trG = (cTopRight >>> 8) & 0xFF;
-        int trB = cTopRight & 0xFF;
-        int brA = (cBottomRight >>> 24) & 0xFF;
-        int brR = (cBottomRight >>> 16) & 0xFF;
-        int brG = (cBottomRight >>> 8) & 0xFF;
-        int brB = cBottomRight & 0xFF;
-        int blA = (cBottomLeft >>> 24) & 0xFF;
-        int blR = (cBottomLeft >>> 16) & 0xFF;
-        int blG = (cBottomLeft >>> 8) & 0xFF;
-        int blB = cBottomLeft & 0xFF;
         float clampedRadius = clampRoundedRadius(radius, maskW, maskH);
-        UiFastShapeParams params = UiFastShapeParams.rounded(clampedRadius, UiStroke.NONE, true);
+        UiFastShapeParams params = UiFastShapeParams.rounded(clampedRadius, UiStroke.NONE, true, softness);
         UiRect bounds = UiRect.of(maskX, maskY, maskW, maskH);
 
         int i1;
@@ -1572,10 +1556,10 @@ public final class Renderer2D {
             return;
         } else {
             mesh.ensureQuadCapacity();
-            i1 = mesh.vec2(x, y).local2(x, y).color(tlR, tlG, tlB, tlA).vec4(maskX, maskY, maskW, maskH).vec4(clampedRadius, softness, 0f, 0f).next();
-            i2 = mesh.vec2(x, y + h).local2(x, y + h).color(blR, blG, blB, blA).vec4(maskX, maskY, maskW, maskH).vec4(clampedRadius, softness, 0f, 0f).next();
-            i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(brR, brG, brB, brA).vec4(maskX, maskY, maskW, maskH).vec4(clampedRadius, softness, 0f, 0f).next();
-            i4 = mesh.vec2(x + w, y).local2(x + w, y).color(trR, trG, trB, trA).vec4(maskX, maskY, maskW, maskH).vec4(clampedRadius, softness, 0f, 0f).next();
+            i1 = appendShapeVertex(mesh, x, y, cTopLeft, bounds, params);
+            i2 = appendShapeVertex(mesh, x, y + h, cBottomLeft, bounds, params);
+            i3 = appendShapeVertex(mesh, x + w, y + h, cBottomRight, bounds, params);
+            i4 = appendShapeVertex(mesh, x + w, y, cTopRight, bounds, params);
         }
         mesh.quad(i1, i2, i3, i4);
 
@@ -1588,30 +1572,14 @@ public final class Renderer2D {
         shapeStroke(UiShape.roundedRect(x, y, w, h, radius), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
         boolean warped = RenderWarpStack.active();
-        DrawBatch batch = UI_BATCHER.getOrCreate(warped ? UiBatchType.SHAPE_WARPED : UiBatchType.ROUNDED_STROKE, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(warped ? UiBatchType.SHAPE_WARPED : UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
-        int tlA = (cTopLeft >>> 24) & 0xFF;
-        int tlR = (cTopLeft >>> 16) & 0xFF;
-        int tlG = (cTopLeft >>> 8) & 0xFF;
-        int tlB = cTopLeft & 0xFF;
-        int trA = (cTopRight >>> 24) & 0xFF;
-        int trR = (cTopRight >>> 16) & 0xFF;
-        int trG = (cTopRight >>> 8) & 0xFF;
-        int trB = cTopRight & 0xFF;
-        int brA = (cBottomRight >>> 24) & 0xFF;
-        int brR = (cBottomRight >>> 16) & 0xFF;
-        int brG = (cBottomRight >>> 8) & 0xFF;
-        int brB = cBottomRight & 0xFF;
-        int blA = (cBottomLeft >>> 24) & 0xFF;
-        int blR = (cBottomLeft >>> 16) & 0xFF;
-        int blG = (cBottomLeft >>> 8) & 0xFF;
-        int blB = cBottomLeft & 0xFF;
         float clampedRadius = clampRoundedRadius(radius, w, h);
         float stroke = Math.max(0.0f, thickness);
-        UiFastShapeParams params = UiFastShapeParams.rounded(clampedRadius, UiStroke.of(stroke), false);
+        UiFastShapeParams params = UiFastShapeParams.rounded(clampedRadius, UiStroke.of(stroke), false, softness);
         UiRect bounds = UiRect.of(x, y, w, h);
 
         int i1;
@@ -1626,10 +1594,10 @@ public final class Renderer2D {
             return;
         } else {
             mesh.ensureQuadCapacity();
-            i1 = mesh.vec2(x, y).local2(x, y).color(tlR, tlG, tlB, tlA).vec4(x, y, w, h).vec4(clampedRadius, softness, stroke, 0f).next();
-            i2 = mesh.vec2(x, y + h).local2(x, y + h).color(blR, blG, blB, blA).vec4(x, y, w, h).vec4(clampedRadius, softness, stroke, 0f).next();
-            i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(brR, brG, brB, brA).vec4(x, y, w, h).vec4(clampedRadius, softness, stroke, 0f).next();
-            i4 = mesh.vec2(x + w, y).local2(x + w, y).color(trR, trG, trB, trA).vec4(x, y, w, h).vec4(clampedRadius, softness, stroke, 0f).next();
+            i1 = appendShapeVertex(mesh, x, y, cTopLeft, bounds, params);
+            i2 = appendShapeVertex(mesh, x, y + h, cBottomLeft, bounds, params);
+            i3 = appendShapeVertex(mesh, x + w, y + h, cBottomRight, bounds, params);
+            i4 = appendShapeVertex(mesh, x + w, y, cTopRight, bounds, params);
         }
         mesh.quad(i1, i2, i3, i4);
 
@@ -3038,23 +3006,22 @@ public final class Renderer2D {
                     bounds, params.kind(), params.shape(), params.strokeWidth(), params.flags());
         } else {
             mesh.ensureQuadCapacity();
-            int i1 = appendShapeVertex(mesh, qx, qy, cTL, bounds, params, false);
-            int i2 = appendShapeVertex(mesh, qx, qy + qh, cBL, bounds, params, false);
-            int i3 = appendShapeVertex(mesh, qx + qw, qy + qh, cBR, bounds, params, false);
-            int i4 = appendShapeVertex(mesh, qx + qw, qy, cTR, bounds, params, false);
+            int i1 = appendShapeVertex(mesh, qx, qy, cTL, bounds, params);
+            int i2 = appendShapeVertex(mesh, qx, qy + qh, cBL, bounds, params);
+            int i3 = appendShapeVertex(mesh, qx + qw, qy + qh, cBR, bounds, params);
+            int i4 = appendShapeVertex(mesh, qx + qw, qy, cTR, bounds, params);
             mesh.quad(i1, i2, i3, i4);
         }
         endAutoBatch(auto);
     }
 
     private static int appendShapeVertex(MeshBuilder mesh, double x, double y, int argb,
-                                         UiRect bounds, UiFastShapeParams p, boolean warped) {
+                                         UiRect bounds, UiFastShapeParams p) {
         int a = (argb >>> 24) & 0xFF;
         int r = (argb >>> 16) & 0xFF;
         int g = (argb >>> 8) & 0xFF;
         int b = argb & 0xFF;
         mesh.vec2(x, y);
-        if (warped) mesh.local2(x, y);
         return mesh.color(r, g, b, a)
                 .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
                 .vec4(p.kind(), p.shape(), p.strokeWidth(), p.flags()).next();
@@ -3365,6 +3332,17 @@ public final class Renderer2D {
 
     public static RenderWarpStack.Scope pushWarp(RenderWarp warp) {
         return RenderWarpStack.push(warp);
+    }
+
+    public static RenderWarpStack.Scope pushAngularWarp(UiAngularPreset preset,
+                                                        float x,
+                                                        float y,
+                                                        float width,
+                                                        float height,
+                                                        float cut) {
+        return RenderWarpStack.push(preset != null
+                ? preset.warp(x, y, width, height, cut)
+                : RenderWarp.IDENTITY);
     }
 
     public static RenderWarpStack.Scope pushPerspectiveWarp(float x,

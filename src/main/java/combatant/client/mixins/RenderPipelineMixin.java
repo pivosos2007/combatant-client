@@ -19,6 +19,8 @@ import org.spongepowered.asm.mixin.Unique;
 import combatant.client.mixininterface.IRenderPipeline;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
 import combatant.client.render.engine.pipeline.RenderPipelineContract;
+import combatant.client.render.engine.rhi.pipeline.PipelineDomain;
+import combatant.client.render.engine.rhi.pipeline.PipelineMetadata;
 
 @Mixin(RenderPipeline.class)
 public abstract class RenderPipelineMixin implements IRenderPipeline {
@@ -30,6 +32,9 @@ public abstract class RenderPipelineMixin implements IRenderPipeline {
 
     @Unique
     private RenderPipelineContract combatant$contract = RenderPipelineContract.EXTENDED;
+
+    @Unique
+    private PipelineMetadata combatant$metadata = PipelineMetadata.builder(PipelineDomain.UNKNOWN).build();
 
     @Override
     public void combatant$setLineSmooth(boolean lineSmooth) {
@@ -59,5 +64,15 @@ public abstract class RenderPipelineMixin implements IRenderPipeline {
     @Override
     public RenderPipelineContract combatant$getContract() {
         return combatant$contract;
+    }
+
+    @Override
+    public void combatant$setMetadata(PipelineMetadata metadata) {
+        this.combatant$metadata = metadata != null ? metadata : PipelineMetadata.builder(PipelineDomain.UNKNOWN).build();
+    }
+
+    @Override
+    public PipelineMetadata combatant$getMetadata() {
+        return combatant$metadata;
     }
 }

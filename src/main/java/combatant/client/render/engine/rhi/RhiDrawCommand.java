@@ -15,7 +15,7 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineSpec;
-import combatant.client.mixininterface.IRenderPipeline;
+import combatant.client.render.engine.rhi.pipeline.PipelineDomain;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -147,11 +147,24 @@ public final class RhiDrawCommand {
 
         public RhiDrawCommand build() {
             if (pipeline == null) throw new IllegalStateException("RHI draw command without pipeline");
-            if (transform != null && pipeline instanceof IRenderPipeline combatantPipeline
-                    && !combatantPipeline.combatant$getContract().meshDataRequired()) {
-                throw new IllegalStateException("Matrix transform requires an EXTENDED pipeline: " + pipeline.getLocation());
-            }
             if (pipelineSpec == null) pipelineSpec = RenderPipelineRegistry.global().require(pipeline);
+            if (transform != null && !pipelineSpec.metadata().transformPolicy().supportsObjectTransform()) {
+                throw new IllegalStateException("Matrix transform is not supported by pipeline metadata: " + pipeline.getLocation());
+            }
+            if (pipelineSpec.metadata().domain() != PipelineDomain.UNKNOWN) {
+                for (RhiUniformBinding uniform : uniforms) {
+                    if (!pipelineSpec.uniformLayout().hasUniform(uniform.name())) {
+                        throw new IllegalStateException("Uniform '" + uniform.name()
+                                + "' is not declared by pipeline metadata: " + pipeline.getLocation());
+                    }
+                }
+                for (RhiSamplerBinding sampler : samplers) {
+                    if (!pipelineSpec.uniformLayout().hasSampler(sampler.name())) {
+                        throw new IllegalStateException("Sampler '" + sampler.name()
+                                + "' is not declared by pipeline metadata: " + pipeline.getLocation());
+                    }
+                }
+            }
             if (colorAttachment == null) throw new IllegalStateException("RHI draw command without color attachment");
             if (mesh == null) throw new IllegalStateException("RHI draw command without mesh");
             return new RhiDrawCommand(this);

@@ -29,17 +29,35 @@ public enum MsdfTextUniforms {
     private static final Data DATA = new Data();
     private static final String UNIFORM_NAME = "Combatant - MSDF Text UBO";
     private static final int EXPECTED_WRITES_PER_FRAME = 16;
+    private static long lastFrameId = Long.MIN_VALUE;
+    private static float lastPxRange = Float.NaN;
+    private static float lastAtlasWidth = Float.NaN;
+    private static float lastAtlasHeight = Float.NaN;
 
     public static void update(float pxRange, int atlasWidth, int atlasHeight) {
         float safeW = atlasWidth <= 0 ? 1f : atlasWidth;
         float safeH = atlasHeight <= 0 ? 1f : atlasHeight;
+
+        CombatantUniformAllocator allocator = CombatantRenderSystem.uniforms();
+        long frameId = allocator.frameId();
+        if (allocator.hasCurrent(UNIFORM_NAME)
+                && lastFrameId == frameId
+                && Float.compare(lastPxRange, pxRange) == 0
+                && Float.compare(lastAtlasWidth, safeW) == 0
+                && Float.compare(lastAtlasHeight, safeH) == 0) {
+            return;
+        }
 
         DATA.values[0] = pxRange;
         DATA.values[1] = safeW;
         DATA.values[2] = safeH;
         DATA.values[3] = 0f;
 
-        CombatantRenderSystem.uniforms().write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
+        allocator.write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
+        lastFrameId = frameId;
+        lastPxRange = pxRange;
+        lastAtlasWidth = safeW;
+        lastAtlasHeight = safeH;
     }
 
     public static GpuBufferSlice get() {
@@ -56,11 +74,6 @@ public enum MsdfTextUniforms {
                     .putFloat(values[1])
                     .putFloat(values[2])
                     .putFloat(values[3]);
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            return false;
         }
     }
 

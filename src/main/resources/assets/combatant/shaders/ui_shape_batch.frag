@@ -72,7 +72,9 @@ void main() {
             ? roundedBoxSdf(frag - center, halfSize, v_Params.y)
             : squircleSdf(frag - center, halfSize, v_Params.y);
     float strokeWidth = max(0.0, v_Params.z);
-    int flags = int(v_Params.w + 0.5);
+    int packedFlags = int(v_Params.w + 0.5);
+    int flags = packedFlags & 3;
+    float softness = float(packedFlags >> 2) / 16.0;
     bool fill = (flags & 1) != 0;
     bool innerStroke = (flags & 2) != 0;
     if (!fill && strokeWidth > 0.0) {
@@ -80,6 +82,6 @@ void main() {
                 ? abs(d + strokeWidth * 0.5) - strokeWidth * 0.5
                 : abs(d) - strokeWidth * 0.5;
     }
-    float a = crispCoverage(d, analyticAa(d, logicalScale, 0.0));
+    float a = crispCoverage(d, analyticAa(d, logicalScale, softness));
     fragColor = vec4(v_Color.rgb, v_Color.a * a);
 }

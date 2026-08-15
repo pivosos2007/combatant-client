@@ -15,7 +15,10 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.pipeline.DepthTestFunction;
 import combatant.client.render.engine.pipeline.ExtendedRenderPipelineBuilder;
+import combatant.client.render.engine.pipeline.RenderPipelineContract;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
+import combatant.client.render.engine.rhi.pipeline.PipelineDomain;
+import combatant.client.render.engine.rhi.pipeline.TransformPolicy;
 import net.minecraft.resources.Identifier;
 
 @SuppressWarnings("unused")
@@ -81,6 +84,26 @@ public final class CombatantRenderPipelineBuilder {
 
     public CombatantRenderPipelineBuilder uniform(String name, UniformType type) {
         delegate.withUniform(name, type);
+        return this;
+    }
+
+    public CombatantRenderPipelineBuilder contract(RenderPipelineContract contract) {
+        delegate.withContract(contract);
+        return this;
+    }
+
+    public CombatantRenderPipelineBuilder domain(PipelineDomain domain) {
+        delegate.withDomain(domain);
+        return this;
+    }
+
+    public CombatantRenderPipelineBuilder transformPolicy(TransformPolicy policy) {
+        delegate.withTransformPolicy(policy);
+        return this;
+    }
+
+    public CombatantRenderPipelineBuilder shapeFamily(String family) {
+        delegate.withShapeFamily(family);
         return this;
     }
 

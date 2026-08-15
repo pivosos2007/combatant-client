@@ -13,6 +13,8 @@
 
 package combatant.client.render.engine.text;
 
+import combatant.client.render.engine.core.ViewportContext;
+import combatant.client.render.engine.renderer.RenderWarpStack;
 import combatant.client.render.engine.text.backend.TextPlacementMode;
 import org.lwjgl.system.MemoryUtil;
 import combatant.client.render.engine.color.RenderColor;
@@ -34,6 +36,7 @@ public class CustomTextRenderer implements TextRenderer {
     private boolean scaleOnly;
     private boolean meshStarted;
     private boolean liquidGlassText;
+    private boolean fastUiText;
     private double fontScale = 1;
     private double scale = 1;
 
@@ -415,6 +418,8 @@ public class CustomTextRenderer implements TextRenderer {
                         mesh,
                         liquidGlassText
                                 ? (font.isMsdf() ? CombatantRenderPipelines.UI_TEXT_LIQUID_GLASS_MSDF : CombatantRenderPipelines.UI_TEXT_LIQUID_GLASS)
+                                : fastUiText
+                                ? (font.isMsdf() ? CombatantRenderPipelines.UI_TEXT_MSDF_FAST : CombatantRenderPipelines.UI_TEXT_FAST)
                                 : (font.isMsdf() ? CombatantRenderPipelines.UI_TEXT_MSDF : CombatantRenderPipelines.UI_TEXT),
                         TextPlacementMode.UI
                 );
@@ -425,6 +430,7 @@ public class CustomTextRenderer implements TextRenderer {
         scaleOnly = false;
         meshStarted = false;
         liquidGlassText = false;
+        fastUiText = false;
         scale = 1;
     }
 
@@ -438,6 +444,11 @@ public class CustomTextRenderer implements TextRenderer {
         if (!mesh.isBuilding()) {
             mesh.begin();
         }
+        ViewportContext.ProjectionMode projection = ViewportContext.activeMode();
+        fastUiText = !liquidGlassText
+                && !RenderWarpStack.active()
+                && (projection == ViewportContext.ProjectionMode.LOGICAL
+                || projection == ViewportContext.ProjectionMode.SCALED);
         meshStarted = true;
         scaleOnly = false;
     }

@@ -30,13 +30,13 @@ import combatant.client.render.engine.rhi.fullscreen.FullscreenBackend;
 import combatant.client.render.engine.rhi.fullscreen.Blaze3dFullscreenBackend;
 import combatant.client.render.engine.rhi.msaa.MsaaControl;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
+import combatant.client.render.engine.rhi.pipeline.RenderPipelineSpec;
 import combatant.client.render.engine.rhi.resource.RenderResourceManager;
 import combatant.client.render.engine.rhi.state.PipelineStateBackend;
 import combatant.client.render.engine.rhi.upload.DynamicMeshBackend;
 import combatant.client.render.engine.rhi.upload.Blaze3dDynamicMeshBackend;
 import combatant.client.render.engine.uniform.impl.MeshUniforms;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
-import combatant.client.mixininterface.IRenderPipeline;
 
 import java.util.Optional;
 import java.util.OptionalDouble;
@@ -167,7 +167,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
                 if (command.applyWorldCameraY) applyCameraPosY(RenderSystem.getModelViewStack());
 
                 GpuBufferSlice meshData = null;
-                if (requiresMeshData(command.pipeline)) {
+                if (requiresMeshData(command.pipelineSpec)) {
                     MeshUniforms.update(
                             MeshRenderer.projection(),
                             meshModelView(command),
@@ -177,7 +177,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
                     meshData = MeshUniforms.get();
                 }
                 GpuBufferSlice uiBatch = null;
-                if (requiresUiBatch(command.pipeline) && !command.hasUniform("UIBatch")) {
+                if (requiresUiBatch(command.pipelineSpec) && !command.hasUniform("UIBatch")) {
                     UIBatchUniforms.update(
                             command.colorAttachment != null ? command.colorAttachment.getWidth(0) : 1.0f,
                             command.colorAttachment != null ? command.colorAttachment.getHeight(0) : 1.0f
@@ -209,14 +209,12 @@ public final class CombatantVulkanBackend implements CombatantRhi {
         }
     }
 
-    private static boolean requiresMeshData(com.mojang.blaze3d.pipeline.RenderPipeline pipeline) {
-        return !(pipeline instanceof IRenderPipeline combatantPipeline)
-                || combatantPipeline.combatant$getContract().meshDataRequired();
+    private static boolean requiresMeshData(RenderPipelineSpec pipeline) {
+        return pipeline != null && pipeline.metadata().requiresUniform("MeshData");
     }
 
-    private static boolean requiresUiBatch(com.mojang.blaze3d.pipeline.RenderPipeline pipeline) {
-        return pipeline instanceof IRenderPipeline combatantPipeline
-                && combatantPipeline.combatant$getContract().uiBatchRequired();
+    private static boolean requiresUiBatch(RenderPipelineSpec pipeline) {
+        return pipeline != null && pipeline.metadata().requiresUniform("UIBatch");
     }
 
     @Override

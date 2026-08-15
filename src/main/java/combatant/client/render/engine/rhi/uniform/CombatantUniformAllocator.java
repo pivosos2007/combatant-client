@@ -162,6 +162,11 @@ public final class CombatantUniformAllocator implements AutoCloseable {
         return slice;
     }
 
+    public boolean hasCurrent(String name) {
+        UniformStream stream = streams.get(name);
+        return stream != null && stream.current != null;
+    }
+
     public void invalidate(String name) {
         UniformStream stream = streams.get(name);
         if (stream != null) {
@@ -176,6 +181,10 @@ public final class CombatantUniformAllocator implements AutoCloseable {
         stats.beginFrame(frameId);
         stats.streamCount(streams.size());
         stats.ringCapacityBytes(capacityBytes);
+    }
+
+    public long frameId() {
+        return frameId;
     }
 
     public void onFramePresented() {

@@ -722,6 +722,20 @@ public enum CombatantRenderPipelines {
             .withCull(true)
             .build()
     );
+    /** Stable screen-space UI text. UNSCALED/CUSTOM and transformed callers keep UI_TEXT. */
+    public static final RenderPipeline UI_TEXT_FAST = add(new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_text_fast"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_UI_POS_TEX_COLOR_FAST_VERT)
+            .withFragmentShader(SHADER_TEXT_FRAG)
+            .withSampler("u_Texture")
+            .withContract(RenderPipelineContract.UI_FAST)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
     /**
      * UI MSDF text (pos2 + tex + color).
      */
@@ -732,6 +746,20 @@ public enum CombatantRenderPipelines {
             .withFragmentShader(SHADER_TEXT_MSDF_FRAG)
             .withSampler("u_Texture")
             .withUniform("MsdfText", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
+    public static final RenderPipeline UI_TEXT_MSDF_FAST = add(new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_text_msdf_fast"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_UI_POS_TEX_COLOR_FAST_VERT)
+            .withFragmentShader(SHADER_TEXT_MSDF_FRAG)
+            .withSampler("u_Texture")
+            .withUniform("MsdfText", UniformType.UNIFORM_BUFFER)
+            .withContract(RenderPipelineContract.UI_FAST)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)
