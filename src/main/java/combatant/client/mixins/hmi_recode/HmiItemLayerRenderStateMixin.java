@@ -1,4 +1,11 @@
-/* HoldMyItems compatibility subsystem; original project by sapling, CC0-1.0. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/* HoldMyItems Recode; original project by sapling, CC0-1.0. */
 package combatant.client.mixins.hmi_recode;
 
 import combatant.client.features.hmi_recode.HoldMyItems;

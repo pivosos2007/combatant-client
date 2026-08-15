@@ -1,7 +1,11 @@
 /*
- * HoldMyItems compatibility subsystem.
- * Ported for Combatant from Hold My Items by sapling (CC0-1.0).
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
  */
+
+/* HoldMyItems Recode; original project by sapling, CC0-1.0. */
 package combatant.client.features.hmi_recode;
 
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -22,13 +26,6 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Hold My Items first-person animation bridge for Combatant.
- *
- * <p>This is a ViewModel backend, not a standalone renderer. ViewModel explicitly
- * activates/deactivates it; while inactive every render hook is a no-op and the
- * JavaScript runtime is closed.</p>
- */
 public final class HoldMyItems {
     private static final HmiScriptRuntime SCRIPTS = new HmiScriptRuntime();
     private static final ThreadLocal<Deque<RenderScope>> SCOPES = ThreadLocal.withInitial(ArrayDeque::new);

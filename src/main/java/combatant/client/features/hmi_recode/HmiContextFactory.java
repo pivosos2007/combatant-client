@@ -1,7 +1,11 @@
 /*
- * HoldMyItems compatibility subsystem.
- * Ported for Combatant from Hold My Items by sapling (CC0-1.0).
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
  */
+
+/* HoldMyItems Recode; original project by sapling, CC0-1.0. */
 package combatant.client.features.hmi_recode;
 
 import com.mojang.blaze3d.platform.InputConstants;
