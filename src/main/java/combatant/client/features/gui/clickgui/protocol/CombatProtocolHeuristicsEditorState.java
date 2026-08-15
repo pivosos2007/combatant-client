@@ -9,6 +9,7 @@ package combatant.client.features.gui.clickgui.protocol;
 
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsGlassMaterial;
 import combatant.client.features.gui.clickgui.settings.ProtocolHeuristicsSetting;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.theme.Theme;
@@ -33,11 +34,11 @@ import java.util.regex.PatternSyntaxException;
 
 public final class CombatProtocolHeuristicsEditorState {
     private static final float SCALE = 2f;
-    private static final float WINDOW_W = 420f * SCALE;
-    private static final float WINDOW_H = 280f * SCALE;
+    private static final float WINDOW_W = 470f * SCALE;
+    private static final float WINDOW_H = 300f * SCALE;
     private static final float PADDING = 9f * SCALE;
     private static final float HEADER_H = 31f * SCALE;
-    private static final float SOURCE_W = 108f * SCALE;
+    private static final float SOURCE_W = 118f * SCALE;
     private static final float GAP = 7f * SCALE;
     private static final float CLOSE_SIZE = 12f * SCALE;
 
@@ -170,18 +171,16 @@ public final class CombatProtocolHeuristicsEditorState {
         float previousAlpha = ClickGuiRenderer.setRenderAlphaMultiplier(eased);
         try {
             int shadow = SettingsGuiPalette.withAlpha(palette.menuShadow(), Math.round(255f * eased));
-            ClickGuiRenderer.drawBlur(windowX, windowY, WINDOW_W, WINDOW_H, 9f * SCALE, 0xFF000000, 210f / 255f);
             ClickGuiRenderer.drawRoundedRectShadow(windowX, windowY, WINDOW_W, WINDOW_H, 9f * SCALE, 13f * SCALE, 1.5f * SCALE, shadow);
-            ClickGuiRenderer.drawRoundedRectGradient(
-                    windowX, windowY, WINDOW_W, WINDOW_H, 9f * SCALE,
-                    palette.menuWindowBgLeft(), palette.menuWindowBgRight(), 0f
+            SettingsGlassMaterial.pickerWorkspace(
+                    windowX, windowY, WINDOW_W, WINDOW_H,
+                    0f,
+                    SCALE,
+                    palette,
+                    eased
             );
-            ClickGuiRenderer.drawRoundedRectStrokeGradient(
-                    windowX, windowY, WINDOW_W, WINDOW_H, 9f * SCALE, 0.55f * SCALE,
-                    SettingsGuiPalette.mix(palette.menuWindowStroke(), theme.accentSoft(), 0.18f),
-                    SettingsGuiPalette.mix(palette.menuWindowStroke(), theme.accent(), 0.10f),
-                    0f
-            );
+            ClickGuiRenderer.drawRoundedRectStroke(windowX, windowY, WINDOW_W, WINDOW_H, 9f * SCALE,
+                    0.22f * SCALE, palette.menuWindowStroke());
 
             renderHeader(regular, medium, mx, my, palette, theme);
 
@@ -221,7 +220,7 @@ public final class CombatProtocolHeuristicsEditorState {
         int bg = SettingsGuiPalette.mix(palette.panelPillBase(), palette.panelPillActive(), 0.22f + closeHover * 0.58f);
         ClickGuiRenderer.drawRoundedRect(close.x, close.y, close.w, close.h, 3.5f * SCALE, bg);
         ClickGuiRenderer.drawRoundedRectStroke(close.x, close.y, close.w, close.h, 3.5f * SCALE,
-                0.45f * SCALE, SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), closeHover * 0.45f));
+                0.24f * SCALE, SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), closeHover * 0.45f));
         float pad = 3.2f * SCALE;
         int color = SettingsGuiPalette.mix(palette.panelMuted(), theme.accent(), closeHover);
         ClickGuiRenderer.drawLine(close.x + pad, close.y + pad, close.x + close.w - pad, close.y + close.h - pad, color);
@@ -253,14 +252,14 @@ public final class CombatProtocolHeuristicsEditorState {
 
             int baseLeft = SettingsGuiPalette.mix(palette.panelPillBase(), palette.menuCategoryHoverLeft(), hover * 0.30f);
             int baseRight = SettingsGuiPalette.mix(palette.panelPillBase(), palette.menuCategoryHoverRight(), hover * 0.30f);
-            float accentMix = Math.max(enabled ? 0.42f : 0f, select * 0.32f);
+            float accentMix = Math.max(enabled ? 0.10f : 0f, select * 0.22f);
             int left = SettingsGuiPalette.mix(baseLeft, theme.accentSoft(), accentMix);
             int right = SettingsGuiPalette.mix(baseRight, theme.accent(), accentMix * 0.72f);
             ClickGuiRenderer.drawRoundedRectGradient(card.x, card.y, card.w, card.h, 5.5f * SCALE, left, right, 0f);
             ClickGuiRenderer.drawRoundedRectStrokeGradient(
-                    card.x, card.y, card.w, card.h, 5.5f * SCALE, 0.5f * SCALE,
-                    SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), Math.max(select, enabled ? 0.55f : 0f)),
-                    SettingsGuiPalette.mix(palette.panelStroke(), theme.accent(), Math.max(select * 0.7f, enabled ? 0.32f : 0f)),
+                    card.x, card.y, card.w, card.h, 5.5f * SCALE, (0.22f + select * 0.16f) * SCALE,
+                    SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), Math.max(select * 0.68f, enabled ? 0.18f : 0f)),
+                    SettingsGuiPalette.mix(palette.panelStroke(), theme.accent(), Math.max(select * 0.48f, enabled ? 0.12f : 0f)),
                     0f
             );
 
@@ -268,19 +267,13 @@ public final class CombatProtocolHeuristicsEditorState {
             int marker = enabled ? theme.accent() : SettingsGuiPalette.withAlpha(palette.panelMuted(), 100);
             ClickGuiRenderer.drawRoundedRect(card.x + 3f * SCALE, card.y + 7f * SCALE, markerW,
                     card.h - 14f * SCALE, markerW * 0.5f, marker);
-            if (enabled) {
-                ClickGuiRenderer.drawRoundedRectGlow(card.x + 3f * SCALE, card.y + 7f * SCALE, markerW,
-                        card.h - 14f * SCALE, markerW * 0.5f, 5f * SCALE,
-                        SettingsGuiPalette.withAlpha(theme.accent(), Math.round(55 + 55 * hover)));
-            }
-
             String name = sourceName(source);
             ClickGuiRenderer.drawText(medium, name, card.x + 9f * SCALE, card.y + 7f * SCALE,
                     7f * SCALE, palette.panelText(), false);
             String state = enabled ? tr("enabled", "Enabled") : tr("disabled", "Disabled");
-            int stateColor = enabled ? theme.accent() : palette.panelMuted();
-            ClickGuiRenderer.drawText(regular, state, card.x + 9f * SCALE, card.y + 20f * SCALE,
-                    5.8f * SCALE, stateColor, false);
+            float stateW = statusChipWidth(regular, state);
+            drawStatusChip(card.x + 9f * SCALE, card.y + 18.5f * SCALE, stateW,
+                    state, enabled, regular, palette, theme);
 
             int count = editor(source, CombatProtocolHeuristicsConfig.ProtocolFamily.LEGACY).patternCount()
                     + editor(source, CombatProtocolHeuristicsConfig.ProtocolFamily.MODERN).patternCount();
@@ -288,7 +281,7 @@ public final class CombatProtocolHeuristicsEditorState {
             float countSize = 5.3f * SCALE;
             float countW = ClickGuiRenderer.textWidth(regular, countLabel, countSize);
             ClickGuiRenderer.drawText(regular, countLabel, card.x + card.w - 7f * SCALE - countW,
-                    card.y + 20f * SCALE, countSize, palette.panelMuted(), false);
+                    card.y + 21f * SCALE, countSize, palette.panelMuted(), false);
 
             sourceHits.add(new SourceHit(source, card));
             if (hovered) SystemCursor.set(SystemCursor.CursorType.HAND);
@@ -308,25 +301,20 @@ public final class CombatProtocolHeuristicsEditorState {
 
         String status = enabled ? tr("enabled", "Enabled") : tr("disabled", "Disabled");
         float statusSize = 5.7f * SCALE;
-        float statusW = ClickGuiRenderer.textWidth(medium, status, statusSize) + 12f * SCALE;
+        float statusW = ClickGuiRenderer.textWidth(medium, status, statusSize) + 10f * SCALE;
         float statusX = x + w - 8f * SCALE - statusW;
-        int statusBg = enabled
-                ? SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(theme.accentSoft(), palette.panelPillActive(), 0.32f), 205)
-                : palette.panelPillBase();
-        ClickGuiRenderer.drawRoundedRect(statusX, y + 7f * SCALE, statusW, 11f * SCALE, 5.5f * SCALE, statusBg);
-        ClickGuiRenderer.drawText(medium, status, statusX + 6f * SCALE, y + 9.6f * SCALE,
-                statusSize, enabled ? theme.accent() : palette.panelMuted(), false);
+        drawStatusChip(statusX, y + 7f * SCALE, statusW, status, enabled, medium, palette, theme);
 
-        float headingH = 29f * SCALE;
+        float headingH = 31f * SCALE;
         float footerH = 19f * SCALE;
         float editorGap = 6f * SCALE;
-        float editorH = (h - headingH - footerH - editorGap * 2f) * 0.5f;
+        float editorW = (w - 12f * SCALE - editorGap) * 0.5f;
+        float editorH = h - headingH - footerH - editorGap;
         float editorY = y + headingH;
         editor(selected, CombatProtocolHeuristicsConfig.ProtocolFamily.LEGACY)
-                .render(x + 6f * SCALE, editorY, w - 12f * SCALE, editorH, regular, medium, mx, my, palette, theme);
-        editorY += editorH + editorGap;
+                .render(x + 6f * SCALE, editorY, editorW, editorH, regular, medium, mx, my, palette, theme);
         editor(selected, CombatProtocolHeuristicsConfig.ProtocolFamily.MODERN)
-                .render(x + 6f * SCALE, editorY, w - 12f * SCALE, editorH, regular, medium, mx, my, palette, theme);
+                .render(x + 6f * SCALE + editorW + editorGap, editorY, editorW, editorH, regular, medium, mx, my, palette, theme);
 
         String resetLabel = tr("reset_source", "Reset source");
         float resetW = Math.max(58f * SCALE, ClickGuiRenderer.textWidth(regular, resetLabel, 5.8f * SCALE) + 14f * SCALE);
@@ -439,7 +427,7 @@ public final class CombatProtocolHeuristicsEditorState {
             int bgB = SettingsGuiPalette.mix(baseB, theme.accent(), focusAnim * 0.08f + hoverAnim * 0.03f);
             ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, 5.5f * SCALE, bgA, bgB, 85f);
             ClickGuiRenderer.drawRoundedRectStrokeGradient(
-                    x, y, w, h, 5.5f * SCALE, (0.45f + focusAnim * 0.25f) * SCALE,
+                    x, y, w, h, 5.5f * SCALE, (0.22f + focusAnim * 0.16f) * SCALE,
                     SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), 0.18f + focusAnim * 0.66f),
                     SettingsGuiPalette.mix(palette.panelStroke(), theme.accent(), 0.10f + focusAnim * 0.54f),
                     0f
@@ -466,7 +454,7 @@ public final class CombatProtocolHeuristicsEditorState {
             int areaBg = SettingsGuiPalette.withAlpha(SettingsGuiPalette.darken(palette.panelBgRight(), 0.18f), 190);
             ClickGuiRenderer.drawRoundedRect(textArea.x, textArea.y, textArea.w, textArea.h, 3.5f * SCALE, areaBg);
             ClickGuiRenderer.drawRoundedRectStroke(textArea.x, textArea.y, textArea.w, textArea.h, 3.5f * SCALE,
-                    0.35f * SCALE, SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), focusAnim * 0.42f));
+                    0.22f * SCALE, SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), focusAnim * 0.42f));
             renderText(regular, palette, theme);
             if (hovered) SystemCursor.set(SystemCursor.CursorType.TEXT);
         }
@@ -793,11 +781,40 @@ public final class CombatProtocolHeuristicsEditorState {
     }
 
     private static void panel(float x, float y, float w, float h, SettingsGuiPalette palette) {
-        ClickGuiRenderer.drawBlur(x, y, w, h, 5f * SCALE, palette.panelBlurTint(), 175f / 255f);
         ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, 6f * SCALE,
-                palette.panelBgLeft(), palette.panelBgRight(), 0f);
+                palette.contentPlaneTop(), palette.contentPlaneBottom(), 90f);
         ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, 6f * SCALE,
-                0.5f * SCALE, palette.panelStroke());
+                0.22f * SCALE, palette.glassEdgeSoft());
+    }
+
+    private static float statusChipWidth(TextRenderer font, String text) {
+        return ClickGuiRenderer.textWidth(font, text, 5.7f * SCALE) + 10f * SCALE;
+    }
+
+    private static void drawStatusChip(float x,
+                                       float y,
+                                       float w,
+                                       String text,
+                                       boolean enabled,
+                                       TextRenderer font,
+                                       SettingsGuiPalette palette,
+                                       Themes.Theme theme) {
+        float h = 11f * SCALE;
+        float radius = 3f * SCALE;
+        int bg = enabled
+                ? SettingsGuiPalette.mix(palette.panelPillActive(), theme.accentSoft(), 0.22f)
+                : SettingsGuiPalette.mix(palette.panelPillBase(), palette.panelBgRight(), 0.28f);
+        int edge = enabled
+                ? SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), 0.34f)
+                : palette.panelStroke();
+        int textColor = enabled ? palette.panelText() : palette.panelMuted();
+        ClickGuiRenderer.drawRoundedRect(x, y, w, h, radius, bg);
+        ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, radius, 0.18f * SCALE, edge);
+        float size = 5.7f * SCALE;
+        float textW = ClickGuiRenderer.textWidth(font, text, size);
+        float textH = ClickGuiRenderer.textHeight(font, size);
+        ClickGuiRenderer.drawText(font, text, x + (w - textW) * 0.5f, y + (h - textH) * 0.5f,
+                size, textColor, false);
     }
 
     private static void button(Rect rect, String label, float hover, TextRenderer font,
@@ -805,7 +822,7 @@ public final class CombatProtocolHeuristicsEditorState {
         int bg = SettingsGuiPalette.mix(palette.panelPillBase(), theme.accentSoft(), 0.08f + hover * 0.24f);
         ClickGuiRenderer.drawRoundedRect(rect.x, rect.y, rect.w, rect.h, 3.5f * SCALE, bg);
         ClickGuiRenderer.drawRoundedRectStroke(rect.x, rect.y, rect.w, rect.h, 3.5f * SCALE,
-                0.4f * SCALE, SettingsGuiPalette.mix(palette.panelStroke(), theme.accent(), hover * 0.42f));
+                0.22f * SCALE, SettingsGuiPalette.mix(palette.panelStroke(), theme.accent(), hover * 0.42f));
         float size = 5.8f * SCALE;
         float tw = ClickGuiRenderer.textWidth(font, label, size);
         float th = ClickGuiRenderer.textHeight(font, size);

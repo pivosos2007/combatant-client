@@ -162,7 +162,15 @@ public final class ThemeComponent {
         scroll = ClickGuiMath.clamp(scroll, -maxScroll, 0f);
         smoothedScroll = AnimationUtility.approach(smoothedScroll, scroll, draggingScrollbar ? 0.55f : 0.2f);
         smoothedScroll = AnimationUtility.snap(smoothedScroll, scroll, draggingScrollbar ? 0.01f : 0.05f);
-        boolean clipped = ScissorFunction.pushRaw(areaX, areaY, areaW, areaH);
+        // The selection halo belongs to the card, but extends a few pixels beyond it.
+        // Keep the scroll viewport while leaving enough room for that halo at its edges.
+        float glowClipPadding = 4.5f * scale;
+        boolean clipped = ScissorFunction.pushRaw(
+                areaX - glowClipPadding,
+                areaY - glowClipPadding,
+                areaW + glowClipPadding * 2f,
+                areaH + glowClipPadding * 2f
+        );
 
         int idx = 0;
         for (Themes.ThemeEntry entry : entries) {
@@ -237,14 +245,14 @@ public final class ThemeComponent {
 
         if (selected > 0.001f) {
             LayoutRender2D.roundedSoftShadow(
-                    x - 0.8f * scale,
-                    y - 0.8f * scale,
-                    w + 1.6f * scale,
-                    h + 1.6f * scale,
-                    5.8f * scale,
-                    (5.5f + 2.5f * selected) * scale,
-                    0.025f * selected,
-                    SettingsGuiPalette.withAlpha(t.accent(), Math.round(72f * selected))
+                    x - 0.45f * scale,
+                    y - 0.45f * scale,
+                    w + 0.9f * scale,
+                    h + 0.9f * scale,
+                    5.35f * scale,
+                    (3.6f + 1.4f * selected) * scale,
+                    0.020f * selected,
+                    SettingsGuiPalette.withAlpha(t.accent(), Math.round(62f * selected))
             );
         }
 
@@ -286,10 +294,11 @@ public final class ThemeComponent {
             );
 
         }
+        float dividerInset = 5f * scale;
         LayoutRender2D.rectQuad(
-                x,
+                x + dividerInset,
                 y + 15.5f * scale,
-                w,
+                w - dividerInset * 2f,
                 0.5f * scale,
                 SettingsGuiPalette.mix(palette.moduleDividerStart(), SettingsGuiPalette.withAlpha(t.accent(), 210), selected * 0.78f),
                 SettingsGuiPalette.mix(palette.moduleDividerEnd(), SettingsGuiPalette.withAlpha(t.accentSoft(), 190), selected * 0.72f),

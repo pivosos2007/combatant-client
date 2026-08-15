@@ -141,10 +141,35 @@ float fresnelTerm(float signedPower, float edgeGradient) {
     return clamp(pow(base, power), 0.0, 1.0);
 }
 
+void decodeFresnelPayload(float packedValue, out float fresnelMix, out float prismStrength, out float prismPhase) {
+    fresnelMix = clamp(packedValue, 0.0, 1.0);
+    prismStrength = 0.0;
+    prismPhase = 0.0;
+    if (packedValue < 1.5) return;
+
+    float payload = max(0.0, packedValue - 2.0);
+    float phaseBucket = floor(payload / 256.0 + 0.0001);
+    float strengthPayload = payload - phaseBucket * 256.0;
+    float strengthBucket = floor(strengthPayload / 2.0 + 0.0001);
+    fresnelMix = clamp(strengthPayload - strengthBucket * 2.0, 0.0, 1.0);
+    prismStrength = clamp(strengthBucket / 100.0, 0.0, 1.0);
+    prismPhase = clamp(phaseBucket / 100.0, 0.0, 1.0);
+}
+
 const vec3 LUMA_WEIGHTS = vec3(0.2126, 0.7152, 0.0722);
 
 float luminance(vec3 c) {
     return dot(c, LUMA_WEIGHTS);
+}
+
+float prismStripe(float distanceToSweep, float center, float halfWidth, float feather) {
+    return 1.0 - smoothstep(halfWidth, halfWidth + feather, abs(distanceToSweep - center));
+}
+
+float prismHash(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
 }
 
 vec3 lookupGlassColor(vec3 scene, vec3 tint) {
@@ -218,10 +243,76 @@ void main() {
 
     vec2 uv = gl_FragCoord.xy / fbSize;
 
+    float fresnelMix;
+    float prismStrength;
+    float prismPhase;
+    decodeFresnelPayload(v_TexCoord.x, fresnelMix, prismStrength, prismPhase);
+    vec2 surfaceUv = pos / size + 0.5;
+
+    // Stable per-surface randomization. Position is quantized coarsely so animated
+    // geometry does not sparkle, while neighbouring Modules dropdowns still receive
+    // different material characters.
+    vec2 surfaceKey = vec2(
+        floor((v_Rect.x + size.x * 0.31) / 24.0),
+        floor((size.x * 0.37 + size.y * 0.63) / 16.0)
+    );
+    float strengthSeed = prismHash(surfaceKey + vec2(7.1, 19.7));
+    float waveSeed = prismHash(surfaceKey + vec2(31.3, 5.9));
+    float colorSeed = prismHash(surfaceKey + vec2(13.7, 47.1));
+    float fillSeed = prismHash(surfaceKey + vec2(61.9, 23.3));
+    prismStrength = clamp(prismStrength * mix(0.62, 1.18, strengthSeed), 0.0, 1.0);
+
+    float sweepCoord = surfaceUv.x * 0.72 + surfaceUv.y * 0.28;
+    float sweepDistance = sweepCoord - prismPhase;
+
+    // Two travelling waves bend the sweep into a liquid caustic. The low-frequency
+    // wave defines the silhouette; the smaller ripple prevents a mechanically clean
+    // diagonal without turning the surface into noisy rainbow stripes.
+    float alongSweep = surfaceUv.x * -0.28 + surfaceUv.y * 0.72;
+    float wavePhaseA = alongSweep * mix(13.5, 18.5, waveSeed)
+            + prismPhase * 5.0 + waveSeed * 6.2831853;
+    float wavePhaseB = alongSweep * mix(31.0, 42.0, fillSeed)
+            - prismPhase * 8.0 + fillSeed * 6.2831853;
+    float waveAmplitudeA = mix(0.010, 0.019, waveSeed);
+    float waveAmplitudeB = mix(0.0030, 0.0065, fillSeed);
+    float waveFrequencyA = mix(13.5, 18.5, waveSeed);
+    float waveFrequencyB = mix(31.0, 42.0, fillSeed);
+    float waveOffsetA = sin(wavePhaseA) * waveAmplitudeA;
+    float waveOffsetB = sin(wavePhaseB) * waveAmplitudeB;
+    float liquidSweepDistance = sweepDistance + waveOffsetA + waveOffsetB;
+    float waveSlope = cos(wavePhaseA) * (waveAmplitudeA * waveFrequencyA)
+            + cos(wavePhaseB) * (waveAmplitudeB * waveFrequencyB);
+
+    // The body is intentionally broad. Two offset envelopes overlap into an uneven
+    // pool of refracted color instead of concentrating all energy into one wire.
+    float widthVariance = mix(0.78, 1.28, fillSeed);
+    float prismEnvelopeDistance = liquidSweepDistance / (0.175 * widthVariance);
+    float primaryEnvelope = exp(-prismEnvelopeDistance * prismEnvelopeDistance);
+    float secondaryOffset = mix(0.060, 0.108, waveSeed);
+    float secondaryDistance = (liquidSweepDistance - secondaryOffset - sin(wavePhaseA * 0.63) * 0.018)
+            / (0.125 * mix(0.82, 1.22, colorSeed));
+    float secondaryEnvelope = exp(-secondaryDistance * secondaryDistance);
+    float fillWaveA = 0.5 + 0.5 * sin(alongSweep * mix(6.5, 11.0, fillSeed)
+            + prismPhase * 3.0 + sin(wavePhaseB) * 0.48 + waveSeed * 5.0);
+    float fillWaveB = 0.5 + 0.5 * sin(alongSweep * mix(12.0, 19.0, colorSeed)
+            - prismPhase * 4.0 + liquidSweepDistance * 12.0 + fillSeed * 4.0);
+    float unevenFloor = mix(0.20, 0.42, strengthSeed);
+    float unevenFill = unevenFloor + (1.0 - unevenFloor)
+            * mix(fillWaveA, fillWaveB, 0.28 + 0.38 * fillSeed * fillWaveA);
+    float prismEnvelope = max(primaryEnvelope, secondaryEnvelope * 0.72)
+            * prismStrength * unevenFill;
+
+    float waveVariation = 0.66 + 0.34 * sin(alongSweep * 18.0 + sin(wavePhaseA) * 1.10);
+    float prismCrest = prismStripe(liquidSweepDistance, 0.000, 0.008, 0.021)
+            * prismStrength * waveVariation;
+    float prismEcho = prismStripe(liquidSweepDistance, 0.058, 0.010, 0.026)
+            * prismStrength * (0.72 - waveVariation * 0.20);
+    float prismBand = max(prismEnvelope * 0.72, max(prismCrest * 0.58, prismEcho * 0.48));
+
     // Keep the body of the glass locked to screen UV. Previously the center was
     // displaced along a rect-relative radial vector, so changing a rect's bounds
     // visibly recomposed otherwise stationary scenery.
-    float centerDistortPx = distortStrength * min(fbSize.x, fbSize.y) * 0.42;
+    float centerDistortPx = distortStrength * min(fbSize.x, fbSize.y) * 0.42 * (1.0 + prismBand * 1.10);
     float edgeRefraction = smoothstep(0.42, 0.98, edgeGradient);
     edgeRefraction *= edgeRefraction;
     vec2 centerUv = clamp(uv + uvNormal * (centerDistortPx / fbSize) * edgeRefraction, vec2(0.001), vec2(0.999));
@@ -230,8 +321,9 @@ void main() {
     // should read as mirror/detail; center remains the existing blur material.
     float mirrorPx = thickness * (1.90 + 2.50 * fresnel) + centerDistortPx * 0.55;
     vec2 mirrorUv = clamp(uv + uvNormal * (mirrorPx / fbSize), vec2(0.001), vec2(0.999));
-    vec2 chromaUvR = clamp(mirrorUv + uvNormal * (1.65 / fbSize), vec2(0.001), vec2(0.999));
-    vec2 chromaUvB = clamp(mirrorUv - uvNormal * (1.65 / fbSize), vec2(0.001), vec2(0.999));
+    float chromaOffsetPx = 1.65 + prismBand * 7.50;
+    vec2 chromaUvR = clamp(mirrorUv + uvNormal * (chromaOffsetPx / fbSize), vec2(0.001), vec2(0.999));
+    vec2 chromaUvB = clamp(mirrorUv - uvNormal * (chromaOffsetPx / fbSize), vec2(0.001), vec2(0.999));
 
     vec4 blurColor = texture(u_BlurTexture, centerUv);
     vec4 cleanColor = texture(u_Texture, centerUv);
@@ -244,9 +336,19 @@ void main() {
         texture(u_Texture, chromaUvB).b
     );
 
-    vec3 tint = clamp(v_Color.rgb, 0.0, 1.0);
-    float fresnelMix = clamp(v_TexCoord.x, 0.0, 1.0);
+    // Sample the scene through three displaced channels inside the travelling
+    // fracture. This makes dispersion respond to actual content instead of reading
+    // as a flat rainbow overlay.
+    vec2 liquidNormalLocal = normalize(vec2(0.72, 0.28) + vec2(-0.28, 0.72) * waveSlope);
+    vec2 prismAxis = vec2(liquidNormalLocal.x, -liquidNormalLocal.y);
+    vec2 prismSceneOffset = prismAxis * ((1.75 + 6.25 * prismBand) / fbSize);
+    vec3 prismScene = vec3(
+        texture(u_Texture, clamp(centerUv + prismSceneOffset, vec2(0.001), vec2(0.999))).r,
+        texture(u_Texture, centerUv).g,
+        texture(u_Texture, clamp(centerUv - prismSceneOffset, vec2(0.001), vec2(0.999))).b
+    );
 
+    vec3 tint = clamp(v_Color.rgb, 0.0, 1.0);
     // Blur is the material base. Clean scene clarity is deliberately tiny for
     // blur-first presets, otherwise the center turns back into raw refraction.
     // Keep the body blur-first. Stronger clean-scene leakage made large panels look
@@ -294,6 +396,29 @@ void main() {
     float specMix = hairline * (0.10 + 0.20 * topLight) * (0.60 + 0.40 * fresnelMix);
     specMix *= 1.0 - brightScene * 0.52;
     finalColor = mix(finalColor, rimHighlight, specMix);
+
+    vec3 refractedPrism = lookupGlassColor(prismScene, tint);
+    finalColor = mix(finalColor, refractedPrism, prismEnvelope * (0.20 + 0.12 * wideRim));
+
+    // Color belongs to the moving caustic crests, not to three parallel RGB bands.
+    // Slowly changing interference swaps cyan/violet and warm/pink fragments along
+    // the same wavy front, while the echo stays quieter and cooler.
+    float colorInterference = 0.5 + 0.5 * sin(alongSweep * mix(9.0, 15.0, colorSeed)
+            + prismPhase * 4.5 + sin(wavePhaseB) * 0.42 + colorSeed * 6.2831853);
+    vec3 coolCaustic = mix(vec3(0.30, 0.84, 1.00), vec3(0.68, 0.38, 1.00), colorInterference);
+    vec3 warmCaustic = mix(vec3(1.00, 0.58, 0.28), vec3(1.00, 0.38, 0.72), colorInterference);
+    float surfaceWarmBias = mix(0.08, 0.62, colorSeed);
+    vec3 crestColor = mix(coolCaustic, warmCaustic,
+            clamp(surfaceWarmBias + sin(wavePhaseA) * 0.16, 0.0, 1.0));
+    vec3 fillColor = mix(coolCaustic, warmCaustic,
+            clamp(surfaceWarmBias * 0.72 + fillWaveB * 0.34, 0.0, 1.0));
+    float fillIntensity = mix(0.76, 1.20, strengthSeed);
+    float fillMix = clamp(prismEnvelope * fillIntensity * (0.15 + 0.08 * wideRim), 0.0, 0.25);
+    finalColor = mix(finalColor, fillColor, fillMix);
+    float crestMix = clamp(prismCrest * (0.10 + 0.06 * wideRim), 0.0, 0.16);
+    finalColor = mix(finalColor, crestColor, crestMix);
+    finalColor = mix(finalColor, coolCaustic, prismEcho * (0.05 + 0.035 * wideRim));
+    finalColor = mix(finalColor, vec3(0.98, 1.0, 1.0), prismCrest * (0.025 + 0.035 * wideRim));
 
     float fresnelAlpha = clamp(v_Params2.z, 0.0, 1.0);
     float baseAlpha = clamp(v_Params2.w, 0.0, 1.0);

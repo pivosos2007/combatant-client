@@ -2401,6 +2401,34 @@ public final class Renderer2D {
                                 float fresnelMix,
                                 float distortPx,
                                 float squirclePower) {
+        liquidGlassRect(x, y, w, h,
+                radius, softness,
+                tintArgb,
+                glassAlpha,
+                blurAlpha,
+                fresnelPower,
+                fresnelAlpha,
+                baseAlpha,
+                fresnelMix,
+                distortPx,
+                squirclePower,
+                0.0f,
+                0.0f);
+    }
+
+    public void liquidGlassRect(double x, double y, double w, double h,
+                                float radius, float softness,
+                                int tintArgb,
+                                float glassAlpha,
+                                float blurAlpha,
+                                float fresnelPower,
+                                float fresnelAlpha,
+                                float baseAlpha,
+                                float fresnelMix,
+                                float distortPx,
+                                float squirclePower,
+                                float prismStrength,
+                                float prismPhase) {
         liquidGlassRectCorners(x, y, w, h,
                 radius, radius, radius, radius,
                 softness,
@@ -2412,7 +2440,9 @@ public final class Renderer2D {
                 baseAlpha,
                 fresnelMix,
                 distortPx,
-                squirclePower);
+                squirclePower,
+                prismStrength,
+                prismPhase);
     }
 
     public void liquidGlassRect(double x, double y, double w, double h,
@@ -2681,6 +2711,36 @@ public final class Renderer2D {
                                        float fresnelMix,
                                        float distortPx,
                                        float squirclePower) {
+        liquidGlassRectCorners(x, y, w, h,
+                radiusTL, radiusTR, radiusBR, radiusBL,
+                softness,
+                tintArgb,
+                glassAlpha,
+                blurAlpha,
+                fresnelPower,
+                fresnelAlpha,
+                baseAlpha,
+                fresnelMix,
+                distortPx,
+                squirclePower,
+                0.0f,
+                0.0f);
+    }
+
+    public void liquidGlassRectCorners(double x, double y, double w, double h,
+                                       float radiusTL, float radiusTR, float radiusBR, float radiusBL,
+                                       float softness,
+                                       int tintArgb,
+                                       float glassAlpha,
+                                       float blurAlpha,
+                                       float fresnelPower,
+                                       float fresnelAlpha,
+                                       float baseAlpha,
+                                       float fresnelMix,
+                                       float distortPx,
+                                       float squirclePower,
+                                       float prismStrength,
+                                       float prismPhase) {
         if (w <= 0.0 || h <= 0.0) return;
 
         boolean wholeBoxSquircle = squirclePower <= -1.5f;
@@ -2719,7 +2779,7 @@ public final class Renderer2D {
         normalizeCornerRadii(w, h, radiusTL, radiusTR, radiusBR, radiusBL, cornerRadiiTmp);
 
         float thickness = Math.max(0.0f, softness);
-        float mix = clamp01(fresnelMix);
+        float mix = packLiquidGlassFresnel(fresnelMix, prismStrength, prismPhase);
         float fa = clamp01(fresnelAlpha);
         float ba = clamp01(baseAlpha);
         float packedDistort = packLiquidGlassPayload(distortPx, shapePower, clampedBlurAlpha, wholeBoxSquircle);
@@ -2748,6 +2808,16 @@ public final class Renderer2D {
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
+    }
+
+    private static float packLiquidGlassFresnel(float fresnelMix, float prismStrength, float prismPhase) {
+        float mix = clamp01(fresnelMix);
+        float strength = clamp01(prismStrength);
+        if (strength <= 0.001f) return mix;
+
+        int strengthBucket = Math.max(0, Math.min(100, Math.round(strength * 100.0f)));
+        int phaseBucket = Math.max(0, Math.min(100, Math.round(clamp01(prismPhase) * 100.0f)));
+        return 2.0f + mix + strengthBucket * 2.0f + phaseBucket * 256.0f;
     }
 
 

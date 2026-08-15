@@ -22,18 +22,18 @@ public final class SearchComponent {
         String text = ClickGuiSearch.getText();
         float scale = w / 80f;
 
-        ClickGuiRenderer.drawBlur(x, y, w, h, 3f * scale, 0xFF000000, 200f / 255f);
+        ClickGuiRenderer.drawBlur(x, y, w, h, 3f * scale, 0xFF000000, 135f / 255f);
         LayoutRender2D.roundedQuad(
                 x, y, w, h, 3f * scale,
-                LayoutRender2D.argb(155, 18, 19, 20),
-                LayoutRender2D.argb(155, 5, 6, 7),
-                LayoutRender2D.argb(155, 5, 6, 7),
-                LayoutRender2D.argb(155, 18, 19, 20)
+                LayoutRender2D.argb(108, 18, 19, 20),
+                LayoutRender2D.argb(108, 5, 6, 7),
+                LayoutRender2D.argb(108, 5, 6, 7),
+                LayoutRender2D.argb(108, 18, 19, 20)
         );
-        LayoutRender2D.roundedStroke(x, y, w, h, 3f * scale, 0.5f * scale, LayoutRender2D.argb(225, 18, 19, 20));
+        LayoutRender2D.roundedStroke(x, y, w, h, 3f * scale, 0.5f * scale, LayoutRender2D.argb(150, 18, 19, 20));
 
         float dividerX = x + 65.5f * scale;
-        LayoutRender2D.rect(dividerX, y + 4f * scale, 0.5f * scale, h - 8f * scale, LayoutRender2D.argb(55, 155, 155, 155));
+        LayoutRender2D.rect(dividerX, y + 4f * scale, 0.5f * scale, h - 8f * scale, LayoutRender2D.argb(38, 155, 155, 155));
 
         String display = text.isEmpty() && !typing ? "Search" : text;
         float tx = x + 4f * scale;

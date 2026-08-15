@@ -15,8 +15,10 @@ import net.minecraft.world.item.ItemStack;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsGlassMaterial;
 import combatant.client.features.gui.clickgui.settings.PickerDetailOwner;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
+import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.helpers.ScissorFunction;
@@ -27,19 +29,21 @@ import java.util.*;
 public final class ClickGuiPickerState {
     private static final float SCALE = 2f;
 
-    private static final float WINDOW_W = 340f * SCALE;
-    private static final float WINDOW_H = 260f * SCALE;
+    private static final float WINDOW_W = 500f * SCALE;
+    private static final float WINDOW_H = 300f * SCALE;
     private static final float PADDING = 8f * SCALE;
-    private static final float HEADER_H = 28f * SCALE;
+    private static final float HEADER_H = 30f * SCALE;
 
-    private static final float SEARCH_H = 15f * SCALE;
+    private static final float SEARCH_H = 16f * SCALE;
     private static final float FILTER_H = SEARCH_H;
-    private static final float SEARCH_W = 98f * SCALE;
-    private static final float FILTER_W = 80f * SCALE;
+    private static final float SEARCH_W = 110f * SCALE;
+    private static final float FILTER_W = 90f * SCALE;
     private static final float CLOSE_SIZE = 12f * SCALE;
 
-    private static final float CARD_SIZE = 38f * SCALE;
+    private static final float CARD_W = 48f * SCALE;
+    private static final float CARD_H = 48f * SCALE;
     private static final float CARD_GAP = 5f * SCALE;
+    private static final float GRID_PAD = 0f;
     private static final float SCROLL_STEP = 15f * SCALE;
     private static final float MARQUEE_SPEED = 18f * SCALE;
     private static final float MARQUEE_GAP = 10f * SCALE;
@@ -92,6 +96,7 @@ public final class ClickGuiPickerState {
     private long hoveredCardStartMs;
     private float allFilterHoverAnim;
     private float selectedFilterHoverAnim;
+    private float openAnim;
 
     public ClickGuiPickerState(TextListSetting owner, String title, TextListSetting.PickerMode mode) {
         this.owner = owner;
@@ -163,8 +168,7 @@ public final class ClickGuiPickerState {
         listening = false;
 
         if (inside(mx, my, filterX, filterY, FILTER_W, FILTER_H)) {
-            float half = FILTER_W * 0.5f;
-            boolean nextShowAll = mx < filterX + half;
+            boolean nextShowAll = mx < filterX + FILTER_W * 0.5f;
             if (showAll != nextShowAll) {
                 showAll = nextShowAll;
                 scroll = 0f;
@@ -227,6 +231,9 @@ public final class ClickGuiPickerState {
         layout(fbw, fbh);
         clampScroll();
 
+        float dt = AnimationUtility.deltaTime();
+        openAnim = AnimationUtility.snap(AnimationUtility.approach(openAnim, 1f, dt, 8.5f), 1f, 0.003f);
+
         float targetMode = showAll ? 0f : 1f;
         modeAnim = AnimationUtility.approach(modeAnim, targetMode, 0.22f);
         modeAnim = AnimationUtility.snap(modeAnim, targetMode, 0.01f);
@@ -250,7 +257,6 @@ public final class ClickGuiPickerState {
     }
 
     private void drawWindow(SettingsGuiPalette palette) {
-        ClickGuiRenderer.drawBlur(windowX, windowY, windowW(), WINDOW_H, 8f * SCALE, 0xFF000000, 200f / 255f);
         LayoutRender2D.roundedSoftShadow(
                 windowX,
                 windowY,
@@ -261,16 +267,15 @@ public final class ClickGuiPickerState {
                 0.018f,
                 palette.menuShadow()
         );
-        LayoutRender2D.roundedQuad(
+        SettingsGlassMaterial.pickerWorkspace(
                 windowX,
                 windowY,
                 windowW(),
                 WINDOW_H,
-                8f * SCALE,
-                palette.menuWindowBgLeft(),
-                palette.menuWindowBgRight(),
-                palette.menuWindowBgRight(),
-                palette.menuWindowBgLeft()
+                0f,
+                SCALE,
+                palette,
+                openAnim
         );
         LayoutRender2D.roundedStroke(
                 windowX,
@@ -278,7 +283,7 @@ public final class ClickGuiPickerState {
                 windowW(),
                 WINDOW_H,
                 8f * SCALE,
-                0.1f * SCALE,
+                0.22f * SCALE,
                 palette.menuWindowStroke()
         );
     }
@@ -306,7 +311,7 @@ public final class ClickGuiPickerState {
                 false
         );
 
-        String count = owner.getValueSet().size() + " selected";
+        String count = ClickGuiI18n.tr("clickgui.picker.selected_count", "%s selected", owner.getValueSet().size());
         ClickGuiRenderer.drawText(
                 ClickGuiRenderer.getInterRegular(),
                 count,
@@ -335,7 +340,7 @@ public final class ClickGuiPickerState {
                 CLOSE_SIZE,
                 CLOSE_SIZE,
                 3.5f * SCALE,
-                0.5f * SCALE,
+                0.24f * SCALE,
                 palette.panelStroke()
         );
 
@@ -366,45 +371,18 @@ public final class ClickGuiPickerState {
         );
 
         int baseLeft = SettingsGuiPalette.mix(palette.panelPillBase(), palette.panelBgLeft(), 0.34f);
-        int baseRight = SettingsGuiPalette.mix(palette.panelPillBase(), palette.panelBgRight(), 0.46f);
-        if (hover) {
-            float hoverAnim = Math.max(allFilterHoverAnim, selectedFilterHoverAnim);
-            baseLeft = SettingsGuiPalette.mix(baseLeft, palette.menuCategoryHoverLeft(), 0.18f * hoverAnim);
-            baseRight = SettingsGuiPalette.mix(baseRight, palette.menuCategoryHoverRight(), 0.18f * hoverAnim);
-        }
-
-        ClickGuiRenderer.drawBlur(filterX, filterY, FILTER_W, FILTER_H, 4f * SCALE, palette.panelBlurTint(), 150f / 255f);
-        LayoutRender2D.roundedQuad(
-                filterX,
-                filterY,
-                FILTER_W,
-                FILTER_H,
-                3.5f * SCALE,
-                baseLeft,
-                baseRight,
-                baseRight,
-                baseLeft
-        );
-        LayoutRender2D.roundedStrokeQuad(
-                filterX,
-                filterY,
-                FILTER_W,
-                FILTER_H,
-                3.5f * SCALE,
-                0.5f * SCALE,
-                SettingsGuiPalette.mix(palette.panelStroke(), palette.moduleDividerStart(), 0.20f),
-                SettingsGuiPalette.mix(palette.panelStroke(), palette.moduleDividerEnd(), 0.20f),
-                SettingsGuiPalette.mix(palette.panelStroke(), palette.moduleDividerEnd(), 0.20f),
-                SettingsGuiPalette.mix(palette.panelStroke(), palette.moduleDividerStart(), 0.20f)
-        );
+        int baseRight = SettingsGuiPalette.mix(palette.panelPillBase(), palette.panelBgRight(), 0.42f);
+        LayoutRender2D.roundedQuad(filterX, filterY, FILTER_W, FILTER_H, 3.5f * SCALE,
+                baseLeft, baseRight, baseRight, baseLeft);
+        LayoutRender2D.roundedStroke(filterX, filterY, FILTER_W, FILTER_H, 3.5f * SCALE,
+                0.22f * SCALE, palette.glassEdgeSoft());
 
         float pad = 1.2f * SCALE;
         float half = (FILTER_W - pad * 2f) * 0.5f;
         float activeX = filterX + pad + half * modeAnim;
         float activeHover = showAll ? allFilterHoverAnim : selectedFilterHoverAnim;
-        int activeA = SettingsGuiPalette.mix(palette.panelPillActive(), SettingsGuiPalette.withAlpha(theme.accentSoft(), 230), 0.18f + activeHover * 0.10f);
-        int activeB = SettingsGuiPalette.mix(palette.panelPillActive(), SettingsGuiPalette.withAlpha(theme.accent(), 235), 0.12f + activeHover * 0.14f);
-        int activeC = SettingsGuiPalette.mix(SettingsGuiPalette.darken(palette.panelPillActive(), 0.18f), SettingsGuiPalette.withAlpha(theme.accentSoft(), 215), 0.14f + activeHover * 0.10f);
+        int activeA = SettingsGuiPalette.mix(palette.panelPillActive(), theme.accentSoft(), 0.13f + activeHover * 0.08f);
+        int activeB = SettingsGuiPalette.mix(palette.panelPillActive(), theme.accent(), 0.08f + activeHover * 0.09f);
         LayoutRender2D.roundedQuad(
                 activeX,
                 filterY + pad,
@@ -413,34 +391,20 @@ public final class ClickGuiPickerState {
                 3f * SCALE,
                 activeA,
                 activeB,
-                activeC,
+                activeB,
                 activeA
         );
-        LayoutRender2D.roundedStrokeQuad(
-                activeX,
-                filterY + pad,
-                half,
-                FILTER_H - pad * 2f,
-                3f * SCALE,
-                0.35f * SCALE,
-                SettingsGuiPalette.withAlpha(theme.accentSoft(), 155),
-                SettingsGuiPalette.withAlpha(theme.accent(), 165),
-                SettingsGuiPalette.withAlpha(theme.accentSoft(), 135),
-                SettingsGuiPalette.withAlpha(theme.accentSoft(), 155)
-        );
-
-        drawFilterDivider(filterX + pad + half, palette, theme);
+        LayoutRender2D.roundedStroke(activeX, filterY + pad, half, FILTER_H - pad * 2f,
+                3f * SCALE, 0.20f * SCALE,
+                SettingsGuiPalette.withAlpha(theme.accentSoft(), 135));
 
         TextRenderer font = ClickGuiRenderer.getInterRegular();
-        float textSize = 7.5f * SCALE;
-        float allW = ClickGuiRenderer.textWidth(font, "All", textSize);
-        float allH = ClickGuiRenderer.textHeight(font, textSize);
-        float selW = ClickGuiRenderer.textWidth(font, "Selected", textSize);
-        float selH = ClickGuiRenderer.textHeight(font, textSize);
-
-        float allCx = filterX + half * 0.5f + pad;
-        float selCx = filterX + half + half * 0.5f + pad;
-        float cy = filterY + (FILTER_H - allH) * 0.5f;
+        float textSize = 7.2f * SCALE;
+        String allText = ClickGuiI18n.tr("clickgui.picker.all_short", "All");
+        String selectedText = ClickGuiI18n.tr("clickgui.picker.selected", "Selected");
+        float allW = ClickGuiRenderer.textWidth(font, allText, textSize);
+        float selectedW = ClickGuiRenderer.textWidth(font, selectedText, textSize);
+        float textY = filterY + (FILTER_H - ClickGuiRenderer.textHeight(font, textSize)) * 0.5f;
 
         int allColor = showAll
                 ? palette.panelText()
@@ -448,46 +412,10 @@ public final class ClickGuiPickerState {
         int selColor = !showAll
                 ? palette.panelText()
                 : SettingsGuiPalette.mix(palette.panelMuted(), palette.panelText(), 0.22f * selectedFilterHoverAnim);
-        ClickGuiRenderer.drawText(font, "All", allCx - allW * 0.5f, cy, textSize, allColor, false);
-        ClickGuiRenderer.drawText(font, "Selected", selCx - selW * 0.5f, filterY + (FILTER_H - selH) * 0.5f, textSize, selColor, false);
-    }
-
-    private void drawFilterDivider(float x, SettingsGuiPalette palette, Themes.Theme theme) {
-        float backingW = Math.max(1.25f * SCALE, 1.05f);
-        float backingH = FILTER_H - 4.4f * SCALE;
-        float backingY = filterY + (FILTER_H - backingH) * 0.5f;
-        int backingTop = SettingsGuiPalette.withAlpha(palette.panelBgLeft(), 104);
-        int backingBottom = SettingsGuiPalette.withAlpha(palette.panelBgRight(), 84);
-        LayoutRender2D.roundedQuad(
-                x - backingW * 0.5f,
-                backingY,
-                backingW,
-                backingH,
-                backingW * 0.5f,
-                backingTop,
-                backingTop,
-                backingBottom,
-                backingBottom
-        );
-
-        float lineW = Math.max(0.5f * SCALE, 0.75f);
-        float lineH = FILTER_H - 6.0f * SCALE;
-        float lineY = filterY + (FILTER_H - lineH) * 0.5f;
-        int top = SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.moduleDividerStart(), theme.accentSoft(), 0.30f), 154);
-        int mid = SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.moduleDividerEnd(), theme.accent(), 0.34f), 214);
-        int bottom = SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.moduleDividerEnd(), palette.panelText(), 0.22f), 142);
-        LayoutRender2D.roundedQuad(
-                x - lineW * 0.5f,
-                lineY,
-                lineW,
-                lineH,
-                lineW * 0.5f,
-                top,
-                mid,
-                bottom,
-                top
-        );
-
+        float allCenter = filterX + pad + half * 0.5f;
+        float selectedCenter = filterX + pad + half + half * 0.5f;
+        ClickGuiRenderer.drawText(font, allText, allCenter - allW * 0.5f, textY, textSize, allColor, false);
+        ClickGuiRenderer.drawText(font, selectedText, selectedCenter - selectedW * 0.5f, textY, textSize, selColor, false);
     }
 
     private void drawSearchField(float mx, float my, SettingsGuiPalette palette, Themes.Theme theme) {
@@ -505,7 +433,7 @@ public final class ClickGuiPickerState {
             bgR = ClickGuiRenderer.mixColor(bgR, theme.accentSoft(), 0.16f);
         }
 
-        ClickGuiRenderer.drawBlur(searchX, searchY, SEARCH_W, SEARCH_H, 3f * SCALE, palette.panelBlurTint(), 170f / 255f);
+        ClickGuiRenderer.drawBlur(searchX, searchY, SEARCH_W, SEARCH_H, 3f * SCALE, palette.panelBlurTint(), 105f / 255f);
         LayoutRender2D.roundedQuad(
                 searchX,
                 searchY,
@@ -523,7 +451,7 @@ public final class ClickGuiPickerState {
                 SEARCH_W,
                 SEARCH_H,
                 3f * SCALE,
-                0.5f * SCALE,
+                0.22f * SCALE,
                 palette.panelStroke()
         );
 
@@ -540,7 +468,7 @@ public final class ClickGuiPickerState {
         float textSize = 7.5f * SCALE;
         boolean empty = search.length() == 0;
         boolean caret = active && AnimationUtility.blink(500L);
-        String shown = empty && !active ? "Search" : search.toString();
+        String shown = empty && !active ? ClickGuiI18n.tr("clickgui.picker.search", "Search") : search.toString();
         if (active && caret) shown += "|";
         int color = empty && !active ? palette.panelMuted() : palette.panelText();
         float textY = searchY + (SEARCH_H - ClickGuiRenderer.textHeight(font, textSize)) * 0.5f;
@@ -566,28 +494,33 @@ public final class ClickGuiPickerState {
         int columns = columns();
 
         cardHits.clear();
-        ClickGuiRenderer.beginPickerIconScissor(gridX, gridY, gridW, gridH);
-        boolean clipped = ScissorFunction.pushRaw(gridX, gridY, gridW, gridH);
+        float clipX = gridX + GRID_PAD;
+        float clipY = gridY + GRID_PAD;
+        float clipW = Math.max(1f, gridW - GRID_PAD * 2f);
+        float clipH = Math.max(1f, gridH - GRID_PAD * 2f);
+        ClickGuiRenderer.beginPickerIconScissor(clipX, clipY, clipW, clipH);
+        boolean clipped = ScissorFunction.pushRaw(clipX, clipY, clipW, clipH);
 
-        float step = CARD_SIZE + CARD_GAP;
-        float iconScale = 1.55f * SCALE;
+        float stepX = CARD_W + CARD_GAP;
+        float stepY = CARD_H + CARD_GAP;
+        float iconScale = 1.65f * SCALE;
         float iconPx = 16f * iconScale;
         TextRenderer font = ClickGuiRenderer.getInterRegular();
-        float nameSize = 5.9f * SCALE;
+        float nameSize = 6.15f * SCALE;
         boolean hasHoveredCard = false;
 
         for (int i = 0; i < visible.size(); i++) {
             int col = i % columns;
             int row = i / columns;
 
-            float cardX = gridX + col * step;
-            float cardY = gridY + row * step + smoothScroll;
-            if (cardY + CARD_SIZE < gridY - 0.5f * SCALE) continue;
-            if (cardY > gridY + gridH + 0.5f * SCALE) continue;
+            float cardX = clipX + col * stepX;
+            float cardY = clipY + row * stepY + smoothScroll;
+            if (cardY + CARD_H < clipY - 0.5f * SCALE) continue;
+            if (cardY > clipY + clipH + 0.5f * SCALE) continue;
 
             PickerEntryData entry = visible.get(i);
             boolean isSelected = selected.contains(entry.getId());
-            boolean hover = inside(mx, my, cardX, cardY, CARD_SIZE, CARD_SIZE);
+            boolean hover = inside(mx, my, cardX, cardY, CARD_W, CARD_H);
             if (hover) {
                 hasHoveredCard = true;
                 if (!entry.getId().equals(hoveredCardId)) {
@@ -616,9 +549,9 @@ public final class ClickGuiPickerState {
             LayoutRender2D.roundedQuad(
                     cardX,
                     cardY,
-                    CARD_SIZE,
-                    CARD_SIZE,
-                    4f * SCALE,
+                    CARD_W,
+                    CARD_H,
+                    5f * SCALE,
                     left,
                     right,
                     right,
@@ -626,15 +559,15 @@ public final class ClickGuiPickerState {
             );
 
             int stroke = isSelected ? theme.accentSoft() : palette.moduleDividerStart();
-            float strokeW = isSelected ? 0.8f * SCALE : 0.45f * SCALE;
-            LayoutRender2D.roundedStroke(cardX, cardY, CARD_SIZE, CARD_SIZE, 4f * SCALE, strokeW, stroke);
+            float strokeW = isSelected ? 0.42f * SCALE : 0.22f * SCALE;
+            LayoutRender2D.roundedStroke(cardX, cardY, CARD_W, CARD_H, 5f * SCALE, strokeW, stroke);
 
-            float lineY = cardY + CARD_SIZE - 11f * SCALE;
+            float lineY = cardY + CARD_H - 12f * SCALE;
             LayoutRender2D.rectQuad(
-                    cardX + 3f * SCALE,
+                    cardX + 5f * SCALE,
                     lineY,
-                    CARD_SIZE - 6f * SCALE,
-                    0.45f * SCALE,
+                    CARD_W - 10f * SCALE,
+                    0.28f * SCALE,
                     palette.moduleDividerStart(),
                     palette.moduleDividerEnd(),
                     palette.moduleDividerEnd(),
@@ -643,21 +576,21 @@ public final class ClickGuiPickerState {
 
             ItemStack stack = entry.stack();
             if (stack != null && !stack.isEmpty()) {
-                float iconX = cardX + (CARD_SIZE - iconPx) * 0.5f;
-                float iconY = cardY + 4f * SCALE;
-                float clipX = cardX + SCALE;
-                float clipY = cardY + SCALE;
-                float clipW = CARD_SIZE - 2f * SCALE;
-                float clipH = Math.max(1f, lineY - clipY - 0.75f * SCALE);
+                float iconX = cardX + (CARD_W - iconPx) * 0.5f;
+                float iconY = cardY + 4.2f * SCALE;
+                float iconClipX = cardX + SCALE;
+                float iconClipY = cardY + SCALE;
+                float iconClipW = CARD_W - 2f * SCALE;
+                float iconClipH = Math.max(1f, lineY - iconClipY - 0.75f * SCALE);
                 ClickGuiRenderer.queuePickerIcon(
                         stack,
                         iconX,
                         iconY,
                         iconScale,
-                        clipX,
-                        clipY,
-                        clipW,
-                        clipH
+                        iconClipX,
+                        iconClipY,
+                        iconClipW,
+                        iconClipH
                 );
             } else {
                 TextRenderer bold = interBold();
@@ -667,7 +600,7 @@ public final class ClickGuiPickerState {
                 float qH = ClickGuiRenderer.textHeight(bold, qSize);
                 float iconAreaTop = cardY + 3.5f * SCALE;
                 float iconAreaBottom = lineY - SCALE;
-                float qX = cardX + (CARD_SIZE - qW) * 0.5f;
+                float qX = cardX + (CARD_W - qW) * 0.5f;
                 float qY = iconAreaTop + ((iconAreaBottom - iconAreaTop) - qH) * 0.5f;
                 int qColor = isSelected
                         ? SettingsGuiPalette.withAlpha(palette.moduleTitleText(), 210)
@@ -675,12 +608,17 @@ public final class ClickGuiPickerState {
                 ClickGuiRenderer.drawText(bold, q, qX, qY, qSize, qColor, false);
             }
 
-            float textMaxW = CARD_SIZE - 6f * SCALE;
-            float textY = lineY + 1.5f * SCALE;
+            float textMaxW = CARD_W - 10f * SCALE;
+            float textY = lineY + 2f * SCALE;
             int textColor = isSelected ? palette.moduleTitleText() : palette.moduleDescriptionText();
             drawCardLabel(font, entry.label(), cardX, textY, textMaxW, nameSize, textColor, hover);
 
-            cardHits.add(new CardHit(entry.getId(), cardX, cardY, CARD_SIZE, CARD_SIZE));
+            if (isSelected) {
+                float dot = 3.2f * SCALE;
+                LayoutRender2D.rounded(cardX + CARD_W - 6f * SCALE, cardY + 3.5f * SCALE,
+                        dot, dot, dot * 0.5f, SettingsGuiPalette.withAlpha(theme.accent(), 235));
+            }
+            cardHits.add(new CardHit(entry.getId(), cardX, cardY, CARD_W, CARD_H));
         }
         if (!hasHoveredCard) {
             hoveredCardId = null;
@@ -695,9 +633,11 @@ public final class ClickGuiPickerState {
         if (visible.isEmpty()) {
             ClickGuiRenderer.drawText(
                     ClickGuiRenderer.getInterRegular(),
-                    showAll ? "No entries" : "Nothing selected",
-                    gridX + 4f * SCALE,
-                    gridY + 4f * SCALE,
+                    showAll
+                            ? ClickGuiI18n.tr("clickgui.picker.empty", "No entries")
+                            : ClickGuiI18n.tr("clickgui.picker.empty_selected", "Nothing selected"),
+                    clipX + 2f * SCALE,
+                    clipY + 2f * SCALE,
                     7.2f * SCALE,
                     palette.panelMuted(),
                     false
@@ -706,7 +646,8 @@ public final class ClickGuiPickerState {
     }
 
     private void drawScrollbar(float mx, float my, SettingsGuiPalette palette) {
-        if (!scrollbarVisible || contentHeight <= gridH + 0.5f) {
+        float viewportH = Math.max(1f, gridH - GRID_PAD * 2f);
+        if (!scrollbarVisible || contentHeight <= viewportH + 0.5f) {
             scrollbarVisible = false;
             return;
         }
@@ -738,9 +679,9 @@ public final class ClickGuiPickerState {
                 palette.moduleScrollTrackA()
         );
 
-        float thumbH = Math.max(16f * SCALE, trackH * (gridH / contentHeight));
+        float thumbH = Math.max(16f * SCALE, trackH * (viewportH / contentHeight));
         sbThumbH = thumbH;
-        float ratio = contentHeight <= gridH ? 0f : (-smoothScroll / (contentHeight - gridH));
+        float ratio = contentHeight <= viewportH ? 0f : (-smoothScroll / (contentHeight - viewportH));
         float thumbY = trackY + (trackH - thumbH) * clamp(ratio, 0f, 1f);
 
         LayoutRender2D.roundedQuad(
@@ -762,11 +703,11 @@ public final class ClickGuiPickerState {
         if (!hover || fullW <= maxW + 0.5f * SCALE) {
             String shown = ClickGuiRenderer.fitText(font, text, size, maxW);
             float shownW = ClickGuiRenderer.textWidth(font, shown, size);
-            ClickGuiRenderer.drawText(font, shown, cardX + (CARD_SIZE - shownW) * 0.5f, textY, size, color, false);
+            ClickGuiRenderer.drawText(font, shown, cardX + 5f * SCALE, textY, size, color, false);
             return;
         }
 
-        float clipX = cardX + (CARD_SIZE - maxW) * 0.5f;
+        float clipX = cardX + 5f * SCALE;
         float textH = Math.max(1f, ClickGuiRenderer.textHeight(font, size));
         boolean clipped = ScissorFunction.pushRaw(clipX, textY - SCALE, maxW, textH + 2f * SCALE);
         float elapsed = Math.max(0f, (Util.getMillis() - hoveredCardStartMs) / 1000f);
@@ -806,7 +747,6 @@ public final class ClickGuiPickerState {
 
         searchX = closeX - 3f * SCALE - SEARCH_W;
         searchY = windowY + 6f * SCALE;
-
         filterX = searchX - 3f * SCALE - FILTER_W;
         filterY = searchY;
 
@@ -889,22 +829,24 @@ public final class ClickGuiPickerState {
     }
 
     private int columns() {
-        return Math.max(1, (int) Math.floor((gridW + CARD_GAP) / (CARD_SIZE + CARD_GAP)));
+        float available = Math.max(1f, gridW - GRID_PAD * 2f);
+        return Math.max(1, (int) Math.floor((available + CARD_GAP) / (CARD_W + CARD_GAP)));
     }
 
     private float computeContentHeight(int entriesCount) {
         if (entriesCount <= 0) return 0f;
         int cols = columns();
         int rows = (entriesCount + cols - 1) / cols;
-        return rows * CARD_SIZE + Math.max(0, rows - 1) * CARD_GAP;
+        return rows * CARD_H + Math.max(0, rows - 1) * CARD_GAP;
     }
 
     private void clampScroll() {
         contentHeight = computeContentHeight(visibleEntries().size());
-        float minScroll = Math.min(0f, gridH - contentHeight);
+        float viewportH = Math.max(1f, gridH - GRID_PAD * 2f);
+        float minScroll = Math.min(0f, viewportH - contentHeight);
         scroll = clamp(scroll, minScroll, 0f);
         smoothScroll = clamp(smoothScroll, minScroll, 0f);
-        scrollbarVisible = contentHeight > gridH + 0.5f;
+        scrollbarVisible = contentHeight > viewportH + 0.5f;
     }
 
     private boolean handleScrollbarMouseDown(float mx, float my) {
@@ -925,7 +867,8 @@ public final class ClickGuiPickerState {
     }
 
     private void scrollToPosition(float mouseY) {
-        if (contentHeight <= gridH + 0.5f) {
+        float viewportH = Math.max(1f, gridH - GRID_PAD * 2f);
+        if (contentHeight <= viewportH + 0.5f) {
             scroll = 0f;
             smoothScroll = 0f;
             return;
@@ -934,7 +877,7 @@ public final class ClickGuiPickerState {
         if (trackSpan <= 0f) return;
         float rel = mouseY - sbTrackY - sbThumbH * 0.5f;
         float t = clamp(rel / trackSpan, 0f, 1f);
-        float scrollRange = contentHeight - gridH;
+        float scrollRange = contentHeight - viewportH;
         scroll = -scrollRange * t;
         smoothScroll = scroll;
     }

@@ -79,6 +79,60 @@ public final class SettingsGuiPalette {
         return withAlpha(mix(theme.windowStroke(), theme.surface(), 0.25f), 225);
     }
 
+    public int workspaceGlassTint() {
+        return mix(theme.windowBg(), theme.surface(), 0.28f);
+    }
+
+    public int workspaceWashLeft() {
+        if (isLegacy()) return 0x68141619;
+        return withAlpha(mix(theme.windowBg(), theme.surface(), 0.22f), 104);
+    }
+
+    public int workspaceWashRight() {
+        if (isLegacy()) return 0x74101217;
+        return withAlpha(darken(mix(theme.windowBg(), theme.windowHeader(), 0.32f), 0.10f), 116);
+    }
+
+    public int glassEdgeStrong() {
+        if (isLegacy()) return 0x75969CAA;
+        return withAlpha(mix(theme.textMuted(), theme.strokeSoft(), 0.52f), 117);
+    }
+
+    public int glassEdgeSoft() {
+        if (isLegacy()) return 0x342F343D;
+        return withAlpha(mix(theme.windowStroke(), theme.strokeSoft(), 0.42f), 52);
+    }
+
+    public int navigationPlaneTop() {
+        if (isLegacy()) return 0xB20B0D11;
+        return withAlpha(darken(mix(theme.windowBg(), theme.surface(), 0.18f), 0.22f), 178);
+    }
+
+    public int navigationPlaneBottom() {
+        if (isLegacy()) return 0xC407090D;
+        return withAlpha(darken(mix(theme.windowBg(), theme.windowHeader(), 0.20f), 0.32f), 196);
+    }
+
+    public int contentPlaneTop() {
+        if (isLegacy()) return 0x8217191D;
+        return withAlpha(mix(theme.windowBg(), theme.surface(), 0.26f), 130);
+    }
+
+    public int contentPlaneBottom() {
+        if (isLegacy()) return 0x96101216;
+        return withAlpha(darken(mix(theme.windowBg(), theme.surface(), 0.18f), 0.17f), 150);
+    }
+
+    public int controlSurface() {
+        if (isLegacy()) return 0x7A202329;
+        return withAlpha(mix(theme.surface(), theme.windowHeader(), 0.24f), 122);
+    }
+
+    public int controlSurfaceHover() {
+        if (isLegacy()) return 0xA02A2E36;
+        return withAlpha(mix(theme.surfaceHover(), theme.accentSoft(), 0.10f), 160);
+    }
+
     public int menuLineLow() {
         if (isLegacy()) return 0x0F373746;
         return withAlpha(mix(theme.strokeSoft(), theme.windowStroke(), 0.55f), 15);

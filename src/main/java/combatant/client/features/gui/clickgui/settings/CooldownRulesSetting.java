@@ -15,6 +15,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import combatant.client.config.values.*;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.util.wav.ClickGuiSounds;
@@ -30,7 +33,7 @@ import java.util.*;
  */
 public final class CooldownRulesSetting extends TextListSetting implements PickerDetailOwner {
 
-    private static final float DETAIL_W = 190f * 2f;
+    private static final float DETAIL_W = 210f * 2f;
     private static final float PANEL_PAD = 10f;
     private static final float HEADER_H = 112f;
     private static final float DETAIL_SCROLL_STEP = 18f;
@@ -238,14 +241,34 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
     }
 
     private void drawPanel(float x, float y, float w, float h, String itemId, float mx, float my) {
-        ClickGuiRenderer.drawRoundedRect(x, y, w, h, 8f, UnifiedSettingsSkin.SURFACE_SOFT);
-        ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, 8f, 0.8f, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, 70));
+        SettingsGuiPalette palette = SettingsGuiPalette.current();
+        LayoutRender2D.roundedQuad(
+                x, y, w, h, 12f,
+                palette.contentPlaneTop(),
+                palette.contentPlaneTop(),
+                palette.contentPlaneBottom(),
+                palette.contentPlaneBottom()
+        );
+        LayoutRender2D.roundedStroke(x, y, w, h, 12f, 0.42f, palette.glassEdgeSoft());
 
         TextRenderer titleFont = UnifiedSettingsSkin.fontSemibold();
-        float titleSize = 20f;
-        ClickGuiRenderer.drawText(titleFont, "Cooldown Rule", x + PANEL_PAD, y + 13f, titleSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
-        float dividerY = y + 39f;
-        ClickGuiRenderer.drawRoundedRect(x + PANEL_PAD, dividerY, w - PANEL_PAD * 2f, 1f, 0.5f, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, 48));
+        float titleSize = 18f;
+        ClickGuiRenderer.drawText(titleFont, ClickGuiI18n.tr("clickgui.pvp_rules.selected_rule", "Selected rule"),
+                x + PANEL_PAD, y + 11f, titleSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        ClickGuiRenderer.drawText(UnifiedSettingsSkin.fontRegular(),
+                ClickGuiI18n.tr("clickgui.pvp_rules.subtitle", "Configure local PvP cooldown behavior"), x + PANEL_PAD, y + 30f,
+                10.5f, UnifiedSettingsSkin.TEXT_MUTED, false);
+        float dividerY = y + 47f;
+        LayoutRender2D.rectQuad(
+                x + PANEL_PAD,
+                dividerY,
+                w - PANEL_PAD * 2f,
+                0.5f,
+                palette.moduleDividerStart(),
+                palette.moduleDividerEnd(),
+                palette.moduleDividerEnd(),
+                palette.moduleDividerStart()
+        );
 
         if (itemId == null || itemId.isBlank() || rules == null) {
             detailScroll = 0f;
@@ -313,9 +336,11 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
 
         float iconBox = 46f;
         float iconX = x + PANEL_PAD;
-        float iconY = y + 50f;
-        ClickGuiRenderer.drawRoundedRect(iconX, iconY, iconBox, iconBox, 7f, UnifiedSettingsSkin.SURFACE);
-        ClickGuiRenderer.drawRoundedRectStroke(iconX, iconY, iconBox, iconBox, 7f, 0.75f, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, 75));
+        float iconY = y + 57f;
+        SettingsGuiPalette palette = SettingsGuiPalette.current();
+        LayoutRender2D.roundedQuad(iconX, iconY, iconBox, iconBox, 8f,
+                palette.moduleCardTop(), palette.moduleCardTopStrong(), palette.moduleCardBottom(), palette.moduleCardBottomStrong());
+        LayoutRender2D.roundedStroke(iconX, iconY, iconBox, iconBox, 8f, 0.38f, palette.glassEdgeSoft());
         if (!stack.isEmpty()) {
             float scale = 1.85f;
             float px = 16f * scale;
@@ -326,9 +351,9 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
         float buttonW = hasRule ? 76f : 68f;
         float buttonH = 22f;
         float buttonX = x + w - PANEL_PAD - buttonW;
-        float buttonY = y + 62f;
-        ClickGuiRenderer.drawText(titleFont, fit(titleFont, name, 15f, buttonX - textX - 10f), textX, y + 53f, 15f, UnifiedSettingsSkin.TEXT_PRIMARY, false);
-        ClickGuiRenderer.drawText(font, fit(font, itemId, small, buttonX - textX - 10f), textX, y + 73f, small, UnifiedSettingsSkin.TEXT_MUTED, false);
+        float buttonY = y + 69f;
+        ClickGuiRenderer.drawText(titleFont, fit(titleFont, name, 15f, buttonX - textX - 10f), textX, y + 60f, 15f, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        ClickGuiRenderer.drawText(font, fit(font, itemId, small, buttonX - textX - 10f), textX, y + 80f, small, UnifiedSettingsSkin.TEXT_MUTED, false);
 
         Action action = hasRule ? Action.REMOVE_RULE : Action.ADD_RULE;
         String label = hasRule ? "Remove" : "Add";
@@ -363,7 +388,7 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
         int stroke = destructive ? UnifiedSettingsSkin.withAlpha(0xFFFF7777, 120) : UnifiedSettingsSkin.ACCENT;
         if (hover) bg = UnifiedSettingsSkin.mix(bg, UnifiedSettingsSkin.SURFACE_HOVER, 0.45f);
         ClickGuiRenderer.drawRoundedRect(x, y, w, h, 4f, bg);
-        ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, 4f, 0.6f, stroke);
+        ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, 4f, 0.35f, stroke);
         TextRenderer font = UnifiedSettingsSkin.fontRegular();
         float size = 10.5f;
         float tw = ClickGuiRenderer.textWidth(font, text, size);

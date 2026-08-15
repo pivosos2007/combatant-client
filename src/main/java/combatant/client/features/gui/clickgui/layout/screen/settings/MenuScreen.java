@@ -67,13 +67,9 @@ public final class MenuScreen {
     private float categoryY;
     private float searchX;
     private float searchY;
-    private float menuLinePulsePhase;
-    private float menuLineHSweep;
-    private float menuLineVSweep;
-    private float menuLineHDir = 1f;
-    private float menuLineVDir = 1f;
     private float menuMaskAnim = 0f;
     private float screenAnim = 0f;
+    private float prismProgress = 1f;
     private boolean openTarget = false;
     private EditableClickGuiTheme activeThemeEditor;
 
@@ -110,6 +106,7 @@ public final class MenuScreen {
     }
 
     public void open() {
+        if (!openTarget) prismProgress = 0f;
         openTarget = true;
     }
 
@@ -131,6 +128,9 @@ public final class MenuScreen {
     public void render(float areaX, float areaY, float areaW, float areaH, float mx, float my) {
         SettingsGuiPalette palette = SettingsGuiPalette.current();
         float dt = AnimationUtility.deltaTime();
+        if (openTarget && prismProgress < 1f) {
+            prismProgress = Math.min(1f, prismProgress + dt / 0.85f);
+        }
         screenAnim = AnimationUtility.approach(screenAnim, openTarget ? 1.0f : 0.0f, dt, openTarget ? 8.5f : 7.2f);
         screenAnim = AnimationUtility.snap(screenAnim, openTarget ? 1.0f : 0.0f, 0.002f);
         if (screenAnim <= 0.001f && !openTarget) return;
@@ -154,7 +154,7 @@ public final class MenuScreen {
             if (renderMain) {
                 renderPanelShadow(palette);
 
-                backgroundComponent.render(shellX, shellY, shellW, shellH, S);
+                backgroundComponent.render(shellX, shellY, shellW, shellH, S, prismProgress);
                 renderShellChrome(palette);
 
                 categoryContainer.render(categoryX, categoryY, mx, my, category, S);
@@ -475,63 +475,16 @@ public final class MenuScreen {
     }
 
     private void renderShellChrome(SettingsGuiPalette palette) {
-        float vLineX = shellX + 42.5f * S;
         float hLineY = shellY + 28f * S;
         float lineThickness = 0.5f * S;
-        float vLineH = shellH;
         float hLineW = shellW - 43f * S;
-        float hSegW = 56f * S;
-        float vSegH = 52f * S;
-        float hTravel = Math.max(1f, hLineW - hSegW);
-        float vTravel = Math.max(1f, vLineH - vSegH);
-        float dt = AnimationUtility.deltaTime();
 
-        LayoutRender2D.rectQuad(
-                vLineX, shellY, lineThickness, vLineH,
-                palette.menuLineLow(),
-                palette.menuLineMid(),
-                palette.menuLineLow(),
-                palette.menuLineStrong()
-        );
         LayoutRender2D.rectQuad(
                 shellX + 43f * S, hLineY, hLineW, lineThickness,
                 palette.menuLineStrong(),
                 palette.menuLineLow(),
                 palette.menuLineStrong(),
                 palette.menuLineLow()
-        );
-
-        menuLineHSweep = AnimationUtility.clamp(menuLineHSweep + menuLineHDir * 120f * dt, 0f, hTravel);
-        if (menuLineHSweep >= hTravel) menuLineHDir = -1f;
-        else if (menuLineHSweep <= 0f) menuLineHDir = 1f;
-
-        menuLineVSweep = AnimationUtility.clamp(menuLineVSweep + menuLineVDir * 95f * dt, 0f, vTravel);
-        if (menuLineVSweep >= vTravel) menuLineVDir = -1f;
-        else if (menuLineVSweep <= 0f) menuLineVDir = 1f;
-
-        menuLinePulsePhase += 4.1f * dt;
-        float pulse = 0.65f + 0.35f * (float) Math.sin(menuLinePulsePhase);
-
-        float hSegX = shellX + 43f * S + menuLineHSweep;
-        int hA0 = LayoutRender2D.alpha(palette.menuSweepStart(), pulse);
-        int hA1 = LayoutRender2D.alpha(palette.menuSweepEnd(), pulse);
-        LayoutRender2D.rectQuad(
-                hSegX, hLineY, hSegW, lineThickness,
-                hA0,
-                hA1,
-                hA1,
-                hA0
-        );
-
-        float vSegY = shellY + menuLineVSweep;
-        int vA0 = LayoutRender2D.alpha(palette.menuSweepStart(), pulse * 0.86f);
-        int vA1 = LayoutRender2D.alpha(palette.menuSweepEnd(), pulse * 0.93f);
-        LayoutRender2D.rectQuad(
-                vLineX, vSegY, lineThickness, vSegH,
-                vA0,
-                vA1,
-                vA0,
-                vA1
         );
 
         if (category.iconToken()) {

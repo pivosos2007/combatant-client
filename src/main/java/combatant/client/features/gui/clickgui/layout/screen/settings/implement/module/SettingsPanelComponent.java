@@ -15,6 +15,7 @@ import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsGlassMaterial;
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.gui.clickgui.settings.SettingRenderContext;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
@@ -561,21 +562,15 @@ public final class SettingsPanelComponent {
         float radius = DROPDOWN_RADIUS * scale;
         float headerBottom = panelY + DROPDOWN_HEADER_H * scale;
         int shadow = LayoutRender2D.alpha(palette.panelShadow(), 0.72f * openAnim);
-        int blurTint = LayoutRender2D.alpha(palette.panelBlurTint(), openAnim);
         int topWashA = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelBgLeft(), palette.menuCategorySelectedLeft(), 0.16f), openAnim);
         int topWashB = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelBgRight(), palette.menuCategorySelectedRight(), 0.18f), openAnim);
-        int bodyA = LayoutRender2D.alpha(SettingsGuiPalette.mix(bgTl, palette.menuWindowBgLeft(), 0.18f), openAnim);
-        int bodyB = LayoutRender2D.alpha(SettingsGuiPalette.mix(bgTr, palette.menuWindowBgRight(), 0.18f), openAnim);
-        int bodyC = LayoutRender2D.alpha(SettingsGuiPalette.darken(bgBr, 0.06f), openAnim);
         int accent = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelPillActive(), palette.menuCategorySelectedRight(), 0.18f), 0.55f * openAnim);
         int accentSoft = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelPillActive(), palette.panelBgRight(), 0.42f), 0.22f * openAnim);
         int strokeTop = LayoutRender2D.alpha(SettingsGuiPalette.mix(stroke, palette.moduleDividerEnd(), 0.22f), openAnim);
         int strokeBottom = LayoutRender2D.alpha(SettingsGuiPalette.mix(stroke, palette.panelBgRight(), 0.22f), 0.82f * openAnim);
 
         LayoutRender2D.roundedSoftShadow(panelX - 1.4f * scale, panelY + 1.2f * scale, panelW + 2.8f * scale, panelH + 2.4f * scale, radius + 1.6f * scale, 9.5f * scale, 0.028f, shadow);
-        ClickGuiRenderer.drawBlur(panelX, panelY, panelW, panelH, radius, blurTint, (150f / 255f) * openAnim);
-        LayoutRender2D.roundedQuad(panelX, panelY, panelW, panelH, radius, bodyA, bodyB, bodyC, bgBl);
-        LayoutRender2D.roundedStrokeQuad(panelX, panelY, panelW, panelH, radius, 0.58f * scale, strokeTop, LayoutRender2D.alpha(palette.moduleDividerEnd(), openAnim * 0.72f), strokeBottom, LayoutRender2D.alpha(strokeTop, 0.82f));
+        SettingsGlassMaterial.elevated(panelX, panelY, panelW, panelH, radius, scale, palette, openAnim);
 
         LayoutRender2D.roundedQuad(panelX + 1.0f * scale, panelY + 1.0f * scale, panelW - 2.0f * scale, DROPDOWN_HEADER_H * scale - 1.0f * scale, Math.max(0f, radius - 1.0f * scale), topWashA, topWashB, LayoutRender2D.alpha(SettingsGuiPalette.darken(topWashB, 0.18f), 0.64f), LayoutRender2D.alpha(SettingsGuiPalette.darken(topWashA, 0.14f), 0.64f));
         LayoutRender2D.rectQuad(panelX + 8.0f * scale, headerBottom, panelW - 16.0f * scale, Math.max(0.45f, 0.55f * scale), LayoutRender2D.alpha(line, 0.55f), line, LayoutRender2D.alpha(line, 0.28f), LayoutRender2D.alpha(line, 0.28f));

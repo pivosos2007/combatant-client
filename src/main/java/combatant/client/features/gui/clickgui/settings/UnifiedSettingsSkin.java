@@ -9,6 +9,8 @@ package combatant.client.features.gui.clickgui.settings;
 
 
 import combatant.client.features.theme.Theme;
+import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsGlassMaterial;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.theme.Themes;
@@ -100,6 +102,20 @@ enum UnifiedSettingsSkin {
         ACCENT_GRADIENT_START = CARD_GRADIENT_ENABLED ? forceAlpha(cardGradient.start(), 255) : ACCENT;
         ACCENT_GRADIENT_END = CARD_GRADIENT_ENABLED ? forceAlpha(cardGradient.end(), 255) : forceAlpha(accentSoft, 255);
         ACCENT_GRADIENT_ANGLE = CARD_GRADIENT_ENABLED ? cardGradient.angleDeg() : 45f;
+
+        if (!modules()) {
+            SettingsGuiPalette palette = SettingsGuiPalette.current();
+            SURFACE = palette.controlSurfaceHover();
+            SURFACE_HOVER = palette.controlSurfaceHover();
+            SURFACE_SOFT = palette.controlSurface();
+            SURFACE_GRADIENT_ENABLED = false;
+            CARD_GRADIENT_ENABLED = false;
+            STROKE_GRADIENT_ENABLED = false;
+            STROKE_GRADIENT_START = palette.glassEdgeStrong();
+            STROKE_GRADIENT_END = palette.glassEdgeSoft();
+            ACCENT_GRADIENT_START = forceAlpha(accent, 255);
+            ACCENT_GRADIENT_END = forceAlpha(ClickGuiRenderer.mixColor(accentSoft, surface, 0.28f), 255);
+        }
     }
 
     static boolean modules() {
@@ -212,6 +228,15 @@ enum UnifiedSettingsSkin {
     }
 
     static void drawSurface(float x, float y, float w, float h, float radius, float alpha) {
+        if (!modules()) {
+            SettingsGuiPalette palette = SettingsGuiPalette.current();
+            SettingsGlassMaterial.control(
+                    x, y, w, h, radius,
+                    withAlpha(mix(SURFACE_SOFT, SURFACE_HOVER, 0.28f), alpha),
+                    withAlpha(palette.glassEdgeSoft(), Math.min(1f, alpha * 0.80f))
+            );
+            return;
+        }
         if (SURFACE_GRADIENT_ENABLED) {
             ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, radius, surfaceGradientStart(alpha), surfaceGradientEnd(alpha), SURFACE_GRADIENT_ANGLE);
         } else {
@@ -220,6 +245,14 @@ enum UnifiedSettingsSkin {
     }
 
     static void drawCard(float x, float y, float w, float h, float radius, float alpha) {
+        if (!modules()) {
+            SettingsGlassMaterial.selection(
+                    x, y, w, h, radius,
+                    withAlpha(SURFACE_SOFT, alpha * 0.84f),
+                    withAlpha(SURFACE_HOVER, alpha)
+            );
+            return;
+        }
         if (CARD_GRADIENT_ENABLED) {
             ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, radius, cardGradientStart(alpha), cardGradientEnd(alpha), CARD_GRADIENT_ANGLE);
         } else {

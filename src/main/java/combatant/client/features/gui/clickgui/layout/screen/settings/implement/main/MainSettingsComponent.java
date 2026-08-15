@@ -7,39 +7,41 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.main;
 
-import combatant.client.render.engine.renderer.RenderWarpStack;
-import combatant.client.config.MainConfig;
 import combatant.client.config.SettingDef;
+import combatant.client.config.SettingOwner;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsGlassMaterial;
+import combatant.client.features.gui.clickgui.layout.screen.settings.subsystem.MainSettingsContributor;
+import combatant.client.features.gui.clickgui.layout.screen.settings.subsystem.MainSettingsRegistry;
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.gui.clickgui.settings.SettingFactory;
 import combatant.client.features.gui.clickgui.settings.SettingRenderContext;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
+import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public final class MainSettingsComponent {
-    private static final float PARALLAX_MAX_ANGLE = 4.0f;
-    private static final float PARALLAX_DEPTH = 2.2f;
-    private static final float PARALLAX_PERSPECTIVE = 1.0f;
-    private static final float PARALLAX_SCALE_BOOST = 0.010f;
-    private static final float PARALLAX_CONTENT_SHIFT = 1.1f;
-    private final Map<Category, List<Setting>> settingsByCategory = new EnumMap<>(Category.class);
+    private final MainSettingsRegistry registry = MainSettingsRegistry.get();
+    private final Map<String, Section> sectionsById = new LinkedHashMap<>();
     private final List<SettingRow> rows = new ArrayList<>();
     private final List<SettingHit> settingHits = new ArrayList<>();
     private final List<CategoryHit> categoryHits = new ArrayList<>();
-    private final Map<Category, Float> categoryHoverAnim = new EnumMap<>(Category.class);
-    private Category selected = Category.IMAGE;
+    private final Map<String, Float> categoryHoverAnim = new LinkedHashMap<>();
+    private String selectedId = "";
+    private long registryRevision = -1L;
     private float scroll;
     private float smoothedScroll;
     private boolean draggingScrollbar;
@@ -65,7 +67,7 @@ public final class MainSettingsComponent {
         rebuildSettings();
     }
 
-    private static List<Setting> buildSettings(List<SettingDef> defs, MainConfig owner) {
+    private static List<Setting> buildSettings(List<SettingDef> defs, SettingOwner owner) {
         List<Setting> out = SettingFactory.fromDefs(defs);
         for (Setting setting : out) {
             setting.setParent(owner);
@@ -76,34 +78,6 @@ public final class MainSettingsComponent {
 
     private static float settingScale(float menuScale) {
         return Math.max(1.0f, menuScale * 0.66f);
-    }
-
-    private static Parallax computeParallax(float mx, float my, float x, float y, float w, float h, float hover) {
-        float ease = smooth(Math.max(0f, Math.min(1f, hover)));
-        if (ease <= 0.001f || w <= 0f || h <= 0f) return Parallax.NONE;
-        float nx = clamp((mx - x) / w * 2f - 1f, -1f, 1f);
-        float ny = clamp((my - y) / h * 2f - 1f, -1f, 1f);
-        return new Parallax(
-                -nx * PARALLAX_MAX_ANGLE * ease,
-                ny * PARALLAX_MAX_ANGLE * ease,
-                1f + PARALLAX_SCALE_BOOST * ease,
-                nx * PARALLAX_CONTENT_SHIFT * ease,
-                ny * PARALLAX_CONTENT_SHIFT * ease,
-                true
-        );
-    }
-
-    private static RenderWarpStack.Scope pushParallax(Parallax p, float x, float y, float w, float h) {
-        if (p == null || !p.active()) return Renderer2D.pushWarp(null);
-        return Renderer2D.pushPerspectiveWarp(x, y, w, h, p.yawDeg(), p.pitchDeg(), 0f, PARALLAX_DEPTH, PARALLAX_PERSPECTIVE, p.scale());
-    }
-
-    private static float smooth(float t) {
-        return t * t * (3f - 2f * t);
-    }
-
-    private static float clamp(float value, float min, float max) {
-        return Math.max(min, Math.min(max, value));
     }
 
     public void resetScroll() {
@@ -132,8 +106,8 @@ public final class MainSettingsComponent {
         rightW = Math.max(1f, areaW - leftW - gap);
         rightH = areaH;
 
-        drawPanel(leftX, leftY, leftW, leftH, scale, palette);
-        drawPanel(rightX, rightY, rightW, rightH, scale, palette);
+        SettingsGlassMaterial.navigation(leftX, leftY, leftW, leftH, scale, palette);
+        SettingsGlassMaterial.content(rightX, rightY, rightW, rightH, scale, palette);
         renderCategoryList(leftX, leftY, leftW, mx, my, scale, palette);
         renderSettingsPanel(mx, my, scale, palette);
     }
@@ -154,8 +128,8 @@ public final class MainSettingsComponent {
 
         for (CategoryHit hit : categoryHits) {
             if (!ClickGuiMath.insideRect(mx, my, hit.x(), hit.y(), hit.w(), hit.h())) continue;
-            if (hit.category() != selected) {
-                selected = hit.category();
+            if (!hit.sectionId().equals(selectedId)) {
+                selectedId = hit.sectionId();
                 resetScroll();
             }
             return true;
@@ -176,7 +150,8 @@ public final class MainSettingsComponent {
 
     public void mouseReleased(float mx, float my, int button) {
         if (button == 0) draggingScrollbar = false;
-        List<Setting> settings = settingsByCategory.get(selected);
+        Section section = selectedSection();
+        List<Setting> settings = section == null ? null : section.settings();
         if (settings == null) return;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, lastSettingScale)) {
             for (Setting setting : settings) {
@@ -204,35 +179,51 @@ public final class MainSettingsComponent {
         float rowH = 20f * scale;
         float rowY = y + 9f * scale;
 
-        Category[] categories = Category.values();
-        for (int i = 0; i < categories.length; i++) {
-            Category category = categories[i];
-            boolean active = category == selected;
+        List<Section> sections = new ArrayList<>(sectionsById.values());
+        for (int i = 0; i < sections.size(); i++) {
+            Section section = sections.get(i);
+            String sectionId = section.id();
+            boolean active = sectionId.equals(selectedId);
             boolean hover = ClickGuiMath.insideRect(mx, my, x + pad, rowY, w - pad * 2f, rowH);
-            float hoverAnim = AnimationUtility.approach(categoryHoverAnim.getOrDefault(category, 0f), hover ? 1f : 0f, 0.20f);
-            categoryHoverAnim.put(category, hoverAnim);
+            float hoverAnim = AnimationUtility.approach(categoryHoverAnim.getOrDefault(sectionId, 0f), hover ? 1f : 0f, 0.20f);
+            categoryHoverAnim.put(sectionId, hoverAnim);
             int bg = active
                     ? LayoutRender2D.alpha(palette.menuCategorySelectedRight(), 0.86f)
                     : hoverAnim > 0.01f ? LayoutRender2D.alpha(palette.menuCategoryHoverRight(), 0.72f * hoverAnim) : 0;
             if (bg != 0) {
-                LayoutRender2D.roundedQuad(x + pad, rowY, w - pad * 2f, rowH, 5f * scale, bg, bg, bg, bg);
+                SettingsGlassMaterial.selection(
+                        x + pad, rowY, w - pad * 2f, rowH, 5f * scale,
+                        LayoutRender2D.alpha(palette.menuCategorySelectedLeft(), active ? 0.92f : hoverAnim * 0.58f),
+                        bg
+                );
             }
 
-            if (i < categories.length - 1) {
+            if (i < sections.size() - 1) {
                 renderCategorySeparator(x, rowY + rowH + 2f * scale, w, scale, palette);
             }
 
             int text = active ? palette.menuHeaderText() : LayoutRender2D.alpha(palette.panelMuted(), 0.72f + 0.20f * hoverAnim);
+            float iconSize = 9f * scale;
+            float iconX = x + 13f * scale;
+            float iconY = rowY + (rowH - iconSize) * 0.5f;
+            Renderer2D.COLOR.svg(
+                    section.contributor().icon(),
+                    iconX,
+                    iconY,
+                    iconSize,
+                    iconSize,
+                    SvgRenderOptions.overrideColor(text)
+            );
             ClickGuiRenderer.drawText(
                     ClickGuiRenderer.getInterMedium(),
-                    category.title,
-                    x + 13f * scale,
+                    section.title(),
+                    x + 27f * scale,
                     rowY + 6f * scale,
                     7f * scale,
                     text,
                     false
             );
-            categoryHits.add(new CategoryHit(category, x + pad, rowY, w - pad * 2f, rowH));
+            categoryHits.add(new CategoryHit(sectionId, x + pad, rowY, w - pad * 2f, rowH));
             rowY += 24f * scale;
         }
     }
@@ -269,7 +260,11 @@ public final class MainSettingsComponent {
                 LayoutRender2D.alpha(palette.menuLineStrong(), 0.82f),
                 LayoutRender2D.alpha(palette.menuLineLow(), 0.55f)
         );
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), selected.title, rightX + pad, titleY, titleSize, text, false);
+        Section selected = selectedSection();
+        String title = selected == null
+                ? ClickGuiI18n.tr("clickgui.settings.tab.main_settings", "Main Settings")
+                : selected.title();
+        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), title, rightX + pad, titleY, titleSize, text, false);
 
         contentX = rightX + pad;
         contentY = rightY + 27f * scale;
@@ -308,7 +303,8 @@ public final class MainSettingsComponent {
 
     private void buildRows() {
         rows.clear();
-        List<Setting> settings = settingsByCategory.get(selected);
+        Section section = selectedSection();
+        List<Setting> settings = section == null ? null : section.settings();
         if (settings == null) return;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, lastSettingScale)) {
             for (Setting setting : settings) {
@@ -396,47 +392,41 @@ public final class MainSettingsComponent {
         scroll = -scrollbarMaxScroll * AnimationUtility.clamp(ratio, 0f, 1f);
     }
 
-    private void drawPanel(float x, float y, float w, float h, float scale, SettingsGuiPalette palette) {
-        ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
-        LayoutRender2D.roundedQuad(
-                x,
-                y,
-                w,
-                h,
-                5f * scale,
-                palette.moduleCardTop(),
-                palette.moduleCardTopStrong(),
-                palette.moduleCardBottom(),
-                palette.moduleCardBottomStrong()
-        );
-        LayoutRender2D.roundedStroke(x, y, w, h, 5f * scale, 0.5f * scale, palette.menuWindowStroke());
-    }
-
     private void ensureSettings() {
-        if (!settingsByCategory.isEmpty()) return;
-        rebuildSettings();
+        if (registryRevision != registry.revision()) rebuildSettings();
     }
 
     private void rebuildSettings() {
-        settingsByCategory.clear();
-        MainConfig config = MainConfig.get();
-        settingsByCategory.put(Category.IMAGE, buildSettings(config.getImageSettingDefs(), config));
-        settingsByCategory.put(Category.MISCELLANIOUS, buildSettings(config.getMiscellaneousSettingDefs(), config));
-        settingsByCategory.put(Category.SECURITY, buildSettings(config.getSecuritySettingDefs(), config));
-        settingsByCategory.put(Category.UTILITY, buildSettings(config.getUtilitySettingDefs(), config));
+        String previousSelection = selectedId;
+        sectionsById.clear();
+        for (MainSettingsContributor contributor : registry.snapshot()) {
+            try {
+                SettingOwner owner = contributor.owner();
+                List<SettingDef> defs = contributor.settingDefs();
+                String id = contributor.id() == null
+                        ? ""
+                        : contributor.id().trim().toLowerCase(Locale.ROOT);
+                if (id.isEmpty() || owner == null || defs == null) continue;
+                sectionsById.put(id, new Section(
+                        id,
+                        contributor,
+                        ClickGuiI18n.tr(contributor.titleKey(), contributor.fallbackTitle()),
+                        buildSettings(defs, owner)
+                ));
+            } catch (RuntimeException ignored) {
+                // One optional subsystem cannot make the rest of Settings unavailable.
+            }
+        }
+        selectedId = sectionsById.containsKey(previousSelection)
+                ? previousSelection
+                : sectionsById.keySet().stream().findFirst().orElse("");
+        categoryHoverAnim.keySet().retainAll(sectionsById.keySet());
+        registryRevision = registry.revision();
+        resetScroll();
     }
 
-    private enum Category {
-        IMAGE("Image"),
-        SECURITY("Security"),
-        UTILITY("Utility"),
-        MISCELLANIOUS("Miscellanious");
-
-        private final String title;
-
-        Category(String title) {
-            this.title = title;
-        }
+    private Section selectedSection() {
+        return sectionsById.get(selectedId);
     }
 
     private record SettingRow(Setting setting, float anim, float height, float gap) {
@@ -445,10 +435,9 @@ public final class MainSettingsComponent {
     private record SettingHit(Setting setting, float x, float y, float w, float h) {
     }
 
-    private record CategoryHit(Category category, float x, float y, float w, float h) {
+    private record CategoryHit(String sectionId, float x, float y, float w, float h) {
     }
 
-    private record Parallax(float yawDeg, float pitchDeg, float scale, float shiftX, float shiftY, boolean active) {
-        private static final Parallax NONE = new Parallax(0f, 0f, 1f, 0f, 0f, false);
+    private record Section(String id, MainSettingsContributor contributor, String title, List<Setting> settings) {
     }
 }

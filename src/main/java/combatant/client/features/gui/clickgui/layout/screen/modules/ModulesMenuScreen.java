@@ -13,6 +13,7 @@ import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
+import combatant.client.features.gui.clickgui.material.PrismaticGlassTransition;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.ModuleComponent;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
 import combatant.client.features.gui.clickgui.settings.Setting;
@@ -56,6 +57,7 @@ public final class ModulesMenuScreen {
     private float areaH;
     private float scale = 1.0f;
     private float screenAnim = 0.0f;
+    private float prismProgress = 1.0f;
     private boolean openTarget = false;
 
     private float searchAnim = 0.0f;
@@ -141,6 +143,7 @@ public final class ModulesMenuScreen {
     }
 
     public void open() {
+        if (!openTarget) prismProgress = 0.0f;
         openTarget = true;
     }
 
@@ -215,6 +218,10 @@ public final class ModulesMenuScreen {
 
         float dt = AnimationUtility.deltaTime();
         float target = openTarget ? 1.0f : 0.0f;
+
+        if (openTarget && prismProgress < 1.0f) {
+            prismProgress = Math.min(1.0f, prismProgress + dt / 0.85f);
+        }
 
         screenAnim = AnimationUtility.approach(screenAnim, target, dt, openTarget ? 4.8f : 7.5f);
         screenAnim = AnimationUtility.snap(screenAnim, target, 0.01f);
@@ -786,7 +793,10 @@ public final class ModulesMenuScreen {
         float fresnelAlpha = 1.0f;
         float baseAlpha = panel ? 0.78f : 0.84f;
         float fresnelMix = panel ? 0.52f : 0.48f;
-        float distortion = (panel ? 0.190f : 0.155f) * materialAlpha;
+        PrismaticGlassTransition prism = panel
+                ? PrismaticGlassTransition.fromProgress(prismProgress)
+                : PrismaticGlassTransition.CALM;
+        float distortion = (panel ? 0.190f : 0.155f) * materialAlpha * (1f + prism.strength() * 0.55f);
 
         Renderer2D.COLOR.blurRect(
                 x,
@@ -815,7 +825,9 @@ public final class ModulesMenuScreen {
                 baseAlpha,
                 fresnelMix,
                 distortion,
-                0.0f
+                0.0f,
+                prism.strength(),
+                prism.phase()
         );
     }
 
