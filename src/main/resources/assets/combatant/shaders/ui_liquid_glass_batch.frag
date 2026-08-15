@@ -20,7 +20,7 @@ uniform sampler2D u_Texture;     // clean scene/background source
 uniform sampler2D u_BlurTexture; // existing prepared UI blur source
 
 layout (std140) uniform UIBatch {
-    vec4 uScreen; // xy = framebuffer, zw = logical
+    vec4 uScreen; // xy = framebuffer size, zw = logical size
 };
 
 vec4 normalizeRadii(vec4 r, vec2 size) {
@@ -63,10 +63,21 @@ float roundedBoxSDF(vec2 p, vec2 halfSize, vec4 r, float smoothness) {
     return min(max(q.x, q.y), 0.0) + len - radius;
 }
 
-float decodeDistort(float packedValue, out float cornerSmoothness, out float blurAlpha) {
-    // New payload from Renderer2D.packLiquidGlassPayload():
-    //   smoothness * 10000 + round(blurAlpha * 100) + distortion
+float decodeDistort(float packedValue, out float cornerSmoothness, out float blurAlpha, out bool squircle) {
+    // Payload from Renderer2D.packLiquidGlassPayload(): rounded boxes retain the
+    // legacy smoothness*10000 layout; whole-box squircles use a 200,000 marker
+    // and preserve exponent hundredths in the following bucket.
     // Keep the old small-value path so stale meshes or external callers fail soft.
+    squircle = packedValue >= 200000.0;
+    if (squircle) {
+        packedValue -= 200000.0;
+        float exponentBucket = floor(packedValue / 128.0 + 1e-4);
+        cornerSmoothness = clamp(exponentBucket / 100.0, 2.0, 16.0);
+        float rest = packedValue - exponentBucket * 128.0;
+        float blurBucket = floor(rest + 1e-4);
+        blurAlpha = clamp(blurBucket / 100.0, 0.0, 1.0);
+        return clamp(rest - blurBucket, 0.0, 0.35);
+    }
     if (packedValue >= 10000.0) {
         cornerSmoothness = floor(packedValue / 10000.0 + 1e-4);
         float rest = packedValue - cornerSmoothness * 10000.0;
@@ -87,6 +98,24 @@ float decodeDistort(float packedValue, out float cornerSmoothness, out float blu
 
     cornerSmoothness = max(cornerSmoothness, 1.0001);
     return clamp(distort, 0.0, 0.35);
+}
+
+float squircleSDF(vec2 p, vec2 halfSize, float exponent) {
+    vec2 h = max(halfSize, vec2(0.0001));
+    float n = clamp(exponent, 2.0, 16.0);
+    vec2 q = abs(p) / h;
+    vec2 qn = pow(q, vec2(n));
+    float implicit = qn.x + qn.y - 1.0;
+    vec2 gradient = n * vec2(
+        pow(max(q.x, 0.000001), n - 1.0) / h.x,
+        pow(max(q.y, 0.000001), n - 1.0) / h.y
+    );
+    float radial = (pow(max(qn.x + qn.y, 0.000001), 1.0 / n) - 1.0) * min(h.x, h.y);
+    return length(gradient) > 0.00001 ? implicit / length(gradient) : radial;
+}
+
+float glassShapeSDF(vec2 p, vec2 halfSize, vec4 radius, float exponent, bool squircle) {
+    return squircle ? squircleSDF(p, halfSize, exponent) : roundedBoxSDF(p, halfSize, radius, exponent);
 }
 
 vec2 safeNormalize(vec2 v, vec2 fallback) {
@@ -156,15 +185,15 @@ void main() {
     vec2 size = max(v_Rect.zw, vec2(1.0));
     vec2 center = v_Rect.xy + size * 0.5;
     vec2 pos = frag - center;
-    vec2 halfSize = size * 0.5 - 1.0;
-
     vec4 radius = normalizeRadii(v_Params, size);
 
     float cornerSmoothness;
     float blurAlpha;
-    float distortStrength = decodeDistort(max(v_TexCoord.y, 0.0), cornerSmoothness, blurAlpha);
+    bool squircle;
+    float distortStrength = decodeDistort(max(v_TexCoord.y, 0.0), cornerSmoothness, blurAlpha, squircle);
+    vec2 halfSize = size * 0.5 - (squircle ? 0.0 : 1.0);
 
-    float d = roundedBoxSDF(pos, halfSize, radius, cornerSmoothness);
+    float d = glassShapeSDF(pos, halfSize, radius, cornerSmoothness, squircle);
     float aa = max(max(logicalScale.x, logicalScale.y) * 1.35, 0.75);
     float shapeAlpha = 1.0 - smoothstep(-aa * 0.5, aa, d);
 
@@ -180,10 +209,10 @@ void main() {
 
     // SDF normal in logical top-left coordinates. Converted to framebuffer UV below.
     float nStep = max(1.0, max(logicalScale.x, logicalScale.y));
-    float dx = roundedBoxSDF(pos + vec2(nStep, 0.0), halfSize, radius, cornerSmoothness)
-             - roundedBoxSDF(pos - vec2(nStep, 0.0), halfSize, radius, cornerSmoothness);
-    float dy = roundedBoxSDF(pos + vec2(0.0, nStep), halfSize, radius, cornerSmoothness)
-             - roundedBoxSDF(pos - vec2(0.0, nStep), halfSize, radius, cornerSmoothness);
+    float dx = glassShapeSDF(pos + vec2(nStep, 0.0), halfSize, radius, cornerSmoothness, squircle)
+             - glassShapeSDF(pos - vec2(nStep, 0.0), halfSize, radius, cornerSmoothness, squircle);
+    float dy = glassShapeSDF(pos + vec2(0.0, nStep), halfSize, radius, cornerSmoothness, squircle)
+             - glassShapeSDF(pos - vec2(0.0, nStep), halfSize, radius, cornerSmoothness, squircle);
     vec2 sdfNormal = safeNormalize(vec2(dx, dy), safeNormalize(pos, vec2(0.0, -1.0)));
     vec2 uvNormal = vec2(sdfNormal.x, -sdfNormal.y);
 

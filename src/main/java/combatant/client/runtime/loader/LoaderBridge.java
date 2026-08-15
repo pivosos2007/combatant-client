@@ -14,6 +14,18 @@ public interface LoaderBridge {
 
     boolean supportsSafeJarReplacement();
 
+    default boolean supportsManagedRuntime() {
+        return false;
+    }
+
+    default boolean suspendManagedRuntime(String reason) {
+        return false;
+    }
+
+    default boolean resumeManagedRuntime(String reason) {
+        return false;
+    }
+
     Path currentModJarPath();
 
     String describeClassSource(String className);

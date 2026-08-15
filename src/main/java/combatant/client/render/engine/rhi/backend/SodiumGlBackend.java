@@ -35,6 +35,8 @@ import combatant.client.render.engine.rhi.state.PipelineStateBackend;
 import combatant.client.render.engine.rhi.upload.DynamicMeshBackend;
 import combatant.client.render.engine.rhi.upload.Blaze3dDynamicMeshBackend;
 import combatant.client.render.engine.uniform.impl.MeshUniforms;
+import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
+import combatant.client.mixininterface.IRenderPipeline;
 
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
@@ -164,19 +166,31 @@ public final class SodiumGlBackend implements CombatantRhi {
                 if (command.transform != null) RenderSystem.getModelViewStack().mul(command.transform);
                 if (command.applyWorldCameraY) applyCameraPosY(RenderSystem.getModelViewStack());
 
-                MeshUniforms.update(
-                        MeshRenderer.projection(),
-                        meshModelView(command),
-                        command.colorAttachment != null ? command.colorAttachment.getWidth(0) : 1.0f,
-                        command.colorAttachment != null ? command.colorAttachment.getHeight(0) : 1.0f
-                );
-                GpuBufferSlice meshData = MeshUniforms.get();
+                GpuBufferSlice meshData = null;
+                if (requiresMeshData(command.pipeline)) {
+                    MeshUniforms.update(
+                            MeshRenderer.projection(),
+                            meshModelView(command),
+                            command.colorAttachment != null ? command.colorAttachment.getWidth(0) : 1.0f,
+                            command.colorAttachment != null ? command.colorAttachment.getHeight(0) : 1.0f
+                    );
+                    meshData = MeshUniforms.get();
+                }
+                GpuBufferSlice uiBatch = null;
+                if (requiresUiBatch(command.pipeline) && !command.hasUniform("UIBatch")) {
+                    UIBatchUniforms.update(
+                            command.colorAttachment != null ? command.colorAttachment.getWidth(0) : 1.0f,
+                            command.colorAttachment != null ? command.colorAttachment.getHeight(0) : 1.0f
+                    );
+                    uiBatch = UIBatchUniforms.get();
+                }
 
                 stats.renderPass(command.colorAttachment, command.depthAttachment);
                 try (RenderPass pass = createPass(command.label, command.colorAttachment, command.clearColor, command.depthAttachment, command.clearDepth)) {
                     if (command.pipelineSpec == null) pipelines.require(command.pipeline);
                     pass.setPipeline(command.pipeline);
-                    pass.setUniform("MeshData", meshData);
+                    if (meshData != null) pass.setUniform("MeshData", meshData);
+                    if (uiBatch != null) pass.setUniform("UIBatch", uiBatch);
                     for (RhiUniformBinding uniform : command.uniforms) {
                         pass.setUniform(uniform.name(), uniform.slice());
                     }
@@ -194,6 +208,16 @@ public final class SodiumGlBackend implements CombatantRhi {
                 command.mesh.close();
             }
         }
+    }
+
+    private static boolean requiresMeshData(com.mojang.blaze3d.pipeline.RenderPipeline pipeline) {
+        return !(pipeline instanceof IRenderPipeline combatantPipeline)
+                || combatantPipeline.combatant$getContract().meshDataRequired();
+    }
+
+    private static boolean requiresUiBatch(com.mojang.blaze3d.pipeline.RenderPipeline pipeline) {
+        return pipeline instanceof IRenderPipeline combatantPipeline
+                && combatantPipeline.combatant$getContract().uiBatchRequired();
     }
 
     @Override

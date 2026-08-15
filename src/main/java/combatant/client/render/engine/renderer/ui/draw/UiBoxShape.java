@@ -14,6 +14,8 @@ package combatant.client.render.engine.renderer.ui.draw;
  */
 public final class UiBoxShape {
     private final UiRect bounds;
+    private final UiBoxForm form;
+    private final float squircleExponent;
     private final UiCornerSpec topLeft;
     private final UiCornerSpec topRight;
     private final UiCornerSpec bottomRight;
@@ -24,6 +26,8 @@ public final class UiBoxShape {
     private final UiEdgeSpec left;
 
     private UiBoxShape(UiRect bounds,
+                       UiBoxForm form,
+                       float squircleExponent,
                        UiCornerSpec topLeft,
                        UiCornerSpec topRight,
                        UiCornerSpec bottomRight,
@@ -33,6 +37,8 @@ public final class UiBoxShape {
                        UiEdgeSpec bottom,
                        UiEdgeSpec left) {
         this.bounds = bounds != null ? bounds : UiRect.of(0, 0, 0, 0);
+        this.form = form != null ? form : UiBoxForm.RECT;
+        this.squircleExponent = normalizeSquircleExponent(squircleExponent);
         this.topLeft = topLeft != null ? topLeft : UiCornerSpec.SQUARE;
         this.topRight = topRight != null ? topRight : UiCornerSpec.SQUARE;
         this.bottomRight = bottomRight != null ? bottomRight : UiCornerSpec.SQUARE;
@@ -55,12 +61,36 @@ public final class UiBoxShape {
         return rect(x, y, width, height).allCorners(UiCornerSpec.rounded(radius, radius)).build();
     }
 
+    public static UiBoxShape squircle(double x, double y, double width, double height) {
+        return squircle(x, y, width, height, UiSquircleProfile.STANDARD);
+    }
+
+    public static UiBoxShape squircle(double x, double y, double width, double height, UiSquircleProfile profile) {
+        return rect(x, y, width, height).squircle(profile).build();
+    }
+
+    public static UiBoxShape squircle(double x, double y, double width, double height, double exponent) {
+        return rect(x, y, width, height).squircle(exponent).build();
+    }
+
     public static UiBoxShape chamfered(double x, double y, double width, double height, double cut) {
         return rect(x, y, width, height).allCorners(UiCornerSpec.chamfered(cut)).build();
     }
 
     public UiRect bounds() {
         return bounds;
+    }
+
+    public UiBoxForm form() {
+        return form;
+    }
+
+    public boolean isSquircle() {
+        return form == UiBoxForm.SQUIRCLE;
+    }
+
+    public float squircleExponent() {
+        return squircleExponent;
     }
 
     public UiCornerSpec topLeft() {
@@ -123,12 +153,16 @@ public final class UiBoxShape {
 
     public Builder toBuilder() {
         return new Builder(bounds)
+                .form(form)
+                .squircleExponent(squircleExponent)
                 .topLeft(topLeft).topRight(topRight).bottomRight(bottomRight).bottomLeft(bottomLeft)
                 .top(top).right(right).bottom(bottom).left(left);
     }
 
     public static final class Builder {
         private final UiRect bounds;
+        private UiBoxForm form = UiBoxForm.RECT;
+        private float squircleExponent = UiSquircleProfile.STANDARD.exponent();
         private UiCornerSpec topLeft = UiCornerSpec.SQUARE;
         private UiCornerSpec topRight = UiCornerSpec.SQUARE;
         private UiCornerSpec bottomRight = UiCornerSpec.SQUARE;
@@ -140,6 +174,29 @@ public final class UiBoxShape {
 
         private Builder(UiRect bounds) {
             this.bounds = bounds;
+        }
+
+        public Builder form(UiBoxForm form) {
+            this.form = form != null ? form : UiBoxForm.RECT;
+            return this;
+        }
+
+        public Builder squircle(UiSquircleProfile profile) {
+            UiSquircleProfile safe = profile != null ? profile : UiSquircleProfile.STANDARD;
+            this.form = UiBoxForm.SQUIRCLE;
+            this.squircleExponent = safe.exponent();
+            return this;
+        }
+
+        public Builder squircle(double exponent) {
+            this.form = UiBoxForm.SQUIRCLE;
+            this.squircleExponent = normalizeSquircleExponent(exponent);
+            return this;
+        }
+
+        private Builder squircleExponent(double exponent) {
+            this.squircleExponent = normalizeSquircleExponent(exponent);
+            return this;
         }
 
         public Builder allCorners(UiCornerSpec corner) {
@@ -204,7 +261,13 @@ public final class UiBoxShape {
         }
 
         public UiBoxShape build() {
-            return new UiBoxShape(bounds, topLeft, topRight, bottomRight, bottomLeft, top, right, bottom, left);
+            return new UiBoxShape(bounds, form, squircleExponent,
+                    topLeft, topRight, bottomRight, bottomLeft, top, right, bottom, left);
         }
+    }
+
+    private static float normalizeSquircleExponent(double exponent) {
+        if (!Double.isFinite(exponent)) return UiSquircleProfile.STANDARD.exponent();
+        return (float) Math.max(2.0, Math.min(16.0, exponent));
     }
 }

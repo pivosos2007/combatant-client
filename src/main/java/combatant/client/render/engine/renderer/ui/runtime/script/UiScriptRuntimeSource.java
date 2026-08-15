@@ -89,6 +89,9 @@ enum UiScriptRuntimeSource {
                 roundedRect({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, fill, stroke, strokeWidth = 0, class: extra = "", ...rest } = {}) {
                   return api.shape({ key, shape: "rounded", class: api.abs(x, y, w, h, extra), radius: r ?? radius, fill, stroke, strokeWidth, ...rest });
                 },
+                squircle({ key, x = 0, y = 0, w = 0, h = 0, profile = "standard", power, exponent, fill, stroke, strokeWidth = 0, class: extra = "", ...rest } = {}) {
+                  return api.shape({ key, shape: "squircle", class: api.abs(x, y, w, h, extra), profile, power: power ?? exponent, fill, stroke, strokeWidth, ...rest });
+                },
                 roundedGradient({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, startColor, endColor, angle = 90, class: extra = "", ...rest } = {}) {
                   return api.shape({ key, shape: "rounded-gradient", class: api.abs(x, y, w, h, extra), radius: r ?? radius, startColor, endColor, angle, ...rest });
                 },

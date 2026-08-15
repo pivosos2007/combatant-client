@@ -16,6 +16,18 @@ public record UiShapeShaderParams(float modeTL, float modeTR, float modeBR, floa
                                   float edgeTop, float edgeRight, float edgeBottom, float edgeLeft,
                                   float strokeWidth, float fillMode, float reserved0, float reserved1) {
     public static UiShapeShaderParams of(UiBoxShape box, UiStroke stroke, UiPaint paint) {
+        UiStroke safeStroke = stroke != null ? stroke : UiStroke.NONE;
+        if (box.isSquircle()) {
+            // A squircle owns the whole bounds, so the corner-mode vector becomes
+            // its compact form header: -power, stroke width, fill flag, sentinel.
+            return new UiShapeShaderParams(
+                    -box.squircleExponent(), safeStroke.thickness(), safeStroke.enabled() ? 0f : 1f, -1f,
+                    0f, 0f, 0f, 0f,
+                    0f, 0f, 0f, 0f,
+                    0f, 0f, 0f, 0f,
+                    safeStroke.thickness(), safeStroke.enabled() ? 0f : 1f, 0f, 0f
+            );
+        }
         UiCornerSpec tl = box.topLeft();
         UiCornerSpec tr = box.topRight();
         UiCornerSpec br = box.bottomRight();
@@ -25,7 +37,7 @@ public record UiShapeShaderParams(float modeTL, float modeTR, float modeBR, floa
                 tl.extentX(), tr.extentX(), br.extentX(), bl.extentX(),
                 tl.extentY(), tr.extentY(), br.extentY(), bl.extentY(),
                 box.top().kind().shaderCode(), box.right().kind().shaderCode(), box.bottom().kind().shaderCode(), box.left().kind().shaderCode(),
-                stroke != null ? stroke.thickness() : 0f,
+                safeStroke.thickness(),
                 paint != null ? paint.kind().ordinal() : 0f,
                 0f,
                 0f

@@ -38,7 +38,7 @@ public final class RuntimeCommand implements ClientCommand {
         }
         if (action.equalsIgnoreCase("resume")) {
             if (ClientRuntime.state() == ClientRuntimeState.SOFT_PANIC) {
-                ClientRuntime.exitSoftPanic("runtime command");
+                ClientRuntime.resumeSoftPanic("runtime command");
             }
             CommandOutput.send("Runtime state: " + ClientRuntime.state());
             return true;

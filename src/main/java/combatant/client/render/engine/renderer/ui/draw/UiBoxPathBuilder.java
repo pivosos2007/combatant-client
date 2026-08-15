@@ -20,6 +20,10 @@ public enum UiBoxPathBuilder {
         double y = r.y();
         double w = Math.max(0.0, r.width());
         double h = Math.max(0.0, r.height());
+        if (w <= 0.0 || h <= 0.0) return 0;
+        if (box.isSquircle()) {
+            return writeSquircle(r, box.squircleExponent(), out, maxPoints);
+        }
         double x2 = x + w;
         double y2 = y + h;
         UiCornerSpec tl = clampCorner(box.topLeft(), w, h);
@@ -38,6 +42,77 @@ public enum UiBoxPathBuilder {
         addVerticalEdge(out, maxPoints, count, box.left(), y2 - bl.extentY(), y + tl.extentY(), x, false, h);
         addCorner(out, maxPoints, count, tl, x, y, Corner.TOP_LEFT);
         return count[0];
+    }
+
+    /**
+     * Samples the complete superellipse, not four rounded-corner arcs. Each
+     * quarter is recursively subdivided until the curve-to-chord error is below
+     * a logical-pixel tolerance, subject to the caller's point budget.
+     */
+    private static int writeSquircle(UiRect rect, double exponent, double[] out, int maxPoints) {
+        double width = Math.max(0.0, rect.width());
+        double height = Math.max(0.0, rect.height());
+        if (width <= 0.0 || height <= 0.0 || maxPoints < 4) return 0;
+
+        double cx = rect.x() + width * 0.5;
+        double cy = rect.y() + height * 0.5;
+        double a = width * 0.5;
+        double b = height * 0.5;
+        double power = Math.max(2.0, Math.min(16.0, exponent));
+        double tolerance = Math.max(0.12, Math.min(0.35, Math.min(width, height) / 160.0));
+        int[] count = {0};
+
+        double start = -Math.PI * 0.5;
+        double[] p0 = superellipsePoint(cx, cy, a, b, power, start);
+        add(out, maxPoints, count, p0[0], p0[1]);
+        for (int quarter = 0; quarter < 4 && count[0] < maxPoints; quarter++) {
+            double t0 = start + quarter * Math.PI * 0.5;
+            double t1 = t0 + Math.PI * 0.5;
+            double[] from = superellipsePoint(cx, cy, a, b, power, t0);
+            double[] to = superellipsePoint(cx, cy, a, b, power, t1);
+            appendSquircleSegment(out, maxPoints, count, cx, cy, a, b, power,
+                    t0, from[0], from[1], t1, to[0], to[1], tolerance, 0);
+        }
+        return count[0];
+    }
+
+    private static void appendSquircleSegment(double[] out, int maxPoints, int[] count,
+                                               double cx, double cy, double a, double b, double power,
+                                               double t0, double x0, double y0,
+                                               double t1, double x1, double y1,
+                                               double tolerance, int depth) {
+        if (count[0] >= maxPoints) return;
+        double tm = (t0 + t1) * 0.5;
+        double[] mid = superellipsePoint(cx, cy, a, b, power, tm);
+        double error = pointSegmentDistance(mid[0], mid[1], x0, y0, x1, y1);
+        if (depth < 10 && error > tolerance && count[0] + 1 < maxPoints) {
+            appendSquircleSegment(out, maxPoints, count, cx, cy, a, b, power,
+                    t0, x0, y0, tm, mid[0], mid[1], tolerance, depth + 1);
+            appendSquircleSegment(out, maxPoints, count, cx, cy, a, b, power,
+                    tm, mid[0], mid[1], t1, x1, y1, tolerance, depth + 1);
+            return;
+        }
+        add(out, maxPoints, count, x1, y1);
+    }
+
+    private static double[] superellipsePoint(double cx, double cy, double a, double b,
+                                               double exponent, double angle) {
+        double cos = Math.cos(angle);
+        double sin = Math.sin(angle);
+        double parameterPower = 2.0 / exponent;
+        double x = cx + a * Math.copySign(Math.pow(Math.abs(cos), parameterPower), cos);
+        double y = cy + b * Math.copySign(Math.pow(Math.abs(sin), parameterPower), sin);
+        return new double[]{x, y};
+    }
+
+    private static double pointSegmentDistance(double px, double py,
+                                               double x0, double y0, double x1, double y1) {
+        double dx = x1 - x0;
+        double dy = y1 - y0;
+        double len2 = dx * dx + dy * dy;
+        if (len2 <= 1.0e-12) return Math.hypot(px - x0, py - y0);
+        double t = Math.max(0.0, Math.min(1.0, ((px - x0) * dx + (py - y0) * dy) / len2));
+        return Math.hypot(px - (x0 + dx * t), py - (y0 + dy * t));
     }
 
     private static UiCornerSpec clampCorner(UiCornerSpec c, double width, double height) {

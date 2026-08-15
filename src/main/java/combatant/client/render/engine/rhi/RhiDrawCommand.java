@@ -15,6 +15,7 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineSpec;
+import combatant.client.mixininterface.IRenderPipeline;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -54,6 +55,14 @@ public final class RhiDrawCommand {
 
     public static Builder builder(String label) {
         return new Builder(label);
+    }
+
+    public boolean hasUniform(String name) {
+        if (name == null) return false;
+        for (RhiUniformBinding binding : uniforms) {
+            if (name.equals(binding.name())) return true;
+        }
+        return false;
     }
 
     public static final class Builder {
@@ -138,6 +147,10 @@ public final class RhiDrawCommand {
 
         public RhiDrawCommand build() {
             if (pipeline == null) throw new IllegalStateException("RHI draw command without pipeline");
+            if (transform != null && pipeline instanceof IRenderPipeline combatantPipeline
+                    && !combatantPipeline.combatant$getContract().meshDataRequired()) {
+                throw new IllegalStateException("Matrix transform requires an EXTENDED pipeline: " + pipeline.getLocation());
+            }
             if (pipelineSpec == null) pipelineSpec = RenderPipelineRegistry.global().require(pipeline);
             if (colorAttachment == null) throw new IllegalStateException("RHI draw command without color attachment");
             if (mesh == null) throw new IllegalStateException("RHI draw command without mesh");

@@ -11,10 +11,10 @@ import com.mojang.blaze3d.pipeline.RenderPipeline;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 
 public enum UiBatchType {
-    COLORED(CombatantRenderPipelines.UI_COLORED, false, false),
-    TEXTURED(CombatantRenderPipelines.UI_TEXTURED, false, true),
-    SVG_MSDF(CombatantRenderPipelines.UI_SVG_MSDF, false, true),
-    LINES(CombatantRenderPipelines.UI_COLORED_LINES, false, false),
+    COLORED(CombatantRenderPipelines.UI_COLORED_FAST, true, false),
+    TEXTURED(CombatantRenderPipelines.UI_TEXTURED_FAST, true, true),
+    SVG_MSDF(CombatantRenderPipelines.UI_SVG_MSDF_FAST, true, true),
+    LINES(CombatantRenderPipelines.UI_COLORED_LINES_FAST, true, false),
     CIRCLE(CombatantRenderPipelines.UI_CIRCLE_BATCH, true, false),
     ARC(CombatantRenderPipelines.UI_ARC_BATCH, true, false),
     ORBIZ_RING(CombatantRenderPipelines.UI_ORBIZ_RING_BATCH, true, false),
@@ -24,6 +24,8 @@ public enum UiBatchType {
     ROUNDED_STROKE_ANGULAR(CombatantRenderPipelines.UI_ROUNDED_STROKE_ANGULAR_BATCH, true, false),
     CHAMFERED(CombatantRenderPipelines.UI_CHAMFERED_BATCH, true, false),
     CHAMFERED_STROKE(CombatantRenderPipelines.UI_CHAMFERED_STROKE_BATCH, true, false),
+    SHAPE(CombatantRenderPipelines.UI_SHAPE_BATCH, true, false),
+    SHAPE_WARPED(CombatantRenderPipelines.UI_SHAPE_WARPED_BATCH, true, false),
     ROUNDED_STROKE_CORNERS(CombatantRenderPipelines.UI_ROUNDED_STROKE_CORNERS_BATCH, true, false),
     ROUNDED_CORNERS(CombatantRenderPipelines.UI_ROUNDED_CORNERS_BATCH, true, false),
     ROUNDED_GLOW(CombatantRenderPipelines.UI_ROUNDED_GLOW_BATCH, true, false),

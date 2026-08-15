@@ -44,6 +44,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.util.player.PlayerHealthResolver;
 import combatant.client.util.player.PlayerSkinResolver;
 import combatant.client.util.player.effect.StatusEffectTracker;
@@ -995,9 +996,9 @@ public final class TargetHud extends DraggableHudElement {
         if (trailPercent > healthPercent + 0.001f) {
             float trailFade = tailFade(BAR_WIDTH * trailPercent, BAR_TAIL_FADE_LENGTH);
             int trailColor = HudRenderUtil.scaleAlpha(uiTrail, alphaFactor * trailFade);
-            renderer.roundedProgressRectGradient(
-                    barX, barY, barWidth, barHeight, barRadius, 1.0f,
-                    trailPercent, false, trailColor, trailColor, 0.0f, 0.0f
+            drawScissoredHealthBar(
+                    renderer, barX, barY, barWidth, barHeight, barRadius,
+                    trailPercent, trailColor, trailColor, 0.0f
             );
         }
 
@@ -1006,9 +1007,9 @@ public final class TargetHud extends DraggableHudElement {
         if (healthPercent > 0.0001f) {
             float healthFade = tailFade(BAR_WIDTH * healthPercent, BAR_TAIL_FADE_LENGTH);
             int[] healthWave = buildWaveColors(elapsedMs, 1500f, alphaFactor * healthFade, uiHealthStart, uiHealthEnd);
-            renderer.roundedProgressRectGradient(
-                    barX, barY, barWidth, barHeight, barRadius, 1.0f,
-                    healthPercent, false, healthWave[0], healthWave[2], 90.0f, 0.0f
+            drawScissoredHealthBar(
+                    renderer, barX, barY, barWidth, barHeight, barRadius,
+                    healthPercent, healthWave[0], healthWave[2], 90.0f
             );
         }
 
@@ -1016,10 +1017,43 @@ public final class TargetHud extends DraggableHudElement {
         if (absorptionPercent > 0.0001f) {
             float absorptionFade = tailFade(BAR_WIDTH * absorptionPercent, BAR_TAIL_FADE_LENGTH);
             int[] absorptionWave = buildWaveColors(elapsedMs, 1200f, alphaFactor * absorptionFade, uiAbsorptionStart, uiAbsorptionEnd);
-            renderer.roundedProgressRectGradient(
-                    barX, barY, barWidth, barHeight, barRadius, 1.0f,
-                    absorptionPercent, false, absorptionWave[0], absorptionWave[2], 90.0f, 0.0f
+            drawScissoredHealthBar(
+                    renderer, barX, barY, barWidth, barHeight, barRadius,
+                    absorptionPercent, absorptionWave[0], absorptionWave[2], 90.0f
             );
+        }
+    }
+
+    private static void drawScissoredHealthBar(
+            Renderer2D renderer,
+            float x,
+            float y,
+            float width,
+            float height,
+            float radius,
+            float progress,
+            int startColor,
+            int endColor,
+            float angle
+    ) {
+        float clampedProgress = AnimationUtility.clamp01(progress);
+        if (clampedProgress <= 0.0001f) {
+            return;
+        }
+
+        if (clampedProgress >= 0.9999f) {
+            renderer.roundedRectGradient(x, y, width, height, radius, 1.0f, startColor, endColor, angle, 0.0f);
+            return;
+        }
+
+        boolean clipped = ScissorFunction.pushRaw(x, y, width * clampedProgress, height);
+        if (!clipped) {
+            return;
+        }
+        try {
+            renderer.roundedRectGradient(x, y, width, height, radius, 1.0f, startColor, endColor, angle, 0.0f);
+        } finally {
+            ScissorFunction.pop();
         }
     }
 

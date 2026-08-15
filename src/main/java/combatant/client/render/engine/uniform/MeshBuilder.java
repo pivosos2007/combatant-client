@@ -223,6 +223,24 @@ public final class MeshBuilder implements AutoCloseable {
         return this;
     }
 
+    /**
+     * Writes source-space local coordinates without projective pre-weighting.
+     * Used by tessellated warped SDF meshes where interpolation error is bounded
+     * geometrically by the grid instead of encoded into a four-vertex quad.
+     */
+    public MeshBuilder rawLocal2(double x, double y) {
+        debugVertexWriteCapacity(16, "Local");
+
+        long p = verticesPtr;
+        memPutFloat(p, (float) x);
+        memPutFloat(p + 4, (float) y);
+        memPutFloat(p + 8, 1.0f);
+        memPutFloat(p + 12, 0.0f);
+
+        verticesPtr += 16;
+        return this;
+    }
+
     public MeshBuilder vec4(float x, float y, float z, float w) {
         debugVertexWriteCapacity(16, "Vec4");
 

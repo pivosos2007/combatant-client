@@ -473,6 +473,7 @@ export interface UiFactory {
   box(init?: ShapeInit): UiShapeNode;
   rounded(init?: ShapeInit & { radius?: number; r?: number }): UiShapeNode;
   chamfered(init?: ShapeInit & { cut?: number; chamfer?: number }): UiShapeNode;
+  squircle(init?: ShapeInit & { x?: number; y?: number; w?: number; h?: number; profile?: "soft" | "standard" | "tight"; power?: number; exponent?: number }): UiShapeNode;
   roundedRect(init?: ShapeInit & { x?: number; y?: number; w?: number; h?: number; radius?: number; r?: number }): UiShapeNode;
   roundedGradient(init?: ShapeInit & { x?: number; y?: number; w?: number; h?: number; radius?: number; r?: number }): UiShapeNode;
   roundedGradientQuad(init?: ShapeInit & { x?: number; y?: number; w?: number; h?: number; radius?: number; r?: number }): UiShapeNode;

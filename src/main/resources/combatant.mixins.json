@@ -103,6 +103,7 @@
     "PlayerTabOverlayMixin",
     "PowderSnowFogModifierMixin",
     "RecipeBookScreenMixin",
+    "ReloadableResourceManagerMixin",
     "RenderPassMixin",
     "RenderPipelineMixin",
     "ScreenEffectRendererMixin",

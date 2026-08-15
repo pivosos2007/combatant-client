@@ -71,11 +71,22 @@ public final class UiMeshGeometry {
     }
 
     public static float packLiquidGlassPayload(float distortPx, float squirclePower, float blurAlpha) {
+        // This argument has historically meant rounded-corner smoothness. Keep
+        // that API stable; whole-box squircles must opt in through the boolean overload.
+        return packLiquidGlassPayload(distortPx, squirclePower, blurAlpha, false);
+    }
+
+    public static float packLiquidGlassPayload(float distortPx, float squirclePower, float blurAlpha,
+                                               boolean squircle) {
         float distort = Math.max(0.0f, Math.min(0.35f, distortPx));
         float smoothness = squirclePower < 1.5f
                 ? 2.0f
-                : Math.max(2.0f, Math.min(15.0f, Math.round(squirclePower)));
+                : Math.max(2.0f, Math.min(16.0f, squirclePower));
         float blurBucket = Math.round(clamp01(blurAlpha) * 100.0f);
+        if (squircle) {
+            float exponentBucket = Math.round(smoothness * 100.0f);
+            return 200_000.0f + exponentBucket * 128.0f + blurBucket + distort;
+        }
         return smoothness * 10000.0f + blurBucket + distort;
     }
 

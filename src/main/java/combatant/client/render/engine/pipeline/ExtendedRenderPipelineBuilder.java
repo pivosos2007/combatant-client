@@ -38,6 +38,7 @@ public class ExtendedRenderPipelineBuilder {
     private boolean depthWrite = true;
     private boolean customDepthState;
     private boolean bindGroupLayoutApplied;
+    private RenderPipelineContract contract = RenderPipelineContract.EXTENDED;
 
     public ExtendedRenderPipelineBuilder(RenderPipeline.Snippet... snippets) {
         this.delegate = RenderPipeline.builder(snippets);
@@ -99,6 +100,11 @@ public class ExtendedRenderPipelineBuilder {
         return this;
     }
 
+    public ExtendedRenderPipelineBuilder withContract(RenderPipelineContract contract) {
+        this.contract = contract == null ? RenderPipelineContract.EXTENDED : contract;
+        return this;
+    }
+
     public ExtendedRenderPipelineBuilder withLineSmooth() {
         this.lineSmooth = true;
         return this;
@@ -125,6 +131,7 @@ public class ExtendedRenderPipelineBuilder {
         IRenderPipeline combatantPipeline = (IRenderPipeline) pipeline;
         combatantPipeline.combatant$setLineSmooth(lineSmooth);
         combatantPipeline.combatant$setShapeClipContract(shapeClipContract);
+        combatantPipeline.combatant$setContract(contract);
         return pipeline;
     }
 

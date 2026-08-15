@@ -32,6 +32,20 @@ float chamferedBoxSDF(vec2 p, vec2 halfSize, float chamfer) {
     return max(box, cut);
 }
 
+float squircleSDF(vec2 p, vec2 halfSize, float exponent) {
+    vec2 h = max(halfSize, vec2(0.0001));
+    float n = clamp(exponent, 2.0, 16.0);
+    vec2 q = abs(p) / h;
+    vec2 qn = pow(q, vec2(n));
+    float implicit = qn.x + qn.y - 1.0;
+    vec2 gradient = n * vec2(
+        pow(max(q.x, 0.000001), n - 1.0) / h.x,
+        pow(max(q.y, 0.000001), n - 1.0) / h.y
+    );
+    float radial = (pow(max(qn.x + qn.y, 0.000001), 1.0 / n) - 1.0) * min(h.x, h.y);
+    return length(gradient) > 0.00001 ? implicit / length(gradient) : radial;
+}
+
 float pixelAa(vec2 logicalScale) {
     return max(max(logicalScale.x, logicalScale.y), 0.0001);
 }
@@ -59,10 +73,13 @@ void main() {
     vec2 frag = warpedLocal(v_Local);
     vec2 halfSize = v_Rect.zw * 0.5;
     float shape = v_Params.x;
+    bool squircle = shape <= -1000.0;
     float shapeSize = clamp(abs(shape), 0.0, min(halfSize.x, halfSize.y));
-    float d = shape < 0.0
-            ? chamferedBoxSDF(frag - (v_Rect.xy + halfSize), halfSize, shapeSize)
-            : roundedBoxSDF(frag - v_Rect.xy - halfSize, halfSize, shapeSize);
+    float d = squircle
+            ? squircleSDF(frag - (v_Rect.xy + halfSize), halfSize, -shape - 1000.0)
+            : (shape < 0.0
+                ? chamferedBoxSDF(frag - (v_Rect.xy + halfSize), halfSize, shapeSize)
+                : roundedBoxSDF(frag - v_Rect.xy - halfSize, halfSize, shapeSize));
     float aa = analyticAa(d, logicalScale);
     float smoothedAlpha = crispCoverage(d, aa);
     if (smoothedAlpha <= 0.001) {

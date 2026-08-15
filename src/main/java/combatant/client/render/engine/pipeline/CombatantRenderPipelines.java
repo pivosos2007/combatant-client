@@ -52,6 +52,11 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_POS_LOCAL_COLOR_RECT_PARAMS2_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_local_color_rect_params2.vert");
     public static final Identifier SHADER_POS_LOCAL_COLOR_RECT_PARAMS5_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_local_color_rect_params5.vert");
     public static final Identifier SHADER_POS_LOCAL_COLOR_RECT_PARAMS5_GENERIC_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_local_color_rect_params5_generic.vert");
+    public static final Identifier SHADER_UI_POS_COLOR_FAST_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_pos_color_fast.vert");
+    public static final Identifier SHADER_UI_POS_TEX_COLOR_FAST_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_pos_tex_color_fast.vert");
+    public static final Identifier SHADER_UI_POS_COLOR_RECT_PARAMS_FAST_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_pos_color_rect_params_fast.vert");
+    public static final Identifier SHADER_UI_POS_LOCAL_COLOR_RECT_PARAMS_FAST_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_pos_local_color_rect_params_fast.vert");
+    public static final Identifier SHADER_UI_POS_TEX_COLOR_TRANSFORMED_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_pos_tex_color_transformed.vert");
     public static final Identifier SHADER_POS_TEX_COLOR_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color.vert");
     public static final Identifier SHADER_POS_TEX_COLOR_PARAMS2_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_params2.vert");
     public static final Identifier SHADER_POS_TEX_COLOR_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color.frag");
@@ -121,6 +126,9 @@ public enum CombatantRenderPipelines {
     // Snippets
     private static final RenderPipeline.Snippet MESH_UNIFORMS = new ExtendedRenderPipelineBuilder()
             .withUniform("MeshData", UniformType.UNIFORM_BUFFER)
+            .buildSnippet();
+    private static final RenderPipeline.Snippet UI_BATCH_UNIFORMS = new ExtendedRenderPipelineBuilder()
+            .withUniform("UIBatch", UniformType.UNIFORM_BUFFER)
             .buildSnippet();
     /**
      * No depth test; translucent; triangles.
@@ -572,6 +580,18 @@ public enum CombatantRenderPipelines {
             .withCull(true)
             .build()
     );
+    public static final RenderPipeline UI_COLORED_FAST = add(new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_colored_fast"))
+            .withVertexFormat(CombatantVertexFormats.POS2_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_UI_POS_COLOR_FAST_VERT)
+            .withFragmentShader(SHADER_POS_COLOR_FRAG)
+            .withContract(RenderPipelineContract.UI_FAST)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
     /**
      * UI lines (pos2 + color).
      */
@@ -580,6 +600,18 @@ public enum CombatantRenderPipelines {
             .withVertexFormat(CombatantVertexFormats.POS2_COLOR, com.mojang.blaze3d.PrimitiveTopology.DEBUG_LINES)
             .withVertexShader(SHADER_POS_COLOR_VERT)
             .withFragmentShader(SHADER_POS_COLOR_FRAG)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
+    public static final RenderPipeline UI_COLORED_LINES_FAST = add(new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_colored_lines_fast"))
+            .withVertexFormat(CombatantVertexFormats.POS2_COLOR, com.mojang.blaze3d.PrimitiveTopology.DEBUG_LINES)
+            .withVertexShader(SHADER_UI_POS_COLOR_FAST_VERT)
+            .withFragmentShader(SHADER_POS_COLOR_FRAG)
+            .withContract(RenderPipelineContract.UI_FAST)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)
@@ -595,6 +627,19 @@ public enum CombatantRenderPipelines {
             .withVertexShader(SHADER_POS_TEX_COLOR_VERT)
             .withFragmentShader(SHADER_POS_TEX_COLOR_FRAG)
             .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
+    public static final RenderPipeline UI_TEXTURED_FAST = add(new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_textured_fast"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_UI_POS_TEX_COLOR_FAST_VERT)
+            .withFragmentShader(SHADER_POS_TEX_COLOR_FRAG)
+            .withSampler("u_Texture")
+            .withContract(RenderPipelineContract.UI_FAST)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)
@@ -617,6 +662,20 @@ public enum CombatantRenderPipelines {
             .withCull(true)
             .build()
     );
+    public static final RenderPipeline UI_SVG_MSDF_FAST = add(new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_svg_msdf_fast"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_UI_POS_TEX_COLOR_FAST_VERT)
+            .withFragmentShader(SHADER_SVG_MSDF_FRAG)
+            .withSampler("u_Texture")
+            .withUniform("MsdfText", UniformType.UNIFORM_BUFFER)
+            .withContract(RenderPipelineContract.UI_FAST)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
     /**
      * UI textured triangles (pos2 + tex + color), additive blend.
      */
@@ -632,7 +691,19 @@ public enum CombatantRenderPipelines {
             .withCull(true)
             .build()
     );
-
+    public static final RenderPipeline UI_TEXTURED_ADDITIVE_TRANSFORMED = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_textured_additive_transformed"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_UI_POS_TEX_COLOR_TRANSFORMED_VERT)
+            .withFragmentShader(SHADER_POS_TEX_COLOR_FRAG)
+            .withSampler("u_Texture")
+            .withContract(RenderPipelineContract.UI_EXTENDED)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withCull(true)
+            .build()
+    );
     // ======================
     // UI (2D)
     // ======================
@@ -1020,9 +1091,6 @@ public enum CombatantRenderPipelines {
             .withCull(false)
             .build()
     );
-    private static final RenderPipeline.Snippet UI_BATCH_UNIFORMS = new ExtendedRenderPipelineBuilder()
-            .withUniform("UIBatch", UniformType.UNIFORM_BUFFER)
-            .buildSnippet();
     public static final RenderPipeline UI_CIRCLE_BATCH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_circle_batch"))
             .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
@@ -1111,11 +1179,24 @@ public enum CombatantRenderPipelines {
             .withCull(true)
             .build()
     );
-    public static final RenderPipeline UI_SHAPE_BATCH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
+    public static final RenderPipeline UI_SHAPE_BATCH = add(new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_shape_batch"))
-            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS5, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(SHADER_POS_LOCAL_COLOR_RECT_PARAMS5_VERT)
+            .withVertexFormat(CombatantVertexFormats.POS2_COLOR_RECT_PARAMS, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_UI_POS_COLOR_RECT_PARAMS_FAST_VERT)
             .withFragmentShader(SHADER_UI_SHAPE_BATCH_FRAG)
+            .withContract(RenderPipelineContract.UI_FAST)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
+    public static final RenderPipeline UI_SHAPE_WARPED_BATCH = add(new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_shape_warped_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_UI_POS_LOCAL_COLOR_RECT_PARAMS_FAST_VERT)
+            .withFragmentShader(SHADER_UI_SHAPE_BATCH_FRAG)
+            .withContract(RenderPipelineContract.UI_WARPED)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)

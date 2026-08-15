@@ -14,6 +14,7 @@
 package combatant.client.mixininterface;
 
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
+import combatant.client.render.engine.pipeline.RenderPipelineContract;
 
 public interface IRenderPipeline {
     void combatant$setLineSmooth(boolean lineSmooth);
@@ -23,4 +24,8 @@ public interface IRenderPipeline {
     void combatant$setShapeClipContract(ShapeClipRenderPassContract contract);
 
     ShapeClipRenderPassContract combatant$getShapeClipContract();
+
+    void combatant$setContract(RenderPipelineContract contract);
+
+    RenderPipelineContract combatant$getContract();
 }

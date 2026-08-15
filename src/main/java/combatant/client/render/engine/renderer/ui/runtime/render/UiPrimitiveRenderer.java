@@ -44,7 +44,7 @@ public final class UiPrimitiveRenderer {
             return true;
         }
         return switch (shape) {
-            case "box", "mixed", "flex", "flex-box", "flex_box" -> true;
+            case "box", "mixed", "flex", "flex-box", "flex_box", "squircle", "superellipse" -> true;
             default -> false;
         };
     }
@@ -772,6 +772,16 @@ public final class UiPrimitiveRenderer {
         UiBoxShape.Builder builder = UiBoxShape.rect(x, y, w, h)
                 .corners(tl, tr, br, bl);
 
+        if (shape.equals("squircle") || shape.equals("superellipse")) {
+            String profile = props.string("profile", "standard").toLowerCase(Locale.ROOT);
+            float fallbackPower = switch (profile) {
+                case "soft" -> UiSquircleProfile.SOFT.exponent();
+                case "tight" -> UiSquircleProfile.TIGHT.exponent();
+                default -> UiSquircleProfile.STANDARD.exponent();
+            };
+            builder.squircle(props.number("power", props.number("exponent", fallbackPower)));
+        }
+
         Object edges = props.get("edges");
         UiEdgeSpec top = edgeFromObject(edgeValue(edges, "top"), w, true);
         UiEdgeSpec right = edgeFromObject(edgeValue(edges, "right"), h, false);
@@ -997,6 +1007,17 @@ public final class UiPrimitiveRenderer {
         if (alpha <= 0.001f) return;
 
         switch (shape) {
+            case "squircle", "superellipse" -> {
+                String profile = props.string("profile", "standard").toLowerCase(Locale.ROOT);
+                float fallbackPower = switch (profile) {
+                    case "soft" -> UiSquircleProfile.SOFT.exponent();
+                    case "tight" -> UiSquircleProfile.TIGHT.exponent();
+                    default -> UiSquircleProfile.STANDARD.exponent();
+                };
+                renderer.blurSquircle(x, y, w, h,
+                        props.number("power", props.number("exponent", fallbackPower)),
+                        quality, brightness, alpha, 0xFFFFFF);
+            }
             case "rounded", "round" -> renderer.blurRect(
                     x, y, w, h,
                     props.number("radius", style.radius()),

@@ -10,12 +10,15 @@ package combatant.client.runtime.loader;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
 
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.Optional;
 
 public final class StandardFabricLoaderBridge implements LoaderBridge {
-    private static final String[] MOD_IDS = {"simplefullbright", "combatant"};
+    private static final String[] MOD_IDS = {"combatant"};
+    private static final String MANAGED_RUNTIME_CLASS =
+            "net.fabricmc.loader.impl.runtime.ClientBoundRuntime";
 
     @Override
     public boolean isStandardFabric() {
@@ -25,6 +28,26 @@ public final class StandardFabricLoaderBridge implements LoaderBridge {
     @Override
     public boolean supportsSafeJarReplacement() {
         return false;
+    }
+
+    @Override
+    public boolean supportsManagedRuntime() {
+        try {
+            Class.forName(MANAGED_RUNTIME_CLASS, false, StandardFabricLoaderBridge.class.getClassLoader());
+            return true;
+        } catch (ClassNotFoundException ignored) {
+            return false;
+        }
+    }
+
+    @Override
+    public boolean suspendManagedRuntime(String reason) {
+        return invokeManagedRuntime("suspend", reason);
+    }
+
+    @Override
+    public boolean resumeManagedRuntime(String reason) {
+        return invokeManagedRuntime("resume", reason);
     }
 
     @Override
@@ -58,5 +81,23 @@ public final class StandardFabricLoaderBridge implements LoaderBridge {
             if (container.isPresent()) return container;
         }
         return Optional.empty();
+    }
+
+    private boolean invokeManagedRuntime(String methodName, String reason) {
+        try {
+            Class<?> runtimeClass = Class.forName(
+                    MANAGED_RUNTIME_CLASS,
+                    false,
+                    StandardFabricLoaderBridge.class.getClassLoader()
+            );
+            Method method = runtimeClass.getMethod(methodName, String.class, String.class);
+            for (String modId : MOD_IDS) {
+                Object result = method.invoke(null, modId, reason);
+                if (Boolean.TRUE.equals(result)) return true;
+            }
+            return false;
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            return false;
+        }
     }
 }

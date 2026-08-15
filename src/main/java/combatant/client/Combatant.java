@@ -7,9 +7,17 @@
 
 package combatant.client;
 
+import combatant.client.events.UsedImplicitly;
 import combatant.client.events.impl.GameTickEvent;
 import combatant.client.runtime.*;
 import net.fabricmc.api.ClientModInitializer;
+import combatant.client.runtime.annotation.ClientBound;
+import combatant.client.runtime.annotation.ClientBoundLevel;
+import combatant.client.runtime.annotation.RuntimeAssertion;
+import combatant.client.runtime.annotation.RuntimeAssertionPhase;
+import combatant.client.runtime.annotation.RuntimeResume;
+import combatant.client.runtime.annotation.RuntimeSuspend;
+import combatant.client.runtime.nativeguard.NativeMemoryGuard;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
@@ -76,7 +84,44 @@ import combatant.client.util.pvp.PvpTracker;
 import combatant.client.util.target.TargetManager;
 import combatant.client.util.time.TimerController;
 
+@ClientBound(
+        value = ClientBoundLevel.FULL,
+        packages = "combatant.client",
+        resources = "assets/combatant",
+        isolatedEntrypoints = "combatant.client.runtime.isolated.CombatantIsolatedRuntime",
+        isolatedPackages = "combatant.client.runtime.isolated"
+)
 public class Combatant implements ClientModInitializer {
+
+    @UsedImplicitly
+    @RuntimeSuspend(order = 100)
+    private void suspendClientBoundRuntime(String reason) {
+        ClientRuntime.enterSoftPanic(reason);
+    }
+
+    @UsedImplicitly
+    @RuntimeResume(order = 100)
+    private void resumeClientBoundRuntime(String reason) {
+        ClientRuntime.exitSoftPanic(reason);
+    }
+
+    @UsedImplicitly
+    @RuntimeAssertion(
+            phase = RuntimeAssertionPhase.SUSPENDED,
+            message = "Combatant runtime did not enter soft panic"
+    )
+    private boolean assertClientBoundRuntimeSuspended() {
+        return ClientRuntime.state() == ClientRuntimeState.SOFT_PANIC;
+    }
+
+    @UsedImplicitly
+    @RuntimeAssertion(
+            phase = RuntimeAssertionPhase.ACTIVE,
+            message = "Combatant runtime did not resume"
+    )
+    private boolean assertClientBoundRuntimeActive() {
+        return ClientRuntime.state() == ClientRuntimeState.ACTIVE;
+    }
 
     private static void registerRuntimeLifecycle() {
         AddonManager.registerRuntimeLifecycle();
@@ -372,6 +417,7 @@ public class Combatant implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        NativeMemoryGuard.initialize();
         CombatantRenderEngineBootstrap.init();
         PostProcessManager.register(new NetherPortalRiftPass());
         PostProcessManager.register(new SleepOverlayPass());

@@ -41,6 +41,18 @@ public enum UiShapes {
         return UiShape.box(UiBoxShape.chamfered(x, y, width, height, chamfer));
     }
 
+    public static UiShape squircle(double x, double y, double width, double height) {
+        return UiShape.box(UiBoxShape.squircle(x, y, width, height));
+    }
+
+    public static UiShape squircle(double x, double y, double width, double height, UiSquircleProfile profile) {
+        return UiShape.box(UiBoxShape.squircle(x, y, width, height, profile));
+    }
+
+    public static UiShape squircle(double x, double y, double width, double height, double exponent) {
+        return UiShape.box(UiBoxShape.squircle(x, y, width, height, exponent));
+    }
+
     public static UiShape chamfered(double x, double y, double width, double height,
                                     double tl, double tr, double br, double bl) {
         UiBoxShape box = UiBoxShape.rect(x, y, width, height)

@@ -8,7 +8,6 @@
 package combatant.client.runtime;
 
 import combatant.client.runtime.loader.*;
-import combatant.client.runtime.loader.*;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.ArrayList;
@@ -76,12 +75,26 @@ public enum ClientRuntime {
     public static boolean toggleSoftPanic(String reason) {
         ClientRuntimeState current = STATE.get();
         if (current == ClientRuntimeState.ACTIVE) {
+            if (loaderBridge.suspendManagedRuntime(safeReason(reason))) {
+                return STATE.get() == ClientRuntimeState.SOFT_PANIC;
+            }
             return enterSoftPanic(reason);
         }
         if (current == ClientRuntimeState.SOFT_PANIC) {
+            if (loaderBridge.resumeManagedRuntime(safeReason(reason))) {
+                return STATE.get() == ClientRuntimeState.ACTIVE;
+            }
             return exitSoftPanic(reason);
         }
         return false;
+    }
+
+    public static boolean resumeSoftPanic(String reason) {
+        if (STATE.get() != ClientRuntimeState.SOFT_PANIC) return false;
+        if (loaderBridge.resumeManagedRuntime(safeReason(reason))) {
+            return STATE.get() == ClientRuntimeState.ACTIVE;
+        }
+        return exitSoftPanic(reason);
     }
 
     public static boolean prepareJarReplacement(String reason) {

@@ -336,6 +336,7 @@ java {
 tasks.matching { it.name == "sourcesJar" }.configureEach {
     dependsOn tasks.named("generateSvgMsdf")
     exclude("javet/natives/**")
+    exclude("combatant/nativeguard/**")
 }
 
 jar {

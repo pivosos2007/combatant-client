@@ -18,6 +18,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import combatant.client.mixininterface.IRenderPipeline;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
+import combatant.client.render.engine.pipeline.RenderPipelineContract;
 
 @Mixin(RenderPipeline.class)
 public abstract class RenderPipelineMixin implements IRenderPipeline {
@@ -26,6 +27,9 @@ public abstract class RenderPipelineMixin implements IRenderPipeline {
 
     @Unique
     private ShapeClipRenderPassContract combatant$shapeClipContract = ShapeClipRenderPassContract.NONE;
+
+    @Unique
+    private RenderPipelineContract combatant$contract = RenderPipelineContract.EXTENDED;
 
     @Override
     public void combatant$setLineSmooth(boolean lineSmooth) {
@@ -45,5 +49,15 @@ public abstract class RenderPipelineMixin implements IRenderPipeline {
     @Override
     public ShapeClipRenderPassContract combatant$getShapeClipContract() {
         return combatant$shapeClipContract;
+    }
+
+    @Override
+    public void combatant$setContract(RenderPipelineContract contract) {
+        this.combatant$contract = contract == null ? RenderPipelineContract.EXTENDED : contract;
+    }
+
+    @Override
+    public RenderPipelineContract combatant$getContract() {
+        return combatant$contract;
     }
 }
