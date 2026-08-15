@@ -24,8 +24,8 @@ public enum WorldUiPresentationService {
         Policy safePolicy = policy != null ? policy : Policy.defaults();
         double safeDistance = Math.max(0.0, distance);
 
-        float screenAlpha = 0;
-        float worldAlpha = 0;
+        float screenAlpha;
+        float worldAlpha;
         double worldScale = safePolicy.physicalWorldUnitsPerPixel();
         switch (safeMode) {
             case SCREEN -> {
@@ -37,29 +37,21 @@ public enum WorldUiPresentationService {
                 worldAlpha = 1.0f;
             }
             case HYBRID -> {
+                // Fade out the world presentation first, then fade the screen presentation in.
+                // The two variants never overlap, so the transition stays smooth without rendering
+                // duplicate nameplates/items at the same time.
+                double midpoint = (safePolicy.handoffStartDistance() + safePolicy.handoffEndDistance()) * 0.5;
+                worldAlpha = 1.0f - smoothstep(
+                        safePolicy.handoffStartDistance(), midpoint, safeDistance);
                 screenAlpha = smoothstep(
-                        safePolicy.handoffStartDistance(), safePolicy.handoffEndDistance(), safeDistance);
-                worldAlpha = 1.0f - screenAlpha;
-                double compensation;
-                if (Double.isFinite(projectionYScale)
-                        && Math.abs(projectionYScale) > 0.0001
-                        && logicalViewportHeight > 1.0) {
-                    double exactUnitsPerLogicalPixel = 2.0 * safeDistance
-                            / (Math.abs(projectionYScale) * logicalViewportHeight);
-                    compensation = exactUnitsPerLogicalPixel / worldScale;
-                } else {
-                    compensation = safeDistance / Math.max(0.001, safePolicy.referenceDistance());
-                }
-                compensation = Math.max(safePolicy.minimumCompensation(),
-                        Math.min(safePolicy.maximumCompensation(), compensation));
-                double compensatedScale = worldScale * compensation;
-                float compensationBlend = smoothstep(
-                        safePolicy.referenceDistance() * 0.45,
-                        safePolicy.referenceDistance(),
-                        safeDistance);
-                worldScale += (compensatedScale - worldScale) * compensationBlend;
+                        midpoint, safePolicy.handoffEndDistance(), safeDistance);
             }
+            default -> throw new IllegalStateException("Unexpected presentation mode: " + safeMode);
         }
+
+        // Keep billboards in physical world units. Distance/projection compensation effectively turns
+        // them into constant-screen-size UI and makes their world footprint grow as the camera moves
+        // away. A fixed scale gives normal perspective: farther billboards become smaller on screen.
         return new Snapshot(screenAlpha, worldAlpha, worldScale);
     }
 
@@ -91,7 +83,7 @@ public enum WorldUiPresentationService {
         }
 
         public static Policy defaults() {
-            return new Policy(0.0185, 14.0, 16.0, 28.0, 0.38, 3.50);
+            return new Policy(0.0168, 14.0, 16.0, 28.0, 0.38, 3.50);
         }
     }
 

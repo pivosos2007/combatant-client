@@ -12,6 +12,7 @@ import de.marhali.json5.*;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ClassInfo;
 import io.github.classgraph.ScanResult;
+import combatant.client.config.subsystem.ConfigSubsystem;
 import combatant.client.config.values.ConfigValue;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudGlobalConfig;
@@ -74,7 +75,7 @@ public enum ConfigSerializer {
             for (ClassInfo ci : sc.getClassesImplementing(ConfigObject.class)) {
                 Class<?> cls = ci.loadClass();
                 ConfigObject inst = singletonConfigObjectFor(cls);
-                if (inst != null) {
+                if (inst != null && !(inst instanceof ConfigAggregate)) {
                     load(inst);
                 }
             }
@@ -93,7 +94,7 @@ public enum ConfigSerializer {
             for (ClassInfo ci : sc.getClassesImplementing(ConfigObject.class)) {
                 Class<?> cls = ci.loadClass();
                 ConfigObject inst = singletonConfigObjectFor(cls);
-                if (inst != null) {
+                if (inst != null && !(inst instanceof ConfigAggregate)) {
                     save(inst);
                 }
             }
@@ -125,12 +126,20 @@ public enum ConfigSerializer {
     // =============================================================
 
     public static void save(ConfigObject obj) {
-        if (obj instanceof HudGlobalConfig) return;
+        if (obj == null || obj instanceof HudGlobalConfig) return;
+        if (obj instanceof ConfigAggregate aggregate) {
+            for (ConfigObject child : aggregate.configChildren()) save(child);
+            return;
+        }
         saveNow(obj);
     }
 
     public static void requestSave(ConfigObject obj) {
         if (obj == null || obj instanceof HudGlobalConfig) return;
+        if (obj instanceof ConfigAggregate aggregate) {
+            for (ConfigObject child : aggregate.configChildren()) requestSave(child);
+            return;
+        }
         PendingWrite write;
         try {
             write = buildWrite(obj);
@@ -159,7 +168,11 @@ public enum ConfigSerializer {
     }
 
     public static void load(ConfigObject obj) {
-        if (obj instanceof HudGlobalConfig) return;
+        if (obj == null || obj instanceof HudGlobalConfig) return;
+        if (obj instanceof ConfigAggregate aggregate) {
+            for (ConfigObject child : aggregate.configChildren()) load(child);
+            return;
+        }
         if (isModule(obj)) {
             loadModule(obj);
         } else if (isJsonConfig(obj)) {
@@ -212,6 +225,16 @@ public enum ConfigSerializer {
         return CONFIG_DIR.resolve(sanitizeConfigName(configName) + ".json5");
     }
 
+    private static ConfigSubsystem subsystemOf(ConfigObject obj) {
+        return obj == null ? null : obj.getClass().getAnnotation(ConfigSubsystem.class);
+    }
+
+    private static Path subsystemFile(ConfigObject obj, String extension) {
+        ConfigSubsystem subsystem = subsystemOf(obj);
+        if (subsystem == null) return null;
+        return ConfigPaths.subsystemFile(subsystem.value(), extension);
+    }
+
     private static Path moduleFile(ConfigObject obj) {
         String category = "uncategorized";
         if (obj instanceof Module module && module.getCategory() != null) {
@@ -223,6 +246,8 @@ public enum ConfigSerializer {
     }
 
     private static Path jsonFile(ConfigObject obj) {
+        Path subsystem = subsystemFile(obj, ".json");
+        if (subsystem != null) return subsystem;
         if (obj instanceof DraggableHudElement) {
             return CONFIG_DIR.resolve("hud")
                     .resolve("draggable")
@@ -237,9 +262,9 @@ public enum ConfigSerializer {
     }
 
     private static Path utilFile(ConfigObject obj) {
-        return isJsonConfig(obj)
-                ? jsonFile(obj)
-                : namedJson5File(configNameOf(obj));
+        if (isJsonConfig(obj)) return jsonFile(obj);
+        Path subsystem = subsystemFile(obj, ".json5");
+        return subsystem != null ? subsystem : namedJson5File(configNameOf(obj));
     }
 
     private static Path fileOf(ConfigObject obj) {
@@ -332,6 +357,11 @@ public enum ConfigSerializer {
         try {
             Path path = jsonFile(obj);
             if (!Files.exists(path)) {
+                if (loadLegacySubsystem(obj)) {
+                    DebugLog.config("Config migrated to subsystem: %s", path.toAbsolutePath());
+                    save(obj);
+                    return;
+                }
                 DebugLog.config("Config defaults created: %s", path.toAbsolutePath());
                 save(obj);
                 return;
@@ -396,6 +426,11 @@ public enum ConfigSerializer {
         try {
             Path path = utilFile(obj);
             if (!Files.exists(path)) {
+                if (loadLegacySubsystem(obj)) {
+                    DebugLog.config("Config migrated to subsystem: %s", path.toAbsolutePath());
+                    save(obj);
+                    return;
+                }
                 DebugLog.config("Config defaults created: %s", path.toAbsolutePath());
                 save(obj);
                 return;
@@ -433,6 +468,65 @@ public enum ConfigSerializer {
 
         } catch (Exception e) {
             DebugLog.error("Failed to load config %s", e, fileOf(obj).toAbsolutePath());
+        }
+    }
+
+
+    private static boolean loadLegacySubsystem(ConfigObject obj) {
+        ConfigSubsystem subsystem = subsystemOf(obj);
+        if (subsystem == null || subsystem.legacyNames().length == 0) return false;
+
+        for (String legacyName : subsystem.legacyNames()) {
+            if (legacyName == null || legacyName.isBlank()) continue;
+            String sanitized = sanitizeConfigName(legacyName);
+
+            Path json = namedJsonFile(sanitized);
+            if (Files.exists(json) && loadLegacyJson(obj, json)) return true;
+
+            Path json5 = namedJson5File(sanitized);
+            if (Files.exists(json5) && loadLegacyJson5(obj, json5)) return true;
+        }
+        return false;
+    }
+
+    private static boolean loadLegacyJson(ConfigObject obj, Path path) {
+        try {
+            JsonElement parsed = GSON.fromJson(Files.readString(path), JsonElement.class);
+            if (!(parsed instanceof JsonObject root)) return false;
+
+            boolean loaded = false;
+            for (ConfigValue<?> value : obj.getConfigValues()) {
+                JsonLookup lookup = findJsonElement(obj, root, value.getName());
+                if (lookup.element() == null) continue;
+                value.fromJson(unwrapJsonElement(lookup.element()));
+                loaded = true;
+            }
+            if (loaded) DebugLog.config("Config legacy source loaded: %s", path.toAbsolutePath());
+            return loaded;
+        } catch (Exception e) {
+            DebugLog.error("Failed to migrate legacy config %s", e, path.toAbsolutePath());
+            return false;
+        }
+    }
+
+    private static boolean loadLegacyJson5(ConfigObject obj, Path path) {
+        try {
+            Json5Element parsed = JSON5.parse(Files.readString(path));
+            if (!(parsed instanceof Json5Object root)) return false;
+
+            Map<String, Json5Element> map = root.asMap();
+            boolean loaded = false;
+            for (ConfigValue<?> value : obj.getConfigValues()) {
+                Json5Lookup lookup = findJson5Element(obj, map, value.getName());
+                if (lookup.element() == null) continue;
+                value.fromJson(unwrapJson5(lookup.element()));
+                loaded = true;
+            }
+            if (loaded) DebugLog.config("Config legacy source loaded: %s", path.toAbsolutePath());
+            return loaded;
+        } catch (Exception e) {
+            DebugLog.error("Failed to migrate legacy config %s", e, path.toAbsolutePath());
+            return false;
         }
     }
 
@@ -590,7 +684,7 @@ public enum ConfigSerializer {
     }
 
     private static PendingWrite buildWrite(ConfigObject obj) {
-        if (obj == null) return null;
+        if (obj == null || obj instanceof ConfigAggregate) return null;
         if (isModule(obj)) return buildModuleWrite(obj);
         if (isJsonConfig(obj)) return buildJsonWrite(obj);
         return buildJson5Write(obj);

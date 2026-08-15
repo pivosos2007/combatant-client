@@ -11,6 +11,7 @@ import com.mojang.blaze3d.ProjectionType;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.systems.ScissorState;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
@@ -20,6 +21,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.render.GuiItemAtlas;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
+import net.minecraft.client.renderer.fog.FogRenderer;
 import net.minecraft.client.renderer.item.TrackingItemStackRenderState;
 import net.minecraft.util.ARGB;
 import net.minecraft.util.CommonColors;
@@ -28,6 +30,9 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.entity.player.Player;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Matrix4f;
+import combatant.client.render.engine.RenderState;
+import combatant.client.mixins.accessors.GameRendererAccessor;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.profiler.RenderCostProfiler;
@@ -51,18 +56,32 @@ public final class ItemBatchRenderer {
             Integer.getInteger("combatant.render.itemOverlay.preallocatedItems", 256));
 
     private static FeatureRenderDispatcher itemFeatureDispatcher;
+
+    // UI and world billboards must never share the same mutable GuiItemAtlas.
+    // World render commands are deferred until Renderer3D flushes them; repacking
+    // the shared atlas before that point invalidates already-recorded UVs.
     private static GuiItemAtlas itemAtlas;
     private static int itemAtlasSlotTextureSize;
     private static int itemAtlasTextureSize;
+    private static final List<WorldItemAtlasPage> worldItemAtlases = new ArrayList<>();
+    private static int worldItemAtlasCursor;
     private static boolean worldItemFrameOpen;
     private static MeshBuilder itemBlitMesh;
     private static MeshBuilder itemDurabilityGlowMesh;
     private static MeshBuilder itemDurabilityRoundedMesh;
     private static MeshBuilder itemCooldownMesh;
 
-    /** Resolve all billboard item rows against one atlas layout so their UVs stay valid for the whole world pass. */
+    /**
+     * Resolve one billboard submission against a dedicated atlas page.
+     *
+     * <p>Each caller in the current world phase gets its own persistent page. This is
+     * intentionally isolated from the normal UI item atlas: NameTags/DropESP can submit
+     * deferred world meshes without a later module or CustomHotbar repacking their slots
+     * before the GPU draw executes.</p>
+     */
     public static List<WorldItemSprite[]> resolveWorldItemSprites(List<WorldItemRow> rows) {
         if (rows == null || rows.isEmpty()) return List.of();
+
         Minecraft mc = Minecraft.getInstance();
         List<WorldItemSprite[]> sprites = new ArrayList<>(rows.size());
         for (WorldItemRow row : rows) {
@@ -70,70 +89,189 @@ public final class ItemBatchRenderer {
         }
         if (mc == null || mc.gameRenderer == null || mc.level == null) return sprites;
 
-        GpuTextureView previousOutputColor = RenderSystem.outputColorTextureOverride;
-        GpuTextureView previousOutputDepth = RenderSystem.outputDepthTextureOverride;
-        GpuBufferSlice previousProjection = RenderSystem.getProjectionMatrixBuffer();
-        ProjectionType previousProjectionType = RenderSystem.getProjectionType();
-        try {
-            List<TrackingItemStackRenderState[]> states = new ArrayList<>(rows.size());
-            ObjectOpenHashSet<Object> identities = new ObjectOpenHashSet<>();
-            for (WorldItemRow row : rows) {
-                ItemStack[] stacks = row == null || row.stacks() == null ? new ItemStack[0] : row.stacks();
-                TrackingItemStackRenderState[] rowStates = new TrackingItemStackRenderState[stacks.length];
-                states.add(rowStates);
-                for (int i = 0; i < stacks.length; i++) {
-                    ItemStack stack = stacks[i];
-                    if (stack == null || stack.isEmpty()) continue;
-                    TrackingItemStackRenderState state = new TrackingItemStackRenderState();
-                    Player player = row != null ? row.player() : null;
-                    int seedBase = row != null ? row.seedBase() : 0;
-                    mc.getItemModelResolver().updateForTopItem(
-                            state,
-                            stack,
-                            ItemDisplayContext.GUI,
-                            player != null ? player.level() : mc.level,
-                            player,
-                            seedBase + i
-                    );
-                    if (!state.isEmpty()) {
-                        rowStates[i] = state;
-                        identities.add(state.getModelIdentity());
-                    }
+        List<TrackingItemStackRenderState[]> states = new ArrayList<>(rows.size());
+        ObjectOpenHashSet<Object> identities = new ObjectOpenHashSet<>();
+        for (WorldItemRow row : rows) {
+            ItemStack[] stacks = row == null || row.stacks() == null ? new ItemStack[0] : row.stacks();
+            TrackingItemStackRenderState[] rowStates = new TrackingItemStackRenderState[stacks.length];
+            states.add(rowStates);
+
+            for (int i = 0; i < stacks.length; i++) {
+                ItemStack stack = stacks[i];
+                if (stack == null || stack.isEmpty()) continue;
+
+                TrackingItemStackRenderState state = new TrackingItemStackRenderState();
+                Player player = row != null ? row.player() : null;
+                int seedBase = row != null ? row.seedBase() : 0;
+                mc.getItemModelResolver().updateForTopItem(
+                        state,
+                        stack,
+                        ItemDisplayContext.GUI,
+                        player != null ? player.level() : mc.level,
+                        player,
+                        seedBase + i
+                );
+
+                if (!state.isEmpty()) {
+                    rowStates[i] = state;
+                    identities.add(state.getModelIdentity());
                 }
             }
-            if (identities.isEmpty()) return sprites;
+        }
+        if (identities.isEmpty()) return sprites;
 
-            GuiItemAtlas atlas = ensureItemAtlas(mc, getItemFeatureDispatcher(mc), identities);
+        if (!worldItemFrameOpen) {
+            worldItemAtlasCursor = 0;
             worldItemFrameOpen = true;
-            GpuSampler sampler = RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST);
+        }
+
+        WorldItemAtlasPage page = ensureWorldItemAtlas(
+                mc,
+                getItemFeatureDispatcher(mc),
+                identities,
+                worldItemAtlasCursor++
+        );
+        GuiItemAtlas atlas = page.atlas;
+        GpuSampler sampler = RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST);
+
+        // GuiItemAtlas mutates global RenderSystem state while actually drawing slots. Keep
+        // the guard around getOrUpdate only; model resolution and atlas allocation do not need
+        // to touch the world render state.
+        GuiAtlasRenderState atlasState = GuiAtlasRenderState.capture();
+        try {
+            atlasState.enterGuiPass();
             for (int rowIndex = 0; rowIndex < states.size(); rowIndex++) {
                 TrackingItemStackRenderState[] rowStates = states.get(rowIndex);
                 WorldItemSprite[] rowSprites = sprites.get(rowIndex);
+
                 for (int i = 0; i < rowStates.length; i++) {
                     TrackingItemStackRenderState state = rowStates[i];
                     if (state == null) continue;
+
                     GuiItemAtlas.SlotView slot = atlas.getOrUpdate(state);
                     if (slot != null && slot.textureView() != null) {
                         rowSprites[i] = new WorldItemSprite(
-                                slot.textureView(), sampler, slot.u0(), slot.v0(), slot.u1(), slot.v1());
+                                slot.textureView(),
+                                sampler,
+                                slot.u0(),
+                                slot.v0(),
+                                slot.u1(),
+                                slot.v1()
+                        );
                     }
                 }
             }
-            return sprites;
         } catch (RuntimeException ignored) {
-            return sprites;
+            // Preserve the row layout; a failed atlas slot simply stays null.
         } finally {
-            if (previousProjection != null && previousProjectionType != null) {
-                RenderSystem.setProjectionMatrix(previousProjection, previousProjectionType);
-            }
-            RenderSystem.outputColorTextureOverride = previousOutputColor;
-            RenderSystem.outputDepthTextureOverride = previousOutputDepth;
+            atlasState.restore();
         }
+        return sprites;
     }
 
     public static void finishWorldItemFrame() {
-        if (worldItemFrameOpen && itemAtlas != null) itemAtlas.endFrame();
+        if (!worldItemFrameOpen) return;
+
+        int usedPages = Math.min(worldItemAtlasCursor, worldItemAtlases.size());
+        for (int i = 0; i < usedPages; i++) {
+            GuiItemAtlas atlas = worldItemAtlases.get(i).atlas;
+            if (atlas != null) {
+                atlas.endFrame();
+            }
+        }
+
+        worldItemAtlasCursor = 0;
         worldItemFrameOpen = false;
+    }
+
+    /**
+     * Exact guard for GuiItemAtlas, which mutates global RenderSystem state by design.
+     * Vanilla restores some of that state at a higher GuiRenderer level; Combatant calls the
+     * atlas directly, so every touched global has to be restored here.
+     */
+    private static final class GuiAtlasRenderState {
+        private final GpuTextureView outputColor;
+        private final GpuTextureView outputDepth;
+        private final GpuBufferSlice projection;
+        private final ProjectionType projectionType;
+        private final Matrix4f modelView;
+        private final GpuBufferSlice shaderLights;
+        private final GpuBufferSlice shaderFog;
+        private final ScissorState scissor;
+        private final boolean rendering3D;
+
+        private GuiAtlasRenderState(GpuTextureView outputColor,
+                                    GpuTextureView outputDepth,
+                                    GpuBufferSlice projection,
+                                    ProjectionType projectionType,
+                                    Matrix4f modelView,
+                                    GpuBufferSlice shaderLights,
+                                    GpuBufferSlice shaderFog,
+                                    ScissorState scissor,
+                                    boolean rendering3D) {
+            this.outputColor = outputColor;
+            this.outputDepth = outputDepth;
+            this.projection = projection;
+            this.projectionType = projectionType;
+            this.modelView = modelView;
+            this.shaderLights = shaderLights;
+            this.shaderFog = shaderFog;
+            this.scissor = scissor;
+            this.rendering3D = rendering3D;
+        }
+
+        static GuiAtlasRenderState capture() {
+            return new GuiAtlasRenderState(
+                    RenderSystem.outputColorTextureOverride,
+                    RenderSystem.outputDepthTextureOverride,
+                    RenderSystem.getProjectionMatrixBuffer(),
+                    RenderSystem.getProjectionType(),
+                    RenderSystem.getModelViewMatrixCopy(),
+                    RenderSystem.getShaderLights(),
+                    RenderSystem.getShaderFog(),
+                    new ScissorState(RenderSystem.getScissorStateForRenderTypeDraws()),
+                    RenderState.rendering3D
+            );
+        }
+
+        void enterGuiPass() {
+            RenderState.rendering3D = false;
+            RenderSystem.getModelViewStack().identity();
+
+            // GuiItemAtlas is normally prepared by vanilla after GameRenderer switches the
+            // global fog UBO to FogMode.NONE. Calling the atlas from Combatant's world phase
+            // without doing the same makes item/feature pipelines sample WORLD fog while
+            // drawing into the off-screen atlas. That produces the intermittent grey/
+            // "fogged" item sprites (especially on feature/glint paths).
+            Minecraft mc = Minecraft.getInstance();
+            if (mc != null && mc.gameRenderer instanceof GameRendererAccessor accessor) {
+                FogRenderer fogRenderer = accessor.combatant$getFogRenderer();
+                if (fogRenderer != null) {
+                    RenderSystem.setShaderFog(fogRenderer.getBuffer(FogRenderer.FogMode.NONE));
+                }
+            }
+        }
+
+        void restore() {
+            // Restore the actual matrix value, not just stack depth. A nested feature pass is
+            // allowed to touch the shared stack while GuiItemAtlas renders.
+            RenderSystem.getModelViewStack().set(modelView);
+            if (projection != null && projectionType != null) {
+                RenderSystem.setProjectionMatrix(projection, projectionType);
+            }
+            RenderSystem.outputColorTextureOverride = outputColor;
+            RenderSystem.outputDepthTextureOverride = outputDepth;
+            RenderSystem.setShaderLights(shaderLights);
+            RenderSystem.setShaderFog(shaderFog);
+            RenderSystem.getScissorStateForRenderTypeDraws().setFrom(scissor);
+            RenderState.rendering3D = rendering3D;
+        }
+    }
+
+    private static final class WorldItemAtlasPage {
+        GuiItemAtlas atlas;
+        int slotTextureSize;
+        int textureSize;
     }
 
     public record WorldItemRow(@Nullable Player player, ItemStack[] stacks, int seedBase) {
@@ -152,7 +290,7 @@ public final class ItemBatchRenderer {
     }
 
     public static void init() {
-        itemBlitMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_TEXTURED, 1);
+        itemBlitMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_TEXTURED_PREMULTIPLIED_ALPHA, 1);
         itemDurabilityGlowMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_ROUNDED_GLOW_BATCH, 1);
         itemDurabilityRoundedMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_ROUNDED_BATCH, 3);
         itemCooldownMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_COLORED, 1);
@@ -176,7 +314,7 @@ public final class ItemBatchRenderer {
 
     private static MeshBuilder beginItemBlitMesh(int commandCount) {
         if (itemBlitMesh == null) {
-            itemBlitMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_TEXTURED, 1);
+            itemBlitMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_TEXTURED_PREMULTIPLIED_ALPHA, 1);
         }
         return beginItemOverlayMesh(itemBlitMesh, commandCount, 1);
     }
@@ -255,9 +393,9 @@ public final class ItemBatchRenderer {
                 }
 
                 GpuTextureView itemAtlasTextureView = null;
-                GpuBufferSlice previousProjection = RenderSystem.getProjectionMatrixBuffer();
-                ProjectionType previousProjectionType = RenderSystem.getProjectionType();
+                GuiAtlasRenderState atlasState = GuiAtlasRenderState.capture();
                 try {
+                    atlasState.enterGuiPass();
                     for (ItemDrawCommand command : batch.commands) {
                         if (atlas == null || itemMesh == null || itemSampler == null || command.stack.isEmpty() || !command.drawItem || command.alpha <= 0.001f) {
                             continue;
@@ -277,11 +415,7 @@ public final class ItemBatchRenderer {
                         }
                     }
                 } finally {
-                    if (previousProjection != null && previousProjectionType != null) {
-                        RenderSystem.setProjectionMatrix(previousProjection, previousProjectionType);
-                    }
-                    RenderSystem.outputColorTextureOverride = previousOutputColor;
-                    RenderSystem.outputDepthTextureOverride = previousOutputDepth;
+                    atlasState.restore();
                 }
 
                 if (submitItemBlitMesh(mc, itemMesh, itemAtlasTextureView, itemSampler)) {
@@ -387,6 +521,42 @@ public final class ItemBatchRenderer {
         }
     }
 
+    private static WorldItemAtlasPage ensureWorldItemAtlas(Minecraft mc,
+                                                           FeatureRenderDispatcher dispatcher,
+                                                           ObjectOpenHashSet<Object> modelIdentities,
+                                                           int pageIndex) {
+        int guiScale = Math.max(1, (int) Math.round(mc.getWindow().getGuiScale()));
+        int slotTextureSize = Math.max(16, 16 * guiScale);
+        int requiredTextureSize = GuiItemAtlas.computeTextureSizeFor(
+                slotTextureSize,
+                Math.max(ITEM_OVERLAY_PREALLOCATED_ITEMS, modelIdentities.size())
+        );
+
+        while (worldItemAtlases.size() <= pageIndex) {
+            worldItemAtlases.add(new WorldItemAtlasPage());
+        }
+
+        WorldItemAtlasPage page = worldItemAtlases.get(pageIndex);
+        boolean needsRecreate = page.atlas == null
+                || page.slotTextureSize != slotTextureSize
+                || page.textureSize < requiredTextureSize;
+
+        if (!needsRecreate && !page.atlas.tryPrepareFor(modelIdentities)) {
+            needsRecreate = true;
+        }
+
+        if (needsRecreate) {
+            if (page.atlas != null) {
+                page.atlas.close();
+            }
+            page.atlas = new GuiItemAtlas(dispatcher, requiredTextureSize, slotTextureSize);
+            page.slotTextureSize = slotTextureSize;
+            page.textureSize = requiredTextureSize;
+        }
+
+        return page;
+    }
+
     private static GuiItemAtlas ensureItemAtlas(Minecraft mc,
                                                FeatureRenderDispatcher dispatcher,
                                                ObjectOpenHashSet<Object> modelIdentities) {
@@ -419,7 +589,6 @@ public final class ItemBatchRenderer {
         }
         itemAtlasSlotTextureSize = 0;
         itemAtlasTextureSize = 0;
-        worldItemFrameOpen = false;
     }
 
     private static FeatureRenderDispatcher getItemFeatureDispatcher(Minecraft mc) {
@@ -565,7 +734,7 @@ public final class ItemBatchRenderer {
 
         MeshRenderer.begin()
                 .attachments(mc.gameRenderer.mainRenderTarget().getColorTextureView(), null)
-                .pipeline(CombatantRenderPipelines.UI_TEXTURED)
+                .pipeline(CombatantRenderPipelines.UI_TEXTURED_PREMULTIPLIED_ALPHA)
                 .mesh(mesh)
                 .sampler("u_Texture", atlasTextureView, sampler)
                 .end();
@@ -605,10 +774,10 @@ public final class ItemBatchRenderer {
         }
 
         int alpha = Mth.clamp(Math.round(command.alpha * 255.0f), 0, 255);
-        int i1 = mesh.vec2(x0, y0).raw2(slot.u0(), slot.v0()).color(255, 255, 255, alpha).next();
-        int i2 = mesh.vec2(x1, y1).raw2(slot.u0(), slot.v1()).color(255, 255, 255, alpha).next();
-        int i3 = mesh.vec2(x2, y2).raw2(slot.u1(), slot.v1()).color(255, 255, 255, alpha).next();
-        int i4 = mesh.vec2(x3, y3).raw2(slot.u1(), slot.v0()).color(255, 255, 255, alpha).next();
+        int i1 = mesh.vec2(x0, y0).raw2(slot.u0(), slot.v0()).color(alpha, alpha, alpha, alpha).next();
+        int i2 = mesh.vec2(x1, y1).raw2(slot.u0(), slot.v1()).color(alpha, alpha, alpha, alpha).next();
+        int i3 = mesh.vec2(x2, y2).raw2(slot.u1(), slot.v1()).color(alpha, alpha, alpha, alpha).next();
+        int i4 = mesh.vec2(x3, y3).raw2(slot.u1(), slot.v0()).color(alpha, alpha, alpha, alpha).next();
         mesh.quad(i1, i2, i3, i4);
     }
 

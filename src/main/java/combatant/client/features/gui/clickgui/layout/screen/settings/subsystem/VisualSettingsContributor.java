@@ -7,7 +7,7 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.subsystem;
 
-import combatant.client.config.MainConfig;
+import combatant.client.config.subsystem.VisualConfig;
 import combatant.client.config.SettingDef;
 import combatant.client.config.SettingOwner;
 
@@ -19,6 +19,6 @@ public final class VisualSettingsContributor implements MainSettingsContributor 
     @Override public String fallbackTitle() { return "Visual"; }
     @Override public String icon() { return "brush"; }
     @Override public int order() { return 100; }
-    @Override public SettingOwner owner() { return MainConfig.get(); }
-    @Override public List<SettingDef> settingDefs() { return MainConfig.get().getImageSettingDefs(); }
+    @Override public SettingOwner owner() { return VisualConfig.get(); }
+    @Override public List<SettingDef> settingDefs() { return VisualConfig.get().getSettingDefs(); }
 }

@@ -12,15 +12,21 @@ import combatant.client.features.module.*;
 import combatant.client.features.module.Module;
 import combatant.client.render.helpers.*;
 import combatant.client.util.item.EnchantUtil;
+import combatant.client.util.player.PlayerSkinResolver;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.Hud;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.Holder;
+import net.minecraft.data.AtlasIds;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -171,11 +177,10 @@ public class NameTags extends Module {
     private static final String SETTING_PRESENTATION_MODE = "presentation_mode";
     private static final String SETTING_PLAYER_HEAD = "player_head";
     private static final String SETTING_NAMEPLATE_EXTRAS = "nameplate_extras";
-    private static final float NAMEPLATE_LIFT_MAX = 12f;
-    private static final float NAMEPLATE_LIFT_RANGE = 20f;
     private static final float NAMEPLATE_EXTRA_LIFT = 8f;
     private static final int ESP_NAME_SECTION_LIFT = 9;
-    private static final int NAMEPLATE_LIFT_POWER = 4;
+    private static final int SCREEN_NAMEPLATE_GAP = 7;
+    private static final int EQUIPMENT_TO_NAMEPLATE_GAP = 7;
     private static final String SETTING_OPPONENT_APPLE_COOLDOWNS = "opponent_apple_cooldowns";
     private static final String SETTING_PVP_PREFIX = "pvp_prefix";
     private static final String SETTING_PVP_PREFIX_COLOR = "pvp_prefix_color";
@@ -364,15 +369,6 @@ public class NameTags extends Module {
         return Math.round(ICON_GAP * EQUIP_ICON_SCALE);
     }
 
-    private static float measureStyledWidth(TextRenderer textRenderer, Component text, int defaultColor) {
-        if (text == null) return 0.0f;
-        float width = 0.0f;
-        for (TextRenderUtil.Part part : TextRenderUtil.flattenStyled(text, defaultColor)) {
-            width += (float) textRenderer.getWidth(part.text());
-        }
-        return width;
-    }
-
     private static int resolvePingColor(int ping) {
         if (ping < 0) {
             return 0xFFD0D0D0;
@@ -473,13 +469,14 @@ public class NameTags extends Module {
         return ScissorFunction.pushRawRect(x1, y1, x2, y2);
     }
 
-    private static int computeOpponentStackY(ScreenRect rect, int nameY) {
-        if (rect != null) {
-            double rectH = rect.maxY - rect.minY;
-            double upperCenter = rect.minY + rectH * 0.25;
-            int target = (int) Math.round(upperCenter - ICON_SIZE * 0.5);
-            return Math.max(target, nameY + 2);
+    private static int computeOpponentStackX(NameplateLayout layout, int centerX) {
+        if (layout != null) {
+            return (int) Math.ceil(layout.bgX() + layout.bgW()) + EFFECT_X_OFFSET;
         }
+        return centerX + (ICON_SIZE + ICON_GAP) * 2 + EFFECT_X_OFFSET;
+    }
+
+    private static int computeOpponentStackY(int nameY) {
         return nameY + OPP_STACK_Y_OFFSET;
     }
 
@@ -499,6 +496,10 @@ public class NameTags extends Module {
         if (presentationMode.get() == PresentationMode.TWO_D) return;
 
         ensureFontCache(TextRenderer.get());
+        StatusEffectView.sync(mc);
+        TotemPopCounter.tick();
+        float dt = AnimationUtility.deltaTime();
+
         worldRenderQueue.clear();
         worldItemRows.clear();
         seenIds.clear();
@@ -510,6 +511,11 @@ public class NameTags extends Module {
         for (Player player : mc.level.players()) {
             if (!shouldRender(player)) continue;
             seenIds.add(player.getUUID());
+
+            TotemPopSnapshot totemPopSnapshot = TotemPopCounter.snapshot(player.getUUID());
+            float totemPopAnimation = updateTotemPopAnimation(player, totemPopSnapshot, dt);
+            int totemPopCount = resolveTotemPopCount(player, totemPopSnapshot, totemPopAnimation);
+
             Vec3 pos = obtainEntityLerpedPos(player, tickDelta);
             double dist = cameraPos.distanceTo(pos);
             WorldUiPresentationService.Snapshot presentation = resolvePresentation(dist);
@@ -520,22 +526,47 @@ public class NameTags extends Module {
                     && (!distanceToggles.get("nameplate") || dist <= plateDistance.get());
             boolean renderSlots = toggles.get("Show armor row")
                     && (!distanceToggles.get("slots") || dist <= slotsDistance.get());
-            if (!renderNameplate && !renderSlots) continue;
+            boolean renderEffects = toggles.get("Show effects")
+                    && (!distanceToggles.get("effects") || dist <= effectsDistance.get());
+            if (!renderNameplate && !renderSlots && !renderEffects) continue;
 
             double adaptiveScale = presentation.worldUnitsPerPixel();
             Vec3 anchor = new Vec3(pos.x, pos.y + player.getBbHeight() + 0.68, pos.z);
+
             ItemStack[] slots = renderSlots ? getCachedEquipmentSlots(player) : EMPTY_SLOTS;
             List<List<EnchantLine>> enchantLines = List.of();
-            if (renderSlots) enchantLines = resolveEnchantCache(player, slots).lines;
+            int maxEnchantLines = 0;
+            if (renderSlots) {
+                EnchantCache cache = resolveEnchantCache(player, slots);
+                enchantLines = cache.lines;
+                maxEnchantLines = cache.maxLines;
+            }
+
+            List<MobEffectInstance> effects = renderEffects ? resolveEffects(player) : List.of();
+            boolean renderTotemBadge = renderNameplate
+                    && totemPopCounter.get()
+                    && totemPopCount > 0
+                    && totemPopAnimation > 0.001f;
+            ItemStack[] worldItems = slots;
+            if (renderTotemBadge) {
+                worldItems = Arrays.copyOf(slots, slots.length + 1);
+                worldItems[slots.length] = totemBadgeStack();
+            }
+
             worldRenderQueue.add(new WorldRenderEntry(
-                    player, anchor, dist, adaptiveScale, alpha, renderNameplate, renderSlots, slots, enchantLines));
+                    player, anchor, dist, adaptiveScale, alpha,
+                    renderNameplate, renderSlots, renderEffects,
+                    slots, enchantLines, maxEnchantLines, effects,
+                    totemPopCount, totemPopAnimation, worldItems
+            ));
         }
 
         worldRenderQueue.sort(Comparator.comparingDouble(WorldRenderEntry::distance).reversed());
         for (int i = 0; i < worldRenderQueue.size(); i++) {
             WorldRenderEntry entry = worldRenderQueue.get(i);
-            worldItemRows.add(new ItemBatchRenderer.WorldItemRow(entry.player(), entry.slots(), i * 31));
+            worldItemRows.add(new ItemBatchRenderer.WorldItemRow(entry.player(), entry.worldItems(), i * 31));
         }
+
         List<ItemBatchRenderer.WorldItemSprite[]> itemSprites =
                 ItemBatchRenderer.resolveWorldItemSprites(worldItemRows);
         for (int i = 0; i < worldRenderQueue.size(); i++) {
@@ -544,6 +575,7 @@ public class NameTags extends Module {
                     : new ItemBatchRenderer.WorldItemSprite[0];
             renderWorldNameTag(renderer, basis, worldRenderQueue.get(i), rowSprites);
         }
+
         if (presentationMode.get() == PresentationMode.THREE_D) pruneCaches();
     }
 
@@ -564,7 +596,8 @@ public class NameTags extends Module {
 
         StatusEffectView.sync(mc);
         TotemPopCounter.tick();
-        float dt = AnimationUtility.deltaTime();
+        boolean advanceTotemAnimationHere = presentationMode.get() == PresentationMode.TWO_D;
+        float dt = advanceTotemAnimationHere ? AnimationUtility.deltaTime() : 0.0f;
 
         renderQueue.clear();
         playerBuffer.clear();
@@ -650,8 +683,7 @@ public class NameTags extends Module {
                 centerX = (int) screen.x;
                 anchorY = (int) screen.y;
             }
-            float distOffset = computeDistanceOffset(dist);
-            int nameY = computeNameY(rect, anchorY, distOffset);
+            int nameY = computeNameY(rect, anchorY);
             int sectionLift = Math.round(NAMEPLATE_EXTRA_LIFT) + computeEspNameSectionLift(player);
             nameY -= sectionLift;
 
@@ -666,7 +698,9 @@ public class NameTags extends Module {
             if (renderEffects && distanceToggles.get("effects") && dist > effectsDistance.get()) renderEffects = false;
 
             TotemPopSnapshot totemPopSnapshot = TotemPopCounter.snapshot(player.getUUID());
-            float totemPopAnimation = updateTotemPopAnimation(player, totemPopSnapshot, dt);
+            float totemPopAnimation = advanceTotemAnimationHere
+                    ? updateTotemPopAnimation(player, totemPopSnapshot, dt)
+                    : totemPopAnimations.getOrDefault(player.getUUID(), totemPopSnapshot.visible() ? 1.0f : 0.0f);
             int totemPopCount = resolveTotemPopCount(player, totemPopSnapshot, totemPopAnimation);
 
             LabelInfo labelInfo = renderNameplate ? buildLabelInfo(player) : null;
@@ -696,9 +730,8 @@ public class NameTags extends Module {
             }
             List<MobEffectInstance> effects = renderEffects ? resolveEffects(player) : List.of();
 
-            int itemsY = computeItemsY(rect, nameY, distOffset);
-            itemsY -= sectionLift;
-            renderQueue.add(new RenderEntry(player, dist, distOffset, centerX, nameY, itemsY, rect,
+            int itemsY = computeItemsY(rect, nameplateLayout, nameY);
+            renderQueue.add(new RenderEntry(player, dist, centerX, nameY, itemsY,
                     renderSlots, renderNameplate, renderEffects, labelInfo, infoColor, nameplateLayout,
                     slots, enchantLines, maxEnchantLines, effects, totemPopCount, totemPopAnimation,
                     presentationAlpha));
@@ -729,13 +762,13 @@ public class NameTags extends Module {
         return !"FreeCamera".equals(name);
     }
 
-    private int computeNameY(ScreenRect rect, int anchorY, float distOffset) {
+    private int computeNameY(ScreenRect rect, int anchorY) {
+        // Screen-space layout must not depend on projected entity height or distance.
+        // Distance changes only where the entity projects, never the local spacing of the tag.
         if (rect != null) {
-            float rectH = (float) (rect.maxY - rect.minY);
-            float dynamicGap = Math.max(3f, rectH * 0.06f);
-            return Math.round((float) rect.minY - dynamicGap - distOffset);
+            return Math.round((float) rect.minY) - SCREEN_NAMEPLATE_GAP;
         }
-        return Math.round(anchorY - 7 - distOffset);
+        return anchorY - SCREEN_NAMEPLATE_GAP;
     }
 
     private int computeEspNameSectionLift(Player player) {
@@ -744,24 +777,17 @@ public class NameTags extends Module {
         return ESP_NAME_SECTION_LIFT;
     }
 
-    private int computeItemsY(ScreenRect rect, int nameY, float distOffset) {
+    private int computeItemsY(ScreenRect rect, NameplateLayout nameplateLayout, int nameY) {
         int iconSize = equipIconSize();
-        if (rect != null) {
-            float rectH = (float) (rect.maxY - rect.minY);
-            float itemGap = Math.max(4f, rectH * 0.08f);
-            return Math.round((float) rect.minY - itemGap - iconSize - 6 - distOffset);
+        // Match the 3D local layout exactly when a nameplate exists. This keeps the
+        // armor/effects stack rigid instead of squeezing it as the projected box shrinks.
+        if (nameplateLayout != null) {
+            return Math.round(nameplateLayout.bgY() - iconSize - EQUIPMENT_TO_NAMEPLATE_GAP);
         }
-        return Math.round(nameY - iconSize - 6 - distOffset);
-    }
-
-    private float computeDistanceOffset(double dist) {
-        float d = (float) Math.max(0.0, dist);
-        float range = Math.max(1f, NAMEPLATE_LIFT_RANGE);
-        float max = Math.max(0f, NAMEPLATE_LIFT_MAX);
-        float power = Mth.clamp(NAMEPLATE_LIFT_POWER, 1, 6);
-        float t = Mth.clamp(d / range, 0f, 1f);
-        float eased = 1.0f - (float) Math.pow(1.0f - t, power);
-        return max * eased;
+        if (rect != null) {
+            return Math.round((float) rect.minY) - iconSize - SCREEN_NAMEPLATE_GAP - EQUIPMENT_TO_NAMEPLATE_GAP;
+        }
+        return nameY - iconSize - EQUIPMENT_TO_NAMEPLATE_GAP;
     }
 
     private WorldUiPresentationService.Snapshot resolvePresentation(double distance) {
@@ -786,91 +812,276 @@ public class NameTags extends Module {
         TextRenderer nameRenderer = cachedNameTr != null ? cachedNameTr : TextRenderer.get();
         TextRenderer hpRenderer = cachedHpTr != null ? cachedHpTr : nameRenderer;
         double itemY = -equipIconSize() * 0.5;
+        NameplateLayout layout = null;
 
         if (entry.renderNameplate()) {
             LabelInfo info = buildLabelInfo(player);
-            String ping = info.pingText();
-            String prefix = info.pvpPrefix();
-            String hp = formatNameplateHp(info.hp());
-            String distance = shouldShowDistanceText(player) ? (int) Math.round(entry.distance()) + "m" : "";
-            double pingWidth = worldTextWidth(nameRenderer, ping, NAMEPLATE_SCALE);
-            double prefixWidth = worldTextWidth(nameRenderer, prefix, NAMEPLATE_SCALE);
-            double nameWidth = shouldUseTabNames()
-                    ? worldStyledTextWidth(nameRenderer, info.styledName(), NAMEPLATE_SCALE, CategoryService.getColor(player))
-                    : worldTextWidth(nameRenderer, info.name(), NAMEPLATE_SCALE);
-            double hpWidth = worldTextWidth(hpRenderer, hp, NAMEPLATE_SCALE);
-            double distanceWidth = worldTextWidth(nameRenderer, distance, NAMEPLATE_SCALE);
-            double textHeight = Math.max(
-                    WorldTextRenderer.measure(nameRenderer, "Ag", NAMEPLATE_SCALE, false).height(),
-                    WorldTextRenderer.measure(hpRenderer, "Ag", NAMEPLATE_SCALE, false).height());
-            double contentWidth = pingWidth + (pingWidth > 0.0 ? PING_TEXT_GAP : 0.0)
-                    + prefixWidth + nameWidth
-                    + (hpWidth > 0.0 ? HP_TEXT_GAP : 0.0) + hpWidth
-                    + (distanceWidth > 0.0 ? DIST_TEXT_GAP : 0.0) + distanceWidth;
-            double bgX = -contentWidth * 0.5 - NAMEPLATE_PAD_X;
-            double bgY = -NAMEPLATE_PAD_Y;
-            double bgW = contentWidth + NAMEPLATE_PAD_X * 2.0;
-            double bgH = textHeight + NAMEPLATE_PAD_Y * 2.0;
-            double radius = Math.min(MATTE_NAMEPLATE_RADIUS, Math.max(2.5, bgH * 0.30));
-            float materialAlpha = (clampAlpha(nameplateAlpha.get()) / 255.0f) * entry.alpha();
+            layout = buildNameplateLayout(
+                    player,
+                    nameRenderer,
+                    hpRenderer,
+                    info,
+                    entry.distance(),
+                    0,
+                    0,
+                    entry.totemPopCount(),
+                    entry.totemPopAnimation()
+            );
 
-            WorldBillboardRenderer.mattePlate(renderer, basis, entry.anchor(), bgX, bgY, bgW, bgH,
-                    radius, NAMEPLATE_SHADOW_BLUR, entry.worldScale(), materialAlpha);
+            if (layout != null) {
+                float materialAlpha = (clampAlpha(nameplateAlpha.get()) / 255.0f) * entry.alpha();
+                double radius = Math.min(MATTE_NAMEPLATE_RADIUS, Math.max(2.5, layout.bgH() * 0.30));
+                WorldBillboardRenderer.mattePlate(
+                        renderer, basis, entry.anchor(),
+                        layout.bgX(), layout.bgY(), layout.bgW(), layout.bgH(),
+                        radius, NAMEPLATE_SHADOW_BLUR, entry.worldScale(), materialAlpha
+                );
 
-            double cursorX = -contentWidth * 0.5;
-            if (!ping.isEmpty()) {
-                drawWorldText(renderer, basis, nameRenderer, ping, entry.anchor(), cursorX, 0.0,
-                        NAMEPLATE_SCALE, entry.worldScale(), resolvePingColor(info.ping()), entry.alpha());
-                cursorX += pingWidth + PING_TEXT_GAP;
+                drawWorldNameplateHead(renderer, basis, entry, layout);
+
+                double cursorX = layout.nameX();
+                if (!layout.pingText().isEmpty()) {
+                    drawWorldText(renderer, basis, nameRenderer, layout.pingText(), entry.anchor(),
+                            cursorX, 0.0, NAMEPLATE_SCALE, entry.worldScale(),
+                            resolvePingColor(info.ping()), entry.alpha());
+                    cursorX += layout.pingWidth() + layout.pingGap();
+                }
+
+                String prefix = info.pvpPrefix();
+                if (!prefix.isEmpty()) {
+                    drawWorldText(renderer, basis, nameRenderer, prefix, entry.anchor(),
+                            cursorX, 0.0, NAMEPLATE_SCALE, entry.worldScale(),
+                            pvpPrefixColor.getArgb(), entry.alpha());
+                    cursorX += worldTextWidth(nameRenderer, prefix, NAMEPLATE_SCALE);
+                }
+
+                if (shouldUseTabNames()) {
+                    drawWorldStyledText(renderer, basis, nameRenderer, info.styledName(), entry.anchor(),
+                            cursorX, 0.0, NAMEPLATE_SCALE, entry.worldScale(),
+                            CategoryService.getColor(player), entry.alpha());
+                } else {
+                    drawWorldText(renderer, basis, nameRenderer, info.name(), entry.anchor(),
+                            cursorX, 0.0, NAMEPLATE_SCALE, entry.worldScale(),
+                            CategoryService.getColor(player), entry.alpha());
+                }
+
+                String hp = formatNameplateHp(info.hp());
+                if (!hp.isEmpty()) {
+                    double hpX = layout.nameX()
+                            + layout.pingWidth() + layout.pingGap()
+                            + layout.nameWidth() + layout.hpGap();
+                    drawWorldText(renderer, basis, hpRenderer, hp, entry.anchor(),
+                            hpX, 0.0, NAMEPLATE_SCALE, entry.worldScale(),
+                            info.infoColor(), entry.alpha());
+                }
+
+                if (!layout.distText().isEmpty()) {
+                    double distX = layout.nameX()
+                            + layout.pingWidth() + layout.pingGap()
+                            + layout.nameWidth() + layout.hpGap() + layout.hpWidth()
+                            + (layout.hpWidth() > 0 ? DIST_TEXT_GAP : 0);
+                    drawWorldText(renderer, basis, nameRenderer, layout.distText(), entry.anchor(),
+                            distX, 0.0, NAMEPLATE_SCALE, entry.worldScale(),
+                            0xFFD0D0D0, entry.alpha());
+                }
+
+                drawWorldTotemBadge(renderer, basis, entry, layout, itemSprites, hpRenderer);
+                itemY = layout.bgY() - equipIconSize() - EQUIPMENT_TO_NAMEPLATE_GAP;
             }
-            if (!prefix.isEmpty()) {
-                drawWorldText(renderer, basis, nameRenderer, prefix, entry.anchor(), cursorX, 0.0,
-                        NAMEPLATE_SCALE, entry.worldScale(), pvpPrefixColor.getArgb(), entry.alpha());
-                cursorX += prefixWidth;
-            }
-            if (shouldUseTabNames()) {
-                cursorX = drawWorldStyledText(renderer, basis, nameRenderer, info.styledName(), entry.anchor(), cursorX, 0.0,
-                        NAMEPLATE_SCALE, entry.worldScale(), CategoryService.getColor(player), entry.alpha());
-            } else {
-                drawWorldText(renderer, basis, nameRenderer, info.name(), entry.anchor(), cursorX, 0.0,
-                        NAMEPLATE_SCALE, entry.worldScale(), CategoryService.getColor(player), entry.alpha());
-                cursorX += nameWidth;
-            }
-            if (!hp.isEmpty()) {
-                cursorX += HP_TEXT_GAP;
-                drawWorldText(renderer, basis, hpRenderer, hp, entry.anchor(), cursorX, 0.0,
-                        NAMEPLATE_SCALE, entry.worldScale(), info.infoColor(), entry.alpha());
-                cursorX += hpWidth;
-            }
-            if (!distance.isEmpty()) {
-                cursorX += DIST_TEXT_GAP;
-                drawWorldText(renderer, basis, nameRenderer, distance, entry.anchor(), cursorX, 0.0,
-                        NAMEPLATE_SCALE, entry.worldScale(), 0xFFD0D0D0, entry.alpha());
-            }
-            itemY = bgY - equipIconSize() - 7.0;
         }
 
-        if (!entry.renderSlots()) return;
         int iconSize = equipIconSize();
-        EquipmentLayout equipment = computeEquipmentLayout(
-                nameRenderer, entry.slots(), entry.enchantLines(), 0.0, iconSize, equipIconGap(), SMALL_TEXT_SCALE);
-        double enchantHeight = WorldTextRenderer.measure(nameRenderer, "Ag", SMALL_TEXT_SCALE, false).height();
-        for (int i = 0; i < entry.slots().length; i++) {
-            ItemStack stack = entry.slots()[i];
-            if (stack == null || stack.isEmpty()) continue;
-            double itemX = equipment.centers()[i] - iconSize * 0.5;
-            if (i < itemSprites.length) {
-                WorldBillboardRenderer.item(renderer, basis, entry.anchor(), itemSprites[i],
-                        itemX, itemY, iconSize, entry.worldScale(), entry.alpha());
+        EquipmentLayout equipment = entry.renderSlots()
+                ? computeEquipmentLayout(
+                        nameRenderer, entry.slots(), entry.enchantLines(),
+                        0.0, iconSize, equipIconGap(), SMALL_TEXT_SCALE
+                )
+                : EquipmentLayout.empty();
+
+        if (entry.renderSlots()) {
+            double enchantHeight = WorldTextRenderer.measure(
+                    nameRenderer, "Ag", SMALL_TEXT_SCALE, false).height();
+
+            for (int i = 0; i < entry.slots().length; i++) {
+                ItemStack stack = entry.slots()[i];
+                if (stack == null || stack.isEmpty()) continue;
+
+                double itemX = equipment.centers()[i] - iconSize * 0.5;
+                if (i < itemSprites.length && itemSprites[i] != null) {
+                    WorldBillboardRenderer.item(
+                            renderer, basis, entry.anchor(), itemSprites[i],
+                            itemX, itemY, iconSize, entry.worldScale(), entry.alpha()
+                    );
+                }
+
+                List<EnchantLine> lines = i < entry.enchantLines().size()
+                        ? entry.enchantLines().get(i)
+                        : List.of();
+                for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
+                    EnchantLine line = lines.get(lineIndex);
+                    double width = worldTextWidth(nameRenderer, line.text(), SMALL_TEXT_SCALE);
+                    double lineY = itemY - 3.0 - enchantHeight * (lineIndex + 1);
+                    drawWorldText(renderer, basis, nameRenderer, line.text(), entry.anchor(),
+                            equipment.centers()[i] - width * 0.5, lineY,
+                            SMALL_TEXT_SCALE, entry.worldScale(), line.color(), entry.alpha());
+                }
             }
-            List<EnchantLine> lines = i < entry.enchantLines().size() ? entry.enchantLines().get(i) : List.of();
-            for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
-                EnchantLine line = lines.get(lineIndex);
-                double width = worldTextWidth(nameRenderer, line.text(), SMALL_TEXT_SCALE);
-                double lineY = itemY - 3.0 - enchantHeight * (lineIndex + 1);
-                drawWorldText(renderer, basis, nameRenderer, line.text(), entry.anchor(),
-                        equipment.centers()[i] - width * 0.5, lineY,
-                        SMALL_TEXT_SCALE, entry.worldScale(), line.color(), entry.alpha());
+        }
+
+        if (entry.renderEffects() && !entry.effects().isEmpty()) {
+            drawWorldEffects(renderer, basis, entry, itemY, nameRenderer);
+        }
+    }
+
+    private void drawWorldNameplateHead(Renderer3D renderer,
+                                        WorldBillboardRenderer.Basis basis,
+                                        WorldRenderEntry entry,
+                                        NameplateLayout layout) {
+        if (layout == null || !layout.renderHead()) return;
+        if (!(entry.player() instanceof AbstractClientPlayer clientPlayer)) return;
+
+        Identifier skin = PlayerSkinResolver.resolvePlayerSkin(clientPlayer);
+        if (skin == null) return;
+
+        float alpha = (clampAlpha(nameplateAlpha.get()) / 255.0f) * entry.alpha();
+        if (alpha <= 0.001f) return;
+
+        double inset = layout.headSize() * 0.06;
+        double x = layout.headX() + inset;
+        double y = layout.headY() + inset;
+        double size = Math.max(1.0, layout.headSize() - inset * 2.0);
+
+        WorldBillboardRenderer.texture(
+                renderer, basis, entry.anchor(), skin,
+                x, y, size, size,
+                8f / 64f, 8f / 64f, 16f / 64f, 16f / 64f,
+                entry.worldScale(), 0xFFFFFFFF, alpha
+        );
+        WorldBillboardRenderer.texture(
+                renderer, basis, entry.anchor(), skin,
+                x, y, size, size,
+                40f / 64f, 8f / 64f, 48f / 64f, 16f / 64f,
+                entry.worldScale(), 0xFFFFFFFF, alpha
+        );
+
+        WorldBillboardRenderer.roundedRect(
+                renderer, basis, entry.anchor(),
+                layout.dividerX(), layout.dividerY(), layout.dividerW(), layout.dividerH(),
+                Math.min(0.5, layout.dividerW() * 0.5), entry.worldScale(),
+                MatteHudStyle.withAlpha(theme().textMuted(), Math.round(110.0f * alpha))
+        );
+    }
+
+    private void drawWorldTotemBadge(Renderer3D renderer,
+                                     WorldBillboardRenderer.Basis basis,
+                                     WorldRenderEntry entry,
+                                     NameplateLayout layout,
+                                     ItemBatchRenderer.WorldItemSprite[] itemSprites,
+                                     TextRenderer fallbackRenderer) {
+        if (layout == null || !layout.renderTotemBadge()) return;
+        if (entry.totemPopCount() <= 0 || entry.totemPopAnimation() <= 0.001f) return;
+
+        float anim = AnimationUtility.easeInOutCubic(entry.totemPopAnimation());
+        float materialAlpha = (clampAlpha(nameplateAlpha.get()) / 255.0f) * anim * entry.alpha();
+        if (materialAlpha <= 0.001f) return;
+
+        WorldBillboardRenderer.roundedRect(
+                renderer, basis, entry.anchor(),
+                layout.totemDividerX(), layout.totemDividerY(),
+                layout.totemDividerW(), layout.totemDividerH(),
+                Math.min(0.5, layout.totemDividerW() * 0.5), entry.worldScale(),
+                MatteHudStyle.withAlpha(theme().textMuted(), Math.round(110.0f * materialAlpha))
+        );
+
+        double iconScale = 0.86 + 0.14 * anim;
+        double iconSize = Math.max(1.0, layout.totemIconSize() * iconScale);
+        double iconX = layout.totemBadgeX();
+        double iconY = layout.totemBadgeY() + (layout.totemBadgeH() - iconSize) * 0.5;
+        int spriteIndex = entry.slots().length;
+        if (spriteIndex < itemSprites.length && itemSprites[spriteIndex] != null) {
+            WorldBillboardRenderer.item(
+                    renderer, basis, entry.anchor(), itemSprites[spriteIndex],
+                    iconX, iconY, iconSize, entry.worldScale(), entry.alpha() * anim
+            );
+        }
+
+        String text = "x" + entry.totemPopCount();
+        TextRenderer badgeRenderer = Fonts.renderer("Inter", FontInfo.Type.Bold, fallbackRenderer);
+        double textScale = TOTEM_BADGE_TEXT_SCALE * (0.94 + 0.06 * anim);
+        double textX = iconX + iconSize + TOTEM_BADGE_TEXT_GAP;
+        double textH = WorldTextRenderer.measure(badgeRenderer, "Ag", textScale, false).height();
+        double textY = layout.totemBadgeY() + (layout.totemBadgeH() - textH) * 0.5 - 0.1;
+        int textColor = HudRenderUtil.setAlpha(theme().textPrimary(), Math.round(255.0f * materialAlpha));
+        drawWorldText(
+                renderer, basis, badgeRenderer, text, entry.anchor(),
+                textX, textY, textScale, entry.worldScale(), textColor, 1.0f
+        );
+    }
+
+    private void drawWorldEffects(Renderer3D renderer,
+                                  WorldBillboardRenderer.Basis basis,
+                                  WorldRenderEntry entry,
+                                  double itemY,
+                                  TextRenderer fallbackRenderer) {
+        TextureAtlas atlas = mc.getAtlasManager().getAtlasOrThrow(AtlasIds.GUI);
+        if (atlas == null || atlas.location() == null) return;
+
+        int count = entry.effects().size();
+        int iconSize = scaleRow(ICON_SIZE);
+        int gap = scaleRow(EFFECT_ROW_ICON_GAP);
+        int rowGap = scaleRow(EFFECT_ROW_GAP);
+        int rowWidth = count * iconSize + Math.max(0, count - 1) * gap;
+        double startX = -rowWidth * 0.5;
+        int enchantLift = entry.renderSlots()
+                ? scaleRow(computeEnchantLift(fallbackRenderer, entry.maxEnchantLines()))
+                : 0;
+        double iconY = itemY - iconSize - rowGap - enchantLift;
+
+        TextRenderer levelRenderer = cachedLevelTr != null ? cachedLevelTr : fallbackRenderer;
+        TextRenderer timeRenderer = cachedTimeTr != null ? cachedTimeTr : fallbackRenderer;
+        double rowTextScale = SMALL_TEXT_SCALE * EFFECT_ROW_SCALE;
+        double levelHeight = WorldTextRenderer.measure(levelRenderer, "Ag", rowTextScale, false).height();
+        double timeHeight = WorldTextRenderer.measure(timeRenderer, "Ag", rowTextScale, false).height();
+        int levelGap = scaleRow(EFFECT_ROW_LEVEL_GAP);
+        int timeGap = scaleRow(EFFECT_ROW_TIME_GAP);
+
+        for (int i = 0; i < count; i++) {
+            MobEffectInstance effect = entry.effects().get(i);
+            Identifier spriteId = Hud.getMobEffectSprite(effect.getEffect());
+            TextureAtlasSprite sprite = spriteId != null ? atlas.getSprite(spriteId) : null;
+            double iconX = startX + i * (iconSize + gap);
+
+            if (sprite != null) {
+                WorldBillboardRenderer.texture(
+                        renderer, basis, entry.anchor(), atlas.location(),
+                        iconX, iconY, iconSize, iconSize,
+                        sprite.getU0(), sprite.getV0(), sprite.getU1(), sprite.getV1(),
+                        entry.worldScale(), 0xFFFFFFFF, entry.alpha()
+                );
+            }
+
+            int level = effect.getAmplifier() + 1;
+            String duration = formatDuration(entry.player().getId(), effect);
+            if (!duration.isEmpty()) {
+                double width = worldTextWidth(timeRenderer, duration, rowTextScale);
+                double y = level > 1
+                        ? iconY - levelHeight - levelGap - timeHeight - timeGap
+                        : iconY - timeHeight - levelGap;
+                drawWorldText(
+                        renderer, basis, timeRenderer, duration, entry.anchor(),
+                        iconX + (iconSize - width) * 0.5, y,
+                        rowTextScale, entry.worldScale(), EFFECT_TIME_COLOR, entry.alpha()
+                );
+            }
+
+            if (level > 1) {
+                String levelText = roman(level);
+                double width = worldTextWidth(levelRenderer, levelText, rowTextScale);
+                drawWorldText(
+                        renderer, basis, levelRenderer, levelText, entry.anchor(),
+                        iconX + (iconSize - width) * 0.5, iconY - levelHeight - levelGap,
+                        rowTextScale, entry.worldScale(), EFFECT_LEVEL_STACK_COLOR, entry.alpha()
+                );
             }
         }
     }
@@ -956,20 +1167,22 @@ public class NameTags extends Module {
         String name = info.name();
         String hp = formatNameplateHp(info.hp());
         String pingText = info.pingText();
-        int pingWidth = pingText.isEmpty() ? 0 : (int) (nameRenderer.getWidth(pingText) * labelScale);
+        int pingWidth = pingText.isEmpty() ? 0 : (int) Math.round(worldTextWidth(nameRenderer, pingText, labelScale));
         int pingGap = pingWidth > 0 ? PING_TEXT_GAP : 0;
-        double prefixWidth = prefix.isEmpty() ? 0.0 : nameRenderer.getWidth(prefix);
+        double prefixWidth = prefix.isEmpty() ? 0.0 : worldTextWidth(nameRenderer, prefix, labelScale);
         double rawNameWidth = info.styledName() != null
-                ? measureStyledWidth(nameRenderer, info.styledName(), CategoryService.getColor(player))
-                : nameRenderer.getWidth(name);
-        int nameWidth = (int) ((prefixWidth + rawNameWidth) * labelScale);
-        int hpWidth = hp == null || hp.isEmpty() ? 0 : (int) (hpRenderer.getWidth(hp) * labelScale);
+                ? worldStyledTextWidth(nameRenderer, info.styledName(), labelScale, CategoryService.getColor(player))
+                : worldTextWidth(nameRenderer, name, labelScale);
+        int nameWidth = (int) Math.round(prefixWidth + rawNameWidth);
+        int hpWidth = hp == null || hp.isEmpty() ? 0 : (int) Math.round(worldTextWidth(hpRenderer, hp, labelScale));
         int hpGap = hpWidth > 0 ? HP_TEXT_GAP : 0;
         boolean showDist = shouldShowDistanceText(player);
         String distText = showDist ? (int) Math.round(dist) + "m" : "";
-        int distWidth = showDist ? (int) (nameRenderer.getWidth(distText) * labelScale) : 0;
+        int distWidth = showDist ? (int) Math.round(worldTextWidth(nameRenderer, distText, labelScale)) : 0;
         int distGap = distWidth > 0 ? DIST_TEXT_GAP : 0;
-        int nameHeight = (int) (nameRenderer.getHeight() * labelScale);
+        int nameHeight = (int) Math.ceil(Math.max(
+                WorldTextRenderer.measure(nameRenderer, "Ag", labelScale, false).height(),
+                WorldTextRenderer.measure(hpRenderer, "Ag", labelScale, false).height()));
         boolean renderHead = shouldRenderPlayerHead(player);
         float headSize = renderHead ? Math.max(MATTE_HEAD_MIN_SIZE, nameHeight + NAMEPLATE_PAD_Y * 1.5f) : 0.0f;
         float headBlock = renderHead
@@ -983,7 +1196,7 @@ public class NameTags extends Module {
                 ? Math.min(TOTEM_BADGE_ICON_SIZE, Math.max(8.0f, scaledHeight - 2.0f))
                 : 0.0f;
         float totemTextWidth = renderTotemBadge
-                ? (float) hpRenderer.getWidth(totemText) * TOTEM_BADGE_TEXT_SCALE
+                ? (float) worldTextWidth(hpRenderer, totemText, TOTEM_BADGE_TEXT_SCALE)
                 : 0.0f;
         float totemBadgeHeight = renderTotemBadge ? scaledHeight : 0.0f;
         float totemBadgeWidth = renderTotemBadge
@@ -1039,9 +1252,6 @@ public class NameTags extends Module {
         int centerX = entry.centerX();
         int nameY = entry.nameY();
         int itemsY = entry.itemsY();
-        float distOffset = entry.distOffset();
-        ScreenRect rect = entry.rect();
-
         if (entry.renderNameplate() && entry.nameplateLayout() != null) {
             drawNameplateBackground(renderer, player, entry.nameplateLayout());
             drawNameplateHead(renderer, ctx, player, entry.nameplateLayout());
@@ -1063,7 +1273,7 @@ public class NameTags extends Module {
             EffectIconRenderer.endBatch();
         }
 
-        drawOpponentCooldownsStackedIcons(ctx, player, rect, centerX, nameY, distOffset);
+        drawOpponentCooldownsStackedIcons(ctx, player, entry.nameplateLayout(), centerX, nameY);
 
         boolean startedBaseText = beginTextRenderer(textRenderer, SMALL_TEXT_SCALE);
         try {
@@ -1077,7 +1287,7 @@ public class NameTags extends Module {
                 drawEffectsRowIconOverlays(textRenderer, levelTr, timeTr, entry.effects(), entry.player().getId(), centerX, itemsY, effectsLift);
             }
 
-            drawOpponentCooldownsStackedText(textRenderer, player, rect, centerX, nameY, distOffset);
+            drawOpponentCooldownsStackedText(textRenderer, player, entry.nameplateLayout(), centerX, nameY);
         } finally {
             endTextRenderer(textRenderer, startedBaseText);
         }
@@ -1887,13 +2097,11 @@ public class NameTags extends Module {
         return mod != null && mod.isSystemEnabled();
     }
 
-    private void drawOpponentCooldownsStackedIcons(GuiGraphicsExtractor ctx, Player player, ScreenRect rect, int centerX, int nameY, float distOffset) {
+    private void drawOpponentCooldownsStackedIcons(GuiGraphicsExtractor ctx, Player player, NameplateLayout layout, int centerX, int nameY) {
         if (!shouldRenderOpponentStuff(player)) return;
 
-        int startX = rect != null
-                ? (int) rect.maxX + EFFECT_X_OFFSET
-                : centerX + (ICON_SIZE + ICON_GAP) * 2 + 8;
-        int startY = computeOpponentStackY(rect, nameY);
+        int startX = computeOpponentStackX(layout, centerX);
+        int startY = computeOpponentStackY(nameY);
 
         int y = startY;
         int seed = 0;
@@ -1909,13 +2117,11 @@ public class NameTags extends Module {
         }
     }
 
-    private void drawOpponentCooldownsStackedText(TextRenderer textRenderer, Player player, ScreenRect rect, int centerX, int nameY, float distOffset) {
+    private void drawOpponentCooldownsStackedText(TextRenderer textRenderer, Player player, NameplateLayout layout, int centerX, int nameY) {
         if (!shouldRenderOpponentStuff(player)) return;
 
-        int startX = rect != null
-                ? (int) rect.maxX + EFFECT_X_OFFSET
-                : centerX + (ICON_SIZE + ICON_GAP) * 2 + 8;
-        int startY = computeOpponentStackY(rect, nameY);
+        int startX = computeOpponentStackX(layout, centerX);
+        int startY = computeOpponentStackY(nameY);
 
         int timeColor = PvpTargetState.isTargetInPvp(player.getUUID())
                 ? OPP_TIME_COLOR
@@ -2062,12 +2268,18 @@ public class NameTags extends Module {
                                     float alpha,
                                     boolean renderNameplate,
                                     boolean renderSlots,
+                                    boolean renderEffects,
                                     ItemStack[] slots,
-                                    List<List<EnchantLine>> enchantLines) {
+                                    List<List<EnchantLine>> enchantLines,
+                                    int maxEnchantLines,
+                                    List<MobEffectInstance> effects,
+                                    int totemPopCount,
+                                    float totemPopAnimation,
+                                    ItemStack[] worldItems) {
     }
 
-    private record RenderEntry(Player player, double dist, float distOffset, int centerX, int nameY, int itemsY,
-                               ScreenRect rect, boolean renderSlots, boolean renderNameplate,
+    private record RenderEntry(Player player, double dist, int centerX, int nameY, int itemsY,
+                               boolean renderSlots, boolean renderNameplate,
                                boolean renderEffects, LabelInfo labelInfo, int infoColor,
                                NameplateLayout nameplateLayout,
                                ItemStack[] slots, List<List<EnchantLine>> enchantLines, int maxEnchantLines,

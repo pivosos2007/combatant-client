@@ -7,7 +7,7 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.subsystem;
 
-import combatant.client.config.MainConfig;
+import combatant.client.config.subsystem.RuntimeConfig;
 import combatant.client.config.SettingDef;
 import combatant.client.config.SettingOwner;
 
@@ -19,6 +19,6 @@ public final class RuntimeSettingsContributor implements MainSettingsContributor
     @Override public String fallbackTitle() { return "Runtime"; }
     @Override public String icon() { return "brain-cog"; }
     @Override public int order() { return 400; }
-    @Override public SettingOwner owner() { return MainConfig.get(); }
-    @Override public List<SettingDef> settingDefs() { return MainConfig.get().getMiscellaneousSettingDefs(); }
+    @Override public SettingOwner owner() { return RuntimeConfig.get(); }
+    @Override public List<SettingDef> settingDefs() { return RuntimeConfig.get().getSettingDefs(); }
 }

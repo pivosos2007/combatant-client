@@ -23,7 +23,15 @@ public final class MainSettingsRegistry {
     private long revision;
 
     private MainSettingsRegistry() {
+        registerBuiltIns();
         discover();
+    }
+
+    private void registerBuiltIns() {
+        register(new VisualSettingsContributor());
+        register(new SecuritySettingsContributor());
+        register(new InventorySettingsContributor());
+        register(new RuntimeSettingsContributor());
     }
 
     public static MainSettingsRegistry get() {

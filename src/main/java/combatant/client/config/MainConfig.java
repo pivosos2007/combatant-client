@@ -7,142 +7,41 @@
 
 package combatant.client.config;
 
-import combatant.client.config.values.*;
-import combatant.client.config.values.*;
-import combatant.client.render.iris.IrisRuntime;
-import combatant.client.util.logging.DebugLog;
+import combatant.client.config.subsystem.InventoryConfig;
+import combatant.client.config.subsystem.RuntimeConfig;
+import combatant.client.config.subsystem.SecurityConfig;
+import combatant.client.config.subsystem.VisualConfig;
+import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.EnumValue;
+import combatant.client.config.values.NumberValue;
 import combatant.client.util.logging.DebugMode;
 import combatant.client.util.player.inventory.InventorySearchScope;
-import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.player.inventory.InventorySwapVisibility;
-import net.minecraft.client.resources.language.I18n;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-public final class MainConfig implements ConfigObject, ConfigNameProvider, SettingOwner {
-
+/**
+ * Compatibility facade for the former monolithic global config.
+ *
+ * <p>The actual values are owned and persisted by independent subsystem configs.
+ * This aggregate deliberately has no file of its own.</p>
+ */
+public final class MainConfig implements ConfigAggregate, ConfigNameProvider, SettingOwner {
     public static final MainConfig INSTANCE = new MainConfig();
-    private static final String IRIS_MSAA_REASON_KEY = "setting.main_config.msaa3d.iris_blocked";
-    private static final String IRIS_MSAA_REASON_FALLBACK = "Iris shaderpack pipeline is active.";
 
-    //@CFGComment("Debug logging mode: off / error_only / error_and_warnings / info / config / render_thread / stencil / serverdebug / all")
-    private final ModeValue debug =
-            new ModeValue("debug", "off", "off", "error_only", "error_and_warnings", "info", "config", "render_thread", "stencil", "serverdebug", "all");
-
-    //@CFGComment("Force PvP mode ON everywhere (dev/testing only)")
-    private final BooleanValue forcePvp =
-            new BooleanValue("forcePvp", false);
-
-    //@CFGComment("Menu background shader: off / waves / aurora")
-    private final ModeValue menuBg =
-            new ModeValue("menuBg", "off", "off", "waves", "aurora");
-
-    //@CFGComment("Use ClickGUI theme colors for menu background shader")
-    private final BooleanValue menuBgUseTheme =
-            new BooleanValue("menuBgUseTheme", false);
-
-    //@CFGComment("Show seconds in the custom main menu clock")
-    private final BooleanValue menuClockShowSeconds =
-            new BooleanValue("menuClockShowSeconds", false);
-
-    //@CFGComment("MSAA for world render: off / 2x / 4x")
-    private final ModeValue msaa3d =
-            new ModeValue("msaa3d", "off", "off", "2x", "4x");
-
-    //@CFGComment("Show ClickGUI modules hotkey hints")
-    private final BooleanValue clickGuiModulesHints =
-            new BooleanValue("clickGuiModulesHints", true);
-
-    //@CFGComment("Show ClickGUI HUD editor hotkey hints")
-    private final BooleanValue clickGuiHudEditorHints =
-            new BooleanValue("clickGuiHudEditorHints", true);
-
-    //@CFGComment("Default inventory swap safety policy: none / grim_strict / legit")
-    private final EnumValue<InventorySwapPolicy> inventorySwapPolicy =
-            new EnumValue<>("inventorySwapPolicy", InventorySwapPolicy.NONE, InventorySwapPolicy.class);
-
-    //@CFGComment("Default inventory swap search scope: hotbar / inventory / full")
-    private final EnumValue<InventorySearchScope> inventorySwapScope =
-            new EnumValue<>("inventorySwapScope", InventorySearchScope.FULL, InventorySearchScope.class);
-
-    //@CFGComment("Default inventory swap visibility: normal / silent")
-    private final EnumValue<InventorySwapVisibility> inventorySwapVisibility =
-            new EnumValue<>("inventorySwapVisibility", InventorySwapVisibility.SILENT, InventorySwapVisibility.class);
-
-    //@CFGComment("Restore the original hotbar slot after default swap requests")
-    private final BooleanValue inventorySwapRestore =
-            new BooleanValue("inventorySwapRestore", true);
-
-    //@CFGComment("Prefer hotbar matches before inventory matches for full-scope swap requests")
-    private final BooleanValue inventorySwapPreferHotbar =
-            new BooleanValue("inventorySwapPreferHotbar", true);
-
-    //@CFGComment("Extra delay before queued legit inventory swap actions")
-    private final NumberValue<Integer> inventorySwapLegitWaitTicks =
-            new NumberValue<>("inventorySwapLegitWaitTicks", 2, 0, 20);
-
-    // @CFGComment("Extra delay before queued Grim-strict inventory click/close actions")
-    private final NumberValue<Integer> inventorySwapStrictInventoryWaitTicks =
-            new NumberValue<>("inventorySwapStrictInventoryWaitTicks", 1, 0, 20);
-
-    //@CFGComment("Movement input lock duration while waiting for Grim-strict inventory actions")
-    private final NumberValue<Integer> inventorySwapStrictMovementLockTicks =
-            new NumberValue<>("inventorySwapStrictMovementLockTicks", 2, 0, 20);
-
-    //@CFGComment("Hard-disable narrator and narrator hotkey unless Panic mode is active")
-    private final BooleanValue disableNarrator =
-            new BooleanValue("disableNarrator", true);
-
-    //@CFGComment("Always-on backdoor protection master switch")
-    private final BooleanValue backdoorProtection =
-            new BooleanValue("backdoorProtection", true);
-
-    //@CFGComment("Filter non-whitelisted translation keys in server-controlled sign/anvil text")
-    private final BooleanValue backdoorTranslationFilter =
-            new BooleanValue("backdoorTranslationFilter", true);
-
-    //@CFGComment("Filter non-vanilla keybind text keys in server-controlled text")
-    private final BooleanValue backdoorKeybindFilter =
-            new BooleanValue("backdoorKeybindFilter", true);
-
-    //@CFGComment("Block remote servers from redirecting resource-pack downloads into local/private network addresses")
-    private final BooleanValue backdoorLocalHttpGuard =
-            new BooleanValue("backdoorLocalHttpGuard", true);
-
-    //@CFGComment("Isolate downloaded server-pack cache by account UUID to reduce pack-cache fingerprinting")
-    private final BooleanValue backdoorPackCacheIsolation =
-            new BooleanValue("backdoorPackCacheIsolation", true);
-
-    //@CFGComment("Allow local/private HTTP requests when connected to local/integrated server")
-    private final BooleanValue backdoorAllowLocalHttpWhenServerLocal =
-            new BooleanValue("backdoorAllowLocalHttpWhenServerLocal", true);
-
-    //@CFGComment("Extra allowed translation resource-pack ids for server-controlled text")
-    private final SetValue backdoorAllowedTranslationPacks =
-            new SetValue("backdoorAllowedTranslationPacks", defaultAllowedTranslationPacks());
-
-    //@CFGComment("Extra allowed keybind ids for server-controlled text")
-    private final SetValue backdoorAllowedKeybinds =
-            new SetValue("backdoorAllowedKeybinds");
+    private final VisualConfig visual = VisualConfig.get();
+    private final SecurityConfig security = SecurityConfig.get();
+    private final InventoryConfig inventory = InventoryConfig.get();
+    private final RuntimeConfig runtime = RuntimeConfig.get();
+    private final List<? extends ConfigObject> children = List.of(visual, security, inventory, runtime);
 
     private MainConfig() {
-        ConfigSerializer.load(this);
-        applyDebugMode();
-        applyInventorySwapSettings();
     }
 
     public static MainConfig get() {
         return INSTANCE;
-    }
-
-    private static Set<String> defaultAllowedTranslationPacks() {
-        LinkedHashSet<String> out = new LinkedHashSet<>();
-        out.add("vanilla");
-        return out;
     }
 
     @Override
@@ -155,323 +54,213 @@ public final class MainConfig implements ConfigObject, ConfigNameProvider, Setti
         return "main_config";
     }
 
-    // ================= DEBUG =================
+    @Override
+    public List<? extends ConfigObject> configChildren() {
+        return children;
+    }
 
     @Override
     public void saveConfig() {
-        applyDebugMode();
-        applyInventorySwapSettings();
         ConfigSerializer.requestSave(this);
     }
 
     public DebugMode getDebugMode() {
-        try {
-            return DebugMode.valueOf(debug.get().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return DebugMode.OFF;
-        }
+        return runtime.getDebugMode();
     }
 
     public void setDebugMode(DebugMode mode) {
-        if (mode == null) mode = DebugMode.OFF;
-        debug.set(mode.name().toLowerCase());
-        applyDebugMode();
-        ConfigSerializer.requestSave(this);
-    }
-
-    private void applyDebugMode() {
-        DebugLog.setMode(getDebugMode());
+        runtime.setDebugMode(mode);
     }
 
     public boolean isForcePvp() {
-        return forcePvp.get();
+        return runtime.isForcePvp();
     }
 
     public String getMenuBackgroundMode() {
-        return menuBg.get();
+        return visual.getMenuBackgroundMode();
     }
 
     public boolean isMenuBackgroundUseTheme() {
-        return menuBgUseTheme.get();
+        return visual.isMenuBackgroundUseTheme();
     }
 
     public boolean isMenuClockShowSeconds() {
-        return menuClockShowSeconds.get();
+        return visual.isMenuClockShowSeconds();
     }
 
     public int getMsaa3dSamples() {
-        if (IrisRuntime.isShaderpackRendererActive()) return 0;
-        String v = msaa3d.get();
-        if (v == null) return 0;
-        if (v.equalsIgnoreCase("2x")) return 2;
-        if (v.equalsIgnoreCase("4x")) return 4;
-        return 0;
+        return visual.getMsaa3dSamples();
     }
 
     public boolean isClickGuiModulesHintsEnabled() {
-        return clickGuiModulesHints.get();
+        return visual.isClickGuiModulesHintsEnabled();
     }
 
     public boolean isClickGuiHintsEnabled() {
-        return clickGuiModulesHints.get();
+        return visual.isClickGuiHintsEnabled();
     }
 
     public void setClickGuiModulesHintsEnabled(boolean enabled) {
-        clickGuiModulesHints.set(enabled);
-        ConfigSerializer.requestSave(this);
+        visual.setClickGuiModulesHintsEnabled(enabled);
     }
 
     public void setClickGuiHintsEnabled(boolean enabled) {
-        setClickGuiModulesHintsEnabled(enabled);
+        visual.setClickGuiHintsEnabled(enabled);
     }
 
     public boolean isClickGuiHudEditorHintsEnabled() {
-        return clickGuiHudEditorHints.get();
+        return visual.isClickGuiHudEditorHintsEnabled();
     }
 
     public void setClickGuiHudEditorHintsEnabled(boolean enabled) {
-        clickGuiHudEditorHints.set(enabled);
-        ConfigSerializer.requestSave(this);
+        visual.setClickGuiHudEditorHintsEnabled(enabled);
     }
 
     public InventorySwapPolicy getInventorySwapPolicy() {
-        return inventorySwapPolicy.get();
+        return inventory.getInventorySwapPolicy();
     }
 
     public void setInventorySwapPolicy(InventorySwapPolicy policy) {
-        inventorySwapPolicy.set(policy != null ? policy : InventorySwapPolicy.NONE);
-        saveAndApplyInventorySwapSettings();
+        inventory.setInventorySwapPolicy(policy);
     }
 
     public InventorySearchScope getInventorySwapScope() {
-        return inventorySwapScope.get();
+        return inventory.getInventorySwapScope();
     }
 
     public void setInventorySwapScope(InventorySearchScope scope) {
-        inventorySwapScope.set(scope != null ? scope : InventorySearchScope.FULL);
-        saveAndApplyInventorySwapSettings();
+        inventory.setInventorySwapScope(scope);
     }
 
     public InventorySwapVisibility getInventorySwapVisibility() {
-        return inventorySwapVisibility.get();
+        return inventory.getInventorySwapVisibility();
     }
 
     public void setInventorySwapVisibility(InventorySwapVisibility visibility) {
-        inventorySwapVisibility.set(visibility != null ? visibility : InventorySwapVisibility.SILENT);
-        saveAndApplyInventorySwapSettings();
+        inventory.setInventorySwapVisibility(visibility);
     }
 
     public boolean isInventorySwapRestore() {
-        return inventorySwapRestore.get();
+        return inventory.isInventorySwapRestore();
     }
 
     public void setInventorySwapRestore(boolean restore) {
-        inventorySwapRestore.set(restore);
-        saveAndApplyInventorySwapSettings();
+        inventory.setInventorySwapRestore(restore);
     }
 
     public boolean isInventorySwapPreferHotbar() {
-        return inventorySwapPreferHotbar.get();
+        return inventory.isInventorySwapPreferHotbar();
     }
 
     public void setInventorySwapPreferHotbar(boolean preferHotbar) {
-        inventorySwapPreferHotbar.set(preferHotbar);
-        saveAndApplyInventorySwapSettings();
+        inventory.setInventorySwapPreferHotbar(preferHotbar);
     }
 
     public int getInventorySwapLegitWaitTicks() {
-        return inventorySwapLegitWaitTicks.get();
+        return inventory.getInventorySwapLegitWaitTicks();
     }
 
     public void setInventorySwapLegitWaitTicks(int ticks) {
-        inventorySwapLegitWaitTicks.fromJson(ticks);
-        saveAndApplyInventorySwapSettings();
+        inventory.setInventorySwapLegitWaitTicks(ticks);
     }
 
     public int getInventorySwapStrictInventoryWaitTicks() {
-        return inventorySwapStrictInventoryWaitTicks.get();
+        return inventory.getInventorySwapStrictInventoryWaitTicks();
     }
 
     public void setInventorySwapStrictInventoryWaitTicks(int ticks) {
-        inventorySwapStrictInventoryWaitTicks.fromJson(ticks);
-        saveAndApplyInventorySwapSettings();
+        inventory.setInventorySwapStrictInventoryWaitTicks(ticks);
     }
 
     public int getInventorySwapStrictMovementLockTicks() {
-        return inventorySwapStrictMovementLockTicks.get();
+        return inventory.getInventorySwapStrictMovementLockTicks();
     }
 
     public void setInventorySwapStrictMovementLockTicks(int ticks) {
-        inventorySwapStrictMovementLockTicks.fromJson(ticks);
-        saveAndApplyInventorySwapSettings();
+        inventory.setInventorySwapStrictMovementLockTicks(ticks);
     }
 
     public EnumValue<InventorySwapPolicy> inventorySwapPolicyValue() {
-        return inventorySwapPolicy;
+        return inventory.inventorySwapPolicyValue();
     }
 
     public EnumValue<InventorySearchScope> inventorySwapScopeValue() {
-        return inventorySwapScope;
+        return inventory.inventorySwapScopeValue();
     }
 
     public EnumValue<InventorySwapVisibility> inventorySwapVisibilityValue() {
-        return inventorySwapVisibility;
+        return inventory.inventorySwapVisibilityValue();
     }
 
     public BooleanValue inventorySwapRestoreValue() {
-        return inventorySwapRestore;
+        return inventory.inventorySwapRestoreValue();
     }
 
     public BooleanValue inventorySwapPreferHotbarValue() {
-        return inventorySwapPreferHotbar;
+        return inventory.inventorySwapPreferHotbarValue();
     }
 
     public NumberValue<Integer> inventorySwapLegitWaitTicksValue() {
-        return inventorySwapLegitWaitTicks;
+        return inventory.inventorySwapLegitWaitTicksValue();
     }
 
     public NumberValue<Integer> inventorySwapStrictInventoryWaitTicksValue() {
-        return inventorySwapStrictInventoryWaitTicks;
+        return inventory.inventorySwapStrictInventoryWaitTicksValue();
     }
 
     public NumberValue<Integer> inventorySwapStrictMovementLockTicksValue() {
-        return inventorySwapStrictMovementLockTicks;
+        return inventory.inventorySwapStrictMovementLockTicksValue();
     }
 
     public List<SettingDef> getImageSettingDefs() {
-        List<SettingDef> list = new ArrayList<>();
-        list.add(SettingDef.mode(msaa3d)
-                .unavailableWhen(IrisRuntime::isShaderpackRendererActive, MainConfig::irisMsaaReason));
-        list.add(SettingDef.mode(menuBg));
-        list.add(SettingDef.bool(menuClockShowSeconds));
-        list.add(SettingDef.bool(menuBgUseTheme));
-        return list;
-    }
-
-    private static String irisMsaaReason() {
-        String translated = I18n.get(IRIS_MSAA_REASON_KEY);
-        return IRIS_MSAA_REASON_KEY.equals(translated) ? IRIS_MSAA_REASON_FALLBACK : translated;
+        return visual.getSettingDefs();
     }
 
     public List<SettingDef> getMiscellaneousSettingDefs() {
-        List<SettingDef> list = new ArrayList<>();
-        list.add(SettingDef.mode(debug));
-        list.add(SettingDef.bool(forcePvp));
-        list.add(SettingDef.bool(disableNarrator));
-        return list;
+        return runtime.getSettingDefs();
     }
 
     public List<SettingDef> getSecuritySettingDefs() {
-        List<SettingDef> list = new ArrayList<>();
-        list.add(SettingDef.bool(backdoorProtection));
-        list.add(SettingDef.bool(backdoorTranslationFilter).visibleWhen(backdoorProtection::get));
-        list.add(SettingDef.bool(backdoorKeybindFilter).visibleWhen(backdoorProtection::get));
-        list.add(SettingDef.bool(backdoorLocalHttpGuard).visibleWhen(backdoorProtection::get));
-        list.add(SettingDef.bool(backdoorPackCacheIsolation).visibleWhen(backdoorProtection::get));
-        list.add(SettingDef.bool(backdoorAllowLocalHttpWhenServerLocal).visibleWhen(backdoorProtection::get));
-        list.add(SettingDef.textList(backdoorAllowedTranslationPacks)
-                .visibleWhen(() -> backdoorProtection.get() && backdoorTranslationFilter.get()));
-        list.add(SettingDef.textList(backdoorAllowedKeybinds)
-                .visibleWhen(() -> backdoorProtection.get() && backdoorKeybindFilter.get()));
-        return list;
+        return security.getSettingDefs();
     }
 
     public List<SettingDef> getUtilitySettingDefs() {
-        List<SettingDef> list = new ArrayList<>();
-        list.add(SettingDef.mode(inventorySwapPolicy).common("inventory.swap_policy"));
-        list.add(SettingDef.mode(inventorySwapScope).common("inventory.search_scope"));
-        list.add(SettingDef.mode(inventorySwapVisibility).common("inventory.swap_visibility"));
-        list.add(SettingDef.bool(inventorySwapRestore).common("inventory.restore_item"));
-        list.add(SettingDef.bool(inventorySwapPreferHotbar).common("inventory.prefer_hotbar"));
-        list.add(SettingDef.number(inventorySwapLegitWaitTicks).common("inventory.legit_wait_ticks"));
-        list.add(SettingDef.number(inventorySwapStrictInventoryWaitTicks).common("inventory.strict_inventory_wait_ticks"));
-        list.add(SettingDef.number(inventorySwapStrictMovementLockTicks).common("inventory.strict_movement_lock_ticks"));
-        return list;
+        return inventory.getSettingDefs();
     }
 
     public boolean isNarratorDisabled() {
-        return disableNarrator.get();
+        return runtime.isNarratorDisabled();
     }
 
     public boolean isBackdoorProtectionEnabled() {
-        return backdoorProtection.get();
+        return security.isBackdoorProtectionEnabled();
     }
 
     public boolean isBackdoorTranslationFilterEnabled() {
-        return backdoorProtection.get() && backdoorTranslationFilter.get();
+        return security.isBackdoorTranslationFilterEnabled();
     }
 
     public boolean isBackdoorKeybindFilterEnabled() {
-        return backdoorProtection.get() && backdoorKeybindFilter.get();
+        return security.isBackdoorKeybindFilterEnabled();
     }
 
     public boolean isBackdoorLocalHttpGuardEnabled() {
-        return backdoorProtection.get() && backdoorLocalHttpGuard.get();
+        return security.isBackdoorLocalHttpGuardEnabled();
     }
 
     public boolean isBackdoorPackCacheIsolationEnabled() {
-        return backdoorProtection.get() && backdoorPackCacheIsolation.get();
+        return security.isBackdoorPackCacheIsolationEnabled();
     }
 
     public boolean isBackdoorAllowLocalHttpWhenServerLocal() {
-        return backdoorAllowLocalHttpWhenServerLocal.get();
+        return security.isBackdoorAllowLocalHttpWhenServerLocal();
     }
 
     public Set<String> getBackdoorAllowedTranslationPacks() {
-        return new LinkedHashSet<>(backdoorAllowedTranslationPacks.get());
+        return security.getBackdoorAllowedTranslationPacks();
     }
-
-    // ================= CONFIG =================
 
     public Set<String> getBackdoorAllowedKeybinds() {
-        return new LinkedHashSet<>(backdoorAllowedKeybinds.get());
-    }
-
-    @Override
-    public List<ConfigValue<?>> getConfigValues() {
-        List<ConfigValue<?>> list = new ArrayList<>();
-        list.add(debug);
-        list.add(forcePvp);
-        list.add(menuBg);
-        list.add(menuClockShowSeconds);
-        list.add(menuBgUseTheme);
-        list.add(msaa3d);
-        list.add(clickGuiModulesHints);
-        list.add(clickGuiHudEditorHints);
-        list.add(inventorySwapPolicy);
-        list.add(inventorySwapScope);
-        list.add(inventorySwapVisibility);
-        list.add(inventorySwapRestore);
-        list.add(inventorySwapPreferHotbar);
-        list.add(inventorySwapLegitWaitTicks);
-        list.add(inventorySwapStrictInventoryWaitTicks);
-        list.add(inventorySwapStrictMovementLockTicks);
-        list.add(disableNarrator);
-        list.add(backdoorProtection);
-        list.add(backdoorTranslationFilter);
-        list.add(backdoorKeybindFilter);
-        list.add(backdoorLocalHttpGuard);
-        list.add(backdoorPackCacheIsolation);
-        list.add(backdoorAllowLocalHttpWhenServerLocal);
-        list.add(backdoorAllowedTranslationPacks);
-        list.add(backdoorAllowedKeybinds);
-        return list;
-    }
-
-    private void saveAndApplyInventorySwapSettings() {
-        applyInventorySwapSettings();
-        ConfigSerializer.requestSave(this);
-    }
-
-    private void applyInventorySwapSettings() {
-        InventorySwap swap = InventorySwap.INSTANCE;
-        swap.setDefaultPolicy(inventorySwapPolicy.get());
-        swap.setDefaultScope(inventorySwapScope.get());
-        swap.setDefaultVisibility(inventorySwapVisibility.get());
-        swap.setRestoreByDefault(inventorySwapRestore.get());
-        swap.setPreferHotbar(inventorySwapPreferHotbar.get());
-        swap.setLegitWaitTicks(inventorySwapLegitWaitTicks.get());
-        swap.setStrictInventoryWaitTicks(inventorySwapStrictInventoryWaitTicks.get());
-        swap.setStrictMovementLockTicks(inventorySwapStrictMovementLockTicks.get());
+        return security.getBackdoorAllowedKeybinds();
     }
 }

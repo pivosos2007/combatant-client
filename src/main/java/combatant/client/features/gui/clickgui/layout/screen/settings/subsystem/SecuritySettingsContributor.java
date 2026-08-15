@@ -7,7 +7,7 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.subsystem;
 
-import combatant.client.config.MainConfig;
+import combatant.client.config.subsystem.SecurityConfig;
 import combatant.client.config.SettingDef;
 import combatant.client.config.SettingOwner;
 
@@ -19,6 +19,6 @@ public final class SecuritySettingsContributor implements MainSettingsContributo
     @Override public String fallbackTitle() { return "Security"; }
     @Override public String icon() { return "shield-user"; }
     @Override public int order() { return 200; }
-    @Override public SettingOwner owner() { return MainConfig.get(); }
-    @Override public List<SettingDef> settingDefs() { return MainConfig.get().getSecuritySettingDefs(); }
+    @Override public SettingOwner owner() { return SecurityConfig.get(); }
+    @Override public List<SettingDef> settingDefs() { return SecurityConfig.get().getSettingDefs(); }
 }

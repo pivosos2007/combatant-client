@@ -7,7 +7,7 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.subsystem;
 
-import combatant.client.config.MainConfig;
+import combatant.client.config.subsystem.InventoryConfig;
 import combatant.client.config.SettingDef;
 import combatant.client.config.SettingOwner;
 
@@ -19,6 +19,6 @@ public final class InventorySettingsContributor implements MainSettingsContribut
     @Override public String fallbackTitle() { return "Inventory"; }
     @Override public String icon() { return "package"; }
     @Override public int order() { return 300; }
-    @Override public SettingOwner owner() { return MainConfig.get(); }
-    @Override public List<SettingDef> settingDefs() { return MainConfig.get().getUtilitySettingDefs(); }
+    @Override public SettingOwner owner() { return InventoryConfig.get(); }
+    @Override public List<SettingDef> settingDefs() { return InventoryConfig.get().getSettingDefs(); }
 }

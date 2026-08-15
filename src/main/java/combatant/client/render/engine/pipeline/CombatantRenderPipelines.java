@@ -209,6 +209,21 @@ public enum CombatantRenderPipelines {
             .build()
     );
     /**
+     * No depth test; premultiplied-alpha textured triangles. Used for GuiItemAtlas output.
+     */
+    public static final RenderPipeline WORLD_TEXTURED_PREMULTIPLIED_ALPHA = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_textured_premultiplied_alpha"))
+            .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_POS_TEX_COLOR_VERT)
+            .withFragmentShader(SHADER_POS_TEX_COLOR_FRAG)
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA)
+            .withCull(false)
+            .build()
+    );
+    /**
      * Depth test (GEQUAL); translucent; textured triangles.
      */
     public static final RenderPipeline WORLD_TEXTURED_DEPTH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
@@ -645,6 +660,21 @@ public enum CombatantRenderPipelines {
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
+    /**
+     * UI textured triangles for premultiplied-alpha sources such as GuiItemAtlas.
+     */
+    public static final RenderPipeline UI_TEXTURED_PREMULTIPLIED_ALPHA = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_textured_premultiplied_alpha"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_POS_TEX_COLOR_VERT)
+            .withFragmentShader(SHADER_POS_TEX_COLOR_FRAG)
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA)
             .withCull(true)
             .build()
     );

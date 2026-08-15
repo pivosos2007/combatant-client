@@ -29,6 +29,7 @@ import combatant.client.features.module.WorldPhase;
 import combatant.client.mixininterface.IEntity;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.RenderState;
+import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.renderer.ui.ItemBatchRenderer;
@@ -67,7 +68,7 @@ public class DropESP extends Module {
     private static final double MATTE_ICON_GAP = 4.0;
     private static final float MATTE_ICON_SCALE = (float) (MATTE_ICON_SIZE / 16.0);
     private static final WorldUiPresentationService.Policy WORLD_PRESENTATION_POLICY =
-            new WorldUiPresentationService.Policy(0.0165, 12.0, 18.0, 32.0, 0.45, 4.00);
+            new WorldUiPresentationService.Policy(0.0150, 12.0, 18.0, 32.0, 0.45, 4.00);
     private final Minecraft mc = Minecraft.getInstance();
     private final ModeValue modeValue = modeSetting("dropEspMode", SETTING_MODE, "Matte", "Vanilla", "New", "Matte");
     private final EnumValue<WorldUiPresentationService.Mode> presentationMode =
@@ -127,9 +128,7 @@ public class DropESP extends Module {
         if (presentationMode.get() == WorldUiPresentationService.Mode.SCREEN) return;
 
         TextRenderer labelRenderer = ScreenSpaceOverlay2D.labelRenderer(TextRenderer.get());
-        Vec3 cameraPos = mc.gameRenderer != null && mc.gameRenderer.mainCamera() != null
-                ? mc.gameRenderer.mainCamera().position()
-                : mc.player.getEyePosition(tickDelta);
+        Vec3 cameraPos = presentationCameraPosition(tickDelta);
         java.util.List<DropWorldEntry> entries = new java.util.ArrayList<>();
         java.util.List<ItemBatchRenderer.WorldItemRow> itemRows = new java.util.ArrayList<>();
 
@@ -148,9 +147,31 @@ public class DropESP extends Module {
             ItemStack stack = item.getItem().copy();
             String text = stack.getHoverName().getString() + " x" + stack.getCount();
             Vec3 anchor = new Vec3(pos.x, pos.y + Math.max(0.35, item.getBbHeight() + 0.18), pos.z);
+
+            AABB frameBox = item.getBoundingBox().move(
+                    pos.x - item.getX(),
+                    pos.y - item.getY(),
+                    pos.z - item.getZ()
+            );
+            frameBox = new AABB(
+                    frameBox.minX - ITEM_BOX_EXPAND_XZ,
+                    frameBox.minY,
+                    frameBox.minZ - ITEM_BOX_EXPAND_XZ,
+                    frameBox.maxX + ITEM_BOX_EXPAND_XZ,
+                    frameBox.maxY + ITEM_BOX_EXPAND_TOP,
+                    frameBox.maxZ + ITEM_BOX_EXPAND_XZ
+            );
+            Vec3 frameAnchor = new Vec3(
+                    (frameBox.minX + frameBox.maxX) * 0.5,
+                    (frameBox.minY + frameBox.maxY) * 0.5,
+                    (frameBox.minZ + frameBox.maxZ) * 0.5
+            );
+            double frameWorldWidth = Math.max(frameBox.maxX - frameBox.minX, frameBox.maxZ - frameBox.minZ);
+            double frameWorldHeight = frameBox.maxY - frameBox.minY;
+
             entries.add(new DropWorldEntry(
-                    resolveSortPriority(stack), distSq, anchor, presentation.worldUnitsPerPixel(),
-                    presentation.worldAlpha(), stack, text, resolveDisplayColor(stack)));
+                    resolveSortPriority(stack), distSq, anchor, frameAnchor, frameWorldWidth, frameWorldHeight,
+                    presentation.worldUnitsPerPixel(), presentation.worldAlpha(), stack, text, resolveDisplayColor(stack)));
         }
 
         entries.sort(DropESP::compareDropWorldRenderOrder);
@@ -159,9 +180,12 @@ public class DropESP extends Module {
             itemRows.add(new ItemBatchRenderer.WorldItemRow(null,
                     itemIconValue.get() ? new ItemStack[]{entry.stack()} : new ItemStack[0], i));
         }
+        // Capture the billboard axes before GuiItemAtlas performs any off-screen rendering.
+        // More importantly, currentBasis itself is backed by the immutable captured camera
+        // matrix, so item-atlas state can never influence billboard orientation.
+        WorldBillboardRenderer.Basis basis = WorldBillboardRenderer.currentBasis();
         java.util.List<ItemBatchRenderer.WorldItemSprite[]> sprites =
                 ItemBatchRenderer.resolveWorldItemSprites(itemRows);
-        WorldBillboardRenderer.Basis basis = WorldBillboardRenderer.currentBasis();
         for (int i = 0; i < entries.size(); i++) {
             ItemBatchRenderer.WorldItemSprite sprite = i < sprites.size() && sprites.get(i).length > 0
                     ? sprites.get(i)[0]
@@ -188,7 +212,7 @@ public class DropESP extends Module {
             measureStarted = true;
         }
 
-        Vec3 cameraPos = mc.player.getEyePosition(tickDelta);
+        Vec3 cameraPos = presentationCameraPosition(tickDelta);
         for (ItemEntity item : mc.level.getEntitiesOfClass(
                 ItemEntity.class,
                 mc.player.getBoundingBox().inflate(64),
@@ -279,11 +303,9 @@ public class DropESP extends Module {
         try {
             ScreenSpaceOverlay2D.ScreenRect rect = entry.rect();
             if (frameValue.get()) {
-                if (matteMode) {
-                    MatteHudStyle.drawFrame(renderer, rect.minX(), rect.minY(), rect.width(), rect.height(), entry.color(), 1.0f);
-                } else {
-                    ScreenSpaceOverlay2D.drawFrame(renderer, rect, entry.color());
-                }
+                // DropESP frames are deliberately hard rectangular quad outlines in every
+                // presentation mode. No rounded/SDF stroke is used here.
+                ScreenSpaceOverlay2D.drawFrame(renderer, rect, entry.color());
             }
 
             if (matteMode) {
@@ -377,6 +399,24 @@ public class DropESP extends Module {
                 icon ? MATTE_ICON_SIZE + MATTE_LABEL_PAD_Y * 2.0 : 0.0);
         double x = -width * 0.5;
         double y = -height;
+
+        if (frameValue.get() && entry.frameWorldWidth() > 0.0 && entry.frameWorldHeight() > 0.0) {
+            double frameWidth = entry.frameWorldWidth() / entry.worldScale();
+            double frameHeight = entry.frameWorldHeight() / entry.worldScale();
+            WorldBillboardRenderer.rectangularFrame(
+                    renderer,
+                    basis,
+                    entry.frameAnchor(),
+                    -frameWidth * 0.5,
+                    -frameHeight * 0.5,
+                    frameWidth,
+                    frameHeight,
+                    entry.worldScale(),
+                    entry.color(),
+                    entry.alpha()
+            );
+        }
+
         WorldBillboardRenderer.mattePlate(renderer, basis, entry.anchor(), x, y, width, height,
                 2.0, 4.0, entry.worldScale(), entry.alpha());
 
@@ -426,6 +466,15 @@ public class DropESP extends Module {
                 : 0.0;
         return WorldUiPresentationService.resolve(
                 presentationMode.get(), distance, WORLD_PRESENTATION_POLICY, projectionYScale, logicalHeight);
+    }
+
+    private Vec3 presentationCameraPosition(float tickDelta) {
+        Vec3 captured = CombatantWorldMatrices.cameraPosition();
+        if (captured != null) return captured;
+        if (mc.gameRenderer != null && mc.gameRenderer.mainCamera() != null) {
+            return mc.gameRenderer.mainCamera().position();
+        }
+        return mc.player != null ? mc.player.getEyePosition(tickDelta) : Vec3.ZERO;
     }
 
     @Override
@@ -515,6 +564,9 @@ public class DropESP extends Module {
     private record DropWorldEntry(int sortPriority,
                                   double distSq,
                                   Vec3 anchor,
+                                  Vec3 frameAnchor,
+                                  double frameWorldWidth,
+                                  double frameWorldHeight,
                                   double worldScale,
                                   float alpha,
                                   ItemStack stack,

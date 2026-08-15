@@ -8,7 +8,10 @@
 package combatant.client.features.gui.clickgui.settings;
 
 import combatant.client.config.ConfigSerializer;
-import combatant.client.config.MainConfig;
+import combatant.client.config.subsystem.InventoryConfig;
+import combatant.client.config.subsystem.RuntimeConfig;
+import combatant.client.config.subsystem.SecurityConfig;
+import combatant.client.config.subsystem.VisualConfig;
 import combatant.client.config.SettingDef;
 import combatant.client.config.SettingOwner;
 import combatant.client.events.EventHandler;
@@ -70,11 +73,14 @@ public enum I18nPreflightContributors {
     }
 
     private static void collectMainConfig(I18nPreflightCollectEvent event) {
-        MainConfig config = MainConfig.get();
-        event.settingDefs("main_config/image", config, config.getImageSettingDefs());
-        event.settingDefs("main_config/misc", config, config.getMiscellaneousSettingDefs());
-        event.settingDefs("main_config/security", config, config.getSecuritySettingDefs());
-        event.settingDefs("main_config/utility", config, config.getUtilitySettingDefs());
+        VisualConfig visual = VisualConfig.get();
+        RuntimeConfig runtime = RuntimeConfig.get();
+        SecurityConfig security = SecurityConfig.get();
+        InventoryConfig inventory = InventoryConfig.get();
+        event.settingDefs("main_config/image", visual, visual.getSettingDefs());
+        event.settingDefs("main_config/misc", runtime, runtime.getSettingDefs());
+        event.settingDefs("main_config/security", security, security.getSettingDefs());
+        event.settingDefs("main_config/utility", inventory, inventory.getSettingDefs());
     }
 
     private static void collectStaticSettings(I18nPreflightCollectEvent event) {

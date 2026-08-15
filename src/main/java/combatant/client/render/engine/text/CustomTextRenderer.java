@@ -150,33 +150,44 @@ public class CustomTextRenderer implements TextRenderer {
     }
 
     GlyphSelection selectGlyphFont(double requestedScale, boolean big) {
-        if (big) {
-            this.fontIndex = fonts.length - 1;
-            this.font = fonts[fontIndex];
-        } else {
-            double scaleA = Math.floor(requestedScale * 10) / 10;
-            int scaleI;
-            if (scaleA >= 3) scaleI = 5;
-            else if (scaleA >= 2.5) scaleI = 4;
-            else if (scaleA >= 2) scaleI = 3;
-            else if (scaleA >= 1.5) scaleI = 2;
-            else scaleI = 1;
-            fontIndex = scaleI - 1;
-            font = fonts[fontIndex];
-        }
-
+        this.fontIndex = resolveFontIndex(requestedScale, big);
+        this.font = fonts[fontIndex];
         this.fontScale = font.height() / 27.0;
         this.scale = 1 + (requestedScale - fontScale) / fontScale;
         double glyphScale = this.scale / 1.5;
         return new GlyphSelection(font, glyphScale, fontScale * glyphScale);
     }
 
+    /**
+     * Resolve metrics/font for direct world text without mutating the renderer's active UI scale.
+     * WorldTextRenderer uses this outside begin()/end(); leaking its requested scale into the
+     * shared renderer made later HUD getWidth()/getHeight() calls depend on 3D render order.
+     */
     GlyphSelection prepareGlyphFont(double requestedScale, boolean big) {
-        GlyphSelection selection = selectGlyphFont(requestedScale, big);
-        if (!selection.font().isReady() && rebuildFonts()) {
-            selection = selectGlyphFont(requestedScale, big);
+        int index = resolveFontIndex(requestedScale, big);
+        GlyphFont selected = fonts[index];
+        if (!selected.isReady() && !building && rebuildFonts()) {
+            index = resolveFontIndex(requestedScale, big);
+            selected = fonts[index];
         }
-        return selection;
+
+        double selectedFontScale = selected.height() / 27.0;
+        double selectedScale = 1 + (requestedScale - selectedFontScale) / selectedFontScale;
+        double glyphScale = selectedScale / 1.5;
+        return new GlyphSelection(selected, glyphScale, selectedFontScale * glyphScale);
+    }
+
+    private int resolveFontIndex(double requestedScale, boolean big) {
+        if (big) return fonts.length - 1;
+
+        double scaleA = Math.floor(requestedScale * 10) / 10;
+        int scaleI;
+        if (scaleA >= 3) scaleI = 5;
+        else if (scaleA >= 2.5) scaleI = 4;
+        else if (scaleA >= 2) scaleI = 3;
+        else if (scaleA >= 1.5) scaleI = 2;
+        else scaleI = 1;
+        return Math.max(0, Math.min(fonts.length - 1, scaleI - 1));
     }
 
     @Override
