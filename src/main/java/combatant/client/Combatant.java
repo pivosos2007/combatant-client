@@ -394,6 +394,7 @@ public class Combatant implements ClientModInitializer {
             case FIRST -> Renderer2D.Deferred2DLayer.HUD_FIRST;
             case BEFORE_MISC_OVERLAYS -> Renderer2D.Deferred2DLayer.HUD_BEFORE_MISC_OVERLAYS;
             case AFTER_MISC_OVERLAYS -> Renderer2D.Deferred2DLayer.HUD_AFTER_MISC_OVERLAYS;
+            case BEFORE_HOTBAR -> Renderer2D.Deferred2DLayer.HUD_AFTER_MISC_OVERLAYS;
             case AFTER_BOSS_BAR -> Renderer2D.Deferred2DLayer.HUD_AFTER_BOSS_BAR;
             case BEFORE_DEMO_TIMER -> Renderer2D.Deferred2DLayer.HUD_BEFORE_DEMO_TIMER;
             case BEFORE_CHAT -> Renderer2D.Deferred2DLayer.HUD_BEFORE_CHAT;
@@ -533,6 +534,12 @@ public class Combatant implements ClientModInitializer {
                 net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements.MISC_OVERLAYS,
                 Identifier.fromNamespaceAndPath("combatant", "hud_after_misc"),
                 (ctx, tc) -> renderHudPhase(HudPhase.AFTER_MISC_OVERLAYS, ctx, tc)
+        );
+
+        HudElementRegistry.attachElementBefore(
+                net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements.HOTBAR,
+                Identifier.fromNamespaceAndPath("combatant", "hud_before_hotbar"),
+                (ctx, tc) -> renderHudPhase(HudPhase.BEFORE_HOTBAR, ctx, tc)
         );
 
         HudElementRegistry.attachElementAfter(

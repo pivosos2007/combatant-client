@@ -487,7 +487,7 @@ public class NameTags extends Module {
 
     @Override
     public WorldPhase getWorldPhase() {
-        return WorldPhase.END_MAIN;
+        return WorldPhase.END_MAIN_BILLBOARD;
     }
 
     @Override

@@ -17,6 +17,7 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.*;
 import net.irisshaders.iris.mixinterface.ItemInHandInterface;
 import net.irisshaders.iris.pathways.HandRenderer;
@@ -35,10 +36,13 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.Modules;
 import combatant.client.mixins.accessors.GameRendererAccessor;
 import combatant.client.mixins.iris.IrisHandRendererAccessor;
+import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.postprocess.PostProcessPass;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
+import combatant.client.render.helpers.TickDelta;
+import combatant.client.render.engine.uniform.impl.HandGhostingUniforms;
 import combatant.client.render.engine.uniform.impl.HandGlassUniforms;
 import combatant.client.render.engine.uniform.impl.HandMetallicUniforms;
 import combatant.client.render.engine.uniform.impl.HandSmokeUniforms;
@@ -81,6 +85,10 @@ public class Chams extends Module {
     private static final String SETTING_METALLIC_BRUSHED_LINES = "metallic_brushed_lines";
     private static final String SETTING_METALLIC_FLAKES = "metallic_flakes";
     private static final String SETTING_METALLIC_PRISM = "metallic_prism";
+    private static final String SETTING_GHOSTING = "ghosting";
+    private static final String SETTING_GHOSTING_STRENGTH = "ghosting_strength";
+    private static final String SETTING_GHOSTING_DURATION = "ghosting_duration";
+    private static final String SETTING_GHOSTING_BLUR = "ghosting_blur";
     private final Minecraft mc = Minecraft.getInstance();
     private final ModeValue mode =
             modeSetting("handChamsMode", SETTING_MODE, "Smoke", "Smoke", "Metallic", "Glass");
@@ -147,17 +155,72 @@ public class Chams extends Module {
             visibleWhen(num("handChamsMetallicFlakes", SETTING_METALLIC_FLAKES, 0.25f, 0.0f, 1.0f), this::isMetallicMode);
     private final NumberValue<Float> metallicPrism =
             visibleWhen(num("handChamsMetallicPrism", SETTING_METALLIC_PRISM, 0.18f, 0.0f, 1.0f), this::isMetallicMode);
+
+    private final BooleanValue ghosting =
+            bool("handChamsGhosting", SETTING_GHOSTING, false);
+    private final EnumValue<AnimatedRenderColors.Mode> ghostingColorMode = visibleWhen(
+            common(enumSetting(
+                    "handChamsGhostingColorMode",
+                    "ghosting_color_mode",
+                    AnimatedRenderColors.Mode.STATIC,
+                    AnimatedRenderColors.Mode.STATIC,
+                    AnimatedRenderColors.Mode.RAINBOW,
+                    AnimatedRenderColors.Mode.LIGHT_RAINBOW,
+                    AnimatedRenderColors.Mode.SKY,
+                    AnimatedRenderColors.Mode.FADE,
+                    AnimatedRenderColors.Mode.DOUBLE_COLOR,
+                    AnimatedRenderColors.Mode.ANALOGOUS,
+                    AnimatedRenderColors.Mode.THEME
+            ), CommonSettingSchemas.RENDER_COLOR_MODE.commonI18nKey()),
+            this::isGhostingVisible
+    );
+    private final NumberValue<Integer> ghostingColorSpeed = visibleWhen(
+            common(num("handChamsGhostingColorSpeed", "ghosting_color_speed", 18, 2, 54),
+                    CommonSettingSchemas.RENDER_COLOR_SPEED.commonI18nKey()),
+            () -> isGhostingVisible() && AnimatedRenderColors.animated(ghostingColorMode.get())
+    );
+    private final RGBAColorValue ghostingColor = visibleWhen(
+            common(color("handChamsGhostingColor", "ghosting_color", "#B05CFFE6"),
+                    CommonSettingSchemas.RENDER_PRIMARY_COLOR.commonI18nKey()),
+            this::isGhostingVisible
+    );
+    private final RGBAColorValue ghostingColor2 = visibleWhen(
+            common(color("handChamsGhostingColor2", "ghosting_color_2", "#A04D8CFF"),
+                    CommonSettingSchemas.RENDER_SECONDARY_COLOR.commonI18nKey()),
+            () -> isGhostingVisible() && AnimatedRenderColors.usesSecondary(ghostingColorMode.get())
+    );
+    private final NumberValue<Float> ghostingStrength = visibleWhen(
+            num("handChamsGhostingStrength", SETTING_GHOSTING_STRENGTH, 1.0f, 0.0f, 3.0f),
+            this::isGhostingVisible
+    );
+    private final NumberValue<Float> ghostingDuration = visibleWhen(
+            num("handChamsGhostingDuration", SETTING_GHOSTING_DURATION, 0.28f, 0.05f, 1.25f),
+            this::isGhostingVisible
+    );
+    private final NumberValue<Float> ghostingBlur = visibleWhen(
+            num("handChamsGhostingBlur", SETTING_GHOSTING_BLUR, 3.0f, 0.0f, 12.0f),
+            this::isGhostingVisible
+    );
+
     private final PostProcessPass handsPass = new HandsPass();
+    private final PostProcessPass ghostingPass = new GhostingPass();
     private TextureTarget handMask;
     private GpuSampler handMaskSampler;
+    private TextureTarget ghostHistoryRead;
+    private TextureTarget ghostHistoryWrite;
     private int bufferW = -1;
     private int bufferH = -1;
+    private int ghostBufferW = -1;
+    private int ghostBufferH = -1;
     private boolean maskReady;
+    private boolean ghostMaskReady;
+    private boolean ghostHistoryNeedsClear = true;
     private RenderBuffers irisHandRenderBuffers;
     private FeatureRenderDispatcher irisHandFeatureDispatcher;
 
     {
         PostProcessManager.register(handsPass);
+        PostProcessManager.register(ghostingPass);
     }
 
     private static float channel(int argb, int shift) {
@@ -195,7 +258,19 @@ public class Chams extends Module {
     @Override
     public void onDisable() {
         maskReady = false;
+        ghostMaskReady = false;
+        ghostHistoryNeedsClear = true;
         closeStandaloneHandRenderer();
+    }
+
+    @Override
+    public void onTick() {
+        // Do not carry a stale temporal silhouette across modes where no first-person hand mask
+        // is being produced. Buffers are cleared lazily when Ghosting becomes active again.
+        if (!hands.get() || !ghosting.get() || !mc.options.getCameraType().isFirstPerson()) {
+            ghostMaskReady = false;
+            ghostHistoryNeedsClear = true;
+        }
     }
 
     private FeatureRenderDispatcher getStandaloneHandFeatureDispatcher() {
@@ -264,15 +339,18 @@ public class Chams extends Module {
         RenderSystem.outputDepthTextureOverride = handMask.getDepthTextureView();
         RenderState.rendering3D = true;
 
+        ViewModel viewModel = Modules.get(ViewModel.class);
+        boolean hmiReplay = viewModel != null && viewModel.beginHmiReplayPass();
         try {
             ((GameRendererAccessor) renderer).invokeRenderHand(cameraRenderState, tickDelta, positionMatrix);
         } finally {
+            if (hmiReplay) viewModel.endHmiReplayPass();
             RenderState.rendering3D = prevRendering3D;
             RenderSystem.outputColorTextureOverride = prevColor;
             RenderSystem.outputDepthTextureOverride = prevDepth;
         }
 
-        maskReady = true;
+        markHandMaskReady();
         return true;
     }
 
@@ -307,7 +385,7 @@ public class Chams extends Module {
                 RenderSystem.outputDepthTextureOverride = prevDepth;
             }
 
-            maskReady = true;
+            markHandMaskReady();
             executePreparedHandFrame(prepared);
         }
 
@@ -359,10 +437,13 @@ public class Chams extends Module {
         RenderSystem.outputDepthTextureOverride = handMask.getDepthTextureView();
         RenderState.rendering3D = true;
         RenderSystem.backupProjectionMatrix();
+        ViewModel viewModel = Modules.get(ViewModel.class);
+        boolean hmiReplay = viewModel != null && viewModel.beginHmiReplayPass();
         try {
             renderIrisHandMaskPhase(renderer, cameraRenderState, positionMatrix, dispatcher, tickDelta, true);
             renderIrisHandMaskPhase(renderer, cameraRenderState, positionMatrix, dispatcher, tickDelta, false);
         } finally {
+            if (hmiReplay) viewModel.endHmiReplayPass();
             ((IrisHandRendererAccessor) HandRenderer.INSTANCE).combatant$setRenderingSolid(false);
             RenderSystem.restoreProjectionMatrix();
             RenderState.rendering3D = prevRendering3D;
@@ -370,7 +451,7 @@ public class Chams extends Module {
             RenderSystem.outputDepthTextureOverride = prevDepth;
         }
 
-        maskReady = true;
+        markHandMaskReady();
         return true;
     }
 
@@ -414,6 +495,17 @@ public class Chams extends Module {
         return fc == null || !fc.isEnabled() || fc.renderHand();
     }
 
+    private void markHandMaskReady() {
+        maskReady = true;
+        if (ghosting.get()) {
+            ghostMaskReady = true;
+        } else {
+            ghostMaskReady = false;
+            // A later toggle must never resurrect an old trail. Clear lazily on the next ghost pass.
+            ghostHistoryNeedsClear = true;
+        }
+    }
+
     private void ensureBuffers() {
         int w = mc.getWindow().getWidth();
         int h = mc.getWindow().getHeight();
@@ -428,6 +520,50 @@ public class Chams extends Module {
             bufferW = w;
             bufferH = h;
         }
+    }
+
+    private boolean ensureGhostBuffers() {
+        int w = mc.getWindow().getWidth();
+        int h = mc.getWindow().getHeight();
+        if (w <= 0 || h <= 0) return false;
+
+        // Temporal history does not need full framebuffer resolution. Half-res cuts its persistent
+        // memory and update bandwidth to 25% while linear normalized sampling keeps the trail soft.
+        int historyW = Math.max(1, (w + 1) / 2);
+        int historyH = Math.max(1, (h + 1) / 2);
+
+        if (ghostHistoryRead == null || ghostHistoryWrite == null) {
+            ghostHistoryRead = new TextureTarget("combatant-hand-ghost-history-a", historyW, historyH, false, GpuFormat.RGBA8_UNORM);
+            ghostHistoryWrite = new TextureTarget("combatant-hand-ghost-history-b", historyW, historyH, false, GpuFormat.RGBA8_UNORM);
+            ghostBufferW = historyW;
+            ghostBufferH = historyH;
+            ghostHistoryNeedsClear = true;
+        } else if (historyW != ghostBufferW || historyH != ghostBufferH) {
+            ghostHistoryRead.resize(historyW, historyH);
+            ghostHistoryWrite.resize(historyW, historyH);
+            ghostBufferW = historyW;
+            ghostBufferH = historyH;
+            ghostHistoryNeedsClear = true;
+        }
+
+        if (ghostHistoryNeedsClear) {
+            var encoder = RenderSystem.getDevice().createCommandEncoder();
+            if (ghostHistoryRead.getColorTexture() != null) {
+                encoder.clearColorTexture(ghostHistoryRead.getColorTexture(), new org.joml.Vector4f(0.0f, 0.0f, 0.0f, 0.0f));
+            }
+            if (ghostHistoryWrite.getColorTexture() != null) {
+                encoder.clearColorTexture(ghostHistoryWrite.getColorTexture(), new org.joml.Vector4f(0.0f, 0.0f, 0.0f, 0.0f));
+            }
+            ghostHistoryNeedsClear = false;
+        }
+
+        return ghostHistoryRead.getColorTextureView() != null && ghostHistoryWrite.getColorTextureView() != null;
+    }
+
+    private void swapGhostHistory() {
+        TextureTarget tmp = ghostHistoryRead;
+        ghostHistoryRead = ghostHistoryWrite;
+        ghostHistoryWrite = tmp;
     }
 
     private GpuSampler getHandMaskSampler() {
@@ -473,6 +609,10 @@ public class Chams extends Module {
 
     public boolean isGlassMode() {
         return "Glass".equals(mode.get());
+    }
+
+    private boolean isGhostingVisible() {
+        return hands.get() && ghosting.get();
     }
 
     private int materialFillRgb() {
@@ -632,6 +772,78 @@ public class Chams extends Module {
         return true;
     }
 
+    private boolean renderGhosting(GpuTextureView src, GpuTextureView dst) {
+        if (!ghostMaskReady || handMask == null || handMask.getColorTextureView() == null) {
+            ghostMaskReady = false;
+            return false;
+        }
+        if (!ensureGhostBuffers()) {
+            ghostMaskReady = false;
+            return false;
+        }
+
+        GpuTextureView maskView = handMask.getColorTextureView();
+        GpuTextureView historyView = ghostHistoryRead.getColorTextureView();
+        GpuTextureView nextHistoryView = ghostHistoryWrite.getColorTextureView();
+        if (maskView == null || historyView == null || nextHistoryView == null) {
+            ghostMaskReady = false;
+            return false;
+        }
+
+        float dt = TickDelta.frameDeltaSeconds();
+        if (!Float.isFinite(dt) || dt <= 0.0f) dt = 1.0f / 60.0f;
+        dt = Math.min(dt, 0.10f);
+
+        // Treat duration as the time until an old silhouette has effectively disappeared (~2%).
+        float duration = Math.max(0.01f, ghostingDuration.get());
+        float decay = (float) Math.pow(0.02, dt / duration);
+        int ghostArgb = AnimatedRenderColors.resolve(
+                ghostingColorMode.get(),
+                ghostingColorSpeed.get(),
+                0,
+                ghostingColor.getArgb(),
+                ghostingColor2.getArgb(),
+                true
+        );
+
+        HandGhostingUniforms.update(
+                mc.getWindow().getWidth(),
+                mc.getWindow().getHeight(),
+                dt,
+                getRawTime(),
+                channel(ghostArgb, 16),
+                channel(ghostArgb, 8),
+                channel(ghostArgb, 0),
+                channel(ghostArgb, 24),
+                decay,
+                ghostingStrength.get(),
+                ghostingBlur.get(),
+                0.96f
+        );
+
+        // Temporal accumulation is kept in a private ping-pong pair, independent from the graph's
+        // own source/destination ping-pong. This lets Ghosting remain a normal POST_HAND pass.
+        FullScreenRenderer.begin("Combatant Hand Ghost History")
+                .attachment(nextHistoryView)
+                .pipeline(CombatantRenderPipelines.HAND_GHOSTING_HISTORY)
+                .uniform("HandGhosting", HandGhostingUniforms.get())
+                .sampler("u_History", historyView, PostProcessManager.getSampler())
+                .sampler("u_Mask", maskView, PostProcessManager.getSampler())
+                .end();
+
+        FullScreenRenderer.begin("Combatant Hand Ghost Composite")
+                .attachment(dst)
+                .pipeline(CombatantRenderPipelines.HAND_GHOSTING)
+                .uniform("HandGhosting", HandGhostingUniforms.get())
+                .sampler("u_Src", src, PostProcessManager.getSampler())
+                .sampler("u_History", nextHistoryView, PostProcessManager.getSampler())
+                .end();
+
+        swapGhostHistory();
+        ghostMaskReady = false;
+        return true;
+    }
+
     private float getRawTime() {
         return (float) (Util.getMillis() / 1000.0);
     }
@@ -656,6 +868,35 @@ public class Chams extends Module {
             if (!Chams.this.isEnabled() || mc.player == null || mc.level == null) return false;
             if (!hands.get() || !mc.options.getCameraType().isFirstPerson()) return false;
             return Chams.this.renderHands(src, dst, tickDelta);
+        }
+    }
+
+    private final class GhostingPass implements PostProcessPass {
+        @Override
+        public boolean isActive() {
+            return Chams.this.isEnabled()
+                    && mc.player != null
+                    && mc.level != null
+                    && hands.get()
+                    && ghosting.get()
+                    && mc.options.getCameraType().isFirstPerson();
+        }
+
+        @Override
+        public int getPriority() {
+            // Must run after HandsPass so the trail is composited over Smoke/Metallic/Glass.
+            return 20;
+        }
+
+        @Override
+        public Phase getPhase() {
+            return Phase.POST_HAND;
+        }
+
+        @Override
+        public boolean render(GpuTextureView src, GpuTextureView dst, float tickDelta) {
+            if (!isActive()) return false;
+            return Chams.this.renderGhosting(src, dst);
         }
     }
 

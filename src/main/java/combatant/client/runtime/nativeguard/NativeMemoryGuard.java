@@ -71,19 +71,30 @@ public final class NativeMemoryGuard {
         return status;
     }
 
-    static String resourceFor(String os, String architecture) {
+    public static String currentPlatformId() {
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        String architecture = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
+        return platformIdFor(os, architecture);
+    }
+
+    static String platformIdFor(String os, String architecture) {
         boolean x64 = "amd64".equals(architecture) || "x86_64".equals(architecture);
         if (!x64) return null;
 
-        if (os.contains("win")) {
-            return "/combatant/nativeguard/windows-x86_64/combatant_memory_guard.dll";
-        }
-
-        if (os.contains("linux")) {
-            return "/combatant/nativeguard/linux-x86_64/libcombatant_memory_guard.so";
-        }
-
+        if (os.contains("win")) return "windows-x86_64";
+        if (os.contains("linux")) return "linux-x86_64";
         return null;
+    }
+
+    static String resourceFor(String os, String architecture) {
+        String platformId = platformIdFor(os, architecture);
+        if (platformId == null) return null;
+
+        return switch (platformId) {
+            case "windows-x86_64" -> "/combatant/nativeguard/windows-x86_64/combatant_memory_guard.dll";
+            case "linux-x86_64" -> "/combatant/nativeguard/linux-x86_64/libcombatant_memory_guard.so";
+            default -> null;
+        };
     }
 
     private static native int nativeApply();

@@ -837,6 +837,9 @@
   "setting.trails.color_mode.option.DoubleColor": "Два цвета",
   "setting.trails.color_mode.option.Analogous": "Аналоговый",
   "setting.trails.color_mode.option.Theme": "Тема",
+  "setting.viewmodel.mode": "Режим",
+  "setting.viewmodel.mode.option.Basic": "Базовый",
+  "setting.viewmodel.mode.option.HMI": "Hold My Items (HMI)",
   "setting.viewmodel.mini_all_items": "Мини: все предметы",
   "setting.viewmodel.mini_items": "Мини: список предметов",
   "setting.viewmodel.mini_scale": "Мини: масштаб",
@@ -3032,5 +3035,13 @@
   "command.toggle.description": "Включает, отключает или переключает модуль.",
   "command.tps.description": "Показывает расчётное количество серверных тиков в секунду.",
   "command.username.description": "Показывает текущее имя Minecraft и UUID.",
-  "command.xaero.description": "Добавляет, показывает или удаляет точки Xaero."
+  "command.xaero.description": "Добавляет, показывает или удаляет точки Xaero.",
+  "setting.viewmodel.mode": "Режим",
+  "setting.viewmodel.mode.option.Basic": "Базовый",
+  "setting.viewmodel.mode.option.HMI": "Hold My Items (HMI)",
+  "setting.chams.mode.option.Glass": "Стекло",
+  "setting.chams.ghosting": "Гостинг",
+  "setting.chams.ghosting_strength": "Сила гостинга",
+  "setting.chams.ghosting_duration": "Длительность шлейфа",
+  "setting.chams.ghosting_blur": "Размытие шлейфа"
 }

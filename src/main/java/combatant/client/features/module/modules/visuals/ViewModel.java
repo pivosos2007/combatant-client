@@ -19,6 +19,7 @@ import combatant.client.config.values.ItemIdSetValue;
 import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
+import combatant.client.features.hmi_recode.HoldMyItems;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -30,6 +31,9 @@ import combatant.client.features.module.ModuleInfo;
 @ModuleInfo(id = "viewmodel", displayName = "ViewModel", category = ModuleCategory.VISUALS)
 public class ViewModel extends Module {
 
+    private static final String SETTING_MODE = "mode";
+    private static final String MODE_BASIC = "Basic";
+    private static final String MODE_HMI = "HMI";
     private static final String SETTING_MINI_ALL = "mini_all_items";
     private static final String SETTING_MINI_ITEMS = "mini_items";
     private static final String SETTING_MINI_SCALE = "mini_scale";
@@ -51,21 +55,30 @@ public class ViewModel extends Module {
     private static final String SETTING_SMOOTH_RUN_LOWERING = "smooth_run_lowering";
     private static final String SETTING_SMOOTH_RUN_LOWERING_AMOUNT = "smooth_run_lowering_amount";
     public final Minecraft mc = Minecraft.getInstance();
-    public final NumberValue<Float> liquidOffsetZ = num("liquid_offset_z", SETTING_LIQUID_OFFSET_Z, 0.0f, -2.0f, 2.0f);
+    private final ModeValue mode = modeSetting("mode", SETTING_MODE, MODE_BASIC, MODE_BASIC, MODE_HMI);
+    public final NumberValue<Float> liquidOffsetZ =
+            visibleWhen(num("liquid_offset_z", SETTING_LIQUID_OFFSET_Z, 0.0f, -2.0f, 2.0f), this::isBasicMode);
     /* -----------------------------
      * MINI ITEMS
      * ----------------------------- */
-    private final BooleanValue miniAll = bool("mini_all_items", SETTING_MINI_ALL, false);
+    private final BooleanValue miniAll =
+            bool("mini_all_items", SETTING_MINI_ALL, false);
     private final ItemIdSetValue miniItems =
-            visibleWhen(itemList("mini_items", SETTING_MINI_ITEMS, TextListSetting.PickerMode.ITEMS), () -> !miniAll.get());
-    private final NumberValue<Float> miniScale = num("mini_scale", SETTING_MINI_SCALE, 0.65f, 0.05f, 2.0f);
+            visibleWhen(itemList("mini_items", SETTING_MINI_ITEMS, TextListSetting.PickerMode.ITEMS),
+                    () -> !miniAll.get());
+    private final NumberValue<Float> miniScale =
+            num("mini_scale", SETTING_MINI_SCALE, 0.65f, 0.05f, 2.0f);
     /* -----------------------------
      * OFFSETS
      * ----------------------------- */
-    private final BooleanValue swingEnabled = bool("swing_enabled", SETTING_SWING_ENABLED, true);
-    public final NumberValue<Float> swingX = visibleWhen(num("swing_offset_x", SETTING_SWING_OFFSET_X, 0f, -2f, 2f), swingEnabled::get);
-    public final NumberValue<Float> swingY = visibleWhen(num("swing_offset_y", SETTING_SWING_OFFSET_Y, 0f, -2f, 2f), swingEnabled::get);
-    public final NumberValue<Float> swingZ = visibleWhen(num("swing_offset_z", SETTING_SWING_OFFSET_Z, 0f, -2f, 2f), swingEnabled::get);
+    private final BooleanValue swingEnabled =
+            visibleWhen(bool("swing_enabled", SETTING_SWING_ENABLED, true), this::isBasicMode);
+    public final NumberValue<Float> swingX = visibleWhen(num("swing_offset_x", SETTING_SWING_OFFSET_X, 0f, -2f, 2f),
+            () -> isBasicMode() && swingEnabled.get());
+    public final NumberValue<Float> swingY = visibleWhen(num("swing_offset_y", SETTING_SWING_OFFSET_Y, 0f, -2f, 2f),
+            () -> isBasicMode() && swingEnabled.get());
+    public final NumberValue<Float> swingZ = visibleWhen(num("swing_offset_z", SETTING_SWING_OFFSET_Z, 0f, -2f, 2f),
+            () -> isBasicMode() && swingEnabled.get());
     /* -----------------------------
      * ANIMATION SYSTEM
      * ----------------------------- */
@@ -77,29 +90,104 @@ public class ViewModel extends Module {
             "New", "7", "Forward", "Glide", "Tap", "Blocking", "Touch", "Slant",
             "Spin", "Helicopter", "Stab", "Circle", "Wave", "360 Swing",
             "SmoothVanilla", "SwipeBackDown", "Vanilla", "Flip", "Side", "Overhead",
-            "Hammer", "Chop", "Arc", "Double", "Shake", "Shove", "Slash", "Thrust"), swingEnabled::get);
-    public final NumberValue<Float> animSpeed = visibleWhen(num("anim_speed", SETTING_ANIM_SPEED, 1.0f, 0.1f, 4.0f), swingEnabled::get);
-    public final NumberValue<Float> animStrength = visibleWhen(num("anim_strength", SETTING_ANIM_STRENGTH, 5.0f, 0.1f, 10.0f), swingEnabled::get);
-    public final BooleanValue continuousSpin = visibleWhen(bool("anim_spin_enabled", SETTING_ANIM_SPIN_ENABLED, false), swingEnabled::get);
+            "Hammer", "Chop", "Arc", "Double", "Shake", "Shove", "Slash", "Thrust"),
+            () -> isBasicMode() && swingEnabled.get());
+    public final NumberValue<Float> animSpeed = visibleWhen(num("anim_speed", SETTING_ANIM_SPEED, 1.0f, 0.1f, 4.0f), () -> isBasicMode() && swingEnabled.get());
+    public final NumberValue<Float> animStrength = visibleWhen(num("anim_strength", SETTING_ANIM_STRENGTH, 5.0f, 0.1f, 10.0f), () -> isBasicMode() && swingEnabled.get());
+    public final BooleanValue continuousSpin = visibleWhen(bool("anim_spin_enabled", SETTING_ANIM_SPIN_ENABLED, false), () -> isBasicMode() && swingEnabled.get());
     public final NumberValue<Float> spinSpeed =
-            visibleWhen(num("anim_spin_speed", SETTING_ANIM_SPIN_SPEED, 1.0f, 0.1f, 15.0f), () -> swingEnabled.get() && continuousSpin.get());
+            visibleWhen(num("anim_spin_speed", SETTING_ANIM_SPIN_SPEED, 1.0f, 0.1f, 15.0f), () -> isBasicMode() && swingEnabled.get() && continuousSpin.get());
     public final ModeValue spinAxis =
-            visibleWhen(modeSetting("anim_spin_axis", SETTING_ANIM_SPIN_AXIS, "Y", "X", "Y", "Z"), () -> swingEnabled.get() && continuousSpin.get());
-    public final NumberValue<Float> equipLowering = visibleWhen(num("equip_lowering_factor", SETTING_EQUIP_LOWERING, 1.0f, 0.0f, 2.0f), swingEnabled::get);
-    private final BooleanValue swingAll = visibleWhen(bool("swing_all_items", SETTING_SWING_ALL, false), swingEnabled::get);
+            visibleWhen(modeSetting("anim_spin_axis", SETTING_ANIM_SPIN_AXIS, "Y", "X", "Y", "Z"), () -> isBasicMode() && swingEnabled.get() && continuousSpin.get());
+    public final NumberValue<Float> equipLowering = visibleWhen(num("equip_lowering_factor", SETTING_EQUIP_LOWERING, 1.0f, 0.0f, 2.0f), () -> isBasicMode() && swingEnabled.get());
+    private final BooleanValue swingAll = visibleWhen(bool("swing_all_items", SETTING_SWING_ALL, false), () -> isBasicMode() && swingEnabled.get());
     private final ItemIdSetValue swingItems =
             visibleWhen(itemList("swing_items", SETTING_SWING_ITEMS, TextListSetting.PickerMode.ITEMS),
-                    () -> swingEnabled.get() && !swingAll.get());
+                    () -> isBasicMode() && swingEnabled.get() && !swingAll.get());
     private final ItemIdSetValue rotationBypassItems =
-            visibleWhen(itemList("rotation_bypass_items", SETTING_ROTATION_BYPASS_ITEMS, TextListSetting.PickerMode.ITEMS), swingEnabled::get);
-    private final BooleanValue smoothRunLowering = bool("smooth_run_lowering", SETTING_SMOOTH_RUN_LOWERING, false);
+            visibleWhen(itemList("rotation_bypass_items", SETTING_ROTATION_BYPASS_ITEMS, TextListSetting.PickerMode.ITEMS), () -> isBasicMode() && swingEnabled.get());
+    private final BooleanValue smoothRunLowering =
+            visibleWhen(bool("smooth_run_lowering", SETTING_SMOOTH_RUN_LOWERING, false), this::isBasicMode);
     private final NumberValue<Float> smoothRunLoweringAmount =
-            visibleWhen(num("smooth_run_lowering_amount", SETTING_SMOOTH_RUN_LOWERING_AMOUNT, 0.20f, 0.0f, 1.0f), smoothRunLowering::get);
+            visibleWhen(num("smooth_run_lowering_amount", SETTING_SMOOTH_RUN_LOWERING_AMOUNT, 0.20f, 0.0f, 1.0f),
+                    () -> isBasicMode() && smoothRunLowering.get());
 
     private float currentSpin = 0.0f;
+    private boolean hmiBackendActive;
+
+    public boolean isBasicModeActive() {
+        return isEnabled() && isBasicMode();
+    }
+
+    public boolean isHmiModeActive() {
+        return isEnabled() && MODE_HMI.equals(mode.get());
+    }
+
+    private boolean isBasicMode() {
+        return MODE_BASIC.equals(mode.get());
+    }
+
+    private void syncBackend() {
+        boolean shouldUseHmi = isHmiModeActive();
+        if (shouldUseHmi == hmiBackendActive) return;
+
+        if (shouldUseHmi) {
+            HoldMyItems.activate();
+            hmiBackendActive = true;
+        } else {
+            HoldMyItems.deactivate();
+            hmiBackendActive = false;
+        }
+    }
+
+    public void syncHmiBackendForRender() {
+        syncBackend();
+    }
+
+    public void onHmiResourceReload() {
+        if (!isHmiModeActive()) return;
+        syncBackend();
+        HoldMyItems.invalidateScripts();
+    }
+
+    public boolean beginHmiReplayPass() {
+        if (!isHmiModeActive()) return false;
+        syncBackend();
+        return HoldMyItems.beginReplayPass();
+    }
+
+    public void endHmiReplayPass() {
+        HoldMyItems.endReplayPass();
+    }
+
+    public void shutdownHmiBackend() {
+        if (!hmiBackendActive) return;
+        hmiBackendActive = false;
+        HoldMyItems.deactivate();
+    }
+
+    @Override
+    public void onEnable() {
+        syncBackend();
+    }
+
+    @Override
+    public void onDisable() {
+        shutdownHmiBackend();
+    }
+
+    @Override
+    public void onTick() {
+        syncBackend();
+    }
+
+    @Override
+    public void onFrame(float tickDelta) {
+        syncBackend();
+    }
 
     public boolean smoothRunLoweringEnabled() {
-        return isEnabled() && smoothRunLowering.get();
+        return isBasicModeActive() && smoothRunLowering.get();
     }
 
     public float getSmoothRunLoweringAmount() {
@@ -112,6 +200,7 @@ public class ViewModel extends Module {
      * -------------------------------------------- */
 
     public boolean shouldScale(ItemStack st) {
+        if (!isEnabled()) return false;
         if (miniAll.get()) return true;
         if (st == null || st.isEmpty()) return false;
         String id = BuiltInRegistries.ITEM.getKey(st.getItem()).toString();
@@ -119,6 +208,7 @@ public class ViewModel extends Module {
     }
 
     public boolean shouldSwing(ItemStack st) {
+        if (!isBasicModeActive()) return false;
         if (!swingEnabled.get()) return false;
         if (swingAll.get()) return true;
         if (st == null || st.isEmpty()) return false;
@@ -127,6 +217,7 @@ public class ViewModel extends Module {
     }
 
     public boolean shouldBypassRotationTransform(ItemStack st) {
+        if (!isBasicModeActive()) return false;
         if (st == null || st.isEmpty()) return false;
         String id = BuiltInRegistries.ITEM.getKey(st.getItem()).toString();
         return rotationBypassItems.get().contains(id);

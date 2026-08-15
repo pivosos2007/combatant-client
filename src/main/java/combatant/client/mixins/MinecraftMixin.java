@@ -37,11 +37,11 @@ import combatant.client.events.impl.CrosshairTargetUpdateEvent;
 import combatant.client.features.gui.chat.BetterChatStoreManager;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.combat.*;
 import combatant.client.features.module.modules.movement.Timer;
 import combatant.client.features.module.modules.player.NoDelay;
 import combatant.client.features.module.modules.player.NoInteract;
 import combatant.client.features.module.modules.visuals.Freecam;
+import combatant.client.features.module.modules.visuals.ViewModel;
 import combatant.client.features.relations.StaffTracker;
 import combatant.client.render.helpers.TickDelta;
 import combatant.client.util.combat.AntiBotTracker;
@@ -420,4 +420,15 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
             cir.setReturnValue(false);
         }
     }
+    @Inject(method = "reloadResourcePacks()Ljava/util/concurrent/CompletableFuture;", at = @At("RETURN"))
+    private void combatant$viewModel$resourceReload(CallbackInfoReturnable<java.util.concurrent.CompletableFuture<Void>> cir) {
+        java.util.concurrent.CompletableFuture<Void> future = cir.getReturnValue();
+        if (future == null) return;
+
+        future.thenRun(() -> Minecraft.getInstance().execute(() -> {
+            ViewModel viewModel = Modules.get(ViewModel.class);
+            if (viewModel != null) viewModel.onHmiResourceReload();
+        }));
+    }
+
 }

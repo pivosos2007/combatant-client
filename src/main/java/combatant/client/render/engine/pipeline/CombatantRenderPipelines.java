@@ -113,6 +113,8 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_SLEEP_OVERLAY_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/sleep_overlay.frag");
     public static final Identifier SHADER_HAND_SMOKE_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_smoke.frag");
     public static final Identifier SHADER_HAND_METALLIC_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_metallic.frag");
+    public static final Identifier SHADER_HAND_GHOSTING_HISTORY_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_ghosting_history.frag");
+    public static final Identifier SHADER_HAND_GHOSTING_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_ghosting.frag");
     public static final Identifier SHADER_UI_BLUR_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_blur.frag");
     public static final Identifier SHADER_HAND_GLASS_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_glass.frag");
     public static final Identifier SHADER_SKY_SUN_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/sky_sun.frag");
@@ -1111,6 +1113,32 @@ public enum CombatantRenderPipelines {
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build()
+    );
+    public static final RenderPipeline HAND_GHOSTING_HISTORY = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/hand_ghosting_history"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_HAND_GHOSTING_HISTORY_FRAG)
+            .withSampler("u_History")
+            .withSampler("u_Mask")
+            .withUniform("HandGhosting", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .build()
+    );
+    public static final RenderPipeline HAND_GHOSTING = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/hand_ghosting"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_HAND_GHOSTING_FRAG)
+            .withSampler("u_Src")
+            .withSampler("u_History")
+            .withUniform("HandGhosting", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
             .withCull(false)
             .build()
     );

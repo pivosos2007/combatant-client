@@ -34,6 +34,12 @@ public enum HudPhase {
     AFTER_MISC_OVERLAYS,
 
     /**
+     * Immediately before the vanilla/custom hotbar. Use for overlays that must sit
+     * above AFTER_MISC_OVERLAYS content while remaining below the hotbar itself.
+     */
+    BEFORE_HOTBAR,
+
+    /**
      * Legacy name. In 26.2 this phase is anchored after vanilla SLEEP, so widgets here
      * are above sleep fade and earlier misc overlays but still below demo/debug/chat/title.
      */

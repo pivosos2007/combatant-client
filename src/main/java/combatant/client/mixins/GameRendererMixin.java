@@ -414,6 +414,13 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                     ModuleManager.renderWorldEngine(WorldPhase.END_MAIN, combatant$renderer, combatant$depthRenderer, tickDelta);
                     AddonRenderPipelineManager.render3D(CombatantRenderStage.WORLD_END_MAIN,
                             WorldPhase.END_MAIN, combatant$renderer, combatant$depthRenderer, combatant$matrices, tickDelta);
+
+                    // Keep world billboards in the same END_MAIN world stage, but record them
+                    // after ordinary translucent effects/particles. Billboard primitives use
+                    // DepthMode.NONE, so the final ordering is deterministic without moving
+                    // them into a HUD/post-process layer.
+                    ModuleManager.renderWorldEngine(WorldPhase.END_MAIN_BILLBOARD,
+                            combatant$renderer, combatant$depthRenderer, tickDelta);
                 }
 
                 try (ProfilerPhase.Scope phase = ProfilerPhase.scope("3d:flush_end_main");

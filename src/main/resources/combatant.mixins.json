@@ -18,6 +18,7 @@
     "PlayerEntityMixin",
     "PlayerInventoryMixin",
     "ProjectileUtilMixin",
+    "ReloadableResourceManagerMixin",
     "SlimeBlockMixin",
     "accessors.ClientboundExplodePacketAccessor",
     "accessors.ClientboundSetEntityMotionPacketAccessor",
@@ -30,7 +31,9 @@
     "accessors.ServerboundInteractPacketAccessor",
     "accessors.ServerboundMovePlayerPacketAccessor",
     "accessors.SlotAccessor",
-    "accessors.WorldAccessor"
+    "accessors.WorldAccessor",
+    "sodium.SodiumBlockVisibilityMixin",
+    "sodium.SodiumChunkMeshFormatsMixin"
   ],
   "client": [
     "AbstractClientPlayerMixin",
@@ -103,7 +106,6 @@
     "PlayerTabOverlayMixin",
     "PowderSnowFogModifierMixin",
     "RecipeBookScreenMixin",
-    "ReloadableResourceManagerMixin",
     "RenderPassMixin",
     "RenderPipelineMixin",
     "ScreenEffectRendererMixin",
@@ -155,6 +157,7 @@
     "accessors.SuggestionWindowAccessor",
     "accessors.TextFieldWidgetAccessor",
     "accessors.TextIconButtonWidgetAccessor",
+    "hmi_recode.HmiItemLayerRenderStateMixin",
     "iris.IrisCommonUniformsMixin",
     "iris.IrisGameRendererInteropMixin",
     "iris.IrisHandRendererAccessor",

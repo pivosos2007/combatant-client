@@ -168,7 +168,7 @@ public class Tracers extends Module {
 
     @Override
     public HudPhase getHudPhase() {
-        return HudPhase.BEFORE_MISC_OVERLAYS;
+        return HudPhase.BEFORE_HOTBAR;
     }
 
     @Override

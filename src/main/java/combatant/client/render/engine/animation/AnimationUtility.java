@@ -62,9 +62,41 @@ public enum AnimationUtility {
         return t * t * (3f - 2f * t);
     }
 
-    public static float easeOutCubic(float value) {
+    public static float cubicEase(float value) {
+        return smoothstep(value);
+    }
+
+    public static float easeInSine(float value) {
         float t = clamp01(value);
-        return 1f - (float) Math.pow(1f - t, 3f);
+        return 1f - (float) Math.cos(t * Math.PI * 0.5);
+    }
+
+    public static float easeOutSine(float value) {
+        float t = clamp01(value);
+        return (float) Math.sin(t * Math.PI * 0.5);
+    }
+
+    public static float easeInOutSine(float value) {
+        float t = clamp01(value);
+        return -((float) Math.cos(Math.PI * t) - 1f) * 0.5f;
+    }
+
+    public static float easeInQuad(float value) {
+        float t = clamp01(value);
+        return t * t;
+    }
+
+    public static float easeOutQuad(float value) {
+        float t = clamp01(value);
+        float p = 1f - t;
+        return 1f - p * p;
+    }
+
+    public static float easeInOutQuad(float value) {
+        float t = clamp01(value);
+        if (t < 0.5f) return 2f * t * t;
+        float p = -2f * t + 2f;
+        return 1f - p * p * 0.5f;
     }
 
     public static float easeInCubic(float value) {
@@ -72,11 +104,116 @@ public enum AnimationUtility {
         return t * t * t;
     }
 
+    public static float easeOutCubic(float value) {
+        float t = clamp01(value);
+        float p = 1f - t;
+        return 1f - p * p * p;
+    }
+
     public static float easeInOutCubic(float value) {
         float t = clamp01(value);
+        if (t < 0.5f) return 4f * t * t * t;
+        float p = -2f * t + 2f;
+        return 1f - p * p * p * 0.5f;
+    }
+
+    public static float easeInQuart(float value) {
+        float t = clamp01(value);
+        float t2 = t * t;
+        return t2 * t2;
+    }
+
+    public static float easeOutQuart(float value) {
+        float t = clamp01(value);
+        float p = 1f - t;
+        float p2 = p * p;
+        return 1f - p2 * p2;
+    }
+
+    public static float easeInOutQuart(float value) {
+        float t = clamp01(value);
+        if (t < 0.5f) {
+            float t2 = t * t;
+            return 8f * t2 * t2;
+        }
+        float p = -2f * t + 2f;
+        float p2 = p * p;
+        return 1f - p2 * p2 * 0.5f;
+    }
+
+    public static float easeInQuint(float value) {
+        float t = clamp01(value);
+        float t2 = t * t;
+        return t2 * t2 * t;
+    }
+
+    public static float easeOutQuint(float value) {
+        float t = clamp01(value);
+        float p = 1f - t;
+        float p2 = p * p;
+        return 1f - p2 * p2 * p;
+    }
+
+    public static float easeInOutQuint(float value) {
+        float t = clamp01(value);
+        if (t < 0.5f) {
+            float t2 = t * t;
+            return 16f * t2 * t2 * t;
+        }
+        float p = -2f * t + 2f;
+        float p2 = p * p;
+        return 1f - p2 * p2 * p * 0.5f;
+    }
+
+    public static float easeInExpo(float value) {
+        float t = clamp01(value);
+        return t == 0f ? 0f : (float) Math.pow(2.0, 10.0 * t - 10.0);
+    }
+
+    public static float easeOutExpo(float value) {
+        float t = clamp01(value);
+        return t == 1f ? 1f : 1f - (float) Math.pow(2.0, -10.0 * t);
+    }
+
+    public static float easeInOutExpo(float value) {
+        float t = clamp01(value);
+        if (t == 0f) return 0f;
+        if (t == 1f) return 1f;
         return t < 0.5f
-                ? 4f * t * t * t
-                : 1f - (float) Math.pow(-2f * t + 2f, 3f) * 0.5f;
+                ? (float) Math.pow(2.0, 20.0 * t - 10.0) * 0.5f
+                : (2f - (float) Math.pow(2.0, -20.0 * t + 10.0)) * 0.5f;
+    }
+
+    public static float easeInCirc(float value) {
+        float t = clamp01(value);
+        return 1f - (float) Math.sqrt(Math.max(0f, 1f - t * t));
+    }
+
+    public static float easeOutCirc(float value) {
+        float t = clamp01(value);
+        float p = t - 1f;
+        return (float) Math.sqrt(Math.max(0f, 1f - p * p));
+    }
+
+    public static float easeInOutCirc(float value) {
+        float t = clamp01(value);
+        if (t < 0.5f) {
+            float p = 2f * t;
+            return (1f - (float) Math.sqrt(Math.max(0f, 1f - p * p))) * 0.5f;
+        }
+        float p = -2f * t + 2f;
+        return ((float) Math.sqrt(Math.max(0f, 1f - p * p)) + 1f) * 0.5f;
+    }
+
+    public static float easeInBack(float value) {
+        return easeInBack(value, 1.70158f);
+    }
+
+    public static float easeInBack(float value, float overshoot) {
+        float t = clamp01(value);
+        float c1 = Math.max(0f, overshoot);
+        float c3 = c1 + 1f;
+        return c3 * t * t * t - c1 * t * t;
     }
 
     public static float easeOutBack(float value) {
@@ -91,15 +228,52 @@ public enum AnimationUtility {
         return 1f + c3 * p * p * p + c1 * p * p;
     }
 
-    public static float easeInBack(float value) {
-        return easeInBack(value, 1.70158f);
+    public static float easeInOutBack(float value) {
+        return easeInOutBack(value, 1.70158f);
     }
 
-    public static float easeInBack(float value, float overshoot) {
+    public static float easeInOutBack(float value, float overshoot) {
         float t = clamp01(value);
-        float c1 = Math.max(0f, overshoot);
-        float c3 = c1 + 1f;
-        return c3 * t * t * t - c1 * t * t;
+        float c2 = Math.max(0f, overshoot) * 1.525f;
+        if (t < 0.5f) {
+            float p = 2f * t;
+            return p * p * ((c2 + 1f) * p - c2) * 0.5f;
+        }
+        float p = 2f * t - 2f;
+        return (p * p * ((c2 + 1f) * p + c2) + 2f) * 0.5f;
+    }
+
+    public static float easeOutBounce(float value) {
+        float t = clamp01(value);
+        final float n1 = 7.5625f;
+        final float d1 = 2.75f;
+
+        if (t < 1f / d1) {
+            return n1 * t * t;
+        }
+        if (t < 2f / d1) {
+            float p = t - 1.5f / d1;
+            return n1 * p * p + 0.75f;
+        }
+        if (t < 2.5f / d1) {
+            float p = t - 2.25f / d1;
+            return n1 * p * p + 0.9375f;
+        }
+
+        float p = t - 2.625f / d1;
+        return n1 * p * p + 0.984375f;
+    }
+
+    public static float easeInBounce(float value) {
+        float t = clamp01(value);
+        return 1f - easeOutBounce(1f - t);
+    }
+
+    public static float easeInOutBounce(float value) {
+        float t = clamp01(value);
+        return t < 0.5f
+                ? (1f - easeOutBounce(1f - 2f * t)) * 0.5f
+                : (1f + easeOutBounce(2f * t - 1f)) * 0.5f;
     }
 
     public static boolean blink(long intervalMs) {

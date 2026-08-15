@@ -902,6 +902,9 @@
   "setting.trails.color_mode.option.DoubleColor": "Double Color",
   "setting.trails.color_mode.option.Analogous": "Analogous",
   "setting.trails.color_mode.option.Theme": "Theme",
+  "setting.viewmodel.mode": "Mode",
+  "setting.viewmodel.mode.option.Basic": "Basic",
+  "setting.viewmodel.mode.option.HMI": "Hold My Items (HMI)",
   "setting.viewmodel.mini_all_items": "Mini: all items",
   "setting.viewmodel.mini_items": "Mini: allowed items",
   "setting.viewmodel.mini_scale": "Mini scale",
@@ -3242,5 +3245,13 @@
   "command.toggle.description": "Enables, disables, or toggles a module.",
   "command.tps.description": "Shows estimated server ticks per second.",
   "command.username.description": "Shows the current Minecraft username and UUID.",
-  "command.xaero.description": "Adds, lists, or removes Xaero waypoints."
+  "command.xaero.description": "Adds, lists, or removes Xaero waypoints.",
+  "setting.viewmodel.mode": "Mode",
+  "setting.viewmodel.mode.option.Basic": "Basic",
+  "setting.viewmodel.mode.option.HMI": "Hold My Items (HMI)",
+  "setting.chams.mode.option.Glass": "Glass",
+  "setting.chams.ghosting": "Ghosting",
+  "setting.chams.ghosting_strength": "Ghost strength",
+  "setting.chams.ghosting_duration": "Trail duration",
+  "setting.chams.ghosting_blur": "Trail blur"
 }

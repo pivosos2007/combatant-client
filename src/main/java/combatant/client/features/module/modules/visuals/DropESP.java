@@ -119,7 +119,7 @@ public class DropESP extends Module {
 
     @Override
     public WorldPhase getWorldPhase() {
-        return WorldPhase.END_MAIN;
+        return WorldPhase.END_MAIN_BILLBOARD;
     }
 
     @Override
@@ -129,6 +129,7 @@ public class DropESP extends Module {
 
         TextRenderer labelRenderer = ScreenSpaceOverlay2D.labelRenderer(TextRenderer.get());
         Vec3 cameraPos = presentationCameraPosition(tickDelta);
+        boolean framesEnabled = frameValue.get();
         java.util.List<DropWorldEntry> entries = new java.util.ArrayList<>();
         java.util.List<ItemBatchRenderer.WorldItemRow> itemRows = new java.util.ArrayList<>();
 
@@ -148,26 +149,31 @@ public class DropESP extends Module {
             String text = stack.getHoverName().getString() + " x" + stack.getCount();
             Vec3 anchor = new Vec3(pos.x, pos.y + Math.max(0.35, item.getBbHeight() + 0.18), pos.z);
 
-            AABB frameBox = item.getBoundingBox().move(
-                    pos.x - item.getX(),
-                    pos.y - item.getY(),
-                    pos.z - item.getZ()
-            );
-            frameBox = new AABB(
-                    frameBox.minX - ITEM_BOX_EXPAND_XZ,
-                    frameBox.minY,
-                    frameBox.minZ - ITEM_BOX_EXPAND_XZ,
-                    frameBox.maxX + ITEM_BOX_EXPAND_XZ,
-                    frameBox.maxY + ITEM_BOX_EXPAND_TOP,
-                    frameBox.maxZ + ITEM_BOX_EXPAND_XZ
-            );
-            Vec3 frameAnchor = new Vec3(
-                    (frameBox.minX + frameBox.maxX) * 0.5,
-                    (frameBox.minY + frameBox.maxY) * 0.5,
-                    (frameBox.minZ + frameBox.maxZ) * 0.5
-            );
-            double frameWorldWidth = Math.max(frameBox.maxX - frameBox.minX, frameBox.maxZ - frameBox.minZ);
-            double frameWorldHeight = frameBox.maxY - frameBox.minY;
+            Vec3 frameAnchor = null;
+            double frameWorldWidth = 0.0;
+            double frameWorldHeight = 0.0;
+            if (framesEnabled) {
+                AABB frameBox = item.getBoundingBox().move(
+                        pos.x - item.getX(),
+                        pos.y - item.getY(),
+                        pos.z - item.getZ()
+                );
+                frameBox = new AABB(
+                        frameBox.minX - ITEM_BOX_EXPAND_XZ,
+                        frameBox.minY,
+                        frameBox.minZ - ITEM_BOX_EXPAND_XZ,
+                        frameBox.maxX + ITEM_BOX_EXPAND_XZ,
+                        frameBox.maxY + ITEM_BOX_EXPAND_TOP,
+                        frameBox.maxZ + ITEM_BOX_EXPAND_XZ
+                );
+                frameAnchor = new Vec3(
+                        (frameBox.minX + frameBox.maxX) * 0.5,
+                        (frameBox.minY + frameBox.maxY) * 0.5,
+                        (frameBox.minZ + frameBox.maxZ) * 0.5
+                );
+                frameWorldWidth = Math.max(frameBox.maxX - frameBox.minX, frameBox.maxZ - frameBox.minZ);
+                frameWorldHeight = frameBox.maxY - frameBox.minY;
+            }
 
             entries.add(new DropWorldEntry(
                     resolveSortPriority(stack), distSq, anchor, frameAnchor, frameWorldWidth, frameWorldHeight,
@@ -400,7 +406,7 @@ public class DropESP extends Module {
         double x = -width * 0.5;
         double y = -height;
 
-        if (frameValue.get() && entry.frameWorldWidth() > 0.0 && entry.frameWorldHeight() > 0.0) {
+        if (entry.frameAnchor() != null && entry.frameWorldWidth() > 0.0 && entry.frameWorldHeight() > 0.0) {
             double frameWidth = entry.frameWorldWidth() / entry.worldScale();
             double frameHeight = entry.frameWorldHeight() / entry.worldScale();
             WorldBillboardRenderer.rectangularFrame(

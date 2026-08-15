@@ -232,6 +232,18 @@ public final class MainConfig implements ConfigAggregate, ConfigNameProvider, Se
         return runtime.isNarratorDisabled();
     }
 
+    public boolean isNativeGuardEnabled(String platformId) {
+        return runtime.isNativeGuardEnabled(platformId);
+    }
+
+    public boolean isNativeGuardWindowsX8664Enabled() {
+        return runtime.isNativeGuardWindowsX8664Enabled();
+    }
+
+    public void setNativeGuardWindowsX8664Enabled(boolean enabled) {
+        runtime.setNativeGuardWindowsX8664Enabled(enabled);
+    }
+
     public boolean isBackdoorProtectionEnabled() {
         return security.isBackdoorProtectionEnabled();
     }

@@ -1,46 +1,52 @@
 # Credits and provenance
 
-Combatant Client is an independently maintained project by **pivosos2007**. It is not affiliated with, endorsed by, or an official continuation of any project listed below.
+Combatant Client is an independently maintained project by **pivosos2007**. It is not affiliated with, endorsed by, or an official continuation of any project named below.
 
-Unless a file-level notice states otherwise, source files are part of Combatant Client, copyright (c) 2026 pivosos2007, and licensed under GNU GPL-3.0-only. Derived/adapted files identify both Combatant authorship and upstream lineage in their headers.
+This document records both code lineage and major architectural references. File-level notices are present in the identified derived/adapted files. Detailed license information is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## LiquidBounce / CCBlueX
 
-LiquidBounce is an upstream source or substantial implementation reference for parts of Combatant's rotation system, Scaffold, AutoDodge, movement/player simulation, projectile calculations, and selected combat/network/protocol behavior.
+LiquidBounce was the principal upstream source or implementation reference for parts of:
 
-Combatant's implementations were ported to another Minecraft version and mapping set, integrated into a separate module/config/event architecture, and frequently redesigned or extended.
+- the rotation request/processing, smoothing, ray-tracing, point-selection, and movement-correction subsystem;
+- Scaffold and its placement, target-selection, movement-planning, prediction, and block-selection helpers;
+- AutoDodge and related movement-input/player-simulation helpers;
+- projectile trajectory and angle calculation;
+- selected combat/network behavior, including Blink, FakeLag, Backtrack, Velocity, click scheduling, attack helpers, timers, and protocol/ViaFabricPlus compatibility.
+
+The Combatant versions have been ported to a different Minecraft version and mapping set, integrated with Combatant's module/config/event architecture, and in many places substantially redesigned or extended.
 
 Upstream: https://github.com/CCBlueX/LiquidBounce
 
 ## Meteor Client / Meteor Development
 
-Meteor Client served as the initial implementation reference for parts of Combatant's first rendering foundation, including identified text/font, mesh, texture, pipeline, vertex-format, full-screen rendering, and base shader files. A small number of movement/event/accessor files also retain Meteor lineage.
+Meteor Client served as the initial implementation reference for the first generation of Combatant's rendering foundation. Identified lineage is concentrated in:
 
-Combatant's current UI batching, renderer organization, post-processing, effects, scripting integration, frame lifecycle, and higher-level rendering systems were subsequently developed within Combatant and differ substantially from Meteor's architecture.
+- the early text/font abstraction;
+- mesh, texture, vertex-format, render-pipeline, and full-screen rendering helpers;
+- the basic position/color, position/texture/color, and text shaders;
+- selected movement code (`Flight`, `AirJump`, movement events and packet accessors).
+
+Combatant's current renderer, UI batching, post-processing, frame graph, effects, Vulkan work, and most higher-level rendering systems were subsequently developed independently and differ substantially from Meteor's architecture.
 
 Upstream: https://github.com/MeteorDevelopment/meteor-client
 
-## ThunderHack Recode
-
-ThunderHack Recode is an upstream source or implementation reference for selected Combatant modules, utility code, and UI/HUD behavior. Combatant's affected code has been ported to a different Minecraft version and integrated into Combatant's own module, config, event, and rendering systems.
-
-Upstream: https://github.com/Pan4ur/ThunderHack-Recode
-
 ## Other acknowledged upstream work
 
-- **MediaPlayerInfo** by Redstonecrafter0: modified Java/native integration under AGPL-3.0-only.
-- **In-Game Account Switcher**: portions of the Microsoft authentication flow under LGPL-3.0-or-later.
-- **InvMove** by PieKing1215: portions of inventory movement and screen classification under LGPL-3.0.
-- **ExploitPreventer** by Niklas S.: selected protection logic originating under the MIT License.
-- **Inter** by Rasmus Andersson: bundled UI font under the SIL Open Font License 1.1.
-- **Comfortaa** by Johan Aakerlund: bundled UI font under the SIL Open Font License 1.1.
-- **Iosevka** by Renzhi Li / Belleve Invis: bundled monospace font under the SIL Open Font License 1.1.
-- **Montserrat** by the Montserrat Project Authors: bundled UI font under the SIL Open Font License 1.1.
-- **Onest** by the Onest Project Authors: bundled UI font under the SIL Open Font License 1.1.
-- **ProFont**: bundled monospace font under the MIT License.
-- **Lucide**: the bundled SVG interface icon set under the Lucide ISC license, including the Feather MIT notice where applicable.
-- **Sodium / Iris**: implementation concepts explicitly credited in local source comments where applicable.
+- **MediaPlayerInfo** by Redstonecrafter0: modified Java/native port under AGPL-3.0-only in `java/combatant/client/util/media/**`.
+- **In-Game Account Switcher**: Microsoft authentication backend flow under LGPL-3.0-or-later.
+- **InvMove** by PieKing1215: inventory movement behavior/screen classification under LGPL-3.0.
+- **ExploitPreventer** by Niklas S.: selected security filters and mixins under the MIT License.
+- **Sodium / Iris**: explicitly noted implementation concepts in the terrain vertex path where applicable.
+- **Hold My Items** by sapling: first-person hand/item pose system and resource-pack animation API adapted for Minecraft 26.2. Port source: the supplied HMI 5.1.1 (Minecraft 1.21.11) jar; project page: https://modrinth.com/mod/hold-my-items. Combatant ports its Lua behavior to the existing Javet/JavaScript runtime in `java/combatant/client/features/hmi/**`, `java/combatant/client/mixins/hmi/**`, and `resources/assets/minecraft/holdmyitems/**`. The supplied jar declares/bundles CC0-1.0; that bundled license text is retained verbatim.
 
-## Ownership summary
+## Authorship assessment for this snapshot
 
-Most of Combatant's codebase is independently authored. The identified upstream lineage is concentrated in specific subsystems and files, not in the project as a whole. File-level headers are the authoritative indication for individual code files; this document supplies the broader context.
+A conservative static inventory of this source snapshot found:
+
+- approximately **177,197** non-blank/non-comment Java lines in total;
+- **18,566** lines across **110** Java files with identified Meteor or LiquidBounce lineage (**10.48%** of the Java code-line inventory);
+- **21,293** lines across **134** Java files when all currently identified source-derived third-party components are included (**12.02%**);
+- therefore, about **87.98%** of Java code lines lie outside files currently identified as source-derived from third parties.
+
+This is deliberately **not** presented as a copyright-ownership percentage. It counts entire files even when only part came from an upstream project or the file was heavily rewritten; it excludes conceptual influence that cannot be measured as source lineage; and it does not classify generated resources or binary dependencies. The defensible conclusion is that the large majority of the project is independently authored, while the named subsystems contain material upstream lineage and must retain their notices.

@@ -10,12 +10,15 @@ package combatant.client.mixins;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.llamalad7.mixinextras.sugar.Local;
+import com.mojang.blaze3d.vertex.PoseStack;
+import combatant.client.features.hmi_recode.render.HmiModelQuadList;
 import net.minecraft.client.renderer.feature.ItemFeatureRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 
 @Mixin(ItemFeatureRenderer.class)
 public abstract class ItemFeatureRendererMixin {
@@ -63,4 +66,52 @@ public abstract class ItemFeatureRendererMixin {
         // corrupt the following world translucent composite, so item layers keep their own type.
         return original;
     }
+    @ModifyExpressionValue(
+            method = "prepareMainSubmit",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/feature/ItemFeatureRenderer$Submit;pose()Lcom/mojang/blaze3d/vertex/PoseStack$Pose;")
+    )
+    private PoseStack.Pose combatant$applyHmiModelPoseMain(PoseStack.Pose original,
+                                                            @Local(argsOnly = true) ItemFeatureRenderer.Submit submit,
+                                                            @Local BakedQuad quad) {
+        return HmiModelQuadList.transform(submit.quads(), original, quad);
+    }
+
+    @ModifyExpressionValue(
+            method = "prepareOutlineSubmit",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/feature/ItemFeatureRenderer$Submit;pose()Lcom/mojang/blaze3d/vertex/PoseStack$Pose;")
+    )
+    private PoseStack.Pose combatant$applyHmiModelPoseOutline(PoseStack.Pose original,
+                                                               @Local(argsOnly = true) ItemFeatureRenderer.Submit submit,
+                                                               @Local BakedQuad quad) {
+        return HmiModelQuadList.transform(submit.quads(), original, quad);
+    }
+
+    @ModifyExpressionValue(
+            method = "prepareFoilSubmit",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/feature/ItemFeatureRenderer$Submit;pose()Lcom/mojang/blaze3d/vertex/PoseStack$Pose;",
+                    ordinal = 1
+            )
+    )
+    private PoseStack.Pose combatant$applyHmiModelPoseFoil(PoseStack.Pose original,
+                                                            @Local(argsOnly = true) ItemFeatureRenderer.Submit submit,
+                                                            @Local BakedQuad quad) {
+        return HmiModelQuadList.transform(submit.quads(), original, quad);
+    }
+
+    @ModifyArg(
+            method = "prepareFoilSubmit",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/feature/ItemFeatureRenderer;getFoilBuffer(Lnet/minecraft/client/renderer/rendertype/RenderType;Lcom/mojang/blaze3d/vertex/PoseStack$Pose;)Lcom/mojang/blaze3d/vertex/VertexConsumer;"
+            ),
+            index = 1
+    )
+    private PoseStack.Pose combatant$applyHmiModelPoseFoilDecal(PoseStack.Pose original,
+                                                                 @Local(argsOnly = true) ItemFeatureRenderer.Submit submit,
+                                                                 @Local BakedQuad quad) {
+        return HmiModelQuadList.transform(submit.quads(), original, quad);
+    }
+
 }

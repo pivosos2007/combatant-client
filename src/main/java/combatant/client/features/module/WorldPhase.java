@@ -14,5 +14,6 @@ public enum WorldPhase {
     AFTER_ENTITIES,      // WorldRenderEvents.AFTER_ENTITIES
     BEFORE_TRANSLUCENT,  // WorldRenderEvents.BEFORE_TRANSLUCENT
     END_MAIN,            // WorldRenderEvents.END_MAIN (аналог старого LAST)
+    END_MAIN_BILLBOARD,  // Same END_MAIN world stage, submitted after regular effects/particles
     AFTER_POST_PROCESS   // After PRE_HAND postprocess, before hand render
 }

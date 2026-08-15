@@ -1,130 +1,72 @@
 # Third-party notices
 
-This document covers source-derived, source-adapted, and bundled third-party material identified in this source snapshot. External build dependencies remain listed in `build.gradle` and retain their own licenses.
-
-## File-level notice policy
-
-- Java, JavaScript, TypeScript, GLSL, and Gradle source files carry a Combatant ownership and SPDX license header.
-- Files with identified upstream lineage additionally carry the upstream copyright, project, and applicable SPDX license information.
-- JSON manifests/data files do not accept comments and are covered by repository-level notices instead.
-- SVG assets are intentionally left unmodified. Their attribution is recorded below rather than injected into each asset.
-- Font binaries and generated font atlases are covered by repository-level notices rather than injected per binary file.
-- Binary/native files retain the notices and licenses of their originating component.
+This file covers source-derived or source-adapted components identified in this snapshot. Dependency metadata in `build.gradle` remains the authoritative inventory for external libraries resolved at build time.
 
 ## Combatant original code
 
-Unless a file-level notice states otherwise:
-
-- Copyright: 2026 pivosos2007
-- License: GNU GPL version 3 only
-- License text: `LICENSE` or `THIRD_PARTY_LICENSES/GPL-3.0-only.txt`
+Unless a file-level notice or an entry below states otherwise, Combatant source code is copyright (c) 2026 pivosos2007 and distributed under GNU GPL version 3. See `LICENSE`.
 
 ## LiquidBounce
 
 - Upstream: https://github.com/CCBlueX/LiquidBounce
 - Copyright: 2015-2025 CCBlueX
-- License applied in this project: GNU GPL version 3 only
-- License text: `THIRD_PARTY_LICENSES/GPL-3.0-only.txt`
-- Scope: identified rotation/aiming, Scaffold, AutoDodge, simulation/input, projectile, combat/network/timer/protocol files. Exact files carry a LiquidBounce attribution header.
+- Upstream license: GNU GPL v3 or later
+- License text: `LICENSES/GPL-3.0-only.txt` (the GPLv3 license text; upstream's “or later” option is stated in its source notices)
+- Scope: rotation/aiming utilities; Scaffold and placement helpers; AutoDodge and selected simulation/input helpers; projectile calculations; selected Blink/FakeLag/Backtrack/Velocity/combat/timer/protocol code. Exact files carry a `Combatant attribution: LiquidBounce-derived/adapted code` header.
 
 ## Meteor Client
 
 - Upstream: https://github.com/MeteorDevelopment/meteor-client
 - Copyright: Meteor Development
 - License: GNU GPL version 3
-- License text: `THIRD_PARTY_LICENSES/GPL-3.0-only.txt`
-- Scope: identified portions of the early font/text, mesh, texture, vertex-format, render-pipeline and base shader foundation, plus selected movement/event/accessor files. Exact files carry a Meteor Client attribution header.
-
-## ThunderHack Recode
-
-- Upstream: https://github.com/Pan4ur/ThunderHack-Recode
-- Copyright: 2023-2024 Pan4ur & 06ED
-- License: GNU GPL version 3
-- License text: `THIRD_PARTY_LICENSES/GPL-3.0-only.txt`
-- Scope: selected Combatant module, utility, mixin, and UI/rendering code. Exact files with direct ThunderHack Recode lineage carry a file-level attribution header.
+- License text: `LICENSES/GPL-3.0-only.txt`
+- Scope: identified portions of the early font/text, mesh, texture, vertex-format, render-pipeline and shader foundation, plus selected movement/event/packet-accessor code. Exact files carry a `Combatant attribution: Meteor Client-derived/adapted code` header.
 
 ## MediaPlayerInfo
 
 - Upstream: https://github.com/Redstonecrafter0/MediaPlayerInfo
 - Copyright: Redstonecrafter0 and contributors
 - License: GNU Affero General Public License version 3 only
-- License text: `THIRD_PARTY_LICENSES/AGPL-3.0-only.txt`
-- Scope: `java/combatant/client/util/media/**` and its bundled native integration.
+- License text: `LICENSES/AGPL-3.0-only.txt`
+- Scope: `java/combatant/client/util/media/**`.
+
+The AGPLv3 component and GPLv3 code may be combined under AGPLv3 section 13. The AGPL terms continue to apply to the MediaPlayerInfo-derived component, while the combined GPLv3 work remains governed by GPLv3 for its GPL-covered portions. Do not remove the AGPL file headers or the AGPL license copy when distributing the source or a corresponding binary.
 
 ## In-Game Account Switcher
 
 - Upstream: https://github.com/The-Fireplace-Minecraft-Mods/In-Game-Account-Switcher
 - Copyright: 2015-2022 The_Fireplace; 2021-2026 VidTu
 - License: GNU LGPL version 3 or later
-- License text: `THIRD_PARTY_LICENSES/LGPL-3.0.txt`
-- Scope: the identified Microsoft device-code/authentication files.
+- License text: `LICENSES/LGPL-3.0.txt`
+- Scope: Microsoft device-code/authentication flow in `MicrosoftDeviceCode.java` and `MicrosoftAuthService.java`.
 
 ## InvMove
 
 - Upstream: https://github.com/PieKing1215/InvMove
 - Copyright: PieKing1215 and contributors
 - License: GNU LGPL version 3
-- License text: `THIRD_PARTY_LICENSES/LGPL-3.0.txt`
-- Scope: the identified inventory movement and screen classification files.
+- License text: `LICENSES/LGPL-3.0.txt`
+- Scope: inventory movement behavior and screen classification in `InventoryMove.java` and `ScreenCatalog.java`.
 
 ## ExploitPreventer
 
-- Original author: Niklas S.
-- Original copyright: 2025 Niklas S.
-- Original license: MIT License
-- License text: `THIRD_PARTY_LICENSES/MIT.txt`
-- Scope: identified protection logic under `features/security` and `mixins/security`.
+- Upstream author: Niklas S.
+- Original work copyright: 2025 Niklas S.
+- License: MIT License
+- License text: `LICENSES/MIT.txt`
+- Scope: the files carrying the `Combatant attribution: ExploitPreventer-derived/adapted code` header under `features/security` and `mixins/security`.
 
-## Lucide and Feather icons
-
-- Upstream: https://github.com/lucide-icons/lucide
-- Copyright: Lucide Icons and Contributors; applicable Feather portions copyright Cole Bemis
-- License: ISC License, with the bundled Feather-derived icon set retaining its MIT notice
-- License text: `THIRD_PARTY_LICENSES/Lucide-ISC-and-Feather-MIT.txt`
-- Scope: all bundled SVG interface icons under `resources/assets/combatant/svg/**`.
-
-The SVG files themselves are not modified solely to inject headers. The repository-level license copy and this notice are retained with distributions.
-
-## Onest
-
-- Upstream: https://github.com/simpals/onest
-- Copyright: The Onest Project Authors
-- License: SIL Open Font License version 1.1
-- License text: `THIRD_PARTY_LICENSES/Onest-OFL-1.1.txt`
-- Scope: bundled Onest UI font files under `resources/assets/combatant/font/onest_*.ttf` and their generated MSDF atlases under `resources/assets/combatant/font/msdf/onest_*`.
-
-## Bundled fonts
-
-- **Inter**
-  - Upstream: https://github.com/rsms/inter
-  - Copyright: Rasmus Andersson and Inter contributors
-  - License: SIL Open Font License version 1.1
-  - License text: `THIRD_PARTY_LICENSES/Onest-OFL-1.1.txt`
-  - Scope: `resources/assets/combatant/font/inter_*.ttf` and generated MSDF atlases.
-- **Comfortaa**
-  - Upstream: https://github.com/googlefonts/comfortaa
-  - Copyright: Johan Aakerlund and Comfortaa contributors
-  - License: SIL Open Font License version 1.1
-  - License text: `THIRD_PARTY_LICENSES/Onest-OFL-1.1.txt`
-  - Scope: `resources/assets/combatant/font/comfortaa.ttf` and generated MSDF atlas.
-- **Iosevka**
-  - Upstream: https://github.com/be5invis/Iosevka
-  - Copyright: Renzhi Li / Belleve Invis and Iosevka contributors
-  - License: SIL Open Font License version 1.1
-  - License text: `THIRD_PARTY_LICENSES/Onest-OFL-1.1.txt`
-  - Scope: `resources/assets/combatant/font/iosevka-*.ttf` and generated MSDF atlases.
-- **Montserrat**
-  - Upstream: https://github.com/JulietaUla/Montserrat
-  - Copyright: The Montserrat Project Authors
-  - License: SIL Open Font License version 1.1
-  - License text: `THIRD_PARTY_LICENSES/Onest-OFL-1.1.txt`
-  - Scope: `resources/assets/combatant/font/monsterrat.ttf` and generated MSDF atlas. The local filename keeps the historical spelling.
-- **ProFont**
-  - Upstream: https://tobiasjung.name/profont/
-  - Copyright: ProFont authors and contributors
-  - License: MIT License
-  - License text: `THIRD_PARTY_LICENSES/MIT.txt`
-  - Scope: `resources/assets/combatant/font/profont.ttf` and generated MSDF atlas.
 ## Sodium and Iris
 
-Local source comments identify Sodium compact terrain vertex packing and Iris shader-extension concepts where applicable. Sodium, Iris, and other separately distributed runtime dependencies retain their own licenses and notices.
+The terrain vertex implementation contains a local source comment crediting Sodium's compact chunk-vertex packing and the Iris shaderpack extension concept. This notice records architectural/reference influence; this audit does not assert additional copied source beyond what the file itself states. Their own licenses and notices apply to their separately distributed projects and runtime dependencies.
+
+## Hold My Items
+
+- Upstream project: Hold My Items
+- Project page: https://modrinth.com/mod/hold-my-items
+- Port source: supplied `HMI 5.1.1 (1.21.11).jar`
+- Upstream author: sapling (as declared by the supplied HMI 5.1.1 mod metadata)
+- License basis for this adapted snapshot: CC0 1.0 Universal, as declared and bundled in the supplied jar
+- License text copied verbatim from that jar: `THIRD_PARTY_LICENSES/HoldMyItems-CC0-1.0.txt`
+- Scope: the HMI compatibility subsystem in `java/combatant/client/features/hmi/**`, its rendering mixins in `java/combatant/client/mixins/hmi/**`, and the JavaScript pose/model scripts in `resources/assets/minecraft/holdmyitems/**`.
+- Porting note: the original Lua/LuaJ script-facing behavior was adapted to Combatant's existing Javet JavaScript stack and the Minecraft 26.2 item rendering pipeline. No LuaJ runtime is bundled by this port.
