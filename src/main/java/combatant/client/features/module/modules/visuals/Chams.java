@@ -391,6 +391,11 @@ public class Chams extends Module {
     }
 
     public boolean renderPreparedHandScene(FeatureRenderDispatcher dispatcher, SubmitNodeStorage storage) {
+        // Iris owns a separate first-person hand path while a shaderpack is active. In that mode
+        // the Chams mask is produced by renderIrisHandMask() with its own FeatureRenderDispatcher.
+        // Never acquire Minecraft's shared PreparedFrame here: Iris may already have that frame in
+        // flight, and re-entering it poisons the dispatcher for later GUI item-atlas rendering.
+        if (IrisRuntime.isShaderpackRendererActive()) return false;
         if (!isEnabled() || mc.player == null || mc.level == null) return false;
         if (dispatcher == null || storage == null) return false;
         if (!hands.get() || !shouldRenderHand()) return false;
