@@ -5,6 +5,117 @@ var activeHand = P.getActiveHand(player)
 var mat = context.matrices
 var pSpeed = P.getSpeed(player)
 
+var motion = context.motion || {}
+function motionValue(name, fallback) {
+    var value = Number(motion[name])
+    return Number.isFinite(value) ? Math.max(0, value) : fallback
+}
+var motionSwing = motionValue("swing", 1)
+var motionSwordSwing = motionValue("swordSwing", 1)
+var motionOffhandSwing = motionValue("offhandSwing", 1)
+var motionMovement = motionValue("movement", 1)
+var motionSwitch = motionValue("switch", 1)
+var motionUse = motionValue("use", 1)
+var motionImpact = motionValue("impact", 1)
+var combatantSwingStyle = String(motion.swingStyle || "HMI")
+var combatantRawSwing = Number(context.rawSwingProgress)
+if (!Number.isFinite(combatantRawSwing)) combatantRawSwing = 0
+combatantRawSwing = M.clamp(combatantRawSwing, 0, 1)
+
+function combatantSwingStrength() {
+    var value = motionSwing * (context.mainHand ? 1 : motionOffhandSwing)
+    if (I.isIn(context.item, Tags.getVanillaTag("swords"))) value *= motionSwordSwing
+    return value
+}
+
+function applyCombatantSwingStyle() {
+    if (combatantSwingStyle == "HMI" || combatantRawSwing <= 0 || I.isEmpty(context.item)) return
+
+    // Keep every replacement style on the same smooth HMI timebase: no constant Java
+    // transforms suddenly appearing at swing start. attack goes 0 -> 1 -> 0 and the
+    // secondary wave gives the recovery a small amount of follow-through.
+    var raw = combatantRawSwing
+    // Run replacements through the same timing curves as upstream HMI instead of the Basic
+    // renderer's direct matrix interpolation. That keeps wind-up/impact/recovery consistent with
+    // the scripted hand motion and makes the shared arm+item pose settle cleanly back to idle.
+    var p = I.isIn(context.item, Tags.getVanillaTag("pickaxes")) ? easeCustom(raw) : easeCustomSec(raw)
+    var attack = M.sin(p * M.PI)
+    var snap = M.sin(Math.sqrt(M.clamp(p, 0, 1)) * M.PI)
+    var follow = M.sin(p * M.PI * 2) * (1 - p)
+    var strength = combatantSwingStrength()
+    var a = attack * strength
+    var s = snap * strength
+    var f = follow * strength
+    var px = 0.3 * l
+    var py = -0.4
+    var pz = 0
+
+    switch (combatantSwingStyle) {
+        case "Swipe Back":
+            M.translate(mat, 0.05 * l * a, 0.08 * a, -0.13 * a)
+            M.rotateY(mat, 58 * l * a, px, py, pz)
+            M.rotateZ(mat, -54 * l * a, px, py, pz)
+            M.rotateX(mat, -72 * a - 9 * f, px, py, pz)
+            break
+        case "Swipe Back Down":
+            M.translate(mat, 0.04 * l * a, -0.26 * a, -0.12 * a)
+            M.rotateY(mat, 50 * l * a, px, py, pz)
+            M.rotateZ(mat, -48 * l * a, px, py, pz)
+            M.rotateX(mat, -36 * a - 8 * f, px, py, pz)
+            break
+        case "Smooth":
+            M.moveZ(mat, -0.14 * a)
+            M.moveY(mat, -0.06 * a)
+            M.rotateX(mat, -66 * a + 10 * f, px, py, pz)
+            M.rotateZ(mat, 8 * l * a, px, py, pz)
+            break
+        case "Smooth Vanilla":
+            M.translate(mat, -0.12 * l * a, -0.17 * a, -0.11 * a)
+            M.rotateY(mat, 18 * l * s, px, py, pz)
+            M.rotateX(mat, -78 * a, px, py, pz)
+            M.rotateZ(mat, -9 * l * a, px, py, pz)
+            break
+        case "Back":
+            M.translate(mat, 0.24 * l * a, 0.07 * a, -0.34 * a)
+            M.rotateY(mat, 72 * l * a, px, py, pz)
+            M.rotateZ(mat, -50 * l * a, px, py, pz)
+            M.rotateX(mat, -104 * a - 8 * f, px, py, pz)
+            break
+        case "Overhead":
+            M.translate(mat, 0, 0.27 * a, -0.17 * a)
+            M.rotateX(mat, -132 * a, px, py, pz)
+            M.rotateZ(mat, 8 * l * f, px, py, pz)
+            break
+        case "Chop":
+            M.translate(mat, 0, -0.20 * a, -0.28 * a)
+            M.rotateX(mat, -102 * a, px, py, pz)
+            M.rotateY(mat, 8 * l * f, px, py, pz)
+            break
+        case "Arc":
+            M.translate(mat, 0.05 * l * a, -0.06 * a, -0.18 * a)
+            M.rotateY(mat, 78 * l * a, px, py, pz)
+            M.rotateX(mat, -76 * a, px, py, pz)
+            M.rotateZ(mat, -18 * l * a, px, py, pz)
+            break
+        case "Stab":
+            M.translate(mat, 0.04 * l * a, -0.02 * a, -0.70 * a)
+            M.rotateX(mat, -64 * a, px, py, pz)
+            M.rotateY(mat, 10 * l * a, px, py, pz)
+            break
+        case "Slash":
+            M.translate(mat, 0.10 * l * a, -0.04 * a, -0.18 * a)
+            M.rotateY(mat, 72 * l * a, px, py, pz)
+            M.rotateZ(mat, -26 * l * a, px, py, pz)
+            M.rotateX(mat, -110 * a - 7 * f, px, py, pz)
+            break
+        case "Thrust":
+            M.translate(mat, 0.03 * l * a, -0.03 * a, -0.78 * a)
+            M.rotateX(mat, -22 * a, px, py, pz)
+            M.rotateY(mat, 8 * l * a, px, py, pz)
+            break
+    }
+}
+
 if (useAction == "spear") {
     context.equipProgress = 0
 }
@@ -139,18 +250,18 @@ var shovelSwing = Object.prototype.hasOwnProperty.call(__hmi_registry, 'shovelSw
 var generalSwing = Object.prototype.hasOwnProperty.call(__hmi_registry, 'generalSwing') ? __hmi_registry['generalSwing'] : (1);
 var axeSwing = Object.prototype.hasOwnProperty.call(__hmi_registry, 'axeSwing') ? __hmi_registry['axeSwing'] : (1);
 var tridentSwing = Object.prototype.hasOwnProperty.call(__hmi_registry, 'tridentSwing') ? __hmi_registry['tridentSwing'] : (1);
-var bowAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'bowAnimation') ? __hmi_registry['bowAnimation'] : (1);
-var crossBowAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'crossBowAnimation') ? __hmi_registry['crossBowAnimation'] : (1);
-var tridentAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'tridentAnimation') ? __hmi_registry['tridentAnimation'] : (1);
-var drinkingAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'drinkingAnimation') ? __hmi_registry['drinkingAnimation'] : (1);
-var mainHandSwitchingAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'mainHandSwitchingAnimation') ? __hmi_registry['mainHandSwitchingAnimation'] : (1);
-var offHandSwitchingAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'offHandSwitchingAnimation') ? __hmi_registry['offHandSwitchingAnimation'] : (1);
-var shieldAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'shieldAnimation') ? __hmi_registry['shieldAnimation'] : (1);
-var brushAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'brushAnimation') ? __hmi_registry['brushAnimation'] : (1);
-var swimAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'swimAnimation') ? __hmi_registry['swimAnimation'] : (1);
-var crawlAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'crawlAnimation') ? __hmi_registry['crawlAnimation'] : (1);
-var climbAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'climbAnimation') ? __hmi_registry['climbAnimation'] : (1);
-var foodAnimation = Object.prototype.hasOwnProperty.call(__hmi_registry, 'foodAnimation') ? __hmi_registry['foodAnimation'] : (1);
+var bowAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'bowAnimation') ? __hmi_registry['bowAnimation'] : (1)) * motionUse;
+var crossBowAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'crossBowAnimation') ? __hmi_registry['crossBowAnimation'] : (1)) * motionUse;
+var tridentAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'tridentAnimation') ? __hmi_registry['tridentAnimation'] : (1)) * motionUse;
+var drinkingAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'drinkingAnimation') ? __hmi_registry['drinkingAnimation'] : (1)) * motionUse;
+var mainHandSwitchingAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'mainHandSwitchingAnimation') ? __hmi_registry['mainHandSwitchingAnimation'] : (1)) * motionSwitch;
+var offHandSwitchingAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'offHandSwitchingAnimation') ? __hmi_registry['offHandSwitchingAnimation'] : (1)) * motionSwitch;
+var shieldAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'shieldAnimation') ? __hmi_registry['shieldAnimation'] : (1)) * motionUse;
+var brushAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'brushAnimation') ? __hmi_registry['brushAnimation'] : (1)) * motionUse;
+var swimAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'swimAnimation') ? __hmi_registry['swimAnimation'] : (1)) * motionMovement;
+var crawlAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'crawlAnimation') ? __hmi_registry['crawlAnimation'] : (1)) * motionMovement;
+var climbAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'climbAnimation') ? __hmi_registry['climbAnimation'] : (1)) * motionMovement;
+var foodAnimation = (Object.prototype.hasOwnProperty.call(__hmi_registry, 'foodAnimation') ? __hmi_registry['foodAnimation'] : (1)) * motionUse;
 
 if (I.isIn(context.item, Tags.getVanillaTag("pickaxes"))) {
 context.swingProgress = easeCustom(context.swingProgress)
@@ -184,6 +295,18 @@ swing_hit_second = M.sin(M.clamp(context.swingProgress, 0.16561, 0.32991) * 4.78
 } else {
 swing_hit_second = M.sin(M.clamp(context.swingProgress, 0.65594, 0.82025) * 4.78 * 2 - 4.7)
 }
+
+// Combatant ViewModel tuning composes with HMI's own per-category multipliers.
+// Scale amplitudes, not progress, so timing/easing stays identical to upstream HMI.
+var swingAmplitude = motionSwing * (context.mainHand ? 1 : motionOffhandSwing)
+if (I.isIn(context.item, Tags.getVanillaTag("swords"))) {
+    swingAmplitude = swingAmplitude * motionSwordSwing
+}
+swing_rot = swing_rot * swingAmplitude
+swing_sword_tilt = swing_sword_tilt * swingAmplitude
+swing = swing * swingAmplitude
+swing_hit = swing_hit * swingAmplitude
+swing_hit_second = swing_hit_second * swingAmplitude
 
 var usingOffBow;
 // -------------------------Offhand Bow Counter (placing the hands in the ready to shoot position)--------
@@ -777,9 +900,9 @@ M.rotateX(mat, -30 * tridentDrawSO * tridentAnimation, 0.3 * l, -0.4, 0)
 // if(not I:isIn(renderedItem, Tags:getVanillaTag("swords")))
 
 
-var swingOverall = M.sin(context.swingProgress * 3.14)
-var swingRise = M.clamp(M.sin(context.swingProgress * 6.28), 0, 1)
-var swingRiseS = M.sin(context.swingProgress * 6.28)
+var swingOverall = M.sin(context.swingProgress * 3.14) * swingAmplitude
+var swingRise = M.clamp(M.sin(context.swingProgress * 6.28), 0, 1) * swingAmplitude
+var swingRiseS = M.sin(context.swingProgress * 6.28) * swingAmplitude
 if (I.isEmpty(context.item)) {
 M.translate(mat, -0.15 * l * swing * regularSwing, 0.1 * swingRiseS + 0.33 * swing + 0.05 * swing_rot + 0.14 * swingRise * regularSwing, -0.1 * swingRiseS - 0.4 * swing_hit - 0.2 * swing * regularSwing)
 M.rotateX(mat, -10 * swingRise * regularSwing)
@@ -990,6 +1113,10 @@ M.rotateY(mat, 5 * l * swingRiseS, 0.3 * l, -0.4, 0)
 // M:rotateZ(mat, M:clamp(30 * l * M:sin(tilting * 2) * swing, 0, 30));
 // M:moveY(mat, -0.2 * M:sin(tilting * 2) * swing);
 }
+
+// Replacement ViewModel swings are authored in the HMI script layer so the arm and item
+// share the same scene transform, pivot and timing as the native HMI motion.
+applyCombatantSwingStyle()
 
 if (isUsingItem && activeHand == context.hand && useAction == "block") {
 if (context.mainHand) {
@@ -1452,27 +1579,27 @@ if (useAction == "spear") {
     M.moveZ(mat, -0.25)
     M.moveY(mat, 0.1)
     M.rotateX(mat, -20)
-M.moveZ(mat, 0.75 * M.sin(Easings.easeInOutSine(hic) * 3.14))
+M.moveZ(mat, 0.75 * M.sin(Easings.easeInOutSine(hic) * 3.14) * motionImpact)
 
-M.moveZ(mat, -0.25 * Easings.easeInOutBack(sc))
-M.moveZ(mat, 0.25 * Easings.easeOutBack(sck) * sck)
+M.moveZ(mat, -0.25 * Easings.easeInOutBack(sc) * motionUse)
+M.moveZ(mat, 0.25 * Easings.easeOutBack(sck) * sck * motionUse)
 
-M.rotateY(mat, 8 * Easings.easeInOutBack(sc) * l)
+M.rotateY(mat, 8 * Easings.easeInOutBack(sc) * l * motionUse)
 
-M.rotateX(mat, 40 * M.sin(sc * 3.14), 0, -0.2, -0.35)
-M.rotateX(mat, -8 * Easings.easeInOutBack(scd), 0.5 * l, -0.5, -0.35)
-M.rotateY(mat, -1.5 * M.sin(a * 1.5) * Easings.easeInOutBack(scd) * l, 0.5 * l, -0.5, -0)
-M.rotateX(mat, -1.5 * M.sin(a * 3) * Easings.easeInOutBack(scd), 0.5 * l, -0.5, -0)
+M.rotateX(mat, 40 * M.sin(sc * 3.14) * motionUse, 0, -0.2, -0.35)
+M.rotateX(mat, -8 * Easings.easeInOutBack(scd) * motionUse, 0.5 * l, -0.5, -0.35)
+M.rotateY(mat, -1.5 * M.sin(a * 1.5) * Easings.easeInOutBack(scd) * l * motionUse, 0.5 * l, -0.5, -0)
+M.rotateX(mat, -1.5 * M.sin(a * 3) * Easings.easeInOutBack(scd) * motionUse, 0.5 * l, -0.5, -0)
 
-M.rotateX(mat, 5 * M.sin(hic * 3.14))
+M.rotateX(mat, 5 * M.sin(hic * 3.14) * motionImpact)
 //M:rotateZ(mat, 10 * M:sin(hic * 3.14) * l, 0.5 * l, -0.5, -0.35)
 
 
-M.rotateZ(mat, -30 * Easings.easeOutBack(sck) * sck * l, 0.5 * l, -0.5, -0.35)
+M.rotateZ(mat, -30 * Easings.easeOutBack(sck) * sck * l * motionUse, 0.5 * l, -0.5, -0.35)
 //M:rotateX(mat, -10 * Easings:easeOutBack(canKnockbackCounter) * canKnockbackCounter * l, 0.5 * l, -0.5, -0.35)
 
-    M.rotateZ(mat, -8 * M.sin(M.clamp(sw * 2, 0, 1) * 6.28) * M.sin(M.clamp(sw * 2, 0, 1) * 6.28) * l, 0.5 * l, -0.5, 0)
-    M.rotateX(mat, 20 * M.sin(M.clamp(sw * 2, 0, 1) * 3.14) * M.sin(M.clamp(sw * 2, 0, 1) * 3.14), 0.5 * l, -0.5, 0)
+    M.rotateZ(mat, -8 * M.sin(M.clamp(sw * 2, 0, 1) * 6.28) * M.sin(M.clamp(sw * 2, 0, 1) * 6.28) * l * motionSwitch, 0.5 * l, -0.5, 0)
+    M.rotateX(mat, 20 * M.sin(M.clamp(sw * 2, 0, 1) * 3.14) * M.sin(M.clamp(sw * 2, 0, 1) * 3.14) * motionSwitch, 0.5 * l, -0.5, 0)
 }
 
 // if(useAction == "spear") then

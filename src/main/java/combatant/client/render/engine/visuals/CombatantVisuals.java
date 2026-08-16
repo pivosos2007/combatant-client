@@ -21,7 +21,6 @@ import combatant.client.render.engine.depth.PreTranslucentDepth;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.renderer.MeshRenderer;
-import combatant.client.render.engine.uniform.impl.PostProcessUniforms;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.ArrayList;
@@ -169,11 +168,9 @@ public enum CombatantVisuals {
         if (src == null || dst == null || src == dst) return;
 
         FullScreenRenderer.ensureInit();
-        PostProcessUniforms.update(0.0f, 0.0f, 0.0f, 0.0f);
         FullScreenRenderer.begin("Combatant Fullscreen Pass")
                 .attachment(dst)
-                .pipeline(CombatantRenderPipelines.DAMAGE_TINT)
-                .uniform("PostProcess", PostProcessUniforms.get())
+                .pipeline(CombatantRenderPipelines.POSTPROCESS_COPY)
                 .sampler("u_Texture", src, PostProcessManager.getSampler())
                 .end();
     }

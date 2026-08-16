@@ -54,6 +54,19 @@ public class ViewModel extends Module {
     private static final String SETTING_EQUIP_LOWERING = "equip_lowering_factor";
     private static final String SETTING_SMOOTH_RUN_LOWERING = "smooth_run_lowering";
     private static final String SETTING_SMOOTH_RUN_LOWERING_AMOUNT = "smooth_run_lowering_amount";
+    private static final String SETTING_HMI_RENDER_HOLDING_HANDS = "hmi_render_holding_hands";
+    private static final String SETTING_HMI_OFFSET_X = "hmi_offset_x";
+    private static final String SETTING_HMI_OFFSET_Y = "hmi_offset_y";
+    private static final String SETTING_HMI_OFFSET_Z = "hmi_offset_z";
+    private static final String SETTING_HMI_SWING_STYLE = "hmi_swing_style";
+    private static final String SETTING_HMI_SWING_STRENGTH = "hmi_swing_strength";
+    private static final String SETTING_HMI_SWORD_SWING_STRENGTH = "hmi_sword_swing_strength";
+    private static final String SETTING_HMI_OFFHAND_SWING_STRENGTH = "hmi_offhand_swing_strength";
+    private static final String SETTING_HMI_MOVEMENT_STRENGTH = "hmi_movement_strength";
+    private static final String SETTING_HMI_LOOK_STRENGTH = "hmi_look_strength";
+    private static final String SETTING_HMI_SWITCH_STRENGTH = "hmi_switch_strength";
+    private static final String SETTING_HMI_USE_STRENGTH = "hmi_use_strength";
+    private static final String SETTING_HMI_IMPACT_STRENGTH = "hmi_impact_strength";
     public final Minecraft mc = Minecraft.getInstance();
     private final ModeValue mode = modeSetting("mode", SETTING_MODE, MODE_BASIC, MODE_BASIC, MODE_HMI);
     public final NumberValue<Float> liquidOffsetZ =
@@ -111,6 +124,41 @@ public class ViewModel extends Module {
     private final NumberValue<Float> smoothRunLoweringAmount =
             visibleWhen(num("smooth_run_lowering_amount", SETTING_SMOOTH_RUN_LOWERING_AMOUNT, 0.20f, 0.0f, 1.0f),
                     () -> isBasicMode() && smoothRunLowering.get());
+
+    /* -----------------------------
+     * HMI COMPOSITION / MOTION
+     * ----------------------------- */
+    private final BooleanValue hmiRenderHoldingHands =
+            visibleWhen(bool("hmi_render_holding_hands", SETTING_HMI_RENDER_HOLDING_HANDS, true), this::isHmiModeActive);
+    private final NumberValue<Float> hmiOffsetX =
+            visibleWhen(num("hmi_offset_x", SETTING_HMI_OFFSET_X, 0.0f, -2.0f, 2.0f), this::isHmiModeActive);
+    private final NumberValue<Float> hmiOffsetY =
+            visibleWhen(num("hmi_offset_y", SETTING_HMI_OFFSET_Y, -0.18f, -2.0f, 2.0f), this::isHmiModeActive);
+    private final NumberValue<Float> hmiOffsetZ =
+            visibleWhen(num("hmi_offset_z", SETTING_HMI_OFFSET_Z, 0.0f, -2.0f, 2.0f), this::isHmiModeActive);
+    private final ModeValue hmiSwingStyle = visibleWhen(modeSetting(
+            "hmi_swing_style",
+            SETTING_HMI_SWING_STYLE,
+            "HMI",
+            "HMI", "Swipe Back", "Swipe Back Down", "Smooth", "Smooth Vanilla",
+            "Back", "Overhead", "Chop", "Arc", "Stab", "Slash", "Thrust"
+    ), this::isHmiModeActive);
+    private final NumberValue<Float> hmiSwingStrength =
+            visibleWhen(num("hmi_swing_strength", SETTING_HMI_SWING_STRENGTH, 1.0f, 0.0f, 2.0f), this::isHmiModeActive);
+    private final NumberValue<Float> hmiSwordSwingStrength =
+            visibleWhen(num("hmi_sword_swing_strength", SETTING_HMI_SWORD_SWING_STRENGTH, 0.80f, 0.0f, 2.0f), this::isHmiModeActive);
+    private final NumberValue<Float> hmiOffhandSwingStrength =
+            visibleWhen(num("hmi_offhand_swing_strength", SETTING_HMI_OFFHAND_SWING_STRENGTH, 0.85f, 0.0f, 2.0f), this::isHmiModeActive);
+    private final NumberValue<Float> hmiMovementStrength =
+            visibleWhen(num("hmi_movement_strength", SETTING_HMI_MOVEMENT_STRENGTH, 1.0f, 0.0f, 2.0f), this::isHmiModeActive);
+    private final NumberValue<Float> hmiLookStrength =
+            visibleWhen(num("hmi_look_strength", SETTING_HMI_LOOK_STRENGTH, 1.0f, 0.0f, 2.0f), this::isHmiModeActive);
+    private final NumberValue<Float> hmiSwitchStrength =
+            visibleWhen(num("hmi_switch_strength", SETTING_HMI_SWITCH_STRENGTH, 1.0f, 0.0f, 2.0f), this::isHmiModeActive);
+    private final NumberValue<Float> hmiUseStrength =
+            visibleWhen(num("hmi_use_strength", SETTING_HMI_USE_STRENGTH, 1.0f, 0.0f, 2.0f), this::isHmiModeActive);
+    private final NumberValue<Float> hmiImpactStrength =
+            visibleWhen(num("hmi_impact_strength", SETTING_HMI_IMPACT_STRENGTH, 0.85f, 0.0f, 2.0f), this::isHmiModeActive);
 
     private float currentSpin = 0.0f;
     private boolean hmiBackendActive;
@@ -184,6 +232,34 @@ public class ViewModel extends Module {
     @Override
     public void onFrame(float tickDelta) {
         syncBackend();
+    }
+
+    public boolean shouldRenderHmiHoldingHands() {
+        return isHmiModeActive() && hmiRenderHoldingHands.get();
+    }
+
+    public void applyHmiBaseOffset(PoseStack matrices) {
+        if (!isHmiModeActive()) return;
+        matrices.translate(hmiOffsetX.get(), hmiOffsetY.get(), hmiOffsetZ.get());
+    }
+
+    public boolean usesNativeHmiSwing() {
+        return "HMI".equals(hmiSwingStyle.get());
+    }
+
+    public HoldMyItems.MotionSettings hmiMotionSettings() {
+        return new HoldMyItems.MotionSettings(
+                hmiSwingStrength.get(),
+                hmiSwordSwingStrength.get(),
+                hmiOffhandSwingStrength.get(),
+                hmiMovementStrength.get(),
+                hmiLookStrength.get(),
+                hmiSwitchStrength.get(),
+                hmiUseStrength.get(),
+                hmiImpactStrength.get(),
+                !usesNativeHmiSwing(),
+                hmiSwingStyle.get()
+        );
     }
 
     public boolean smoothRunLoweringEnabled() {

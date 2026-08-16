@@ -1,0 +1,17 @@
+@patch 2
+@require_function main
+@require_ident scene_color
+@require_uniform colortex0
+
+@insert_zone declarations
+uniform bool combatantSuppressShaderpackDepthOfField;
+
+@end
+
+@insert_after_function_open main
+    if (combatantSuppressShaderpackDepthOfField) {
+        scene_color = texelFetch(colortex0, ivec2(gl_FragCoord.xy), 0).rgb;
+        return;
+    }
+
+@end

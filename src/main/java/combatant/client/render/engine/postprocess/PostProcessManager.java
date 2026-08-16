@@ -24,7 +24,6 @@ import combatant.client.render.engine.profiler.RenderCostProfiler;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.rhi.FullscreenDrawCommand;
-import combatant.client.render.engine.uniform.impl.PostProcessUniforms;
 import combatant.client.runtime.RuntimeGate;
 
 import java.util.OptionalDouble;
@@ -103,12 +102,10 @@ public enum PostProcessManager {
             }
 
             ensureSampler();
-            PostProcessUniforms.update(0.0f, 0.0f, 0.0f, 0.0f);
             CombatantRenderSystem.rhi().drawFullscreen(
                     FullscreenDrawCommand.builder("Combatant PostProcess Copy")
                             .colorAttachment(dst)
-                            .pipeline(CombatantRenderPipelines.DAMAGE_TINT)
-                            .uniform("PostProcess", PostProcessUniforms.get())
+                            .pipeline(CombatantRenderPipelines.POSTPROCESS_COPY)
                             .sampler("u_Texture", src, sampler)
                             .build()
             );

@@ -35,7 +35,7 @@ import combatant.client.render.engine.math.RenderMath;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
-import combatant.client.util.target.TargetManager;
+import combatant.client.util.target.TargetingUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -54,6 +54,7 @@ public class TargetESP extends Module {
     private static final String SETTING_COLOR2 = "color2";
     private static final String SETTING_USE_RELATION_COLORS = "use_relation_colors";
     private static final String SETTING_RELATION_COLOR_MIX = "relation_color_mix";
+    private static final String SETTING_PLAYERS_ONLY = "players_only";
     private static final String SETTING_CROSSHAIR_TARGETS = "crosshair_targets";
     private static final String SETTING_ALPHA_ANIMATION_SPEED = "alpha_animation_speed";
     private static final String SETTING_ESP_LENGTH = "esp_length";
@@ -102,6 +103,8 @@ public class TargetESP extends Module {
             boolCommon("targetEspUseRelationColors", SETTING_USE_RELATION_COLORS, CommonSettingSchemas.PLAYER_USE_RELATIONS, false);
     private final NumberValue<Float> relationColorMix =
             visibleWhen(num("targetEspRelationColorMix", SETTING_RELATION_COLOR_MIX, 1.0f, 0.0f, 1.0f), useRelationColors::get);
+    private final BooleanValue playersOnly =
+            bool("targetEspPlayersOnly", SETTING_PLAYERS_ONLY, false);
     private final BooleanValue crosshairTargets =
             bool("targetEspCrosshairTargets", SETTING_CROSSHAIR_TARGETS, true);
     private final NumberValue<Float> alphaAnimationSpeed =
@@ -508,7 +511,7 @@ public class TargetESP extends Module {
             lastCrystalTarget = null;
             return;
         }
-        target = TargetManager.getTarget(crosshairTargets.get());
+        target = TargetingUtil.resolveManagedTarget(crosshairTargets.get(), playersOnly.get());
         updateRenderTarget(target);
         if (renderTarget == null) {
             crystalList.clear();

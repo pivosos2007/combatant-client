@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.visuals;
 
+import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.particles.ParticleTypes;
@@ -30,8 +31,12 @@ import combatant.client.render.engine.TextureStorage;
 import combatant.client.render.engine.color.ColorUtils;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
+import combatant.client.render.engine.postprocess.PostProcessManager;
+import combatant.client.render.engine.postprocess.PostProcessPass;
+import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.render.engine.uniform.impl.PostProcessUniforms;
 import combatant.client.util.time.Timer;
 import combatant.client.util.wav.CustomSoundEngine;
 
@@ -41,7 +46,7 @@ import java.util.List;
 
 //todo Description
 @ModuleInfo(id = "killeffect", displayName = "KillEffect", category = ModuleCategory.VISUALS)
-public class KillEffect extends Module {
+public class KillEffect extends Module implements PostProcessPass {
     private static final int MAX_EMBERS = 26;
     private static final int MIN_EMBERS = 16;
     private static final int LIGHTNING_POINTS = 200;
@@ -53,12 +58,15 @@ public class KillEffect extends Module {
     private static final float LIGHTNING_MIN_SIZE = 0.26f;
     private static final float LIGHTNING_MAX_SIZE = 0.78f;
     private static final float LIGHTNING_ALPHA = 0.40f;
+    private static final long KILL_BLUR_ATTACK_MS = 55L;
+    private static final long KILL_BLUR_DURATION_MS = 520L;
     private static final String SETTING_MODE = "mode";
     private static final String SETTING_Y_SPEED = "y_speed";
     private static final String SETTING_PLAY_SOUND = "play_sound";
     private static final String SETTING_SOUND_VOLUME = "sound_volume";
     private static final String SETTING_COLOR = "color";
     private static final String SETTING_MOBS = "mobs";
+    private static final String SETTING_KILL_BLUR = "kill_blur";
     private static final Identifier ORTHODOX_SOUND =
             Identifier.fromNamespaceAndPath("combatant", "sounds/misc/orthodox.wav");
     private static final long EMBER_GROUND_EXTRA_MS = 0;
@@ -77,11 +85,17 @@ public class KillEffect extends Module {
             visibleWhen(color("killEffectColor", SETTING_COLOR, "#FFFF9600"),
                     () -> "Orthodox".equals(mode.get()) || "Lightning".equals(mode.get()));
     private final BooleanValue mobs = bool("killEffectMobs", SETTING_MOBS, false);
+    private final BooleanValue killBlur = bool("killEffectKillBlur", SETTING_KILL_BLUR, true);
     private final Map<Integer, Long> handled = new HashMap<>();
     private final List<OrthodoxMark> orthodoxMarks = new ArrayList<>();
     private final List<Ember> embers = new ArrayList<>();
     private final List<FlashRing> flashes = new ArrayList<>();
     private final List<LightningStrike> lightningStrikes = new ArrayList<>();
+    private long killBlurStartedMs;
+
+    {
+        PostProcessManager.register(this);
+    }
 
     private static void addBillboardQuad(MeshBuilder mesh, double cx, double cy, double cz,
                                          float size, Quaternionf camRot, int argb) {
@@ -146,6 +160,39 @@ public class KillEffect extends Module {
     }
 
     @Override
+    public boolean isActive() {
+        return isEnabled() && killBlur.get() && mc.player != null && mc.level != null
+                && getKillBlurStrength(System.currentTimeMillis()) > 0.001f;
+    }
+
+    @Override
+    public int getPriority() {
+        return 15;
+    }
+
+    @Override
+    public Phase getPhase() {
+        return Phase.POST_HAND;
+    }
+
+    @Override
+    public boolean render(GpuTextureView src, GpuTextureView dst, float tickDelta) {
+        if (!isEnabled() || !killBlur.get() || src == null || dst == null) return false;
+
+        float strength = getKillBlurStrength(System.currentTimeMillis());
+        if (strength <= 0.001f) return false;
+
+        PostProcessUniforms.update(strength, 0.0f, 0.0f, 0.0f);
+        FullScreenRenderer.begin("Combatant Kill Blur")
+                .attachment(dst)
+                .pipeline(CombatantRenderPipelines.KILL_BLUR)
+                .uniform("PostProcess", PostProcessUniforms.get())
+                .sampler("u_Texture", src, PostProcessManager.getSampler())
+                .end();
+        return true;
+    }
+
+    @Override
     public void onTick() {
         if (!isEnabled() || mc.level == null || mc.player == null) return;
 
@@ -160,6 +207,9 @@ public class KillEffect extends Module {
             int id = entity.getId();
             if (handled.containsKey(id)) continue;
             handled.put(id, now);
+            if (killBlur.get()) {
+                killBlurStartedMs = now;
+            }
 
             Vec3 pos = entity.position();
 
@@ -207,6 +257,7 @@ public class KillEffect extends Module {
         embers.clear();
         flashes.clear();
         lightningStrikes.clear();
+        killBlurStartedMs = 0L;
     }
 
     @Override
@@ -365,6 +416,21 @@ public class KillEffect extends Module {
                 }
             }
         }
+    }
+
+    private float getKillBlurStrength(long nowMs) {
+        if (killBlurStartedMs <= 0L) return 0.0f;
+        long age = nowMs - killBlurStartedMs;
+        if (age < 0L || age >= KILL_BLUR_DURATION_MS) return 0.0f;
+
+        if (age < KILL_BLUR_ATTACK_MS) {
+            return smoothProgress(age / (float) KILL_BLUR_ATTACK_MS);
+        }
+
+        float release = (age - KILL_BLUR_ATTACK_MS)
+                / (float) Math.max(1L, KILL_BLUR_DURATION_MS - KILL_BLUR_ATTACK_MS);
+        float eased = 1.0f - smoothProgress(release);
+        return (float) Math.pow(Math.max(0.0f, eased), 1.25);
     }
 
     private float randomRange(float min, float max) {

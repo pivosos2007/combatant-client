@@ -7,6 +7,29 @@ var bowDAMPING = 0.8
 var bowINTENSITY = 0.28
 var l = (context.bl ? 1 : -1)
 
+// Original HMI renders held items from its own first-person basis instead of stacking
+// Minecraft's applyItemArmTransform on top of the scripted pose. Keep that basis in
+// the resource-pack script so item placement and custom swing packs stay editable.
+if (!I.isEmpty(context.item)) {
+    M.translate(context.matrices, 0.5 * l, -0.15, -0.85)
+    M.rotateX(context.matrices, 15, 0.5 * l, 0.5, 0.5)
+    M.scale(context.matrices, 0.9, 0.9, 0.9)
+}
+
+var motion = context.motion || {}
+function motionValue(name, fallback) {
+    var value = Number(motion[name])
+    return Number.isFinite(value) ? Math.max(0, value) : fallback
+}
+var motionSwing = motionValue("swing", 1)
+var motionSwordSwing = motionValue("swordSwing", 1)
+var motionOffhandSwing = motionValue("offhandSwing", 1)
+var motionMovement = motionValue("movement", 1)
+var motionLook = motionValue("look", 1)
+var motionSwitch = motionValue("switch", 1)
+var motionUse = motionValue("use", 1)
+var motionImpact = motionValue("impact", 1)
+
 
 function easeCustom(t) {
     var t2 = t * t
@@ -56,7 +79,8 @@ var mapTransition = Object.prototype.hasOwnProperty.call(__hmi_registry, 'mapTra
 var mapZoomer = Object.prototype.hasOwnProperty.call(__hmi_registry, 'mapZoomer') ? __hmi_registry['mapZoomer'] : (0.0);
 var fall = Object.prototype.hasOwnProperty.call(__hmi_registry, 'fall') ? __hmi_registry['fall'] : (0.0);
 var a = Object.prototype.hasOwnProperty.call(__hmi_registry, 'a') ? __hmi_registry['a'] : (0.0);
-var prevPitch = Object.prototype.hasOwnProperty.call(__hmi_registry, 'prevPitch') ? __hmi_registry['prevPitch'] : (0.0);
+var prevPitch = Object.prototype.hasOwnProperty.call(__hmi_registry, 'prevPitch') ? __hmi_registry['prevPitch'] : P.getPitch(context.player);
+var prevPitchO = Object.prototype.hasOwnProperty.call(__hmi_registry, 'prevPitchO') ? __hmi_registry['prevPitchO'] : P.getPitch(context.player);
 var pitchSpeed = Object.prototype.hasOwnProperty.call(__hmi_registry, 'pitchSpeed') ? __hmi_registry['pitchSpeed'] : (0.0);
 var pitchAngle = Object.prototype.hasOwnProperty.call(__hmi_registry, 'pitchAngle') ? __hmi_registry['pitchAngle'] : (0.0);
 
@@ -66,7 +90,8 @@ var pitchAngleO = Object.prototype.hasOwnProperty.call(__hmi_registry, 'pitchAng
 var yawSpeedO = Object.prototype.hasOwnProperty.call(__hmi_registry, 'yawSpeedO') ? __hmi_registry['yawSpeedO'] : (0.0);
 var yawAngleO = Object.prototype.hasOwnProperty.call(__hmi_registry, 'yawAngleO') ? __hmi_registry['yawAngleO'] : (0.0);
 
-var prevYaw = Object.prototype.hasOwnProperty.call(__hmi_registry, 'prevYaw') ? __hmi_registry['prevYaw'] : (0.0);
+var prevYaw = Object.prototype.hasOwnProperty.call(__hmi_registry, 'prevYaw') ? __hmi_registry['prevYaw'] : P.getYaw(context.player);
+var prevYawO = Object.prototype.hasOwnProperty.call(__hmi_registry, 'prevYawO') ? __hmi_registry['prevYawO'] : P.getYaw(context.player);
 var yawSpeed = Object.prototype.hasOwnProperty.call(__hmi_registry, 'yawSpeed') ? __hmi_registry['yawSpeed'] : (0.0);
 var yawAngle = Object.prototype.hasOwnProperty.call(__hmi_registry, 'yawAngle') ? __hmi_registry['yawAngle'] : (0.0);
 var mainHandSwitch = Object.prototype.hasOwnProperty.call(__hmi_registry, 'mainHandSwitch') ? __hmi_registry['mainHandSwitch'] : (0.0);
@@ -145,35 +170,74 @@ var sw = (context.mainHand ? mainHandSwitch : offHandSwitch)
 var mat = context.matrices
 
 var hic = (context.mainHand ? Easings.easeInOutSine(hitImpactCounter) : hitImpactCounterO)
-pitchSpeed = pitchSpeed + ((P.getSpeed(context.player) * 22 * walkSmoother * -1) - (M.sin(context.mainHandSwingProgress * 3.14)) * 8 + fall * 3 + M.sin(sneak * 3.14) * 0.3 + (P.getPitch(context.player) - prevPitch)) * INTENSITY * context.deltaTime * 30
-if (I.getUseAction(context.item) == "block" && context.mainHand && !I.isIn(context.item, Tags.getVanillaTag("swords"))) {
-    pitchSpeed = pitchSpeed + 10 * M.sin(shieldDisable * 3.14) * INTENSITY * context.deltaTime * 30
-    pitchSpeed = pitchSpeed + 12 * M.sin(shieldM * 3.14) * INTENSITY * context.deltaTime * 30
-}
-pitchSpeed = pitchSpeed + ((-20 * M.sin(canDismountCounter * 3.14) * spearCounterM) + (20 * M.sin(canKnockbackCounter * 3.14) * spearCounterM) + (12 * M.sin(inspectionCounter * 3.14)) + (15 * M.sin(spearCounterM * 3.14)) + (-10 * M.clamp(M.sin(Easings.easeInBack(hitImpactCounter) * 6.28), 0, 1)) + (40 * M.clamp(M.sin(M.clamp(mainHandSwitch * 1.5 * sp, 0, 1) * 6.28), 0, 1))) * INTENSITY * context.deltaTime * 30
-pitchSpeed = pitchSpeed - GRAVITY * pitchAngle * context.deltaTime * 30
-pitchSpeed = pitchSpeed * M.pow(DAMPING, context.deltaTime * 30)
-pitchAngle = pitchAngle + pitchSpeed * context.deltaTime * 30
+var frameStep = context.deltaTime * 30
+var swordTag = Tags.getVanillaTag("swords")
+var mainSwordMotion = I.isIn(P.getMainItem(context.player), swordTag) ? motionSwordSwing : 1
+var offSwordMotion = I.isIn(P.getOffhandItem(context.player), swordTag) ? motionSwordSwing : 1
+var mainSwingMotion = motionSwing * mainSwordMotion
+var offSwingMotion = motionSwing * motionOffhandSwing * offSwordMotion
 
-yawSpeed = yawSpeed + (M.sin(walk) * 3 * walkSmoother + (M.sin(context.mainHandSwingProgress * 3.14)) * 8 + M.sin(swimCounter * swimSmoother) * 3 + M.sin(mainHandSwitch * 6.28) * 3 + P.getYaw(context.player) - prevYaw) * INTENSITY * context.deltaTime * 30
-yawSpeed = yawSpeed - GRAVITY * yawAngle * context.deltaTime * 30
-yawSpeed = yawSpeed * M.pow(DAMPING, context.deltaTime * 30)
-yawAngle = yawAngle + yawSpeed * context.deltaTime * 30
-//--------------------------------------------------------------------------------------------------------------
-pitchSpeedO = pitchSpeedO + ((P.getSpeed(context.player) * 22 * walkSmoother * -1) - (M.sin(context.offHandSwingProgress * 3.14)) * 8 + fall * 3 + M.sin(sneak * 3.14) * 0.3 + (P.getPitch(context.player) - prevPitch)) * INTENSITY * context.deltaTime * 30
-if (I.getUseAction(context.item) == "block" && !context.mainHand && !I.isIn(context.item, Tags.getVanillaTag("swords"))) {
-    pitchSpeedO = pitchSpeedO + 10 * M.sin(shieldDisable * 3.14) * INTENSITY * context.deltaTime * 30
-    pitchSpeedO = pitchSpeedO + 12 * M.sin(shieldO * 3.14) * INTENSITY * context.deltaTime * 30
-}
-pitchSpeedO = pitchSpeedO + ((-20 * M.sin(canDismountCounterO * 3.14) * spearCounterO) + (20 * M.sin(canKnockbackCounterO * 3.14) * spearCounterO) + (15 * M.sin(spearCounterO * 3.14)) + (40 * M.clamp(M.sin(M.clamp(offHandSwitch * 1.5 * spo, 0, 1) * 6.28), 0, 1))) * INTENSITY * context.deltaTime * 30
-pitchSpeedO = pitchSpeedO - GRAVITY * pitchAngleO * context.deltaTime * 30
-pitchSpeedO = pitchSpeedO * M.pow(DAMPING, context.deltaTime * 30)
-pitchAngleO = pitchAngleO + pitchSpeedO * context.deltaTime * 30
+// Update only the hand rendered by this invocation. The layer-port executes item_pose once per
+// rendered hand; updating both springs here would advance both simulations twice per frame.
+if (context.mainHand) {
+    var mainMovementPitch = ((P.getSpeed(context.player) * 22 * walkSmoother * -1) + fall * 3 + M.sin(sneak * 3.14) * 0.3) * motionMovement
+    var mainSwingPitch = -(M.sin(context.mainHandSwingProgress * 3.14)) * 8 * mainSwingMotion
+    var mainLookPitch = (P.getPitch(context.player) - prevPitch) * motionLook
+    pitchSpeed = pitchSpeed + (mainMovementPitch + mainSwingPitch + mainLookPitch) * INTENSITY * frameStep
 
-yawSpeedO = yawSpeedO + (M.sin(walk) * 3 * walkSmoother + (M.sin(context.offHandSwingProgress * 3.14)) * 8 + M.sin(swimCounter * swimSmoother) * 3 + M.sin(offHandSwitch * 6.28) * 3 + P.getYaw(context.player) - prevYaw) * INTENSITY * context.deltaTime * 30
-yawSpeedO = yawSpeedO - GRAVITY * yawAngleO * context.deltaTime * 30
-yawSpeedO = yawSpeedO * M.pow(DAMPING, context.deltaTime * 30)
-yawAngleO = yawAngleO + yawSpeedO * context.deltaTime * 30
+    if (I.getUseAction(context.item) == "block" && !I.isIn(context.item, swordTag)) {
+        pitchSpeed = pitchSpeed + 10 * M.sin(shieldDisable * 3.14) * motionUse * INTENSITY * frameStep
+        pitchSpeed = pitchSpeed + 12 * M.sin(shieldM * 3.14) * motionUse * INTENSITY * frameStep
+    }
+
+    var mainUseImpulse = ((-20 * M.sin(canDismountCounter * 3.14) * spearCounterM)
+            + (20 * M.sin(canKnockbackCounter * 3.14) * spearCounterM)
+            + (12 * M.sin(inspectionCounter * 3.14))
+            + (15 * M.sin(spearCounterM * 3.14))) * motionUse
+    var mainImpactImpulse = (-10 * M.clamp(M.sin(Easings.easeInBack(hitImpactCounter) * 6.28), 0, 1)) * motionImpact
+    var mainSwitchImpulse = (40 * M.clamp(M.sin(M.clamp(mainHandSwitch * 1.5 * sp, 0, 1) * 6.28), 0, 1)) * motionSwitch
+    pitchSpeed = pitchSpeed + (mainUseImpulse + mainImpactImpulse + mainSwitchImpulse) * INTENSITY * frameStep
+    pitchSpeed = pitchSpeed - GRAVITY * pitchAngle * frameStep
+    pitchSpeed = pitchSpeed * M.pow(DAMPING, frameStep)
+    pitchAngle = pitchAngle + pitchSpeed * frameStep
+
+    var mainMovementYaw = (M.sin(walk) * 3 * walkSmoother + M.sin(swimCounter * swimSmoother) * 3) * motionMovement
+    var mainSwingYaw = M.sin(context.mainHandSwingProgress * 3.14) * 8 * mainSwingMotion
+    var mainSwitchYaw = M.sin(mainHandSwitch * 6.28) * 3 * motionSwitch
+    var mainLookYaw = (P.getYaw(context.player) - prevYaw) * motionLook
+    yawSpeed = yawSpeed + (mainMovementYaw + mainSwingYaw + mainSwitchYaw + mainLookYaw) * INTENSITY * frameStep
+    yawSpeed = yawSpeed - GRAVITY * yawAngle * frameStep
+    yawSpeed = yawSpeed * M.pow(DAMPING, frameStep)
+    yawAngle = yawAngle + yawSpeed * frameStep
+} else {
+    var offMovementPitch = ((P.getSpeed(context.player) * 22 * walkSmoother * -1) + fall * 3 + M.sin(sneak * 3.14) * 0.3) * motionMovement
+    var offSwingPitch = -(M.sin(context.offHandSwingProgress * 3.14)) * 8 * offSwingMotion
+    var offLookPitch = (P.getPitch(context.player) - prevPitchO) * motionLook
+    pitchSpeedO = pitchSpeedO + (offMovementPitch + offSwingPitch + offLookPitch) * INTENSITY * frameStep
+
+    if (I.getUseAction(context.item) == "block" && !I.isIn(context.item, swordTag)) {
+        pitchSpeedO = pitchSpeedO + 10 * M.sin(shieldDisable * 3.14) * motionUse * INTENSITY * frameStep
+        pitchSpeedO = pitchSpeedO + 12 * M.sin(shieldO * 3.14) * motionUse * INTENSITY * frameStep
+    }
+
+    var offUseImpulse = ((-20 * M.sin(canDismountCounterO * 3.14) * spearCounterO)
+            + (20 * M.sin(canKnockbackCounterO * 3.14) * spearCounterO)
+            + (15 * M.sin(spearCounterO * 3.14))) * motionUse
+    var offSwitchImpulse = (40 * M.clamp(M.sin(M.clamp(offHandSwitch * 1.5 * spo, 0, 1) * 6.28), 0, 1)) * motionSwitch
+    pitchSpeedO = pitchSpeedO + (offUseImpulse + offSwitchImpulse) * INTENSITY * frameStep
+    pitchSpeedO = pitchSpeedO - GRAVITY * pitchAngleO * frameStep
+    pitchSpeedO = pitchSpeedO * M.pow(DAMPING, frameStep)
+    pitchAngleO = pitchAngleO + pitchSpeedO * frameStep
+
+    var offMovementYaw = (M.sin(walk) * 3 * walkSmoother + M.sin(swimCounter * swimSmoother) * 3) * motionMovement
+    var offSwingYaw = M.sin(context.offHandSwingProgress * 3.14) * 8 * offSwingMotion
+    var offSwitchYaw = M.sin(offHandSwitch * 6.28) * 3 * motionSwitch
+    var offLookYaw = (P.getYaw(context.player) - prevYawO) * motionLook
+    yawSpeedO = yawSpeedO + (offMovementYaw + offSwingYaw + offSwitchYaw + offLookYaw) * INTENSITY * frameStep
+    yawSpeedO = yawSpeedO - GRAVITY * yawAngleO * frameStep
+    yawSpeedO = yawSpeedO * M.pow(DAMPING, frameStep)
+    yawAngleO = yawAngleO + yawSpeedO * frameStep
+}
 
 var ywAngle = (context.mainHand ? yawAngle : yawAngleO)
 var ptAngle = (context.mainHand ? pitchAngle : pitchAngleO)
@@ -217,6 +281,19 @@ if (context.swingProgress < 0.65594) {
 } else {
     swing_hit_second = M.sin(M.clamp(context.swingProgress, 0.65594, 0.82025) * 4.78 * 2 - 4.7)
 }
+
+var swingAmplitude = motionSwing * (context.mainHand ? 1 : motionOffhandSwing)
+if (I.isIn(context.item, swordTag)) {
+    swingAmplitude = swingAmplitude * motionSwordSwing
+}
+swing_rot = swing_rot * swingAmplitude
+swing_sword_tilt = swing_sword_tilt * swingAmplitude
+swing = swing * swingAmplitude
+swing_hit = swing_hit * swingAmplitude
+swingOverall = swingOverall * swingAmplitude
+swingRise = swingRise * swingAmplitude
+swingRiseS = swingRiseS * swingAmplitude
+swing_hit_second = swing_hit_second * swingAmplitude
 if (I.getUseAction(context.item) == "spear") {
    M.rotateZ(mat, 180 * l)
 
@@ -234,7 +311,7 @@ if (I.getUseAction(context.item) == "spear") {
    M.rotateY(mat, -60 * Easings.easeOutBack(sck) * sck * l)
    //M:rotateZ(mat, -20 * Easings:easeInOutBack(M:sin(spearCounterM * 3.14) * 0.8))
 
-    M.moveY(mat, -0.25 * M.clamp(M.sin(Easings.easeInOutSine(hic) * 6.28), 0, 1))
+    M.moveY(mat, -0.25 * M.clamp(M.sin(Easings.easeInOutSine(hic) * 6.28), 0, 1) * motionImpact)
 
 }
 if ((I.getUseAction(context.item) != "block" && I.getUseAction(context.item) != "crossbow") || I.isIn(context.item, Tags.getVanillaTag("swords"))) {
@@ -490,8 +567,13 @@ if (I.isIn(context.item, Tags.getVanillaTag("shovels"))) {
     M.moveX(mat, -0.09 * l)
     M.rotateY(mat, 80 * l)
 }
-prevPitch = P.getPitch(context.player)
-prevYaw = P.getYaw(context.player)
+if (context.mainHand) {
+    prevPitch = P.getPitch(context.player)
+    prevYaw = P.getYaw(context.player)
+} else {
+    prevPitchO = P.getPitch(context.player)
+    prevYawO = P.getYaw(context.player)
+}
 
 // context.bl == true -- right
 // context.bl == false -- left
@@ -988,6 +1070,7 @@ __hmi_registry['mapZoomer'] = mapZoomer;
 __hmi_registry['fall'] = fall;
 __hmi_registry['a'] = a;
 __hmi_registry['prevPitch'] = prevPitch;
+__hmi_registry['prevPitchO'] = prevPitchO;
 __hmi_registry['pitchSpeed'] = pitchSpeed;
 __hmi_registry['pitchAngle'] = pitchAngle;
 __hmi_registry['pitchSpeedO'] = pitchSpeedO;
@@ -995,6 +1078,7 @@ __hmi_registry['pitchAngleO'] = pitchAngleO;
 __hmi_registry['yawSpeedO'] = yawSpeedO;
 __hmi_registry['yawAngleO'] = yawAngleO;
 __hmi_registry['prevYaw'] = prevYaw;
+__hmi_registry['prevYawO'] = prevYawO;
 __hmi_registry['yawSpeed'] = yawSpeed;
 __hmi_registry['yawAngle'] = yawAngle;
 __hmi_registry['foodCount'] = foodCount;

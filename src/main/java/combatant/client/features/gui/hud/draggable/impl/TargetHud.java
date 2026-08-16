@@ -51,7 +51,7 @@ import combatant.client.util.player.effect.StatusEffectTracker;
 import combatant.client.util.player.effect.StatusEffectView;
 import combatant.client.util.pvp.opponents.TotemPopCounter;
 import combatant.client.util.pvp.opponents.TotemPopSnapshot;
-import combatant.client.util.target.TargetManager;
+import combatant.client.util.target.TargetingUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -180,6 +180,8 @@ public final class TargetHud extends DraggableHudElement {
             new BooleanValue("target_marquee", true);
     private final BooleanValue playersOnly =
             new BooleanValue("target_players_only", false);
+    private final BooleanValue crosshairTargets =
+            new BooleanValue("target_crosshair_targets", true);
     private final ModeValue effectsMode =
             new ModeValue("target_effects_mode", "Off", EFFECTS_OFF, EFFECTS_COMPACT);
     private final BooleanValue effectsSelf =
@@ -415,6 +417,7 @@ public final class TargetHud extends DraggableHudElement {
                 .visibleWhen(totemPopCounter::get));
         defs.add(SettingDef.bool(marquee));
         defs.add(SettingDef.bool(playersOnly));
+        defs.add(SettingDef.bool(crosshairTargets));
         defs.add(SettingDef.mode(effectsMode));
         defs.add(SettingDef.bool(effectsSelf).visibleWhen(this::isEffectsEnabled));
         defs.add(SettingDef.mode(equipmentMode));
@@ -584,10 +587,7 @@ public final class TargetHud extends DraggableHudElement {
     }
 
     private LivingEntity resolveTarget(boolean preview) {
-        LivingEntity target = TargetManager.getTarget();
-        if (target != null && playersOnly.get() && !(target instanceof Player)) {
-            target = null;
-        }
+        LivingEntity target = TargetingUtil.resolveManagedTarget(crosshairTargets.get(), playersOnly.get());
         if (target == null && (preview || ClientScreen.current() instanceof ChatScreen)) {
             target = mc.player;
         }

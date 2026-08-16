@@ -101,7 +101,8 @@ public final class HoldMyItems {
             float swingProgress,
             ItemStack item,
             float equipProgress,
-            PoseStack matrices
+            PoseStack matrices,
+            MotionSettings motionSettings
     ) {
         if (!active) return;
         if (!(rawPlayer instanceof LocalPlayer player)) return;
@@ -130,12 +131,15 @@ public final class HoldMyItems {
 
         Minecraft mc = Minecraft.getInstance();
         boolean blockBreaking = mc.gameMode != null && mc.gameMode.isDestroying();
+        MotionSettings tuning = motionSettings != null ? motionSettings : MotionSettings.DEFAULT;
         RenderScope scope = new RenderScope(
                 player,
                 tickDelta,
                 hand,
                 item,
                 swingProgress,
+                previousMainSwing,
+                previousOffSwing,
                 equipProgress,
                 mainHand,
                 arm == HumanoidArm.RIGHT,
@@ -145,7 +149,8 @@ public final class HoldMyItems {
                 replay ? 0.0f : Math.min(0.05f, Math.max(0.0f, TickDelta.frameDeltaSeconds())),
                 swingCount,
                 replay,
-                replayData
+                replayData,
+                tuning
         );
         SCOPES.get().push(scope);
         if (replay) {
@@ -265,6 +270,39 @@ public final class HoldMyItems {
         return stack.isEmpty() ? null : stack.peek();
     }
 
+    public record MotionSettings(
+            float swingStrength,
+            float swordSwingStrength,
+            float offhandSwingStrength,
+            float movementStrength,
+            float lookStrength,
+            float switchStrength,
+            float useStrength,
+            float impactStrength,
+            boolean replaceSwing,
+            String swingStyle
+    ) {
+        public static final MotionSettings DEFAULT =
+                new MotionSettings(1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, false, "HMI");
+
+        public MotionSettings {
+            swingStrength = finiteNonNegative(swingStrength, 1.0f);
+            swordSwingStrength = finiteNonNegative(swordSwingStrength, 1.0f);
+            offhandSwingStrength = finiteNonNegative(offhandSwingStrength, 1.0f);
+            movementStrength = finiteNonNegative(movementStrength, 1.0f);
+            lookStrength = finiteNonNegative(lookStrength, 1.0f);
+            switchStrength = finiteNonNegative(switchStrength, 1.0f);
+            useStrength = finiteNonNegative(useStrength, 1.0f);
+            impactStrength = finiteNonNegative(impactStrength, 1.0f);
+            swingStyle = swingStyle == null || swingStyle.isBlank() ? "HMI" : swingStyle;
+        }
+
+        private static float finiteNonNegative(float value, float fallback) {
+            if (!Float.isFinite(value)) return fallback;
+            return Math.max(0.0f, value);
+        }
+    }
+
     private record ReplayData(
             HmiScriptRuntime.Result handPose,
             HmiScriptRuntime.Result handRelative,
@@ -279,6 +317,8 @@ public final class HoldMyItems {
         private final InteractionHand hand;
         private final ItemStack item;
         private final float swingProgress;
+        private final float mainHandSwingProgress;
+        private final float offHandSwingProgress;
         private final float equipProgress;
         private final boolean mainHand;
         private final boolean rightArm;
@@ -289,6 +329,7 @@ public final class HoldMyItems {
         private final int swingCount;
         private final boolean replay;
         private final ReplayData replayData;
+        private final MotionSettings motionSettings;
         private List<HmiModelCommand> modelCommands = List.of();
         private HmiScriptRuntime.Result handPoseResult;
         private HmiScriptRuntime.Result handRelativeResult;
@@ -297,14 +338,17 @@ public final class HoldMyItems {
         private Map<String, Object> scriptContext;
 
         private RenderScope(LocalPlayer player, float tickDelta, InteractionHand hand, ItemStack item, float swingProgress,
-                            float equipProgress, boolean mainHand, boolean rightArm, boolean mainHandSwitchEvent,
+                            float mainHandSwingProgress, float offHandSwingProgress, float equipProgress,
+                            boolean mainHand, boolean rightArm, boolean mainHandSwitchEvent,
                             boolean offHandSwitchEvent, boolean blockBreaking, float deltaSeconds, int swingCount,
-                            boolean replay, ReplayData replayData) {
+                            boolean replay, ReplayData replayData, MotionSettings motionSettings) {
             this.player = player;
             this.tickDelta = tickDelta;
             this.hand = hand;
             this.item = item;
             this.swingProgress = swingProgress;
+            this.mainHandSwingProgress = mainHandSwingProgress;
+            this.offHandSwingProgress = offHandSwingProgress;
             this.equipProgress = equipProgress;
             this.mainHand = mainHand;
             this.rightArm = rightArm;
@@ -315,11 +359,14 @@ public final class HoldMyItems {
             this.swingCount = swingCount;
             this.replay = replay;
             this.replayData = replayData;
+            this.motionSettings = motionSettings;
         }
 
         private RenderScope withItem(ItemStack replacement) {
-            RenderScope scope = new RenderScope(player, tickDelta, hand, replacement, swingProgress, equipProgress, mainHand,
-                    rightArm, mainHandSwitchEvent, offHandSwitchEvent, blockBreaking, deltaSeconds, swingCount, replay, replayData);
+            RenderScope scope = new RenderScope(player, tickDelta, hand, replacement, swingProgress,
+                    mainHandSwingProgress, offHandSwingProgress, equipProgress, mainHand,
+                    rightArm, mainHandSwitchEvent, offHandSwitchEvent, blockBreaking, deltaSeconds, swingCount,
+                    replay, replayData, motionSettings);
             scope.modelCommands = modelCommands;
             return scope;
         }
@@ -336,6 +383,10 @@ public final class HoldMyItems {
         public InteractionHand hand() { return hand; }
         public ItemStack item() { return item; }
         public float swingProgress() { return swingProgress; }
+        public float rawSwingProgress() { return swingProgress; }
+        public float mainHandSwingProgress() { return motionSettings.replaceSwing() ? 0.0f : mainHandSwingProgress; }
+        public float offHandSwingProgress() { return motionSettings.replaceSwing() ? 0.0f : offHandSwingProgress; }
+        public float scriptSwingProgress() { return motionSettings.replaceSwing() ? 0.0f : swingProgress; }
         public float equipProgress() { return equipProgress; }
         public boolean mainHand() { return mainHand; }
         public boolean rightArm() { return rightArm; }
@@ -344,5 +395,6 @@ public final class HoldMyItems {
         public boolean blockBreaking() { return blockBreaking; }
         public float deltaSeconds() { return deltaSeconds; }
         public int swingCount() { return swingCount; }
+        public MotionSettings motionSettings() { return motionSettings; }
     }
 }

@@ -33,6 +33,17 @@ if (mainHandSwitch < 0.65245) {
 
 var musicDiscHandJump = M.sin(M.clamp(mainHandSwitch, 0.52459, 0.85809) * 3.14 * 3 - 1.8)
 
+// This is the holding-arm basis used by the original HMI renderer after
+// hand_relative_pose. It is required when an item is present; without it the vanilla
+// first-person arm sits through the middle of the item instead of closing around the grip.
+if (!I.isEmpty(context.item)) {
+    M.translate(context.matrices, 1.5 * l, -0.3, -0.6)
+    M.rotateX(context.matrices, 15, 0.5 * l, 0.5, 0.5)
+    M.rotateY(context.matrices, 35 * l, 0.5 * l, 0.5, 0.5)
+    M.rotateZ(context.matrices, -65 * l, 0.5 * l, 0.5, 0.5)
+    M.scale(context.matrices, 0.9, 0.9, 0.9)
+}
+
 // Persist the original HMI global.* state between frames.
 __hmi_registry['foodCount'] = foodCount;
 __hmi_registry['mainHandSwitch'] = mainHandSwitch;

@@ -24,7 +24,7 @@ public final class RuntimeConfig extends SubsystemConfig {
     );
     private final BooleanValue forcePvp = bool("forcePvp", false);
     private final BooleanValue disableNarrator = bool("disableNarrator", true);
-    private final BooleanValue nativeGuardWindowsX8664 = bool("combatant.nativeguard.windows-x86_64", true);
+    private final BooleanValue nativeGuardWindowsX8664 = bool("combatant.nativeguard.windows-x86_64", false);
 
     private RuntimeConfig() {
         loadConfig();

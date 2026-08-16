@@ -102,6 +102,8 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_UI_LIQUID_GLASS_BATCH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_liquid_glass_batch.frag");
     public static final Identifier SHADER_DAMAGE_TINT_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/damage_tint.vert");
     public static final Identifier SHADER_DAMAGE_TINT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/damage_tint.frag");
+    public static final Identifier SHADER_KILL_BLUR_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/kill_blur.frag");
+    public static final Identifier SHADER_POSTPROCESS_COPY_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/postprocess_copy.frag");
     public static final Identifier SHADER_POST_FX_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/post_fx.frag");
     public static final Identifier SHADER_MOTION_BLUR_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/motion_blur.frag");
     public static final Identifier SHADER_DEPTH_OF_FIELD_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/depth_of_field.frag");
@@ -896,7 +898,38 @@ public enum CombatantRenderPipelines {
             .withVertexShader(SHADER_DAMAGE_TINT_VERT)
             .withFragmentShader(SHADER_DAMAGE_TINT_FRAG)
             .withSampler("u_Texture")
+            .withUniform("DamageTint", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build()
+    );
+    /**
+     * Short full-screen kill impulse blur (pos2).
+     */
+    public static final RenderPipeline KILL_BLUR = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/kill_blur"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_KILL_BLUR_FRAG)
+            .withSampler("u_Texture")
             .withUniform("PostProcess", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build()
+    );
+    /**
+     * Full-screen texture copy fallback used when the backend has no fast blit path.
+     */
+    public static final RenderPipeline POSTPROCESS_COPY = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/postprocess_copy"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_POSTPROCESS_COPY_FRAG)
+            .withSampler("u_Texture")
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)

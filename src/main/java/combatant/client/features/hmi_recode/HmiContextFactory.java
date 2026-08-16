@@ -47,9 +47,10 @@ final class HmiContextFactory {
         map.put("hand", scope.hand() == InteractionHand.MAIN_HAND ? "main_hand" : "off_hand");
         map.put("mainHand", scope.mainHand());
         map.put("bl", scope.rightArm());
-        map.put("swingProgress", scope.swingProgress());
-        map.put("mainHandSwingProgress", scope.mainHand() ? scope.swingProgress() : 0.0f);
-        map.put("offHandSwingProgress", scope.mainHand() ? 0.0f : scope.swingProgress());
+        map.put("swingProgress", scope.scriptSwingProgress());
+        map.put("rawSwingProgress", scope.rawSwingProgress());
+        map.put("mainHandSwingProgress", scope.mainHandSwingProgress());
+        map.put("offHandSwingProgress", scope.offHandSwingProgress());
         map.put("equipProgress", scope.equipProgress());
         map.put("deltaTime", scope.deltaSeconds());
         map.put("swingMHand", scope.mainHand() && scope.swingProgress() > 0.0f);
@@ -57,6 +58,19 @@ final class HmiContextFactory {
         map.put("mainHandSwitchEvent", scope.mainHandSwitchEvent());
         map.put("offHandSwitchEvent", scope.offHandSwitchEvent());
         map.put("blockBreaking", scope.blockBreaking());
+        HoldMyItems.MotionSettings motion = scope.motionSettings();
+        map.put("motion", Map.of(
+                "swing", motion.swingStrength(),
+                "swordSwing", motion.swordSwingStrength(),
+                "offhandSwing", motion.offhandSwingStrength(),
+                "movement", motion.movementStrength(),
+                "look", motion.lookStrength(),
+                "switch", motion.switchStrength(),
+                "use", motion.useStrength(),
+                "impact", motion.impactStrength(),
+                "replaceSwing", motion.replaceSwing(),
+                "swingStyle", motion.swingStyle()
+        ));
         map.put("matrices", 0);
         map.put("particles", List.of());
         Minecraft minecraft = Minecraft.getInstance();

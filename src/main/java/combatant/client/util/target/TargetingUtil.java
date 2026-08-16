@@ -39,6 +39,18 @@ public enum TargetingUtil {
         return list.get(0);
     }
 
+    /**
+     * Resolves the shared TargetManager target for target-oriented UI/render features.
+     * Source selection and the optional player-only filter live here so consumers do not
+     * drift into slightly different target semantics.
+     */
+    public static LivingEntity resolveManagedTarget(boolean includeCrosshair, boolean playersOnly) {
+        LivingEntity target = TargetManager.getTarget(includeCrosshair);
+        if (target == null) return null;
+        if (playersOnly && !(target instanceof Player)) return null;
+        return target;
+    }
+
     public static List<LivingEntity> findTargets(Minecraft mc, TargetingSettings settings) {
         if (mc == null || mc.level == null || mc.player == null || mc.getConnection() == null || settings == null) return List.of();
         if (!mc.player.isAlive() || mc.player.isRemoved() || mc.player.isSpectator()) return List.of();

@@ -1,0 +1,14 @@
+@patch 2
+@require_function main
+@require_call DoWorldBlur
+@require_ident WORLD_BLUR
+@require_uniform colortex0
+
+@insert_zone declarations
+uniform bool combatantSuppressShaderpackDepthOfField;
+
+@end
+
+@replace_line_hash b6d6186ff3e3fa4d77ebc75bab0811229bf3c25cae14e008c9ce0e382056b8bf
+        if (!combatantSuppressShaderpackDepthOfField) DoWorldBlur(color, z1, lViewPos);
+@end

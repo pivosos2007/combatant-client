@@ -89,6 +89,13 @@ public class Chams extends Module {
     private static final String SETTING_GHOSTING_STRENGTH = "ghosting_strength";
     private static final String SETTING_GHOSTING_DURATION = "ghosting_duration";
     private static final String SETTING_GHOSTING_BLUR = "ghosting_blur";
+    private static final String SETTING_GHOSTING_QUALITY = "ghosting_quality";
+    private static final String SETTING_GHOSTING_OCTAVES = "ghosting_octaves";
+    private static final String SETTING_GHOSTING_SPEED = "ghosting_speed";
+    private static final String SETTING_GHOSTING_SCALE = "ghosting_scale";
+    private static final String SETTING_GHOSTING_CONTRAST = "ghosting_contrast";
+    private static final String SETTING_GHOSTING_SWIRL = "ghosting_swirl";
+    private static final String SETTING_GHOSTING_DENSITY = "ghosting_density";
     private final Minecraft mc = Minecraft.getInstance();
     private final ModeValue mode =
             modeSetting("handChamsMode", SETTING_MODE, "Smoke", "Smoke", "Metallic", "Glass");
@@ -199,6 +206,35 @@ public class Chams extends Module {
     );
     private final NumberValue<Float> ghostingBlur = visibleWhen(
             num("handChamsGhostingBlur", SETTING_GHOSTING_BLUR, 3.0f, 0.0f, 12.0f),
+            this::isGhostingVisible
+    );
+    private final ModeValue ghostingQuality = visibleWhen(
+            modeSetting("handChamsGhostingQuality", SETTING_GHOSTING_QUALITY, "Balanced",
+                    "Performance", "Balanced", "High", "Ultra"),
+            this::isGhostingVisible
+    );
+    private final NumberValue<Integer> ghostingOctaves = visibleWhen(
+            num("handChamsGhostingOctaves", SETTING_GHOSTING_OCTAVES, 3, 1, 6),
+            this::isGhostingVisible
+    );
+    private final NumberValue<Float> ghostingSpeed = visibleWhen(
+            num("handChamsGhostingSpeed", SETTING_GHOSTING_SPEED, 0.65f, 0.0f, 3.0f),
+            this::isGhostingVisible
+    );
+    private final NumberValue<Float> ghostingScale = visibleWhen(
+            num("handChamsGhostingScale", SETTING_GHOSTING_SCALE, 3.4f, 0.5f, 12.0f),
+            this::isGhostingVisible
+    );
+    private final NumberValue<Float> ghostingContrast = visibleWhen(
+            num("handChamsGhostingContrast", SETTING_GHOSTING_CONTRAST, 1.1f, 0.35f, 2.4f),
+            this::isGhostingVisible
+    );
+    private final NumberValue<Float> ghostingSwirl = visibleWhen(
+            num("handChamsGhostingSwirl", SETTING_GHOSTING_SWIRL, 0.8f, 0.0f, 3.0f),
+            this::isGhostingVisible
+    );
+    private final NumberValue<Float> ghostingDensity = visibleWhen(
+            num("handChamsGhostingDensity", SETTING_GHOSTING_DENSITY, 1.0f, 0.2f, 2.5f),
             this::isGhostingVisible
     );
 
@@ -527,10 +563,12 @@ public class Chams extends Module {
         int h = mc.getWindow().getHeight();
         if (w <= 0 || h <= 0) return false;
 
-        // Temporal history does not need full framebuffer resolution. Half-res cuts its persistent
-        // memory and update bandwidth to 25% while linear normalized sampling keeps the trail soft.
-        int historyW = Math.max(1, (w + 1) / 2);
-        int historyH = Math.max(1, (h + 1) / 2);
+        // Quality controls both temporal-buffer resolution and shader sample count. Keeping the
+        // history independent from the full-resolution hand mask makes the expensive temporal
+        // stages scale predictably without changing the actual hand render resolution.
+        float historyScale = ghostHistoryScale();
+        int historyW = Math.max(1, Math.round(w * historyScale));
+        int historyH = Math.max(1, Math.round(h * historyScale));
 
         if (ghostHistoryRead == null || ghostHistoryWrite == null) {
             ghostHistoryRead = new TextureTarget("combatant-hand-ghost-history-a", historyW, historyH, false, GpuFormat.RGBA8_UNORM);
@@ -613,6 +651,24 @@ public class Chams extends Module {
 
     private boolean isGhostingVisible() {
         return hands.get() && ghosting.get();
+    }
+
+    private int ghostQualityLevel() {
+        return switch (ghostingQuality.get()) {
+            case "Performance" -> 1;
+            case "High" -> 3;
+            case "Ultra" -> 4;
+            default -> 2;
+        };
+    }
+
+    private float ghostHistoryScale() {
+        return switch (ghostQualityLevel()) {
+            case 1 -> 0.35f;
+            case 3 -> 0.75f;
+            case 4 -> 1.0f;
+            default -> 0.50f;
+        };
     }
 
     private int materialFillRgb() {
@@ -818,7 +874,15 @@ public class Chams extends Module {
                 decay,
                 ghostingStrength.get(),
                 ghostingBlur.get(),
-                0.96f
+                0.96f,
+                ghostQualityLevel(),
+                ghostingOctaves.get(),
+                ghostingSpeed.get(),
+                ghostingScale.get(),
+                ghostingSwirl.get(),
+                ghostingContrast.get(),
+                ghostingDensity.get(),
+                ghostHistoryScale()
         );
 
         // Temporal accumulation is kept in a private ping-pong pair, independent from the graph's
