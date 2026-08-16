@@ -427,7 +427,6 @@ public class Chams extends Module {
             }
 
             markHandMaskReady();
-            executePreparedHandFrame(prepared);
         }
 
         return true;

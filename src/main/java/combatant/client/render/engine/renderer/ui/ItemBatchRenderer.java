@@ -20,6 +20,7 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.render.GuiItemAtlas;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.RenderBuffers;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import net.minecraft.client.renderer.fog.FogRenderer;
 import net.minecraft.client.renderer.item.TrackingItemStackRenderState;
@@ -55,7 +56,17 @@ public final class ItemBatchRenderer {
     private static final int ITEM_OVERLAY_PREALLOCATED_ITEMS = Math.max(32,
             Integer.getInteger("combatant.render.itemOverlay.preallocatedItems", 256));
 
-    private static FeatureRenderDispatcher itemFeatureDispatcher;
+    // GuiItemAtlas feature rendering must not share GameRenderer's staged vertex buffer.
+    // During world/Iris rendering that buffer can already be uploaded/in-use; if a second
+    // FeatureRenderDispatcher begins on it, prepareFrame() may fail after PreparedFrame.begin(),
+    // leaving that dispatcher permanently poisoned ("PreparedFrame already in use").
+    //
+    // Keep world-billboard atlas work and deferred HUD atlas work isolated from both the main
+    // renderer and from each other.
+    private static RenderBuffers uiItemRenderBuffers;
+    private static FeatureRenderDispatcher uiItemFeatureDispatcher;
+    private static RenderBuffers worldItemRenderBuffers;
+    private static FeatureRenderDispatcher worldItemFeatureDispatcher;
 
     // UI and world billboards must never share the same mutable GuiItemAtlas.
     // World render commands are deferred until Renderer3D flushes them; repacking
@@ -127,7 +138,7 @@ public final class ItemBatchRenderer {
 
         WorldItemAtlasPage page = ensureWorldItemAtlas(
                 mc,
-                getItemFeatureDispatcher(mc),
+                getWorldItemFeatureDispatcher(mc),
                 identities,
                 worldItemAtlasCursor++
         );
@@ -138,6 +149,7 @@ public final class ItemBatchRenderer {
         // the guard around getOrUpdate only; model resolution and atlas allocation do not need
         // to touch the world render state.
         GuiAtlasRenderState atlasState = GuiAtlasRenderState.capture();
+        RuntimeException atlasFailure = null;
         try {
             atlasState.enterGuiPass();
             for (int rowIndex = 0; rowIndex < states.size(); rowIndex++) {
@@ -161,10 +173,23 @@ public final class ItemBatchRenderer {
                     }
                 }
             }
-        } catch (RuntimeException ignored) {
-            // Preserve the row layout; a failed atlas slot simply stays null.
+        } catch (RuntimeException failure) {
+            // FeatureRenderDispatcher.prepareFrameWithContext() calls PreparedFrame.begin()
+            // before feature preparation and does not roll it back if preparation itself throws.
+            // Do not keep a possibly-poisoned dispatcher alive after the intentionally-soft
+            // world-atlas failure path.
+            atlasFailure = failure;
         } finally {
             atlasState.restore();
+        }
+        if (atlasFailure != null) {
+            for (WorldItemSprite[] row : sprites) {
+                if (row == null) continue;
+                for (int i = 0; i < row.length; i++) {
+                    row[i] = null;
+                }
+            }
+            resetWorldItemRenderer();
         }
         return sprites;
     }
@@ -182,6 +207,9 @@ public final class ItemBatchRenderer {
 
         worldItemAtlasCursor = 0;
         worldItemFrameOpen = false;
+        if (worldItemRenderBuffers != null) {
+            worldItemRenderBuffers.endFrame();
+        }
     }
 
     /**
@@ -424,6 +452,7 @@ public final class ItemBatchRenderer {
                 if (atlas != null) {
                     atlas.endFrame();
                 }
+                endUiItemRenderFrame();
 
                 MeshBuilder durabilityGlowMesh = null;
                 MeshBuilder durabilityRoundedMesh = null;
@@ -511,6 +540,13 @@ public final class ItemBatchRenderer {
                         overlayTextRenderer.end();
                     }
                 }
+            } catch (RuntimeException failure) {
+                // If feature preparation failed after PreparedFrame.begin(), this dispatcher can
+                // no longer be reused safely. Recreate the isolated UI renderer on the next batch
+                // and preserve the original exception instead of crashing later with the misleading
+                // secondary "PreparedFrame already in use" error.
+                resetUiItemRenderer();
+                throw failure;
             } finally {
                 RenderSystem.outputColorTextureOverride = previousOutputColor;
                 RenderSystem.outputDepthTextureOverride = previousOutputDepth;
@@ -592,16 +628,71 @@ public final class ItemBatchRenderer {
     }
 
     private static FeatureRenderDispatcher getItemFeatureDispatcher(Minecraft mc) {
-        if (itemFeatureDispatcher == null) {
-            itemFeatureDispatcher = new FeatureRenderDispatcher(
-                    mc.gameRenderer.renderBuffers(),
+        if (uiItemFeatureDispatcher == null) {
+            uiItemRenderBuffers = new RenderBuffers(1);
+            uiItemFeatureDispatcher = new FeatureRenderDispatcher(
+                    uiItemRenderBuffers,
                     mc.getModelManager(),
                     mc.getAtlasManager(),
                     mc.font,
                     mc.gameRenderer.gameRenderState()
             );
         }
-        return itemFeatureDispatcher;
+        return uiItemFeatureDispatcher;
+    }
+
+    private static FeatureRenderDispatcher getWorldItemFeatureDispatcher(Minecraft mc) {
+        if (worldItemFeatureDispatcher == null) {
+            worldItemRenderBuffers = new RenderBuffers(1);
+            worldItemFeatureDispatcher = new FeatureRenderDispatcher(
+                    worldItemRenderBuffers,
+                    mc.getModelManager(),
+                    mc.getAtlasManager(),
+                    mc.font,
+                    mc.gameRenderer.gameRenderState()
+            );
+        }
+        return worldItemFeatureDispatcher;
+    }
+
+    private static void resetWorldItemRenderer() {
+        for (WorldItemAtlasPage page : worldItemAtlases) {
+            if (page.atlas != null) {
+                page.atlas.close();
+                page.atlas = null;
+            }
+            page.slotTextureSize = 0;
+            page.textureSize = 0;
+        }
+        worldItemAtlasCursor = 0;
+        worldItemFrameOpen = false;
+
+        if (worldItemFeatureDispatcher != null) {
+            worldItemFeatureDispatcher.close();
+            worldItemFeatureDispatcher = null;
+        }
+        if (worldItemRenderBuffers != null) {
+            worldItemRenderBuffers.close();
+            worldItemRenderBuffers = null;
+        }
+    }
+
+    private static void endUiItemRenderFrame() {
+        if (uiItemRenderBuffers != null) {
+            uiItemRenderBuffers.endFrame();
+        }
+    }
+
+    private static void resetUiItemRenderer() {
+        closeItemAtlas();
+        if (uiItemFeatureDispatcher != null) {
+            uiItemFeatureDispatcher.close();
+            uiItemFeatureDispatcher = null;
+        }
+        if (uiItemRenderBuffers != null) {
+            uiItemRenderBuffers.close();
+            uiItemRenderBuffers = null;
+        }
     }
 
     private static boolean hasItemDurabilityBar(ItemDrawCommand command) {
