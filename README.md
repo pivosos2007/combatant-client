@@ -68,7 +68,7 @@ Combatant includes optional compatibility integrations for Iris, ImmediatelyFast
 4. Download the required dependency jars:
    - Fabric API [`0.152.2+26.2`](https://modrinth.com/mod/fabric-api/version/0.152.2%2B26.2)
    - Sodium [`sodium-fabric-0.9.1+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.1-fabric)
-5. Put `combatant-0.1.1.jar`, Fabric API, and Sodium into your Minecraft `mods` folder.
+5. Put `combatant-0.1.2.jar`, Fabric API, and Sodium into your Minecraft `mods` folder.
 6. Start the Fabric 26.2 profile.
 
 ## Renderer backends
@@ -79,12 +79,6 @@ Combatant supports both renderer backends available for Minecraft 26.2:
 - Vulkan
 
 Shaderpack-related Combatant features are currently supported only on the OpenGL backend. This is an Iris-side limitation.
-
-## Project status
-
-Active development has slowed down substantially because I (primary maintainer) have left for military service.
-
-Version 0.1.1 is expected to remain the current release for a long time, and further updates should not be expected in the near future. Pull requests can still be submitted and reviewed when time permits, but review and merge times may be inconsistent.
 
 ## Contributing
 
