@@ -496,8 +496,8 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
 
     @Unique
     private void combatant$renderPreHandPostProcess(DeltaTracker tickCounter) {
-        ProfilerPhase.begin("3d:post_pre_hand");
-        try (TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("3d:post_pre_hand")) {
+        try (ProfilerPhase.Scope profilerScope = ProfilerPhase.scope("3d:post_pre_hand");
+             TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("3d:post_pre_hand")) {
             if (minecraft != null) {
                 boolean needsResolvedDepth = !IrisRuntime.isShaderpackRendererActive()
                         && combatant$needsResolvedMainDepth();
@@ -516,7 +516,6 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                 combatant$renderCombatantWorldAfterPreHandPostProcess(tickCounter);
             }
         }
-        ProfilerPhase.end("3d:post_pre_hand");
     }
 
     @Unique
@@ -550,8 +549,8 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             )
     )
     private void combatant$postProcessAfterHand(DeltaTracker tickCounter, CallbackInfo ci) {
-        ProfilerPhase.begin("3d:post_after_hand");
-        try (TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("3d:post_after_hand")) {
+        try (ProfilerPhase.Scope profilerScope = ProfilerPhase.scope("3d:post_after_hand");
+             TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("3d:post_after_hand")) {
             if (minecraft != null) {
                 MsaaWorldTarget.resolveToMain(minecraft);
             }
@@ -560,7 +559,6 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                         tickCounter.getGameTimeDeltaPartialTick(true));
             }
         }
-        ProfilerPhase.end("3d:post_after_hand");
     }
 
     @Unique
@@ -729,10 +727,15 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                                                         float tickDelta,
                                                         Matrix4fc positionMatrix) {
         Chams module = Modules.get(Chams.class);
-        if (module != null && module.renderPreparedHandScene(dispatcher, storage)) {
-            return;
-        }
+        SubmitNodeStorage snapshot = module != null ? module.snapshotPreparedHandScene(storage) : null;
+
+        // Render Minecraft's live hand storage first. renderAllFeatures() consumes it in 26.2.
         original.call(dispatcher, storage);
+
+        // Chams renders only the isolated snapshot afterwards; it must never consume the live storage.
+        if (module != null && snapshot != null) {
+            module.renderPreparedHandScene(snapshot);
+        }
     }
 
     @Inject(method = "render(Lnet/minecraft/client/DeltaTracker;Z)V", at = @At("TAIL"))

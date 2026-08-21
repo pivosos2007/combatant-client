@@ -468,20 +468,43 @@ public class Combatant implements ClientModInitializer {
         ClientTickEvents.START_CLIENT_TICK.register(client -> {
             if (client.player == null) return;
             if (!RuntimeGate.canRunClientLogic()) return;
-            Events.BUS.post(new GameTickEvent());
+            try (ProfilerPhase.Scope tickScope = ProfilerPhase.scope("combatant:client_tick:start")) {
+                Events.BUS.post(new GameTickEvent());
+            }
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            ModuleManager.tickRuntimeControllers();
-            if (!RuntimeGate.canRunClientLogic()) return;
-
-            if (!ClickGuiRenderer.isBlockingModuleKeybinds()) {
-                ModuleManager.handleModuleKeybinds();
+            if (!ProfilerPhase.isActive()) {
+                ModuleManager.tickRuntimeControllers();
+                if (!RuntimeGate.canRunClientLogic()) return;
+                if (!ClickGuiRenderer.isBlockingModuleKeybinds()) {
+                    ModuleManager.handleModuleKeybinds();
+                }
+                TargetManager.tick();
+                ModuleManager.tickAll();
+                DraggableHudElementRegistry.tickAll();
+                StaticHudElementRegistry.tickAll();
+                return;
             }
-            TargetManager.tick();
-            ModuleManager.tickAll();
-            DraggableHudElementRegistry.tickAll();
-            StaticHudElementRegistry.tickAll();
+
+            try (ProfilerPhase.Scope tickScope = ProfilerPhase.scope("combatant:client_tick:end")) {
+                try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("runtime_controllers")) {
+                    ModuleManager.tickRuntimeControllers();
+                }
+                if (!RuntimeGate.canRunClientLogic()) return;
+
+                if (!ClickGuiRenderer.isBlockingModuleKeybinds()) {
+                    try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("module_keybinds")) {
+                        ModuleManager.handleModuleKeybinds();
+                    }
+                }
+                try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("target_manager")) {
+                    TargetManager.tick();
+                }
+                ModuleManager.tickAll();
+                DraggableHudElementRegistry.tickAll();
+                StaticHudElementRegistry.tickAll();
+            }
         });
 
         /* ====================== WORLD RENDER ====================== */

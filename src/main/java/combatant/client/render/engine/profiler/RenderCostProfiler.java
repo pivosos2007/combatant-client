@@ -9,18 +9,22 @@ package combatant.client.render.engine.profiler;
 
 import java.util.List;
 
+/**
+ * Named render-cost zones backed by Mojang's profiler/Tracy integration.
+ *
+ * <p>This class deliberately records durations only. Fine-grained UI-node
+ * instrumentation is disabled because it creates excessive Tracy zone volume
+ * and can become measurable profiling overhead by itself.</p>
+ */
 public enum RenderCostProfiler {
     ;
-    private static final boolean DEV = DevProfilerBridge.available("RenderCostProfiler");
 
     public static void beginFrame(long frameId) {
-        if (!DEV) return;
-        DevProfilerBridge.invoke("RenderCostProfiler", "beginFrame", new Class<?>[]{long.class}, frameId);
+        // RenderFrameProfiler owns the frame-wide zone.
     }
 
     public static void endFrame() {
-        if (!DEV) return;
-        DevProfilerBridge.invoke("RenderCostProfiler", "endFrame", new Class<?>[0]);
+        // RenderFrameProfiler owns the frame-wide zone.
     }
 
     public static Snapshot snapshot() {
@@ -28,79 +32,86 @@ public enum RenderCostProfiler {
     }
 
     public static boolean isEnabled() {
-        if (!DEV) return false;
-        return DevProfilerBridge.bool("RenderCostProfiler", "isEnabled", false, new Class<?>[0]);
+        return ProfilerPhase.isActive();
     }
 
     public static boolean isConfigured() {
-        if (!DEV) return false;
-        return DevProfilerBridge.bool("RenderCostProfiler", "isConfigured", false, new Class<?>[0]);
+        return ProfilerPhase.isActive();
     }
 
     public static Scope scope(String domain, String name) {
-        if (!DEV) return Scope.NOOP;
-        return new Scope(DevProfilerBridge.closeable("RenderCostProfiler", "scope",
-                new Class<?>[]{String.class, String.class}, domain, name));
+        if (!ProfilerPhase.isActive()) return Scope.NOOP;
+        return open("render_cost:" + safe(domain) + ":" + safe(name));
     }
 
     public static Scope phase(String label) {
-        if (!DEV) return Scope.NOOP;
-        return new Scope(DevProfilerBridge.closeable("RenderCostProfiler", "phase", new Class<?>[]{String.class}, label));
+        if (!ProfilerPhase.isActive()) return Scope.NOOP;
+        return open("render_phase:" + safe(label));
     }
 
     public static Scope uiNode(Object label) {
-        if (!DEV) return Scope.NOOP;
-        return new Scope(DevProfilerBridge.closeable("RenderCostProfiler", "uiNode", new Class<?>[]{Object.class}, label));
+        // Intentionally disabled: one zone per retained UI node creates too much trace noise.
+        return Scope.NOOP;
     }
 
     public static Scope uiRuntime(String label) {
-        if (!DEV) return Scope.NOOP;
-        return new Scope(DevProfilerBridge.closeable("RenderCostProfiler", "uiRuntime", new Class<?>[]{String.class}, label));
+        if (!ProfilerPhase.isActive()) return Scope.NOOP;
+        return open("ui_runtime:" + safe(label));
     }
 
     public static Scope uiEffect(String label) {
-        if (!DEV) return Scope.NOOP;
-        return new Scope(DevProfilerBridge.closeable("RenderCostProfiler", "uiEffect", new Class<?>[]{String.class}, label));
+        if (!ProfilerPhase.isActive()) return Scope.NOOP;
+        return open("ui_effect:" + safe(label));
     }
 
     public static Scope postPass(String label) {
-        if (!DEV) return Scope.NOOP;
-        return new Scope(DevProfilerBridge.closeable("RenderCostProfiler", "postPass", new Class<?>[]{String.class}, label));
+        if (!ProfilerPhase.isActive()) return Scope.NOOP;
+        return open("postprocess:" + safe(label));
     }
 
     public static Scope rhiDraw(String label) {
-        if (!DEV) return Scope.NOOP;
-        return new Scope(DevProfilerBridge.closeable("RenderCostProfiler", "rhiDraw", new Class<?>[]{String.class}, label));
+        if (!ProfilerPhase.isActive()) return Scope.NOOP;
+        return open("rhi:" + safe(label));
     }
 
     public static Scope itemRender(String label) {
-        if (!DEV) return Scope.NOOP;
-        return new Scope(DevProfilerBridge.closeable("RenderCostProfiler", "itemRender", new Class<?>[]{String.class}, label));
+        if (!ProfilerPhase.isActive()) return Scope.NOOP;
+        return open("item_render:" + safe(label));
     }
 
     public static Scope worldEffect(String label) {
-        if (!DEV) return Scope.NOOP;
-        return new Scope(DevProfilerBridge.closeable("RenderCostProfiler", "worldEffect", new Class<?>[]{String.class}, label));
+        if (!ProfilerPhase.isActive()) return Scope.NOOP;
+        return open("world_effect:" + safe(label));
     }
 
     public static List<String> debugLines(String title, String domainPrefix, int limit, double minMs) {
-        if (!DEV) return List.of();
-        return DevProfilerBridge.lines("RenderCostProfiler", "debugLines",
-                new Class<?>[]{String.class, String.class, int.class, double.class},
-                title, domainPrefix, limit, minMs);
+        return List.of();
+    }
+
+    private static Scope open(String label) {
+        return new Scope(ProfilerPhase.scope(label));
+    }
+
+    private static String safe(Object value) {
+        if (value == null) return "unknown";
+        String text = String.valueOf(value);
+        return text.isBlank() ? "unknown" : text;
     }
 
     public static final class Scope implements AutoCloseable {
         private static final Scope NOOP = new Scope(null);
-        private final AutoCloseable delegate;
+        private ProfilerPhase.Scope delegate;
 
-        private Scope(AutoCloseable delegate) {
+        private Scope(ProfilerPhase.Scope delegate) {
             this.delegate = delegate;
         }
 
         @Override
         public void close() {
-            DevProfilerBridge.close(delegate);
+            ProfilerPhase.Scope current = delegate;
+            if (current == null) return;
+            delegate = null;
+            current.close();
         }
     }
 

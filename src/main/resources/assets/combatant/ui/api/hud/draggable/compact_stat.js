@@ -72,6 +72,14 @@ function alpha(hex, amount) {
   return "#" + (((nextA << 24) | (raw & 0x00ffffff)) >>> 0).toString(16).padStart(8, "0").toUpperCase();
 }
 
+function withAlpha(hex, amount) {
+  const src = c(hex, "#00000000");
+  if (!src.startsWith("#") || src.length !== 9) return src;
+  const raw = Number.parseInt(src.slice(1), 16);
+  const nextA = Math.max(0, Math.min(255, Math.round(255 * amount)));
+  return "#" + (((nextA << 24) | (raw & 0x00ffffff)) >>> 0).toString(16).padStart(8, "0").toUpperCase();
+}
+
 function alpha01(hex) {
   const src = c(hex, "#00000000");
   if (!src.startsWith("#") || src.length !== 9) return 1;
@@ -156,7 +164,19 @@ function shell(p) {
   const bg2 = c(p.bgSecondary, "#E50E1015");
   const stroke = c(p.stroke, "#665A5A5A");
   const paintAlpha = Math.max(alpha01(bg1), alpha01(bg2));
-  const strokeAlpha = Math.max(alpha01(stroke), paintAlpha);
+  const hasStrokeControl = p.strokeControlled === true;
+  const strokeEnabled = hasStrokeControl ? p.strokeEnabled === true : true;
+  const configuredStrokeAlpha = Math.max(0, Math.min(1, n(p.strokeAlpha, 1)));
+  const strokeAlpha = strokeEnabled
+    ? (hasStrokeControl ? configuredStrokeAlpha : Math.max(alpha01(stroke), paintAlpha))
+    : 0;
+  const useStrokeGradient = hasStrokeControl && p.strokeGradient === true;
+  const strokeStart = hasStrokeControl
+    ? c(useStrokeGradient ? p.strokeStartColor : stroke, stroke)
+    : "#FFFFFFFF";
+  const strokeEnd = hasStrokeControl
+    ? c(useStrokeGradient ? p.strokeEndColor : stroke, stroke)
+    : stroke;
   return [
     ui.shape({
       key: "fill",
@@ -167,10 +187,10 @@ function shell(p) {
       startColor: bg1,
       endColor: bg2,
       angle: 92,
-      stroke: alpha(stroke, strokeAlpha),
+      stroke: hasStrokeControl ? withAlpha(stroke, strokeAlpha) : alpha(stroke, strokeAlpha),
       strokeWidth: strokeW,
-      strokeStartColor: alpha("#FFFFFFFF", 0.16 * strokeAlpha),
-      strokeEndColor: alpha(stroke, strokeAlpha),
+      strokeStartColor: hasStrokeControl ? withAlpha(strokeStart, strokeAlpha) : alpha(strokeStart, 0.16 * strokeAlpha),
+      strokeEndColor: hasStrokeControl ? withAlpha(strokeEnd, strokeAlpha) : alpha(strokeEnd, strokeAlpha),
       strokeAngle: 90,
     }),
     ui.shape({
@@ -321,8 +341,7 @@ export function buildTemplate(ctx) {
   const h = n(p.height, 20);
   const visualW = visualWidth(p, w);
   const view = visualW === w ? p : { ...p, width: visualW };
-  const blur = p.backgroundEffect === "Blur" || p.backgroundEffect === "Glass";
-  const glass = p.backgroundEffect === "Glass";
+  const blur = p.backgroundEffect === "Blur";
   const nodes = [];
   nodes.push(...shell(view));
   const ic = icon(view);
@@ -337,10 +356,9 @@ export function buildTemplate(ctx) {
       `w-${s(visualW)}`,
       `h-${s(h)}`,
       `rounded-${s(n(p.radius, 5))}`,
-      "shadow-compact",
+      p.shadowControlled === true ? "" : "shadow-compact",
       blur ? "blur" : "",
-      blur ? `blur-alpha-${s(n(p.blurAlpha, 0.45))}` : "",
-      glass ? "glass" : ""
+      blur ? `blur-alpha-${s(n(p.blurAlpha, 0.45))}` : ""
     ),
     children: [
       ui.stack({

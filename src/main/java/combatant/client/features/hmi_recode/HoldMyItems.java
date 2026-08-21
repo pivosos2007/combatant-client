@@ -26,7 +26,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 
-public final class HoldMyItems {
+public enum HoldMyItems {
+    ;
     private static final HmiScriptRuntime SCRIPTS = new HmiScriptRuntime();
     private static final ThreadLocal<Deque<RenderScope>> SCOPES = ThreadLocal.withInitial(ArrayDeque::new);
     private static final ThreadLocal<Integer> REPLAY_DEPTH = ThreadLocal.withInitial(() -> 0);
@@ -39,9 +40,6 @@ public final class HoldMyItems {
     private static volatile boolean active;
     private static ReplayData lastMainReplay;
     private static ReplayData lastOffReplay;
-
-    private HoldMyItems() {
-    }
 
     public static synchronized void activate() {
         if (active) return;

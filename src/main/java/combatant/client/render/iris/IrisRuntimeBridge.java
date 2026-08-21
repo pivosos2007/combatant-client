@@ -11,6 +11,9 @@ import com.mojang.blaze3d.pipeline.RenderPipeline;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.irisshaders.iris.api.v0.IrisProgram;
+import net.irisshaders.iris.pathways.HandRenderer;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.ItemStack;
 import combatant.client.render.CombatantEntityRenderTypes;
 
 enum IrisRuntimeBridge {
@@ -42,6 +45,21 @@ enum IrisRuntimeBridge {
         for (RenderPipeline pipeline : pipelines) {
             assign(api, pipeline, IrisProgram.ENTITIES_TRANSLUCENT);
         }
+    }
+
+    static boolean isHandRenderingSolid() {
+        return HandRenderer.INSTANCE.isRenderingSolid();
+    }
+
+    static boolean isHeldItemTranslucent(ItemStack stack) {
+        return stack != null && HandRenderer.INSTANCE.isHandTranslucent(stack);
+    }
+
+    static boolean hasAnySolidHand() {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null) return false;
+        return !HandRenderer.INSTANCE.isHandTranslucent(client.player.getMainHandItem())
+                || !HandRenderer.INSTANCE.isHandTranslucent(client.player.getOffhandItem());
     }
 
     private static void assign(IrisApi api, RenderPipeline pipeline, IrisProgram program) {

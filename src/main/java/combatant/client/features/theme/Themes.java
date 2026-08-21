@@ -37,6 +37,26 @@ public enum Themes {
     public static final String THEME_PRISM = "prism";
     public static final String THEME_CINDER = "cinder";
     public static final String THEME_FOREST = "forest";
+    public static final String THEME_SPEARMINT = "spearmint";
+    public static final String THEME_JADE_GREEN = "jade_green";
+    public static final String THEME_GREEN_SPIRIT = "green_spirit";
+    public static final String THEME_ROSY_PINK = "rosy_pink";
+    public static final String THEME_MAGENTA = "magenta";
+    public static final String THEME_HOT_PINK = "hot_pink";
+    public static final String THEME_LAVENDER = "lavender";
+    public static final String THEME_AMETHYST = "amethyst";
+    public static final String THEME_PURPLE_FIRE = "purple_fire";
+    public static final String THEME_SUNSET_PINK = "sunset_pink";
+    public static final String THEME_BLAZE_ORANGE = "blaze_orange";
+    public static final String THEME_PINK_BLOOD = "pink_blood";
+    public static final String THEME_PASTEL = "pastel";
+    public static final String THEME_NEON_RED = "neon_red";
+    public static final String THEME_RED_COFFEE = "red_coffee";
+    public static final String THEME_DEEP_OCEAN = "deep_ocean";
+    public static final String THEME_CHAMBRAY_BLUE = "chambray_blue";
+    public static final String THEME_MINT_BLUE = "mint_blue";
+    public static final String THEME_PACIFIC_BLUE = "pacific_blue";
+    public static final String THEME_TROPICAL_ICE = "tropical_ice";
     private static final Theme CLASSIC = new Theme(
             0xF012191B, // window bg (cooler, unchanged)
             0xF0142226, // header darker
@@ -507,6 +527,73 @@ public enum Themes {
             new GradientSpec(true, 0xFF9BE07C, 0xFF6BC26A, 45f)
     );
 
+    // Tenacity 7 palette ports. The original two-color palette is preserved in
+    // accent/accentSoft; its gradient flag controls whether the semantic UI
+    // surfaces also receive a two-tone gradient treatment.
+    private static final ThemeEntry SPEARMINT_ENTRY = pairedPaletteEntry(
+            THEME_SPEARMINT, "Spearmint", 0xFF61C2A2, 0xFF41826C, false
+    );
+    private static final ThemeEntry JADE_GREEN_ENTRY = pairedPaletteEntry(
+            THEME_JADE_GREEN, "Jade Green", 0xFF00A86B, 0xFF006942, false
+    );
+    private static final ThemeEntry GREEN_SPIRIT_ENTRY = pairedPaletteEntry(
+            THEME_GREEN_SPIRIT, "Green Spirit", 0xFF00873E, 0xFF9FE2BF, true
+    );
+    private static final ThemeEntry ROSY_PINK_ENTRY = pairedPaletteEntry(
+            THEME_ROSY_PINK, "Rosy Pink", 0xFFFF66CC, 0xFFBF4D99, false
+    );
+    private static final ThemeEntry MAGENTA_ENTRY = pairedPaletteEntry(
+            THEME_MAGENTA, "Magenta", 0xFFD53F77, 0xFF9D446E, false
+    );
+    private static final ThemeEntry HOT_PINK_ENTRY = pairedPaletteEntry(
+            THEME_HOT_PINK, "Hot Pink", 0xFFE75480, 0xFFAC4FC6, true
+    );
+    private static final ThemeEntry LAVENDER_ENTRY = pairedPaletteEntry(
+            THEME_LAVENDER, "Lavender", 0xFFDBA6F7, 0xFF9873AC, false
+    );
+    private static final ThemeEntry AMETHYST_ENTRY = pairedPaletteEntry(
+            THEME_AMETHYST, "Amethyst", 0xFF9063CD, 0xFF62438C, false
+    );
+    private static final ThemeEntry PURPLE_FIRE_ENTRY = pairedPaletteEntry(
+            THEME_PURPLE_FIRE, "Purple Fire", 0xFF68478D, 0xFFB1A2CA, true
+    );
+    private static final ThemeEntry SUNSET_PINK_ENTRY = pairedPaletteEntry(
+            THEME_SUNSET_PINK, "Sunset Pink", 0xFFFF9114, 0xFFF569E7, true
+    );
+    private static final ThemeEntry BLAZE_ORANGE_ENTRY = pairedPaletteEntry(
+            THEME_BLAZE_ORANGE, "Blaze Orange", 0xFFFFA94D, 0xFFFF8200, false
+    );
+    private static final ThemeEntry PINK_BLOOD_ENTRY = pairedPaletteEntry(
+            THEME_PINK_BLOOD, "Pink Blood", 0xFFE40046, 0xFFFFA6C9, true
+    );
+    private static final ThemeEntry PASTEL_ENTRY = pairedPaletteEntry(
+            THEME_PASTEL, "Pastel", 0xFFFF6D6A, 0xFFBF5250, false
+    );
+    private static final ThemeEntry NEON_RED_ENTRY = pairedPaletteEntry(
+            THEME_NEON_RED, "Neon Red", 0xFFD22730, 0xFFB8192A, false
+    );
+    private static final ThemeEntry RED_COFFEE_ENTRY = pairedPaletteEntry(
+            // Black is the identity/background half of this palette. Using it as
+            // the semantic accent would make selected states disappear on the
+            // dark UI, so the red half is intentionally promoted to accent.
+            THEME_RED_COFFEE, "Red Coffee", 0xFFE1223B, 0xFF000000, false
+    );
+    private static final ThemeEntry DEEP_OCEAN_ENTRY = pairedPaletteEntry(
+            THEME_DEEP_OCEAN, "Deep Ocean", 0xFF3C5291, 0xFF001440, true
+    );
+    private static final ThemeEntry CHAMBRAY_BLUE_ENTRY = pairedPaletteEntry(
+            THEME_CHAMBRAY_BLUE, "Chambray Blue", 0xFF212EB6, 0xFF3C5291, false
+    );
+    private static final ThemeEntry MINT_BLUE_ENTRY = pairedPaletteEntry(
+            THEME_MINT_BLUE, "Mint Blue", 0xFF429E9D, 0xFF285E5D, false
+    );
+    private static final ThemeEntry PACIFIC_BLUE_ENTRY = pairedPaletteEntry(
+            THEME_PACIFIC_BLUE, "Pacific Blue", 0xFF05A9C7, 0xFF047387, false
+    );
+    private static final ThemeEntry TROPICAL_ICE_ENTRY = pairedPaletteEntry(
+            THEME_TROPICAL_ICE, "Tropical Ice", 0xFF66FFD1, 0xFF0695FF, true
+    );
+
     private static final Map<String, ThemeEntry> PRESET_ENTRIES = Map.ofEntries(
             Map.entry(THEME_CLASSIC, CLASSIC_ENTRY),
             Map.entry(THEME_LEGACY, LEGACY_ENTRY),
@@ -525,7 +612,27 @@ public enum Themes {
             Map.entry(THEME_DUSK, DUSK_ENTRY),
             Map.entry(THEME_PRISM, PRISM_ENTRY),
             Map.entry(THEME_CINDER, CINDER_ENTRY),
-            Map.entry(THEME_FOREST, FOREST_ENTRY)
+            Map.entry(THEME_FOREST, FOREST_ENTRY),
+            Map.entry(THEME_SPEARMINT, SPEARMINT_ENTRY),
+            Map.entry(THEME_JADE_GREEN, JADE_GREEN_ENTRY),
+            Map.entry(THEME_GREEN_SPIRIT, GREEN_SPIRIT_ENTRY),
+            Map.entry(THEME_ROSY_PINK, ROSY_PINK_ENTRY),
+            Map.entry(THEME_MAGENTA, MAGENTA_ENTRY),
+            Map.entry(THEME_HOT_PINK, HOT_PINK_ENTRY),
+            Map.entry(THEME_LAVENDER, LAVENDER_ENTRY),
+            Map.entry(THEME_AMETHYST, AMETHYST_ENTRY),
+            Map.entry(THEME_PURPLE_FIRE, PURPLE_FIRE_ENTRY),
+            Map.entry(THEME_SUNSET_PINK, SUNSET_PINK_ENTRY),
+            Map.entry(THEME_BLAZE_ORANGE, BLAZE_ORANGE_ENTRY),
+            Map.entry(THEME_PINK_BLOOD, PINK_BLOOD_ENTRY),
+            Map.entry(THEME_PASTEL, PASTEL_ENTRY),
+            Map.entry(THEME_NEON_RED, NEON_RED_ENTRY),
+            Map.entry(THEME_RED_COFFEE, RED_COFFEE_ENTRY),
+            Map.entry(THEME_DEEP_OCEAN, DEEP_OCEAN_ENTRY),
+            Map.entry(THEME_CHAMBRAY_BLUE, CHAMBRAY_BLUE_ENTRY),
+            Map.entry(THEME_MINT_BLUE, MINT_BLUE_ENTRY),
+            Map.entry(THEME_PACIFIC_BLUE, PACIFIC_BLUE_ENTRY),
+            Map.entry(THEME_TROPICAL_ICE, TROPICAL_ICE_ENTRY)
     );
 
     private static final ThemeStore STORE = ThemeStore.get();
@@ -580,6 +687,26 @@ public enum Themes {
         out.add(PRISM_ENTRY);
         out.add(CINDER_ENTRY);
         out.add(FOREST_ENTRY);
+        out.add(SPEARMINT_ENTRY);
+        out.add(JADE_GREEN_ENTRY);
+        out.add(GREEN_SPIRIT_ENTRY);
+        out.add(ROSY_PINK_ENTRY);
+        out.add(MAGENTA_ENTRY);
+        out.add(HOT_PINK_ENTRY);
+        out.add(LAVENDER_ENTRY);
+        out.add(AMETHYST_ENTRY);
+        out.add(PURPLE_FIRE_ENTRY);
+        out.add(SUNSET_PINK_ENTRY);
+        out.add(BLAZE_ORANGE_ENTRY);
+        out.add(PINK_BLOOD_ENTRY);
+        out.add(PASTEL_ENTRY);
+        out.add(NEON_RED_ENTRY);
+        out.add(RED_COFFEE_ENTRY);
+        out.add(DEEP_OCEAN_ENTRY);
+        out.add(CHAMBRAY_BLUE_ENTRY);
+        out.add(MINT_BLUE_ENTRY);
+        out.add(PACIFIC_BLUE_ENTRY);
+        out.add(TROPICAL_ICE_ENTRY);
         return Collections.unmodifiableList(out);
     }
 
@@ -945,6 +1072,81 @@ public enum Themes {
         float out = from + delta * AnimationUtility.clamp01(t);
         out %= 360.0f;
         return out < 0.0f ? out + 360.0f : out;
+    }
+
+    private static ThemeEntry pairedPaletteEntry(String id, String name, int color1, int color2, boolean gradient) {
+        Theme theme = pairedPaletteTheme(color1, color2);
+        if (!gradient) {
+            return new ThemeEntry(
+                    id,
+                    name,
+                    true,
+                    theme,
+                    flatGradient(theme.windowBg()),
+                    subtleHeaderGradient(theme.windowHeader()),
+                    flatGradient(theme.surface()),
+                    flatGradient(theme.cardEnabled()),
+                    flatGradient(theme.windowStroke())
+            );
+        }
+
+        int primary = forceOpaque(color1);
+        int secondary = forceOpaque(color2);
+        return new ThemeEntry(
+                id,
+                name,
+                true,
+                theme,
+                new GradientSpec(true,
+                        withAlpha(mixArgb(0xFF0B0E12, primary, 0.14f), 0xF4),
+                        withAlpha(mixArgb(0xFF0B0E12, secondary, 0.14f), 0xF4),
+                        120f),
+                new GradientSpec(true,
+                        withAlpha(mixArgb(0xFF10141A, primary, 0.19f), 0xF4),
+                        withAlpha(mixArgb(0xFF10141A, secondary, 0.19f), 0xF4),
+                        120f),
+                new GradientSpec(true,
+                        mixArgb(0xFF171B21, primary, 0.08f),
+                        mixArgb(0xFF171B21, secondary, 0.08f),
+                        90f),
+                new GradientSpec(true, primary, secondary, 45f),
+                new GradientSpec(true, primary, secondary, 45f)
+        );
+    }
+
+    /**
+     * Converts a classic two-color client palette into the semantic colors used by
+     * the current ClickGUI/HUD. Backgrounds stay deliberately dark and only pick
+     * up a small amount of hue, while the supplied colors remain exact for the
+     * accent pair.
+     */
+    private static Theme pairedPaletteTheme(int color1, int color2) {
+        int primary = forceOpaque(color1);
+        int secondary = forceOpaque(color2);
+        int midpoint = mixArgb(primary, secondary, 0.5f);
+
+        return new Theme(
+                withAlpha(mixArgb(0xFF0C0F13, primary, 0.055f), 0xF4),
+                withAlpha(mixArgb(0xFF10141A, secondary, 0.075f), 0xF4),
+                withAlpha(midpoint, 0x60),
+                mixArgb(0xFF171B21, primary, 0.055f),
+                mixArgb(0xFF20252D, secondary, 0.085f),
+                withAlpha(mixArgb(primary, secondary, 0.28f), 0x50),
+                withAlpha(mixArgb(0xFF2A3038, secondary, 0.07f), 0x40),
+                mixArgb(0xFFF6F8FB, primary, 0.025f),
+                withAlpha(mixArgb(0xFFBBC4D0, secondary, 0.10f), 0x88),
+                primary,
+                withAlpha(secondary, 0x80),
+                withAlpha(midpoint, 0x60)
+        );
+    }
+
+    private static int forceOpaque(int argb) {
+        return 0xFF000000 | (argb & 0x00FFFFFF);
+    }
+
+    private static int withAlpha(int argb, int alpha) {
+        return (clampChannel(alpha) << 24) | (argb & 0x00FFFFFF);
     }
 
     private static GradientSpec flatGradient(int color) {

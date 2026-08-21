@@ -374,7 +374,7 @@ public final class ItemBatchRenderer {
             return 0;
         }
 
-        try (RenderCostProfiler.Scope ignoredItems = RenderCostProfiler.itemRender("item_batch:" + batch.commands.size())) {
+        try (RenderCostProfiler.Scope ignoredItems = RenderCostProfiler.itemRender("item_batch")) {
             int drawCalls = 0;
             Object2ObjectOpenHashMap<ItemResolveKey, TrackingItemStackRenderState> resolved = batch.resolvedStates;
             resolved.clear();

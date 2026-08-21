@@ -121,8 +121,19 @@ public enum DraggableHudElementRegistry {
     }
 
     public static void tickAll() {
-        for (DraggableHudElement w : WIDGETS) {
-            w.onTick();
+        if (!ProfilerPhase.isActive()) {
+            for (DraggableHudElement w : WIDGETS) {
+                w.onTick();
+            }
+            return;
+        }
+
+        try (ProfilerPhase.Scope widgetsScope = ProfilerPhase.scope("hud_widgets:tick")) {
+            for (DraggableHudElement w : WIDGETS) {
+                try (ProfilerPhase.Scope widgetScope = ProfilerPhase.scope("hud_widget:tick:" + w.getId())) {
+                    w.onTick();
+                }
+            }
         }
     }
 

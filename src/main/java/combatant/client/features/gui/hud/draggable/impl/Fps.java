@@ -57,7 +57,6 @@ public final class Fps extends DraggableHudElement implements ScriptableHudStatW
     private static final String COLOR_CUSTOM = "Custom";
     private static final String EFFECT_NONE = "None";
     private static final String EFFECT_BLUR = "Blur";
-    private static final String EFFECT_GLASS = "Glass";
     private static final long DIGIT_ANIMATION_DURATION_MS = 200L;
     private static final float DIGIT_ANIMATION_OFFSET = 8.0f;
 
@@ -65,14 +64,29 @@ public final class Fps extends DraggableHudElement implements ScriptableHudStatW
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final NumberValue<Double> scale = num("fps_scale", 2.37, 0.5, 5.0);
     private final ModeValue colorMode = mode("fps_color_mode", "color_mode", "Theme", new String[]{COLOR_THEME, COLOR_CUSTOM});
+    private final ModeValue panelStyle = visibleWhen(
+            mode("fps_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
+                    new String[]{HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT}),
+            this::isThemeMode
+    );
     private final RGBColorValue iconColor = visibleWhen(colorNoAlpha("fps_icon_color", "#FFFFFF"), this::isCustomMode);
     private final RGBColorValue valueColor = visibleWhen(colorNoAlpha("fps_value_color", "#FFFFFF"), this::isCustomMode);
     private final RGBColorValue metaColor = visibleWhen(colorNoAlpha("fps_meta_color", "#9B9B9B"), this::isCustomMode);
-    private final ModeValue bgEffect = mode("fps_bg_effect", "bg_effect", "Blur", new String[]{EFFECT_NONE, EFFECT_BLUR, EFFECT_GLASS});
-    private final RGBAColorValue bg = visibleWhen(color("fps_bg", "#F7343434"), () -> isCustomMode() && !isGlassEffect());
-    private final RGBAColorValue bg2 = visibleWhen(color("fps_bg_secondary", "#F7161616"), () -> isCustomMode() && !isGlassEffect());
-    private final RGBColorValue stroke = visibleWhen(colorNoAlpha("fps_stroke", "#5A5A5A"), () -> isCustomMode() && !isGlassEffect());
-    private final NumberValue<Integer> bgAlpha = visibleWhen(num("fps_bg_alpha", 133, 0, 255), () -> isThemeMode() && !isGlassEffect());
+    private final ModeValue bgEffect = mode("fps_bg_effect", "bg_effect", "Blur", new String[]{EFFECT_NONE, EFFECT_BLUR});
+    private final RGBAColorValue bg = visibleWhen(color("fps_bg", "#F7343434"), () -> isCustomMode());
+    private final RGBAColorValue bg2 = visibleWhen(color("fps_bg_secondary", "#F7161616"), () -> isCustomMode());
+    private final BooleanValue strokeEnabled = bool("fps_stroke_enabled", false);
+    private final RGBColorValue stroke = visibleWhen(colorNoAlpha("fps_stroke", "#5A5A5A"), () -> strokeEnabled.get() && isCustomMode());
+    private final NumberValue<Integer> strokeAlpha = visibleWhen(num("fps_stroke_alpha", 160, 0, 255), strokeEnabled::get);
+    private final BooleanValue strokeGradient = visibleWhen(bool("fps_stroke_gradient", true), () -> strokeEnabled.get() && isThemeMode());
+    private final BooleanValue shadowEnabled = bool("fps_shadow_enabled", true);
+    private final ModeValue shadowMode = visibleWhen(
+            mode("fps_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
+                    new String[]{HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME}),
+            shadowEnabled::get
+    );
+    private final NumberValue<Integer> shadowAlpha = visibleWhen(num("fps_shadow_alpha", 48, 0, 255), shadowEnabled::get);
+    private final NumberValue<Integer> bgAlpha = visibleWhen(num("fps_bg_alpha", 133, 0, 255), () -> isThemeMode());
     private final NumberValue<Integer> blurAlpha = visibleWhen(num("fps_blur_alpha", 255, 0, 255), this::hasEffect);
     private final EnumValue<HudTextEffects.Effect> labelEffect =
             enumSetting("fps_label_effect", HudTextEffects.Effect.FLOW,
@@ -203,10 +217,22 @@ public final class Fps extends DraggableHudElement implements ScriptableHudStatW
         }
 
         float radius = BOX_RADIUS * drawScale;
+        if (shadowEnabled.get()) {
+            HudRenderUtil.drawHudShadow(
+                    renderer, baseX, baseY, boxW, boxH, radius, drawScale,
+                    HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()), shadowAlpha.get(), 1.0f
+            );
+        }
+
         scriptModel.setVisible(true);
         scriptModel.setRoot(baseX, baseY, boxW, boxH, radius, drawScale);
         scriptModel.background().set(bgEffect.get(), isThemeMode(), blurAlpha.get() / 255.0f,
-                uiBgPrimary, uiBgSecondary, uiStroke, Math.max(0.5f, STROKE_WIDTH * drawScale), BOX_SOFTNESS);
+                        uiBgPrimary, uiBgSecondary, uiStroke, Math.max(0.5f, STROKE_WIDTH * drawScale), BOX_SOFTNESS)
+                .setStrokeControls(
+                        strokeEnabled.get(), strokeAlpha.get() / 255.0f,
+                        isThemeMode() && strokeGradient.get(),
+                        resolveStrokeGradientStart(), resolveStrokeGradientEnd()
+                );
         scriptModel.icon().texture(FPS_ICON.toString(), iconX - baseX, iconY - baseY, iconSize, iconSize, resolvedIconColor);
         scriptModel.divider().set(dividerX - baseX, dividerY - baseY, dividerW, dividerH,
                 HudRenderUtil.setAlpha(uiMetaColor, 0x52));
@@ -217,7 +243,8 @@ public final class Fps extends DraggableHudElement implements ScriptableHudStatW
                 .setDigitAnimation(digitAnimation.get(), previousShownFps, digitAnimProgress, DIGIT_ANIMATION_OFFSET);
         scriptModel.data("fps", fps)
                 .data("valueText", value)
-                .data("unitText", unit);
+                .data("unitText", unit)
+                .data("shadowControlled", true);
         ScriptedCompactHudStatRenderer.INSTANCE.render(scriptModel, renderer, fallback, ctx, tickDelta);
     }
 
@@ -239,6 +266,10 @@ public final class Fps extends DraggableHudElement implements ScriptableHudStatW
                     HudRenderUtil.mixColor(theme().surface(), theme().windowHeader(), 0.35f),
                     panelAlpha
             );
+            if (isAccentPanelStyle()) {
+                uiBgPrimary = HudRenderUtil.accentSurface(uiBgPrimary, 0.20f);
+                uiBgSecondary = HudRenderUtil.accentSurface(uiBgSecondary, 0.28f);
+            }
             uiStroke = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.4f),
                     Math.min(panelAlpha, 190)
@@ -291,13 +322,24 @@ public final class Fps extends DraggableHudElement implements ScriptableHudStatW
         return COLOR_THEME.equals(colorMode.get());
     }
 
+    private boolean isAccentPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
+    }
+
+    private int resolveStrokeGradientStart() {
+        if (!isThemeMode()) return stroke.getArgb();
+        return HudRenderUtil.themeAccentGradient(255).start();
+    }
+
+    private int resolveStrokeGradientEnd() {
+        if (!isThemeMode()) return stroke.getArgb();
+        return HudRenderUtil.themeAccentGradient(255).end();
+    }
+
     private boolean isCustomMode() {
         return COLOR_CUSTOM.equals(colorMode.get());
     }
 
-    private boolean isGlassEffect() {
-        return EFFECT_GLASS.equals(bgEffect.get());
-    }
 
     private boolean hasEffect() {
         return !EFFECT_NONE.equals(bgEffect.get());

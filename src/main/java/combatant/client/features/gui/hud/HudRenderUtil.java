@@ -185,6 +185,116 @@ public enum HudRenderUtil {
         );
     }
 
+    public static final String PANEL_STYLE_DEFAULT = "Default";
+    public static final String PANEL_STYLE_ACCENT = "Accent";
+    public static final String SHADOW_MODE_BLACK = "Black";
+    public static final String SHADOW_MODE_THEME = "Theme";
+
+    public record ThemeGradient(int start, int end, float angleDeg) {
+    }
+
+    /**
+     * Returns a theme-driven accent gradient suitable for HUD outlines/glows.
+     * Theme stroke-gradient colors are preferred when defined; otherwise the regular
+     * accent/accent-soft pair is used. The returned gradient is normalized top -> bottom.
+     */
+    public static ThemeGradient themeAccentGradient(int alpha) {
+        int a = Math.max(0, Math.min(255, alpha));
+        Themes.ThemeEntry entry = Theme.currentEntry();
+        Themes.GradientSpec strokeGradient = entry != null ? entry.strokeGradient() : null;
+        if (strokeGradient != null && strokeGradient.enabled()) {
+            return new ThemeGradient(
+                    setAlpha(strokeGradient.start(), a),
+                    setAlpha(strokeGradient.end(), a),
+                    90.0f
+            );
+        }
+
+        Themes.Theme current = Theme.theme();
+        int start = current != null ? current.accent() : 0xFF5CC8E7;
+        int end = current != null ? current.accentSoft() : 0x805CC8E7;
+        return new ThemeGradient(setAlpha(start, a), setAlpha(end, a), 90.0f);
+    }
+
+    /** Mixes a panel surface towards the active theme accent without changing its alpha. */
+    public static int accentSurface(int color, float strength) {
+        Themes.Theme current = Theme.theme();
+        if (current == null) return color;
+        int alpha = (color >>> 24) & 0xFF;
+        return setAlpha(mixColor(color, current.accent(), strength), alpha);
+    }
+
+    /**
+     * Draws an optional HUD stroke. Theme-gradient mode is explicitly vertical: top -> bottom.
+     */
+    public static void drawHudStroke(Renderer2D renderer,
+                                     float x, float y, float w, float h,
+                                     float radius, float softness, float thickness,
+                                     int solidColor, boolean themeGradient,
+                                     int alpha, float alphaFactor) {
+        if (renderer == null || w <= 0.0f || h <= 0.0f || thickness <= 0.0f) return;
+        int resolvedAlpha = Math.round(Math.max(0, Math.min(255, alpha))
+                * AnimationUtility.clamp(alphaFactor, 0.0f, 1.0f));
+        if (resolvedAlpha <= 0) return;
+
+        if (themeGradient) {
+            ThemeGradient gradient = themeAccentGradient(resolvedAlpha);
+            renderer.roundedRectStrokeGradient(
+                    x, y, w, h, radius, softness, thickness,
+                    gradient.start(), gradient.end(), gradient.angleDeg()
+            );
+            return;
+        }
+
+        renderer.roundedRectStroke(
+                x, y, w, h, radius, softness, thickness,
+                setAlpha(solidColor, resolvedAlpha)
+        );
+    }
+
+    /**
+     * Draws an optional HUD soft shadow. Theme mode inherits the theme's accent/stroke
+     * gradient exactly (including its angle) when that gradient is enabled. Themes without
+     * an accent gradient fall back to a solid accent-colored shadow.
+     */
+    public static void drawHudShadow(Renderer2D renderer,
+                                     float x, float y, float w, float h,
+                                     float radius, float scale,
+                                     boolean themeColored, int alpha, float alphaFactor) {
+        if (renderer == null || w <= 0.0f || h <= 0.0f) return;
+        int resolvedAlpha = Math.round(Math.max(0, Math.min(255, alpha))
+                * AnimationUtility.clamp(alphaFactor, 0.0f, 1.0f));
+        if (resolvedAlpha <= 0) return;
+
+        float safeScale = Math.max(0.001f, scale);
+        float blur = 6.0f * safeScale;
+        float innerAlpha = 0.055f;
+        if (!themeColored) {
+            renderer.roundedRectSoftShadow(
+                    x, y, w, h, radius, blur, innerAlpha, setAlpha(0xFF000000, resolvedAlpha)
+            );
+            return;
+        }
+
+        Themes.ThemeEntry entry = Theme.currentEntry();
+        Themes.GradientSpec gradient = entry != null ? entry.strokeGradient() : null;
+        if (gradient != null && gradient.enabled()) {
+            renderer.roundedRectSoftShadowGradient(
+                    x, y, w, h, radius, blur, innerAlpha,
+                    setAlpha(gradient.start(), resolvedAlpha),
+                    setAlpha(gradient.end(), resolvedAlpha),
+                    gradient.angleDeg()
+            );
+            return;
+        }
+
+        Themes.Theme current = Theme.theme();
+        int accent = current != null ? current.accent() : 0xFF5CC8E7;
+        renderer.roundedRectSoftShadow(
+                x, y, w, h, radius, blur, innerAlpha, setAlpha(accent, resolvedAlpha)
+        );
+    }
+
     public static void drawHudBackground(Renderer2D renderer,
                                          float x, float y,
                                          float w, float h,

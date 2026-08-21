@@ -266,6 +266,8 @@ final class ScriptedListHudPanel {
                  float baseScale, float fontScale, float headerIconHeight, float headerTextHeight, float rowTextHeight,
                  float countLabelWidth, float countValueWidth,
                  int activeCount, boolean blur, float blurAlpha, int headerIconColor, String layout,
+                 boolean strokeEnabled, float strokeAlpha, boolean strokeGradient,
+                 int strokeStartColor, int strokeEndColor, boolean shadowControlled,
                  List<LinkedHashMap<String, Object>> rows) {
         Panel(Variant variant,
               Palette palette,
@@ -286,6 +288,12 @@ final class ScriptedListHudPanel {
               float blurAlpha,
               int headerIconColor,
               String layout,
+              boolean strokeEnabled,
+              float strokeAlpha,
+              boolean strokeGradient,
+              int strokeStartColor,
+              int strokeEndColor,
+              boolean shadowControlled,
               List<LinkedHashMap<String, Object>> rows) {
             this.variant = variant;
             this.palette = palette;
@@ -306,6 +314,12 @@ final class ScriptedListHudPanel {
             this.blurAlpha = blurAlpha;
             this.headerIconColor = headerIconColor;
             this.layout = layout != null ? layout : HudPanelLayoutModes.SPLIT_HEADER;
+            this.strokeEnabled = strokeEnabled;
+            this.strokeAlpha = Math.max(0.0f, Math.min(1.0f, strokeAlpha));
+            this.strokeGradient = strokeGradient;
+            this.strokeStartColor = strokeStartColor;
+            this.strokeEndColor = strokeEndColor;
+            this.shadowControlled = shadowControlled;
             this.rows = rows != null ? rows : List.of();
         }
 
@@ -329,6 +343,12 @@ final class ScriptedListHudPanel {
             out.put("blurAlpha", blurAlpha);
             out.put("headerIconColor", hex(headerIconColor));
             out.put("layout", layout);
+            out.put("strokeEnabled", strokeEnabled);
+            out.put("strokeAlpha", strokeAlpha);
+            out.put("strokeGradient", strokeGradient);
+            out.put("strokeStartColor", hex(strokeStartColor));
+            out.put("strokeEndColor", hex(strokeEndColor));
+            out.put("shadowControlled", shadowControlled);
             out.put("palette", palette.toProps());
             out.put("rows", rows.toArray());
             out.put("variant", variantProps());
@@ -373,6 +393,12 @@ final class ScriptedListHudPanel {
             h = CachedUiScriptRuntime.mix(h, blur);
             h = CachedUiScriptRuntime.mix(h, blurAlpha);
             h = CachedUiScriptRuntime.mix(h, layout);
+            h = CachedUiScriptRuntime.mix(h, strokeEnabled);
+            h = CachedUiScriptRuntime.mix(h, strokeAlpha);
+            h = CachedUiScriptRuntime.mix(h, strokeGradient);
+            h = CachedUiScriptRuntime.mix(h, strokeStartColor);
+            h = CachedUiScriptRuntime.mix(h, strokeEndColor);
+            h = CachedUiScriptRuntime.mix(h, shadowControlled);
             h = CachedUiScriptRuntime.mix(h, String.valueOf(Math.max(0, activeCount)).length());
             h = CachedUiScriptRuntime.mix(h, activeCount);
             h = CachedUiScriptRuntime.mix(h, rows.size());

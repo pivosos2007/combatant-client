@@ -182,10 +182,25 @@ public enum ModuleManager {
         if (!RuntimeGate.canRunModules()) return;
 
         Module[] snapshot = modulesSnapshot;
-        for (Module m : snapshot) {
-            if (m.isEnabled() && ModuleExtensionManager.beforeTick(m)) {
-                m.onTick();
-                ModuleExtensionManager.afterTick(m);
+        if (!ProfilerPhase.isActive()) {
+            for (Module m : snapshot) {
+                if (m.isEnabled() && ModuleExtensionManager.beforeTick(m)) {
+                    m.onTick();
+                    ModuleExtensionManager.afterTick(m);
+                }
+            }
+            return;
+        }
+
+        try (ProfilerPhase.Scope modulesScope = ProfilerPhase.scope("modules:tick")) {
+            for (Module m : snapshot) {
+                if (!m.isEnabled()) continue;
+                try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:tick:" + m.name())) {
+                    if (ModuleExtensionManager.beforeTick(m)) {
+                        m.onTick();
+                        ModuleExtensionManager.afterTick(m);
+                    }
+                }
             }
         }
     }
@@ -193,10 +208,25 @@ public enum ModuleManager {
     public static void frameAll(float frameDeltaTicks) {
         if (!RuntimeGate.canRunModules()) return;
         Module[] snapshot = modulesSnapshot;
-        for (Module m : snapshot) {
-            if (m.isEnabled() && ModuleExtensionManager.beforeFrame(m, frameDeltaTicks)) {
-                m.onFrame(frameDeltaTicks);
-                ModuleExtensionManager.afterFrame(m, frameDeltaTicks);
+        if (!ProfilerPhase.isActive()) {
+            for (Module m : snapshot) {
+                if (m.isEnabled() && ModuleExtensionManager.beforeFrame(m, frameDeltaTicks)) {
+                    m.onFrame(frameDeltaTicks);
+                    ModuleExtensionManager.afterFrame(m, frameDeltaTicks);
+                }
+            }
+            return;
+        }
+
+        try (ProfilerPhase.Scope modulesScope = ProfilerPhase.scope("modules:frame")) {
+            for (Module m : snapshot) {
+                if (!m.isEnabled()) continue;
+                try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:frame:" + m.name())) {
+                    if (ModuleExtensionManager.beforeFrame(m, frameDeltaTicks)) {
+                        m.onFrame(frameDeltaTicks);
+                        ModuleExtensionManager.afterFrame(m, frameDeltaTicks);
+                    }
+                }
             }
         }
     }
@@ -210,9 +240,21 @@ public enum ModuleManager {
         Module[] phaseModules = HUD_PHASE_SNAPSHOTS.get(phase);
         if (phaseModules == null) return;
 
-        for (Module m : phaseModules) {
-            if (m.isEnabled()) {
-                m.onRender2D(ctx, tickDelta);
+        if (!ProfilerPhase.isActive()) {
+            for (Module m : phaseModules) {
+                if (m.isEnabled()) {
+                    m.onRender2D(ctx, tickDelta);
+                }
+            }
+            return;
+        }
+
+        try (ProfilerPhase.Scope modulesScope = ProfilerPhase.scope("modules:hud_legacy:" + phase.name().toLowerCase(Locale.ROOT))) {
+            for (Module m : phaseModules) {
+                if (!m.isEnabled()) continue;
+                try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:hud_legacy:" + m.name())) {
+                    m.onRender2D(ctx, tickDelta);
+                }
             }
         }
     }
@@ -225,7 +267,7 @@ public enum ModuleManager {
 
         for (Module m : phaseModules) {
             if (m.isEnabled()) {
-                try (ProfilerPhase.Scope _ = ProfilerPhase.scope("2d:module:" + m.name());
+                try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:hud:" + m.name());
                      RenderProfiler2D.Section ignored = RenderProfiler2D.section("module:" + m.name())) {
                     if (ModuleExtensionManager.beforeHudRender(m, renderer, textRenderer, ctx, tickDelta)) {
                         m.onRenderHudEngine(renderer, textRenderer, ctx, tickDelta);
@@ -248,7 +290,7 @@ public enum ModuleManager {
 
         for (Module m : phaseModules) {
             if (m.isEnabled()) {
-                try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("2d:module_fg:" + m.name());
+                try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("module:hud_fg:" + m.name());
                      RenderProfiler2D.Section ignored = RenderProfiler2D.section("module_fg:" + m.name())) {
                     m.onRenderHudEngineForeground(renderer, textRenderer, ctx, tickDelta);
                 }
@@ -282,9 +324,21 @@ public enum ModuleManager {
         Module[] phaseModules = WORLD_PHASE_SNAPSHOTS.get(phase);
         if (phaseModules == null) return;
 
-        for (Module m : phaseModules) {
-            if (m.isEnabled()) {
-                m.onRenderWorld(matrices, consumers, tickDelta);
+        if (!ProfilerPhase.isActive()) {
+            for (Module m : phaseModules) {
+                if (m.isEnabled()) {
+                    m.onRenderWorld(matrices, consumers, tickDelta);
+                }
+            }
+            return;
+        }
+
+        try (ProfilerPhase.Scope modulesScope = ProfilerPhase.scope("modules:world_legacy:" + phase.name().toLowerCase(Locale.ROOT))) {
+            for (Module m : phaseModules) {
+                if (!m.isEnabled()) continue;
+                try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:world_legacy:" + m.name())) {
+                    m.onRenderWorld(matrices, consumers, tickDelta);
+                }
             }
         }
     }
@@ -298,7 +352,7 @@ public enum ModuleManager {
         try {
             for (Module m : phaseModules) {
                 if (m.isEnabled()) {
-                    try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("3d:module:" + m.name());
+                    try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("module:world:" + m.name());
                          RenderProfiler3D.Section ignored = RenderProfiler3D.section("module:" + m.name())) {
                         if (ModuleExtensionManager.beforeWorldRender(m, renderer, depthRenderer, tickDelta)) {
                             m.onRenderWorldEngine(renderer, depthRenderer, tickDelta);

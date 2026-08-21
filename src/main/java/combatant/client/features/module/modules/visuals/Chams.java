@@ -24,7 +24,9 @@ import net.irisshaders.iris.pathways.HandRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.RenderBuffers;
+import net.minecraft.client.renderer.SubmitNodeCollection;
 import net.minecraft.client.renderer.SubmitNodeStorage;
+import net.minecraft.client.renderer.feature.phase.FeatureRenderPhase;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.util.Util;
@@ -251,8 +253,8 @@ public class Chams extends Module {
     private boolean maskReady;
     private boolean ghostMaskReady;
     private boolean ghostHistoryNeedsClear = true;
-    private RenderBuffers irisHandRenderBuffers;
-    private FeatureRenderDispatcher irisHandFeatureDispatcher;
+    private RenderBuffers handMaskRenderBuffers;
+    private FeatureRenderDispatcher handMaskFeatureDispatcher;
 
     {
         PostProcessManager.register(handsPass);
@@ -310,37 +312,37 @@ public class Chams extends Module {
     }
 
     private FeatureRenderDispatcher getStandaloneHandFeatureDispatcher() {
-        if (irisHandFeatureDispatcher != null) {
-            return irisHandFeatureDispatcher;
+        if (handMaskFeatureDispatcher != null) {
+            return handMaskFeatureDispatcher;
         }
         if (mc.gameRenderer == null || mc.getModelManager() == null || mc.getAtlasManager() == null || mc.font == null) {
             return null;
         }
-        irisHandRenderBuffers = new RenderBuffers(1);
-        irisHandFeatureDispatcher = new FeatureRenderDispatcher(
-                irisHandRenderBuffers,
+        handMaskRenderBuffers = new RenderBuffers(1);
+        handMaskFeatureDispatcher = new FeatureRenderDispatcher(
+                handMaskRenderBuffers,
                 mc.getModelManager(),
                 mc.getAtlasManager(),
                 mc.font,
                 mc.gameRenderer.gameRenderState()
         );
-        return irisHandFeatureDispatcher;
+        return handMaskFeatureDispatcher;
     }
 
     private void endStandaloneHandFrame() {
-        if (irisHandRenderBuffers != null) {
-            irisHandRenderBuffers.endFrame();
+        if (handMaskRenderBuffers != null) {
+            handMaskRenderBuffers.endFrame();
         }
     }
 
     private void closeStandaloneHandRenderer() {
-        if (irisHandFeatureDispatcher != null) {
-            irisHandFeatureDispatcher.close();
-            irisHandFeatureDispatcher = null;
+        if (handMaskFeatureDispatcher != null) {
+            handMaskFeatureDispatcher.close();
+            handMaskFeatureDispatcher = null;
         }
-        if (irisHandRenderBuffers != null) {
-            irisHandRenderBuffers.close();
-            irisHandRenderBuffers = null;
+        if (handMaskRenderBuffers != null) {
+            handMaskRenderBuffers.close();
+            handMaskRenderBuffers = null;
         }
     }
 
@@ -390,14 +392,64 @@ public class Chams extends Module {
         return true;
     }
 
-    public boolean renderPreparedHandScene(FeatureRenderDispatcher dispatcher, SubmitNodeStorage storage) {
-        // Iris owns a separate first-person hand path while a shaderpack is active. In that mode
-        // the Chams mask is produced by renderIrisHandMask() with its own FeatureRenderDispatcher.
-        // Never acquire Minecraft's shared PreparedFrame here: Iris may already have that frame in
-        // flight, and re-entering it poisons the dispatcher for later GUI item-atlas rendering.
+    public SubmitNodeStorage snapshotPreparedHandScene(SubmitNodeStorage storage) {
+        // renderAllFeatures() consumes/clears its SubmitNodeStorage in 26.2. Chams must never feed
+        // Minecraft's live hand storage into the auxiliary mask dispatcher, otherwise the real
+        // vanilla hand pass that follows has no submits left to draw.
+        if (IrisRuntime.isShaderpackRendererActive()) return null;
+        if (!isEnabled() || mc.player == null || mc.level == null) return null;
+        if (storage == null || !hands.get() || !shouldRenderHand()) return null;
+        if (!mc.options.getCameraType().isFirstPerson()) return null;
+
+        SubmitNodeStorage snapshot = new SubmitNodeStorage();
+        for (var entry : storage.getSubmitsPerOrder().int2ObjectEntrySet()) {
+            SubmitNodeCollection sourceCollection = entry.getValue();
+            SubmitNodeCollection targetCollection = snapshot.order(entry.getIntKey());
+
+            var sourcePhases = sourceCollection.allPhases();
+            var targetPhases = targetCollection.allPhases();
+            if (sourcePhases.size() != targetPhases.size()) {
+                // A mod injected a phase asymmetrically. Do not risk consuming/corrupting the live
+                // hand storage; simply skip Chams for this frame.
+                return null;
+            }
+
+            for (int i = 0; i < sourcePhases.size(); i++) {
+                copyPhase(sourcePhases.get(i), targetPhases.get(i));
+            }
+        }
+        return snapshot;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void copyPhase(FeatureRenderPhase<?> source, FeatureRenderPhase<?> target) {
+        // FeatureRenderPhase.sortInto() is destructive in 26.2: both the simple and translucent
+        // implementations clear their backing submits after forwarding them to Output. A naive
+        // "copy" therefore emptied Minecraft's live hand storage before the vanilla dispatcher
+        // could draw it, leaving only the Chams post-process fill visible.
+        //
+        // Drain once into a temporary list, then restore the exact SubmitNode objects back into the
+        // source phase and also submit them to the isolated mask phase. Re-submission preserves the
+        // phase's own batching / translucent distance bookkeeping without sharing mutable phase
+        // containers between the vanilla scene and the auxiliary mask renderer.
+        java.util.ArrayList<net.minecraft.client.renderer.feature.submit.SubmitNode> buffered =
+                new java.util.ArrayList<>();
+        source.sortInto((submit, strictlyOrdered) -> buffered.add(submit));
+
+        FeatureRenderPhase rawSource = source;
+        FeatureRenderPhase rawTarget = target;
+        for (net.minecraft.client.renderer.feature.submit.SubmitNode submit : buffered) {
+            rawSource.submit(submit);
+            rawTarget.submit(submit);
+        }
+    }
+
+    public boolean renderPreparedHandScene(SubmitNodeStorage storage) {
+        // The storage passed here is an isolated snapshot. Minecraft's original hand storage has
+        // already been rendered to the scene by the vanilla dispatcher before this method runs.
         if (IrisRuntime.isShaderpackRendererActive()) return false;
         if (!isEnabled() || mc.player == null || mc.level == null) return false;
-        if (dispatcher == null || storage == null) return false;
+        if (storage == null) return false;
         if (!hands.get() || !shouldRenderHand()) return false;
         if (!mc.options.getCameraType().isFirstPerson()) return false;
 
@@ -411,32 +463,26 @@ public class Chams extends Module {
             encoder.clearDepthTexture(handMask.getDepthTexture(), 0.0);
         }
 
-        try (FeatureRenderDispatcher.PreparedFrame prepared = dispatcher.prepareFrame(storage)) {
-            GpuTextureView prevColor = RenderSystem.outputColorTextureOverride;
-            GpuTextureView prevDepth = RenderSystem.outputDepthTextureOverride;
-            boolean prevRendering3D = RenderState.rendering3D;
-            RenderSystem.outputColorTextureOverride = handMask.getColorTextureView();
-            RenderSystem.outputDepthTextureOverride = handMask.getDepthTextureView();
-            RenderState.rendering3D = true;
-            try {
-                executePreparedHandFrame(prepared);
-            } finally {
-                RenderState.rendering3D = prevRendering3D;
-                RenderSystem.outputColorTextureOverride = prevColor;
-                RenderSystem.outputDepthTextureOverride = prevDepth;
-            }
+        FeatureRenderDispatcher maskDispatcher = getStandaloneHandFeatureDispatcher();
+        if (maskDispatcher == null) return false;
 
+        GpuTextureView prevColor = RenderSystem.outputColorTextureOverride;
+        GpuTextureView prevDepth = RenderSystem.outputDepthTextureOverride;
+        boolean prevRendering3D = RenderState.rendering3D;
+        RenderSystem.outputColorTextureOverride = handMask.getColorTextureView();
+        RenderSystem.outputDepthTextureOverride = handMask.getDepthTextureView();
+        RenderState.rendering3D = true;
+        try {
+            maskDispatcher.renderAllFeatures(storage);
             markHandMaskReady();
+        } finally {
+            endStandaloneHandFrame();
+            RenderState.rendering3D = prevRendering3D;
+            RenderSystem.outputColorTextureOverride = prevColor;
+            RenderSystem.outputDepthTextureOverride = prevDepth;
         }
 
         return true;
-    }
-
-    private static void executePreparedHandFrame(FeatureRenderDispatcher.PreparedFrame prepared) {
-        prepared.executeSolid();
-        prepared.executeTranslucent();
-        prepared.executeTranslucentAfterTerrain();
-        prepared.executeAlwaysOnTop();
     }
 
     public boolean renderIrisHandMask(GameRenderer renderer,

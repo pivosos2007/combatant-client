@@ -8,6 +8,7 @@
 package combatant.client.render.iris;
 
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.world.item.ItemStack;
 import combatant.client.util.logging.DebugLog;
 
 public enum IrisRuntime {
@@ -42,6 +43,39 @@ public enum IrisRuntime {
     public static boolean isRenderingShadowPass() {
         IrisRuntimeSnapshot snapshot = snapshot();
         return snapshot.modLoaded() && snapshot.apiAvailable() && snapshot.renderingShadowPass();
+    }
+
+    public static boolean isHandRenderingSolid() {
+        if (!FabricLoader.getInstance().isModLoaded("iris")) {
+            return false;
+        }
+        try {
+            return IrisRuntimeBridge.isHandRenderingSolid();
+        } catch (LinkageError | RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    public static boolean isHeldItemTranslucent(ItemStack stack) {
+        if (stack == null || !FabricLoader.getInstance().isModLoaded("iris")) {
+            return false;
+        }
+        try {
+            return IrisRuntimeBridge.isHeldItemTranslucent(stack);
+        } catch (LinkageError | RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    public static boolean hasAnySolidHand() {
+        if (!FabricLoader.getInstance().isModLoaded("iris")) {
+            return false;
+        }
+        try {
+            return IrisRuntimeBridge.hasAnySolidHand();
+        } catch (LinkageError | RuntimeException ignored) {
+            return false;
+        }
     }
 
     public static void registerCombatantPipelines() {

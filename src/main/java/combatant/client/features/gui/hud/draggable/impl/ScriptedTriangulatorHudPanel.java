@@ -179,6 +179,11 @@ final class ScriptedTriangulatorHudPanel {
                  int activeCount,
                  boolean blur,
                  float blurAlpha,
+                 boolean strokeEnabled,
+                 float strokeAlpha,
+                 boolean strokeGradient,
+                 int strokeStartColor,
+                 int strokeEndColor,
                  String headerIcon,
                  int headerIconColor,
                  boolean clearVisible,
@@ -206,6 +211,11 @@ final class ScriptedTriangulatorHudPanel {
               int activeCount,
               boolean blur,
               float blurAlpha,
+              boolean strokeEnabled,
+              float strokeAlpha,
+              boolean strokeGradient,
+              int strokeStartColor,
+              int strokeEndColor,
               String headerIcon,
               int headerIconColor,
               boolean clearVisible,
@@ -233,6 +243,11 @@ final class ScriptedTriangulatorHudPanel {
             this.activeCount = activeCount;
             this.blur = blur;
             this.blurAlpha = blurAlpha;
+            this.strokeEnabled = strokeEnabled;
+            this.strokeAlpha = Math.max(0.0f, Math.min(1.0f, strokeAlpha));
+            this.strokeGradient = strokeGradient;
+            this.strokeStartColor = strokeStartColor;
+            this.strokeEndColor = strokeEndColor;
             this.headerIcon = headerIcon != null ? headerIcon : "";
             this.headerIconColor = headerIconColor;
             this.clearVisible = clearVisible;
@@ -263,6 +278,12 @@ final class ScriptedTriangulatorHudPanel {
             out.put("activeCount", activeCount);
             out.put("blur", blur);
             out.put("blurAlpha", blurAlpha);
+            out.put("shadowControlled", true);
+            out.put("strokeEnabled", strokeEnabled);
+            out.put("strokeAlpha", strokeAlpha);
+            out.put("strokeGradient", strokeGradient);
+            out.put("strokeStartColor", hex(strokeStartColor));
+            out.put("strokeEndColor", hex(strokeEndColor));
             out.put("headerIcon", headerIcon);
             out.put("headerIconColor", hex(headerIconColor));
             out.put("clearVisible", clearVisible);
@@ -294,6 +315,9 @@ final class ScriptedTriangulatorHudPanel {
             h = CachedUiScriptRuntime.mix(h, countValueWidth);
             h = CachedUiScriptRuntime.mix(h, blur);
             h = CachedUiScriptRuntime.mix(h, blurAlpha);
+            h = CachedUiScriptRuntime.mix(h, strokeEnabled);
+            h = CachedUiScriptRuntime.mix(h, strokeAlpha);
+            h = CachedUiScriptRuntime.mix(h, strokeGradient);
             h = CachedUiScriptRuntime.mix(h, clearVisible);
             h = CachedUiScriptRuntime.mix(h, copyVisible);
             h = CachedUiScriptRuntime.mix(h, String.valueOf(Math.max(0, activeCount)).length());
@@ -316,6 +340,11 @@ final class ScriptedTriangulatorHudPanel {
             long h = 0xcbf29ce484222325L;
             h = mixPalette(h);
             h = CachedUiScriptRuntime.mix(h, activeCount);
+            h = CachedUiScriptRuntime.mix(h, strokeEnabled);
+            h = CachedUiScriptRuntime.mix(h, strokeAlpha);
+            h = CachedUiScriptRuntime.mix(h, strokeGradient);
+            h = CachedUiScriptRuntime.mix(h, strokeStartColor);
+            h = CachedUiScriptRuntime.mix(h, strokeEndColor);
             h = CachedUiScriptRuntime.mix(h, headerIcon);
             h = CachedUiScriptRuntime.mix(h, headerIconColor);
             h = CachedUiScriptRuntime.mix(h, clearIconColor);

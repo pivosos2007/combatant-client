@@ -112,6 +112,12 @@ public final class CompactHudStatModel {
         return color((argb & 0x00FFFFFF) | (a << 24));
     }
 
+    private static String withAlpha(String hex, float alpha) {
+        int argb = parseColor(hex);
+        int a = Math.round(255.0f * clamp01(alpha));
+        return color((argb & 0x00FFFFFF) | (a << 24));
+    }
+
     private static float alpha01(int argb) {
         return ((argb >>> 24) & 0xFF) / 255.0f;
     }
@@ -365,10 +371,21 @@ public final class CompactHudStatModel {
         putPropPatch(patches, "fill", "startColor", color(background.primary));
         putPropPatch(patches, "fill", "endColor", color(background.secondary));
         float paintAlpha = Math.max(alpha01(background.primary), alpha01(background.secondary));
-        float strokeAlpha = Math.max(alpha01(background.stroke), paintAlpha);
-        putPropPatch(patches, "fill", "stroke", alpha(color(background.stroke), strokeAlpha));
-        putPropPatch(patches, "fill", "strokeStartColor", alpha("#FFFFFFFF", 0.16f * strokeAlpha));
-        putPropPatch(patches, "fill", "strokeEndColor", alpha(color(background.stroke), strokeAlpha));
+        float resolvedStrokeAlpha = background.strokeControlled
+                ? (background.strokeEnabled ? clamp01(background.strokeAlpha) : 0.0f)
+                : Math.max(alpha01(background.stroke), paintAlpha);
+        String solidStroke = background.strokeControlled
+                ? withAlpha(color(background.stroke), resolvedStrokeAlpha)
+                : alpha(color(background.stroke), resolvedStrokeAlpha);
+        String strokeStart = background.strokeControlled
+                ? withAlpha(color(background.strokeGradient ? background.strokeStartColor : background.stroke), resolvedStrokeAlpha)
+                : alpha("#FFFFFFFF", 0.16f * resolvedStrokeAlpha);
+        String strokeEnd = background.strokeControlled
+                ? withAlpha(color(background.strokeGradient ? background.strokeEndColor : background.stroke), resolvedStrokeAlpha)
+                : solidStroke;
+        putPropPatch(patches, "fill", "stroke", solidStroke);
+        putPropPatch(patches, "fill", "strokeStartColor", strokeStart);
+        putPropPatch(patches, "fill", "strokeEndColor", strokeEnd);
         putPropPatch(patches, "top-glint", "startColor", alpha("#FFFFFFFF", 0.065f * paintAlpha));
         putPropPatch(patches, "top-glint", "endColor", "#00000000");
         putPropPatch(patches, "icon:texture", "tint", color(icon.color));
@@ -574,6 +591,12 @@ public final class CompactHudStatModel {
         private int stroke;
         private float strokeWidth;
         private float softness;
+        private boolean strokeControlled;
+        private boolean strokeEnabled;
+        private float strokeAlpha = 1.0f;
+        private boolean strokeGradient;
+        private int strokeStartColor;
+        private int strokeEndColor;
 
         public Background set(String effect,
                               boolean theme,
@@ -594,6 +617,20 @@ public final class CompactHudStatModel {
             return this;
         }
 
+        public Background setStrokeControls(boolean enabled,
+                                            float alpha,
+                                            boolean gradient,
+                                            int startColor,
+                                            int endColor) {
+            this.strokeControlled = true;
+            this.strokeEnabled = enabled;
+            this.strokeAlpha = clamp01(alpha);
+            this.strokeGradient = gradient;
+            this.strokeStartColor = startColor;
+            this.strokeEndColor = endColor;
+            return this;
+        }
+
         private void writeTo(LinkedHashMap<String, Object> props) {
             props.put("backgroundEffect", effect);
             props.put("backgroundTheme", theme);
@@ -603,6 +640,12 @@ public final class CompactHudStatModel {
             props.put("stroke", color(stroke));
             props.put("strokeWidth", strokeWidth);
             props.put("softness", softness);
+            props.put("strokeControlled", strokeControlled);
+            props.put("strokeEnabled", strokeEnabled);
+            props.put("strokeAlpha", strokeAlpha);
+            props.put("strokeGradient", strokeGradient);
+            props.put("strokeStartColor", color(strokeStartColor));
+            props.put("strokeEndColor", color(strokeEndColor));
         }
 
         private long mix(long h) {
@@ -614,6 +657,12 @@ public final class CompactHudStatModel {
             h = CompactHudStatModel.mix(h, stroke);
             h = CompactHudStatModel.mix(h, strokeWidth);
             h = CompactHudStatModel.mix(h, softness);
+            h = CompactHudStatModel.mix(h, strokeControlled);
+            h = CompactHudStatModel.mix(h, strokeEnabled);
+            h = CompactHudStatModel.mix(h, strokeAlpha);
+            h = CompactHudStatModel.mix(h, strokeGradient);
+            h = CompactHudStatModel.mix(h, strokeStartColor);
+            h = CompactHudStatModel.mix(h, strokeEndColor);
             return h;
         }
 

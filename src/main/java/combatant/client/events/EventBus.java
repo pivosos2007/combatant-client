@@ -10,6 +10,7 @@ package combatant.client.events;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import combatant.client.features.module.Module;
 import combatant.client.runtime.RuntimeGate;
+import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.util.logging.DebugLog;
 
 import java.lang.invoke.MethodHandle;
@@ -121,6 +122,29 @@ public final class EventBus {
         if (!RuntimeGate.canRunClientLogic()) return event;
 
         Subscriber[] subscribers = subscribersFor(event.getClass());
+        if (!ProfilerPhase.isActive()) {
+            dispatchUnprofiled(event, subscribers);
+            return event;
+        }
+
+        try (ProfilerPhase.Scope eventScope = ProfilerPhase.scope("event:" + event.getClass().getSimpleName())) {
+            for (Subscriber sub : subscribers) {
+                Module gate = sub.gateModule;
+                if (gate != null && !gate.isEnabled()) continue;
+
+                try (ProfilerPhase.Scope handlerScope = ProfilerPhase.scope(sub.profileLabel)) {
+                    sub.invoker.invoke(event);
+                } catch (Throwable t) {
+                    DebugLog.error("Event handler failed: %s", t, sub.describe());
+                }
+            }
+        }
+
+        return event;
+    }
+
+
+    private static void dispatchUnprofiled(Event event, Subscriber[] subscribers) {
         for (Subscriber sub : subscribers) {
             Module gate = sub.gateModule;
             if (gate != null && !gate.isEnabled()) continue;
@@ -131,8 +155,6 @@ public final class EventBus {
                 DebugLog.error("Event handler failed: %s", t, sub.describe());
             }
         }
-
-        return event;
     }
 
     public void clear() {
@@ -240,6 +262,7 @@ public final class EventBus {
         final Class<? extends Event> eventType;
         final int priority;
         final String description;
+        final String profileLabel;
 
         Subscriber(Object owner,
                    Module gateModule,
@@ -254,6 +277,7 @@ public final class EventBus {
             this.eventType = eventType;
             this.priority = priority;
             this.description = owner.getClass().getName() + "#" + method.getName();
+            this.profileLabel = "handler:" + owner.getClass().getSimpleName() + "#" + method.getName();
         }
 
         String describe() {

@@ -1451,6 +1451,63 @@ public final class Renderer2D {
         endAutoBatch(auto);
     }
 
+    /**
+     * Draws a soft rounded shadow whose color is a true linear gradient across the shadow quad.
+     * The existing soft-shadow SDF still controls opacity; vertex color interpolation supplies
+     * the gradient without stacking multiple shadow lobes.
+     */
+    public void roundedRectSoftShadowGradient(double x, double y, double w, double h,
+                                              float radius, float blur, float innerAlpha,
+                                              int startArgb, int endArgb, float angleDeg) {
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_SOFT_SHADOW, null, null);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+
+        mesh.ensureQuadCapacity();
+
+        double expand = blur * 2.0;
+        double sx = x - expand;
+        double sy = y - expand;
+        double sw = w + expand * 2.0;
+        double sh = h + expand * 2.0;
+
+        computeLinearGradientColors((float) sw, (float) sh, startArgb, endArgb, angleDeg, 0.0f, gradientTmp);
+        int topLeft = gradientTmp[0];
+        int topRight = gradientTmp[1];
+        int bottomRight = gradientTmp[2];
+        int bottomLeft = gradientTmp[3];
+
+        int tlA = (topLeft >>> 24) & 0xFF;
+        int tlR = (topLeft >>> 16) & 0xFF;
+        int tlG = (topLeft >>> 8) & 0xFF;
+        int tlB = topLeft & 0xFF;
+        int trA = (topRight >>> 24) & 0xFF;
+        int trR = (topRight >>> 16) & 0xFF;
+        int trG = (topRight >>> 8) & 0xFF;
+        int trB = topRight & 0xFF;
+        int brA = (bottomRight >>> 24) & 0xFF;
+        int brR = (bottomRight >>> 16) & 0xFF;
+        int brG = (bottomRight >>> 8) & 0xFF;
+        int brB = bottomRight & 0xFF;
+        int blA = (bottomLeft >>> 24) & 0xFF;
+        int blR = (bottomLeft >>> 16) & 0xFF;
+        int blG = (bottomLeft >>> 8) & 0xFF;
+        int blB = bottomLeft & 0xFF;
+
+        int i1 = mesh.vec2(sx, sy).local2(sx, sy).color(tlR, tlG, tlB, tlA).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
+        int i2 = mesh.vec2(sx, sy + sh).local2(sx, sy + sh).color(blR, blG, blB, blA).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
+        int i3 = mesh.vec2(sx + sw, sy + sh).local2(sx + sw, sy + sh).color(brR, brG, brB, brA).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
+        int i4 = mesh.vec2(sx + sw, sy).local2(sx + sw, sy).color(trR, trG, trB, trA).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
+        mesh.quad(i1, i2, i3, i4);
+
+        endAutoBatch(auto);
+    }
+
     public void squircleSoftShadow(double x, double y, double w, double h,
                                    UiSquircleProfile profile, float blur, float innerAlpha, int argb) {
         UiSquircleProfile safe = profile != null ? profile : UiSquircleProfile.STANDARD;

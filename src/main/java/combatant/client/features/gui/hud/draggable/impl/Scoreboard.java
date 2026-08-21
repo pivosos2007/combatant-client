@@ -87,6 +87,9 @@ public final class Scoreboard extends DraggableHudElement {
             new NumberValue<>("scoreboard_scale", 1.93, 0.5, 5.0);
     private final ModeValue colorMode =
             new ModeValue("scoreboard_color_mode", "Theme", COLOR_THEME, COLOR_CUSTOM);
+    private final ModeValue panelStyle =
+            new ModeValue("scoreboard_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
+                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT);
     private final ModeValue bgEffect =
             new ModeValue("scoreboard_bg_effect", "Blur", EFFECT_NONE, EFFECT_BLUR);
     private final NumberValue<Integer> blurAlpha =
@@ -97,6 +100,19 @@ public final class Scoreboard extends DraggableHudElement {
             new RGBAColorValue("scoreboard_bg", "#820A0A0A");
     private final RGBAColorValue bg2 =
             new RGBAColorValue("scoreboard_bg_secondary", "#B8141414");
+    private final BooleanValue strokeEnabled =
+            new BooleanValue("scoreboard_stroke_enabled", false);
+    private final NumberValue<Integer> strokeAlpha =
+            new NumberValue<>("scoreboard_stroke_alpha", 160, 0, 255);
+    private final BooleanValue strokeGradient =
+            new BooleanValue("scoreboard_stroke_gradient", true);
+    private final BooleanValue shadowEnabled =
+            new BooleanValue("scoreboard_shadow_enabled", false);
+    private final ModeValue shadowMode =
+            new ModeValue("scoreboard_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
+                    HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME);
+    private final NumberValue<Integer> shadowAlpha =
+            new NumberValue<>("scoreboard_shadow_alpha", 72, 0, 255);
     private final RGBColorValue stroke =
             new RGBColorValue("scoreboard_stroke", "#4A4A4A");
     private final RGBColorValue titleColor =
@@ -550,12 +566,19 @@ public final class Scoreboard extends DraggableHudElement {
         defs.add(SettingDef.bind(toggleBind, BindMode.PRESS));
         defs.add(SettingDef.number(scale));
         defs.add(SettingDef.mode(colorMode));
+        defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));
         defs.add(SettingDef.mode(bgEffect));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(this::isThemeMode));
         defs.add(SettingDef.number(blurAlpha).visibleWhen(this::hasEffect));
         defs.add(SettingDef.color(bg).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.color(bg2).visibleWhen(this::isCustomMode));
-        defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(this::isCustomMode));
+        defs.add(SettingDef.bool(strokeEnabled));
+        defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(() -> strokeEnabled.get() && isCustomMode()));
+        defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
+        defs.add(SettingDef.bool(strokeGradient).visibleWhen(() -> strokeEnabled.get() && isThemeMode()));
+        defs.add(SettingDef.bool(shadowEnabled));
+        defs.add(SettingDef.mode(shadowMode).visibleWhen(shadowEnabled::get));
+        defs.add(SettingDef.number(shadowAlpha).visibleWhen(shadowEnabled::get));
         defs.add(SettingDef.colorNoAlpha(titleColor).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(labelColor).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(valueColor).visibleWhen(this::isCustomMode));
@@ -715,6 +738,13 @@ public final class Scoreboard extends DraggableHudElement {
         float footerSectionGap = footerCount > 0 && bodyCount > 0 ? footerGap : 0.0f;
         height = headerHeight + padY + rowsH + footerSectionGap + footersH + padY;
 
+        if (shadowEnabled.get()) {
+            HudRenderUtil.drawHudShadow(
+                    renderer, x, y, width, height, radius, baseScale,
+                    HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()), shadowAlpha.get(), 1.0f
+            );
+        }
+
         boolean blurEnabled = isBlurEffect();
         if (blurEnabled) {
             drawBlur(x, y, width, height, radius, uiBgPrimary);
@@ -851,6 +881,11 @@ public final class Scoreboard extends DraggableHudElement {
                     panelAlpha
             );
             uiHeaderBg = HudRenderUtil.setAlpha(theme().windowHeader(), panelAlpha);
+            if (isAccentPanelStyle()) {
+                uiBgPrimary = HudRenderUtil.accentSurface(uiBgPrimary, 0.20f);
+                uiBgSecondary = HudRenderUtil.accentSurface(uiBgSecondary, 0.28f);
+                uiHeaderBg = HudRenderUtil.accentSurface(uiHeaderBg, 0.32f);
+            }
             uiStroke = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.4f),
                     Math.min(panelAlpha, 190)
@@ -886,10 +921,14 @@ public final class Scoreboard extends DraggableHudElement {
                     uiBgPrimary, uiBgSecondary, uiBgPrimary, uiBgSecondary);
         }
 
-        renderer.roundedRectStroke(
-                x, y, width, height, radius, BASE_SOFTNESS,
-                Math.max(0.5f, BASE_STROKE * drawScale), uiStroke
-        );
+        if (strokeEnabled.get()) {
+            HudRenderUtil.drawHudStroke(
+                    renderer, x, y, width, height, radius, BASE_SOFTNESS,
+                    Math.max(0.5f, BASE_STROKE * drawScale),
+                    uiStroke, isThemeMode() && strokeGradient.get(),
+                    strokeAlpha.get(), 1.0f
+            );
+        }
     }
 
     private void drawHeader(Renderer2D renderer,
@@ -903,6 +942,10 @@ public final class Scoreboard extends DraggableHudElement {
 
     private boolean isThemeMode() {
         return COLOR_THEME.equals(colorMode.get());
+    }
+
+    private boolean isAccentPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
     }
 
     private boolean isCustomMode() {

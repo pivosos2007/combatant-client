@@ -57,6 +57,14 @@ function alpha(hex, amount) {
   return "#" + (((nextA << 24) | (raw & 0x00ffffff)) >>> 0).toString(16).padStart(8, "0").toUpperCase();
 }
 
+function withAlpha(hex, amount) {
+  const src = c(hex, "#00000000");
+  if (!src.startsWith("#") || src.length !== 9) return src;
+  const raw = Number.parseInt(src.slice(1), 16);
+  const nextA = Math.max(0, Math.min(255, Math.round(255 * amount)));
+  return "#" + (((nextA << 24) | (raw & 0x00ffffff)) >>> 0).toString(16).padStart(8, "0").toUpperCase();
+}
+
 function alpha01(hex) {
   const src = c(hex, "#00000000");
   if (!src.startsWith("#") || src.length !== 9) return 1;
@@ -181,10 +189,19 @@ export class HudPanelLayout {
     const outline = color(this.pal, "outline", "#665A5A5A");
     const headerPaintAlpha = Math.max(alpha01(headerPrimary), alpha01(headerSecondary));
     const bodyPaintAlpha = Math.max(alpha01(bodyPrimary), alpha01(bodySecondary));
-    const strokeAlpha = Math.min(0.38, Math.max(alpha01(outline) * 0.48, Math.max(headerPaintAlpha, bodyPaintAlpha) * 0.30));
-    const stroke = alpha(outline, strokeAlpha);
-    const strokeStart = alpha("#FFFFFFFF", 0.10 * strokeAlpha);
-    const strokeEnd = stroke;
+    const legacyStrokeAlpha = Math.min(0.38, Math.max(alpha01(outline) * 0.48, Math.max(headerPaintAlpha, bodyPaintAlpha) * 0.30));
+    const hasStrokeControl = typeof this.p.strokeEnabled === "boolean";
+    const strokeEnabled = hasStrokeControl ? this.p.strokeEnabled === true : true;
+    const configuredStrokeAlpha = Math.max(0, Math.min(1, n(this.p.strokeAlpha, legacyStrokeAlpha)));
+    const strokeAlpha = strokeEnabled ? (hasStrokeControl ? configuredStrokeAlpha : legacyStrokeAlpha) : 0;
+    const stroke = hasStrokeControl ? withAlpha(outline, strokeAlpha) : alpha(outline, strokeAlpha);
+    const useStrokeGradient = hasStrokeControl && this.p.strokeGradient === true;
+    const strokeStart = useStrokeGradient
+      ? withAlpha(c(this.p.strokeStartColor, outline), strokeAlpha)
+      : (hasStrokeControl ? stroke : alpha("#FFFFFFFF", 0.10 * strokeAlpha));
+    const strokeEnd = useStrokeGradient
+      ? withAlpha(c(this.p.strokeEndColor, outline), strokeAlpha)
+      : stroke;
     const nodes = [];
 
     if (this.p.blur === true) {
@@ -263,10 +280,19 @@ export class HudPanelLayout {
     const secondary = color(this.pal, "bodyRight", color(this.pal, "headerRight", "#E50E1015"));
     const outline = color(this.pal, "outline", "#665A5A5A");
     const paintAlpha = Math.max(alpha01(primary), alpha01(secondary));
-    const strokeAlpha = Math.min(0.34, Math.max(alpha01(outline) * 0.42, paintAlpha * 0.26));
-    const stroke = alpha(outline, strokeAlpha);
-    const strokeStart = alpha("#FFFFFFFF", 0.09 * strokeAlpha);
-    const strokeEnd = stroke;
+    const legacyStrokeAlpha = Math.min(0.34, Math.max(alpha01(outline) * 0.42, paintAlpha * 0.26));
+    const hasStrokeControl = typeof this.p.strokeEnabled === "boolean";
+    const strokeEnabled = hasStrokeControl ? this.p.strokeEnabled === true : true;
+    const configuredStrokeAlpha = Math.max(0, Math.min(1, n(this.p.strokeAlpha, legacyStrokeAlpha)));
+    const strokeAlpha = strokeEnabled ? (hasStrokeControl ? configuredStrokeAlpha : legacyStrokeAlpha) : 0;
+    const stroke = hasStrokeControl ? withAlpha(outline, strokeAlpha) : alpha(outline, strokeAlpha);
+    const useStrokeGradient = hasStrokeControl && this.p.strokeGradient === true;
+    const strokeStart = useStrokeGradient
+      ? withAlpha(c(this.p.strokeStartColor, outline), strokeAlpha)
+      : (hasStrokeControl ? stroke : alpha("#FFFFFFFF", 0.09 * strokeAlpha));
+    const strokeEnd = useStrokeGradient
+      ? withAlpha(c(this.p.strokeEndColor, outline), strokeAlpha)
+      : stroke;
     const dividerAlpha = Math.min(0.42, Math.max(0.12, paintAlpha * 0.38));
     const nodes = [];
 
@@ -395,7 +421,7 @@ export class HudPanelLayout {
         `w-${s(w)}`,
         `h-${s(h)}`,
         `rounded-${s(this.base.radius * this.bs())}`,
-        "shadow-panel"
+        this.p.shadowControlled === true ? "" : "shadow-panel"
       ),
       children: [
         ...this.chrome(),

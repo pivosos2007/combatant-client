@@ -9,37 +9,44 @@ package combatant.client.render.engine.profiler;
 
 import java.util.List;
 
+/**
+ * GL synchronization timing for Tracy. Only wait duration is recorded; fence
+ * counts and other vanity counters are intentionally omitted.
+ */
 public enum GlSyncTracker {
     ;
-    private static final boolean DEV = DevProfilerBridge.available("GlSyncTracker");
+
+    private static final ThreadLocal<ProfilerPhase.Scope> ACTIVE_WAIT = new ThreadLocal<>();
 
     public static void onFence(long sync) {
-        if (!DEV) return;
-        DevProfilerBridge.invoke("GlSyncTracker", "onFence", new Class<?>[]{long.class}, sync);
+        // Fence creation itself is covered at CommandEncoder#createFence.
     }
 
     public static void onWaitStart(long sync) {
-        if (!DEV) return;
-        DevProfilerBridge.invoke("GlSyncTracker", "onWaitStart", new Class<?>[]{long.class}, sync);
+        if (!ProfilerPhase.isActive()) return;
+        ProfilerPhase.Scope previous = ACTIVE_WAIT.get();
+        if (previous != null) previous.close();
+        ACTIVE_WAIT.set(ProfilerPhase.scope("gl:client_wait_sync"));
     }
 
     public static void onWaitEnd() {
-        if (!DEV) return;
-        DevProfilerBridge.invoke("GlSyncTracker", "onWaitEnd", new Class<?>[0]);
+        ProfilerPhase.Scope scope = ACTIVE_WAIT.get();
+        if (scope == null) return;
+        ACTIVE_WAIT.remove();
+        scope.close();
     }
 
     public static void emitTracyFrame() {
-        if (!DEV) return;
-        DevProfilerBridge.invoke("GlSyncTracker", "emitTracyFrame", new Class<?>[0]);
+        // Mojang owns Tracy frame boundaries.
     }
 
     public static List<String> drainLines() {
-        if (!DEV) return List.of();
-        return DevProfilerBridge.lines("GlSyncTracker", "drainLines", new Class<?>[0]);
+        return List.of();
     }
 
     public static void reset() {
-        if (!DEV) return;
-        DevProfilerBridge.invoke("GlSyncTracker", "reset", new Class<?>[0]);
+        ProfilerPhase.Scope scope = ACTIVE_WAIT.get();
+        ACTIVE_WAIT.remove();
+        if (scope != null) scope.close();
     }
 }

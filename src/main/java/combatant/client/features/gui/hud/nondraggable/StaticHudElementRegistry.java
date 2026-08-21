@@ -13,6 +13,7 @@ import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudRenderSpace;
 import combatant.client.features.module.HudPhase;
 import combatant.client.render.engine.math.HudScale;
+import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
@@ -65,8 +66,19 @@ public enum StaticHudElementRegistry {
 
     public static void tickAll() {
         if (!RuntimeGate.canRunHud()) return;
-        for (AbstractHudElement e : ELEMENTS) {
-            e.onTick();
+        if (!ProfilerPhase.isActive()) {
+            for (AbstractHudElement e : ELEMENTS) {
+                e.onTick();
+            }
+            return;
+        }
+
+        try (ProfilerPhase.Scope elementsScope = ProfilerPhase.scope("hud_static:tick")) {
+            for (AbstractHudElement e : ELEMENTS) {
+                try (ProfilerPhase.Scope elementScope = ProfilerPhase.scope("hud_static:tick:" + e.getId())) {
+                    e.onTick();
+                }
+            }
         }
     }
 
@@ -165,11 +177,25 @@ public enum StaticHudElementRegistry {
         }
         renderList.sort(Comparator.comparingInt(AbstractHudElement::getRenderOrder));
 
+        if (!ProfilerPhase.isActive()) {
+            for (AbstractHudElement element : renderList) {
+                if (foreground) {
+                    element.renderEngineForeground(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+                } else {
+                    element.renderEngine(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+                }
+            }
+            return;
+        }
+
+        String lane = foreground ? "hud_static:render_fg:" : "hud_static:render:";
         for (AbstractHudElement element : renderList) {
-            if (foreground) {
-                element.renderEngineForeground(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
-            } else {
-                element.renderEngine(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+            try (ProfilerPhase.Scope elementScope = ProfilerPhase.scope(lane + element.getId())) {
+                if (foreground) {
+                    element.renderEngineForeground(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+                } else {
+                    element.renderEngine(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+                }
             }
         }
     }

@@ -30,9 +30,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.features.hmi_recode.HoldMyItems;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.ViewModel;
+import combatant.client.render.iris.IrisRuntime;
 
 @Environment(EnvType.CLIENT)
-@Mixin(ItemInHandRenderer.class)
+@Mixin(value = ItemInHandRenderer.class, priority = 1100)
 public abstract class ItemInHandRendererMixin {
 
     @Shadow
@@ -107,6 +108,30 @@ public abstract class ItemInHandRendererMixin {
                     ? ItemDisplayContext.FIRST_PERSON_RIGHT_HAND
                     : ItemDisplayContext.FIRST_PERSON_LEFT_HAND;
 
+            // HMI cancels submitArmWithItem and therefore must preserve Iris' own solid/translucent
+            // hand filtering itself. Without this, solid swords/tools are submitted again in
+            // HAND_TRANSLUCENT, while a translucent held block can drag HMI's opaque gripping arm
+            // into the translucent phase. Both cases produce broken arm/item depth with packs.
+            boolean irisHandPass = IrisRuntime.isShaderpackRendererActive();
+            boolean irisItemTranslucent = irisHandPass && IrisRuntime.isHeldItemTranslucent(item);
+            boolean irisRenderingSolid = irisHandPass && IrisRuntime.isHandRenderingSolid();
+            boolean irisSplitHeldItem = irisHandPass
+                    && !item.isEmpty()
+                    && irisItemTranslucent
+                    && IrisRuntime.hasAnySolidHand();
+
+            // Normal Iris rule: cancel this item when phase == translucency. HMI only overrides that
+            // rule for a translucent held item in the solid phase, where it needs to submit the
+            // gripping arm alone and cache the item pose for the later translucent phase.
+            if (irisHandPass && !irisSplitHeldItem && irisRenderingSolid == irisItemTranslucent) {
+                ci.cancel();
+                return;
+            }
+
+            boolean irisSolidArmOnly = irisSplitHeldItem && irisRenderingSolid;
+            boolean irisTranslucentItemOnly = irisSplitHeldItem && !irisRenderingSolid;
+            boolean hmiReplay = irisTranslucentItemOnly && viewModel.beginHmiReplayPass();
+
             matrices.pushPose();
             try {
                 // Keep the user base translation outside the scripted HMI transform stack.
@@ -137,7 +162,9 @@ public abstract class ItemInHandRendererMixin {
                         }
                     }
                 } else {
-                    if (viewModel.shouldRenderHmiHoldingHands() && !player.isInvisible()) {
+                    if (!irisTranslucentItemOnly
+                            && viewModel.shouldRenderHmiHoldingHands()
+                            && !player.isInvisible()) {
                         matrices.pushPose();
                         try {
                             renderPlayerArm(matrices, queue, light, 0.0f, 0.0f, arm);
@@ -146,19 +173,29 @@ public abstract class ItemInHandRendererMixin {
                         }
                     }
 
-                    matrices.pushPose();
-                    try {
-                        // renderItem remains the vanilla 26.2 model submission path. The HMI item
-                        // pose + MiniItems layer is injected immediately before ItemStackRenderState
-                        // submission below, inside the active HMI hand scope.
-                        renderItem(player, item, displayContext, matrices, queue, light);
-                    } finally {
-                        matrices.popPose();
+                    if (irisSolidArmOnly) {
+                        // The item itself belongs to Iris' translucent hand phase. Evaluate its HMI
+                        // pose/model commands once now so the later phase can replay exactly the
+                        // same state without advancing JS springs/events a second time.
+                        HoldMyItems.applyItemPose(item, new PoseStack());
+                    } else {
+                        matrices.pushPose();
+                        try {
+                            // renderItem remains the vanilla 26.2 model submission path. The HMI
+                            // item pose + MiniItems layer is injected immediately before
+                            // ItemStackRenderState submission below, inside the active HMI scope.
+                            renderItem(player, item, displayContext, matrices, queue, light);
+                        } finally {
+                            matrices.popPose();
+                        }
                     }
                 }
             } finally {
                 HoldMyItems.endHandRender();
                 matrices.popPose();
+                if (hmiReplay) {
+                    viewModel.endHmiReplayPass();
+                }
             }
 
             ci.cancel();

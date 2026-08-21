@@ -58,22 +58,38 @@ public final class Tps extends DraggableHudElement implements ScriptableHudStatW
     private static final String COLOR_CUSTOM = "Custom";
     private static final String EFFECT_NONE = "None";
     private static final String EFFECT_BLUR = "Blur";
-    private static final String EFFECT_GLASS = "Glass";
 
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final BooleanValue extra = bool("tps_extra", false);
     private final NumberValue<Double> scale = num("tps_scale", 2.37, 0.5, 5.0);
     private final ModeValue colorMode = mode("tps_color_mode", "color_mode", "Theme", new String[]{COLOR_THEME, COLOR_CUSTOM});
+    private final ModeValue panelStyle = visibleWhen(
+            mode("tps_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
+                    new String[]{HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT}),
+            this::isThemeMode
+    );
     private final RGBColorValue iconColor = visibleWhen(colorNoAlpha("tps_icon_color", "#FFFFFF"), this::isCustomMode);
     private final RGBColorValue valueColor = visibleWhen(colorNoAlpha("tps_value_color", "#FFFFFF"), this::isCustomMode);
     private final RGBColorValue metaColor = visibleWhen(colorNoAlpha("tps_meta_color", "#9B9B9B"), this::isCustomMode);
     private final RGBColorValue extraColor = visibleWhen(colorNoAlpha("tps_extra_color", "#BEBEBE"), this::isCustomMode);
-    private final ModeValue bgEffect = mode("tps_bg_effect", "bg_effect", "Blur", new String[]{EFFECT_NONE, EFFECT_BLUR, EFFECT_GLASS});
-    private final RGBAColorValue bg = visibleWhen(color("tps_bg", "#F7343434"), () -> isCustomMode() && !isGlassEffect());
-    private final RGBAColorValue bg2 = visibleWhen(color("tps_bg_secondary", "#F7161616"), () -> isCustomMode() && !isGlassEffect());
-    private final RGBColorValue stroke = visibleWhen(colorNoAlpha("tps_stroke", "#5A5A5A"), () -> isCustomMode() && !isGlassEffect());
-    private final NumberValue<Integer> bgAlpha = visibleWhen(num("tps_bg_alpha", 133, 0, 255), () -> isThemeMode() && !isGlassEffect());
+    private final ModeValue bgEffect = mode("tps_bg_effect", "bg_effect", "Blur", new String[]{EFFECT_NONE, EFFECT_BLUR});
+    private final RGBAColorValue bg = visibleWhen(color("tps_bg", "#F7343434"), () -> isCustomMode());
+    private final RGBAColorValue bg2 = visibleWhen(color("tps_bg_secondary", "#F7161616"), () -> isCustomMode());
+    private final BooleanValue strokeEnabled = bool("tps_stroke_enabled", false);
+    private final RGBColorValue stroke = visibleWhen(colorNoAlpha("tps_stroke", "#5A5A5A"),
+            () -> strokeEnabled.get() && isCustomMode());
+    private final NumberValue<Integer> strokeAlpha = visibleWhen(num("tps_stroke_alpha", 160, 0, 255), strokeEnabled::get);
+    private final BooleanValue strokeGradient = visibleWhen(bool("tps_stroke_gradient", true),
+            () -> strokeEnabled.get() && isThemeMode());
+    private final BooleanValue shadowEnabled = bool("tps_shadow_enabled", true);
+    private final ModeValue shadowMode = visibleWhen(
+            mode("tps_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
+                    new String[]{HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME}),
+            shadowEnabled::get
+    );
+    private final NumberValue<Integer> shadowAlpha = visibleWhen(num("tps_shadow_alpha", 48, 0, 255), shadowEnabled::get);
+    private final NumberValue<Integer> bgAlpha = visibleWhen(num("tps_bg_alpha", 133, 0, 255), () -> isThemeMode());
     private final NumberValue<Integer> blurAlpha = visibleWhen(num("tps_blur_alpha", 255, 0, 255), this::hasEffect);
     private final EnumValue<HudTextEffects.Effect> labelEffect =
             enumSetting("tps_label_effect", HudTextEffects.Effect.NONE,
@@ -225,10 +241,22 @@ public final class Tps extends DraggableHudElement implements ScriptableHudStatW
         }
 
         float radius = BOX_RADIUS * drawScale;
+        if (shadowEnabled.get()) {
+            HudRenderUtil.drawHudShadow(
+                    renderer, baseX, baseY, boxW, boxH, radius, drawScale,
+                    HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()), shadowAlpha.get(), 1.0f
+            );
+        }
+
         scriptModel.setVisible(true);
         scriptModel.setRoot(baseX, baseY, boxW, boxH, radius, drawScale);
         scriptModel.background().set(bgEffect.get(), isThemeMode(), blurAlpha.get() / 255.0f,
-                uiBgPrimary, uiBgSecondary, uiStroke, Math.max(0.5f, STROKE_WIDTH * drawScale), BOX_SOFTNESS);
+                uiBgPrimary, uiBgSecondary, uiStroke, Math.max(0.5f, STROKE_WIDTH * drawScale), BOX_SOFTNESS)
+                .setStrokeControls(
+                        strokeEnabled.get(), strokeAlpha.get() / 255.0f,
+                        isThemeMode() && strokeGradient.get(),
+                        resolveStrokeGradientStart(), resolveStrokeGradientEnd()
+                );
         scriptModel.icon().texture(TPS_ICON.toString(), iconX - baseX, iconY - baseY, iconSize, iconSize, resolvedIconColor);
         scriptModel.divider().set(dividerX - baseX, dividerY - baseY, dividerW, dividerH,
                 HudRenderUtil.setAlpha(uiMetaColor, 0x52));
@@ -247,6 +275,7 @@ public final class Tps extends DraggableHudElement implements ScriptableHudStatW
                 .data("valueText", cachedValue)
                 .data("unitText", "TPS")
                 .data("extraText", cachedExtra);
+        scriptModel.data("shadowControlled", true);
         ScriptedCompactHudStatRenderer.INSTANCE.render(scriptModel, renderer, fallback, ctx, tickDelta);
     }
 
@@ -296,6 +325,10 @@ public final class Tps extends DraggableHudElement implements ScriptableHudStatW
                     HudRenderUtil.mixColor(theme().surface(), theme().windowHeader(), 0.35f),
                     panelAlpha
             );
+            if (isAccentPanelStyle()) {
+                uiBgPrimary = HudRenderUtil.accentSurface(uiBgPrimary, 0.20f);
+                uiBgSecondary = HudRenderUtil.accentSurface(uiBgSecondary, 0.28f);
+            }
             uiStroke = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.4f),
                     Math.min(panelAlpha, 190)
@@ -320,13 +353,24 @@ public final class Tps extends DraggableHudElement implements ScriptableHudStatW
         return COLOR_THEME.equals(colorMode.get());
     }
 
+    private boolean isAccentPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
+    }
+
+    private int resolveStrokeGradientStart() {
+        if (!isThemeMode()) return stroke.getArgb();
+        return HudRenderUtil.themeAccentGradient(255).start();
+    }
+
+    private int resolveStrokeGradientEnd() {
+        if (!isThemeMode()) return stroke.getArgb();
+        return HudRenderUtil.themeAccentGradient(255).end();
+    }
+
     private boolean isCustomMode() {
         return COLOR_CUSTOM.equals(colorMode.get());
     }
 
-    private boolean isGlassEffect() {
-        return EFFECT_GLASS.equals(bgEffect.get());
-    }
 
     private boolean hasEffect() {
         return !EFFECT_NONE.equals(bgEffect.get());

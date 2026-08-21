@@ -192,6 +192,22 @@ public final class TargetHud extends DraggableHudElement {
             new ModeValue("target_hp_mode", "Arc", HP_MODE_LINE, HP_MODE_ARC);
     private final ModeValue colorMode =
             new ModeValue("target_color_mode", "Theme", COLOR_THEME, COLOR_CUSTOM);
+    private final ModeValue panelStyle =
+            new ModeValue("target_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
+                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT);
+    private final BooleanValue strokeEnabled =
+            new BooleanValue("target_stroke_enabled", false);
+    private final NumberValue<Integer> strokeAlpha =
+            new NumberValue<>("target_stroke_alpha", 160, 0, 255);
+    private final BooleanValue strokeGradient =
+            new BooleanValue("target_stroke_gradient", true);
+    private final BooleanValue shadowEnabled =
+            new BooleanValue("target_shadow_enabled", false);
+    private final ModeValue shadowMode =
+            new ModeValue("target_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
+                    HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME);
+    private final NumberValue<Integer> shadowAlpha =
+            new NumberValue<>("target_shadow_alpha", 96, 0, 255);
     private final RGBAColorValue bg =
             new RGBAColorValue("target_bg", "#F7343434");
     private final RGBAColorValue bg2 =
@@ -423,10 +439,17 @@ public final class TargetHud extends DraggableHudElement {
         defs.add(SettingDef.mode(equipmentMode));
         defs.add(SettingDef.mode(hpMode));
         defs.add(SettingDef.mode(colorMode));
+        defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));
         defs.add(SettingDef.color(bg).visibleWhen(() -> isCustomMode() && !isGlassEffect()));
         defs.add(SettingDef.color(bg2).visibleWhen(() -> isCustomMode() && !isGlassEffect()));
-        defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(() -> isCustomMode() && !isGlassEffect()));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(() -> isThemeMode() && !isGlassEffect()));
+        defs.add(SettingDef.bool(strokeEnabled));
+        defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(() -> strokeEnabled.get() && isCustomMode()));
+        defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
+        defs.add(SettingDef.bool(strokeGradient).visibleWhen(() -> strokeEnabled.get() && isThemeMode()));
+        defs.add(SettingDef.bool(shadowEnabled));
+        defs.add(SettingDef.mode(shadowMode).visibleWhen(shadowEnabled::get));
+        defs.add(SettingDef.number(shadowAlpha).visibleWhen(shadowEnabled::get));
         defs.add(SettingDef.colorNoAlpha(text).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(textSecondary).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(barBg).visibleWhen(this::isCustomMode));
@@ -536,6 +559,14 @@ public final class TargetHud extends DraggableHudElement {
             TotemPopSnapshot totemPopSnapshot = resolveTotemPopSnapshot(displayTarget);
             updateTotemPopAnimation(displayTarget, totemPopSnapshot, dt);
 
+            if (shadowEnabled.get()) {
+                HudRenderUtil.drawHudShadow(
+                        renderer, panelX, panelY, panelW, panelH, panelRadius, scaleFactor,
+                        HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()),
+                        shadowAlpha.get(), alphaFactor
+                );
+            }
+
             if (glassEnabled) {
                 drawGlass(panelX, panelY, panelW, panelH, panelRadius, alphaFactor);
             } else if (blurEnabled) {
@@ -543,6 +574,13 @@ public final class TargetHud extends DraggableHudElement {
             }
 
             drawBackground(renderer, panelX, panelY, panelW, panelH, panelRadius, alphaFactor, glassEnabled);
+            if (strokeEnabled.get()) {
+                HudRenderUtil.drawHudStroke(
+                        renderer, panelX, panelY, panelW, panelH, panelRadius, 1.0f,
+                        Math.max(0.5f, 0.55f * scaleFactor), uiStroke,
+                        isThemeMode() && strokeGradient.get(), strokeAlpha.get(), alphaFactor
+                );
+            }
             drawHitPulse(renderer, panelX, panelY, panelW, panelH, panelRadius, alphaFactor, hitPulseFactor);
             drawFace(renderer, textRenderer, ctx, displayTarget, panelX, panelY, scaleFactor, alphaFactor, totemPopSnapshot);
             drawContent(renderer, textRenderer, displayTarget, panelX, panelY, panelDrawW, scaleFactor, alphaFactor, now, dt);
@@ -602,6 +640,10 @@ public final class TargetHud extends DraggableHudElement {
                     HudRenderUtil.mixColor(theme().surface(), theme().windowHeader(), 0.35f),
                     panelAlpha
             );
+            if (isAccentPanelStyle()) {
+                uiBgPrimary = HudRenderUtil.accentSurface(uiBgPrimary, 0.20f);
+                uiBgSecondary = HudRenderUtil.accentSurface(uiBgSecondary, 0.28f);
+            }
             uiStroke = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.4f),
                     Math.min(panelAlpha, 190)
@@ -671,16 +713,14 @@ public final class TargetHud extends DraggableHudElement {
         int secondary = HudRenderUtil.scaleAlpha(uiBgSecondary, alphaFactor);
 
         if (isThemeMode()) {
-            HudRenderUtil.drawHudBackground(renderer, x, y, width, height, radius, 1.0f, primary, true);
+            if (isAccentPanelStyle()) {
+                renderer.roundedRectGradient(x, y, width, height, radius, 1.0f, primary, secondary, 90.0f);
+            } else {
+                HudRenderUtil.drawHudBackground(renderer, x, y, width, height, radius, 1.0f, primary, true);
+            }
         } else {
             renderer.roundedRectGradientQuad(x, y, width, height, radius, 1.0f, primary, secondary, primary, secondary);
         }
-
-        renderer.roundedRectStroke(
-                x, y, width, height, radius, 1.0f,
-                0.35f * radius / PANEL_RADIUS,
-                HudRenderUtil.scaleAlpha(uiStroke, alphaFactor)
-        );
     }
 
     private void drawFace(Renderer2D renderer,
@@ -1419,6 +1459,15 @@ public final class TargetHud extends DraggableHudElement {
         float glassAlpha = alphaFactor;
         float glassScale = PANEL_RADIUS <= 0.0f ? 1.0f : radius / PANEL_RADIUS;
         HudRenderUtil.drawLiquidGlass(x, y, width, height, radius, glassScale, true, blurStrength, glassAlpha);
+        if (isAccentPanelStyle()) {
+            HudRenderUtil.ThemeGradient accentGradient = HudRenderUtil.themeAccentGradient(
+                    Math.round(42.0f * AnimationUtility.clamp01(alphaFactor))
+            );
+            Renderer2D.COLOR.roundedRectGradient(
+                    x, y, width, height, radius, 1.0f,
+                    accentGradient.start(), accentGradient.end(), accentGradient.angleDeg()
+            );
+        }
     }
 
     private void drawGlassCard(float x,
@@ -1655,6 +1704,10 @@ public final class TargetHud extends DraggableHudElement {
 
     private boolean isThemeMode() {
         return COLOR_THEME.equals(colorMode.get());
+    }
+
+    private boolean isAccentPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
     }
 
     private boolean isCustomMode() {

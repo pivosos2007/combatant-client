@@ -145,6 +145,11 @@ final class ScriptedInventoryHudPanel {
                  long itemCount,
                  boolean blur,
                  float blurAlpha,
+                 boolean strokeEnabled,
+                 float strokeAlpha,
+                 boolean strokeGradient,
+                 int strokeStartColor,
+                 int strokeEndColor,
                  int headerIconColor,
                  int gridDivider,
                  String layout,
@@ -168,6 +173,12 @@ final class ScriptedInventoryHudPanel {
             out.put("activeCount", itemCount);
             out.put("blur", blur);
             out.put("blurAlpha", blurAlpha);
+            out.put("shadowControlled", true);
+            out.put("strokeEnabled", strokeEnabled);
+            out.put("strokeAlpha", strokeAlpha);
+            out.put("strokeGradient", strokeGradient);
+            out.put("strokeStartColor", ScriptedListHudPanel.hex(strokeStartColor));
+            out.put("strokeEndColor", ScriptedListHudPanel.hex(strokeEndColor));
             out.put("headerIconColor", ScriptedListHudPanel.hex(headerIconColor));
             out.put("gridDivider", ScriptedListHudPanel.hex(gridDivider));
             out.put("layout", layout != null ? layout : HudPanelLayoutModes.SPLIT_HEADER);
@@ -213,6 +224,11 @@ final class ScriptedInventoryHudPanel {
             h = CachedUiScriptRuntime.mix(h, countValueWidth);
             h = CachedUiScriptRuntime.mix(h, blur);
             h = CachedUiScriptRuntime.mix(h, blurAlpha);
+            h = CachedUiScriptRuntime.mix(h, strokeEnabled);
+            h = CachedUiScriptRuntime.mix(h, strokeAlpha);
+            h = CachedUiScriptRuntime.mix(h, strokeGradient);
+            h = CachedUiScriptRuntime.mix(h, strokeStartColor);
+            h = CachedUiScriptRuntime.mix(h, strokeEndColor);
             h = CachedUiScriptRuntime.mix(h, gridDivider);
             h = CachedUiScriptRuntime.mix(h, layout);
             h = mixPalette(h);
@@ -231,6 +247,11 @@ final class ScriptedInventoryHudPanel {
             long h = 0xcbf29ce484222325L;
             h = CachedUiScriptRuntime.mix(h, (int) Math.min(Integer.MAX_VALUE, Math.max(0L, itemCount)));
             h = CachedUiScriptRuntime.mix(h, headerIconColor);
+            h = CachedUiScriptRuntime.mix(h, strokeEnabled);
+            h = CachedUiScriptRuntime.mix(h, strokeAlpha);
+            h = CachedUiScriptRuntime.mix(h, strokeGradient);
+            h = CachedUiScriptRuntime.mix(h, strokeStartColor);
+            h = CachedUiScriptRuntime.mix(h, strokeEndColor);
             if (items != null) {
                 for (LinkedHashMap<String, Object> item : items) {
                     h = CachedUiScriptRuntime.mix(h, intValue(item.get("slot")));

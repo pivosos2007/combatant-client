@@ -114,6 +114,22 @@ public final class Triangulator extends DraggableHudElement {
             new NumberValue<>("triangulator_scale", 1.68, 0.5, 5.0);
     private final ModeValue colorMode =
             new ModeValue("triangulator_color_mode", "Theme", COLOR_THEME, COLOR_CUSTOM);
+    private final ModeValue panelStyle =
+            new ModeValue("triangulator_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
+                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT);
+    private final BooleanValue strokeEnabled =
+            new BooleanValue("triangulator_stroke_enabled", false);
+    private final NumberValue<Integer> strokeAlpha =
+            new NumberValue<>("triangulator_stroke_alpha", 160, 0, 255);
+    private final BooleanValue strokeGradient =
+            new BooleanValue("triangulator_stroke_gradient", true);
+    private final BooleanValue shadowEnabled =
+            new BooleanValue("triangulator_shadow_enabled", true);
+    private final ModeValue shadowMode =
+            new ModeValue("triangulator_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
+                    HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME);
+    private final NumberValue<Integer> shadowAlpha =
+            new NumberValue<>("triangulator_shadow_alpha", 38, 0, 255);
     private final ModeValue bgEffect =
             new ModeValue("triangulator_bg_effect", "Blur", EFFECT_NONE, EFFECT_BLUR);
     private final RGBAColorValue bg =
@@ -310,10 +326,17 @@ public final class Triangulator extends DraggableHudElement {
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(colorMode));
+        defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));
         defs.add(SettingDef.color(bg).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.color(bg2).visibleWhen(this::isCustomMode));
-        defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(this::isThemeMode));
+        defs.add(SettingDef.bool(strokeEnabled));
+        defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(() -> strokeEnabled.get() && isCustomMode()));
+        defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
+        defs.add(SettingDef.bool(strokeGradient).visibleWhen(() -> strokeEnabled.get() && isThemeMode()));
+        defs.add(SettingDef.bool(shadowEnabled));
+        defs.add(SettingDef.mode(shadowMode).visibleWhen(shadowEnabled::get));
+        defs.add(SettingDef.number(shadowAlpha).visibleWhen(shadowEnabled::get));
         defs.add(SettingDef.colorNoAlpha(text).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(muted).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.mode(bgEffect));
@@ -552,6 +575,14 @@ public final class Triangulator extends DraggableHudElement {
             ));
         }
 
+        if (shadowEnabled.get()) {
+            HudRenderUtil.drawHudShadow(
+                    renderer, drawX, drawY, drawWidth, drawHeight, PANEL_RADIUS * drawBaseScale, drawBaseScale,
+                    HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()),
+                    shadowAlpha.get(), drawScale
+            );
+        }
+
         scriptedPanel.render(
                 renderer,
                 textRenderer,
@@ -588,6 +619,11 @@ public final class Triangulator extends DraggableHudElement {
                         displayThrows.size(),
                         hasEffect(),
                         Math.min(1.0f, (blurAlpha.get() / 255.0f) * (isThemeMode() ? 1.15f : 1.0f)),
+                        strokeEnabled.get(),
+                        strokeAlpha.get() / 255.0f,
+                        isThemeMode() && strokeGradient.get(),
+                        resolveStrokeGradientStart(),
+                        resolveStrokeGradientEnd(),
                         ScriptedTriangulatorHudPanel.idString(HEADER_ICON),
                         headerIconColor,
                         showClearButton,
@@ -880,6 +916,12 @@ public final class Triangulator extends DraggableHudElement {
             uiHeaderRight = HudRenderUtil.mixColor(surface, header, 0.52f);
             uiBodyLeft = HudRenderUtil.mixColor(window, surface, 0.24f);
             uiBodyRight = HudRenderUtil.mixColor(deep, surface, 0.18f);
+            if (isAccentPanelStyle()) {
+                uiHeaderLeft = HudRenderUtil.accentSurface(uiHeaderLeft, 0.20f);
+                uiHeaderRight = HudRenderUtil.accentSurface(uiHeaderRight, 0.27f);
+                uiBodyLeft = HudRenderUtil.accentSurface(uiBodyLeft, 0.16f);
+                uiBodyRight = HudRenderUtil.accentSurface(uiBodyRight, 0.24f);
+            }
             uiOutline = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.18f),
                     Math.min(255, Math.max(182, alpha + 36))
@@ -911,6 +953,24 @@ public final class Triangulator extends DraggableHudElement {
         uiSuccess = HudRenderUtil.mixColor(uiCounter, 0xFF55FF93, 0.55f);
         uiWarn = HudRenderUtil.mixColor(uiCounter, 0xFFFFC85A, 0.55f);
         uiDanger = HudRenderUtil.mixColor(uiCounter, 0xFFFF6A6A, 0.62f);
+    }
+
+    private boolean isAccentPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
+    }
+
+    private int resolveStrokeGradientStart() {
+        if (isThemeMode()) {
+            return HudRenderUtil.themeAccentGradient(255).start();
+        }
+        return stroke.getArgb() | 0xFF000000;
+    }
+
+    private int resolveStrokeGradientEnd() {
+        if (isThemeMode()) {
+            return HudRenderUtil.themeAccentGradient(255).end();
+        }
+        return stroke.getArgb() | 0xFF000000;
     }
 
     private boolean isThemeMode() {

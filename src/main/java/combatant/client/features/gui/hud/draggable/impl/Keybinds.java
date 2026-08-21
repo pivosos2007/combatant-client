@@ -66,6 +66,9 @@ public final class Keybinds extends DraggableHudElement {
             new ModeValue("keybinds_layout", "Unified Divider", HudPanelLayoutModes.SPLIT_HEADER, HudPanelLayoutModes.UNIFIED_DIVIDER);
     private final ModeValue colorMode =
             new ModeValue("keybinds_color_mode", "Theme", COLOR_THEME, COLOR_CUSTOM);
+    private final ModeValue panelStyle =
+            new ModeValue("keybinds_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
+                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT);
     private final ModeValue bgEffect =
             new ModeValue("keybinds_bg_effect", "None", EFFECT_NONE, EFFECT_BLUR);
     private final RGBAColorValue bg =
@@ -74,6 +77,19 @@ public final class Keybinds extends DraggableHudElement {
             new RGBAColorValue("keybinds_bg_secondary", "#F7161616");
     private final NumberValue<Integer> bgAlpha =
             new NumberValue<>("keybinds_bg_alpha", 225, 0, 255);
+    private final BooleanValue strokeEnabled =
+            new BooleanValue("keybinds_stroke_enabled", false);
+    private final NumberValue<Integer> strokeAlpha =
+            new NumberValue<>("keybinds_stroke_alpha", 160, 0, 255);
+    private final BooleanValue strokeGradient =
+            new BooleanValue("keybinds_stroke_gradient", true);
+    private final BooleanValue shadowEnabled =
+            new BooleanValue("keybinds_shadow_enabled", true);
+    private final ModeValue shadowMode =
+            new ModeValue("keybinds_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
+                    HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME);
+    private final NumberValue<Integer> shadowAlpha =
+            new NumberValue<>("keybinds_shadow_alpha", 38, 0, 255);
     private final RGBColorValue stroke =
             new RGBColorValue("keybinds_stroke", "#5A5A5A");
     private final RGBColorValue text =
@@ -203,9 +219,16 @@ public final class Keybinds extends DraggableHudElement {
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(layoutMode));
         defs.add(SettingDef.mode(colorMode));
+        defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));
         defs.add(SettingDef.color(bg).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.color(bg2).visibleWhen(this::isCustomMode));
-        defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(this::isCustomMode));
+        defs.add(SettingDef.bool(strokeEnabled));
+        defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(() -> strokeEnabled.get() && isCustomMode()));
+        defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
+        defs.add(SettingDef.bool(strokeGradient).visibleWhen(() -> strokeEnabled.get() && isThemeMode()));
+        defs.add(SettingDef.bool(shadowEnabled));
+        defs.add(SettingDef.mode(shadowMode).visibleWhen(shadowEnabled::get));
+        defs.add(SettingDef.number(shadowAlpha).visibleWhen(shadowEnabled::get));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(this::isThemeMode));
         defs.add(SettingDef.colorNoAlpha(text).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(muted).visibleWhen(this::isCustomMode));
@@ -394,6 +417,14 @@ public final class Keybinds extends DraggableHudElement {
             }
         }
 
+        if (shadowEnabled.get()) {
+            HudRenderUtil.drawHudShadow(
+                    renderer, drawX, drawY, drawWidth, drawHeight,
+                    ScriptedListHudPanel.PANEL_RADIUS * drawBaseScale, drawBaseScale,
+                    HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()), shadowAlpha.get(), 1.0f
+            );
+        }
+
         scriptedPanel.render(
                 renderer,
                 textRenderer,
@@ -420,6 +451,12 @@ public final class Keybinds extends DraggableHudElement {
                         Math.min(1.0f, (blurAlpha.get() / 255.0f) * (isThemeMode() ? 1.15f : 1.0f)),
                         resolvedHeaderIconColor,
                         HudPanelLayoutModes.current(layoutMode),
+                        strokeEnabled.get(),
+                        strokeAlpha.get() / 255.0f,
+                        isThemeMode() && strokeGradient.get(),
+                        resolveStrokeGradientStart(),
+                        resolveStrokeGradientEnd(),
+                        true,
                         panelRows
                 )
         );
@@ -549,6 +586,12 @@ public final class Keybinds extends DraggableHudElement {
             uiHeaderRight = HudRenderUtil.mixColor(surface, header, 0.52f);
             uiBodyLeft = HudRenderUtil.mixColor(window, surface, 0.24f);
             uiBodyRight = HudRenderUtil.mixColor(deep, surface, 0.18f);
+            if (isAccentPanelStyle()) {
+                uiHeaderLeft = HudRenderUtil.accentSurface(uiHeaderLeft, 0.18f);
+                uiHeaderRight = HudRenderUtil.accentSurface(uiHeaderRight, 0.26f);
+                uiBodyLeft = HudRenderUtil.accentSurface(uiBodyLeft, 0.20f);
+                uiBodyRight = HudRenderUtil.accentSurface(uiBodyRight, 0.30f);
+            }
             uiOutline = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.18f),
                     Math.min(255, Math.max(182, alpha + 36))
@@ -585,6 +628,20 @@ public final class Keybinds extends DraggableHudElement {
 
     private boolean isThemeMode() {
         return COLOR_THEME.equals(colorMode.get());
+    }
+
+    private boolean isAccentPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
+    }
+
+    private int resolveStrokeGradientStart() {
+        if (!isThemeMode()) return stroke.getArgb();
+        return HudRenderUtil.themeAccentGradient(255).start();
+    }
+
+    private int resolveStrokeGradientEnd() {
+        if (!isThemeMode()) return stroke.getArgb();
+        return HudRenderUtil.themeAccentGradient(255).end();
     }
 
     private boolean isCustomMode() {

@@ -89,6 +89,22 @@ public final class Inventory extends DraggableHudElement {
             new ModeValue("inventory_layout", "Unified Divider", HudPanelLayoutModes.SPLIT_HEADER, HudPanelLayoutModes.UNIFIED_DIVIDER);
     private final ModeValue colorMode =
             new ModeValue("inventory_color_mode", "Theme", COLOR_THEME, COLOR_CUSTOM);
+    private final ModeValue panelStyle =
+            new ModeValue("inventory_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
+                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT);
+    private final BooleanValue strokeEnabled =
+            new BooleanValue("inventory_stroke_enabled", false);
+    private final NumberValue<Integer> strokeAlpha =
+            new NumberValue<>("inventory_stroke_alpha", 160, 0, 255);
+    private final BooleanValue strokeGradient =
+            new BooleanValue("inventory_stroke_gradient", true);
+    private final BooleanValue shadowEnabled =
+            new BooleanValue("inventory_shadow_enabled", true);
+    private final ModeValue shadowMode =
+            new ModeValue("inventory_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
+                    HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME);
+    private final NumberValue<Integer> shadowAlpha =
+            new NumberValue<>("inventory_shadow_alpha", 38, 0, 255);
     private final ModeValue bgEffect =
             new ModeValue("inventory_bg_effect", "Blur", EFFECT_NONE, EFFECT_BLUR);
     private final RGBAColorValue bg =
@@ -145,10 +161,17 @@ public final class Inventory extends DraggableHudElement {
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(layoutMode));
         defs.add(SettingDef.mode(colorMode));
+        defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));
         defs.add(SettingDef.color(bg).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.color(bg2).visibleWhen(this::isCustomMode));
-        defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(this::isThemeMode));
+        defs.add(SettingDef.bool(strokeEnabled));
+        defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(() -> strokeEnabled.get() && isCustomMode()));
+        defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
+        defs.add(SettingDef.bool(strokeGradient).visibleWhen(() -> strokeEnabled.get() && isThemeMode()));
+        defs.add(SettingDef.bool(shadowEnabled));
+        defs.add(SettingDef.mode(shadowMode).visibleWhen(shadowEnabled::get));
+        defs.add(SettingDef.number(shadowAlpha).visibleWhen(shadowEnabled::get));
         defs.add(SettingDef.colorNoAlpha(text).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(muted).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.mode(bgEffect));
@@ -316,6 +339,14 @@ public final class Inventory extends DraggableHudElement {
             );
         }
 
+        if (shadowEnabled.get()) {
+            HudRenderUtil.drawHudShadow(
+                    renderer, drawX, drawY, drawWidth, drawHeight, PANEL_RADIUS * drawBaseScale, drawBaseScale,
+                    HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()),
+                    shadowAlpha.get(), drawScale
+            );
+        }
+
         scriptedPanel.render(
                 renderer,
                 textRenderer,
@@ -337,6 +368,11 @@ public final class Inventory extends DraggableHudElement {
                         itemCount,
                         hasEffect(),
                         Math.min(1.0f, (blurAlpha.get() / 255.0f) * (isThemeMode() ? 1.15f : 1.0f)),
+                        strokeEnabled.get(),
+                        strokeAlpha.get() / 255.0f,
+                        isThemeMode() && strokeGradient.get(),
+                        resolveStrokeGradientStart(),
+                        resolveStrokeGradientEnd(),
                         resolvedHeaderIconColor,
                         uiGridDivider,
                         HudPanelLayoutModes.current(layoutMode),
@@ -406,6 +442,12 @@ public final class Inventory extends DraggableHudElement {
             uiHeaderRight = HudRenderUtil.mixColor(surface, header, 0.52f);
             uiBodyLeft = HudRenderUtil.mixColor(window, surface, 0.24f);
             uiBodyRight = HudRenderUtil.mixColor(deep, surface, 0.18f);
+            if (isAccentPanelStyle()) {
+                uiHeaderLeft = HudRenderUtil.accentSurface(uiHeaderLeft, 0.20f);
+                uiHeaderRight = HudRenderUtil.accentSurface(uiHeaderRight, 0.27f);
+                uiBodyLeft = HudRenderUtil.accentSurface(uiBodyLeft, 0.16f);
+                uiBodyRight = HudRenderUtil.accentSurface(uiBodyRight, 0.24f);
+            }
             uiOutline = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.18f),
                     Math.min(255, Math.max(182, alpha + 36))
@@ -436,6 +478,20 @@ public final class Inventory extends DraggableHudElement {
         uiDivider = HudRenderUtil.scaleAlpha(uiMuted, 0.55f);
         uiGridDivider = HudRenderUtil.scaleAlpha(uiMuted, 0.20f);
         uiBlurTint = HudRenderUtil.mixColor(uiHeaderLeft, uiBodyRight, 0.5f);
+    }
+
+    private boolean isAccentPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
+    }
+
+    private int resolveStrokeGradientStart() {
+        if (isThemeMode()) return HudRenderUtil.themeAccentGradient(255).start();
+        return stroke.getArgb() | 0xFF000000;
+    }
+
+    private int resolveStrokeGradientEnd() {
+        if (isThemeMode()) return HudRenderUtil.themeAccentGradient(255).end();
+        return stroke.getArgb() | 0xFF000000;
     }
 
     private boolean isThemeMode() {
