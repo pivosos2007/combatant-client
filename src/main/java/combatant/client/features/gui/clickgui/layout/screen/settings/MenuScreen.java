@@ -27,6 +27,7 @@ import combatant.client.features.gui.clickgui.layout.screen.settings.implement.r
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.theme.ThemeComponent;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.theme.ThemeEditorPreviewComponent;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.util.ClickGuiHintOverlay;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.theme.EditableClickGuiTheme;
@@ -44,6 +45,7 @@ public final class MenuScreen {
     private static final float S = 2f;
     private static final float MENU_W = 400f;
     private static final float MENU_H = 250f;
+    private static final float CATEGORY_TRANSITION_DURATION_MS = 900f;
     private final BackgroundComponent backgroundComponent = new BackgroundComponent();
     private final CategoryContainerComponent categoryContainer = new CategoryContainerComponent();
     private final SearchComponent searchComponent = new SearchComponent();
@@ -70,6 +72,7 @@ public final class MenuScreen {
     private float menuMaskAnim = 0f;
     private float screenAnim = 0f;
     private float prismProgress = 1f;
+    private float categoryTransition = 1f;
     private boolean openTarget = false;
     private EditableClickGuiTheme activeThemeEditor;
 
@@ -106,7 +109,10 @@ public final class MenuScreen {
     }
 
     public void open() {
-        if (!openTarget) prismProgress = 0f;
+        if (!openTarget) {
+            prismProgress = 0f;
+            categoryTransition = 0f;
+        }
         openTarget = true;
     }
 
@@ -160,17 +166,24 @@ public final class MenuScreen {
                 categoryContainer.render(categoryX, categoryY, mx, my, category, S);
                 searchComponent.render(searchX, searchY, 80f * S, 15f * S);
 
-                if (category == Category.THEMES) {
-                    themeComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
-                } else if (category == Category.MAIN_SETTINGS) {
-                    mainSettingsComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
-                } else if (category == Category.RELATIONS) {
-                    relationsComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
-                } else if (category == Category.CONFIGS) {
-                    configProfilesComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
-                } else {
-                    List<ModuleComponent.CardEntry> entries = visibleEntries(MenuSettingsResolver.buildCards(category));
-                    moduleComponent.render(menuX, menuY, menuW, menuH, entries, S);
+                if (categoryTransition < 1f) {
+                    float millisDt = AnimationUtility.deltaTime(AnimationUtility.Mode.MILLIS);
+                    categoryTransition = Math.min(1f, categoryTransition + (millisDt * 1000f) / CATEGORY_TRANSITION_DURATION_MS);
+                }
+
+                try (SettingsCardTransition.SectionScope ignoredTransition = SettingsCardTransition.push(categoryTransition)) {
+                    if (category == Category.THEMES) {
+                        themeComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
+                    } else if (category == Category.MAIN_SETTINGS) {
+                        mainSettingsComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
+                    } else if (category == Category.RELATIONS) {
+                        relationsComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
+                    } else if (category == Category.CONFIGS) {
+                        configProfilesComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
+                    } else {
+                        List<ModuleComponent.CardEntry> entries = visibleEntries(MenuSettingsResolver.buildCards(category));
+                        moduleComponent.render(menuX, menuY, menuW, menuH, entries, S);
+                    }
                 }
             }
 
@@ -282,6 +295,7 @@ public final class MenuScreen {
         if (hitCategory != null) {
             if (hitCategory != category) {
                 category = hitCategory;
+                categoryTransition = 0f;
                 moduleComponent.resetScroll();
                 themeComponent.resetScroll();
                 mainSettingsComponent.resetScroll();

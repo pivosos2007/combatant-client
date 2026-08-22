@@ -11,6 +11,7 @@ out vec4 color;
 
 uniform sampler2D u_Src;
 uniform sampler2D u_Mask;
+uniform sampler2D u_Occupancy;
 
 layout (std140) uniform HandMetallic {
     vec4 u_Base;      // rgb, fill alpha
@@ -20,9 +21,19 @@ layout (std140) uniform HandMetallic {
     vec4 u_Params0;   // intensity, sharpness, edgeStrength, time
     vec4 u_Params1;   // sweepSpeed, sweepScale, brushedLines, flakes
     vec4 u_Params2;   // glowStrength, shadowStrength, edgeWidth, prism
+    vec4 u_Culling;   // x = conservative occupancy mask is available
 };
 
 in vec2 v_TexCoord;
+
+const vec2 HAND_METAL_EDGE_START[4] = vec2[](
+    vec2(0.981292664, 0.192521967),
+    vec2(0.925870585, 0.377840787),
+    vec2(0.835807361, 0.549022818),
+    vec2(0.714472680, 0.699663341)
+);
+const vec2 HAND_METAL_EDGE_ROTATE = vec2(0.866025404, 0.5);
+const int HAND_METAL_OCCUPANCY_CELL_SIZE = 8;
 
 float handMetalHash21(vec2 p) {
     p = fract(p * vec2(234.34, 435.45));
@@ -68,14 +79,15 @@ float handMetalEdgeDistance(vec2 oneTexel, float edgeWidth, out float hitAmount)
     for (int r = 1; r <= rings; ++r) {
         float rr = float(r) / float(rings);
         float distPx = radiusPx * rr;
+        vec2 dir = HAND_METAL_EDGE_START[r - 1];
         for (int i = 0; i < dirs; ++i) {
-            float angle = (float(i) + float(r) * 0.37) * 6.28318530718 / float(dirs);
-            vec2 dir = vec2(cos(angle), sin(angle));
             float a = maskAt(v_TexCoord + dir * oneTexel * distPx);
             if (a > 0.02) {
                 best = min(best, rr);
                 hit = max(hit, a);
             }
+            dir = vec2(dir.x * HAND_METAL_EDGE_ROTATE.x - dir.y * HAND_METAL_EDGE_ROTATE.y,
+                       dir.x * HAND_METAL_EDGE_ROTATE.y + dir.y * HAND_METAL_EDGE_ROTATE.x);
         }
     }
 
@@ -86,8 +98,26 @@ float handMetalEdgeDistance(vec2 oneTexel, float edgeWidth, out float hitAmount)
 void main() {
     vec4 base = texture(u_Src, v_TexCoord);
     float mask = maskAt(v_TexCoord);
+    ivec2 sz = max(textureSize(u_Mask, 0), ivec2(1));
 
-    ivec2 sz = textureSize(u_Mask, 0);
+    if (mask <= 0.01
+            && u_Glow.a * max(u_Params2.x, 0.0) <= 0.0001
+            && u_Shadow.a * max(u_Params2.y, 0.0) <= 0.0001) {
+        color = vec4(base.rgb, 1.0);
+        return;
+    }
+
+    // The 1/8-resolution mask is conservatively dilated by the complete edge radius. A zero
+    // texel therefore proves that none of the expensive 48 full-resolution probes can hit.
+    if (mask <= 0.01 && u_Culling.x > 0.5) {
+        ivec2 maskPixel = clamp(ivec2(floor(v_TexCoord * vec2(sz))), ivec2(0), sz - ivec2(1));
+        ivec2 occupancyPixel = maskPixel / HAND_METAL_OCCUPANCY_CELL_SIZE;
+        if (texelFetch(u_Occupancy, occupancyPixel, 0).r <= 0.001) {
+            color = vec4(base.rgb, 1.0);
+            return;
+        }
+    }
+
     vec2 resolution = max(vec2(sz), vec2(1.0));
     vec2 oneTexel = 1.0 / resolution;
 

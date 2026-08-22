@@ -10,6 +10,7 @@
 out vec4 color;
 
 uniform sampler2D u_Texture;
+uniform sampler2D u_FocusTexture;
 uniform sampler2D u_MainDepth;
 uniform sampler2D u_TranslucentDepth;
 uniform sampler2D u_ItemEntityDepth;
@@ -32,6 +33,8 @@ in vec2 v_TexCoord;
 const float DEPTH_NEAR_EPS = 0.000001;
 const float DEPTH_FAR_EPS = 0.999999;
 const float INVALID_DISTANCE = 100000.0;
+const vec2 GOLDEN_START = vec2(0.362374890080, 0.932032423813);
+const vec2 GOLDEN_ROTATE = vec2(-0.737368878078, 0.675490294262);
 
 bool depthEnabled(float v) {
     return v > 0.5;
@@ -62,12 +65,12 @@ float mergeDepth(float currentDepth, float candidateDepth, float enabled) {
 
 float readSceneDepth(vec2 uv) {
     float d = 1.0;
-    d = mergeDepth(d, texture(u_MainDepth, uv).r, u_DepthA.x);
-    d = mergeDepth(d, texture(u_TranslucentDepth, uv).r, u_DepthA.y);
-    d = mergeDepth(d, texture(u_ItemEntityDepth, uv).r, u_DepthA.z);
-    d = mergeDepth(d, texture(u_ParticlesDepth, uv).r, u_DepthA.w);
-    d = mergeDepth(d, texture(u_WeatherDepth, uv).r, u_DepthB.x);
-    d = mergeDepth(d, texture(u_CloudsDepth, uv).r, u_DepthB.y);
+    if (depthEnabled(u_DepthA.x)) d = mergeDepth(d, texture(u_MainDepth, uv).r, 1.0);
+    if (depthEnabled(u_DepthA.y)) d = mergeDepth(d, texture(u_TranslucentDepth, uv).r, 1.0);
+    if (depthEnabled(u_DepthA.z)) d = mergeDepth(d, texture(u_ItemEntityDepth, uv).r, 1.0);
+    if (depthEnabled(u_DepthA.w)) d = mergeDepth(d, texture(u_ParticlesDepth, uv).r, 1.0);
+    if (depthEnabled(u_DepthB.x)) d = mergeDepth(d, texture(u_WeatherDepth, uv).r, 1.0);
+    if (depthEnabled(u_DepthB.y)) d = mergeDepth(d, texture(u_CloudsDepth, uv).r, 1.0);
     return d;
 }
 
@@ -137,6 +140,11 @@ float centerFocusDistance() {
 
 float focusDistance() {
     if (u_Focus.x < 0.5) {
+        if (u_State.y > 0.5) {
+            vec3 encoded = texture(u_FocusTexture, vec2(0.5)).rgb;
+            float normalized = dot(encoded, vec3(1.0, 1.0 / 255.0, 1.0 / 65025.0));
+            return clamp(exp2(normalized * log2(INVALID_DISTANCE + 1.0)) - 1.0, 0.01, INVALID_DISTANCE);
+        }
         return centerFocusDistance();
     }
     return max(u_Focus.y, 0.01);
@@ -179,6 +187,7 @@ vec3 depthAwareBlur(vec2 uv, float centerDistance, float centerCoc, float radius
 
     vec3 accum = texture(u_Texture, uv).rgb;
     float weightSum = 1.0;
+    vec2 direction = GOLDEN_START;
 
     for (int i = 0; i < 32; i++) {
         if (i >= taps) {
@@ -188,8 +197,10 @@ vec3 depthAwareBlur(vec2 uv, float centerDistance, float centerCoc, float radius
         float fi = float(i) + 0.5;
         float ftaps = max(float(taps), 1.0);
         float r = sqrt(fi / ftaps);
-        float a = fi * 2.399963229728653;
-        vec2 sampleUv = uv + vec2(cos(a), sin(a)) * r * radiusPx * texel;
+        vec2 sampleDirection = direction;
+        direction = vec2(direction.x * GOLDEN_ROTATE.x - direction.y * GOLDEN_ROTATE.y,
+                         direction.x * GOLDEN_ROTATE.y + direction.y * GOLDEN_ROTATE.x);
+        vec2 sampleUv = uv + sampleDirection * r * radiusPx * texel;
 
         if (sampleUv.x < 0.0 || sampleUv.x > 1.0 || sampleUv.y < 0.0 || sampleUv.y > 1.0) {
             continue;

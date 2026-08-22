@@ -56,6 +56,8 @@ public final class SodiumGlBackend implements CombatantRhi {
     private final SodiumGlPipelineStateBackend pipelineState = new SodiumGlPipelineStateBackend(msaa, shapeClip);
     private final RenderPipelineRegistry pipelines = RenderPipelineRegistry.global();
     private final RenderResourceManager resources = new RenderResourceManager();
+    private final Matrix4f projectionScratch = new Matrix4f();
+    private final Matrix4f modelViewScratch = new Matrix4f();
 
     private static java.util.Optional<Vector4fc> clearColor(OptionalInt clearColor) {
         if (clearColor == null || clearColor.isEmpty()) {
@@ -69,20 +71,20 @@ public final class SodiumGlBackend implements CombatantRhi {
         return java.util.Optional.of(new Vector4f(r, g, b, a));
     }
 
-    private static Matrix4f meshModelView(RhiDrawCommand command) {
+    private Matrix4f meshModelView(RhiDrawCommand command) {
         if (RenderState.rendering3D) {
-            return new Matrix4f(RenderSystem.getModelViewStack());
+            return modelViewScratch.set(RenderSystem.getModelViewStack());
         }
         if (command != null && command.transform != null) {
-            return new Matrix4f(command.transform);
+            return modelViewScratch.set(command.transform);
         }
-        return new Matrix4f();
+        return modelViewScratch.identity();
     }
 
-    private static Matrix4f fullscreenModelView() {
+    private Matrix4f fullscreenModelView() {
         return RenderState.rendering3D
-                ? new Matrix4f(RenderSystem.getModelViewStack())
-                : new Matrix4f();
+                ? modelViewScratch.set(RenderSystem.getModelViewStack())
+                : modelViewScratch.identity();
     }
 
     private static void applyCameraPosY(Matrix4fStack mv) {
@@ -185,8 +187,7 @@ public final class SodiumGlBackend implements CombatantRhi {
     private void drawPass(List<RhiDrawCommand> commands, int start, int end) {
         RhiDrawCommand first = commands.get(start);
         stats.renderPass(first.colorAttachment, first.depthAttachment);
-        String label = end - start == 1 ? first.label : first.label + " [" + (end - start) + " draws]";
-        try (RenderPass pass = createPass(label, first.colorAttachment, first.clearColor, first.depthAttachment, first.clearDepth)) {
+        try (RenderPass pass = createPass(first.label, first.colorAttachment, first.clearColor, first.depthAttachment, first.clearDepth)) {
             for (int i = start; i < end; i++) {
                 drawInPass(pass, commands.get(i));
             }
@@ -207,7 +208,7 @@ public final class SodiumGlBackend implements CombatantRhi {
                 GpuBufferSlice meshData = null;
                 if (requiresMeshData(command.pipelineSpec)) {
                     MeshUniforms.update(
-                            MeshRenderer.projection(),
+                            MeshRenderer.copyProjection(projectionScratch),
                             meshModelView(command),
                             command.colorAttachment.getWidth(0),
                             command.colorAttachment.getHeight(0)
@@ -274,7 +275,7 @@ public final class SodiumGlBackend implements CombatantRhi {
              * a stale/undefined projection and the NDC quad can be transformed into a tiny corner viewport.
              */
             MeshUniforms.update(
-                    MeshRenderer.projection(),
+                    MeshRenderer.copyProjection(projectionScratch),
                     fullscreenModelView(),
                     command.colorAttachment != null ? command.colorAttachment.getWidth(0) : 1.0f,
                     command.colorAttachment != null ? command.colorAttachment.getHeight(0) : 1.0f

@@ -25,7 +25,6 @@ import net.minecraft.world.item.ItemStack;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
-import java.util.Map;
 
 public enum HoldMyItems {
     ;
@@ -168,7 +167,11 @@ public enum HoldMyItems {
             scope.preparedPlan = plan;
 
             try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("hmi:prepare_hand")) {
-                HmiScriptRuntime.Result[] prepared = SCRIPTS.executePlan(plan, scope.scriptContext());
+                Object[] scriptContext;
+                try (ProfilerPhase.Scope ignoredContext = ProfilerPhase.scope("hmi:context_pack")) {
+                    scriptContext = scope.scriptContext();
+                }
+                HmiScriptRuntime.Result[] prepared = SCRIPTS.executePlan(plan, scriptContext);
                 scope.handPoseResult = prepared[HmiScriptKind.HAND_POSE.ordinal()];
                 scope.handRelativeResult = prepared[HmiScriptKind.HAND_RELATIVE_POSE.ordinal()];
                 scope.itemPoseResult = prepared[HmiScriptKind.ITEM_POSE.ordinal()];
@@ -265,7 +268,7 @@ public enum HoldMyItems {
 
     private static HmiScriptRuntime.Result apply(
             HmiScriptKind kind,
-            java.util.Map<String, Object> context,
+            Object[] context,
             PoseStack matrices,
             RenderScope scope
     ) {
@@ -361,7 +364,7 @@ public enum HoldMyItems {
         private HmiScriptRuntime.Result handRelativeResult;
         private HmiScriptRuntime.Result itemPoseResult;
         private HmiScriptRuntime.Result itemModelResult;
-        private Map<String, Object> scriptContext;
+        private Object[] scriptContext;
         private int preparedPlan;
 
         private RenderScope(LocalPlayer player, float tickDelta, InteractionHand hand, ItemStack item, float swingProgress,
@@ -398,7 +401,7 @@ public enum HoldMyItems {
             return scope;
         }
 
-        private Map<String, Object> scriptContext() {
+        private Object[] scriptContext() {
             if (scriptContext == null) {
                 scriptContext = HmiContextFactory.renderContext(this);
             }

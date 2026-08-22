@@ -208,23 +208,59 @@ vec4 flameSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1
     float coreNoise = ridged21(vec2(hitPosition.x * 1.5, hitPosition.y * 3.8 - time * 1.7) + seed * 13.0);
     float heat = saturate(interior * 0.66 + coreNoise * interior * 0.20);
 
-    vec2 emberGrid = vec2(p.x * 4.8 - time * 0.52, p.y * 7.0 - time * 2.2);
-    vec2 emberCell = floor(emberGrid);
-    vec2 emberUv = fract(emberGrid) - 0.5;
-    vec2 emberOffset = hash22(emberCell + seed * 29.0) - 0.5;
-    float ember = 1.0 - smoothstep(0.025, 0.095, length(emberUv - emberOffset * 0.48));
-    ember *= step(0.982, hash21(emberCell + seed * 47.0));
+    vec2 sparkGrid = vec2(p.x * 3.8 - time * 0.34, p.y * 6.2 + time * 1.72);
+    vec2 sparkCell = floor(sparkGrid);
+    vec2 sparkUv = fract(sparkGrid) - 0.5;
+    vec2 sparkOffset = hash22(sparkCell + seed * 29.0) - 0.5;
+    sparkUv -= sparkOffset * 0.42;
+    vec2 sparkDistance = vec2(sparkUv.x, max(abs(sparkUv.y) - 0.13, 0.0));
+    float spark = 1.0 - smoothstep(0.022, 0.072, length(sparkDistance));
+    spark *= step(0.875, hash21(sparkCell + seed * 47.0));
+    spark *= 0.38 + 0.62 * hash21(sparkCell + floor(time * 7.0));
+
+    vec2 smokeP = vec2(
+        p.x * 0.72 + sin(p.y * 3.1 - time * 0.24) * 0.16,
+        p.y * 2.35 + time * 0.18
+    );
+    float smokeWarp = fbm21(smokeP + vec2(seed * 17.0, 0.0));
+    float smokeCurl = ridged21(rotate2(0.48) * smokeP * 1.45 + vec2(-time * 0.10, seed * 23.0));
+    float smoke = smoothstep(0.53, 0.79, smokeWarp * 0.78 + smokeCurl * 0.25);
+    float smokeHeight = 1.0 - smoothstep(0.12, 0.52, p.y);
+    smoke *= smokeHeight;
 
     vec3 hotColor = mix(c1 * 1.12, hi, 0.12);
-    vec3 color = mix(c0 * 0.46, c1 * 1.08, saturate(glow * 0.88 + interior * 0.46));
-    color = mix(color, hotColor, heat * 0.30);
-    color += c0 * glow * 0.30;
-    color = mix(color, hi, ember * 0.44);
+    vec3 flameColor = mix(c0 * 0.46, c1 * 1.08, saturate(glow * 0.88 + interior * 0.46));
+    flameColor = mix(flameColor, hotColor, heat * 0.30);
+    flameColor += c0 * glow * 0.30;
 
     float textBand = exp(-p.y * p.y * 30.0);
     float readability = 1.0 - textBand * 0.62;
-    float alpha = pow(saturate(glow * 1.18), 1.52) * 0.58 + interior * 0.19 + ember * 0.36;
-    alpha *= readability * easeOutCubic(reveal);
+    float revealGain = easeOutCubic(reveal);
+    float flameAlpha = (pow(saturate(glow * 1.18), 1.52) * 0.58 + interior * 0.19) * readability;
+
+    float smokeReadability = 1.0 - textBand * 0.74;
+    float smokeAlpha = smoke * (0.045 + smokeCurl * 0.075) * smokeReadability;
+    vec3 smokeColor = mix(vec3(0.115, 0.125, 0.145), c0 * 0.48, 0.42 + smokeCurl * 0.16);
+
+    float sparkEnvelope = mix(0.34, 1.0, smoothstep(-0.48, 0.46, p.y));
+    float sparkAlpha = spark * sparkEnvelope * 0.52;
+    vec3 sparkColor = mix(c1 * 1.10, hi * 1.16, 0.48);
+
+    flameAlpha *= revealGain;
+    smokeAlpha *= revealGain;
+    sparkAlpha *= revealGain;
+
+    float fireAndSmokeAlpha = flameAlpha + smokeAlpha * (1.0 - flameAlpha);
+    vec3 fireAndSmokeColor = (
+        flameColor * flameAlpha
+        + smokeColor * smokeAlpha * (1.0 - flameAlpha)
+    ) / max(fireAndSmokeAlpha, 0.0001);
+
+    float alpha = fireAndSmokeAlpha + sparkAlpha * (1.0 - fireAndSmokeAlpha);
+    vec3 color = (
+        fireAndSmokeColor * fireAndSmokeAlpha
+        + sparkColor * sparkAlpha * (1.0 - fireAndSmokeAlpha)
+    ) / max(alpha, 0.0001);
     return vec4(color, saturate(alpha));
 }
 

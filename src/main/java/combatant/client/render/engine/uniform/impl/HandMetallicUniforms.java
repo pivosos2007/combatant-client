@@ -24,6 +24,7 @@ public enum HandMetallicUniforms {
             .putFloat().putFloat().putFloat().putFloat() // u_Params0
             .putFloat().putFloat().putFloat().putFloat() // u_Params1
             .putFloat().putFloat().putFloat().putFloat() // u_Params2
+            .putFloat().putFloat().putFloat().putFloat() // u_Culling
             .get();
 
     private static final Data DATA = new Data();
@@ -37,7 +38,8 @@ public enum HandMetallicUniforms {
             float shadowR, float shadowG, float shadowB, float shadowA,
             float intensity, float sharpness, float edgeStrength, float time,
             float sweepSpeed, float sweepScale, float brushedLines, float flakes,
-            float glowStrength, float shadowStrength, float edgeWidth, float prism
+            float glowStrength, float shadowStrength, float edgeWidth, float prism,
+            boolean occupancyReady
     ) {
         DATA.baseR = baseR;
         DATA.baseG = baseG;
@@ -67,6 +69,7 @@ public enum HandMetallicUniforms {
         DATA.shadowStrength = shadowStrength;
         DATA.edgeWidth = edgeWidth;
         DATA.prism = prism;
+        DATA.occupancyReady = occupancyReady ? 1.0f : 0.0f;
         CombatantRenderSystem.uniforms().write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
     }
 
@@ -82,6 +85,7 @@ public enum HandMetallicUniforms {
         private float intensity, sharpness, edgeStrength, time;
         private float sweepSpeed, sweepScale, brushedLines, flakes;
         private float glowStrength, shadowStrength, edgeWidth, prism;
+        private float occupancyReady;
 
         @Override
         public void write(java.nio.ByteBuffer buffer) {
@@ -92,7 +96,8 @@ public enum HandMetallicUniforms {
                     .putFloat(shadowR).putFloat(shadowG).putFloat(shadowB).putFloat(shadowA)
                     .putFloat(intensity).putFloat(sharpness).putFloat(edgeStrength).putFloat(time)
                     .putFloat(sweepSpeed).putFloat(sweepScale).putFloat(brushedLines).putFloat(flakes)
-                    .putFloat(glowStrength).putFloat(shadowStrength).putFloat(edgeWidth).putFloat(prism);
+                    .putFloat(glowStrength).putFloat(shadowStrength).putFloat(edgeWidth).putFloat(prism)
+                    .putFloat(occupancyReady).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f);
         }
 
         @Override

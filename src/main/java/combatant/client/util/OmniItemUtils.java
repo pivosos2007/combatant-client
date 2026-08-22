@@ -22,7 +22,7 @@ public enum OmniItemUtils {
 
         ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
         if (chest != null && chest.getItem() == Items.ELYTRA) {
-            return true; // считаем как "есть снарядное оружие" → отключить omnisprint
+            return true;
         }
 
         for (ItemStack stack : new ItemStack[]{
@@ -32,18 +32,16 @@ public enum OmniItemUtils {
             if (stack.isEmpty()) continue;
             Item item = stack.getItem();
 
-            // ==== Bow ====
             if (item instanceof BowItem) return true;
 
-            // ==== Crossbow ====
             if (item instanceof CrossbowItem) return true;
 
-            // ==== Trident ====
             if (item == Items.TRIDENT) {
                 ItemEnchantments ench =
                         stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY);
                 boolean hasRiptide = ench.keySet().stream().anyMatch(entry ->
                         entry.unwrapKey().isPresent() &&
+                                //riptide check
                                 entry.unwrapKey().get().equals(Enchantments.RIPTIDE)
                 );
                 if (!hasRiptide) return true;

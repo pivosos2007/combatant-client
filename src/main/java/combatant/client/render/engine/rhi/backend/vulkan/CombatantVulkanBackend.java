@@ -56,6 +56,8 @@ public final class CombatantVulkanBackend implements CombatantRhi {
     private final VulkanPipelineStateBackend pipelineState = new VulkanPipelineStateBackend(msaa, shapeClip);
     private final RenderPipelineRegistry pipelines = RenderPipelineRegistry.global();
     private final RenderResourceManager resources = new RenderResourceManager();
+    private final Matrix4f projectionScratch = new Matrix4f();
+    private final Matrix4f modelViewScratch = new Matrix4f();
 
     public CombatantVulkanBackend() {
         VulkanRenderStateBridge.setVulkanBackendActive(true);
@@ -71,20 +73,20 @@ public final class CombatantVulkanBackend implements CombatantRhi {
         return Optional.of(new Vector4f(r, g, b, a));
     }
 
-    private static Matrix4f meshModelView(RhiDrawCommand command) {
+    private Matrix4f meshModelView(RhiDrawCommand command) {
         if (RenderState.rendering3D) {
-            return new Matrix4f(RenderSystem.getModelViewStack());
+            return modelViewScratch.set(RenderSystem.getModelViewStack());
         }
         if (command != null && command.transform != null) {
-            return new Matrix4f(command.transform);
+            return modelViewScratch.set(command.transform);
         }
-        return new Matrix4f();
+        return modelViewScratch.identity();
     }
 
-    private static Matrix4f fullscreenModelView() {
+    private Matrix4f fullscreenModelView() {
         return RenderState.rendering3D
-                ? new Matrix4f(RenderSystem.getModelViewStack())
-                : new Matrix4f();
+                ? modelViewScratch.set(RenderSystem.getModelViewStack())
+                : modelViewScratch.identity();
     }
 
     private static void applyCameraPosY(Matrix4fStack stack) {
@@ -185,8 +187,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
     private void drawPass(List<RhiDrawCommand> commands, int start, int end) {
         RhiDrawCommand first = commands.get(start);
         stats.renderPass(first.colorAttachment, first.depthAttachment);
-        String label = end - start == 1 ? first.label : first.label + " [" + (end - start) + " draws]";
-        try (RenderPass pass = createPass(label, first.colorAttachment, first.clearColor, first.depthAttachment, first.clearDepth)) {
+        try (RenderPass pass = createPass(first.label, first.colorAttachment, first.clearColor, first.depthAttachment, first.clearDepth)) {
             for (int i = start; i < end; i++) drawInPass(pass, commands.get(i));
         }
     }
@@ -202,7 +203,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
 
                 GpuBufferSlice meshData = null;
                 if (requiresMeshData(command.pipelineSpec)) {
-                    MeshUniforms.update(MeshRenderer.projection(), meshModelView(command),
+                    MeshUniforms.update(MeshRenderer.copyProjection(projectionScratch), meshModelView(command),
                             command.colorAttachment.getWidth(0), command.colorAttachment.getHeight(0));
                     meshData = MeshUniforms.get();
                 }
@@ -256,7 +257,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
         try (RenderCostProfiler.Scope ignoredCost = RenderCostProfiler.rhiDraw(command.label)) {
             fullscreen.ensureInitialized();
             MeshUniforms.update(
-                    MeshRenderer.projection(),
+                    MeshRenderer.copyProjection(projectionScratch),
                     fullscreenModelView(),
                     command.colorAttachment != null ? command.colorAttachment.getWidth(0) : 1.0f,
                     command.colorAttachment != null ? command.colorAttachment.getHeight(0) : 1.0f

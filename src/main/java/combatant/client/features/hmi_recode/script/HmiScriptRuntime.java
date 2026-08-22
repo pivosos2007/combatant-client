@@ -25,7 +25,6 @@ import java.io.BufferedReader;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -71,6 +70,37 @@ public final class HmiScriptRuntime implements AutoCloseable {
               m.put = (k, v) => { m.set(k, v); return v; };
               m.getOrDefault = (k, v) => m.has(k) ? m.get(k) : v;
               return m;
+            };
+
+            const __hmi_unpack_item = v => ({
+              id:v[0], name:v[1], empty:!!v[2], useAction:v[3], tags:v[4],
+              block:!!v[5], lantern:!!v[6], throwable:!!v[7], enchanted:!!v[8],
+              chargedCrossbow:!!v[9], cooldown:!!v[10], translate:!!v[11], customTranslate:!!v[12],
+              spearData:{canDamage:true,canDismount:true,canKnockback:true,hitImpact:false}
+            });
+            const __hmi_unpack_context = v => {
+              const p = v[0], mainItem = __hmi_unpack_item(v[1]), offItem = __hmi_unpack_item(v[2]);
+              const item = v[3] === 0 ? mainItem : (v[3] === 1 ? offItem : __hmi_unpack_item(v[4]));
+              const motion = v[19];
+              return {
+                player:{
+                  health:p[0], sneaking:!!p[1], onGround:!!p[2], swimming:!!p[3], climbing:!!p[4],
+                  crawling:!!p[5], underWater:!!p[6], inWater:!!p[7], riptide:!!p[8], usingItem:!!p[9],
+                  activeHand:p[10], x:p[11], y:p[12], z:p[13], yaw:p[14], pitch:p[15], age:p[16],
+                  swingCount:p[17], hasVehicle:!!p[18], velocity:{x:p[19],y:p[20],z:p[21]},
+                  mainItem, offItem
+                },
+                item, hand:v[5], mainHand:!!v[6], bl:!!v[7], swingProgress:v[8], rawSwingProgress:v[9],
+                mainHandSwingProgress:v[10], offHandSwingProgress:v[11], equipProgress:v[12], deltaTime:v[13],
+                swingMHand:!!v[14], swingOHand:!!v[15], mainHandSwitchEvent:!!v[16],
+                offHandSwitchEvent:!!v[17], blockBreaking:!!v[18],
+                motion:{
+                  swing:motion[0], swordSwing:motion[1], offhandSwing:motion[2], movement:motion[3],
+                  look:motion[4], switch:motion[5], use:motion[6], impact:motion[7],
+                  replaceSwing:!!motion[8], swingStyle:motion[9]
+                },
+                matrices:0, particles:[], inspectPressed:!!v[20]
+              };
             };
 
             globalThis.renderAsBlock = __hmi_map();
@@ -232,8 +262,8 @@ public final class HmiScriptRuntime implements AutoCloseable {
                 __hmi_collect_geometry = true;
               }
             };
-            globalThis.__hmi_execute_plan = mask => {
-              const context = globalThis.__hmi_context;
+            globalThis.__hmi_execute_plan = (mask, packedContext) => {
+              const context = globalThis.__hmi_context = __hmi_unpack_context(packedContext);
               globalThis.mainHandSwitchEvent = !!context.mainHandSwitchEvent;
               globalThis.offHandSwitchEvent = !!context.offHandSwitchEvent;
               globalThis.__hmi_inspect_pressed = !!context.inspectPressed;
@@ -256,10 +286,9 @@ public final class HmiScriptRuntime implements AutoCloseable {
 
     private final EnumMap<HmiScriptKind, String> loadedSources = new EnumMap<>(HmiScriptKind.class);
     private V8Runtime runtime;
-    private Map<String, Object> boundContext;
     private boolean dirty = true;
 
-    public synchronized Result execute(HmiScriptKind kind, Map<String, Object> context) {
+    public synchronized Result execute(HmiScriptKind kind, Object[] context) {
         Result[] results = executePlan(mask(kind), context);
         Result result = results[kind.ordinal()];
         return result != null ? result : Result.EMPTY;
@@ -269,21 +298,14 @@ public final class HmiScriptRuntime implements AutoCloseable {
      * Executes all requested HMI stages in one V8 call. The scripts still run in their original
      * hand/relative/item/model order and each stage retains an isolated output collector.
      */
-    public synchronized Result[] executePlan(int plan, Map<String, Object> context) {
+    public synchronized Result[] executePlan(int plan, Object[] context) {
         Result[] results = new Result[KINDS.length];
         try {
             ensureReady();
             if (runtime == null || plan == 0) return fillMissing(plan, results);
 
-            // Javet's object converter recursively materializes the complete player/item context.
-            // Bind it once, then execute every required stage before crossing back into Java.
-            if (boundContext != context) {
-                boundContext = context;
-                runtime.getGlobalObject().set("__hmi_context", context);
-            }
-
             try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("hmi:v8_execute_plan")) {
-                Object raw = runtime.getGlobalObject().invokeObject("__hmi_execute_plan", plan);
+                Object raw = runtime.getGlobalObject().invokeObject("__hmi_execute_plan", plan, context);
                 if (!(raw instanceof List<?> stages)) return fillMissing(plan, results);
                 int count = Math.min(stages.size(), results.length);
                 for (int i = 0; i < count; i++) {
@@ -331,7 +353,6 @@ public final class HmiScriptRuntime implements AutoCloseable {
         closeRuntime();
         JavetRuntimeBootstrap.installNativeLoader();
         runtime = V8Host.getV8Instance().createV8Runtime();
-        boundContext = null;
         runtime.setConverter(new JavetObjectConverter());
         runtime.setMemorySaverModeEnabled(false);
         runtime.setBatterySaverModeEnabled(false);
@@ -381,7 +402,6 @@ public final class HmiScriptRuntime implements AutoCloseable {
         } catch (Throwable ignored) {
         } finally {
             runtime = null;
-            boundContext = null;
         }
     }
 

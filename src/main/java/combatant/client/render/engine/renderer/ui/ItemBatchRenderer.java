@@ -75,6 +75,9 @@ public final class ItemBatchRenderer {
     private static int itemAtlasSlotTextureSize;
     private static int itemAtlasTextureSize;
     private static boolean uiItemFrameOpen;
+    private static final Object2ObjectOpenHashMap<ItemResolveKey, TrackingItemStackRenderState> uiResolvedStates =
+            new Object2ObjectOpenHashMap<>(128);
+    private static final ObjectOpenHashSet<Object> uiModelIdentities = new ObjectOpenHashSet<>();
     private static final List<WorldItemAtlasPage> worldItemAtlases = new ArrayList<>();
     private static int worldItemAtlasCursor;
     private static boolean worldItemFrameOpen;
@@ -377,46 +380,44 @@ public final class ItemBatchRenderer {
 
         try (RenderCostProfiler.Scope ignoredItems = RenderCostProfiler.itemRender("item_batch")) {
             int drawCalls = 0;
-            Object2ObjectOpenHashMap<ItemResolveKey, TrackingItemStackRenderState> resolved = batch.resolvedStates;
-            resolved.clear();
             GpuTextureView previousOutputColor = RenderSystem.outputColorTextureOverride;
             GpuTextureView previousOutputDepth = RenderSystem.outputDepthTextureOverride;
             try {
                 FeatureRenderDispatcher dispatcher = getItemFeatureDispatcher(mc);
-                ObjectOpenHashSet<Object> modelIdentities = new ObjectOpenHashSet<>();
+                uiModelIdentities.clear();
                 for (ItemDrawCommand command : batch.commands) {
                     if (command.stack.isEmpty() || !command.drawItem || command.alpha <= 0.001f) {
                         continue;
                     }
 
-                    TrackingItemStackRenderState renderState = resolved.computeIfAbsent(
-                            new ItemResolveKey(command.player, command.stack, command.seed),
-                            key -> {
-                                try (RenderCostProfiler.Scope ignoredResolve = RenderCostProfiler.itemRender("resolve_model")) {
-                                    TrackingItemStackRenderState state = new TrackingItemStackRenderState();
-                                    mc.getItemModelResolver().updateForTopItem(
-                                            state,
-                                            command.stack,
-                                            ItemDisplayContext.GUI,
-                                            command.player != null ? command.player.level() : mc.level,
-                                            command.player,
-                                            command.seed
-                                    );
-                                    return state;
-                                }
-                            }
-                    );
+                    ItemResolveKey key = new ItemResolveKey(command.player, command.stack, command.seed);
+                    TrackingItemStackRenderState renderState = uiResolvedStates.get(key);
+                    if (renderState == null) {
+                        try (RenderCostProfiler.Scope ignoredResolve = RenderCostProfiler.itemRender("resolve_model")) {
+                            renderState = new TrackingItemStackRenderState();
+                            mc.getItemModelResolver().updateForTopItem(
+                                    renderState,
+                                    command.stack,
+                                    ItemDisplayContext.GUI,
+                                    command.player != null ? command.player.level() : mc.level,
+                                    command.player,
+                                    command.seed
+                            );
+                        }
+                        uiResolvedStates.put(key, renderState);
+                    }
+                    command.resolvedState = renderState;
 
                     if (!renderState.isEmpty()) {
-                        modelIdentities.add(renderState.getModelIdentity());
+                        uiModelIdentities.add(renderState.getModelIdentity());
                     }
                 }
 
                 GuiItemAtlas atlas = null;
                 MeshBuilder itemMesh = null;
                 GpuSampler itemSampler = null;
-                if (!modelIdentities.isEmpty()) {
-                    atlas = ensureItemAtlas(mc, dispatcher, modelIdentities);
+                if (!uiModelIdentities.isEmpty()) {
+                    atlas = ensureItemAtlas(mc, dispatcher, uiModelIdentities);
                     itemMesh = beginItemBlitMesh(batch.commands.size());
                     itemSampler = RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST);
                 }
@@ -430,7 +431,7 @@ public final class ItemBatchRenderer {
                             continue;
                         }
 
-                        TrackingItemStackRenderState renderState = resolved.get(new ItemResolveKey(command.player, command.stack, command.seed));
+                        TrackingItemStackRenderState renderState = command.resolvedState;
                         if (renderState == null || renderState.isEmpty()) {
                             continue;
                         }
@@ -547,7 +548,7 @@ public final class ItemBatchRenderer {
             } finally {
                 RenderSystem.outputColorTextureOverride = previousOutputColor;
                 RenderSystem.outputDepthTextureOverride = previousOutputDepth;
-                resolved.clear();
+                uiModelIdentities.clear();
             }
 
             return drawCalls;
@@ -676,14 +677,19 @@ public final class ItemBatchRenderer {
 
     /** Finish vanilla's item-atlas resources at the real frame boundary, not per ordered batch. */
     public static void finishUiItemFrame() {
-        if (!uiItemFrameOpen) return;
-        if (itemAtlas != null) itemAtlas.endFrame();
-        if (uiItemRenderBuffers != null) uiItemRenderBuffers.endFrame();
+        uiResolvedStates.clear();
+        uiModelIdentities.clear();
+        if (uiItemFrameOpen) {
+            if (itemAtlas != null) itemAtlas.endFrame();
+            if (uiItemRenderBuffers != null) uiItemRenderBuffers.endFrame();
+        }
         uiItemFrameOpen = false;
     }
 
     private static void resetUiItemRenderer() {
         uiItemFrameOpen = false;
+        uiResolvedStates.clear();
+        uiModelIdentities.clear();
         closeItemAtlas();
         if (uiItemFeatureDispatcher != null) {
             uiItemFeatureDispatcher.close();

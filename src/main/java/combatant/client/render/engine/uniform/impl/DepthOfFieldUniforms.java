@@ -42,6 +42,7 @@ public enum DepthOfFieldUniforms {
                               int taps,
                               float edgeProtection,
                               boolean debugCoc,
+                              boolean focusTexture,
                               boolean mainDepth,
                               boolean translucentDepth,
                               boolean itemEntityDepth,
@@ -60,6 +61,7 @@ public enum DepthOfFieldUniforms {
         DATA.taps = taps;
         DATA.edgeProtection = edgeProtection;
         DATA.debugCoc = debugCoc ? 1.0f : 0.0f;
+        DATA.focusTexture = focusTexture ? 1.0f : 0.0f;
         DATA.mainDepth = mainDepth ? 1.0f : 0.0f;
         DATA.translucentDepth = translucentDepth ? 1.0f : 0.0f;
         DATA.itemEntityDepth = itemEntityDepth ? 1.0f : 0.0f;
@@ -86,6 +88,7 @@ public enum DepthOfFieldUniforms {
         private int taps;
         private float edgeProtection;
         private float debugCoc;
+        private float focusTexture;
         private float mainDepth;
         private float translucentDepth;
         private float itemEntityDepth;
@@ -110,7 +113,7 @@ public enum DepthOfFieldUniforms {
                     .putFloat(taps)
                     .putFloat(edgeProtection)
                     .putFloat(debugCoc)
-                    .putFloat(0.0f)
+                    .putFloat(focusTexture)
                     .putFloat(0.0f)
                     .putFloat(0.0f)
                     .putFloat(mainDepth)

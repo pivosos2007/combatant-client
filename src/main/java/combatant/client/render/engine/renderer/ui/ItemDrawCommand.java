@@ -9,6 +9,7 @@ package combatant.client.render.engine.renderer.ui;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.item.TrackingItemStackRenderState;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
@@ -31,6 +32,7 @@ public final class ItemDrawCommand {
     final int durabilityThresholdPercent;
     final int durabilityTextColorThresholdPercent;
     final float alpha;
+    TrackingItemStackRenderState resolvedState;
 
     public ItemDrawCommand(@Nullable GuiGraphicsExtractor context,
                             @Nullable LocalPlayer player,

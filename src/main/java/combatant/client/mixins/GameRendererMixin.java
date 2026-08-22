@@ -268,9 +268,6 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             RenderState.cameraLook = Vec3.directionFromRotation(RenderState.cameraPitch, RenderState.cameraYaw).normalize();
             RenderState.cameraSubmersion = mainCamera.getFluidInCamera();
             RenderState.worldTranslucent = isWorldTranslucent(RenderState.cameraSubmersion);
-            RenderState.cameraLook = Vec3.directionFromRotation(RenderState.cameraPitch, RenderState.cameraYaw).normalize();
-            RenderState.cameraSubmersion = mainCamera.getFluidInCamera();
-            RenderState.worldTranslucent = isWorldTranslucent(RenderState.cameraSubmersion);
             RenderState.frustum = mainCamera != null
                     ? mainCamera.getCapturedFrustum()
                     : null;
@@ -497,18 +494,24 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     @Unique
     private void combatant$renderPreHandPostProcess(DeltaTracker tickCounter) {
         try (ProfilerPhase.Scope profilerScope = ProfilerPhase.scope("3d:post_pre_hand");
-             TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("3d:post_pre_hand")) {
+            TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("3d:post_pre_hand")) {
             if (minecraft != null) {
-                boolean needsResolvedDepth = !IrisRuntime.isShaderpackRendererActive()
-                        && combatant$needsResolvedMainDepth();
-                boolean capturedMsaaDepth = needsResolvedDepth
-                        && MsaaWorldTarget.isActive()
-                        && WorldSceneDepth.captureResolvedMain(MsaaWorldTarget.getMsaaFramebuffer());
-                MsaaWorldTarget.resolveToMain(minecraft);
-                if (needsResolvedDepth && !capturedMsaaDepth) {
-                    WorldSceneDepth.captureResolvedMain(minecraft.gameRenderer.mainRenderTarget());
+                try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("3d:pre_hand_resolve");
+                     TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:pre_hand:resolve")) {
+                    boolean needsResolvedDepth = !IrisRuntime.isShaderpackRendererActive()
+                            && combatant$needsResolvedMainDepth();
+                    boolean capturedMsaaDepth = needsResolvedDepth
+                            && MsaaWorldTarget.isActive()
+                            && WorldSceneDepth.captureResolvedMain(MsaaWorldTarget.getMsaaFramebuffer());
+                    MsaaWorldTarget.resolveToMain(minecraft);
+                    if (needsResolvedDepth && !capturedMsaaDepth) {
+                        WorldSceneDepth.captureResolvedMain(minecraft.gameRenderer.mainRenderTarget());
+                    }
                 }
-                CombatantVisuals.renderWorldBase(minecraft, tickCounter.getGameTimeDeltaPartialTick(true));
+                try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("3d:visual_stack");
+                     TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:visual_stack")) {
+                    CombatantVisuals.renderWorldBase(minecraft, tickCounter.getGameTimeDeltaPartialTick(true));
+                }
             }
             try (RenderPhaseScope combatant$postPreHandPhase = CombatantRenderSystem.phase(RenderPhase.WORLD_POST_PRE_HAND)) {
                 PostProcessManager.renderAll(PostProcessPass.Phase.PRE_HAND,
@@ -526,12 +529,15 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             return;
         }
 
-        MsaaWorldTarget.begin(minecraft, MainConfig.get().getMsaa3dSamples(), false, true);
-        try {
-            combatant$renderWorldEngine(tickCounter);
-            combatant$renderPostProcessWorld(tickCounter);
-        } finally {
-            MsaaWorldTarget.resolveToMain(minecraft);
+        try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("3d:world_engine_target");
+             TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:world_engine_target")) {
+            MsaaWorldTarget.begin(minecraft, MainConfig.get().getMsaa3dSamples(), false, true);
+            try {
+                combatant$renderWorldEngine(tickCounter);
+                combatant$renderPostProcessWorld(tickCounter);
+            } finally {
+                MsaaWorldTarget.resolveToMain(minecraft);
+            }
         }
     }
 

@@ -98,6 +98,7 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_POSTPROCESS_COPY_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/postprocess_copy.frag");
     public static final Identifier SHADER_POST_FX_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/post_fx.frag");
     public static final Identifier SHADER_MOTION_BLUR_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/motion_blur.frag");
+    public static final Identifier SHADER_DEPTH_OF_FIELD_FOCUS_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/depth_of_field_focus.frag");
     public static final Identifier SHADER_DEPTH_OF_FIELD_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/depth_of_field.frag");
     public static final Identifier SHADER_HEAT_FX_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/heat_fx.frag");
     public static final Identifier SHADER_ESP_GRADIENT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/shader_esp_gradient.frag");
@@ -107,6 +108,8 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_SLEEP_OVERLAY_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/sleep_overlay.frag");
     public static final Identifier SHADER_HAND_SMOKE_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_smoke.frag");
     public static final Identifier SHADER_HAND_METALLIC_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_metallic.frag");
+    public static final Identifier SHADER_HAND_MASK_OCCUPANCY_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_mask_occupancy.frag");
+    public static final Identifier SHADER_HAND_MASK_OCCUPANCY_DILATE_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_mask_occupancy_dilate.frag");
     public static final Identifier SHADER_HAND_GHOSTING_HISTORY_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_ghosting_history.frag");
     public static final Identifier SHADER_HAND_GHOSTING_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_ghosting.frag");
     public static final Identifier SHADER_UI_BLUR_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_blur.frag");
@@ -951,6 +954,27 @@ public enum CombatantRenderPipelines {
             .build()
     );
     /**
+     * Resolves the frame-invariant five-sample center focus distance into one RGBA8 texel.
+     */
+    public static final RenderPipeline DEPTH_OF_FIELD_FOCUS = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/depth_of_field_focus"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_DEPTH_OF_FIELD_FOCUS_FRAG)
+            .withSampler("u_MainDepth")
+            .withSampler("u_TranslucentDepth")
+            .withSampler("u_ItemEntityDepth")
+            .withSampler("u_ParticlesDepth")
+            .withSampler("u_WeatherDepth")
+            .withSampler("u_CloudsDepth")
+            .withUniform("DepthOfField", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build()
+    );
+    /**
      * Fullscreen scene-depth-aware far depth of field (pos2).
      */
     public static final RenderPipeline DEPTH_OF_FIELD = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
@@ -959,6 +983,7 @@ public enum CombatantRenderPipelines {
             .withVertexShader(SHADER_DAMAGE_TINT_VERT)
             .withFragmentShader(SHADER_DEPTH_OF_FIELD_FRAG)
             .withSampler("u_Texture")
+            .withSampler("u_FocusTexture")
             .withSampler("u_MainDepth")
             .withSampler("u_TranslucentDepth")
             .withSampler("u_ItemEntityDepth")
@@ -1122,10 +1147,34 @@ public enum CombatantRenderPipelines {
             .withFragmentShader(SHADER_HAND_METALLIC_FRAG)
             .withSampler("u_Src")
             .withSampler("u_Mask")
+            .withSampler("u_Occupancy")
             .withUniform("HandMetallic", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build()
+    );
+    public static final RenderPipeline HAND_MASK_OCCUPANCY = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/hand_mask_occupancy"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_HAND_MASK_OCCUPANCY_FRAG)
+            .withSampler("u_Mask")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .build()
+    );
+    public static final RenderPipeline HAND_MASK_OCCUPANCY_DILATE = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/hand_mask_occupancy_dilate"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_HAND_MASK_OCCUPANCY_DILATE_FRAG)
+            .withSampler("u_Mask")
+            .withUniform("HandMetallic", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
             .withCull(false)
             .build()
     );

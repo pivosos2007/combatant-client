@@ -19,7 +19,9 @@ public final class ItemResolveKey {
 
     ItemResolveKey(@Nullable LocalPlayer player, ItemStack stack, int seed) {
         this.player = player;
-        this.stack = stack.copy();
+        // ItemDrawCommand already owns an immutable-for-the-frame stack copy. Keys live only
+        // until the real UI frame boundary, so copying it again here is redundant and costly.
+        this.stack = stack;
         this.seed = seed;
         this.hash = 31 * (31 * ItemStack.hashItemAndComponents(this.stack) + seed) + System.identityHashCode(player);
     }

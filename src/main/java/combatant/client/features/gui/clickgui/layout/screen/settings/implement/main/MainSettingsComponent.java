@@ -13,6 +13,7 @@ import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsGlassMaterial;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.layout.screen.settings.subsystem.MainSettingsContributor;
 import combatant.client.features.gui.clickgui.layout.screen.settings.subsystem.MainSettingsRegistry;
 import combatant.client.features.gui.clickgui.settings.Setting;
@@ -106,10 +107,14 @@ public final class MainSettingsComponent {
         rightW = Math.max(1f, areaW - leftW - gap);
         rightH = areaH;
 
-        SettingsGlassMaterial.navigation(leftX, leftY, leftW, leftH, scale, palette);
-        SettingsGlassMaterial.content(rightX, rightY, rightW, rightH, scale, palette);
-        renderCategoryList(leftX, leftY, leftW, mx, my, scale, palette);
-        renderSettingsPanel(mx, my, scale, palette);
+        try (var leftTransition = SettingsCardTransition.beginCard(leftX, leftY, leftW, leftH, 7f * scale, scale, palette)) {
+            SettingsGlassMaterial.navigation(leftX, leftY, leftW, leftH, scale, palette);
+            renderCategoryList(leftX, leftY, leftW, mx, my, scale, palette);
+        }
+        try (var rightTransition = SettingsCardTransition.beginCard(rightX, rightY, rightW, rightH, 7f * scale, scale, palette)) {
+            SettingsGlassMaterial.content(rightX, rightY, rightW, rightH, scale, palette);
+            renderSettingsPanel(mx, my, scale, palette);
+        }
     }
 
     public boolean mousePressedScrollbar(float mx, float my, int button) {

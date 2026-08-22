@@ -12,6 +12,7 @@ import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.relations.RelationPlayerCardComponent.CardHit;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.features.module.modules.misc.DefineTarget;
 import combatant.client.features.relations.PlayerRelations;
@@ -367,21 +368,23 @@ public final class RelationsComponent {
 
     private void renderHeuristicsPanel(float x, float y, float w, float h, float mx, float my, float scale, SettingsGuiPalette palette) {
         StaffHeuristicsConfig cfg = StaffHeuristicsConfig.get();
-        ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 190f / 255f);
-        LayoutRender2D.roundedQuad(x, y, w, h, 5f * scale,
-                palette.moduleCardTop(), palette.moduleCardTopStrong(), palette.moduleCardBottom(), palette.moduleCardBottomStrong());
-        LayoutRender2D.roundedStroke(x, y, w, h, 5f * scale, 0.5f * scale, palette.menuWindowStroke());
+        try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, palette)) {
+            ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 190f / 255f);
+            LayoutRender2D.roundedQuad(x, y, w, h, 5f * scale,
+                    palette.moduleCardTop(), palette.moduleCardTopStrong(), palette.moduleCardBottom(), palette.moduleCardBottomStrong());
+            LayoutRender2D.roundedStroke(x, y, w, h, 5f * scale, 0.5f * scale, palette.menuWindowStroke());
 
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), tr("heuristics.title", "Staff heuristics"), x + 8f * scale, y + 6f * scale, 8f * scale, palette.moduleTitleText(), false);
-        enabledToggle = new Rect(x + w - 56f * scale, y + 5f * scale, 48f * scale, 14f * scale);
-        drawToggle(enabledToggle, cfg.enabled(), mx, my, scale, palette);
+            ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), tr("heuristics.title", "Staff heuristics"), x + 8f * scale, y + 6f * scale, 8f * scale, palette.moduleTitleText(), false);
+            enabledToggle = new Rect(x + w - 56f * scale, y + 5f * scale, 48f * scale, 14f * scale);
+            drawToggle(enabledToggle, cfg.enabled(), mx, my, scale, palette);
 
-        float top = y + 25f * scale;
-        float gap = 7f * scale;
-        float colW = (w - 16f * scale - gap * 2f) / 3f;
-        renderHeuristicColumn(ActiveField.PREFIX, tr("heuristics.prefixes", "Prefixes"), cfg.prefixes(), x + 8f * scale, top, colW, h - 31f * scale, mx, my, scale, palette);
-        renderHeuristicColumn(ActiveField.SUFFIX, tr("heuristics.suffixes", "Suffixes"), cfg.suffixes(), x + 8f * scale + colW + gap, top, colW, h - 31f * scale, mx, my, scale, palette);
-        renderHeuristicColumn(ActiveField.CONTAINS, tr("heuristics.contains", "Contains"), cfg.contains(), x + 8f * scale + (colW + gap) * 2f, top, colW, h - 31f * scale, mx, my, scale, palette);
+            float top = y + 25f * scale;
+            float gap = 7f * scale;
+            float colW = (w - 16f * scale - gap * 2f) / 3f;
+            renderHeuristicColumn(ActiveField.PREFIX, tr("heuristics.prefixes", "Prefixes"), cfg.prefixes(), x + 8f * scale, top, colW, h - 31f * scale, mx, my, scale, palette);
+            renderHeuristicColumn(ActiveField.SUFFIX, tr("heuristics.suffixes", "Suffixes"), cfg.suffixes(), x + 8f * scale + colW + gap, top, colW, h - 31f * scale, mx, my, scale, palette);
+            renderHeuristicColumn(ActiveField.CONTAINS, tr("heuristics.contains", "Contains"), cfg.contains(), x + 8f * scale + (colW + gap) * 2f, top, colW, h - 31f * scale, mx, my, scale, palette);
+        }
     }
 
     private void renderHeuristicColumn(ActiveField kind,

@@ -13,12 +13,94 @@ import combatant.client.util.FastFps;
 public enum AnimationUtility {
     ;
 
+    private static final float DEFAULT_DELTA_SECONDS = 1.0f / 60.0f;
+    private static final float MAX_CLOCK_DELTA_SECONDS = 0.25f;
+
+    private static long lastMillis;
+    private static long lastNanos;
+    private static long frameMillis;
+    private static long frameNanos;
+    private static float millisDeltaSeconds = DEFAULT_DELTA_SECONDS;
+    private static float nanosDeltaSeconds = DEFAULT_DELTA_SECONDS;
+    private static double fpsTimelineMillis;
+
+    /**
+     * Animation clock source. Unspecified animation timing defaults to {@link Mode#FPS}.
+     */
+    public enum Mode {
+        MILLIS,
+        FPS,
+        NANOS
+    }
+
+    /**
+     * Advances the cached wall-clock/high-resolution animation clocks once per presented frame.
+     * This keeps every animation queried during the same frame on one timestamp instead of
+     * calling the system clocks independently for every widget.
+     */
+    public static void onFrame() {
+        long nowMillis = System.currentTimeMillis();
+        long nowNanos = System.nanoTime();
+
+        if (lastMillis != 0L) {
+            millisDeltaSeconds = sanitizeDelta((nowMillis - lastMillis) / 1_000.0f);
+        }
+        if (lastNanos != 0L) {
+            nanosDeltaSeconds = sanitizeDelta((float) ((nowNanos - lastNanos) / 1_000_000_000.0));
+        }
+
+        frameMillis = nowMillis;
+        frameNanos = nowNanos;
+        lastMillis = nowMillis;
+        lastNanos = nowNanos;
+        fpsTimelineMillis += Math.max(0.0f, FastFps.getDeltaSeconds()) * 1_000.0;
+    }
+
+    public static void resetTiming() {
+        lastMillis = 0L;
+        lastNanos = 0L;
+        frameMillis = 0L;
+        frameNanos = 0L;
+        millisDeltaSeconds = DEFAULT_DELTA_SECONDS;
+        nanosDeltaSeconds = DEFAULT_DELTA_SECONDS;
+        fpsTimelineMillis = 0.0;
+    }
+
     public static float deltaTime() {
-        return FastFps.getDeltaSeconds();
+        return deltaTime(Mode.FPS);
+    }
+
+    public static float deltaTime(Mode mode) {
+        Mode resolved = mode == null ? Mode.FPS : mode;
+        return switch (resolved) {
+            case MILLIS -> millisDeltaSeconds;
+            case NANOS -> nanosDeltaSeconds;
+            case FPS -> FastFps.getDeltaSeconds();
+        };
     }
 
     public static float time(float speed) {
-        return (System.currentTimeMillis() % 1_000_000L) * speed;
+        return time(speed, Mode.FPS);
+    }
+
+    public static float time(float speed, Mode mode) {
+        return (float) ((timelineMillis(mode) % 1_000_000.0) * speed);
+    }
+
+    private static double timelineMillis(Mode mode) {
+        Mode resolved = mode == null ? Mode.FPS : mode;
+        return switch (resolved) {
+            case MILLIS -> frameMillis != 0L ? frameMillis : System.currentTimeMillis();
+            case NANOS -> (frameNanos != 0L ? frameNanos : System.nanoTime()) / 1_000_000.0;
+            case FPS -> fpsTimelineMillis;
+        };
+    }
+
+    private static float sanitizeDelta(float deltaSeconds) {
+        if (!Float.isFinite(deltaSeconds) || deltaSeconds < 0.0f || deltaSeconds > MAX_CLOCK_DELTA_SECONDS) {
+            return DEFAULT_DELTA_SECONDS;
+        }
+        return deltaSeconds;
     }
 
     public static float clamp(float value, float min, float max) {
@@ -51,6 +133,10 @@ public enum AnimationUtility {
 
     public static float approach(float value, float target, float dt, float speed) {
         return approach(value, target, dt * speed);
+    }
+
+    public static float approach(float value, float target, float speed, Mode mode) {
+        return approach(value, target, deltaTime(mode), speed);
     }
 
     public static float snap(float value, float target, float epsilon) {
@@ -277,12 +363,20 @@ public enum AnimationUtility {
     }
 
     public static boolean blink(long intervalMs) {
+        return blink(intervalMs, Mode.FPS);
+    }
+
+    public static boolean blink(long intervalMs, Mode mode) {
         if (intervalMs <= 0L) return true;
-        return (System.currentTimeMillis() / intervalMs) % 2L == 0L;
+        return ((long) (timelineMillis(mode) / intervalMs)) % 2L == 0L;
     }
 
     public static float fast(float end, float start, float multiple) {
-        float clampedDelta = Mth.clamp(deltaTime() * multiple, 0f, 1f);
+        return fast(end, start, multiple, Mode.FPS);
+    }
+
+    public static float fast(float end, float start, float multiple, Mode mode) {
+        float clampedDelta = Mth.clamp(deltaTime(mode) * multiple, 0f, 1f);
         return approach(end, start, clampedDelta);
     }
 }

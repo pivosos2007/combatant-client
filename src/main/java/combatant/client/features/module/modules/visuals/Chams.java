@@ -44,6 +44,7 @@ import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.postprocess.PostProcessPass;
 import combatant.client.render.engine.profiler.ProfilerPhase;
+import combatant.client.render.engine.profiler.TracyGpuProfiler;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.helpers.TickDelta;
 import combatant.client.render.engine.uniform.impl.HandGhostingUniforms;
@@ -57,6 +58,8 @@ import combatant.client.render.engine.RenderState;
 //todo Description
 @ModuleInfo(id = "chams", displayName = "Chams", category = ModuleCategory.VISUALS)
 public class Chams extends Module {
+
+    private static final int METALLIC_OCCUPANCY_CELL_SIZE = 8;
 
     private static final String SETTING_HANDS = "hands";
     private static final String SETTING_MODE = "mode";
@@ -245,11 +248,15 @@ public class Chams extends Module {
     private final PostProcessPass handsPass = new HandsPass();
     private final PostProcessPass ghostingPass = new GhostingPass();
     private TextureTarget handMask;
+    private TextureTarget metallicOccupancyRaw;
+    private TextureTarget metallicOccupancyDilated;
     private GpuSampler handMaskSampler;
     private TextureTarget ghostHistoryRead;
     private TextureTarget ghostHistoryWrite;
     private int bufferW = -1;
     private int bufferH = -1;
+    private int metallicOccupancyW = -1;
+    private int metallicOccupancyH = -1;
     private int ghostBufferW = -1;
     private int ghostBufferH = -1;
     private boolean maskReady;
@@ -301,6 +308,7 @@ public class Chams extends Module {
         maskReady = false;
         ghostMaskReady = false;
         ghostHistoryNeedsClear = true;
+        closeMetallicOccupancyBuffers();
         closeStandaloneHandRenderer();
     }
 
@@ -382,7 +390,7 @@ public class Chams extends Module {
 
         ViewModel viewModel = Modules.get(ViewModel.class);
         boolean hmiReplay = viewModel != null && viewModel.beginHmiReplayPass();
-        try {
+        try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams_hand_mask")) {
             ((GameRendererAccessor) renderer).invokeRenderHand(cameraRenderState, tickDelta, positionMatrix);
         } finally {
             if (hmiReplay) viewModel.endHmiReplayPass();
@@ -479,7 +487,8 @@ public class Chams extends Module {
         RenderSystem.outputDepthTextureOverride = handMask.getDepthTextureView();
         RenderState.rendering3D = true;
         try {
-            try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("chams:hand_mask_render")) {
+            try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("chams:hand_mask_render");
+                 TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams_hand_mask")) {
                 maskDispatcher.renderAllFeatures(storage);
             }
             markHandMaskReady();
@@ -533,7 +542,7 @@ public class Chams extends Module {
         RenderSystem.backupProjectionMatrix();
         ViewModel viewModel = Modules.get(ViewModel.class);
         boolean hmiReplay = viewModel != null && viewModel.beginHmiReplayPass();
-        try {
+        try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams_hand_mask")) {
             renderIrisHandMaskPhase(renderer, cameraRenderState, positionMatrix, dispatcher, tickDelta, true);
             renderIrisHandMaskPhase(renderer, cameraRenderState, positionMatrix, dispatcher, tickDelta, false);
         } finally {
@@ -654,6 +663,49 @@ public class Chams extends Module {
         }
 
         return ghostHistoryRead.getColorTextureView() != null && ghostHistoryWrite.getColorTextureView() != null;
+    }
+
+    private boolean ensureMetallicOccupancyBuffers() {
+        int framebufferW = mc.getWindow().getWidth();
+        int framebufferH = mc.getWindow().getHeight();
+        if (framebufferW <= 0 || framebufferH <= 0) return false;
+
+        int occupancyW = Math.max(1, (framebufferW + METALLIC_OCCUPANCY_CELL_SIZE - 1) / METALLIC_OCCUPANCY_CELL_SIZE);
+        int occupancyH = Math.max(1, (framebufferH + METALLIC_OCCUPANCY_CELL_SIZE - 1) / METALLIC_OCCUPANCY_CELL_SIZE);
+        try {
+            if (metallicOccupancyRaw == null || metallicOccupancyDilated == null) {
+                closeMetallicOccupancyBuffers();
+                metallicOccupancyRaw = new TextureTarget(
+                        "combatant-hand-metallic-occupancy-raw", occupancyW, occupancyH, false, GpuFormat.RGBA8_UNORM);
+                metallicOccupancyDilated = new TextureTarget(
+                        "combatant-hand-metallic-occupancy-dilated", occupancyW, occupancyH, false, GpuFormat.RGBA8_UNORM);
+                metallicOccupancyW = occupancyW;
+                metallicOccupancyH = occupancyH;
+            } else if (occupancyW != metallicOccupancyW || occupancyH != metallicOccupancyH) {
+                metallicOccupancyRaw.resize(occupancyW, occupancyH);
+                metallicOccupancyDilated.resize(occupancyW, occupancyH);
+                metallicOccupancyW = occupancyW;
+                metallicOccupancyH = occupancyH;
+            }
+            return metallicOccupancyRaw.getColorTextureView() != null
+                    && metallicOccupancyDilated.getColorTextureView() != null;
+        } catch (Throwable ignored) {
+            closeMetallicOccupancyBuffers();
+            return false;
+        }
+    }
+
+    private void closeMetallicOccupancyBuffers() {
+        if (metallicOccupancyRaw != null) {
+            metallicOccupancyRaw.destroyBuffers();
+            metallicOccupancyRaw = null;
+        }
+        if (metallicOccupancyDilated != null) {
+            metallicOccupancyDilated.destroyBuffers();
+            metallicOccupancyDilated = null;
+        }
+        metallicOccupancyW = -1;
+        metallicOccupancyH = -1;
     }
 
     private void swapGhostHistory() {
@@ -816,13 +868,15 @@ public class Chams extends Module {
                     bodyFrost, chromaticPx, edgeRefractionMul, clarity
             );
 
-            FullScreenRenderer.begin("Combatant Fullscreen Pass")
-                    .attachment(dst)
-                    .pipeline(CombatantRenderPipelines.HAND_GLASS)
-                    .uniform("HandGlass", HandGlassUniforms.get())
-                    .sampler("u_Src", src, PostProcessManager.getSampler())
-                    .sampler("u_Mask", maskView, getHandMaskSampler())
-                    .end();
+            try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams:hands_glass")) {
+                FullScreenRenderer.begin("Combatant Hand Glass")
+                        .attachment(dst)
+                        .pipeline(CombatantRenderPipelines.HAND_GLASS)
+                        .uniform("HandGlass", HandGlassUniforms.get())
+                        .sampler("u_Src", src, PostProcessManager.getSampler())
+                        .sampler("u_Mask", maskView, getHandMaskSampler())
+                        .end();
+            }
         } else if ("Metallic".equals(mode.get())) {
             int fillArgb = fillColor.getArgb();
             int baseRgb = metallicBaseRgb();
@@ -833,6 +887,7 @@ public class Chams extends Module {
             float fillA = channel(fillArgb, 24);
             float glowA = glow.get() ? glowAlpha.get() : 0.0f;
             float shadowA = shadow.get() ? shadowAlpha.get() : 0.0f;
+            boolean occupancyReady = ensureMetallicOccupancyBuffers();
 
             HandMetallicUniforms.update(
                     channel(baseRgb, 16), channel(baseRgb, 8), channel(baseRgb, 0), fillA,
@@ -841,16 +896,39 @@ public class Chams extends Module {
                     channel(shadowRgb, 16), channel(shadowRgb, 8), channel(shadowRgb, 0), shadowA,
                     metallicIntensity.get(), metallicSharpness.get(), metallicEdge.get(), rawTime,
                     metallicSweepSpeed.get(), metallicSweepScale.get(), metallicBrushedLines.get(), metallicFlakes.get(),
-                    glowStrength.get(), shadowStrength.get(), edgeWidth.get(), metallicPrism.get()
+                    glowStrength.get(), shadowStrength.get(), edgeWidth.get(), metallicPrism.get(),
+                    occupancyReady
             );
 
-            FullScreenRenderer.begin("Combatant Fullscreen Pass")
-                    .attachment(dst)
-                    .pipeline(CombatantRenderPipelines.HAND_METALLIC)
-                    .uniform("HandMetallic", HandMetallicUniforms.get())
-                    .sampler("u_Src", src, PostProcessManager.getSampler())
-                    .sampler("u_Mask", maskView, getHandMaskSampler())
-                    .end();
+            try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams:hands_metallic")) {
+                GpuTextureView occupancyView = maskView;
+                if (occupancyReady) {
+                    try (TracyGpuProfiler.Scope ignoredOccupancy = TracyGpuProfiler.beginZone("3d:chams:metallic_occupancy")) {
+                        FullScreenRenderer.begin("Combatant Hand Metallic Occupancy")
+                                .attachment(metallicOccupancyRaw)
+                                .pipeline(CombatantRenderPipelines.HAND_MASK_OCCUPANCY)
+                                .sampler("u_Mask", maskView, getHandMaskSampler())
+                                .end();
+                        FullScreenRenderer.begin("Combatant Hand Metallic Occupancy Dilate")
+                                .attachment(metallicOccupancyDilated)
+                                .pipeline(CombatantRenderPipelines.HAND_MASK_OCCUPANCY_DILATE)
+                                .uniform("HandMetallic", HandMetallicUniforms.get())
+                                .sampler("u_Mask", metallicOccupancyRaw.getColorTextureView(), getHandMaskSampler())
+                                .end();
+                        occupancyView = metallicOccupancyDilated.getColorTextureView();
+                    }
+                }
+                try (TracyGpuProfiler.Scope ignoredMaterial = TracyGpuProfiler.beginZone("3d:chams:metallic_material")) {
+                    FullScreenRenderer.begin("Combatant Hand Metallic")
+                            .attachment(dst)
+                            .pipeline(CombatantRenderPipelines.HAND_METALLIC)
+                            .uniform("HandMetallic", HandMetallicUniforms.get())
+                            .sampler("u_Src", src, PostProcessManager.getSampler())
+                            .sampler("u_Mask", maskView, getHandMaskSampler())
+                            .sampler("u_Occupancy", occupancyView, getHandMaskSampler())
+                            .end();
+                }
+            }
         } else {
             int fillArgb = fillColor.getArgb();
             int fillRgb = materialFillRgb();
@@ -873,13 +951,15 @@ public class Chams extends Module {
                     smokeSwirl.get(), glowStrength.get(), shadowStrength.get(), smokeDensity.get()
             );
 
-            FullScreenRenderer.begin("Combatant Fullscreen Pass")
-                    .attachment(dst)
-                    .pipeline(CombatantRenderPipelines.HAND_SMOKE)
-                    .uniform("HandSmoke", HandSmokeUniforms.get())
-                    .sampler("u_Src", src, PostProcessManager.getSampler())
-                    .sampler("u_Mask", maskView, getHandMaskSampler())
-                    .end();
+            try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams:hands_smoke")) {
+                FullScreenRenderer.begin("Combatant Hand Smoke")
+                        .attachment(dst)
+                        .pipeline(CombatantRenderPipelines.HAND_SMOKE)
+                        .uniform("HandSmoke", HandSmokeUniforms.get())
+                        .sampler("u_Src", src, PostProcessManager.getSampler())
+                        .sampler("u_Mask", maskView, getHandMaskSampler())
+                        .end();
+            }
         }
 
         maskReady = false;
@@ -945,21 +1025,25 @@ public class Chams extends Module {
 
         // Temporal accumulation is kept in a private ping-pong pair, independent from the graph's
         // own source/destination ping-pong. This lets Ghosting remain a normal POST_HAND pass.
-        FullScreenRenderer.begin("Combatant Hand Ghost History")
-                .attachment(nextHistoryView)
-                .pipeline(CombatantRenderPipelines.HAND_GHOSTING_HISTORY)
-                .uniform("HandGhosting", HandGhostingUniforms.get())
-                .sampler("u_History", historyView, PostProcessManager.getSampler())
-                .sampler("u_Mask", maskView, PostProcessManager.getSampler())
-                .end();
+        try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams:ghost_history")) {
+            FullScreenRenderer.begin("Combatant Hand Ghost History")
+                    .attachment(nextHistoryView)
+                    .pipeline(CombatantRenderPipelines.HAND_GHOSTING_HISTORY)
+                    .uniform("HandGhosting", HandGhostingUniforms.get())
+                    .sampler("u_History", historyView, PostProcessManager.getSampler())
+                    .sampler("u_Mask", maskView, PostProcessManager.getSampler())
+                    .end();
+        }
 
-        FullScreenRenderer.begin("Combatant Hand Ghost Composite")
-                .attachment(dst)
-                .pipeline(CombatantRenderPipelines.HAND_GHOSTING)
-                .uniform("HandGhosting", HandGhostingUniforms.get())
-                .sampler("u_Src", src, PostProcessManager.getSampler())
-                .sampler("u_History", nextHistoryView, PostProcessManager.getSampler())
-                .end();
+        try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams:ghost_composite")) {
+            FullScreenRenderer.begin("Combatant Hand Ghost Composite")
+                    .attachment(dst)
+                    .pipeline(CombatantRenderPipelines.HAND_GHOSTING)
+                    .uniform("HandGhosting", HandGhostingUniforms.get())
+                    .sampler("u_Src", src, PostProcessManager.getSampler())
+                    .sampler("u_History", nextHistoryView, PostProcessManager.getSampler())
+                    .end();
+        }
 
         swapGhostHistory();
         ghostMaskReady = false;

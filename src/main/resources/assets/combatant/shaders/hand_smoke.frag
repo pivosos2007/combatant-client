@@ -23,6 +23,21 @@ layout (std140) uniform HandSmoke {
 
 in vec2 v_TexCoord;
 
+const vec2 HAND_EDGE_START_8[4] = vec2[](
+    vec2(0.958072899, 0.286524553),
+    vec2(0.835807361, 0.549022818),
+    vec2(0.643455865, 0.765483213),
+    vec2(0.397147891, 0.917754626)
+);
+const vec2 HAND_EDGE_START_12[4] = vec2[](
+    vec2(0.981292664, 0.192521967),
+    vec2(0.925870585, 0.377840787),
+    vec2(0.835807361, 0.549022818),
+    vec2(0.714472680, 0.699663341)
+);
+const vec2 HAND_EDGE_ROTATE_8 = vec2(0.707106781, 0.707106781);
+const vec2 HAND_EDGE_ROTATE_12 = vec2(0.866025404, 0.5);
+
 float handSmokeHash21(vec2 p) {
     p = fract(p * vec2(123.34, 345.45));
     p += dot(p, p + 34.345);
@@ -65,20 +80,23 @@ float handEdgeDistance(vec2 oneTexel, int quality, float edgeWidth, out float hi
     int rings = clamp(quality, 1, 4);
     int dirs = quality <= 1 ? 8 : 12;
     float radiusPx = max(edgeWidth, 1.0);
+    bool eightDirections = dirs == 8;
+    vec2 rotation = eightDirections ? HAND_EDGE_ROTATE_8 : HAND_EDGE_ROTATE_12;
 
     for (int r = 1; r <= 4; ++r) {
         if (r > rings) continue;
         float rr = float(r) / float(rings);
         float distPx = radiusPx * rr;
+        vec2 dir = eightDirections ? HAND_EDGE_START_8[r - 1] : HAND_EDGE_START_12[r - 1];
         for (int i = 0; i < 12; ++i) {
-            if (i >= dirs) continue;
-            float angle = (float(i) + float(r) * 0.37) * 6.28318530718 / float(dirs);
-            vec2 dir = vec2(cos(angle), sin(angle));
+            if (i >= dirs) break;
             float a = handMaskAt(v_TexCoord + dir * oneTexel * distPx);
             if (a > 0.02) {
                 best = min(best, rr);
                 hit = max(hit, a);
             }
+            dir = vec2(dir.x * rotation.x - dir.y * rotation.y,
+                       dir.x * rotation.y + dir.y * rotation.x);
         }
     }
 

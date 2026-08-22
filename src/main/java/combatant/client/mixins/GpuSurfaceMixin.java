@@ -13,6 +13,7 @@ import com.mojang.blaze3d.systems.GpuSurface;
 import com.mojang.blaze3d.systems.GpuSurfaceBackend;
 import com.mojang.blaze3d.systems.SurfaceException;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.profiler.TracyGpuProfiler;
@@ -38,6 +39,7 @@ public abstract class GpuSurfaceMixin {
     @Inject(method = "present", at = @At("HEAD"))
     private void combatant$onPresentHead(CallbackInfo info) {
         FastFps.onFrame();
+        AnimationUtility.onFrame();
     }
 
     @Inject(method = "present", at = @At("TAIL"))

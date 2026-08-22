@@ -9,6 +9,8 @@ package combatant.client.features.module.modules.visuals;
 
 
 import combatant.client.features.theme.Theme;
+import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import combatant.client.config.values.*;
 import combatant.client.features.module.*;
@@ -23,6 +25,7 @@ import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.depth.WorldSceneDepth;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
+import combatant.client.render.engine.profiler.TracyGpuProfiler;
 import combatant.client.render.engine.uniform.impl.DepthOfFieldUniforms;
 import combatant.client.render.helpers.SodiumMaterialFlags;
 import combatant.client.render.iris.IrisSceneDepth;
@@ -78,6 +81,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
     private static final Map<String, Boolean> DEFAULT_EFFECTS = createDefaultEffects();
     private static final Map<String, Boolean> DEFAULT_SKYBOX_SHADER_LAYERS = createDefaultSkyboxShaderLayers();
     private final Matrix4f dofProjection = new Matrix4f();
+    private TextureTarget dofFocusTarget;
     private final BooleanMapValue effects = group(
             "reimaginedVisualEffects",
             SETTING_EFFECTS,
@@ -175,6 +179,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
             depthOfFieldNotAppliedWithIris(visibleWhen(bool("reimaginedVisualDofDebugCoc", SETTING_DOF_DEBUG_COC, false),
                     this::isDepthOfFieldSettingsVisible));
     private boolean depthSamplerSupported = true;
+    private boolean dofFocusResolveSupported = true;
 
     {
         PostProcessManager.register(this);
@@ -387,6 +392,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
         }
 
         buildProjection();
+        boolean focusTextureReady = depth.hasAnyDepth() && ensureDofFocusTarget();
 
         DepthOfFieldUniforms.update(
                 dofProjection,
@@ -401,6 +407,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
                 dofQuality.get().taps(),
                 0.85f,
                 dofDebugCoc.get(),
+                focusTextureReady,
                 depth.hasMain(),
                 depth.hasTranslucent(),
                 depth.hasItemEntity(),
@@ -411,18 +418,37 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
 
         try {
             FullScreenRenderer.ensureInit();
-            FullScreenRenderer.begin("Combatant DepthOfField Pass")
-                    .attachment(dst)
-                    .pipeline(CombatantRenderPipelines.DEPTH_OF_FIELD)
-                    .uniform("DepthOfField", DepthOfFieldUniforms.get())
-                    .sampler("u_Texture", src, PostProcessManager.getSampler())
-                    .sampler("u_MainDepth", depth.mainOr(src), PostProcessManager.getSampler())
-                    .sampler("u_TranslucentDepth", depth.translucentOr(src), PostProcessManager.getSampler())
-                    .sampler("u_ItemEntityDepth", depth.itemEntityOr(src), PostProcessManager.getSampler())
-                    .sampler("u_ParticlesDepth", depth.particlesOr(src), PostProcessManager.getSampler())
-                    .sampler("u_WeatherDepth", depth.weatherOr(src), PostProcessManager.getSampler())
-                    .sampler("u_CloudsDepth", depth.cloudsOr(src), PostProcessManager.getSampler())
-                    .end();
+            if (focusTextureReady) {
+                try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:dof:focus")) {
+                    FullScreenRenderer.begin("Combatant DepthOfField Focus")
+                            .attachment(dofFocusTarget)
+                            .pipeline(CombatantRenderPipelines.DEPTH_OF_FIELD_FOCUS)
+                            .uniform("DepthOfField", DepthOfFieldUniforms.get())
+                            .sampler("u_MainDepth", depth.mainOr(src), PostProcessManager.getSampler())
+                            .sampler("u_TranslucentDepth", depth.translucentOr(src), PostProcessManager.getSampler())
+                            .sampler("u_ItemEntityDepth", depth.itemEntityOr(src), PostProcessManager.getSampler())
+                            .sampler("u_ParticlesDepth", depth.particlesOr(src), PostProcessManager.getSampler())
+                            .sampler("u_WeatherDepth", depth.weatherOr(src), PostProcessManager.getSampler())
+                            .sampler("u_CloudsDepth", depth.cloudsOr(src), PostProcessManager.getSampler())
+                            .end();
+                }
+            }
+            try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:dof:blur")) {
+                FullScreenRenderer.begin("Combatant DepthOfField Pass")
+                        .attachment(dst)
+                        .pipeline(CombatantRenderPipelines.DEPTH_OF_FIELD)
+                        .uniform("DepthOfField", DepthOfFieldUniforms.get())
+                        .sampler("u_Texture", src, PostProcessManager.getSampler())
+                        .sampler("u_FocusTexture", focusTextureReady ? dofFocusTarget.getColorTextureView() : src,
+                                PostProcessManager.getSampler())
+                        .sampler("u_MainDepth", depth.mainOr(src), PostProcessManager.getSampler())
+                        .sampler("u_TranslucentDepth", depth.translucentOr(src), PostProcessManager.getSampler())
+                        .sampler("u_ItemEntityDepth", depth.itemEntityOr(src), PostProcessManager.getSampler())
+                        .sampler("u_ParticlesDepth", depth.particlesOr(src), PostProcessManager.getSampler())
+                        .sampler("u_WeatherDepth", depth.weatherOr(src), PostProcessManager.getSampler())
+                        .sampler("u_CloudsDepth", depth.cloudsOr(src), PostProcessManager.getSampler())
+                        .end();
+            }
         } catch (Throwable t) {
             depthSamplerSupported = false;
             DebugLog.warn("[Combatant] DepthOfField depth sampler path failed; disabling DoF depth sampling for this session: " + t);
@@ -430,6 +456,27 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
         }
 
         return true;
+    }
+
+    private boolean ensureDofFocusTarget() {
+        if (!dofFocusResolveSupported) return false;
+        try {
+            if (dofFocusTarget == null) {
+                dofFocusTarget = new TextureTarget("combatant-depth-of-field-focus", 1, 1, false, GpuFormat.RGBA8_UNORM);
+            }
+            return dofFocusTarget.getColorTextureView() != null;
+        } catch (Throwable t) {
+            dofFocusResolveSupported = false;
+            closeDofFocusTarget();
+            DebugLog.warn("[Combatant] DepthOfField focus resolve failed; using the fragment fallback for this session: " + t);
+            return false;
+        }
+    }
+
+    private void closeDofFocusTarget() {
+        if (dofFocusTarget == null) return;
+        dofFocusTarget.destroyBuffers();
+        dofFocusTarget = null;
     }
 
     private void buildProjection() {
@@ -448,11 +495,13 @@ public class ReimaginedVisual extends Module implements PostProcessPass {
     @Override
     public void onEnable() {
         depthSamplerSupported = true;
+        dofFocusResolveSupported = true;
         refreshWavyVegetationTerrainState();
     }
 
     @Override
     public void onDisable() {
+        closeDofFocusTarget();
         refreshWavyVegetationTerrainState(false);
     }
 

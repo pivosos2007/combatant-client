@@ -9,7 +9,6 @@
 package combatant.client.features.hmi_recode;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -35,104 +34,70 @@ final class HmiContextFactory {
     private HmiContextFactory() {
     }
 
-    static Map<String, Object> renderContext(HoldMyItems.RenderScope scope) {
+    static Object[] renderContext(HoldMyItems.RenderScope scope) {
         LocalPlayer player = scope.player();
         ItemStack mainStack = player.getMainHandItem();
         ItemStack offStack = player.getOffhandItem();
-        Map<String, Object> mainItem = item(mainStack, player);
-        Map<String, Object> offItem = item(offStack, player);
-        Map<String, Object> renderedItem = scope.item() == mainStack
-                ? mainItem
-                : scope.item() == offStack ? offItem : item(scope.item(), player);
-
-        Map<String, Object> map = new Object2ObjectOpenHashMap<>(32);
-        map.put("player", player(player, scope.tickDelta(), scope.swingCount(), mainItem, offItem));
-        map.put("item", renderedItem);
-        map.put("hand", scope.hand() == InteractionHand.MAIN_HAND ? "main_hand" : "off_hand");
-        map.put("mainHand", scope.mainHand());
-        map.put("bl", scope.rightArm());
-        map.put("swingProgress", scope.scriptSwingProgress());
-        map.put("rawSwingProgress", scope.rawSwingProgress());
-        map.put("mainHandSwingProgress", scope.mainHandSwingProgress());
-        map.put("offHandSwingProgress", scope.offHandSwingProgress());
-        map.put("equipProgress", scope.equipProgress());
-        map.put("deltaTime", scope.deltaSeconds());
-        map.put("swingMHand", scope.mainHand() && scope.swingProgress() > 0.0f);
-        map.put("swingOHand", !scope.mainHand() && scope.swingProgress() > 0.0f);
-        map.put("mainHandSwitchEvent", scope.mainHandSwitchEvent());
-        map.put("offHandSwitchEvent", scope.offHandSwitchEvent());
-        map.put("blockBreaking", scope.blockBreaking());
+        Object[] mainItem = item(mainStack, player);
+        Object[] offItem = item(offStack, player);
+        int renderedItem = scope.item() == mainStack ? 0 : scope.item() == offStack ? 1 : 2;
+        Object[] extraItem = renderedItem == 2 ? item(scope.item(), player) : null;
         HoldMyItems.MotionSettings motion = scope.motionSettings();
-        map.put("motion", Map.of(
-                "swing", motion.swingStrength(),
-                "swordSwing", motion.swordSwingStrength(),
-                "offhandSwing", motion.offhandSwingStrength(),
-                "movement", motion.movementStrength(),
-                "look", motion.lookStrength(),
-                "switch", motion.switchStrength(),
-                "use", motion.useStrength(),
-                "impact", motion.impactStrength(),
-                "replaceSwing", motion.replaceSwing(),
-                "swingStyle", motion.swingStyle()
-        ));
-        map.put("matrices", 0);
-        map.put("particles", List.of());
         Minecraft minecraft = Minecraft.getInstance();
-        map.put("inspectPressed", minecraft.getWindow() != null && InputConstants.isKeyDown(minecraft.getWindow(), 74));
-        return map;
+        return new Object[]{
+                player(player, scope.tickDelta(), scope.swingCount()),
+                mainItem,
+                offItem,
+                renderedItem,
+                extraItem,
+                scope.hand() == InteractionHand.MAIN_HAND ? "main_hand" : "off_hand",
+                scope.mainHand(),
+                scope.rightArm(),
+                scope.scriptSwingProgress(),
+                scope.rawSwingProgress(),
+                scope.mainHandSwingProgress(),
+                scope.offHandSwingProgress(),
+                scope.equipProgress(),
+                scope.deltaSeconds(),
+                scope.mainHand() && scope.swingProgress() > 0.0f,
+                !scope.mainHand() && scope.swingProgress() > 0.0f,
+                scope.mainHandSwitchEvent(),
+                scope.offHandSwitchEvent(),
+                scope.blockBreaking(),
+                new Object[]{
+                        motion.swingStrength(), motion.swordSwingStrength(), motion.offhandSwingStrength(),
+                        motion.movementStrength(), motion.lookStrength(), motion.switchStrength(),
+                        motion.useStrength(), motion.impactStrength(), motion.replaceSwing(), motion.swingStyle()
+                },
+                minecraft.getWindow() != null && InputConstants.isKeyDown(minecraft.getWindow(), 74)
+        };
     }
 
-    private static Map<String, Object> player(LocalPlayer player, float tickDelta, int swingCount,
-                                              Map<String, Object> mainItem, Map<String, Object> offItem) {
-        Map<String, Object> map = new Object2ObjectOpenHashMap<>(24);
+    private static Object[] player(LocalPlayer player, float tickDelta, int swingCount) {
         var velocity = player.getDeltaMovement();
-        map.put("health", player.getHealth());
-        map.put("sneaking", player.isShiftKeyDown());
-        map.put("onGround", player.onGround());
-        map.put("swimming", player.isVisuallySwimming());
-        map.put("climbing", player.onClimbable());
-        map.put("crawling", player.getPose() == Pose.SWIMMING && !player.isInWater());
-        map.put("underWater", player.isUnderWater());
-        map.put("inWater", player.isInWater());
-        map.put("riptide", player.isAutoSpinAttack());
-        map.put("usingItem", player.isUsingItem());
-        map.put("activeHand", player.isUsingItem() ? handName(player.getUsedItemHand()) : "none");
-        map.put("x", player.getX());
-        map.put("y", player.getY());
-        map.put("z", player.getZ());
-        map.put("yaw", player.getYRot(tickDelta));
-        map.put("pitch", player.getXRot(tickDelta));
-        map.put("age", player.tickCount + tickDelta);
-        map.put("swingCount", swingCount);
-        map.put("hasVehicle", player.isPassenger());
-        map.put("velocity", Map.of("x", velocity.x, "y", velocity.y, "z", velocity.z));
-        map.put("mainItem", mainItem);
-        map.put("offItem", offItem);
-        return map;
+        return new Object[]{
+                player.getHealth(), player.isShiftKeyDown(), player.onGround(), player.isVisuallySwimming(),
+                player.onClimbable(), player.getPose() == Pose.SWIMMING && !player.isInWater(),
+                player.isUnderWater(), player.isInWater(), player.isAutoSpinAttack(), player.isUsingItem(),
+                player.isUsingItem() ? handName(player.getUsedItemHand()) : "none",
+                player.getX(), player.getY(), player.getZ(), player.getYRot(tickDelta), player.getXRot(tickDelta),
+                player.tickCount + tickDelta, swingCount, player.isPassenger(),
+                velocity.x, velocity.y, velocity.z
+        };
     }
 
-    private static Map<String, Object> item(ItemStack stack, LocalPlayer player) {
+    private static Object[] item(ItemStack stack, LocalPlayer player) {
         ItemStack safe = stack != null ? stack : ItemStack.EMPTY;
         StaticItemData staticData = STATIC_ITEMS.computeIfAbsent(safe.getItem(), HmiContextFactory::staticItem);
         String useAction = safe.getUseAnimation().getSerializedName().toLowerCase(Locale.ROOT);
         boolean empty = safe.isEmpty();
-        Map<String, Object> map = new Object2ObjectOpenHashMap<>(20);
-        map.put("id", staticData.id());
-        map.put("name", safe.getHoverName().getString());
-        map.put("empty", empty);
-        map.put("useAction", useAction);
-        map.put("tags", staticData.tags());
-        map.put("block", staticData.block());
-        map.put("lantern", staticData.lantern());
-        map.put("throwable", staticData.throwableItem());
-        map.put("enchanted", !safe.getEnchantments().isEmpty());
         var chargedProjectiles = safe.get(DataComponents.CHARGED_PROJECTILES);
-        map.put("chargedCrossbow", chargedProjectiles != null && !chargedProjectiles.isEmpty());
-        map.put("cooldown", player != null && player.getCooldowns().isOnCooldown(safe));
-        map.put("translate", false);
-        map.put("customTranslate", false);
-        map.put("spearData", Map.of("canDamage", true, "canDismount", true, "canKnockback", true, "hitImpact", false));
-        return map;
+        return new Object[]{
+                staticData.id(), safe.getHoverName().getString(), empty, useAction, staticData.tags(),
+                staticData.block(), staticData.lantern(), staticData.throwableItem(),
+                !safe.getEnchantments().isEmpty(), chargedProjectiles != null && !chargedProjectiles.isEmpty(),
+                player != null && player.getCooldowns().isOnCooldown(safe), false, false
+        };
     }
 
     static void invalidateCaches() {

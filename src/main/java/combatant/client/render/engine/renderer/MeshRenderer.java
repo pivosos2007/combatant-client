@@ -71,6 +71,11 @@ public final class MeshRenderer {
         return new Matrix4f(PROJECTION);
     }
 
+    /** Copies the current projection into caller-owned scratch storage. */
+    public static Matrix4f copyProjection(Matrix4f destination) {
+        return destination.set(PROJECTION);
+    }
+
     public static MeshRenderer begin() {
         if (taken) throw new IllegalStateException("Previous MeshRenderer.begin() was not ended.");
         taken = true;

@@ -13,6 +13,7 @@ import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.animation.AnimationUtility;
@@ -243,6 +244,7 @@ public final class ThemeComponent {
         int selectedAccent = SettingsGuiPalette.withAlpha(t.accent(), Math.round(82f * selected));
         int selectedAccentSoft = SettingsGuiPalette.withAlpha(t.accentSoft(), Math.round(48f * selected));
 
+        try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, palette)) {
         if (selected > 0.001f) {
             LayoutRender2D.roundedSoftShadow(
                     x - 0.45f * scale,
@@ -418,6 +420,7 @@ public final class ThemeComponent {
 
             // TODO: Show swatch tooltip on hover (name/value), once UX spec is provided.
         }
+        }
     }
 
     private static float deleteButtonSize(float scale) {
@@ -462,6 +465,7 @@ public final class ThemeComponent {
     }
 
     private void drawAddCard(float x, float y, float w, float h, float scale, SettingsGuiPalette palette) {
+        try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, palette)) {
         ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
         LayoutRender2D.roundedQuad(
                 x,
@@ -501,6 +505,7 @@ public final class ThemeComponent {
                 palette.moduleDescriptionText(),
                 false
         );
+        }
     }
 
     private void renderScrollbar(float menuX, float menuY, float menuH, float areaH, float contentH, float maxScroll, float scale, SettingsGuiPalette palette) {

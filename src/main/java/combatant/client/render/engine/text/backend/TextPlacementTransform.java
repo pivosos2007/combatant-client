@@ -22,19 +22,19 @@ public record TextPlacementTransform(TextPlacementMode mode,
                                      float scale,
                                      boolean billboard) {
     public static TextPlacementTransform ui(float x, float y, float z, float scale) {
-        return new TextPlacementTransform(TextPlacementMode.UI, new Matrix4f(), null, x, y, z, scale, false);
+        return new TextPlacementTransform(TextPlacementMode.UI, null, null, x, y, z, scale, false);
     }
 
     public static TextPlacementTransform screen(float x, float y, float z, float scale) {
-        return new TextPlacementTransform(TextPlacementMode.SCREEN_SPACE, new Matrix4f(), null, x, y, z, scale, false);
+        return new TextPlacementTransform(TextPlacementMode.SCREEN_SPACE, null, null, x, y, z, scale, false);
     }
 
     public static TextPlacementTransform worldBillboard(Vec3 anchor, float scale) {
-        return new TextPlacementTransform(TextPlacementMode.WORLD_BILLBOARD, new Matrix4f(), anchor, 0f, 0f, 0f, scale, true);
+        return new TextPlacementTransform(TextPlacementMode.WORLD_BILLBOARD, null, anchor, 0f, 0f, 0f, scale, true);
     }
 
     public static TextPlacementTransform worldAligned(Vec3 anchor, Matrix4f matrix, float scale) {
-        return new TextPlacementTransform(TextPlacementMode.WORLD_ALIGNED, matrix != null ? new Matrix4f(matrix) : new Matrix4f(), anchor, 0f, 0f, 0f, scale, false);
+        return new TextPlacementTransform(TextPlacementMode.WORLD_ALIGNED, matrix != null ? new Matrix4f(matrix) : null, anchor, 0f, 0f, 0f, scale, false);
     }
 
     public boolean world() {

@@ -11,6 +11,7 @@ import combatant.client.features.account.SkinManager;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.color.RenderColor;
@@ -32,8 +33,8 @@ public final class RelationPlayerCardComponent {
                           float scale,
                           SettingsGuiPalette palette) {
         boolean hover = ClickGuiMath.insideRect(mx, my, x, y, w, h);
-        float opacity = ClickGuiRenderer.getRenderAlphaMultiplier();
-        if (opacity <= 0.01f) {
+        float outerOpacity = ClickGuiRenderer.getRenderAlphaMultiplier();
+        if (outerOpacity <= 0.01f) {
             return new CardHit(0f, 0f, 0f, 0f, null);
         }
         int top = hover ? SettingsGuiPalette.mix(palette.moduleCardTop(), palette.menuCategoryHoverLeft(), 0.14f) : palette.moduleCardTop();
@@ -41,6 +42,8 @@ public final class RelationPlayerCardComponent {
         int bottom = hover ? SettingsGuiPalette.mix(palette.moduleCardBottom(), palette.menuCategoryHoverLeft(), 0.18f) : palette.moduleCardBottom();
         int bottomStrong = hover ? SettingsGuiPalette.mix(palette.moduleCardBottomStrong(), palette.menuCategoryHoverRight(), 0.14f) : palette.moduleCardBottomStrong();
 
+        try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, palette)) {
+        float opacity = ClickGuiRenderer.getRenderAlphaMultiplier();
         ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
         LayoutRender2D.roundedQuad(x, y, w, h, 5f * scale, top, topStrong, bottom, bottomStrong);
 
@@ -69,6 +72,7 @@ public final class RelationPlayerCardComponent {
         drawAction(deleteX, deleteY, btn, "trash-2", mx, my, scale, palette);
 
         return new CardHit(x, y, w, h, new ActionHit(deleteX, deleteY, btn, btn));
+        }
     }
 
     private void renderHead(String name, float x, float y, float size, float scale, SettingsGuiPalette palette, float opacity) {

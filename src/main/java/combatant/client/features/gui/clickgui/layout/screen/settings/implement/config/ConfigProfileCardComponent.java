@@ -12,6 +12,7 @@ import combatant.client.config.profile.ConfigProfileMeta;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -34,6 +35,7 @@ public final class ConfigProfileCardComponent {
         int bottom = hover ? SettingsGuiPalette.mix(palette.moduleCardBottom(), palette.menuCategoryHoverLeft(), 0.18f) : palette.moduleCardBottom();
         int bottomStrong = hover ? SettingsGuiPalette.mix(palette.moduleCardBottomStrong(), palette.menuCategoryHoverRight(), 0.14f) : palette.moduleCardBottomStrong();
 
+        try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, palette)) {
         ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
         LayoutRender2D.roundedQuad(x, y, w, h, 5f * scale, top, topStrong, bottom, bottomStrong);
 
@@ -128,6 +130,7 @@ public final class ConfigProfileCardComponent {
                 new ActionHit(diffX, by, btn, btn, CardActionType.DIFF),
                 new ActionHit(downloadX, by, btn, btn, CardActionType.APPLY),
                 new ActionHit(trashX, by, btn, btn, CardActionType.DELETE));
+        }
     }
 
     private void drawAction(float x, float y, float size, String icon, float mx, float my, float scale, SettingsGuiPalette palette) {

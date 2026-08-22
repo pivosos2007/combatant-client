@@ -950,7 +950,6 @@ public final class OrderedUiBatcher {
             ItemBatch batch = itemPool.get(i);
             if (batch != null) {
                 batch.commands.clear();
-                batch.resolvedStates.clear();
                 batch.context = null;
                 batch.scissor = null;
             }

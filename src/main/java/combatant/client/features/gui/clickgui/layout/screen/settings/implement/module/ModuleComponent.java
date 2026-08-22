@@ -12,6 +12,7 @@ import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.other.StatusRender;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.render.engine.animation.AnimationUtility;
@@ -211,17 +212,20 @@ public final class ModuleComponent {
         float statusX = x + w - 24f * scale;
         float statusY = y + descHeight + 31f * scale;
 
-        ClickGuiRenderer.drawRoundedRectShadow(
-                x,
-                y + 1.5f * scale,
-                w,
-                h,
-                5.4f * scale,
-                9.0f * scale,
-                1.0f * scale,
-                LayoutRender2D.alpha(0xFF000000, 0.22f + 0.10f * hoverAnim)
-        );
-        try (var ignored = pushParallax(parallax, x, y, w, h)) {
+        try (var ignored = pushParallax(parallax, x, y, w, h);
+             var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, palette)) {
+            // Use the soft-shadow SDF here. roundedRectShadow is a bottom-edge shadow primitive
+            // and visually collapses into a moving 1px strip on these tilted cards.
+            LayoutRender2D.roundedSoftShadow(
+                    x,
+                    y + 1.6f * scale,
+                    w,
+                    h,
+                    5.4f * scale,
+                    5.2f * scale,
+                    0.0f,
+                    LayoutRender2D.alpha(0xFF000000, 0.18f + 0.08f * hoverAnim)
+            );
             ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
             LayoutRender2D.roundedQuad(
                     x, y, w, h,
@@ -251,25 +255,25 @@ public final class ModuleComponent {
                     LayoutRender2D.alpha(palette.moduleCardTopStrong(), 0.12f + 0.10f * hoverAnim)
             );
 
-                ClickGuiRenderer.drawText(
-                        ClickGuiRenderer.getInterRegular(),
-                        "• " + entry.title(),
-                        x + 8.8f * scale,
-                        y + 5.4f * scale,
-                        13f * scale,
-                        SettingsGuiPalette.withAlpha(palette.moduleTitleText(), alphaOffset),
-                        false
-                );
+            ClickGuiRenderer.drawText(
+                    ClickGuiRenderer.getInterRegular(),
+                    "• " + entry.title(),
+                    x + 8.8f * scale,
+                    y + 5.4f * scale,
+                    13f * scale,
+                    SettingsGuiPalette.withAlpha(palette.moduleTitleText(), alphaOffset),
+                    false
+            );
 
-                drawDescription(description, x, y, w, scale, palette);
-                if (!entry.hasSettings()) {
-                    drawNoSettingsHint(x, y, descHeight, scale, palette);
-                }
-                bindRect = drawBind(entry, x, y, w, descHeight, scale, palette);
-                if (entry.toggleable()) {
-                    StatusRender status = statusRenderById.computeIfAbsent(entry.getId(), k -> new StatusRender());
-                    status.render(statusX, statusY, enabledAnim, scale);
-                }
+            drawDescription(description, x, y, w, scale, palette);
+            if (!entry.hasSettings()) {
+                drawNoSettingsHint(x, y, descHeight, scale, palette);
+            }
+            bindRect = drawBind(entry, x, y, w, descHeight, scale, palette);
+            if (entry.toggleable()) {
+                StatusRender status = statusRenderById.computeIfAbsent(entry.getId(), k -> new StatusRender());
+                status.render(statusX, statusY, enabledAnim, scale);
+            }
         }
 
         return new CardHit(

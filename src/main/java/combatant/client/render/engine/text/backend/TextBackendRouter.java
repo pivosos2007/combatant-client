@@ -29,9 +29,9 @@ public final class TextBackendRouter {
     }
 
     private static boolean sameRenderer(TextDrawCommand a, TextDrawCommand b) {
-        TextRendererRef ar = new TextRendererRef(a);
-        TextRendererRef br = new TextRendererRef(b);
-        return ar.renderer == br.renderer;
+        TextRenderer ar = a.renderer() != null ? a.renderer() : TextRenderer.get();
+        TextRenderer br = b.renderer() != null ? b.renderer() : TextRenderer.get();
+        return ar == br;
     }
 
     public void add(TextBackend backend) {
@@ -124,11 +124,5 @@ public final class TextBackendRouter {
 
     public List<TextBackend> backends() {
         return List.copyOf(backends);
-    }
-
-    private record TextRendererRef(TextRenderer renderer) {
-        private TextRendererRef(TextDrawCommand command) {
-            this(command.renderer() != null ? command.renderer() : TextRenderer.get());
-        }
     }
 }

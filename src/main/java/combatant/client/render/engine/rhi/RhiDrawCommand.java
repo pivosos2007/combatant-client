@@ -49,8 +49,8 @@ public final class RhiDrawCommand {
         this.transform = b.transform;
         this.applyWorldCameraY = b.applyWorldCameraY;
         this.lineWidth = b.lineWidth;
-        this.uniforms = List.copyOf(b.uniforms);
-        this.samplers = List.copyOf(b.samplers);
+        this.uniforms = b.uniforms == null ? List.of() : List.copyOf(b.uniforms);
+        this.samplers = b.samplers == null ? List.of() : List.copyOf(b.samplers);
     }
 
     public static Builder builder(String label) {
@@ -67,8 +67,8 @@ public final class RhiDrawCommand {
 
     public static final class Builder {
         private final String label;
-        private final List<RhiUniformBinding> uniforms = new ArrayList<>();
-        private final List<RhiSamplerBinding> samplers = new ArrayList<>();
+        private List<RhiUniformBinding> uniforms;
+        private List<RhiSamplerBinding> samplers;
         private RenderPipeline pipeline;
         private RenderPipelineSpec pipelineSpec;
         private GpuTextureView colorAttachment;
@@ -135,13 +135,18 @@ public final class RhiDrawCommand {
         }
 
         public Builder uniform(String name, GpuBufferSlice slice) {
-            if (name != null && slice != null) uniforms.add(new RhiUniformBinding(name, slice));
+            if (name != null && slice != null) {
+                if (uniforms == null) uniforms = new ArrayList<>(2);
+                uniforms.add(new RhiUniformBinding(name, slice));
+            }
             return this;
         }
 
         public Builder sampler(String name, GpuTextureView view, GpuSampler sampler) {
-            if (name != null && view != null && sampler != null)
+            if (name != null && view != null && sampler != null) {
+                if (samplers == null) samplers = new ArrayList<>(2);
                 samplers.add(new RhiSamplerBinding(name, view, sampler));
+            }
             return this;
         }
 
@@ -152,16 +157,20 @@ public final class RhiDrawCommand {
                 throw new IllegalStateException("Matrix transform is not supported by pipeline metadata: " + pipeline.getLocation());
             }
             if (pipelineSpec.metadata().domain() != PipelineDomain.UNKNOWN) {
-                for (RhiUniformBinding uniform : uniforms) {
-                    if (!pipelineSpec.uniformLayout().hasUniform(uniform.name())) {
-                        throw new IllegalStateException("Uniform '" + uniform.name()
-                                + "' is not declared by pipeline metadata: " + pipeline.getLocation());
+                if (uniforms != null) {
+                    for (RhiUniformBinding uniform : uniforms) {
+                        if (!pipelineSpec.uniformLayout().hasUniform(uniform.name())) {
+                            throw new IllegalStateException("Uniform '" + uniform.name()
+                                    + "' is not declared by pipeline metadata: " + pipeline.getLocation());
+                        }
                     }
                 }
-                for (RhiSamplerBinding sampler : samplers) {
-                    if (!pipelineSpec.uniformLayout().hasSampler(sampler.name())) {
-                        throw new IllegalStateException("Sampler '" + sampler.name()
-                                + "' is not declared by pipeline metadata: " + pipeline.getLocation());
+                if (samplers != null) {
+                    for (RhiSamplerBinding sampler : samplers) {
+                        if (!pipelineSpec.uniformLayout().hasSampler(sampler.name())) {
+                            throw new IllegalStateException("Sampler '" + sampler.name()
+                                    + "' is not declared by pipeline metadata: " + pipeline.getLocation());
+                        }
                     }
                 }
             }
