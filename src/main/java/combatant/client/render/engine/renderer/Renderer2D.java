@@ -616,7 +616,7 @@ public final class Renderer2D {
         if (consumer == null) return;
 
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.COLORED, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -704,12 +704,13 @@ public final class Renderer2D {
     public void quad(double x, double y, double width, double height, int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
         shape(UiShape.rect(x, y, width, height), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft));
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.COLORED, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
-        appendColoredQuad(mesh, x, y, width, height, cTopLeft, cTopRight, cBottomRight, cBottomLeft);
+        appendGeometryQuad(mesh, x, y, width, height,
+                cTopLeft, cTopRight, cBottomRight, cBottomLeft);
 
         endAutoBatch(auto);
     }
@@ -731,7 +732,7 @@ public final class Renderer2D {
     public void circle(double cx, double cy, double radius, float softness, int argb) {
         shape(UiShape.circle(cx, cy, radius), UiPaint.solid(argb));
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.CIRCLE, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -749,13 +750,17 @@ public final class Renderer2D {
 
         if (RenderWarpStack.active()) {
             appendWarpedSdfGrid(mesh, x, y, w, h, argb, argb, argb, argb,
-                    UiRect.of(x, y, w, h), (float) radius, softness, 0.0f, 0.0f);
+                    UiRect.of(x, y, w, h), UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0.0f);
         } else {
             mesh.ensureQuadCapacity();
-            int i1 = mesh.vec2(x, y).local2(x, y).color(r, g, b, a).vec4(x, y, w, h).vec4((float) radius, softness, 0f, 0f).next();
-            int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4((float) radius, softness, 0f, 0f).next();
-            int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4((float) radius, softness, 0f, 0f).next();
-            int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(r, g, b, a).vec4(x, y, w, h).vec4((float) radius, softness, 0f, 0f).next();
+            int i1 = appendGeometryVertex(mesh, x, y, argb, UiRect.of(x, y, w, h),
+                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
+            int i2 = appendGeometryVertex(mesh, x, y + h, argb, UiRect.of(x, y, w, h),
+                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
+            int i3 = appendGeometryVertex(mesh, x + w, y + h, argb, UiRect.of(x, y, w, h),
+                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
+            int i4 = appendGeometryVertex(mesh, x + w, y, argb, UiRect.of(x, y, w, h),
+                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
             mesh.quad(i1, i2, i3, i4);
         }
 
@@ -775,7 +780,7 @@ public final class Renderer2D {
     public void circleStroke(double cx, double cy, double radius, double thickness, float softness, int argb) {
         shapeStroke(UiShape.circle(cx, cy, radius), UiPaint.solid(argb), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.CIRCLE, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -794,13 +799,18 @@ public final class Renderer2D {
 
         if (RenderWarpStack.active()) {
             appendWarpedSdfGrid(mesh, x, y, w, h, argb, argb, argb, argb,
-                    UiRect.of(x, y, w, h), (float) radius, softness, stroke, 0.0f);
+                    UiRect.of(x, y, w, h), UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
         } else {
             mesh.ensureQuadCapacity();
-            int i1 = mesh.vec2(x, y).local2(x, y).color(r, g, b, a).vec4(x, y, w, h).vec4((float) radius, softness, stroke, 0f).next();
-            int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4((float) radius, softness, stroke, 0f).next();
-            int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4((float) radius, softness, stroke, 0f).next();
-            int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(r, g, b, a).vec4(x, y, w, h).vec4((float) radius, softness, stroke, 0f).next();
+            UiRect bounds = UiRect.of(x, y, w, h);
+            int i1 = appendGeometryVertex(mesh, x, y, argb, bounds,
+                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
+            int i2 = appendGeometryVertex(mesh, x, y + h, argb, bounds,
+                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
+            int i3 = appendGeometryVertex(mesh, x + w, y + h, argb, bounds,
+                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
+            int i4 = appendGeometryVertex(mesh, x + w, y, argb, bounds,
+                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
             mesh.quad(i1, i2, i3, i4);
         }
 
@@ -882,7 +892,7 @@ public final class Renderer2D {
 
         shapeStroke(UiShape.arc(cx, cy, radius, start, end), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ARC, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -913,14 +923,15 @@ public final class Renderer2D {
         int blG = (cBottomLeft >>> 8) & 0xFF;
         int blB = cBottomLeft & 0xFF;
 
-        int i1 = mesh.vec2(x, y).local2(x, y).color(tlR, tlG, tlB, tlA).vec4(x, y, w, h)
-                .vec4((float) radius, softness, stroke, start).vec4(end, caps ? 1f : 0f, 0f, 0f).next();
-        int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(blR, blG, blB, blA).vec4(x, y, w, h)
-                .vec4((float) radius, softness, stroke, start).vec4(end, caps ? 1f : 0f, 0f, 0f).next();
-        int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(brR, brG, brB, brA).vec4(x, y, w, h)
-                .vec4((float) radius, softness, stroke, start).vec4(end, caps ? 1f : 0f, 0f, 0f).next();
-        int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(trR, trG, trB, trA).vec4(x, y, w, h)
-                .vec4((float) radius, softness, stroke, start).vec4(end, caps ? 1f : 0f, 0f, 0f).next();
+        UiRect arcBounds = UiRect.of(x, y, w, h);
+        int i1 = appendGeometryVertex(mesh, x, y, cTopLeft, arcBounds,
+                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f);
+        int i2 = appendGeometryVertex(mesh, x, y + h, cBottomLeft, arcBounds,
+                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f);
+        int i3 = appendGeometryVertex(mesh, x + w, y + h, cBottomRight, arcBounds,
+                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f);
+        int i4 = appendGeometryVertex(mesh, x + w, y, cTopRight, arcBounds,
+                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1078,7 +1089,7 @@ public final class Renderer2D {
                                          float softness, float thickness, int argb) {
         shapeStroke(UiShape.roundedRect(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL), UiPaint.solid(argb), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_STROKE_CORNERS, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -1092,10 +1103,19 @@ public final class Renderer2D {
         normalizeCornerRadii(w, h, radiusTL, radiusTR, radiusBR, radiusBL, cornerRadiiTmp);
         float stroke = Math.max(0.0f, thickness);
 
-        int i1 = mesh.vec2(x, y).local2(x, y).color(r, g, b, a).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(0.0f, stroke, 0f, 0f).next();
-        int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(0.0f, stroke, 0f, 0f).next();
-        int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(0.0f, stroke, 0f, 0f).next();
-        int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(r, g, b, a).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(0.0f, stroke, 0f, 0f).next();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGeometryVertex(mesh, x, y, argb, bounds,
+                UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, stroke, 0f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
+        int i2 = appendGeometryVertex(mesh, x, y + h, argb, bounds,
+                UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, stroke, 0f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
+        int i3 = appendGeometryVertex(mesh, x + w, y + h, argb, bounds,
+                UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, stroke, 0f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
+        int i4 = appendGeometryVertex(mesh, x + w, y, argb, bounds,
+                UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, stroke, 0f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1128,7 +1148,7 @@ public final class Renderer2D {
                                        int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
         shape(UiShape.roundedRect(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft));
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_CORNERS, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -1151,10 +1171,19 @@ public final class Renderer2D {
         int blB = cBottomLeft & 0xFF;
         normalizeCornerRadii(w, h, radiusTL, radiusTR, radiusBR, radiusBL, cornerRadiiTmp);
 
-        int i1 = mesh.vec2(x, y).local2(x, y).color(tlR, tlG, tlB, tlA).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(0.0f, 0f, 0f, 0f).next();
-        int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(blR, blG, blB, blA).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(0.0f, 0f, 0f, 0f).next();
-        int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(brR, brG, brB, brA).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(0.0f, 0f, 0f, 0f).next();
-        int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(trR, trG, trB, trA).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(0.0f, 0f, 0f, 0f).next();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGeometryVertex(mesh, x, y, cTopLeft, bounds,
+                UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, 0f, 1f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
+        int i2 = appendGeometryVertex(mesh, x, y + h, cBottomLeft, bounds,
+                UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, 0f, 1f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
+        int i3 = appendGeometryVertex(mesh, x + w, y + h, cBottomRight, bounds,
+                UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, 0f, 1f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
+        int i4 = appendGeometryVertex(mesh, x + w, y, cTopRight, bounds,
+                UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, 0f, 1f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1361,7 +1390,7 @@ public final class Renderer2D {
     public void roundedRectGlow(double x, double y, double w, double h,
                                 float radius, float softness, float glow, int argb) {
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_GLOW, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.GLOW, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -1380,10 +1409,11 @@ public final class Renderer2D {
         double gw = w + expand * 2.0f;
         double gh = h + expand * 2.0f;
 
-        int i1 = mesh.vec2(gx, gy).local2(gx, gy).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glow, 0f).next();
-        int i2 = mesh.vec2(gx, gy + gh).local2(gx, gy + gh).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glow, 0f).next();
-        int i3 = mesh.vec2(gx + gw, gy + gh).local2(gx + gw, gy + gh).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glow, 0f).next();
-        int i4 = mesh.vec2(gx + gw, gy).local2(gx + gw, gy).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glow, 0f).next();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGlowVertex(mesh, gx, gy, argb, bounds, 1f, clampedRadius, softness, glow, 0f, 0f);
+        int i2 = appendGlowVertex(mesh, gx, gy + gh, argb, bounds, 1f, clampedRadius, softness, glow, 0f, 0f);
+        int i3 = appendGlowVertex(mesh, gx + gw, gy + gh, argb, bounds, 1f, clampedRadius, softness, glow, 0f, 0f);
+        int i4 = appendGlowVertex(mesh, gx + gw, gy, argb, bounds, 1f, clampedRadius, softness, glow, 0f, 0f);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1392,7 +1422,7 @@ public final class Renderer2D {
     public void roundedRectShadow(double x, double y, double w, double h,
                                   float radius, float softness, float spread, int argb) {
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_SHADOW, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -1412,10 +1442,15 @@ public final class Renderer2D {
         double gy = y;
         double gh = h + expandY;
 
-        int i1 = mesh.vec2(gx, gy).local2(gx, gy).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, spread, 0f).next();
-        int i2 = mesh.vec2(gx, gy + gh).local2(gx, gy + gh).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, spread, 0f).next();
-        int i3 = mesh.vec2(gx + gw, gy + gh).local2(gx + gw, gy + gh).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, spread, 0f).next();
-        int i4 = mesh.vec2(gx + gw, gy).local2(gx + gw, gy).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, spread, 0f).next();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGeometryVertex(mesh, gx, gy, argb, bounds,
+                UiFastShapeParams.KIND_SHADOW, clampedRadius, softness, spread);
+        int i2 = appendGeometryVertex(mesh, gx, gy + gh, argb, bounds,
+                UiFastShapeParams.KIND_SHADOW, clampedRadius, softness, spread);
+        int i3 = appendGeometryVertex(mesh, gx + gw, gy + gh, argb, bounds,
+                UiFastShapeParams.KIND_SHADOW, clampedRadius, softness, spread);
+        int i4 = appendGeometryVertex(mesh, gx + gw, gy, argb, bounds,
+                UiFastShapeParams.KIND_SHADOW, clampedRadius, softness, spread);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1424,7 +1459,7 @@ public final class Renderer2D {
     public void roundedRectSoftShadow(double x, double y, double w, double h,
                                       float radius, float blur, float innerAlpha, int argb) {
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_SOFT_SHADOW, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -1442,10 +1477,15 @@ public final class Renderer2D {
         double sw = w + expand * 2.0;
         double sh = h + expand * 2.0;
 
-        int i1 = mesh.vec2(sx, sy).local2(sx, sy).color(r, g, b, a).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
-        int i2 = mesh.vec2(sx, sy + sh).local2(sx, sy + sh).color(r, g, b, a).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
-        int i3 = mesh.vec2(sx + sw, sy + sh).local2(sx + sw, sy + sh).color(r, g, b, a).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
-        int i4 = mesh.vec2(sx + sw, sy).local2(sx + sw, sy).color(r, g, b, a).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGeometryVertex(mesh, sx, sy, argb, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, radius, blur, innerAlpha);
+        int i2 = appendGeometryVertex(mesh, sx, sy + sh, argb, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, radius, blur, innerAlpha);
+        int i3 = appendGeometryVertex(mesh, sx + sw, sy + sh, argb, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, radius, blur, innerAlpha);
+        int i4 = appendGeometryVertex(mesh, sx + sw, sy, argb, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, radius, blur, innerAlpha);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1460,7 +1500,7 @@ public final class Renderer2D {
                                               float radius, float blur, float innerAlpha,
                                               int startArgb, int endArgb, float angleDeg) {
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_SOFT_SHADOW, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -1499,10 +1539,15 @@ public final class Renderer2D {
         int blG = (bottomLeft >>> 8) & 0xFF;
         int blB = bottomLeft & 0xFF;
 
-        int i1 = mesh.vec2(sx, sy).local2(sx, sy).color(tlR, tlG, tlB, tlA).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
-        int i2 = mesh.vec2(sx, sy + sh).local2(sx, sy + sh).color(blR, blG, blB, blA).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
-        int i3 = mesh.vec2(sx + sw, sy + sh).local2(sx + sw, sy + sh).color(brR, brG, brB, brA).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
-        int i4 = mesh.vec2(sx + sw, sy).local2(sx + sw, sy).color(trR, trG, trB, trA).vec4(x, y, w, h).vec4(radius, blur, innerAlpha, 0f).next();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGeometryVertex(mesh, sx, sy, topLeft, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, radius, blur, innerAlpha);
+        int i2 = appendGeometryVertex(mesh, sx, sy + sh, bottomLeft, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, radius, blur, innerAlpha);
+        int i3 = appendGeometryVertex(mesh, sx + sw, sy + sh, bottomRight, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, radius, blur, innerAlpha);
+        int i4 = appendGeometryVertex(mesh, sx + sw, sy, topRight, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, radius, blur, innerAlpha);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1518,7 +1563,7 @@ public final class Renderer2D {
                                    float exponent, float blur, float innerAlpha, int argb) {
         UiBoxShape shape = UiBoxShape.squircle(x, y, w, h, exponent);
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_SOFT_SHADOW, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -1538,10 +1583,15 @@ public final class Renderer2D {
         double sh = h + expand * 2.0;
         float encodedShape = -shape.squircleExponent();
 
-        int i1 = mesh.vec2(sx, sy).local2(sx, sy).color(r, g, b, a).vec4(x, y, w, h).vec4(encodedShape, blur, innerAlpha, 0f).next();
-        int i2 = mesh.vec2(sx, sy + sh).local2(sx, sy + sh).color(r, g, b, a).vec4(x, y, w, h).vec4(encodedShape, blur, innerAlpha, 0f).next();
-        int i3 = mesh.vec2(sx + sw, sy + sh).local2(sx + sw, sy + sh).color(r, g, b, a).vec4(x, y, w, h).vec4(encodedShape, blur, innerAlpha, 0f).next();
-        int i4 = mesh.vec2(sx + sw, sy).local2(sx + sw, sy).color(r, g, b, a).vec4(x, y, w, h).vec4(encodedShape, blur, innerAlpha, 0f).next();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGeometryVertex(mesh, sx, sy, argb, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, encodedShape, blur, innerAlpha);
+        int i2 = appendGeometryVertex(mesh, sx, sy + sh, argb, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, encodedShape, blur, innerAlpha);
+        int i3 = appendGeometryVertex(mesh, sx + sw, sy + sh, argb, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, encodedShape, blur, innerAlpha);
+        int i4 = appendGeometryVertex(mesh, sx + sw, sy, argb, bounds,
+                UiFastShapeParams.KIND_SOFT_SHADOW, encodedShape, blur, innerAlpha);
         mesh.quad(i1, i2, i3, i4);
         endAutoBatch(auto);
     }
@@ -1551,7 +1601,7 @@ public final class Renderer2D {
                                  float glowRadius, float cx, float cy,
                                  int argb) {
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.RADIAL_GLOW, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.GLOW, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -1564,10 +1614,11 @@ public final class Renderer2D {
         int b = argb & 0xFF;
         float clampedRadius = clampRoundedRadius(radius, w, h);
 
-        int i1 = mesh.vec2(x, y).local2(x, y).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glowRadius, 0.0f).vec4(cx, cy, 0f, 0f).next();
-        int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glowRadius, 0.0f).vec4(cx, cy, 0f, 0f).next();
-        int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glowRadius, 0.0f).vec4(cx, cy, 0f, 0f).next();
-        int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, glowRadius, 0.0f).vec4(cx, cy, 0f, 0f).next();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGlowVertex(mesh, x, y, argb, bounds, 2f, clampedRadius, softness, glowRadius, cx, cy);
+        int i2 = appendGlowVertex(mesh, x, y + h, argb, bounds, 2f, clampedRadius, softness, glowRadius, cx, cy);
+        int i3 = appendGlowVertex(mesh, x + w, y + h, argb, bounds, 2f, clampedRadius, softness, glowRadius, cx, cy);
+        int i4 = appendGlowVertex(mesh, x + w, y, argb, bounds, 2f, clampedRadius, softness, glowRadius, cx, cy);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1592,7 +1643,7 @@ public final class Renderer2D {
         shape(UiShape.roundedRect(maskX, maskY, maskW, maskH, radius), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft));
         boolean auto = beginAutoBatch();
         boolean warped = RenderWarpStack.active();
-        DrawBatch batch = UI_BATCHER.getOrCreate(warped ? UiBatchType.SHAPE_WARPED : UiBatchType.SHAPE, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -1629,7 +1680,7 @@ public final class Renderer2D {
         shapeStroke(UiShape.roundedRect(x, y, w, h, radius), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
         boolean warped = RenderWarpStack.active();
-        DrawBatch batch = UI_BATCHER.getOrCreate(warped ? UiBatchType.SHAPE_WARPED : UiBatchType.SHAPE, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -1680,7 +1731,7 @@ public final class Renderer2D {
         recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.roundedRect(x, y, w, h, radius), UiPaint.solid(argb),
                 (float) texX1, (float) texY1, (float) texX2, (float) texY2, false));
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_TEXTURED, samplerView, sampler);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -1692,10 +1743,10 @@ public final class Renderer2D {
         int g = (argb >>> 8) & 0xFF;
         int b = argb & 0xFF;
         float clampedRadius = clampRoundedRadius(radius, w, h);
-        int i1 = mesh.vec2(x, y).raw2(texX1, texY1).local2(x, y).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, 0f, 0f).next();
-        int i2 = mesh.vec2(x, y + h).raw2(texX1, texY2).local2(x, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, 0f, 0f).next();
-        int i3 = mesh.vec2(x + w, y + h).raw2(texX2, texY2).local2(x + w, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, 0f, 0f).next();
-        int i4 = mesh.vec2(x + w, y).raw2(texX2, texY1).local2(x + w, y).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, 0f, 0f).next();
+        int i1 = mesh.vec2(x, y).raw2(texX1, texY1).local2(x, y).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, softness, 0f, 0f).next();
+        int i2 = mesh.vec2(x, y + h).raw2(texX1, texY2).local2(x, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, softness, 0f, 0f).next();
+        int i3 = mesh.vec2(x + w, y + h).raw2(texX2, texY2).local2(x + w, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, softness, 0f, 0f).next();
+        int i4 = mesh.vec2(x + w, y).raw2(texX2, texY1).local2(x + w, y).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, softness, 0f, 0f).next();
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1713,7 +1764,7 @@ public final class Renderer2D {
         recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.roundedRect(x, y, w, h, radius), UiPaint.solid(argb),
                 (float) texX1, (float) texY1, (float) texX2, (float) texY2, true));
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_TEXTURED_MASK, samplerView, sampler);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -1725,10 +1776,10 @@ public final class Renderer2D {
         int g = (argb >>> 8) & 0xFF;
         int b = argb & 0xFF;
         float clampedRadius = clampRoundedRadius(radius, w, h);
-        int i1 = mesh.vec2(x, y).raw2(texX1, texY1).local2(x, y).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, 0f, 0f).next();
-        int i2 = mesh.vec2(x, y + h).raw2(texX1, texY2).local2(x, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, 0f, 0f).next();
-        int i3 = mesh.vec2(x + w, y + h).raw2(texX2, texY2).local2(x + w, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, 0f, 0f).next();
-        int i4 = mesh.vec2(x + w, y).raw2(texX2, texY1).local2(x + w, y).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, 0f, 0f).next();
+        int i1 = mesh.vec2(x, y).raw2(texX1, texY1).local2(x, y).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, softness, 1f, 0f).next();
+        int i2 = mesh.vec2(x, y + h).raw2(texX1, texY2).local2(x, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, softness, 1f, 0f).next();
+        int i3 = mesh.vec2(x + w, y + h).raw2(texX2, texY2).local2(x + w, y + h).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, softness, 1f, 0f).next();
+        int i4 = mesh.vec2(x + w, y).raw2(texX2, texY1).local2(x + w, y).color(r, g, b, a).vec4(x, y, w, h).vec4(clampedRadius, softness, 1f, 0f).next();
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1936,7 +1987,7 @@ public final class Renderer2D {
         shape(UiShape.chamferedRectAxes(x, y, w, h, chamferTLX, chamferTLY, chamferTRX, chamferTRY, chamferBRX, chamferBRY, chamferBLX, chamferBLY),
                 UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft));
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.CHAMFERED, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -1969,10 +2020,19 @@ public final class Renderer2D {
         float brY = clampChamferAxis(chamferBRY, h);
         float blY = clampChamferAxis(chamferBLY, h);
 
-        int i1 = mesh.vec2(x, y).local2(x, y).color(tlR, tlG, tlB, tlA).vec4(x, y, w, h).vec4(tlX, trX, brX, blX).vec4(tlY, trY, brY, blY).next();
-        int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(blR, blG, blB, blA).vec4(x, y, w, h).vec4(tlX, trX, brX, blX).vec4(tlY, trY, brY, blY).next();
-        int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(brR, brG, brB, brA).vec4(x, y, w, h).vec4(tlX, trX, brX, blX).vec4(tlY, trY, brY, blY).next();
-        int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(trR, trG, trB, trA).vec4(x, y, w, h).vec4(tlX, trX, brX, blX).vec4(tlY, trY, brY, blY).next();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGeometryVertex(mesh, x, y, cTopLeft, bounds,
+                UiFastShapeParams.KIND_CHAMFER, 0f, 1f, 0f,
+                tlX, trX, brX, blX, tlY, trY, brY, blY);
+        int i2 = appendGeometryVertex(mesh, x, y + h, cBottomLeft, bounds,
+                UiFastShapeParams.KIND_CHAMFER, 0f, 1f, 0f,
+                tlX, trX, brX, blX, tlY, trY, brY, blY);
+        int i3 = appendGeometryVertex(mesh, x + w, y + h, cBottomRight, bounds,
+                UiFastShapeParams.KIND_CHAMFER, 0f, 1f, 0f,
+                tlX, trX, brX, blX, tlY, trY, brY, blY);
+        int i4 = appendGeometryVertex(mesh, x + w, y, cTopRight, bounds,
+                UiFastShapeParams.KIND_CHAMFER, 0f, 1f, 0f,
+                tlX, trX, brX, blX, tlY, trY, brY, blY);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1993,7 +2053,7 @@ public final class Renderer2D {
         shapeStroke(UiShape.chamferedRect(x, y, w, h, chamferTL, chamferTR, chamferBR, chamferBL),
                 UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.CHAMFERED_STROKE, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -2024,10 +2084,23 @@ public final class Renderer2D {
                 cornerRadiiTmp);
         float stroke = (float) Math.max(0.0, thickness);
 
-        int i1 = mesh.vec2(x, y).local2(x, y).color(tlR, tlG, tlB, tlA).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(stroke, 0f, 0f, 0f).next();
-        int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(blR, blG, blB, blA).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(stroke, 0f, 0f, 0f).next();
-        int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(brR, brG, brB, brA).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(stroke, 0f, 0f, 0f).next();
-        int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(trR, trG, trB, trA).vec4(x, y, w, h).vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]).vec4(stroke, 0f, 0f, 0f).next();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGeometryVertex(mesh, x, y, cTopLeft, bounds,
+                UiFastShapeParams.KIND_CHAMFER, stroke, 0f, 0f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3],
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
+        int i2 = appendGeometryVertex(mesh, x, y + h, cBottomLeft, bounds,
+                UiFastShapeParams.KIND_CHAMFER, stroke, 0f, 0f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3],
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
+        int i3 = appendGeometryVertex(mesh, x + w, y + h, cBottomRight, bounds,
+                UiFastShapeParams.KIND_CHAMFER, stroke, 0f, 0f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3],
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
+        int i4 = appendGeometryVertex(mesh, x + w, y, cTopRight, bounds,
+                UiFastShapeParams.KIND_CHAMFER, stroke, 0f, 0f,
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3],
+                cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -2942,7 +3015,7 @@ public final class Renderer2D {
 
         boolean auto = beginAutoBatch();
         try {
-            DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.GLASS_BLUR, source.view, source.sampler,
+            DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.BLUR_CORNERS, source.view, source.sampler,
                     BlurQuality.HIGH, legacyKawaseOffset(quality));
             if (batch == null) return;
             MeshBuilder mesh = batch.mesh;
@@ -3031,7 +3104,7 @@ public final class Renderer2D {
         if (source == null) return;
 
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.BLUR_COMPLEX, source.view, source.sampler,
+        DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.BLUR_CORNERS, source.view, source.sampler,
                 DEFAULT_BLUR_QUALITY, DEFAULT_KAWASE_OFFSET_PX);
         if (batch == null) return;
 
@@ -3101,7 +3174,7 @@ public final class Renderer2D {
 
         boolean auto = beginAutoBatch();
         boolean warped = RenderWarpStack.active();
-        DrawBatch batch = UI_BATCHER.getOrCreate(warped ? UiBatchType.SHAPE_WARPED : UiBatchType.SHAPE, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -3148,10 +3221,69 @@ public final class Renderer2D {
         int r = (argb >>> 16) & 0xFF;
         int g = (argb >>> 8) & 0xFF;
         int b = argb & 0xFF;
-        mesh.vec2(x, y);
+        mesh.vec2(x, y).rawLocal2(x, y);
         return mesh.color(r, g, b, a)
                 .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
-                .vec4(p.kind(), p.shape(), p.strokeWidth(), p.flags()).next();
+                .vec4(p.kind(), p.shape(), p.strokeWidth(), p.flags())
+                .vec4(0f, 0f, 0f, 0f)
+                .vec4(0f, 0f, 0f, 0f).next();
+    }
+
+    private static int appendGeometryVertex(MeshBuilder mesh, double x, double y, int argb, UiRect bounds,
+                                            float p0, float p1, float p2, float p3) {
+        return appendGeometryVertex(mesh, x, y, argb, bounds, p0, p1, p2, p3,
+                0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f);
+    }
+
+    private static int appendGeometryVertex(MeshBuilder mesh, double x, double y, int argb, UiRect bounds,
+                                            float p0, float p1, float p2, float p3,
+                                            float p20, float p21, float p22, float p23) {
+        return appendGeometryVertex(mesh, x, y, argb, bounds, p0, p1, p2, p3,
+                p20, p21, p22, p23, 0f, 0f, 0f, 0f);
+    }
+
+    private static int appendGeometryVertex(MeshBuilder mesh, double x, double y, int argb, UiRect bounds,
+                                            float p0, float p1, float p2, float p3,
+                                            float p20, float p21, float p22, float p23,
+                                            float p30, float p31, float p32, float p33) {
+        int a = (argb >>> 24) & 0xFF;
+        int r = (argb >>> 16) & 0xFF;
+        int g = (argb >>> 8) & 0xFF;
+        int b = argb & 0xFF;
+        return mesh.vec2(x, y).rawLocal2(x, y).color(r, g, b, a)
+                .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
+                .vec4(p0, p1, p2, p3)
+                .vec4(p20, p21, p22, p23)
+                .vec4(p30, p31, p32, p33).next();
+    }
+
+    private static void appendGeometryQuad(MeshBuilder mesh,
+                                           double x, double y, double width, double height,
+                                           int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
+        mesh.ensureQuadCapacity();
+        UiRect bounds = UiRect.of(x, y, width, height);
+        int i1 = appendGeometryVertex(mesh, x, y, cTopLeft, bounds,
+                UiFastShapeParams.KIND_RECT, 0f, 0f, 0f);
+        int i2 = appendGeometryVertex(mesh, x, y + height, cBottomLeft, bounds,
+                UiFastShapeParams.KIND_RECT, 0f, 0f, 0f);
+        int i3 = appendGeometryVertex(mesh, x + width, y + height, cBottomRight, bounds,
+                UiFastShapeParams.KIND_RECT, 0f, 0f, 0f);
+        int i4 = appendGeometryVertex(mesh, x + width, y, cTopRight, bounds,
+                UiFastShapeParams.KIND_RECT, 0f, 0f, 0f);
+        mesh.quad(i1, i2, i3, i4);
+    }
+
+    private static int appendGlowVertex(MeshBuilder mesh, double x, double y, int argb, UiRect bounds,
+                                        float kind, float radius, float softness, float glowRadius,
+                                        float centerX, float centerY) {
+        int a = (argb >>> 24) & 0xFF;
+        int r = (argb >>> 16) & 0xFF;
+        int g = (argb >>> 8) & 0xFF;
+        int b = argb & 0xFF;
+        return mesh.vec2(x, y).rawLocal2(x, y).color(r, g, b, a)
+                .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
+                .vec4(kind, radius, softness, glowRadius)
+                .vec4(centerX, centerY, 0f, 0f).next();
     }
 
     private void appendWarpedSdfGrid(
@@ -3194,6 +3326,8 @@ public final class Renderer2D {
                         .color(r, g, b, a)
                         .vec4(sdfBounds.x(), sdfBounds.y(), sdfBounds.width(), sdfBounds.height())
                         .vec4(param0, param1, param2, param3)
+                        .vec4(0f, 0f, 0f, 0f)
+                        .vec4(0f, 0f, 0f, 0f)
                         .next();
             }
         }
@@ -3239,7 +3373,7 @@ public final class Renderer2D {
 
         path(UiShape.polyline(points, safeCount, true), UiPaint.solid(argb), UiStroke.NONE, true);
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.COLORED, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -3260,7 +3394,7 @@ public final class Renderer2D {
 
         path(UiShape.polyline(points, pointCount, true), UiPaint.linear(startArgb, endArgb, angleDeg, offsetPx), UiStroke.NONE, true);
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.COLORED, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -3291,7 +3425,7 @@ public final class Renderer2D {
         path(UiShape.polyline(points, pointCount, closed), UiPaint.solid(argb),
                 roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t), false);
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.COLORED, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -3314,7 +3448,7 @@ public final class Renderer2D {
         path(UiShape.polyline(points, pointCount, closed), UiPaint.corners(startArgb, endArgb, endArgb, startArgb),
                 roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t), false);
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.COLORED, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -3339,7 +3473,7 @@ public final class Renderer2D {
         path(UiShape.polyline(points, pointCount, closed), UiPaint.linear(startArgb, endArgb, angleDeg, offsetPx),
                 roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t), false);
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.COLORED, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -3722,7 +3856,8 @@ public final class Renderer2D {
 
         public void quad(double x, double y, double width, double height,
                          int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
-            appendColoredQuad(mesh, x, y, width, height, cTopLeft, cTopRight, cBottomRight, cBottomLeft);
+            appendGeometryQuad(mesh, x, y, width, height,
+                    cTopLeft, cTopRight, cBottomRight, cBottomLeft);
         }
     }
 

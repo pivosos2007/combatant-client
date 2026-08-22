@@ -758,6 +758,38 @@ public class BlockESP extends Module {
         }
     }
 
+    /**
+     * Immutable view of the targets currently accepted by BlockESP's own scan mode and distance filters.
+     * HUD consumers should use this instead of rescanning the world or reaching into render state.
+     */
+    public DetectionSnapshot detectionSnapshot() {
+        if (!isEnabled() || renderTargets.isEmpty()) return DetectionSnapshot.EMPTY;
+
+        Map<String, MutableBlockCount> byBlock = new LinkedHashMap<>();
+        int visible = 0;
+        int hidden = 0;
+        for (Target target : renderTargets.values()) {
+            if (target == null || target.state == null) continue;
+            String id = BuiltInRegistries.BLOCK.getKey(target.state.getBlock()).toString();
+            String name = target.state.getBlock().getName().getString();
+            MutableBlockCount count = byBlock.computeIfAbsent(id, ignored -> new MutableBlockCount(id, name));
+            count.total++;
+            if (target.visible) {
+                count.visible++;
+                visible++;
+            } else {
+                count.hidden++;
+                hidden++;
+            }
+        }
+
+        List<BlockDetection> blocks = byBlock.values().stream()
+                .map(count -> new BlockDetection(count.id, count.name, count.total, count.visible, count.hidden))
+                .sorted(Comparator.comparingInt(BlockDetection::total).reversed().thenComparing(BlockDetection::id))
+                .toList();
+        return new DetectionSnapshot(visible + hidden, visible, hidden, List.copyOf(blocks));
+    }
+
     private List<List<Target>> buildClusters(Collection<Target> targets) {
         Map<BlockPos, Target> map = new HashMap<>();
         for (Target target : targets) {
@@ -822,6 +854,26 @@ public class BlockESP extends Module {
         BlockState state;
         AABB box;
         boolean visible;
+    }
+
+    public record DetectionSnapshot(int total, int visible, int hidden, List<BlockDetection> blocks) {
+        public static final DetectionSnapshot EMPTY = new DetectionSnapshot(0, 0, 0, List.of());
+    }
+
+    public record BlockDetection(String id, String name, int total, int visible, int hidden) {
+    }
+
+    private static final class MutableBlockCount {
+        private final String id;
+        private final String name;
+        private int total;
+        private int visible;
+        private int hidden;
+
+        private MutableBlockCount(String id, String name) {
+            this.id = id;
+            this.name = name;
+        }
     }
 
     private enum RenderStatus {

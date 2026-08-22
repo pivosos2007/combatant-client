@@ -131,6 +131,13 @@ public abstract class ItemInHandRendererMixin {
             boolean irisSolidArmOnly = irisSplitHeldItem && irisRenderingSolid;
             boolean irisTranslucentItemOnly = irisSplitHeldItem && !irisRenderingSolid;
             boolean hmiReplay = irisTranslucentItemOnly && viewModel.beginHmiReplayPass();
+            boolean renderEmptyHand = item.isEmpty()
+                    && hand == InteractionHand.MAIN_HAND
+                    && !player.isInvisible();
+            boolean renderHoldingHand = !item.isEmpty()
+                    && !irisTranslucentItemOnly
+                    && viewModel.shouldRenderHmiHoldingHands()
+                    && !player.isInvisible();
 
             matrices.pushPose();
             try {
@@ -147,13 +154,15 @@ public abstract class ItemInHandRendererMixin {
                         item,
                         equipProgress,
                         matrices,
-                        viewModel.hmiMotionSettings()
+                        viewModel.hmiMotionSettings(),
+                        renderEmptyHand || renderHoldingHand,
+                        !item.isEmpty()
                 );
 
                 if (item.isEmpty()) {
                     // Match vanilla visibility semantics for the empty main hand, but let the HMI
                     // hand scripts own its pose.
-                    if (hand == InteractionHand.MAIN_HAND && !player.isInvisible()) {
+                    if (renderEmptyHand) {
                         matrices.pushPose();
                         try {
                             renderPlayerArm(matrices, queue, light, 0.0f, 0.0f, arm);
@@ -162,9 +171,7 @@ public abstract class ItemInHandRendererMixin {
                         }
                     }
                 } else {
-                    if (!irisTranslucentItemOnly
-                            && viewModel.shouldRenderHmiHoldingHands()
-                            && !player.isInvisible()) {
+                    if (renderHoldingHand) {
                         matrices.pushPose();
                         try {
                             renderPlayerArm(matrices, queue, light, 0.0f, 0.0f, arm);
@@ -310,7 +317,6 @@ public abstract class ItemInHandRendererMixin {
         viewModel.applySwingAnimation(swingProgress, ms, arm);
     }
 }
-
 
 
 

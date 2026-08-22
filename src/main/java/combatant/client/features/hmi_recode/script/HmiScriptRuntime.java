@@ -14,6 +14,7 @@ import com.caoccao.javet.interop.converters.JavetObjectConverter;
 import combatant.client.features.hmi_recode.HmiScriptKind;
 import combatant.client.features.hmi_recode.render.HmiModelCommand;
 import combatant.client.features.hmi_recode.render.HmiTransformCommand;
+import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.renderer.ui.runtime.script.JavetRuntimeBootstrap;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.Minecraft;
@@ -37,11 +38,18 @@ public final class HmiScriptRuntime implements AutoCloseable {
             globalThis.__hmi_commands = [];
             globalThis.__hmi_model_commands = [];
             globalThis.__hmi_sound_events = [];
+            globalThis.__hmi_collect_geometry = true;
             globalThis.global = globalThis;
             globalThis.console = globalThis.console || { log(){}, info(){}, warn(){}, error(){}, debug(){}, trace(){} };
 
-            const __hmi_cmd = (op, args) => __hmi_commands.push({op, args:Array.from(args)});
-            const __hmi_model = (from, to, op, args) => __hmi_model_commands.push({from, to, op, args:Array.from(args)});
+            // Keep the Java boundary compact. Positional arrays avoid materializing a Map plus a
+            // nested argument list for every tiny transform command in Javet's object converter.
+            const __hmi_cmd = (op, args) => {
+              if (__hmi_collect_geometry) __hmi_commands.push([op, ...args]);
+            };
+            const __hmi_model = (from, to, op, args) => {
+              if (__hmi_collect_geometry) __hmi_model_commands.push([from, to, op, ...args]);
+            };
             const __hmi_map = () => {
               const m = new Map();
               m.put = (k, v) => { m.set(k, v); return v; };
@@ -161,7 +169,7 @@ public final class HmiScriptRuntime implements AutoCloseable {
             globalThis.Texture = { of:(namespace,path)=>String(namespace)+':' + String(path) };
             globalThis.string = { find:(value,needle)=>String(value).includes(String(needle)) };
             globalThis.KeyBindManager = { isKeyPressed:key=>Number(key)===74 && !!globalThis.__hmi_inspect_pressed };
-            globalThis.S = { playSound:(id,volume)=>__hmi_sound_events.push({id:String(id),volume:Number(volume)||1}) };
+            globalThis.S = { playSound:(id,volume)=>__hmi_sound_events.push([String(id),Number(volume)||1]) };
             // These outputs currently have no Java consumer. Keep the compatibility API callable
             // without allocating command payloads that would immediately be discarded.
             globalThis.debugger = { out:()=>{} };
@@ -180,12 +188,44 @@ public final class HmiScriptRuntime implements AutoCloseable {
               __hmi_model_commands.length = 0;
               __hmi_sound_events.length = 0;
             };
-            globalThis.__hmi_take_output = () => ({
-              commands:__hmi_commands,
-              modelCommands:__hmi_model_commands,
-              sounds:__hmi_sound_events
-            });
+            const __hmi_run = name => {
+              __hmi_reset_output();
+              globalThis[name]();
+              // Every following stage resets the collectors, so retain independent snapshots.
+              return [__hmi_commands.slice(), __hmi_model_commands.slice(), __hmi_sound_events.slice()];
+            };
+            const __hmi_run_state_only = name => {
+              __hmi_reset_output();
+              __hmi_collect_geometry = false;
+              try {
+                globalThis[name]();
+                // Sounds remain observable even when this hand has no visible geometry.
+                return [[], [], __hmi_sound_events.slice()];
+              } finally {
+                __hmi_collect_geometry = true;
+              }
+            };
+            globalThis.__hmi_execute_plan = mask => {
+              const context = globalThis.__hmi_context;
+              globalThis.mainHandSwitchEvent = !!context.mainHandSwitchEvent;
+              globalThis.offHandSwitchEvent = !!context.offHandSwitchEvent;
+              globalThis.__hmi_inspect_pressed = !!context.inspectPressed;
+              return [
+                (mask & 1) !== 0 ? __hmi_run('__hmi_hand_pose')
+                                 : ((mask & 16) !== 0 ? __hmi_run_state_only('__hmi_hand_pose') : null),
+                (mask & 2) !== 0 ? __hmi_run('__hmi_hand_relative_pose') : null,
+                (mask & 4) !== 0 ? __hmi_run('__hmi_item_pose') : null,
+                (mask & 8) !== 0 ? __hmi_run('__hmi_item_model') : null
+              ];
+            };
             """;
+
+    public static final int HAND_POSE = 1;
+    public static final int HAND_RELATIVE_POSE = 1 << 1;
+    public static final int ITEM_POSE = 1 << 2;
+    public static final int ITEM_MODEL = 1 << 3;
+    public static final int HAND_POSE_STATE_ONLY = 1 << 4;
+    private static final HmiScriptKind[] KINDS = HmiScriptKind.values();
 
     private final EnumMap<HmiScriptKind, String> loadedSources = new EnumMap<>(HmiScriptKind.class);
     private V8Runtime runtime;
@@ -193,36 +233,66 @@ public final class HmiScriptRuntime implements AutoCloseable {
     private boolean dirty = true;
 
     public synchronized Result execute(HmiScriptKind kind, Map<String, Object> context) {
+        Result[] results = executePlan(mask(kind), context);
+        Result result = results[kind.ordinal()];
+        return result != null ? result : Result.EMPTY;
+    }
+
+    /**
+     * Executes all requested HMI stages in one V8 call. The scripts still run in their original
+     * hand/relative/item/model order and each stage retains an isolated output collector.
+     */
+    public synchronized Result[] executePlan(int plan, Map<String, Object> context) {
+        Result[] results = new Result[KINDS.length];
         try {
             ensureReady();
-            if (runtime == null) return Result.EMPTY;
-            String function = "__hmi_" + kind.name().toLowerCase();
-            if (!runtime.getGlobalObject().getBoolean(function + "_ready")) return Result.EMPTY;
+            if (runtime == null || plan == 0) return fillMissing(plan, results);
 
             // Javet's object converter recursively materializes the complete player/item context.
-            // A hand render invokes up to four HMI scripts with the same Map instance, so bind it
-            // once to V8 and let the compiled wrappers read the JS-side object afterwards.
+            // Bind it once, then execute every required stage before crossing back into Java.
             if (boundContext != context) {
                 boundContext = context;
                 runtime.getGlobalObject().set("__hmi_context", context);
-                runtime.getGlobalObject().set("mainHandSwitchEvent", Boolean.TRUE.equals(context.get("mainHandSwitchEvent")));
-                runtime.getGlobalObject().set("offHandSwitchEvent", Boolean.TRUE.equals(context.get("offHandSwitchEvent")));
-                runtime.getGlobalObject().set("__hmi_inspect_pressed", Boolean.TRUE.equals(context.get("inspectPressed")));
             }
 
-            runtime.getGlobalObject().invokeVoid("__hmi_reset_output");
-            runtime.getGlobalObject().invokeVoid(function);
-            Object raw = runtime.getGlobalObject().invokeObject("__hmi_take_output");
-            if (!(raw instanceof Map<?, ?> map)) return Result.EMPTY;
-            return new Result(
-                    HmiTransformCommand.decode(map.get("commands")),
-                    HmiModelCommand.decode(map.get("modelCommands")),
-                    HmiSoundCommand.decode(map.get("sounds"))
-            );
+            try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("hmi:v8_execute_plan")) {
+                Object raw = runtime.getGlobalObject().invokeObject("__hmi_execute_plan", plan);
+                if (!(raw instanceof List<?> stages)) return fillMissing(plan, results);
+                int count = Math.min(stages.size(), results.length);
+                for (int i = 0; i < count; i++) {
+                    Object stage = stages.get(i);
+                    if (!(stage instanceof List<?> output) || output.size() < 3) continue;
+                    results[i] = new Result(
+                            HmiTransformCommand.decode(output.get(0)),
+                            HmiModelCommand.decode(output.get(1)),
+                            HmiSoundCommand.decode(output.get(2))
+                    );
+                }
+            }
         } catch (Throwable t) {
-            DebugLog.error("[HMI] JavaScript execution failed for %s: %s", t, kind, t.getMessage());
-            return Result.EMPTY;
+            DebugLog.error("[HMI] JavaScript execution failed for plan %d: %s", t, plan, t.getMessage());
         }
+        return fillMissing(plan, results);
+    }
+
+    private static Result[] fillMissing(int plan, Result[] results) {
+        for (HmiScriptKind kind : KINDS) {
+            boolean requested = (plan & mask(kind)) != 0
+                    || kind == HmiScriptKind.HAND_POSE && (plan & HAND_POSE_STATE_ONLY) != 0;
+            if (requested && results[kind.ordinal()] == null) {
+                results[kind.ordinal()] = Result.EMPTY;
+            }
+        }
+        return results;
+    }
+
+    private static int mask(HmiScriptKind kind) {
+        return switch (kind) {
+            case HAND_POSE -> HAND_POSE;
+            case HAND_RELATIVE_POSE -> HAND_RELATIVE_POSE;
+            case ITEM_POSE -> ITEM_POSE;
+            case ITEM_MODEL -> ITEM_MODEL;
+        };
     }
 
     public synchronized void invalidate() {
@@ -241,7 +311,7 @@ public final class HmiScriptRuntime implements AutoCloseable {
         runtime.getExecutor(BOOTSTRAP).setResourceName("combatant:hmi/bootstrap.js").executeVoid();
         ResourceManager manager = Minecraft.getInstance().getResourceManager();
         loadedSources.clear();
-        for (HmiScriptKind kind : HmiScriptKind.values()) {
+        for (HmiScriptKind kind : KINDS) {
             String source = loadStack(manager, kind);
             loadedSources.put(kind, source);
             String function = "__hmi_" + kind.name().toLowerCase();
@@ -289,7 +359,7 @@ public final class HmiScriptRuntime implements AutoCloseable {
     }
 
     public record Result(List<HmiTransformCommand> commands, List<HmiModelCommand> modelCommands,
-                         List<HmiSoundCommand> sounds) {
-        static final Result EMPTY = new Result(List.of(), List.of(), List.of());
+                          List<HmiSoundCommand> sounds) {
+        public static final Result EMPTY = new Result(List.of(), List.of(), List.of());
     }
 }

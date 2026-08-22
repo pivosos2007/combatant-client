@@ -33,9 +33,13 @@ public final class WorldCommandBuffer implements RenderCommandBuffer {
 
     @Override
     public void submit(RenderFrameContext context) {
-        for (RhiDrawCommand command : commands) {
-            CombatantRenderSystem.rhi().drawMesh(command);
+        try {
+            CombatantRenderSystem.rhi().drawMeshes(commands);
+        } finally {
+            for (RhiDrawCommand command : commands) {
+                if (command != null && command.mesh != null) command.mesh.close();
+            }
+            clear();
         }
-        clear();
     }
 }

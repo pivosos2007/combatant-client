@@ -22,6 +22,9 @@ import combatant.client.render.engine.text.backend.*;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Stage 10 text owner: command buffer, backend router and RHI mesh submission for glyph text.
  */
@@ -105,6 +108,19 @@ public enum TextRenderSystem {
                                                 MeshBuilder mesh,
                                                 RenderPipeline pipeline,
                                                 TextPlacementMode placement) {
+        List<RhiDrawCommand> commands = new ArrayList<>(1);
+        appendGlyphMeshCommand(commands, label, font, mesh, pipeline, placement);
+        CombatantRenderSystem.rhi().drawMeshes(commands);
+    }
+
+    /** Appends glyph geometry to an existing ordered pass stream without changing painter order. */
+    public static void appendGlyphMeshCommand(List<RhiDrawCommand> commands,
+                                              String label,
+                                              GlyphFont font,
+                                              MeshBuilder mesh,
+                                              RenderPipeline pipeline,
+                                              TextPlacementMode placement) {
+        if (commands == null) return;
         if (font == null || mesh == null || pipeline == null) return;
         if (mesh.isBuilding()) mesh.end();
         if (mesh.getIndicesCount() <= 0) return;
@@ -118,24 +134,30 @@ public enum TextRenderSystem {
 
         int vertexBytes = mesh.getVertexBytes();
         int indexBytes = mesh.getIndexBytes();
-        GpuMeshHandle handle = CombatantRenderSystem.rhi().dynamicMeshes().upload(mesh);
-        STATS.meshUpload(vertexBytes, indexBytes);
-        STATS.glyphs(Math.max(0, mesh.getVertexCount() / 4));
-        if (placement != null && placement.world()) STATS.worldPlacement();
-        STATS.backend(font.isMsdf() ? TextBackendPreference.MSDF : TextBackendPreference.BITMAP_ATLAS);
+        GpuMeshHandle handle = null;
+        try {
+            handle = CombatantRenderSystem.rhi().dynamicMeshes().upload(mesh);
+            STATS.meshUpload(vertexBytes, indexBytes);
+            STATS.glyphs(Math.max(0, mesh.getVertexCount() / 4));
+            if (placement != null && placement.world()) STATS.worldPlacement();
+            STATS.backend(font.isMsdf() ? TextBackendPreference.MSDF : TextBackendPreference.BITMAP_ATLAS);
 
-        RhiDrawCommand.Builder command = RhiDrawCommand.builder(label != null ? label : "Combatant Text")
-                .pipeline(pipeline)
-                .colorAttachment(mc.gameRenderer.mainRenderTarget().getColorTextureView())
-                .mesh(handle)
-                .sampler("u_Texture", texture.getTextureView(), texture.getSampler());
+            RhiDrawCommand.Builder command = RhiDrawCommand.builder(label != null ? label : "Combatant Text")
+                    .pipeline(pipeline)
+                    .colorAttachment(mc.gameRenderer.mainRenderTarget().getColorTextureView())
+                    .mesh(handle)
+                    .sampler("u_Texture", texture.getTextureView(), texture.getSampler());
 
-        if (font.isMsdf()) {
-            MsdfTextUniforms.update(font.getPxRange(), font.getAtlasWidth(), font.getAtlasHeight());
-            command.uniform("MsdfText", MsdfTextUniforms.get());
+            if (font.isMsdf()) {
+                MsdfTextUniforms.update(font.getPxRange(), font.getAtlasWidth(), font.getAtlasHeight());
+                command.uniform("MsdfText", MsdfTextUniforms.get());
+            }
+
+            commands.add(command.build());
+            handle = null;
+        } finally {
+            if (handle != null) handle.close();
         }
-
-        CombatantRenderSystem.rhi().drawMesh(command.build());
     }
 
     public static RenderPipeline uiPipelineFor(GlyphFont font) {

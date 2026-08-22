@@ -12,8 +12,15 @@ public record UiFastShapeParams(float kind, float shape, float strokeWidth, floa
     private static final int FLAG_BITS = 2;
     private static final int FLAG_MASK = (1 << FLAG_BITS) - 1;
     private static final float SOFTNESS_STEPS = 16.0f;
+    public static final float KIND_RECT = 0.0f;
     public static final float KIND_ROUNDED = 1.0f;
     public static final float KIND_SQUIRCLE = 2.0f;
+    public static final float KIND_ROUNDED_CORNERS = 3.0f;
+    public static final float KIND_CHAMFER = 4.0f;
+    public static final float KIND_CIRCLE = 5.0f;
+    public static final float KIND_ARC = 6.0f;
+    public static final float KIND_SHADOW = 7.0f;
+    public static final float KIND_SOFT_SHADOW = 8.0f;
     public static final float FLAG_FILL = 1.0f;
     public static final float FLAG_INNER_STROKE = 2.0f;
 

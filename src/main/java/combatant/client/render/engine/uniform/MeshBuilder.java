@@ -295,6 +295,16 @@ public final class MeshBuilder implements AutoCloseable {
         return color(color.r, color.g, color.b, color.a);
     }
 
+    /** Writes an ARGB color without allocating a temporary {@link RenderColor}. */
+    public MeshBuilder colorArgb(int argb) {
+        return color(
+                (argb >>> 16) & 0xFF,
+                (argb >>> 8) & 0xFF,
+                argb & 0xFF,
+                (argb >>> 24) & 0xFF
+        );
+    }
+
     public int next() {
         debugCompletedVertex();
         return vertexI++;

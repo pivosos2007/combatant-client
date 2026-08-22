@@ -83,6 +83,17 @@ public enum CombatantVertexFormats {
             .addAttribute("Params2", CombatantVertexFormatElements.PARAMS2)
             .build();
 
+    /** Shared data-driven UI geometry family: shape header plus two shape-specific payloads. */
+    public static final VertexFormat POS2_LOCAL_COLOR_RECT_PARAMS3 = VertexFormat.builder(0)
+            .addAttribute("Position", CombatantVertexFormatElements.POS2)
+            .addAttribute("Local", CombatantVertexFormatElements.LOCAL)
+            .addAttribute("Color", CombatantVertexFormatElements.COLOR)
+            .addAttribute("Rect", CombatantVertexFormatElements.RECT)
+            .addAttribute("Params", CombatantVertexFormatElements.PARAMS)
+            .addAttribute("Params2", CombatantVertexFormatElements.PARAMS2)
+            .addAttribute("Params3", CombatantVertexFormatElements.PARAMS3)
+            .build();
+
     public static final VertexFormat POS2_TEXTURE_COLOR_RECT_PARAMS = VertexFormat.builder(0)
             .addAttribute("Position", CombatantVertexFormatElements.POS2)
             .addAttribute("UV0", CombatantVertexFormatElements.TEXTURE)

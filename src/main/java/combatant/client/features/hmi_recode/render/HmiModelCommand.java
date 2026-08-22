@@ -23,6 +23,13 @@ public record HmiModelCommand(int fromInclusive, int toInclusive, HmiTransformCo
         if (!(raw instanceof Iterable<?> iterable)) return List.of();
         List<HmiModelCommand> out = new ArrayList<>();
         for (Object entry : iterable) {
+            if (entry instanceof List<?> packed && packed.size() >= 3 && packed.get(2) instanceof String name) {
+                int from = number(packed.get(0), 0);
+                int to = Math.max(from, number(packed.get(1), from));
+                out.add(new HmiModelCommand(from, to,
+                        new HmiTransformCommand(name, numbers(packed, 3))));
+                continue;
+            }
             if (!(entry instanceof Map<?, ?> map)) continue;
             int from = number(map.get("from"), 0);
             int to = Math.max(from, number(map.get("to"), from));
@@ -36,6 +43,16 @@ public record HmiModelCommand(int fromInclusive, int toInclusive, HmiTransformCo
             out.add(new HmiModelCommand(from, to, new HmiTransformCommand(name, packed)));
         }
         return out;
+    }
+
+    private static double[] numbers(List<?> values, int offset) {
+        double[] packed = new double[Math.max(0, values.size() - offset)];
+        int count = 0;
+        for (int i = offset; i < values.size(); i++) {
+            Object value = values.get(i);
+            if (value instanceof Number number) packed[count++] = number.doubleValue();
+        }
+        return count == packed.length ? packed : java.util.Arrays.copyOf(packed, count);
     }
 
     public static void apply(List<HmiModelCommand> commands, int quadIndex, PoseStack stack) {

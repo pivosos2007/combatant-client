@@ -267,6 +267,17 @@ public final class UiMeshGeometry {
         }
     }
 
+    private static int appendFlatGeometryVertex(MeshBuilder mesh, double x, double y, int argb) {
+        return mesh.vec2(x, y)
+                .rawLocal2(x, y)
+                .color((argb >>> 16) & 0xFF, (argb >>> 8) & 0xFF, argb & 0xFF, (argb >>> 24) & 0xFF)
+                .vec4(0f, 0f, 0f, 0f)
+                .vec4(UiFastShapeParams.KIND_RECT, 0f, 0f, 0f)
+                .vec4(0f, 0f, 0f, 0f)
+                .vec4(0f, 0f, 0f, 0f)
+                .next();
+    }
+
     public static void appendPolygon(MeshBuilder mesh, double[] points, int pointCount,
                                       int[] indices, int[] vertexIds, int argb) {
         int safeCount = Math.min(pointCount, Math.min(points.length / 2, Math.min(indices.length, vertexIds.length)));
@@ -274,14 +285,9 @@ public final class UiMeshGeometry {
         if (triangles <= 0) return;
         mesh.ensureCapacity(safeCount, triangles * 3);
     
-        int a = (argb >>> 24) & 0xFF;
-        int r = (argb >>> 16) & 0xFF;
-        int g = (argb >>> 8) & 0xFF;
-        int b = argb & 0xFF;
-    
         for (int i = 0; i < safeCount; i++) {
             indices[i] = i;
-            vertexIds[i] = mesh.vec2(points[i * 2], points[i * 2 + 1]).color(r, g, b, a).next();
+            vertexIds[i] = appendFlatGeometryVertex(mesh, points[i * 2], points[i * 2 + 1], argb);
         }
     
         double area = polygonArea(points, safeCount);
@@ -340,11 +346,7 @@ public final class UiMeshGeometry {
                     angleDeg,
                     offsetPx
             );
-            int a = (argb >>> 24) & 0xFF;
-            int r = (argb >>> 16) & 0xFF;
-            int g = (argb >>> 8) & 0xFF;
-            int b = argb & 0xFF;
-            vertexIds[i] = mesh.vec2(points[i * 2], points[i * 2 + 1]).color(r, g, b, a).next();
+            vertexIds[i] = appendFlatGeometryVertex(mesh, points[i * 2], points[i * 2 + 1], argb);
         }
     
         double area = polygonArea(points, safeCount);
@@ -499,15 +501,10 @@ public final class UiMeshGeometry {
         double nx = -dy / len * half;
         double ny = dx / len * half;
     
-        int a = (argb >>> 24) & 0xFF;
-        int r = (argb >>> 16) & 0xFF;
-        int g = (argb >>> 8) & 0xFF;
-        int b = argb & 0xFF;
-    
-        int i1 = mesh.vec2(x1 - nx, y1 - ny).color(r, g, b, a).next();
-        int i2 = mesh.vec2(x1 + nx, y1 + ny).color(r, g, b, a).next();
-        int i3 = mesh.vec2(x2 + nx, y2 + ny).color(r, g, b, a).next();
-        int i4 = mesh.vec2(x2 - nx, y2 - ny).color(r, g, b, a).next();
+        int i1 = appendFlatGeometryVertex(mesh, x1 - nx, y1 - ny, argb);
+        int i2 = appendFlatGeometryVertex(mesh, x1 + nx, y1 + ny, argb);
+        int i3 = appendFlatGeometryVertex(mesh, x2 + nx, y2 + ny, argb);
+        int i4 = appendFlatGeometryVertex(mesh, x2 - nx, y2 - ny, argb);
         mesh.quad(i1, i2, i3, i4);
     }
 
@@ -527,19 +524,10 @@ public final class UiMeshGeometry {
         double nx = -dy / len * half;
         double ny = dx / len * half;
     
-        int sa = (startArgb >>> 24) & 0xFF;
-        int sr = (startArgb >>> 16) & 0xFF;
-        int sg = (startArgb >>> 8) & 0xFF;
-        int sb = startArgb & 0xFF;
-        int ea = (endArgb >>> 24) & 0xFF;
-        int er = (endArgb >>> 16) & 0xFF;
-        int eg = (endArgb >>> 8) & 0xFF;
-        int eb = endArgb & 0xFF;
-    
-        int i1 = mesh.vec2(x1 - nx, y1 - ny).color(sr, sg, sb, sa).next();
-        int i2 = mesh.vec2(x1 + nx, y1 + ny).color(sr, sg, sb, sa).next();
-        int i3 = mesh.vec2(x2 + nx, y2 + ny).color(er, eg, eb, ea).next();
-        int i4 = mesh.vec2(x2 - nx, y2 - ny).color(er, eg, eb, ea).next();
+        int i1 = appendFlatGeometryVertex(mesh, x1 - nx, y1 - ny, startArgb);
+        int i2 = appendFlatGeometryVertex(mesh, x1 + nx, y1 + ny, startArgb);
+        int i3 = appendFlatGeometryVertex(mesh, x2 + nx, y2 + ny, endArgb);
+        int i4 = appendFlatGeometryVertex(mesh, x2 - nx, y2 - ny, endArgb);
         mesh.quad(i1, i2, i3, i4);
     }
 
@@ -553,19 +541,15 @@ public final class UiMeshGeometry {
         int safeSegments = Math.max(6, Math.min(24, segments));
         mesh.ensureCapacity(safeSegments + 1, safeSegments * 3);
     
-        int a = (argb >>> 24) & 0xFF;
-        int r = (argb >>> 16) & 0xFF;
-        int g = (argb >>> 8) & 0xFF;
-        int b = argb & 0xFF;
-    
-        int center = mesh.vec2(cx, cy).color(r, g, b, a).next();
+        int center = appendFlatGeometryVertex(mesh, cx, cy, argb);
         int first = -1;
         int prev = -1;
         for (int i = 0; i < safeSegments; i++) {
             double angle = Math.PI * 2.0 * i / safeSegments;
-            int vertex = mesh.vec2(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius)
-                    .color(r, g, b, a)
-                    .next();
+            int vertex = appendFlatGeometryVertex(mesh,
+                    cx + Math.cos(angle) * radius,
+                    cy + Math.sin(angle) * radius,
+                    argb);
             if (first < 0) {
                 first = vertex;
             } else {

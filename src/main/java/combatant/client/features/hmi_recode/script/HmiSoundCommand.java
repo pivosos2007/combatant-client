@@ -22,6 +22,13 @@ public record HmiSoundCommand(String id, float volume) {
         if (!(raw instanceof Iterable<?> iterable)) return List.of();
         List<HmiSoundCommand> out = new ArrayList<>();
         for (Object entry : iterable) {
+            if (entry instanceof List<?> packed && !packed.isEmpty() && packed.get(0) instanceof String name) {
+                if (name.isBlank()) continue;
+                float volume = packed.size() > 1 && packed.get(1) instanceof Number number
+                        ? number.floatValue() : 1.0f;
+                out.add(new HmiSoundCommand(name, volume));
+                continue;
+            }
             if (!(entry instanceof Map<?, ?> map)) continue;
             Object id = map.get("id");
             if (!(id instanceof String name) || name.isBlank()) continue;

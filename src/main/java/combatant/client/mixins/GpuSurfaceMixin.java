@@ -15,6 +15,7 @@ import com.mojang.blaze3d.systems.SurfaceException;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.profiler.ProfilerPhase;
+import combatant.client.render.engine.profiler.TracyGpuProfiler;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.util.FastFps;
 import org.spongepowered.asm.mixin.Mixin;
@@ -41,6 +42,9 @@ public abstract class GpuSurfaceMixin {
 
     @Inject(method = "present", at = @At("TAIL"))
     private void combatant$onPresentTail(CallbackInfo info) {
+        if (TracyGpuProfiler.isEnabled()) {
+            TracyGpuProfiler.onFrameEnd();
+        }
         CombatantRenderSystem.onFramePresented();
         Renderer2D.getBatchStats().onFrameStart();
         Renderer2D.invalidateWorldGlassSource();

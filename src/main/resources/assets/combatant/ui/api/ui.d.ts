@@ -325,6 +325,7 @@ export type UiConnectorNode = UiNode & {
     | "orthogonal"
     | "node-edge"
     | "spline"
+    | "spline-area"
     | "rounded-edge"
     | "rounded-node-edge"
     | "rounded-orthogonal";
@@ -367,6 +368,12 @@ export type UiConnectorNode = UiNode & {
   /** Local x coordinate for orthogonal connector middle column. */
   midX?: number;
   points?: Array<{ x: number; y: number }> | number[];
+  /** Local y coordinate used as the bottom edge of a spline area fill. Defaults to node height. */
+  baseline?: number;
+  fillStartColor?: string | number;
+  fillEndColor?: string | number;
+  fillBottomStartColor?: string | number;
+  fillBottomEndColor?: string | number;
   stroke?: string | number;
   strokeWidth?: number;
   /** Path gradient start/end. Connectors use path progress; rounded anchors are handled before gradient draw. */

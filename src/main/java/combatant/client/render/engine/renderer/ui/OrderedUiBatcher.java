@@ -37,6 +37,10 @@ import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
 import combatant.client.render.engine.uniform.impl.UIBlurUniforms;
+import combatant.client.render.engine.rhi.RhiDrawCommand;
+
+import java.util.ArrayList;
+import java.util.List;
 
 
 public final class OrderedUiBatcher {
@@ -302,6 +306,7 @@ public final class OrderedUiBatcher {
             return;
         }
         flushing = true;
+        List<RhiDrawCommand> pendingDraws = new ArrayList<>(order.size());
         try {
             if (order.isEmpty()) {
                 Renderer2D.BATCH_STATS.noteEmpty(active, poolTotal());
@@ -398,6 +403,7 @@ public final class OrderedUiBatcher {
 
             for (Object entry : order) {
                 if (entry instanceof ItemBatch itemBatch) {
+                    flushPendingDraws(pendingDraws);
                     if (itemBatch.isEmpty()) {
                         continue;
                     }
@@ -409,11 +415,13 @@ public final class OrderedUiBatcher {
                         vertices += textBatch.mesh.getVertexCount();
                         indices += textBatch.mesh.getIndicesCount();
                         if (textBatch.liquidGlassText) {
+                            flushPendingDraws(pendingDraws);
                             drawCalls += flushLiquidGlassTextBatch(textBatch, mc, mainColorView,
                                     liquidSourceView, liquidSourceSampler, screenW, screenH, uiScale);
                         } else {
                             drawCalls++;
-                            TextRenderSystem.submitGlyphMeshImmediate(textBatch.label, textBatch.font, textBatch.mesh, textBatch.pipeline, textBatch.placement);
+                            TextRenderSystem.appendGlyphMeshCommand(pendingDraws, textBatch.label, textBatch.font,
+                                    textBatch.mesh, textBatch.pipeline, textBatch.placement);
                         }
                     }
                     continue;
@@ -427,7 +435,8 @@ public final class OrderedUiBatcher {
                 vertices += batch.mesh.getVertexCount();
                 indices += batch.mesh.getIndicesCount();
 
-                if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.GLASS_BLUR || batch.type == UiBatchType.BLUR_COMPLEX) {
+                if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS) {
+                    flushPendingDraws(pendingDraws);
                     int blurPassCalls = prepareSharedBlur(mc, batch.view, batch.sampler, screenW, screenH, uiScale,
                             batch.blurQuality, batch.blurOffsetPx);
                     if (sharedBlurredView != null && sharedBlurredSampler != null) {
@@ -442,7 +451,7 @@ public final class OrderedUiBatcher {
                         }
                         builder.uniform("UIBatch", uiBatch);
                         builder.sampler("u_Texture", sharedBlurredView, sharedBlurredSampler);
-                        builder.end();
+                        builder.endTo(pendingDraws);
 
                         drawCalls += blurPassCalls;
                         continue;
@@ -453,6 +462,7 @@ public final class OrderedUiBatcher {
                 }
 
                 if (batch.type == UiBatchType.LIQUID_GLASS) {
+                    flushPendingDraws(pendingDraws);
                     GpuTextureView sourceView = liquidSourceView != null ? liquidSourceView : batch.view;
                     GpuSampler sourceSampler = liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
                     boolean clippedComposite = batch.shapeClipActive;
@@ -489,11 +499,11 @@ public final class OrderedUiBatcher {
                     directBuilder.uniform("UIBatch", uiBatch);
                     directBuilder.sampler("u_Texture", sourceView, sourceSampler);
                     directBuilder.sampler("u_BlurTexture", liquidBlurView, liquidBlurSampler);
-                    directBuilder.end();
+                    directBuilder.endTo(pendingDraws);
                     continue;
                 }
 
-                boolean isFx = batch.type == UiBatchType.BLUR || batch.type == UiBatchType.GLASS_BLUR || batch.type == UiBatchType.BLUR_COMPLEX;
+                boolean isFx = batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS;
                 if (isFx) {
                     if (fxBuffer == null) {
                         fxBuffer = UiBlurResources.ensureEffects(mc);
@@ -506,6 +516,7 @@ public final class OrderedUiBatcher {
                         }
                     }
                     if (fxBuffer != null && fxView != null && fxSampler != null && fxCompositeMesh != null) {
+                        flushPendingDraws(pendingDraws);
                         MeshRenderer fxBuilder = MeshRenderer.begin()
                                 .attachments(fxBuffer)
                                 .clearColor(0x00000000)
@@ -554,7 +565,7 @@ public final class OrderedUiBatcher {
                     }
                 }
 
-                if ((batch.type == UiBatchType.BLUR || batch.type == UiBatchType.GLASS_BLUR || batch.type == UiBatchType.BLUR_COMPLEX || batch.type == UiBatchType.LIQUID_GLASS)
+                if ((batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS || batch.type == UiBatchType.LIQUID_GLASS)
                         && batch.type.usesSampler
                         && batch.view == mainColorView
                         && !(batch.type == UiBatchType.LIQUID_GLASS && liquidSourceView != null)) {
@@ -590,8 +601,10 @@ public final class OrderedUiBatcher {
                     }
                 }
 
-                builder.end();
+                builder.endTo(pendingDraws);
             }
+
+            flushPendingDraws(pendingDraws);
 
             int batches = order.size();
             Renderer2D.BATCH_STATS.update(active, batches, drawCalls, vertices, indices, poolTotal());
@@ -604,7 +617,24 @@ public final class OrderedUiBatcher {
                 Renderer2D.BATCH_STATS.setActive(false);
             }
         } finally {
+            for (RhiDrawCommand command : pendingDraws) {
+                if (command != null && command.mesh != null) command.mesh.close();
+            }
+            pendingDraws.clear();
             flushing = false;
+        }
+    }
+
+    private static void flushPendingDraws(List<RhiDrawCommand> pendingDraws) {
+        if (pendingDraws == null || pendingDraws.isEmpty()) return;
+        try {
+            CombatantRenderSystem.rhi().drawMeshes(pendingDraws);
+        } finally {
+            // Backends close every submitted range. This covers commands after an exceptional range.
+            for (RhiDrawCommand command : pendingDraws) {
+                if (command != null && command.mesh != null) command.mesh.close();
+            }
+            pendingDraws.clear();
         }
     }
 

@@ -21,7 +21,11 @@ import java.util.Locale;
 import java.util.Map;
 
 public final class UiPrimitiveRenderer {
-    private final double[] points = new double[64];
+    /**
+     * Connector point storage. HUD charts commonly keep 100+ samples, so the old
+     * 32-point capacity silently truncated the right-hand side of their paths.
+     */
+    private final double[] points = new double[512];
     private final int[] gradientCornersTmp = new int[4];
     private float renderAlpha = 1.0f;
 
@@ -935,6 +939,17 @@ public final class UiPrimitiveRenderer {
                     }
                 }
             }
+            case "spline-area", "spline_area", "area-spline", "area_spline" -> {
+                int count = readPoints(props.get("points"), bounds.x(), bounds.y());
+                if (count >= 2) {
+                    double baseline = bounds.y() + props.number("baseline", bounds.height());
+                    int fillStart = color(props.get("fillStartColor"), UiColor.multiplyAlpha(start, 0.30f));
+                    int fillEnd = color(props.get("fillEndColor"), UiColor.multiplyAlpha(end, 0.24f));
+                    int bottomStart = color(props.get("fillBottomStartColor"), fillStart & 0x00FFFFFF);
+                    int bottomEnd = color(props.get("fillBottomEndColor"), fillEnd & 0x00FFFFFF);
+                    renderSplineArea(renderer, count, baseline, fillStart, fillEnd, bottomStart, bottomEnd);
+                }
+            }
             case "wire" -> {
                 if (gradient) renderer.wireGradient(x1, y1, x2, y2, thickness, start, end);
                 else renderer.wire(x1, y1, x2, y2, thickness, stroke);
@@ -966,8 +981,8 @@ public final class UiPrimitiveRenderer {
                     if (Double.isNaN(pendingX)) {
                         pendingX = n.doubleValue();
                     } else {
-                        if (0 >= points.length / 2) break;
-                        points[0 * 2] = offsetX + pendingX;
+                        if (count >= points.length / 2) break;
+                        points[count * 2] = offsetX + pendingX;
                         points[count * 2 + 1] = offsetY + n.doubleValue();
                         count++;
                         pendingX = Double.NaN;
@@ -976,6 +991,65 @@ public final class UiPrimitiveRenderer {
             }
         }
         return count;
+    }
+
+    /**
+     * Draws a two-axis gradient under an x-monotonic spline. Narrow overlapping
+     * columns follow the curve closely while keeping the fill independent from
+     * polygon vertex/triangulation limits. The stroke is rendered separately on
+     * top, hiding the sub-pixel column boundary along the curve.
+     */
+    private void renderSplineArea(Renderer2D renderer,
+                                  int pointCount,
+                                  double baseline,
+                                  int topStart,
+                                  int topEnd,
+                                  int bottomStart,
+                                  int bottomEnd) {
+        final double maxColumnWidth = 1.25;
+        for (int i = 0; i < pointCount - 1; i++) {
+            double x0 = points[i * 2];
+            double y0 = Math.min(baseline, points[i * 2 + 1]);
+            double x1 = points[(i + 1) * 2];
+            double y1 = Math.min(baseline, points[(i + 1) * 2 + 1]);
+            double span = x1 - x0;
+            if (span <= 0.0) continue;
+
+            int columns = Math.max(1, (int) Math.ceil(span / maxColumnWidth));
+            for (int column = 0; column < columns; column++) {
+                double t0 = column / (double) columns;
+                double t1 = (column + 1.0) / columns;
+                double left = x0 + span * t0;
+                double right = x0 + span * t1;
+                double top = lerp(y0, y1, (t0 + t1) * 0.5);
+                double height = baseline - top;
+                if (height <= 0.0) continue;
+
+                double pathT0 = (i + t0) / Math.max(1.0, pointCount - 1.0);
+                double pathT1 = (i + t1) / Math.max(1.0, pointCount - 1.0);
+                int cTopLeft = lerpArgb(topStart, topEnd, pathT0);
+                int cTopRight = lerpArgb(topStart, topEnd, pathT1);
+                int cBottomRight = lerpArgb(bottomStart, bottomEnd, pathT1);
+                int cBottomLeft = lerpArgb(bottomStart, bottomEnd, pathT0);
+
+                // A small overlap prevents cracks after projection/rasterization.
+                renderer.quadGradient(left, top, right - left + 0.18, height,
+                        cTopLeft, cTopRight, cBottomRight, cBottomLeft);
+            }
+        }
+    }
+
+    private static double lerp(double from, double to, double t) {
+        return from + (to - from) * Math.max(0.0, Math.min(1.0, t));
+    }
+
+    private static int lerpArgb(int from, int to, double t) {
+        double clamped = Math.max(0.0, Math.min(1.0, t));
+        int a = (int) Math.round(((from >>> 24) & 0xFF) + (((to >>> 24) & 0xFF) - ((from >>> 24) & 0xFF)) * clamped);
+        int r = (int) Math.round(((from >>> 16) & 0xFF) + (((to >>> 16) & 0xFF) - ((from >>> 16) & 0xFF)) * clamped);
+        int g = (int) Math.round(((from >>> 8) & 0xFF) + (((to >>> 8) & 0xFF) - ((from >>> 8) & 0xFF)) * clamped);
+        int b = (int) Math.round((from & 0xFF) + ((to & 0xFF) - (from & 0xFF)) * clamped);
+        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     private int color(Object value, int fallback) {

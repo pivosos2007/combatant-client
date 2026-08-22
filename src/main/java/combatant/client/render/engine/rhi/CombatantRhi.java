@@ -16,6 +16,8 @@ import combatant.client.render.engine.rhi.resource.RenderResourceManager;
 import combatant.client.render.engine.rhi.state.PipelineStateBackend;
 import combatant.client.render.engine.rhi.upload.DynamicMeshBackend;
 
+import java.util.List;
+
 public interface CombatantRhi extends AutoCloseable {
     DynamicMeshBackend dynamicMeshes();
 
@@ -41,7 +43,15 @@ public interface CombatantRhi extends AutoCloseable {
 
     void framePresented();
 
-    void drawMesh(RhiDrawCommand command);
+    default void drawMesh(RhiDrawCommand command) {
+        if (command != null) drawMeshes(List.of(command));
+    }
+
+    /**
+     * Executes an ordered draw stream. Backends may keep one render pass open across adjacent
+     * commands when their attachments are compatible. Command order is never changed.
+     */
+    void drawMeshes(List<RhiDrawCommand> commands);
 
     void drawFullscreen(FullscreenDrawCommand command);
 

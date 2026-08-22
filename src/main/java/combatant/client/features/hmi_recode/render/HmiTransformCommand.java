@@ -21,6 +21,10 @@ public record HmiTransformCommand(String op, double[] args) {
         if (!(raw instanceof Iterable<?> iterable)) return List.of();
         List<HmiTransformCommand> out = new ArrayList<>();
         for (Object entry : iterable) {
+            if (entry instanceof List<?> packed && !packed.isEmpty() && packed.get(0) instanceof String name) {
+                out.add(new HmiTransformCommand(name, numbers(packed, 1)));
+                continue;
+            }
             if (!(entry instanceof Map<?, ?> map)) continue;
             Object op = map.get("op");
             Object args = map.get("args");
@@ -34,6 +38,16 @@ public record HmiTransformCommand(String op, double[] args) {
             out.add(new HmiTransformCommand(name, packed));
         }
         return out;
+    }
+
+    private static double[] numbers(List<?> values, int offset) {
+        double[] packed = new double[Math.max(0, values.size() - offset)];
+        int count = 0;
+        for (int i = offset; i < values.size(); i++) {
+            Object value = values.get(i);
+            if (value instanceof Number number) packed[count++] = number.doubleValue();
+        }
+        return count == packed.length ? packed : java.util.Arrays.copyOf(packed, count);
     }
 
     public void apply(PoseStack stack) {

@@ -34,6 +34,7 @@ import combatant.client.render.engine.rhi.RhiDrawCommand;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
 import java.util.HashMap;
+import java.util.List;
 
 /**
  * RenderPass-based mesh renderer for 26.2 GPU API.
@@ -149,6 +150,22 @@ public final class MeshRenderer {
     }
 
     public void end() {
+        finish(null);
+    }
+
+    /**
+     * Encodes this mesh into an ordered draw stream instead of immediately opening a render pass.
+     * The caller owns submission of the list; mesh handles are released by the backend.
+     */
+    public void endTo(List<RhiDrawCommand> commands) {
+        if (commands == null) {
+            end();
+            return;
+        }
+        finish(commands);
+    }
+
+    private void finish(@Nullable List<RhiDrawCommand> commands) {
         GpuMeshHandle uploaded = null;
         try {
             if (pipeline == null) return;
@@ -168,6 +185,10 @@ public final class MeshRenderer {
             if (indexCount <= 0) return;
 
             if (mesh != null && FullScreenRenderer.isLegacyFullscreenMesh(mesh) && depthAttachment == null && transform == null) {
+                if (commands != null && !commands.isEmpty()) {
+                    CombatantRenderSystem.rhi().drawMeshes(commands);
+                    commands.clear();
+                }
                 FullscreenDrawCommand.Builder fullscreen =
                         FullscreenDrawCommand.builder("Combatant MeshRenderer Fullscreen Compatibility")
                                 .pipeline(pipeline)
@@ -209,7 +230,12 @@ public final class MeshRenderer {
                 command.sampler(e.getKey(), b.view, b.sampler);
             }
 
-            CombatantRenderSystem.rhi().drawMesh(command.build());
+            RhiDrawCommand encoded = command.build();
+            if (commands != null) {
+                commands.add(encoded);
+            } else {
+                CombatantRenderSystem.rhi().drawMesh(encoded);
+            }
             uploaded = null; // backend owns release for this draw
         } finally {
             if (uploaded != null) uploaded.close();

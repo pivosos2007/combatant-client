@@ -1,22 +1,31 @@
 #version 330 core
 
 /*
- * This file is part of the Combatant Client distribution.
- * Copyright (c) 2026 pivosos2007.
- *
- * Licensed under the GNU General Public License v3.0.
+ * Data-driven UI geometry family. Shape identity is vertex data, not pipeline state.
  */
 
 in vec4 v_Local;
 in vec4 v_Color;
 in vec4 v_Rect;
-in vec4 v_Params; // kind, shape parameter, stroke width, flags
+in vec4 v_Params;
+in vec4 v_Params2;
+in vec4 v_Params3;
 
 out vec4 fragColor;
 
 layout (std140) uniform UIBatch {
-    vec4 uScreen; // xy = framebuffer size, zw = logical size
+    vec4 uScreen;
 };
+
+const float KIND_RECT = 0.0;
+const float KIND_ROUNDED = 1.0;
+const float KIND_SQUIRCLE = 2.0;
+const float KIND_ROUNDED_CORNERS = 3.0;
+const float KIND_CHAMFER = 4.0;
+const float KIND_CIRCLE = 5.0;
+const float KIND_ARC = 6.0;
+const float KIND_SHADOW = 7.0;
+const float KIND_SOFT_SHADOW = 8.0;
 
 vec2 warpedLocal(vec4 local) {
     float invW = abs(local.z) > 0.000001 ? local.z : 1.0;
@@ -31,13 +40,34 @@ float analyticAa(float d, vec2 logicalScale, float softness) {
     return max(pixelAa(logicalScale), max(fwidth(d) * 0.75, 0.0001)) + max(0.0, softness);
 }
 
-float crispCoverage(float d, float aa) {
+float coverage(float d, float aa) {
     return clamp(0.5 - d / max(aa, 0.0001), 0.0, 1.0);
 }
 
-// Whole-bounds superellipse. The implicit-gradient normalization gives a
-// stable pixel-distance approximation at the boundary, including wide/tall
-// boxes where four local corner arcs cannot reproduce the same silhouette.
+float roundedBoxSdf(vec2 p, vec2 halfSize, float radius) {
+    float r = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
+    vec2 q = abs(p) - halfSize + r;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
+vec4 normalizeRadii(vec4 radii, vec2 size) {
+    float maxR = 0.5 * min(size.x, size.y);
+    vec4 r = clamp(radii, 0.0, maxR);
+    float scale = 1.0;
+    if (r.x + r.y > size.x) scale = min(scale, size.x / max(r.x + r.y, 0.0001));
+    if (r.w + r.z > size.x) scale = min(scale, size.x / max(r.w + r.z, 0.0001));
+    if (r.x + r.w > size.y) scale = min(scale, size.y / max(r.x + r.w, 0.0001));
+    if (r.y + r.z > size.y) scale = min(scale, size.y / max(r.y + r.z, 0.0001));
+    return r * scale;
+}
+
+float roundedCornersSdf(vec2 p, vec2 halfSize, vec4 radii) {
+    vec2 corner = p.x < 0.0 ? vec2(radii.x, radii.w) : vec2(radii.y, radii.z);
+    float radius = p.y < 0.0 ? corner.x : corner.y;
+    vec2 q = abs(p) - halfSize + radius;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - radius;
+}
+
 float squircleSdf(vec2 p, vec2 halfSize, float exponent) {
     vec2 h = max(halfSize, vec2(0.0001));
     float n = clamp(exponent, 2.0, 16.0);
@@ -52,36 +82,166 @@ float squircleSdf(vec2 p, vec2 halfSize, float exponent) {
     return length(gradient) > 0.00001 ? implicit / length(gradient) : radial;
 }
 
-float roundedBoxSdf(vec2 p, vec2 halfSize, float radius) {
-    float r = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
-    vec2 q = abs(p) - halfSize + r;
-    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+float cornerCut(float u, float v, float cutX, float cutY) {
+    if (cutX <= 0.0001 || cutY <= 0.0001) return -1.0;
+    return (1.0 - u / cutX - v / cutY) / length(vec2(1.0 / cutX, 1.0 / cutY));
 }
 
-// q is local corner coordinate in [0..extent]. The visible rounded corner is the
-// quarter ellipse centered at extent. The old version used a rounded-box quadrant
-// distance here, which did not cut the actual outer corner and became visibly wrong
-// at large radii / circle-like shapes.
+float chamferSdf(vec2 p, vec2 halfSize, vec4 cutX, vec4 cutY) {
+    vec2 q = abs(p);
+    float d = max(q.x - halfSize.x, q.y - halfSize.y);
+    float left = p.x + halfSize.x;
+    float right = halfSize.x - p.x;
+    float top = p.y + halfSize.y;
+    float bottom = halfSize.y - p.y;
+    float tl = cornerCut(left, top, cutX.x, cutY.x);
+    float tr = cornerCut(right, top, cutX.y, cutY.y);
+    float br = cornerCut(right, bottom, cutX.z, cutY.z);
+    float bl = cornerCut(left, bottom, cutX.w, cutY.w);
+    return max(d, max(max(tl, tr), max(br, bl)));
+}
+
+float strokeBand(float d, float thickness, bool innerStroke) {
+    float t = max(0.0, thickness);
+    return innerStroke ? abs(d + t * 0.5) - t * 0.5 : abs(d) - t * 0.5;
+}
+
+float normalizeAngle(float angleDeg) {
+    float angle = mod(angleDeg, 360.0);
+    return angle < 0.0 ? angle + 360.0 : angle;
+}
+
+vec2 arcPoint(vec2 center, float radius, float angleDeg) {
+    float angle = radians(angleDeg);
+    return center + vec2(sin(angle), -cos(angle)) * radius;
+}
+
+float arcCoverage(vec2 frag, vec2 center, vec2 logicalScale) {
+    float radius = max(0.0, v_Params.y);
+    float softness = max(0.0, v_Params.z);
+    float thickness = max(0.0, v_Params.w);
+    float startDeg = normalizeAngle(v_Params2.x);
+    float endDeg = normalizeAngle(v_Params2.y);
+    bool caps = v_Params2.z > 0.5;
+    vec2 local = frag - center;
+    float radialD = abs(length(local) - radius) - thickness * 0.5;
+    float radialAlpha = coverage(radialD, analyticAa(radialD, logicalScale, softness));
+    float sweep = endDeg - startDeg;
+    if (sweep <= 0.0) sweep += 360.0;
+    if (sweep >= 359.99) return radialAlpha;
+
+    float angleDeg = normalizeAngle(degrees(atan(local.x, -local.y)));
+    if (angleDeg < startDeg) angleDeg += 360.0;
+    float angularSoft = max(fwidth(angleDeg), degrees(max(softness, pixelAa(logicalScale)) / max(radius, 0.0001)));
+    float alpha = radialAlpha
+            * smoothstep(startDeg - angularSoft, startDeg, angleDeg)
+            * (1.0 - smoothstep(endDeg, endDeg + angularSoft, angleDeg));
+    if (caps) {
+        float capRadius = thickness * 0.5;
+        float startD = length(frag - arcPoint(center, radius, startDeg)) - capRadius;
+        float endD = length(frag - arcPoint(center, radius, endDeg)) - capRadius;
+        alpha = max(alpha, max(
+                coverage(startD, analyticAa(startD, logicalScale, softness)),
+                coverage(endD, analyticAa(endD, logicalScale, softness))));
+    }
+    return alpha;
+}
+
+float bottomShadowCoverage(vec2 frag, vec2 center, vec2 halfSize) {
+    float radius = min(max(v_Params.y, 0.0), min(halfSize.x, halfSize.y));
+    float spread = max(v_Params.w, 0.0001);
+    vec2 p = frag - center;
+    float dBase = roundedBoxSdf(p, halfSize, radius);
+    float outside = step(0.0, dBase);
+    float falloff = 1.0 - smoothstep(0.0, max(fwidth(dBase), 0.0001), dBase);
+    float rawDx = abs(p.x) - (halfSize.x - radius);
+    float dx = max(rawDx, 0.0);
+    float arc = sqrt(max(radius * radius - dx * dx, 0.0));
+    float bottomEdge = mix(v_Rect.y + v_Rect.w, v_Rect.y + v_Rect.w - radius + arc, step(0.0, rawDx));
+    float down = frag.y - bottomEdge;
+    float bottomMask = step(0.0, down) * (1.0 - smoothstep(0.0, spread, down));
+    return falloff * outside * bottomMask * step(abs(p.x), halfSize.x);
+}
+
+float softShadowCoverage(vec2 p, vec2 halfSize) {
+    bool squircle = v_Params.y < 0.0;
+    float radius = min(max(v_Params.y, 0.0), min(halfSize.x, halfSize.y));
+    float blur = max(v_Params.z, 0.0001);
+    float innerAlpha = clamp(v_Params.w, 0.0, 1.0);
+    float d = squircle
+            ? squircleSdf(p, halfSize, -v_Params.y)
+            : roundedBoxSdf(p, halfSize, radius);
+    float outside = exp(-pow(max(d, 0.0) / blur, 2.0) * 1.35);
+    float inside = innerAlpha * (1.0 - smoothstep(-blur * 0.55, 0.0, d));
+    return max(inside, outside * (1.0 - inside));
+}
+
 void main() {
     vec2 logicalScale = uScreen.zw / max(uScreen.xy, vec2(1.0));
     vec2 frag = warpedLocal(v_Local);
     vec2 size = max(v_Rect.zw, vec2(0.0001));
     vec2 halfSize = size * 0.5;
     vec2 center = v_Rect.xy + halfSize;
-    float d = v_Params.x < 1.5
-            ? roundedBoxSdf(frag - center, halfSize, v_Params.y)
-            : squircleSdf(frag - center, halfSize, v_Params.y);
-    float strokeWidth = max(0.0, v_Params.z);
-    int packedFlags = int(v_Params.w + 0.5);
-    int flags = packedFlags & 3;
-    float softness = float(packedFlags >> 2) / 16.0;
-    bool fill = (flags & 1) != 0;
-    bool innerStroke = (flags & 2) != 0;
-    if (!fill && strokeWidth > 0.0) {
-        d = innerStroke
-                ? abs(d + strokeWidth * 0.5) - strokeWidth * 0.5
-                : abs(d) - strokeWidth * 0.5;
+    vec2 p = frag - center;
+    float kind = v_Params.x;
+
+    if (abs(kind - KIND_RECT) < 0.25) {
+        fragColor = v_Color;
+        return;
     }
-    float a = crispCoverage(d, analyticAa(d, logicalScale, softness));
-    fragColor = vec4(v_Color.rgb, v_Color.a * a);
+    if (abs(kind - KIND_ARC) < 0.25) {
+        fragColor = vec4(v_Color.rgb, v_Color.a * arcCoverage(frag, center, logicalScale));
+        return;
+    }
+    if (abs(kind - KIND_SHADOW) < 0.25) {
+        fragColor = vec4(v_Color.rgb, v_Color.a * bottomShadowCoverage(frag, center, halfSize));
+        return;
+    }
+    if (abs(kind - KIND_SOFT_SHADOW) < 0.25) {
+        fragColor = vec4(v_Color.rgb, v_Color.a * softShadowCoverage(p, halfSize));
+        return;
+    }
+
+    float d;
+    float softness = 0.0;
+    float strokeWidth = 0.0;
+    bool fill = true;
+    bool innerStroke = false;
+
+    if (abs(kind - KIND_ROUNDED) < 0.25 || abs(kind - KIND_SQUIRCLE) < 0.25) {
+        d = kind < 1.5
+                ? roundedBoxSdf(p, halfSize, v_Params.y)
+                : squircleSdf(p, halfSize, v_Params.y);
+        strokeWidth = max(0.0, v_Params.z);
+        int packedFlags = int(v_Params.w + 0.5);
+        int flags = packedFlags & 3;
+        softness = float(packedFlags >> 2) / 16.0;
+        fill = (flags & 1) != 0;
+        innerStroke = (flags & 2) != 0;
+    } else if (abs(kind - KIND_ROUNDED_CORNERS) < 0.25) {
+        vec4 radii = normalizeRadii(v_Params2, size);
+        d = roundedCornersSdf(p, halfSize, radii);
+        softness = max(0.0, v_Params.y);
+        strokeWidth = max(0.0, v_Params.z);
+        fill = v_Params.w > 0.5;
+        innerStroke = true;
+    } else if (abs(kind - KIND_CHAMFER) < 0.25) {
+        vec4 cutX = clamp(v_Params2, 0.0, v_Rect.z);
+        vec4 cutY = clamp(v_Params3, 0.0, v_Rect.w);
+        d = chamferSdf(p, halfSize, cutX, cutY);
+        strokeWidth = max(0.0, v_Params.y);
+        fill = v_Params.z > 0.5;
+        innerStroke = true;
+    } else if (abs(kind - KIND_CIRCLE) < 0.25) {
+        d = length(p) - max(0.0, v_Params.y);
+        softness = max(0.0, v_Params.z);
+        strokeWidth = max(0.0, v_Params.w);
+        fill = strokeWidth <= 0.0;
+    } else {
+        discard;
+    }
+
+    if (!fill && strokeWidth > 0.0) d = strokeBand(d, strokeWidth, innerStroke);
+    float alpha = coverage(d, analyticAa(d, logicalScale, softness));
+    fragColor = vec4(v_Color.rgb, v_Color.a * alpha);
 }

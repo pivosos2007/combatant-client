@@ -12,6 +12,7 @@ import combatant.client.features.theme.Theme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -26,9 +27,9 @@ import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.color.ColorBlendMode;
 import combatant.client.render.engine.color.ColorEffects;
-import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.profiler.RenderCostProfiler;
+import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.TextureTintUniforms;
@@ -50,6 +51,7 @@ public class WorldParticles extends Module {
     private static final float OUTLINE_ALPHA_MULTIPLIER = 205.0f / 255.0f;
     private static final float BUBBLE_FILL_SIZE_MULTIPLIER = 3.15f;
     private static final float BUBBLE_GLOW_SIZE_MULTIPLIER = 5.10f;
+    private static final float BUBBLE_CULL_EXTENT_MULTIPLIER = BUBBLE_GLOW_SIZE_MULTIPLIER * 1.56f;
     private static final float BUBBLE_HIGHLIGHT_SIZE_MULTIPLIER = 0.34f;
     private static final float BUBBLE_SECONDARY_HIGHLIGHT_SIZE_MULTIPLIER = 0.20f;
     private static final float BUBBLE_FILL_ALPHA_MULTIPLIER = 0.34f;
@@ -58,6 +60,12 @@ public class WorldParticles extends Module {
     private static final float BUBBLE_HIGHLIGHT_ALPHA_MULTIPLIER = 0.74f;
     private static final int BUBBLE_SPHERE_STACKS = 5;
     private static final int BUBBLE_SPHERE_SLICES = 12;
+    private static final int BUBBLE_SPHERE_ROW_SIZE = BUBBLE_SPHERE_SLICES + 1;
+    private static final int BUBBLE_SPHERE_VERTEX_COUNT = (BUBBLE_SPHERE_STACKS + 1) * BUBBLE_SPHERE_ROW_SIZE;
+    private static final float[] BUBBLE_SPHERE_X = new float[BUBBLE_SPHERE_VERTEX_COUNT];
+    private static final float[] BUBBLE_SPHERE_Y = new float[BUBBLE_SPHERE_VERTEX_COUNT];
+    private static final float[] BUBBLE_SPHERE_Z = new float[BUBBLE_SPHERE_VERTEX_COUNT];
+    private static final Vector3f BUBBLE_LIGHT = new Vector3f(-0.36f, 0.84f, -0.40f).normalize();
     private static final float FUNNEL_EYE_SIZE_MULTIPLIER = 4.35f;
     private static final float FUNNEL_DISTORTION_SIZE_MULTIPLIER = 5.25f;
     private static final float FUNNEL_DISTORTION_OUTER_SIZE_MULTIPLIER = 6.85f;
@@ -81,6 +89,22 @@ public class WorldParticles extends Module {
     private static final int[][] BODY_DIAGONALS = {
             {0, 6}, {1, 7}, {2, 4}, {3, 5}
     };
+
+    static {
+        int vertex = 0;
+        for (int stack = 0; stack <= BUBBLE_SPHERE_STACKS; stack++) {
+            float theta = (float) Math.PI * stack / (float) BUBBLE_SPHERE_STACKS;
+            float sinTheta = (float) Math.sin(theta);
+            float y = (float) Math.cos(theta);
+            for (int slice = 0; slice <= BUBBLE_SPHERE_SLICES; slice++) {
+                float phi = (float) (Math.PI * 2.0) * slice / (float) BUBBLE_SPHERE_SLICES;
+                BUBBLE_SPHERE_X[vertex] = (float) Math.cos(phi) * sinTheta;
+                BUBBLE_SPHERE_Y[vertex] = y;
+                BUBBLE_SPHERE_Z[vertex] = (float) Math.sin(phi) * sinTheta;
+                vertex++;
+            }
+        }
+    }
 
     private final Minecraft mc = Minecraft.getInstance();
     private final EnumValue<Mode> mode =
@@ -158,6 +182,17 @@ public class WorldParticles extends Module {
         return pos.add(right.x() + up.x(), right.y() + up.y(), right.z() + up.z());
     }
 
+    private static Vec3 offsetInBillboardPlane(Vec3 pos, Vector3f right, Vector3f up,
+                                                float angle, float distance) {
+        float rightScale = (float) Math.cos(angle) * distance;
+        float upScale = (float) Math.sin(angle) * distance;
+        return pos.add(
+                right.x() * rightScale + up.x() * upScale,
+                right.y() * rightScale + up.y() * upScale,
+                right.z() * rightScale + up.z() * upScale
+        );
+    }
+
     private static void addBillboardQuad(MeshBuilder mesh, double cx, double cy, double cz,
                                          float size, Quaternionf camRot, int argb) {
         addBillboardQuad(mesh, cx, cy, cz, size, camRot, 0.0f, argb);
@@ -176,30 +211,45 @@ public class WorldParticles extends Module {
                                                  int topLeftArgb) {
         Vector3f baseRight = new Vector3f(1.0f, 0.0f, 0.0f).rotate(camRot);
         Vector3f baseUp = new Vector3f(0.0f, 1.0f, 0.0f).rotate(camRot);
+        addBillboardQuadGradient(mesh, cx, cy, cz, size, baseRight, baseUp, rollRadians,
+                bottomLeftArgb, bottomRightArgb, topRightArgb, topLeftArgb);
+    }
+
+    private static void addBillboardQuadGradient(MeshBuilder mesh, double cx, double cy, double cz,
+                                                 float size, Vector3f baseRight, Vector3f baseUp,
+                                                 float rollRadians,
+                                                 int bottomLeftArgb,
+                                                 int bottomRightArgb,
+                                                 int topRightArgb,
+                                                 int topLeftArgb) {
         float cos = (float) Math.cos(rollRadians);
         float sin = (float) Math.sin(rollRadians);
 
-        Vector3f right = new Vector3f(baseRight).mul(cos).add(new Vector3f(baseUp).mul(sin)).mul(size);
-        Vector3f up = new Vector3f(baseUp).mul(cos).sub(new Vector3f(baseRight).mul(sin)).mul(size);
+        float rightX = (baseRight.x() * cos + baseUp.x() * sin) * size;
+        float rightY = (baseRight.y() * cos + baseUp.y() * sin) * size;
+        float rightZ = (baseRight.z() * cos + baseUp.z() * sin) * size;
+        float upX = (baseUp.x() * cos - baseRight.x() * sin) * size;
+        float upY = (baseUp.y() * cos - baseRight.y() * sin) * size;
+        float upZ = (baseUp.z() * cos - baseRight.z() * sin) * size;
 
-        double p1x = cx - right.x() - up.x();
-        double p1y = cy - right.y() - up.y();
-        double p1z = cz - right.z() - up.z();
-        double p2x = cx + right.x() - up.x();
-        double p2y = cy + right.y() - up.y();
-        double p2z = cz + right.z() - up.z();
-        double p3x = cx + right.x() + up.x();
-        double p3y = cy + right.y() + up.y();
-        double p3z = cz + right.z() + up.z();
-        double p4x = cx - right.x() + up.x();
-        double p4y = cy - right.y() + up.y();
-        double p4z = cz - right.z() + up.z();
+        double p1x = cx - rightX - upX;
+        double p1y = cy - rightY - upY;
+        double p1z = cz - rightZ - upZ;
+        double p2x = cx + rightX - upX;
+        double p2y = cy + rightY - upY;
+        double p2z = cz + rightZ - upZ;
+        double p3x = cx + rightX + upX;
+        double p3y = cy + rightY + upY;
+        double p3z = cz + rightZ + upZ;
+        double p4x = cx - rightX + upX;
+        double p4y = cy - rightY + upY;
+        double p4z = cz - rightZ + upZ;
 
         mesh.ensureQuadCapacity();
-        int i1 = mesh.vec3(p1x, p1y, p1z).vec2(0.0, 1.0).color(new RenderColor(bottomLeftArgb)).next();
-        int i2 = mesh.vec3(p2x, p2y, p2z).vec2(1.0, 1.0).color(new RenderColor(bottomRightArgb)).next();
-        int i3 = mesh.vec3(p3x, p3y, p3z).vec2(1.0, 0.0).color(new RenderColor(topRightArgb)).next();
-        int i4 = mesh.vec3(p4x, p4y, p4z).vec2(0.0, 0.0).color(new RenderColor(topLeftArgb)).next();
+        int i1 = mesh.vec3(p1x, p1y, p1z).vec2(0.0, 1.0).colorArgb(bottomLeftArgb).next();
+        int i2 = mesh.vec3(p2x, p2y, p2z).vec2(1.0, 1.0).colorArgb(bottomRightArgb).next();
+        int i3 = mesh.vec3(p3x, p3y, p3z).vec2(1.0, 0.0).colorArgb(topRightArgb).next();
+        int i4 = mesh.vec3(p4x, p4y, p4z).vec2(0.0, 0.0).colorArgb(topLeftArgb).next();
         mesh.quad(i1, i2, i3, i4);
     }
 
@@ -228,10 +278,10 @@ public class WorldParticles extends Module {
         double p4z = cz - right.z() + up.z();
 
         mesh.ensureQuadCapacity();
-        int i1 = mesh.vec3(p1x, p1y, p1z).vec2(0.0, 1.0).color(new RenderColor(argb)).next();
-        int i2 = mesh.vec3(p2x, p2y, p2z).vec2(1.0, 1.0).color(new RenderColor(argb)).next();
-        int i3 = mesh.vec3(p3x, p3y, p3z).vec2(1.0, 0.0).color(new RenderColor(argb)).next();
-        int i4 = mesh.vec3(p4x, p4y, p4z).vec2(0.0, 0.0).color(new RenderColor(argb)).next();
+        int i1 = mesh.vec3(p1x, p1y, p1z).vec2(0.0, 1.0).colorArgb(argb).next();
+        int i2 = mesh.vec3(p2x, p2y, p2z).vec2(1.0, 1.0).colorArgb(argb).next();
+        int i3 = mesh.vec3(p3x, p3y, p3z).vec2(1.0, 0.0).colorArgb(argb).next();
+        int i4 = mesh.vec3(p4x, p4y, p4z).vec2(0.0, 0.0).colorArgb(argb).next();
         mesh.quad(i1, i2, i3, i4);
     }
 
@@ -269,27 +319,9 @@ public class WorldParticles extends Module {
 
     private static void addLineGradient(MeshBuilder mesh, Vector3f from, Vector3f to, int fromArgb, int toArgb) {
         mesh.ensureLineCapacity();
-        int i1 = mesh.vec3(from.x(), from.y(), from.z()).color(new RenderColor(fromArgb)).next();
-        int i2 = mesh.vec3(to.x(), to.y(), to.z()).color(new RenderColor(toArgb)).next();
+        int i1 = mesh.vec3(from.x(), from.y(), from.z()).colorArgb(fromArgb).next();
+        int i2 = mesh.vec3(to.x(), to.y(), to.z()).colorArgb(toArgb).next();
         mesh.line(i1, i2);
-    }
-
-    private static Vector3f spherePoint(Vec3 center, Quaternionf rotation, float radius, float theta, float phi) {
-        float sinTheta = (float) Math.sin(theta);
-        return new Vector3f(
-                (float) Math.cos(phi) * sinTheta,
-                (float) Math.cos(theta),
-                (float) Math.sin(phi) * sinTheta
-        ).rotate(rotation).mul(radius).add((float) center.x, (float) center.y, (float) center.z);
-    }
-
-    private static Vector3f sphereNormal(Quaternionf rotation, float theta, float phi) {
-        float sinTheta = (float) Math.sin(theta);
-        return new Vector3f(
-                (float) Math.cos(phi) * sinTheta,
-                (float) Math.cos(theta),
-                (float) Math.sin(phi) * sinTheta
-        ).rotate(rotation).normalize();
     }
 
     private static void addSphereShell(MeshBuilder mesh,
@@ -298,25 +330,25 @@ public class WorldParticles extends Module {
                                        float radius,
                                        int baseColor,
                                        int brightColor,
+                                       int shadowColor,
                                        float alpha) {
-        Vector3f light = new Vector3f(-0.36f, 0.84f, -0.40f).normalize();
-        int rowSize = BUBBLE_SPHERE_SLICES + 1;
         int baseVertex = mesh.getVertexCount();
-        mesh.ensureCapacity((BUBBLE_SPHERE_STACKS + 1) * rowSize, BUBBLE_SPHERE_STACKS * BUBBLE_SPHERE_SLICES * 6);
+        mesh.ensureCapacity(BUBBLE_SPHERE_VERTEX_COUNT, BUBBLE_SPHERE_STACKS * BUBBLE_SPHERE_SLICES * 6);
 
-        for (int stack = 0; stack <= BUBBLE_SPHERE_STACKS; stack++) {
-            float theta = (float) Math.PI * stack / (float) BUBBLE_SPHERE_STACKS;
-            for (int slice = 0; slice <= BUBBLE_SPHERE_SLICES; slice++) {
-                float phi = (float) (Math.PI * 2.0) * slice / (float) BUBBLE_SPHERE_SLICES;
-                Vector3f point = spherePoint(center, rotation, radius, theta, phi);
-                int vertexColor = sphereSurfaceColor(baseColor, brightColor, sphereNormal(rotation, theta, phi), light, alpha);
-                mesh.vec3(point.x(), point.y(), point.z()).color(new RenderColor(vertexColor)).next();
-            }
+        Vector3f normal = new Vector3f();
+        for (int vertex = 0; vertex < BUBBLE_SPHERE_VERTEX_COUNT; vertex++) {
+            normal.set(BUBBLE_SPHERE_X[vertex], BUBBLE_SPHERE_Y[vertex], BUBBLE_SPHERE_Z[vertex]).rotate(rotation);
+            float px = (float) center.x + normal.x() * radius;
+            float py = (float) center.y + normal.y() * radius;
+            float pz = (float) center.z + normal.z() * radius;
+            normal.normalize();
+            int vertexColor = sphereSurfaceColor(baseColor, brightColor, shadowColor, normal, alpha);
+            mesh.vec3(px, py, pz).colorArgb(vertexColor).next();
         }
 
         for (int stack = 0; stack < BUBBLE_SPHERE_STACKS; stack++) {
-            int row = baseVertex + stack * rowSize;
-            int nextRow = row + rowSize;
+            int row = baseVertex + stack * BUBBLE_SPHERE_ROW_SIZE;
+            int nextRow = row + BUBBLE_SPHERE_ROW_SIZE;
             for (int slice = 0; slice < BUBBLE_SPHERE_SLICES; slice++) {
                 int a = row + slice;
                 int b = nextRow + slice;
@@ -328,11 +360,11 @@ public class WorldParticles extends Module {
         }
     }
 
-    private static int sphereSurfaceColor(int baseColor, int brightColor, Vector3f normal, Vector3f light, float alpha) {
-        float lit = Mth.clamp(normal.dot(light) * 0.5f + 0.5f, 0.0f, 1.0f);
+    private static int sphereSurfaceColor(int baseColor, int brightColor, int shadowColor,
+                                          Vector3f normal, float alpha) {
+        float lit = Mth.clamp(normal.dot(BUBBLE_LIGHT) * 0.5f + 0.5f, 0.0f, 1.0f);
         float rim = 1.0f - Math.abs(normal.z());
         float vertical = Mth.clamp(normal.y() * 0.5f + 0.5f, 0.0f, 1.0f);
-        int shadowColor = AnimatedRenderColors.mixArgb(baseColor, 0xFF000000, 0.38f);
         int midColor = AnimatedRenderColors.mixArgb(shadowColor, baseColor, 0.36f + vertical * 0.24f);
         int mixed = AnimatedRenderColors.mixArgb(midColor, brightColor, Mth.clamp(lit * 0.74f + rim * 0.24f, 0.0f, 1.0f));
         return multiplyAlpha(mixed, alpha * (0.22f + lit * 0.22f + rim * 0.16f));
@@ -360,7 +392,8 @@ public class WorldParticles extends Module {
             return;
         }
 
-        particles.removeIf(Particle::isExpired);
+        long nowMs = System.currentTimeMillis();
+        particles.removeIf(particle -> particle.isExpired(nowMs));
         for (Particle particle : particles) {
             particle.tick();
         }
@@ -418,6 +451,8 @@ public class WorldParticles extends Module {
             }
 
             Quaternionf camRot = RenderState.cameraRotation;
+            Vector3f bubbleRight = bubbleMode ? new Vector3f(1.0f, 0.0f, 0.0f).rotate(camRot) : null;
+            Vector3f bubbleUp = bubbleMode ? new Vector3f(0.0f, 1.0f, 0.0f).rotate(camRot) : null;
             MeshBuilder bubbleShellMesh = bubbleMode
                     ? renderer.batch(
                             useDepth ? CombatantRenderPipelines.WORLD_COLORED_LIQUID_IGNORE
@@ -446,31 +481,39 @@ public class WorldParticles extends Module {
                 );
             }
 
-            for (int i = 0; i < particles.size(); i++) {
-                Particle particle = particles.get(i);
-                float alpha = particle.alpha();
-                if (alpha <= 0.003f) {
-                    continue;
-                }
+            long nowMs = System.currentTimeMillis();
+            try (ProfilerPhase.Scope geometryScope = ProfilerPhase.scope(
+                    bubbleMode ? "world_particles:bubble_geometry" : "world_particles:quad_geometry")) {
+                for (int i = 0; i < particles.size(); i++) {
+                    Particle particle = particles.get(i);
+                    float alpha = particle.alpha(nowMs);
+                    if (alpha <= 0.003f) {
+                        continue;
+                    }
 
-                Vec3 pos = particle.interpolatePos(tickDelta);
-                int baseColor = colorForParticle(particle, i);
+                    Vec3 pos = particle.interpolatePos(tickDelta);
+                    if (bubbleMode && !bubbleInFrustum(particle, pos)) {
+                        continue;
+                    }
+                    int baseColor = colorForParticle(particle, i);
 
-                if (bubbleMode) {
-                    renderAirBubble(bubbleShellMesh, spriteMesh, particle, pos, camRot, alpha, baseColor);
-                    continue;
-                }
+                    if (bubbleMode) {
+                        renderAirBubble(bubbleShellMesh, spriteMesh, particle, pos,
+                                bubbleRight, bubbleUp, alpha, baseColor, nowMs);
+                        continue;
+                    }
 
-                if (spriteMesh != null) {
-                    int spriteArgb = multiplyAlpha(baseColor, alpha * SPRITE_ALPHA_MULTIPLIER);
-                    addBillboardQuad(spriteMesh, pos.x, pos.y, pos.z, particle.size * SPRITE_SIZE_MULTIPLIER, camRot, spriteArgb);
-                }
+                    if (spriteMesh != null) {
+                        int spriteArgb = multiplyAlpha(baseColor, alpha * SPRITE_ALPHA_MULTIPLIER);
+                        addBillboardQuad(spriteMesh, pos.x, pos.y, pos.z, particle.size * SPRITE_SIZE_MULTIPLIER, camRot, spriteArgb);
+                    }
 
-                if (lineMesh != null) {
-                    Vec3 rotation = particle.interpolateRotation(tickDelta);
-                    int diagonalArgb = multiplyAlpha(baseColor, alpha * DIAGONAL_ALPHA_MULTIPLIER);
-                    int outlineArgb = multiplyAlpha(baseColor, alpha * OUTLINE_ALPHA_MULTIPLIER);
-                    addCube(lineMesh, pos, rotation, particle.size, diagonalArgb, outlineArgb);
+                    if (lineMesh != null) {
+                        Vec3 rotation = particle.interpolateRotation(tickDelta);
+                        int diagonalArgb = multiplyAlpha(baseColor, alpha * DIAGONAL_ALPHA_MULTIPLIER);
+                        int outlineArgb = multiplyAlpha(baseColor, alpha * OUTLINE_ALPHA_MULTIPLIER);
+                        addCube(lineMesh, pos, rotation, particle.size, diagonalArgb, outlineArgb);
+                    }
                 }
             }
         }
@@ -620,11 +663,14 @@ public class WorldParticles extends Module {
                                  MeshBuilder spriteMesh,
                                  Particle particle,
                                  Vec3 pos,
-                                 Quaternionf camRot,
+                                 Vector3f billboardRight,
+                                 Vector3f billboardUp,
                                  float alpha,
-                                 int baseColor) {
-        float ageSeconds = particle.ageMs() / 1000.0f;
-        float lifeT = particle.lifeProgress();
+                                 int baseColor,
+                                 long nowMs) {
+        long ageMs = particle.ageMs(nowMs);
+        float ageSeconds = ageMs / 1000.0f;
+        float lifeT = particle.lifeProgress(ageMs);
         float pulse = 0.5f + 0.5f * (float) Math.sin(ageSeconds * 3.1f + particle.visualPhase);
         float pop = 1.0f + AnimationUtility.smoothstep(pulse) * 0.09f;
         float radius = particle.size * BUBBLE_FILL_SIZE_MULTIPLIER * pop;
@@ -633,6 +679,7 @@ public class WorldParticles extends Module {
         int brightColor = AnimatedRenderColors.mixArgb(baseColor, 0xFFFFFFFF, 0.72f);
         int softColor = AnimatedRenderColors.mixArgb(baseColor, 0xFFFFFFFF, 0.32f);
         int shadowColor = AnimatedRenderColors.mixArgb(baseColor, 0xFF000000, 0.42f);
+        int sphereShadowColor = AnimatedRenderColors.mixArgb(baseColor, 0xFF000000, 0.38f);
         Quaternionf sphereRotation = new Quaternionf()
                 .rotateY(particle.visualPhase + ageSeconds * 0.34f)
                 .rotateX(particle.visualPhase * 0.47f + ageSeconds * 0.22f)
@@ -640,7 +687,8 @@ public class WorldParticles extends Module {
         float sphereRadius = radius * 0.82f;
 
         if (shellMesh != null) {
-            addSphereShell(shellMesh, pos, sphereRotation, sphereRadius, baseColor, brightColor, alpha);
+            addSphereShell(shellMesh, pos, sphereRotation, sphereRadius,
+                    baseColor, brightColor, sphereShadowColor, alpha);
         }
 
         if (spriteMesh != null) {
@@ -648,7 +696,7 @@ public class WorldParticles extends Module {
                     spriteMesh,
                     pos.x, pos.y, pos.z,
                     particle.size * BUBBLE_GLOW_SIZE_MULTIPLIER * pop,
-                    camRot,
+                    billboardRight, billboardUp,
                     particle.visualPhase * 0.22f + ageSeconds * 0.12f,
                     multiplyAlpha(shadowColor, alpha * BUBBLE_GLOW_ALPHA_MULTIPLIER * 0.58f),
                     multiplyAlpha(baseColor, alpha * BUBBLE_GLOW_ALPHA_MULTIPLIER * 0.88f),
@@ -656,13 +704,13 @@ public class WorldParticles extends Module {
                     multiplyAlpha(softColor, alpha * BUBBLE_GLOW_ALPHA_MULTIPLIER)
             );
 
-            Vec3 depth = offsetInBillboardPlane(pos, camRot, depthAngle, radius * 0.22f);
+            Vec3 depth = offsetInBillboardPlane(pos, billboardRight, billboardUp, depthAngle, radius * 0.22f);
             float depthAlpha = alpha * BUBBLE_DEPTH_ALPHA_MULTIPLIER * (0.78f + pulse * 0.18f);
             addBillboardQuadGradient(
                     spriteMesh,
                     depth.x, depth.y, depth.z,
                     radius * 0.58f,
-                    camRot,
+                    billboardRight, billboardUp,
                     particle.visualPhase * 0.31f,
                     multiplyAlpha(shadowColor, depthAlpha * 0.92f),
                     multiplyAlpha(baseColor, depthAlpha * 0.76f),
@@ -675,7 +723,7 @@ public class WorldParticles extends Module {
                     spriteMesh,
                     pos.x, pos.y, pos.z,
                     radius,
-                    camRot,
+                    billboardRight, billboardUp,
                     particle.visualPhase * -0.16f,
                     multiplyAlpha(shadowColor, fillAlpha * 0.92f),
                     multiplyAlpha(baseColor, fillAlpha * 1.06f),
@@ -683,13 +731,13 @@ public class WorldParticles extends Module {
                     multiplyAlpha(softColor, fillAlpha * 1.18f)
             );
 
-            Vec3 highlight = offsetInBillboardPlane(pos, camRot, lightAngle, radius * 0.42f);
+            Vec3 highlight = offsetInBillboardPlane(pos, billboardRight, billboardUp, lightAngle, radius * 0.42f);
             float highlightAlpha = alpha * BUBBLE_HIGHLIGHT_ALPHA_MULTIPLIER * (1.0f - lifeT * 0.22f);
             addBillboardQuadGradient(
                     spriteMesh,
                     highlight.x, highlight.y, highlight.z,
                     particle.size * BUBBLE_HIGHLIGHT_SIZE_MULTIPLIER * (0.74f + pulse * 0.22f),
-                    camRot,
+                    billboardRight, billboardUp,
                     particle.visualPhase,
                     multiplyAlpha(softColor, highlightAlpha * 0.46f),
                     multiplyAlpha(brightColor, highlightAlpha * 0.72f),
@@ -697,13 +745,14 @@ public class WorldParticles extends Module {
                     multiplyAlpha(brightColor, highlightAlpha * 0.86f)
             );
 
-            Vec3 secondaryHighlight = offsetInBillboardPlane(pos, camRot, lightAngle - 0.92f, radius * 0.18f);
+            Vec3 secondaryHighlight = offsetInBillboardPlane(
+                    pos, billboardRight, billboardUp, lightAngle - 0.92f, radius * 0.18f);
             float secondaryHighlightAlpha = alpha * BUBBLE_HIGHLIGHT_ALPHA_MULTIPLIER * 0.42f * (0.84f + pulse * 0.16f);
             addBillboardQuadGradient(
                     spriteMesh,
                     secondaryHighlight.x, secondaryHighlight.y, secondaryHighlight.z,
                     particle.size * BUBBLE_SECONDARY_HIGHLIGHT_SIZE_MULTIPLIER,
-                    camRot,
+                    billboardRight, billboardUp,
                     particle.visualPhase * -0.38f,
                     multiplyAlpha(baseColor, secondaryHighlightAlpha * 0.44f),
                     multiplyAlpha(brightColor, secondaryHighlightAlpha * 0.68f),
@@ -712,6 +761,17 @@ public class WorldParticles extends Module {
             );
         }
 
+    }
+
+    private static boolean bubbleInFrustum(Particle particle, Vec3 pos) {
+        if (RenderState.frustum == null) return true;
+        // A billboard's axis-aligned extent may reach halfSize * sqrt(2). Include the 9% pulse
+        // and a small numerical margin so culling cannot clip a visible glow at a frustum edge.
+        double extent = particle.size * BUBBLE_CULL_EXTENT_MULTIPLIER;
+        return Renderer3D.Culling.isInFrustum(new AABB(
+                pos.x - extent, pos.y - extent, pos.z - extent,
+                pos.x + extent, pos.y + extent, pos.z + extent
+        ));
     }
 
     private MeshBuilder tintedTexturedBatch(Renderer3D renderer,
@@ -921,7 +981,11 @@ public class WorldParticles extends Module {
         }
 
         private float alpha() {
-            long age = System.currentTimeMillis() - spawnMs;
+            return alpha(System.currentTimeMillis());
+        }
+
+        private float alpha(long nowMs) {
+            long age = nowMs - spawnMs;
             if (age <= 0L) {
                 return 0.0f;
             }
@@ -968,12 +1032,24 @@ public class WorldParticles extends Module {
             return System.currentTimeMillis() - spawnMs;
         }
 
+        private long ageMs(long nowMs) {
+            return nowMs - spawnMs;
+        }
+
         private float lifeProgress() {
             return AnimationUtility.clamp01(ageMs() / (float) Math.max(1L, lifeMs));
         }
 
+        private float lifeProgress(long ageMs) {
+            return AnimationUtility.clamp01(ageMs / (float) Math.max(1L, lifeMs));
+        }
+
         private boolean isExpired() {
             return System.currentTimeMillis() - spawnMs >= lifeMs + ALPHA_ANIM_MS;
+        }
+
+        private boolean isExpired(long nowMs) {
+            return nowMs - spawnMs >= lifeMs + ALPHA_ANIM_MS;
         }
 
         private Vec3 interpolatePos(float tickDelta) {

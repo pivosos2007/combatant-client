@@ -81,6 +81,7 @@ import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.simulation.PlayerSimulationCache;
 import combatant.client.util.pvp.PvpTargetTracker;
 import combatant.client.util.pvp.PvpTracker;
+import combatant.client.util.session.SessionStatisticsTracker;
 import combatant.client.util.target.TargetManager;
 import combatant.client.util.time.TimerController;
 
@@ -452,6 +453,7 @@ public class Combatant implements ClientModInitializer {
         Events.BUS.register(CombatProtocolHeuristics.INSTANCE);
         Events.BUS.register(PvpTracker.INSTANCE);
         Events.BUS.register(PvpTargetTracker.INSTANCE);
+        Events.BUS.register(SessionStatisticsTracker.INSTANCE);
         Events.BUS.register(SelfBedTracker.INSTANCE);
         Events.BUS.register(BoatSimulationCache.INSTANCE);
         Events.BUS.register(PlayerSimulationCache.INSTANCE);

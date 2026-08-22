@@ -29,6 +29,7 @@ import combatant.client.render.engine.rhi.pipeline.RenderPipelineSpec;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
 import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Converts world commands into RHI draw commands and submits them through CombatantRHI.
@@ -64,17 +65,23 @@ public final class WorldPassCompiler {
         Matrix4f transform = matrices != null ? matrices.last().pose() : null;
         Minecraft mc = Minecraft.getInstance();
         List<WorldDrawCommand> commands = buffer.commands();
+        List<RhiDrawCommand> compiled = new ArrayList<>(commands.size());
         try {
             for (WorldDrawCommand command : commands) {
                 stats.recordedCommand();
-                submitOne(ctx, mc, target, colorView, transform, command);
+                RhiDrawCommand draw = compileOne(ctx, mc, target, colorView, transform, command);
+                if (draw != null) compiled.add(draw);
             }
+            CombatantRenderSystem.rhi().drawMeshes(compiled);
         } finally {
+            // Arena-backed handles are non-owning; temporary emergency handles are idempotently released.
+            // This also covers commands after a backend exception before their pass was opened.
+            for (RhiDrawCommand draw : compiled) draw.mesh.close();
             buffer.clearAfterSubmit();
         }
     }
 
-    private void submitOne(RenderFrameContext ctx,
+    private @Nullable RhiDrawCommand compileOne(RenderFrameContext ctx,
                            @Nullable Minecraft mc,
                            RenderTarget framebuffer,
                            GpuTextureView colorView,
@@ -83,12 +90,12 @@ public final class WorldPassCompiler {
         MeshBuilder mesh = command.mesh();
         if (mesh == null) {
             stats.skippedEmptyCommand();
-            return;
+            return null;
         }
         if (mesh.isBuilding()) mesh.end();
         if (mesh.getIndicesCount() <= 0) {
             stats.skippedEmptyCommand();
-            return;
+            return null;
         }
         validateWorldMeshAnchor(ctx, mesh, command);
 
@@ -107,7 +114,7 @@ public final class WorldPassCompiler {
             }
             if (drawMesh.getIndicesCount() <= 0) {
                 stats.skippedEmptyCommand();
-                return;
+                return null;
             }
 
             uploaded = CombatantRenderSystem.rhi().dynamicMeshes().upload(drawMesh);
@@ -125,9 +132,10 @@ public final class WorldPassCompiler {
             bindWorldPolicy(ctx, spec, draw);
             command.bindings().applyTo(draw, mc);
 
-            CombatantRenderSystem.rhi().drawMesh(draw.build());
+            RhiDrawCommand compiled = draw.build();
             uploaded = null;
             stats.submittedCommand(drawMesh.getVertexCount(), drawMesh.getIndicesCount());
+            return compiled;
         } finally {
             if (uploaded != null) uploaded.close();
             if (temporaryMesh && drawMesh != null) drawMesh.close();

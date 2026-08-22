@@ -40,6 +40,7 @@ import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
 
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.List;
 
 /**
  * Current production RHI backend for the Sodium/GL era.
@@ -154,8 +155,45 @@ public final class SodiumGlBackend implements CombatantRhi {
     }
 
     @Override
-    public void drawMesh(RhiDrawCommand command) {
-        if (command == null || command.mesh.indexCount() <= 0) return;
+    public void drawMeshes(List<RhiDrawCommand> commands) {
+        if (commands == null || commands.isEmpty()) return;
+        try {
+            int cursor = 0;
+            while (cursor < commands.size()) {
+                while (cursor < commands.size() && !drawable(commands.get(cursor))) cursor++;
+                if (cursor >= commands.size()) return;
+
+                int end = cursor + 1;
+                RhiDrawCommand first = commands.get(cursor);
+                while (end < commands.size() && sharesRenderPass(first, commands.get(end))) {
+                    end++;
+                }
+                drawPass(commands, cursor, end);
+                cursor = end;
+            }
+        } finally {
+            closeMeshes(commands);
+        }
+    }
+
+    private static void closeMeshes(List<RhiDrawCommand> commands) {
+        for (RhiDrawCommand command : commands) {
+            if (command != null && command.mesh != null) command.mesh.close();
+        }
+    }
+
+    private void drawPass(List<RhiDrawCommand> commands, int start, int end) {
+        RhiDrawCommand first = commands.get(start);
+        stats.renderPass(first.colorAttachment, first.depthAttachment);
+        String label = end - start == 1 ? first.label : first.label + " [" + (end - start) + " draws]";
+        try (RenderPass pass = createPass(label, first.colorAttachment, first.clearColor, first.depthAttachment, first.clearDepth)) {
+            for (int i = start; i < end; i++) {
+                drawInPass(pass, commands.get(i));
+            }
+        }
+    }
+
+    private void drawInPass(RenderPass pass, RhiDrawCommand command) {
         command.mesh.validateForDraw(command.label);
         try (RenderCostProfiler.Scope ignoredCost = RenderCostProfiler.rhiDraw(command.label)) {
             boolean pushMv = command.transform != null || command.applyWorldCameraY;
@@ -171,43 +209,49 @@ public final class SodiumGlBackend implements CombatantRhi {
                     MeshUniforms.update(
                             MeshRenderer.projection(),
                             meshModelView(command),
-                            command.colorAttachment != null ? command.colorAttachment.getWidth(0) : 1.0f,
-                            command.colorAttachment != null ? command.colorAttachment.getHeight(0) : 1.0f
+                            command.colorAttachment.getWidth(0),
+                            command.colorAttachment.getHeight(0)
                     );
                     meshData = MeshUniforms.get();
                 }
                 GpuBufferSlice uiBatch = null;
                 if (requiresUiBatch(command.pipelineSpec) && !command.hasUniform("UIBatch")) {
-                    UIBatchUniforms.update(
-                            command.colorAttachment != null ? command.colorAttachment.getWidth(0) : 1.0f,
-                            command.colorAttachment != null ? command.colorAttachment.getHeight(0) : 1.0f
-                    );
+                    UIBatchUniforms.update(command.colorAttachment.getWidth(0), command.colorAttachment.getHeight(0));
                     uiBatch = UIBatchUniforms.get();
                 }
 
-                stats.renderPass(command.colorAttachment, command.depthAttachment);
-                try (RenderPass pass = createPass(command.label, command.colorAttachment, command.clearColor, command.depthAttachment, command.clearDepth)) {
-                    if (command.pipelineSpec == null) pipelines.require(command.pipeline);
-                    pass.setPipeline(command.pipeline);
-                    if (meshData != null) pass.setUniform("MeshData", meshData);
-                    if (uiBatch != null) pass.setUniform("UIBatch", uiBatch);
-                    for (RhiUniformBinding uniform : command.uniforms) {
-                        pass.setUniform(uniform.name(), uniform.slice());
-                    }
-                    for (RhiSamplerBinding sampler : command.samplers) {
-                        pass.bindTexture(sampler.name(), sampler.view(), sampler.sampler());
-                    }
-                    pass.setVertexBuffer(0, command.mesh.vertexBuffer().slice());
-                    pass.setIndexBuffer(command.mesh.indexBuffer(), command.mesh.indexType());
-                    command.mesh.drawIndexed(pass, command.label);
-                    stats.drawCall();
+                if (command.pipelineSpec == null) pipelines.require(command.pipeline);
+                pass.setPipeline(command.pipeline);
+                if (meshData != null) pass.setUniform("MeshData", meshData);
+                if (uiBatch != null) pass.setUniform("UIBatch", uiBatch);
+                for (RhiUniformBinding uniform : command.uniforms) {
+                    pass.setUniform(uniform.name(), uniform.slice());
                 }
+                for (RhiSamplerBinding sampler : command.samplers) {
+                    pass.bindTexture(sampler.name(), sampler.view(), sampler.sampler());
+                }
+                pass.setVertexBuffer(0, command.mesh.vertexBuffer().slice());
+                pass.setIndexBuffer(command.mesh.indexBuffer(), command.mesh.indexType());
+                command.mesh.drawIndexed(pass, command.label);
+                stats.drawCall();
             } finally {
                 RenderState.lineWidth = previousLineWidth;
                 if (pushMv) RenderSystem.getModelViewStack().popMatrix();
-                command.mesh.close();
             }
         }
+    }
+
+    private static boolean drawable(RhiDrawCommand command) {
+        return command != null && command.mesh != null && command.mesh.indexCount() > 0;
+    }
+
+    private static boolean sharesRenderPass(RhiDrawCommand first, RhiDrawCommand next) {
+        if (!drawable(next)) return false;
+        return RenderPassCompatibility.canContinue(
+                first.colorAttachment, first.depthAttachment,
+                next.colorAttachment, next.depthAttachment,
+                next.clearColor.isPresent(), next.clearDepth.isPresent()
+        );
     }
 
     private static boolean requiresMeshData(RenderPipelineSpec pipeline) {

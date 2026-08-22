@@ -12,6 +12,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.features.hmi_recode.render.HmiModelCommand;
 import combatant.client.features.hmi_recode.render.HmiTransformCommand;
 import combatant.client.features.hmi_recode.script.HmiScriptRuntime;
+import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.helpers.TickDelta;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
@@ -60,6 +61,7 @@ public enum HoldMyItems {
         if (!active) return;
         lastMainReplay = null;
         lastOffReplay = null;
+        HmiContextFactory.invalidateCaches();
         SCRIPTS.invalidate();
     }
 
@@ -83,6 +85,7 @@ public enum HoldMyItems {
     }
 
     private static void resetTransientState() {
+        HmiContextFactory.invalidateCaches();
         previousMainItem = "minecraft:air";
         previousOffItem = "minecraft:air";
         previousMainSwing = 0.0f;
@@ -100,7 +103,9 @@ public enum HoldMyItems {
             ItemStack item,
             float equipProgress,
             PoseStack matrices,
-            MotionSettings motionSettings
+            MotionSettings motionSettings,
+            boolean renderHand,
+            boolean renderItem
     ) {
         if (!active) return;
         if (!(rawPlayer instanceof LocalPlayer player)) return;
@@ -155,7 +160,21 @@ public enum HoldMyItems {
             scope.handPoseResult = replayData != null ? replayData.handPose() : null;
             applyResult(scope.handPoseResult, matrices, scope, false);
         } else {
-            scope.handPoseResult = apply(HmiScriptKind.HAND_POSE, scope.scriptContext(), matrices, scope);
+            int plan = renderHand || renderItem
+                    ? HmiScriptRuntime.HAND_POSE
+                    : HmiScriptRuntime.HAND_POSE_STATE_ONLY;
+            if (renderHand) plan |= HmiScriptRuntime.HAND_RELATIVE_POSE;
+            if (renderItem) plan |= HmiScriptRuntime.ITEM_POSE | HmiScriptRuntime.ITEM_MODEL;
+            scope.preparedPlan = plan;
+
+            try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("hmi:prepare_hand")) {
+                HmiScriptRuntime.Result[] prepared = SCRIPTS.executePlan(plan, scope.scriptContext());
+                scope.handPoseResult = prepared[HmiScriptKind.HAND_POSE.ordinal()];
+                scope.handRelativeResult = prepared[HmiScriptKind.HAND_RELATIVE_POSE.ordinal()];
+                scope.itemPoseResult = prepared[HmiScriptKind.ITEM_POSE.ordinal()];
+                scope.itemModelResult = prepared[HmiScriptKind.ITEM_MODEL.ordinal()];
+            }
+            applyResult(scope.handPoseResult, matrices, scope, true);
         }
     }
 
@@ -185,6 +204,8 @@ public enum HoldMyItems {
         if (scope.replay) {
             scope.handRelativeResult = scope.replayData != null ? scope.replayData.handRelative() : null;
             applyResult(scope.handRelativeResult, matrices, scope, false);
+        } else if ((scope.preparedPlan & HmiScriptRuntime.HAND_RELATIVE_POSE) != 0) {
+            applyResult(scope.handRelativeResult, matrices, scope, true);
         } else {
             scope.handRelativeResult = apply(
                     HmiScriptKind.HAND_RELATIVE_POSE,
@@ -209,10 +230,17 @@ public enum HoldMyItems {
             return;
         }
 
-        scope.itemPoseResult = apply(HmiScriptKind.ITEM_POSE, itemScope.scriptContext(), matrices, itemScope);
-        scope.itemModelResult = SCRIPTS.execute(HmiScriptKind.ITEM_MODEL, itemScope.scriptContext());
+        boolean prepared = renderedItem == scope.item()
+                && (scope.preparedPlan & (HmiScriptRuntime.ITEM_POSE | HmiScriptRuntime.ITEM_MODEL))
+                == (HmiScriptRuntime.ITEM_POSE | HmiScriptRuntime.ITEM_MODEL);
+        if (prepared) {
+            applyResult(scope.itemPoseResult, matrices, itemScope, true);
+        } else {
+            scope.itemPoseResult = apply(HmiScriptKind.ITEM_POSE, itemScope.scriptContext(), matrices, itemScope);
+            scope.itemModelResult = SCRIPTS.execute(HmiScriptKind.ITEM_MODEL, itemScope.scriptContext());
+        }
         playSounds(scope.itemModelResult, itemScope);
-        scope.modelCommands = scope.itemModelResult.modelCommands();
+        scope.modelCommands = scope.itemModelResult != null ? scope.itemModelResult.modelCommands() : List.of();
     }
 
     public static boolean hasModelCommands() {
@@ -334,6 +362,7 @@ public enum HoldMyItems {
         private HmiScriptRuntime.Result itemPoseResult;
         private HmiScriptRuntime.Result itemModelResult;
         private Map<String, Object> scriptContext;
+        private int preparedPlan;
 
         private RenderScope(LocalPlayer player, float tickDelta, InteractionHand hand, ItemStack item, float swingProgress,
                             float mainHandSwingProgress, float offHandSwingProgress, float equipProgress,

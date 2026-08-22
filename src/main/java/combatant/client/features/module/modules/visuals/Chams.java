@@ -27,6 +27,7 @@ import net.minecraft.client.renderer.RenderBuffers;
 import net.minecraft.client.renderer.SubmitNodeCollection;
 import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.feature.phase.FeatureRenderPhase;
+import net.minecraft.client.renderer.feature.submit.SubmitNode;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.util.Util;
@@ -42,6 +43,7 @@ import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.postprocess.PostProcessPass;
+import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.helpers.TickDelta;
 import combatant.client.render.engine.uniform.impl.HandGhostingUniforms;
@@ -255,6 +257,7 @@ public class Chams extends Module {
     private boolean ghostHistoryNeedsClear = true;
     private RenderBuffers handMaskRenderBuffers;
     private FeatureRenderDispatcher handMaskFeatureDispatcher;
+    private final java.util.ArrayList<SubmitNode> handSnapshotScratch = new java.util.ArrayList<>(32);
 
     {
         PostProcessManager.register(handsPass);
@@ -401,28 +404,31 @@ public class Chams extends Module {
         if (storage == null || !hands.get() || !shouldRenderHand()) return null;
         if (!mc.options.getCameraType().isFirstPerson()) return null;
 
-        SubmitNodeStorage snapshot = new SubmitNodeStorage();
-        for (var entry : storage.getSubmitsPerOrder().int2ObjectEntrySet()) {
-            SubmitNodeCollection sourceCollection = entry.getValue();
-            SubmitNodeCollection targetCollection = snapshot.order(entry.getIntKey());
+        try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("chams:hand_snapshot")) {
+            SubmitNodeStorage snapshot = new SubmitNodeStorage();
+            for (var entry : storage.getSubmitsPerOrder().int2ObjectEntrySet()) {
+                SubmitNodeCollection sourceCollection = entry.getValue();
+                SubmitNodeCollection targetCollection = snapshot.order(entry.getIntKey());
 
-            var sourcePhases = sourceCollection.allPhases();
-            var targetPhases = targetCollection.allPhases();
-            if (sourcePhases.size() != targetPhases.size()) {
-                // A mod injected a phase asymmetrically. Do not risk consuming/corrupting the live
-                // hand storage; simply skip Chams for this frame.
-                return null;
-            }
+                var sourcePhases = sourceCollection.allPhases();
+                var targetPhases = targetCollection.allPhases();
+                if (sourcePhases.size() != targetPhases.size()) {
+                    // A mod injected a phase asymmetrically. Do not risk consuming/corrupting the live
+                    // hand storage; simply skip Chams for this frame.
+                    return null;
+                }
 
-            for (int i = 0; i < sourcePhases.size(); i++) {
-                copyPhase(sourcePhases.get(i), targetPhases.get(i));
+                for (int i = 0; i < sourcePhases.size(); i++) {
+                    FeatureRenderPhase<?> source = sourcePhases.get(i);
+                    if (!source.isEmpty()) copyPhase(source, targetPhases.get(i));
+                }
             }
+            return snapshot;
         }
-        return snapshot;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private static void copyPhase(FeatureRenderPhase<?> source, FeatureRenderPhase<?> target) {
+    private void copyPhase(FeatureRenderPhase<?> source, FeatureRenderPhase<?> target) {
         // FeatureRenderPhase.sortInto() is destructive in 26.2: both the simple and translucent
         // implementations clear their backing submits after forwarding them to Output. A naive
         // "copy" therefore emptied Minecraft's live hand storage before the vanilla dispatcher
@@ -432,16 +438,16 @@ public class Chams extends Module {
         // source phase and also submit them to the isolated mask phase. Re-submission preserves the
         // phase's own batching / translucent distance bookkeeping without sharing mutable phase
         // containers between the vanilla scene and the auxiliary mask renderer.
-        java.util.ArrayList<net.minecraft.client.renderer.feature.submit.SubmitNode> buffered =
-                new java.util.ArrayList<>();
-        source.sortInto((submit, strictlyOrdered) -> buffered.add(submit));
+        handSnapshotScratch.clear();
+        source.sortInto((submit, strictlyOrdered) -> handSnapshotScratch.add(submit));
 
         FeatureRenderPhase rawSource = source;
         FeatureRenderPhase rawTarget = target;
-        for (net.minecraft.client.renderer.feature.submit.SubmitNode submit : buffered) {
+        for (SubmitNode submit : handSnapshotScratch) {
             rawSource.submit(submit);
             rawTarget.submit(submit);
         }
+        handSnapshotScratch.clear();
     }
 
     public boolean renderPreparedHandScene(SubmitNodeStorage storage) {
@@ -473,7 +479,9 @@ public class Chams extends Module {
         RenderSystem.outputDepthTextureOverride = handMask.getDepthTextureView();
         RenderState.rendering3D = true;
         try {
-            maskDispatcher.renderAllFeatures(storage);
+            try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("chams:hand_mask_render")) {
+                maskDispatcher.renderAllFeatures(storage);
+            }
             markHandMaskReady();
         } finally {
             endStandaloneHandFrame();
