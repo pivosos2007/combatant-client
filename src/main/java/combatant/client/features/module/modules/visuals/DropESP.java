@@ -60,6 +60,9 @@ public class DropESP extends Module {
     private static final String SETTING_FRAME = "frame";
     private static final String SETTING_ITEM_ICON = "item_icon";
     private static final String SETTING_PRESENTATION_MODE = "presentation_mode";
+    private static final String SETTING_WORLD_SIZE = "world_size";
+    private static final String SETTING_DYNAMIC_WORLD_SCALE = "dynamic_world_scale";
+    private static final String SETTING_DYNAMIC_WORLD_SCALE_COEFFICIENT = "dynamic_world_scale_coefficient";
     private static final double ITEM_BOX_EXPAND_XZ = 0.05;
     private static final double ITEM_BOX_EXPAND_TOP = 0.15;
     private static final double MATTE_LABEL_PAD_X = 3.5;
@@ -74,6 +77,15 @@ public class DropESP extends Module {
     private final EnumValue<WorldUiPresentationService.Mode> presentationMode =
             enumSetting("dropEspPresentationMode", SETTING_PRESENTATION_MODE,
                     WorldUiPresentationService.Mode.HYBRID, WorldUiPresentationService.Mode.values());
+    private final NumberValue<Float> worldSize =
+            visibleWhen(num("dropEspWorldSize", SETTING_WORLD_SIZE, 0.72f, 0.35f, 1.50f),
+                    () -> presentationMode.get() != WorldUiPresentationService.Mode.SCREEN);
+    private final BooleanValue dynamicWorldScale =
+            visibleWhen(bool("dropEspDynamicWorldScale", SETTING_DYNAMIC_WORLD_SCALE, true),
+                    () -> presentationMode.get() != WorldUiPresentationService.Mode.SCREEN);
+    private final NumberValue<Float> dynamicWorldScaleCoefficient =
+            visibleWhen(num("dropEspDynamicWorldScaleCoefficient", SETTING_DYNAMIC_WORLD_SCALE_COEFFICIENT, 0.25f, 0.0f, 1.0f),
+                    () -> presentationMode.get() != WorldUiPresentationService.Mode.SCREEN && dynamicWorldScale.get());
     private final BooleanValue limitCommonDistanceValue = bool("dropEspLimitCommonDistance", SETTING_LIMIT_COMMON_DISTANCE, true);
     private final NumberValue<Integer> commonMaxDistanceValue =
             visibleWhen(num("dropEspCommonMaxDistance", SETTING_COMMON_MAX_DISTANCE, 32, 4, 256), limitCommonDistanceValue::get);
@@ -471,7 +483,8 @@ public class DropESP extends Module {
                 ? mc.getWindow().getGuiScaledHeight()
                 : 0.0;
         return WorldUiPresentationService.resolve(
-                presentationMode.get(), distance, WORLD_PRESENTATION_POLICY, projectionYScale, logicalHeight);
+                presentationMode.get(), distance, WORLD_PRESENTATION_POLICY, projectionYScale, logicalHeight,
+                worldSize.get(), dynamicWorldScale.get(), dynamicWorldScaleCoefficient.get());
     }
 
     private Vec3 presentationCameraPosition(float tickDelta) {

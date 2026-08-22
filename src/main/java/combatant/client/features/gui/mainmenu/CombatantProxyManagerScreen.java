@@ -9,7 +9,6 @@ package combatant.client.features.gui.mainmenu;
 
 
 import combatant.client.features.theme.Theme;
-import combatant.client.config.MainConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.animation.AnimationUtility;
@@ -108,7 +107,7 @@ public final class CombatantProxyManagerScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         updateUiMetrics();
-        renderShaderBackground(context);
+        renderBackgroundTexture();
         float fx = toFixedX(mouseX);
         float fy = toFixedY(mouseY);
         updateAnimations(fx, fy);
@@ -203,7 +202,7 @@ public final class CombatantProxyManagerScreen extends Screen {
         float innerX = b.x + 8f * SCALE;
         float innerW = PANEL_W - 16f * SCALE;
         float rowY = b.y + 28f * SCALE;
-        renderToggle(innerX, rowY, 66f * SCALE, 13f * SCALE, tr("screen.combatant.proxy_manager.enabled"), enabled, enableHover, enablePress, c);
+        renderToggle(innerX, rowY, 66f * SCALE, 13f * SCALE, tr(enabled ? "screen.combatant.proxy_manager.enabled" : "screen.combatant.proxy_manager.disabled"), enabled, enableHover, enablePress, c);
         renderTypeToggle(innerX + 72f * SCALE, rowY, innerW - 72f * SCALE, 13f * SCALE, c);
 
         float fieldY = b.y + 53f * SCALE;
@@ -468,16 +467,9 @@ public final class CombatantProxyManagerScreen extends Screen {
         Renderer2D.COLOR.quad(0, 0, fixedWidth, fixedHeight, soft, soft, deep, deep);
     }
 
-    private void renderShaderBackground(GuiGraphicsExtractor context) {
+    private void renderBackgroundTexture() {
         Minecraft mc = this.minecraft;
-        if (mc == null) return;
-        MainConfig cfg = MainConfig.get();
-        String mode = cfg != null ? cfg.getMenuBackgroundMode() : "off";
-        if (mode == null || mode.equalsIgnoreCase("off")) {
-            context.fill(0, 0, width, height, 0xFF000000);
-            return;
-        }
-        MenuBackgroundRenderer.render(mc, mode.equalsIgnoreCase("aurora"));
+        if (mc != null) MenuBackgroundRenderer.renderConfigured(mc);
     }
 
     private void updateUiMetrics() {

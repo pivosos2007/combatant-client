@@ -67,6 +67,7 @@ void main() {
 
     float angularAlpha = 1.0;
     if (sweep < 359.99) {
+        float endUnwrapped = startDeg + sweep;
         float angleDeg = normalizeAngle(degrees(atan(local.x, -local.y)));
         if (angleDeg < startDeg) {
             angleDeg += 360.0;
@@ -78,11 +79,11 @@ void main() {
         if (capsEnabled > 0.5) {
             // Keep the arc body inside the logical sweep; round dots are added separately below.
             startMask = smoothstep(startDeg - angularSoftDeg, startDeg, angleDeg);
-            endMask = 1.0 - smoothstep(endDeg, endDeg + angularSoftDeg, angleDeg);
+            endMask = 1.0 - smoothstep(endUnwrapped, endUnwrapped + angularSoftDeg, angleDeg);
         } else {
             // Flat arcs must not bleed past the logical start/end angles.
             startMask = smoothstep(startDeg - angularSoftDeg, startDeg, angleDeg);
-            endMask = 1.0 - smoothstep(endDeg, endDeg + angularSoftDeg, angleDeg);
+            endMask = 1.0 - smoothstep(endUnwrapped, endUnwrapped + angularSoftDeg, angleDeg);
         }
         angularAlpha = startMask * endMask;
 

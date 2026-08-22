@@ -113,6 +113,7 @@ final class ScriptedStatisticsHudPanel {
                  String playTime,
                  String averageSpeed,
                  float arcEndAngle,
+                 float arcHashTime,
                  boolean showPlayTime,
                  boolean showGraph,
                  boolean separateGraph,
@@ -159,6 +160,7 @@ final class ScriptedStatisticsHudPanel {
             out.put("playTime", playTime);
             out.put("averageSpeed", averageSpeed);
             out.put("arcEndAngle", arcEndAngle);
+            out.put("arcHashTime", arcHashTime);
             out.put("showPlayTime", showPlayTime);
             out.put("showGraph", showGraph);
             out.put("separateGraph", separateGraph);
@@ -227,6 +229,7 @@ final class ScriptedStatisticsHudPanel {
             h = CachedUiScriptRuntime.mix(h, playTime);
             h = CachedUiScriptRuntime.mix(h, averageSpeed);
             h = CachedUiScriptRuntime.mix(h, arcEndAngle);
+            h = CachedUiScriptRuntime.mix(h, arcHashTime);
             h = CachedUiScriptRuntime.mix(h, headerIconColor);
             for (Map<String, Object> row : rows) {
                 h = CachedUiScriptRuntime.mix(h, string(row.get("value")));
@@ -257,6 +260,7 @@ final class ScriptedStatisticsHudPanel {
             if (showPlayTime) {
                 putPatch(patches, "playtime:value", "text", playTime);
                 putPatch(patches, "playtime:arc", "endAngle", arcEndAngle);
+                putPatch(patches, "playtime:arc", "hashTime", arcHashTime);
             }
             putPatch(patches, "header:icon", "tint", hex(headerIconColor));
             if (showGraph) {

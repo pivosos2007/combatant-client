@@ -99,6 +99,8 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_KILL_BLUR_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/kill_blur.frag");
     public static final Identifier SHADER_POSTPROCESS_COPY_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/postprocess_copy.frag");
     public static final Identifier SHADER_MAIN_MENU_TEXTURE_BACKGROUND_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/main_menu_texture_background.frag");
+    public static final Identifier SHADER_MENU_BACKGROUND_AURORA_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/menu_background_aurora.frag");
+    public static final Identifier SHADER_MENU_BACKGROUND_WAVES_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/menu_background_waves.frag");
     public static final Identifier SHADER_POST_FX_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/post_fx.frag");
     public static final Identifier SHADER_MOTION_BLUR_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/motion_blur.frag");
     public static final Identifier SHADER_DEPTH_OF_FIELD_FOCUS_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/depth_of_field_focus.frag");
@@ -118,8 +120,6 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_UI_BLUR_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_blur.frag");
     public static final Identifier SHADER_HAND_GLASS_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_glass.frag");
     public static final Identifier SHADER_SKY_SUN_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/sky_sun.frag");
-    public static final Identifier SHADER_MENU_BACKGROUND_WAVES_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/menu_background_waves.frag");
-    public static final Identifier SHADER_MENU_BACKGROUND_AURORA_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/menu_background_aurora.frag");
     private static final List<RenderPipeline> PIPELINES = new ArrayList<>();
     public static final RenderPipeline GUI_TEXTURE_LOOKUP = add(new ExtendedRenderPipelineBuilder(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED_SNIPPET)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/gui_texture_lookup"))
@@ -815,36 +815,6 @@ public enum CombatantRenderPipelines {
             .build()
     );
     /**
-     * Fullscreen menu background (pos2).
-     */
-    public static final RenderPipeline MENU_BACKGROUND_WAVES = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/menu_background_waves"))
-            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
-            .withFragmentShader(SHADER_MENU_BACKGROUND_WAVES_FRAG)
-            .withUniform("MenuBackground", UniformType.UNIFORM_BUFFER)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-            .withDepthWrite(false)
-            .withBlend(BlendFunction.TRANSLUCENT)
-            .withCull(false)
-            .build()
-    );
-    /**
-     * Fullscreen main menu background (pos2).
-     */
-    public static final RenderPipeline MENU_BACKGROUND_AURORA = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/menu_background_aurora"))
-            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
-            .withFragmentShader(SHADER_MENU_BACKGROUND_AURORA_FRAG)
-            .withUniform("MenuBackground", UniformType.UNIFORM_BUFFER)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-            .withDepthWrite(false)
-            .withBlend(BlendFunction.TRANSLUCENT)
-            .withCull(false)
-            .build()
-    );
-    /**
      * Fullscreen postprocess (pos2).
      */
     public static final RenderPipeline DAMAGE_TINT = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
@@ -897,7 +867,35 @@ public enum CombatantRenderPipelines {
             .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
             .withVertexShader(SHADER_DAMAGE_TINT_VERT)
             .withFragmentShader(SHADER_MAIN_MENU_TEXTURE_BACKGROUND_FRAG)
+            .withSampler("u_PreviousTexture")
             .withSampler("u_Texture")
+            .withUniform("MenuTextureTransition", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build()
+    );
+    /** Full-screen procedural aurora used by the Combatant/vanilla menu background replacement. */
+    public static final RenderPipeline MAIN_MENU_AURORA_BACKGROUND = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/menu_background_aurora"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_MENU_BACKGROUND_AURORA_FRAG)
+            .withUniform("MenuBackground", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build()
+    );
+    /** Full-screen procedural waves used by the Combatant/vanilla menu background replacement. */
+    public static final RenderPipeline MAIN_MENU_WAVES_BACKGROUND = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/menu_background_waves"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_MENU_BACKGROUND_WAVES_FRAG)
+            .withUniform("MenuBackground", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)

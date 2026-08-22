@@ -75,8 +75,24 @@ float pointyHexDistance(vec2 p, float radius) {
     return max(verticalSide, diagonalSide);
 }
 
+bool insideChamferedCutout(vec2 p, vec4 rect, float cut) {
+    if (rect.z <= 0.0 || rect.w <= 0.0) return false;
+    vec2 halfSize = rect.zw * 0.5;
+    vec2 local = abs(p - (rect.xy + halfSize));
+    if (local.x > halfSize.x || local.y > halfSize.y) return false;
+    float safeCut = clamp(cut, 0.0, min(halfSize.x, halfSize.y));
+    return local.x + local.y <= halfSize.x + halfSize.y - safeCut;
+}
+
 void main() {
     vec2 position = warpedLocal(v_Local);
+
+    // Optional menu-window hole. This is evaluated before cursor lighting/refraction so the
+    // honeycomb cannot glow through the chamfered background corners.
+    if (v_Params4.w > 0.5 && insideChamferedCutout(position, v_Params5, v_Params4.z)) {
+        discard;
+    }
+
     float radius = max(v_Params.x, 1.0);
     float rimWidth = max(v_Params.z, 0.45);
     float opacity = saturate(v_Params.w);

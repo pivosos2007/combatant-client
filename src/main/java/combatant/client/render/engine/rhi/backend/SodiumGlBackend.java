@@ -270,7 +270,7 @@ public final class SodiumGlBackend implements CombatantRhi {
 
             /*
              * Fullscreen pipelines still use the shared MeshData uniform block through their vertex shader
-             * (for example damage_tint.vert and menu_background_*). The old MeshRenderer path always wrote
+             * (for example damage_tint.vert). The old MeshRenderer path always wrote
              * this UBO before drawing. The RHI fullscreen path must do the same; otherwise the shader reads
              * a stale/undefined projection and the NDC quad can be transformed into a tiny corner viewport.
              */

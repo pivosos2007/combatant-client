@@ -100,6 +100,7 @@
     "MultiPlayerGameModeMixin",
     "NarratorManagerMixin",
     "OptionsNarratorMixin",
+    "PanoramaMixin",
     "ParticleManagerMixin",
     "PauseScreenMixin",
     "PlayerInfoMixin",

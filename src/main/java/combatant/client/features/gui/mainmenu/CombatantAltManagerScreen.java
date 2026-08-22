@@ -25,11 +25,13 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.util.Util;
-import combatant.client.config.MainConfig;
 import combatant.client.features.account.AccountConfig;
 import combatant.client.features.account.AccountEntry;
 import combatant.client.features.account.SkinManager;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
+import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.color.RenderColor;
@@ -37,6 +39,9 @@ import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.draw.UiPaint;
+import combatant.client.render.engine.renderer.ui.draw.UiPrimitive;
+import combatant.client.render.engine.renderer.ui.draw.UiStroke;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
@@ -51,21 +56,24 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 
 public final class CombatantAltManagerScreen extends Screen {
-    private static final float SCALE = 2.28f;
+    private static final float SCALE = 2.12f;
     private static final float TEXT_SCALE = 1.30f;
+    private static final float WINDOW_PAD = 7.0f * SCALE;
+    private static final float WINDOW_CUT = 7.5f * SCALE;
+    private static final float WINDOW_ROUNDING = 1.35f * SCALE;
+    private static final float BUTTON_ELEVATION = 3.15f * SCALE;
     private static final DateTimeFormatter ACCOUNT_DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
 
     private static final float LEFT_W = 100f * SCALE;
     private static final float LEFT_TOP_H = 137f * SCALE;
     private static final float LEFT_BOTTOM_H = 58f * SCALE;
     private static final float RIGHT_W = 300f * SCALE;
-    private static final float RIGHT_H = 165f * SCALE;
+    private static final float RIGHT_H = (137f + 5f + 58f) * SCALE;
     private static final float GAP = 5f * SCALE;
 
-    private static final float PANEL_R = 6f * SCALE;
-    private static final float PANEL_SHADOW = 12f * SCALE;
-    private static final float LEFT_CARD_R = 4f * SCALE;
-    private static final float CARD_MARKER_W = 2.2f * SCALE;
+    private static final float PANEL_R = 3.2f * SCALE;
+    private static final int PIN_YELLOW = 0xFFFFC857;
+    private static final int PIN_YELLOW_SOFT = 0xFFFFE39A;
 
     private static final float TITLE_FONT = 0.84f * TEXT_SCALE;
     private static final float LABEL_FONT = 0.58f * TEXT_SCALE;
@@ -78,17 +86,21 @@ public final class CombatantAltManagerScreen extends Screen {
     private static final float ACTIVE_DATE_FONT = 0.50f * TEXT_SCALE;
     private static final float EMPTY_FONT = 0.56f * TEXT_SCALE;
     private static final float BADGE_FONT = 0.45f * TEXT_SCALE;
+    private static final float OFFLINE_STATUS_FONT = 0.64f * TEXT_SCALE;
     private static final float PIN_ICON_FONT = 0.93f * TEXT_SCALE;
     private static final float DELETE_ICON_FONT = 1.05f * TEXT_SCALE;
 
     private static final float FIELD_H = 14f * SCALE;
     private static final float ADD_SIZE = 14f * SCALE;
     private static final float TOP_BUTTON_H = 16f * SCALE;
-    private static final float CARD_H = 40f * SCALE;
+    private static final float NICK_LABEL_Y = 43f * SCALE;
+    private static final float NICK_FIELD_Y = 53f * SCALE;
+    private static final float PRIMARY_ACTION_Y = 76f * SCALE;
+    private static final float CARD_H = 48f * SCALE;
     private static final float CARD_GAP = 5f * SCALE;
     private static final float CARD_BTN = 12f * SCALE;
     private static final float ACTIVE_HEAD = 24f * SCALE;
-    private static final float CARD_HEAD = 25f * SCALE;
+    private static final float CARD_HEAD = 19f * SCALE;
 
     private final Screen parent;
     private final AccountConfig accountConfig = AccountConfig.get();
@@ -168,8 +180,8 @@ public final class CombatantAltManagerScreen extends Screen {
 
     @Override
     protected void init() {
-        titleRenderer = Fonts.renderer("Inter", FontInfo.Type.Bold, TextRenderer.get());
-        bodyRenderer = Fonts.renderer("InterMedium", FontInfo.Type.Regular, titleRenderer);
+        titleRenderer = Fonts.renderer("OnestBold", FontInfo.Type.Regular, TextRenderer.get());
+        bodyRenderer = Fonts.renderer("OnestMedium", FontInfo.Type.Regular, titleRenderer);
         menuIconRenderer = Fonts.renderer("MainMenuIcons", FontInfo.Type.Regular, TextRenderer.get());
         guiIconRenderer = Fonts.renderer("GuiIcons", FontInfo.Type.Regular, menuIconRenderer);
         iconRenderer = Fonts.renderer("RichIcons", FontInfo.Type.Regular, menuIconRenderer);
@@ -179,7 +191,7 @@ public final class CombatantAltManagerScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         updateUiMetrics();
         clampScroll();
-        renderShaderBackground(context);
+        renderBackgroundTexture();
 
         float fx = toFixedX(mouseX);
         float fy = toFixedY(mouseY);
@@ -188,7 +200,20 @@ public final class CombatantAltManagerScreen extends Screen {
         ViewportContext.beginUnscaledLogical(context);
         Renderer2D.COLOR.begin();
         try {
-            drawDimmer();
+            Layout l = layout();
+            WindowBounds window = windowBounds(l);
+            MainMenuBackdrop.GridLayout backdropGrid = MainMenuBackdrop.layout(fixedWidth, fixedHeight);
+            float cutoutPad = 1.15f * SCALE;
+            MainMenuBackdrop.Cutout cutout = MainMenuBackdrop.Cutout.chamfered(
+                    window.x - cutoutPad,
+                    window.y - cutoutPad,
+                    window.w + cutoutPad * 2f,
+                    window.h + cutoutPad * 2f,
+                    WINDOW_CUT + cutoutPad
+            );
+            MainMenuBackdrop.render(
+                    fixedWidth, fixedHeight, 1.0f, fx, fy, backdropGrid, cutout
+            );
             renderAltUi(context, fx, fy);
         } finally {
             Renderer2D.COLOR.render();
@@ -267,9 +292,11 @@ public final class CombatantAltManagerScreen extends Screen {
 
     private void renderAltUi(GuiGraphicsExtractor context, float mouseX, float mouseY) {
         Layout l = layout();
+        WindowBounds window = windowBounds(l);
         float open = AnimationUtility.easeOutCubic(openAnim);
         PanelColors c = colors(open);
 
+        renderWindow(window, c, open);
         renderPanel(l.leftX, l.topY, LEFT_W, LEFT_TOP_H, c, open);
         renderPanel(l.leftX, l.bottomY, LEFT_W, LEFT_BOTTOM_H, c, open);
         renderPanel(l.rightX, l.topY, RIGHT_W, RIGHT_H, c, open);
@@ -280,13 +307,13 @@ public final class CombatantAltManagerScreen extends Screen {
     }
 
     private void renderTopPanel(float mouseX, float mouseY, float x, float y, PanelColors c) {
-        drawCentered(titleRenderer, tr("screen.combatant.alt_manager.account_panel"), x + LEFT_W * 0.5f - 8f * SCALE, y + 7f * SCALE, TITLE_FONT, c.title);
+        draw(titleRenderer, tr("screen.combatant.alt_manager.account_panel"), x + 7f * SCALE, y + 7f * SCALE, TITLE_FONT, c.title);
         renderModeToggle(mouseX, mouseY, x + 5f * SCALE, y + 27f * SCALE, LEFT_W - 10f * SCALE, 13f * SCALE, c);
 
-        draw(bodyRenderer, microsoftMode ? tr("screen.combatant.alt_manager.microsoft_login") : tr("screen.combatant.alt_manager.nickname"), x + 5f * SCALE, y + 47f * SCALE, LABEL_FONT, c.label);
+        draw(bodyRenderer, microsoftMode ? tr("screen.combatant.alt_manager.microsoft_login") : tr("screen.combatant.alt_manager.nickname"), x + 5f * SCALE, y + NICK_LABEL_Y, LABEL_FONT, c.label);
 
         float fieldX = x + 5f * SCALE;
-        float fieldY = y + 57f * SCALE;
+        float fieldY = y + NICK_FIELD_Y;
         float fieldW = LEFT_W - 10f * SCALE - ADD_SIZE - 3f * SCALE;
         if (microsoftMode) {
             renderMicrosoftField(fieldX, fieldY, fieldW, FIELD_H, c);
@@ -299,7 +326,7 @@ public final class CombatantAltManagerScreen extends Screen {
 
         float buttonX = x + 5f * SCALE;
         float buttonW = LEFT_W - 10f * SCALE;
-        float randomY = fieldY + FIELD_H + 5f * SCALE;
+        float randomY = y + PRIMARY_ACTION_Y;
         float openSiteY = randomY + TOP_BUTTON_H + 5f * SCALE;
         float clearY = (microsoftMode ? openSiteY : randomY) + TOP_BUTTON_H + 5f * SCALE;
 
@@ -321,31 +348,29 @@ public final class CombatantAltManagerScreen extends Screen {
 
 
     private void renderActivePanel(GuiGraphicsExtractor context, float x, float y, PanelColors c) {
-        drawCentered(titleRenderer, tr("screen.combatant.alt_manager.active_session"), x + LEFT_W * 0.5f - 15f * SCALE, y + 6f * SCALE, TITLE_FONT, c.title);
+        draw(titleRenderer, tr("screen.combatant.alt_manager.active_session"), x + 7f * SCALE, y + 6f * SCALE, TITLE_FONT, c.title);
 
         float cardX = x + 5f * SCALE;
         float cardY = y + 24f * SCALE;
         float cardW = LEFT_W - 10f * SCALE;
         float cardH = 29f * SCALE;
-        Renderer2D.COLOR.roundedRectCornersQuad(cardX, cardY, cardW, cardH, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, 1f,
-                withAlpha(c.surface, 154), withAlpha(c.surfaceHover, 166), withAlpha(0xFF0D1118, 176), withAlpha(0xFF0D1118, 176));
-        Renderer2D.COLOR.roundedRectStrokeCorners(cardX, cardY, cardW, cardH, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, 0.55f, HudRenderUtil.mixColor(c.stroke, c.strokeSoft, 0.34f));
+        renderAccountCardMaterial(cardX, cardY, cardW, cardH, c, 0f, 0.34f, 0f);
 
         String activeName = accountConfig.getActiveAccountName();
         if (activeName == null || activeName.isBlank()) {
             drawCentered(bodyRenderer, tr("screen.combatant.alt_manager.no_account_selected"), cardX + cardW * 0.5f, cardY + 10.2f * SCALE, EMPTY_FONT, c.mutedLabel);
             return;
         }
-        float faceX = cardX + 5f * SCALE;
+        float faceX = cardX + 6f * SCALE;
         float faceY = cardY + 2.5f * SCALE;
         Identifier skin = accountConfig.getActiveAccountSkin();
         if (skin == null) skin = SkinManager.getSkin(activeName);
 
-        PlayerHeadRenderer.drawRounded(context, faceX, faceY, ACTIVE_HEAD, 3f * SCALE, skin,
-                new RenderColor(c.title), true, new RenderColor(c.stroke), 0.7f, false);
+        PlayerHeadRenderer.drawRounded(context, faceX, faceY, ACTIVE_HEAD, 2.4f * SCALE, skin,
+                new RenderColor(c.title), true, new RenderColor(withAlpha(c.accentSoft, 142)), 0.70f, false);
 
         float textX = faceX + ACTIVE_HEAD + 6f * SCALE;
-        float textW = Math.max(1f, cardX + cardW - textX - 6f * SCALE);
+        float textW = Math.max(1f, cardX + cardW - textX - 10f * SCALE);
         draw(bodyRenderer, ellipsize(activeName, ACTIVE_NAME_FONT, textW), textX, faceY + 4f * SCALE, ACTIVE_NAME_FONT, c.title);
         draw(bodyRenderer, ellipsize(accountConfig.getActiveAccountDate(), ACTIVE_DATE_FONT, textW), textX, faceY + 14f * SCALE, ACTIVE_DATE_FONT, c.muted);
     }
@@ -386,27 +411,36 @@ public final class CombatantAltManagerScreen extends Screen {
         float hoverAnim = AnimationUtility.easeOutCubic(cardHoverAnims.getOrDefault(key, 0f));
         float activeAnim = AnimationUtility.easeOutCubic(cardActiveAnims.getOrDefault(key, 0f));
         float pressAnim = AnimationUtility.easeOutCubic(cardPressAnims.getOrDefault(key, 0f));
-        Themes.Theme theme = Theme.theme();
-        int activeAccent = withAlpha(theme.accent(), Math.round(165f * activeAnim));
 
-        int fillBase = HudRenderUtil.mixColor(c.surface, c.surfaceHover, 0.38f * hoverAnim + 0.10f * pressAnim);
-        int fillTop = HudRenderUtil.mixColor(fillBase, c.surfaceHover, 0.03f * pressAnim);
-        int fillBottom = HudRenderUtil.mixColor(fillBase, 0xFF05070A, 0.18f);
-        int stroke = HudRenderUtil.mixColor(c.stroke, c.strokeSoft, 0.45f * hoverAnim);
-        stroke = HudRenderUtil.mixColor(stroke, activeAccent, 0.38f * activeAnim + 0.10f * pressAnim);
-        Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, CARD_H, 4f * SCALE, 8f * SCALE, 0.018f + hoverAnim * 0.018f + activeAnim * 0.010f, c.shadow);
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, CARD_H, 4f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
-        renderActiveCardMarker(x, y, w, CARD_H, activeAnim, theme);
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, w, CARD_H, 4f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(stroke, 0xFFFFFFFF, 0.04f + hoverAnim * 0.03f), stroke, 90f);
+        // Match ClickGui Settings cards: rounded card, soft SDF shadow, backdrop blur,
+        // four-corner palette gradient and only a weak hover/selected highlight.
+        float topY = y - hoverAnim * 0.42f * SCALE + pressAnim * 0.16f * SCALE;
+        renderAccountCardMaterial(x, topY, w, CARD_H, c, hoverAnim, activeAnim, pressAnim);
 
-        PlayerHeadRenderer.drawRounded(context, x + 7f * SCALE, y + 7f * SCALE, CARD_HEAD, 3f * SCALE, SkinManager.getSkin(entry.getName()),
-                new RenderColor(c.title), true, null, 0f, false);
+        SettingsGuiPalette palette = SettingsGuiPalette.current();
+        float openAlpha = ((c.title >>> 24) & 0xFF) / 255f;
+        LayoutRender2D.rectQuad(
+                x, topY + 28f * SCALE, w, 0.5f * SCALE,
+                LayoutRender2D.alpha(palette.moduleDividerStart(), openAlpha),
+                LayoutRender2D.alpha(palette.moduleDividerEnd(), openAlpha),
+                LayoutRender2D.alpha(palette.moduleDividerEnd(), openAlpha),
+                LayoutRender2D.alpha(palette.moduleDividerStart(), openAlpha)
+        );
 
-        draw(bodyRenderer, ellipsize(entry.getName(), CARD_NAME_FONT, w - CARD_HEAD - 45f * SCALE), x + 37f * SCALE, y + 9f * SCALE, CARD_NAME_FONT, c.title);
-        draw(bodyRenderer, entry.getDate(), x + 37f * SCALE, y + 20f * SCALE, CARD_DATE_FONT, c.muted);
-        renderAuthBadge(entry, x + 37f * SCALE, y + 30f * SCALE, c);
+        float faceX = x + 6f * SCALE;
+        float faceY = topY + 5f * SCALE;
+        int faceOutline = activeAnim > 0.01f
+                ? withAlpha(HudRenderUtil.mixColor(c.accentSoft, c.accent, 0.38f), Math.round(112f + 88f * activeAnim))
+                : withAlpha(c.strokeSoft, 96);
+        PlayerHeadRenderer.drawRounded(context, faceX, faceY, CARD_HEAD, 3.4f * SCALE, SkinManager.getSkin(entry.getName()),
+                new RenderColor(c.title), true, new RenderColor(faceOutline), 0.70f, false);
 
-        float btnY = y + CARD_H - CARD_BTN - 5f * SCALE;
+        float textX = x + 31f * SCALE;
+        draw(bodyRenderer, ellipsize(entry.getName(), CARD_NAME_FONT, w - 42f * SCALE), textX, topY + 6f * SCALE, CARD_NAME_FONT, c.title);
+        draw(bodyRenderer, ellipsize(entry.getDate(), CARD_DATE_FONT, w - 42f * SCALE), textX, topY + 17f * SCALE, CARD_DATE_FONT, c.muted);
+        renderAuthBadge(entry, x + 7f * SCALE, topY + 34.5f * SCALE, c);
+
+        float btnY = topY + CARD_H - CARD_BTN - 5f * SCALE;
         float pinX = x + w - CARD_BTN * 2f - 8f * SCALE;
         float delX = x + w - CARD_BTN - 5f * SCALE;
         boolean pinHover = inList && inside(mouseX, mouseY, pinX, btnY, CARD_BTN, CARD_BTN);
@@ -414,59 +448,113 @@ public final class CombatantAltManagerScreen extends Screen {
 
         float pinHoverAnim = AnimationUtility.easeOutCubic(pinHoverAnims.getOrDefault(key, pinHover ? 1f : 0f));
         float pinPressAnim = AnimationUtility.easeOutBack(pinPressAnims.getOrDefault(key, 0f), 0.95f);
-        int pinFill = entry.isPinned()
-                ? HudRenderUtil.mixColor(withAlpha(c.accentSoft, 190), withAlpha(c.accent, 72), 0.18f + pinHoverAnim * 0.12f)
-                : HudRenderUtil.mixColor(withAlpha(c.surface, 170), withAlpha(c.surfaceHover, 196), pinHoverAnim * 0.65f);
-        int pinStroke = entry.isPinned()
-                ? HudRenderUtil.mixColor(c.accent, 0xFFFFFFFF, pinHoverAnim * 0.12f)
-                : HudRenderUtil.mixColor(c.stroke, c.strokeSoft, pinHoverAnim * 0.70f);
-        Renderer2D.COLOR.roundedRectGradientQuad(pinX, btnY, CARD_BTN, CARD_BTN, 3f * SCALE, 1f, pinFill, pinFill, pinFill, pinFill);
-        Renderer2D.COLOR.roundedRectStrokeGradient(pinX, btnY, CARD_BTN, CARD_BTN, 3f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(pinStroke, 0xFFFFFFFF, 0.04f), pinStroke, 90f);
-        float pinContentLift = (pinHoverAnim * 0.35f + pinPressAnim * 0.6f) * SCALE;
-        drawCentered(menuIconRenderer, "c", pinX + CARD_BTN * 0.5f, btnY + 1.5f * SCALE - pinContentLift, PIN_ICON_FONT, entry.isPinned() ? c.accent : withAlpha(0xC0C8D4, 255));
+        int pinAccent = entry.isPinned()
+                ? HudRenderUtil.mixColor(PIN_YELLOW, PIN_YELLOW_SOFT, 0.28f)
+                : HudRenderUtil.mixColor(c.strokeSoft, PIN_YELLOW, 0.16f + pinHoverAnim * 0.72f);
+        int pinTint = HudRenderUtil.mixColor(c.surfaceHover, PIN_YELLOW,
+                (entry.isPinned() ? 0.22f : 0.05f) + pinHoverAnim * 0.12f);
+        float pinRadius = CARD_BTN * 0.5f;
+        float pinCx = pinX + CARD_BTN * 0.5f;
+        float pinCy = btnY + CARD_BTN * 0.5f;
+        renderHexButtonSurface(pinCx, pinCy, pinRadius, pinAccent, pinTint, 0.96f, pinHoverAnim, pinPressAnim);
+        float pinLift = BUTTON_ELEVATION * AnimationUtility.clamp01(1.0f - pinHoverAnim * 0.68f - pinPressAnim * 0.24f);
+        int pinIcon = entry.isPinned()
+                ? PIN_YELLOW_SOFT
+                : HudRenderUtil.mixColor(c.muted, PIN_YELLOW_SOFT, 0.18f + pinHoverAnim * 0.76f);
+        drawCentered(menuIconRenderer, "c", pinCx, pinCy - pinLift - 4.7f * SCALE, PIN_ICON_FONT, pinIcon);
 
         float delHoverAnim = AnimationUtility.easeOutCubic(deleteHoverAnims.getOrDefault(key, delHover ? 1f : 0f));
         float delPressAnim = AnimationUtility.easeOutBack(deletePressAnims.getOrDefault(key, 0f), 0.95f);
-        int delFillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 150), withAlpha(0x5A2424, 210), 0.30f + delHoverAnim * 0.45f);
-        int delFillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 140), withAlpha(0x2E1212, 220), 0.20f + delHoverAnim * 0.55f);
-        int delStroke = HudRenderUtil.mixColor(c.stroke, withAlpha(0xA24E4E, 230), 0.25f + delHoverAnim * 0.65f);
-        Renderer2D.COLOR.roundedRectGradientQuad(delX, btnY, CARD_BTN, CARD_BTN, 3f * SCALE, 1f, delFillTop, delFillTop, delFillBottom, delFillBottom);
-        Renderer2D.COLOR.roundedRectStrokeGradient(delX, btnY, CARD_BTN, CARD_BTN, 3f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(delStroke, 0xFFFFFFFF, 0.04f), delStroke, 90f);
-        float delContentLift = (delHoverAnim * 0.35f + delPressAnim * 0.6f) * SCALE;
-        drawCentered(guiIconRenderer, "O", delX + CARD_BTN * 0.5f, btnY + 0.5f * SCALE - delContentLift, DELETE_ICON_FONT,
-                HudRenderUtil.mixColor(withAlpha(0xC0C8D4, 255), withAlpha(0xFFB0B0, 255), 0.45f + delHoverAnim * 0.45f));
+        int delAccent = HudRenderUtil.mixColor(withAlpha(0xFF9E4650, 255), withAlpha(0xFFFF7180, 255), delHoverAnim * 0.58f);
+        int delTint = HudRenderUtil.mixColor(c.surfaceHover, withAlpha(0xFF542630, 255), 0.10f + delHoverAnim * 0.22f);
+        float delCx = delX + CARD_BTN * 0.5f;
+        float delCy = btnY + CARD_BTN * 0.5f;
+        renderHexButtonSurface(delCx, delCy, pinRadius, delAccent, delTint, 0.96f, delHoverAnim, delPressAnim);
+        float delLift = BUTTON_ELEVATION * AnimationUtility.clamp01(1.0f - delHoverAnim * 0.68f - delPressAnim * 0.24f);
+        drawCentered(guiIconRenderer, "O", delCx, delCy - delLift - 5.6f * SCALE, DELETE_ICON_FONT,
+                HudRenderUtil.mixColor(c.muted, withAlpha(0xFFFFE4E7, 255), 0.30f + delHoverAnim * 0.62f));
     }
 
-    private void renderActiveCardMarker(float x, float y, float w, float h, float active, Themes.Theme theme) {
-        float reveal = AnimationUtility.clamp01(active);
-        if (reveal <= 0.001f) return;
+    private void renderAccountCardMaterial(float x, float y, float w, float h, PanelColors c, float hover, float active, float press) {
+        SettingsGuiPalette palette = SettingsGuiPalette.current();
+        float hoverAnim = AnimationUtility.clamp01(hover);
+        float activeAnim = AnimationUtility.clamp01(active);
+        float pressAnim = AnimationUtility.clamp01(press);
+        float openAlpha = ((c.title >>> 24) & 0xFF) / 255f;
+        float radius = 5f * SCALE;
 
-        float markerW = CARD_MARKER_W * reveal;
-        if (markerW <= 0.01f) return;
+        int top = SettingsGuiPalette.mix(
+                palette.moduleCardTop(),
+                palette.menuCategorySelectedLeft(),
+                0.16f * activeAnim
+        );
+        int topStrong = SettingsGuiPalette.mix(
+                palette.moduleCardTopStrong(),
+                palette.menuCategorySelectedRight(),
+                0.16f * activeAnim
+        );
+        int bottom = SettingsGuiPalette.mix(
+                palette.moduleCardBottom(),
+                palette.menuCategoryHoverLeft(),
+                0.18f * hoverAnim
+        );
+        int bottomStrong = SettingsGuiPalette.mix(
+                palette.moduleCardBottomStrong(),
+                palette.menuCategoryHoverRight(),
+                0.14f * hoverAnim
+        );
 
-        int accent = withAlpha(theme.accent(), Math.round(255f * reveal));
-        boolean clipped = ScissorFunction.pushRaw(x, y, markerW, h);
-        if (!clipped) return;
-        try {
-            Renderer2D.COLOR.roundedRectCornersQuad(x, y, w, h, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, 1f, accent, accent, accent, accent);
-        } finally {
-            ScissorFunction.pop();
-        }
+        LayoutRender2D.roundedSoftShadow(
+                x,
+                y + 1.6f * SCALE,
+                w,
+                h,
+                5.4f * SCALE,
+                5.2f * SCALE,
+                0.0f,
+                LayoutRender2D.alpha(0xFF000000, openAlpha * (0.18f + 0.08f * hoverAnim - 0.025f * pressAnim))
+        );
+        ClickGuiRenderer.drawBlur(x, y, w, h, radius, 0xFF000000, (200f / 255f) * openAlpha);
+        LayoutRender2D.roundedQuad(
+                x, y, w, h, radius,
+                LayoutRender2D.alpha(top, openAlpha),
+                LayoutRender2D.alpha(topStrong, openAlpha),
+                LayoutRender2D.alpha(bottom, openAlpha),
+                LayoutRender2D.alpha(bottomStrong, openAlpha)
+        );
+        Renderer2D.COLOR.radialGlowMasked(
+                x,
+                y,
+                w,
+                h,
+                radius,
+                0f,
+                48f * SCALE,
+                x + w * 0.18f,
+                y + h * 0.08f,
+                LayoutRender2D.alpha(palette.moduleCardTopStrong(), openAlpha * (0.12f + 0.10f * hoverAnim))
+        );
     }
 
     private void renderAuthBadge(AccountEntry entry, float x, float y, PanelColors c) {
         boolean microsoft = entry != null && entry.isMicrosoft();
         String label = microsoft ? tr("screen.combatant.alt_manager.badge.microsoft") : tr("screen.combatant.alt_manager.badge.offline");
+
+        if (!microsoft) {
+            draw(bodyRenderer, label, x, y + 0.7f * SCALE, OFFLINE_STATUS_FONT, c.muted);
+            return;
+        }
+
         float padX = 3.2f * SCALE;
-        float badgeW = width(bodyRenderer, label, BADGE_FONT) + padX * 2f;
+        float badgeW = width(bodyRenderer, label, BADGE_FONT) + padX * 2f + 2f * SCALE;
         float badgeH = 7f * SCALE;
-        int fillTop = microsoft ? withAlpha(0x20394A, 172) : withAlpha(c.surface, 150);
-        int fillBottom = microsoft ? withAlpha(0x132732, 184) : withAlpha(0x11151B, 160);
-        int stroke = microsoft ? withAlpha(0x527A8A, 190) : c.stroke;
-        int text = microsoft ? withAlpha(0xDDEEFF, 235) : c.muted;
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, badgeW, badgeH, 2.2f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, badgeW, badgeH, 2.2f * SCALE, 1f, 0.45f, HudRenderUtil.mixColor(stroke, 0xFFFFFFFF, 0.05f), stroke, 90f);
-        draw(bodyRenderer, label, x + padX, y + 1.9f * SCALE, BADGE_FONT, text);
+        int accent = HudRenderUtil.mixColor(c.strokeSoft, 0xFF72C7FF, 0.38f);
+        UiPrimitive badge = parallelogram(x, y, badgeW, badgeH, 2.1f * SCALE, 0.55f * SCALE);
+        Renderer2D.COLOR.primitive(badge, UiPaint.linear(
+                withAlpha(HudRenderUtil.mixColor(c.surface, accent, 0.10f), 132),
+                withAlpha(c.surface, 146), 90f, 0f));
+        Renderer2D.COLOR.primitiveStroke(badge, UiPaint.solid(withAlpha(accent, 112)), UiStroke.of(0.28f * SCALE));
+        draw(bodyRenderer, label, x + padX, y + 1.9f * SCALE, BADGE_FONT, c.label);
     }
 
     private void renderModeToggle(float mouseX, float mouseY, float x, float y, float w, float h, PanelColors c) {
@@ -478,35 +566,206 @@ public final class CombatantAltManagerScreen extends Screen {
                 inside(mouseX, mouseY, x + itemW + gap, y, itemW, h), microsoftModeHoverAnim, microsoftModePressAnim);
     }
 
+    private static UiPrimitive directional(float x, float y, float w, float h, float cut, float rounding) {
+        return UiPrimitive.builder(x, y, w, h)
+                .preset(UiPrimitive.Preset.DIRECTIONAL_RIGHT)
+                .cut(cut)
+                .rounding(rounding)
+                .build();
+    }
+
+    private static UiPrimitive parallelogram(float x, float y, float w, float h, float cut, float rounding) {
+        return UiPrimitive.builder(x, y, w, h)
+                .preset(UiPrimitive.Preset.PARALLELOGRAM_RIGHT)
+                .cut(cut)
+                .rounding(rounding)
+                .build();
+    }
+
+    private static UiPrimitive pointyHex(float centerX, float centerY, float radius, float rounding) {
+        float width = MainMenuBackdrop.SQRT_3 * radius;
+        return UiPrimitive.builder(centerX - width * 0.5f, centerY - radius, width, radius * 2f)
+                .customConvex(
+                        0.5, 0.0,
+                        1.0, 0.25,
+                        1.0, 0.75,
+                        0.5, 1.0,
+                        0.0, 0.75,
+                        0.0, 0.25
+                )
+                .rounding(rounding)
+                .build();
+    }
+
+    private static float elevatedTopY(float y, float hover, float press) {
+        float settle = AnimationUtility.clamp01(1.0f - hover * 0.68f - press * 0.24f);
+        return y - BUTTON_ELEVATION * settle;
+    }
+
+    private void renderElevatedButton(float x, float y, float w, float h,
+                                      UiPrimitive.Preset preset, float cut, float rounding,
+                                      int accent, int tint, float alpha, float hover, float press) {
+        float topY = elevatedTopY(y, hover, press);
+        float elevation = y - topY;
+        UiPrimitive well = UiPrimitive.builder(x, y, w, h)
+                .preset(preset)
+                .cut(cut)
+                .rounding(rounding)
+                .build();
+
+        // Same depth hierarchy as the main-menu hexes: a quiet dark socket, coloured side faces,
+        // then a dense glass top. The old version tinted every layer with the accent and flattened it.
+        int wellTop = withAlpha(HudRenderUtil.mixColor(0xFF05080D, accent, 0.08f), Math.round(alpha * 154f));
+        int wellBottom = withAlpha(HudRenderUtil.mixColor(0xFF020408, accent, 0.22f), Math.round(alpha * 112f));
+        Renderer2D.COLOR.primitive(well, UiPaint.linear(wellTop, wellBottom, 90f, 0f));
+        Renderer2D.COLOR.primitiveStroke(well,
+                UiPaint.solid(withAlpha(accent, Math.round(alpha * (54f + hover * 34f)))),
+                UiStroke.of(0.52f * SCALE));
+
+        UiPrimitive top = UiPrimitive.builder(x, topY, w, h)
+                .preset(preset)
+                .cut(cut)
+                .rounding(rounding)
+                .build();
+        if (elevation > 0.05f) renderPrimitiveExtrusion(top, elevation, accent, alpha);
+
+        int denseTint = HudRenderUtil.mixColor(tint, 0xFFEAF5FF, 0.13f + hover * 0.05f);
+        Renderer2D.COLOR.liquidGlassPrimitive(
+                top,
+                withAlpha(denseTint, Math.round(alpha * 238f)),
+                alpha,
+                1.0f,
+                (9.6f + hover * 1.0f) * MainMenuBackdrop.MENU_SCALE,
+                -9.0f,
+                0.98f,
+                0.84f,
+                0.48f,
+                0.036f * MainMenuBackdrop.MENU_SCALE,
+                0.0f,
+                0.0f,
+                Renderer2D.BlurQuality.ULTRA,
+                2.66f
+        );
+        Renderer2D.COLOR.primitiveStroke(top,
+                UiPaint.solid(withAlpha(accent, Math.round(alpha * (150f + hover * 56f)))),
+                UiStroke.of(1.34f * SCALE));
+        Renderer2D.COLOR.primitiveStroke(top,
+                UiPaint.solid(withAlpha(HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.70f),
+                        Math.round(alpha * (132f + hover * 38f)))),
+                UiStroke.of(0.34f * SCALE));
+    }
+
+    private void renderHexButtonSurface(float centerX, float centerY, float radius, int accent, int tint,
+                                        float alpha, float hover, float press) {
+        float settle = AnimationUtility.clamp01(1.0f - hover * 0.68f - press * 0.24f);
+        float elevation = BUTTON_ELEVATION * settle;
+        UiPrimitive well = pointyHex(centerX, centerY, radius, 0.9f * MainMenuBackdrop.MENU_SCALE);
+        Renderer2D.COLOR.primitive(well, UiPaint.linear(
+                withAlpha(HudRenderUtil.mixColor(0xFF05080D, accent, 0.08f), Math.round(alpha * 158f)),
+                withAlpha(HudRenderUtil.mixColor(0xFF020408, accent, 0.22f), Math.round(alpha * 114f)),
+                90f, 0f));
+        Renderer2D.COLOR.primitiveStroke(well,
+                UiPaint.solid(withAlpha(accent, Math.round(alpha * (50f + hover * 34f)))),
+                UiStroke.of(0.48f * SCALE));
+
+        UiPrimitive top = pointyHex(centerX, centerY - elevation, radius, 0.9f * MainMenuBackdrop.MENU_SCALE);
+        if (elevation > 0.05f) renderPrimitiveExtrusion(top, elevation, accent, alpha);
+        int denseTint = HudRenderUtil.mixColor(tint, 0xFFEAF5FF, 0.13f + hover * 0.05f);
+        Renderer2D.COLOR.liquidGlassPrimitive(
+                top, withAlpha(denseTint, Math.round(alpha * 238f)), alpha, 1.0f,
+                9.2f * MainMenuBackdrop.MENU_SCALE, -9.0f, 0.98f, 0.84f, 0.48f,
+                0.036f * MainMenuBackdrop.MENU_SCALE, 0.0f, 0.0f,
+                Renderer2D.BlurQuality.ULTRA, 2.62f
+        );
+        Renderer2D.COLOR.primitiveStroke(top,
+                UiPaint.solid(withAlpha(accent, Math.round(alpha * (148f + hover * 58f)))),
+                UiStroke.of(1.05f * SCALE));
+        Renderer2D.COLOR.primitiveStroke(top,
+                UiPaint.solid(withAlpha(HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.70f),
+                        Math.round(alpha * (126f + hover * 34f)))),
+                UiStroke.of(0.32f * SCALE));
+    }
+
+    private void renderPrimitiveExtrusion(UiPrimitive top, float elevation, int accent, float alpha) {
+        double[] points = top.points();
+        int count = top.pointCount();
+        if (points.length < 6 || count < 3) return;
+
+        double centerX = top.bounds().x() + top.bounds().width() * 0.5;
+        double centerY = top.bounds().y() + top.bounds().height() * 0.5;
+        double halfW = Math.max(1.0, top.bounds().width() * 0.5);
+        double halfH = Math.max(1.0, top.bounds().height() * 0.5);
+        for (int i = 0; i < count; i++) {
+            int j = (i + 1) % count;
+            double x1 = points[i * 2];
+            double y1 = points[i * 2 + 1];
+            double x2 = points[j * 2];
+            double y2 = points[j * 2 + 1];
+            double midX = (x1 + x2) * 0.5;
+            double midY = (y1 + y2) * 0.5;
+            if (midY < centerY - top.bounds().height() * 0.04) continue;
+
+            float nx = (float) ((midX - centerX) / halfW);
+            float ny = AnimationUtility.clamp01((float) ((midY - centerY) / halfH));
+            float blackMix;
+            int faceAlpha;
+            if (ny > 0.55f) {
+                // Main-menu hexes deliberately keep the lower-right face brighter than lower-left.
+                blackMix = nx >= 0f ? 0.59f : 0.78f;
+                faceAlpha = Math.round(alpha * (nx >= 0f ? 224f : 218f));
+            } else if (nx > 0.05f) {
+                blackMix = 0.73f;
+                faceAlpha = Math.round(alpha * 205f);
+            } else {
+                blackMix = 0.82f;
+                faceAlpha = Math.round(alpha * 174f);
+            }
+            int side = withAlpha(HudRenderUtil.mixColor(accent, 0xFF020408, blackMix), faceAlpha);
+            Renderer2D.COLOR.polygon(new double[]{
+                    x1, y1,
+                    x1, y1 + elevation,
+                    x2, y2 + elevation,
+                    x2, y2
+            }, 4, side);
+        }
+    }
+
     private void renderModeButton(float x, float y, float w, float h, PanelColors c, String label, boolean selected,
                                   boolean hovered, float hoverValue, float pressValue) {
         float hoverAnim = AnimationUtility.easeOutCubic(hoverValue);
         float pressAnim = AnimationUtility.easeOutCubic(pressValue);
-        float activeAnim = selected ? 1f : 0f;
-        int fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 170), withAlpha(c.surfaceHover, 210), hoverAnim * 0.42f + activeAnim * 0.38f + pressAnim * 0.10f);
-        int fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 158), withAlpha(0x1A2418, 210), activeAnim * 0.24f + hoverAnim * 0.16f);
-        int stroke = HudRenderUtil.mixColor(c.stroke, selected ? c.accentSoft : c.strokeSoft, activeAnim * 0.70f + hoverAnim * 0.30f + pressAnim * 0.10f);
+        int accent = selected
+                ? HudRenderUtil.mixColor(c.accentSoft, c.accent, 0.48f)
+                : HudRenderUtil.mixColor(c.strokeSoft, c.accentSoft, hoverAnim * 0.46f);
+        int tint = selected
+                ? HudRenderUtil.mixColor(c.surfaceHover, c.accentSoft, 0.34f)
+                : HudRenderUtil.mixColor(c.surface, c.surfaceHover, hoverAnim * 0.54f);
+        renderElevatedButton(
+                x, y, w, h,
+                UiPrimitive.Preset.PARALLELOGRAM_RIGHT, 4.2f * SCALE, 0.95f * SCALE,
+                accent, tint, 0.97f, hoverAnim, pressAnim
+        );
+        float topY = elevatedTopY(y, hoverAnim, pressAnim);
         int text = selected
-                ? HudRenderUtil.mixColor(c.title, c.accent, 0.28f)
-                : HudRenderUtil.mixColor(c.muted, c.title, hoverAnim * 0.35f);
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, 3f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, w, h, 3f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(stroke, 0xFFFFFFFF, 0.04f), stroke, 90f);
-        float lift = (hovered ? hoverAnim : 0f) * 0.35f * SCALE + pressAnim * 0.35f * SCALE;
-        drawCentered(bodyRenderer, label, x + w * 0.5f, y + 4.1f * SCALE - lift, BUTTON_FONT, text);
+                ? HudRenderUtil.mixColor(c.title, c.accent, 0.30f)
+                : HudRenderUtil.mixColor(c.muted, c.title, hoverAnim * 0.58f);
+        drawCentered(bodyRenderer, label, x + w * 0.5f, topY + 4.1f * SCALE, BUTTON_FONT, text);
     }
 
     private void renderMicrosoftField(float x, float y, float w, float h, PanelColors c) {
         float hoverAnim = AnimationUtility.easeOutCubic(fieldHoverAnim);
-        int fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 188), withAlpha(c.surfaceHover, 208), hoverAnim * 0.45f);
-        int fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 176), withAlpha(0xFF0D1118, 196), 0.18f);
-        int stroke = HudRenderUtil.mixColor(c.stroke, microsoftAuthPending ? c.accentSoft : c.strokeSoft, microsoftAuthPending ? 0.45f : hoverAnim * 0.60f);
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, 3f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, w, h, 3f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(stroke, 0xFFFFFFFF, 0.04f), stroke, 90f);
+        UiPrimitive field = directional(x, y, w, h, 4.2f * SCALE, 0.9f * SCALE);
+        int fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 224), withAlpha(c.surfaceHover, 244), hoverAnim * 0.48f);
+        int fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 214), withAlpha(c.accentSoft, 118), microsoftAuthPending ? 0.22f : 0.08f);
+        int stroke = HudRenderUtil.mixColor(c.stroke, microsoftAuthPending ? c.accentSoft : c.strokeSoft, microsoftAuthPending ? 0.58f : hoverAnim * 0.62f);
+        Renderer2D.COLOR.primitive(field, UiPaint.linear(fillTop, fillBottom, 90f, 0f));
+        Renderer2D.COLOR.primitiveStroke(field, UiPaint.solid(withAlpha(stroke, 202)), UiStroke.of(0.62f * MainMenuBackdrop.MENU_SCALE));
         if (microsoftAuthPending) {
-            float pulse = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() / 180.0);
-            int glow = withAlpha(c.accentSoft, Math.round(22f + 32f * pulse));
-            Renderer2D.COLOR.roundedRectGradientQuad(x + 1.2f * SCALE, y + h - 1.6f * SCALE, w - 2.4f * SCALE, 1.1f * SCALE, 0.6f * SCALE, 1f,
-                    glow, withAlpha(c.accent, Math.round(20f + 24f * pulse)), withAlpha(c.accent, Math.round(20f + 24f * pulse)), glow);
+            float pulse = 0.5f + 0.5f * (float) Math.sin(AnimationUtility.time(0.006f, AnimationUtility.Mode.MILLIS));
+            UiPrimitive pulseBar = parallelogram(x + 4f * SCALE, y + h - 1.6f * SCALE, w - 8f * SCALE, 1.0f * SCALE, 1.0f * SCALE, 0.35f * SCALE);
+            Renderer2D.COLOR.primitive(pulseBar, UiPaint.linear(
+                    withAlpha(c.accentSoft, Math.round(72f + 44f * pulse)),
+                    withAlpha(c.accent, Math.round(48f + 36f * pulse)), 0f, 0f));
         }
 
         String display;
@@ -521,46 +780,48 @@ public final class CombatantAltManagerScreen extends Screen {
             display = tr("screen.combatant.alt_manager.ready_to_sign_in");
             color = c.mutedLabel;
         }
-        draw(bodyRenderer, ellipsize(display, FIELD_FONT, w - 8f * SCALE), x + 4f * SCALE, y + 4.3f * SCALE, FIELD_FONT, color);
+        draw(bodyRenderer, ellipsize(display, FIELD_FONT, w - 11f * SCALE), x + 5f * SCALE, y + 4.3f * SCALE, FIELD_FONT, color);
     }
 
     private void renderField(float x, float y, float w, float h, PanelColors c, boolean hovered) {
         float hoverAnim = AnimationUtility.easeOutCubic(fieldHoverAnim);
         float focusAnim = AnimationUtility.easeOutCubic(fieldFocusAnim);
-        int fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 188), withAlpha(c.surfaceHover, 208), hoverAnim * 0.45f + focusAnim * 0.16f);
-        int fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 176), withAlpha(0xFF0D1118, 196), 0.18f);
+        UiPrimitive field = directional(x, y, w, h, 4.2f * SCALE, 0.9f * SCALE);
+        int fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 224), withAlpha(c.surfaceHover, 244), hoverAnim * 0.50f + focusAnim * 0.20f);
+        int fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 214), withAlpha(c.accentSoft, 124), focusAnim * 0.16f);
         int stroke = nicknameFieldFocused
-                ? HudRenderUtil.mixColor(c.strokeSoft, c.accentSoft, 0.55f)
+                ? HudRenderUtil.mixColor(c.strokeSoft, c.accentSoft, 0.68f)
                 : HudRenderUtil.mixColor(c.stroke, c.strokeSoft, hoverAnim * 0.72f);
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, 3f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, w, h, 3f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(stroke, 0xFFFFFFFF, 0.04f), stroke, 90f);
+        Renderer2D.COLOR.primitive(field, UiPaint.linear(fillTop, fillBottom, 90f, 0f));
+        Renderer2D.COLOR.primitiveStroke(field, UiPaint.solid(withAlpha(stroke, 206)), UiStroke.of(0.62f * MainMenuBackdrop.MENU_SCALE));
         if (focusAnim > 0.01f) {
-            int glowLeft = withAlpha(c.accentSoft, Math.round(48f * focusAnim));
-            int glowRight = withAlpha(c.accent, Math.round(28f * focusAnim));
-            Renderer2D.COLOR.roundedRectGradientQuad(x + 1.2f * SCALE, y + h - 1.6f * SCALE, w - 2.4f * SCALE, 1.1f * SCALE, 0.6f * SCALE, 1f,
-                    glowLeft, glowRight, glowRight, glowLeft);
+            UiPrimitive focusBar = parallelogram(x + 4f * SCALE, y + h - 1.6f * SCALE, w - 8f * SCALE, 1.0f * SCALE, 1.0f * SCALE, 0.35f * SCALE);
+            Renderer2D.COLOR.primitive(focusBar, UiPaint.linear(
+                    withAlpha(c.accentSoft, Math.round(104f * focusAnim)),
+                    withAlpha(c.accent, Math.round(72f * focusAnim)), 0f, 0f));
         }
 
-        boolean caretOn = nicknameFieldFocused && AnimationUtility.blink(500L);
+        boolean caretOn = nicknameFieldFocused && AnimationUtility.blink(500L, AnimationUtility.Mode.MILLIS);
         String display = nicknameText.isEmpty() && !nicknameFieldFocused ? tr("screen.combatant.alt_manager.enter_nick") : nicknameText + (caretOn ? "|" : "");
-        draw(bodyRenderer, display, x + 4f * SCALE, y + 4.3f * SCALE, FIELD_FONT, nicknameText.isEmpty() && !nicknameFieldFocused ? c.mutedLabel : c.title);
+        draw(bodyRenderer, display, x + 5f * SCALE, y + 4.3f * SCALE, FIELD_FONT, nicknameText.isEmpty() && !nicknameFieldFocused ? c.mutedLabel : c.title);
     }
 
     private void renderAddButton(float x, float y, PanelColors c) {
         float hoverAnim = AnimationUtility.easeOutCubic(addHoverAnim);
         float pressAnim = AnimationUtility.easeOutCubic(addPressAnim);
-        int fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 172), withAlpha(c.surfaceHover, 202), hoverAnim * 0.72f);
-        int fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 162), withAlpha(0xFF0D1118, 186), 0.20f);
-        int stroke = HudRenderUtil.mixColor(c.stroke, c.strokeSoft, hoverAnim * 0.65f + pressAnim * 0.20f);
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, ADD_SIZE, ADD_SIZE, 3f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, ADD_SIZE, ADD_SIZE, 3f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(stroke, 0xFFFFFFFF, 0.04f), stroke, 90f);
-
+        float radius = ADD_SIZE * 0.5f;
         float cx = x + ADD_SIZE * 0.5f;
         float cy = y + ADD_SIZE * 0.5f;
-        float plusLift = (hoverAnim * 0.18f + pressAnim * 0.32f) * SCALE;
-        float plusStretch = 1f + hoverAnim * 0.04f + pressAnim * 0.08f;
-        Renderer2D.COLOR.roundedRect(cx - 2.5f * SCALE * plusStretch, cy - 0.6f * SCALE - plusLift, 5f * SCALE * plusStretch, 1.2f * SCALE, 0.5f * SCALE, 1f, c.title);
-        Renderer2D.COLOR.roundedRect(cx - 0.6f * SCALE, cy - 2.5f * SCALE * plusStretch - plusLift, 1.2f * SCALE, 5f * SCALE * plusStretch, 0.5f * SCALE, 1f, c.title);
+        int accent = HudRenderUtil.mixColor(c.accentSoft, c.accent, 0.30f + hoverAnim * 0.28f);
+        int tint = HudRenderUtil.mixColor(c.surfaceHover, c.accentSoft, 0.20f + hoverAnim * 0.14f);
+        renderHexButtonSurface(cx, cy, radius, accent, tint, 0.98f, hoverAnim, pressAnim);
+
+        float settle = AnimationUtility.clamp01(1.0f - hoverAnim * 0.68f - pressAnim * 0.24f);
+        float lift = BUTTON_ELEVATION * settle;
+        float topCy = cy - lift;
+        float plusStretch = 1f + hoverAnim * 0.05f + pressAnim * 0.06f;
+        Renderer2D.COLOR.roundedRect(cx - 2.5f * SCALE * plusStretch, topCy - 0.55f * SCALE, 5f * SCALE * plusStretch, 1.1f * SCALE, 0.45f * SCALE, 1f, c.title);
+        Renderer2D.COLOR.roundedRect(cx - 0.55f * SCALE, topCy - 2.5f * SCALE * plusStretch, 1.1f * SCALE, 5f * SCALE * plusStretch, 0.45f * SCALE, 1f, c.title);
     }
 
     private void renderAction(float x, float y, float w, float h, PanelColors c, boolean destructive, String label, TextRenderer iconRenderer, String glyph, float hoverValue, float pressValue) {
@@ -574,32 +835,32 @@ public final class CombatantAltManagerScreen extends Screen {
     private void renderAction(float x, float y, float w, float h, PanelColors c, boolean destructive, String label, TextRenderer iconRenderer, String glyph, String svgName, float hoverValue, float pressValue) {
         float hoverAnim = AnimationUtility.easeOutCubic(hoverValue);
         float pressAnim = AnimationUtility.easeOutCubic(pressValue);
-        int fillTop;
-        int fillBottom;
-        int stroke;
+        int accent;
+        int tint;
         int text;
         if (destructive) {
-            fillTop = HudRenderUtil.mixColor(withAlpha(0x1A1416, 170), withAlpha(0x4B2224, 212), 0.25f + hoverAnim * 0.45f + pressAnim * 0.12f);
-            fillBottom = HudRenderUtil.mixColor(withAlpha(0x120E10, 165), withAlpha(0x261012, 220), 0.20f + hoverAnim * 0.40f + pressAnim * 0.10f);
-            stroke = HudRenderUtil.mixColor(withAlpha(0x352A2A, 215), withAlpha(0x8C5054, 235), 0.22f + hoverAnim * 0.58f + pressAnim * 0.12f);
-            text = HudRenderUtil.mixColor(withAlpha(0xD0A0A0, 255), withAlpha(0xFFB2B2, 255), 0.24f + hoverAnim * 0.56f + pressAnim * 0.08f);
+            accent = HudRenderUtil.mixColor(withAlpha(0xFFB64D59, 255), withAlpha(0xFFFF7080, 255), hoverAnim * 0.42f);
+            tint = HudRenderUtil.mixColor(withAlpha(0xFF24151B, 255), withAlpha(0xFF51242E, 255), 0.34f + hoverAnim * 0.30f);
+            text = HudRenderUtil.mixColor(withAlpha(0xFFF0D5D9, 255), withAlpha(0xFFFFFFFF, 255), hoverAnim * 0.54f);
         } else {
-            fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 176), withAlpha(0x223746, 212), 0.20f + hoverAnim * 0.44f + pressAnim * 0.10f);
-            fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 166), withAlpha(0x13292F, 220), 0.16f + hoverAnim * 0.40f + pressAnim * 0.08f);
-            stroke = HudRenderUtil.mixColor(c.stroke, withAlpha(0x466A76, 228), 0.18f + hoverAnim * 0.50f + pressAnim * 0.10f);
-            text = HudRenderUtil.mixColor(withAlpha(0xD0D8E4, 255), withAlpha(0xEEF8FF, 255), 0.18f + hoverAnim * 0.38f + pressAnim * 0.08f);
+            accent = HudRenderUtil.mixColor(c.accentSoft, c.accent, 0.28f + hoverAnim * 0.30f);
+            tint = HudRenderUtil.mixColor(c.surfaceHover, c.accentSoft, 0.16f + hoverAnim * 0.18f);
+            text = HudRenderUtil.mixColor(c.label, c.title, 0.30f + hoverAnim * 0.56f);
         }
 
-        Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, h, 3f * SCALE, 7f * SCALE, 0.018f + hoverAnim * 0.015f, c.shadow);
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, 3f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, w, h, 3f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(stroke, 0xFFFFFFFF, 0.04f), stroke, 90f);
-        float contentLift = hoverAnim * 0.65f * SCALE + pressAnim * 0.55f * SCALE;
-        draw(bodyRenderer, label, x + 6f * SCALE, y + 5f * SCALE - contentLift, BUTTON_FONT, text);
+        renderElevatedButton(
+                x, y, w, h,
+                UiPrimitive.Preset.PARALLELOGRAM_RIGHT, 5.0f * SCALE, 0.95f * SCALE,
+                accent, tint, 0.98f, hoverAnim, pressAnim
+        );
+        float topY = elevatedTopY(y, hoverAnim, pressAnim);
+        draw(bodyRenderer, label, x + 7f * SCALE, topY + 5f * SCALE, BUTTON_FONT, text);
         if (svgName != null && !svgName.isBlank()) {
             float iconSize = 7.2f * SCALE;
-            Renderer2D.COLOR.svg(svgName, x + w - 11.3f * SCALE, y + (h - iconSize) * 0.5f - contentLift, iconSize, iconSize, SvgRenderOptions.overrideColor(text));
-        } else {
-            draw(iconRenderer, glyph, x + (destructive ? 77f : 75f) * SCALE, y + (destructive ? 2.2f : 3.1f) * SCALE - contentLift, ACTION_ICON_FONT, text);
+            Renderer2D.COLOR.svg(svgName, x + w - 13.2f * SCALE, topY + (h - iconSize) * 0.5f, iconSize, iconSize, SvgRenderOptions.overrideColor(text));
+        } else if (iconRenderer != null && glyph != null && !glyph.isBlank()) {
+            float iconW = width(iconRenderer, glyph, ACTION_ICON_FONT);
+            draw(iconRenderer, glyph, x + w - iconW - 8f * SCALE, topY + 3.0f * SCALE, ACTION_ICON_FONT, text);
         }
     }
 
@@ -625,7 +886,7 @@ public final class CombatantAltManagerScreen extends Screen {
         }
 
         float fieldX = l.leftX + 5f * SCALE;
-        float fieldY = l.topY + 57f * SCALE;
+        float fieldY = l.topY + NICK_FIELD_Y;
         float fieldW = LEFT_W - 10f * SCALE - ADD_SIZE - 3f * SCALE;
         if (!microsoftMode && inside(mouseX, mouseY, fieldX, fieldY, fieldW, FIELD_H)) {
             nicknameFieldFocused = true;
@@ -647,7 +908,7 @@ public final class CombatantAltManagerScreen extends Screen {
 
         float buttonX = l.leftX + 5f * SCALE;
         float buttonW = LEFT_W - 10f * SCALE;
-        float randomY = fieldY + FIELD_H + 5f * SCALE;
+        float randomY = l.topY + PRIMARY_ACTION_Y;
         float openSiteY = randomY + TOP_BUTTON_H + 5f * SCALE;
         float clearY = (microsoftMode ? openSiteY : randomY) + TOP_BUTTON_H + 5f * SCALE;
         if (inside(mouseX, mouseY, buttonX, randomY, buttonW, TOP_BUTTON_H)) {
@@ -718,71 +979,107 @@ public final class CombatantAltManagerScreen extends Screen {
         return true;
     }
 
+    private void renderWindow(WindowBounds bounds, PanelColors c, float open) {
+        float bodyAlpha = 0.78f + open * 0.22f;
+        SettingsGuiPalette palette = SettingsGuiPalette.current();
+
+        UiPrimitive top = windowPrimitive(bounds.x, bounds.y, bounds.w, bounds.h);
+
+        int glassTint = HudRenderUtil.mixColor(palette.workspaceGlassTint(), c.surfaceHover, 0.14f);
+        Renderer2D.COLOR.liquidGlassPrimitive(
+                top,
+                withAlpha(glassTint, Math.round(238f * bodyAlpha)),
+                bodyAlpha,
+                1.0f,
+                10.2f * MainMenuBackdrop.MENU_SCALE,
+                -8.0f,
+                0.98f,
+                0.82f,
+                0.44f,
+                0.036f * MainMenuBackdrop.MENU_SCALE,
+                0.0f,
+                0.0f,
+                Renderer2D.BlurQuality.ULTRA,
+                2.62f
+        );
+
+        // Settings-like neutral wash. Accent belongs to controls/selection, not the whole frame.
+        Renderer2D.COLOR.primitive(top, UiPaint.corners(
+                withAlpha(palette.menuWindowBgLeft(), Math.round(72f * bodyAlpha)),
+                withAlpha(palette.menuWindowBgRight(), Math.round(84f * bodyAlpha)),
+                withAlpha(palette.menuWindowBgRight(), Math.round(96f * bodyAlpha)),
+                withAlpha(palette.menuWindowBgLeft(), Math.round(78f * bodyAlpha))
+        ));
+        Renderer2D.COLOR.primitiveStroke(top,
+                UiPaint.solid(withAlpha(c.strokeSoft, Math.round(112f * bodyAlpha))),
+                UiStroke.of(0.72f * SCALE));
+        Renderer2D.COLOR.primitiveStroke(top,
+                UiPaint.solid(withAlpha(HudRenderUtil.mixColor(c.strokeSoft, 0xFFFFFFFF, 0.24f),
+                        Math.round(66f * bodyAlpha))),
+                UiStroke.of(0.26f * SCALE));
+    }
+
     private void renderPanel(float x, float y, float w, float h, PanelColors c, float open) {
-        Renderer2D.COLOR.blurRect(x, y, w, h, PANEL_R, 15f, 1.0f, 0.30f, 0xFFFFFF);
-        Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, h, PANEL_R, PANEL_SHADOW, 0.022f + open * 0.012f, c.shadow);
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, PANEL_R, 1f, c.bgTopLeft, c.bgTopRight, c.bgBottomRight, c.bgBottomLeft);
-        Renderer2D.COLOR.roundedRectMaskedQuad(x, y, w, 22f * SCALE, x, y, w, h, PANEL_R, 1f,
-                c.headerTopLeft, c.headerTopRight, c.headerBottomRight, c.headerBottomLeft);
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, w, h, PANEL_R, 1f, 1f, HudRenderUtil.mixColor(c.stroke, 0xFFFFFFFF, 0.04f), c.stroke, 90f);
+        SettingsGuiPalette palette = SettingsGuiPalette.current();
+        UiPrimitive panel = UiPrimitive.builder(x, y, w, h)
+                .preset(UiPrimitive.Preset.DIRECTIONAL_RIGHT)
+                .cut(5.2f * SCALE)
+                .rounding(PANEL_R)
+                .build();
+        Renderer2D.COLOR.primitive(panel, UiPaint.corners(
+                withAlpha(palette.contentPlaneTop(), Math.round(open * 96f)),
+                withAlpha(palette.navigationPlaneTop(), Math.round(open * 110f)),
+                withAlpha(palette.navigationPlaneBottom(), Math.round(open * 122f)),
+                withAlpha(palette.contentPlaneBottom(), Math.round(open * 104f))
+        ));
+        Renderer2D.COLOR.primitiveStroke(panel,
+                UiPaint.solid(withAlpha(c.stroke, Math.round(open * 86f))),
+                UiStroke.of(0.42f * SCALE));
     }
 
     private PanelColors colors(float alpha) {
-        int bgAlpha = Math.round(alpha * 120f);
-        int headerAlpha = Math.round(alpha * 150f);
-        int strokeAlpha = Math.round(alpha * 100f);
-        int shadowAlpha = Math.round(alpha * 80f);
         int titleAlpha = Math.round(alpha * 255f);
-        int labelAlpha = Math.round(alpha * 155f);
+        int labelAlpha = Math.round(alpha * 212f);
 
+        SettingsGuiPalette palette = SettingsGuiPalette.current();
         Themes.Theme theme = Theme.theme();
-        int themeAccent = theme != null ? theme.accent() : 0xFFFFFFFF;
-        int themeAccentSoft = theme != null ? theme.accentSoft() : themeAccent;
+        int themeAccent = theme != null ? theme.accent() : 0xFF7A6BFF;
+        int themeAccentSoft = theme != null ? theme.accentSoft() : 0xFF5D72C8;
+        int windowBg = theme != null ? theme.windowBg() : 0xFF111823;
+        int surfaceTheme = theme != null ? theme.surface() : 0xFF18202B;
+        int surfaceHoverTheme = theme != null ? theme.surfaceHover() : 0xFF263345;
 
-        int bgTopLeft = withAlpha(0x0D0F14, bgAlpha);
-        int bgTopRight = withAlpha(0x101218, bgAlpha);
-        int bgBottomLeft = withAlpha(0x08090C, bgAlpha);
-        int bgBottomRight = withAlpha(0x0D0F14, bgAlpha);
-        int headerTopLeft = withAlpha(0x14171F, headerAlpha);
-        int headerTopRight = withAlpha(0x181B24, headerAlpha);
-        int headerBottomLeft = withAlpha(0x10131A, headerAlpha);
-        int headerBottomRight = withAlpha(0x14171F, headerAlpha);
-        int stroke = withAlpha(0x252A36, strokeAlpha);
-        int strokeSoft = withAlpha(0x3A4A5A, Math.round(alpha * 150f));
-        int surface = withAlpha(0x1A1D24, Math.round(alpha * 160f));
-        int surfaceHover = withAlpha(0x1A1F28, Math.round(alpha * 200f));
+        int surface = withAlpha(HudRenderUtil.mixColor(windowBg, surfaceTheme, 0.42f), Math.round(alpha * 222f));
+        int surfaceHover = withAlpha(HudRenderUtil.mixColor(surfaceTheme, surfaceHoverTheme, 0.46f), Math.round(alpha * 238f));
+        int stroke = withAlpha(palette.glassEdgeSoft(), Math.round(alpha * 116f));
+        int strokeSoft = withAlpha(palette.glassEdgeStrong(), Math.round(alpha * 172f));
         int accent = withAlpha(themeAccent, titleAlpha);
-        int accentSoft = withAlpha(themeAccentSoft, Math.round(alpha * 180f));
+        int accentSoft = withAlpha(HudRenderUtil.mixColor(themeAccentSoft, themeAccent, 0.18f), Math.round(alpha * 232f));
+
         return new PanelColors(
-                bgTopLeft, bgTopRight, bgBottomRight, bgBottomLeft,
-                headerTopLeft, headerTopRight, headerBottomRight, headerBottomLeft,
+                surface, surfaceHover, surface, surfaceHover,
+                surfaceHover, surfaceHover, surface, surface,
                 stroke, strokeSoft,
-                withAlpha(0x060810, shadowAlpha),
+                withAlpha(0x02050A, Math.round(alpha * 150f)),
                 withAlpha(0xFFFFFF, titleAlpha),
-                withAlpha(0xFFFFFF, labelAlpha),
-                withAlpha(0x808890, titleAlpha),
-                withAlpha(0x606878, labelAlpha),
+                withAlpha(0xE9F2FC, labelAlpha),
+                withAlpha(0xB8C5D3, Math.round(alpha * 228f)),
+                withAlpha(0x8797A9, Math.round(alpha * 194f)),
                 surface, surfaceHover, accent, accentSoft
         );
     }
 
-    private void renderShaderBackground(GuiGraphicsExtractor context) {
+    private void renderBackgroundTexture() {
         Minecraft mc = this.minecraft;
-        if (mc == null) return;
-        MainConfig cfg = MainConfig.get();
-        String mode = cfg != null ? cfg.getMenuBackgroundMode() : "off";
-        if (mode == null || mode.equalsIgnoreCase("off")) {
-            context.fill(0, 0, width, height, 0xFF000000);
-            return;
-        }
-        MenuBackgroundRenderer.render(mc, mode.equalsIgnoreCase("aurora"));
+        if (mc != null) MenuBackgroundRenderer.renderConfigured(mc);
     }
 
-    private void drawDimmer() {
-        Themes.Theme t = Theme.theme();
-        int soft = withAlpha(HudRenderUtil.mixColor(t.windowBg(), 0xFF000000, 0.46f), 140);
-        int deep = withAlpha(HudRenderUtil.mixColor(t.windowBg(), 0xFF000000, 0.68f), 180);
-        Renderer2D.COLOR.quad(0, 0, fixedWidth, fixedHeight, soft, soft, deep, deep);
+    private static UiPrimitive windowPrimitive(float x, float y, float w, float h) {
+        return UiPrimitive.builder(x, y, w, h)
+                .preset(UiPrimitive.Preset.CHAMFERED)
+                .cut(WINDOW_CUT)
+                .rounding(WINDOW_ROUNDING)
+                .build();
     }
 
     private void updateUiMetrics() {
@@ -815,13 +1112,30 @@ public final class CombatantAltManagerScreen extends Screen {
     }
 
     private Layout layout() {
-        float totalW = LEFT_W + GAP + RIGHT_W;
-        float totalH = LEFT_TOP_H + GAP + LEFT_BOTTOM_H;
+        float contentW = LEFT_W + GAP + RIGHT_W;
+        float contentH = LEFT_TOP_H + GAP + LEFT_BOTTOM_H;
+        float windowW = contentW + WINDOW_PAD * 2f;
+        float windowH = contentH + WINDOW_PAD * 2f;
+        float windowX = fixedWidth * 0.5f - windowW * 0.5f;
+        float windowY = fixedHeight * 0.5f - windowH * 0.5f;
+        float leftX = windowX + WINDOW_PAD;
+        float topY = windowY + WINDOW_PAD;
         return new Layout(
-                fixedWidth * 0.5f - totalW * 0.5f,
-                fixedHeight * 0.5f - totalH * 0.5f,
-                fixedWidth * 0.5f - totalW * 0.5f + LEFT_W + GAP,
-                fixedHeight * 0.5f - totalH * 0.5f + LEFT_TOP_H + GAP
+                leftX,
+                topY,
+                leftX + LEFT_W + GAP,
+                topY + LEFT_TOP_H + GAP
+        );
+    }
+
+    private WindowBounds windowBounds(Layout layout) {
+        float contentW = LEFT_W + GAP + RIGHT_W;
+        float contentH = LEFT_TOP_H + GAP + LEFT_BOTTOM_H;
+        return new WindowBounds(
+                layout.leftX - WINDOW_PAD,
+                layout.topY - WINDOW_PAD,
+                contentW + WINDOW_PAD * 2f,
+                contentH + WINDOW_PAD * 2f
         );
     }
 
@@ -966,12 +1280,12 @@ public final class CombatantAltManagerScreen extends Screen {
 
         Layout l = layout();
         float fieldX = l.leftX + 5f * SCALE;
-        float fieldY = l.topY + 57f * SCALE;
+        float fieldY = l.topY + NICK_FIELD_Y;
         float fieldW = LEFT_W - 10f * SCALE - ADD_SIZE - 3f * SCALE;
         float addX = fieldX + fieldW + 3f * SCALE;
         float buttonX = l.leftX + 5f * SCALE;
         float buttonW = LEFT_W - 10f * SCALE;
-        float randomY = fieldY + FIELD_H + 5f * SCALE;
+        float randomY = l.topY + PRIMARY_ACTION_Y;
         float openSiteY = randomY + TOP_BUTTON_H + 5f * SCALE;
         float clearY = (microsoftMode ? openSiteY : randomY) + TOP_BUTTON_H + 5f * SCALE;
         float modeX = l.leftX + 5f * SCALE;
@@ -1088,6 +1402,9 @@ public final class CombatantAltManagerScreen extends Screen {
     }
 
     private record Layout(float leftX, float topY, float rightX, float bottomY) {
+    }
+
+    private record WindowBounds(float x, float y, float w, float h) {
     }
 
     private record PanelColors(

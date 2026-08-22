@@ -22,8 +22,8 @@ public final class VisualConfig extends SubsystemConfig {
     private static final String IRIS_MSAA_REASON_KEY = "setting.main_config.msaa3d.iris_blocked";
     private static final String IRIS_MSAA_REASON_FALLBACK = "Iris shaderpack pipeline is active.";
 
-    private final ModeValue menuBg = mode("menuBg", "off", "off", "waves", "aurora");
-    private final BooleanValue menuBgUseTheme = bool("menuBgUseTheme", false);
+    private final BooleanValue combatantMainMenu = bool("combatantMainMenu", true);
+    private final ModeValue menuBackground = mode("menuBackground", "png", "png", "aurora", "waves");
     private final BooleanValue menuClockShowSeconds = bool("menuClockShowSeconds", false);
     private final ModeValue msaa3d = mode("msaa3d", "off", "off", "2x", "4x");
     private final BooleanValue clickGuiModulesHints = bool("clickGuiModulesHints", true);
@@ -37,12 +37,13 @@ public final class VisualConfig extends SubsystemConfig {
         return INSTANCE;
     }
 
-    public String getMenuBackgroundMode() {
-        return menuBg.get();
+    public boolean isCombatantMainMenuEnabled() {
+        return combatantMainMenu.get();
     }
 
-    public boolean isMenuBackgroundUseTheme() {
-        return menuBgUseTheme.get();
+    public String getMenuBackgroundMode() {
+        String mode = menuBackground.get();
+        return mode != null ? mode : "png";
     }
 
     public boolean isMenuClockShowSeconds() {
@@ -89,9 +90,9 @@ public final class VisualConfig extends SubsystemConfig {
         return settings(
                 SettingDef.mode(msaa3d)
                         .unavailableWhen(IrisRuntime::isShaderpackRendererActive, VisualConfig::irisMsaaReason),
-                SettingDef.mode(menuBg),
-                SettingDef.bool(menuClockShowSeconds),
-                SettingDef.bool(menuBgUseTheme)
+                SettingDef.bool(combatantMainMenu),
+                SettingDef.mode(menuBackground).visibleWhen(combatantMainMenu::get),
+                SettingDef.bool(menuClockShowSeconds)
         );
     }
 

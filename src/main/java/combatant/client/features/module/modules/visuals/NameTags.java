@@ -175,6 +175,9 @@ public class NameTags extends Module {
     private static final String SETTING_HP_COLOR_MODE = "hp_color_mode";
     private static final String SETTING_NAMEPLATE_ALPHA = "nameplate_alpha";
     private static final String SETTING_PRESENTATION_MODE = "presentation_mode";
+    private static final String SETTING_WORLD_SIZE = "world_size";
+    private static final String SETTING_DYNAMIC_WORLD_SCALE = "dynamic_world_scale";
+    private static final String SETTING_DYNAMIC_WORLD_SCALE_COEFFICIENT = "dynamic_world_scale_coefficient";
     private static final String SETTING_PLAYER_HEAD = "player_head";
     private static final String SETTING_NAMEPLATE_EXTRAS = "nameplate_extras";
     private static final float NAMEPLATE_EXTRA_LIFT = 8f;
@@ -227,6 +230,15 @@ public class NameTags extends Module {
                     () -> toggles.get("Show nameplate"));
     private final EnumValue<PresentationMode> presentationMode =
             enumSetting("nameTagsPresentationMode", SETTING_PRESENTATION_MODE, PresentationMode.HYBRID, PresentationMode.values());
+    private final NumberValue<Float> worldSize =
+            visibleWhen(num("nameTagsWorldSize", SETTING_WORLD_SIZE, 0.72f, 0.35f, 1.50f),
+                    () -> presentationMode.get() != PresentationMode.TWO_D);
+    private final BooleanValue dynamicWorldScale =
+            visibleWhen(bool("nameTagsDynamicWorldScale", SETTING_DYNAMIC_WORLD_SCALE, true),
+                    () -> presentationMode.get() != PresentationMode.TWO_D);
+    private final NumberValue<Float> dynamicWorldScaleCoefficient =
+            visibleWhen(num("nameTagsDynamicWorldScaleCoefficient", SETTING_DYNAMIC_WORLD_SCALE_COEFFICIENT, 0.25f, 0.0f, 1.0f),
+                    () -> presentationMode.get() != PresentationMode.TWO_D && dynamicWorldScale.get());
     private final BooleanValue playerHead =
             visibleWhen(bool("nameTagsPlayerHead", SETTING_PLAYER_HEAD, false),
                     () -> toggles.get("Show nameplate"));
@@ -801,7 +813,8 @@ public class NameTags extends Module {
                 ? mc.getWindow().getGuiScaledHeight()
                 : 0.0;
         return WorldUiPresentationService.resolve(
-                mode, distance, WORLD_PRESENTATION_POLICY, projectionYScale, logicalHeight);
+                mode, distance, WORLD_PRESENTATION_POLICY, projectionYScale, logicalHeight,
+                worldSize.get(), dynamicWorldScale.get(), dynamicWorldScaleCoefficient.get());
     }
 
     private void renderWorldNameTag(Renderer3D renderer,

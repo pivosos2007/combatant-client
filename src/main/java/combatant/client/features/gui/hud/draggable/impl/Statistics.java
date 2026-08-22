@@ -363,6 +363,9 @@ public final class Statistics extends DraggableHudElement {
         String playTime = formatPlayTime(elapsedMs);
         float hourProgress = (elapsedMs % 3_600_000L) / 3_600_000.0f;
         float arcEndAngle = -90.0f + 360.0f * hourProgress;
+        // Completed hours become virtual color strata in the same arc draw. The shader keeps a
+        // fixed rolling hash window, so historic hours never allocate additional arc geometry.
+        float arcHashTime = elapsedMs / 3_600_000.0f;
         List<LinkedHashMap<String, Object>> graphPoints = buildGraphPoints(
                 drawWidth,
                 drawGraphHeight,
@@ -399,6 +402,7 @@ public final class Statistics extends DraggableHudElement {
                         playTime,
                         String.format(Locale.ROOT, "%.2f BPS", snapshot.averageBps()),
                         arcEndAngle,
+                        arcHashTime,
                         showPlayTime,
                         graphVisible,
                         graphSeparated,

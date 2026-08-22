@@ -20,13 +20,32 @@ public enum WorldUiPresentationService {
                                    Policy policy,
                                    double projectionYScale,
                                    double logicalViewportHeight) {
+        return resolve(mode, distance, policy, projectionYScale, logicalViewportHeight, 1.0, false, 0.0);
+    }
+
+    public static Snapshot resolve(Mode mode,
+                                   double distance,
+                                   Policy policy,
+                                   double projectionYScale,
+                                   double logicalViewportHeight,
+                                   double sizeMultiplier,
+                                   boolean dynamicScale,
+                                   double dynamicScaleCoefficient) {
         Mode safeMode = mode != null ? mode : Mode.HYBRID;
         Policy safePolicy = policy != null ? policy : Policy.defaults();
         double safeDistance = Math.max(0.0, distance);
 
         float screenAlpha;
         float worldAlpha;
-        double worldScale = safePolicy.physicalWorldUnitsPerPixel();
+        double worldScale = resolveWorldScale(
+                safePolicy.physicalWorldUnitsPerPixel(),
+                safeDistance,
+                safePolicy.referenceDistance(),
+                safePolicy.maximumCompensation(),
+                sizeMultiplier,
+                dynamicScale,
+                dynamicScaleCoefficient
+        );
         switch (safeMode) {
             case SCREEN -> {
                 screenAlpha = 1.0f;
@@ -49,10 +68,39 @@ public enum WorldUiPresentationService {
             default -> throw new IllegalStateException("Unexpected presentation mode: " + safeMode);
         }
 
-        // Keep billboards in physical world units. Distance/projection compensation effectively turns
-        // them into constant-screen-size UI and makes their world footprint grow as the camera moves
-        // away. A fixed scale gives normal perspective: farther billboards become smaller on screen.
         return new Snapshot(screenAlpha, worldAlpha, worldScale);
+    }
+
+    /**
+     * Resolve a physical billboard scale. Dynamic scaling only enlarges distant billboards; it never
+     * makes close billboards smaller than the configured base size. A coefficient of 0 disables the
+     * distance contribution, while 1 approaches full distance compensation after referenceDistance.
+     */
+    public static double resolveWorldScale(double baseWorldScale,
+                                           double distance,
+                                           double referenceDistance,
+                                           double maximumCompensation,
+                                           double sizeMultiplier,
+                                           boolean dynamicScale,
+                                           double dynamicScaleCoefficient) {
+        double safeBase = Math.max(0.00001, baseWorldScale);
+        double safeSize = clamp(sizeMultiplier, 0.05, 4.0);
+        double scale = safeBase * safeSize;
+        if (!dynamicScale) return scale;
+
+        double coefficient = clamp(dynamicScaleCoefficient, 0.0, 1.0);
+        if (coefficient <= 0.000001) return scale;
+
+        double safeDistance = Math.max(0.0, distance);
+        double safeReference = Math.max(0.001, referenceDistance);
+        double distanceRatio = Math.max(1.0, safeDistance / safeReference);
+        double compensation = 1.0 + (distanceRatio - 1.0) * coefficient;
+        compensation = clamp(compensation, 1.0, Math.max(1.0, maximumCompensation));
+        return scale * compensation;
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private static float smoothstep(double start, double end, double value) {

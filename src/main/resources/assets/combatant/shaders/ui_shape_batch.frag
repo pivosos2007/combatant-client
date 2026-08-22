@@ -126,26 +126,126 @@ float arcCoverage(vec2 frag, vec2 center, vec2 logicalScale) {
     vec2 local = frag - center;
     float radialD = abs(length(local) - radius) - thickness * 0.5;
     float radialAlpha = coverage(radialD, analyticAa(radialD, logicalScale, softness));
+
+    if (v_Params3.x > 0.5) {
+        float hashTime = max(v_Params3.y, 0.0);
+        float completedLayers = floor(hashTime);
+        float progress = fract(hashTime);
+        if (completedLayers >= 1.0) return radialAlpha;
+        if (progress <= 0.000001) return 0.0;
+
+        float sweep = 360.0 * progress;
+        float endUnwrapped = startDeg + sweep;
+        float angleDeg = normalizeAngle(degrees(atan(local.x, -local.y)));
+        if (angleDeg < startDeg) angleDeg += 360.0;
+        float angularSoft = max(fwidth(angleDeg), degrees(max(softness, pixelAa(logicalScale)) / max(radius, 0.0001)));
+        float alpha = radialAlpha
+                * smoothstep(startDeg - angularSoft, startDeg, angleDeg)
+                * (1.0 - smoothstep(endUnwrapped, endUnwrapped + angularSoft, angleDeg));
+        if (caps) {
+            float capRadius = thickness * 0.5;
+            float startD = length(frag - arcPoint(center, radius, startDeg)) - capRadius;
+            float endD = length(frag - arcPoint(center, radius, endUnwrapped)) - capRadius;
+            alpha = max(alpha, max(
+                    coverage(startD, analyticAa(startD, logicalScale, softness)),
+                    coverage(endD, analyticAa(endD, logicalScale, softness))));
+        }
+        return alpha;
+    }
+
     float sweep = endDeg - startDeg;
     if (sweep <= 0.0) sweep += 360.0;
     if (sweep >= 359.99) return radialAlpha;
 
+    // Compare in one unwrapped angular domain. A start at 270° and an end at 0°
+    // is a 90° sweep ending at 360°, not a sweep ending numerically at zero.
+    float endUnwrapped = startDeg + sweep;
     float angleDeg = normalizeAngle(degrees(atan(local.x, -local.y)));
     if (angleDeg < startDeg) angleDeg += 360.0;
     float angularSoft = max(fwidth(angleDeg), degrees(max(softness, pixelAa(logicalScale)) / max(radius, 0.0001)));
     float alpha = radialAlpha
             * smoothstep(startDeg - angularSoft, startDeg, angleDeg)
-            * (1.0 - smoothstep(endDeg, endDeg + angularSoft, angleDeg));
+            * (1.0 - smoothstep(endUnwrapped, endUnwrapped + angularSoft, angleDeg));
     if (caps) {
         float capRadius = thickness * 0.5;
         float startD = length(frag - arcPoint(center, radius, startDeg)) - capRadius;
-        float endD = length(frag - arcPoint(center, radius, endDeg)) - capRadius;
+        float endD = length(frag - arcPoint(center, radius, endUnwrapped)) - capRadius;
         alpha = max(alpha, max(
                 coverage(startD, analyticAa(startD, logicalScale, softness)),
                 coverage(endD, analyticAa(endD, logicalScale, softness))));
     }
     return alpha;
 }
+
+
+float hash11(float p) {
+    p = fract(p * 0.1031);
+    p *= p + 33.33;
+    p *= p + p;
+    return fract(p);
+}
+
+vec3 overlayColor(vec3 base, vec3 layer) {
+    vec3 lo = 2.0 * base * layer;
+    vec3 hi = 1.0 - 2.0 * (1.0 - base) * (1.0 - layer);
+    return mix(lo, hi, step(vec3(0.5), base));
+}
+
+vec3 rotateRgb(vec3 c, float selector) {
+    if (selector < 0.333333) return c;
+    if (selector < 0.666666) return c.gbr;
+    return c.brg;
+}
+
+vec3 arcHistoryColor(vec3 base, vec2 frag, vec2 center) {
+    if (v_Params3.x < 0.5) return base;
+
+    float startDeg = normalizeAngle(v_Params2.x);
+    vec2 local = frag - center;
+    float angleDeg = normalizeAngle(degrees(atan(local.x, -local.y)));
+    if (angleDeg < startDeg) angleDeg += 360.0;
+    float ringU = clamp((angleDeg - startDeg) / 360.0, 0.0, 1.0);
+
+    // History is virtual: one quad is submitted regardless of play time. The four newest
+    // completed hours are reconstructed from integer hashes. A new hour enters on top,
+    // the fifth one drops out of the bottom, and no framebuffer/history draw is retained.
+    float hashTime = max(v_Params3.y, 0.0);
+    float completed = floor(hashTime);
+    float progress = fract(hashTime);
+    vec3 outColor = base;
+
+    for (int i = 0; i < 4; i++) {
+        float age = float(i);
+        float seed = completed - 1.0 - age;
+        float exists = step(0.0, seed);
+        float h0 = hash11(seed * 17.173 + ringU * 23.711);
+        float h1 = hash11(seed * 41.117 + ringU * 11.903 + 7.0);
+        vec3 shifted = rotateRgb(base, h0);
+        vec3 layer = base + (shifted - base) * (0.16 + 0.22 * h1);
+        layer *= 0.92 + 0.16 * hash11(seed * 9.731 + ringU * 37.0);
+        float weight = exists * (0.18 - age * 0.025);
+        vec3 over = overlayColor(outColor, clamp(layer, 0.0, 1.0));
+        outColor += (over - outColor) * weight;
+    }
+
+    // The current, not-yet-completed hour is the top virtual layer. It only affects the
+    // already elapsed angular range, so it visibly overwrites the older composite as time moves.
+    float edgeAa = max(fwidth(ringU) * 1.5, 0.0025);
+    float currentMask = progress <= 0.000001
+            ? 0.0
+            : 1.0 - smoothstep(progress, progress + edgeAa, ringU);
+    float currentSeed = completed;
+    float ch0 = hash11(currentSeed * 19.913 + ringU * 29.417 + 3.0);
+    float ch1 = hash11(currentSeed * 47.117 + ringU * 13.331 + 11.0);
+    vec3 currentShifted = rotateRgb(base, ch0);
+    vec3 currentLayer = base + (currentShifted - base) * (0.20 + 0.24 * ch1);
+    currentLayer *= 0.94 + 0.14 * hash11(currentSeed * 7.331 + ringU * 31.0);
+    vec3 currentOver = overlayColor(outColor, clamp(currentLayer, 0.0, 1.0));
+    outColor += (currentOver - outColor) * (0.24 * currentMask);
+
+    return clamp(outColor, 0.0, 1.0);
+}
+
 
 float bottomShadowCoverage(vec2 frag, vec2 center, vec2 halfSize) {
     float radius = min(max(v_Params.y, 0.0), min(halfSize.x, halfSize.y));
@@ -190,7 +290,8 @@ void main() {
         return;
     }
     if (abs(kind - KIND_ARC) < 0.25) {
-        fragColor = vec4(v_Color.rgb, v_Color.a * arcCoverage(frag, center, logicalScale));
+        vec3 arcColor = arcHistoryColor(v_Color.rgb, frag, center);
+        fragColor = vec4(arcColor, v_Color.a * arcCoverage(frag, center, logicalScale));
         return;
     }
     if (abs(kind - KIND_SHADOW) < 0.25) {

@@ -109,7 +109,7 @@ class StatisticsPanelLayout extends HudPanelLayout {
     }));
     nodes.push(ui.shape({
       key: "playtime:arc",
-      shape: "arc-gradient",
+      shape: "arc-hash",
       class: abs(ringBoxX, ringBoxY, ringBox, ringBox),
       cx: ringBox * 0.5,
       cy: ringBox * 0.5,
@@ -117,6 +117,7 @@ class StatisticsPanelLayout extends HudPanelLayout {
       thickness: Math.max(1.55 * bs, 1.25),
       startAngle: -90,
       endAngle: n(this.p.arcEndAngle, -90),
+      hashTime: n(this.p.arcHashTime, 0),
       startColor: c(this.p.accentStartColor, color(this.pal, "counter", "#FFFFFFFF")),
       endColor: c(this.p.accentEndColor, color(this.pal, "text", "#FFFFFFFF")),
       angle: 0,

@@ -77,6 +77,7 @@ public class JumpCircles extends Module {
     ), this::usesSecondaryColor);
     private final List<Circle> circles = new ArrayList<>();
     private final Map<UUID, Boolean> groundState = new HashMap<>();
+    private final Map<UUID, Double> groundedFeetY = new HashMap<>();
 
     @Override
     public WorldPhase getWorldPhase() {
@@ -97,9 +98,20 @@ public class JumpCircles extends Module {
 
             boolean prevGround = groundState.getOrDefault(id, false);
             boolean nowGround = pl.onGround();
+
+            // Cache the exact feet height while the player is grounded. Using
+            // floor(Y) snaps slabs, stairs, snow layers, etc. to an integer
+            // block height. On the first airborne tick the player Y has already
+            // moved upward, so the last grounded bounding-box minY is the stable
+            // takeoff surface height we want for the circle.
+            if (nowGround) {
+                groundedFeetY.put(id, pl.getBoundingBox().minY);
+            }
+
             if (prevGround && !nowGround) {
+                double surfaceY = groundedFeetY.getOrDefault(id, pl.getBoundingBox().minY);
                 circles.add(new Circle(
-                        new Vec3(pl.getX(), Math.floor(pl.getY()) + 0.001f, pl.getZ()),
+                        new Vec3(pl.getX(), surfaceY + 0.001, pl.getZ()),
                         new Timer()
                 ));
             }
@@ -107,6 +119,7 @@ public class JumpCircles extends Module {
         }
 
         groundState.keySet().removeIf(id -> !active.contains(id));
+        groundedFeetY.keySet().removeIf(id -> !active.contains(id));
         circles.removeIf(c -> c.timer.passedMs(lifetimeMs()));
     }
 
@@ -114,6 +127,7 @@ public class JumpCircles extends Module {
     public void onDisable() {
         circles.clear();
         groundState.clear();
+        groundedFeetY.clear();
     }
 
     @Override

@@ -682,7 +682,7 @@ public final class UiPrimitiveRenderer {
                 }
                 return;
             }
-            case "arc", "arc-stroke", "arc_stroke", "arc-flat", "arc_flat", "arc-gradient", "arc_gradient" -> {
+            case "arc", "arc-stroke", "arc_stroke", "arc-flat", "arc_flat", "arc-gradient", "arc_gradient", "arc-hash", "arc_hash" -> {
                 float thickness = props.number("thickness", Math.max(1.0f, strokeWidth));
                 double radius = props.number("radius", (float) Math.max(0.0, Math.min(w, h) * 0.5 - thickness * 0.5));
                 double cx = x + props.number("cx", (float) (w * 0.5));
@@ -691,13 +691,21 @@ public final class UiPrimitiveRenderer {
                 float endAngle = props.number("endAngle", 360.0f);
                 int color = (stroke >>> 24) > 0 ? stroke : fill;
                 if (thickness <= 0.0f) return;
-                if (shape.equals("arc-gradient") || shape.equals("arc_gradient")) {
+                if (shape.equals("arc-gradient") || shape.equals("arc_gradient")
+                        || shape.equals("arc-hash") || shape.equals("arc_hash")) {
                     int start = color(props.get("startColor"), color);
                     int end = color(props.get("endColor"), color);
                     if (((start | end) >>> 24) > 0) {
-                        renderer.arcStrokeGradient(cx, cy, radius, thickness, startAngle, endAngle,
-                                props.number("softness", 0.0f),
-                                start, end, props.number("angle", 0.0f), props.number("offset", 0.0f));
+                        if (shape.equals("arc-hash") || shape.equals("arc_hash")) {
+                            renderer.arcStrokeHashedGradient(cx, cy, radius, thickness, startAngle, endAngle,
+                                    props.number("softness", 0.0f),
+                                    start, end, props.number("angle", 0.0f), props.number("offset", 0.0f),
+                                    props.number("hashTime", 0.0f));
+                        } else {
+                            renderer.arcStrokeGradient(cx, cy, radius, thickness, startAngle, endAngle,
+                                    props.number("softness", 0.0f),
+                                    start, end, props.number("angle", 0.0f), props.number("offset", 0.0f));
+                        }
                     }
                 } else if ((color >>> 24) > 0) {
                     if (shape.equals("arc-flat") || shape.equals("arc_flat")) {

@@ -24,6 +24,7 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.text.WorldTextRenderer;
+import combatant.client.render.engine.world.WorldUiPresentationService;
 import combatant.client.util.aiming.RestrictedSingleUseAction;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
@@ -238,6 +239,16 @@ public class AutoAnchor extends Module {
     private final RGBAColorValue lineColor = common(color("autoanchorLineColor", "#FFAA55FF"), CommonSettingSchemas.LINE_COLOR);
     private final NumberValue<Float> lineWidth = numCommon("autoanchorLineWidth", CommonSettingSchemas.LINE_WIDTH, 2.0f, 1.0f, 6.0f);
     private final RGBAColorValue textColor = common(color("autoanchorTextColor", "#FFFFFFFF"), CommonSettingSchemas.TEXT_COLOR);
+    private final NumberValue<Float> billboardSize = visibleWhen(numCommon(
+            "autoanchorBillboardSize", "billboard_size", CommonSettingSchemas.BILLBOARD_SIZE, 0.72f, 0.35f, 1.50f),
+            drawDamage::get);
+    private final BooleanValue billboardDynamicScale = visibleWhen(boolCommon(
+            "autoanchorBillboardDynamicScale", "billboard_dynamic_scale", CommonSettingSchemas.BILLBOARD_DYNAMIC_SCALE, true),
+            drawDamage::get);
+    private final NumberValue<Float> billboardDynamicScaleCoefficient = visibleWhen(numCommon(
+            "autoanchorBillboardDynamicScaleCoefficient", "billboard_dynamic_scale_coefficient",
+            CommonSettingSchemas.BILLBOARD_DYNAMIC_SCALE_COEFFICIENT, 0.25f, 0.0f, 1.0f),
+            () -> drawDamage.get() && billboardDynamicScale.get());
     private final NumberValue<Integer> slideDelay = visibleWhen(numCommon("autoanchorSlideDelay", CommonSettingSchemas.SLIDE_DELAY, 200, 1, 1000),
             () -> renderMode.get() == RenderMode.SLIDE);
     private final NumberValue<Integer> fadeTime = visibleWhen(numCommon("autoanchorFadeTime", CommonSettingSchemas.FADE_TIME, 500, 100, 2000),
@@ -867,6 +878,7 @@ public class AutoAnchor extends Module {
     }
 
     private void renderDamageText(Renderer3D renderer, Vec3 anchor, float alpha) {
+        double billboardWorldScale = resolveDamageBillboardScale(anchor);
         String mainText = ExplosionRenderUtil.formatDamage(renderDamage);
         if (mainText.isEmpty()) return;
 
@@ -874,7 +886,7 @@ public class AutoAnchor extends Module {
         TextRenderer bold = Fonts.renderer("Iosevka", FontInfo.Type.Bold, TextRenderer.get());
         WorldTextRenderer.Options baseOptions = WorldTextRenderer.Options.defaults()
                 .withScale(TEXT_SCALE)
-                .withWorldScale(TEXT_WORLD_SCALE)
+                .withWorldScale(billboardWorldScale)
                 .withDepthMode(Renderer3D.DepthMode.NONE)
                 .withShadow(true)
                 .withOffset(0.0, TEXT_Y_OFFSET);
@@ -915,6 +927,19 @@ public class AutoAnchor extends Module {
                         .withScale(TEXT_GAP_SCALE)
                         .withOffset(startX + drawnMain, TEXT_Y_OFFSET)
                         .withColor(new RenderColor(mainArgb))
+        );
+    }
+
+    private double resolveDamageBillboardScale(Vec3 anchor) {
+        double distance = RenderState.cameraPos != null ? RenderState.cameraPos.distanceTo(anchor) : 0.0;
+        return WorldUiPresentationService.resolveWorldScale(
+                TEXT_WORLD_SCALE,
+                distance,
+                12.0,
+                4.0,
+                billboardSize.get(),
+                billboardDynamicScale.get(),
+                billboardDynamicScaleCoefficient.get()
         );
     }
 

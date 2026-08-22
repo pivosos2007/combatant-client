@@ -66,6 +66,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
     private static final float BASE_PIPE_TEXT_GAP = 6f;
     private static final float BASE_TOGGLE_W = 20f;
     private static final float BASE_TOGGLE_H = 12f;
+    private static final float BASE_PREVIEW_ICON_SIZE = 12f;
     private static final float BASE_PROGRESS_H = 1.35f;
     private static final float GLASS_BLUR_ALPHA = 255f;
     private static final float GLASS_PASS_ALPHA = 255f;
@@ -85,13 +86,10 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
 
     private static final int ENTER_MS = 400;
     private static final int DEFAULT_EXIT_MS = 260;
-    private static final long PREVIEW_ROTATE_MS = 1000L;
     private static final int TOGGLE_TRANSITION_MS = 420;
     private static final String PREVIEW_KEY = "preview";
-    private static final PreviewToast[] PREVIEW_EXAMPLES = new PreviewToast[]{
-            new PreviewToast("Module - enabled!", NotifyType.YES, ToastVisual.MODULE_TOGGLE, true),
-            new PreviewToast("Module - disabled!", NotifyType.NO, ToastVisual.MODULE_TOGGLE, false)
-    };
+    private static final String PREVIEW_LINE = "Fermenting...";
+    private static final String PREVIEW_ICON = "vanilla/u1f9ea";
 
     private final NumberValue<Integer> durationMs = new NumberValue<>("duration_ms", 2000, 500, 6000);
     private final NumberValue<Integer> fadeMs = new NumberValue<>("fade_ms", 250, 0, 1500);
@@ -163,16 +161,6 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         };
     }
 
-    private static PreviewToast previewExample(long now) {
-        int index = (int) ((Math.max(0L, now) / PREVIEW_ROTATE_MS) % PREVIEW_EXAMPLES.length);
-        return PREVIEW_EXAMPLES[index];
-    }
-
-    private static long previewStart(long now) {
-        long safeNow = Math.max(0L, now);
-        return safeNow - safeNow % PREVIEW_ROTATE_MS;
-    }
-
     private static ToastMetrics measureToast(Toast toast,
                                              TextRenderer lineRenderer,
                                              TextRenderer iconRenderer,
@@ -181,13 +169,15 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
                                              float baseScale) {
         boolean moduleToggle = toast.visual == ToastVisual.MODULE_TOGGLE;
         String icon = iconFor(toast.type);
-        float iconW = moduleToggle ? BASE_TOGGLE_W * baseScale : measureWidth(iconRenderer, icon, iconScale);
-        float iconH = moduleToggle ? BASE_TOGGLE_H * baseScale : measureHeight(iconRenderer, iconScale);
+        boolean previewToast = PREVIEW_KEY.equals(toast.key);
+        float iconW = moduleToggle
+                ? (previewToast ? BASE_PREVIEW_ICON_SIZE : BASE_TOGGLE_W) * baseScale
+                : measureWidth(iconRenderer, icon, iconScale);
+        float iconH = moduleToggle
+                ? (previewToast ? BASE_PREVIEW_ICON_SIZE : BASE_TOGGLE_H) * baseScale
+                : measureHeight(iconRenderer, iconScale);
         float pipeW = measureWidth(lineRenderer, "|", lineScale);
         float textW = measureWidth(lineRenderer, toast.line, lineScale);
-        if (PREVIEW_KEY.equals(toast.key)) {
-            textW = Math.max(textW, previewMaxTextWidth(lineRenderer, lineScale));
-        }
         float textH = measureHeight(lineRenderer, lineScale);
 
         float leftPad = BASE_LEFT_PAD * baseScale;
@@ -205,14 +195,6 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         float textY = (boxH - textH) * 0.5f + (0.8f * baseScale);
 
         return new ToastMetrics(boxW, boxH, radius, textScale(lineScale), iconScale, iconX, iconY, iconW, iconH, pipeX, textX, textY);
-    }
-
-    private static float previewMaxTextWidth(TextRenderer renderer, float scale) {
-        float max = 0f;
-        for (PreviewToast preview : PREVIEW_EXAMPLES) {
-            max = Math.max(max, measureWidth(renderer, preview.line(), scale));
-        }
-        return max;
     }
 
     private static float textScale(float value) {
@@ -563,9 +545,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
     }
 
     private Toast previewToast(long now) {
-        PreviewToast preview = previewExample(now);
-        long start = previewStart(now);
-        return new Toast(PREVIEW_KEY, preview.line(), preview.type(), start, preview.visual(), preview.enabled());
+        return new Toast(PREVIEW_KEY, PREVIEW_LINE, NotifyType.INFO, Math.max(0L, now), ToastVisual.MODULE_TOGGLE, null);
     }
 
     private void renderPreviewInternal(Renderer2D renderer,
@@ -814,7 +794,11 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         }
 
         if (toast.visual == ToastVisual.MODULE_TOGGLE) {
-            drawModuleToggle(renderer, toast, x + metrics.iconX, y + metrics.iconY, metrics.iconW, metrics.iconH, accent, anim, now);
+            if (PREVIEW_KEY.equals(toast.key)) {
+                drawPreviewModuleVisual(renderer, toast, x + metrics.iconX, y + metrics.iconY, metrics.iconW, metrics.iconH, accent, anim, now, baseScale);
+            } else {
+                drawModuleToggle(renderer, toast, x + metrics.iconX, y + metrics.iconY, metrics.iconW, metrics.iconH, accent, anim, now);
+            }
         } else {
             iconRenderer.begin(metrics.iconScale, false, false);
             applyColor(colorTmp, accent);
@@ -828,6 +812,25 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         applyColor(colorTmp, text);
         lineRenderer.render(toast.line, x + metrics.textX, y + metrics.textY, colorTmp, false);
         lineRenderer.end();
+    }
+
+    private void drawPreviewModuleVisual(Renderer2D renderer,
+                                         Toast toast,
+                                         float x,
+                                         float y,
+                                         float w,
+                                         float h,
+                                         int accent,
+                                         float anim,
+                                         long now,
+                                         float baseScale) {
+        if (renderer == null || toast == null || w <= 0.1f || h <= 0.1f) return;
+
+        float side = Math.min(w, h);
+        float iconX = x + (w - side) * 0.5f;
+        float iconY = y + (h - side) * 0.5f;
+        renderer.svg(PREVIEW_ICON, iconX, iconY, side, side,
+                SvgRenderOptions.fromFile().withAlpha(clamp01(anim)));
     }
 
     private void drawModuleToggle(Renderer2D renderer,
@@ -1076,9 +1079,6 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         }
     }
 
-    private record PreviewToast(String line, NotifyType type, ToastVisual visual, Boolean enabled) {
-    }
-
     private record LayoutSize(float width, float height) {
     }
 
@@ -1120,7 +1120,8 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         event.svg("toggle-left")
                 .svg("toggle-right")
                 .svg("toggle-track")
-                .svg("toggle-thumb");
+                .svg("toggle-thumb")
+                .svg(PREVIEW_ICON);
     }
 
 }

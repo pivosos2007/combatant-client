@@ -7,6 +7,7 @@
 
 package combatant.client.mixins;
 
+import combatant.client.config.MainConfig;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
@@ -23,6 +24,7 @@ public abstract class TitleScreenMixin {
     @Inject(method = "init", at = @At("HEAD"), cancellable = true)
     private void combatant$replaceTitleScreen(CallbackInfo ci) {
         if (RuntimeGate.isPanic()) return;
+        if (!MainConfig.get().isCombatantMainMenuEnabled()) return;
         if (CombatantMainMenuScreen.shouldUseVanillaTitleScreen()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;

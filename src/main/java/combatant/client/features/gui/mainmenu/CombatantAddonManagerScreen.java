@@ -12,8 +12,8 @@ import combatant.client.features.theme.Theme;
 import combatant.client.addon.AddonIssue;
 import combatant.client.addon.AddonManager;
 import combatant.client.addon.AddonSnapshot;
-import combatant.client.config.MainConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.color.RenderColor;
@@ -21,6 +21,9 @@ import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.draw.UiPaint;
+import combatant.client.render.engine.renderer.ui.draw.UiPrimitive;
+import combatant.client.render.engine.renderer.ui.draw.UiStroke;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
@@ -77,6 +80,11 @@ public final class CombatantAddonManagerScreen extends Screen {
     private static final float METRIC_GAP = 2.5f * SCALE;
     private static final float CARD_H = 40f * SCALE;
     private static final float CARD_GAP = 5f * SCALE;
+    private static final float CARD_CUT = 4.5f * SCALE;
+    private static final float CARD_ROUNDING = 0.82f * SCALE;
+    private static final float ACTION_CUT = 4.0f * SCALE;
+    private static final float ACTION_ROUNDING = 0.82f * SCALE;
+    private static final float ACTION_ELEVATION = 1.85f * SCALE;
 
     private final Screen parent;
     private final Map<String, Float> cardHover = new HashMap<>();
@@ -138,7 +146,7 @@ public final class CombatantAddonManagerScreen extends Screen {
         updateUiMetrics();
         ensureSelection();
         clampScroll();
-        renderShaderBackground(context);
+        renderBackgroundTexture();
         float fx = toFixedX(mouseX);
         float fy = toFixedY(mouseY);
         updateAnimations(fx, fy);
@@ -146,7 +154,8 @@ public final class CombatantAddonManagerScreen extends Screen {
         ViewportContext.beginUnscaledLogical(context);
         Renderer2D.COLOR.begin();
         try {
-            renderDimmer();
+            MainMenuBackdrop.GridLayout backdropGrid = MainMenuBackdrop.layout(fixedWidth, fixedHeight);
+            MainMenuBackdrop.render(fixedWidth, fixedHeight, 1.0f, fx, fy, backdropGrid, null);
             renderUi(fx, fy);
         } finally {
             Renderer2D.COLOR.render();
@@ -203,9 +212,9 @@ public final class CombatantAddonManagerScreen extends Screen {
         float open = AnimationUtility.easeOutCubic(openAnim);
         PanelColors c = colors(open);
 
-        renderPanel(l.leftX, l.topY, LEFT_W, LEFT_TOP_H, c, open);
-        renderPanel(l.leftX, l.bottomY, LEFT_W, LEFT_BOTTOM_H, c, open);
-        renderPanel(l.rightX, l.topY, RIGHT_W, RIGHT_H, c, open);
+        renderPanel(l.leftX, l.topY, LEFT_W, LEFT_TOP_H, c, open, true);
+        renderPanel(l.leftX, l.bottomY, LEFT_W, LEFT_BOTTOM_H, c, open, false);
+        renderPanel(l.rightX, l.topY, RIGHT_W, RIGHT_H, c, open, true);
 
         renderDetails(l, c, mouseX, mouseY);
         renderActionsPanel(l, c, mouseX, mouseY);
@@ -309,18 +318,10 @@ public final class CombatantAddonManagerScreen extends Screen {
         float active = AnimationUtility.easeOutCubic(cardActive.getOrDefault(addon.id(), 0f));
         float press = AnimationUtility.easeOutCubic(cardPress.getOrDefault(addon.id(), 0f));
         Themes.Theme theme = Theme.theme();
-        int activeAccent = withAlpha(theme.accent(), Math.round(165f * active));
 
-        int fillBase = HudRenderUtil.mixColor(c.surface, c.surfaceHover, 0.38f * hover + 0.10f * press);
-        int fillTop = HudRenderUtil.mixColor(fillBase, c.surfaceHover, 0.03f * press);
-        int fillBottom = HudRenderUtil.mixColor(fillBase, 0xFF05070A, 0.18f);
-        int stroke = HudRenderUtil.mixColor(c.stroke, c.strokeSoft, 0.45f * hover);
-        stroke = HudRenderUtil.mixColor(stroke, activeAccent, 0.38f * active + 0.10f * press);
-
-        Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, h, 4f * SCALE, 8f * SCALE, 0.018f + hover * 0.018f + active * 0.010f, c.shadow);
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, 4f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
-        renderActiveCardMarker(x, y, w, h, active, theme);
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, w, h, 4f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(stroke, 0xFFFFFFFF, 0.04f + hover * 0.03f), stroke, 90f);
+        UiPrimitive card = addonCard(x, y, w, h);
+        renderAddonCardMaterial(card, c, hover, active, press);
+        renderActiveCardMarker(x, y, h, active, theme);
 
         float iconBox = 24f * SCALE;
         float iconX = x + 7f * SCALE;
@@ -346,6 +347,67 @@ public final class CombatantAddonManagerScreen extends Screen {
         drawFitOrMarquee(bodyRenderer, countsText(addon), textX, y + 29.6f * SCALE, SMALL_FONT, Math.max(1f, x + w - 7f * SCALE - textX), c.mutedLabel, hovered);
     }
 
+    private static UiPrimitive addonCard(float x, float y, float w, float h) {
+        return UiPrimitive.builder(x, y, w, h)
+                .preset(UiPrimitive.Preset.CHAMFERED)
+                .cut(CARD_CUT)
+                .rounding(CARD_ROUNDING)
+                .build();
+    }
+
+    private static UiPrimitive directional(float x, float y, float w, float h) {
+        return UiPrimitive.builder(x, y, w, h)
+                .preset(UiPrimitive.Preset.DIRECTIONAL_RIGHT)
+                .cut(ACTION_CUT)
+                .rounding(ACTION_ROUNDING)
+                .build();
+    }
+
+    private static UiPrimitive parallelogram(float x, float y, float w, float h, float cut, float rounding) {
+        return UiPrimitive.builder(x, y, w, h)
+                .preset(UiPrimitive.Preset.PARALLELOGRAM_RIGHT)
+                .cut(cut)
+                .rounding(rounding)
+                .build();
+    }
+
+    private void renderAddonCardMaterial(UiPrimitive card, PanelColors c, float hover, float active, float press) {
+        SettingsGuiPalette palette = SettingsGuiPalette.current();
+        float h = AnimationUtility.clamp01(hover);
+        float a = AnimationUtility.clamp01(active);
+        float p = AnimationUtility.clamp01(press);
+        var b = card.bounds();
+
+        UiPrimitive shadow = addonCard((float) b.x(), (float) b.y() + 1.15f * SCALE,
+                (float) b.width(), (float) b.height());
+        Renderer2D.COLOR.primitive(shadow,
+                UiPaint.solid(withAlpha(0xFF010307, Math.round(48f + h * 24f + a * 16f))));
+
+        int glassTint = HudRenderUtil.mixColor(palette.workspaceGlassTint(), c.surfaceHover, 0.12f + h * 0.05f);
+        Renderer2D.COLOR.liquidGlassPrimitive(
+                card, withAlpha(glassTint, 208), 0.78f, 0.92f,
+                5.8f * SCALE, -13.0f, 0.70f, 0.76f, 0.28f,
+                0.011f * SCALE, 0.0f, 0.0f,
+                Renderer2D.BlurQuality.ULTRA, 2.08f
+        );
+
+        int tl = HudRenderUtil.mixColor(palette.moduleCardTop(), palette.menuCategorySelectedLeft(), a * 0.15f);
+        int tr = HudRenderUtil.mixColor(palette.moduleCardTopStrong(), palette.menuCategorySelectedRight(), a * 0.18f + h * 0.04f);
+        int br = HudRenderUtil.mixColor(palette.moduleCardBottomStrong(), palette.menuCategoryHoverRight(), h * 0.09f + a * 0.08f);
+        int bl = HudRenderUtil.mixColor(palette.moduleCardBottom(), palette.menuCategoryHoverLeft(), h * 0.08f + a * 0.06f);
+        Renderer2D.COLOR.primitive(card, UiPaint.corners(
+                withAlpha(tl, Math.round(146f + a * 26f)),
+                withAlpha(tr, Math.round(174f + h * 18f + a * 28f)),
+                withAlpha(br, Math.round(170f + a * 24f)),
+                withAlpha(bl, Math.round(144f + a * 18f))
+        ));
+
+        int edge = HudRenderUtil.mixColor(c.strokeSoft, c.accent, a * 0.58f);
+        edge = HudRenderUtil.mixColor(edge, 0xFFFFFFFF, h * 0.07f);
+        Renderer2D.COLOR.primitiveStroke(card,
+                UiPaint.solid(withAlpha(edge, Math.round(76f + h * 48f + a * 88f - p * 16f))),
+                UiStroke.of((0.42f + a * 0.17f) * SCALE));
+    }
 
     private void renderMetricLine(float x, float y, float w, String label, String value, String svg, PanelColors c, boolean hovered) {
         float r = 3.5f * SCALE;
@@ -436,57 +498,137 @@ public final class CombatantAddonManagerScreen extends Screen {
         return Math.max(28f * SCALE, width(bodyRenderer, label, SMALL_FONT) + 11f * SCALE);
     }
 
-    private void renderActiveCardMarker(float x, float y, float w, float h, float active, Themes.Theme theme) {
+    private void renderActiveCardMarker(float x, float y, float h, float active, Themes.Theme theme) {
         float reveal = AnimationUtility.clamp01(active);
         if (reveal <= 0.001f) return;
 
-        float markerW = CARD_MARKER_W * reveal;
-        if (markerW <= 0.01f) return;
-
-        int accent = withAlpha(theme.accent(), Math.round(255f * reveal));
-        boolean clipped = ScissorFunction.pushRaw(x, y, markerW, h);
-        if (!clipped) return;
-        try {
-            Renderer2D.COLOR.roundedRectCornersQuad(x, y, w, h, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, 1f, accent, accent, accent, accent);
-        } finally {
-            ScissorFunction.pop();
-        }
+        int accentBase = theme != null ? theme.accent() : 0xFFFFFFFF;
+        int accent = withAlpha(accentBase, Math.round(220f * reveal));
+        float markerH = Math.max(8f * SCALE, h - 10f * SCALE);
+        UiPrimitive marker = parallelogram(
+                x + 2.1f * SCALE,
+                y + (h - markerH) * 0.5f,
+                Math.max(1.2f * SCALE, CARD_MARKER_W * reveal),
+                markerH,
+                0.75f * SCALE,
+                0.34f * SCALE
+        );
+        Renderer2D.COLOR.primitive(marker, UiPaint.linear(
+                HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.18f), accent, 90f, 0f));
     }
 
     private void renderMiniStatusPill(float x, float y, String label, int color, PanelColors c) {
         float w = miniStatusWidth(label);
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, 9f * SCALE, 4.5f * SCALE, 1f, HudRenderUtil.mixColor(withAlpha(c.surface, 170), color, 0.08f), withAlpha(c.surface, 170), withAlpha(0xFF0D1118, 178), withAlpha(0xFF0D1118, 178));
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, w, 9f * SCALE, 4.5f * SCALE, 1f, 0.42f, withAlpha(color, 112), c.stroke, 90f);
-        Renderer2D.COLOR.roundedRect(x + 3.6f * SCALE, y + 3.2f * SCALE, 2.4f * SCALE, 2.4f * SCALE, 1.2f * SCALE, 1f, color);
-        draw(bodyRenderer, label, x + 8f * SCALE, y + 1.75f * SCALE, SMALL_FONT, c.label);
+        UiPrimitive pill = parallelogram(x, y, w, 9f * SCALE, 2.6f * SCALE, 0.72f * SCALE);
+        Renderer2D.COLOR.primitive(pill, UiPaint.linear(
+                HudRenderUtil.mixColor(withAlpha(c.surface, 170), color, 0.09f),
+                withAlpha(0xFF0D1118, 178), 90f, 0f));
+        Renderer2D.COLOR.primitiveStroke(pill,
+                UiPaint.solid(withAlpha(HudRenderUtil.mixColor(c.stroke, color, 0.42f), 118)),
+                UiStroke.of(0.42f * SCALE));
+        Renderer2D.COLOR.roundedRect(x + 4.0f * SCALE, y + 3.2f * SCALE, 2.4f * SCALE, 2.4f * SCALE, 1.2f * SCALE, 1f, color);
+        draw(bodyRenderer, label, x + 8.4f * SCALE, y + 1.75f * SCALE, SMALL_FONT, c.label);
     }
 
     private void renderAction(float x, float y, float w, float h, String label, boolean destructive, String svgName, float hover, float press, PanelColors c) {
         float hoverAnim = AnimationUtility.easeOutCubic(hover);
         float pressAnim = AnimationUtility.easeOutCubic(press);
-        int fillTop;
-        int fillBottom;
-        int stroke;
-        int text;
-        if (destructive) {
-            fillTop = HudRenderUtil.mixColor(withAlpha(0x1A1416, 170), withAlpha(0x4B2224, 212), 0.25f + hoverAnim * 0.45f + pressAnim * 0.12f);
-            fillBottom = HudRenderUtil.mixColor(withAlpha(0x120E10, 165), withAlpha(0x261012, 220), 0.20f + hoverAnim * 0.40f + pressAnim * 0.10f);
-            stroke = HudRenderUtil.mixColor(withAlpha(0x352A2A, 215), withAlpha(0x8C5054, 235), 0.22f + hoverAnim * 0.58f + pressAnim * 0.12f);
-            text = HudRenderUtil.mixColor(withAlpha(0xD0A0A0, 255), withAlpha(0xFFB2B2, 255), 0.24f + hoverAnim * 0.56f + pressAnim * 0.08f);
-        } else {
-            fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 176), withAlpha(0x223746, 212), 0.20f + hoverAnim * 0.44f + pressAnim * 0.10f);
-            fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 166), withAlpha(0x13292F, 220), 0.16f + hoverAnim * 0.40f + pressAnim * 0.08f);
-            stroke = HudRenderUtil.mixColor(c.stroke, withAlpha(0x466A76, 228), 0.18f + hoverAnim * 0.50f + pressAnim * 0.10f);
-            text = HudRenderUtil.mixColor(withAlpha(0xD0D8E4, 255), withAlpha(0xEEF8FF, 255), 0.18f + hoverAnim * 0.38f + pressAnim * 0.08f);
+
+        int accent = destructive
+                ? HudRenderUtil.mixColor(withAlpha(0x8C5054, 255), withAlpha(0xFF9A9A, 255), hoverAnim * 0.32f)
+                : HudRenderUtil.mixColor(c.strokeSoft, c.accentSoft, 0.22f + hoverAnim * 0.38f);
+        int tint = destructive
+                ? HudRenderUtil.mixColor(withAlpha(0x241518, 255), withAlpha(0x59282C, 255), 0.20f + hoverAnim * 0.30f)
+                : HudRenderUtil.mixColor(c.surfaceHover, withAlpha(0x203543, 255), 0.22f + hoverAnim * 0.24f);
+        int text = destructive
+                ? HudRenderUtil.mixColor(withAlpha(0xD7A7A7, 255), withAlpha(0xFFD1D1, 255), 0.20f + hoverAnim * 0.58f)
+                : HudRenderUtil.mixColor(withAlpha(0xD6DEE8, 255), withAlpha(0xF4FBFF, 255), 0.18f + hoverAnim * 0.48f);
+
+        // A real two-part button: dark socket at the nominal bounds and a raised glass cap.
+        // Hover lifts it slightly; press collapses the cap back into the socket.
+        float elevationFactor = AnimationUtility.clamp01(0.74f + hoverAnim * 0.26f - pressAnim * 0.68f);
+        float elevation = ACTION_ELEVATION * elevationFactor;
+        float topY = y - elevation;
+
+        UiPrimitive well = directional(x, y, w, h);
+        int wellTop = withAlpha(HudRenderUtil.mixColor(0xFF06090E, accent, 0.08f), Math.round(184f + hoverAnim * 18f));
+        int wellBottom = withAlpha(HudRenderUtil.mixColor(0xFF010307, accent, 0.22f), Math.round(218f + pressAnim * 18f));
+        Renderer2D.COLOR.primitive(well, UiPaint.linear(wellTop, wellBottom, 90f, 0f));
+        Renderer2D.COLOR.primitiveStroke(well,
+                UiPaint.solid(withAlpha(accent, Math.round(72f + hoverAnim * 62f))),
+                UiStroke.of(0.62f * SCALE));
+
+        UiPrimitive top = directional(x, topY, w, h);
+        if (elevation > 0.05f) {
+            renderActionExtrusion(top, elevation, accent);
         }
 
-        Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, h, 3f * SCALE, 7f * SCALE, 0.018f + hoverAnim * 0.015f, c.shadow);
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, 3f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, w, h, 3f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(stroke, 0xFFFFFFFF, 0.04f), stroke, 90f);
-        float contentLift = hoverAnim * 0.65f * SCALE + pressAnim * 0.55f * SCALE;
-        drawFitOrMarquee(bodyRenderer, label, x + 5f * SCALE, y + 3.7f * SCALE - contentLift, BUTTON_FONT, w - 18f * SCALE, text, hoverAnim > 0.55f);
+        int glassTint = HudRenderUtil.mixColor(tint, 0xFFEAF7FF, 0.11f + hoverAnim * 0.07f);
+        Renderer2D.COLOR.liquidGlassPrimitive(
+                top,
+                withAlpha(glassTint, Math.round(230f + hoverAnim * 16f - pressAnim * 12f)),
+                0.97f,
+                1.0f,
+                (8.8f + hoverAnim * 1.6f) * SCALE,
+                -10.0f,
+                0.98f,
+                0.86f,
+                0.46f,
+                0.032f * SCALE,
+                0.0f,
+                0.0f,
+                Renderer2D.BlurQuality.ULTRA,
+                2.60f
+        );
+
+        int faceTop = HudRenderUtil.mixColor(withAlpha(tint, 132), withAlpha(0xFFFFFFFF, 118), 0.18f + hoverAnim * 0.10f);
+        int faceBottom = HudRenderUtil.mixColor(withAlpha(tint, 126), withAlpha(0xFF02050A, 188), 0.46f + pressAnim * 0.12f);
+        Renderer2D.COLOR.primitive(top, UiPaint.linear(faceTop, faceBottom, 90f, 0f));
+        Renderer2D.COLOR.primitiveStroke(top,
+                UiPaint.solid(withAlpha(accent, Math.round(150f + hoverAnim * 72f - pressAnim * 22f))),
+                UiStroke.of(1.08f * SCALE));
+        Renderer2D.COLOR.primitiveStroke(top,
+                UiPaint.solid(withAlpha(HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.72f), Math.round(124f + hoverAnim * 46f))),
+                UiStroke.of(0.30f * SCALE));
+
+        float contentY = topY + 3.7f * SCALE;
+        drawFitOrMarquee(bodyRenderer, label, x + 5f * SCALE, contentY, BUTTON_FONT, w - 18f * SCALE, text, hoverAnim > 0.55f);
         float iconSize = 6.7f * SCALE;
-        Renderer2D.COLOR.svg(svgName, x + w - 10.7f * SCALE, y + (h - iconSize) * 0.5f - contentLift, iconSize, iconSize, SvgRenderOptions.overrideColor(text));
+        Renderer2D.COLOR.svg(svgName, x + w - 11.1f * SCALE, topY + (h - iconSize) * 0.5f, iconSize, iconSize, SvgRenderOptions.overrideColor(text));
+    }
+
+    private void renderActionExtrusion(UiPrimitive top, float elevation, int accent) {
+        double[] points = top.points();
+        int count = top.pointCount();
+        if (points.length < 6 || count < 3) return;
+
+        double centerX = top.bounds().x() + top.bounds().width() * 0.5;
+        double centerY = top.bounds().y() + top.bounds().height() * 0.5;
+        double halfW = Math.max(1.0, top.bounds().width() * 0.5);
+        double halfH = Math.max(1.0, top.bounds().height() * 0.5);
+        for (int i = 0; i < count; i++) {
+            int j = (i + 1) % count;
+            double x1 = points[i * 2];
+            double y1 = points[i * 2 + 1];
+            double x2 = points[j * 2];
+            double y2 = points[j * 2 + 1];
+            double midX = (x1 + x2) * 0.5;
+            double midY = (y1 + y2) * 0.5;
+            if (midY < centerY - top.bounds().height() * 0.04) continue;
+
+            float nx = (float) ((midX - centerX) / halfW);
+            float ny = AnimationUtility.clamp01((float) ((midY - centerY) / halfH));
+            float darkMix = ny > 0.52f
+                    ? (nx >= 0f ? 0.56f : 0.75f)
+                    : (nx > 0.05f ? 0.70f : 0.82f);
+            int face = withAlpha(HudRenderUtil.mixColor(accent, 0xFF020408, darkMix), ny > 0.52f ? 226 : 194);
+            Renderer2D.COLOR.polygon(new double[]{
+                    x1, y1,
+                    x1, y1 + elevation,
+                    x2, y2 + elevation,
+                    x2, y2
+            }, 4, face);
+        }
     }
 
     private void drawFitOrMarquee(TextRenderer renderer, String text, float x, float y, float size, float maxWidth, int color, boolean marquee) {
@@ -731,12 +873,14 @@ public final class CombatantAddonManagerScreen extends Screen {
         };
     }
 
-    private void renderPanel(float x, float y, float w, float h, PanelColors c, float open) {
+    private void renderPanel(float x, float y, float w, float h, PanelColors c, float open, boolean header) {
         Renderer2D.COLOR.blurRect(x, y, w, h, PANEL_R, 15f, 1.0f, 0.30f, 0xFFFFFF);
         Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, h, PANEL_R, PANEL_SHADOW, 0.022f + open * 0.012f, c.shadow);
         Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, PANEL_R, 1f, c.bgTopLeft, c.bgTopRight, c.bgBottomRight, c.bgBottomLeft);
-        Renderer2D.COLOR.roundedRectMaskedQuad(x, y, w, HEADER_H, x, y, w, h, PANEL_R, 1f,
-                c.headerTopLeft, c.headerTopRight, c.headerBottomRight, c.headerBottomLeft);
+        if (header) {
+            Renderer2D.COLOR.roundedRectMaskedQuad(x, y, w, HEADER_H, x, y, w, h, PANEL_R, 1f,
+                    c.headerTopLeft, c.headerTopRight, c.headerBottomRight, c.headerBottomLeft);
+        }
         Renderer2D.COLOR.roundedRectStrokeGradient(x, y, w, h, PANEL_R, 1f, 1f, HudRenderUtil.mixColor(c.stroke, 0xFFFFFFFF, 0.04f), c.stroke, 90f);
     }
 
@@ -792,23 +936,9 @@ public final class CombatantAddonManagerScreen extends Screen {
         );
     }
 
-    private void renderDimmer() {
-        Themes.Theme t = Theme.theme();
-        int soft = withAlpha(HudRenderUtil.mixColor(t.windowBg(), 0xFF000000, 0.46f), 140);
-        int deep = withAlpha(HudRenderUtil.mixColor(t.windowBg(), 0xFF000000, 0.68f), 180);
-        Renderer2D.COLOR.quad(0, 0, fixedWidth, fixedHeight, soft, soft, deep, deep);
-    }
-
-    private void renderShaderBackground(GuiGraphicsExtractor context) {
+    private void renderBackgroundTexture() {
         Minecraft mc = this.minecraft;
-        if (mc == null) return;
-        MainConfig cfg = MainConfig.get();
-        String mode = cfg != null ? cfg.getMenuBackgroundMode() : "off";
-        if (mode == null || mode.equalsIgnoreCase("off")) {
-            context.fill(0, 0, width, height, 0xFF000000);
-            return;
-        }
-        MenuBackgroundRenderer.render(mc, mode.equalsIgnoreCase("aurora"));
+        if (mc != null) MenuBackgroundRenderer.renderConfigured(mc);
     }
 
     private void updateUiMetrics() {

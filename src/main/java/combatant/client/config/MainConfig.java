@@ -76,12 +76,12 @@ public final class MainConfig implements ConfigAggregate, ConfigNameProvider, Se
         return runtime.isForcePvp();
     }
 
-    public String getMenuBackgroundMode() {
-        return visual.getMenuBackgroundMode();
+    public boolean isCombatantMainMenuEnabled() {
+        return visual.isCombatantMainMenuEnabled();
     }
 
-    public boolean isMenuBackgroundUseTheme() {
-        return visual.isMenuBackgroundUseTheme();
+    public String getMenuBackgroundMode() {
+        return visual.getMenuBackgroundMode();
     }
 
     public boolean isMenuClockShowSeconds() {

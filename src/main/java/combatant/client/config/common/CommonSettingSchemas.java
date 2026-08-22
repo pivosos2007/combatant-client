@@ -45,6 +45,9 @@ public enum CommonSettingSchemas {
     public static final CommonSettingSchema LINE_COLOR = key("line_color");
     public static final CommonSettingSchema LINE_WIDTH = key("line_width");
     public static final CommonSettingSchema TEXT_COLOR = key("text_color");
+    public static final CommonSettingSchema BILLBOARD_SIZE = key("billboard_size");
+    public static final CommonSettingSchema BILLBOARD_DYNAMIC_SCALE = key("billboard_dynamic_scale");
+    public static final CommonSettingSchema BILLBOARD_DYNAMIC_SCALE_COEFFICIENT = key("billboard_dynamic_scale_coefficient");
     public static final CommonSettingSchema SLIDE_DELAY = key("slide_delay");
     public static final CommonSettingSchema FADE_TIME = key("fade_time");
     public static final CommonSettingSchema MODE = key("mode");

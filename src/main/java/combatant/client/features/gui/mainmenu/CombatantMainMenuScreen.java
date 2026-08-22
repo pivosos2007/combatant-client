@@ -41,7 +41,6 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.util.Util;
 
@@ -52,20 +51,13 @@ import java.util.Locale;
 
 /** Image-backed main menu built as one pointy-hex liquid-glass matrix. */
 public final class CombatantMainMenuScreen extends Screen {
-    private static final Identifier BACKGROUND_TEXTURE = Identifier.fromNamespaceAndPath(
-            "combatant", "textures/mainmenu/forest-mountains.png");
-    private static final float MENU_SCALE = 1.22f;
-    private static final float SQRT_3 = 1.7320508f;
+    private static final float MENU_SCALE = MainMenuBackdrop.MENU_SCALE;
+    private static final float SQRT_3 = MainMenuBackdrop.SQRT_3;
 
     private static final long MENU_APPEAR_DURATION_MS = 520L;
-    private static final float CELL_RADIUS = 31.5f * MENU_SCALE;
-    private static final float CELL_GAP = 0.0f;
+    private static final float CELL_GAP = MainMenuBackdrop.CELL_GAP;
     private static final float BUTTON_ROUNDING = 1.15f * MENU_SCALE;
     private static final float BUTTON_ELEVATION = 7.5f * MENU_SCALE;
-    private static final float CURSOR_LIGHT_RADIUS = 165f * MENU_SCALE;
-    private static final float HONEYCOMB_RIM_WIDTH = 0.92f * MENU_SCALE;
-    private static final float BACKGROUND_BLUR_QUALITY = 17.0f;
-    private static final float BACKGROUND_BLUR_ALPHA = 0.96f;
     private static final String[] BUTTON_ICONS = {"a", "b", "x", "", "s", "i"};
     private static final String[] BUTTON_SVGS = {null, null, null, "folder-pen", null, null};
     private static final String[] BUTTON_LABEL_KEYS = {
@@ -77,8 +69,6 @@ public final class CombatantMainMenuScreen extends Screen {
             "menu.quit"
     };
 
-    private static final DateTimeFormatter DATE_FORMAT =
-            DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.ENGLISH);
     private static final DateTimeFormatter CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter CLOCK_SECONDS_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
@@ -101,7 +91,7 @@ public final class CombatantMainMenuScreen extends Screen {
     private float fixedHeight;
     private float cachedGridWidth = -1f;
     private float cachedGridHeight = -1f;
-    private GridLayout gridLayout;
+    private MainMenuBackdrop.GridLayout gridLayout;
 
     public CombatantMainMenuScreen() {
         super(Component.literal("Combatant"));
@@ -123,6 +113,14 @@ public final class CombatantMainMenuScreen extends Screen {
 
     private static String tr(String key, Object... args) {
         return I18n.get(key, args);
+    }
+
+    private static String localizedDate(LocalDate date) {
+        String weekday = tr("screen.combatant.main_menu.date.weekday."
+                + date.getDayOfWeek().name().toLowerCase(Locale.ROOT));
+        String month = tr("screen.combatant.main_menu.date.month."
+                + date.getMonth().name().toLowerCase(Locale.ROOT));
+        return tr("screen.combatant.main_menu.date.format", weekday, month, date.getDayOfMonth());
     }
 
     @Override
@@ -230,29 +228,15 @@ public final class CombatantMainMenuScreen extends Screen {
     }
 
     private void renderBackgroundTexture() {
-        MenuBackgroundRenderer.renderTexture(minecraft, BACKGROUND_TEXTURE);
+        MenuBackgroundRenderer.renderConfigured(minecraft);
     }
 
     private void renderBackgroundBlur(float opacity) {
-        Renderer2D.COLOR.blurRect(
-                0, 0, fixedWidth, fixedHeight,
-                0.0f, BACKGROUND_BLUR_QUALITY, 1.0f,
-                BACKGROUND_BLUR_ALPHA * opacity, 0x00FFFFFF
-        );
+        MainMenuBackdrop.renderBlur(fixedWidth, fixedHeight, opacity);
     }
 
     private void renderHoneycombMatrix(float opacity, float mouseX, float mouseY) {
-        Themes.Theme theme = Theme.theme();
-        int accent = theme.accent();
-        int glassBody = withAlpha(HudRenderUtil.mixColor(theme.windowBg(), accent, 0.56f), 255);
-        int warmRim = withAlpha(0xFFFFC857, 255);
-        Renderer2D.COLOR.mainMenuHoneycombGlass(
-                0, 0, fixedWidth, fixedHeight,
-                gridLayout.radius, CELL_GAP, HONEYCOMB_RIM_WIDTH, opacity,
-                mouseX, mouseY, CURSOR_LIGHT_RADIUS,
-                gridLayout.originX, gridLayout.originY,
-                glassBody, warmRim
-        );
+        MainMenuBackdrop.renderHoneycomb(fixedWidth, fixedHeight, opacity, mouseX, mouseY, gridLayout, null);
     }
 
     private void renderButtons(float opacity) {
@@ -266,7 +250,7 @@ public final class CombatantMainMenuScreen extends Screen {
             float hover = easeOutCubic(buttonHoverProgress[hoveredButton]);
             TextRenderer labelFont = Fonts.renderer("OnestMedium", FontInfo.Type.Regular, TextRenderer.get());
             String label = tr(BUTTON_LABEL_KEYS[hoveredButton]);
-            float labelY = gridLayout.originY + gridLayout.radius + 13f * MENU_SCALE;
+            float labelY = gridLayout.originY() + gridLayout.radius() + 13f * MENU_SCALE;
             drawCenteredText(labelFont, label, fixedWidth * 0.5f, labelY,
                     0.70f * MENU_SCALE, withAlpha(0xFFF3F7FC, Math.round(opacity * hover * 232f)));
         }
@@ -275,10 +259,10 @@ public final class CombatantMainMenuScreen extends Screen {
     private void renderHexButton(int index, float opacity) {
         float hover = easeOutCubic(buttonHoverProgress[index]);
         float centerX = buttonCenterX(index);
-        float planeY = gridLayout.originY;
+        float planeY = gridLayout.originY();
         float elevation = BUTTON_ELEVATION * opacity * (1f - hover);
         float topY = planeY - elevation;
-        float radius = gridLayout.radius - CELL_GAP * 0.48f;
+        float radius = gridLayout.radius() - CELL_GAP * 0.48f;
         Themes.Theme theme = Theme.theme();
 
         boolean quit = index == BUTTON_ICONS.length - 1;
@@ -373,15 +357,15 @@ public final class CombatantMainMenuScreen extends Screen {
         MainConfig config = MainConfig.get();
         boolean seconds = config != null && config.isMenuClockShowSeconds();
         String time = LocalTime.now().format(seconds ? CLOCK_SECONDS_FORMAT : CLOCK_FORMAT);
-        String date = LocalDate.now().format(DATE_FORMAT);
+        String date = localizedDate(LocalDate.now());
 
         TextRenderer clock = Fonts.renderer("Inter", FontInfo.Type.Bold, TextRenderer.get());
         TextRenderer dateFont = Fonts.renderer("OnestBold", FontInfo.Type.Regular, clock);
         float timeHeight = measureHeight(clock, TIME_FONT);
-        float centerY = gridLayout.originY - gridLayout.radius * 3.45f;
+        float centerY = gridLayout.originY() - gridLayout.radius() * 3.45f;
         drawCenteredText(clock, time, fixedWidth * 0.5f, centerY - timeHeight * 0.5f,
                 TIME_FONT, withAlpha(0xFFFFFFFF, Math.round(opacity * 244f)));
-        drawCenteredText(dateFont, date.toUpperCase(Locale.ENGLISH), fixedWidth * 0.5f,
+        drawCenteredText(dateFont, date.toUpperCase(Locale.ROOT), fixedWidth * 0.5f,
                 centerY + timeHeight * 0.5f + 4.5f * MENU_SCALE,
                 DATE_FONT, withAlpha(0xFFE4EBF3, Math.round(opacity * 192f)));
     }
@@ -435,12 +419,7 @@ public final class CombatantMainMenuScreen extends Screen {
 
         cachedGridWidth = fixedWidth;
         cachedGridHeight = fixedHeight;
-        float radius = CELL_RADIUS;
-        float stepX = SQRT_3 * radius;
-        float stepY = 1.5f * radius;
-        float originX = fixedWidth * 0.5f - stepX * 0.5f;
-        float originY = fixedHeight * 0.56f;
-        gridLayout = new GridLayout(radius, stepX, stepY, originX, originY);
+        gridLayout = MainMenuBackdrop.layout(fixedWidth, fixedHeight);
     }
 
     private static UiPrimitive pointyHex(float centerX, float centerY, float radius, float rounding) {
@@ -471,17 +450,17 @@ public final class CombatantMainMenuScreen extends Screen {
     }
 
     private float buttonCenterX(int index) {
-        return gridLayout.originX + (index - 2) * gridLayout.stepX;
+        return gridLayout.originX() + (index - 2) * gridLayout.stepX();
     }
 
     private int getHoveredButton(float mouseX, float mouseY, float opacity) {
         if (!canInteract(opacity) || gridLayout == null) return -1;
-        float radius = gridLayout.radius - CELL_GAP * 0.48f;
+        float radius = gridLayout.radius() - CELL_GAP * 0.48f;
         for (int index = 0; index < BUTTON_ICONS.length; index++) {
             float hover = easeOutCubic(buttonHoverProgress[index]);
             float elevation = BUTTON_ELEVATION * opacity * (1f - hover);
             float dx = Math.abs(mouseX - buttonCenterX(index));
-            float dy = Math.abs(mouseY - (gridLayout.originY - elevation));
+            float dy = Math.abs(mouseY - (gridLayout.originY() - elevation));
             if (dx <= SQRT_3 * radius * 0.5f
                     && dx / SQRT_3 + dy <= radius) return index;
         }
@@ -508,7 +487,7 @@ public final class CombatantMainMenuScreen extends Screen {
 
     private Bounds authWarningBounds() {
         float y = gridLayout != null
-                ? gridLayout.originY + gridLayout.radius + 35f * MENU_SCALE
+                ? gridLayout.originY() + gridLayout.radius() + 35f * MENU_SCALE
                 : fixedHeight * 0.72f;
         y = Math.min(y, fixedHeight - AUTH_WARNING_H - 13f * MENU_SCALE);
         return new Bounds((fixedWidth - AUTH_WARNING_W) * 0.5f, y, AUTH_WARNING_W, AUTH_WARNING_H);
@@ -607,9 +586,6 @@ public final class CombatantMainMenuScreen extends Screen {
             result = result.substring(0, result.length() - 1);
         }
         return result + "...";
-    }
-
-    private record GridLayout(float radius, float stepX, float stepY, float originX, float originY) {
     }
 
     private record Bounds(float x, float y, float w, float h) {

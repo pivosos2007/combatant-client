@@ -896,6 +896,22 @@ public final class Renderer2D {
                 gradientTmp[0], gradientTmp[1], gradientTmp[2], gradientTmp[3]);
     }
 
+    /**
+     * Statistics/playtime variant: the visible arc is still one SHAPE quad.  hashTime is expressed
+     * in virtual history buckets and the shader reconstructs a fixed rolling color history from it.
+     */
+    public void arcStrokeHashedGradient(double cx, double cy, double radius, double thickness,
+                                        float startAngleDeg, float endAngleDeg, float softness,
+                                        int startArgb, int endArgb, float angleDeg, float offsetPx,
+                                        float hashTime) {
+        double outerRadius = radius + Math.max(0.0, thickness) * 0.5 + softness;
+        computeLinearGradientColors((float) (outerRadius * 2.0), (float) (outerRadius * 2.0),
+                startArgb, endArgb, angleDeg, offsetPx, gradientTmp);
+        arcStrokeQuadInternal(cx, cy, radius, thickness, startAngleDeg, endAngleDeg, softness, true,
+                gradientTmp[0], gradientTmp[1], gradientTmp[2], gradientTmp[3],
+                1.0f, Math.max(0.0f, hashTime));
+    }
+
     public void arcStrokeQuad(double cx, double cy, double radius, double thickness,
                               float startAngleDeg, float endAngleDeg, float softness,
                               int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
@@ -906,15 +922,33 @@ public final class Renderer2D {
     public void arcStrokeQuad(double cx, double cy, double radius, double thickness,
                               float startAngleDeg, float endAngleDeg, float softness, boolean caps,
                               int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
+        arcStrokeQuadInternal(cx, cy, radius, thickness, startAngleDeg, endAngleDeg, softness, caps,
+                cTopLeft, cTopRight, cBottomRight, cBottomLeft, 0.0f, 0.0f);
+    }
+
+    private void arcStrokeQuadInternal(double cx, double cy, double radius, double thickness,
+                                       float startAngleDeg, float endAngleDeg, float softness, boolean caps,
+                                       int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft,
+                                       float historyMode, float historyTime) {
+        float rawSweep = endAngleDeg - startAngleDeg;
         float start = normalizeDegrees(startAngleDeg);
-        float end = normalizeDegrees(endAngleDeg);
-        float sweep = end - start;
-        if (sweep <= 0.0f) {
-            sweep += 360.0f;
+        float sweep;
+        if (historyMode > 0.5f) {
+            // The history shader needs the complete ring quad so already completed virtual
+            // layers remain visible underneath the current-hour sweep.
+            sweep = 360.0f;
+        } else {
+            if (Math.abs(rawSweep) <= 0.001f) {
+                return;
+            }
+            if (Math.abs(rawSweep) >= 359.99f) {
+                sweep = 360.0f;
+            } else {
+                sweep = rawSweep % 360.0f;
+                if (sweep <= 0.0f) sweep += 360.0f;
+            }
         }
-        if (sweep <= 0.001f) {
-            return;
-        }
+        float end = normalizeDegrees(start + sweep);
 
         shapeStroke(UiShape.arc(cx, cy, radius, start, end), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
@@ -951,13 +985,17 @@ public final class Renderer2D {
 
         UiRect arcBounds = UiRect.of(x, y, w, h);
         int i1 = appendGeometryVertex(mesh, x, y, cTopLeft, arcBounds,
-                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f);
+                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f,
+                historyMode, historyTime, 0f, 0f);
         int i2 = appendGeometryVertex(mesh, x, y + h, cBottomLeft, arcBounds,
-                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f);
+                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f,
+                historyMode, historyTime, 0f, 0f);
         int i3 = appendGeometryVertex(mesh, x + w, y + h, cBottomRight, arcBounds,
-                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f);
+                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f,
+                historyMode, historyTime, 0f, 0f);
         int i4 = appendGeometryVertex(mesh, x + w, y, cTopRight, arcBounds,
-                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f);
+                UiFastShapeParams.KIND_ARC, (float) radius, softness, stroke, start, end, caps ? 1f : 0f, 0f,
+                historyMode, historyTime, 0f, 0f);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1475,7 +1513,7 @@ public final class Renderer2D {
         endAutoBatch(auto);
     }
 
-    /** Draws the main-menu glass wall: per-cell refraction, frost, lens and cursor-lit rim. */
+    /** Draws the main-menu glass wall: per-cell blur/refraction with an optional chamfered cutout. */
     public void mainMenuHoneycombGlass(double x, double y, double w, double h,
                                      float cellRadius,
                                      float gap,
@@ -1488,6 +1526,33 @@ public final class Renderer2D {
                                      float originY,
                                      int baseArgb,
                                      int highlightArgb) {
+        mainMenuHoneycombGlass(x, y, w, h, cellRadius, gap, lineWidth, opacity,
+                mouseX, mouseY, lightRadius, originX, originY, baseArgb, highlightArgb,
+                0f, 0f, 0f, 0f, 0f, 0f);
+    }
+
+    /**
+     * Variant used by menu windows. The cutout is evaluated in the honeycomb shader, so both the
+     * lattice and its cursor-light/refraction disappear under the exact chamfered window silhouette.
+     */
+    public void mainMenuHoneycombGlass(double x, double y, double w, double h,
+                                     float cellRadius,
+                                     float gap,
+                                     float lineWidth,
+                                     float opacity,
+                                     float mouseX,
+                                     float mouseY,
+                                     float lightRadius,
+                                     float originX,
+                                     float originY,
+                                     int baseArgb,
+                                     int highlightArgb,
+                                     float cutoutX,
+                                     float cutoutY,
+                                     float cutoutW,
+                                     float cutoutH,
+                                     float cutoutCut,
+                                     float cutoutEnabled) {
         if (w <= 0.0 || h <= 0.0 || cellRadius <= 0.0f || opacity <= 0.001f) return;
 
         Minecraft minecraft = Minecraft.getInstance();
@@ -1523,16 +1588,20 @@ public final class Renderer2D {
 
         int i1 = appendMainMenuHoneycombVertex(mesh, x, y, br, bg, bb, ba, x, y, w, h,
                 cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
-                hr, hg, hb, ha, originX, originY);
+                hr, hg, hb, ha, originX, originY,
+                cutoutX, cutoutY, cutoutW, cutoutH, cutoutCut, cutoutEnabled);
         int i2 = appendMainMenuHoneycombVertex(mesh, x, y + h, br, bg, bb, ba, x, y, w, h,
                 cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
-                hr, hg, hb, ha, originX, originY);
+                hr, hg, hb, ha, originX, originY,
+                cutoutX, cutoutY, cutoutW, cutoutH, cutoutCut, cutoutEnabled);
         int i3 = appendMainMenuHoneycombVertex(mesh, x + w, y + h, br, bg, bb, ba, x, y, w, h,
                 cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
-                hr, hg, hb, ha, originX, originY);
+                hr, hg, hb, ha, originX, originY,
+                cutoutX, cutoutY, cutoutW, cutoutH, cutoutCut, cutoutEnabled);
         int i4 = appendMainMenuHoneycombVertex(mesh, x + w, y, br, bg, bb, ba, x, y, w, h,
                 cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
-                hr, hg, hb, ha, originX, originY);
+                hr, hg, hb, ha, originX, originY,
+                cutoutX, cutoutY, cutoutW, cutoutH, cutoutCut, cutoutEnabled);
         mesh.quad(i1, i2, i3, i4);
         endAutoBatch(auto);
     }
@@ -1544,14 +1613,16 @@ public final class Renderer2D {
                                                       float cellRadius, float gap, float lineWidth, float opacity,
                                                       float mouseX, float mouseY, float lightRadius,
                                                       float highlightR, float highlightG, float highlightB, float highlightA,
-                                                      float originX, float originY) {
+                                                      float originX, float originY,
+                                                      float cutoutX, float cutoutY, float cutoutW, float cutoutH,
+                                                      float cutoutCut, float cutoutEnabled) {
         return mesh.vec2(px, py).local2(px, py).color(r, g, b, a)
                 .vec4(x, y, w, h)
                 .vec4(cellRadius, gap, lineWidth, opacity)
                 .vec4(mouseX, mouseY, lightRadius, 0.0f)
                 .vec4(highlightR, highlightG, highlightB, highlightA)
-                .vec4(originX, originY, 0.0f, 0.0f)
-                .vec4(0.0f, 0.0f, 0.0f, 0.0f)
+                .vec4(originX, originY, cutoutCut, cutoutEnabled)
+                .vec4(cutoutX, cutoutY, cutoutW, cutoutH)
                 .next();
     }
 
