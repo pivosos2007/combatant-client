@@ -27,6 +27,7 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.PlayerHeadRenderer;
+import combatant.client.runtime.CombatantBuild;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.screen.ClientScreen;
@@ -75,6 +76,10 @@ public final class CombatantMainMenuScreen extends Screen {
     private static final float TIME_FONT = 3.35f * MENU_SCALE;
     private static final float DATE_FONT = 0.84f * MENU_SCALE;
     private static final float ICON_FONT = 1.50f * MENU_SCALE;
+    private static final float FOOTER_FONT = 0.68f * MENU_SCALE;
+    private static final float FOOTER_ICON = 7.4f * MENU_SCALE;
+    private static final float FOOTER_GAP = 3.3f * MENU_SCALE;
+    private static final float FOOTER_MARGIN = 8.0f * MENU_SCALE;
     private static final float AUTH_WARNING_W = 252f * MENU_SCALE;
     private static final float AUTH_WARNING_H = 39f * MENU_SCALE;
     private static final float AUTH_WARNING_HEAD = 25f * MENU_SCALE;
@@ -174,6 +179,7 @@ public final class CombatantMainMenuScreen extends Screen {
                 renderButtons(opacity);
                 renderStaticClock(opacity);
                 renderAuthWarning(context, opacity);
+                renderFooter(opacity);
             }
             Renderer2D.COLOR.render();
         } catch (Throwable throwable) {
@@ -410,6 +416,28 @@ public final class CombatantMainMenuScreen extends Screen {
                 ellipsize(bodyFont, message, 0.52f * MENU_SCALE, bounds.x + bounds.w - textX - 15f * MENU_SCALE),
                 textX, bounds.y + 22f * MENU_SCALE, 0.52f * MENU_SCALE,
                 withAlpha(0xFFD5DDE7, Math.round(opacity * 216f)));
+    }
+
+    private void renderFooter(float opacity) {
+        TextRenderer font = Fonts.renderer("OnestBold", FontInfo.Type.Regular, TextRenderer.get());
+        String openSource = tr("screen.combatant.main_menu.open_source");
+        String version = "v" + CombatantBuild.version();
+
+        int color = withAlpha(0xFF9AA5B1, Math.round(opacity * 188f));
+        float textHeight = measureHeight(font, FOOTER_FONT);
+        float textY = fixedHeight - FOOTER_MARGIN - textHeight;
+
+        float labelWidth = measureWidth(font, openSource, FOOTER_FONT);
+        float groupWidth = FOOTER_ICON + FOOTER_GAP + labelWidth;
+        float groupX = (fixedWidth - groupWidth) * 0.5f;
+        float iconY = textY + (textHeight - FOOTER_ICON) * 0.5f;
+
+        Renderer2D.COLOR.svg("copyleft", groupX, iconY, FOOTER_ICON, FOOTER_ICON,
+                SvgRenderOptions.overrideColor(color));
+        drawText(font, openSource, groupX + FOOTER_ICON + FOOTER_GAP, textY, FOOTER_FONT, color);
+
+        float versionWidth = measureWidth(font, version, FOOTER_FONT);
+        drawText(font, version, fixedWidth - FOOTER_MARGIN - versionWidth, textY, FOOTER_FONT, color);
     }
 
     private void ensureGrid() {

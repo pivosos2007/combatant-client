@@ -199,6 +199,16 @@ public abstract class Setting {
         String local = getTranslationKey();
         if (local != null && !local.isBlank()) {
             keys.add(local);
+
+            // Older keys were generated through getId(), which lower-cases the id.
+            // Keep that path as a fallback so existing translations such as
+            // nativeguardwindowsx8664 continue to resolve while camelCase ids work too.
+            String prefix = parent != null ? parent.getTranslationKeyPrefix() : null;
+            String legacyId = getId();
+            if (prefix != null && legacyId != null && !legacyId.isBlank()) {
+                String legacy = prefix + "." + legacyId;
+                if (!legacy.equals(local)) keys.add(legacy);
+            }
         }
 
         for (String commonI18nKey : commonI18nKeys) {
@@ -384,7 +394,11 @@ public abstract class Setting {
     }
 
     protected String getTranslationId() {
-        return getId();
+        if (name == null || name.isBlank()) return name;
+        // Translation keys are case-sensitive. Keep the declared SettingDef id
+        // (for example menuBackground / combatantMainMenu) instead of routing it
+        // through getId(), which intentionally lower-cases serialization ids.
+        return name.replace(" ", "_");
     }
 
     // ======================================================

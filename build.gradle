@@ -40,11 +40,15 @@ repositories {
     }
 }
 
-version = project.mod_version
-group = project.maven_group
+version = providers.gradleProperty("mod_version").get()
+group = providers.gradleProperty("maven_group").get()
+
+def combatantModId = providers.gradleProperty("mod_id").get()
+def combatantModName = providers.gradleProperty("mod_name").get()
+def combatantModLicense = providers.gradleProperty("mod_license").get()
 
 base {
-    archivesName = project.archives_base_name
+    archivesName = providers.gradleProperty("archives_base_name").get()
 }
 
 def combatantVulkanDebugEnabled = providers.gradleProperty("combatantVulkanDebug")
@@ -278,6 +282,9 @@ processResources {
     dependsOn tasks.named("generateSvgMsdf")
     dependsOn tasks.named("unpackJavetNatives")
     from(javetNativeGeneratedResources)
+    inputs.property "mod_id", combatantModId
+    inputs.property "mod_name", combatantModName
+    inputs.property "mod_license", combatantModLicense
     inputs.property "version", project.version
     inputs.property "minecraft_version", project.minecraft_version
     inputs.property "combatant_dev", combatantDevEnabled.get()
@@ -285,7 +292,10 @@ processResources {
     filteringCharset "UTF-8"
 
     filesMatching("fabric.mod.json") {
-        expand "version": project.version,
+        expand "mod_id": combatantModId,
+                "mod_name": combatantModName,
+                "mod_license": combatantModLicense,
+                "version": project.version,
                 "minecraft_version": project.minecraft_version,
                 "loader_version": project.loader_version
     }

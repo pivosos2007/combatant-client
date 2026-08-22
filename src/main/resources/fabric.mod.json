@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "id": "combatant",
-  "version": "0.1.2",
-  "name": "Combatant Client",
+  "id": "${mod_id}",
+  "version": "${version}",
+  "name": "${mod_name}",
   "description": "w4da",
   "authors": [
     "pivosos2007"
   ],
   "contact": {
   },
-  "license": "GPL-3",
+  "license": "${mod_license}",
   "environment": "client",
   "entrypoints": {
     "client": [
@@ -22,7 +22,7 @@
   "depends": {
     "sodium": "0.9.1",
     "fabricloader": "*",
-    "minecraft": "26.2"
+    "minecraft": "${minecraft_version}"
   },
   "suggests": {
     "iris": "*",

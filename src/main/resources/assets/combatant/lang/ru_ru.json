@@ -3442,5 +3442,6 @@
   "screen.combatant.main_menu.date.month.september": "сентября",
   "screen.combatant.main_menu.date.month.october": "октября",
   "screen.combatant.main_menu.date.month.november": "ноября",
-  "screen.combatant.main_menu.date.month.december": "декабря"
+  "screen.combatant.main_menu.date.month.december": "декабря",
+  "screen.combatant.main_menu.open_source": "Combatant Client is open source."
 }
