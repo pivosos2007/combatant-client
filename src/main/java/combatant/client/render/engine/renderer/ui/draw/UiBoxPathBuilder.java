@@ -126,7 +126,7 @@ public enum UiBoxPathBuilder {
     private static void addCorner(double[] out, int max, int[] count, UiCornerSpec c, double x, double y, Corner corner) {
         double ex = c.extentX();
         double ey = c.extentY();
-        if (c.kind() == UiCornerKind.ROUNDED || c.kind() == UiCornerKind.CONCAVE_ROUNDED) {
+        if (c.kind() == UiCornerKind.ROUNDED) {
             double cx = switch (corner) {
                 case TOP_LEFT, BOTTOM_LEFT -> x + ex;
                 case TOP_RIGHT, BOTTOM_RIGHT -> x - ex;
@@ -149,7 +149,43 @@ public enum UiBoxPathBuilder {
             }
             return;
         }
-        if (c.kind() == UiCornerKind.CHAMFERED || c.kind() == UiCornerKind.NOTCHED) {
+        if (c.kind() == UiCornerKind.CONCAVE_ROUNDED) {
+            double a0 = switch (corner) {
+                case TOP_RIGHT -> 180.0;
+                case BOTTOM_RIGHT -> -90.0;
+                case BOTTOM_LEFT -> 0.0;
+                case TOP_LEFT -> 90.0;
+            };
+            int segments = Math.max(3, Math.min(12, (int) Math.ceil(Math.max(ex, ey) / 4.0)));
+            for (int i = 1; i <= segments; i++) {
+                double t = i / (double) segments;
+                double a = Math.toRadians(a0 - t * 90.0);
+                add(out, max, count, x + Math.cos(a) * ex, y + Math.sin(a) * ey);
+            }
+            return;
+        }
+        if (c.kind() == UiCornerKind.NOTCHED) {
+            switch (corner) {
+                case TOP_RIGHT -> {
+                    add(out, max, count, x - ex, y + ey);
+                    add(out, max, count, x, y + ey);
+                }
+                case BOTTOM_RIGHT -> {
+                    add(out, max, count, x - ex, y - ey);
+                    add(out, max, count, x - ex, y);
+                }
+                case BOTTOM_LEFT -> {
+                    add(out, max, count, x + ex, y - ey);
+                    add(out, max, count, x, y - ey);
+                }
+                case TOP_LEFT -> {
+                    add(out, max, count, x + ex, y + ey);
+                    add(out, max, count, x + ex, y);
+                }
+            }
+            return;
+        }
+        if (c.kind() == UiCornerKind.CHAMFERED) {
             switch (corner) {
                 case TOP_RIGHT -> add(out, max, count, x, y + ey);
                 case BOTTOM_RIGHT -> add(out, max, count, x - ex, y);
@@ -163,7 +199,19 @@ public enum UiBoxPathBuilder {
 
     private static void addHorizontalEdge(double[] out, int max, int[] count, UiEdgeSpec edge,
                                           double startX, double endX, double y, boolean forward, double fullWidth) {
-        if (edge == null || edge.isStraight() || edge.kind() != UiEdgeKind.NOTCHED) {
+        if (edge == null || edge.isStraight()) {
+            add(out, max, count, endX, y);
+            return;
+        }
+        if (edge.kind() == UiEdgeKind.INSET) {
+            double direction = forward ? 1.0 : -1.0;
+            add(out, max, count, startX, y + edge.depth() * direction);
+            add(out, max, count, endX, y + edge.depth() * direction);
+            add(out, max, count, endX, y);
+            return;
+        }
+        if (edge.kind() != UiEdgeKind.NOTCHED && edge.kind() != UiEdgeKind.CUT
+                && edge.kind() != UiEdgeKind.PROTRUSION) {
             add(out, max, count, endX, y);
             return;
         }
@@ -173,17 +221,25 @@ public enum UiBoxPathBuilder {
         double center = edge.offset() < 0.0f ? left + (right - left) * 0.5 : left + Math.min(Math.max(0.0, edge.offset()), fullWidth);
         double a = Math.max(left, center - width * 0.5);
         double b = Math.min(right, center + width * 0.5);
-        double depth = edge.depth();
+        double depth = edge.kind() == UiEdgeKind.PROTRUSION ? -edge.depth() : edge.depth();
         if (forward) {
             add(out, max, count, a, y);
-            add(out, max, count, a, y + depth);
-            add(out, max, count, b, y + depth);
+            if (edge.kind() == UiEdgeKind.CUT) {
+                add(out, max, count, (a + b) * 0.5, y + depth);
+            } else {
+                add(out, max, count, a, y + depth);
+                add(out, max, count, b, y + depth);
+            }
             add(out, max, count, b, y);
             add(out, max, count, endX, y);
         } else {
             add(out, max, count, b, y);
-            add(out, max, count, b, y - depth);
-            add(out, max, count, a, y - depth);
+            if (edge.kind() == UiEdgeKind.CUT) {
+                add(out, max, count, (a + b) * 0.5, y - depth);
+            } else {
+                add(out, max, count, b, y - depth);
+                add(out, max, count, a, y - depth);
+            }
             add(out, max, count, a, y);
             add(out, max, count, endX, y);
         }
@@ -191,7 +247,19 @@ public enum UiBoxPathBuilder {
 
     private static void addVerticalEdge(double[] out, int max, int[] count, UiEdgeSpec edge,
                                         double startY, double endY, double x, boolean forward, double fullHeight) {
-        if (edge == null || edge.isStraight() || edge.kind() != UiEdgeKind.NOTCHED) {
+        if (edge == null || edge.isStraight()) {
+            add(out, max, count, x, endY);
+            return;
+        }
+        if (edge.kind() == UiEdgeKind.INSET) {
+            double direction = forward ? -1.0 : 1.0;
+            add(out, max, count, x + edge.depth() * direction, startY);
+            add(out, max, count, x + edge.depth() * direction, endY);
+            add(out, max, count, x, endY);
+            return;
+        }
+        if (edge.kind() != UiEdgeKind.NOTCHED && edge.kind() != UiEdgeKind.CUT
+                && edge.kind() != UiEdgeKind.PROTRUSION) {
             add(out, max, count, x, endY);
             return;
         }
@@ -201,17 +269,25 @@ public enum UiBoxPathBuilder {
         double center = edge.offset() < 0.0f ? top + (bottom - top) * 0.5 : top + Math.min(Math.max(0.0, edge.offset()), fullHeight);
         double a = Math.max(top, center - height * 0.5);
         double b = Math.min(bottom, center + height * 0.5);
-        double depth = edge.depth();
+        double depth = edge.kind() == UiEdgeKind.PROTRUSION ? -edge.depth() : edge.depth();
         if (forward) {
             add(out, max, count, x, a);
-            add(out, max, count, x - depth, a);
-            add(out, max, count, x - depth, b);
+            if (edge.kind() == UiEdgeKind.CUT) {
+                add(out, max, count, x - depth, (a + b) * 0.5);
+            } else {
+                add(out, max, count, x - depth, a);
+                add(out, max, count, x - depth, b);
+            }
             add(out, max, count, x, b);
             add(out, max, count, x, endY);
         } else {
             add(out, max, count, x, b);
-            add(out, max, count, x + depth, b);
-            add(out, max, count, x + depth, a);
+            if (edge.kind() == UiEdgeKind.CUT) {
+                add(out, max, count, x + depth, (a + b) * 0.5);
+            } else {
+                add(out, max, count, x + depth, b);
+                add(out, max, count, x + depth, a);
+            }
             add(out, max, count, x, a);
             add(out, max, count, x, endY);
         }

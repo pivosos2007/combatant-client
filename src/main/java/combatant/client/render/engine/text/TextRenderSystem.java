@@ -16,7 +16,6 @@ import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
-import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
 import combatant.client.render.engine.rhi.resource.GlyphAtlasManager;
 import combatant.client.render.engine.text.backend.*;
 import combatant.client.render.engine.uniform.MeshBuilder;
@@ -85,19 +84,13 @@ public enum TextRenderSystem {
         // When UI rendering is inside a Renderer2D batch, text becomes an ordered batch entry.
         // It may merge only with adjacent compatible text runs; it must never be moved across shapes,
         // items, scissor/marquee boundaries or world/placement-specific text.
-        var metadata = RenderPipelineRegistry.global().require(pipeline).metadata();
-        boolean liquidGlassText = metadata.text() && metadata.effect();
         if (placement == null || placement == TextPlacementMode.UI || placement == TextPlacementMode.SCREEN_SPACE) {
-            boolean enqueued = liquidGlassText
-                    ? Renderer2D.enqueueLiquidGlassTextMesh(label, font, mesh, pipeline, placement != null ? placement : TextPlacementMode.UI)
-                    : Renderer2D.enqueueTextMesh(label, font, mesh, pipeline, placement != null ? placement : TextPlacementMode.UI);
+            boolean enqueued = Renderer2D.enqueueTextMesh(
+                    label, font, mesh, pipeline,
+                    placement != null ? placement : TextPlacementMode.UI);
             if (enqueued) {
                 return;
             }
-        }
-
-        if (liquidGlassText && Renderer2D.submitLiquidGlassTextMeshImmediate(label, font, mesh, pipeline, placement)) {
-            return;
         }
 
         submitGlyphMeshImmediate(label, font, mesh, pipeline, placement);

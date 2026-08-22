@@ -7,11 +7,28 @@
 
 package combatant.client.features.gui.mainmenu;
 
-
-import combatant.client.features.theme.Theme;
+import combatant.client.config.MainConfig;
 import combatant.client.features.account.AccountConfig;
 import combatant.client.features.account.AccountEntry;
 import combatant.client.features.account.SkinManager;
+import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.theme.Theme;
+import combatant.client.features.theme.Themes;
+import combatant.client.render.engine.color.RenderColor;
+import combatant.client.render.engine.core.ViewportContext;
+import combatant.client.render.engine.math.HudScale;
+import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
+import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.draw.UiPaint;
+import combatant.client.render.engine.renderer.ui.draw.UiPrimitive;
+import combatant.client.render.engine.renderer.ui.draw.UiStroke;
+import combatant.client.render.engine.svg.SvgRenderOptions;
+import combatant.client.render.engine.text.FontInfo;
+import combatant.client.render.engine.text.Fonts;
+import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.helpers.PlayerHeadRenderer;
+import combatant.client.runtime.RuntimeGate;
+import combatant.client.util.logging.DebugLog;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -24,97 +41,84 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.util.Util;
-import combatant.client.config.MainConfig;
-import combatant.client.features.gui.hud.HudRenderUtil;
-import combatant.client.features.theme.Themes;
-import combatant.client.render.engine.animation.AnimationUtility;
-import combatant.client.render.engine.animation.AnimatedClockText;
-import combatant.client.render.engine.color.RenderColor;
-import combatant.client.render.engine.core.ViewportContext;
-import combatant.client.render.engine.math.HudScale;
-import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
-import combatant.client.render.engine.renderer.Renderer2D;
-import combatant.client.render.engine.svg.SvgRenderOptions;
-import combatant.client.render.engine.text.FontInfo;
-import combatant.client.render.engine.text.Fonts;
-import combatant.client.render.engine.text.TextRenderer;
-import combatant.client.render.helpers.PlayerHeadRenderer;
-import combatant.client.runtime.RuntimeGate;
-import combatant.client.util.logging.DebugLog;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
+/** Image-backed main menu built as one pointy-hex liquid-glass matrix. */
 public final class CombatantMainMenuScreen extends Screen {
+    private static final Identifier BACKGROUND_TEXTURE = Identifier.fromNamespaceAndPath(
+            "combatant", "textures/mainmenu/forest-mountains.png");
     private static final float MENU_SCALE = 1.22f;
-    private static final DateTimeFormatter DATE_FORMAT =
-            DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.ENGLISH);
+    private static final float SQRT_3 = 1.7320508f;
 
-    private static final float BUTTON_SIZE = 46f * MENU_SCALE;
-    private static final float BUTTON_RADIUS = BUTTON_SIZE * 0.5f;
-    private static final float BUTTON_SPACING = 18f * MENU_SCALE;
-    private static final float BUTTON_HOVER_SCALE = 1.09f;
-    private static final float BUTTON_SHADOW = 18f * MENU_SCALE;
-    private static final float BUTTON_SOFTNESS = 1.0f;
+    private static final long MENU_APPEAR_DURATION_MS = 520L;
+    private static final float CELL_RADIUS = 31.5f * MENU_SCALE;
+    private static final float CELL_GAP = 0.0f;
+    private static final float BUTTON_ROUNDING = 1.15f * MENU_SCALE;
+    private static final float BUTTON_ELEVATION = 7.5f * MENU_SCALE;
+    private static final float CURSOR_LIGHT_RADIUS = 165f * MENU_SCALE;
+    private static final float HONEYCOMB_RIM_WIDTH = 0.92f * MENU_SCALE;
+    private static final float BACKGROUND_BLUR_QUALITY = 17.0f;
+    private static final float BACKGROUND_BLUR_ALPHA = 0.96f;
     private static final String[] BUTTON_ICONS = {"a", "b", "x", "", "s", "i"};
     private static final String[] BUTTON_SVGS = {null, null, null, "folder-pen", null, null};
+    private static final String[] BUTTON_LABEL_KEYS = {
+            "menu.singleplayer",
+            "menu.multiplayer",
+            "screen.combatant.alt_manager.title",
+            "screen.combatant.addon_manager.title",
+            "menu.options",
+            "menu.quit"
+    };
 
-    private static final long MENU_APPEAR_DURATION = 800L;
-    private static final float TIME_FONT = 4.95f * MENU_SCALE;
-    private static final float DATE_FONT = 0.94f * MENU_SCALE;
-    private static final float ICON_FONT = 1.52f * MENU_SCALE;
-    private static final float ICON_Y_OFFSET = -0.75f * MENU_SCALE;
-    private static final float AUTH_WARNING_W = 250f * MENU_SCALE;
-    private static final float AUTH_WARNING_H = 42f * MENU_SCALE;
-    private static final float AUTH_WARNING_R = 8f * MENU_SCALE;
-    private static final float AUTH_WARNING_HEAD = 26f * MENU_SCALE;
-    private static final long AUTH_WARNING_PROGRESS_MS = 3200L;
+    private static final DateTimeFormatter DATE_FORMAT =
+            DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.ENGLISH);
+    private static final DateTimeFormatter CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter CLOCK_SECONDS_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
+
+    private static final float TIME_FONT = 3.35f * MENU_SCALE;
+    private static final float DATE_FONT = 0.84f * MENU_SCALE;
+    private static final float ICON_FONT = 1.50f * MENU_SCALE;
+    private static final float AUTH_WARNING_W = 252f * MENU_SCALE;
+    private static final float AUTH_WARNING_H = 39f * MENU_SCALE;
+    private static final float AUTH_WARNING_HEAD = 25f * MENU_SCALE;
     private static volatile boolean forceVanillaTitleScreen;
 
-    private final float[] buttonScales = new float[BUTTON_ICONS.length];
     private final float[] buttonHoverProgress = new float[BUTTON_ICONS.length];
-    private final AnimatedClockText clockText = new AnimatedClockText();
-
     private boolean initialized;
     private long openTime;
     private long lastRenderTime;
     private int hoveredButton = -1;
-    private float quitHoverProgress;
     private boolean authWarningHovered;
     private float authWarningHoverProgress;
     private float fixedWidth;
     private float fixedHeight;
-    private float renderScale;
+    private float cachedGridWidth = -1f;
+    private float cachedGridHeight = -1f;
+    private GridLayout gridLayout;
 
     public CombatantMainMenuScreen() {
         super(Component.literal("Combatant"));
-        for (int i = 0; i < buttonScales.length; i++) {
-            buttonScales[i] = 1f;
-            buttonHoverProgress[i] = 0f;
-        }
     }
 
     public static boolean shouldUseVanillaTitleScreen() {
-        if (forceVanillaTitleScreen) return true;
-        MainConfig cfg = MainConfig.get();
-        String mode = cfg != null ? cfg.getMenuBackgroundMode() : null;
-        return mode != null && mode.equalsIgnoreCase("off");
+        return forceVanillaTitleScreen;
     }
 
-    private static float easeOutCubic(float x) {
-        return 1f - (float) Math.pow(1f - x, 3f);
+    private static float easeOutCubic(float value) {
+        float x = Mth.clamp(value, 0f, 1f);
+        float inverse = 1f - x;
+        return 1f - inverse * inverse * inverse;
     }
 
-    private static float easeOutQuart(float x) {
-        return 1f - (float) Math.pow(1f - x, 4f);
-    }
-
-    private static int withAlpha(int rgb, int alpha) {
-        return (rgb & 0x00FFFFFF) | (Mth.clamp(alpha, 0, 255) << 24);
+    private static int withAlpha(int color, int alpha) {
+        return (color & 0x00FFFFFF) | (Mth.clamp(alpha, 0, 255) << 24);
     }
 
     private static String tr(String key, Object... args) {
@@ -124,6 +128,8 @@ public final class CombatantMainMenuScreen extends Screen {
     @Override
     protected void init() {
         initialized = false;
+        cachedGridWidth = -1f;
+        cachedGridHeight = -1f;
     }
 
     @Override
@@ -147,33 +153,38 @@ public final class CombatantMainMenuScreen extends Screen {
         float deltaTime = Mth.clamp((now - lastRenderTime) / 1000f, 0f, 0.1f);
         lastRenderTime = now;
         updateUiMetrics();
+        ensureGrid();
 
-        float menuProgress = easeOutQuart(getMenuProgress(now));
+        float opacity = easeOutCubic(getMenuProgress(now));
         float fixedMouseX = toFixedX(mouseX);
         float fixedMouseY = toFixedY(mouseY);
-
-        hoveredButton = canInteract(menuProgress) ? getHoveredButton(fixedMouseX, fixedMouseY, menuProgress) : -1;
-        authWarningHovered = canInteract(menuProgress) && getAuthWarningAccount() != null && authWarningBounds(menuProgress).contains(fixedMouseX, fixedMouseY);
-        updateButtonAnimations(deltaTime);
+        hoveredButton = canInteract(opacity) ? getHoveredButton(fixedMouseX, fixedMouseY, opacity) : -1;
+        Bounds warningBounds = authWarningBounds();
+        authWarningHovered = canInteract(opacity)
+                && getAuthWarningAccount() != null
+                && warningBounds.contains(fixedMouseX, fixedMouseY);
+        updateAnimations(deltaTime);
 
         try {
-            renderShaderBackground(context);
+            renderBackgroundTexture();
             ViewportContext.beginUnscaledLogical(context);
+
             Renderer2D.COLOR.begin();
-            drawDimmer();
-            if (menuProgress > 0.01f) {
-                renderTime(menuProgress);
-                renderButtons(menuProgress);
-                renderAuthWarning(context, menuProgress, now);
+            if (opacity > 0.005f) {
+                renderBackgroundBlur(opacity);
+                renderHoneycombMatrix(opacity, fixedMouseX, fixedMouseY);
+                renderButtons(opacity);
+                renderStaticClock(opacity);
+                renderAuthWarning(context, opacity);
             }
             Renderer2D.COLOR.render();
-        } catch (Throwable t) {
-            switchToVanillaTitleScreen(t);
+        } catch (Throwable throwable) {
+            switchToVanillaTitleScreen(throwable);
         } finally {
             try {
                 ViewportContext.end(context);
-            } catch (Throwable t) {
-                DebugLog.errorOnce("main_menu_viewport_end", "Main menu viewport end failed", t);
+            } catch (Throwable throwable) {
+                DebugLog.errorOnce("main_menu_viewport_end", "Main menu viewport end failed", throwable);
             }
         }
     }
@@ -183,27 +194,23 @@ public final class CombatantMainMenuScreen extends Screen {
     }
 
     @Override
-    public void mouseMoved(double mouseX, double mouseY) {
-    }
-
-    @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
         if (click.button() != 0) return true;
-
         updateUiMetrics();
-        float menuProgress = easeOutQuart(getMenuProgress(Util.getMillis()));
-        int index = canInteract(menuProgress)
-                ? getHoveredButton(toFixedX((float) click.x()), toFixedY((float) click.y()), menuProgress)
-                : -1;
+        ensureGrid();
+        float opacity = easeOutCubic(getMenuProgress(Util.getMillis()));
+        float mx = toFixedX((float) click.x());
+        float my = toFixedY((float) click.y());
+
         AccountEntry warningAccount = getAuthWarningAccount();
-        if (warningAccount != null && minecraft != null && canInteract(menuProgress)
-                && authWarningBounds(menuProgress).contains(toFixedX((float) click.x()), toFixedY((float) click.y()))) {
+        if (warningAccount != null && minecraft != null && canInteract(opacity)
+                && authWarningBounds().contains(mx, my)) {
             ClientScreen.show(minecraft, new CombatantAltManagerScreen(this, true));
             return true;
         }
-        if (index >= 0) {
-            handleButton(index);
-        }
+
+        int index = canInteract(opacity) ? getHoveredButton(mx, my, opacity) : -1;
+        if (index >= 0) handleButton(index);
         return true;
     }
 
@@ -222,262 +229,316 @@ public final class CombatantMainMenuScreen extends Screen {
         return false;
     }
 
-    private void renderShaderBackground(GuiGraphicsExtractor context) {
-        Minecraft mc = this.minecraft;
-        if (mc == null) return;
-
-        MainConfig cfg = MainConfig.get();
-        String mode = cfg != null ? cfg.getMenuBackgroundMode() : "off";
-        if (mode == null || mode.equalsIgnoreCase("off")) {
-            switchToVanillaTitleScreen(null);
-            return;
-        }
-        MenuBackgroundRenderer.render(mc, mode.equalsIgnoreCase("aurora"));
+    private void renderBackgroundTexture() {
+        MenuBackgroundRenderer.renderTexture(minecraft, BACKGROUND_TEXTURE);
     }
 
-    private void switchToVanillaTitleScreen(Throwable t) {
-        forceVanillaTitleScreen = true;
-        if (t != null) {
-            DebugLog.errorOnce("main_menu_vanilla_fallback", "Main menu failed, switching to vanilla title screen", t);
-        } else {
-            DebugLog.warnOnce("main_menu_vanilla_fallback", "Main menu switched to vanilla title screen");
-        }
-        Minecraft mc = minecraft != null ? minecraft : Minecraft.getInstance();
-        if (mc != null && !(ClientScreen.current() instanceof TitleScreen)) {
-            ClientScreen.show(mc, new TitleScreen(false));
-        }
+    private void renderBackgroundBlur(float opacity) {
+        Renderer2D.COLOR.blurRect(
+                0, 0, fixedWidth, fixedHeight,
+                0.0f, BACKGROUND_BLUR_QUALITY, 1.0f,
+                BACKGROUND_BLUR_ALPHA * opacity, 0x00FFFFFF
+        );
     }
 
-    private void drawDimmer() {
+    private void renderHoneycombMatrix(float opacity, float mouseX, float mouseY) {
         Themes.Theme theme = Theme.theme();
-        int base = HudRenderUtil.mixColor(theme.windowBg(), 0xFF000000, 0.46f);
-        int soft = withAlpha(base, 150);
-        int deep = withAlpha(HudRenderUtil.mixColor(theme.windowBg(), 0xFF000000, 0.72f), 195);
-        Renderer2D.COLOR.quad(0, 0, fixedWidth, fixedHeight, soft, soft, deep, deep);
-    }
-
-    private void renderTime(float opacity) {
-        float centerX = fixedWidth * 0.5f;
-        float slideOffset = (1f - opacity) * 40f * MENU_SCALE;
-        float centerY = fixedHeight * 0.5f - 55f * MENU_SCALE + slideOffset;
-
-        long nowMs = Util.getMillis();
-        MainConfig cfg = MainConfig.get();
-        boolean showSeconds = cfg != null && cfg.isMenuClockShowSeconds();
-        clockText.update(LocalTime.now(), showSeconds, nowMs);
-
-        String dateText = LocalDate.now().format(DATE_FORMAT);
-
-        TextRenderer timeRenderer = Fonts.renderer("Inter", FontInfo.Type.Bold, TextRenderer.get());
-        TextRenderer dateRenderer = Fonts.renderer("InterMedium", FontInfo.Type.Regular, timeRenderer);
-
-        int timeColor = withAlpha(0xFFFFFF, Math.round(opacity * 255f));
-        int dateColor = withAlpha(0xFFFFFF, Math.round(opacity * 200f));
-
-        float timeHeight = clockText.height(timeRenderer, TIME_FONT);
-        clockText.renderLiquidGlassCentered(timeRenderer, centerX, centerY - timeHeight * 0.5f, TIME_FONT, timeColor, nowMs);
-        drawCenteredText(dateRenderer, dateText, centerX, centerY + timeHeight * 0.5f + 4f * MENU_SCALE, DATE_FONT, dateColor);
+        int accent = theme.accent();
+        int glassBody = withAlpha(HudRenderUtil.mixColor(theme.windowBg(), accent, 0.56f), 255);
+        int warmRim = withAlpha(0xFFFFC857, 255);
+        Renderer2D.COLOR.mainMenuHoneycombGlass(
+                0, 0, fixedWidth, fixedHeight,
+                gridLayout.radius, CELL_GAP, HONEYCOMB_RIM_WIDTH, opacity,
+                mouseX, mouseY, CURSOR_LIGHT_RADIUS,
+                gridLayout.originX, gridLayout.originY,
+                glassBody, warmRim
+        );
     }
 
     private void renderButtons(float opacity) {
-        float totalWidth = BUTTON_SIZE * BUTTON_ICONS.length + BUTTON_SPACING * (BUTTON_ICONS.length - 1);
-        float startX = (fixedWidth - totalWidth) * 0.5f;
-        float slideOffset = (1f - opacity) * 60f * MENU_SCALE;
-        float y = fixedHeight * 0.5f + 34f * MENU_SCALE + slideOffset;
+        for (int index = 0; index < BUTTON_ICONS.length; index++) {
+            float delayed = Mth.clamp((opacity - index * 0.035f) / 0.84f, 0f, 1f);
+            if (delayed <= 0.001f) continue;
+            renderHexButton(index, easeOutCubic(delayed) * opacity);
+        }
 
-        for (int i = 0; i < BUTTON_ICONS.length; i++) {
-            float delay = i * 0.12f;
-            float progress = Mth.clamp((opacity - delay) / (1f - delay * 0.5f), 0f, 1f);
-            float eased = easeOutCubic(progress);
-            if (eased <= 0f) continue;
-            float x = startX + i * (BUTTON_SIZE + BUTTON_SPACING);
-            renderCircleButton(i, x, y, eased * opacity);
+        if (hoveredButton >= 0) {
+            float hover = easeOutCubic(buttonHoverProgress[hoveredButton]);
+            TextRenderer labelFont = Fonts.renderer("OnestMedium", FontInfo.Type.Regular, TextRenderer.get());
+            String label = tr(BUTTON_LABEL_KEYS[hoveredButton]);
+            float labelY = gridLayout.originY + gridLayout.radius + 13f * MENU_SCALE;
+            drawCenteredText(labelFont, label, fixedWidth * 0.5f, labelY,
+                    0.70f * MENU_SCALE, withAlpha(0xFFF3F7FC, Math.round(opacity * hover * 232f)));
         }
     }
 
-    private void renderCircleButton(int index, float x, float y, float opacity) {
-        if (opacity < 0.01f) return;
-
-        float scale = buttonScales[index];
-        float radius = BUTTON_RADIUS * scale;
-        float centerX = x + BUTTON_RADIUS;
-        float centerY = y + BUTTON_RADIUS;
-
-        float hover = buttonHoverProgress[index];
-        boolean quit = index == BUTTON_ICONS.length - 1;
+    private void renderHexButton(int index, float opacity) {
+        float hover = easeOutCubic(buttonHoverProgress[index]);
+        float centerX = buttonCenterX(index);
+        float planeY = gridLayout.originY;
+        float elevation = BUTTON_ELEVATION * opacity * (1f - hover);
+        float topY = planeY - elevation;
+        float radius = gridLayout.radius - CELL_GAP * 0.48f;
         Themes.Theme theme = Theme.theme();
 
-        int tint;
-        if (quit) {
-            float q = quitHoverProgress;
-            tint = HudRenderUtil.mixColor(0xFFFF4C4C, 0xFFFF1F32, q * 0.55f + hover * 0.25f);
-        } else {
-            int accent = theme.accent();
-            int baseTint = HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.18f);
-            tint = HudRenderUtil.mixColor(baseTint, 0xFFFFFFFF, hover * 0.10f);
+        boolean quit = index == BUTTON_ICONS.length - 1;
+        int accent = quit
+                ? HudRenderUtil.mixColor(theme.accent(), 0xFFFF384E, hover * 0.82f)
+                : theme.accent();
+        int accentSoft = HudRenderUtil.mixColor(theme.accentSoft(), accent, 0.62f);
+
+        UiPrimitive well = pointyHex(centerX, planeY, radius, 0.0f);
+        Renderer2D.COLOR.primitive(well,
+                UiPaint.linear(withAlpha(0xFF05080D, Math.round(opacity * 116f)),
+                        withAlpha(accentSoft, Math.round(opacity * 66f)), 90f, 0f));
+        Renderer2D.COLOR.primitiveStroke(well,
+                UiPaint.solid(withAlpha(accent, Math.round(opacity * (78f + hover * 46f)))),
+                UiStroke.of(1.05f * MENU_SCALE));
+
+        if (elevation > 0.08f) {
+            renderButtonExtrusion(centerX, topY, radius, elevation, accent, opacity);
         }
 
-        int tintArgb = withAlpha(tint, Math.round(opacity * (quit ? 235f : 220f)));
-        int icon = quit
-                ? withAlpha(HudRenderUtil.mixColor(0xFFFFFFFF, 0xFFFFD6D6, quitHoverProgress), Math.round(opacity * 255f))
-                : withAlpha(0xFFFFFF, Math.round(opacity * 255f));
-        int shadow = withAlpha(quit ? 0x1F0508 : 0x060810, Math.round(opacity * (quit ? 118f : 92f)));
-
-        Renderer2D.COLOR.circleSoftShadow(centerX, centerY, radius,
-                BUTTON_SHADOW, 0.052f + hover * 0.020f, shadow);
-        Renderer2D.COLOR.liquidGlassCircle(centerX, centerY, radius,
-                BUTTON_SOFTNESS,
-                tintArgb,
-                opacity,
-                -20.0f,
+        UiPrimitive top = pointyHex(centerX, topY, radius, BUTTON_ROUNDING);
+        int denseTint = HudRenderUtil.mixColor(accentSoft, 0xFFEAF5FF, 0.14f + hover * 0.05f);
+        Renderer2D.COLOR.liquidGlassPrimitive(
+                top,
+                withAlpha(denseTint, 236),
+                opacity * (0.92f - hover * 0.06f),
                 1.0f,
-                1.0f,
-                quit ? 0.66f : 0.58f,
-                (0.100f + hover * 0.032f) * MENU_SCALE,
-                0.0f);
+                (10.6f + hover * 1.2f) * MENU_SCALE,
+                -9.0f,
+                0.98f,
+                0.84f,
+                0.48f,
+                0.038f * MENU_SCALE,
+                0.0f,
+                0.0f,
+                Renderer2D.BlurQuality.ULTRA,
+                2.75f
+        );
 
+        int outerRim = withAlpha(accent, Math.round(opacity * (178f + hover * 52f)));
+        int innerRim = withAlpha(HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.68f),
+                Math.round(opacity * (184f + hover * 40f)));
+        Renderer2D.COLOR.primitiveStroke(top, UiPaint.solid(outerRim), UiStroke.of(3.15f * MENU_SCALE));
+        Renderer2D.COLOR.primitiveStroke(top, UiPaint.solid(innerRim), UiStroke.of(0.82f * MENU_SCALE));
+
+        int iconColor = withAlpha(0xFFFFFFFF, Math.round(opacity * 252f));
+        int iconShadow = withAlpha(0xFF020408, Math.round(opacity * 150f));
         String svg = BUTTON_SVGS[index];
         if (svg != null && !svg.isBlank()) {
-            float iconSize = 20.5f * MENU_SCALE * scale;
-            Renderer2D.COLOR.svg(svg, centerX - iconSize * 0.5f, centerY - iconSize * 0.5f - 0.45f * MENU_SCALE,
-                    iconSize, iconSize, SvgRenderOptions.overrideColor(icon));
+            float iconSize = 20.0f * MENU_SCALE;
+            Renderer2D.COLOR.svg(svg,
+                    centerX - iconSize * 0.5f + 0.7f * MENU_SCALE,
+                    topY - iconSize * 0.5f + 0.7f * MENU_SCALE,
+                    iconSize, iconSize, SvgRenderOptions.overrideColor(iconShadow));
+            Renderer2D.COLOR.svg(svg, centerX - iconSize * 0.5f, topY - iconSize * 0.5f,
+                    iconSize, iconSize, SvgRenderOptions.overrideColor(iconColor));
         } else {
             TextRenderer icons = Fonts.renderer("MainMenuIcons", FontInfo.Type.Regular, TextRenderer.get());
             String glyph = BUTTON_ICONS[index];
-            float iconSize = ICON_FONT * scale;
-            float iconW = measureWidth(icons, glyph, iconSize);
-            float iconH = measureHeight(icons, iconSize);
-            drawText(icons, glyph,
-                    centerX - iconW * 0.5f + 0.5f * MENU_SCALE,
-                    centerY - iconH * 0.5f + ICON_Y_OFFSET,
-                    iconSize,
-                    icon);
+            float iconW = measureWidth(icons, glyph, ICON_FONT);
+            float iconH = measureHeight(icons, ICON_FONT);
+            float iconX = centerX - iconW * 0.5f + 0.35f * MENU_SCALE;
+            float iconY = topY - iconH * 0.5f - 0.5f * MENU_SCALE;
+            drawText(icons, glyph, iconX + 0.8f * MENU_SCALE, iconY + 0.8f * MENU_SCALE, ICON_FONT, iconShadow);
+            drawText(icons, glyph, iconX, iconY, ICON_FONT, iconColor);
         }
     }
 
-    private void renderAuthWarning(GuiGraphicsExtractor context, float opacity, long now) {
+    private void renderButtonExtrusion(float centerX, float topY, float radius, float elevation,
+                                       int accent, float opacity) {
+        double[][] top = hexPoints(centerX, topY, radius);
+        int right = withAlpha(HudRenderUtil.mixColor(accent, 0xFF05080D, 0.73f), Math.round(opacity * 205f));
+        int lowerRight = withAlpha(HudRenderUtil.mixColor(accent, 0xFF020408, 0.59f), Math.round(opacity * 224f));
+        int lowerLeft = withAlpha(HudRenderUtil.mixColor(accent, 0xFF020408, 0.78f), Math.round(opacity * 218f));
+        drawExtrudedEdge(top, 1, 2, elevation, right);
+        drawExtrudedEdge(top, 2, 3, elevation, lowerRight);
+        drawExtrudedEdge(top, 3, 4, elevation, lowerLeft);
+        drawExtrudedEdge(top, 4, 5, elevation, withAlpha(lowerLeft, Math.round(opacity * 166f)));
+    }
+
+    private void drawExtrudedEdge(double[][] points, int first, int second, float elevation, int color) {
+        double[] face = {
+                points[first][0], points[first][1],
+                points[first][0], points[first][1] + elevation,
+                points[second][0], points[second][1] + elevation,
+                points[second][0], points[second][1]
+        };
+        Renderer2D.COLOR.polygon(face, 4, color);
+    }
+
+    private void renderStaticClock(float opacity) {
+        MainConfig config = MainConfig.get();
+        boolean seconds = config != null && config.isMenuClockShowSeconds();
+        String time = LocalTime.now().format(seconds ? CLOCK_SECONDS_FORMAT : CLOCK_FORMAT);
+        String date = LocalDate.now().format(DATE_FORMAT);
+
+        TextRenderer clock = Fonts.renderer("Inter", FontInfo.Type.Bold, TextRenderer.get());
+        TextRenderer dateFont = Fonts.renderer("OnestBold", FontInfo.Type.Regular, clock);
+        float timeHeight = measureHeight(clock, TIME_FONT);
+        float centerY = gridLayout.originY - gridLayout.radius * 3.45f;
+        drawCenteredText(clock, time, fixedWidth * 0.5f, centerY - timeHeight * 0.5f,
+                TIME_FONT, withAlpha(0xFFFFFFFF, Math.round(opacity * 244f)));
+        drawCenteredText(dateFont, date.toUpperCase(Locale.ENGLISH), fixedWidth * 0.5f,
+                centerY + timeHeight * 0.5f + 4.5f * MENU_SCALE,
+                DATE_FONT, withAlpha(0xFFE4EBF3, Math.round(opacity * 192f)));
+    }
+
+    private void renderAuthWarning(GuiGraphicsExtractor context, float opacity) {
         AccountEntry entry = getAuthWarningAccount();
         if (entry == null || opacity <= 0.01f) return;
 
-        Bounds b = authWarningBounds(opacity);
-        float hover = AnimationUtility.easeOutCubic(authWarningHoverProgress);
-        float y = b.y - hover * 1.4f * MENU_SCALE;
+        Bounds bounds = authWarningBounds();
+        float hover = easeOutCubic(authWarningHoverProgress);
         Themes.Theme theme = Theme.theme();
+        int accent = theme.accent();
+        UiPrimitive panel = UiPrimitive.builder(bounds.x, bounds.y, bounds.w, bounds.h)
+                .preset(UiPrimitive.Preset.DIRECTIONAL_RIGHT)
+                .cut(10f * MENU_SCALE)
+                .rounding(1.2f * MENU_SCALE)
+                .build();
+        Renderer2D.COLOR.primitive(panel,
+                UiPaint.linear(withAlpha(0xFF080C12, Math.round(opacity * 208f)),
+                        withAlpha(HudRenderUtil.mixColor(0xFF101720, accent, 0.26f + hover * 0.10f),
+                                Math.round(opacity * 224f)), 0f, 0f));
+        Renderer2D.COLOR.primitiveStroke(panel,
+                UiPaint.solid(withAlpha(accent, Math.round(opacity * (116f + hover * 72f)))),
+                UiStroke.of(1.0f * MENU_SCALE));
 
-        int shadow = withAlpha(0x060810, Math.round(opacity * (96f + hover * 24f)));
-        int top = HudRenderUtil.mixColor(withAlpha(0x171B22, Math.round(opacity * 226f)), withAlpha(theme.accent(), Math.round(opacity * 78f)), 0.16f + hover * 0.10f);
-        int bottom = HudRenderUtil.mixColor(withAlpha(0x0D1118, Math.round(opacity * 236f)), withAlpha(theme.accent(), Math.round(opacity * 52f)), 0.08f + hover * 0.08f);
-        int stroke = HudRenderUtil.mixColor(withAlpha(0x46505D, Math.round(opacity * 170f)), withAlpha(theme.accent(), Math.round(opacity * 218f)), 0.32f + hover * 0.28f);
+        float headX = bounds.x + 8f * MENU_SCALE;
+        float headY = bounds.y + (bounds.h - AUTH_WARNING_HEAD) * 0.5f;
+        PlayerHeadRenderer.drawRect(context, headX, headY, AUTH_WARNING_HEAD,
+                SkinManager.getSkin(entry.getName()),
+                new RenderColor(withAlpha(0xFFFFFFFF, Math.round(opacity * 255f))), true,
+                new RenderColor(withAlpha(accent, Math.round(opacity * 150f))),
+                0.8f * MENU_SCALE, false);
 
-        Renderer2D.COLOR.roundedRectSoftShadow(b.x, y + 1.2f * MENU_SCALE, b.w, b.h, AUTH_WARNING_R, 10f * MENU_SCALE, 0.026f + hover * 0.014f, shadow);
-        Renderer2D.COLOR.roundedRectGradientQuad(b.x, y, b.w, b.h, AUTH_WARNING_R, 1f, top, top, bottom, bottom);
-        Renderer2D.COLOR.roundedRectStrokeGradient(b.x + 0.65f * MENU_SCALE, y + 0.65f * MENU_SCALE, b.w - 1.3f * MENU_SCALE, b.h - 1.3f * MENU_SCALE,
-                AUTH_WARNING_R - 0.65f * MENU_SCALE, 1f, 0.65f * MENU_SCALE, HudRenderUtil.mixColor(stroke, 0xFFFFFFFF, 0.08f), stroke, 90f);
-
-        float progress = (now % AUTH_WARNING_PROGRESS_MS) / (float) AUTH_WARNING_PROGRESS_MS;
-        float lineX = b.x + 8f * MENU_SCALE;
-        float lineY = y + 4f * MENU_SCALE;
-        float lineW = b.w - 16f * MENU_SCALE;
-        float lineH = 1.35f * MENU_SCALE;
-        Renderer2D.COLOR.roundedRect(lineX, lineY, lineW, lineH, lineH * 0.5f, 1f, withAlpha(0xFFFFFF, Math.round(opacity * 42f)));
-        Renderer2D.COLOR.roundedRect(lineX, lineY, lineW * (1f - progress), lineH, lineH * 0.5f, 1f, withAlpha(theme.accent(), Math.round(opacity * 170f)));
-
-        float headX = b.x + 10f * MENU_SCALE;
-        float headY = y + 10f * MENU_SCALE;
-        PlayerHeadRenderer.drawRounded(context, headX, headY, AUTH_WARNING_HEAD, 4f * MENU_SCALE, SkinManager.getSkin(entry.getName()),
-                new RenderColor(withAlpha(0xFFFFFF, Math.round(opacity * 255f))), true, new RenderColor(withAlpha(theme.accent(), Math.round(opacity * 120f))), 0.75f * MENU_SCALE, false);
-
-        TextRenderer title = Fonts.renderer("Inter", FontInfo.Type.Bold, TextRenderer.get());
-        TextRenderer body = Fonts.renderer("InterMedium", FontInfo.Type.Regular, title);
+        TextRenderer titleFont = Fonts.renderer("OnestBold", FontInfo.Type.Regular, TextRenderer.get());
+        TextRenderer bodyFont = Fonts.renderer("OnestMedium", FontInfo.Type.Regular, titleFont);
         float textX = headX + AUTH_WARNING_HEAD + 8f * MENU_SCALE;
-        drawText(title, tr("screen.combatant.main_menu.auth_warning.title"), textX, y + 12.2f * MENU_SCALE, 0.72f * MENU_SCALE, withAlpha(0xFFFFFF, Math.round(opacity * 245f)));
+        drawText(titleFont, tr("screen.combatant.main_menu.auth_warning.title"), textX,
+                bounds.y + 8.8f * MENU_SCALE, 0.68f * MENU_SCALE,
+                withAlpha(0xFFFFFFFF, Math.round(opacity * 246f)));
         String message = tr("screen.combatant.main_menu.auth_warning.body", entry.getName());
-        drawText(body, ellipsize(body, message, 0.55f * MENU_SCALE, b.x + b.w - textX - 10f * MENU_SCALE), textX, y + 25.4f * MENU_SCALE, 0.55f * MENU_SCALE, withAlpha(0xC8D0DC, Math.round(opacity * 225f)));
+        drawText(bodyFont,
+                ellipsize(bodyFont, message, 0.52f * MENU_SCALE, bounds.x + bounds.w - textX - 15f * MENU_SCALE),
+                textX, bounds.y + 22f * MENU_SCALE, 0.52f * MENU_SCALE,
+                withAlpha(0xFFD5DDE7, Math.round(opacity * 216f)));
     }
 
-    private void updateButtonAnimations(float deltaTime) {
-        for (int i = 0; i < BUTTON_ICONS.length; i++) {
-            float targetHover = hoveredButton == i ? 1f : 0f;
-            buttonHoverProgress[i] = Mth.lerp(Math.min(1f, deltaTime * 10f), buttonHoverProgress[i], targetHover);
+    private void ensureGrid() {
+        if (Math.abs(cachedGridWidth - fixedWidth) < 0.01f
+                && Math.abs(cachedGridHeight - fixedHeight) < 0.01f
+                && gridLayout != null) return;
 
-            float targetScale = hoveredButton == i ? BUTTON_HOVER_SCALE : 1f;
-            buttonScales[i] = Mth.lerp(Math.min(1f, deltaTime * 12f), buttonScales[i], targetScale);
-        }
-        float targetQuit = hoveredButton == BUTTON_ICONS.length - 1 ? 1f : 0f;
-        quitHoverProgress = Mth.lerp(Math.min(1f, deltaTime * 8f), quitHoverProgress, targetQuit);
-        authWarningHoverProgress = Mth.lerp(Math.min(1f, deltaTime * 10f), authWarningHoverProgress, authWarningHovered ? 1f : 0f);
+        cachedGridWidth = fixedWidth;
+        cachedGridHeight = fixedHeight;
+        float radius = CELL_RADIUS;
+        float stepX = SQRT_3 * radius;
+        float stepY = 1.5f * radius;
+        float originX = fixedWidth * 0.5f - stepX * 0.5f;
+        float originY = fixedHeight * 0.56f;
+        gridLayout = new GridLayout(radius, stepX, stepY, originX, originY);
     }
 
-    private int getHoveredButton(float mouseX, float mouseY, float menuProgress) {
-        if (!canInteract(menuProgress)) return -1;
-        float totalWidth = BUTTON_SIZE * BUTTON_ICONS.length + BUTTON_SPACING * (BUTTON_ICONS.length - 1);
-        float startX = (fixedWidth - totalWidth) * 0.5f;
-        float y = fixedHeight * 0.5f + 34f * MENU_SCALE + (1f - menuProgress) * 60f * MENU_SCALE;
+    private static UiPrimitive pointyHex(float centerX, float centerY, float radius, float rounding) {
+        float width = SQRT_3 * radius;
+        return UiPrimitive.builder(centerX - width * 0.5f, centerY - radius, width, radius * 2f)
+                .customConvex(
+                        0.5, 0.0,
+                        1.0, 0.25,
+                        1.0, 0.75,
+                        0.5, 1.0,
+                        0.0, 0.75,
+                        0.0, 0.25
+                )
+                .rounding(rounding)
+                .build();
+    }
 
-        for (int i = 0; i < BUTTON_ICONS.length; i++) {
-            float buttonX = startX + i * (BUTTON_SIZE + BUTTON_SPACING);
-            float centerX = buttonX + BUTTON_SIZE * 0.5f;
-            float centerY = y + BUTTON_SIZE * 0.5f;
-            float dx = mouseX - centerX;
-            float dy = mouseY - centerY;
-            if (dx * dx + dy * dy <= BUTTON_RADIUS * BUTTON_RADIUS) {
-                return i;
-            }
+    private static double[][] hexPoints(float centerX, float centerY, float radius) {
+        float halfWidth = SQRT_3 * radius * 0.5f;
+        return new double[][]{
+                {centerX, centerY - radius},
+                {centerX + halfWidth, centerY - radius * 0.5f},
+                {centerX + halfWidth, centerY + radius * 0.5f},
+                {centerX, centerY + radius},
+                {centerX - halfWidth, centerY + radius * 0.5f},
+                {centerX - halfWidth, centerY - radius * 0.5f}
+        };
+    }
+
+    private float buttonCenterX(int index) {
+        return gridLayout.originX + (index - 2) * gridLayout.stepX;
+    }
+
+    private int getHoveredButton(float mouseX, float mouseY, float opacity) {
+        if (!canInteract(opacity) || gridLayout == null) return -1;
+        float radius = gridLayout.radius - CELL_GAP * 0.48f;
+        for (int index = 0; index < BUTTON_ICONS.length; index++) {
+            float hover = easeOutCubic(buttonHoverProgress[index]);
+            float elevation = BUTTON_ELEVATION * opacity * (1f - hover);
+            float dx = Math.abs(mouseX - buttonCenterX(index));
+            float dy = Math.abs(mouseY - (gridLayout.originY - elevation));
+            if (dx <= SQRT_3 * radius * 0.5f
+                    && dx / SQRT_3 + dy <= radius) return index;
         }
         return -1;
     }
 
-    private boolean canInteract(float menuProgress) {
-        return menuProgress > 0.8f;
+    private void updateAnimations(float deltaTime) {
+        float buttonStep = Math.min(1f, deltaTime * 11f);
+        for (int index = 0; index < buttonHoverProgress.length; index++) {
+            float target = hoveredButton == index ? 1f : 0f;
+            buttonHoverProgress[index] = Mth.lerp(buttonStep, buttonHoverProgress[index], target);
+        }
+        authWarningHoverProgress = Mth.lerp(Math.min(1f, deltaTime * 10f),
+                authWarningHoverProgress, authWarningHovered ? 1f : 0f);
+    }
+
+    private boolean canInteract(float opacity) {
+        return opacity > 0.82f;
     }
 
     private AccountEntry getAuthWarningAccount() {
         return AccountConfig.get().getMicrosoftAuthorizationRequiredAccount();
     }
 
-    private Bounds authWarningBounds(float menuProgress) {
-        float slideOffset = (1f - menuProgress) * 60f * MENU_SCALE;
-        float buttonY = fixedHeight * 0.5f + 34f * MENU_SCALE + slideOffset;
-        float y = buttonY + BUTTON_SIZE + 18f * MENU_SCALE;
-        y = Math.min(y, fixedHeight - AUTH_WARNING_H - 16f * MENU_SCALE);
+    private Bounds authWarningBounds() {
+        float y = gridLayout != null
+                ? gridLayout.originY + gridLayout.radius + 35f * MENU_SCALE
+                : fixedHeight * 0.72f;
+        y = Math.min(y, fixedHeight - AUTH_WARNING_H - 13f * MENU_SCALE);
         return new Bounds((fixedWidth - AUTH_WARNING_W) * 0.5f, y, AUTH_WARNING_W, AUTH_WARNING_H);
     }
 
     private void updateUiMetrics() {
         Minecraft mc = minecraft;
         if (mc == null) {
-            fixedWidth = width;
-            fixedHeight = height;
-            renderScale = 1f;
+            fixedWidth = Math.max(1f, width);
+            fixedHeight = Math.max(1f, height);
             return;
         }
-        int fbw = mc.getWindow().getWidth();
-        int fbh = mc.getWindow().getHeight();
-        fixedWidth = Math.max(1f, HudScale.virtualWidth(fbw, fbh));
-        fixedHeight = Math.max(1f, HudScale.virtualHeight(fbw, fbh));
-        renderScale = 1f;
+        int framebufferWidth = mc.getWindow().getWidth();
+        int framebufferHeight = mc.getWindow().getHeight();
+        fixedWidth = Math.max(1f, HudScale.virtualWidth(framebufferWidth, framebufferHeight));
+        fixedHeight = Math.max(1f, HudScale.virtualHeight(framebufferWidth, framebufferHeight));
     }
 
     private float toFixedX(float screenX) {
-        if (width <= 0) return screenX;
         Minecraft mc = minecraft;
         if (mc == null) return screenX;
-        int fbw = mc.getWindow().getWidth();
-        int fbh = mc.getWindow().getHeight();
-        float hudScale = HudScale.scale(fbw, fbh);
-        if (hudScale <= 0f) return screenX;
-        return screenX * mc.getWindow().getGuiScale() / hudScale;
+        float hudScale = HudScale.scale(mc.getWindow().getWidth(), mc.getWindow().getHeight());
+        return hudScale > 0f ? screenX * mc.getWindow().getGuiScale() / hudScale : screenX;
     }
 
     private float toFixedY(float screenY) {
-        if (height <= 0) return screenY;
         Minecraft mc = minecraft;
         if (mc == null) return screenY;
-        int fbw = mc.getWindow().getWidth();
-        int fbh = mc.getWindow().getHeight();
-        float hudScale = HudScale.scale(fbw, fbh);
-        if (hudScale <= 0f) return screenY;
-        return screenY * mc.getWindow().getGuiScale() / hudScale;
+        float hudScale = HudScale.scale(mc.getWindow().getWidth(), mc.getWindow().getHeight());
+        return hudScale > 0f ? screenY * mc.getWindow().getGuiScale() / hudScale : screenY;
     }
 
     private void handleButton(int index) {
@@ -487,8 +548,7 @@ public final class CombatantMainMenuScreen extends Screen {
             case 1 -> ClientScreen.show(minecraft, new JoinMultiplayerScreen(this));
             case 2 -> ClientScreen.show(minecraft, new CombatantAltManagerScreen(this));
             case 3 -> ClientScreen.show(minecraft, new CombatantAddonManagerScreen(this));
-            case 4 ->
-                    ClientScreen.show(minecraft, new OptionsScreen(this, minecraft.options, false));
+            case 4 -> ClientScreen.show(minecraft, new OptionsScreen(this, minecraft.options, false));
             case 5 -> minecraft.stop();
             default -> {
             }
@@ -497,8 +557,18 @@ public final class CombatantMainMenuScreen extends Screen {
 
     private float getMenuProgress(long now) {
         if (!initialized) return 0f;
-        long elapsed = now - openTime;
-        return Mth.clamp(elapsed / (float) MENU_APPEAR_DURATION, 0f, 1f);
+        return Mth.clamp((now - openTime) / (float) MENU_APPEAR_DURATION_MS, 0f, 1f);
+    }
+
+    private void switchToVanillaTitleScreen(Throwable throwable) {
+        forceVanillaTitleScreen = true;
+        if (throwable != null) {
+            DebugLog.errorOnce("main_menu_vanilla_fallback", "Main menu failed, switching to vanilla title screen", throwable);
+        }
+        Minecraft mc = minecraft != null ? minecraft : Minecraft.getInstance();
+        if (mc != null && !(ClientScreen.current() instanceof TitleScreen)) {
+            ClientScreen.show(mc, new TitleScreen(false));
+        }
     }
 
     private void drawText(TextRenderer renderer, String text, float x, float y, float size, int argb) {
@@ -510,52 +580,41 @@ public final class CombatantMainMenuScreen extends Screen {
     }
 
     private void drawCenteredText(TextRenderer renderer, String text, float centerX, float y, float size, int argb) {
-        float x = centerX - measureWidth(renderer, text, size) * 0.5f;
-        drawText(renderer, text, x, y, size, argb);
-    }
-
-    private void drawLiquidGlassText(TextRenderer renderer, String text, float x, float y, float size, int argb) {
-        if (renderer == null || text == null || text.isEmpty()) return;
-        renderer.setAlpha(1.0);
-        renderer.begin(size, false, true);
-        renderer.renderLiquidGlass(text, x, y, new RenderColor(argb), false);
-        renderer.end();
-    }
-
-    private void drawCenteredLiquidGlassText(TextRenderer renderer, String text, float centerX, float y, float size, int argb) {
-        float x = centerX - measureWidth(renderer, text, size) * 0.5f;
-        drawLiquidGlassText(renderer, text, x, y, size, argb);
+        drawText(renderer, text, centerX - measureWidth(renderer, text, size) * 0.5f, y, size, argb);
     }
 
     private float measureWidth(TextRenderer renderer, String text, float size) {
         if (renderer == null || text == null) return 0f;
         renderer.begin(size, true, false);
-        float width = (float) renderer.getWidth(text, false);
+        float result = (float) renderer.getWidth(text, false);
         renderer.end();
-        return width;
+        return result;
     }
 
     private float measureHeight(TextRenderer renderer, float size) {
         if (renderer == null) return 0f;
         renderer.begin(size, true, false);
-        float height = (float) renderer.getHeight(false);
+        float result = (float) renderer.getHeight(false);
         renderer.end();
-        return height;
+        return result;
     }
 
     private String ellipsize(TextRenderer renderer, String text, float size, float maxWidth) {
         if (text == null || text.isEmpty()) return "";
         if (measureWidth(renderer, text, size) <= maxWidth) return text;
-        String out = text;
-        while (out.length() > 3 && measureWidth(renderer, out + "...", size) > maxWidth) {
-            out = out.substring(0, out.length() - 1);
+        String result = text;
+        while (result.length() > 3 && measureWidth(renderer, result + "...", size) > maxWidth) {
+            result = result.substring(0, result.length() - 1);
         }
-        return out + "...";
+        return result + "...";
+    }
+
+    private record GridLayout(float radius, float stepX, float stepY, float originX, float originY) {
     }
 
     private record Bounds(float x, float y, float w, float h) {
-        private boolean contains(float mx, float my) {
-            return mx >= x && mx <= x + w && my >= y && my <= y + h;
+        private boolean contains(float mouseX, float mouseY) {
+            return mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
         }
     }
 }

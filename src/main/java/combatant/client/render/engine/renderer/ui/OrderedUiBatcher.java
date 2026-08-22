@@ -21,7 +21,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.navigation.ScreenRectangle;
 import net.minecraft.client.renderer.Projection;
-import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
@@ -128,7 +127,7 @@ public final class OrderedUiBatcher {
     public DrawBatch getOrCreateBlur(UiBatchType type, GpuTextureView view, GpuSampler sampler,
                                      Renderer2D.BlurQuality quality, float offsetPx) {
         if (!active) return null;
-        if (type == UiBatchType.LIQUID_GLASS) {
+        if (type.usesPreparedGlass()) {
             UiBlurResources.requestLiquidGlassBlur();
         }
         boolean shapeClipActive = ClipFunction.isShapeClipActive();
@@ -182,26 +181,23 @@ public final class OrderedUiBatcher {
     }
 
     public TextBatch getOrCreateTextBatch(String label, GlyphFont font, RenderPipeline pipeline,
-                                   TextPlacementMode placement, boolean liquidGlassText) {
+                                    TextPlacementMode placement) {
         if (!active) return null;
-        if (liquidGlassText) {
-            UiBlurResources.requestLiquidGlassBlur();
-        }
         TextPlacementMode normalizedPlacement = placement != null ? placement : TextPlacementMode.UI;
         boolean shapeClipActive = ClipFunction.isShapeClipActive();
 
         if (!order.isEmpty()) {
             Object last = order.get(order.size() - 1);
             if (last instanceof TextBatch textBatch
-                    && textBatch.canMerge(font, pipeline, normalizedPlacement, liquidGlassText, shapeClipActive)) {
+                    && textBatch.canMerge(font, pipeline, normalizedPlacement, shapeClipActive)) {
                 return textBatch;
             }
         }
 
         TextBatch batch = obtainTextBatch();
-        batch.begin(label, font, pipeline, normalizedPlacement, liquidGlassText, shapeClipActive);
+        batch.begin(label, font, pipeline, normalizedPlacement, shapeClipActive);
         order.add(batch);
-        UiRenderDispatcher.recordBackendCommand(liquidGlassText ? "LIQUID_GLASS_TEXT" : "TEXT");
+        UiRenderDispatcher.recordBackendCommand("TEXT");
         return batch;
     }
 
@@ -244,59 +240,6 @@ public final class OrderedUiBatcher {
         }
         textPoolCursor = cursor + 1;
         return batch;
-    }
-
-    int flushLiquidGlassTextBatch(TextBatch textBatch,
-                                          Minecraft mc,
-                                          GpuTextureView mainColorView,
-                                          @Nullable GpuTextureView liquidSourceView,
-                                          @Nullable GpuSampler liquidSourceSampler,
-                                          float screenW,
-                                          float screenH,
-                                          float uiScale) {
-        if (textBatch == null || textBatch.mesh == null || textBatch.font == null) return 0;
-        if (!textBatch.font.isReady()) return 0;
-
-        AbstractTexture glyphTexture = textBatch.font.getTexture();
-        if (glyphTexture == null || glyphTexture.getTextureView() == null || glyphTexture.getSampler() == null) return 0;
-
-        GpuTextureView sourceView = liquidSourceView;
-        GpuSampler sourceSampler = liquidSourceSampler;
-        if (sourceView == null || sourceSampler == null || sourceView == mainColorView) return 0;
-
-        int blurPassCalls = 0;
-        if (textBatch.shapeClipActive) {
-            adoptFrameBlurCache(sourceView, sourceSampler, screenW, screenH, uiScale,
-                    Renderer2D.DEFAULT_LIQUID_GLASS_BLUR_QUALITY, Renderer2D.LIQUID_GLASS_KAWASE_OFFSET_PX);
-        } else {
-            blurPassCalls = prepareSharedBlur(mc, sourceView, sourceSampler, screenW, screenH, uiScale,
-                    Renderer2D.DEFAULT_LIQUID_GLASS_BLUR_QUALITY, Renderer2D.LIQUID_GLASS_KAWASE_OFFSET_PX);
-        }
-        GpuTextureView blurView = matchingSharedBlurView(sourceView, sourceSampler);
-        GpuSampler blurSampler = matchingSharedBlurSampler(sourceView, sourceSampler);
-        if (blurView == null || blurSampler == null) {
-            blurView = sourceView;
-            blurSampler = sourceSampler;
-        }
-        if (blurView == mainColorView) return 0;
-
-        UIBatchUniforms.update(screenW, screenH);
-        MeshRenderer builder = MeshRenderer.begin()
-                .attachments(mainColorView, null)
-                .pipeline(textBatch.pipeline)
-                .mesh(textBatch.mesh)
-                .uniform("UIBatch", UIBatchUniforms.get())
-                .sampler("u_Texture", glyphTexture.getTextureView(), glyphTexture.getSampler())
-                .sampler("u_SceneTexture", sourceView, sourceSampler)
-                .sampler("u_BlurTexture", blurView, blurSampler);
-
-        if (textBatch.font.isMsdf()) {
-            MsdfTextUniforms.update(textBatch.font.getPxRange(), textBatch.font.getAtlasWidth(), textBatch.font.getAtlasHeight());
-            builder.uniform("MsdfText", MsdfTextUniforms.get());
-        }
-
-        builder.end();
-        return 1 + blurPassCalls;
     }
 
     public void flush(boolean finish) {
@@ -361,11 +304,7 @@ public final class OrderedUiBatcher {
 
             boolean hasLiquidGlass = false;
             for (Object orderedEntry : order) {
-                if (orderedEntry instanceof DrawBatch orderedBatch && orderedBatch.type == UiBatchType.LIQUID_GLASS) {
-                    hasLiquidGlass = true;
-                    break;
-                }
-                if (orderedEntry instanceof TextBatch orderedText && orderedText.liquidGlassText) {
+                if (orderedEntry instanceof DrawBatch orderedBatch && orderedBatch.type.usesPreparedGlass()) {
                     hasLiquidGlass = true;
                     break;
                 }
@@ -414,15 +353,9 @@ public final class OrderedUiBatcher {
                     if (!textBatch.isEmpty()) {
                         vertices += textBatch.mesh.getVertexCount();
                         indices += textBatch.mesh.getIndicesCount();
-                        if (textBatch.liquidGlassText) {
-                            flushPendingDraws(pendingDraws);
-                            drawCalls += flushLiquidGlassTextBatch(textBatch, mc, mainColorView,
-                                    liquidSourceView, liquidSourceSampler, screenW, screenH, uiScale);
-                        } else {
-                            drawCalls++;
-                            TextRenderSystem.appendGlyphMeshCommand(pendingDraws, textBatch.label, textBatch.font,
-                                    textBatch.mesh, textBatch.pipeline, textBatch.placement);
-                        }
+                        drawCalls++;
+                        TextRenderSystem.appendGlyphMeshCommand(pendingDraws, textBatch.label, textBatch.font,
+                                textBatch.mesh, textBatch.pipeline, textBatch.placement);
                     }
                     continue;
                 }
@@ -461,7 +394,7 @@ public final class OrderedUiBatcher {
                     }
                 }
 
-                if (batch.type == UiBatchType.LIQUID_GLASS) {
+                if (batch.type.usesPreparedGlass()) {
                     flushPendingDraws(pendingDraws);
                     GpuTextureView sourceView = liquidSourceView != null ? liquidSourceView : batch.view;
                     GpuSampler sourceSampler = liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
@@ -531,11 +464,11 @@ public final class OrderedUiBatcher {
                             fxBuilder.uniform("UIBatch", uiBatch);
                         }
                         if (batch.type.usesSampler) {
-                            GpuTextureView sourceView = batch.type == UiBatchType.LIQUID_GLASS && liquidSourceView != null ? liquidSourceView : batch.view;
-                            GpuSampler sourceSampler = batch.type == UiBatchType.LIQUID_GLASS && liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
+                            GpuTextureView sourceView = batch.type.usesPreparedGlass() && liquidSourceView != null ? liquidSourceView : batch.view;
+                            GpuSampler sourceSampler = batch.type.usesPreparedGlass() && liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
                             fxBuilder.sampler("u_Texture", sourceView, sourceSampler);
                         }
-                        if (batch.type == UiBatchType.LIQUID_GLASS) {
+                        if (batch.type.usesPreparedGlass()) {
                             GpuTextureView liquidBlurView = sharedBlurredView != null ? sharedBlurredView : batch.view;
                             GpuSampler liquidBlurSampler = sharedBlurredSampler != null ? sharedBlurredSampler : batch.sampler;
                             if (liquidBlurView != null && liquidBlurSampler != null) {
@@ -560,15 +493,15 @@ public final class OrderedUiBatcher {
                     // If offscreen FX target is unavailable, skip this pass to avoid undefined behavior.
                     if (batch.type.usesSampler
                             && batch.view == mainColorView
-                            && !(batch.type == UiBatchType.LIQUID_GLASS && liquidSourceView != null)) {
+                            && !(batch.type.usesPreparedGlass() && liquidSourceView != null)) {
                         continue;
                     }
                 }
 
-                if ((batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS || batch.type == UiBatchType.LIQUID_GLASS)
+                if ((batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS || batch.type.usesPreparedGlass())
                         && batch.type.usesSampler
                         && batch.view == mainColorView
-                        && !(batch.type == UiBatchType.LIQUID_GLASS && liquidSourceView != null)) {
+                        && !(batch.type.usesPreparedGlass() && liquidSourceView != null)) {
                     continue;
                 }
 
@@ -585,15 +518,15 @@ public final class OrderedUiBatcher {
                     builder.uniform("UIBatch", uiBatch);
                 }
                 if (batch.type.usesSampler) {
-                    GpuTextureView sourceView = batch.type == UiBatchType.LIQUID_GLASS && liquidSourceView != null ? liquidSourceView : batch.view;
-                    GpuSampler sourceSampler = batch.type == UiBatchType.LIQUID_GLASS && liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
+                    GpuTextureView sourceView = batch.type.usesPreparedGlass() && liquidSourceView != null ? liquidSourceView : batch.view;
+                    GpuSampler sourceSampler = batch.type.usesPreparedGlass() && liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
                     builder.sampler("u_Texture", sourceView, sourceSampler);
                 }
                 if (batch.type == UiBatchType.SVG_MSDF) {
                     MsdfTextUniforms.update(batch.msdfPxRange, batch.msdfAtlasWidth, batch.msdfAtlasHeight);
                     builder.uniform("MsdfText", MsdfTextUniforms.get());
                 }
-                if (batch.type == UiBatchType.LIQUID_GLASS) {
+                if (batch.type.usesPreparedGlass()) {
                     GpuTextureView liquidBlurView = sharedBlurredView != null ? sharedBlurredView : batch.view;
                     GpuSampler liquidBlurSampler = sharedBlurredSampler != null ? sharedBlurredSampler : batch.sampler;
                     if (liquidBlurView != null && liquidBlurSampler != null) {

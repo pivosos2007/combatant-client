@@ -17,17 +17,15 @@ public final class TextBatch {
     public GlyphFont font;
     public RenderPipeline pipeline;
     public TextPlacementMode placement;
-    public boolean liquidGlassText;
     public boolean shapeClipActive;
     public MeshBuilder mesh;
 
     public void begin(String label, GlyphFont font, RenderPipeline pipeline,
-               TextPlacementMode placement, boolean liquidGlassText, boolean shapeClipActive) {
+               TextPlacementMode placement, boolean shapeClipActive) {
         this.label = label != null ? label : "Combatant UI Text Batch";
         this.font = font;
         this.pipeline = pipeline;
         this.placement = placement != null ? placement : TextPlacementMode.UI;
-        this.liquidGlassText = liquidGlassText;
         this.shapeClipActive = shapeClipActive;
         if (mesh == null) {
             mesh = new MeshBuilder(pipeline);
@@ -37,11 +35,10 @@ public final class TextBatch {
         mesh.begin();
     }
 
-    public boolean canMerge(GlyphFont font, RenderPipeline pipeline, TextPlacementMode placement, boolean liquidGlassText, boolean shapeClipActive) {
+    public boolean canMerge(GlyphFont font, RenderPipeline pipeline, TextPlacementMode placement, boolean shapeClipActive) {
         return this.font == font
                 && this.pipeline == pipeline
                 && this.placement == (placement != null ? placement : TextPlacementMode.UI)
-                && this.liquidGlassText == liquidGlassText
                 && this.shapeClipActive == shapeClipActive;
     }
 
@@ -50,7 +47,7 @@ public final class TextBatch {
         if (source.isBuilding()) source.end();
         if (source.getIndicesCount() <= 0) return;
         if (mesh == null || !mesh.isBuilding()) {
-            begin(label, font, pipeline, placement, liquidGlassText, shapeClipActive);
+            begin(label, font, pipeline, placement, shapeClipActive);
         }
         mesh.appendMesh(source);
     }

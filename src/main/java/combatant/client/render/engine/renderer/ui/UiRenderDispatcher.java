@@ -61,8 +61,7 @@ public final class UiRenderDispatcher {
             GlyphFont font,
             MeshBuilder sourceMesh,
             RenderPipeline pipeline,
-            TextPlacementMode placement,
-            boolean liquidGlassText) {
+            TextPlacementMode placement) {
         OrderedUiBatcher batcher = Renderer2D.UI_BATCHER;
         if (!batcher.isActive() || batcher.isFlushing()) return false;
         if (font == null || sourceMesh == null || pipeline == null) return false;
@@ -72,41 +71,11 @@ public final class UiRenderDispatcher {
                 label,
                 font,
                 pipeline,
-                placement != null ? placement : TextPlacementMode.UI,
-                liquidGlassText
+                placement != null ? placement : TextPlacementMode.UI
         );
         if (batch == null) return false;
         batch.append(sourceMesh);
         return true;
-    }
-
-    public static boolean submitLiquidGlassTextMeshImmediate(
-            String label,
-            GlyphFont font,
-            MeshBuilder sourceMesh,
-            RenderPipeline pipeline,
-            TextPlacementMode placement) {
-        if (font == null || sourceMesh == null || pipeline == null) return false;
-        if (sourceMesh.isBuilding()) sourceMesh.end();
-        if (sourceMesh.getIndicesCount() <= 0) return true;
-
-        OrderedUiBatcher batcher = UiDeferredScheduler.obtainBatcher();
-        try {
-            batcher.begin();
-            TextBatch batch = batcher.getOrCreateTextBatch(
-                    label,
-                    font,
-                    pipeline,
-                    placement != null ? placement : TextPlacementMode.UI,
-                    true
-            );
-            if (batch == null) return false;
-            batch.append(sourceMesh);
-            batcher.flush(true);
-            return true;
-        } finally {
-            UiDeferredScheduler.releaseBatcher(batcher);
-        }
     }
 
     public static boolean beginAutoBatch() {

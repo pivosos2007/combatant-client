@@ -35,7 +35,6 @@ public class CustomTextRenderer implements TextRenderer {
     private boolean building;
     private boolean scaleOnly;
     private boolean meshStarted;
-    private boolean liquidGlassText;
     private boolean fastUiText;
     private double fontScale = 1;
     private double scale = 1;
@@ -232,39 +231,6 @@ public class CustomTextRenderer implements TextRenderer {
         return width;
     }
 
-    @Override
-    public double renderLiquidGlass(String text, double x, double y, RenderColor color, boolean shadow) {
-        boolean wasBuilding = building;
-        if (!wasBuilding) begin();
-
-        // The glyph mesh belongs to a single pipeline. Mixing regular and
-        // liquid-glass glyphs inside one begin/end block would submit earlier
-        // glyphs through the wrong shader, so callers should use a separate
-        // text run for this effect.
-        if (meshStarted && !liquidGlassText) {
-            return render(text, x, y, color, shadow);
-        }
-
-        liquidGlassText = true;
-        ensureMeshStarted();
-
-        double width;
-        if (shadow) {
-            int preShadowA = SHADOW_COLOR.a;
-            SHADOW_COLOR.a = (int) (color.a / 255.0 * preShadowA);
-
-            font.render(mesh, text, x + fontScale * scale / 1.5, y + fontScale * scale / 1.5, SHADOW_COLOR, scale / 1.5);
-            width = font.render(mesh, text, x, y, color, scale / 1.5);
-
-            SHADOW_COLOR.a = preShadowA;
-        } else {
-            width = font.render(mesh, text, x, y, color, scale / 1.5);
-        }
-
-        if (!wasBuilding) end();
-        return width;
-    }
-
     public double renderGradient(String text, double x, double y, Font.GlyphGradient gradient, boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
@@ -424,12 +390,10 @@ public class CustomTextRenderer implements TextRenderer {
             }
             if (font.isReady()) {
                 TextRenderSystem.submitGlyphMesh(
-                        liquidGlassText ? "Combatant UI Liquid Glass Text" : "Combatant UI Text",
+                        "Combatant UI Text",
                         font,
                         mesh,
-                        liquidGlassText
-                                ? (font.isMsdf() ? CombatantRenderPipelines.UI_TEXT_LIQUID_GLASS_MSDF : CombatantRenderPipelines.UI_TEXT_LIQUID_GLASS)
-                                : fastUiText
+                        fastUiText
                                 ? (font.isMsdf() ? CombatantRenderPipelines.UI_TEXT_MSDF_FAST : CombatantRenderPipelines.UI_TEXT_FAST)
                                 : (font.isMsdf() ? CombatantRenderPipelines.UI_TEXT_MSDF : CombatantRenderPipelines.UI_TEXT),
                         TextPlacementMode.UI
@@ -440,7 +404,6 @@ public class CustomTextRenderer implements TextRenderer {
         building = false;
         scaleOnly = false;
         meshStarted = false;
-        liquidGlassText = false;
         fastUiText = false;
         scale = 1;
     }
@@ -456,8 +419,7 @@ public class CustomTextRenderer implements TextRenderer {
             mesh.begin();
         }
         ViewportContext.ProjectionMode projection = ViewportContext.activeMode();
-        fastUiText = !liquidGlassText
-                && !RenderWarpStack.active()
+        fastUiText = !RenderWarpStack.active()
                 && (projection == ViewportContext.ProjectionMode.LOGICAL
                 || projection == ViewportContext.ProjectionMode.SCALED);
         meshStarted = true;

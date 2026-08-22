@@ -129,6 +129,7 @@ public final class Renderer2D {
     private final MeshBuilder texturedTriangles;
     private final int[] gradientTmp = new int[4];
     private final float[] cornerRadiiTmp = new float[4];
+    private final float[] primitivePointsTmp = new float[16];
     private final double[] rectShapeTmp = new double[256];
     private final double[] connectorTmp = new double[64];
     private final double[] connectorAnchorTmp = new double[4];
@@ -183,6 +184,31 @@ public final class Renderer2D {
             renderSquircleSdf(box, paint, safeStroke, fill);
         } else {
             renderFlexibleBoxFallback(box, paint, safeStroke, fill);
+        }
+    }
+
+    public void primitive(UiPrimitive primitive, UiPaint paint) {
+        primitive(primitive, paint, UiStroke.NONE, true);
+    }
+
+    public void primitiveStroke(UiPrimitive primitive, UiPaint paint, UiStroke stroke) {
+        primitive(primitive, paint, stroke, false);
+    }
+
+    /**
+     * Draws a preset/custom panel primitive. Convex shapes of up to eight points
+     * stay as one analytic GPU quad; larger or concave authoring results use the
+     * established polygon fallback without changing the caller-facing API.
+     */
+    public void primitive(UiPrimitive primitive, UiPaint paint, UiStroke stroke, boolean fill) {
+        if (primitive == null || paint == null || primitive.pointCount() < 3) return;
+        UiStroke safeStroke = stroke != null ? stroke : UiStroke.NONE;
+        UiShape semanticShape = UiShape.polyline(primitive.points(), primitive.pointCount(), true);
+        recordUi(new UiShapeCommand(semanticShape, paint, safeStroke, fill));
+        if (primitive.shaderEligible()) {
+            renderPrimitiveSdf(primitive, paint, safeStroke, fill);
+        } else {
+            renderPrimitiveFallback(primitive, paint, safeStroke, fill);
         }
     }
 
@@ -1449,6 +1475,86 @@ public final class Renderer2D {
         endAutoBatch(auto);
     }
 
+    /** Draws the main-menu glass wall: per-cell refraction, frost, lens and cursor-lit rim. */
+    public void mainMenuHoneycombGlass(double x, double y, double w, double h,
+                                     float cellRadius,
+                                     float gap,
+                                     float lineWidth,
+                                     float opacity,
+                                     float mouseX,
+                                     float mouseY,
+                                     float lightRadius,
+                                     float originX,
+                                     float originY,
+                                     int baseArgb,
+                                     int highlightArgb) {
+        if (w <= 0.0 || h <= 0.0 || cellRadius <= 0.0f || opacity <= 0.001f) return;
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) return;
+        RenderTarget framebuffer = minecraft.gameRenderer.mainRenderTarget();
+        if (framebuffer == null || framebuffer.getColorTextureView() == null) return;
+        GpuSampler sampler = PostProcessManager.getSampler();
+        if (sampler == null) return;
+
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreateBlur(
+                UiBatchType.MAIN_MENU_HONEYCOMB,
+                framebuffer.getColorTextureView(),
+                sampler,
+                BlurQuality.ULTRA,
+                2.35f);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+
+        int ba = (baseArgb >>> 24) & 0xFF;
+        int br = (baseArgb >>> 16) & 0xFF;
+        int bg = (baseArgb >>> 8) & 0xFF;
+        int bb = baseArgb & 0xFF;
+        float hr = ((highlightArgb >>> 16) & 0xFF) / 255.0f;
+        float hg = ((highlightArgb >>> 8) & 0xFF) / 255.0f;
+        float hb = (highlightArgb & 0xFF) / 255.0f;
+        float ha = ((highlightArgb >>> 24) & 0xFF) / 255.0f;
+
+        int i1 = appendMainMenuHoneycombVertex(mesh, x, y, br, bg, bb, ba, x, y, w, h,
+                cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
+                hr, hg, hb, ha, originX, originY);
+        int i2 = appendMainMenuHoneycombVertex(mesh, x, y + h, br, bg, bb, ba, x, y, w, h,
+                cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
+                hr, hg, hb, ha, originX, originY);
+        int i3 = appendMainMenuHoneycombVertex(mesh, x + w, y + h, br, bg, bb, ba, x, y, w, h,
+                cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
+                hr, hg, hb, ha, originX, originY);
+        int i4 = appendMainMenuHoneycombVertex(mesh, x + w, y, br, bg, bb, ba, x, y, w, h,
+                cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
+                hr, hg, hb, ha, originX, originY);
+        mesh.quad(i1, i2, i3, i4);
+        endAutoBatch(auto);
+    }
+
+    private static int appendMainMenuHoneycombVertex(MeshBuilder mesh,
+                                                      double px, double py,
+                                                      int r, int g, int b, int a,
+                                                      double x, double y, double w, double h,
+                                                      float cellRadius, float gap, float lineWidth, float opacity,
+                                                      float mouseX, float mouseY, float lightRadius,
+                                                      float highlightR, float highlightG, float highlightB, float highlightA,
+                                                      float originX, float originY) {
+        return mesh.vec2(px, py).local2(px, py).color(r, g, b, a)
+                .vec4(x, y, w, h)
+                .vec4(cellRadius, gap, lineWidth, opacity)
+                .vec4(mouseX, mouseY, lightRadius, 0.0f)
+                .vec4(highlightR, highlightG, highlightB, highlightA)
+                .vec4(originX, originY, 0.0f, 0.0f)
+                .vec4(0.0f, 0.0f, 0.0f, 0.0f)
+                .next();
+    }
+
     public void roundedRectStrokeGradient(double x, double y, double w, double h,
                                           float radius, float softness, float thickness,
                                           int startArgb, int endArgb, float angleDeg) {
@@ -2549,6 +2655,144 @@ public final class Renderer2D {
                 tintArgb, glassAlpha, blurAlpha, preset, -squircle.squircleExponent());
     }
 
+    /** Liquid glass using the same analytic mask as a convex panel primitive. */
+    public void liquidGlassPrimitive(UiPrimitive primitive,
+                                     int tintArgb,
+                                     float glassAlpha,
+                                     float blurAlpha,
+                                     LiquidGlassPreset preset) {
+        LiquidGlassPreset safe = preset != null ? preset : LiquidGlassPreset.BALANCED;
+        liquidGlassPrimitive(primitive, tintArgb, glassAlpha, blurAlpha,
+                safe.thicknessPx, safe.fresnelPower, safe.fresnelAlpha,
+                safe.baseAlpha, safe.fresnelMix, safe.distortPx, 0.0f, 0.0f);
+    }
+
+    public void liquidGlassPrimitive(UiPrimitive primitive,
+                                     int tintArgb,
+                                     float glassAlpha,
+                                     float blurAlpha,
+                                     float thickness,
+                                     float fresnelPower,
+                                     float fresnelAlpha,
+                                     float baseAlpha,
+                                     float fresnelMix,
+                                     float distortPx,
+                                     float prismStrength,
+                                     float prismPhase) {
+        liquidGlassPrimitive(primitive, tintArgb, glassAlpha, blurAlpha,
+                thickness, fresnelPower, fresnelAlpha, baseAlpha, fresnelMix, distortPx,
+                prismStrength, prismPhase, DEFAULT_LIQUID_GLASS_BLUR_QUALITY, LIQUID_GLASS_KAWASE_OFFSET_PX);
+    }
+
+    /** Same liquid-glass primitive with an explicit prepared Kawase blur profile. */
+    public void liquidGlassPrimitive(UiPrimitive primitive,
+                                     int tintArgb,
+                                     float glassAlpha,
+                                     float blurAlpha,
+                                     float thickness,
+                                     float fresnelPower,
+                                     float fresnelAlpha,
+                                     float baseAlpha,
+                                     float fresnelMix,
+                                     float distortPx,
+                                     float prismStrength,
+                                     float prismPhase,
+                                     BlurQuality blurQuality,
+                                     float blurOffsetPx) {
+        if (primitive == null || !primitive.shaderEligible()) {
+            throw new IllegalArgumentException("Liquid-glass primitives require a convex shape with 3..8 points");
+        }
+        UiRect bounds = primitive.bounds();
+        double x = bounds.x();
+        double y = bounds.y();
+        double w = bounds.width();
+        double h = bounds.height();
+        if (w <= 0.0 || h <= 0.0) return;
+
+        effect(UiEffectSpec.liquidGlass(
+                UiShape.polyline(primitive.points(), primitive.pointCount(), true),
+                primitive.rounding(), thickness, distortPx, tintArgb));
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) return;
+        RenderTarget fb = mc.gameRenderer.mainRenderTarget();
+        if (fb == null) return;
+        GpuTextureView src = fb.getColorTextureView();
+        if (src == null) return;
+        GpuSampler sampler = PostProcessManager.getSampler();
+        if (sampler == null) return;
+
+        Arrays.fill(primitivePointsTmp, 0.0f);
+        for (int i = 0; i < primitive.pointCount(); i++) {
+            primitivePointsTmp[i * 2] = primitive.localX(i);
+            primitivePointsTmp[i * 2 + 1] = primitive.localY(i);
+        }
+
+        boolean auto = beginAutoBatch();
+        BlurQuality preparedBlurQuality = blurQuality != null ? blurQuality : DEFAULT_LIQUID_GLASS_BLUR_QUALITY;
+        float preparedBlurOffset = Float.isFinite(blurOffsetPx)
+                ? Math.max(0.0f, blurOffsetPx)
+                : LIQUID_GLASS_KAWASE_OFFSET_PX;
+        DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
+                preparedBlurQuality, preparedBlurOffset);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+
+        int a = (tintArgb >>> 24) & 0xFF;
+        int r = (tintArgb >>> 16) & 0xFF;
+        int g = (tintArgb >>> 8) & 0xFF;
+        int b = tintArgb & 0xFF;
+        int finalA = (int) (a * clamp01(glassAlpha));
+        float mix = packLiquidGlassFresnel(fresnelMix, prismStrength, prismPhase);
+        float packedDistort = packLiquidGlassPayload(distortPx, 2.0f, clamp01(blurAlpha), false);
+        float fa = clamp01(fresnelAlpha);
+        float ba = clamp01(baseAlpha);
+        float rounding = Math.min(primitive.rounding(), (float) Math.min(w, h) * 0.45f);
+
+        int i1 = appendLiquidGlassPrimitiveVertex(mesh, x, y, mix, packedDistort, r, g, b, finalA,
+                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba);
+        int i2 = appendLiquidGlassPrimitiveVertex(mesh, x, y + h, mix, packedDistort, r, g, b, finalA,
+                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba);
+        int i3 = appendLiquidGlassPrimitiveVertex(mesh, x + w, y + h, mix, packedDistort, r, g, b, finalA,
+                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba);
+        int i4 = appendLiquidGlassPrimitiveVertex(mesh, x + w, y, mix, packedDistort, r, g, b, finalA,
+                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba);
+        mesh.quad(i1, i2, i3, i4);
+        endAutoBatch(auto);
+    }
+
+    private static int appendLiquidGlassPrimitiveVertex(MeshBuilder mesh,
+                                                        double x,
+                                                        double y,
+                                                        float fresnelMix,
+                                                        float packedDistort,
+                                                        int r,
+                                                        int g,
+                                                        int b,
+                                                        int a,
+                                                        UiRect bounds,
+                                                        float[] points,
+                                                        int pointCount,
+                                                        float rounding,
+                                                        float thickness,
+                                                        float fresnelPower,
+                                                        float fresnelAlpha,
+                                                        float baseAlpha) {
+        return mesh.vec2(x, y).raw2(fresnelMix, packedDistort).local2(x, y).color(r, g, b, a)
+                .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
+                .vec4(points[0], points[1], points[2], points[3])
+                .vec4(thickness, fresnelPower, fresnelAlpha, baseAlpha)
+                .vec4(points[4], points[5], points[6], points[7])
+                .vec4(points[8], points[9], points[10], points[11])
+                .vec4(points[12], points[13], points[14], points[15])
+                .vec4(pointCount, rounding, 0.0f, 1.0f)
+                .next();
+    }
+
     public void liquidGlassCircle(double cx, double cy, double radius,
                                   int tintArgb,
                                   float globalAlpha,
@@ -3005,21 +3249,29 @@ public final class Renderer2D {
                 .vec4(x, y, w, h)
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
                 .vec4(thickness, fresnelPower, fa, ba)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .next();
         int i2 = mesh.vec2(x, y + h).raw2(mix, packedDistort).local2(x, y + h).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
                 .vec4(thickness, fresnelPower, fa, ba)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .next();
         int i3 = mesh.vec2(x + w, y + h).raw2(mix, packedDistort).local2(x + w, y + h).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
                 .vec4(thickness, fresnelPower, fa, ba)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .next();
         int i4 = mesh.vec2(x + w, y).raw2(mix, packedDistort).local2(x + w, y).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
                 .vec4(thickness, fresnelPower, fa, ba)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .next();
 
         mesh.quad(i1, i2, i3, i4);
@@ -3248,6 +3500,108 @@ public final class Renderer2D {
                         stroke.join() == UiPathJoin.ROUND || stroke.cap() == UiPathCap.ROUND);
             }
         }
+    }
+
+    private void renderPrimitiveFallback(UiPrimitive primitive, UiPaint paint, UiStroke stroke, boolean fill) {
+        if (textured || primitive == null || paint == null) return;
+        double[] points = primitive.points();
+        int count = primitive.pointCount();
+        UiRect bounds = primitive.bounds();
+        if (fill) {
+            switch (paint.kind()) {
+                case LINEAR_GRADIENT -> polygonGradient(points, count,
+                        bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                        paint.topLeft(), paint.topRight(), paint.angleDeg(), paint.offsetPx());
+                default -> polygon(points, count, paint.solidColor());
+            }
+        } else if (stroke != null && stroke.enabled()) {
+            if (paint.kind() == UiPaintKind.LINEAR_GRADIENT) {
+                polylineLinearGradient(points, count, stroke.thickness(), true,
+                        bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                        paint.topLeft(), paint.topRight(), paint.angleDeg(), paint.offsetPx(),
+                        stroke.join() == UiPathJoin.ROUND || stroke.cap() == UiPathCap.ROUND);
+            } else {
+                polyline(points, count, stroke.thickness(), true, paint.solidColor(),
+                        stroke.join() == UiPathJoin.ROUND || stroke.cap() == UiPathCap.ROUND);
+            }
+        }
+    }
+
+    private void renderPrimitiveSdf(UiPrimitive primitive, UiPaint paint, UiStroke stroke, boolean fill) {
+        if (textured || primitive == null || paint == null) return;
+        UiRect bounds = primitive.bounds();
+        double x = bounds.x();
+        double y = bounds.y();
+        double w = bounds.width();
+        double h = bounds.height();
+        if (w <= 0.0 || h <= 0.0 || (!fill && (stroke == null || !stroke.enabled()))) return;
+
+        int cTL = paint.topLeft();
+        int cTR = paint.topRight();
+        int cBR = paint.bottomRight();
+        int cBL = paint.bottomLeft();
+        if (paint.kind() == UiPaintKind.LINEAR_GRADIENT) {
+            computeLinearGradientColors((float) w, (float) h,
+                    paint.topLeft(), paint.topRight(), paint.angleDeg(), paint.offsetPx(), gradientTmp);
+            cTL = gradientTmp[0];
+            cTR = gradientTmp[1];
+            cBR = gradientTmp[2];
+            cBL = gradientTmp[3];
+        }
+
+        Arrays.fill(primitivePointsTmp, 0.0f);
+        for (int i = 0; i < primitive.pointCount(); i++) {
+            primitivePointsTmp[i * 2] = primitive.localX(i);
+            primitivePointsTmp[i * 2 + 1] = primitive.localY(i);
+        }
+        float strokeWidth = !fill && stroke != null ? stroke.thickness() : 0.0f;
+        float flags = fill ? 1.0f : 2.0f;
+        float rounding = Math.min(primitive.rounding(), (float) Math.min(w, h) * 0.45f);
+        double outset = !fill ? strokeWidth * 0.5 : 0.0;
+
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.PRIMITIVE, null, null);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+        int i1 = appendPrimitiveVertex(mesh, x - outset, y - outset, cTL, bounds, primitivePointsTmp,
+                primitive.pointCount(), rounding, strokeWidth, flags);
+        int i2 = appendPrimitiveVertex(mesh, x - outset, y + h + outset, cBL, bounds, primitivePointsTmp,
+                primitive.pointCount(), rounding, strokeWidth, flags);
+        int i3 = appendPrimitiveVertex(mesh, x + w + outset, y + h + outset, cBR, bounds, primitivePointsTmp,
+                primitive.pointCount(), rounding, strokeWidth, flags);
+        int i4 = appendPrimitiveVertex(mesh, x + w + outset, y - outset, cTR, bounds, primitivePointsTmp,
+                primitive.pointCount(), rounding, strokeWidth, flags);
+        mesh.quad(i1, i2, i3, i4);
+        endAutoBatch(auto);
+    }
+
+    private static int appendPrimitiveVertex(MeshBuilder mesh,
+                                             double x,
+                                             double y,
+                                             int argb,
+                                             UiRect bounds,
+                                             float[] points,
+                                             int pointCount,
+                                             float rounding,
+                                             float strokeWidth,
+                                             float flags) {
+        int a = (argb >>> 24) & 0xFF;
+        int r = (argb >>> 16) & 0xFF;
+        int g = (argb >>> 8) & 0xFF;
+        int b = argb & 0xFF;
+        return mesh.vec2(x, y).local2(x, y).color(r, g, b, a)
+                .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
+                .vec4(points[0], points[1], points[2], points[3])
+                .vec4(points[4], points[5], points[6], points[7])
+                .vec4(points[8], points[9], points[10], points[11])
+                .vec4(points[12], points[13], points[14], points[15])
+                .vec4(pointCount, rounding, strokeWidth, flags)
+                .next();
     }
 
     private void renderSquircleSdf(UiBoxShape box, UiPaint paint, UiStroke stroke, boolean fill) {
@@ -3659,23 +4013,7 @@ public final class Renderer2D {
                                           MeshBuilder sourceMesh,
                                           RenderPipeline pipeline,
                                           TextPlacementMode placement) {
-        return UiRenderDispatcher.enqueueTextMesh(label, font, sourceMesh, pipeline, placement, false);
-    }
-
-    public static boolean enqueueLiquidGlassTextMesh(String label,
-                                                     GlyphFont font,
-                                                     MeshBuilder sourceMesh,
-                                                     RenderPipeline pipeline,
-                                                     TextPlacementMode placement) {
-        return UiRenderDispatcher.enqueueTextMesh(label, font, sourceMesh, pipeline, placement, true);
-    }
-
-    public static boolean submitLiquidGlassTextMeshImmediate(String label,
-                                                             GlyphFont font,
-                                                             MeshBuilder sourceMesh,
-                                                             RenderPipeline pipeline,
-                                                             TextPlacementMode placement) {
-        return UiRenderDispatcher.submitLiquidGlassTextMeshImmediate(label, font, sourceMesh, pipeline, placement);
+        return UiRenderDispatcher.enqueueTextMesh(label, font, sourceMesh, pipeline, placement);
     }
 
     public static RenderWarpStack.Scope pushWarp(RenderWarp warp) {

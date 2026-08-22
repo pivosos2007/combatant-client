@@ -21,6 +21,7 @@ public enum CombatantVertexFormatElements {
     public static final GpuFormat PARAMS3 = GpuFormat.RGBA32_FLOAT;
     public static final GpuFormat PARAMS4 = GpuFormat.RGBA32_FLOAT;
     public static final GpuFormat PARAMS5 = GpuFormat.RGBA32_FLOAT;
+    public static final GpuFormat PARAMS6 = GpuFormat.RGBA32_FLOAT;
     public static final GpuFormat LOCAL = GpuFormat.RGBA32_FLOAT;
 
 }

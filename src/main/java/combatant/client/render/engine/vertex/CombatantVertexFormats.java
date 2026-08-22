@@ -121,6 +121,21 @@ public enum CombatantVertexFormats {
             .addAttribute("Params2", CombatantVertexFormatElements.PARAMS2)
             .build();
 
+    /** Liquid-glass optical payload plus an optional eight-point primitive mask. */
+    public static final VertexFormat POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS6 = VertexFormat.builder(0)
+            .addAttribute("Position", CombatantVertexFormatElements.POS2)
+            .addAttribute("UV0", CombatantVertexFormatElements.TEXTURE)
+            .addAttribute("Local", CombatantVertexFormatElements.LOCAL)
+            .addAttribute("Color", CombatantVertexFormatElements.COLOR)
+            .addAttribute("Rect", CombatantVertexFormatElements.RECT)
+            .addAttribute("Params", CombatantVertexFormatElements.PARAMS)
+            .addAttribute("Params2", CombatantVertexFormatElements.PARAMS2)
+            .addAttribute("Params3", CombatantVertexFormatElements.PARAMS3)
+            .addAttribute("Params4", CombatantVertexFormatElements.PARAMS4)
+            .addAttribute("Params5", CombatantVertexFormatElements.PARAMS5)
+            .addAttribute("Params6", CombatantVertexFormatElements.PARAMS6)
+            .build();
+
     public static final VertexFormat POS2_TEXTURE_COLOR_RECT_PARAMS2 = VertexFormat.builder(0)
             .addAttribute("Position", CombatantVertexFormatElements.POS2)
             .addAttribute("UV0", CombatantVertexFormatElements.TEXTURE)

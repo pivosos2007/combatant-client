@@ -107,14 +107,6 @@ public interface TextRenderer {
         return render(text, x, y, color, false);
     }
 
-    /**
-     * Shader-backed liquid glass text. Implementations that cannot submit a
-     * custom glyph shader intentionally fall back to regular text.
-     */
-    default double renderLiquidGlass(String text, double x, double y, RenderColor color, boolean shadow) {
-        return render(text, x, y, color, shadow);
-    }
-
     default double renderGradient(String text, double x, double y, Font.GlyphGradient gradient, boolean shadow) {
         if (text == null || text.isEmpty() || gradient == null) return x;
         boolean wasBuilding = isBuilding();

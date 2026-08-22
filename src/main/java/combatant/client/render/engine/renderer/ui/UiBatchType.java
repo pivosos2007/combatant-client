@@ -17,8 +17,10 @@ public enum UiBatchType {
     ORBIZ_RING(CombatantRenderPipelines.UI_ORBIZ_RING_BATCH, true, false),
     ROUNDED_FILL_SMOKE(CombatantRenderPipelines.UI_ROUNDED_FILL_SMOKE_BATCH, true, false),
     MODULE_CATEGORY_SURFACE(CombatantRenderPipelines.UI_MODULE_CATEGORY_SURFACE_BATCH, true, false),
+    MAIN_MENU_HONEYCOMB(CombatantRenderPipelines.UI_MAIN_MENU_HONEYCOMB_BATCH, true, true),
     ROUNDED_STROKE_ANGULAR(CombatantRenderPipelines.UI_ROUNDED_STROKE_ANGULAR_BATCH, true, false),
     SHAPE(CombatantRenderPipelines.UI_SHAPE_BATCH, true, false),
+    PRIMITIVE(CombatantRenderPipelines.UI_PRIMITIVE_BATCH, true, false),
     GLOW(CombatantRenderPipelines.UI_GLOW_BATCH, true, false),
     TEXTURED_SHAPE(CombatantRenderPipelines.UI_TEXTURED_SHAPE_BATCH, true, true),
     BLUR(CombatantRenderPipelines.UI_BLUR_BATCH, true, true),
@@ -33,5 +35,10 @@ public enum UiBatchType {
         this.pipeline = pipeline;
         this.needsUiBatch = needsUiBatch;
         this.usesSampler = usesSampler;
+    }
+
+    /** Materials that sample both the captured clean scene and its shared Kawase blur. */
+    public boolean usesPreparedGlass() {
+        return this == LIQUID_GLASS || this == MAIN_MENU_HONEYCOMB;
     }
 }

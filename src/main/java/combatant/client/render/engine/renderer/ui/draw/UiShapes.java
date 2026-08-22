@@ -25,6 +25,19 @@ public enum UiShapes {
         return UiBoxShape.rect(x, y, width, height);
     }
 
+    public static UiPrimitive.Builder primitive(double x, double y, double width, double height) {
+        return UiPrimitive.builder(x, y, width, height);
+    }
+
+    public static UiPrimitive primitive(double x, double y, double width, double height,
+                                        UiPrimitive.Preset preset, double cut, double rounding) {
+        return UiPrimitive.builder(x, y, width, height)
+                .preset(preset)
+                .cut(cut)
+                .rounding(rounding)
+                .build();
+    }
+
     public static UiShape rounded(double x, double y, double width, double height, double radius) {
         return UiShape.box(UiBoxShape.rounded(x, y, width, height, radius));
     }

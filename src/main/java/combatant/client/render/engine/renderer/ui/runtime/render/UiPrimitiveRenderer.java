@@ -9,7 +9,6 @@ package combatant.client.render.engine.renderer.ui.runtime.render;
 
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.*;
-import combatant.client.render.engine.renderer.ui.draw.*;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiProps;
@@ -28,6 +27,16 @@ public final class UiPrimitiveRenderer {
     private final double[] points = new double[512];
     private final int[] gradientCornersTmp = new int[4];
     private float renderAlpha = 1.0f;
+
+    private static boolean isPrimitiveShape(String shape) {
+        return switch (shape) {
+            case "primitive", "procedural-panel", "procedural_panel", "panel-primitive", "panel_primitive",
+                 "hexagon", "trapezoid-left", "trapezoid_left", "trapezoid-right", "trapezoid_right",
+                 "parallelogram-left", "parallelogram_left", "parallelogram-right", "parallelogram_right",
+                 "directional-left", "directional_left", "directional-right", "directional_right" -> true;
+            default -> false;
+        };
+    }
 
     private static boolean isBoxShape(String shape, UiProps props) {
         // Only the new flexible-box contract should be routed through UiBoxShape.
@@ -90,6 +99,7 @@ public final class UiPrimitiveRenderer {
                 case "round", "rounded", "radius" -> UiCornerSpec.rounded(rx, ry);
                 case "chamfer", "chamfered", "cut", "bevel", "beveled" -> UiCornerSpec.chamfered(cx, cy);
                 case "concave", "inverse", "inverse-round", "inverse_round" -> UiCornerSpec.concaveRounded(r);
+                case "notch", "notched", "removed", "removed-corner", "removed_corner" -> UiCornerSpec.notched(cx, cy);
                 case "square", "none" -> UiCornerSpec.square();
                 default -> fallback;
             };
@@ -102,6 +112,8 @@ public final class UiPrimitiveRenderer {
                 return UiCornerSpec.chamfered(cut);
             if (normalized.startsWith("concave") || normalized.startsWith("inverse"))
                 return UiCornerSpec.concaveRounded(radius);
+            if (normalized.startsWith("notch") || normalized.startsWith("removed"))
+                return UiCornerSpec.notched(cut, cut);
             if (normalized.startsWith("square") || normalized.startsWith("none")) return UiCornerSpec.square();
         }
         return fallback;
@@ -138,6 +150,20 @@ public final class UiPrimitiveRenderer {
                 return UiEdgeSpec.notched(number(offset, 0.0f), width, depth);
             }
             if (kind.equals("inset")) return UiEdgeSpec.inset(number(map.get("depth"), 0.0f));
+            if (kind.equals("cut") || kind.equals("diagonal-cut") || kind.equals("diagonal_cut")) {
+                float width = number(map.get("width"), number(map.get("size"), (float) Math.min(length * 0.18, 18.0)));
+                float depth = number(map.get("depth"), (float) Math.min(length * 0.10, 8.0));
+                Object offset = map.get("offset");
+                if (offset == null || "center".equals(String.valueOf(offset))) return UiEdgeSpec.cutCenter(width, depth);
+                return UiEdgeSpec.cut(number(offset, 0.0f), width, depth);
+            }
+            if (kind.equals("protrusion") || kind.equals("tab")) {
+                float width = number(map.get("width"), number(map.get("size"), (float) Math.min(length * 0.18, 18.0)));
+                float depth = number(map.get("depth"), (float) Math.min(length * 0.10, 8.0));
+                Object offset = map.get("offset");
+                if (offset == null || "center".equals(String.valueOf(offset))) return UiEdgeSpec.protrusionCenter(width, depth);
+                return UiEdgeSpec.protrusion(number(offset, 0.0f), width, depth);
+            }
             return UiEdgeSpec.straight();
         }
         if (value instanceof String s) {
@@ -351,7 +377,42 @@ public final class UiPrimitiveRenderer {
         float gradientAngle = props.number("angle", 90.0f);
         float gradientOffset = props.number("offset", 0.0f);
 
-        renderShapeBlur(renderer, props, style, shape, x, y, w, h, cut);
+        boolean primitiveShape = isPrimitiveShape(shape);
+        // The legacy blur shaders only know rect/rounded/chamfer masks. Do not
+        // draw a mismatched rectangular blur under a hexagonal primitive; the
+        // frontend material pass will consume the same primitive mask directly.
+        if (!primitiveShape) renderShapeBlur(renderer, props, style, shape, x, y, w, h, cut);
+
+        if (primitiveShape) {
+            UiPrimitive primitive = buildPrimitive(props, style, shape, x, y, w, h);
+            if (props.bool("liquidGlass", style.liquidGlass())) {
+                Renderer2D.LiquidGlassPreset glassPreset = switch (props.string("glassPreset", "balanced")
+                        .trim().toLowerCase(Locale.ROOT)) {
+                    case "light" -> Renderer2D.LiquidGlassPreset.LIGHT;
+                    case "heavy" -> Renderer2D.LiquidGlassPreset.HEAVY;
+                    case "hud-small", "hud_small" -> Renderer2D.LiquidGlassPreset.HUD_SMALL;
+                    case "hud-large", "hud_large" -> Renderer2D.LiquidGlassPreset.HUD_LARGE;
+                    case "health", "health-bar", "health_bar" -> Renderer2D.LiquidGlassPreset.HEALTH_BAR;
+                    default -> Renderer2D.LiquidGlassPreset.BALANCED;
+                };
+                renderer.liquidGlassPrimitive(
+                        primitive,
+                        color(props.get("glassTint"), 0xFFFFFFFF),
+                        props.number("glassAlpha", 1.0f),
+                        props.number("blurAlpha", style.blurAlpha()) * renderAlpha,
+                        glassPreset
+                );
+            }
+            UiPaint fillPaint = buildPaint(props, fill, linearGradient, gradientStart, gradientEnd, gradientAngle, gradientOffset);
+            if ((fillPaint.solidColor() >>> 24) > 0 || linearGradient || hasFillCornerColors(props)) {
+                renderer.primitive(primitive, fillPaint);
+            }
+            if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
+                renderer.primitiveStroke(primitive, buildStrokePaint(props, stroke, gradientAngle, gradientOffset),
+                        UiStroke.of(strokeWidth));
+            }
+            return;
+        }
 
         if (isBoxShape(shape, props)) {
             UiBoxShape boxShape = buildBoxShape(props, style, shape, x, y, w, h);
@@ -806,6 +867,92 @@ public final class UiPrimitiveRenderer {
             left = edgeFromObject(first(props, "edgeLeft", "leftEdge"), h, false);
 
         return builder.edges(top, right, bottom, left).build();
+    }
+
+    private UiPrimitive buildPrimitive(UiProps props, UiStyle style, String shape,
+                                       double x, double y, double w, double h) {
+        String rawPreset = props.string("preset", shape).trim().toLowerCase(Locale.ROOT);
+        UiPrimitive.Preset preset = switch (rawPreset) {
+            case "chamfer", "chamfered", "bevel", "beveled" -> UiPrimitive.Preset.CHAMFERED;
+            case "hex", "hexagon" -> UiPrimitive.Preset.HEXAGON;
+            case "trapezoid-left", "trapezoid_left" -> UiPrimitive.Preset.TRAPEZOID_LEFT;
+            case "trapezoid-right", "trapezoid_right" -> UiPrimitive.Preset.TRAPEZOID_RIGHT;
+            case "parallelogram-left", "parallelogram_left" -> UiPrimitive.Preset.PARALLELOGRAM_LEFT;
+            case "parallelogram-right", "parallelogram_right" -> UiPrimitive.Preset.PARALLELOGRAM_RIGHT;
+            case "directional-left", "directional_left", "tech-left", "tech_left" -> UiPrimitive.Preset.DIRECTIONAL_LEFT;
+            case "directional-right", "directional_right", "tech-right", "tech_right" -> UiPrimitive.Preset.DIRECTIONAL_RIGHT;
+            case "notched-top", "notched_top" -> UiPrimitive.Preset.NOTCHED_TOP;
+            case "stepped-left", "stepped_left" -> UiPrimitive.Preset.STEPPED_LEFT;
+            case "stepped-right", "stepped_right" -> UiPrimitive.Preset.STEPPED_RIGHT;
+            default -> UiPrimitive.Preset.RECT;
+        };
+
+        float radius = props.number("radius", style.radius());
+        float cut = props.number("cut", props.number("chamfer", Math.max(2.0f, style.radius())));
+        UiPrimitive.Builder builder = UiPrimitive.builder(x, y, w, h)
+                .preset(preset)
+                .cut(cut)
+                .rounding(props.number("rounding", props.number("edgeRounding", 0.0f)));
+
+        UiCornerSpec defaultCorner = preset == UiPrimitive.Preset.CHAMFERED
+                ? UiCornerSpec.chamfered(cut)
+                : UiCornerSpec.square();
+        if (props.get("corners") != null
+                || props.get("cornerTL") != null || props.get("cornerTopLeft") != null
+                || props.get("cornerTR") != null || props.get("cornerTopRight") != null
+                || props.get("cornerBR") != null || props.get("cornerBottomRight") != null
+                || props.get("cornerBL") != null || props.get("cornerBottomLeft") != null) {
+            builder.corner(UiPrimitive.Corner.TOP_LEFT,
+                            corner(props, "TL", "TopLeft", defaultCorner, radius, cut))
+                    .corner(UiPrimitive.Corner.TOP_RIGHT,
+                            corner(props, "TR", "TopRight", defaultCorner, radius, cut))
+                    .corner(UiPrimitive.Corner.BOTTOM_RIGHT,
+                            corner(props, "BR", "BottomRight", defaultCorner, radius, cut))
+                    .corner(UiPrimitive.Corner.BOTTOM_LEFT,
+                            corner(props, "BL", "BottomLeft", defaultCorner, radius, cut));
+        }
+
+        Object edges = props.get("edges");
+        applyPrimitiveEdge(builder, UiPrimitive.Side.TOP, edgeValue(edges, "top"), w, true);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.RIGHT, edgeValue(edges, "right"), h, false);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.BOTTOM, edgeValue(edges, "bottom"), w, true);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.LEFT, edgeValue(edges, "left"), h, false);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.TOP, first(props, "edgeTop", "topEdge"), w, true);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.RIGHT, first(props, "edgeRight", "rightEdge"), h, false);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.BOTTOM, first(props, "edgeBottom", "bottomEdge"), w, true);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.LEFT, first(props, "edgeLeft", "leftEdge"), h, false);
+
+        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.TOP_LEFT, "TL", "TopLeft");
+        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.TOP_RIGHT, "TR", "TopRight");
+        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.BOTTOM_RIGHT, "BR", "BottomRight");
+        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.BOTTOM_LEFT, "BL", "BottomLeft");
+        return builder.build();
+    }
+
+    private static void applyPrimitiveEdge(UiPrimitive.Builder builder,
+                                           UiPrimitive.Side side,
+                                           Object value,
+                                           double length,
+                                           boolean horizontal) {
+        if (value != null) builder.side(side, edgeFromObject(value, length, horizontal));
+    }
+
+    private static void applyPrimitiveCornerOffset(UiPrimitive.Builder builder,
+                                                   UiProps props,
+                                                   UiPrimitive.Corner corner,
+                                                   String shortName,
+                                                   String longName) {
+        Object offsets = props.get("cornerOffsets");
+        Object value = cornerValue(offsets, shortName, longName);
+        float dx = 0.0f;
+        float dy = 0.0f;
+        if (value instanceof Map<?, ?> map) {
+            dx = number(map.get("x"), number(map.get("dx"), 0.0f));
+            dy = number(map.get("y"), number(map.get("dy"), 0.0f));
+        }
+        dx = props.number("offset" + shortName + "X", props.number("offset" + longName + "X", dx));
+        dy = props.number("offset" + shortName + "Y", props.number("offset" + longName + "Y", dy));
+        if (Math.abs(dx) > 0.0001f || Math.abs(dy) > 0.0001f) builder.cornerOffset(corner, dx, dy);
     }
 
     private UiPaint buildPaint(UiProps props, int fill, boolean linearGradient,

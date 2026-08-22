@@ -16,6 +16,8 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.render.engine.renderer.Renderer2D;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ProjectionMatrixBuffer;
+import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 import org.joml.Matrix4f;
 import combatant.client.config.MainConfig;
@@ -25,6 +27,7 @@ import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.uniform.impl.MenuBackgroundUniforms;
+import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
 import combatant.client.runtime.RuntimeGate;
 
 public enum MenuBackgroundRenderer {
@@ -35,6 +38,7 @@ public enum MenuBackgroundRenderer {
     private static ProjectionMatrixBuffer projection;
     private static boolean deferredPending;
     private static boolean deferredAurora;
+    private static Identifier deferredTexture;
 
     public static void render(Minecraft mc) {
         render(mc, false);
@@ -46,17 +50,78 @@ public enum MenuBackgroundRenderer {
         if (Renderer2D.isDeferredExtractRecording()) {
             deferredPending = true;
             deferredAurora = aurora;
+            deferredTexture = null;
             return;
         }
 
         renderNow(mc, aurora);
     }
 
+    /** Queues a plain cover-fit image before the GUI glass source is captured. */
+    public static void renderTexture(Minecraft mc, Identifier texture) {
+        if (RuntimeGate.isPanic() || mc == null || texture == null) return;
+        if (Renderer2D.isDeferredExtractRecording()) {
+            deferredPending = true;
+            deferredTexture = texture;
+            return;
+        }
+        renderTextureNow(mc, texture);
+    }
+
     public static void drainDeferred(Minecraft mc) {
         if (!deferredPending) return;
         boolean aurora = deferredAurora;
+        Identifier texture = deferredTexture;
         deferredPending = false;
-        renderNow(mc, aurora);
+        deferredTexture = null;
+        if (texture != null) renderTextureNow(mc, texture);
+        else renderNow(mc, aurora);
+    }
+
+    private static void renderTextureNow(Minecraft mc, Identifier textureId) {
+        if (RuntimeGate.isPanic() || mc == null || textureId == null) return;
+        RenderTarget framebuffer = mc.gameRenderer.mainRenderTarget();
+        if (framebuffer == null) return;
+        int width = mc.getWindow().getWidth();
+        int height = mc.getWindow().getHeight();
+        if (width <= 0 || height <= 0) return;
+
+        AbstractTexture texture = mc.getTextureManager().getTexture(textureId);
+        if (texture == null || texture.getTextureView() == null || texture.getSampler() == null) return;
+
+        FullScreenRenderer.ensureInit();
+        UIBatchUniforms.update(width, height);
+        var modelView = RenderSystem.getModelViewStack();
+        boolean pushedModelView = false;
+        GpuBufferSlice previousProjection = RenderSystem.getProjectionMatrixBuffer();
+        ProjectionType previousProjectionType = RenderSystem.getProjectionType();
+        Matrix4f previousMeshProjection = MeshRenderer.projection();
+        boolean previousRendering3D = RenderState.rendering3D;
+
+        try {
+            modelView.pushMatrix();
+            pushedModelView = true;
+            modelView.identity();
+            if (projection == null) projection = new ProjectionMatrixBuffer("combatant-menu-bg-projection");
+            Matrix4f identityProjection = IDENTITY.identity();
+            RenderSystem.setProjectionMatrix(projection.getBuffer(identityProjection), ProjectionType.PERSPECTIVE);
+            MeshRenderer.setProjection(identityProjection);
+            RenderState.rendering3D = false;
+
+            FullScreenRenderer.begin("Combatant Main Menu Texture")
+                    .attachment(framebuffer)
+                    .pipeline(CombatantRenderPipelines.MAIN_MENU_TEXTURE_BACKGROUND)
+                    .uniform("UIBatch", UIBatchUniforms.get())
+                    .sampler("u_Texture", texture.getTextureView(), texture.getSampler())
+                    .end();
+        } finally {
+            if (pushedModelView) modelView.popMatrix();
+            MeshRenderer.setProjection(previousMeshProjection);
+            RenderState.rendering3D = previousRendering3D;
+            if (previousProjection != null && previousProjectionType != null) {
+                RenderSystem.setProjectionMatrix(previousProjection, previousProjectionType);
+            }
+        }
     }
 
     private static void renderNow(Minecraft mc, boolean aurora) {

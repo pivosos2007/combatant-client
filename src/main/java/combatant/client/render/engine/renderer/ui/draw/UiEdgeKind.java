@@ -15,6 +15,7 @@ public enum UiEdgeKind {
     NOTCHED(1.0f),
     INSET(2.0f),
     CUT(3.0f),
+    PROTRUSION(4.0f),
     CUSTOM(8.0f);
 
     private final float shaderCode;

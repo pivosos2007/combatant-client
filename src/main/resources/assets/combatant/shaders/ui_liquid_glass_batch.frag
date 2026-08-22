@@ -13,6 +13,10 @@ in vec4 v_Color;
 in vec4 v_Rect;
 in vec4 v_Params;
 in vec4 v_Params2;
+in vec4 v_Params3;
+in vec4 v_Params4;
+in vec4 v_Params5;
+in vec4 v_Params6;
 
 out vec4 fragColor;
 
@@ -114,7 +118,43 @@ float squircleSDF(vec2 p, vec2 halfSize, float exponent) {
     return length(gradient) > 0.00001 ? implicit / length(gradient) : radial;
 }
 
+vec2 primitivePoint(int index) {
+    if (index == 0) return v_Params.xy;
+    if (index == 1) return v_Params.zw;
+    if (index == 2) return v_Params3.xy;
+    if (index == 3) return v_Params3.zw;
+    if (index == 4) return v_Params4.xy;
+    if (index == 5) return v_Params4.zw;
+    if (index == 6) return v_Params5.xy;
+    return v_Params5.zw;
+}
+
+float smoothMaximum(float a, float b, float radius) {
+    if (radius <= 0.0001) return max(a, b);
+    float h = clamp(0.5 + 0.5 * (a - b) / radius, 0.0, 1.0);
+    return mix(b, a, h) + radius * h * (1.0 - h);
+}
+
+float primitiveSDF(vec2 localPos) {
+    int count = int(clamp(floor(v_Params6.x + 0.5), 3.0, 8.0));
+    float rounding = max(0.0, v_Params6.y);
+    float d = -1.0e20;
+    for (int i = 0; i < 8; i++) {
+        if (i >= count) break;
+        int next = i + 1;
+        if (next >= count) next = 0;
+        vec2 a = primitivePoint(i);
+        vec2 b = primitivePoint(next);
+        vec2 edge = b - a;
+        float edgeLength = max(length(edge), 0.0001);
+        float edgeDistance = -(edge.x * (localPos.y - a.y) - edge.y * (localPos.x - a.x)) / edgeLength;
+        d = i == 0 ? edgeDistance : smoothMaximum(d, edgeDistance, rounding);
+    }
+    return d;
+}
+
 float glassShapeSDF(vec2 p, vec2 halfSize, vec4 radius, float exponent, bool squircle) {
+    if (v_Params6.w > 0.5) return primitiveSDF(p + v_Rect.zw * 0.5);
     return squircle ? squircleSDF(p, halfSize, exponent) : roundedBoxSDF(p, halfSize, radius, exponent);
 }
 
@@ -216,7 +256,8 @@ void main() {
     float blurAlpha;
     bool squircle;
     float distortStrength = decodeDistort(max(v_TexCoord.y, 0.0), cornerSmoothness, blurAlpha, squircle);
-    vec2 halfSize = size * 0.5 - (squircle ? 0.0 : 1.0);
+    bool primitive = v_Params6.w > 0.5;
+    vec2 halfSize = size * 0.5 - ((squircle || primitive) ? 0.0 : 1.0);
 
     float d = glassShapeSDF(pos, halfSize, radius, cornerSmoothness, squircle);
     float aa = max(max(logicalScale.x, logicalScale.y) * 1.35, 0.75);
