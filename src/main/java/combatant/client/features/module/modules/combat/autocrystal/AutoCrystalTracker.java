@@ -102,11 +102,8 @@ public final class AutoCrystalTracker {
         double z = sourceCrystal.getZ();
         long now = System.currentTimeMillis();
 
-        for (Entity entity : level.entitiesForRendering()) {
-            if (!(entity instanceof EndCrystal crystal)) {
-                continue;
-            }
-
+        AABB searchBox = new AABB(x - 12.0, y - 12.0, z - 12.0, x + 12.0, y + 12.0, z + 12.0);
+        for (EndCrystal crystal : level.getEntitiesOfClass(EndCrystal.class, searchBox)) {
             if (!crystal.isAlive() || crystal.isRemoved() || isDeadCrystal(crystal.getId())) {
                 continue;
             }
@@ -124,11 +121,8 @@ public final class AutoCrystalTracker {
         }
 
         AABB box = new AABB(base.above()).inflate(0.0, 1.0, 0.0);
-        for (Entity entity : level.entitiesForRendering()) {
-            if (entity instanceof EndCrystal crystal
-                    && crystal.isAlive()
-                    && !crystal.isRemoved()
-                    && crystal.getBoundingBox().intersects(box)) {
+        for (EndCrystal crystal : level.getEntitiesOfClass(EndCrystal.class, box)) {
+            if (crystal.isAlive() && !crystal.isRemoved()) {
                 return true;
             }
         }

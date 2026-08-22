@@ -33,17 +33,45 @@ public enum MeshUniforms {
     private static final Data DATA = new Data();
     private static final String UNIFORM_NAME = "Combatant - Mesh UBO";
     private static final int EXPECTED_WRITES_PER_FRAME = 16;
+    private static final Matrix4f LAST_PROJ = new Matrix4f();
+    private static final Matrix4f LAST_MODEL_VIEW = new Matrix4f();
+    private static long lastFrameId = Long.MIN_VALUE;
+    private static float lastViewportWidth = Float.NaN;
+    private static float lastViewportHeight = Float.NaN;
 
     public static void update(Matrix4f proj, Matrix4f modelView) {
         update(proj, modelView, 1.0f, 1.0f);
     }
 
     public static void update(Matrix4f proj, Matrix4f modelView, float viewportWidth, float viewportHeight) {
+        float safeWidth = Math.max(1.0f, viewportWidth);
+        float safeHeight = Math.max(1.0f, viewportHeight);
+        CombatantUniformAllocator allocator = CombatantRenderSystem.uniforms();
+        long frameId = allocator.frameId();
+
+        // Consecutive draws in a compiled UI/world pass commonly share the exact same
+        // projection and model-view. Rebinding the current slice is sufficient; mapping and
+        // rewriting another std140 block only burns ring space and driver calls.
+        if (allocator.hasCurrent(UNIFORM_NAME)
+                && lastFrameId == frameId
+                && Float.compare(lastViewportWidth, safeWidth) == 0
+                && Float.compare(lastViewportHeight, safeHeight) == 0
+                && LAST_PROJ.equals(proj, 0.0f)
+                && LAST_MODEL_VIEW.equals(modelView, 0.0f)) {
+            return;
+        }
+
         DATA.proj = proj;
         DATA.modelView = modelView;
-        DATA.viewportWidth = Math.max(1.0f, viewportWidth);
-        DATA.viewportHeight = Math.max(1.0f, viewportHeight);
-        CombatantRenderSystem.uniforms().write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
+        DATA.viewportWidth = safeWidth;
+        DATA.viewportHeight = safeHeight;
+        allocator.write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
+
+        LAST_PROJ.set(proj);
+        LAST_MODEL_VIEW.set(modelView);
+        lastFrameId = frameId;
+        lastViewportWidth = safeWidth;
+        lastViewportHeight = safeHeight;
     }
 
     public static GpuBufferSlice get() {

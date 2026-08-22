@@ -7,6 +7,8 @@
 
 package combatant.client.features.module.modules.combat.autoanchor;
 
+import combatant.client.util.combat.CombatBlockSearch;
+import combatant.client.util.combat.ExplosionDamageRules;
 import combatant.client.util.world.ExplosionDamageUtil;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -47,33 +49,29 @@ public final class AutoAnchorPlanner {
 
         Vec3 predictedTarget = context.resolvePredictedPosition(target, context.predictTicks());
         Vec3 eyes = context.player().getEyePosition();
-        BlockPos origin = BlockPos.containing(center);
         int horizontalRange = Math.max(1, range);
         int verticalRange = Math.min(horizontalRange, 3);
-        double radiusSq = (double) horizontalRange * horizontalRange;
 
         List<CandidateShell> placeShells = new ArrayList<>();
         List<CandidateShell> existingShells = new ArrayList<>();
-        for (int x = origin.getX() - horizontalRange; x <= origin.getX() + horizontalRange; x++) {
-            for (int y = origin.getY() - verticalRange; y <= origin.getY() + verticalRange; y++) {
-                for (int z = origin.getZ() - horizontalRange; z <= origin.getZ() + horizontalRange; z++) {
-                    BlockPos pos = new BlockPos(x, y, z);
-                    Vec3 anchorVec = AutoAnchorInteractionUtil.anchorVec(pos);
-                    if (anchorVec.distanceToSqr(center) > radiusSq) {
-                        continue;
-                    }
-
-                    lastScanned++;
-                    CandidateShell shell = collectShell(context, pos, anchorVec, target, predictedTarget, eyes);
-                    if (shell == null) continue;
-                    if (shell.existingAnchor()) {
-                        existingShells.add(shell);
-                    } else {
-                        placeShells.add(shell);
-                    }
-                }
+        CombatBlockSearch.forEachSphere(center, horizontalRange, verticalRange, (x, y, z) -> {
+            BlockPos pos = new BlockPos(x, y, z);
+            lastScanned++;
+            CandidateShell shell = collectShell(
+                    context,
+                    pos,
+                    AutoAnchorInteractionUtil.anchorVec(pos),
+                    target,
+                    predictedTarget,
+                    eyes
+            );
+            if (shell == null) return;
+            if (shell.existingAnchor()) {
+                existingShells.add(shell);
+            } else {
+                placeShells.add(shell);
             }
-        }
+        });
 
         Comparator<CandidateShell> byPotential = Comparator
                 .comparingDouble(CandidateShell::estimatedDamage)
@@ -86,13 +84,13 @@ public final class AutoAnchorPlanner {
         List<AutoAnchorData> place = evaluateShells(context, target, placeShells, MAX_PLACE_DAMAGE_EVALUATIONS);
         List<AutoAnchorData> explode = evaluateShells(context, target, existingShells, MAX_EXISTING_DAMAGE_EVALUATIONS);
 
-        AutoAnchorData bestPlace = AutoAnchorDamageRules.selectBest(
+        AutoAnchorData bestPlace = ExplosionDamageRules.selectBest(
                 place,
                 target,
                 context.minDamage(),
                 context.faceplaceHealth()
         );
-        AutoAnchorData bestExplode = AutoAnchorDamageRules.selectBest(
+        AutoAnchorData bestExplode = ExplosionDamageRules.selectBest(
                 explode,
                 target,
                 context.minDamage(),
@@ -148,7 +146,7 @@ public final class AutoAnchorPlanner {
         if (estimatedDamage < MIN_RAW_DAMAGE) {
             return null;
         }
-        if (!(AutoAnchorDamageRules.shouldOverrideMinDamage(target, estimatedDamage, context.faceplaceHealth())
+        if (!(ExplosionDamageRules.shouldOverrideMinDamage(target, estimatedDamage, context.faceplaceHealth())
                 || estimatedDamage > context.minDamage())) {
             return null;
         }
@@ -210,7 +208,7 @@ public final class AutoAnchorPlanner {
         if (damage < MIN_RAW_DAMAGE) {
             return null;
         }
-        if (!(AutoAnchorDamageRules.shouldOverrideMinDamage(target, damage, context.faceplaceHealth())
+        if (!(ExplosionDamageRules.shouldOverrideMinDamage(target, damage, context.faceplaceHealth())
                 || damage > context.minDamage())) {
             return null;
         }

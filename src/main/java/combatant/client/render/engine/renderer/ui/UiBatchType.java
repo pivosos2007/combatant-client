@@ -16,6 +16,7 @@ public enum UiBatchType {
     LINES(CombatantRenderPipelines.UI_COLORED_LINES_FAST, true, false),
     ORBIZ_RING(CombatantRenderPipelines.UI_ORBIZ_RING_BATCH, true, false),
     ROUNDED_FILL_SMOKE(CombatantRenderPipelines.UI_ROUNDED_FILL_SMOKE_BATCH, true, false),
+    MODULE_CATEGORY_SURFACE(CombatantRenderPipelines.UI_MODULE_CATEGORY_SURFACE_BATCH, true, false),
     ROUNDED_STROKE_ANGULAR(CombatantRenderPipelines.UI_ROUNDED_STROKE_ANGULAR_BATCH, true, false),
     SHAPE(CombatantRenderPipelines.UI_SHAPE_BATCH, true, false),
     GLOW(CombatantRenderPipelines.UI_GLOW_BATCH, true, false),

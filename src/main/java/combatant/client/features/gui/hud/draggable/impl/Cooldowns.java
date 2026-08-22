@@ -106,7 +106,10 @@ public final class Cooldowns extends DraggableHudElement {
             new ModeValue("cooldowns_color_mode", "Theme", COLOR_THEME, COLOR_CUSTOM);
     private final ModeValue panelStyle =
             new ModeValue("cooldowns_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
-                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT);
+                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT,
+                    HudRenderUtil.PANEL_STYLE_GRADIENT);
+    private final NumberValue<Integer> themeGradientStrength =
+            new NumberValue<>("cooldowns_theme_gradient_strength", 72, 0, 100);
     private final ModeValue bgEffect =
             new ModeValue("cooldowns_bg_effect", "Blur", EFFECT_NONE, EFFECT_BLUR);
     private final BooleanValue blink =
@@ -128,6 +131,8 @@ public final class Cooldowns extends DraggableHudElement {
     private final ModeValue shadowMode =
             new ModeValue("cooldowns_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
                     HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME);
+    private final NumberValue<Integer> themeShadowStrength =
+            new NumberValue<>("cooldowns_theme_shadow_strength", 100, 0, 100);
     private final NumberValue<Integer> shadowAlpha =
             new NumberValue<>("cooldowns_shadow_alpha", 38, 0, 255);
     private final RGBColorValue stroke =
@@ -194,6 +199,7 @@ public final class Cooldowns extends DraggableHudElement {
         defs.add(SettingDef.mode(layoutMode));
         defs.add(SettingDef.mode(colorMode));
         defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));
+        defs.add(SettingDef.number(themeGradientStrength).visibleWhen(this::isGradientPanelStyle));
         defs.add(SettingDef.color(bg).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.color(bg2).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.bool(strokeEnabled));
@@ -201,7 +207,8 @@ public final class Cooldowns extends DraggableHudElement {
         defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
         defs.add(SettingDef.bool(strokeGradient).visibleWhen(() -> strokeEnabled.get() && isThemeMode()));
         defs.add(SettingDef.bool(shadowEnabled));
-        defs.add(SettingDef.mode(shadowMode).visibleWhen(shadowEnabled::get));
+        defs.add(SettingDef.mode(shadowMode).visibleWhen(() -> shadowEnabled.get() && isThemeMode()));
+        defs.add(SettingDef.number(themeShadowStrength).visibleWhen(this::isThemeShadow));
         defs.add(SettingDef.number(shadowAlpha).visibleWhen(shadowEnabled::get));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(this::isThemeMode));
         defs.add(SettingDef.colorNoAlpha(text).visibleWhen(this::isCustomMode));
@@ -391,7 +398,8 @@ public final class Cooldowns extends DraggableHudElement {
             HudRenderUtil.drawHudShadow(
                     renderer, drawX, drawY, drawWidth, drawHeight,
                     ScriptedListHudPanel.PANEL_RADIUS * drawBaseScale, drawBaseScale,
-                    HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()), shadowAlpha.get(), 1.0f
+                    isThemeShadow(), shadowAlpha.get(), 1.0f,
+                    themeShadowStrength.get() / 100.0f
             );
         }
 
@@ -680,6 +688,13 @@ public final class Cooldowns extends DraggableHudElement {
                 uiHeaderRight = HudRenderUtil.accentSurface(uiHeaderRight, 0.26f);
                 uiBodyLeft = HudRenderUtil.accentSurface(uiBodyLeft, 0.20f);
                 uiBodyRight = HudRenderUtil.accentSurface(uiBodyRight, 0.30f);
+            } else if (isGradientPanelStyle()) {
+                float strength = themeGradientStrength.get() / 100.0f;
+                HudRenderUtil.ThemeGradient gradient = HudRenderUtil.themePanelGradient(255);
+                uiHeaderLeft = HudRenderUtil.gradientSurface(uiHeaderLeft, gradient.start(), strength);
+                uiHeaderRight = HudRenderUtil.gradientSurface(uiHeaderRight, gradient.end(), strength);
+                uiBodyLeft = HudRenderUtil.gradientSurface(uiBodyLeft, gradient.start(), strength * 0.92f);
+                uiBodyRight = HudRenderUtil.gradientSurface(uiBodyRight, gradient.end(), strength);
             }
             uiOutline = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.18f),
@@ -728,6 +743,15 @@ public final class Cooldowns extends DraggableHudElement {
 
     private boolean isAccentPanelStyle() {
         return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
+    }
+
+    private boolean isGradientPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_GRADIENT.equals(panelStyle.get());
+    }
+
+    private boolean isThemeShadow() {
+        return shadowEnabled.get() && isThemeMode()
+                && HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get());
     }
 
     private int resolveStrokeGradientStart() {

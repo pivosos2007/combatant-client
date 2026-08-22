@@ -7,6 +7,8 @@
 
 package combatant.client.features.module.modules.combat.autobed;
 
+import combatant.client.util.combat.CombatBlockSearch;
+import combatant.client.util.combat.ExplosionDamageRules;
 import combatant.client.util.world.ExplosionDamageUtil;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -47,28 +49,17 @@ public final class AutoBedPlanner {
 
         Vec3 predictedTarget = context.resolvePredictedPosition(target, context.predictTicks());
         Vec3 eyes = context.player().getEyePosition();
-        BlockPos origin = BlockPos.containing(center);
         int horizontalRange = Math.max(1, range);
         int verticalRange = Math.min(horizontalRange, 3);
-        double radiusSq = (double) horizontalRange * horizontalRange;
 
         List<CandidateShell> placeShells = new ArrayList<>();
         List<CandidateShell> existingShells = new ArrayList<>();
-        for (int x = origin.getX() - horizontalRange; x <= origin.getX() + horizontalRange; x++) {
-            for (int y = origin.getY() - verticalRange; y <= origin.getY() + verticalRange; y++) {
-                for (int z = origin.getZ() - horizontalRange; z <= origin.getZ() + horizontalRange; z++) {
-                    BlockPos pos = new BlockPos(x, y, z);
-                    Vec3 posVec = Vec3.atCenterOf(pos);
-                    if (posVec.distanceToSqr(center) > radiusSq) {
-                        continue;
-                    }
-
-                    lastScanned++;
-                    collectExistingShell(context, pos, predictedTarget, eyes, existingShells);
-                    collectPlaceShells(context, pos, predictedTarget, eyes, placeShells);
-                }
-            }
-        }
+        CombatBlockSearch.forEachSphere(center, horizontalRange, verticalRange, (x, y, z) -> {
+            BlockPos pos = new BlockPos(x, y, z);
+            lastScanned++;
+            collectExistingShell(context, pos, predictedTarget, eyes, existingShells);
+            collectPlaceShells(context, pos, predictedTarget, eyes, placeShells);
+        });
 
         Comparator<CandidateShell> byPotential = Comparator
                 .comparingDouble(CandidateShell::estimatedDamage)
@@ -81,13 +72,13 @@ public final class AutoBedPlanner {
         List<AutoBedData> place = evaluateShells(context, target, placeShells, MAX_PLACE_DAMAGE_EVALUATIONS);
         List<AutoBedData> explode = evaluateShells(context, target, existingShells, MAX_EXISTING_DAMAGE_EVALUATIONS);
 
-        AutoBedData bestPlace = AutoBedDamageRules.selectBest(
+        AutoBedData bestPlace = ExplosionDamageRules.selectBest(
                 place,
                 target,
                 context.minDamage(),
                 context.faceplaceHealth()
         );
-        AutoBedData bestExplode = AutoBedDamageRules.selectBest(
+        AutoBedData bestExplode = ExplosionDamageRules.selectBest(
                 explode,
                 target,
                 context.minDamage(),
@@ -212,7 +203,7 @@ public final class AutoBedPlanner {
         if (estimatedDamage < MIN_RAW_DAMAGE) {
             return null;
         }
-        if (!(AutoBedDamageRules.shouldOverrideMinDamage(context.target(), estimatedDamage, context.faceplaceHealth())
+        if (!(ExplosionDamageRules.shouldOverrideMinDamage(context.target(), estimatedDamage, context.faceplaceHealth())
                 || estimatedDamage > context.minDamage())) {
             return null;
         }
@@ -252,7 +243,7 @@ public final class AutoBedPlanner {
                 false
         );
         if (damage < MIN_RAW_DAMAGE) return null;
-        if (!(AutoBedDamageRules.shouldOverrideMinDamage(target, damage, context.faceplaceHealth())
+        if (!(ExplosionDamageRules.shouldOverrideMinDamage(target, damage, context.faceplaceHealth())
                 || damage > context.minDamage())) {
             return null;
         }

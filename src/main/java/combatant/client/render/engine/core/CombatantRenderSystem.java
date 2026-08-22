@@ -11,6 +11,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.render.engine.compat.immediatelyfast.ImmediatelyFastRuntime;
 import combatant.client.render.engine.compat.immediatelyfast.ImmediatelyFastRuntimeSnapshot;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.engine.renderer.ui.ItemBatchRenderer;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.render.iris.IrisRuntimeSnapshot;
 import combatant.client.render.sodium.SodiumTerrainInteropStatsSnapshot;
@@ -291,6 +292,7 @@ public enum CombatantRenderSystem {
     public static void endRenderSubmission() {
         if (!initialized || !frameOpen || submissionEnded) return;
         try {
+            ItemBatchRenderer.finishUiItemFrame();
             TextRenderSystem.flush();
             rhi.endRenderSubmission();
             lifecycle = FrameLifecycle.SUBMITTED;

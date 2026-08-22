@@ -74,6 +74,7 @@ public final class ItemBatchRenderer {
     private static GuiItemAtlas itemAtlas;
     private static int itemAtlasSlotTextureSize;
     private static int itemAtlasTextureSize;
+    private static boolean uiItemFrameOpen;
     private static final List<WorldItemAtlasPage> worldItemAtlases = new ArrayList<>();
     private static int worldItemAtlasCursor;
     private static boolean worldItemFrameOpen;
@@ -435,6 +436,7 @@ public final class ItemBatchRenderer {
                         }
 
                         try (RenderCostProfiler.Scope ignoredReplay = RenderCostProfiler.itemRender("atlas_model")) {
+                            uiItemFrameOpen = true;
                             GuiItemAtlas.SlotView slot = atlas.getOrUpdate(renderState);
                             if (slot != null && slot.textureView() != null) {
                                 itemAtlasTextureView = slot.textureView();
@@ -449,11 +451,6 @@ public final class ItemBatchRenderer {
                 if (submitItemBlitMesh(mc, itemMesh, itemAtlasTextureView, itemSampler)) {
                     drawCalls++;
                 }
-                if (atlas != null) {
-                    atlas.endFrame();
-                }
-                endUiItemRenderFrame();
-
                 MeshBuilder durabilityGlowMesh = null;
                 MeshBuilder durabilityRoundedMesh = null;
                 MeshBuilder cooldownMesh = null;
@@ -677,13 +674,16 @@ public final class ItemBatchRenderer {
         }
     }
 
-    private static void endUiItemRenderFrame() {
-        if (uiItemRenderBuffers != null) {
-            uiItemRenderBuffers.endFrame();
-        }
+    /** Finish vanilla's item-atlas resources at the real frame boundary, not per ordered batch. */
+    public static void finishUiItemFrame() {
+        if (!uiItemFrameOpen) return;
+        if (itemAtlas != null) itemAtlas.endFrame();
+        if (uiItemRenderBuffers != null) uiItemRenderBuffers.endFrame();
+        uiItemFrameOpen = false;
     }
 
     private static void resetUiItemRenderer() {
+        uiItemFrameOpen = false;
         closeItemAtlas();
         if (uiItemFeatureDispatcher != null) {
             uiItemFeatureDispatcher.close();

@@ -58,13 +58,19 @@ public final class AutoCrystalPlaceScanDebug {
         }
     }
 
-    void recordRawDamage(BlockPos pos, float damage, float selfDamage, ExplosionDamageUtil.DamageDebug damageDebug) {
+    boolean recordRawDamage(BlockPos pos, float damage, float selfDamage) {
         if (damage >= maxRawDamage) {
             maxRawDamage = damage;
             maxRawSelfDamage = selfDamage;
             maxRawDamagePos = pos;
-            maxRawDamageDebug = damageDebug;
+            maxRawDamageDebug = null;
+            return true;
         }
+        return false;
+    }
+
+    void recordRawDamageDebug(ExplosionDamageUtil.DamageDebug damageDebug) {
+        maxRawDamageDebug = damageDebug;
     }
 
     public int selfDamageRejects() {

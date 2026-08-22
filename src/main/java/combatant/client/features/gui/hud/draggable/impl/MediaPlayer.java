@@ -82,7 +82,10 @@ public final class MediaPlayer extends DraggableHudElement {
             new BooleanValue("media_player_sync_theme", true);
     private final ModeValue panelStyle =
             new ModeValue("media_player_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
-                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT);
+                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT,
+                    HudRenderUtil.PANEL_STYLE_GRADIENT);
+    private final NumberValue<Integer> themeGradientStrength =
+            new NumberValue<>("media_player_theme_gradient_strength", 72, 0, 100);
     private final RGBAColorValue bg =
             new RGBAColorValue("media_player_bg", "#60000000");
     private final NumberValue<Integer> bgAlpha =
@@ -102,6 +105,8 @@ public final class MediaPlayer extends DraggableHudElement {
     private final ModeValue shadowMode =
             new ModeValue("media_player_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
                     HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME);
+    private final NumberValue<Integer> themeShadowStrength =
+            new NumberValue<>("media_player_theme_shadow_strength", 100, 0, 100);
     private final NumberValue<Integer> shadowAlpha =
             new NumberValue<>("media_player_shadow_alpha", 96, 0, 255);
     private final RGBColorValue text =
@@ -159,6 +164,7 @@ public final class MediaPlayer extends DraggableHudElement {
         defs.add(SettingDef.number(scale));
         defs.add(SettingDef.bool(syncTheme));
         defs.add(SettingDef.mode(panelStyle).visibleWhen(syncTheme::get));
+        defs.add(SettingDef.number(themeGradientStrength).visibleWhen(this::isGradientPanelStyle));
         defs.add(SettingDef.color(bg).visibleWhen(() -> !syncTheme.get() && !isGlassEffect()));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(() -> syncTheme.get() && !isGlassEffect()));
         defs.add(SettingDef.colorNoAlpha(accent).visibleWhen(() -> !syncTheme.get()));
@@ -171,7 +177,8 @@ public final class MediaPlayer extends DraggableHudElement {
         defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
         defs.add(SettingDef.bool(strokeGradient).visibleWhen(() -> strokeEnabled.get() && syncTheme.get()));
         defs.add(SettingDef.bool(shadowEnabled));
-        defs.add(SettingDef.mode(shadowMode).visibleWhen(shadowEnabled::get));
+        defs.add(SettingDef.mode(shadowMode).visibleWhen(() -> shadowEnabled.get() && syncTheme.get()));
+        defs.add(SettingDef.number(themeShadowStrength).visibleWhen(this::isThemeShadow));
         defs.add(SettingDef.number(shadowAlpha).visibleWhen(shadowEnabled::get));
     }
 
@@ -340,6 +347,7 @@ public final class MediaPlayer extends DraggableHudElement {
 
         boolean useSyncTheme = syncTheme.get();
         boolean accentPanel = useSyncTheme && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
+        boolean gradientPanel = isGradientPanelStyle();
         boolean blurEnabled = isBlurEffect();
         boolean glassEnabled = isGlassEffect();
         int baseRgb = glassEnabled ? HudRenderUtil.glassBackgroundRgb()
@@ -361,8 +369,9 @@ public final class MediaPlayer extends DraggableHudElement {
         if (shadowEnabled.get()) {
             HudRenderUtil.drawHudShadow(
                     renderer, drawX, drawY, boxW * scale, boxH * scale, radius * scale, baseScale * scale,
-                    HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()),
-                    shadowAlpha.get(), scale
+                    isThemeShadow(),
+                    shadowAlpha.get(), scale,
+                    themeShadowStrength.get() / 100.0f
             );
         }
 
@@ -376,7 +385,22 @@ public final class MediaPlayer extends DraggableHudElement {
                 ? HudRenderUtil.glassPanelBackground(scale)
                 : HudRenderUtil.scaleAlpha(bg, scale);
         boolean useGradient = !glassEnabled && useSyncTheme && gradient.get();
-        if (!glassEnabled && accentPanel) {
+        if (!glassEnabled && gradientPanel) {
+            float strength = themeGradientStrength.get() / 100.0f;
+            HudRenderUtil.ThemeGradient themeGradient = HudRenderUtil.themePanelGradient(255);
+            int topBase = HudRenderUtil.setAlpha(theme().windowBg(), bgAlpha);
+            int bottomBase = HudRenderUtil.setAlpha(
+                    HudRenderUtil.mixColor(theme().surface(), theme().windowHeader(), 0.32f), bgAlpha
+            );
+            int top = HudRenderUtil.scaleAlpha(
+                    HudRenderUtil.gradientSurface(topBase, themeGradient.start(), strength), scale
+            );
+            int bottom = HudRenderUtil.scaleAlpha(
+                    HudRenderUtil.gradientSurface(bottomBase, themeGradient.end(), strength), scale
+            );
+            renderer.roundedRectGradient(drawX, drawY, boxW * scale, boxH * scale, radius * scale, 1.0f,
+                    top, bottom, themeGradient.angleDeg());
+        } else if (!glassEnabled && accentPanel) {
             int top = HudRenderUtil.scaleAlpha(
                     HudRenderUtil.accentSurface(HudRenderUtil.setAlpha(theme().windowBg(), bgAlpha), 0.18f), scale
             );
@@ -756,7 +780,14 @@ public final class MediaPlayer extends DraggableHudElement {
     private void drawGlass(float x, float y, float w, float h, float radius, float scale, int accentSoft) {
         float alpha = blurAlpha.get() / 255f;
         HudRenderUtil.drawLiquidGlass(x, y, w, h, radius, scale, true, alpha);
-        if (syncTheme.get() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get())) {
+        if (isGradientPanelStyle()) {
+            float strength = themeGradientStrength.get() / 100.0f;
+            HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(Math.round(72.0f * strength));
+            Renderer2D.COLOR.roundedRectGradient(
+                    x, y, w, h, radius, 1.0f,
+                    panelGradient.start(), panelGradient.end(), panelGradient.angleDeg()
+            );
+        } else if (syncTheme.get() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get())) {
             HudRenderUtil.ThemeGradient accentGradient = HudRenderUtil.themeAccentGradient(42);
             Renderer2D.COLOR.roundedRectGradient(
                     x, y, w, h, radius, 1.0f,
@@ -777,6 +808,15 @@ public final class MediaPlayer extends DraggableHudElement {
         return EFFECT_GLASS.equals(bgEffect.get());
     }
 
+    private boolean isGradientPanelStyle() {
+        return syncTheme.get() && HudRenderUtil.PANEL_STYLE_GRADIENT.equals(panelStyle.get());
+    }
+
+    private boolean isThemeShadow() {
+        return shadowEnabled.get() && syncTheme.get()
+                && HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get());
+    }
+
     private int getBgAlpha() {
         if (syncTheme.get()) {
             return bgAlpha.get();
@@ -795,4 +835,3 @@ public final class MediaPlayer extends DraggableHudElement {
     }
 
 }
-

@@ -1362,6 +1362,93 @@ public final class Renderer2D {
                 firstArgb, secondArgb, thirdArgb, time, smokeScale, smokeMix, octaves, flowX, flowY, intensity);
     }
 
+    /**
+     * Draws the animated category material used by ClickGui module rows.
+     * The shader owns the material detail; callers own clipping (normally the parent glass shape).
+     */
+    public void moduleCategorySurface(double x, double y, double w, double h,
+                                      float radius,
+                                      int effectMode,
+                                      float reveal,
+                                      float time,
+                                      float mouseX,
+                                      float mouseY,
+                                      float seed,
+                                      int primaryArgb,
+                                      int secondaryArgb,
+                                      int highlightArgb,
+                                      float intensity) {
+        if (w <= 0.0 || h <= 0.0) return;
+        float safeReveal = Mth.clamp(reveal, 0.0f, 1.0f);
+        float safeIntensity = Math.max(0.0f, intensity);
+        if (safeReveal <= 0.0001f || safeIntensity <= 0.0001f) return;
+
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.MODULE_CATEGORY_SURFACE, null, null);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+
+        int a0 = (primaryArgb >>> 24) & 0xFF;
+        int r0 = (primaryArgb >>> 16) & 0xFF;
+        int g0 = (primaryArgb >>> 8) & 0xFF;
+        int b0 = primaryArgb & 0xFF;
+
+        float r1 = ((secondaryArgb >>> 16) & 0xFF) / 255.0f;
+        float g1 = ((secondaryArgb >>> 8) & 0xFF) / 255.0f;
+        float b1 = (secondaryArgb & 0xFF) / 255.0f;
+        float a1 = ((secondaryArgb >>> 24) & 0xFF) / 255.0f;
+
+        float r2 = ((highlightArgb >>> 16) & 0xFF) / 255.0f;
+        float g2 = ((highlightArgb >>> 8) & 0xFF) / 255.0f;
+        float b2 = (highlightArgb & 0xFF) / 255.0f;
+        float a2 = ((highlightArgb >>> 24) & 0xFF) / 255.0f;
+
+        float mx = w > 0.0 ? Mth.clamp((float) ((mouseX - x) / w), 0.0f, 1.0f) : 0.5f;
+        float my = h > 0.0 ? Mth.clamp((float) ((mouseY - y) / h), 0.0f, 1.0f) : 0.5f;
+        float mode = Math.max(0, effectMode);
+
+        int i1 = mesh.vec2(x, y).local2(x, y).color(r0, g0, b0, a0)
+                .vec4((float) x, (float) y, (float) w, (float) h)
+                .vec4(radius, mode, safeReveal, safeIntensity)
+                .vec4(r1, g1, b1, a1)
+                .vec4(r2, g2, b2, a2)
+                .vec4(time, mx, my, seed)
+                .vec4(0.0f, 0.0f, 0.0f, 0.0f)
+                .next();
+        int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(r0, g0, b0, a0)
+                .vec4((float) x, (float) y, (float) w, (float) h)
+                .vec4(radius, mode, safeReveal, safeIntensity)
+                .vec4(r1, g1, b1, a1)
+                .vec4(r2, g2, b2, a2)
+                .vec4(time, mx, my, seed)
+                .vec4(0.0f, 0.0f, 0.0f, 0.0f)
+                .next();
+        int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(r0, g0, b0, a0)
+                .vec4((float) x, (float) y, (float) w, (float) h)
+                .vec4(radius, mode, safeReveal, safeIntensity)
+                .vec4(r1, g1, b1, a1)
+                .vec4(r2, g2, b2, a2)
+                .vec4(time, mx, my, seed)
+                .vec4(0.0f, 0.0f, 0.0f, 0.0f)
+                .next();
+        int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(r0, g0, b0, a0)
+                .vec4((float) x, (float) y, (float) w, (float) h)
+                .vec4(radius, mode, safeReveal, safeIntensity)
+                .vec4(r1, g1, b1, a1)
+                .vec4(r2, g2, b2, a2)
+                .vec4(time, mx, my, seed)
+                .vec4(0.0f, 0.0f, 0.0f, 0.0f)
+                .next();
+        mesh.quad(i1, i2, i3, i4);
+
+        endAutoBatch(auto);
+    }
+
     public void roundedRectStrokeGradient(double x, double y, double w, double h,
                                           float radius, float softness, float thickness,
                                           int startArgb, int endArgb, float angleDeg) {

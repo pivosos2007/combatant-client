@@ -1032,8 +1032,7 @@ public final class UiPrimitiveRenderer {
                 int cBottomRight = lerpArgb(bottomStart, bottomEnd, pathT1);
                 int cBottomLeft = lerpArgb(bottomStart, bottomEnd, pathT0);
 
-                // A small overlap prevents cracks after projection/rasterization.
-                renderer.quadGradient(left, top, right - left + 0.18, height,
+                renderer.quadGradient(left, top, right - left, height,
                         cTopLeft, cTopRight, cBottomRight, cBottomLeft);
             }
         }

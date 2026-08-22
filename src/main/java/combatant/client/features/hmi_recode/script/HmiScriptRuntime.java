@@ -44,11 +44,27 @@ public final class HmiScriptRuntime implements AutoCloseable {
 
             // Keep the Java boundary compact. Positional arrays avoid materializing a Map plus a
             // nested argument list for every tiny transform command in Javet's object converter.
-            const __hmi_cmd = (op, args) => {
-              if (__hmi_collect_geometry) __hmi_commands.push([op, ...args]);
+            const __hmi_cmd1 = (op, a) => {
+              if (__hmi_collect_geometry) __hmi_commands.push([op, a]);
             };
-            const __hmi_model = (from, to, op, args) => {
-              if (__hmi_collect_geometry) __hmi_model_commands.push([from, to, op, ...args]);
+            const __hmi_cmd3 = (op, a, b, c) => {
+              if (__hmi_collect_geometry) __hmi_commands.push([op, a, b, c]);
+            };
+            const __hmi_rotate = (op, angle, x, y, z) => {
+              if (!__hmi_collect_geometry) return;
+              if (x === undefined || y === undefined || z === undefined) __hmi_commands.push([op, angle]);
+              else __hmi_commands.push([op, angle, x, y, z]);
+            };
+            const __hmi_model1 = (from, to, op, a) => {
+              if (__hmi_collect_geometry) __hmi_model_commands.push([from, to, op, a]);
+            };
+            const __hmi_model3 = (from, to, op, a, b, c) => {
+              if (__hmi_collect_geometry) __hmi_model_commands.push([from, to, op, a, b, c]);
+            };
+            const __hmi_model_rotate = (from, to, op, angle, x, y, z) => {
+              if (!__hmi_collect_geometry) return;
+              if (x === undefined || y === undefined || z === undefined) __hmi_model_commands.push([from, to, op, angle]);
+              else __hmi_model_commands.push([from, to, op, angle, x, y, z]);
             };
             const __hmi_map = () => {
               const m = new Map();
@@ -66,17 +82,17 @@ public final class HmiScriptRuntime implements AutoCloseable {
 
             globalThis.M = {
               PI: Math.PI,
-              moveX: (_m,x) => __hmi_cmd('moveX',[x]),
-              moveY: (_m,y) => __hmi_cmd('moveY',[y]),
-              moveZ: (_m,z) => __hmi_cmd('moveZ',[z]),
-              translate: (_m,x,y,z) => __hmi_cmd('translate',[x,y,z]),
-              scale: (_m,x,y,z) => __hmi_cmd('scale',[x,y,z]),
-              rotateX: (_m,...a) => __hmi_cmd('rotateX',a),
-              rotateY: (_m,...a) => __hmi_cmd('rotateY',a),
-              rotateZ: (_m,...a) => __hmi_cmd('rotateZ',a),
-              shear: (_m,x,y,z) => __hmi_cmd('shear',[x,y,z]),
-              push: () => __hmi_cmd('push',[]),
-              pop: () => __hmi_cmd('pop',[]),
+              moveX: (_m,x) => __hmi_cmd1('moveX',x),
+              moveY: (_m,y) => __hmi_cmd1('moveY',y),
+              moveZ: (_m,z) => __hmi_cmd1('moveZ',z),
+              translate: (_m,x,y,z) => __hmi_cmd3('translate',x,y,z),
+              scale: (_m,x,y,z) => __hmi_cmd3('scale',x,y,z),
+              rotateX: (_m,a,x,y,z) => __hmi_rotate('rotateX',a,x,y,z),
+              rotateY: (_m,a,x,y,z) => __hmi_rotate('rotateY',a,x,y,z),
+              rotateZ: (_m,a,x,y,z) => __hmi_rotate('rotateZ',a,x,y,z),
+              shear: (_m,x,y,z) => __hmi_cmd3('shear',x,y,z),
+              push: () => { if (__hmi_collect_geometry) __hmi_commands.push(['push']); },
+              pop: () => { if (__hmi_collect_geometry) __hmi_commands.push(['pop']); },
               sin: Math.sin,
               cos: Math.cos,
               floor: Math.floor,
@@ -175,24 +191,31 @@ public final class HmiScriptRuntime implements AutoCloseable {
             globalThis.debugger = { out:()=>{} };
             globalThis.particleManager = { addParticle:()=>{} };
             globalThis.animator = {
-              moveX:(f,t,x)=>__hmi_model(f,t,'moveX',[x]),
-              moveY:(f,t,y)=>__hmi_model(f,t,'moveY',[y]),
-              moveZ:(f,t,z)=>__hmi_model(f,t,'moveZ',[z]),
-              scale:(f,t,x,y,z)=>__hmi_model(f,t,'scale',[x,y,z]),
-              rotateX:(f,t,...a)=>__hmi_model(f,t,'rotateX',a),
-              rotateY:(f,t,...a)=>__hmi_model(f,t,'rotateY',a),
-              rotateZ:(f,t,...a)=>__hmi_model(f,t,'rotateZ',a)
+              moveX:(f,t,x)=>__hmi_model1(f,t,'moveX',x),
+              moveY:(f,t,y)=>__hmi_model1(f,t,'moveY',y),
+              moveZ:(f,t,z)=>__hmi_model1(f,t,'moveZ',z),
+              scale:(f,t,x,y,z)=>__hmi_model3(f,t,'scale',x,y,z),
+              rotateX:(f,t,a,x,y,z)=>__hmi_model_rotate(f,t,'rotateX',a,x,y,z),
+              rotateY:(f,t,a,x,y,z)=>__hmi_model_rotate(f,t,'rotateY',a,x,y,z),
+              rotateZ:(f,t,a,x,y,z)=>__hmi_model_rotate(f,t,'rotateZ',a,x,y,z)
             };
             globalThis.__hmi_reset_output = () => {
               __hmi_commands.length = 0;
               __hmi_model_commands.length = 0;
               __hmi_sound_events.length = 0;
             };
+            const __hmi_take_output = () => {
+              const output = [__hmi_commands, __hmi_model_commands, __hmi_sound_events];
+              globalThis.__hmi_commands = [];
+              globalThis.__hmi_model_commands = [];
+              globalThis.__hmi_sound_events = [];
+              return output;
+            };
             const __hmi_run = name => {
               __hmi_reset_output();
               globalThis[name]();
-              // Every following stage resets the collectors, so retain independent snapshots.
-              return [__hmi_commands.slice(), __hmi_model_commands.slice(), __hmi_sound_events.slice()];
+              // Transfer collector ownership instead of cloning every command array.
+              return __hmi_take_output();
             };
             const __hmi_run_state_only = name => {
               __hmi_reset_output();
@@ -200,7 +223,11 @@ public final class HmiScriptRuntime implements AutoCloseable {
               try {
                 globalThis[name]();
                 // Sounds remain observable even when this hand has no visible geometry.
-                return [[], [], __hmi_sound_events.slice()];
+                const output = [[], [], __hmi_sound_events];
+                globalThis.__hmi_commands = [];
+                globalThis.__hmi_model_commands = [];
+                globalThis.__hmi_sound_events = [];
+                return output;
               } finally {
                 __hmi_collect_geometry = true;
               }

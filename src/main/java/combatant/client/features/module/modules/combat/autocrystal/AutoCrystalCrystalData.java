@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.combat.autocrystal;
 
+import combatant.client.util.combat.ExplosionDamageCandidate;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 
 public record AutoCrystalCrystalData(
@@ -14,5 +15,5 @@ public record AutoCrystalCrystalData(
         float damage,
         float selfDamage,
         boolean overrideDamage
-) implements AutoCrystalDamageCandidate {
+) implements ExplosionDamageCandidate {
 }

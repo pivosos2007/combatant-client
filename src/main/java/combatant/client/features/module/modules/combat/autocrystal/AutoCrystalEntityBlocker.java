@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.combat.autocrystal;
 
+import combatant.client.util.combat.CombatEntityQuery;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -35,19 +36,7 @@ public final class AutoCrystalEntityBlocker {
         AABB box = new AABB(base.above()).inflate(0.0, 1.0, 0.0);
         EndCrystal secondaryCrystal = null;
 
-        for (Entity entity : level.entitiesForRendering()) {
-            if (entity == null || !entity.isAlive() || entity.isRemoved()) {
-                continue;
-            }
-
-            if (!entity.getBoundingBox().intersects(box)) {
-                continue;
-            }
-
-            if (entity instanceof ExperienceOrb) {
-                continue;
-            }
-
+        for (Entity entity : CombatEntityQuery.blockingEntities(level, box)) {
             if (entity instanceof EndCrystal crystal) {
                 int id = crystal.getId();
                 if (deadCrystalPredicate != null && deadCrystalPredicate.test(id)) {

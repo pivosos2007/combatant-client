@@ -21,7 +21,9 @@ import combatant.client.features.gui.hud.HudTextEffects;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.module.Modules;
+import combatant.client.features.module.modules.visuals.BedwarsESP;
 import combatant.client.features.module.modules.visuals.BlockESP;
+import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.FontInfo;
@@ -34,6 +36,10 @@ import net.minecraft.util.Util;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.scores.DisplaySlot;
+import net.minecraft.world.scores.Objective;
+import net.minecraft.world.scores.PlayerScoreEntry;
+import net.minecraft.world.scores.PlayerTeam;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -68,6 +74,10 @@ public final class Statistics extends DraggableHudElement {
     private static final String INFO_BLOCKESP_VISIBLE = "blockesp_visible";
     private static final String INFO_BLOCKESP_BREAKDOWN = "blockesp_breakdown";
     private static final int MAX_BLOCKESP_ROWS = 6;
+    private static final int GRAPH_RENDER_POINTS = 64;
+    private static final float GRAPH_FOLLOW_RATE = 18.0f;
+    private static final float GRAPH_SCALE_RISE_RATE = 12.0f;
+    private static final float GRAPH_SCALE_FALL_RATE = 2.2f;
 
     {
         defaultLayout(20.0f, 150.0f);
@@ -93,7 +103,10 @@ public final class Statistics extends DraggableHudElement {
             new ModeValue("statistics_color_mode", "Theme", COLOR_THEME, COLOR_CUSTOM);
     private final ModeValue panelStyle =
             new ModeValue("statistics_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
-                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT);
+                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT,
+                    HudRenderUtil.PANEL_STYLE_GRADIENT);
+    private final NumberValue<Integer> themeGradientStrength =
+            new NumberValue<>("statistics_theme_gradient_strength", 72, 0, 100);
     private final ModeValue bgEffect =
             new ModeValue("statistics_bg_effect", "Blur", EFFECT_NONE, EFFECT_BLUR);
     private final RGBAColorValue bg =
@@ -115,6 +128,8 @@ public final class Statistics extends DraggableHudElement {
     private final ModeValue shadowMode =
             new ModeValue("statistics_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
                     HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME);
+    private final NumberValue<Integer> themeShadowStrength =
+            new NumberValue<>("statistics_theme_shadow_strength", 100, 0, 100);
     private final NumberValue<Integer> shadowAlpha =
             new NumberValue<>("statistics_shadow_alpha", 38, 0, 255);
     private final RGBColorValue text =
@@ -144,6 +159,14 @@ public final class Statistics extends DraggableHudElement {
     private int uiTitleText;
     private int uiDivider;
     private int uiBlurTint;
+    private final float[] graphDisplayValues = new float[GRAPH_RENDER_POINTS];
+    private final Map<String, LinkedHashMap<String, Object>> lastInformationRows = new LinkedHashMap<>();
+    private final Map<String, Float> informationRowAnimations = new LinkedHashMap<>();
+    private long graphAnimationNanos;
+    private long lastBedWarsContextCheckMs;
+    private long bedWarsContextUntilMs;
+    private float graphDisplayCeiling = 6.0f;
+    private boolean graphDisplayInitialized;
 
     public Statistics() {
         super("statistics", "Statistics", true);
@@ -158,6 +181,7 @@ public final class Statistics extends DraggableHudElement {
         defs.add(SettingDef.bool(separateGraph).visibleWhen(showSpeedGraph::get));
         defs.add(SettingDef.mode(colorMode));
         defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));
+        defs.add(SettingDef.number(themeGradientStrength).visibleWhen(this::isGradientPanelStyle));
         defs.add(SettingDef.color(bg).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.color(bg2).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(this::isThemeMode));
@@ -166,7 +190,8 @@ public final class Statistics extends DraggableHudElement {
         defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
         defs.add(SettingDef.bool(strokeGradient).visibleWhen(() -> strokeEnabled.get() && isThemeMode()));
         defs.add(SettingDef.bool(shadowEnabled));
-        defs.add(SettingDef.mode(shadowMode).visibleWhen(shadowEnabled::get));
+        defs.add(SettingDef.mode(shadowMode).visibleWhen(() -> shadowEnabled.get() && isThemeMode()));
+        defs.add(SettingDef.number(themeShadowStrength).visibleWhen(this::isThemeShadow));
         defs.add(SettingDef.number(shadowAlpha).visibleWhen(shadowEnabled::get));
         defs.add(SettingDef.colorNoAlpha(text).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(muted).visibleWhen(this::isCustomMode));
@@ -208,7 +233,9 @@ public final class Statistics extends DraggableHudElement {
         updatePalette();
         SessionStatisticsTracker.Snapshot snapshot = statistics.snapshot();
         boolean exampleData = forceVisible && (mc == null || mc.player == null);
-        List<LinkedHashMap<String, Object>> infoRows = collectInformationRows(snapshot, exampleData);
+        List<LinkedHashMap<String, Object>> infoRows = animateInformationRows(
+                collectInformationRows(snapshot, exampleData)
+        );
         boolean showPlayTime = information.get(INFO_PLAY_TIME);
 
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
@@ -237,9 +264,13 @@ public final class Statistics extends DraggableHudElement {
 
         boolean graphVisible = showSpeedGraph.get();
         boolean graphSeparated = graphVisible && separateGraph.get();
+        float animatedRowsHeight = 0.0f;
+        for (Map<String, Object> row : infoRows) {
+            animatedRowsHeight += 12.0f * rowAnimation(row);
+        }
         float statsHeightUnits = Math.max(
                 showPlayTime ? STATS_HEIGHT : 28.0f,
-                28.0f + infoRows.size() * 12.0f
+                28.0f + animatedRowsHeight
         );
         float targetHeightUnits = statsHeightUnits;
         if (graphVisible) {
@@ -304,11 +335,12 @@ public final class Statistics extends DraggableHudElement {
         }
 
         if (shadowEnabled.get()) {
-            boolean themeShadow = HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get());
+            boolean themeShadow = isThemeShadow();
             HudRenderUtil.drawHudShadow(
                     renderer, drawX, drawY, drawWidth, drawMainHeight,
                     PANEL_RADIUS * drawBaseScale, drawBaseScale,
-                    themeShadow, shadowAlpha.get(), drawScale
+                    themeShadow, shadowAlpha.get(), drawScale,
+                    themeShadowStrength.get() / 100.0f
             );
             if (graphSeparated && drawGraphHeight > 0.0f) {
                 HudRenderUtil.drawHudShadow(
@@ -321,7 +353,8 @@ public final class Statistics extends DraggableHudElement {
                         drawBaseScale,
                         themeShadow,
                         shadowAlpha.get(),
-                        drawScale
+                        drawScale,
+                        themeShadowStrength.get() / 100.0f
                 );
             }
         }
@@ -432,10 +465,12 @@ public final class Statistics extends DraggableHudElement {
                     String.format(Locale.ROOT, "%.2f BPS", snapshot.averageBps()), uiCounter));
         }
 
-        addResourceRow(rows, INFO_BEDWARS_IRON, "Iron", Items.IRON_INGOT, 0xFFD8D8D8, exampleData ? 32 : -1);
-        addResourceRow(rows, INFO_BEDWARS_GOLD, "Gold", Items.GOLD_INGOT, 0xFFFFD45A, exampleData ? 14 : -1);
-        addResourceRow(rows, INFO_BEDWARS_DIAMONDS, "Diamonds", Items.DIAMOND, 0xFF55E3F0, exampleData ? 4 : -1);
-        addResourceRow(rows, INFO_BEDWARS_EMERALDS, "Emeralds", Items.EMERALD, 0xFF57D987, exampleData ? 2 : -1);
+        if (exampleData || isBedWarsContext()) {
+            addResourceRow(rows, INFO_BEDWARS_IRON, "Iron", Items.IRON_INGOT, 0xFFD8D8D8, exampleData ? 32 : -1);
+            addResourceRow(rows, INFO_BEDWARS_GOLD, "Gold", Items.GOLD_INGOT, 0xFFFFD45A, exampleData ? 14 : -1);
+            addResourceRow(rows, INFO_BEDWARS_DIAMONDS, "Diamonds", Items.DIAMOND, 0xFF55E3F0, exampleData ? 4 : -1);
+            addResourceRow(rows, INFO_BEDWARS_EMERALDS, "Emeralds", Items.EMERALD, 0xFF57D987, exampleData ? 2 : -1);
+        }
 
         BlockESP blockEsp = Modules.get(BlockESP.class);
         boolean blockEspActive = blockEsp != null && blockEsp.isEnabled();
@@ -477,6 +512,130 @@ public final class Statistics extends DraggableHudElement {
         return rows;
     }
 
+    private List<LinkedHashMap<String, Object>> animateInformationRows(
+            List<LinkedHashMap<String, Object>> currentRows) {
+        LinkedHashMap<String, LinkedHashMap<String, Object>> current = new LinkedHashMap<>();
+        for (LinkedHashMap<String, Object> row : currentRows) {
+            current.put(String.valueOf(row.getOrDefault("key", "row")), row);
+        }
+
+        LinkedHashMap<String, LinkedHashMap<String, Object>> merged = new LinkedHashMap<>();
+        for (Map.Entry<String, LinkedHashMap<String, Object>> entry : lastInformationRows.entrySet()) {
+            merged.put(entry.getKey(), current.getOrDefault(entry.getKey(), entry.getValue()));
+        }
+        for (Map.Entry<String, LinkedHashMap<String, Object>> entry : current.entrySet()) {
+            merged.putIfAbsent(entry.getKey(), entry.getValue());
+        }
+        List<Map.Entry<String, LinkedHashMap<String, Object>>> ordered = new ArrayList<>(merged.entrySet());
+        ordered.sort((left, right) -> Integer.compare(
+                informationRowOrder(left.getKey()),
+                informationRowOrder(right.getKey())
+        ));
+        lastInformationRows.clear();
+        for (Map.Entry<String, LinkedHashMap<String, Object>> entry : ordered) {
+            lastInformationRows.put(entry.getKey(), entry.getValue());
+        }
+
+        List<String> remove = new ArrayList<>();
+        List<LinkedHashMap<String, Object>> animated = new ArrayList<>();
+        float dt = AnimationUtility.deltaTime();
+        for (Map.Entry<String, LinkedHashMap<String, Object>> entry : lastInformationRows.entrySet()) {
+            String key = entry.getKey();
+            float target = current.containsKey(key) ? 1.0f : 0.0f;
+            float progress = informationRowAnimations.getOrDefault(key, 0.0f);
+            progress = AnimationUtility.approach(progress, target, dt, target > progress ? 13.0f : 10.0f);
+            progress = AnimationUtility.snap(progress, target, 0.015f);
+            if (progress <= 0.0f && target <= 0.0f) {
+                remove.add(key);
+                continue;
+            }
+
+            informationRowAnimations.put(key, progress);
+            LinkedHashMap<String, Object> row = new LinkedHashMap<>(entry.getValue());
+            row.put("animation", AnimationUtility.smoothstep(progress));
+            animated.add(row);
+        }
+        for (String key : remove) {
+            informationRowAnimations.remove(key);
+            lastInformationRows.remove(key);
+        }
+        return animated;
+    }
+
+    private static int informationRowOrder(String key) {
+        if (INFO_GAMES.equals(key)) return 10;
+        if (INFO_KD.equals(key)) return 20;
+        if (INFO_KILLS.equals(key)) return 30;
+        if (INFO_DEATHS.equals(key)) return 40;
+        if (INFO_AVERAGE_SPEED.equals(key)) return 50;
+        if (INFO_BEDWARS_IRON.equals(key)) return 100;
+        if (INFO_BEDWARS_GOLD.equals(key)) return 110;
+        if (INFO_BEDWARS_DIAMONDS.equals(key)) return 120;
+        if (INFO_BEDWARS_EMERALDS.equals(key)) return 130;
+        if (INFO_BLOCKESP_TOTAL.equals(key)) return 200;
+        if (INFO_BLOCKESP_VISIBLE.equals(key)) return 210;
+        if (INFO_BLOCKESP_BREAKDOWN.equals(key)) return 220;
+        if (key != null && key.startsWith("blockesp:")) return 230;
+        return 1_000;
+    }
+
+    private boolean isBedWarsContext() {
+        long now = Util.getMillis();
+        if (now - lastBedWarsContextCheckMs < 500L) {
+            return now < bedWarsContextUntilMs;
+        }
+        lastBedWarsContextCheckMs = now;
+
+        boolean detected = hasBedWarsScoreboard();
+        BedwarsESP bedwarsEsp = Modules.get(BedwarsESP.class);
+        detected |= bedwarsEsp != null && bedwarsEsp.isEnabled();
+        if (detected) {
+            // Scoreboards briefly disappear between rounds and during respawn.
+            bedWarsContextUntilMs = now + 5_000L;
+        }
+        return now < bedWarsContextUntilMs;
+    }
+
+    private boolean hasBedWarsScoreboard() {
+        Objective objective = resolveSidebarObjective();
+        if (objective == null) return false;
+        if (containsBedWarsMarker(objective.getDisplayName().getString())) return true;
+
+        int inspected = 0;
+        for (PlayerScoreEntry entry : objective.getScoreboard().listPlayerScores(objective)) {
+            if (entry == null || entry.isHidden()) continue;
+            PlayerTeam team = objective.getScoreboard().getPlayersTeam(entry.owner());
+            String label = PlayerTeam.formatNameForTeam(team, entry.ownerName()).getString();
+            if (containsBedWarsMarker(label)) return true;
+            if (++inspected >= 20) break;
+        }
+        return false;
+    }
+
+    private Objective resolveSidebarObjective() {
+        if (mc == null || mc.level == null || mc.player == null) return null;
+        net.minecraft.world.scores.Scoreboard scoreboard = mc.level.getScoreboard();
+        PlayerTeam team = scoreboard.getPlayersTeam(mc.player.getScoreboardName());
+        if (team != null) {
+            DisplaySlot slot = team.getColor().map(net.minecraft.world.scores.TeamColor::displaySlot).orElse(null);
+            if (slot != null) {
+                Objective teamObjective = scoreboard.getDisplayObjective(slot);
+                if (teamObjective != null) return teamObjective;
+            }
+        }
+        return scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
+    }
+
+    private static boolean containsBedWarsMarker(String text) {
+        if (text == null || text.isBlank()) return false;
+        String normalized = text.toLowerCase(Locale.ROOT);
+        return normalized.contains("bed wars")
+                || normalized.contains("bedwars")
+                || normalized.contains("final kill")
+                || normalized.contains("beds broken")
+                || normalized.contains("bed destroyed");
+    }
+
     private void addResourceRow(List<LinkedHashMap<String, Object>> rows,
                                 String option,
                                 String label,
@@ -509,6 +668,13 @@ public final class Statistics extends DraggableHudElement {
         return row;
     }
 
+    private static float rowAnimation(Map<String, Object> row) {
+        Object value = row != null ? row.get("animation") : null;
+        return value instanceof Number number
+                ? Math.max(0.0f, Math.min(1.0f, number.floatValue()))
+                : 1.0f;
+    }
+
     private static String compactLabel(String label) {
         if (label == null || label.isBlank()) return "Block";
         return label.length() <= 22 ? label : label.substring(0, 21) + "…";
@@ -520,7 +686,11 @@ public final class Statistics extends DraggableHudElement {
                                                                  List<Float> samples,
                                                                  boolean preview) {
         int sourceCount = preview ? 48 : samples.size();
-        if (sourceCount < 2 || drawGraphHeight <= 0.0f) return List.of();
+        if (sourceCount < 2 || drawGraphHeight <= 0.0f) {
+            graphAnimationNanos = 0L;
+            graphDisplayInitialized = false;
+            return List.of();
+        }
 
         float plotWidth = Math.max(1.0f, drawWidth - 14.0f * drawBaseScale);
         float plotHeight = Math.max(1.0f, drawGraphHeight - 25.0f * drawBaseScale);
@@ -550,14 +720,20 @@ public final class Statistics extends DraggableHudElement {
             smooth[i] = weighted / weightSum;
         }
 
-        float maxSpeed = 6.0f;
+        float targetCeiling = 6.0f;
         for (float sample : smooth) {
-            maxSpeed = Math.max(maxSpeed, sample * 1.15f);
+            targetCeiling = Math.max(targetCeiling, sample * 1.15f);
         }
-        if (preview) maxSpeed = Math.max(maxSpeed, 8.0f);
+        if (preview) targetCeiling = Math.max(targetCeiling, 8.0f);
 
-        int count = Math.max(32, Math.min(64, Math.round(plotWidth / Math.max(1.8f, 2.1f * drawBaseScale))));
-        List<LinkedHashMap<String, Object>> points = new ArrayList<>(count);
+        long nowNanos = System.nanoTime();
+        float frameSeconds = graphAnimationNanos == 0L
+                ? 0.0f
+                : Math.min(0.10f, Math.max(0.0f, (nowNanos - graphAnimationNanos) / 1_000_000_000.0f));
+        graphAnimationNanos = nowNanos;
+
+        float[] targetValues = new float[GRAPH_RENDER_POINTS];
+        int count = GRAPH_RENDER_POINTS;
         for (int i = 0; i < count; i++) {
             float position = (sourceCount - 1.0f) * i / Math.max(1, count - 1);
             int index = Math.min(sourceCount - 1, (int) Math.floor(position));
@@ -572,10 +748,29 @@ public final class Statistics extends DraggableHudElement {
                     + (-p0 + p2) * t
                     + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2
                     + (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
-            value = Math.max(Math.min(p1, p2), Math.min(Math.max(p1, p2), value));
+            targetValues[i] = Math.max(Math.min(p1, p2), Math.min(Math.max(p1, p2), value));
+        }
 
+        if (!graphDisplayInitialized || frameSeconds <= 0.0f) {
+            System.arraycopy(targetValues, 0, graphDisplayValues, 0, count);
+            graphDisplayCeiling = targetCeiling;
+            graphDisplayInitialized = true;
+        } else {
+            float valueFollow = 1.0f - (float) Math.exp(-GRAPH_FOLLOW_RATE * frameSeconds);
+            for (int i = 0; i < count; i++) {
+                graphDisplayValues[i] += (targetValues[i] - graphDisplayValues[i]) * valueFollow;
+            }
+            float scaleRate = targetCeiling > graphDisplayCeiling
+                    ? GRAPH_SCALE_RISE_RATE
+                    : GRAPH_SCALE_FALL_RATE;
+            float scaleFollow = 1.0f - (float) Math.exp(-scaleRate * frameSeconds);
+            graphDisplayCeiling += (targetCeiling - graphDisplayCeiling) * scaleFollow;
+        }
+
+        List<LinkedHashMap<String, Object>> points = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
             float px = plotWidth * i / Math.max(1, count - 1);
-            float py = plotHeight - Math.min(1.0f, value / maxSpeed) * plotHeight;
+            float py = plotHeight - Math.min(1.0f, graphDisplayValues[i] / Math.max(0.001f, graphDisplayCeiling)) * plotHeight;
             LinkedHashMap<String, Object> point = new LinkedHashMap<>();
             point.put("x", px);
             point.put("y", py);
@@ -620,6 +815,13 @@ public final class Statistics extends DraggableHudElement {
                 uiHeaderRight = HudRenderUtil.accentSurface(uiHeaderRight, 0.27f);
                 uiBodyLeft = HudRenderUtil.accentSurface(uiBodyLeft, 0.18f);
                 uiBodyRight = HudRenderUtil.accentSurface(uiBodyRight, 0.26f);
+            } else if (isGradientPanelStyle()) {
+                float strength = themeGradientStrength.get() / 100.0f;
+                HudRenderUtil.ThemeGradient gradient = HudRenderUtil.themePanelGradient(255);
+                uiHeaderLeft = HudRenderUtil.gradientSurface(uiHeaderLeft, gradient.start(), strength);
+                uiHeaderRight = HudRenderUtil.gradientSurface(uiHeaderRight, gradient.end(), strength);
+                uiBodyLeft = HudRenderUtil.gradientSurface(uiBodyLeft, gradient.start(), strength * 0.92f);
+                uiBodyRight = HudRenderUtil.gradientSurface(uiBodyRight, gradient.end(), strength);
             }
             uiOutline = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.18f),
@@ -661,6 +863,15 @@ public final class Statistics extends DraggableHudElement {
 
     private boolean isAccentPanelStyle() {
         return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
+    }
+
+    private boolean isGradientPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_GRADIENT.equals(panelStyle.get());
+    }
+
+    private boolean isThemeShadow() {
+        return shadowEnabled.get() && isThemeMode()
+                && HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get());
     }
 
     private boolean hasEffect() {

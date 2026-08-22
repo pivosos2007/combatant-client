@@ -233,6 +233,7 @@ public class Combatant implements ClientModInitializer {
         Renderer2D.Deferred2DLayer layer = deferredLayerForHudPhase(phase);
         if (renderHudEngine(phase, layer, ctx, tickCounter)) {
             appendHudDeferredMarker(layer, ctx);
+            DraggableHudElementRegistry.renderNativeHudOverlays(phase, ctx);
         }
     }
 

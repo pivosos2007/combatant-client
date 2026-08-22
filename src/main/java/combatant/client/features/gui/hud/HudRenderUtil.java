@@ -187,6 +187,7 @@ public enum HudRenderUtil {
 
     public static final String PANEL_STYLE_DEFAULT = "Default";
     public static final String PANEL_STYLE_ACCENT = "Accent";
+    public static final String PANEL_STYLE_GRADIENT = "Gradient";
     public static final String SHADOW_MODE_BLACK = "Black";
     public static final String SHADOW_MODE_THEME = "Theme";
 
@@ -214,6 +215,28 @@ public enum HudRenderUtil {
         int start = current != null ? current.accent() : 0xFF5CC8E7;
         int end = current != null ? current.accentSoft() : 0x805CC8E7;
         return new ThemeGradient(setAlpha(start, a), setAlpha(end, a), 90.0f);
+    }
+
+    /** Returns the actual theme surface gradient, falling back to its accent gradient. */
+    public static ThemeGradient themePanelGradient(int alpha) {
+        int a = Math.max(0, Math.min(255, alpha));
+        Themes.ThemeEntry entry = Theme.currentEntry();
+        Themes.GradientSpec windowGradient = entry != null ? entry.windowGradient() : null;
+        if (windowGradient != null && windowGradient.enabled()) {
+            return new ThemeGradient(
+                    setAlpha(windowGradient.start(), a),
+                    setAlpha(windowGradient.end(), a),
+                    windowGradient.angleDeg()
+            );
+        }
+        return themeAccentGradient(a);
+    }
+
+    /** Mixes a neutral HUD surface with one endpoint of the theme's real gradient. */
+    public static int gradientSurface(int surface, int themeColor, float strength) {
+        float amount = AnimationUtility.clamp(strength, 0.0f, 1.0f);
+        int alpha = (surface >>> 24) & 0xFF;
+        return setAlpha(mixColor(surface, setAlpha(themeColor, alpha), amount), alpha);
     }
 
     /** Mixes a panel surface towards the active theme accent without changing its alpha. */
@@ -261,6 +284,15 @@ public enum HudRenderUtil {
                                      float x, float y, float w, float h,
                                      float radius, float scale,
                                      boolean themeColored, int alpha, float alphaFactor) {
+        drawHudShadow(renderer, x, y, w, h, radius, scale,
+                themeColored, alpha, alphaFactor, 1.0f);
+    }
+
+    public static void drawHudShadow(Renderer2D renderer,
+                                     float x, float y, float w, float h,
+                                     float radius, float scale,
+                                     boolean themeColored, int alpha, float alphaFactor,
+                                     float themeStrength) {
         if (renderer == null || w <= 0.0f || h <= 0.0f) return;
         int resolvedAlpha = Math.round(Math.max(0, Math.min(255, alpha))
                 * AnimationUtility.clamp(alphaFactor, 0.0f, 1.0f));
@@ -278,11 +310,13 @@ public enum HudRenderUtil {
 
         Themes.ThemeEntry entry = Theme.currentEntry();
         Themes.GradientSpec gradient = entry != null ? entry.strokeGradient() : null;
+        float colorStrength = AnimationUtility.clamp(themeStrength, 0.0f, 1.0f);
+        int black = setAlpha(0xFF000000, resolvedAlpha);
         if (gradient != null && gradient.enabled()) {
             renderer.roundedRectSoftShadowGradient(
                     x, y, w, h, radius, blur, innerAlpha,
-                    setAlpha(gradient.start(), resolvedAlpha),
-                    setAlpha(gradient.end(), resolvedAlpha),
+                    setAlpha(mixColor(black, gradient.start(), colorStrength), resolvedAlpha),
+                    setAlpha(mixColor(black, gradient.end(), colorStrength), resolvedAlpha),
                     gradient.angleDeg()
             );
             return;
@@ -291,7 +325,8 @@ public enum HudRenderUtil {
         Themes.Theme current = Theme.theme();
         int accent = current != null ? current.accent() : 0xFF5CC8E7;
         renderer.roundedRectSoftShadow(
-                x, y, w, h, radius, blur, innerAlpha, setAlpha(accent, resolvedAlpha)
+                x, y, w, h, radius, blur, innerAlpha,
+                setAlpha(mixColor(black, accent, colorStrength), resolvedAlpha)
         );
     }
 

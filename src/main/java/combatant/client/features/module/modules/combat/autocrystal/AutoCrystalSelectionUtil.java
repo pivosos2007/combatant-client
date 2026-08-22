@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.combat.autocrystal;
 
+import combatant.client.util.combat.ExplosionDamageCandidate;
 import net.minecraft.world.entity.LivingEntity;
 
 import java.util.List;
@@ -15,7 +16,7 @@ public final class AutoCrystalSelectionUtil {
     private AutoCrystalSelectionUtil() {
     }
 
-    public static <T extends AutoCrystalDamageCandidate> T selectBest(
+    public static <T extends ExplosionDamageCandidate> T selectBest(
             List<T> candidates,
             LivingEntity target,
             float minDamage,

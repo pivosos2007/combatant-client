@@ -48,6 +48,8 @@ class StatisticsPanelLayout extends HudPanelLayout {
     const label = c(prop(row, "label", ""), "");
     const value = c(prop(row, "value", ""), "");
     const valueColor = c(prop(row, "valueColor", color(this.pal, "text", "#FFFFFFFF")), color(this.pal, "text", "#FFFFFFFF"));
+    const progress = Math.max(0, Math.min(1, n(prop(row, "animation", 1), 1)));
+    const slideX = (1 - progress) * 5 * bs;
     const contentRight = this.p.showPlayTime === true ? this.w() - 62 * bs : this.w() - 6 * bs;
     const valueW = Math.max(24 * bs, Math.min(62 * bs, value.length * 6.4 * fs + 4 * bs));
     const valueX = contentRight - valueW;
@@ -55,21 +57,21 @@ class StatisticsPanelLayout extends HudPanelLayout {
       ui.shape({
         key: `stat:${key}:dot`,
         shape: "circle",
-        class: abs(7 * bs, y + 3.2 * bs, 3 * bs, 3 * bs),
+        class: abs(7 * bs + slideX, y + 3.2 * bs, 3 * bs, 3 * bs),
         radius: 1.5 * bs,
-        fill: color(this.pal, "counter", "#FFFFFFFF"),
+        fill: alpha(color(this.pal, "counter", "#FFFFFFFF"), progress),
       }),
       ui.text({
         key: `stat:${key}:label`,
         text: label,
-        color: color(this.pal, "muted", "#FFA5A5A5"),
-        class: cls(abs(13 * bs, y, Math.max(10 * bs, valueX - 16 * bs), rowH + 4 * bs), font("OnestMedium", fs * 0.92), `text-${color(this.pal, "muted", "#FFA5A5A5")}`),
+        color: alpha(color(this.pal, "muted", "#FFA5A5A5"), progress),
+        class: cls(abs(13 * bs + slideX, y, Math.max(10 * bs, valueX - 16 * bs), rowH + 4 * bs), font("OnestMedium", fs * 0.92), `text-${alpha(color(this.pal, "muted", "#FFA5A5A5"), progress)}`),
       }),
       ui.text({
         key: `stat:${key}:value`,
         text: value,
-        color: valueColor,
-        class: cls(abs(valueX, y, valueW, rowH + 4 * bs), font("OnestMedium", fs * 0.94), `text-${valueColor}`, "text-align-right"),
+        color: alpha(valueColor, progress),
+        class: cls(abs(valueX - slideX, y, valueW, rowH + 4 * bs), font("OnestMedium", fs * 0.94), `text-${alpha(valueColor, progress)}`, "text-align-right"),
       }),
     ];
   }
@@ -80,8 +82,11 @@ class StatisticsPanelLayout extends HudPanelLayout {
     const w = this.w();
     const nodes = [];
     const rows = arr(this.p.rows);
+    let rowY = 23;
     for (let i = 0; i < rows.length; i++) {
-      nodes.push(...this.statRow(rows[i], i, (23 + 12 * i) * bs));
+      const progress = Math.max(0, Math.min(1, n(prop(rows[i], "animation", 1), 1)));
+      nodes.push(...this.statRow(rows[i], i, rowY * bs));
+      rowY += 12 * progress;
     }
 
     if (this.p.showPlayTime !== true) return nodes;
@@ -235,6 +240,8 @@ class StatisticsPanelLayout extends HudPanelLayout {
     const accentStart = c(this.p.accentStartColor, color(this.pal, "counter", "#FFFFFFFF"));
     const accentEnd = c(this.p.accentEndColor, color(this.pal, "text", "#FFFFFFFF"));
     const graphPoints = arr(this.p.graphPoints);
+    const lineWidth = Math.max(1.5, Math.round(1.4 * bs * 2) / 2);
+    const glowWidth = Math.max(3, Math.round(lineWidth * 2.25 * 2) / 2);
     nodes.push(ui.connector({
       key: "graph:area",
       connector: "spline-area",
@@ -253,7 +260,7 @@ class StatisticsPanelLayout extends HudPanelLayout {
       stroke: alpha(accentStart, 0.16),
       strokeStartColor: alpha(accentStart, 0.18),
       strokeEndColor: alpha(accentEnd, 0.14),
-      strokeWidth: Math.max(3.1, 3.5 * bs),
+      strokeWidth: glowWidth,
       closed: false,
     }));
     nodes.push(ui.connector({
@@ -264,7 +271,7 @@ class StatisticsPanelLayout extends HudPanelLayout {
       stroke: accentStart,
       strokeStartColor: accentStart,
       strokeEndColor: accentEnd,
-      strokeWidth: Math.max(1.25, 1.35 * bs),
+      strokeWidth: lineWidth,
       closed: false,
     }));
     return nodes;

@@ -30,6 +30,9 @@ import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.combat.CombatRotationModeUtil;
+import combatant.client.util.combat.CombatEntityQuery;
+import combatant.client.util.combat.ExplosionDamageRules;
+import combatant.client.util.combat.ExplosionRenderUtil;
 import combatant.client.util.combat.RubberHandUseUtil;
 import combatant.client.util.item.FoodUtil;
 import combatant.client.util.entity.simulation.PositionExtrapolation;
@@ -241,7 +244,6 @@ public class AutoBed extends Module {
 
     private final AutoBedPlanner planner = new AutoBedPlanner();
     private final AutoBedPlanner.Context plannerContext = new PlannerContext();
-    private final AutoBedEntityBlocker entityBlocker = new AutoBedEntityBlocker();
     private final Map<BlockPos, Long> renderPositions = new ConcurrentHashMap<>();
 
     private LivingEntity target;
@@ -385,7 +387,7 @@ public class AutoBed extends Module {
         AutoBedData renderData = bestExplode != null ? bestExplode : bestPlace;
         if (renderData != null) {
             setRenderCandidate(renderData);
-            lowDamageMode = !AutoBedDamageRules.shouldOverrideMinDamage(target, renderData.damage(), faceplaceHealth.get())
+            lowDamageMode = !ExplosionDamageRules.shouldOverrideMinDamage(target, renderData.damage(), faceplaceHealth.get())
                     && renderData.damage() < minDamage.get();
         } else if (renderPositions.isEmpty()) {
             bestFootPos = null;
@@ -839,7 +841,7 @@ public class AutoBed extends Module {
             BlockPos slideHead = renderPositions.isEmpty() ? bestHeadPos : renderHeadPos;
             BlockPos fromFoot = prevRenderFootPos != null ? prevRenderFootPos : slideFoot;
             BlockPos fromHead = prevRenderHeadPos != null ? prevRenderHeadPos : slideHead;
-            renderBox(renderer, AutoBedRenderUtil.lerpBox(bedBox(fromFoot, fromHead), bedBox(slideFoot, slideHead), getSlideProgress(tickDelta)), 1.0f);
+            renderBox(renderer, ExplosionRenderUtil.lerpBox(bedBox(fromFoot, fromHead), bedBox(slideFoot, slideHead), getSlideProgress(tickDelta)), 1.0f);
         } else {
             renderBox(renderer, bedBox(activeFoot, activeHead), 1.0f);
         }
@@ -871,14 +873,14 @@ public class AutoBed extends Module {
     }
 
     private void renderBox(Renderer3D renderer, AABB box, float alpha) {
-        int fillArgb = AutoBedRenderUtil.applyOpacity(fillColor.getArgb(), alpha);
-        int lineArgb = AutoBedRenderUtil.applyOpacity(lineColor.getArgb(), alpha);
-        AutoBedRenderUtil.addFilledBox(renderer, box, fillArgb);
+        int fillArgb = ExplosionRenderUtil.applyOpacity(fillColor.getArgb(), alpha);
+        int lineArgb = ExplosionRenderUtil.applyOpacity(lineColor.getArgb(), alpha);
+        ExplosionRenderUtil.addFilledBox(renderer, box, fillArgb);
 
         float prevWidth = RenderState.lineWidth;
         RenderState.lineWidth = Math.max(0.5f, lineWidth.get());
         try {
-            AutoBedRenderUtil.addOutlineBox(renderer, box, lineArgb);
+            ExplosionRenderUtil.addOutlineBox(renderer, box, lineArgb);
         } finally {
             RenderState.lineWidth = prevWidth;
         }
@@ -889,10 +891,10 @@ public class AutoBed extends Module {
     }
 
     private void renderDamageText(Renderer3D renderer, Vec3 anchor, float alpha) {
-        String mainText = AutoBedRenderUtil.formatDamage(renderDamage);
+        String mainText = ExplosionRenderUtil.formatDamage(renderDamage);
         if (mainText.isEmpty()) return;
 
-        int mainArgb = AutoBedRenderUtil.applyOpacity(textColor.getArgb(), alpha);
+        int mainArgb = ExplosionRenderUtil.applyOpacity(textColor.getArgb(), alpha);
         TextRenderer bold = Fonts.renderer("Iosevka", FontInfo.Type.Bold, TextRenderer.get());
         WorldTextRenderer.Options baseOptions = WorldTextRenderer.Options.defaults()
                 .withScale(TEXT_SCALE)
@@ -912,10 +914,10 @@ public class AutoBed extends Module {
             return;
         }
 
-        String tailText = " / " + AutoBedRenderUtil.formatDamage(renderSelfDamageValue);
+        String tailText = " / " + ExplosionRenderUtil.formatDamage(renderSelfDamageValue);
         TextRenderer medium = Fonts.renderer("Iosevka", FontInfo.Type.Regular, TextRenderer.get());
-        double mainWidth = AutoBedRenderUtil.measureWidth(bold, mainText, TEXT_SCALE);
-        double tailWidth = AutoBedRenderUtil.measureWidth(medium, tailText, TEXT_GAP_SCALE);
+        double mainWidth = ExplosionRenderUtil.measureWidth(bold, mainText, TEXT_SCALE);
+        double tailWidth = ExplosionRenderUtil.measureWidth(medium, tailText, TEXT_GAP_SCALE);
         double startX = -(mainWidth + tailWidth) * 0.5;
 
         double drawnMain = WorldTextRenderer.drawBillboard(
@@ -1013,7 +1015,7 @@ public class AutoBed extends Module {
     }
 
     private boolean shouldOverrideMaxSelfDamage(float damage, float selfDamage) {
-        return AutoBedDamageRules.shouldOverrideMaxSelfDamage(
+        return ExplosionDamageRules.shouldOverrideMaxSelfDamage(
                 mc.player,
                 target,
                 damage,
@@ -1023,7 +1025,7 @@ public class AutoBed extends Module {
     }
 
     private boolean isSafe(float damage, float selfDamage, boolean overrideDamage) {
-        return AutoBedDamageRules.isSafe(mc.player, selfDamage, overrideDamage);
+        return ExplosionDamageRules.isSafe(mc.player, selfDamage, overrideDamage);
     }
 
     private BlockHitResult getPlaceInteractResult(BlockPos footPos, BlockPos headPos) {
@@ -1054,10 +1056,10 @@ public class AutoBed extends Module {
     }
 
     private String buildDamageText() {
-        String main = AutoBedRenderUtil.formatDamage(renderDamage);
+        String main = ExplosionRenderUtil.formatDamage(renderDamage);
         if (main.isEmpty()) return "";
         if (!renderSelfDamage.get() || renderSelfDamageValue <= 0.0f) return main;
-        return main + " / " + AutoBedRenderUtil.formatDamage(renderSelfDamageValue);
+        return main + " / " + ExplosionRenderUtil.formatDamage(renderSelfDamageValue);
     }
 
     private void clearCombatState() {
@@ -1135,7 +1137,7 @@ public class AutoBed extends Module {
 
         @Override
         public boolean isBlockedByEntity(BlockPos footPos, BlockPos headPos) {
-            return entityBlocker.isBlocked(mc.level, footPos, headPos);
+            return CombatEntityQuery.isBlocked(mc.level, new AABB(footPos).minmax(new AABB(headPos)));
         }
 
         @Override

@@ -5,9 +5,9 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-package combatant.client.features.module.modules.combat.autocrystal;
+package combatant.client.util.combat;
 
-public interface AutoCrystalDamageCandidate {
+public interface ExplosionDamageCandidate {
     float damage();
 
     float selfDamage();

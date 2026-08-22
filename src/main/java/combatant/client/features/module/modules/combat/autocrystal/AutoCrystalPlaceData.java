@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.combat.autocrystal;
 
+import combatant.client.util.combat.ExplosionDamageCandidate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.BlockHitResult;
 
@@ -16,5 +17,5 @@ public record AutoCrystalPlaceData(
         float damage,
         float selfDamage,
         boolean overrideDamage
-) implements AutoCrystalDamageCandidate {
+) implements ExplosionDamageCandidate {
 }

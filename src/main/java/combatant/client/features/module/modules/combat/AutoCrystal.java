@@ -49,6 +49,8 @@ import combatant.client.util.aiming.data.RotationWithVector;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.aiming.raytrace.RotationRaytrace;
 import combatant.client.util.combat.CombatRotationModeUtil;
+import combatant.client.util.combat.CombatBlockUseUtil;
+import combatant.client.util.combat.ExplosionRenderUtil;
 import combatant.client.util.entity.simulation.PositionExtrapolation;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.simulation.PlayerSimulationCache;
@@ -521,7 +523,7 @@ public class AutoCrystal extends Module {
         if (renderMode.get() == RenderMode.SLIDE) {
             BlockPos slideTo = renderPositions.isEmpty() ? bestPosition : renderPos;
             BlockPos from = prevRenderPos != null ? prevRenderPos : slideTo;
-            renderBox(renderer, AutoCrystalRenderUtil.lerpBox(new AABB(from), new AABB(slideTo), getSlideProgress(tickDelta)), 1.0f);
+            renderBox(renderer, ExplosionRenderUtil.lerpBox(new AABB(from), new AABB(slideTo), getSlideProgress(tickDelta)), 1.0f);
         } else {
             renderBox(renderer, new AABB(activePos), 1.0f);
         }
@@ -551,15 +553,15 @@ public class AutoCrystal extends Module {
     }
 
     private void renderBox(Renderer3D renderer, AABB box, float alpha) {
-        int fillArgb = AutoCrystalRenderUtil.applyOpacity(fillColor.getArgb(), alpha);
-        int lineArgb = AutoCrystalRenderUtil.applyOpacity(lineColor.getArgb(), alpha);
+        int fillArgb = ExplosionRenderUtil.applyOpacity(fillColor.getArgb(), alpha);
+        int lineArgb = ExplosionRenderUtil.applyOpacity(lineColor.getArgb(), alpha);
 
-        AutoCrystalRenderUtil.addFilledBox(renderer, box, fillArgb);
+        ExplosionRenderUtil.addFilledBox(renderer, box, fillArgb);
 
         float prevWidth = RenderState.lineWidth;
         RenderState.lineWidth = Math.max(0.5f, lineWidth.get());
         try {
-            AutoCrystalRenderUtil.addOutlineBox(renderer, box, lineArgb);
+            ExplosionRenderUtil.addOutlineBox(renderer, box, lineArgb);
         } finally {
             RenderState.lineWidth = prevWidth;
         }
@@ -570,10 +572,10 @@ public class AutoCrystal extends Module {
     }
 
     private void renderDamageText(Renderer3D renderer, Vec3 anchor, float alpha) {
-        String mainText = AutoCrystalRenderUtil.formatDamage(renderDamage);
+        String mainText = ExplosionRenderUtil.formatDamage(renderDamage);
         if (mainText.isEmpty()) return;
 
-        int mainArgb = AutoCrystalRenderUtil.applyOpacity(textColor.getArgb(), alpha);
+        int mainArgb = ExplosionRenderUtil.applyOpacity(textColor.getArgb(), alpha);
         TextRenderer bold = Fonts.renderer("Iosevka", FontInfo.Type.Bold, TextRenderer.get());
         WorldTextRenderer.Options baseOptions = WorldTextRenderer.Options.defaults()
                 .withScale(TEXT_SCALE)
@@ -593,7 +595,7 @@ public class AutoCrystal extends Module {
             return;
         }
 
-        String tailText = " / " + AutoCrystalRenderUtil.formatDamage(renderSelfDamageValue);
+        String tailText = " / " + ExplosionRenderUtil.formatDamage(renderSelfDamageValue);
         if (renderSelfDamageValue <= 0.0f) {
             WorldTextRenderer.drawBillboard(
                     renderer,
@@ -606,8 +608,8 @@ public class AutoCrystal extends Module {
         }
 
         TextRenderer medium = Fonts.renderer("Iosevka", FontInfo.Type.Regular, TextRenderer.get());
-        double mainWidth = AutoCrystalRenderUtil.measureWidth(bold, mainText, TEXT_SCALE);
-        double tailWidth = AutoCrystalRenderUtil.measureWidth(medium, tailText, TEXT_GAP_SCALE);
+        double mainWidth = ExplosionRenderUtil.measureWidth(bold, mainText, TEXT_SCALE);
+        double tailWidth = ExplosionRenderUtil.measureWidth(medium, tailText, TEXT_GAP_SCALE);
         double startX = -(mainWidth + tailWidth) * 0.5;
 
         double drawnMain = WorldTextRenderer.drawBillboard(
@@ -638,7 +640,7 @@ public class AutoCrystal extends Module {
         float prevWidth = RenderState.lineWidth;
         RenderState.lineWidth = 1.0f;
         try {
-            AutoCrystalRenderUtil.addOutlineBox(renderer, box, argb);
+            ExplosionRenderUtil.addOutlineBox(renderer, box, argb);
         } finally {
             RenderState.lineWidth = prevWidth;
         }
@@ -653,12 +655,12 @@ public class AutoCrystal extends Module {
                 vec.y + INTERACT_MARKER_RADIUS,
                 vec.z + INTERACT_MARKER_RADIUS
         );
-        AutoCrystalRenderUtil.addFilledBox(renderer, box, AutoCrystalRenderUtil.applyOpacity(argb, 0.6f));
+        ExplosionRenderUtil.addFilledBox(renderer, box, ExplosionRenderUtil.applyOpacity(argb, 0.6f));
 
         float prevWidth = RenderState.lineWidth;
         RenderState.lineWidth = 1.0f;
         try {
-            AutoCrystalRenderUtil.addOutlineBox(renderer, box, argb);
+            ExplosionRenderUtil.addOutlineBox(renderer, box, argb);
         } finally {
             RenderState.lineWidth = prevWidth;
         }
@@ -955,8 +957,7 @@ public class AutoCrystal extends Module {
         }
 
         float damageDelta = refreshed.damage() - getCurrentCrystalDamage();
-        mc.gameMode.useItemOn(player, hand.hand(), refreshed.hitResult());
-        player.swing(hand.hand());
+        CombatBlockUseUtil.useOn(mc, hand.hand(), refreshed.hitResult());
         lastBasePlaceMs = System.currentTimeMillis();
         bestBaseCandidate = null;
         markPlaced(refreshed.position(), refreshed.damage(), refreshed.selfDamage(), refreshed.hitResult().getLocation());
@@ -965,7 +966,7 @@ public class AutoCrystal extends Module {
             Notifier.info("AutoCrystalBase placed at X:" + refreshed.position().getX()
                     + " Y:" + refreshed.position().getY()
                     + " Z:" + refreshed.position().getZ()
-                    + " +" + AutoCrystalRenderUtil.formatDamage(damageDelta));
+                    + " +" + ExplosionRenderUtil.formatDamage(damageDelta));
         }
     }
 
@@ -1002,9 +1003,8 @@ public class AutoCrystal extends Module {
             InventorySwap.INSTANCE.leaseHotbar(this, hand.hotbarSlot(), HOTBAR_RESET_TICKS);
         }
 
-        mc.gameMode.useItemOn(player, hand.hand(), hitResult);
+        CombatBlockUseUtil.useOn(mc, hand.hand(), hitResult);
         debugLog("place-result pos=%s packet=sent", pos);
-        player.swing(hand.hand());
         lastPlaceMs = System.currentTimeMillis();
         crystalTracker.addAwaitingPosition(mc, mc.level, pos.immutable());
 
@@ -1288,12 +1288,12 @@ public class AutoCrystal extends Module {
     }
 
     private String buildDamageText() {
-        String main = AutoCrystalRenderUtil.formatDamage(renderDamage);
+        String main = ExplosionRenderUtil.formatDamage(renderDamage);
         if (main.isEmpty()) return "";
         if (!renderSelfDamage.get() || renderSelfDamageValue <= 0.0f) {
             return main;
         }
-        return main + " / " + AutoCrystalRenderUtil.formatDamage(renderSelfDamageValue);
+        return main + " / " + ExplosionRenderUtil.formatDamage(renderSelfDamageValue);
     }
 
     private float getCurrentCrystalDamage() {

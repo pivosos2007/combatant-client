@@ -66,9 +66,12 @@ public final class Tps extends DraggableHudElement implements ScriptableHudStatW
     private final ModeValue colorMode = mode("tps_color_mode", "color_mode", "Theme", new String[]{COLOR_THEME, COLOR_CUSTOM});
     private final ModeValue panelStyle = visibleWhen(
             mode("tps_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
-                    new String[]{HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT}),
+                    new String[]{HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT,
+                            HudRenderUtil.PANEL_STYLE_GRADIENT}),
             this::isThemeMode
     );
+    private final NumberValue<Integer> themeGradientStrength = visibleWhen(
+            num("tps_theme_gradient_strength", 72, 0, 100), this::isGradientPanelStyle);
     private final RGBColorValue iconColor = visibleWhen(colorNoAlpha("tps_icon_color", "#FFFFFF"), this::isCustomMode);
     private final RGBColorValue valueColor = visibleWhen(colorNoAlpha("tps_value_color", "#FFFFFF"), this::isCustomMode);
     private final RGBColorValue metaColor = visibleWhen(colorNoAlpha("tps_meta_color", "#9B9B9B"), this::isCustomMode);
@@ -86,8 +89,10 @@ public final class Tps extends DraggableHudElement implements ScriptableHudStatW
     private final ModeValue shadowMode = visibleWhen(
             mode("tps_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
                     new String[]{HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME}),
-            shadowEnabled::get
+            () -> shadowEnabled.get() && isThemeMode()
     );
+    private final NumberValue<Integer> themeShadowStrength = visibleWhen(
+            num("tps_theme_shadow_strength", 100, 0, 100), this::isThemeShadow);
     private final NumberValue<Integer> shadowAlpha = visibleWhen(num("tps_shadow_alpha", 48, 0, 255), shadowEnabled::get);
     private final NumberValue<Integer> bgAlpha = visibleWhen(num("tps_bg_alpha", 133, 0, 255), () -> isThemeMode());
     private final NumberValue<Integer> blurAlpha = visibleWhen(num("tps_blur_alpha", 255, 0, 255), this::hasEffect);
@@ -244,7 +249,8 @@ public final class Tps extends DraggableHudElement implements ScriptableHudStatW
         if (shadowEnabled.get()) {
             HudRenderUtil.drawHudShadow(
                     renderer, baseX, baseY, boxW, boxH, radius, drawScale,
-                    HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()), shadowAlpha.get(), 1.0f
+                    isThemeShadow(), shadowAlpha.get(), 1.0f,
+                    themeShadowStrength.get() / 100.0f
             );
         }
 
@@ -328,6 +334,11 @@ public final class Tps extends DraggableHudElement implements ScriptableHudStatW
             if (isAccentPanelStyle()) {
                 uiBgPrimary = HudRenderUtil.accentSurface(uiBgPrimary, 0.20f);
                 uiBgSecondary = HudRenderUtil.accentSurface(uiBgSecondary, 0.28f);
+            } else if (isGradientPanelStyle()) {
+                float strength = themeGradientStrength.get() / 100.0f;
+                HudRenderUtil.ThemeGradient gradient = HudRenderUtil.themePanelGradient(255);
+                uiBgPrimary = HudRenderUtil.gradientSurface(uiBgPrimary, gradient.start(), strength);
+                uiBgSecondary = HudRenderUtil.gradientSurface(uiBgSecondary, gradient.end(), strength);
             }
             uiStroke = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.4f),
@@ -355,6 +366,15 @@ public final class Tps extends DraggableHudElement implements ScriptableHudStatW
 
     private boolean isAccentPanelStyle() {
         return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
+    }
+
+    private boolean isGradientPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_GRADIENT.equals(panelStyle.get());
+    }
+
+    private boolean isThemeShadow() {
+        return shadowEnabled.get() && isThemeMode()
+                && HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get());
     }
 
     private int resolveStrokeGradientStart() {

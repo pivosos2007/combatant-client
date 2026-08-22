@@ -168,7 +168,7 @@ public enum DraggableHudElementRegistry {
         if (w == null) return false;
         if (!w.usesEngineRenderer()) return false;
         boolean bypassEnabled = forceVisible && editorWidgetId != null && editorWidgetId.equals(id);
-        return bypassEnabled || w.isEnabled();
+        return bypassEnabled || w.isEnabled() || w.shouldRenderWhenDisabled();
     }
 
     public static void renderAllEngine(HudPhase phase,
@@ -197,7 +197,7 @@ public enum DraggableHudElementRegistry {
                 continue;
             }
             boolean bypassEnabled = singleEditorPreview && forceVisible;
-            if (!bypassEnabled && !w.isEnabled()) {
+            if (!bypassEnabled && !w.isEnabled() && !w.shouldRenderWhenDisabled()) {
                 continue;
             }
             if (!w.usesEngineRenderer()) {
@@ -264,7 +264,7 @@ public enum DraggableHudElementRegistry {
                 continue;
             }
             boolean bypassEnabled = singleEditorPreview && forceVisible;
-            if (!bypassEnabled && !w.isEnabled()) {
+            if (!bypassEnabled && !w.isEnabled() && !w.shouldRenderWhenDisabled()) {
                 continue;
             }
             if (!w.usesEngineRenderer()) {
@@ -291,6 +291,25 @@ public enum DraggableHudElementRegistry {
         if (phase == HudPhase.AFTER_SUBTITLES) {
             float uiScale = HudScale.scale(fbw, fbh);
             handleDragging(mc, screenW, screenH, uiScale);
+        }
+    }
+
+    public static void renderNativeHudOverlays(HudPhase phase,
+                                               net.minecraft.client.gui.GuiGraphicsExtractor ctx) {
+        if (!RuntimeGate.canRunHud() || ctx == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) return;
+
+        int fbw = mc.getWindow().getWidth();
+        int fbh = mc.getWindow().getHeight();
+        int screenW = Math.max(1, Math.round(HudScale.virtualWidth(fbw, fbh)));
+        int screenH = Math.max(1, Math.round(HudScale.virtualHeight(fbw, fbh)));
+
+        for (DraggableHudElement w : WIDGETS) {
+            if (w.getHudPhase() != phase || w.getRenderSpace() != HudRenderSpace.UNSCALED_LOGICAL) {
+                continue;
+            }
+            w.renderNativeHudOverlay(ctx, screenW, screenH);
         }
     }
 
@@ -321,7 +340,7 @@ public enum DraggableHudElementRegistry {
         if (w == null) return;
         if (!w.usesEngineRenderer()) return;
         boolean bypassEnabled = forceVisible && editorWidgetId != null && editorWidgetId.equals(id);
-        if (!bypassEnabled && !w.isEnabled()) {
+        if (!bypassEnabled && !w.isEnabled() && !w.shouldRenderWhenDisabled()) {
             return;
         }
         if (allowOnlyModuleList && !"module_list".equals(w.getId())) {
@@ -708,7 +727,7 @@ public enum DraggableHudElementRegistry {
         }
 
         boolean bypassEnabled = singleEditorPreview && forceVisible;
-        if (!bypassEnabled && !w.isEnabled()) {
+        if (!bypassEnabled && !w.isEnabled() && !w.shouldRenderWhenDisabled()) {
             return false;
         }
 

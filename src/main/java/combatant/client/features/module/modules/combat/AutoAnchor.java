@@ -30,6 +30,9 @@ import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.combat.CombatRotationModeUtil;
+import combatant.client.util.combat.CombatEntityQuery;
+import combatant.client.util.combat.ExplosionDamageRules;
+import combatant.client.util.combat.ExplosionRenderUtil;
 import combatant.client.util.combat.RubberHandUseUtil;
 import combatant.client.util.item.FoodUtil;
 import combatant.client.util.entity.simulation.PositionExtrapolation;
@@ -242,7 +245,6 @@ public class AutoAnchor extends Module {
 
     private final AutoAnchorPlanner planner = new AutoAnchorPlanner();
     private final AutoAnchorPlanner.Context plannerContext = new PlannerContext();
-    private final AutoAnchorEntityBlocker entityBlocker = new AutoAnchorEntityBlocker();
     private final Map<BlockPos, Long> renderPositions = new ConcurrentHashMap<>();
 
     private LivingEntity target;
@@ -368,7 +370,7 @@ public class AutoAnchor extends Module {
         AutoAnchorData renderData = bestExplode != null ? bestExplode : bestPlace;
         if (renderData != null) {
             setRenderCandidate(renderData);
-            lowDamageMode = !AutoAnchorDamageRules.shouldOverrideMinDamage(target, renderData.damage(), faceplaceHealth.get())
+            lowDamageMode = !ExplosionDamageRules.shouldOverrideMinDamage(target, renderData.damage(), faceplaceHealth.get())
                     && renderData.damage() < minDamage.get();
         } else if (renderPositions.isEmpty()) {
             bestPosition = null;
@@ -819,7 +821,7 @@ public class AutoAnchor extends Module {
         if (renderMode.get() == RenderMode.SLIDE) {
             BlockPos slideTo = renderPositions.isEmpty() ? bestPosition : renderPos;
             BlockPos from = prevRenderPos != null ? prevRenderPos : slideTo;
-            renderBox(renderer, AutoAnchorRenderUtil.lerpBox(new AABB(from), new AABB(slideTo), getSlideProgress(tickDelta)), 1.0f);
+            renderBox(renderer, ExplosionRenderUtil.lerpBox(new AABB(from), new AABB(slideTo), getSlideProgress(tickDelta)), 1.0f);
         } else {
             renderBox(renderer, new AABB(activePos), 1.0f);
         }
@@ -847,14 +849,14 @@ public class AutoAnchor extends Module {
     }
 
     private void renderBox(Renderer3D renderer, AABB box, float alpha) {
-        int fillArgb = AutoAnchorRenderUtil.applyOpacity(fillColor.getArgb(), alpha);
-        int lineArgb = AutoAnchorRenderUtil.applyOpacity(lineColor.getArgb(), alpha);
-        AutoAnchorRenderUtil.addFilledBox(renderer, box, fillArgb);
+        int fillArgb = ExplosionRenderUtil.applyOpacity(fillColor.getArgb(), alpha);
+        int lineArgb = ExplosionRenderUtil.applyOpacity(lineColor.getArgb(), alpha);
+        ExplosionRenderUtil.addFilledBox(renderer, box, fillArgb);
 
         float prevWidth = RenderState.lineWidth;
         RenderState.lineWidth = Math.max(0.5f, lineWidth.get());
         try {
-            AutoAnchorRenderUtil.addOutlineBox(renderer, box, lineArgb);
+            ExplosionRenderUtil.addOutlineBox(renderer, box, lineArgb);
         } finally {
             RenderState.lineWidth = prevWidth;
         }
@@ -865,10 +867,10 @@ public class AutoAnchor extends Module {
     }
 
     private void renderDamageText(Renderer3D renderer, Vec3 anchor, float alpha) {
-        String mainText = AutoAnchorRenderUtil.formatDamage(renderDamage);
+        String mainText = ExplosionRenderUtil.formatDamage(renderDamage);
         if (mainText.isEmpty()) return;
 
-        int mainArgb = AutoAnchorRenderUtil.applyOpacity(textColor.getArgb(), alpha);
+        int mainArgb = ExplosionRenderUtil.applyOpacity(textColor.getArgb(), alpha);
         TextRenderer bold = Fonts.renderer("Iosevka", FontInfo.Type.Bold, TextRenderer.get());
         WorldTextRenderer.Options baseOptions = WorldTextRenderer.Options.defaults()
                 .withScale(TEXT_SCALE)
@@ -888,10 +890,10 @@ public class AutoAnchor extends Module {
             return;
         }
 
-        String tailText = " / " + AutoAnchorRenderUtil.formatDamage(renderSelfDamageValue);
+        String tailText = " / " + ExplosionRenderUtil.formatDamage(renderSelfDamageValue);
         TextRenderer medium = Fonts.renderer("Iosevka", FontInfo.Type.Regular, TextRenderer.get());
-        double mainWidth = AutoAnchorRenderUtil.measureWidth(bold, mainText, TEXT_SCALE);
-        double tailWidth = AutoAnchorRenderUtil.measureWidth(medium, tailText, TEXT_GAP_SCALE);
+        double mainWidth = ExplosionRenderUtil.measureWidth(bold, mainText, TEXT_SCALE);
+        double tailWidth = ExplosionRenderUtil.measureWidth(medium, tailText, TEXT_GAP_SCALE);
         double startX = -(mainWidth + tailWidth) * 0.5;
 
         double drawnMain = WorldTextRenderer.drawBillboard(
@@ -978,7 +980,7 @@ public class AutoAnchor extends Module {
     }
 
     private boolean shouldOverrideMaxSelfDamage(float damage, float selfDamage) {
-        return AutoAnchorDamageRules.shouldOverrideMaxSelfDamage(
+        return ExplosionDamageRules.shouldOverrideMaxSelfDamage(
                 mc.player,
                 target,
                 damage,
@@ -988,7 +990,7 @@ public class AutoAnchor extends Module {
     }
 
     private boolean isSafe(float damage, float selfDamage, boolean overrideDamage) {
-        return AutoAnchorDamageRules.isSafe(mc.player, selfDamage, overrideDamage);
+        return ExplosionDamageRules.isSafe(mc.player, selfDamage, overrideDamage);
     }
 
     private BlockHitResult getInteractResult(BlockPos pos, boolean existingAnchor) {
@@ -1010,10 +1012,10 @@ public class AutoAnchor extends Module {
     }
 
     private String buildDamageText() {
-        String main = AutoAnchorRenderUtil.formatDamage(renderDamage);
+        String main = ExplosionRenderUtil.formatDamage(renderDamage);
         if (main.isEmpty()) return "";
         if (!renderSelfDamage.get() || renderSelfDamageValue <= 0.0f) return main;
-        return main + " / " + AutoAnchorRenderUtil.formatDamage(renderSelfDamageValue);
+        return main + " / " + ExplosionRenderUtil.formatDamage(renderSelfDamageValue);
     }
 
     private void clearCombatState() {
@@ -1076,7 +1078,7 @@ public class AutoAnchor extends Module {
 
         @Override
         public boolean isBlockedByEntity(BlockPos pos) {
-            return entityBlocker.isBlocked(mc.level, pos);
+            return CombatEntityQuery.isBlocked(mc.level, new AABB(pos));
         }
 
         @Override

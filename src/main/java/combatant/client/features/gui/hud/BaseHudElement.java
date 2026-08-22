@@ -316,6 +316,17 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
                                        int screenH) {
     }
 
+    /**
+     * Records native GUI glyphs after Combatant's deferred HUD batches have been
+     * inserted into the vanilla GUI stream. This is intended for content which
+     * must use Minecraft's font renderer while still appearing above engine
+     * backgrounds, blur and shadows.
+     */
+    public void renderNativeHudOverlay(GuiGraphicsExtractor ctx,
+                                       int screenW,
+                                       int screenH) {
+    }
+
     public boolean usesEngineRenderer() {
         return false;
     }
@@ -376,6 +387,14 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
 
     public boolean isEnabled() {
         return enabled.get() || previewEnabled;
+    }
+
+    /**
+     * Lets an element finish a closing transition after its enabled value becomes false.
+     * Disabled elements remain skipped by default.
+     */
+    public boolean shouldRenderWhenDisabled() {
+        return false;
     }
 
     public void setEnabled(boolean value) {

@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.combat.autobed;
 
+import combatant.client.util.combat.ExplosionDamageCandidate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.phys.BlockHitResult;
@@ -24,7 +25,7 @@ public record AutoBedData(
         float selfDamage,
         boolean overrideDamage,
         boolean existingBed
-) implements AutoBedDamageCandidate {
+) implements ExplosionDamageCandidate {
     public BlockPos pos() {
         return footPos;
     }

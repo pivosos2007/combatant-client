@@ -194,7 +194,10 @@ public final class TargetHud extends DraggableHudElement {
             new ModeValue("target_color_mode", "Theme", COLOR_THEME, COLOR_CUSTOM);
     private final ModeValue panelStyle =
             new ModeValue("target_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
-                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT);
+                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT,
+                    HudRenderUtil.PANEL_STYLE_GRADIENT);
+    private final NumberValue<Integer> themeGradientStrength =
+            new NumberValue<>("target_theme_gradient_strength", 72, 0, 100);
     private final BooleanValue strokeEnabled =
             new BooleanValue("target_stroke_enabled", false);
     private final NumberValue<Integer> strokeAlpha =
@@ -206,6 +209,8 @@ public final class TargetHud extends DraggableHudElement {
     private final ModeValue shadowMode =
             new ModeValue("target_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
                     HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME);
+    private final NumberValue<Integer> themeShadowStrength =
+            new NumberValue<>("target_theme_shadow_strength", 100, 0, 100);
     private final NumberValue<Integer> shadowAlpha =
             new NumberValue<>("target_shadow_alpha", 96, 0, 255);
     private final RGBAColorValue bg =
@@ -440,6 +445,7 @@ public final class TargetHud extends DraggableHudElement {
         defs.add(SettingDef.mode(hpMode));
         defs.add(SettingDef.mode(colorMode));
         defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));
+        defs.add(SettingDef.number(themeGradientStrength).visibleWhen(this::isGradientPanelStyle));
         defs.add(SettingDef.color(bg).visibleWhen(() -> isCustomMode() && !isGlassEffect()));
         defs.add(SettingDef.color(bg2).visibleWhen(() -> isCustomMode() && !isGlassEffect()));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(() -> isThemeMode() && !isGlassEffect()));
@@ -448,7 +454,8 @@ public final class TargetHud extends DraggableHudElement {
         defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
         defs.add(SettingDef.bool(strokeGradient).visibleWhen(() -> strokeEnabled.get() && isThemeMode()));
         defs.add(SettingDef.bool(shadowEnabled));
-        defs.add(SettingDef.mode(shadowMode).visibleWhen(shadowEnabled::get));
+        defs.add(SettingDef.mode(shadowMode).visibleWhen(() -> shadowEnabled.get() && isThemeMode()));
+        defs.add(SettingDef.number(themeShadowStrength).visibleWhen(this::isThemeShadow));
         defs.add(SettingDef.number(shadowAlpha).visibleWhen(shadowEnabled::get));
         defs.add(SettingDef.colorNoAlpha(text).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(textSecondary).visibleWhen(this::isCustomMode));
@@ -562,8 +569,9 @@ public final class TargetHud extends DraggableHudElement {
             if (shadowEnabled.get()) {
                 HudRenderUtil.drawHudShadow(
                         renderer, panelX, panelY, panelW, panelH, panelRadius, scaleFactor,
-                        HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()),
-                        shadowAlpha.get(), alphaFactor
+                        isThemeShadow(),
+                        shadowAlpha.get(), alphaFactor,
+                        themeShadowStrength.get() / 100.0f
                 );
             }
 
@@ -643,6 +651,11 @@ public final class TargetHud extends DraggableHudElement {
             if (isAccentPanelStyle()) {
                 uiBgPrimary = HudRenderUtil.accentSurface(uiBgPrimary, 0.20f);
                 uiBgSecondary = HudRenderUtil.accentSurface(uiBgSecondary, 0.28f);
+            } else if (isGradientPanelStyle()) {
+                float strength = themeGradientStrength.get() / 100.0f;
+                HudRenderUtil.ThemeGradient gradient = HudRenderUtil.themePanelGradient(255);
+                uiBgPrimary = HudRenderUtil.gradientSurface(uiBgPrimary, gradient.start(), strength);
+                uiBgSecondary = HudRenderUtil.gradientSurface(uiBgSecondary, gradient.end(), strength);
             }
             uiStroke = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.4f),
@@ -713,7 +726,7 @@ public final class TargetHud extends DraggableHudElement {
         int secondary = HudRenderUtil.scaleAlpha(uiBgSecondary, alphaFactor);
 
         if (isThemeMode()) {
-            if (isAccentPanelStyle()) {
+            if (isAccentPanelStyle() || isGradientPanelStyle()) {
                 renderer.roundedRectGradient(x, y, width, height, radius, 1.0f, primary, secondary, 90.0f);
             } else {
                 HudRenderUtil.drawHudBackground(renderer, x, y, width, height, radius, 1.0f, primary, true);
@@ -1459,7 +1472,16 @@ public final class TargetHud extends DraggableHudElement {
         float glassAlpha = alphaFactor;
         float glassScale = PANEL_RADIUS <= 0.0f ? 1.0f : radius / PANEL_RADIUS;
         HudRenderUtil.drawLiquidGlass(x, y, width, height, radius, glassScale, true, blurStrength, glassAlpha);
-        if (isAccentPanelStyle()) {
+        if (isGradientPanelStyle()) {
+            float strength = themeGradientStrength.get() / 100.0f;
+            HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(
+                    Math.round(72.0f * strength * AnimationUtility.clamp01(alphaFactor))
+            );
+            Renderer2D.COLOR.roundedRectGradient(
+                    x, y, width, height, radius, 1.0f,
+                    panelGradient.start(), panelGradient.end(), panelGradient.angleDeg()
+            );
+        } else if (isAccentPanelStyle()) {
             HudRenderUtil.ThemeGradient accentGradient = HudRenderUtil.themeAccentGradient(
                     Math.round(42.0f * AnimationUtility.clamp01(alphaFactor))
             );
@@ -1708,6 +1730,15 @@ public final class TargetHud extends DraggableHudElement {
 
     private boolean isAccentPanelStyle() {
         return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
+    }
+
+    private boolean isGradientPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_GRADIENT.equals(panelStyle.get());
+    }
+
+    private boolean isThemeShadow() {
+        return shadowEnabled.get() && isThemeMode()
+                && HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get());
     }
 
     private boolean isCustomMode() {

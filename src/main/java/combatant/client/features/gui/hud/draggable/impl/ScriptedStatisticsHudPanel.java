@@ -216,6 +216,7 @@ final class ScriptedStatisticsHudPanel {
             for (Map<String, Object> row : rows) {
                 h = CachedUiScriptRuntime.mix(h, string(row.get("key")));
                 h = CachedUiScriptRuntime.mix(h, string(row.get("label")));
+                h = CachedUiScriptRuntime.mix(h, floatValue(row.get("animation")));
             }
             h = mixPalette(h);
             return h;
@@ -252,7 +253,6 @@ final class ScriptedStatisticsHudPanel {
             for (Map<String, Object> row : rows) {
                 String key = string(row.get("key"));
                 putPatch(patches, "stat:" + key + ":value", "text", string(row.get("value")));
-                putPatch(patches, "stat:" + key + ":value", "color", string(row.get("valueColor")));
             }
             if (showPlayTime) {
                 putPatch(patches, "playtime:value", "text", playTime);

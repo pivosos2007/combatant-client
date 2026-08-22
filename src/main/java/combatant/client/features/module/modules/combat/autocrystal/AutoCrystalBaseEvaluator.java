@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.combat.autocrystal;
 
+import combatant.client.util.combat.CombatEntityQuery;
 import combatant.client.util.world.ExplosionDamageUtil;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -34,17 +35,7 @@ public final class AutoCrystalBaseEvaluator {
             return false;
         }
 
-        AABB blockBox = new AABB(pos);
-        for (Entity entity : level.entitiesForRendering()) {
-            if (entity == null || !entity.isAlive() || entity.isRemoved() || entity instanceof ExperienceOrb) {
-                continue;
-            }
-            if (entity.getBoundingBox().intersects(blockBox)) {
-                return false;
-            }
-        }
-
-        return true;
+        return !CombatEntityQuery.isBlocked(level, new AABB(pos));
     }
 
     public static AutoCrystalBasePlanner.BaseData getBaseData(Context context, BlockPos pos, LivingEntity currentTarget) {

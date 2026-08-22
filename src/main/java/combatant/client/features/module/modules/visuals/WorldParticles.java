@@ -61,10 +61,13 @@ public class WorldParticles extends Module {
     private static final int BUBBLE_SPHERE_STACKS = 5;
     private static final int BUBBLE_SPHERE_SLICES = 12;
     private static final int BUBBLE_SPHERE_ROW_SIZE = BUBBLE_SPHERE_SLICES + 1;
-    private static final int BUBBLE_SPHERE_VERTEX_COUNT = (BUBBLE_SPHERE_STACKS + 1) * BUBBLE_SPHERE_ROW_SIZE;
-    private static final float[] BUBBLE_SPHERE_X = new float[BUBBLE_SPHERE_VERTEX_COUNT];
-    private static final float[] BUBBLE_SPHERE_Y = new float[BUBBLE_SPHERE_VERTEX_COUNT];
-    private static final float[] BUBBLE_SPHERE_Z = new float[BUBBLE_SPHERE_VERTEX_COUNT];
+    private static final int BUBBLE_SPHERE_SAMPLE_COUNT = (BUBBLE_SPHERE_STACKS + 1) * BUBBLE_SPHERE_ROW_SIZE;
+    private static final int BUBBLE_SPHERE_INTERIOR_STACKS = BUBBLE_SPHERE_STACKS - 1;
+    private static final int BUBBLE_SPHERE_MESH_VERTEX_COUNT = 2 + BUBBLE_SPHERE_INTERIOR_STACKS * BUBBLE_SPHERE_SLICES;
+    private static final int BUBBLE_SPHERE_MESH_INDEX_COUNT = 6 * BUBBLE_SPHERE_SLICES * BUBBLE_SPHERE_INTERIOR_STACKS;
+    private static final float[] BUBBLE_SPHERE_X = new float[BUBBLE_SPHERE_SAMPLE_COUNT];
+    private static final float[] BUBBLE_SPHERE_Y = new float[BUBBLE_SPHERE_SAMPLE_COUNT];
+    private static final float[] BUBBLE_SPHERE_Z = new float[BUBBLE_SPHERE_SAMPLE_COUNT];
     private static final Vector3f BUBBLE_LIGHT = new Vector3f(-0.36f, 0.84f, -0.40f).normalize();
     private static final float FUNNEL_EYE_SIZE_MULTIPLIER = 4.35f;
     private static final float FUNNEL_DISTORTION_SIZE_MULTIPLIER = 5.25f;
@@ -151,6 +154,8 @@ public class WorldParticles extends Module {
     private final NumberValue<Float> funnelTintStrength =
             visibleWhen(num("funnel_tint_strength", "funnel_tint_strength", 0.45f, 0.0f, 1.0f), this::isFunnelTintControlsVisible);
     private final List<Particle> particles = new ArrayList<>();
+    private final Quaternionf bubbleSphereRotation = new Quaternionf();
+    private final Vector3f bubbleSphereNormal = new Vector3f();
 
     private static double randomDoubleClosed(ThreadLocalRandom random, double min, double max) {
         if (!Double.isFinite(min) || !Double.isFinite(max)) {
@@ -180,17 +185,6 @@ public class WorldParticles extends Module {
         Vector3f right = new Vector3f(1.0f, 0.0f, 0.0f).rotate(camRot).mul((float) Math.cos(angle) * distance);
         Vector3f up = new Vector3f(0.0f, 1.0f, 0.0f).rotate(camRot).mul((float) Math.sin(angle) * distance);
         return pos.add(right.x() + up.x(), right.y() + up.y(), right.z() + up.z());
-    }
-
-    private static Vec3 offsetInBillboardPlane(Vec3 pos, Vector3f right, Vector3f up,
-                                                float angle, float distance) {
-        float rightScale = (float) Math.cos(angle) * distance;
-        float upScale = (float) Math.sin(angle) * distance;
-        return pos.add(
-                right.x() * rightScale + up.x() * upScale,
-                right.y() * rightScale + up.y() * upScale,
-                right.z() * rightScale + up.z() * upScale
-        );
     }
 
     private static void addBillboardQuad(MeshBuilder mesh, double cx, double cy, double cz,
@@ -327,37 +321,68 @@ public class WorldParticles extends Module {
     private static void addSphereShell(MeshBuilder mesh,
                                        Vec3 center,
                                        Quaternionf rotation,
+                                       Vector3f normal,
                                        float radius,
                                        int baseColor,
                                        int brightColor,
                                        int shadowColor,
                                        float alpha) {
         int baseVertex = mesh.getVertexCount();
-        mesh.ensureCapacity(BUBBLE_SPHERE_VERTEX_COUNT, BUBBLE_SPHERE_STACKS * BUBBLE_SPHERE_SLICES * 6);
+        mesh.ensureCapacity(BUBBLE_SPHERE_MESH_VERTEX_COUNT, BUBBLE_SPHERE_MESH_INDEX_COUNT);
 
-        Vector3f normal = new Vector3f();
-        for (int vertex = 0; vertex < BUBBLE_SPHERE_VERTEX_COUNT; vertex++) {
-            normal.set(BUBBLE_SPHERE_X[vertex], BUBBLE_SPHERE_Y[vertex], BUBBLE_SPHERE_Z[vertex]).rotate(rotation);
-            float px = (float) center.x + normal.x() * radius;
-            float py = (float) center.y + normal.y() * radius;
-            float pz = (float) center.z + normal.z() * radius;
-            normal.normalize();
-            int vertexColor = sphereSurfaceColor(baseColor, brightColor, shadowColor, normal, alpha);
-            mesh.vec3(px, py, pz).colorArgb(vertexColor).next();
-        }
-
-        for (int stack = 0; stack < BUBBLE_SPHERE_STACKS; stack++) {
-            int row = baseVertex + stack * BUBBLE_SPHERE_ROW_SIZE;
-            int nextRow = row + BUBBLE_SPHERE_ROW_SIZE;
+        addSphereVertex(mesh, center, rotation, normal, radius, baseColor, brightColor, shadowColor, alpha, 0);
+        for (int stack = 1; stack < BUBBLE_SPHERE_STACKS; stack++) {
+            int sampleRow = stack * BUBBLE_SPHERE_ROW_SIZE;
             for (int slice = 0; slice < BUBBLE_SPHERE_SLICES; slice++) {
+                addSphereVertex(mesh, center, rotation, normal, radius,
+                        baseColor, brightColor, shadowColor, alpha, sampleRow + slice);
+            }
+        }
+        addSphereVertex(mesh, center, rotation, normal, radius, baseColor, brightColor, shadowColor, alpha,
+                BUBBLE_SPHERE_STACKS * BUBBLE_SPHERE_ROW_SIZE);
+
+        int firstRing = baseVertex + 1;
+        int bottom = firstRing + BUBBLE_SPHERE_INTERIOR_STACKS * BUBBLE_SPHERE_SLICES;
+        for (int slice = 0; slice < BUBBLE_SPHERE_SLICES; slice++) {
+            int next = (slice + 1) % BUBBLE_SPHERE_SLICES;
+            mesh.triangle(baseVertex, firstRing + slice, firstRing + next);
+        }
+        for (int stack = 0; stack < BUBBLE_SPHERE_INTERIOR_STACKS - 1; stack++) {
+            int row = firstRing + stack * BUBBLE_SPHERE_SLICES;
+            int nextRow = row + BUBBLE_SPHERE_SLICES;
+            for (int slice = 0; slice < BUBBLE_SPHERE_SLICES; slice++) {
+                int next = (slice + 1) % BUBBLE_SPHERE_SLICES;
                 int a = row + slice;
                 int b = nextRow + slice;
-                int c = nextRow + slice + 1;
-                int d = row + slice + 1;
+                int c = nextRow + next;
+                int d = row + next;
                 mesh.triangle(a, b, c);
                 mesh.triangle(c, d, a);
             }
         }
+        int lastRing = bottom - BUBBLE_SPHERE_SLICES;
+        for (int slice = 0; slice < BUBBLE_SPHERE_SLICES; slice++) {
+            int next = (slice + 1) % BUBBLE_SPHERE_SLICES;
+            mesh.triangle(bottom, lastRing + next, lastRing + slice);
+        }
+    }
+
+    private static void addSphereVertex(MeshBuilder mesh,
+                                        Vec3 center,
+                                        Quaternionf rotation,
+                                        Vector3f normal,
+                                        float radius,
+                                        int baseColor,
+                                        int brightColor,
+                                        int shadowColor,
+                                        float alpha,
+                                        int sample) {
+        normal.set(BUBBLE_SPHERE_X[sample], BUBBLE_SPHERE_Y[sample], BUBBLE_SPHERE_Z[sample]).rotate(rotation);
+        float px = (float) center.x + normal.x() * radius;
+        float py = (float) center.y + normal.y() * radius;
+        float pz = (float) center.z + normal.z() * radius;
+        int vertexColor = sphereSurfaceColor(baseColor, brightColor, shadowColor, normal, alpha);
+        mesh.vec3(px, py, pz).colorArgb(vertexColor).next();
     }
 
     private static int sphereSurfaceColor(int baseColor, int brightColor, int shadowColor,
@@ -464,8 +489,8 @@ public class WorldParticles extends Module {
             int particleCount = particles.size();
             if (bubbleShellMesh != null) {
                 bubbleShellMesh.ensureCapacity(
-                        particleCount * (BUBBLE_SPHERE_STACKS + 1) * (BUBBLE_SPHERE_SLICES + 1),
-                        particleCount * BUBBLE_SPHERE_STACKS * BUBBLE_SPHERE_SLICES * 6
+                        particleCount * BUBBLE_SPHERE_MESH_VERTEX_COUNT,
+                        particleCount * BUBBLE_SPHERE_MESH_INDEX_COUNT
                 );
             }
             if (spriteMesh != null) {
@@ -680,14 +705,14 @@ public class WorldParticles extends Module {
         int softColor = AnimatedRenderColors.mixArgb(baseColor, 0xFFFFFFFF, 0.32f);
         int shadowColor = AnimatedRenderColors.mixArgb(baseColor, 0xFF000000, 0.42f);
         int sphereShadowColor = AnimatedRenderColors.mixArgb(baseColor, 0xFF000000, 0.38f);
-        Quaternionf sphereRotation = new Quaternionf()
+        Quaternionf sphereRotation = bubbleSphereRotation.identity()
                 .rotateY(particle.visualPhase + ageSeconds * 0.34f)
                 .rotateX(particle.visualPhase * 0.47f + ageSeconds * 0.22f)
                 .rotateZ(particle.visualPhase * -0.31f + ageSeconds * 0.16f);
         float sphereRadius = radius * 0.82f;
 
         if (shellMesh != null) {
-            addSphereShell(shellMesh, pos, sphereRotation, sphereRadius,
+            addSphereShell(shellMesh, pos, sphereRotation, bubbleSphereNormal, sphereRadius,
                     baseColor, brightColor, sphereShadowColor, alpha);
         }
 
@@ -704,11 +729,16 @@ public class WorldParticles extends Module {
                     multiplyAlpha(softColor, alpha * BUBBLE_GLOW_ALPHA_MULTIPLIER)
             );
 
-            Vec3 depth = offsetInBillboardPlane(pos, billboardRight, billboardUp, depthAngle, radius * 0.22f);
+            float depthDistance = radius * 0.22f;
+            float depthRightScale = (float) Math.cos(depthAngle) * depthDistance;
+            float depthUpScale = (float) Math.sin(depthAngle) * depthDistance;
+            double depthX = pos.x + billboardRight.x() * depthRightScale + billboardUp.x() * depthUpScale;
+            double depthY = pos.y + billboardRight.y() * depthRightScale + billboardUp.y() * depthUpScale;
+            double depthZ = pos.z + billboardRight.z() * depthRightScale + billboardUp.z() * depthUpScale;
             float depthAlpha = alpha * BUBBLE_DEPTH_ALPHA_MULTIPLIER * (0.78f + pulse * 0.18f);
             addBillboardQuadGradient(
                     spriteMesh,
-                    depth.x, depth.y, depth.z,
+                    depthX, depthY, depthZ,
                     radius * 0.58f,
                     billboardRight, billboardUp,
                     particle.visualPhase * 0.31f,
@@ -731,11 +761,16 @@ public class WorldParticles extends Module {
                     multiplyAlpha(softColor, fillAlpha * 1.18f)
             );
 
-            Vec3 highlight = offsetInBillboardPlane(pos, billboardRight, billboardUp, lightAngle, radius * 0.42f);
+            float highlightDistance = radius * 0.42f;
+            float highlightRightScale = (float) Math.cos(lightAngle) * highlightDistance;
+            float highlightUpScale = (float) Math.sin(lightAngle) * highlightDistance;
+            double highlightX = pos.x + billboardRight.x() * highlightRightScale + billboardUp.x() * highlightUpScale;
+            double highlightY = pos.y + billboardRight.y() * highlightRightScale + billboardUp.y() * highlightUpScale;
+            double highlightZ = pos.z + billboardRight.z() * highlightRightScale + billboardUp.z() * highlightUpScale;
             float highlightAlpha = alpha * BUBBLE_HIGHLIGHT_ALPHA_MULTIPLIER * (1.0f - lifeT * 0.22f);
             addBillboardQuadGradient(
                     spriteMesh,
-                    highlight.x, highlight.y, highlight.z,
+                    highlightX, highlightY, highlightZ,
                     particle.size * BUBBLE_HIGHLIGHT_SIZE_MULTIPLIER * (0.74f + pulse * 0.22f),
                     billboardRight, billboardUp,
                     particle.visualPhase,
@@ -745,12 +780,17 @@ public class WorldParticles extends Module {
                     multiplyAlpha(brightColor, highlightAlpha * 0.86f)
             );
 
-            Vec3 secondaryHighlight = offsetInBillboardPlane(
-                    pos, billboardRight, billboardUp, lightAngle - 0.92f, radius * 0.18f);
+            float secondaryAngle = lightAngle - 0.92f;
+            float secondaryDistance = radius * 0.18f;
+            float secondaryRightScale = (float) Math.cos(secondaryAngle) * secondaryDistance;
+            float secondaryUpScale = (float) Math.sin(secondaryAngle) * secondaryDistance;
+            double secondaryX = pos.x + billboardRight.x() * secondaryRightScale + billboardUp.x() * secondaryUpScale;
+            double secondaryY = pos.y + billboardRight.y() * secondaryRightScale + billboardUp.y() * secondaryUpScale;
+            double secondaryZ = pos.z + billboardRight.z() * secondaryRightScale + billboardUp.z() * secondaryUpScale;
             float secondaryHighlightAlpha = alpha * BUBBLE_HIGHLIGHT_ALPHA_MULTIPLIER * 0.42f * (0.84f + pulse * 0.16f);
             addBillboardQuadGradient(
                     spriteMesh,
-                    secondaryHighlight.x, secondaryHighlight.y, secondaryHighlight.z,
+                    secondaryX, secondaryY, secondaryZ,
                     particle.size * BUBBLE_SECONDARY_HIGHLIGHT_SIZE_MULTIPLIER,
                     billboardRight, billboardUp,
                     particle.visualPhase * -0.38f,

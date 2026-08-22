@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.combat.autocrystal;
 
+import combatant.client.util.combat.ExplosionDamageRules;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -65,14 +66,6 @@ public final class AutoCrystalDamageRules {
     }
 
     public static boolean isSafe(LocalPlayer player, float selfDamage, boolean overrideDamage) {
-        if (player == null) {
-            return false;
-        }
-
-        if (overrideDamage) {
-            return true;
-        }
-
-        return selfDamage + 0.5f <= player.getHealth() + player.getAbsorptionAmount();
+        return ExplosionDamageRules.isSafe(player, selfDamage, overrideDamage);
     }
 }

@@ -65,41 +65,55 @@ public enum PlayerHeadRenderer {
     ) {
         if (skin == null || color == null || color.a <= 0 || size <= 0f) return;
 
-        inProjection(ctx, unscaled, () -> {
+        if (!unscaled) {
+            drawRoundedInternal(x, y, size, radius, skin, color, secondLayer, outlineColor, outlineThickness);
+            return;
+        }
+        inProjection(ctx, true,
+                () -> drawRoundedInternal(x, y, size, radius, skin, color, secondLayer, outlineColor, outlineThickness));
+    }
 
-            if (outlineColor != null && outlineThickness > 0f) {
-                Renderer2D.COLOR.roundedRectStroke(
-                        x, y, size, size,
-                        radius, SOFTNESS,
-                        outlineThickness,
-                        outlineColor.argb()
-                );
-            }
+    private static void drawRoundedInternal(float x,
+                                            float y,
+                                            float size,
+                                            float radius,
+                                            Identifier skin,
+                                            RenderColor color,
+                                            boolean secondLayer,
+                                            RenderColor outlineColor,
+                                            float outlineThickness) {
+        if (outlineColor != null && outlineThickness > 0f) {
+            Renderer2D.COLOR.roundedRectStroke(
+                    x, y, size, size,
+                    radius, SOFTNESS,
+                    outlineThickness,
+                    outlineColor.argb()
+            );
+        }
 
-            float inset = size * INSET_FACTOR;
-            float innerX = x + inset;
-            float innerY = y + inset;
-            float innerS = size - inset * 2f;
-            float innerRadius = Math.max(0.5f, radius * 0.6f);
+        float inset = size * INSET_FACTOR;
+        float innerX = x + inset;
+        float innerY = y + inset;
+        float innerS = size - inset * 2f;
+        float innerRadius = Math.max(0.5f, radius * 0.6f);
 
-            int argb = color.argb();
+        int argb = color.argb();
 
+        Renderer2D.TEXTURE.roundedTexRect(
+                innerX, innerY, innerS, innerS,
+                innerRadius, SOFTNESS,
+                FACE_U1, FACE_V1, FACE_U2, FACE_V2,
+                argb, skin
+        );
+
+        if (secondLayer) {
             Renderer2D.TEXTURE.roundedTexRect(
                     innerX, innerY, innerS, innerS,
                     innerRadius, SOFTNESS,
-                    FACE_U1, FACE_V1, FACE_U2, FACE_V2,
+                    HAT_U1, HAT_V1, HAT_U2, HAT_V2,
                     argb, skin
             );
-
-            if (secondLayer) {
-                Renderer2D.TEXTURE.roundedTexRect(
-                        innerX, innerY, innerS, innerS,
-                        innerRadius, SOFTNESS,
-                        HAT_U1, HAT_V1, HAT_U2, HAT_V2,
-                        argb, skin
-                );
-            }
-        });
+        }
     }
 
     /* ============================================================
@@ -132,36 +146,49 @@ public enum PlayerHeadRenderer {
     ) {
         if (skin == null || color == null || color.a <= 0 || size <= 0f) return;
 
-        inProjection(ctx, unscaled, () -> {
+        if (!unscaled) {
+            drawRectInternal(x, y, size, skin, color, secondLayer, outlineColor, outlineThickness);
+            return;
+        }
+        inProjection(ctx, true,
+                () -> drawRectInternal(x, y, size, skin, color, secondLayer, outlineColor, outlineThickness));
+    }
 
-            if (outlineColor != null && outlineThickness > 0f) {
-                Renderer2D.COLOR.roundedRectStroke(
-                        x, y, size, size,
-                        0f, SOFTNESS,
-                        outlineThickness,
-                        outlineColor.argb()
-                );
+    private static void drawRectInternal(float x,
+                                         float y,
+                                         float size,
+                                         Identifier skin,
+                                         RenderColor color,
+                                         boolean secondLayer,
+                                         RenderColor outlineColor,
+                                         float outlineThickness) {
+        if (outlineColor != null && outlineThickness > 0f) {
+            Renderer2D.COLOR.roundedRectStroke(
+                    x, y, size, size,
+                    0f, SOFTNESS,
+                    outlineThickness,
+                    outlineColor.argb()
+            );
+        }
+
+        float inset = size * INSET_FACTOR;
+        float innerX = x + inset;
+        float innerY = y + inset;
+        float innerS = size - inset * 2f;
+
+        int argb = color.argb();
+
+        Renderer2D tex = Renderer2D.TEXTURE;
+        tex.begin();
+        try {
+            tex.texQuad(innerX, innerY, innerS, innerS, FACE_U1, FACE_V1, FACE_U2, FACE_V2, argb);
+            if (secondLayer) {
+                tex.texQuad(innerX, innerY, innerS, innerS, HAT_U1, HAT_V1, HAT_U2, HAT_V2, argb);
             }
-
-            float inset = size * INSET_FACTOR;
-            float innerX = x + inset;
-            float innerY = y + inset;
-            float innerS = size - inset * 2f;
-
-            int argb = color.argb();
-
-            Renderer2D tex = Renderer2D.TEXTURE;
-            tex.begin();
-            try {
-                tex.texQuad(innerX, innerY, innerS, innerS, FACE_U1, FACE_V1, FACE_U2, FACE_V2, argb);
-                if (secondLayer) {
-                    tex.texQuad(innerX, innerY, innerS, innerS, HAT_U1, HAT_V1, HAT_U2, HAT_V2, argb);
-                }
-            } finally {
-                tex.end();
-            }
-            tex.render(skin);
-        });
+        } finally {
+            tex.end();
+        }
+        tex.render(skin);
     }
 
     /* ============================================================

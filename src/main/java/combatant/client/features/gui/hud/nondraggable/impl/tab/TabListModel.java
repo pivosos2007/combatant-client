@@ -38,26 +38,26 @@ import java.util.UUID;
 
 final class TabListModel {
     private static final int MAX_PLAYERS = 80;
-    private static final int MAX_ROWS_PER_COLUMN = 13;
+    private static final int MAX_ROWS_PER_COLUMN = 24;
 
-    private static final float SHELL_PAD_X = 14f;
-    private static final float SHELL_PAD_TOP = 16f;
-    private static final float SHELL_PAD_BOTTOM = 15f;
-    private static final float HEADER_LINE_HEIGHT = 29f;
-    private static final float HEADER_PAD_Y = 8f;
-    private static final float HEADER_TO_ROWS_GAP = 4f;
-    private static final float ROW_HEIGHT = 47.5f;
-    private static final float FOOTER_LINE_HEIGHT = 25f;
-    private static final float FOOTER_PAD_Y = 7f;
-    private static final float ROWS_TO_FOOTER_GAP = 4f;
-    private static final float COLUMN_GAP = 11f;
-    private static final float MIN_COLUMN_WIDTH = 322f;
-    private static final float MAX_COLUMN_WIDTH = 482f;
-    private static final float RESERVED_RIGHT_WIDTH = 82f;
-    private static final float NAME_TEXT_SCALE_FROM_VANILLA = 24.5f / 9.0f;
-    private static final float SCORE_TEXT_SCALE_FROM_VANILLA = 20.5f / 9.0f;
-    private static final float HEADER_TEXT_SCALE_FROM_VANILLA = 24.0f / 9.0f;
-    private static final float FOOTER_TEXT_SCALE_FROM_VANILLA = 20.5f / 9.0f;
+    private static final float SHELL_PAD_X = 5f;
+    private static final float SHELL_PAD_TOP = 5f;
+    private static final float SHELL_PAD_BOTTOM = 5f;
+    private static final float HEADER_LINE_HEIGHT = 24f;
+    private static final float HEADER_PAD_Y = 3f;
+    private static final float HEADER_TO_ROWS_GAP = 2f;
+    private static final float ROW_HEIGHT = 30f;
+    private static final float FOOTER_LINE_HEIGHT = 21f;
+    private static final float FOOTER_PAD_Y = 3f;
+    private static final float ROWS_TO_FOOTER_GAP = 2f;
+    private static final float COLUMN_GAP = 3f;
+    private static final float MIN_COLUMN_WIDTH = 190f;
+    private static final float MAX_COLUMN_WIDTH = 330f;
+    private static final float RESERVED_RIGHT_WIDTH = 55f;
+    private static final float NAME_TEXT_SCALE_FROM_VANILLA = 20.5f / 9.0f;
+    private static final float SCORE_TEXT_SCALE_FROM_VANILLA = 18.0f / 9.0f;
+    private static final float HEADER_TEXT_SCALE_FROM_VANILLA = 21.0f / 9.0f;
+    private static final float FOOTER_TEXT_SCALE_FROM_VANILLA = 18.0f / 9.0f;
 
     private TabListModel() {
     }
@@ -125,11 +125,10 @@ final class TabListModel {
                     latency,
                     metrics.pingText(),
                     metrics.pingTextWidth(),
-                    metrics.pingChipWidth(),
+                    metrics.pingColumnWidth(),
                     info.getGameMode() == GameType.SPECTATOR,
                     scoreText,
-                    metrics.scoreWidth(),
-                    metrics.scoreBoxWidth()
+                    metrics.scoreWidth()
             ));
             visibleIds.add(id);
         }
@@ -138,8 +137,8 @@ final class TabListModel {
         int columns = Math.max(1, (int) Math.ceil(count / (float) MAX_ROWS_PER_COLUMN));
         int rows = Math.max(1, Math.min(MAX_ROWS_PER_COLUMN, count));
 
-        float nameDrivenWidth = 72f + maxNameVanillaWidth * NAME_TEXT_SCALE_FROM_VANILLA;
-        float scoreDrivenWidth = maxScoreVanillaWidth > 0 ? maxScoreVanillaWidth * SCORE_TEXT_SCALE_FROM_VANILLA + 18f : 0f;
+        float nameDrivenWidth = 39f + maxNameVanillaWidth * NAME_TEXT_SCALE_FROM_VANILLA;
+        float scoreDrivenWidth = maxScoreVanillaWidth > 0 ? maxScoreVanillaWidth * SCORE_TEXT_SCALE_FROM_VANILLA + 8f : 0f;
         float wantedColumnWidth = nameDrivenWidth + scoreDrivenWidth + RESERVED_RIGHT_WIDTH;
         float maxUsableWidth = Math.max(MIN_COLUMN_WIDTH, screenW - 58f - (columns - 1) * COLUMN_GAP - SHELL_PAD_X * 2f);
         float columnWidth = Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, Math.min(wantedColumnWidth, maxUsableWidth / Math.max(1, columns))));
@@ -223,21 +222,19 @@ final class TabListModel {
                 latency,
                 metrics.pingText(),
                 metrics.pingTextWidth(),
-                metrics.pingChipWidth(),
+                metrics.pingColumnWidth(),
                 entry.spectator(),
                 scoreText,
-                metrics.scoreWidth(),
-                metrics.scoreBoxWidth()
+                metrics.scoreWidth()
         );
     }
 
     private static EntryMetrics entryMetrics(Component scoreText, int latency) {
-        String pingText = latency < 0 ? "?" : String.valueOf(latency);
-        float pingWidth = TabRichTextRenderer.widthPlain(pingText, 17.5f);
-        float pingChipWidth = Math.max(43f, pingWidth + 24f);
-        float scoreWidth = scoreText != null ? Math.min(64f, TabRichTextRenderer.width(scoreText, 20.5f)) : 0f;
-        float scoreBoxWidth = scoreWidth > 0f ? scoreWidth + 16f : 0f;
-        return new EntryMetrics(pingText, pingWidth, pingChipWidth, scoreWidth, scoreBoxWidth);
+        String pingText = latency < 0 ? "?ms" : latency + "ms";
+        float pingWidth = TabRichTextRenderer.widthPlain(pingText, 16.5f);
+        float pingColumnWidth = Math.max(42f, pingWidth);
+        float scoreWidth = scoreText != null ? Math.min(56f, TabRichTextRenderer.width(scoreText, 18.0f)) : 0f;
+        return new EntryMetrics(pingText, pingWidth, pingColumnWidth, scoreWidth);
     }
 
     private static boolean sameText(Component a, Component b) {
@@ -450,18 +447,16 @@ final class TabListModel {
                  int latency,
                  String pingText,
                  float pingTextWidth,
-                 float pingChipWidth,
+                 float pingColumnWidth,
                  boolean spectator,
                  Component scoreText,
-                 float scoreWidth,
-                 float scoreBoxWidth) {
+                 float scoreWidth) {
     }
 
     private record EntryMetrics(String pingText,
                                 float pingTextWidth,
-                                float pingChipWidth,
-                                float scoreWidth,
-                                float scoreBoxWidth) {
+                                float pingColumnWidth,
+                                float scoreWidth) {
     }
 
     private record StyledFragment(String text, Style style) {

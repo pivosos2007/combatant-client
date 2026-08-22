@@ -53,7 +53,10 @@ public final class AutoCrystalPlacementPlanner {
     }
 
     public AutoCrystalPlaceData getPlaceData(Context context, BlockPos pos, LivingEntity currentTarget) {
-        return getPlaceData(context, pos, currentTarget, new AutoCrystalPlaceScanDebug());
+        Vec3 predictedTarget = context != null && currentTarget != null
+                ? context.resolvePredictedPosition(currentTarget, context.predictTicks())
+                : null;
+        return getPlaceData(context, pos, currentTarget, predictedTarget, new AutoCrystalPlaceScanDebug());
     }
 
     public AutoCrystalCrystalData evaluateCrystal(Context context, LivingEntity currentTarget, EndCrystal crystal) {
@@ -105,10 +108,23 @@ public final class AutoCrystalPlacementPlanner {
             return blocks;
         }
 
-        for (int x = Mth.floor(center.x - range); x <= Mth.floor(center.x + range); x++) {
-            for (int y = Mth.floor(center.y - range); y <= Mth.floor(center.y + range); y++) {
-                for (int z = Mth.floor(center.z - range); z <= Mth.floor(center.z + range); z++) {
-                    AutoCrystalPlaceData data = getPlaceData(context, new BlockPos(x, y, z), currentTarget, debug);
+        Vec3 predictedTarget = context.resolvePredictedPosition(currentTarget, context.predictTicks());
+        int minX = Mth.floor(center.x - range);
+        int minY = Mth.floor(center.y - range);
+        int minZ = Mth.floor(center.z - range);
+        int maxX = Mth.floor(center.x + range);
+        int maxY = Mth.floor(center.y + range);
+        int maxZ = Mth.floor(center.z + range);
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    AutoCrystalPlaceData data = getPlaceData(
+                            context,
+                            new BlockPos(x, y, z),
+                            currentTarget,
+                            predictedTarget,
+                            debug
+                    );
                     if (data != null) {
                         blocks.add(data);
                         debug.recordOk();
@@ -166,6 +182,7 @@ public final class AutoCrystalPlacementPlanner {
             Context context,
             BlockPos pos,
             LivingEntity currentTarget,
+            Vec3 predictedTarget,
             AutoCrystalPlaceScanDebug debug
     ) {
         LocalPlayer player = context.player();
@@ -174,7 +191,7 @@ public final class AutoCrystalPlacementPlanner {
         }
 
         Vec3 crystalVec = AutoCrystalInteractionUtil.crystalVec(pos);
-        if (context.resolvePredictedPosition(currentTarget, context.predictTicks()).distanceToSqr(crystalVec) > CRYSTAL_MAX_DISTANCE_SQ) {
+        if (predictedTarget == null || predictedTarget.distanceToSqr(crystalVec) > CRYSTAL_MAX_DISTANCE_SQ) {
             debug.recordTargetDistance();
             return null;
         }
@@ -193,13 +210,17 @@ public final class AutoCrystalPlacementPlanner {
 
         float damage = ExplosionDamageUtil.getCrystalDamage(currentTarget, crystalVec, context.predictTicks(), context.ignoreTerrain());
         float selfDamage = ExplosionDamageUtil.getCrystalDamage(player, crystalVec, context.selfPredictTicks(), context.ignoreTerrain());
-        ExplosionDamageUtil.DamageDebug damageDebug = ExplosionDamageUtil.debugCrystalDamage(
-                currentTarget,
-                crystalVec,
-                context.predictTicks(),
-                context.ignoreTerrain()
-        );
-        debug.recordRawDamage(pos, damage, selfDamage, damageDebug);
+        if (debug.recordRawDamage(pos, damage, selfDamage)) {
+            // The detailed exposure trace repeats the expensive ray sampling. It is useful
+            // only for the highest raw-damage candidate shown in diagnostics, not for every
+            // valid block in the scan cube.
+            debug.recordRawDamageDebug(ExplosionDamageUtil.debugCrystalDamage(
+                    currentTarget,
+                    crystalVec,
+                    context.predictTicks(),
+                    context.ignoreTerrain()
+            ));
+        }
         boolean overrideDamage = context.shouldOverrideMaxSelfDamage(damage, selfDamage);
         if (!(context.shouldOverrideMinDamage(currentTarget, damage) || damage > context.minDamage())) {
             debug.recordDamageReject();

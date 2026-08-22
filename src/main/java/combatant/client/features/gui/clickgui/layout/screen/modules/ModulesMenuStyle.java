@@ -25,8 +25,9 @@ enum ModulesMenuStyle {
     private static int panelStroke = 0x2EFFFFFF;
     private static int split = 0x0DFFFFFF;
     private static int rowHover = 0x12FFFFFF;
-    private static int rowHoverGlow = 0x4DFFFFFF;
     private static int shadow = 0x42000000;
+    private static int themeAccent = 0xFFFFFFFF;
+    private static int themeAccentSoft = 0xFFFFFFFF;
 
     static void syncTheme() {
         Themes.Theme theme = Theme.theme();
@@ -34,6 +35,8 @@ enum ModulesMenuStyle {
 
         int accent = forceAlpha(theme.accent(), 255);
         int accentSoft = forceAlpha(theme.accentSoft(), 255);
+        themeAccent = accent;
+        themeAccentSoft = accentSoft;
         int surface = forceAlpha(theme.surface(), 255);
         int surfaceHover = forceAlpha(theme.surfaceHover(), 255);
         int stroke = forceAlpha(theme.strokeSoft(), 255);
@@ -46,7 +49,6 @@ enum ModulesMenuStyle {
         panelStroke = withAlpha(mix(stroke, accent, 0.155f), 76);
         split = withAlpha(mix(stroke, accent, 0.120f), 22);
         rowHover = withAlpha(mix(surfaceHover, accent, 0.125f), 34);
-        rowHoverGlow = withAlpha(mix(accentSoft, accent, 0.42f), 92);
         shadow = withAlpha(0xFF000000, 72);
     }
 
@@ -78,13 +80,43 @@ enum ModulesMenuStyle {
         return rowHover;
     }
 
-    static int rowHoverGlow(float alpha) {
-        return withAlpha(rowHoverGlow, alpha);
-    }
-
     static int shadow() {
         return shadow;
     }
+
+    static int categoryFxPrimary(ModulesMenuCategory category, float alpha) {
+        int semantic = switch (category) {
+            case COMBAT -> 0xFF89170D;
+            case MOVEMENT -> 0xFF174D70;
+            case VISUALS -> 0xFF3D2378;
+            case OTHER -> 0xFF073D66;
+            case PLAYER -> 0xFF0B5848;
+        };
+        return withAlpha(mix(semantic, themeAccent, 0.18f), alpha * 0.94f);
+    }
+
+    static int categoryFxSecondary(ModulesMenuCategory category, float alpha) {
+        int semantic = switch (category) {
+            case COMBAT -> 0xFFED681A;
+            case MOVEMENT -> 0xFF68C5EB;
+            case VISUALS -> 0xFF815AD1;
+            case OTHER -> 0xFF168CC4;
+            case PLAYER -> 0xFF37B596;
+        };
+        return withAlpha(mix(semantic, themeAccentSoft, 0.12f), alpha * 0.96f);
+    }
+
+    static int categoryFxHighlight(ModulesMenuCategory category, float alpha) {
+        int semantic = switch (category) {
+            case COMBAT -> 0xFFFFF0C7;
+            case MOVEMENT -> 0xFFE2F8FF;
+            case VISUALS -> 0xFFE9E0FF;
+            case OTHER -> 0xFFDDF6FF;
+            case PLAYER -> 0xFFDFFFF5;
+        };
+        return withAlpha(mix(semantic, themeAccentSoft, 0.08f), alpha);
+    }
+
 
     static int scrollTrackA(float alpha) {
         return withAlpha(SettingsGuiPalette.current().moduleScrollTrackA(), alpha);

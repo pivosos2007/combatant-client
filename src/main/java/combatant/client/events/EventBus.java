@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class EventBus {
     private static final Subscriber[] EMPTY_SUBSCRIBERS = new Subscriber[0];
@@ -29,7 +30,14 @@ public final class EventBus {
     private final Object lock = new Object();
 
     private final Reference2ObjectOpenHashMap<Class<?>, Subscriber[]> exactHandlers = new Reference2ObjectOpenHashMap<>();
-    private final Reference2ObjectOpenHashMap<Class<?>, Subscriber[]> dispatchCache = new Reference2ObjectOpenHashMap<>();
+    /*
+     * Posting is overwhelmingly more frequent than registration. In particular collision
+     * hooks can post hundreds of events per client tick. Keeping this cache behind the
+     * registration lock made every already-resolved dispatch enter a monitor for no reason.
+     * The exact handler table is still mutated under lock; published flattened arrays are
+     * immutable snapshots and can therefore be read lock-free.
+     */
+    private final ConcurrentHashMap<Class<?>, Subscriber[]> dispatchCache = new ConcurrentHashMap<>();
     private final Reference2ObjectOpenHashMap<Object, Subscriber[]> ownerIndex = new Reference2ObjectOpenHashMap<>();
 
     private static Subscriber[] append(Subscriber[] old, Subscriber sub) {
@@ -211,8 +219,11 @@ public final class EventBus {
     private Subscriber[] subscribersFor(Class<?> eventType) {
         if (eventType == null) return EMPTY_SUBSCRIBERS;
 
+        Subscriber[] cached = dispatchCache.get(eventType);
+        if (cached != null) return cached;
+
         synchronized (lock) {
-            Subscriber[] cached = dispatchCache.get(eventType);
+            cached = dispatchCache.get(eventType);
             if (cached != null) return cached;
 
             Subscriber[] built = buildFlattenedSubscribers(eventType);

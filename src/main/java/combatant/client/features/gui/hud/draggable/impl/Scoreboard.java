@@ -38,6 +38,7 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextGlyphFallback;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.text.VanillaTextRenderer;
 import combatant.client.util.input.KeyManager;
 import combatant.client.util.logging.ServerDumpUtil;
 import combatant.client.util.text.LegacyTextUtil;
@@ -60,23 +61,26 @@ public final class Scoreboard extends DraggableHudElement {
             .reversed()
             .thenComparing(PlayerScoreEntry::owner, String.CASE_INSENSITIVE_ORDER);
 
-    private static final float BASE_PAD_X = 8.0f;
-    private static final float BASE_PAD_Y = 8.0f;
-    private static final float BASE_ROW_GAP = 2.0f;
-    private static final float BASE_HEADER_GAP = 8.0f;
-    private static final float BASE_SCORE_GAP = 8.0f;
-    private static final float BASE_FOOTER_GAP = 8.0f;
-    private static final float BASE_RADIUS = 4.0f;
-    private static final float BASE_SOFTNESS = 1.0f;
+    private static final float BASE_PAD_X = 3.0f;
+    private static final float BASE_PAD_Y = 2.0f;
+    private static final float BASE_ROW_GAP = 0.5f;
+    private static final float BASE_SCORE_GAP = 5.0f;
+    private static final float BASE_FOOTER_GAP = 3.0f;
+    private static final float BASE_RADIUS = 2.5f;
+    private static final float BASE_SOFTNESS = 0.7f;
     private static final float BASE_STROKE = 0.45f;
-    private static final float BASE_TITLE_SCALE = 0.78f;
-    private static final float BASE_TEXT_SCALE = 0.68f;
+    private static final float CUSTOM_TITLE_SCALE = 0.78f;
+    private static final float CUSTOM_TEXT_SCALE = 0.68f;
     private static final float BASE_TITLE_LINE_GAP = 1.0f;
+    private static final float VISIBILITY_DURATION_SECONDS = 0.24f;
     private static final int MAX_ENTRIES = 15;
     private static final String COLOR_THEME = "Theme";
     private static final String COLOR_CUSTOM = "Custom";
     private static final String EFFECT_NONE = "None";
     private static final String EFFECT_BLUR = "Blur";
+    private static final String PANEL_CHROME = "Chrome";
+    private static final String FONT_VANILLA = "Vanilla";
+    private static final String FONT_CUSTOM = "Custom";
 
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
@@ -85,17 +89,21 @@ public final class Scoreboard extends DraggableHudElement {
             new KeyBindValue("toggle_bind", "Э");
     private final NumberValue<Double> scale =
             new NumberValue<>("scoreboard_scale", 1.93, 0.5, 5.0);
+    private final ModeValue fontMode =
+            new ModeValue("scoreboard_font_mode", FONT_CUSTOM, FONT_VANILLA, FONT_CUSTOM);
     private final ModeValue colorMode =
             new ModeValue("scoreboard_color_mode", "Theme", COLOR_THEME, COLOR_CUSTOM);
     private final ModeValue panelStyle =
-            new ModeValue("scoreboard_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
-                    HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT);
+            new ModeValue("scoreboard_panel_style", PANEL_CHROME,
+                    PANEL_CHROME, HudRenderUtil.PANEL_STYLE_GRADIENT);
+    private final NumberValue<Integer> themeGradientStrength =
+            new NumberValue<>("scoreboard_theme_gradient_strength", 72, 0, 100);
     private final ModeValue bgEffect =
             new ModeValue("scoreboard_bg_effect", "Blur", EFFECT_NONE, EFFECT_BLUR);
     private final NumberValue<Integer> blurAlpha =
-            new NumberValue<>("scoreboard_blur_alpha", 255, 0, 255);
+            new NumberValue<>("scoreboard_blur_alpha", 159, 0, 255);
     private final NumberValue<Integer> bgAlpha =
-            new NumberValue<>("scoreboard_bg_alpha", 182, 0, 255);
+            new NumberValue<>("scoreboard_bg_alpha", 200, 0, 255);
     private final RGBAColorValue bg =
             new RGBAColorValue("scoreboard_bg", "#820A0A0A");
     private final RGBAColorValue bg2 =
@@ -107,12 +115,14 @@ public final class Scoreboard extends DraggableHudElement {
     private final BooleanValue strokeGradient =
             new BooleanValue("scoreboard_stroke_gradient", true);
     private final BooleanValue shadowEnabled =
-            new BooleanValue("scoreboard_shadow_enabled", false);
+            new BooleanValue("scoreboard_shadow_enabled", true);
     private final ModeValue shadowMode =
             new ModeValue("scoreboard_shadow_mode", HudRenderUtil.SHADOW_MODE_BLACK,
                     HudRenderUtil.SHADOW_MODE_BLACK, HudRenderUtil.SHADOW_MODE_THEME);
+    private final NumberValue<Integer> themeShadowStrength =
+            new NumberValue<>("scoreboard_theme_shadow_strength", 100, 0, 100);
     private final NumberValue<Integer> shadowAlpha =
-            new NumberValue<>("scoreboard_shadow_alpha", 72, 0, 255);
+            new NumberValue<>("scoreboard_shadow_alpha", 38, 0, 255);
     private final RGBColorValue stroke =
             new RGBColorValue("scoreboard_stroke", "#4A4A4A");
     private final RGBColorValue titleColor =
@@ -123,14 +133,8 @@ public final class Scoreboard extends DraggableHudElement {
             new RGBColorValue("scoreboard_value_color", "#FF4A4A");
     private final RGBColorValue footerColor =
             new RGBColorValue("scoreboard_footer_color", "#FFD44A");
-    private final EnumValue<HudTextEffects.Effect> textEffect =
-            new EnumValue<>("scoreboard_text_effect", HudTextEffects.Effect.STRIPE,
-                    HudTextEffects.Effect.NONE, HudTextEffects.Effect.MIX, HudTextEffects.Effect.FLOW,
-                    HudTextEffects.Effect.PULSE, HudTextEffects.Effect.STRIPE);
-    private final NumberValue<Integer> textEffectSpeed =
-            new NumberValue<>("scoreboard_text_effect_speed", 18, 1, 60);
-    private final BooleanMapValue textEffectSections =
-            new BooleanMapValue("scoreboard_text_effect_sections", defaultTextEffectSections());
+    private final BooleanValue redNumbers =
+            new BooleanValue("scoreboard_red_numbers", false);
     private final List<SidebarLine> previewLinesSample = List.of(
             new SidebarLine(Component.literal("Entry One"), Component.literal("12"), false),
             new SidebarLine(Component.literal("Entry Two"), Component.literal("34"), false),
@@ -143,6 +147,7 @@ public final class Scoreboard extends DraggableHudElement {
     );
 
     private final List<SidebarLine> lines = new ArrayList<>();
+    private final List<VanillaTextTask> vanillaTextTasks = new ArrayList<>();
 
     private boolean toggleArmed = true;
     private boolean toggleInit = false;
@@ -157,13 +162,24 @@ public final class Scoreboard extends DraggableHudElement {
     private float displayLabelWidth = -1.0f;
     private float displayValueWidth = -1.0f;
     private float displayFooterWidth = -1.0f;
+    private float visibilityProgress;
+    private Component cachedTitle = Component.literal("Scoreboard");
+    private final List<SidebarLine> cachedLines = new ArrayList<>();
 
     public Scoreboard() {
         super("scoreboard", "Scoreboard", false);
     }
 
     public static boolean shouldReplaceVanilla() {
-        return DraggableHudElementRegistry.isEnabled(Scoreboard.class) && !isHiddenByNoRender();
+        Scoreboard widget = DraggableHudElementRegistry.get(Scoreboard.class);
+        return widget != null
+                && !isHiddenByNoRender()
+                && (widget.isEnabled() || widget.shouldRenderWhenDisabled());
+    }
+
+    @Override
+    public boolean shouldRenderWhenDisabled() {
+        return visibilityProgress > 0.001f;
     }
 
     private static float smoothWidth(float current, float target) {
@@ -173,18 +189,17 @@ public final class Scoreboard extends DraggableHudElement {
         return AnimationUtility.snap(next, target, 0.25f);
     }
 
+    private float updateVisibility(boolean visible) {
+        float direction = visible ? 1.0f : -1.0f;
+        float step = Math.min(0.1f, Math.max(0.0f, AnimationUtility.deltaTime()))
+                / VISIBILITY_DURATION_SECONDS;
+        visibilityProgress = AnimationUtility.clamp01(visibilityProgress + direction * step);
+        return AnimationUtility.easeInOutCubic(visibilityProgress);
+    }
+
     private static boolean isHiddenByNoRender() {
         NoRender noRender = Modules.get(NoRender.class);
         return noRender != null && noRender.hideScoreboard();
-    }
-
-    private static Map<String, Boolean> defaultTextEffectSections() {
-        Map<String, Boolean> sections = new LinkedHashMap<>();
-        sections.put("header", true);
-        sections.put("labels", false);
-        sections.put("values", false);
-        sections.put("footer", false);
-        return sections;
     }
 
     private static float measureStyledText(TextRenderer fallback, Component text, int defaultColor, float scale) {
@@ -194,6 +209,72 @@ public final class Scoreboard extends DraggableHudElement {
             width += partWidth(fallback, part, scale, 0.0f, 0);
         }
         return width;
+    }
+
+    private float measureVanillaText(Component text, int defaultColor, float scale) {
+        if (mc == null || mc.font == null || text == null) return 0.0f;
+        float width = 0.0f;
+        for (Part part : TextRenderUtil.flattenStyled(text, defaultColor)) {
+            width += mc.font.width(vanillaComponent(part)) * scale;
+        }
+        return width;
+    }
+
+    private void queueVanillaText(Component text,
+                                  int defaultColor,
+                                  float x,
+                                  float y,
+                                  float scale,
+                                  float alpha) {
+        if (mc == null || mc.font == null || text == null) return;
+        float cursorX = x;
+        for (Part part : TextRenderUtil.flattenStyled(text, defaultColor)) {
+            Component component = vanillaComponent(part);
+            int color = HudRenderUtil.scaleAlpha(part.color(), alpha);
+            vanillaTextTasks.add(new VanillaTextTask(component, cursorX, y, scale, color));
+            cursorX += mc.font.width(component) * scale;
+        }
+    }
+
+    private void queueVanillaLinesCentered(float boxX,
+                                           float boxWidth,
+                                           float y,
+                                           List<List<Part>> styledLines,
+                                           float scale,
+                                           float lineHeight,
+                                           float lineGap,
+                                           float alpha) {
+        if (mc == null || mc.font == null || styledLines == null) return;
+        float cursorY = y;
+        for (List<Part> line : styledLines) {
+            float lineWidth = 0.0f;
+            for (Part part : line) {
+                lineWidth += mc.font.width(vanillaComponent(part)) * scale;
+            }
+            float cursorX = boxX + Math.max(0.0f, (boxWidth - lineWidth) * 0.5f);
+            for (Part part : line) {
+                Component component = vanillaComponent(part);
+                vanillaTextTasks.add(new VanillaTextTask(
+                        component,
+                        cursorX,
+                        cursorY,
+                        scale,
+                        HudRenderUtil.scaleAlpha(part.color(), alpha)
+                ));
+                cursorX += mc.font.width(component) * scale;
+            }
+            cursorY += lineHeight + lineGap;
+        }
+    }
+
+    private static Component vanillaComponent(Part part) {
+        if (part == null) return Component.empty();
+        return Component.literal(part.text()).withStyle(style -> style
+                .withBold(part.bold())
+                .withItalic(part.italic())
+                .withUnderlined(part.underline())
+                .withStrikethrough(part.strikethrough())
+                .withObfuscated(part.obfuscated()));
     }
 
     private static List<List<Part>> splitStyledLines(Component text, int defaultColor) {
@@ -226,6 +307,60 @@ public final class Scoreboard extends DraggableHudElement {
             }
         }
         return lines;
+    }
+
+    private static Component normalizeHeaderTitle(Component text) {
+        if (text == null) {
+            return Component.empty();
+        }
+        MutableComponent out = Component.empty();
+        text.visit((style, value) -> {
+            if (value != null && !value.isEmpty()) {
+                out.append(Component.literal(normalizeHeaderGlyphs(value)).setStyle(style));
+            }
+            return java.util.Optional.empty();
+        }, net.minecraft.network.chat.Style.EMPTY);
+        return out;
+    }
+
+    private static String normalizeHeaderGlyphs(String input) {
+        if (input == null || input.isEmpty()) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder(input.length());
+        for (int i = 0; i < input.length(); i++) {
+            char ch = input.charAt(i);
+            out.append(switch (ch) {
+                case 'ᴀ' -> 'a';
+                case 'ʙ' -> 'b';
+                case 'ᴄ' -> 'c';
+                case 'ᴅ' -> 'd';
+                case 'ᴇ' -> 'e';
+                case 'ꜰ' -> 'f';
+                case 'ɢ' -> 'g';
+                case 'ʜ' -> 'h';
+                case 'ɪ' -> 'i';
+                case 'ᴊ' -> 'j';
+                case 'ᴋ' -> 'k';
+                case 'ʟ' -> 'l';
+                case 'ᴍ' -> 'm';
+                case 'ɴ' -> 'n';
+                case 'ᴏ' -> 'o';
+                case 'ᴘ' -> 'p';
+                case 'ǫ' -> 'q';
+                case 'ʀ' -> 'r';
+                case 'ꜱ' -> 's';
+                case 'ᴛ' -> 't';
+                case 'ᴜ' -> 'u';
+                case 'ᴠ' -> 'v';
+                case 'ᴡ' -> 'w';
+                case 'x' -> 'x';
+                case 'ʏ' -> 'y';
+                case 'ᴢ' -> 'z';
+                default -> ch;
+            });
+        }
+        return out.toString();
     }
 
     private static float measureStyledLineWidth(TextRenderer fallback, List<List<Part>> lines, float scale) {
@@ -307,7 +442,9 @@ public final class Scoreboard extends DraggableHudElement {
     }
 
     private static TextRenderer styledRenderer(TextRenderer fallback, Part part) {
-        if (part == null) return fallback;
+        if (fallback == null || fallback instanceof VanillaTextRenderer || part == null) {
+            return fallback;
+        }
         FontInfo.Type type;
         if (part.bold() && part.italic()) {
             type = FontInfo.Type.BoldItalic;
@@ -459,10 +596,10 @@ public final class Scoreboard extends DraggableHudElement {
                 effect,
                 effectSpeed,
                 timeSec,
-                false
+                true
         );
         if (!rendered) {
-            renderer.render(text, x, y, new RenderColor(color), false);
+            renderer.render(text, x, y, new RenderColor(color), true);
         }
         float width = (float) renderer.getWidth(text, false);
         renderer.end();
@@ -507,66 +644,14 @@ public final class Scoreboard extends DraggableHudElement {
         return text == null || text.getString().isBlank();
     }
 
-    private static Component normalizeHeaderTitle(Component text) {
-        if (text == null) {
-            return Component.empty();
-        }
-        MutableComponent out = Component.empty();
-        text.visit((style, value) -> {
-            if (value != null && !value.isEmpty()) {
-                out.append(Component.literal(normalizeHeaderGlyphs(value)).setStyle(style));
-            }
-            return java.util.Optional.empty();
-        }, net.minecraft.network.chat.Style.EMPTY);
-        return out;
-    }
-
-    private static String normalizeHeaderGlyphs(String input) {
-        if (input == null || input.isEmpty()) {
-            return "";
-        }
-        StringBuilder out = new StringBuilder(input.length());
-        for (int i = 0; i < input.length(); i++) {
-            char ch = input.charAt(i);
-            out.append(switch (ch) {
-                case 'ᴀ' -> 'a';
-                case 'ʙ' -> 'b';
-                case 'ᴄ' -> 'c';
-                case 'ᴅ' -> 'd';
-                case 'ᴇ' -> 'e';
-                case 'ꜰ' -> 'f';
-                case 'ɢ' -> 'g';
-                case 'ʜ' -> 'h';
-                case 'ɪ' -> 'i';
-                case 'ᴊ' -> 'j';
-                case 'ᴋ' -> 'k';
-                case 'ʟ' -> 'l';
-                case 'ᴍ' -> 'm';
-                case 'ɴ' -> 'n';
-                case 'ᴏ' -> 'o';
-                case 'ᴘ' -> 'p';
-                case 'ǫ' -> 'q';
-                case 'ʀ' -> 'r';
-                case 'ꜱ' -> 's';
-                case 'ᴛ' -> 't';
-                case 'ᴜ' -> 'u';
-                case 'ᴠ' -> 'v';
-                case 'ᴡ' -> 'w';
-                case 'x' -> 'x';
-                case 'ʏ' -> 'y';
-                case 'ᴢ' -> 'z';
-                default -> ch;
-            });
-        }
-        return out.toString();
-    }
-
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.bind(toggleBind, BindMode.PRESS));
         defs.add(SettingDef.number(scale));
+        defs.add(SettingDef.mode(fontMode));
         defs.add(SettingDef.mode(colorMode));
         defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));
+        defs.add(SettingDef.number(themeGradientStrength).visibleWhen(this::isGradientPanelStyle));
         defs.add(SettingDef.mode(bgEffect));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(this::isThemeMode));
         defs.add(SettingDef.number(blurAlpha).visibleWhen(this::hasEffect));
@@ -577,15 +662,14 @@ public final class Scoreboard extends DraggableHudElement {
         defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
         defs.add(SettingDef.bool(strokeGradient).visibleWhen(() -> strokeEnabled.get() && isThemeMode()));
         defs.add(SettingDef.bool(shadowEnabled));
-        defs.add(SettingDef.mode(shadowMode).visibleWhen(shadowEnabled::get));
+        defs.add(SettingDef.mode(shadowMode).visibleWhen(() -> shadowEnabled.get() && isThemeMode()));
+        defs.add(SettingDef.number(themeShadowStrength).visibleWhen(this::isThemeShadow));
         defs.add(SettingDef.number(shadowAlpha).visibleWhen(shadowEnabled::get));
         defs.add(SettingDef.colorNoAlpha(titleColor).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(labelColor).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(valueColor).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(footerColor).visibleWhen(this::isCustomMode));
-        defs.add(SettingDef.mode(textEffect));
-        defs.add(SettingDef.number(textEffectSpeed).visibleWhen(() -> textEffect.get() != HudTextEffects.Effect.NONE));
-        defs.add(SettingDef.group(textEffectSections).visibleWhen(() -> textEffect.get() != HudTextEffects.Effect.NONE));
+        defs.add(SettingDef.bool(redNumbers));
     }
 
     @Override
@@ -640,39 +724,36 @@ public final class Scoreboard extends DraggableHudElement {
                              float tickDelta,
                              int screenW,
                              int screenH) {
+        vanillaTextTasks.clear();
         boolean preview = DraggableHudElementRegistry.isForceVisible();
-        if (mc == null || (mc.level == null && !preview)) {
+        if (mc == null) {
             width = 0.0f;
             height = 0.0f;
             return;
         }
-        if (!preview && isHiddenByNoRender()) {
-            width = 0.0f;
-            height = 0.0f;
-            return;
-        }
-        if (!preview && !isEnabled()) {
-            width = 0.0f;
-            height = 0.0f;
-            return;
-        }
-
         Objective objective = resolveObjective();
-        if (objective == null && !preview) {
+        List<SidebarLine> nextLines = objective != null || preview
+                ? resolveLines(objective, preview)
+                : List.of();
+        boolean targetVisible = (preview || (isEnabled() && !isHiddenByNoRender()))
+                && !nextLines.isEmpty();
+        float visibility = updateVisibility(targetVisible);
+
+        if (targetVisible) {
+            cachedTitle = resolveTitle(objective, preview);
+            cachedLines.clear();
+            cachedLines.addAll(nextLines);
+        }
+        if (visibility <= 0.001f || cachedLines.isEmpty()) {
             width = 0.0f;
             height = 0.0f;
             return;
         }
 
         updatePalette();
-        Component title = resolveTitle(objective, preview);
+        Component title = cachedTitle;
         lines.clear();
-        lines.addAll(resolveLines(objective, preview));
-        if (lines.isEmpty()) {
-            width = 0.0f;
-            height = 0.0f;
-            return;
-        }
+        lines.addAll(cachedLines);
 
         float baseScale = HudScale.scale(screenW, screenH) * scale.get().floatValue();
         float padX = BASE_PAD_X * baseScale;
@@ -681,23 +762,24 @@ public final class Scoreboard extends DraggableHudElement {
         float scoreGap = BASE_SCORE_GAP * baseScale;
         float footerGap = BASE_FOOTER_GAP * baseScale;
         float radius = BASE_RADIUS * baseScale;
-        float titleScale = BASE_TITLE_SCALE * baseScale;
-        float textScale = BASE_TEXT_SCALE * baseScale;
-        float time = (float) (net.minecraft.util.Util.getMillis() / 1000.0);
-        HudTextEffects.Effect effect = textEffect.get();
-        int effectSpeed = textEffectSpeed.get();
-
+        boolean customFont = FONT_CUSTOM.equals(fontMode.get());
+        float titleScale = CUSTOM_TITLE_SCALE * baseScale;
+        float textScale = CUSTOM_TEXT_SCALE * baseScale;
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
         TextRenderer titleRenderer = Fonts.renderer("Iosevka", FontInfo.Type.BoldItalic, fallback);
         TextRenderer bodyRenderer = Fonts.renderer("Iosevka", FontInfo.Type.Regular, titleRenderer);
+        if (titleRenderer == null) titleRenderer = fallback;
+        if (bodyRenderer == null) bodyRenderer = titleRenderer;
 
-        Component normalizedTitle = normalizeHeaderTitle(title);
+        Component normalizedTitle = customFont ? normalizeHeaderTitle(title) : title;
 
         List<List<Part>> titleLines = splitStyledLines(normalizedTitle, uiTitleColor);
         float titleW = measureStyledLineWidth(titleRenderer, titleLines, titleScale);
         float titleH = rendererHeight(titleRenderer, titleScale);
 
         float textH = rendererHeight(bodyRenderer, textScale);
+        float vanillaTitleScale = titleH / Math.max(1.0f, mc.font.lineHeight);
+        float vanillaTextScale = textH / Math.max(1.0f, mc.font.lineHeight);
         float maxLabelW = 0.0f;
         float maxValueW = 0.0f;
         float maxFooterW = 0.0f;
@@ -707,7 +789,7 @@ public final class Scoreboard extends DraggableHudElement {
                 continue;
             }
             maxLabelW = Math.max(maxLabelW, measureStyledText(bodyRenderer, line.label(), uiLabelColor, textScale));
-            if (!isBlankText(line.value())) {
+            if (redNumbers.get() && !isBlankText(line.value())) {
                 maxValueW = Math.max(maxValueW, measureStyledText(bodyRenderer, line.value(), uiValueColor, textScale));
             }
         }
@@ -736,27 +818,43 @@ public final class Scoreboard extends DraggableHudElement {
         float rowsH = bodyCount > 0 ? bodyCount * textH + Math.max(0, bodyCount - 1) * rowGap : 0.0f;
         float footersH = footerCount > 0 ? footerCount * textH + Math.max(0, footerCount - 1) * rowGap : 0.0f;
         float footerSectionGap = footerCount > 0 && bodyCount > 0 ? footerGap : 0.0f;
-        height = headerHeight + padY + rowsH + footerSectionGap + footersH + padY;
+        float bodyHeight = padY + rowsH + footerSectionGap + footersH + padY;
+        height = headerHeight + bodyHeight;
+        float drawY = y + (1.0f - visibility) * 5.0f * baseScale;
+        double previousRendererAlpha = renderer.getAlpha();
+        renderer.setAlpha(previousRendererAlpha * visibility);
+        if (customFont) {
+            titleRenderer.setAlpha(visibility);
+            if (bodyRenderer != titleRenderer) bodyRenderer.setAlpha(visibility);
+        }
 
         if (shadowEnabled.get()) {
             HudRenderUtil.drawHudShadow(
-                    renderer, x, y, width, height, radius, baseScale,
-                    HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get()), shadowAlpha.get(), 1.0f
+                    renderer, x, drawY, width, height, radius, baseScale,
+                    isThemeShadow(), shadowAlpha.get(), 1.0f,
+                    themeShadowStrength.get() / 100.0f
             );
         }
 
         boolean blurEnabled = isBlurEffect();
         if (blurEnabled) {
-            drawBlur(x, y, width, height, radius, uiBgPrimary);
+            drawBlur(x, drawY, width, height, radius, visibility);
+            drawBlur(x, drawY, width, headerHeight, radius, visibility);
         }
-        drawBackground(renderer, x, y, width, height, radius, baseScale);
-        drawHeader(renderer, x, y, width, headerHeight, radius);
+        float bodyY = drawY + headerHeight;
+        drawBackground(renderer, x, drawY, width, height, radius, baseScale);
+        drawHeader(renderer, x, drawY, width, headerHeight, radius);
 
-        float cursorY = y + headerHeight + padY;
-        float titleY = y + (headerHeight - titleBlockHeight) * 0.5f;
+        float cursorY = bodyY + padY;
+        float titleY = drawY + (headerHeight - titleBlockHeight) * 0.5f;
 
-        renderStyledLinesCentered(renderer, titleRenderer, titleScale, x, width, titleY, titleLines, titleLineGap,
-                textEffectSections.get("header"), effect, effectSpeed, time);
+        if (customFont) {
+            renderStyledLinesCentered(renderer, titleRenderer, titleScale, x, width, titleY, titleLines, titleLineGap,
+                    false, HudTextEffects.Effect.NONE, 1, 0.0f);
+        } else {
+            queueVanillaLinesCentered(x, width, titleY, titleLines, vanillaTitleScale,
+                    titleH, titleLineGap, visibility);
+        }
 
         boolean footerStarted = false;
         for (SidebarLine line : lines) {
@@ -765,21 +863,67 @@ public final class Scoreboard extends DraggableHudElement {
                     cursorY += footerGap;
                     footerStarted = true;
                 }
-                renderStyledText(renderer, bodyRenderer, textScale, x + padX, cursorY, line.label(), uiFooterColor,
-                        textEffectSections.get("footer"), effect, effectSpeed, time, 0.0f);
+                if (customFont) {
+                    renderStyledText(renderer, bodyRenderer, textScale, x + padX, cursorY, line.label(), uiFooterColor,
+                            false, HudTextEffects.Effect.NONE, 1, 0.0f, 0.0f);
+                } else {
+                    queueVanillaText(line.label(), uiFooterColor, x + padX, cursorY,
+                            vanillaTextScale, visibility);
+                }
                 cursorY += textH + rowGap;
                 continue;
             }
 
-            renderStyledText(renderer, bodyRenderer, textScale, x + padX, cursorY, line.label(), uiLabelColor,
-                    textEffectSections.get("labels"), effect, effectSpeed, time, 0.0f);
-            if (!isBlankText(line.value())) {
-                float valueW = measureStyledText(bodyRenderer, line.value(), uiValueColor, textScale);
+            if (customFont) {
+                renderStyledText(renderer, bodyRenderer, textScale, x + padX, cursorY, line.label(), uiLabelColor,
+                        false, HudTextEffects.Effect.NONE, 1, 0.0f, 0.0f);
+            } else {
+                queueVanillaText(line.label(), uiLabelColor, x + padX, cursorY,
+                        vanillaTextScale, visibility);
+            }
+            if (redNumbers.get() && !isBlankText(line.value())) {
+                float valueW = customFont
+                        ? measureStyledText(bodyRenderer, line.value(), uiValueColor, textScale)
+                        : measureVanillaText(line.value(), uiValueColor, vanillaTextScale);
                 float valueX = x + width - padX - valueW;
-                renderStyledText(renderer, bodyRenderer, textScale, valueX, cursorY, line.value(), uiValueColor,
-                        textEffectSections.get("values"), effect, effectSpeed, time, 0.2f);
+                if (customFont) {
+                    renderStyledText(renderer, bodyRenderer, textScale, valueX, cursorY, line.value(), uiValueColor,
+                            false, HudTextEffects.Effect.NONE, 1, 0.0f, 0.0f);
+                } else {
+                    queueVanillaText(line.value(), uiValueColor, valueX, cursorY,
+                            vanillaTextScale, visibility);
+                }
             }
             cursorY += textH + rowGap;
+        }
+        if (customFont) {
+            titleRenderer.setAlpha(1.0);
+            if (bodyRenderer != titleRenderer) bodyRenderer.setAlpha(1.0);
+        }
+        renderer.setAlpha(previousRendererAlpha);
+    }
+
+    @Override
+    public void renderNativeHudOverlay(GuiGraphicsExtractor ctx,
+                                       int screenW,
+                                       int screenH) {
+        if (ctx == null || mc == null || mc.font == null || vanillaTextTasks.isEmpty()) return;
+        float logicalToGui = ctx.guiWidth() / (float) Math.max(1, screenW);
+        var pose = ctx.pose();
+        try {
+            for (VanillaTextTask task : vanillaTextTasks) {
+                pose.pushMatrix();
+                try {
+                    pose.translate(task.x() * logicalToGui, task.y() * logicalToGui);
+                    float taskScale = logicalToGui * task.scale();
+                    pose.scale(taskScale, taskScale);
+                    ctx.text(mc.font, task.component(), 0, 0, task.color(), true);
+                } finally {
+                    pose.popMatrix();
+                }
+            }
+        } finally {
+            vanillaTextTasks.clear();
         }
     }
 
@@ -864,11 +1008,11 @@ public final class Scoreboard extends DraggableHudElement {
         }
     }
 
-    private void drawBlur(float x, float y, float w, float h, float radius, int tintRgb) {
+    private void drawBlur(float x, float y, float w, float h, float radius, float visibility) {
         if (!hasEffect()) return;
         float quality = hud.getBlurRadius();
         float brightness = 1.0f;
-        float alpha = blurAlpha.get() / 255f;
+        float alpha = blurAlpha.get() / 255f * AnimationUtility.clamp01(visibility);
         Renderer2D.COLOR.blurRect(x, y, w, h, radius, quality, brightness, alpha, 0xFFFFFF);
     }
 
@@ -881,10 +1025,12 @@ public final class Scoreboard extends DraggableHudElement {
                     panelAlpha
             );
             uiHeaderBg = HudRenderUtil.setAlpha(theme().windowHeader(), panelAlpha);
-            if (isAccentPanelStyle()) {
-                uiBgPrimary = HudRenderUtil.accentSurface(uiBgPrimary, 0.20f);
-                uiBgSecondary = HudRenderUtil.accentSurface(uiBgSecondary, 0.28f);
-                uiHeaderBg = HudRenderUtil.accentSurface(uiHeaderBg, 0.32f);
+            if (isGradientPanelStyle()) {
+                float strength = themeGradientStrength.get() / 100.0f;
+                HudRenderUtil.ThemeGradient gradient = HudRenderUtil.themePanelGradient(255);
+                uiBgPrimary = HudRenderUtil.gradientSurface(uiBgPrimary, gradient.start(), strength);
+                uiBgSecondary = HudRenderUtil.gradientSurface(uiBgSecondary, gradient.end(), strength);
+                uiHeaderBg = HudRenderUtil.gradientSurface(uiHeaderBg, gradient.start(), strength);
             }
             uiStroke = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().windowStroke(), theme().strokeSoft(), 0.4f),
@@ -914,8 +1060,11 @@ public final class Scoreboard extends DraggableHudElement {
                                 float height,
                                 float radius,
                                 float drawScale) {
-        if (isThemeMode()) {
-            HudRenderUtil.drawHudBackground(renderer, x, y, width, height, radius, BASE_SOFTNESS, uiBgPrimary, true);
+        if (isGradientPanelStyle()) {
+            renderer.roundedRectGradient(x, y, width, height, radius, BASE_SOFTNESS,
+                    uiBgPrimary, uiBgSecondary, 90.0f);
+        } else if (isThemeMode()) {
+            HudRenderUtil.drawHudBackground(renderer, x, y, width, height, radius, BASE_SOFTNESS, uiBgPrimary, false);
         } else {
             renderer.roundedRectGradientQuad(x, y, width, height, radius, BASE_SOFTNESS,
                     uiBgPrimary, uiBgSecondary, uiBgPrimary, uiBgSecondary);
@@ -937,15 +1086,38 @@ public final class Scoreboard extends DraggableHudElement {
                             float width,
                             float headerHeight,
                             float radius) {
-        renderer.roundedRectCorners(x, y, width, headerHeight, radius, radius, 0.0f, 0.0f, BASE_SOFTNESS, uiHeaderBg);
+        renderer.roundedRectSoftShadow(
+                x + 1.0f,
+                y + 1.0f,
+                Math.max(0.0f, width - 2.0f),
+                headerHeight,
+                radius,
+                4.0f,
+                0.16f,
+                HudRenderUtil.scaleAlpha(0xFF000000, 0.26f)
+        );
+        if (isGradientPanelStyle()) {
+            renderer.roundedRectGradient(x, y, width, headerHeight, radius, BASE_SOFTNESS,
+                    uiHeaderBg, uiBgSecondary, 0.0f);
+        } else {
+            renderer.roundedRectGradient(x, y, width, headerHeight, radius, BASE_SOFTNESS,
+                    HudRenderUtil.mixColor(uiHeaderBg, 0xFFFFFFFF, 0.08f),
+                    HudRenderUtil.mixColor(uiHeaderBg, uiBgPrimary, 0.34f),
+                    90.0f);
+        }
     }
 
     private boolean isThemeMode() {
         return COLOR_THEME.equals(colorMode.get());
     }
 
-    private boolean isAccentPanelStyle() {
-        return isThemeMode() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
+    private boolean isGradientPanelStyle() {
+        return isThemeMode() && HudRenderUtil.PANEL_STYLE_GRADIENT.equals(panelStyle.get());
+    }
+
+    private boolean isThemeShadow() {
+        return shadowEnabled.get() && isThemeMode()
+                && HudRenderUtil.SHADOW_MODE_THEME.equals(shadowMode.get());
     }
 
     private boolean isCustomMode() {
@@ -961,5 +1133,8 @@ public final class Scoreboard extends DraggableHudElement {
     }
 
     private record SidebarLine(Component label, Component value, boolean footer) {
+    }
+
+    private record VanillaTextTask(Component component, float x, float y, float scale, int color) {
     }
 }

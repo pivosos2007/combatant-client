@@ -18,7 +18,7 @@ import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
-import combatant.client.util.block.BlockSearchUtil;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -31,9 +31,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 @ModuleInfo(
         id = "holeesp",
@@ -120,31 +118,48 @@ public final class HoleESP extends Module {
         int y = rangeY.get();
         List<Hole> found = new ArrayList<>();
         List<AABB> acceptedBoxes = new ArrayList<>();
-        Set<BlockPos> consumed = new HashSet<>();
+        LongOpenHashSet consumed = new LongOpenHashSet();
 
-        for (BlockSearchUtil.BlockSearchEntry entry : BlockSearchUtil.searchBlocksInCuboid(
-                level,
-                center,
-                xz,
-                y,
-                (pos, state) -> isReplaceable(level, pos)
-                        && Math.abs((pos.getX() + 0.5) - center.x) <= xz
-                        && Math.abs((pos.getY() + 0.5) - center.y) <= y
-                        && Math.abs((pos.getZ() + 0.5) - center.z) <= xz
-        )) {
-            BlockPos pos = entry.pos();
-            if (consumed.contains(pos)) {
-                continue;
+        int minX = Mth.floor(center.x - xz);
+        int minY = Math.max(level.getMinY(), Mth.floor(center.y - y));
+        int minZ = Mth.floor(center.z - xz);
+        int maxX = Mth.floor(center.x + xz);
+        int maxY = Math.min(level.getMaxY() - 1, Mth.floor(center.y + y));
+        int maxZ = Mth.floor(center.z + xz);
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        BlockPos.MutableBlockPos floor = new BlockPos.MutableBlockPos();
+
+        /*
+         * Do not materialize the whole search cuboid as BlockPos + entry objects. Most
+         * positions are impossible candidates because their floor is not a safe block, so
+         * reject those using two reusable cursors before allocating an immutable position.
+         */
+        for (int x = minX; x <= maxX; x++) {
+            if (Math.abs((x + 0.5) - center.x) > xz) continue;
+            for (int z = minZ; z <= maxZ; z++) {
+                if (Math.abs((z + 0.5) - center.z) > xz) continue;
+                for (int scanY = minY; scanY <= maxY; scanY++) {
+                    if (Math.abs((scanY + 0.5) - center.y) > y) continue;
+                    cursor.set(x, scanY, z);
+                    if (!isReplaceable(level.getBlockState(cursor))) continue;
+
+                    floor.set(x, scanY - 1, z);
+                    if (!isSafeBlock(level, floor)) continue;
+
+                    long packed = cursor.asLong();
+                    if (consumed.contains(packed)) continue;
+
+                    BlockPos pos = cursor.immutable();
+                    Hole hole = resolveHole(level, pos);
+                    if (hole == null || intersectsAny(hole.box(), acceptedBoxes)) continue;
+
+                    found.add(hole);
+                    acceptedBoxes.add(hole.box());
+                    for (BlockPos holePos : hole.positions()) {
+                        consumed.add(holePos.asLong());
+                    }
+                }
             }
-
-            Hole hole = resolveHole(level, pos);
-            if (hole == null || intersectsAny(hole.box(), acceptedBoxes)) {
-                continue;
-            }
-
-            found.add(hole);
-            acceptedBoxes.add(hole.box());
-            consumed.addAll(hole.positions());
         }
 
         return List.copyOf(found);
@@ -301,8 +316,8 @@ public final class HoleESP extends Module {
     }
 
     private static boolean validIndestructible(ClientLevel level, BlockPos pos) {
-        return !validBedrock(level, pos)
-                && isSafeBlock(level, pos.below())
+        // resolveHole() has already rejected the all-bedrock variant.
+        return isSafeBlock(level, pos.below())
                 && isSafeBlock(level, pos.east())
                 && isSafeBlock(level, pos.west())
                 && isSafeBlock(level, pos.south())
@@ -313,7 +328,6 @@ public final class HoleESP extends Module {
     }
 
     private static boolean validBedrockShape(ClientLevel level, List<BlockPos> positions) {
-        Set<BlockPos> inside = new HashSet<>(positions);
         for (BlockPos check : positions) {
             if (!isReplaceable(level, check) || !isReplaceable(level, check.above()) || !isReplaceable(level, check.above(2))) {
                 return false;
@@ -323,7 +337,7 @@ public final class HoleESP extends Module {
             }
             for (Direction direction : HORIZONTAL) {
                 BlockPos surround = check.relative(direction);
-                if (!inside.contains(surround) && !isBedrock(level, surround)) {
+                if (!positions.contains(surround) && !isBedrock(level, surround)) {
                     return false;
                 }
             }
@@ -332,7 +346,6 @@ public final class HoleESP extends Module {
     }
 
     private static boolean validIndestructibleShape(ClientLevel level, List<BlockPos> positions) {
-        Set<BlockPos> inside = new HashSet<>(positions);
         boolean hasIndestructible = false;
         for (BlockPos check : positions) {
             if (!isReplaceable(level, check) || !isReplaceable(level, check.above()) || !isReplaceable(level, check.above(2))) {
@@ -348,7 +361,7 @@ public final class HoleESP extends Module {
 
             for (Direction direction : HORIZONTAL) {
                 BlockPos surround = check.relative(direction);
-                if (inside.contains(surround)) {
+                if (positions.contains(surround)) {
                     continue;
                 }
                 if (isIndestructible(level, surround)) {
@@ -381,7 +394,10 @@ public final class HoleESP extends Module {
         if (level == null || pos == null || pos.getY() < level.getMinY() || pos.getY() >= level.getMaxY()) {
             return false;
         }
-        BlockState state = level.getBlockState(pos);
+        return isReplaceable(level.getBlockState(pos));
+    }
+
+    private static boolean isReplaceable(BlockState state) {
         return state.isAir() || state.canBeReplaced() || !state.getFluidState().isEmpty();
     }
 

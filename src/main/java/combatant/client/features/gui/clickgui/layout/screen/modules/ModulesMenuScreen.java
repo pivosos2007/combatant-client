@@ -522,7 +522,7 @@ public final class ModulesMenuScreen {
         float enabled = panel.enabledAnim(entry.getId(), entry.enabled());
         float hoverAnim = panel.hoverAnim(entry.getId(), hover);
 
-        renderModuleRowHover(panel, x, y, rowW, h, mouseX, mouseY, alpha, hoverAnim);
+        renderModuleRowHover(panel, entry.getId(), x, y, rowW, h, mouseX, mouseY, alpha, hoverAnim);
 
         String label = panel.bindingId != null && panel.bindingId.equals(entry.getId())
                 ? bindingLabel(entry)
@@ -577,6 +577,7 @@ public final class ModulesMenuScreen {
     }
 
     private void renderModuleRowHover(ModulesMenuPanel panel,
+                                      String moduleId,
                                       float x,
                                       float y,
                                       float w,
@@ -592,14 +593,6 @@ public final class ModulesMenuScreen {
         float rw = w - 6.0f * scale;
         float rh = h - 4.0f * scale;
         if (rw <= 0.5f || rh <= 0.5f) return;
-
-        float radius = 5.0f * scale;
-        int hoverBg = withAlpha(ModulesMenuStyle.rowHover(), alpha * hoverAnim);
-        int glow = ModulesMenuStyle.rowHoverGlow(alpha * hoverAnim);
-
-        float cx = AnimationUtility.clamp(mouseX, rx, rx + rw);
-        float cy = AnimationUtility.clamp(mouseY, ry, ry + rh);
-        float glowRadius = Math.max(rw, rh) * 0.82f;
 
         boolean ownsPanelClip = false;
         boolean panelClip = ClipFunction.isShapeClipActive();
@@ -620,26 +613,54 @@ public final class ModulesMenuScreen {
 
         try {
             /*
-             * Only the glass/dropdown shape needs stencil here.
-             * The hover itself is already a rounded shader primitive and radialGlowMasked() is already
-             * clipped to the hover rounded rect. A second nested stencil layer for the same hover shape
-             * makes the packed depth-stencil path dependent on ref=2 and can cull the whole hover draw.
-             *
-             * Effective result:
-             * - rounded hover fill/glow shape is produced by Renderer2D shaders;
-             * - parent rounded glass clip cuts both of them at the dropdown rounded bottom/edges.
+             * The quad is only a carrier for the procedural pass. The shader cuts its
+             * own asymmetric, noisy material field so the hover reads as a stain in
+             * the glass rather than a rectangular row fill. The existing panel
+             * ClipFunction remains the sole owner of the outer rounded silhouette.
              */
-            if (((glow >>> 24) & 0xFF) > 0) {
-                Renderer2D.COLOR.radialGlowMasked(rx, ry, rw, rh, radius, 0.0f, glowRadius, cx, cy, glow);
-            }
-
-            if (((hoverBg >>> 24) & 0xFF) > 0) {
-                LayoutRender2D.roundedQuad(rx, ry, rw, rh, radius, hoverBg, hoverBg, hoverBg, hoverBg);
-            }
+            Renderer2D.COLOR.moduleCategorySurface(
+                    rx,
+                    ry,
+                    rw,
+                    rh,
+                    5.0f * scale,
+                    categoryEffectMode(panel.category),
+                    hoverAnim,
+                    categoryEffectTime(),
+                    mouseX,
+                    mouseY,
+                    moduleEffectSeed(moduleId),
+                    ModulesMenuStyle.categoryFxPrimary(panel.category, alpha),
+                    ModulesMenuStyle.categoryFxSecondary(panel.category, alpha),
+                    ModulesMenuStyle.categoryFxHighlight(panel.category, alpha),
+                    1.0f
+            );
         } finally {
             Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
             if (ownsPanelClip) ClipFunction.pop();
         }
+    }
+
+
+    private static int categoryEffectMode(ModulesMenuCategory category) {
+        return switch (category) {
+            case COMBAT -> 0;   // fire
+            case MOVEMENT -> 1; // procedural ice wind / blizzard
+            case VISUALS -> 2;  // rapidly growing faceted crystals
+            case OTHER -> 3;    // procedural water
+            case PLAYER -> 4;   // restrained pearlescent fallback for the remaining category
+        };
+    }
+
+    private static float categoryEffectTime() {
+        long nanos = System.nanoTime() % 120_000_000_000L;
+        return nanos / 1_000_000_000.0f;
+    }
+
+    private static float moduleEffectSeed(String moduleId) {
+        int hash = moduleId != null ? moduleId.hashCode() : 0x6D2B79F5;
+        hash ^= hash >>> 16;
+        return (hash & 0x00FFFFFF) / 16777215.0f;
     }
 
     private void renderSettingsPage(ModulesMenuPanel panel, float mouseX, float mouseY, float alpha) {
