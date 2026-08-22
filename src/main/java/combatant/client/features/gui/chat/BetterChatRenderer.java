@@ -52,6 +52,7 @@ import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.text.ChatNameUtil;
 import combatant.client.util.text.ClipboardUtil;
 import combatant.client.util.text.TextSelection;
+import combatant.client.util.chat.ChatPasswordHeuristics;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -152,6 +153,11 @@ public enum BetterChatRenderer {
     private static int leftDownMsgIndex = -1;
     private static int leftDownCharIndex = -1;
     private static Style leftDownStyle = null;
+    private static final List<PasswordMaskRect> passwordMaskRects = new ArrayList<>();
+    private static boolean passwordReveal = false;
+    private static boolean passwordMaskClickPending = false;
+    private static float passwordRevealProgress = 0f;
+    private static String passwordInputSnapshot = "";
 
     public static void markLayoutDirty() {
     }
@@ -236,6 +242,7 @@ public enum BetterChatRenderer {
             scrollOffsetLines = 0;
             BetterChatSearch.deactivate();
             resetSuggestionTracking();
+            resetPasswordPrivacy();
         }
         if (chatOpen && ctx != null) {
             BetterTooltips.beginTooltipFrame();
@@ -330,18 +337,10 @@ public enum BetterChatRenderer {
                 );
             }
 
-            int lastMsgIndex = messages.isEmpty() ? -1 : messages.size() - 1;
-            int linesInLastMsg = 0;
-            if (lastMsgIndex >= 0) {
-                for (int i = lineCount - 1; i >= 0; i--) {
-                    if (allLines.get(i).messageIndex() == lastMsgIndex) {
-                        linesInLastMsg++;
-                    } else if (linesInLastMsg > 0) {
-                        break;
-                    }
-                }
-            }
-            int targetVisible = autoFollow ? Math.max(visibleLimit, linesInLastMsg) : visibleLimit;
+            // The viewport is line-bounded even when one incoming message wraps heavily.
+            // A large server table/message must not grow the whole BetterChat column and evict
+            // unrelated history from the visible surface.
+            int targetVisible = visibleLimit;
             targetVisibleForBox = Math.max(1, Math.min(targetVisible, lineCount));
 
             float globalStartFloat = autoFollow
@@ -356,8 +355,8 @@ public enum BetterChatRenderer {
 
             localStart = Math.max(0, Math.min(globalStart, Math.max(0, lineCount - 1)));
             int endLine = Math.min(lineCount, localStart + targetVisibleForBox + (autoFollow ? 0 : 3));
-            localStart = expandStartToGroup(allLines, localStart);
-            endLine = expandEndToGroup(allLines, endLine);
+            // Do not expand to message-group boundaries here. A wrapped/box-drawing message may
+            // be taller than the viewport; clipping it is preferable to creating a giant column.
             visible = allLines.subList(localStart, endLine);
             sbTotalLines = lineCount;
             sbVisibleLines = targetVisibleForBox;
@@ -366,8 +365,7 @@ public enum BetterChatRenderer {
             if (autoFollow) {
                 int actualGroups = countMessageGroups(visible, visible.size());
                 float actualHeight = messageStackHeight(visible.size(), actualGroups, lineHeight);
-                // expandStartToGroup() may prepend overscan lines. Keep the newest bubble pinned to
-                // the viewport bottom instead of allowing those prepended lines to push it down.
+                // Keep the newest visible lines pinned to the viewport bottom.
                 lineYOffset = boxHeight - actualHeight;
             } else {
                 lineYOffset = (localStart - globalStartFloat) * lineHeight;
@@ -569,28 +567,6 @@ public enum BetterChatRenderer {
                 + MESSAGE_PAD_Y * 2f;
     }
 
-    private static int expandStartToGroup(List<VisualLine> lines, int start) {
-        if (lines == null || lines.isEmpty()) return 0;
-        int safe = Mth.clamp(start, 0, lines.size());
-        if (safe <= 0 || safe >= lines.size()) return safe;
-        int group = lines.get(safe).messageGroup();
-        while (safe > 0 && lines.get(safe - 1).messageGroup() == group) {
-            safe--;
-        }
-        return safe;
-    }
-
-    private static int expandEndToGroup(List<VisualLine> lines, int end) {
-        if (lines == null || lines.isEmpty()) return 0;
-        int safe = Mth.clamp(end, 0, lines.size());
-        if (safe <= 0 || safe >= lines.size()) return safe;
-        int group = lines.get(safe - 1).messageGroup();
-        while (safe < lines.size() && lines.get(safe).messageGroup() == group) {
-            safe++;
-        }
-        return safe;
-    }
-
     private static void drawMessageBubbles(List<MessageBubble> bubbles, boolean activeChatSurface) {
         if (bubbles == null || bubbles.isEmpty()) return;
         for (MessageBubble bubble : bubbles) {
@@ -642,6 +618,7 @@ public enum BetterChatRenderer {
         HoverTip hover = currentHover;
         float tsScale = scaleForSize(tsFontSize);
         float shadowOffset = Math.max(0.75f, tsFontSize * 0.07f);
+        float timestampShadowAlpha = 0.46f;
         tsRenderer.begin(tsScale, false, false);
         try {
             for (MessageBubble bubble : bubbles) {
@@ -653,7 +630,7 @@ public enum BetterChatRenderer {
                 float reveal = newMessageReveal(bubble.message());
                 float tx = bubble.x() + bubble.w() - MESSAGE_PAD_X - textW - (1f - reveal) * NEW_MESSAGE_SLIDE_PX;
                 float ty = bubble.lastLine().y0() + (bubble.lastLine().y1() - bubble.lastLine().y0() - tsTextHeight) * 0.5f;
-                int shadowColor = mulAlpha(0xFF000000, alpha * 0.46f);
+                int shadowColor = mulAlpha(0xFF000000, alpha * timestampShadowAlpha);
                 applyColor(shadowColor);
                 tsRenderer.render(ts, tx + shadowOffset, ty, TMP_COLOR, false);
                 tsRenderer.render(ts, tx, ty + shadowOffset, TMP_COLOR, false);
@@ -719,8 +696,8 @@ public enum BetterChatRenderer {
         float scale = scaleForSize(fontSize);
         TextRenderer current = null;
         float currentHeight = 0f;
-        float shadowOffset = Math.max(1f, fontSize * (activeChatSurface ? 0.06f : 0.08f));
-        float shadowAlpha = activeChatSurface ? 0.48f : 0.68f;
+        float shadowOffset = Math.max(1f, fontSize * 0.08f);
+        float shadowAlpha = 0.68f;
         for (FrameLine line : lines) {
             float alpha = activeChatSurface ? 1f : fade(line.message().ageSeconds());
             if (alpha <= 0.01f) continue;
@@ -1182,6 +1159,12 @@ public enum BetterChatRenderer {
         int selStart = searchMode ? cursor : selectionStart(field, cursor);
         int selEnd = searchMode ? cursor : selectionEnd(field, cursor);
 
+        BetterChat cfg = BetterChat.get();
+        ChatPasswordHeuristics.SensitiveRange sensitiveRange = !searchMode && cfg != null && cfg.passwordPrivacy()
+                ? ChatPasswordHeuristics.sensitiveRange(fieldText)
+                : null;
+        updatePasswordPrivacyState(fieldText, sensitiveRange);
+
         float padX = 12f;
         float padY = 7f;
         float lineHeight = fontSize + 2f;
@@ -1238,8 +1221,7 @@ public enum BetterChatRenderer {
                 drawText(tr, searchMode ? "Search chat..." : "Message...", textX, lineY, fontSize, theme().textMuted(), false);
             } else {
                 for (InputLine line : lines) {
-                    String slice = safeSub(text, line.start(), line.end());
-                    drawText(tr, slice, textX, lineY, fontSize, theme().textPrimary(), true);
+                    renderInputLine(tr, text, line, sensitiveRange, textX, lineY, fontSize, lineHeight);
                     lineY += lineHeight;
                 }
             }
@@ -1301,6 +1283,133 @@ public enum BetterChatRenderer {
                     inputY + h + 3.0f,
                     remSize, remColor, false);
         }
+    }
+
+    private static void updatePasswordPrivacyState(String fieldText, ChatPasswordHeuristics.SensitiveRange range) {
+        passwordMaskRects.clear();
+        if (range == null) {
+            passwordReveal = false;
+            passwordMaskClickPending = false;
+            passwordRevealProgress = 0f;
+            passwordInputSnapshot = "";
+            return;
+        }
+
+        String current = fieldText == null ? "" : fieldText;
+        if (!current.equals(passwordInputSnapshot)) {
+            // Editing a credential re-masks it immediately. Do not animate from a previously
+            // revealed state, otherwise the new character could flash on screen.
+            passwordReveal = false;
+            passwordMaskClickPending = false;
+            passwordRevealProgress = 0f;
+            passwordInputSnapshot = current;
+        }
+        passwordRevealProgress = AnimationUtility.approach(
+                passwordRevealProgress,
+                passwordReveal ? 1f : 0f,
+                AnimationUtility.deltaTime(),
+                12.0f
+        );
+        passwordRevealProgress = AnimationUtility.snap(passwordRevealProgress, passwordReveal ? 1f : 0f, 0.015f);
+    }
+
+    private static void resetPasswordPrivacy() {
+        passwordMaskRects.clear();
+        passwordReveal = false;
+        passwordMaskClickPending = false;
+        passwordRevealProgress = 0f;
+        passwordInputSnapshot = "";
+    }
+
+    private static void renderInputLine(TextRenderer tr,
+                                        String text,
+                                        InputLine line,
+                                        ChatPasswordHeuristics.SensitiveRange sensitiveRange,
+                                        float textX,
+                                        float lineY,
+                                        float fontSize,
+                                        float lineHeight) {
+        if (sensitiveRange == null || !sensitiveRange.intersects(line.start(), line.end())) {
+            drawText(tr, safeSub(text, line.start(), line.end()), textX, lineY, fontSize, theme().textPrimary(), true);
+            return;
+        }
+
+        int secretStart = Math.max(line.start(), sensitiveRange.start());
+        int secretEnd = Math.min(line.end(), sensitiveRange.end());
+        String before = safeSub(text, line.start(), secretStart);
+        String secret = safeSub(text, secretStart, secretEnd);
+        String after = safeSub(text, secretEnd, line.end());
+
+        float cursorX = textX;
+        if (!before.isEmpty()) {
+            drawText(tr, before, cursorX, lineY, fontSize, theme().textPrimary(), true);
+            cursorX += textWidth(tr, before, fontSize);
+        }
+
+        float secretW = Math.max(1f, textWidth(tr, secret, fontSize));
+        float easedReveal = AnimationUtility.smoothstep(passwordRevealProgress);
+        if (easedReveal > 0.01f && !secret.isEmpty()) {
+            int textAlpha = Math.round(255f * easedReveal);
+            drawText(tr, secret, cursorX, lineY, fontSize, withAlpha(theme().textPrimary(), textAlpha), true);
+        }
+
+        float maskAlpha = 1f - easedReveal;
+        if (maskAlpha > 0.01f) {
+            float maskPadX = 3.5f;
+            float maskH = Math.max(12f, fontSize * 0.88f);
+            float maskY = lineY + (lineHeight - maskH) * 0.5f;
+            float maskX = cursorX - maskPadX;
+            float maskW = Math.max(22f, secretW + maskPadX * 2f);
+            drawPasswordPrivacyMask(maskX, maskY, maskW, maskH, maskAlpha);
+            if (!passwordReveal || passwordRevealProgress < 0.96f) {
+                passwordMaskRects.add(new PasswordMaskRect(maskX, maskY, maskW, maskH));
+            }
+        }
+
+        cursorX += secretW;
+        if (!after.isEmpty()) {
+            drawText(tr, after, cursorX, lineY, fontSize, theme().textPrimary(), true);
+        }
+    }
+
+    private static void drawPasswordPrivacyMask(float x, float y, float w, float h, float alpha) {
+        if (renderer == null || w <= 0f || h <= 0f) return;
+        float a = Mth.clamp(alpha, 0f, 1f);
+        int surfaceAlpha = Math.round(190f * a);
+        int gradientAlpha = Math.round(178f * a);
+        int strokeAlpha = Math.round(150f * a);
+        float radius = Math.min(5.5f, h * 0.5f);
+
+        renderer.roundedRect(x, y, w, h, radius, 1.0f, withAlpha(theme().windowBg(), surfaceAlpha));
+        HudRenderUtil.ThemeGradient fill = HudRenderUtil.themeAccentGradient(gradientAlpha);
+        renderer.roundedRectGradient(x, y, w, h, radius, 1.0f, fill.start(), fill.end(), fill.angleDeg());
+        HudRenderUtil.ThemeGradient stroke = HudRenderUtil.themeAccentGradient(strokeAlpha);
+        renderer.roundedRectStrokeGradient(x, y, w, h, radius, 1.0f, 0.7f, stroke.start(), stroke.end(), stroke.angleDeg());
+
+        // A small moving highlight keeps the privacy surface readable as an intentional control
+        // rather than a flat censor bar, while remaining fully theme-driven.
+        float shimmer = (AnimationUtility.time(0.00022f) % 1f);
+        float highlightW = Math.max(8f, w * 0.18f);
+        float highlightX = x + (w + highlightW) * shimmer - highlightW;
+        boolean clipped = ScissorFunction.pushRaw(x, y, w, h);
+        renderer.roundedRectGradient(
+                highlightX, y + 1f, highlightW, Math.max(1f, h - 2f),
+                Math.max(1f, radius - 1f), 1.0f,
+                withAlpha(0xFFFFFFFF, Math.round(30f * a)),
+                withAlpha(0xFFFFFFFF, 0),
+                0f
+        );
+        if (clipped) ScissorFunction.pop();
+    }
+
+    private static boolean isPasswordMaskHovered(double x, double y) {
+        if (passwordReveal && passwordRevealProgress >= 0.96f) return false;
+        for (PasswordMaskRect rect : passwordMaskRects) {
+            if (x >= rect.x() && x <= rect.x() + rect.w() && y >= rect.y() && y <= rect.y() + rect.h()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static List<InputLine> wrapInput(String text, float fontSize, float maxWidth) {
@@ -1426,6 +1535,18 @@ public enum BetterChatRenderer {
 
         if (overSuggestWindow) {
             return true;
+        }
+
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (pressed && isPasswordMaskHovered(fx, fy)) {
+                passwordReveal = true;
+                passwordMaskClickPending = true;
+                return true;
+            }
+            if (!pressed && passwordMaskClickPending) {
+                passwordMaskClickPending = false;
+                return true;
+            }
         }
 
         if (searchHit) {
@@ -2603,6 +2724,9 @@ public enum BetterChatRenderer {
     }
 
     private record InputLine(int start, int end, float width) {
+    }
+
+    private record PasswordMaskRect(float x, float y, float w, float h) {
     }
 
     private record Segment(String text, Style style) {

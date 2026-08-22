@@ -14,7 +14,6 @@ import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.ChatScreen;
-import net.minecraft.resources.Identifier;
 import combatant.client.config.SettingDef;
 import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.config.values.BooleanValue;
@@ -39,7 +38,10 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
-import combatant.client.util.wav.CustomSoundEngine;
+import combatant.client.util.sound.SoundAsset;
+import combatant.client.util.sound.SoundCatalog;
+import combatant.client.util.sound.SoundKey;
+import combatant.client.util.sound.SoundOptions;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -957,10 +959,10 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
     private void playSound(boolean enabled) {
         if (ModuleManager.isToggleSoundSuppressed()) return;
         if (!soundEnabled.get()) return;
-        Identifier snd = resolveSound(enabled, soundMode.get());
+        NotificationSound snd = NotificationSound.resolve(enabled, soundMode.get());
         if (snd == null) return;
         double vol = Math.min(1.0, getSoundVolume());
-        CustomSoundEngine.get().play(snd, vol, 1.0, false, true);
+        snd.play(SoundOptions.gain(vol));
     }
 
     private void clearKey(String key) {
@@ -968,16 +970,23 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         toasts.removeIf(t -> key.equals(t.key));
     }
 
-    private Identifier resolveSound(boolean enabled, String mode) {
-        String base = switch (mode) {
-            case "2" -> "enable/enable2";
-            case "3" -> "enable/enable3";
-            default -> "enable/enable1";
-        };
-        if (!enabled) {
-            base = base.replace("enable/", "disable/").replace("enable", "disable");
+    @SoundCatalog(namespace = "combatant", root = "sounds", idPrefix = "notifications")
+    private enum NotificationSound implements SoundKey {
+        @SoundAsset("enable/enable1.wav") ENABLE_1,
+        @SoundAsset("enable/enable2.wav") ENABLE_2,
+        @SoundAsset("enable/enable3.wav") ENABLE_3,
+        @SoundAsset("disable/disable1.wav") DISABLE_1,
+        @SoundAsset("disable/disable2.wav") DISABLE_2,
+        @SoundAsset("disable/disable3.wav") DISABLE_3;
+
+        static NotificationSound resolve(boolean enabled, String mode) {
+            int index = switch (mode) {
+                case "2" -> 1;
+                case "3" -> 2;
+                default -> 0;
+            };
+            return values()[(enabled ? 0 : 3) + index];
         }
-        return Identifier.fromNamespaceAndPath("combatant", "sounds/" + base + ".wav");
     }
 
     private enum MessengerSide {

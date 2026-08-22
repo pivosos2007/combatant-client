@@ -18,7 +18,7 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.util.screen.ClientScreen;
-import combatant.client.util.wav.ClickGuiSounds;
+import combatant.client.features.gui.clickgui.sound.GuiSound;
 import net.minecraft.client.Minecraft;
 
 import java.util.LinkedHashMap;
@@ -70,7 +70,7 @@ public class ClickGui extends Module {
                 || ClientScreen.current() instanceof ClickGuiEditorScreen);
 
         if (!suppressScreenClose && clickGuiScreen) {
-            ClickGuiSounds.guiClose();
+            GuiSound.CLOSE.feedback(0.25);
             ClickGuiRenderer.beginCloseAnimation();
             return;
         }

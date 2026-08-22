@@ -11,7 +11,7 @@ import combatant.client.config.SettingOwner;
 import combatant.client.config.values.BindMode;
 import combatant.client.config.values.KeyBindValue;
 import combatant.client.util.input.KeyManager;
-import combatant.client.util.wav.ClickGuiSounds;
+import combatant.client.features.gui.clickgui.sound.GuiSound;
 
 import java.util.function.BooleanSupplier;
 
@@ -153,13 +153,13 @@ public class FunctionBindSetting extends Setting {
         boolean wasBound = previous != null && !previous.equalsIgnoreCase("NONE");
         if (combo == null || combo.equalsIgnoreCase("NONE")) {
             set("NONE");
-            ClickGuiSounds.bindingNull();
+            GuiSound.BINDING_NULL.feedback();
         } else {
             set(combo);
             if (wasBound) {
-                ClickGuiSounds.bindingReset();
+                GuiSound.BIND_RESET.feedback();
             } else {
-                ClickGuiSounds.bindingSuccess();
+                GuiSound.BINDING.feedback();
             }
         }
         refreshRegistration();

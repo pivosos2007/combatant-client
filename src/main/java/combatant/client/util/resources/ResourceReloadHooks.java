@@ -21,7 +21,7 @@ import combatant.client.render.engine.visuals.CombatantVisuals;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.media.MediaSessionService;
-import combatant.client.util.wav.CustomSoundEngine;
+import combatant.client.util.sound.SoundSystem;
 
 public enum ResourceReloadHooks {
     ;
@@ -34,7 +34,7 @@ public enum ResourceReloadHooks {
             Fonts.refresh();
             TextureStorage.preload();
             SvgRegistry.reload(manager);
-            CustomSoundEngine.get().reset();
+            SoundSystem.get().reset();
             I18nDuplicateScanner.scan(manager, "resource reload");
             I18nPreflightManager.preflight("resource reload");
 

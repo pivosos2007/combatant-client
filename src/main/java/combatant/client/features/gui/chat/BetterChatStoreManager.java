@@ -23,6 +23,7 @@ import combatant.client.features.gui.hud.draggable.impl.BetterChat;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.text.LegacyTextUtil;
 import combatant.client.util.text.TextJsonUtil;
+import combatant.client.util.chat.ChatSpamHeuristics;
 
 import java.io.File;
 import java.io.FileReader;
@@ -63,17 +64,24 @@ public enum BetterChatStoreManager {
         return activeCache;
     }
 
-    public static void addMessage(Component text) {
+    /**
+     * @return false only when BetterChat anti-spam deliberately suppresses the message.
+     */
+    public static boolean addMessage(Component text) {
         Minecraft mc = Minecraft.getInstance();
         BetterChatStore store = getActiveStore(mc);
-        if (store == null) return;
+        if (store == null) return true;
 
         text = LegacyTextUtil.convertLegacyCodes(text);
+        BetterChat cfg = BetterChat.get();
+        if (cfg != null && cfg.antiSpam() && ChatSpamHeuristics.isLikelyGibberish(text)) {
+            return false;
+        }
 
-        store.add(text);
+        boolean stackDuplicates = cfg == null || cfg.stackDuplicates();
+        store.add(text, System.currentTimeMillis(), stackDuplicates);
         boolean cacheChanged = captureHovers(text, activeCache);
         BetterChatRenderer.onNewMessage();
-        BetterChat cfg = BetterChat.get();
         boolean historyOn = cfg == null || cfg.historyEnabled();
         if (historyOn) {
             scheduleSave(key(mc), store);
@@ -81,6 +89,7 @@ public enum BetterChatStoreManager {
         if (cacheChanged) {
             scheduleCacheSave(key(mc), activeCache);
         }
+        return true;
     }
 
     public static void clearActive() {
@@ -119,10 +128,11 @@ public enum BetterChatStoreManager {
                     JsonObject obj = el.getAsJsonObject();
                     String json = obj.has("text") ? obj.get("text").getAsString() : null;
                     long ts = obj.has("time") ? obj.get("time").getAsLong() : System.currentTimeMillis();
+                    int repeatCount = obj.has("count") ? Math.max(1, obj.get("count").getAsInt()) : 1;
                     if (json != null) {
                         var txt = TextJsonUtil.fromJson(json);
                         if (txt != null) {
-                            store.add(txt, ts);
+                            store.add(txt, ts, false, repeatCount);
                             captureHovers(txt, cache);
                         }
                     }
@@ -194,6 +204,7 @@ public enum BetterChatStoreManager {
                 String json = serializedText(line);
                 obj.addProperty("text", json);
                 obj.addProperty("time", line.timestampMs());
+                if (line.repeatCount() > 1) obj.addProperty("count", line.repeatCount());
                 arr.add(obj);
             }
             try (FileWriter writer = new FileWriter(f, StandardCharsets.UTF_8)) {
@@ -243,7 +254,7 @@ public enum BetterChatStoreManager {
         if (cached != null) {
             return cached;
         }
-        String created = TextJsonUtil.toJson(line.text());
+        String created = TextJsonUtil.toJson(line.rawText());
         SERIALIZED_LINE_CACHE.put(line, created);
         return created;
     }

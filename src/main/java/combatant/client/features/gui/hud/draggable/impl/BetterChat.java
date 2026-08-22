@@ -47,6 +47,9 @@ public final class BetterChat extends DraggableHudElement {
     private final NumberValue<Double> fadeSeconds = num("fade_seconds", 14.98, 3.0, 30.0);
     private final NumberValue<Integer> liquidGlassAlpha = num("liquid_glass_alpha", 230, 0, 255);
     private final BooleanValue hideVanilla = bool("hide_vanilla", true);
+    private final BooleanValue stackDuplicates = bool("stack_duplicates", true);
+    private final BooleanValue antiSpam = bool("anti_spam", true);
+    private final BooleanValue passwordPrivacy = bool("password_privacy", true);
     private final BooleanValue historyEnabled = bool("history_enabled", true);
     private final NumberValue<Integer> historyLimit = num("history_limit", 32000, 1000, 32000);
     private final BooleanValue timestampsEnabled = bool("timestamps_enabled", true);
@@ -103,6 +106,18 @@ public final class BetterChat extends DraggableHudElement {
 
     public boolean hideVanilla() {
         return hideVanilla.get();
+    }
+
+    public boolean stackDuplicates() {
+        return stackDuplicates.get();
+    }
+
+    public boolean antiSpam() {
+        return antiSpam.get();
+    }
+
+    public boolean passwordPrivacy() {
+        return passwordPrivacy.get();
     }
 
     public boolean historyEnabled() {

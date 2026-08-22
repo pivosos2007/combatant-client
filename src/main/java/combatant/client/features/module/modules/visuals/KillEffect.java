@@ -11,7 +11,6 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
@@ -38,7 +37,10 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.PostProcessUniforms;
 import combatant.client.util.time.Timer;
-import combatant.client.util.wav.CustomSoundEngine;
+import combatant.client.util.sound.SoundAsset;
+import combatant.client.util.sound.SoundCatalog;
+import combatant.client.util.sound.SoundKey;
+import combatant.client.util.sound.SoundOptions;
 
 import java.awt.*;
 import java.util.*;
@@ -67,8 +69,6 @@ public class KillEffect extends Module implements PostProcessPass {
     private static final String SETTING_COLOR = "color";
     private static final String SETTING_MOBS = "mobs";
     private static final String SETTING_KILL_BLUR = "kill_blur";
-    private static final Identifier ORTHODOX_SOUND =
-            Identifier.fromNamespaceAndPath("combatant", "sounds/misc/orthodox.wav");
     private static final long EMBER_GROUND_EXTRA_MS = 0;
     private final Minecraft mc = Minecraft.getInstance();
     private final Random random = new Random();
@@ -216,13 +216,7 @@ public class KillEffect extends Module implements PostProcessPass {
             if ("Orthodox".equals(mode.get())) {
                 orthodoxMarks.add(new OrthodoxMark(pos, now));
                 if (playSound.get()) {
-                    CustomSoundEngine.get().play(
-                            ORTHODOX_SOUND,
-                            soundVolume.get(),
-                            1.0,
-                            false,
-                            true
-                    );
+                    KillSound.ORTHODOX.play(SoundOptions.at(pos).withGain(soundVolume.get()));
                 }
             } else if ("FallingLava".equals(mode.get())) {
                 spawnFallingLava(entity);
@@ -248,6 +242,12 @@ public class KillEffect extends Module implements PostProcessPass {
         if (!orthodoxMarks.isEmpty()) {
             orthodoxMarks.removeIf(m -> now - m.createdAtMs > 3000);
         }
+    }
+
+    @SoundCatalog(namespace = "combatant", root = "sounds/misc", idPrefix = "kill_effect")
+    private enum KillSound implements SoundKey {
+        @SoundAsset("orthodox.wav")
+        ORTHODOX
     }
 
     @Override
@@ -542,5 +542,4 @@ public class KillEffect extends Module implements PostProcessPass {
         }
     }
 }
-
 

@@ -10,7 +10,7 @@ package combatant.client.features.gui.clickgui.settings;
 import combatant.client.config.SettingOwner;
 import combatant.client.config.values.KeyBindValue;
 import combatant.client.util.input.KeyManager;
-import combatant.client.util.wav.ClickGuiSounds;
+import combatant.client.features.gui.clickgui.sound.GuiSound;
 
 public class KeyBindSetting extends Setting {
 
@@ -101,14 +101,14 @@ public class KeyBindSetting extends Setting {
 
         if (comboString == null || comboString.equalsIgnoreCase("NONE")) {
             value.set("NONE");
-            ClickGuiSounds.bindingNull();
+            GuiSound.BINDING_NULL.feedback();
         } else {
             value.set(comboString.toUpperCase());
             KeyManager.registerCombo(bindingName(), comboString);
             if (wasBound) {
-                ClickGuiSounds.bindingReset();
+                GuiSound.BIND_RESET.feedback();
             } else {
-                ClickGuiSounds.bindingSuccess();
+                GuiSound.BINDING.feedback();
             }
         }
 
@@ -137,4 +137,3 @@ public class KeyBindSetting extends Setting {
         float layoutTextW = 0f;
     }
 }
-

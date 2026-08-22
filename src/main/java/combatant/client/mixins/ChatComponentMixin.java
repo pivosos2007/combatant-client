@@ -47,7 +47,10 @@ public class ChatComponentMixin {
             return;
         }
         if (!CommandOutput.isCombatantMessage(message)) {
-            BetterChatStoreManager.addMessage(message);
+            boolean accepted = BetterChatStoreManager.addMessage(message);
+            if (!accepted && BetterChat.isActive()) {
+                ci.cancel();
+            }
         }
     }
 

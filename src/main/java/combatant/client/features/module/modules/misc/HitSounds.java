@@ -7,7 +7,6 @@
 
 package combatant.client.features.module.modules.misc;
 
-import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import combatant.client.config.DisableSettingI18n;
@@ -21,9 +20,10 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.relations.CategoryRules;
 import combatant.client.features.relations.CategoryType;
 import combatant.client.features.relations.EntityFilters;
-import combatant.client.util.wav.CustomSoundEngine;
-
-import java.util.Map;
+import combatant.client.util.sound.SoundAsset;
+import combatant.client.util.sound.SoundCatalog;
+import combatant.client.util.sound.SoundKey;
+import combatant.client.util.sound.SoundOptions;
 
 //todo Description
 @ModuleInfo(
@@ -44,13 +44,6 @@ public class HitSounds extends Module {
     private static final String SETTING_OVERRIDE_IGNORED = "override_ignored";
     private static final String SETTING_IGNORED_ENTITY_SOUND = "ignored_entity_sound";
 
-    private static final Map<String, Identifier> SOUNDS = Map.of(
-            "bell", Identifier.fromNamespaceAndPath("combatant", "sounds/hitsounds/bell.wav"),
-            "bonk", Identifier.fromNamespaceAndPath("combatant", "sounds/hitsounds/bonk.wav"),
-            "bubble", Identifier.fromNamespaceAndPath("combatant", "sounds/hitsounds/bubble.wav"),
-            "crime", Identifier.fromNamespaceAndPath("combatant", "sounds/hitsounds/crime.wav"),
-            "critical", Identifier.fromNamespaceAndPath("combatant", "sounds/hitsounds/critical.wav")
-    );
     private final BooleanMapValue sources = group(
             "hitsounds_sources",
             SETTING_SOURCES,
@@ -152,18 +145,21 @@ public class HitSounds extends Module {
 
     private void playSoundKey(SoundType key) {
         if (key == null) return;
-        Identifier id = SOUNDS.get(key.getId());
-        if (id == null) return;
-
         double vol = Math.min(1.0, volumeValue.get());
-        CustomSoundEngine.get().play(id, vol, 1.0, false, true);
+        key.play(SoundOptions.gain(vol));
     }
 
-    private enum SoundType implements EnumValue.IdProvider {
+    @SoundCatalog(namespace = "combatant", root = "sounds/hitsounds", idPrefix = "hitsounds")
+    private enum SoundType implements EnumValue.IdProvider, SoundKey {
+        @SoundAsset("bell.wav")
         BELL("bell"),
+        @SoundAsset("bonk.wav")
         BONK("bonk"),
+        @SoundAsset("bubble.wav")
         BUBBLE("bubble"),
+        @SoundAsset("crime.wav")
         CRIME("crime"),
+        @SoundAsset("critical.wav")
         CRITICAL("critical");
 
         private final String id;

@@ -20,7 +20,7 @@ import combatant.client.features.gui.clickgui.layout.screen.settings.render.Layo
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ScissorFunction;
-import combatant.client.util.wav.ClickGuiSounds;
+import combatant.client.features.gui.clickgui.sound.GuiSound;
 
 import java.util.*;
 
@@ -439,7 +439,7 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
                 editorFor(itemId).syncFromRule();
                 syncBridge();
                 saveParentConfig();
-                ClickGuiSounds.changeMode();
+                GuiSound.CHANGE_MODE.feedback();
             }
             case REMOVE_RULE -> {
                 rules.removeRule(itemId);
@@ -448,7 +448,7 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
                 detailScroll = 0f;
                 syncBridge();
                 saveParentConfig();
-                ClickGuiSounds.changeMode();
+                GuiSound.CHANGE_MODE.feedback();
             }
         }
     }

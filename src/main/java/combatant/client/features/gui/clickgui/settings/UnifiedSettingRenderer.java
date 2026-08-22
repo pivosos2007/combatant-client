@@ -19,7 +19,7 @@ import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.text.ClipboardUtil;
-import combatant.client.util.wav.ClickGuiSounds;
+import combatant.client.features.gui.clickgui.sound.GuiSound;
 
 import java.awt.*;
 import java.util.HashSet;
@@ -117,7 +117,7 @@ enum UnifiedSettingRenderer {
         BooleanSetting.UiState ui = setting.ui();
         if (!UnifiedSettingsSkin.inside(mx, my, ui.lastX, ui.lastY, ui.lastW, ui.lastH)) return;
         setting.set(!setting.get());
-        ClickGuiSounds.changeMode();
+        GuiSound.CHANGE_MODE.feedback();
         if (setting.getParent() != null) setting.getParent().saveConfig();
     }
 
@@ -624,7 +624,7 @@ enum UnifiedSettingRenderer {
         N next = setting.value().castToType(nextRaw);
         if (Double.compare(current.doubleValue(), next.doubleValue()) != 0) {
             setting.value().set(next);
-            ClickGuiSounds.sliderMove();
+            GuiSound.SLIDER_MOVE.feedback();
         }
     }
 
@@ -667,7 +667,7 @@ enum UnifiedSettingRenderer {
                 continue;
             String before = setting.selectedId();
             setting.selectId(opt.getId());
-            if (!opt.getId().equals(before)) ClickGuiSounds.changeMode();
+            if (!opt.getId().equals(before)) GuiSound.CHANGE_MODE.feedback();
             if (setting.onChange() != null) setting.onChange().run();
             if (setting.getParent() != null) setting.getParent().saveConfig();
             return;
@@ -745,7 +745,7 @@ enum UnifiedSettingRenderer {
             if (!UnifiedSettingsSkin.inside(mx, my, ox - m(2f, 2f), oy - m(1f, 1f), opt.w() + m(4f, 4f), m(16f, 8f)))
                 continue;
             setting.value().set(opt.getId(), !setting.value().get(opt.getId()));
-            ClickGuiSounds.changeMode();
+            GuiSound.CHANGE_MODE.feedback();
             if (setting.getParent() != null) setting.getParent().saveConfig();
             return;
         }

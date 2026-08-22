@@ -153,32 +153,32 @@ float roundedBoxSDF(vec2 p, vec2 halfSize, float radius) {
 }
 
 float flameDistance(vec3 world, float time, float seed) {
-    const float spacing = 0.86;
+    const float spacing = 0.74;
     float cellId = floor((world.x + spacing * 0.5) / spacing);
     vec3 p = world;
     p.x = mod(world.x + spacing * 0.5, spacing) - spacing * 0.5;
 
     float cellRnd = hash11(cellId + seed * 67.0);
-    float height = 0.56 + cellRnd * 0.40;
+    float height = 0.30 + cellRnd * 0.22;
     float fromBottom = 0.5 - p.y;
     float rise = saturate(fromBottom / max(height, 0.001));
 
-    p.x += (cellRnd - 0.5) * 0.18;
-    p.x += sin(fromBottom * 5.2 - time * 2.1 + cellRnd * 13.0) * (0.025 + rise * 0.075);
+    p.x += (cellRnd - 0.5) * 0.13;
+    p.x += sin(fromBottom * 6.0 - time * 1.65 + cellRnd * 13.0) * (0.015 + rise * 0.040);
 
-    float tongueRadius = mix(0.34 + cellRnd * 0.045, 0.028, pow(rise, 0.72));
+    float tongueRadius = mix(0.205 + cellRnd * 0.030, 0.018, pow(rise, 0.76));
     float radialDistance = length(vec2(p.x, p.z)) - tongueRadius;
     float heightDistance = (fromBottom - height) * 0.52;
     float tongueDistance = max(radialDistance, heightDistance);
 
-    float baseDistance = max(abs(p.z) - 0.31, abs(p.y - 0.405) - 0.115);
+    float baseDistance = max(abs(p.z) - 0.23, abs(p.y - 0.445) - 0.055);
     float body = min(tongueDistance, baseDistance);
 
-    vec3 flow = vec3(p.x * 2.7, p.y * 3.1 - time * 1.95, p.z * 2.45);
+    vec3 flow = vec3(p.x * 2.2, p.y * 2.7 - time * 1.45, p.z * 2.1);
     float coarse = fbm31(flow + vec3(cellRnd * 19.0, seed * 7.0, 0.0));
     float detail = noise31(flow * 3.1 + vec3(0.0, -time * 2.7, seed * 31.0));
-    body += (coarse - 0.54) * mix(0.065, 0.19, rise);
-    body += (detail - 0.5) * 0.040 * rise;
+    body += (coarse - 0.54) * mix(0.040, 0.105, rise);
+    body += (detail - 0.5) * 0.018 * rise;
     return body;
 }
 
@@ -189,12 +189,12 @@ vec4 flameSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1
     float closest = 10.0;
     vec3 hitPosition = vec3(p, 0.0);
 
-    for (int i = 0; i < 34; i++) {
+    for (int i = 0; i < 30; i++) {
         vec3 position = vec3(p, rayT);
         float distanceToFlame = flameDistance(position, time, seed);
-        float shell = exp(-abs(distanceToFlame) * 29.0);
-        glow += (1.0 - glow) * shell * 0.075;
-        interior += (1.0 - interior) * (1.0 - smoothstep(-0.025, 0.055, distanceToFlame)) * 0.12;
+        float shell = exp(-abs(distanceToFlame) * 34.0);
+        glow += (1.0 - glow) * shell * 0.054;
+        interior += (1.0 - interior) * (1.0 - smoothstep(-0.020, 0.042, distanceToFlame)) * 0.086;
 
         if (abs(distanceToFlame) < closest) {
             closest = abs(distanceToFlame);
@@ -205,28 +205,30 @@ vec4 flameSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1
         if (rayT > 1.24) break;
     }
 
-    float coreNoise = ridged21(vec2(hitPosition.x * 1.8, hitPosition.y * 4.8 - time * 2.2) + seed * 13.0);
-    float heat = saturate(interior * 0.82 + coreNoise * interior * 0.38);
+    float coreNoise = ridged21(vec2(hitPosition.x * 1.5, hitPosition.y * 3.8 - time * 1.7) + seed * 13.0);
+    float heat = saturate(interior * 0.66 + coreNoise * interior * 0.20);
 
-    vec2 emberGrid = vec2(p.x * 6.2 - time * 0.82, p.y * 9.0 - time * 3.6);
+    vec2 emberGrid = vec2(p.x * 4.8 - time * 0.52, p.y * 7.0 - time * 2.2);
     vec2 emberCell = floor(emberGrid);
     vec2 emberUv = fract(emberGrid) - 0.5;
     vec2 emberOffset = hash22(emberCell + seed * 29.0) - 0.5;
     float ember = 1.0 - smoothstep(0.025, 0.095, length(emberUv - emberOffset * 0.48));
-    ember *= step(0.945, hash21(emberCell + seed * 47.0));
+    ember *= step(0.982, hash21(emberCell + seed * 47.0));
 
-    vec3 hotColor = mix(c1 * 1.28, hi * 1.10, 0.22);
-    vec3 color = mix(c0 * 0.54, c1 * 1.26, saturate(glow * 1.10 + interior * 0.58));
-    color = mix(color, hotColor, heat * 0.46);
-    color += c0 * glow * 0.42;
-    color = mix(color, hi * 1.18, ember * 0.62);
+    vec3 hotColor = mix(c1 * 1.12, hi, 0.12);
+    vec3 color = mix(c0 * 0.46, c1 * 1.08, saturate(glow * 0.88 + interior * 0.46));
+    color = mix(color, hotColor, heat * 0.30);
+    color += c0 * glow * 0.30;
+    color = mix(color, hi, ember * 0.44);
 
-    float alpha = pow(saturate(glow * 1.34), 1.42) * 0.88 + interior * 0.30 + ember * 0.58;
-    alpha *= easeOutCubic(reveal);
+    float textBand = exp(-p.y * p.y * 30.0);
+    float readability = 1.0 - textBand * 0.62;
+    float alpha = pow(saturate(glow * 1.18), 1.52) * 0.58 + interior * 0.19 + ember * 0.36;
+    alpha *= readability * easeOutCubic(reveal);
     return vec4(color, saturate(alpha));
 }
 
-float snowLayer(vec2 p, float time, float seed, float scale, float speed, float roundness) {
+float snowLayer(vec2 p, float time, float seed, float scale, float speed, float roundness, float densityThreshold) {
     vec2 windP = rotate2(-0.19) * p;
     vec2 q = windP * scale + vec2(time * speed, -time * speed * 0.16);
     vec2 cell = floor(q);
@@ -236,36 +238,38 @@ float snowLayer(vec2 p, float time, float seed, float scale, float speed, float 
 
     float angle = mix(-0.20, 0.20, rnd.x);
     f = rotate2(angle) * f;
-    float halfLength = mix(0.12, 0.38, rnd.y);
-    float thickness = mix(0.025, 0.070, hash21(cell + seed * 17.0));
+    float halfLength = mix(0.08, 0.27, rnd.y);
+    float thickness = mix(0.018, 0.052, hash21(cell + seed * 17.0));
 
     vec2 d = vec2(max(abs(f.x) - halfLength, 0.0), f.y);
     float streak = 1.0 - smoothstep(thickness, thickness * 2.1, length(d));
     float flake = 1.0 - smoothstep(thickness * 0.8, thickness * 2.2, length(f));
-    return mix(streak, flake, roundness) * step(0.31, hash21(cell + seed * 83.0));
+    return mix(streak, flake, roundness) * step(densityThreshold, hash21(cell + seed * 83.0));
 }
 
 vec4 blizzardSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1, vec3 hi) {
     vec2 flowP = rotate2(-0.19) * p;
     float broad = fbm21(flowP * vec2(0.72, 2.10) + vec2(time * 0.36, seed * 11.0));
     float torn = ridged21(flowP * vec2(1.30, 3.60) + vec2(time * 0.72, -time * 0.15));
-    float mist = smoothstep(0.49, 0.79, broad * 0.76 + torn * 0.25);
+    float mist = smoothstep(0.57, 0.84, broad * 0.74 + torn * 0.22);
 
-    float farSnow = snowLayer(p, time, seed + 1.7, 2.8, 0.72, 0.18);
-    float midSnow = snowLayer(p, time, seed + 4.1, 5.2, 1.24, 0.08);
-    float nearSnow = snowLayer(p, time, seed + 8.9, 8.6, 1.88, 0.54);
-    float snow = farSnow * 0.42 + midSnow * 0.67 + nearSnow;
+    float farSnow = snowLayer(p, time, seed + 1.7, 2.6, 0.58, 0.24, 0.72);
+    float midSnow = snowLayer(p, time, seed + 4.1, 4.8, 0.92, 0.16, 0.82);
+    float nearSnow = snowLayer(p, time, seed + 8.9, 7.4, 1.34, 0.62, 0.92);
+    float snow = farSnow * 0.24 + midSnow * 0.39 + nearSnow * 0.58;
 
     float iceGrain = ridged21(p * vec2(3.2, 7.0) + vec2(seed * 17.0, time * 0.09));
-    float frost = smoothstep(0.66, 0.96, iceGrain) * (0.34 + mist * 0.66);
-    float whiteout = saturate(mist * 0.72 + snow * 0.90 + frost * 0.34);
+    float frost = smoothstep(0.76, 0.98, iceGrain) * (0.22 + mist * 0.46);
+    float whiteout = saturate(mist * 0.46 + snow * 0.72 + frost * 0.20);
 
-    vec3 color = mix(c0 * 0.52, c1 * 1.06, saturate(mist * 0.88 + torn * 0.23));
-    color = mix(color, hi * 1.42, saturate(snow * 0.92 + frost * 0.48));
-    color += hi * whiteout * 0.16;
+    vec3 color = mix(c0 * 0.44, c1 * 0.92, saturate(mist * 0.68 + torn * 0.14));
+    color = mix(color, hi * 1.08, saturate(snow * 0.68 + frost * 0.31));
+    color += hi * whiteout * 0.075;
 
-    float alpha = mist * (0.18 + torn * 0.15) + snow * 0.78 + frost * mist * 0.18;
-    alpha *= easeOutCubic(reveal);
+    float textBand = exp(-p.y * p.y * 28.0);
+    float readability = 1.0 - textBand * 0.56;
+    float alpha = mist * (0.095 + torn * 0.075) + snow * 0.48 + frost * mist * 0.085;
+    alpha *= readability * easeOutCubic(reveal);
     return vec4(color, saturate(alpha));
 }
 

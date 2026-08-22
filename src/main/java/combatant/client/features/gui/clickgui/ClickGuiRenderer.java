@@ -46,7 +46,7 @@ import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.input.KeyUtil;
 import combatant.client.util.text.ClipboardUtil;
-import combatant.client.util.wav.ClickGuiSounds;
+import combatant.client.features.gui.clickgui.sound.GuiSound;
 
 import java.nio.file.Path;
 import java.util.*;
@@ -202,7 +202,7 @@ public enum ClickGuiRenderer {
     public static void onEditorMouseScrollScaled(double x, double y, double delta) {
         updateMouse(x, y, true);
         if (delta != 0.0) {
-            ClickGuiSounds.scroll();
+            GuiSound.SCROLL.feedback();
         }
         if (textEditor != null) {
             textEditor.scroll(delta);
@@ -274,7 +274,7 @@ public enum ClickGuiRenderer {
     private static void handleMouseScroll(double delta) {
         if (!isInputReady()) return;
         if (delta != 0.0) {
-            ClickGuiSounds.scroll();
+            GuiSound.SCROLL.feedback();
         }
 
         if (textEditor != null) {
@@ -1467,7 +1467,7 @@ public enum ClickGuiRenderer {
         keyBindOwner = owner;
         pendingBindKeys.clear();
         ClickGuiSearch.deactivate();
-        ClickGuiSounds.bindingStart();
+        GuiSound.BINDING_START.feedback();
     }
 
     public static void finishKeyBind() {
@@ -1748,7 +1748,7 @@ public enum ClickGuiRenderer {
         if (mainScreen == null) {
             mainScreen = new ClickGuiScreen();
         }
-        ClickGuiSounds.guiOpen();
+        GuiSound.OPEN.feedback(0.25);
         ClientScreen.show(MC, mainScreen);
     }
 

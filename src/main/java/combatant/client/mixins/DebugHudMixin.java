@@ -19,7 +19,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.FontDebugStats;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.logging.DebugMode;
-import combatant.client.util.wav.WavDebugStats;
+import combatant.client.util.sound.SoundDebugStats;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -120,26 +120,25 @@ public abstract class DebugHudMixin {
         }
 
         out.add(String.format("wav(al): buffers %d/%d, sources %d/%d",
-                WavDebugStats.getBuffersAlive(),
-                WavDebugStats.getBuffersCreated(),
-                WavDebugStats.getSourcesAlive(),
-                WavDebugStats.getSourcesCreated()
+                SoundDebugStats.getBuffersAlive(),
+                SoundDebugStats.getBuffersCreated(),
+                SoundDebugStats.getSourcesAlive(),
+                SoundDebugStats.getSourcesCreated()
         ));
         out.add(String.format("wav(al): allocs=%d (buf=%d, src=%d)",
-                WavDebugStats.getBuffersCreated() + WavDebugStats.getSourcesCreated(),
-                WavDebugStats.getBuffersCreated(),
-                WavDebugStats.getSourcesCreated()
+                SoundDebugStats.getBuffersCreated() + SoundDebugStats.getSourcesCreated(),
+                SoundDebugStats.getBuffersCreated(),
+                SoundDebugStats.getSourcesCreated()
         ));
         out.add(String.format("wav(al): uploads=%d, bytes=%.2f MB",
-                WavDebugStats.getBufferUploads(),
-                WavDebugStats.getBufferBytes() / (1024.0 * 1024.0)
+                SoundDebugStats.getBufferUploads(),
+                SoundDebugStats.getBufferBytes() / (1024.0 * 1024.0)
         ));
         out.add("");
         out.addAll(list);
         return out;
     }
 }
-
 
 
 
