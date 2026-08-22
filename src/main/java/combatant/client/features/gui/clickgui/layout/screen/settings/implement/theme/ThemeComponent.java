@@ -70,7 +70,7 @@ public final class ThemeComponent {
 
     private static List<Themes.ThemeEntry> filteredEntries() {
         List<Themes.ThemeEntry> all = Theme.themes();
-        if (!ClickGuiSearch.isActive() || ClickGuiSearch.getText().isEmpty()) return all;
+        if (!ClickGuiSearch.hasQuery()) return all;
         List<Themes.ThemeEntry> out = new ArrayList<>();
         for (Themes.ThemeEntry entry : all) {
             if (ClickGuiSearch.matches(entry.name()) || ClickGuiSearch.matches(entry.getId())) {
@@ -81,7 +81,7 @@ public final class ThemeComponent {
     }
 
     private static boolean shouldShowAddCard() {
-        if (!ClickGuiSearch.isActive() || ClickGuiSearch.getText().isEmpty()) return true;
+        if (!ClickGuiSearch.hasQuery()) return true;
         return ClickGuiSearch.matches(ADD_CARD_LABEL);
     }
 

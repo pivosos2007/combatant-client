@@ -441,13 +441,13 @@ public final class ConfigProfilesComponent {
         smoothedScroll = AnimationUtility.snap(smoothedScroll, scroll, draggingScrollbar ? 0.01f : 0.05f);
 
         if (entries.isEmpty()) {
-            String empty = ClickGuiSearch.isActive() && !ClickGuiSearch.getText().isBlank()
+            String empty = ClickGuiSearch.hasQuery()
                     ? ClickGuiI18n.tr("clickgui.settings.config.empty.no_matches", "No matching configs.")
                     : ClickGuiI18n.tr("clickgui.settings.config.empty.none_saved", "No saved configs.");
             float emptySize = 8.0f * scale;
             float emptyW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), empty, emptySize);
             ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), empty, x + (w - emptyW) * 0.5f, y + h * 0.42f, emptySize, palette.panelMuted(), false);
-            if (!ClickGuiSearch.isActive() || ClickGuiSearch.getText().isBlank()) {
+            if (!ClickGuiSearch.hasQuery()) {
                 String hint = ClickGuiI18n.tr("clickgui.settings.config.empty.drop_hint", "Drop .cbcfg files here, or put them anywhere under config/combatant/profiles/.");
                 float hintSize = 6.9f * scale;
                 String fitted = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), hint, hintSize, w - 18f * scale);
@@ -668,7 +668,7 @@ public final class ConfigProfilesComponent {
     }
 
     private List<ConfigProfileMeta> filteredProfiles(List<ConfigProfileMeta> src) {
-        if (!ClickGuiSearch.isActive() || ClickGuiSearch.getText().isBlank()) return src;
+        if (!ClickGuiSearch.hasQuery()) return src;
         List<ConfigProfileMeta> out = new ArrayList<>();
         String q = ClickGuiSearch.getText().toLowerCase(Locale.ROOT);
         for (ConfigProfileMeta meta : src) {

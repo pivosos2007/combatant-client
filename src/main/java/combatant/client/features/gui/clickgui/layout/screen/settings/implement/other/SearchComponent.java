@@ -75,7 +75,7 @@ public final class SearchComponent {
             ClickGuiSearch.setActive(true);
             return true;
         }
-        ClickGuiSearch.deactivate();
+        ClickGuiSearch.unfocus();
         return false;
     }
 }

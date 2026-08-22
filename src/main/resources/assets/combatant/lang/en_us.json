@@ -1834,7 +1834,7 @@
   "setting.main_config.clickGuiHudEditorHints": "HUD editor hints",
   "clickgui.hints.settings.configs.rename": "Click name - rename config",
   "screen.combatant.alt_manager.title": "Alt Manager",
-  "screen.combatant.alt_manager.account_panel": "Account",
+  "screen.combatant.alt_manager.account_panel": "Account manager",
   "screen.combatant.alt_manager.accounts_list": "Accounts",
   "screen.combatant.alt_manager.active_session": "Active session",
   "screen.combatant.alt_manager.nickname": "Nickname",

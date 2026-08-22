@@ -28,10 +28,20 @@ public enum ClickGuiSearch {
         }
     }
 
+    /** Removes keyboard focus but keeps the current query/filter intact. */
+    public static void unfocus() {
+        active = false;
+    }
+
+    /** Clears both keyboard focus and the current query. */
     public static void deactivate() {
         active = false;
         text = "";
         textLower = "";
+    }
+
+    public static boolean hasQuery() {
+        return !text.isBlank();
     }
 
     public static String getText() {
@@ -48,7 +58,7 @@ public enum ClickGuiSearch {
     public static void backspace() {
         if (text.isEmpty()) return;
         text = text.substring(0, text.length() - 1);
-        textLower = text.toLowerCase();
+        textLower = text.toLowerCase(Locale.ROOT);
     }
 
     public static boolean matches(String moduleName) {

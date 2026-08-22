@@ -94,7 +94,7 @@ public final class MenuScreen {
     }
 
     private static List<ModuleComponent.CardEntry> visibleEntries(List<ModuleComponent.CardEntry> src) {
-        if (!ClickGuiSearch.isActive() || ClickGuiSearch.getText().isEmpty()) return src;
+        if (!ClickGuiSearch.hasQuery()) return src;
         List<ModuleComponent.CardEntry> out = new ArrayList<>();
         for (ModuleComponent.CardEntry e : src) {
             if (ClickGuiSearch.matches(e.title(), e.searchAliases())) out.add(e);

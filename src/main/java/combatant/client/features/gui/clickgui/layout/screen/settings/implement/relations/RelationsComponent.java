@@ -461,7 +461,7 @@ public final class RelationsComponent {
         smoothedScroll = AnimationUtility.snap(smoothedScroll, scroll, draggingScrollbar ? 0.01f : 0.05f);
 
         if (entries.isEmpty()) {
-            String empty = ClickGuiSearch.isActive() && !ClickGuiSearch.getText().isBlank()
+            String empty = ClickGuiSearch.hasQuery()
                     ? tr("empty.no_matches", "No matching players.")
                     : tr("empty.none_added", "No players added.");
             ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), empty, x + 4f * scale, y + 4f * scale, 7.4f * scale, palette.panelMuted(), false);
@@ -644,7 +644,7 @@ public final class RelationsComponent {
     }
 
     private List<String> filteredEntries(List<String> entries) {
-        if (!ClickGuiSearch.isActive() || ClickGuiSearch.getText().isBlank()) return entries;
+        if (!ClickGuiSearch.hasQuery()) return entries;
         String q = ClickGuiSearch.getText().toLowerCase(Locale.ROOT);
         List<String> out = new ArrayList<>();
         for (String entry : entries) {
