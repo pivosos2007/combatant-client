@@ -12,6 +12,11 @@ import com.mojang.blaze3d.opengl.FrameBufferCache;
 import com.mojang.blaze3d.opengl.GlRenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.shaders.ShaderSource;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import combatant.client.util.logging.DebugLog;
+import net.minecraft.resources.Identifier;
+import org.slf4j.Logger;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -32,6 +37,87 @@ public abstract class GlDeviceBackendMixin implements IGlBackendInfo {
     public abstract FrameBufferCache combatant$frameBufferCache();
     @Unique
     private ProfilerPhase.Scope combatant$pipelineCompileScope;
+
+
+    @WrapOperation(
+            method = {"compileShader", "compileProgram"},
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lorg/slf4j/Logger;error(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V"
+            )
+    )
+    private void combatant$wrapCombatantCompileError(Logger logger,
+                                                       String format,
+                                                       Object first,
+                                                       Object second,
+                                                       Operation<Void> original) {
+        if (combatant$containsCombatantId(first) || combatant$containsCombatantId(second)) {
+            DebugLog.error("[RenderPipeline] " + combatant$formatSlf4j(format, first, second));
+            return;
+        }
+
+        original.call(logger, format, first, second);
+    }
+
+    @WrapOperation(
+            method = "compileShader",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lorg/slf4j/Logger;error(Ljava/lang/String;[Ljava/lang/Object;)V"
+            )
+    )
+    private void combatant$wrapCombatantShaderCompileError(Logger logger,
+                                                             String format,
+                                                             Object[] args,
+                                                             Operation<Void> original) {
+        if (combatant$containsCombatantId(args)) {
+            DebugLog.error("[RenderPipeline] " + combatant$formatSlf4j(format, args));
+            return;
+        }
+
+        original.call(logger, format, args);
+    }
+
+    @Unique
+    private static boolean combatant$containsCombatantId(Object value) {
+        if (value instanceof Identifier id) {
+            return "combatant".equals(id.getNamespace());
+        }
+        if (value instanceof Object[] values) {
+            for (Object element : values) {
+                if (combatant$containsCombatantId(element)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    @Unique
+    private static String combatant$formatSlf4j(String format, Object... args) {
+        String template = String.valueOf(format);
+        if (args == null || args.length == 0) {
+            return template;
+        }
+
+        StringBuilder out = new StringBuilder(template.length() + args.length * 16);
+        int cursor = 0;
+        int argIndex = 0;
+        while (argIndex < args.length) {
+            int placeholder = template.indexOf("{}", cursor);
+            if (placeholder < 0) {
+                break;
+            }
+            out.append(template, cursor, placeholder);
+            out.append(String.valueOf(args[argIndex++]));
+            cursor = placeholder + 2;
+        }
+        out.append(template, cursor, template.length());
+        while (argIndex < args.length) {
+            out.append(' ').append(String.valueOf(args[argIndex++]));
+        }
+        return out.toString();
+    }
 
     @Inject(method = "compilePipeline", at = @At("HEAD"))
     private void combatant$profilePipelineCompileHead(RenderPipeline pipeline, ShaderSource shaderSource, CallbackInfoReturnable<GlRenderPipeline> cir) {

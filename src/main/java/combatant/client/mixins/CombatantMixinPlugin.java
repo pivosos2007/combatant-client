@@ -38,6 +38,7 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
             "combatant.client.mixins.iris.IrisIncludeProcessorMixin",
             "combatant.client.mixins.iris.IrisShaderPackLoadMixin",
             "combatant.client.mixins.iris.IrisRenderingPipelineFinalizeMixin",
+            "combatant.client.mixins.iris.IrisShaderKeyMixin",
             "combatant.client.mixins.iris.IrisVanillaHandInteropMixin"
     );
     private static final Set<String> DISABLED_WITH_IRIS_MIXINS = Set.of(
