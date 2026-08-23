@@ -68,7 +68,7 @@ Combatant includes optional compatibility integrations for Iris, ImmediatelyFast
 4. Download the required dependency jars:
    - Fabric API [`0.152.2+26.2`](https://modrinth.com/mod/fabric-api/version/0.152.2%2B26.2)
    - Sodium [`sodium-fabric-0.9.1+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.1-fabric)
-5. Put `combatant-0.1.2.jar`, Fabric API, and Sodium into your Minecraft `mods` folder.
+5. Put `combatant-0.1.3.jar`, Fabric API, and Sodium into your Minecraft `mods` folder.
 6. Start the Fabric 26.2 profile.
 
 ## Renderer backends
