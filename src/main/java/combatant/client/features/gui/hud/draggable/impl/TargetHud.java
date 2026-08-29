@@ -8,7 +8,6 @@
 package combatant.client.features.gui.hud.draggable.impl;
 
 
-import combatant.client.features.theme.Theme;
 import combatant.client.config.values.*;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
@@ -667,19 +666,10 @@ public final class TargetHud extends DraggableHudElement {
                     HudRenderUtil.mixColor(theme().surface(), 0xFF000000, 0.18f),
                     200
             );
-            Themes.ThemeEntry entry = Theme.currentEntry();
-            Themes.GradientSpec healthGradient = entry != null && entry.cardGradient() != null && entry.cardGradient().enabled()
-                    ? entry.cardGradient()
-                    : null;
-            if (healthGradient != null) {
-                uiHealthStart = healthGradient.start();
-                uiHealthEnd = healthGradient.end();
-                uiHealthGradientAngle = healthGradient.angleDeg();
-            } else {
-                uiHealthStart = theme().accent();
-                uiHealthEnd = HudRenderUtil.mixColor(theme().accentSoft(), theme().textPrimary(), 0.18f);
-                uiHealthGradientAngle = 45.0f;
-            }
+            Themes.GradientSpec healthGradient = Themes.hudSelectionGradient();
+            uiHealthStart = healthGradient.start();
+            uiHealthEnd = healthGradient.end();
+            uiHealthGradientAngle = healthGradient.angleDeg();
             uiTrail = HudRenderUtil.setAlpha(
                     HudRenderUtil.mixColor(theme().surface(), theme().accentSoft(), 0.22f),
                     170

@@ -7,11 +7,13 @@
 
 package combatant.client.features.playeranimator;
 
+import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer;
 import combatant.client.features.playeranimator.script.PlayerRigScriptCommand;
 import combatant.client.features.playeranimator.script.PlayerRigScriptContext;
 import combatant.client.features.playeranimator.script.PlayerRigScriptRuntime;
-import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer;
 import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.client.renderer.entity.state.AvatarRenderState;
+import net.minecraft.util.Mth;
 
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -30,30 +32,70 @@ public enum PlayerAnimator {
     }
 
     /**
-     * Starts from the bind pose, applies every registered JS layer in one V8 call and solves the
-     * complete hierarchy once. The returned instance is ready for body, armor and attachment draws.
+     * Starts from bind pose, applies the vanilla render-state head orientation, evaluates one
+     * interpolated JS animation graph and solves the hierarchy once. AvatarRenderState is required:
+     * it already contains Minecraft's interpolated walk/swim/body/head values for this render frame.
      */
     public static synchronized PlayerRigInstance animate(
             AbstractClientPlayer player,
+            AvatarRenderState state,
             float tickDelta,
             float deltaSeconds,
             String style,
             float strength
     ) {
-        float age = player.tickCount + tickDelta;
-        float rawAttack = player.getAttackAnim(tickDelta);
+        if (player == null || state == null) {
+            throw new IllegalArgumentException("Animated player and AvatarRenderState must not be null");
+        }
+
+        float frameSeconds = Float.isFinite(deltaSeconds) ? Mth.clamp(deltaSeconds, 0f, 0.1f) : 0f;
+        // AvatarRenderState.attackTime is already interpolated for this render submission.
+        float attack = state.attackTime;
         MotionState motion = MOTION.computeIfAbsent(player, ignored -> new MotionState());
-        float attack = motion.updateAttack(rawAttack, age);
+        float continuousSeconds = state.ageInTicks / 20.0f;
+        float attackCooldownSeconds = Mth.clamp(player.getCurrentItemAttackStrengthDelay() / 20.0f, 0.28f, 1.35f);
+        motion.updateAttack(attack, continuousSeconds, attackCooldownSeconds);
+
         PlayerRigInstance instance = INSTANCES.computeIfAbsent(player, ignored -> new InstancePool())
                 .acquire().resetFrame();
+        applyVanillaLook(instance, state);
+
         Object[] context = PlayerRigScriptContext.pack(
-                player, tickDelta, deltaSeconds, style, strength, motion.swingIndex, attack
+                player,
+                state,
+                tickDelta,
+                frameSeconds,
+                style,
+                strength,
+                motion.swingIndex,
+                attack,
+                motion.attackTimeSeconds,
+                motion.attackDurationSeconds,
+                motion.attackActive
         );
         for (PlayerRigScriptCommand command : SCRIPTS.execute(context)) {
             command.apply(instance);
         }
         instance.solve();
         return instance;
+    }
+
+    /**
+     * Mirrors HumanoidModel's interpolated head target, distributed over the anatomical neck chain.
+     * All three joints share the vanilla head pivot, so this adds no forward neck translation/orbit.
+     */
+    private static void applyVanillaLook(PlayerRigInstance instance, AvatarRenderState state) {
+        float xRot = state.xRot * Mth.DEG_TO_RAD;
+        if (state.isFallFlying) {
+            xRot = -((float) Math.PI * 0.25f);
+        } else if (state.swimAmount > 0f) {
+            xRot = Mth.rotLerpRad(state.swimAmount, xRot, -((float) Math.PI * 0.25f));
+        }
+        float yRot = state.yRot * Mth.DEG_TO_RAD;
+
+        instance.setRotation(PlayerRigDefinition.index(PlayerRigBone.NECK_LOWER), xRot * 0.12f, yRot * 0.16f, 0f);
+        instance.setRotation(PlayerRigDefinition.index(PlayerRigBone.NECK_UPPER), xRot * 0.18f, yRot * 0.20f, 0f);
+        instance.setRotation(PlayerRigDefinition.index(PlayerRigBone.HEAD),       xRot * 0.70f, yRot * 0.64f, 0f);
     }
 
     public static synchronized void remove(AbstractClientPlayer player) {
@@ -79,22 +121,43 @@ public enum PlayerAnimator {
         PlayerRigCpuRenderer.clearCaches();
     }
 
+    /**
+     * A swing owns a continuous render-time clock instead of being sampled only from vanilla's
+     * short attackProgress window. The clock survives the raw swing returning to zero just long
+     * enough for a smooth procedural recovery, without stretching combat clips over 1.5 seconds.
+     */
     private static final class MotionState {
+        private static final float DEFAULT_ATTACK_WINDOW_SECONDS = 0.62f;
         private float previousAttack;
+        private float attackTimeSeconds = DEFAULT_ATTACK_WINDOW_SECONDS;
+        private float attackDurationSeconds = DEFAULT_ATTACK_WINDOW_SECONDS;
         private int swingIndex;
-        private float attackStartedAt = Float.NEGATIVE_INFINITY;
+        private boolean attackActive;
 
-        private float updateAttack(float rawAttack, float age) {
-            boolean started = rawAttack > 0.001f && previousAttack <= 0.001f;
-            boolean restarted = rawAttack > 0.001f && rawAttack + 0.35f < previousAttack;
-            if (started || restarted) {
+        private float attackStartSeconds = Float.NaN;
+
+        private void updateAttack(float rawAttack, float continuousSeconds, float requestedDurationSeconds) {
+            boolean rising = rawAttack > 0.001f && previousAttack <= 0.001f;
+            if (rising || (!Float.isFinite(attackStartSeconds) && rawAttack > 0.001f)) {
                 swingIndex++;
-                attackStartedAt = age;
+                attackStartSeconds = continuousSeconds;
+                attackTimeSeconds = 0f;
+                attackDurationSeconds = Float.isFinite(requestedDurationSeconds)
+                        ? Mth.clamp(requestedDurationSeconds, 0.28f, 1.35f)
+                        : DEFAULT_ATTACK_WINDOW_SECONDS;
+                attackActive = true;
+            } else if (attackActive) {
+                float elapsed = continuousSeconds - attackStartSeconds;
+                if (!Float.isFinite(elapsed) || elapsed < 0f) {
+                    attackStartSeconds = continuousSeconds;
+                    elapsed = 0f;
+                }
+                attackTimeSeconds = Mth.clamp(elapsed, 0f, attackDurationSeconds);
+                if (elapsed >= attackDurationSeconds) {
+                    attackActive = false;
+                }
             }
             previousAttack = rawAttack;
-            // Some combat modules/servers leave attackAnim latched. Never let one sampled swing
-            // hold an anatomical arm pose indefinitely.
-            return age - attackStartedAt <= 12f ? rawAttack : 0f;
         }
     }
 

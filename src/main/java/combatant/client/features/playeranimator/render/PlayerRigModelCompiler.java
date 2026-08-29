@@ -28,9 +28,9 @@ import org.joml.Vector3f;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Converts vanilla player/armor cubes once, preserving their baked UVs and dilation. */
+/** Converts vanilla player/armor cubes once, preserving baked UVs, hierarchy pivots and dilation. */
 public final class PlayerRigModelCompiler {
-    private static final int SECTIONS = 6;
+    private static final int SECTIONS = 8;
 
     private PlayerRigModelCompiler() {
     }
@@ -39,44 +39,53 @@ public final class PlayerRigModelCompiler {
         if (model == null) throw new IllegalArgumentException("Humanoid model must not be null");
         List<RigMeshPart> parts = new ArrayList<>();
 
-        append(parts, "head", model.head, rigid(PlayerRigBone.HEAD), -1, includeHiddenParts);
-        append(parts, "hat", model.hat, rigid(PlayerRigBone.HEAD), -1, includeHiddenParts);
-        append(parts, "body", model.body, torso(), PlayerRigDeformer.SPINE.channel(), includeHiddenParts);
-        append(parts, "right_arm", model.rightArm, rightArm(), PlayerRigDeformer.RIGHT_UPPER_ARM.channel(), includeHiddenParts);
-        append(parts, "left_arm", model.leftArm, leftArm(), PlayerRigDeformer.LEFT_UPPER_ARM.channel(), includeHiddenParts);
-        append(parts, "right_leg", model.rightLeg, rightLeg(), PlayerRigDeformer.RIGHT_THIGH.channel(), includeHiddenParts);
-        append(parts, "left_leg", model.leftLeg, leftLeg(), PlayerRigDeformer.LEFT_THIGH.channel(), includeHiddenParts);
+        append(parts, "head", model.head, null, rigid(PlayerRigBone.HEAD), -1, includeHiddenParts);
+        // In 26.2 hat is a child of head. Its own initial pose is ZERO; the head parent pivot must
+        // be included or the wear cube is compiled around model origin.
+        append(parts, "hat", model.hat, model.head, rigid(PlayerRigBone.HEAD), -1, includeHiddenParts);
+        append(parts, "body", model.body, null, torso(), PlayerRigDeformer.SPINE.channel(), includeHiddenParts);
+        append(parts, "right_arm", model.rightArm, null, rightArm(), -1, includeHiddenParts);
+        append(parts, "left_arm", model.leftArm, null, leftArm(), -1, includeHiddenParts);
+        append(parts, "right_leg", model.rightLeg, null, rightLeg(), -1, includeHiddenParts);
+        append(parts, "left_leg", model.leftLeg, null, leftLeg(), -1, includeHiddenParts);
 
         if (model instanceof PlayerModel player) {
-            append(parts, "jacket", player.jacket, torso(), PlayerRigDeformer.SPINE.channel(), includeHiddenParts);
-            append(parts, "right_sleeve", player.rightSleeve, rightArm(), PlayerRigDeformer.RIGHT_UPPER_ARM.channel(), includeHiddenParts);
-            append(parts, "left_sleeve", player.leftSleeve, leftArm(), PlayerRigDeformer.LEFT_UPPER_ARM.channel(), includeHiddenParts);
-            append(parts, "right_pants", player.rightPants, rightLeg(), PlayerRigDeformer.RIGHT_THIGH.channel(), includeHiddenParts);
-            append(parts, "left_pants", player.leftPants, leftLeg(), PlayerRigDeformer.LEFT_THIGH.channel(), includeHiddenParts);
+            // PlayerModel 26.2 stores every wear layer below its corresponding base part.
+            append(parts, "jacket", player.jacket, model.body, torso(), PlayerRigDeformer.SPINE.channel(), includeHiddenParts);
+            append(parts, "right_sleeve", player.rightSleeve, model.rightArm, rightArm(), -1, includeHiddenParts);
+            append(parts, "left_sleeve", player.leftSleeve, model.leftArm, leftArm(), -1, includeHiddenParts);
+            append(parts, "right_pants", player.rightPants, model.rightLeg, rightLeg(), -1, includeHiddenParts);
+            append(parts, "left_pants", player.leftPants, model.leftLeg, leftLeg(), -1, includeHiddenParts);
         }
 
         if (parts.isEmpty()) throw new IllegalArgumentException("Humanoid model has no visible rig geometry");
         return new RigMeshData(parts);
     }
 
-    private static void append(List<RigMeshPart> output, String name, ModelPart part,
+    private static void append(List<RigMeshPart> output, String name, ModelPart part, ModelPart parent,
                                RigSkinBinding skin, int deformId, boolean includeHidden) {
         if (part == null || (!includeHidden && (!part.visible || part.skipDraw))) return;
         List<ModelPart.Cube> cubes = ((ModelPartAccessor) (Object) part).combatant$getCubes();
         if (cubes == null || cubes.isEmpty()) return;
 
-        PartPose bind = part.getInitialPose();
-        Matrix4f bindTransform = new Matrix4f().translationRotateScale(
-                new Vector3f(bind.x() / 16f, bind.y() / 16f, bind.z() / 16f),
-                new Quaternionf().rotationXYZ(bind.xRot(), bind.yRot(), bind.zRot()),
-                new Vector3f(bind.xScale(), bind.yScale(), bind.zScale())
-        );
+        Matrix4f bindTransform = new Matrix4f();
+        if (parent != null) bindTransform.mul(poseMatrix(parent.getInitialPose()));
+        bindTransform.mul(poseMatrix(part.getInitialPose()));
+
         for (int i = 0; i < cubes.size(); i++) {
             RigMeshPart compiled = VanillaRigCubeCompiler.compile(
                     name + '_' + i, cubes.get(i), RigAxis.Y, SECTIONS, skin, deformId
             );
             output.add(transform(compiled, bindTransform));
         }
+    }
+
+    private static Matrix4f poseMatrix(PartPose pose) {
+        return new Matrix4f().translationRotateScale(
+                new Vector3f(pose.x() / 16f, pose.y() / 16f, pose.z() / 16f),
+                new Quaternionf().rotationXYZ(pose.xRot(), pose.yRot(), pose.zRot()),
+                new Vector3f(pose.xScale(), pose.yScale(), pose.zScale())
+        );
     }
 
     private static RigMeshPart transform(RigMeshPart part, Matrix4f transform) {
@@ -106,39 +115,53 @@ public final class PlayerRigModelCompiler {
     }
 
     private static RigSkinBinding torso() {
-        return chain(
-                new PlayerRigBone[]{PlayerRigBone.CHEST, PlayerRigBone.SPINE_UPPER, PlayerRigBone.SPINE_LOWER, PlayerRigBone.PELVIS},
-                new float[]{0f, 0.25f, 0.67f, 1f}
+        return RigSkinBinding.chain(
+                indices(PlayerRigBone.CHEST, PlayerRigBone.SPINE_UPPER, PlayerRigBone.SPINE_LOWER, PlayerRigBone.PELVIS),
+                new float[]{0f, 0.22f, 0.62f, 1f}
         );
     }
 
+    /** Upper arm -> forearm -> hand, with only narrow soft bands around elbow and wrist. */
     private static RigSkinBinding leftArm() {
-        return limb(PlayerRigBone.LEFT_UPPER_ARM, PlayerRigBone.LEFT_ELBOW,
-                PlayerRigBone.LEFT_FOREARM_TWIST, PlayerRigBone.LEFT_HAND);
+        return RigSkinBinding.banded(
+                indices(PlayerRigBone.LEFT_UPPER_ARM, PlayerRigBone.LEFT_FOREARM, PlayerRigBone.LEFT_HAND),
+                new float[]{0.50f, 0.91f},
+                new float[]{0.055f, 0.035f}
+        );
     }
 
     private static RigSkinBinding rightArm() {
-        return limb(PlayerRigBone.RIGHT_UPPER_ARM, PlayerRigBone.RIGHT_ELBOW,
-                PlayerRigBone.RIGHT_FOREARM_TWIST, PlayerRigBone.RIGHT_HAND);
+        return RigSkinBinding.banded(
+                indices(PlayerRigBone.RIGHT_UPPER_ARM, PlayerRigBone.RIGHT_FOREARM, PlayerRigBone.RIGHT_HAND),
+                new float[]{0.50f, 0.91f},
+                new float[]{0.055f, 0.035f}
+        );
     }
 
+    /**
+     * Pelvis -> thigh -> shin -> foot. A narrow pelvis/thigh blend at the very top keeps the butt
+     * seam attached while the hip rotates; the old fully-thigh-rigid top produced a visible break.
+     * Knees/ankles remain narrow bands so the Minecraft limb still reads as articulated, not rubber.
+     */
     private static RigSkinBinding leftLeg() {
-        return limb(PlayerRigBone.LEFT_THIGH, PlayerRigBone.LEFT_KNEE,
-                PlayerRigBone.LEFT_SHIN_TWIST, PlayerRigBone.LEFT_FOOT);
+        return RigSkinBinding.banded(
+                indices(PlayerRigBone.PELVIS, PlayerRigBone.LEFT_THIGH, PlayerRigBone.LEFT_SHIN, PlayerRigBone.LEFT_FOOT),
+                new float[]{0.10f, 0.50f, 0.94f},
+                new float[]{0.10f, 0.060f, 0.025f}
+        );
     }
 
     private static RigSkinBinding rightLeg() {
-        return limb(PlayerRigBone.RIGHT_THIGH, PlayerRigBone.RIGHT_KNEE,
-                PlayerRigBone.RIGHT_SHIN_TWIST, PlayerRigBone.RIGHT_FOOT);
+        return RigSkinBinding.banded(
+                indices(PlayerRigBone.PELVIS, PlayerRigBone.RIGHT_THIGH, PlayerRigBone.RIGHT_SHIN, PlayerRigBone.RIGHT_FOOT),
+                new float[]{0.10f, 0.50f, 0.94f},
+                new float[]{0.10f, 0.060f, 0.025f}
+        );
     }
 
-    private static RigSkinBinding limb(PlayerRigBone a, PlayerRigBone b, PlayerRigBone c, PlayerRigBone d) {
-        return chain(new PlayerRigBone[]{a, b, c, d}, new float[]{0f, 0.48f, 0.76f, 1f});
-    }
-
-    private static RigSkinBinding chain(PlayerRigBone[] bones, float[] knots) {
+    private static int[] indices(PlayerRigBone... bones) {
         int[] indices = new int[bones.length];
         for (int i = 0; i < bones.length; i++) indices[i] = PlayerRigDefinition.index(bones[i]);
-        return RigSkinBinding.chain(indices, knots);
+        return indices;
     }
 }

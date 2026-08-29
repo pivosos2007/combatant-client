@@ -28,7 +28,7 @@ public enum PlayerRigBone {
     HEAD("head", NECK_UPPER, 0f, 0f, 0f),
     JAW("jaw", HEAD, 0f, 4f, -3f),
 
-    LEFT_SCAPULA("left_scapula", CHEST, 1.5f, 0f, 1f),
+    LEFT_SCAPULA("left_scapula", CHEST, 1.5f, 2f, 1f),
     LEFT_CLAVICLE("left_clavicle", LEFT_SCAPULA, 1.5f, 0f, -1f),
     LEFT_SHOULDER("left_shoulder", LEFT_CLAVICLE, 2f, 0f, 0f),
     LEFT_UPPER_ARM("left_upper_arm", LEFT_SHOULDER, 0f, 0f, 0f),
@@ -43,7 +43,7 @@ public enum PlayerRigBone {
     LEFT_THUMB("left_thumb", LEFT_THUMB_METACARPAL, -1f, 1f, 0f),
     LEFT_FINGERS("left_fingers", LEFT_HAND, 0f, 2f, -1f),
 
-    RIGHT_SCAPULA("right_scapula", CHEST, -1.5f, 0f, 1f),
+    RIGHT_SCAPULA("right_scapula", CHEST, -1.5f, 2f, 1f),
     RIGHT_CLAVICLE("right_clavicle", RIGHT_SCAPULA, -1.5f, 0f, -1f),
     RIGHT_SHOULDER("right_shoulder", RIGHT_CLAVICLE, -2f, 0f, 0f),
     RIGHT_UPPER_ARM("right_upper_arm", RIGHT_SHOULDER, 0f, 0f, 0f),

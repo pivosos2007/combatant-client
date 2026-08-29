@@ -14,16 +14,13 @@ import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.features.module.modules.visuals.ViewModel;
 import combatant.client.util.screen.ClientScreen;
-import combatant.client.features.playeranimator.PlayerAnimator;
 import combatant.client.features.playeranimator.PlayerRigRenderContext;
 import combatant.client.features.playeranimator.PlayerRigRenderState;
 import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer;
-import combatant.client.render.helpers.TickDelta;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -83,20 +80,6 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             at = @At("TAIL")
     )
     private void combatant$updateViewObstructionFadeState(T entity, S state, float tickProgress, CallbackInfo ci) {
-        if (state instanceof PlayerRigRenderState rigState) {
-            ViewModel viewModel = Modules.get(ViewModel.class);
-            rigState.combatant$setPlayerRig(viewModel != null
-                    && viewModel.isPlayerRigActive()
-                    && entity instanceof AbstractClientPlayer player
-                    ? PlayerAnimator.animate(
-                            player,
-                            tickProgress,
-                            TickDelta.frameDeltaSeconds(),
-                            viewModel.playerRigStyle(),
-                            viewModel.playerRigStrength()
-                    ) : null);
-        }
-
         if (!(state instanceof ViewObstructionFadeState fadeState)) {
             return;
         }

@@ -894,7 +894,7 @@ public final class ClickGuiPickerState {
             interBold = ClickGuiRenderer.getInterRegular();
             return interBold;
         }
-        interBold = new CustomTextRenderer(face);
+        interBold = Fonts.renderer(face, ClickGuiRenderer.getInterRegular());
         return interBold;
     }
 

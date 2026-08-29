@@ -34,6 +34,7 @@ public final class LinuxMediaPlayerInfo implements MediaPlayerInfo {
 
     private final DBusConnection conn;
     private final DBus dbus;
+    private volatile boolean closed;
 
     private LinuxMediaPlayerInfo() {
         DBusConnection connection = null;
@@ -49,7 +50,7 @@ public final class LinuxMediaPlayerInfo implements MediaPlayerInfo {
 
     @Override
     public List<IMediaSession> getMediaSessions() {
-        if (conn == null || dbus == null) return List.of();
+        if (closed || conn == null || dbus == null) return List.of();
 
         String[] names;
         try {
@@ -81,6 +82,7 @@ public final class LinuxMediaPlayerInfo implements MediaPlayerInfo {
 
     @SuppressWarnings("unchecked")
     <T> T getProperty(String owner, String property) throws DBusException {
+        if (closed || conn == null) return null;
         Properties properties = conn.getRemoteObject(
                 "org.mpris.MediaPlayer2." + owner,
                 "/org/mpris/MediaPlayer2",
@@ -90,6 +92,7 @@ public final class LinuxMediaPlayerInfo implements MediaPlayerInfo {
     }
 
     void setProperty(String owner, String property, Object value) {
+        if (closed || conn == null) return;
         try {
             Properties properties = conn.getRemoteObject(
                     "org.mpris.MediaPlayer2." + owner,
@@ -97,6 +100,17 @@ public final class LinuxMediaPlayerInfo implements MediaPlayerInfo {
                     Properties.class
             );
             properties.Set("org.mpris.MediaPlayer2.Player", property, new Variant<>(value));
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override
+    public synchronized void close() {
+        if (closed) return;
+        closed = true;
+        if (conn == null) return;
+        try {
+            conn.close();
         } catch (Exception ignored) {
         }
     }

@@ -18,7 +18,9 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import net.minecraft.client.gui.Font.DisplayMode;
 import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
+import net.minecraft.network.chat.FontDescription;
 import net.minecraft.network.chat.Style;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.helpers.ScissorFunction;
@@ -27,6 +29,9 @@ import static net.minecraft.client.Minecraft.getInstance;
 
 public class VanillaTextRenderer implements TextRenderer {
     public static final VanillaTextRenderer INSTANCE = new VanillaTextRenderer();
+    private static final Style UNICODE_FALLBACK_STYLE = Style.EMPTY.withFont(new FontDescription.Resource(
+            Identifier.fromNamespaceAndPath("combatant", "unicode_fallback")
+    ));
 
     private final PoseStack matrices = new PoseStack();
     public double scale = 2;
@@ -82,7 +87,7 @@ public class VanillaTextRenderer implements TextRenderer {
     public double getWidth(String text, int length, boolean shadow) {
         if (text.isEmpty()) return 0;
         if (length != text.length()) text = text.substring(0, length);
-        return (getInstance().font.width(text) + (shadow ? 1 : 0)) * scale;
+        return (getInstance().font.width(unicodeSequence(text)) + (shadow ? 1 : 0)) * scale;
     }
 
     @Override
@@ -118,11 +123,12 @@ public class VanillaTextRenderer implements TextRenderer {
         int packed = (color.a << 24) | (color.r << 16) | (color.g << 8) | color.b;
         matrices.pushPose();
         matrices.scale((float) scale, (float) scale, 1.0f);
+        FormattedCharSequence sequence = unicodeSequence(text);
         textSubmits.submitText(
                 matrices,
                 (float) (x / scale),
                 (float) (y / scale),
-                FormattedCharSequence.forward(text, Style.EMPTY),
+                sequence,
                 shadow,
                 DisplayMode.NORMAL,
                 0x00F000F0,
@@ -131,7 +137,7 @@ public class VanillaTextRenderer implements TextRenderer {
                 0
         );
         matrices.popPose();
-        double x2 = (x / scale) + getInstance().font.width(text);
+        double x2 = (x / scale) + getInstance().font.width(sequence);
 
         color.a = preA;
 
@@ -260,5 +266,34 @@ public class VanillaTextRenderer implements TextRenderer {
             );
         }
         return featureDispatcher;
+    }
+
+    private static FormattedCharSequence unicodeSequence(String text) {
+        String visual = needsBidirectionalLayout(text)
+                ? getInstance().font.bidirectionalShaping(text)
+                : text;
+        return FormattedCharSequence.forward(visual, UNICODE_FALLBACK_STYLE);
+    }
+
+    static boolean needsBidirectionalLayout(String text) {
+        if (text == null || text.isEmpty()) return false;
+        if (getInstance().font.isBidirectional()) return true;
+        return containsRightToLeftCodePoint(text);
+    }
+
+    static boolean containsRightToLeftCodePoint(String text) {
+        if (text == null || text.isEmpty()) return false;
+        for (int offset = 0; offset < text.length(); ) {
+            int codePoint = text.codePointAt(offset);
+            byte directionality = Character.getDirectionality(codePoint);
+            if (directionality == Character.DIRECTIONALITY_RIGHT_TO_LEFT
+                    || directionality == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC
+                    || directionality == Character.DIRECTIONALITY_RIGHT_TO_LEFT_EMBEDDING
+                    || directionality == Character.DIRECTIONALITY_RIGHT_TO_LEFT_OVERRIDE) {
+                return true;
+            }
+            offset += Character.charCount(codePoint);
+        }
+        return false;
     }
 }

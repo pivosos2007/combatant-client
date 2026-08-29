@@ -74,8 +74,7 @@ public class CustomTextRenderer implements TextRenderer {
     }
 
     private GlyphFont[] createFonts() {
-        boolean msdfEligible = fontFace instanceof BuiltinFontFace
-                && !FontUtils.isIconFamily(fontFace.info.family());
+        boolean msdfEligible = fontFace instanceof BuiltinFontFace;
         if (msdfEligible) {
             FontDebugStats.noteMsdfAttempt(fontFace.info);
             GlyphFont[] msdf = MsdfFont.tryCreate(fontFace);

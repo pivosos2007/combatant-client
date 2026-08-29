@@ -9,7 +9,7 @@ package combatant.client.render.engine.text.backend;
 
 import combatant.client.render.engine.core.RenderFrameContext;
 import combatant.client.render.engine.rhi.CombatantRhi;
-import combatant.client.render.engine.text.CustomTextRenderer;
+import combatant.client.render.engine.text.LanguageFallbackTextRenderer;
 import combatant.client.render.engine.text.TextBackendPreference;
 import combatant.client.render.engine.text.TextCommandStats;
 import combatant.client.render.engine.text.TextRenderer;
@@ -42,7 +42,7 @@ public final class BitmapAtlasTextBackend implements TextBackend {
     @Override
     public boolean supports(TextDrawCommand command) {
         if (command.preference() == TextBackendPreference.BITMAP_ATLAS) return true;
-        return command.auto() && command.renderer() instanceof CustomTextRenderer && !preferMsdf(command);
+        return command.auto() && LanguageFallbackTextRenderer.customPrimary(command.renderer()) != null && !preferMsdf(command);
     }
 
     @Override

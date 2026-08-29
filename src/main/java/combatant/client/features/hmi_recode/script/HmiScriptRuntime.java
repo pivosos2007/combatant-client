@@ -8,7 +8,6 @@
 /* HoldMyItems Recode; original project by sapling, CC0-1.0. */
 package combatant.client.features.hmi_recode.script;
 
-import com.caoccao.javet.interop.V8Host;
 import com.caoccao.javet.interop.V8Runtime;
 import com.caoccao.javet.interop.converters.JavetObjectConverter;
 import combatant.client.features.hmi_recode.HmiScriptKind;
@@ -352,7 +351,7 @@ public final class HmiScriptRuntime implements AutoCloseable {
         if (!dirty && runtime != null) return;
         closeRuntime();
         JavetRuntimeBootstrap.installNativeLoader();
-        runtime = V8Host.getV8Instance().createV8Runtime();
+        runtime = JavetRuntimeBootstrap.createRuntime(this);
         runtime.setConverter(new JavetObjectConverter());
         runtime.setMemorySaverModeEnabled(false);
         runtime.setBatterySaverModeEnabled(false);
@@ -398,7 +397,7 @@ public final class HmiScriptRuntime implements AutoCloseable {
     private void closeRuntime() {
         if (runtime == null) return;
         try {
-            runtime.close();
+            JavetRuntimeBootstrap.closeRuntime(this, runtime);
         } catch (Throwable ignored) {
         } finally {
             runtime = null;

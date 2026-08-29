@@ -61,6 +61,7 @@ public final class WindowsMediaPlayerInfo implements MediaPlayerInfo {
             BufferUtils.createByteBuffer(RECORD_SIZE * MAX_SESSIONS).order(ByteOrder.nativeOrder());
     private final Map<String, String> trackKeyBySessionId = new LinkedHashMap<>();
     private final Map<String, byte[]> artworkByTrackKey = new LinkedHashMap<>(MAX_ARTWORK_CACHE_SIZE, 0.75f, true);
+    private boolean closed;
 
     private WindowsMediaPlayerInfo() {
         loadNativeLibrary();
@@ -108,10 +109,12 @@ public final class WindowsMediaPlayerInfo implements MediaPlayerInfo {
 
     @Override
     public synchronized List<IMediaSession> getMediaSessions() {
+        if (closed) return List.of();
         return getMediaSessions(fallbackSnapshotBuffer);
     }
 
     public synchronized List<IMediaSession> getMediaSessions(ByteBuffer buffer) {
+        if (closed) return List.of();
         ByteBuffer snapshotBuffer = buffer.order(ByteOrder.nativeOrder());
         int maxSessions = Math.max(0, Math.min(MAX_SESSIONS, snapshotBuffer.capacity() / RECORD_SIZE));
         int count = Math.max(0, Math.min(maxSessions, fillSessionSnapshotBuffer(snapshotBuffer, maxSessions)));
@@ -144,6 +147,20 @@ public final class WindowsMediaPlayerInfo implements MediaPlayerInfo {
     private native int fillSessionSnapshotBuffer(ByteBuffer buffer, int maxSessions);
 
     private native byte[] getArtworkPng(String sessionId);
+
+    private native void nativeShutdown();
+
+    @Override
+    public synchronized void close() {
+        if (closed) return;
+        closed = true;
+        trackKeyBySessionId.clear();
+        artworkByTrackKey.clear();
+        try {
+            nativeShutdown();
+        } catch (Throwable ignored) {
+        }
+    }
 
     private byte[] resolveArtwork(String sessionId, String trackKey) {
         if (trackKey.equals(trackKeyBySessionId.get(sessionId))) {

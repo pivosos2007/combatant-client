@@ -47,6 +47,7 @@ public enum Fonts {
     public static String DEFAULT_FONT_FAMILY;
     public static FontFace DEFAULT_FONT;
     public static CustomTextRenderer RENDERER;
+    private static TextRenderer DEFAULT_RENDERER;
 
     public static void refresh() {
         destroyCachedRenderers();
@@ -88,6 +89,7 @@ public enum Fonts {
 
         try {
             RENDERER = new CustomTextRenderer(fontFace);
+            DEFAULT_RENDERER = new LanguageFallbackTextRenderer(RENDERER);
         } catch (Exception e) {
             if (fontFace.equals(DEFAULT_FONT)) {
                 throw new RuntimeException("Failed to load default font: " + fontFace, e);
@@ -114,7 +116,8 @@ public enum Fonts {
 
     private static void destroyCachedRenderers() {
         for (TextRenderer renderer : RENDERER_CACHE.values()) {
-            if (renderer instanceof CustomTextRenderer custom && custom != RENDERER) {
+            CustomTextRenderer custom = LanguageFallbackTextRenderer.customPrimary(renderer);
+            if (custom != null && custom != RENDERER) {
                 try {
                     custom.destroy();
                 } catch (Throwable ignored) {
@@ -150,17 +153,22 @@ public enum Fonts {
     public static TextRenderer renderer(FontFace face, TextRenderer fallback) {
         if (face == null) return fallback != null ? fallback : TextRenderer.get();
         if (RENDERER != null && RENDERER.fontFace != null && RENDERER.fontFace.info.equals(face.info)) {
-            return RENDERER;
+            return defaultRenderer();
         }
         TextRenderer cached = RENDERER_CACHE.get(face.info);
         if (cached != null) return cached;
         try {
-            TextRenderer created = new CustomTextRenderer(face);
+            TextRenderer created = new LanguageFallbackTextRenderer(new CustomTextRenderer(face));
             RENDERER_CACHE.put(face.info, created);
             return created;
         } catch (Exception e) {
             return fallback != null ? fallback : TextRenderer.get();
         }
+    }
+
+    static TextRenderer defaultRenderer() {
+        if (DEFAULT_RENDERER != null) return DEFAULT_RENDERER;
+        return RENDERER != null ? RENDERER : VanillaTextRenderer.INSTANCE;
     }
 
     private static FontFace resolveFace(String family, FontInfo.Type type) {

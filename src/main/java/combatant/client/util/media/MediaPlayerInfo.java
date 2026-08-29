@@ -23,7 +23,7 @@ import java.util.Locale;
  * Modified Java port for Combatant by combatant.client.
  * Based on Redstonecrafter0/MediaPlayerInfo.
  */
-public interface MediaPlayerInfo {
+public interface MediaPlayerInfo extends AutoCloseable {
     static MediaPlayerInfo system() {
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         if (os.startsWith("windows")) {
@@ -44,4 +44,9 @@ public interface MediaPlayerInfo {
     }
 
     List<IMediaSession> getMediaSessions();
+
+    @Override
+    default void close() {
+    }
 }
+

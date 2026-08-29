@@ -20,6 +20,8 @@ public final class NativeMemoryGuard {
     public static final int LINUX_NONDUMPABLE = 1 << 2;
 
     private static volatile Status status = new Status(false, false, 0, "not initialized");
+    private static volatile boolean nativeLoaded;
+    private static volatile boolean shutDown;
 
     private NativeMemoryGuard() {
     }
@@ -50,6 +52,7 @@ public final class NativeMemoryGuard {
             library.toFile().deleteOnExit();
             directory.toFile().deleteOnExit();
             System.load(library.toAbsolutePath().toString());
+            nativeLoaded = true;
 
             int mask = nativeApply();
             int expected = os.contains("win")
@@ -69,6 +72,26 @@ public final class NativeMemoryGuard {
 
     public static Status status() {
         return status;
+    }
+
+    /**
+     * Restores process-wide state changed by the native guard. The native library itself remains
+     * owned by the application class loader, but after this call it no longer leaves a modified
+     * process DACL / dumpability state behind during the rest of client shutdown.
+     */
+    public static synchronized void shutdown() {
+        if (shutDown) return;
+        shutDown = true;
+        if (!nativeLoaded) return;
+
+        try {
+            nativeShutdown();
+            status = new Status(true, true, 0, "inactive");
+        } catch (LinkageError | SecurityException exception) {
+            status = new Status(true, true, status.protectionMask(),
+                    "shutdown failed: " + exception.getClass().getSimpleName() + ": "
+                            + String.valueOf(exception.getMessage()));
+        }
     }
 
     public static String currentPlatformId() {
@@ -100,6 +123,8 @@ public final class NativeMemoryGuard {
     private static native int nativeApply();
 
     private static native String nativeLastError();
+
+    private static native void nativeShutdown();
 
     public record Status(boolean attempted, boolean supported, int protectionMask, String detail) {
         public boolean active() {

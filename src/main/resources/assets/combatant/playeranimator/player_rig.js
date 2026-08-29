@@ -1,359 +1,957 @@
-// Combatant's centralized anatomical animation graph. Resource packs may append layers through
-// combatant:playeranimator/player_rig_addon.js without replacing this base graph.
-playerRig.onPose((context, rig) => {
-  const strength = rig.clamp(context.strength, 0, 2);
-  if (strength <= 0) return;
+// Combatant default player-rig graph.
+// The imported animation library remains available to addons, but the core locomotion/state graph
+// is procedural and render-state driven so foreign absolute poses cannot desync the anatomical rig.
+(() => {
+  const TAU = Math.PI * 2;
+  const clamp = (v,a=0,b=1) => Math.max(a,Math.min(b,v));
+  const saturate = v => clamp(v,0,1);
+  const hypot2 = (x,z) => Math.sqrt(x*x+z*z);
+  const expAlpha = (dt,hz) => 1-Math.exp(-Math.max(0,dt)*hz);
+  const damp = (current,target,dt,hz) => current+(target-current)*expAlpha(dt,hz);
+  const smooth01 = v => { v=saturate(v); return v*v*(3-2*v); };
+  const smoother01 = v => { v=saturate(v); return v*v*v*(v*(v*6-15)+10); };
+  const pulse = (u,a,b,c,d) => smooth01((u-a)/Math.max(1e-5,b-a)) * (1-smooth01((u-c)/Math.max(1e-5,d-c)));
+  const upper = side => side+'_upper_arm';
+  const elbow = side => side+'_elbow';
+  const forearm = side => side+'_forearm';
+  const wrist = side => side+'_wrist';
+  const hand = side => side+'_hand';
+  const thigh = side => side+'_thigh';
+  const knee = side => side+'_knee';
+  const foot = side => side+'_foot';
+  // Forearm chains extend downward in bind space; anatomical flexion is negative local X.
+  // Keeping this convention in one helper prevents left/right layers from reintroducing hyperextension.
+  const flexElbow = (rig,side,degrees,y=0,z=0) => rig.rotate(elbow(side),-Math.max(0,degrees),y,z);
 
-  const smoothStyle = context.style === 'Smooth';
-  const combatStyle = context.style === 'Combat';
-  const locomotionWeight = strength * (combatStyle ? 0.78 : 1.0);
-  const combatWeight = strength * (smoothStyle ? 0.78 : 1.0);
-  const speed = Math.hypot(context.velocity.x, context.velocity.z);
-  const movement = rig.clamp(speed * 5.4, 0, 1);
-  const running = context.sprinting && movement > 0.12;
-  const cycle = context.age * (running ? 0.92 : 0.67);
-  const stride = Math.sin(cycle);
-  const opposite = Math.sin(cycle + Math.PI);
-  const bounce = Math.abs(Math.cos(cycle));
-  const breath = Math.sin(context.age * 0.095);
-  const yawRadians = context.yaw * Math.PI / 180;
-  const localForward = (-Math.sin(yawRadians) * context.velocity.x + Math.cos(yawRadians) * context.velocity.z);
-  const backwards = localForward < -0.015;
-  const direction = backwards ? -1 : 1;
+  class PlayerMotionMemory {
+    constructor(time,mode,c) {
+      this.lastSeen=time;
+      this.lastUpdate=time;
+      this.initialized=false;
+      this.frameDt=0;
+      this.forward=0; this.strafe=0; this.speed=0; this.vertical=0;
+      // Two velocity tracks form a physically intuitive secondary-motion lag. The root track follows
+      // Minecraft velocity quickly; the loose track follows it slowly. Their difference is inertia.
+      // This avoids differentiating interpolated positions, which caused saw-tooth impulses at 20 TPS.
+      this.rootForward=0; this.rootStrafe=0; this.rootVertical=0;
+      this.looseForward=0; this.looseStrafe=0; this.looseVertical=0;
+      this.inertiaForward=0; this.inertiaStrafe=0; this.inertiaVertical=0;
+      this.surfaceSwimPhase=0; this.swimPhase=0;
+      this.surfaceSwimRate=.62; this.swimRate=.68;
+      this.modeWeights=Object.create(null);
+      this.modeWeights[mode]=1;
+      this.poseWeights=Object.create(null);
+      this.previousGround=!!c.onGround;
+      this.airTime=0; this.landTime=99;
+      this.takeoffPhase=c.walkPhase||0;
+      this.landingPhase=c.walkPhase||0;
+      this.takeoffForward=0; this.takeoffStrafe=0; this.takeoffSpeed=0;
+      this.takeoffSprinting=!!c.sprinting;
+      this.attackBlend=0;
+      this.lookBodyYaw=0; this.lookBodyPitch=0;
+      this.lastUseArm=c.mainArm||'right'; this.lastUseAction='none'; this.lastUseItem='minecraft:air';
+    }
+    begin(c) {
+      let dt;
+      if (!this.initialized) {
+        dt=clamp(c.deltaSeconds,0,.05);
+        this.initialized=true;
+      } else {
+        dt=clamp(c.continuousSeconds-this.lastUpdate,0,.1);
+      }
+      this.lastUpdate=c.continuousSeconds;
+      this.frameDt=dt;
+      return dt;
+    }
+    updateVector(c,dt) {
+      const vx=c.velocity.x, vy=c.velocity.y, vz=c.velocity.z;
+      const yaw=c.bodyYaw*Math.PI/180;
+      const sin=Math.sin(yaw), cos=Math.cos(yaw);
+      const measuredForward=-sin*vx+cos*vz;
+      const measuredStrafe=cos*vx+sin*vz;
 
-  const arm = side => side + '_upper_arm';
-  const elbow = side => side + '_elbow';
-  const forearm = side => side + '_forearm';
-  const hand = side => side + '_hand';
-  const itemControl = side => side + '_item_control';
-  const thigh = side => side + '_thigh';
-  const knee = side => side + '_knee';
-  const foot = side => side + '_foot';
-  const fingers = side => side + '_fingers';
-  const dominant = context.mainArm === 'left' ? 'left' : 'right';
-  const support = dominant === 'right' ? 'left' : 'right';
-  const used = context.useArm === 'left' ? 'left' : context.useArm === 'right' ? 'right' : dominant;
-  const usedSupport = used === 'right' ? 'left' : 'right';
+      // Creative flight has abrupt velocity changes by design. Filter the root just enough to hide
+      // 20-TPS stepping, then let a slower loose-body velocity keep moving through acceleration/braking.
+      const flight=!!c.creativeFlying || !!c.fallFlying || !!c.vanillaFallFlying;
+      const rootHz=c.creativeFlying?8.0:(flight?10.0:14.0);
+      const looseHz=c.creativeFlying?4.15:(flight?3.7:(c.onGround?4.8:3.6));
+      this.rootForward=damp(this.rootForward,measuredForward,dt,rootHz);
+      this.rootStrafe=damp(this.rootStrafe,measuredStrafe,dt,rootHz);
+      this.rootVertical=damp(this.rootVertical,vy,dt,rootHz);
+      this.looseForward=damp(this.looseForward,this.rootForward,dt,looseHz);
+      this.looseStrafe=damp(this.looseStrafe,this.rootStrafe,dt,looseHz);
+      this.looseVertical=damp(this.looseVertical,this.rootVertical,dt,looseHz);
 
-  function rotate(sideBone, x, y = 0, z = 0, weight = 1) {
-    rig.rotate(sideBone, x * weight, y * weight, z * weight);
+      const targetForward=clamp((this.looseForward-this.rootForward)/.22,-1,1);
+      const targetStrafe=clamp((this.looseStrafe-this.rootStrafe)/.20,-1,1);
+      const targetVertical=clamp((this.looseVertical-this.rootVertical)/.24,-1,1);
+      const inertiaHz=c.creativeFlying?6.0:(flight?6.0:7.0);
+      this.inertiaForward=damp(this.inertiaForward,targetForward,dt,inertiaHz);
+      this.inertiaStrafe=damp(this.inertiaStrafe,targetStrafe,dt,inertiaHz);
+      this.inertiaVertical=damp(this.inertiaVertical,targetVertical,dt,inertiaHz);
+
+      this.forward=this.rootForward;
+      this.strafe=this.rootStrafe;
+      this.vertical=this.rootVertical;
+      this.speed=damp(this.speed,hypot2(this.rootForward,this.rootStrafe),dt,10);
+      return this;
+    }
+    advanceCycle(kind,targetHz,responseHz=3.0) {
+      const rateKey=kind+'Rate', phaseKey=kind+'Phase';
+      this[rateKey]=damp(this[rateKey]||targetHz,targetHz,this.frameDt,responseHz);
+      this[phaseKey]=(this[phaseKey]+TAU*this[rateKey]*this.frameDt)%TAU;
+      return this[phaseKey];
+    }
+    updateMode(mode,c,dt) {
+      const modes=['ground','crouch','air','surface_swim','swim','crawl','elytra','climb','boat','horse','passenger'];
+      for (const key of modes) {
+        const target=key===mode?1:0;
+        this.modeWeights[key]=damp(this.modeWeights[key]||0,target,dt,target?12:16);
+      }
+
+      const grounded=!!c.onGround;
+      if (!grounded) {
+        if (this.previousGround) {
+          this.airTime=0;
+          this.takeoffPhase=c.walkPhase;
+          this.takeoffForward=this.forward;
+          this.takeoffStrafe=this.strafe;
+          this.takeoffSpeed=this.speed;
+          this.takeoffSprinting=!!c.sprinting;
+        } else this.airTime+=dt;
+        this.landTime=99;
+      } else {
+        if (!this.previousGround) {
+          this.landTime=0;
+          this.landingPhase=c.walkPhase;
+        } else this.landTime+=dt;
+        this.airTime=0;
+      }
+      this.previousGround=grounded;
+      const attackNow=!!c.attackActive || c.vanillaAttackTime>1e-4;
+      this.attackBlend=damp(this.attackBlend,attackNow?1:0,dt,attackNow?14:7);
+      this.lastSeen=c.continuousSeconds;
+    }
+    blend(key,target,onHz=12,offHz=9) {
+      target=saturate(target);
+      const current=this.poseWeights[key]||0;
+      const next=damp(current,target,this.frameDt,target>current?onHz:offHz);
+      this.poseWeights[key]=next;
+      return next;
+    }
+    weight(mode) { return this.modeWeights[mode]||0; }
   }
 
-  function poseHead(weight = 1) {
-    rotate('spine_upper', context.pitch * 0.08, 0, 0, weight);
-    rotate('neck_lower', context.pitch * 0.18, 0, 0, weight);
-    rotate('neck_upper', context.pitch * 0.14, 0, 0, weight);
-    rotate('head', context.pitch * 0.60, 0, 0, weight);
+  class AnimationDelegate {
+    constructor(rig) { this.rig=rig; this.lib=globalThis.RigAnimationLibrary; }
+    get(name) { return this.lib?.get(name) || null; }
+    play(name,time,weight=1,options=null) {
+      if (weight<=1e-4) return false;
+      return this.lib?.play(name,this.rig,time,weight,options) || false;
+    }
+    phaseTime(name,phase) {
+      const clip=this.get(name); if (!clip) return 0;
+      const normalized=((phase/TAU)%1+1)%1;
+      return normalized*clip.length;
+    }
+    phase(name,phase,weight=1,options=null) { return this.play(name,this.phaseTime(name,phase),weight,options); }
   }
 
-  function idle() {
-    const w = locomotionWeight;
-    rig.move('pelvis', 0, breath * 0.006 * w, 0);
-    rotate('pelvis', 0, breath * 0.35, breath * 0.25, w);
-    rotate('spine_lower', breath * 0.45, -breath * 0.2, 0, w);
-    rotate('chest', -breath * 0.65, breath * 0.28, 0, w);
-    rotate('left_clavicle', 0, 0, -1.2 - breath * 0.35, w);
-    rotate('right_clavicle', 0, 0, 1.2 + breath * 0.35, w);
-    rotate('left_elbow', -1.6 + breath * 0.5, 0, 0, w);
-    rotate('right_elbow', -1.6 - breath * 0.5, 0, 0, w);
-  }
+  class AnatomicalJoints {
+    constructor(rig) { this.rig=rig; }
+    gaitLeg(side,swing,weight,run) {
+      const back=saturate(-swing);
+      const kneeFlex=(4+back*(run?28:22))*weight;
+      this.rig.rotate(knee(side),kneeFlex,0,0);
+      this.rig.rotate(foot(side),-kneeFlex*.58,0,0);
+    }
+    static groundCorrection(pelvisDeg,thighDeg,kneeDeg,pelvisDropPx) {
+      const r=Math.PI/180;
+      const upper=6*Math.cos((pelvisDeg+thighDeg)*r);
+      const lower=6*Math.cos((pelvisDeg+thighDeg+kneeDeg)*r);
+      return (12-(upper+lower)-pelvisDropPx)/16;
+    }
+    crouch(weight,moving,phase) {
+      if (weight<=1e-4) return;
+      const motion=saturate(moving);
+      const gait=Math.sin(phase), gait90=Math.cos(phase);
+      const stride=gait*12.0*motion;
+      // Preserve the tactical stagger, then animate around it instead of reducing sneak to a
+      // nearly static pose. -X is forward, +X is back; RIGHT +Z / LEFT -Z is outward.
+      const pelvis=5.0;
+      const rightThigh=10-stride*.82;
+      const leftThigh=-15+stride*.92;
+      const rightKnee=22+Math.max(0,stride)*.62+Math.max(0,-stride)*.18;
+      const leftKnee=50+Math.max(0,-stride)*.55+Math.max(0,stride)*.16;
+      const rightZ=.070+gait*.030*motion;
+      const leftZ=-.052-gait*.030*motion;
+      const lateral=gait90*.010*motion;
 
-  function walk() {
-    const w = movement * locomotionWeight;
-    const leg = (running ? 48 : 34) * direction;
-    const armSwing = (running ? 38 : 25) * direction;
-    rig.move('pelvis', 0, -bounce * (running ? 0.055 : 0.025) * w, 0);
-    rotate('pelvis', running ? 7 : 2, -stride * (running ? 3.5 : 2.3), -stride * 2.0, w);
-    rotate('spine_lower', running ? -2 : 0, stride * 2.0, stride * 1.1, w);
-    rotate('chest', running ? -8 : 0, stride * 3.2, -stride * 1.4, w);
-    rotate(thigh('left'), stride * leg, 0, -1.5, w);
-    rotate(thigh('right'), opposite * leg, 0, 1.5, w);
-    rotate(knee('left'), Math.max(0, -stride * direction) * (running ? -55 : -34), 0, 0, w);
-    rotate(knee('right'), Math.max(0, -opposite * direction) * (running ? -55 : -34), 0, 0, w);
-    rotate(foot('left'), -stride * 9 * direction, 0, 0, w);
-    rotate(foot('right'), -opposite * 9 * direction, 0, 0, w);
-    rotate(arm('left'), -stride * armSwing, 0, -3, w);
-    rotate(arm('right'), -opposite * armSwing, 0, 3, w);
-    rotate(elbow('left'), -Math.max(0, stride) * (running ? 34 : 12) - (running ? 12 : 2), 0, 0, w);
-    rotate(elbow('right'), -Math.max(0, opposite) * (running ? 34 : 12) - (running ? 12 : 2), 0, 0, w);
-  }
-
-  function crouch() {
-    const w = locomotionWeight;
-    rig.move('pelvis', 0, 0.16 * w, 0.09 * w);
-    rotate('pelvis', 19, 0, 0, w);
-    rotate('spine_lower', -5, 0, 0, w);
-    rotate('spine_upper', -8, 0, 0, w);
-    rotate(thigh('left'), -22 + stride * movement * 14, 0, -2, w);
-    rotate(thigh('right'), -22 - stride * movement * 14, 0, 2, w);
-    rotate(knee('left'), -38, 0, 0, w);
-    rotate(knee('right'), -38, 0, 0, w);
-    rotate(foot('left'), 18, 0, 0, w);
-    rotate(foot('right'), 18, 0, 0, w);
-  }
-
-  function climb() {
-    const w = locomotionWeight;
-    const climbCycle = Math.sin(context.age * 0.72);
-    rotate('chest', -5, climbCycle * 3, 0, w);
-    rotate(arm('left'), -148 + climbCycle * 36, 0, -8, w);
-    rotate(arm('right'), -148 - climbCycle * 36, 0, 8, w);
-    rotate(elbow('left'), -38 - climbCycle * 22, 0, 0, w);
-    rotate(elbow('right'), -38 + climbCycle * 22, 0, 0, w);
-    rotate(thigh('left'), -25 - climbCycle * 31, 0, 0, w);
-    rotate(thigh('right'), -25 + climbCycle * 31, 0, 0, w);
-    rotate(knee('left'), -50 + climbCycle * 24, 0, 0, w);
-    rotate(knee('right'), -50 - climbCycle * 24, 0, 0, w);
-    rotate(fingers('left'), -25, 0, 0, w);
-    rotate(fingers('right'), -25, 0, 0, w);
-  }
-
-  function crawl() {
-    const w = locomotionWeight;
-    const crawlCycle = Math.sin(context.age * 0.60);
-    rotate('motion', 90, 0, 0, w);
-    rig.move('motion', 0, 0.12 * w, 0.10 * w);
-    rotate('chest', -8, crawlCycle * 5, 0, w);
-    rotate(arm('left'), -112 + crawlCycle * 30, 0, -12, w);
-    rotate(arm('right'), -112 - crawlCycle * 30, 0, 12, w);
-    rotate(elbow('left'), -45 - crawlCycle * 28, 0, 0, w);
-    rotate(elbow('right'), -45 + crawlCycle * 28, 0, 0, w);
-    rotate(thigh('left'), 12 - crawlCycle * 18, 0, -10, w);
-    rotate(thigh('right'), 12 + crawlCycle * 18, 0, 10, w);
-    rotate(knee('left'), -30 + crawlCycle * 20, 0, 0, w);
-    rotate(knee('right'), -30 - crawlCycle * 20, 0, 0, w);
-  }
-
-  function swim() {
-    const w = locomotionWeight;
-    const swimCycle = Math.sin(context.age * 0.42);
-    rotate('motion', 90, 0, 0, w);
-    rotate('chest', -8, 0, 0, w);
-    rotate(arm('left'), -92 + swimCycle * 68, -18, -12, w);
-    rotate(arm('right'), -92 - swimCycle * 68, 18, 12, w);
-    rotate(elbow('left'), -34 - Math.max(0, swimCycle) * 55, 0, 0, w);
-    rotate(elbow('right'), -34 - Math.max(0, -swimCycle) * 55, 0, 0, w);
-    rotate(thigh('left'), swimCycle * 22, 0, 0, w);
-    rotate(thigh('right'), -swimCycle * 22, 0, 0, w);
-    rotate(knee('left'), -18 - Math.max(0, swimCycle) * 25, 0, 0, w);
-    rotate(knee('right'), -18 - Math.max(0, -swimCycle) * 25, 0, 0, w);
-  }
-
-  function glideOrFall() {
-    const w = locomotionWeight;
-    if (context.fallFlying) {
-      rotate('motion', 90, 0, 0, w);
-      rotate('chest', -11, 0, 0, w);
-      rotate(arm('left'), -22, 0, -63, w);
-      rotate(arm('right'), -22, 0, 63, w);
-      rotate(elbow('left'), -10, 0, 0, w);
-      rotate(elbow('right'), -10, 0, 0, w);
-      rotate(thigh('left'), 8, 0, -4, w);
-      rotate(thigh('right'), 8, 0, 4, w);
-      rotate(knee('left'), -12, 0, 0, w);
-      rotate(knee('right'), -12, 0, 0, w);
-    } else if (!context.onGround && context.fallDistance > 0.3) {
-      const fall = rig.clamp(context.fallDistance / 4, 0, 1) * w;
-      rotate('chest', -5, 0, 0, fall);
-      rotate(arm('left'), -15, 0, -38, fall);
-      rotate(arm('right'), -15, 0, 38, fall);
-      rotate(thigh('left'), -8, 0, -8, fall);
-      rotate(thigh('right'), 12, 0, 8, fall);
-      rotate(knee('left'), -20, 0, 0, fall);
-      rotate(knee('right'), -8, 0, 0, fall);
+      this.rig.move('right_thigh',(-.026+lateral)*weight,0,rightZ*weight);
+      this.rig.move('left_thigh',( .017+lateral)*weight,0,leftZ*weight);
+      this.rig.rotate('right_thigh',rightThigh*weight,(-5-gait90*3*motion)*weight,(8+gait90*2*motion)*weight);
+      this.rig.rotate('left_thigh',leftThigh*weight,(4-gait90*3*motion)*weight,(-7+gait90*2*motion)*weight);
+      this.rig.rotate('right_knee',rightKnee*weight,0,0);
+      this.rig.rotate('left_knee',leftKnee*weight,0,0);
+      // Counter the complete pelvis+hip+knee chain so the soles stay level during the step.
+      this.rig.rotate('right_foot',-(pelvis+rightThigh+rightKnee)*weight,0,-gait90*2.0*motion*weight);
+      this.rig.rotate('left_foot',-(pelvis+leftThigh+leftKnee)*weight,0,-gait90*2.0*motion*weight);
+    }
+    combatStance(attackArm,weight,unarmed) {
+      if (weight<=1e-4) return;
+      const rightDominant=attackArm!=='left';
+      const rear=rightDominant?'right':'left';
+      const front=rightDominant?'left':'right';
+      const rearSign=rear==='right'?1:-1;
+      const frontSign=-rearSign;
+      const rearHip=unarmed?12:8;
+      const frontHip=unarmed?-9:-6;
+      const rearKnee=unarmed?20:14;
+      const frontKnee=unarmed?15:11;
+      this.rig.move(thigh(rear),-.020*rearSign*weight,0,.050*weight);
+      this.rig.move(thigh(front),-.012*frontSign*weight,0,-.040*weight);
+      this.rig.rotate(thigh(rear),rearHip*weight,0,rearSign*7*weight);
+      this.rig.rotate(thigh(front),frontHip*weight,0,frontSign*6*weight);
+      this.rig.rotate(knee(rear),rearKnee*weight,0,0);
+      this.rig.rotate(knee(front),frontKnee*weight,0,0);
+      this.rig.rotate(foot(rear),-(rearHip+rearKnee)*.62*weight,0,0);
+      this.rig.rotate(foot(front),-(frontHip+frontKnee)*.62*weight,0,0);
+    }
+    passenger(weight) {
+      if (weight<=1e-4) return;
+      this.rig.rotate('right_thigh',-74*weight,18*weight,8*weight);
+      this.rig.rotate('left_thigh',-74*weight,-18*weight,-8*weight);
+      this.rig.rotate('right_knee',68*weight,0,0);
+      this.rig.rotate('left_knee',68*weight,0,0);
+      this.rig.rotate('right_foot',6*weight,0,0);
+      this.rig.rotate('left_foot',6*weight,0,0);
     }
   }
 
-  function passenger() {
-    const w = locomotionWeight;
-    rig.move('pelvis', 0, 0.10 * w, 0);
-    rotate('pelvis', -4, 0, 0, w);
-    rotate(thigh('left'), -72, 0, -8, w);
-    rotate(thigh('right'), -72, 0, 8, w);
-    rotate(knee('left'), -64, 0, 0, w);
-    rotate(knee('right'), -64, 0, 0, w);
-    rotate(foot('left'), 22, 0, 0, w);
-    rotate(foot('right'), 22, 0, 0, w);
+  class LocomotionLayer {
+    constructor(rig,d,joints) { this.rig=rig; this.d=d; this.joints=joints; }
+    apply(c,m,w,style,strength) {
+      if (w<=1e-4) return;
+      const amp=saturate(Math.max(c.walkAnimationSpeed/Math.max(.001,c.speedValue),m.speed/.22));
+      const moving=smooth01(amp*1.15)*w*strength;
+      const idle=w*strength*(1-smooth01(amp*2.2));
+      const phase=c.walkPhase;
+      const gait=Math.cos(phase);
+      const gait90=Math.sin(phase);
+      const run=c.sprinting && m.forward>-.03;
+      const legAmp=(run?40:28)*moving;
+      const armAim=/^(bow_and_arrow|crossbow_hold|crossbow_charge|spear|throw_trident)$/.test(c.leftArmPose)
+        || /^(bow_and_arrow|crossbow_hold|crossbow_charge|spear|throw_trident)$/.test(c.rightArmPose);
+      const useGate=(c.usingItem||c.vanillaUsingItem||armAim)?0.03:1;
+      const armAmp=(run?36:24)*moving*(1-m.attackBlend*.96)*useGate;
+      const mag=Math.max(1e-5,hypot2(m.forward,m.strafe));
+      const f=m.forward/mag, s=m.strafe/mag;
+      const backwards=f<-.18;
+      const dir=backwards?-1:1;
+
+      if (idle>1e-4) {
+        const breath=Math.sin(c.continuousSeconds*TAU*.24);
+        this.rig.rotate('chest',breath*.35*idle,0,0);
+        this.rig.rotate('left_scapula',0,0,-.32*breath*idle);
+        this.rig.rotate('right_scapula',0,0,.32*breath*idle);
+      }
+      if (moving<=1e-4) return;
+
+      const side=saturate(Math.abs(s));
+      const sideSign=Math.sign(s);
+      // The visual lag is deliberately visible: loose limbs trail root acceleration while the
+      // chest leans into it. This remains a secondary motion, never a replacement gait.
+      const lagX=m.inertiaStrafe*.095*moving;
+      const lagZ=-m.inertiaForward*.072*moving;
+      this.rig.rotate('pelvis',gait90*1.6*moving,-s*7*moving,-s*2.2*moving-m.inertiaStrafe*4.0*moving);
+      this.rig.rotate('spine_lower',(run?4.5:1.5)*Math.max(0,f)*moving+m.inertiaForward*5.0*moving,s*3*moving,m.inertiaStrafe*3.5*moving);
+      this.rig.rotate('chest',-gait90*1.0*moving,s*6*moving+m.inertiaStrafe*5.5*moving,s*2.5*moving+m.inertiaStrafe*4.0*moving);
+      this.rig.move('pelvis',0,-Math.abs(gait90)*(run?.018:.011)*moving,0);
+
+      const rightSwing=gait*dir;
+      const leftSwing=-rightSwing;
+      this.rig.move('right_thigh',lagX,0,lagZ);
+      this.rig.move('left_thigh',lagX,0,lagZ);
+      // RIGHT +Z / LEFT -Z is outward. The old signs folded the legs toward each other.
+      this.rig.rotate('right_thigh',rightSwing*legAmp,sideSign*side*5*moving,5*moving+gait90*s*10*moving+m.inertiaStrafe*7*moving);
+      this.rig.rotate('left_thigh',leftSwing*legAmp,sideSign*side*5*moving,-5*moving-gait90*s*10*moving+m.inertiaStrafe*7*moving);
+      this.joints.gaitLeg('right',rightSwing,moving,run);
+      this.joints.gaitLeg('left',leftSwing,moving,run);
+
+      this.rig.rotate('right_upper_arm',-rightSwing*armAmp+m.inertiaForward*8*moving,0,3*moving+m.inertiaStrafe*6*moving);
+      this.rig.rotate('left_upper_arm',-leftSwing*armAmp+m.inertiaForward*8*moving,0,-3*moving+m.inertiaStrafe*6*moving);
+      flexElbow(this.rig,'right',(6+Math.max(0,rightSwing)*12)*moving*(1-m.attackBlend));
+      flexElbow(this.rig,'left',(6+Math.max(0,leftSwing)*12)*moving*(1-m.attackBlend));
+    }
   }
 
-  function holdMap() {
-    const w = combatWeight;
-    rotate(arm('left'), -72, -22, -9, w);
-    rotate(arm('right'), -72, 22, 9, w);
-    rotate(elbow('left'), -34, 8, 0, w);
-    rotate(elbow('right'), -34, -8, 0, w);
-    rotate(hand('left'), 0, -12, 0, w);
-    rotate(hand('right'), 0, 12, 0, w);
+  class CrouchLayer {
+    constructor(rig,d,joints) { this.rig=rig;this.d=d;this.joints=joints; }
+    apply(c,m,w,strength) {
+      if (w<=1e-4) return;
+      const k=w*strength;
+      const moving=saturate(Math.max(c.walkAnimationSpeed/Math.max(.001,c.speedValue),m.speed/.12));
+      // Tactical crouch: center of mass goes down/forward, but the spine remains nearly vertical.
+      // Foot height is solved by AnatomicalJoints.crouch() instead of blindly lowering the pelvis.
+      this.rig.move('pelvis',0,(1.45/16)*k,-.018*k);
+      this.rig.rotate('pelvis',5*k,0,0);
+      this.rig.rotate('spine_lower',-1.4*k,0,0);
+      this.rig.rotate('spine_mid',-.8*k,0,0);
+      this.rig.rotate('spine_upper',-.4*k,0,0);
+      this.rig.rotate('chest',.6*k,m.strafe*4*k,m.inertiaStrafe*2.2*k);
+      this.rig.rotate('right_upper_arm',-3*k,0,2*k);
+      this.rig.rotate('left_upper_arm',-3*k,0,-2*k);
+      this.joints.crouch(k,moving,c.walkPhase);
+    }
   }
 
-  function useItem() {
-    if (!context.usingItem) return false;
-    const w = combatWeight;
-    const action = context.useAction;
-    const item = context.useItem;
-    const draw = rig.smoothstep(rig.clamp(context.useTicks / 20, 0, 1));
+  class AirLayer {
+    constructor(rig,d,joints) { this.rig=rig;this.d=d;this.joints=joints; }
+    apply(c,m,w,strength) {
+      if (w<=1e-4) return;
+      const k=w*strength;
+      const vy=m.vertical;
+      const rising=smooth01((vy+.005)/.17);
+      const falling=smooth01((-vy-.015)/.28);
+      const hover=saturate(1-Math.max(rising,falling));
+      const sprintJump=m.takeoffSprinting && m.takeoffSpeed>.14;
+      const carry=Math.exp(-m.airTime*(sprintJump?1.8:3.6))*saturate(m.takeoffSpeed/.20);
+      const gait=Math.cos(m.takeoffPhase);
+      const rightLead=gait>=0;
 
-    if (action === 'bow' || (item.includes('bow') && !item.includes('crossbow'))) {
-      rotate('chest', -4, used === 'right' ? -12 : 12, 0, w);
-      rotate(arm(used), -88, used === 'right' ? -8 : 8, used === 'right' ? 5 : -5, w);
-      rotate(arm(usedSupport), -84, usedSupport === 'right' ? -35 : 35, usedSupport === 'right' ? 5 : -5, w);
-      rotate(elbow(used), -8 - draw * 32, 0, 0, w);
-      rotate(elbow(usedSupport), -12, 0, 0, w);
-      rig.move(itemControl(used), 0, 0, draw * 0.12 * w);
-      return true;
-    }
-    if (action === 'crossbow' || item.includes('crossbow')) {
-      rotate('chest', -8, used === 'right' ? -8 : 8, 0, w);
-      rotate(arm(used), -76, used === 'right' ? -20 : 20, used === 'right' ? 6 : -6, w);
-      rotate(arm(usedSupport), -72, usedSupport === 'right' ? -29 : 29, usedSupport === 'right' ? 5 : -5, w);
-      rotate(elbow(used), -42, 0, 0, w);
-      rotate(elbow(usedSupport), -54 + draw * 18, 0, 0, w);
-      return true;
-    }
-    if (action === 'spear' || item.includes('trident') || item.includes('spear')) {
-      rotate('chest', -10, used === 'right' ? -17 : 17, 0, w);
-      rotate(arm(used), -142, used === 'right' ? 12 : -12, used === 'right' ? 9 : -9, w);
-      rotate(elbow(used), -38, 0, 0, w);
-      rotate(itemControl(used), 0, 0, used === 'right' ? -10 : 10, w);
-      return true;
-    }
-    if (action === 'block' || item.includes('shield')) {
-      rotate('chest', -5, used === 'right' ? -8 : 8, 0, w);
-      rotate(arm(used), -55, used === 'right' ? -28 : 28, used === 'right' ? 16 : -16, w);
-      rotate(elbow(used), -58, used === 'right' ? 8 : -8, 0, w);
-      rotate(itemControl(used), 0, used === 'right' ? -18 : 18, 0, w);
-      return true;
-    }
-    if (action === 'eat' || action === 'drink') {
-      const sip = Math.sin(context.useTicks * 1.9) * 3;
-      rotate('head', -5 + sip * 0.25, 0, used === 'right' ? -3 : 3, w);
-      rotate(arm(used), -104 + sip, used === 'right' ? -18 : 18, used === 'right' ? 9 : -9, w);
-      rotate(elbow(used), -66 + sip * 0.7, 0, 0, w);
-      rotate(hand(used), -12, 0, used === 'right' ? -8 : 8, w);
-      return true;
-    }
-    if (action === 'spyglass' || item.includes('spyglass')) {
-      rotate(arm(used), -112, used === 'right' ? -21 : 21, used === 'right' ? 8 : -8, w);
-      rotate(elbow(used), -72, 0, 0, w);
-      rotate('head', context.pitch * -0.15, used === 'right' ? -4 : 4, 0, w);
-      return true;
-    }
-    if (item.includes('map')) {
-      holdMap();
-      return true;
-    }
+      // Keep a real split stance throughout the jump. RIGHT +Z and LEFT -Z abduct outward.
+      const leadHip=sprintJump?-20:-14;
+      const trailHip=sprintJump?13:9;
+      const riseLeadKnee=sprintJump?18:15;
+      const riseTrailKnee=sprintJump?38:30;
+      let rHip=(rightLead?leadHip:trailHip)*carry;
+      let lHip=(rightLead?trailHip:leadHip)*carry;
+      let rKnee=(rightLead?riseLeadKnee:riseTrailKnee)*carry;
+      let lKnee=(rightLead?riseTrailKnee:riseLeadKnee)*carry;
 
-    rotate(arm(used), -82, used === 'right' ? -10 : 10, used === 'right' ? 5 : -5, w);
-    rotate(elbow(used), -48, 0, 0, w);
-    return true;
+      if (rising>1e-4) {
+        rHip+=(rightLead?-11:8)*rising;
+        lHip+=(rightLead?8:-11)*rising;
+        rKnee+=(rightLead?8:20)*rising;
+        lKnee+=(rightLead?20:8)*rising;
+      }
+      if (hover>1e-4) {
+        const drift=Math.sin(c.continuousSeconds*TAU*.32);
+        rHip+=(rightLead?-8:5)*hover + drift*1.2*hover;
+        lHip+=(rightLead?5:-8)*hover - drift*1.2*hover;
+        rKnee+=(rightLead?18:27)*hover + drift*2*hover;
+        lKnee+=(rightLead?27:18)*hover - drift*2*hover;
+      }
+      if (falling>1e-4) {
+        const severity=saturate((-vy-.02)/.45);
+        // Prepare the same lead/rear relation for landing; do not collapse both legs to center.
+        rHip+=(rightLead?-10:7)*falling;
+        lHip+=(rightLead?7:-10)*falling;
+        rKnee+=(rightLead?18:30+severity*5)*falling;
+        lKnee+=(rightLead?30+severity*5:18)*falling;
+      }
+
+      const outward=10+hover*4+rising*2;
+      const rFoot=-(rHip+rKnee)*.48-hover*3-falling*2;
+      const lFoot=-(lHip+lKnee)*.48-hover*3-falling*2;
+      this.rig.move('right_thigh',m.inertiaStrafe*.130*k,0,-m.inertiaForward*.095*k);
+      this.rig.move('left_thigh',m.inertiaStrafe*.130*k,0,-m.inertiaForward*.095*k);
+      this.rig.rotate('right_thigh',rHip*k,-4*k,outward*k+m.inertiaStrafe*8*k);
+      this.rig.rotate('left_thigh',lHip*k,4*k,-outward*k+m.inertiaStrafe*8*k);
+      this.rig.rotate('right_knee',rKnee*k,0,0);
+      this.rig.rotate('left_knee',lKnee*k,0,0);
+      this.rig.rotate('right_foot',rFoot*k,0,-2*k);
+      this.rig.rotate('left_foot',lFoot*k,0,2*k);
+
+      // Root/chest react in the opposite sense to loose lower limbs, making acceleration readable.
+      this.rig.move('pelvis',-m.inertiaStrafe*.032*k,0,m.inertiaForward*.024*k);
+      this.rig.rotate('spine_lower',-m.inertiaForward*5*k,0,-m.inertiaStrafe*6*k);
+      this.rig.rotate('chest',(sprintJump?8*carry:2*rising)*k-m.inertiaForward*5*k,0,-m.inertiaStrafe*8*k);
+
+      // Jump arms fold FORWARD, not down/back. During a sprint jump they keep more launch intent.
+      const armGate=1-m.attackBlend;
+      if (armGate>1e-4) {
+        const launch=(sprintJump?1:.72)*carry;
+        const free=saturate(rising*.75+hover*.85+falling*.55);
+        const base=-((sprintJump?30:22)*launch + 16*free);
+        this.rig.rotate('right_upper_arm',base*k*armGate,0,(9+free*3)*k*armGate);
+        this.rig.rotate('left_upper_arm',base*k*armGate,0,-(9+free*3)*k*armGate);
+        flexElbow(this.rig,'right',(28+launch*18+hover*8)*k*armGate);
+        flexElbow(this.rig,'left',(28+launch*18+hover*8)*k*armGate);
+      }
+    }
+    landing(c,m,w,strength) {
+      if (m.landTime>.20 || w<=1e-4) return;
+      const t=1-m.landTime/.20;
+      const impact=smoother01(t)*w*strength*saturate(Math.max(.3,c.fallDistance/4));
+      const rightLead=Math.cos(m.landingPhase)>=0;
+      this.rig.move('pelvis',0,.035*impact,0);
+      this.rig.rotate('chest',4*impact,0,0);
+      this.rig.rotate('right_thigh',(rightLead?-6:5)*impact,0,6*impact);
+      this.rig.rotate('left_thigh',(rightLead?5:-6)*impact,0,-6*impact);
+      this.rig.rotate('right_knee',(rightLead?17:25)*impact,0,0);
+      this.rig.rotate('left_knee',(rightLead?25:17)*impact,0,0);
+      this.rig.rotate('right_foot',-(rightLead?12:19)*impact,0,0);
+      this.rig.rotate('left_foot',-(rightLead?19:12)*impact,0,0);
+    }
   }
 
-  function heldItemPose() {
-    const main = context.mainItem;
-    const off = context.offItem;
-    if (main.includes('map') || off.includes('map')) {
-      holdMap();
-      return;
+  class WaterLayer {
+    constructor(rig,d,joints) { this.rig=rig;this.d=d;this.joints=joints; }
+    surface(c,m,w,strength) {
+      if (w<=1e-4) return;
+      const k=w*strength;
+      const speed=saturate(m.speed/.13);
+      const p=m.advanceCycle('surfaceSwim',.58+speed*.38,2.4);
+      const stroke=Math.sin(p), kick=Math.sin(p*1.08+Math.PI*.5);
+      this.rig.move('pelvis',0,.025*k,0);
+      this.rig.rotate('chest',-4*k,0,0);
+      this.rig.rotate('right_upper_arm',(20+stroke*28)*k,0,(34+stroke*10)*k);
+      this.rig.rotate('left_upper_arm',(20-stroke*28)*k,0,-(34-stroke*10)*k);
+      flexElbow(this.rig,'right',(35-stroke*20)*k);
+      flexElbow(this.rig,'left',(35+stroke*20)*k);
+      this.rig.rotate('right_thigh',(8+kick*11)*k,-6*k,8*k);
+      this.rig.rotate('left_thigh',(8-kick*11)*k,6*k,-8*k);
+      this.rig.rotate('right_knee',(35-kick*17)*k,0,0);
+      this.rig.rotate('left_knee',(35+kick*17)*k,0,0);
+      this.rig.rotate('right_foot',(-15+kick*5)*k,0,0);
+      this.rig.rotate('left_foot',(-15-kick*5)*k,0,0);
     }
-    for (const side of ['left', 'right']) {
-      const item = side === dominant ? main : off;
-      if (item === 'minecraft:air') continue;
-      const lantern = item.includes('lantern');
-      const shield = item.includes('shield');
-      const twoHanded = /(greatsword|claymore|zweihander|halberd|glaive|scythe|staff|polearm)/.test(item);
-      if (lantern) {
-        rotate(arm(side), 9, 0, side === 'right' ? 4 : -4, combatWeight);
-        rotate(elbow(side), -5, 0, 0, combatWeight);
-        rotate(itemControl(side), 0, 0, side === 'right' ? -8 : 8, combatWeight);
-      } else if (shield) {
-        rotate(arm(side), -18, side === 'right' ? -12 : 12, side === 'right' ? 8 : -8, combatWeight);
-        rotate(elbow(side), -35, 0, 0, combatWeight);
-      } else if (twoHanded && side === dominant) {
-        rotate(arm(dominant), -28, dominant === 'right' ? -7 : 7, dominant === 'right' ? 5 : -5, combatWeight);
-        rotate(elbow(dominant), -28, 0, 0, combatWeight);
-        rotate(arm(support), -32, support === 'right' ? -18 : 18, support === 'right' ? 4 : -4, combatWeight);
-        rotate(elbow(support), -52, 0, 0, combatWeight);
+    swim(c,m,w,strength) {
+      if (w<=1e-4) return;
+      const k=w*strength;
+      const speed=saturate(Math.max(c.swimAmount,m.speed/.18));
+      const p=m.advanceCycle('swim',.66+speed*.40,2.2);
+      const cycle=(Math.sin(p)+1)*.5;
+      const opposite=(Math.sin(p+Math.PI)+1)*.5;
+      this.rig.rotate('chest',-3*k,0,0);
+      this.rig.rotate('right_upper_arm',(-34-96*cycle)*k,0,8*k);
+      this.rig.rotate('left_upper_arm',(-34-96*opposite)*k,0,-8*k);
+      flexElbow(this.rig,'right',(18+45*cycle)*k);
+      flexElbow(this.rig,'left',(18+45*opposite)*k);
+      const kick=Math.sin(p*1.7);
+      this.rig.rotate('right_thigh',(-5+kick*14)*k,0,5*k);
+      this.rig.rotate('left_thigh',(-5-kick*14)*k,0,-5*k);
+      this.rig.rotate('right_knee',(12+Math.max(0,-kick)*24)*k,0,0);
+      this.rig.rotate('left_knee',(12+Math.max(0,kick)*24)*k,0,0);
+      this.rig.rotate('right_foot',-9*k,0,0);
+      this.rig.rotate('left_foot',-9*k,0,0);
+    }
+    crawl(c,m,w,strength) {
+      if (w<=1e-4) return;
+      const k=w*strength;
+      const moving=smooth01(saturate(m.speed/.12));
+      const gait=Math.cos(c.walkPhase);
+      const pushR=Math.max(0,-gait), pushL=Math.max(0,gait);
+      this.rig.rotate('chest',1.5*k,0,gait*2.2*moving*k);
+      this.rig.move('pelvis',gait*.010*moving*k,0,0);
+
+      this.rig.rotate('right_upper_arm',(-54-gait*33*moving)*k,0,8*k);
+      this.rig.rotate('left_upper_arm',(-54+gait*33*moving)*k,0,-8*k);
+      flexElbow(this.rig,'right',(42+pushR*42*moving)*k);
+      flexElbow(this.rig,'left',(42+pushL*42*moving)*k);
+      // Opposite knee/arm drive, with outward hip signs fixed.
+      this.rig.move('right_thigh',0,0,-gait*.028*moving*k);
+      this.rig.move('left_thigh',0,0,gait*.028*moving*k);
+      this.rig.rotate('right_thigh',(-2-gait*26*moving)*k,-7*k,12*k);
+      this.rig.rotate('left_thigh',(-2+gait*26*moving)*k,7*k,-12*k);
+      this.rig.rotate('right_knee',(24+pushR*52*moving)*k,0,0);
+      this.rig.rotate('left_knee',(24+pushL*52*moving)*k,0,0);
+      this.rig.rotate('right_foot',(-12-pushR*24*moving)*k,0,0);
+      this.rig.rotate('left_foot',(-12-pushL*24*moving)*k,0,0);
+      this.rig.rotate('right_toe',(7+pushR*12*moving)*k,0,0);
+      this.rig.rotate('left_toe',(7+pushL*12*moving)*k,0,0);
+    }
+  }
+
+  class ElytraLayer {
+    constructor(rig,d) { this.rig=rig;this.d=d; }
+    apply(c,m,w,strength) {
+      if (w<=1e-4) return;
+      const k=w*strength;
+      const speed=saturate(c.horizontalSpeed/.9);
+      const sink=saturate(-c.velocity.y/.45);
+      const lagX=m.inertiaStrafe*.140*k, lagZ=-m.inertiaForward*.110*k;
+      this.rig.rotate('chest',(-2-speed*4+sink*2)*k,-m.inertiaStrafe*6*k,-m.inertiaStrafe*10*k);
+      this.rig.rotate('spine_lower',-m.inertiaForward*5*k,0,-m.inertiaStrafe*6*k);
+      this.rig.move('right_thigh',lagX,0,lagZ);
+      this.rig.move('left_thigh',lagX,0,lagZ);
+      this.rig.rotate('right_upper_arm',(5+sink*4)*k,-7*k,16*k);
+      this.rig.rotate('left_upper_arm',(5+sink*4)*k,7*k,-16*k);
+      flexElbow(this.rig,'right',10*k);
+      flexElbow(this.rig,'left',10*k);
+      this.rig.rotate('right_thigh',(-5-sink*4)*k,-2*k,7*k+m.inertiaStrafe*8*k);
+      this.rig.rotate('left_thigh',(-5-sink*4)*k,2*k,-7*k+m.inertiaStrafe*8*k);
+      this.rig.rotate('right_knee',(8+sink*6)*k,0,0);
+      this.rig.rotate('left_knee',(8+sink*6)*k,0,0);
+    }
+  }
+
+  class InertiaLayer {
+    constructor(rig) { this.rig=rig; }
+    apply(c,m,mode,strength) {
+      if (strength<=1e-4 || mode==='surface_swim' || mode==='swim' || mode==='boat' || mode==='horse' || mode==='passenger') return;
+      const flight=!!c.creativeFlying || mode==='elytra' || mode==='air';
+      const k=clamp(strength,0,1.35)*(c.creativeFlying?1.35:(flight?1.12:.82));
+      const f=m.inertiaForward*k, s=m.inertiaStrafe*k, v=m.inertiaVertical*k;
+      if (Math.abs(f)+Math.abs(s)+Math.abs(v)<1e-4) return;
+
+      // Root responds first; distal chains carry the delayed velocity farther. This makes braking
+      // readable in legs/arms instead of expressing all inertia as one chest tilt.
+      this.rig.move('pelvis',s*.018,-v*.012,-f*.014);
+      this.rig.rotate('pelvis',-f*2.5,0,s*3.4);
+      this.rig.rotate('spine_lower',-f*4.0,0,s*5.0);
+      this.rig.rotate('spine_mid',-f*3.2,0,s*4.4);
+      this.rig.rotate('chest',-f*3.0,s*1.8,s*5.8);
+
+      const armX=-f*(flight?10.5:7.0);
+      const legX=-f*(flight?12.5:7.5);
+      const verticalFlex=Math.abs(v)*(flight?7.0:3.5);
+      this.rig.move('right_upper_arm',s*.030,-v*.010,-f*.022);
+      this.rig.move('left_upper_arm',s*.030,-v*.010,-f*.022);
+      this.rig.rotate('right_upper_arm',armX,0,s*8.5);
+      this.rig.rotate('left_upper_arm',armX,0,s*8.5);
+      this.rig.rotate('right_forearm',-f*4.5,s*3.5,s*3.0);
+      this.rig.rotate('left_forearm',-f*4.5,s*3.5,s*3.0);
+
+      this.rig.move('right_thigh',s*.052,-v*.014,-f*.040);
+      this.rig.move('left_thigh',s*.052,-v*.014,-f*.040);
+      this.rig.rotate('right_thigh',legX,0,s*10.0);
+      this.rig.rotate('left_thigh',legX,0,s*10.0);
+      this.rig.rotate('right_knee',verticalFlex,0,0);
+      this.rig.rotate('left_knee',verticalFlex,0,0);
+      this.rig.rotate('right_foot',-legX*.38-verticalFlex*.45,0,-s*4.0);
+      this.rig.rotate('left_foot',-legX*.38-verticalFlex*.45,0,-s*4.0);
+    }
+  }
+
+  class VehicleLayer {
+    constructor(rig,d,joints) { this.rig=rig;this.d=d;this.joints=joints; }
+    boat(c,w,strength) {
+      if (w<=1e-4) return;
+      const k=w*strength;
+      this.joints.passenger(k);
+      this.rig.rotate('chest',3*k,0,0);
+      const paddle=(side,active,time) => {
+        if (!active) {
+          this.rig.rotate(upper(side),-8*k,0,(side==='right'?20:-20)*k);
+          flexElbow(this.rig,side,18*k);
+          return;
+        }
+        // getRowingTime() is already continuous/interpolated. Use it directly rather than a
+        // separate low-frequency clock.
+        const p=time;
+        const pull=(Math.sin(p)+1)*.5;
+        const sign=side==='right'?1:-1;
+        this.rig.rotate(upper(side),(-58+92*pull)*k,sign*(-8+10*pull)*k,sign*(34-14*pull)*k);
+        flexElbow(this.rig,side,(48-30*pull)*k);
+      };
+      paddle('left',c.boatLeft,c.boatLeftTime);
+      paddle('right',c.boatRight,c.boatRightTime);
+    }
+    horse(c,w,strength) {
+      if (w<=1e-4) return;
+      const k=w*strength;
+      this.joints.passenger(k);
+      const gait=Math.sin(c.walkPhase)*saturate(c.walkAnimationSpeed/Math.max(.001,c.speedValue));
+      this.rig.rotate('chest',2*k,0,0);
+      this.rig.rotate('right_upper_arm',(-12-gait*8)*k,0,8*k);
+      this.rig.rotate('left_upper_arm',(-12+gait*8)*k,0,-8*k);
+    }
+    passenger(c,w,strength) {
+      if (w<=1e-4) return;
+      const k=w*strength;
+      this.joints.passenger(k);
+      this.rig.rotate('right_upper_arm',-12*k,0,5*k);
+      this.rig.rotate('left_upper_arm',-12*k,0,-5*k);
+    }
+  }
+
+  class ClimbLayer {
+    constructor(rig,d,joints) { this.rig=rig;this.d=d;this.joints=joints; }
+    apply(c,m,w,strength) {
+      if (w<=1e-4) return;
+      const k=w*strength;
+      const active=Math.abs(m.vertical)>.006||m.speed>.006;
+      const p=c.continuousSeconds*TAU*(active?.8:.2);
+      const g=Math.sin(p);
+      this.rig.rotate('right_upper_arm',(-112+g*42)*k,0,8*k);
+      this.rig.rotate('left_upper_arm',(-112-g*42)*k,0,-8*k);
+      flexElbow(this.rig,'right',(36-g*18)*k);
+      flexElbow(this.rig,'left',(36+g*18)*k);
+      this.rig.rotate('right_thigh',(12-g*25)*k,0,-4*k);
+      this.rig.rotate('left_thigh',(12+g*25)*k,0,4*k);
+      this.rig.rotate('right_knee',(35+g*20)*k,0,0);
+      this.rig.rotate('left_knee',(35-g*20)*k,0,0);
+    }
+  }
+
+  class LookLayer {
+    constructor(rig) { this.rig=rig; }
+    apply(c,m,strength) {
+      const yaw=clamp(c.headYaw,-95,95);
+      const pitch=clamp(c.headPitch,-90,90);
+      const aiming=(c.usingItem||c.vanillaUsingItem) &&
+        /^(bow|crossbow|spear)$/.test(c.useAction) ||
+        c.leftArmPose==='bow_and_arrow' || c.rightArmPose==='bow_and_arrow' ||
+        c.leftArmPose==='spear' || c.rightArmPose==='spear' ||
+        c.leftArmPose==='throw_trident' || c.rightArmPose==='throw_trident';
+
+      // The neck keeps the normal vanilla range; only the excess is progressively transferred to
+      // the torso. Aiming starts that transfer earlier, but never snaps the whole body to the head.
+      const threshold=aiming?12:38;
+      const excess=Math.max(0,Math.abs(yaw)-threshold);
+      const yawTarget=Math.sign(yaw)*Math.min(aiming?48:34,excess*(aiming?.72:.58));
+      const pitchExcess=Math.max(0,Math.abs(pitch)-(aiming?42:62));
+      const pitchTarget=Math.sign(pitch)*Math.min(aiming?9:6,pitchExcess*(aiming?.28:.20));
+
+      m.lookBodyYaw=damp(m.lookBodyYaw,yawTarget,m.frameDt,aiming?5.6:3.8);
+      m.lookBodyPitch=damp(m.lookBodyPitch,pitchTarget,m.frameDt,aiming?4.0:3.0);
+      const y=m.lookBodyYaw*clamp(strength,0,1.25);
+      const x=m.lookBodyPitch*clamp(strength,0,1.25);
+
+      if (Math.abs(y)>1e-4) {
+        // Curved spine rather than one rigid body yaw.
+        this.rig.rotate('spine_lower',0,y*.18,0);
+        this.rig.rotate('spine_mid',0,y*.29,0);
+        this.rig.rotate('chest',0,y*.53,0);
+        // Remove exactly the transferred local yaw from the anatomical neck/head chain.
+        this.rig.rotate('neck_lower',0,-y*.12,0);
+        this.rig.rotate('neck_upper',0,-y*.18,0);
+        this.rig.rotate('head',0,-y*.70,0);
+      }
+      if (Math.abs(x)>1e-4) {
+        // Keep vertical look mostly in the head so looking up/down does not visibly lower the skull.
+        this.rig.rotate('spine_lower',x*.14,0,0);
+        this.rig.rotate('spine_mid',x*.22,0,0);
+        this.rig.rotate('chest',x*.64,0,0);
+        this.rig.rotate('neck_lower',-x*.10,0,0);
+        this.rig.rotate('neck_upper',-x*.16,0,0);
+        this.rig.rotate('head',-x*.74,0,0);
       }
     }
   }
 
-  function combatSwing() {
-    const progress = rig.clamp(context.swing, 0, 1);
-    if (progress <= 0) return;
-    const w = combatWeight;
-    const item = context.mainItem;
-    const attackSide = dominant;
-    const other = support;
-    const sign = attackSide === 'right' ? 1 : -1;
-    const alternating = (context.swingIndex & 1) === 0 ? 1 : -1;
-    const windup = Math.sin(Math.min(progress * 1.7, 1) * Math.PI * 0.5);
-    const strike = Math.sin(Math.sqrt(progress) * Math.PI);
-    const follow = rig.smoothstep(rig.clamp((progress - 0.58) / 0.42, 0, 1));
-    const stab = /(trident|spear|rapier|estoc|pike)/.test(item);
-    const heavy = /(axe|mace|hammer|maul|battleaxe)/.test(item);
-    const twoHanded = /(greatsword|claymore|zweihander|halberd|glaive|scythe|staff|polearm|katana)/.test(item);
+  class ItemUseLayer {
+    constructor(rig,d) { this.rig=rig;this.d=d; }
+    armPose(c,side) { return side==='right'?c.rightArmPose:c.leftArmPose; }
+    apply(c,m,weight) {
+      const active=(c.usingItem||c.vanillaUsingItem) && weight>1e-4;
+      const item=active?c.useItem:m.lastUseItem;
+      if (active) {
+        m.lastUseArm=(c.useArm==='left'||c.useArm==='right')?c.useArm:c.mainArm;
+        m.lastUseAction=c.useAction;
+        m.lastUseItem=c.useItem;
+      }
+      const useArm=active?((c.useArm==='left'||c.useArm==='right')?c.useArm:c.mainArm):m.lastUseArm;
+      const other=useArm==='right'?'left':'right';
+      const sign=useArm==='right'?1:-1;
+      const pose=this.armPose(c,useArm);
+      const otherPose=this.armPose(c,other);
+      const action=active?c.useAction:'none';
 
-    if (stab) {
-      rotate('pelvis', 0, -sign * strike * 9, 0, w);
-      rotate('chest', -8 * windup + 7 * follow, -sign * (19 * windup - 31 * strike), sign * 3, w);
-      rotate(arm(attackSide), -122 + strike * 49, -sign * 12, sign * 7, w);
-      rotate(elbow(attackSide), -55 + strike * 49, 0, 0, w);
-      rig.move(itemControl(attackSide), 0, 0, -strike * 0.22 * w);
-      rotate(arm(other), -22, sign * 14, -sign * 5, w);
-    } else if (heavy) {
-      rotate('pelvis', 8 * windup, sign * 10 * windup, 0, w);
-      rotate('chest', -20 * windup + 25 * strike, sign * (19 * windup - 16 * strike), -sign * 5, w);
-      rotate(arm(attackSide), -160 * windup + 105 * follow, -sign * 13, sign * 10, w);
-      rotate(elbow(attackSide), -61 * windup + 30 * follow, 0, 0, w);
-      rotate(arm(other), -87 * windup + 44 * follow, sign * 24, -sign * 8, w);
-      rotate(elbow(other), -72 * windup + 25 * follow, 0, 0, w);
-      rotate(itemControl(attackSide), 0, 0, -sign * 12, w);
-    } else if (twoHanded) {
-      const slashSign = sign * alternating;
-      rotate('pelvis', 0, slashSign * (15 * windup - 18 * strike), slashSign * 3, w);
-      rotate('chest', -10 * windup + 9 * follow, slashSign * (31 * windup - 51 * strike), -slashSign * 7, w);
-      rotate(arm(attackSide), -115 * windup + 55 * follow, -slashSign * 31, sign * 9, w);
-      rotate(elbow(attackSide), -55 * windup + 18 * follow, 0, 0, w);
-      rotate(arm(other), -96 * windup + 43 * follow, slashSign * 26, -sign * 8, w);
-      rotate(elbow(other), -72 * windup + 25 * follow, 0, 0, w);
-      rotate(itemControl(attackSide), 0, 0, -slashSign * 13, w);
-    } else if (item === 'minecraft:air') {
-      rotate('chest', -5 * windup, -sign * 22 * strike, sign * 3, w);
-      rotate(arm(attackSide), -38 * windup - 76 * strike, -sign * 10, sign * 5, w);
-      rotate(elbow(attackSide), -45 * windup + 20 * strike, 0, 0, w);
-      rotate(hand(attackSide), -10, 0, sign * 8, w);
-    } else {
-      const slashSign = sign * alternating;
-      rotate('pelvis', 0, slashSign * (9 * windup - 13 * strike), 0, w);
-      rotate('chest', -7 * windup + 5 * follow, slashSign * (24 * windup - 43 * strike), -slashSign * 5, w);
-      rotate(arm(attackSide), -101 * windup + 48 * follow, -slashSign * 25, sign * 7, w);
-      rotate(elbow(attackSide), -36 * windup + 18 * follow, 0, 0, w);
-      rotate(hand(attackSide), 0, 0, -slashSign * 11, w);
-      rotate(itemControl(attackSide), 0, 0, -slashSign * 9, w);
+      const spearTarget=active&&(pose==='spear'||pose==='throw_trident'||action==='spear'||item.includes('trident')||item.includes('spear'));
+      const shieldTarget=active&&(pose==='block'||action==='block'||item.includes('shield'));
+      const bowTarget=active&&(pose==='bow_and_arrow'||action==='bow'||(item.includes('bow')&&!item.includes('crossbow')));
+      const crossTarget=active&&(pose==='crossbow_charge'||pose==='crossbow_hold'||action==='crossbow'||item.includes('crossbow'));
+      const eatTarget=active&&action==='eat';
+      const drinkTarget=active&&action==='drink';
+
+      // One independent smoothed channel per action. No extra global "ramp" is multiplied on top,
+      // avoiding the old double-envelope and the sudden pose switch at release.
+      const spear=m.blend('use_spear',spearTarget?1:0,3.2,3.8)*weight;
+      const shield=m.blend('use_shield',shieldTarget?1:0,5.0,4.5)*weight;
+      const bow=m.blend('use_bow',bowTarget?1:0,6.0,5.0)*weight;
+      const crossbow=m.blend('use_crossbow',crossTarget?1:0,7.5,5.0)*weight;
+      const eat=m.blend('use_eat',eatTarget?1:0,7.0,5.0)*weight;
+      const drink=m.blend('use_drink',drinkTarget?1:0,7.0,5.0)*weight;
+
+      const aimYaw=clamp(c.headYaw-m.lookBodyYaw,-70,70);
+      const aimPitch=clamp(c.headPitch-m.lookBodyPitch,-85,85);
+
+      if (bow>1e-4) {
+        const k=bow;
+        // Vanilla BOW_AND_ARROW basis, expressed in degrees. Negative X is forward.
+        const drawY=aimYaw-sign*5.73;
+        const supportY=aimYaw+sign*28.65;
+        const x=-90+aimPitch;
+        this.rig.rotate(upper(useArm),x*k,drawY*k,0);
+        this.rig.rotate(upper(other),x*k,supportY*k,0);
+        // Keep the item-bearing arm straight so the hand socket follows the same line as vanilla.
+        this.rig.setRotation(elbow(useArm),0,0,0);
+        this.rig.setRotation(elbow(other),0,0,0);
+        this.rig.rotate(wrist(useArm),0,0,0);
+      }
+
+      if (shield>1e-4) {
+        const k=shield;
+        // Vanilla poseBlockingArm: stable in relation to the head, not a guessed sideways elbow pose.
+        const x=-54+clamp(aimPitch,-80,25);
+        const y=-sign*30+clamp(aimYaw,-30,30);
+        this.rig.rotate(upper(useArm),x*k,y*k,0);
+        this.rig.setRotation(elbow(useArm),0,0,0);
+      }
+
+      if (spear>1e-4) {
+        const k=spear;
+        const trident=pose==='throw_trident'||item.includes('trident');
+        let x;
+        if (trident) {
+          x=-170+clamp(aimPitch,-45,45)*.25;
+        } else {
+          // Minecraft 26.2 SpearAnimations: -90 + headPitch + 0.8rad, then clamped.
+          x=clamp(-44.16+aimPitch-((c.fallFlying||c.vanillaFallFlying||c.swimAmount>.05)?55:0),-120,30);
+        }
+        const y=clamp(aimYaw-sign*5.73,-60,60);
+        this.rig.rotate(upper(useArm),x*k,y*k,-sign*2*k);
+        this.rig.setRotation(elbow(useArm),0,0,0);
+        this.rig.rotate(wrist(useArm),-4*k,0,0);
+      }
+
+      if (crossbow>1e-4) {
+        const k=crossbow;
+        const charging=pose==='crossbow_charge';
+        this.rig.setRotation(elbow(useArm),0,0,0);
+        this.rig.setRotation(forearm(useArm),0,0,0);
+        this.rig.setRotation(wrist(useArm),0,0,0);
+        if (charging) {
+          const p=saturate(c.vanillaUseTicks/Math.max(1,c.maxCrossbowChargeDuration));
+          const mainY=(-sign*45.84);
+          const otherY=sign*(22.92+(48.70-22.92)*p);
+          const otherX=-55.62+(-90+55.62)*p;
+          this.rig.rotate(upper(useArm),-55.62*k,mainY*k,0);
+          this.rig.rotate(upper(other),otherX*k,otherY*k,0);
+          flexElbow(this.rig,other,(54-18*p)*k);
+        } else {
+          // Charged/aiming basis: item hand is a straight sight line; the second hand stays closer
+          // to the torso instead of forcing a two-elbow crossbow pose.
+          this.rig.rotate(upper(useArm),(-90+aimPitch)*k,(aimYaw-sign*9)*k,-sign*2*k);
+          this.rig.rotate(upper(other),-32*k,(aimYaw+sign*12)*k,sign*7*k);
+          flexElbow(this.rig,other,52*k);
+        }
+      }
+
+      if (eat>1e-4 || drink>1e-4) {
+        const drinkMode=drink>eat;
+        const k=Math.max(eat,drink);
+        // Right arm must fold INWARD: right Z is negative, left Z is positive.
+        const rhythm=Math.sin(c.continuousSeconds*TAU*(drinkMode?1.35:1.55));
+        const motion=(drinkMode?1.8:2.7)*rhythm;
+        this.rig.rotate('chest',(drinkMode?1.0:1.6)*k,-sign*1.5*k,0);
+        this.rig.rotate(upper(useArm),(-60+motion)*k,-sign*6*k,-sign*(drinkMode?17:22)*k);
+        flexElbow(this.rig,useArm,(78+(drinkMode?2.5:4.0)*rhythm)*k,0,sign*2*k);
+        this.rig.rotate(forearm(useArm),0,sign*2*k,0);
+        this.rig.rotate(wrist(useArm),(drinkMode?-18:-8)*k,0,-sign*2*k);
+      }
+
+      if (active && item.includes('map')) {
+        this.d.play('nea:MapHoldingAnimation',c.continuousSeconds,weight);
+        return true;
+      }
+      return Math.max(spear,shield,bow,crossbow,eat,drink)>1e-3;
     }
-
-    rig.twist('spine', -sign * alternating * strike * 12 * w, 0.88);
-    rig.bend('spine', (heavy ? 12 : 5) * strike * w, 0.82);
   }
 
-  idle();
-  if (context.climbing) climb();
-  else if (context.crawling) crawl();
-  else if (context.swimming && context.inWater) swim();
-  else if (context.passenger) passenger();
-  else {
-    if (movement > 0.02) walk();
-    if (context.crouching) crouch();
-    glideOrFall();
+  class HeldPoseLayer {
+    constructor(rig,d) { this.rig=rig;this.d=d; }
+    apply(c,m,weight,suppressed=false) {
+      const main=c.mainItem, off=c.offItem;
+      if (weight<=1e-4 || suppressed) return;
+      const mainArm=c.mainArm;
+      const offArm=mainArm==='right'?'left':'right';
+      const spearArm=main.includes('trident')||main.includes('spear')?mainArm:(off.includes('trident')||off.includes('spear')?offArm:null);
+      const shieldArm=main.includes('shield')?mainArm:(off.includes('shield')?offArm:null);
+      const useSuppression=saturate(Math.max(
+        m.poseWeights.use_spear||0,m.poseWeights.use_shield||0,m.poseWeights.use_bow||0,
+        m.poseWeights.use_crossbow||0,m.poseWeights.use_eat||0,m.poseWeights.use_drink||0
+      ));
+      const heldGate=1-useSuppression;
+      const spear=m.blend('hold_spear',!!spearArm?1:0,4.5,4.5)*weight*heldGate;
+      const shield=m.blend('hold_shield',!!shieldArm?1:0,5,5)*weight*heldGate;
+      const crossArm=main.includes('crossbow')?mainArm:(off.includes('crossbow')?offArm:null);
+      const chargedArm=c.rightArmPose==='crossbow_hold'?'right':(c.leftArmPose==='crossbow_hold'?'left':null);
+      const cross=m.blend('hold_crossbow',!!crossArm?1:0,5,5)*weight*heldGate;
+
+      if (main.includes('map')||off.includes('map')) {
+        this.d.play('nea:MapHoldingAnimation',c.continuousSeconds,weight*heldGate);
+        return;
+      }
+      if (spearArm && spear>1e-4) {
+        const sign=spearArm==='right'?1:-1, k=spear;
+        this.rig.rotate(upper(spearArm),-34*k,-sign*6*k,-sign*3*k);
+        flexElbow(this.rig,spearArm,4*k);
+      }
+      if (shieldArm && shield>1e-4) {
+        const sign=shieldArm==='right'?1:-1, k=shield;
+        this.rig.rotate(upper(shieldArm),-16*k,-sign*3*k,-sign*10*k);
+        flexElbow(this.rig,shieldArm,16*k);
+      }
+      if (crossArm && cross>1e-4) {
+        const aimArm=chargedArm||crossArm;
+        const support=aimArm==='right'?'left':'right';
+        const sign=aimArm==='right'?1:-1, k=cross;
+        if (chargedArm) {
+          const aimYaw=clamp(c.headYaw-m.lookBodyYaw,-65,65);
+          const aimPitch=clamp(c.headPitch-m.lookBodyPitch,-70,55);
+          this.rig.rotate(upper(aimArm),(-90+aimPitch)*k,(aimYaw-sign*8)*k,-sign*2*k);
+          this.rig.setRotation(elbow(aimArm),0,0,0);
+          this.rig.setRotation(forearm(aimArm),0,0,0);
+          this.rig.setRotation(wrist(aimArm),0,0,0);
+          this.rig.rotate(upper(support),-24*k,sign*10*k,(support==='right'?-7:7)*k);
+          flexElbow(this.rig,support,48*k);
+        } else {
+          this.rig.rotate(upper(crossArm),-28*k,-sign*7*k,-sign*4*k);
+          flexElbow(this.rig,crossArm,12*k);
+        }
+      }
+    }
   }
 
-  poseHead(context.fallFlying || context.crawling || context.swimming ? 0.35 : 1);
-  heldItemPose();
-  useItem();
-  combatSwing();
+  class CombatLayer {
+    constructor(rig,d,joints) { this.rig=rig;this.d=d;this.joints=joints; }
+    apply(c,m,weight) {
+      if (weight<=1e-4) return false;
+      const arm=(c.attackArm==='left'||c.attackArm==='right')?c.attackArm:c.mainArm;
+      const other=arm==='right'?'left':'right';
+      const sign=arm==='right'?1:-1;
+      const held=arm===c.mainArm?c.mainItem:c.offItem;
+      const unarmed=!held||held==='minecraft:air';
+      // Swing progression follows the weapon's vanilla attack-strength delay, not the short visual
+      // attackTime pulse. Sword/axe recovery therefore occupies the same cooldown the gameplay uses.
+      const active=!!c.attackActive || c.vanillaAttackTime>1e-4;
+      if (!active) return false;
+      const duration=Math.max(.28,c.attackDuration||.62);
+      const u=!!c.attackActive ? saturate(c.attackTime/duration) : saturate(c.vanillaAttackTime);
+      const envelope=Math.sin(Math.PI*u)*weight;
+      if (envelope<=1e-4) return false;
+      const swing=smoother01(saturate(u));
+      const strike=smoother01(saturate((u-.16)/.50));
+      const alternate=(c.swingIndex&1)!==0?-1:1;
+      const direction=alternate*(swing*2-1);
 
-  if (context.swing <= 0) {
-    rig.bend('spine', context.crouching ? 7 * locomotionWeight : stride * movement * 1.8 * locomotionWeight, 0.84);
-    rig.twist('spine', stride * movement * 1.5 * locomotionWeight, 0.90);
+      this.joints.combatStance(arm,envelope,unarmed);
+
+      // Whole-body kinetic chain: stance -> pelvis -> curved spine -> shoulder -> hand.
+      this.rig.move('pelvis',0,(unarmed?.020:.012)*envelope,-(unarmed?.045:.032)*envelope);
+      this.rig.rotate('pelvis',(unarmed?7:5)*envelope,-sign*direction*(unarmed?11:10)*envelope,-sign*direction*2.5*envelope);
+      this.rig.rotate('spine_lower',(unarmed?11:9)*envelope,-sign*direction*(unarmed?14:13)*envelope,-sign*direction*3.5*envelope);
+      this.rig.rotate('spine_mid',(unarmed?9:8)*envelope,-sign*direction*(unarmed?12:11)*envelope,-sign*direction*3*envelope);
+      this.rig.rotate('chest',(unarmed?16:14)*envelope,-sign*direction*(unarmed?28:31)*envelope,-sign*direction*7*envelope);
+      this.rig.rotate(arm+'_clavicle',0,-sign*7*envelope,sign*5*envelope);
+      this.rig.rotate(arm+'_scapula',0,-sign*6*envelope,sign*4*envelope);
+
+      if (unarmed) {
+        // Boxing-style punch: rear/dominant side rotates through, non-striking arm guards the head.
+        const wind=1-strike;
+        this.rig.rotate(upper(arm),(-52-48*strike)*envelope,-sign*(8+12*strike)*envelope,-sign*(8+8*wind)*envelope);
+        flexElbow(this.rig,arm,(72-58*strike)*envelope,0,sign*3*wind*envelope);
+        this.rig.rotate(forearm(arm),0,sign*5*strike*envelope,0);
+        this.rig.rotate(wrist(arm),-4*strike*envelope,0,0);
+
+        this.rig.rotate(upper(other),-58*envelope,sign*10*envelope,(other==='right'?-18:18)*envelope);
+        flexElbow(this.rig,other,78*envelope);
+        this.rig.rotate(forearm(other),0,(other==='right'?5:-5)*envelope,0);
+      } else {
+        const stab=c.swingAnimationType==='stab';
+        if (stab) {
+          this.rig.rotate(upper(arm),(-58-48*strike)*envelope,-sign*(10+18*strike)*envelope,-sign*6*envelope);
+          flexElbow(this.rig,arm,(34-24*strike)*envelope);
+        } else {
+          this.rig.rotate(upper(arm),(-46-76*strike)*envelope,-sign*(14+38*direction)*envelope,sign*(10+10*strike)*envelope);
+          flexElbow(this.rig,arm,(42-28*strike)*envelope,0,sign*6*direction*envelope);
+          this.rig.rotate(forearm(arm),0,sign*12*direction*envelope,sign*4*strike*envelope);
+          this.rig.rotate(wrist(arm),-6*strike*envelope,sign*14*direction*envelope,sign*7*strike*envelope);
+        }
+        this.rig.rotate(upper(other),-20*envelope,0,(other==='right'?10:-10)*envelope);
+        flexElbow(this.rig,other,20*envelope);
+      }
+      return true;
+    }
   }
-});
+
+  class PlayerRigMotionGraph {
+    constructor(rig) {
+      this.rig=rig;
+      this.delegate=new AnimationDelegate(rig);
+      this.joints=new AnatomicalJoints(rig);
+      this.locomotion=new LocomotionLayer(rig,this.delegate,this.joints);
+      this.crouch=new CrouchLayer(rig,this.delegate,this.joints);
+      this.air=new AirLayer(rig,this.delegate,this.joints);
+      this.water=new WaterLayer(rig,this.delegate,this.joints);
+      this.elytra=new ElytraLayer(rig,this.delegate);
+      this.inertia=new InertiaLayer(rig);
+      this.vehicle=new VehicleLayer(rig,this.delegate,this.joints);
+      this.climb=new ClimbLayer(rig,this.delegate,this.joints);
+      this.look=new LookLayer(rig);
+      this.items=new ItemUseLayer(rig,this.delegate);
+      this.held=new HeldPoseLayer(rig,this.delegate);
+      this.combat=new CombatLayer(rig,this.delegate,this.joints);
+      this.memory=new Map();
+      this.lastPrune=0;
+    }
+    mode(c) {
+      if (c.passenger||c.vanillaPassenger) {
+        if (c.vehicleType.includes('boat')||c.vehicleType.includes('raft')) return 'boat';
+        if (/(horse|donkey|mule|camel|pig|strider)/.test(c.vehicleType)) return 'horse';
+        return 'passenger';
+      }
+      if (c.fallFlying||c.vanillaFallFlying) return 'elytra';
+      if (c.crawling) return 'crawl';
+      if (c.inWater||c.vanillaInWater) {
+        if (c.swimming||c.vanillaSwimming||c.swimAmount>.06) return 'swim';
+        return 'surface_swim';
+      }
+      if (c.climbing) return 'climb';
+      if (c.crouching||c.vanillaCrouching) return 'crouch';
+      if (!c.onGround) return 'air';
+      return 'ground';
+    }
+    state(c,mode) {
+      let state=this.memory.get(c.playerId);
+      if (!state) { state=new PlayerMotionMemory(c.continuousSeconds,mode,c); this.memory.set(c.playerId,state); }
+      const dt=state.begin(c);
+      state.updateVector(c,dt); state.updateMode(mode,c,dt);
+      if (c.continuousSeconds-this.lastPrune>5) {
+        this.lastPrune=c.continuousSeconds;
+        for (const [id,value] of this.memory) if (c.continuousSeconds-value.lastSeen>20) this.memory.delete(id);
+      }
+      return state;
+    }
+    apply(c) {
+      const strength=clamp(c.strength,0,2);
+      if (strength<=1e-4) return;
+      const mode=this.mode(c), m=this.state(c,mode);
+      const style=c.style||'Hybrid';
+
+      this.locomotion.apply(c,m,m.weight('ground'),style,strength);
+      this.crouch.apply(c,m,m.weight('crouch'),strength);
+      this.air.apply(c,m,m.weight('air'),strength);
+      this.water.surface(c,m,m.weight('surface_swim'),strength);
+      this.water.swim(c,m,m.weight('swim'),strength);
+      this.water.crawl(c,m,m.weight('crawl'),strength);
+      this.elytra.apply(c,m,m.weight('elytra'),strength);
+      this.climb.apply(c,m,m.weight('climb'),strength);
+      this.vehicle.boat(c,m.weight('boat'),strength);
+      this.vehicle.horse(c,m.weight('horse'),strength);
+      this.vehicle.passenger(c,m.weight('passenger'),strength);
+      this.air.landing(c,m,m.weight('ground'),strength);
+      this.inertia.apply(c,m,mode,strength);
+      this.look.apply(c,m,strength);
+
+      const overlay=clamp(strength,0,1.35);
+      const using=this.items.apply(c,m,overlay);
+      this.held.apply(c,m,overlay*.72,!!c.attackActive || c.vanillaAttackTime>1e-4);
+      const useBlock=saturate(Math.max(m.poseWeights.use_spear||0,m.poseWeights.use_shield||0,m.poseWeights.use_bow||0,m.poseWeights.use_crossbow||0,m.poseWeights.use_eat||0,m.poseWeights.use_drink||0));
+      this.combat.apply(c,m,overlay*(1-useBlock*.96));
+    }
+  }
+
+  globalThis.CombatantPlayerAnimations=Object.freeze({
+    PlayerRigMotionGraph, PlayerMotionMemory, AnimationDelegate, AnatomicalJoints,
+    LocomotionLayer, CrouchLayer, AirLayer, WaterLayer, ElytraLayer, InertiaLayer, VehicleLayer,
+    ClimbLayer, LookLayer, ItemUseLayer, HeldPoseLayer, CombatLayer
+  });
+
+  const graph=new PlayerRigMotionGraph(playerRig);
+  playerRig.onPose(context=>graph.apply(context));
+})();

@@ -12,6 +12,7 @@ extern "C" {
 JNIEXPORT jobject JNICALL Java_combatant_client_util_media_impl_win_WindowsMediaPlayerInfo_getMediaSessions(JNIEnv* env, jobject obj);
 JNIEXPORT jint JNICALL Java_combatant_client_util_media_impl_win_WindowsMediaPlayerInfo_fillSessionSnapshotBuffer(JNIEnv* env, jobject obj, jobject buffer, jint maxSessions);
 JNIEXPORT jbyteArray JNICALL Java_combatant_client_util_media_impl_win_WindowsMediaPlayerInfo_getArtworkPng(JNIEnv* env, jobject obj, jstring sessionId);
+JNIEXPORT void JNICALL Java_combatant_client_util_media_impl_win_WindowsMediaPlayerInfo_nativeShutdown(JNIEnv* env, jobject obj);
 
 JNIEXPORT void JNICALL Java_combatant_client_util_media_impl_win_WindowsMediaSession_play(JNIEnv* env, jobject obj);
 JNIEXPORT void JNICALL Java_combatant_client_util_media_impl_win_WindowsMediaSession_pause(JNIEnv* env, jobject obj);

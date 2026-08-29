@@ -8,7 +8,6 @@
 package combatant.client.features.gui.hud.nondraggable.impl;
 
 
-import combatant.client.features.theme.Theme;
 import combatant.client.config.values.*;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -20,7 +19,6 @@ import combatant.client.config.SettingDef;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
-import combatant.client.features.theme.Themes;
 import combatant.client.mixins.accessors.PlayerInventoryAccessor;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.math.ColorMath;
@@ -467,19 +465,12 @@ public final class CustomHotbar extends AbstractHudElement {
             return new SelectionGradient(start, end, 90.0f);
         }
 
-        Themes.ThemeEntry entry = Theme.currentEntry();
-        Themes.GradientSpec gradient = entry != null ? entry.cardGradient() : null;
-        if (gradient != null && gradient.enabled()) {
-            return new SelectionGradient(
-                    withSelectorAlpha(gradient.start(), a),
-                    withSelectorAlpha(gradient.end(), a),
-                    gradient.angleDeg()
-            );
-        }
-
-        int start = ColorMath.premultiplyAlpha(getHotbarSelectRgb(), a);
-        int end = ColorMath.premultiplyAlpha(getHotbarSelectEndRgb(), a);
-        return new SelectionGradient(start, end, 90.0f);
+        HudRenderUtil.ThemeGradient gradient = HudRenderUtil.themeSelectionGradient(a);
+        return new SelectionGradient(
+                premultiply(gradient.start()),
+                premultiply(gradient.end()),
+                gradient.angleDeg()
+        );
     }
 
     private boolean hasEffect() {

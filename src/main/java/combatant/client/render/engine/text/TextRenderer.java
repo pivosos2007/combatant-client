@@ -21,7 +21,7 @@ import combatant.client.render.helpers.ScissorFunction;
 
 public interface TextRenderer {
     static TextRenderer get() {
-        return Fonts.RENDERER != null ? Fonts.RENDERER : VanillaTextRenderer.INSTANCE;
+        return Fonts.defaultRenderer();
     }
 
     private static double fadeAlphaAt(double x,

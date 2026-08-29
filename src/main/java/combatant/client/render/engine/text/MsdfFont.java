@@ -54,8 +54,6 @@ public final class MsdfFont implements GlyphFont {
 
     public static GlyphFont[] tryCreate(FontFace face) {
         if (!(face instanceof BuiltinFontFace)) return null;
-        if (FontUtils.isIconFamily(face.info.family())) return null;
-
         MsdfAtlas atlas = MsdfAtlas.load(face.info);
         if (atlas == null) return null;
 

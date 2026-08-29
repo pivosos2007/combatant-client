@@ -60,6 +60,14 @@ The AGPLv3 component and GPLv3 code may be combined under AGPLv3 section 13. The
 
 The terrain vertex implementation contains a local source comment crediting Sodium's compact chunk-vertex packing and the Iris shaderpack extension concept. This notice records architectural/reference influence; this audit does not assert additional copied source beyond what the file itself states. Their own licenses and notices apply to their separately distributed projects and runtime dependencies.
 
+## Noto fonts
+
+- Upstream: https://github.com/google/fonts and https://github.com/notofonts/noto-cjk
+- Copyright: The Noto Project Authors; Noto CJK contributors and its declared upstream copyright holders
+- License: SIL Open Font License 1.1
+- License texts: `THIRD_PARTY_LICENSES/Noto-OFL-1.1.txt` and `THIRD_PARTY_LICENSES/Noto-CJK-OFL-1.1.txt`
+- Scope: the bundled data-driven Unicode fallback fonts under `assets/combatant/font/unicode/**`. These fonts provide CJK, Arabic, Hebrew, Indic, Southeast Asian, Georgian, Armenian, Ethiopic and other script coverage. Glyph textures are rasterized lazily by Minecraft's font atlas.
+
 ## Hold My Items
 
 - Upstream project: Hold My Items

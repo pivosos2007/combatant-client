@@ -26,10 +26,16 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Isolated, resource-pack reloadable player animation runtime. Like HMI, it exposes no Java
- * objects to V8: one flat context enters and one compact command batch leaves per evaluation.
+ * Isolated, resource-pack reloadable player animation runtime. No Java objects enter V8: one flat
+ * render-state context enters and one compact command batch leaves per evaluation.
+ *
+ * Animation source data is baked into normal JavaScript classes/functions at development time;
+ * runtime never parses animation JSON.
  */
 public final class PlayerRigScriptRuntime implements AutoCloseable {
+    public static final Identifier ANIMATION_LIBRARY = Identifier.fromNamespaceAndPath(
+            "combatant", "playeranimator/player_animation_library.js"
+    );
     public static final Identifier SCRIPT = Identifier.fromNamespaceAndPath(
             "combatant", "playeranimator/player_rig.js"
     );
@@ -45,16 +51,26 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
             ensureReady();
             if (runtime == null) return List.of();
             try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("player_animator:v8_execute")) {
-                Object raw = runtime.getGlobalObject().invokeObject(
-                        "__combatant_player_rig_execute",
-                        packedContext != null ? packedContext : new Object[0]
-                );
+                Object raw = invokePacked(runtime, packedContext);
                 return PlayerRigScriptCommand.decode(raw);
             }
         } catch (Throwable t) {
             DebugLog.error("[PlayerAnimator] JavaScript execution failed: %s", t, t.getMessage());
             return List.of();
         }
+    }
+
+    /** Keep the packed array as one V8 argument instead of spreading Object[] through varargs. */
+    static Object invokePacked(V8Runtime runtime, Object[] packedContext) throws Exception {
+        if (runtime == null) throw new IllegalArgumentException("Player rig V8 runtime must not be null");
+        Object[] safe = packedContext != null ? packedContext : new Object[0];
+        return runtime.getGlobalObject().invokeObject(
+                "__combatant_player_rig_execute", invocationArguments(safe)
+        );
+    }
+
+    static Object[] invocationArguments(Object[] packedContext) {
+        return new Object[]{packedContext != null ? packedContext : new Object[0]};
     }
 
     public synchronized void invalidate() {
@@ -75,6 +91,8 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
                 .executeVoid();
 
         ResourceManager manager = Minecraft.getInstance().getResourceManager();
+        executeResource(manager, ANIMATION_LIBRARY);
+
         String source = loadStack(manager);
         if (!source.isBlank()) {
             runtime.getExecutor(source).setResourceName(SCRIPT.toString()).executeVoid();
@@ -131,35 +149,77 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
                   twist(deformer,angle,falloff=1) { __rig_push_angle(9,__rig_deform(deformer),__rig_number(angle)*__rig_rad,falloff); },
                   twistRadians(deformer,angle,falloff=1) { __rig_push_angle(9,__rig_deform(deformer),angle,falloff); },
                   clearDeform(deformer) { const target=__rig_deform(deformer); if(target>=0) __rig_commands.push([10,target]); },
+                  animation(name) { return globalThis.RigAnimationLibrary?.get(String(name)) ?? null; },
+                  play(name,time,weight=1,options=null) {
+                    return globalThis.RigAnimationLibrary?.play(String(name), playerRig, __rig_number(time), __rig_number(weight,1), options) ?? false;
+                  },
+                  animationNames() { return globalThis.RigAnimationLibrary?.names() ?? []; },
                   clamp(value,min,max) { return Math.max(min,Math.min(max,value)); },
                   lerp(value,a,b) { return a+(b-a)*value; },
                   smoothstep(value) { value=Math.max(0,Math.min(1,value)); return value*value*(3-2*value); }
                 });
                 globalThis.rig = playerRig;
 
-                const __rig_unpack_context = packed => ({
-                  playerId: String(packed?.[0] ?? ''),
-                  age: __rig_number(packed?.[1]), tickDelta: __rig_number(packed?.[2]), deltaSeconds: __rig_number(packed?.[3]),
-                  yaw: __rig_number(packed?.[4]), pitch: __rig_number(packed?.[5]), swing: __rig_number(packed?.[6]),
-                  velocity: { x:__rig_number(packed?.[7]), y:__rig_number(packed?.[8]), z:__rig_number(packed?.[9]) },
-                  onGround: !!packed?.[10], crouching: !!packed?.[11], sprinting: !!packed?.[12], swimming: !!packed?.[13],
-                  fallFlying: !!packed?.[14], passenger: !!packed?.[15], usingItem: !!packed?.[16],
-                  pose: String(packed?.[17] ?? 'standing'), mainArm: String(packed?.[18] ?? 'right'),
-                  mainItem: String(packed?.[19] ?? 'minecraft:air'), offItem: String(packed?.[20] ?? 'minecraft:air'),
-                  style: String(packed?.[21] ?? 'Hybrid'), strength: __rig_number(packed?.[22], 1),
-                  climbing: !!packed?.[23], inWater: !!packed?.[24], underWater: !!packed?.[25],
-                  crawling: !!packed?.[26], fallDistance: __rig_number(packed?.[27]), y: __rig_number(packed?.[28]),
-                  useAction: String(packed?.[29] ?? 'none'), useItem: String(packed?.[30] ?? 'minecraft:air'),
-                  useArm: String(packed?.[31] ?? 'none'), useTicks: __rig_number(packed?.[32]),
-                  swingIndex: Math.trunc(__rig_number(packed?.[33]))
-                });
+                const __rig_unpack_context = packed => {
+                  const useTicks = __rig_number(packed?.[32]);
+                  return {
+                    // Compatibility bridge retained for existing resource-pack addons.
+                    playerId: String(packed?.[0] ?? ''),
+                    age: __rig_number(packed?.[1]), tickDelta: __rig_number(packed?.[2]), deltaSeconds: __rig_number(packed?.[3]),
+                    yaw: __rig_number(packed?.[4]), pitch: __rig_number(packed?.[5]), swing: __rig_number(packed?.[6]),
+                    velocity: { x:__rig_number(packed?.[7]), y:__rig_number(packed?.[8]), z:__rig_number(packed?.[9]) },
+                    onGround: !!packed?.[10], crouching: !!packed?.[11], sprinting: !!packed?.[12], swimming: !!packed?.[13],
+                    fallFlying: !!packed?.[14], passenger: !!packed?.[15], usingItem: !!packed?.[16],
+                    pose: String(packed?.[17] ?? 'standing'), mainArm: String(packed?.[18] ?? 'right'),
+                    mainItem: String(packed?.[19] ?? 'minecraft:air'), offItem: String(packed?.[20] ?? 'minecraft:air'),
+                    style: String(packed?.[21] ?? 'Hybrid'), strength: __rig_number(packed?.[22], 1),
+                    climbing: !!packed?.[23], inWater: !!packed?.[24], underWater: !!packed?.[25],
+                    crawling: !!packed?.[26], fallDistance: __rig_number(packed?.[27]), y: __rig_number(packed?.[28]),
+                    useAction: String(packed?.[29] ?? 'none'), useItem: String(packed?.[30] ?? 'minecraft:air'),
+                    useArm: String(packed?.[31] ?? 'none'), useTicks,
+                    swingIndex: Math.trunc(__rig_number(packed?.[33])),
+
+                    // AvatarRenderState / continuous render-time extensions.
+                    attackTime: __rig_number(packed?.[34]), attackActive: !!packed?.[35],
+                    bodyYaw: __rig_number(packed?.[36]), headYaw: __rig_number(packed?.[37]), headPitch: __rig_number(packed?.[38]),
+                    walkAnimationPos: __rig_number(packed?.[39]), walkAnimationSpeed: __rig_number(packed?.[40]),
+                    speedValue: Math.max(1e-4,__rig_number(packed?.[41],1)), swimAmount: __rig_number(packed?.[42]),
+                    fallFlyingTime: __rig_number(packed?.[43]), shouldApplyFlyingYRot: !!packed?.[44], flyingYRot: __rig_number(packed?.[45]),
+                    vanillaCrouching: !!packed?.[46], vanillaFallFlying: !!packed?.[47], vanillaSwimming: !!packed?.[48],
+                    vanillaPassenger: !!packed?.[49], vanillaUsingItem: !!packed?.[50], vanillaInWater: !!packed?.[51],
+                    boatLeft: !!packed?.[52], boatRight: !!packed?.[53],
+                    boatLeftTime: __rig_number(packed?.[54]), boatRightTime: __rig_number(packed?.[55]),
+                    vehicleType: String(packed?.[56] ?? 'none'), horizontalSpeed: __rig_number(packed?.[57]),
+                    continuousSeconds: __rig_number(packed?.[58]),
+                    vanillaUseTicks: __rig_number(packed?.[59], useTicks),
+                    attackArm: String(packed?.[60] ?? packed?.[18] ?? 'right'),
+                    swingAnimationType: String(packed?.[61] ?? 'none'),
+                    vanillaAttackTime: __rig_number(packed?.[62], packed?.[6]),
+                    renderPosition: {
+                      x: __rig_number(packed?.[63]), y: __rig_number(packed?.[64]), z: __rig_number(packed?.[65])
+                    },
+                    leftArmPose: String(packed?.[66] ?? 'empty'),
+                    rightArmPose: String(packed?.[67] ?? 'empty'),
+                    maxCrossbowChargeDuration: Math.max(1e-4,__rig_number(packed?.[68],25)),
+                    creativeFlying: !!packed?.[69],
+                    attackCooldown: Math.max(0,Math.min(1,__rig_number(packed?.[70],1))),
+                    attackDuration: Math.max(.28,__rig_number(packed?.[71],.62)),
+                    useTimeSeconds: Math.max(0,__rig_number(packed?.[59], useTicks) / 20),
+                    walkTime: __rig_number(packed?.[39]) / 20,
+                    walkPhase: __rig_number(packed?.[39]) * 0.6662
+                  };
+                };
                 globalThis.__combatant_player_rig_execute = packed => {
                   __rig_commands = [];
                   const context = __rig_unpack_context(packed);
-                  for (let i=0; i<__rig_callbacks.length; i++) __rig_callbacks[i](context, playerRig);
-                  const result = __rig_commands;
-                  __rig_commands = [];
-                  return result;
+                  globalThis.__combatant_player_rig_context = context;
+                  try {
+                    for (let i=0; i<__rig_callbacks.length; i++) __rig_callbacks[i](context, playerRig);
+                    return __rig_commands;
+                  } finally {
+                    globalThis.__combatant_player_rig_context = null;
+                    __rig_commands = [];
+                  }
                 };
                 """;
     }
@@ -182,6 +242,16 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
             out.append('"').append(deformers[i].id()).append("\":").append(deformers[i].channel());
         }
         return out.append('}').toString();
+    }
+
+    private void executeResource(ResourceManager manager, Identifier id) throws Exception {
+        Resource resource = manager.getResource(id).orElseThrow(
+                () -> new IllegalStateException("Missing player animation resource: " + id)
+        );
+        try (BufferedReader reader = resource.openAsReader()) {
+            String source = reader.lines().collect(Collectors.joining("\n"));
+            runtime.getExecutor(source).setResourceName(id.toString()).executeVoid();
+        }
     }
 
     private static String loadStack(ResourceManager manager) {

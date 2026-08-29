@@ -224,7 +224,7 @@ export function render(ctx) {
     w: width,
     h: height,
     radius,
-    alpha: 0.82,
+    alpha: 1.0,
     brightness: 1.025,
   }));
 

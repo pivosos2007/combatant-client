@@ -1,0 +1,128 @@
+{
+  "providers": [
+    {
+      "type": "reference",
+      "id": "minecraft:default"
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_cjk_sc.ttf",
+      "size": 11.0,
+      "oversample": 1.25
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_arabic.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_hebrew.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_devanagari.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_bengali.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_gurmukhi.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_gujarati.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_tamil.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_telugu.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_kannada.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_malayalam.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_thai.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_khmer.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_lao.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_myanmar.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_georgian.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_armenian.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_ethiopic.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    },
+    {
+      "type": "ttf",
+      "file": "combatant:unicode/noto_sans_sinhala.ttf",
+      "size": 11.0,
+      "oversample": 1.5
+    }
+  ]
+}

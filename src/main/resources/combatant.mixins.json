@@ -41,6 +41,7 @@
     "AbstractSelectionListMixin",
     "AbstractSliderButtonMixin",
     "AbstractWidgetMixin",
+    "AvatarRendererMixin",
     "AtmosphericFogEnvironmentMixin",
     "BatchingRenderCommandQueueMixin",
     "BossHealthOverlayMixin",

@@ -176,11 +176,14 @@ dependencies {
     // Javet core only. Native V8 binaries are copied into resources/javet/natives.
     bundledLibrary "com.caoccao.javet:javet:${javetVersion}"
 
-    // Javet in minimal V8 mode only: no Node runtime and no ARM native payloads.
-    // ARM builds can be added later behind a separate opt-in distribution profile.
+    // Javet in minimal V8 mode only: no Node runtime. Keep every desktop native
+    // in the universal client jar; the resource loader extracts only the file
+    // selected by Javet for the current OS/architecture.
     javetNativeBundle "com.caoccao.javet:javet-v8-windows-x86_64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-linux-x86_64:${javetVersion}"
+    javetNativeBundle "com.caoccao.javet:javet-v8-linux-arm64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-macos-x86_64:${javetVersion}"
+    javetNativeBundle "com.caoccao.javet:javet-v8-macos-arm64:${javetVersion}"
 
 }
 
@@ -246,6 +249,27 @@ tasks.register("generateSvgMsdf", Exec) {
             "-OutRoot", outputDir.get().asFile.path,
             "-PreprocessorClasspath", preprocessorClasspath,
             "-JavaExe", generatorJava.get().executablePath.asFile.absolutePath
+}
+
+tasks.register("generateFontMsdf", Exec) {
+    group = "render assets"
+    description = "Regenerates compact MSDF atlases for bundled icon and symbol fonts."
+
+    def script = file("tools/msdf/GenerateFontMsdf.ps1")
+    inputs.files(fileTree("src/main/resources/assets/combatant/font") {
+        include "icons.ttf", "iconsnur.ttf", "mediaplayer.ttf", "vanilla_symbols.ttf", "weather_icons.ttf"
+    })
+    inputs.file(script)
+    def atlasBases = ["icons", "iconsnur", "mediaplayer", "vanilla_symbols", "weather_icons"]
+    outputs.files(atlasBases.collectMany { base -> [
+            file("src/main/resources/assets/combatant/font/msdf/${base}.json"),
+            file("src/main/resources/assets/combatant/font/msdf/${base}.png")
+    ] })
+
+    commandLine "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", script.absolutePath
 }
 
 
@@ -362,6 +386,13 @@ jar {
 
     from("LICENSE") {
         rename { "${it}_${project.archives_base_name}" }
+    }
+    from("THIRD_PARTY_NOTICES.md")
+    from("THIRD_PARTY_LICENSES/Noto-OFL-1.1.txt") {
+        into "THIRD_PARTY_LICENSES"
+    }
+    from("THIRD_PARTY_LICENSES/Noto-CJK-OFL-1.1.txt") {
+        into "THIRD_PARTY_LICENSES"
     }
     from {
         configurations.bundledLibrary.collect { it.isDirectory() ? it : zipTree(it) }

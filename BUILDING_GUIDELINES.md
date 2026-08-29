@@ -76,7 +76,9 @@ Combatant uses Javet for the UI script runtime. The Java dependency is bundled b
 ```text
 com.caoccao.javet:javet-v8-windows-x86_64
 com.caoccao.javet:javet-v8-linux-x86_64
+com.caoccao.javet:javet-v8-linux-arm64
 com.caoccao.javet:javet-v8-macos-x86_64
+com.caoccao.javet:javet-v8-macos-arm64
 ```
 
 The current Javet version is defined in `build.gradle`.
@@ -100,7 +102,25 @@ If Javet fails at runtime, check:
 - the build was produced through Gradle, not by manually zipping classes;
 - `processResources` ran successfully;
 - the produced jar contains `javet/natives/<platform native file>`;
-- the platform is one of the bundled x86_64 targets.
+- the platform is one of the bundled desktop targets (Windows x86_64, Linux
+  x86_64/ARM64, or macOS x86_64/ARM64). Javet does not currently publish a
+  Windows ARM64 V8 artifact.
+
+## Font MSDF Assets
+
+Custom UI text uses compact MSDF atlases for the selected Combatant family.
+Missing Unicode runs are delegated to Combatant's bundled Noto-backed Minecraft
+font provider. It covers European Latin (including German and Latvian), CJK
+(Han, Japanese kana and Korean Hangul), RTL scripts and major Indic/Southeast
+Asian scripts. Minecraft creates GPU glyph pages only for characters actually
+encountered instead of keeping the full font collection in texture memory.
+
+The bundled icon/symbol atlases can be regenerated after changing their TTF
+sources with:
+
+```powershell
+.\gradlew.bat generateFontMsdf
+```
 
 ## MediaPlayerInfo Native Code
 

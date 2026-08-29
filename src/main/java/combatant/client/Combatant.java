@@ -72,6 +72,7 @@ import combatant.client.util.combat.protocol.CombatProtocolHeuristics;
 import combatant.client.util.combat.SprintController;
 import combatant.client.util.combat.VulcanReachController;
 import combatant.client.util.entity.simulation.BoatSimulationCache;
+import combatant.client.render.engine.renderer.ui.runtime.script.JavetRuntimeBootstrap;
 import combatant.client.util.media.MediaSessionService;
 import combatant.client.util.network.BacktrackController;
 import combatant.client.util.network.BlinkManager;
@@ -430,7 +431,13 @@ public class Combatant implements ClientModInitializer {
         ProxyBackend.init();
         CommandManager.init();
         MediaSessionService.get().init();
-        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> MediaSessionService.get().shutdown());
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            // Drop process-wide native hardening first so the rest of shutdown is not constrained
+            // by Combatant's process DACL / dumpability changes.
+            NativeMemoryGuard.shutdown();
+            MediaSessionService.get().shutdown();
+            JavetRuntimeBootstrap.shutdown();
+        });
 
         // -------- CONFIG + BINDS ----------
         // Enabled addons declare built-in module exclusions before auto-discovery.

@@ -323,6 +323,12 @@ public enum Themes {
     private static ThemeEntry currentEntry = CLASSIC_ENTRY;
     private static ThemeEntry transitionFromEntry = CLASSIC_ENTRY;
     private static ThemeEntry animatedEntryCache = CLASSIC_ENTRY;
+    private static GradientSpec transitionFromHudAccentGradient = resolveHudAccentGradient(CLASSIC_ENTRY, CLASSIC);
+    private static GradientSpec transitionFromHudForegroundGradient = resolveHudForegroundGradient(CLASSIC_ENTRY, CLASSIC);
+    private static GradientSpec transitionFromHudSelectionGradient = resolveHudSelectionGradient(CLASSIC_ENTRY, CLASSIC);
+    private static GradientSpec transitionFromHudPanelGradient = resolveHudPanelGradient(CLASSIC_ENTRY, CLASSIC);
+    private static GradientSpec transitionFromHudBackgroundGradient = resolveHudBackgroundGradient(CLASSIC_ENTRY, CLASSIC);
+    private static GradientSpec transitionFromHudShadowGradient = resolveHudShadowGradient(CLASSIC_ENTRY, CLASSIC);
     private static final ThemeEntry LEGACY_ENTRY = new ThemeEntry(
             THEME_LEGACY,
             "Legacy",
@@ -659,6 +665,62 @@ public enum Themes {
         return animatedEntry();
     }
 
+    /**
+     * HUD accent/stroke gradient with transition-safe semantics.
+     * <p>
+     * Raw theme gradients cannot be blended directly when one theme has the gradient
+     * disabled: the disabled slot contains its semantic surface/stroke color, while HUD
+     * code falls back to accent colors. Switching the slot to enabled at transition start
+     * therefore creates a dark flash. These accessors blend the colors that are actually
+     * rendered by HUD consumers instead.
+     */
+    public static GradientSpec hudAccentGradient() {
+        return animatedHudGradient(
+                transitionFromHudAccentGradient,
+                resolveHudAccentGradient(currentEntry, current)
+        );
+    }
+
+    /** Theme foreground/card accent gradient used by HUD icons and selectors. */
+    public static GradientSpec hudForegroundGradient() {
+        return animatedHudGradient(
+                transitionFromHudForegroundGradient,
+                resolveHudForegroundGradient(currentEntry, current)
+        );
+    }
+
+    /** Theme card/selection gradient with the legacy HUD selector fallback preserved. */
+    public static GradientSpec hudSelectionGradient() {
+        return animatedHudGradient(
+                transitionFromHudSelectionGradient,
+                resolveHudSelectionGradient(currentEntry, current)
+        );
+    }
+
+    /** Theme panel gradient used by HUD surfaces. */
+    public static GradientSpec hudPanelGradient() {
+        return animatedHudGradient(
+                transitionFromHudPanelGradient,
+                resolveHudPanelGradient(currentEntry, current)
+        );
+    }
+
+    /** Subtle window background gradient used by generic HUD panel fills. */
+    public static GradientSpec hudBackgroundGradient() {
+        return animatedHudGradient(
+                transitionFromHudBackgroundGradient,
+                resolveHudBackgroundGradient(currentEntry, current)
+        );
+    }
+
+    /** Theme shadow gradient; a non-gradient theme resolves to a solid accent pair. */
+    public static GradientSpec hudShadowGradient() {
+        return animatedHudGradient(
+                transitionFromHudShadowGradient,
+                resolveHudShadowGradient(currentEntry, current)
+        );
+    }
+
     static String currentId() {
         return currentId;
     }
@@ -908,9 +970,7 @@ public enum Themes {
         }
         Theme from = displayedThemeRaw();
         ThemeEntry fromEntry = displayedEntryRaw();
-        current = t;
-        currentId = THEME_CLASSIC;
-        currentEntry = new ThemeEntry(
+        ThemeEntry targetEntry = new ThemeEntry(
                 THEME_CLASSIC,
                 "Custom",
                 false,
@@ -922,6 +982,9 @@ public enum Themes {
                 flatGradient(t.windowStroke())
         );
         beginThemeTransition(from, fromEntry);
+        current = t;
+        currentId = THEME_CLASSIC;
+        currentEntry = targetEntry;
     }
 
     static Theme classic() {
@@ -950,12 +1013,29 @@ public enum Themes {
         if (!animate) {
             animatedThemeCache = current;
             animatedEntryCache = currentEntry;
+            syncHudTransitionSources();
         }
     }
 
     private static void beginThemeTransition(Theme fromTheme, ThemeEntry fromEntry) {
+        // Snapshot the currently rendered HUD gradients before replacing transition state.
+        // This also keeps rapid/re-entrant theme changes continuous instead of restarting
+        // from a raw disabled gradient slot.
+        GradientSpec displayedHudAccent = hudAccentGradient();
+        GradientSpec displayedHudForeground = hudForegroundGradient();
+        GradientSpec displayedHudSelection = hudSelectionGradient();
+        GradientSpec displayedHudPanel = hudPanelGradient();
+        GradientSpec displayedHudBackground = hudBackgroundGradient();
+        GradientSpec displayedHudShadow = hudShadowGradient();
+
         transitionFromTheme = fromTheme != null ? fromTheme : current;
         transitionFromEntry = fromEntry != null ? fromEntry : currentEntry;
+        transitionFromHudAccentGradient = displayedHudAccent;
+        transitionFromHudForegroundGradient = displayedHudForeground;
+        transitionFromHudSelectionGradient = displayedHudSelection;
+        transitionFromHudPanelGradient = displayedHudPanel;
+        transitionFromHudBackgroundGradient = displayedHudBackground;
+        transitionFromHudShadowGradient = displayedHudShadow;
         transitionStartMs = Util.getMillis();
         transitionActive = true;
         animatedCacheKey = -1;
@@ -1048,6 +1128,104 @@ public enum Themes {
         int end = mixArgb(from.end(), to.end(), t);
         float angle = mixAngle(from.angleDeg(), to.angleDeg(), t);
         return new GradientSpec(enabled, start, end, angle);
+    }
+
+    private static GradientSpec animatedHudGradient(GradientSpec from, GradientSpec to) {
+        if (!transitionActive) return to;
+        float progress = transitionProgress();
+        if (!transitionActive) return to;
+        return blendVisibleGradient(from, to, progress);
+    }
+
+    private static GradientSpec blendVisibleGradient(GradientSpec from, GradientSpec to, float t) {
+        if (from == null) from = new GradientSpec(true, CLASSIC.accent(), CLASSIC.accentSoft(), 90.0f);
+        if (to == null) to = from;
+        return new GradientSpec(
+                true,
+                mixArgb(from.start(), to.start(), t),
+                mixArgb(from.end(), to.end(), t),
+                mixAngle(from.angleDeg(), to.angleDeg(), t)
+        );
+    }
+
+    private static GradientSpec resolveHudAccentGradient(ThemeEntry entry, Theme theme) {
+        Theme resolvedTheme = theme != null ? theme : CLASSIC;
+        GradientSpec gradient = entry != null ? entry.strokeGradient() : null;
+        if (gradient != null && gradient.enabled()) {
+            // HUD strokes are intentionally normalized top -> bottom.
+            return new GradientSpec(true, gradient.start(), gradient.end(), 90.0f);
+        }
+        return new GradientSpec(true, resolvedTheme.accent(), resolvedTheme.accentSoft(), 90.0f);
+    }
+
+    private static GradientSpec resolveHudForegroundGradient(ThemeEntry entry, Theme theme) {
+        Theme resolvedTheme = theme != null ? theme : CLASSIC;
+        GradientSpec gradient = entry != null ? entry.cardGradient() : null;
+        if (gradient != null && gradient.enabled()) {
+            return new GradientSpec(true, gradient.start(), gradient.end(), gradient.angleDeg());
+        }
+        return new GradientSpec(true, resolvedTheme.accent(), resolvedTheme.accentSoft(), 45.0f);
+    }
+
+    private static GradientSpec resolveHudSelectionGradient(ThemeEntry entry, Theme theme) {
+        Theme resolvedTheme = theme != null ? theme : CLASSIC;
+        GradientSpec gradient = entry != null ? entry.cardGradient() : null;
+        if (gradient != null && gradient.enabled()) {
+            return new GradientSpec(true, gradient.start(), gradient.end(), gradient.angleDeg());
+        }
+        return new GradientSpec(
+                true,
+                resolvedTheme.accent(),
+                mixArgb(resolvedTheme.accentSoft(), resolvedTheme.textPrimary(), 0.18f),
+                45.0f
+        );
+    }
+
+    private static GradientSpec resolveHudPanelGradient(ThemeEntry entry, Theme theme) {
+        Theme resolvedTheme = theme != null ? theme : CLASSIC;
+        GradientSpec gradient = entry != null ? entry.windowGradient() : null;
+        if (gradient != null && gradient.enabled()) {
+            return new GradientSpec(true, gradient.start(), gradient.end(), gradient.angleDeg());
+        }
+        return resolveHudAccentGradient(entry, resolvedTheme);
+    }
+
+    private static GradientSpec resolveHudBackgroundGradient(ThemeEntry entry, Theme theme) {
+        Theme resolvedTheme = theme != null ? theme : CLASSIC;
+        GradientSpec gradient = entry != null ? entry.windowGradient() : null;
+        if (gradient != null && gradient.enabled()) {
+            return new GradientSpec(true, gradient.start(), gradient.end(), gradient.angleDeg());
+        }
+
+        int base = resolvedTheme.windowBg();
+        int alpha = (base >>> 24) & 0xFF;
+        int white = (alpha << 24) | 0x00FFFFFF;
+        int black = alpha << 24;
+        return new GradientSpec(
+                true,
+                mixArgb(base, white, 0.06f),
+                mixArgb(base, black, 0.08f),
+                90.0f
+        );
+    }
+
+    private static GradientSpec resolveHudShadowGradient(ThemeEntry entry, Theme theme) {
+        Theme resolvedTheme = theme != null ? theme : CLASSIC;
+        GradientSpec gradient = entry != null ? entry.strokeGradient() : null;
+        if (gradient != null && gradient.enabled()) {
+            return new GradientSpec(true, gradient.start(), gradient.end(), gradient.angleDeg());
+        }
+        int accent = resolvedTheme.accent();
+        return new GradientSpec(true, accent, accent, 45.0f);
+    }
+
+    private static void syncHudTransitionSources() {
+        transitionFromHudAccentGradient = resolveHudAccentGradient(currentEntry, current);
+        transitionFromHudForegroundGradient = resolveHudForegroundGradient(currentEntry, current);
+        transitionFromHudSelectionGradient = resolveHudSelectionGradient(currentEntry, current);
+        transitionFromHudPanelGradient = resolveHudPanelGradient(currentEntry, current);
+        transitionFromHudBackgroundGradient = resolveHudBackgroundGradient(currentEntry, current);
+        transitionFromHudShadowGradient = resolveHudShadowGradient(currentEntry, current);
     }
 
     private static int mixArgb(int from, int to, float t) {

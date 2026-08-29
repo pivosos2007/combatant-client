@@ -8,7 +8,6 @@
 package combatant.client.render.engine.renderer.ui.runtime.script;
 
 import com.caoccao.javet.exceptions.JavetException;
-import com.caoccao.javet.interop.V8Host;
 import com.caoccao.javet.interop.V8Runtime;
 import com.caoccao.javet.interop.converters.JavetObjectConverter;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNodeSpec;
@@ -88,7 +87,7 @@ final class JavetUiScriptEngine implements UiScriptEngine {
         closeRuntime();
 
         JavetNativeResourceLoader.install();
-        runtime = V8Host.getV8Instance().createV8Runtime();
+        runtime = JavetRuntimeBootstrap.createRuntime(this);
         runtime.setConverter(new JavetObjectConverter());
         runtime.setMemorySaverModeEnabled(false);
         runtime.setBatterySaverModeEnabled(false);
@@ -174,7 +173,7 @@ final class JavetUiScriptEngine implements UiScriptEngine {
         loadedSource = "";
         if (runtime == null) return;
         try {
-            runtime.close();
+            JavetRuntimeBootstrap.closeRuntime(this, runtime);
         } catch (Throwable ignored) {
         } finally {
             runtime = null;

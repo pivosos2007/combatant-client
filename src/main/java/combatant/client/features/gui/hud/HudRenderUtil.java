@@ -201,20 +201,12 @@ public enum HudRenderUtil {
      */
     public static ThemeGradient themeAccentGradient(int alpha) {
         int a = Math.max(0, Math.min(255, alpha));
-        Themes.ThemeEntry entry = Theme.currentEntry();
-        Themes.GradientSpec strokeGradient = entry != null ? entry.strokeGradient() : null;
-        if (strokeGradient != null && strokeGradient.enabled()) {
-            return new ThemeGradient(
-                    setAlpha(strokeGradient.start(), a),
-                    setAlpha(strokeGradient.end(), a),
-                    90.0f
-            );
-        }
-
-        Themes.Theme current = Theme.theme();
-        int start = current != null ? current.accent() : 0xFF5CC8E7;
-        int end = current != null ? current.accentSoft() : 0x805CC8E7;
-        return new ThemeGradient(setAlpha(start, a), setAlpha(end, a), 90.0f);
+        Themes.GradientSpec gradient = Themes.hudAccentGradient();
+        return new ThemeGradient(
+                setAlpha(gradient.start(), a),
+                setAlpha(gradient.end(), a),
+                gradient.angleDeg()
+        );
     }
 
     /**
@@ -223,35 +215,38 @@ public enum HudRenderUtil {
      */
     public static ThemeGradient themeForegroundGradient(int alpha) {
         int a = Math.max(0, Math.min(255, alpha));
-        Themes.ThemeEntry entry = Theme.currentEntry();
-        Themes.GradientSpec cardGradient = entry != null ? entry.cardGradient() : null;
-        if (cardGradient != null && cardGradient.enabled()) {
-            return new ThemeGradient(
-                    setAlpha(cardGradient.start(), a),
-                    setAlpha(cardGradient.end(), a),
-                    cardGradient.angleDeg()
-            );
-        }
+        Themes.GradientSpec gradient = Themes.hudForegroundGradient();
+        return new ThemeGradient(
+                setAlpha(gradient.start(), a),
+                setAlpha(gradient.end(), a),
+                gradient.angleDeg()
+        );
+    }
 
-        Themes.Theme current = Theme.theme();
-        int start = current != null ? current.accent() : 0xFF5CC8E7;
-        int end = current != null ? current.accentSoft() : 0x805CC8E7;
-        return new ThemeGradient(setAlpha(start, a), setAlpha(end, a), 45.0f);
+    /**
+     * Selector/health accent gradient. This keeps the historical lighter fallback
+     * endpoint while using the same transition-safe gradient semantics as other HUD
+     * theme colors.
+     */
+    public static ThemeGradient themeSelectionGradient(int alpha) {
+        int a = Math.max(0, Math.min(255, alpha));
+        Themes.GradientSpec gradient = Themes.hudSelectionGradient();
+        return new ThemeGradient(
+                setAlpha(gradient.start(), a),
+                setAlpha(gradient.end(), a),
+                gradient.angleDeg()
+        );
     }
 
     /** Returns the actual theme surface gradient, falling back to its accent gradient. */
     public static ThemeGradient themePanelGradient(int alpha) {
         int a = Math.max(0, Math.min(255, alpha));
-        Themes.ThemeEntry entry = Theme.currentEntry();
-        Themes.GradientSpec windowGradient = entry != null ? entry.windowGradient() : null;
-        if (windowGradient != null && windowGradient.enabled()) {
-            return new ThemeGradient(
-                    setAlpha(windowGradient.start(), a),
-                    setAlpha(windowGradient.end(), a),
-                    windowGradient.angleDeg()
-            );
-        }
-        return themeAccentGradient(a);
+        Themes.GradientSpec gradient = Themes.hudPanelGradient();
+        return new ThemeGradient(
+                setAlpha(gradient.start(), a),
+                setAlpha(gradient.end(), a),
+                gradient.angleDeg()
+        );
     }
 
     /** Mixes a neutral HUD surface with one endpoint of the theme's real gradient. */
@@ -330,26 +325,19 @@ public enum HudRenderUtil {
             return;
         }
 
-        Themes.ThemeEntry entry = Theme.currentEntry();
-        Themes.GradientSpec gradient = entry != null ? entry.strokeGradient() : null;
+        Themes.GradientSpec gradient = Themes.hudShadowGradient();
         float colorStrength = AnimationUtility.clamp(themeStrength, 0.0f, 1.0f);
         int black = setAlpha(0xFF000000, resolvedAlpha);
-        if (gradient != null && gradient.enabled()) {
+        int start = setAlpha(mixColor(black, gradient.start(), colorStrength), resolvedAlpha);
+        int end = setAlpha(mixColor(black, gradient.end(), colorStrength), resolvedAlpha);
+        if ((start & 0x00FFFFFF) == (end & 0x00FFFFFF)) {
+            renderer.roundedRectSoftShadow(x, y, w, h, radius, blur, innerAlpha, start);
+        } else {
             renderer.roundedRectSoftShadowGradient(
                     x, y, w, h, radius, blur, innerAlpha,
-                    setAlpha(mixColor(black, gradient.start(), colorStrength), resolvedAlpha),
-                    setAlpha(mixColor(black, gradient.end(), colorStrength), resolvedAlpha),
-                    gradient.angleDeg()
+                    start, end, gradient.angleDeg()
             );
-            return;
         }
-
-        Themes.Theme current = Theme.theme();
-        int accent = current != null ? current.accent() : 0xFF5CC8E7;
-        renderer.roundedRectSoftShadow(
-                x, y, w, h, radius, blur, innerAlpha,
-                setAlpha(mixColor(black, accent, colorStrength), resolvedAlpha)
-        );
     }
 
     public static void drawHudBackground(Renderer2D renderer,
@@ -361,17 +349,10 @@ public enum HudRenderUtil {
         if (renderer == null) return;
         if (useGradient) {
             int alpha = (solidColor >>> 24) & 0xFF;
-            Themes.ThemeEntry entry = Theme.currentEntry();
-            Themes.GradientSpec gradient = entry != null ? entry.windowGradient() : null;
-            if (gradient != null && gradient.enabled()) {
-                int start = setAlpha(gradient.start(), alpha);
-                int end = setAlpha(gradient.end(), alpha);
-                renderer.roundedRectGradient(x, y, w, h, radius, softness, start, end, gradient.angleDeg());
-            } else {
-                int start = mixRgb(solidColor, 0xFFFFFF, 0.06f);
-                int end = mixRgb(solidColor, 0x000000, 0.08f);
-                renderer.roundedRectGradient(x, y, w, h, radius, softness, start, end, 90f);
-            }
+            Themes.GradientSpec gradient = Themes.hudBackgroundGradient();
+            int start = setAlpha(gradient.start(), alpha);
+            int end = setAlpha(gradient.end(), alpha);
+            renderer.roundedRectGradient(x, y, w, h, radius, softness, start, end, gradient.angleDeg());
         } else {
             renderer.roundedRect(x, y, w, h, radius, softness, solidColor);
         }

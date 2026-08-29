@@ -63,8 +63,29 @@ public final class PlayerRigDefinition {
         }
 
         for (PlayerRigSocket socket : PlayerRigSocket.values()) {
-            builder.socket(socket.id(), socket.bone().ordinal(), RigTransform.identity());
+            builder.socket(socket.id(), socket.bone().ordinal(), socketTransform(socket));
         }
         return builder.build();
     }
+    private static RigTransform socketTransform(PlayerRigSocket socket) {
+        if (socket != PlayerRigSocket.LEFT_ITEM && socket != PlayerRigSocket.RIGHT_ITEM) {
+            return RigTransform.identity();
+        }
+
+        // ItemInHandLayer's bind-pose final grip is (+/-6, 12, -2) model pixels after its
+        // -90X / 180Y / translate post transform. ITEM_CONTROL itself binds at (+/-5, 15, -1),
+        // so encode the exact relative grip here and let the mixin cancel/reapply vanilla's post
+        // transform around this solved socket. The item then follows wrist/hand animation without
+        // drifting toward the feet.
+        float side = socket == PlayerRigSocket.LEFT_ITEM ? 1f : -1f;
+        Quaternionf itemRotation = new Quaternionf()
+                .rotationX(-((float) Math.PI * 0.5f))
+                .rotateY((float) Math.PI);
+        return new RigTransform(
+                new Vector3f(side * MODEL_UNIT, -3f * MODEL_UNIT, -MODEL_UNIT),
+                itemRotation,
+                new Vector3f(1f, 1f, 1f)
+        );
+    }
+
 }

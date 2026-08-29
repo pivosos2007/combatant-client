@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstring>
 #include <mutex>
+#include <thread>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Media.Control.h>
 #include <winrt/Windows.Media.h>
@@ -32,8 +33,10 @@ struct TrackState {
 };
 
 static std::unordered_map<std::wstring, TrackState> TRACK_STATE;
-static std::once_flag MANAGER_INIT_FLAG;
+static std::mutex MANAGER_MUTEX;
 static GlobalSystemMediaTransportControlsSessionManager MANAGER{ nullptr };
+static std::thread::id MANAGER_OWNER_THREAD{};
+static bool MANAGER_APARTMENT_INITIALIZED = false;
 
 constexpr int SESSION_ID_BYTES = 256;
 constexpr int OWNER_BYTES = 256;
@@ -54,14 +57,51 @@ constexpr int SUPPORTS_SEEK_OFFSET = REPEAT_MODE_OFFSET + sizeof(int32_t);
 constexpr int RECORD_SIZE = SUPPORTS_SEEK_OFFSET + sizeof(int32_t);
 
 static GlobalSystemMediaTransportControlsSessionManager getManager() {
-    std::call_once(MANAGER_INIT_FLAG, []() {
+    std::lock_guard<std::mutex> lock(MANAGER_MUTEX);
+    if (MANAGER != nullptr) return MANAGER;
+
+    bool apartmentInitialized = false;
+    try {
+        winrt::init_apartment(winrt::apartment_type::multi_threaded);
+        apartmentInitialized = true;
+    } catch (...) {
+    }
+
+    try {
+        MANAGER = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+        MANAGER_OWNER_THREAD = std::this_thread::get_id();
+        MANAGER_APARTMENT_INITIALIZED = apartmentInitialized;
+        return MANAGER;
+    } catch (...) {
+        if (apartmentInitialized) {
+            try {
+                winrt::uninit_apartment();
+            } catch (...) {
+            }
+        }
+        throw;
+    }
+}
+
+static void shutdownManager() {
+    bool uninitApartment = false;
+    {
+        std::lock_guard<std::mutex> lock(MANAGER_MUTEX);
+        TRACK_STATE.clear();
+        MANAGER = nullptr;
+        if (MANAGER_APARTMENT_INITIALIZED && MANAGER_OWNER_THREAD == std::this_thread::get_id()) {
+            uninitApartment = true;
+        }
+        MANAGER_APARTMENT_INITIALIZED = false;
+        MANAGER_OWNER_THREAD = std::thread::id{};
+    }
+
+    if (uninitApartment) {
         try {
-            winrt::init_apartment(winrt::apartment_type::multi_threaded);
+            winrt::uninit_apartment();
         } catch (...) {
         }
-        MANAGER = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
-    });
-    return MANAGER;
+    }
 }
 
 static void writeInt(char* record, int offset, int32_t value) {
@@ -256,6 +296,10 @@ jbyteArray Java_combatant_client_util_media_impl_win_WindowsMediaPlayerInfo_getA
     } catch (...) {
         return env->NewByteArray(0);
     }
+}
+
+void Java_combatant_client_util_media_impl_win_WindowsMediaPlayerInfo_nativeShutdown(JNIEnv*, jobject) {
+    shutdownManager();
 }
 
 jobject Java_combatant_client_util_media_impl_win_WindowsMediaPlayerInfo_getMediaSessions(JNIEnv* env, jobject obj) {

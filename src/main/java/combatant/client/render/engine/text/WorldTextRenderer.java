@@ -162,14 +162,10 @@ public enum WorldTextRenderer {
     }
 
     private static CustomTextRenderer resolve(TextRenderer textRenderer) {
-        if (textRenderer instanceof CustomTextRenderer custom) {
-            return custom;
-        }
+        CustomTextRenderer custom = LanguageFallbackTextRenderer.customPrimary(textRenderer);
+        if (custom != null) return custom;
         TextRenderer fallback = TextRenderer.get();
-        if (fallback instanceof CustomTextRenderer custom) {
-            return custom;
-        }
-        return null;
+        return LanguageFallbackTextRenderer.customPrimary(fallback);
     }
 
     public record Options(RenderColor color,
