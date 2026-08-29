@@ -25,6 +25,7 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import combatant.client.mixininterface.IRenderPipeline;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
+import combatant.client.render.engine.rhi.pipeline.PipelineDomain;
 import combatant.client.render.engine.shader.CombatantShaderSources;
 import combatant.client.render.engine.vertex.CombatantVertexFormats;
 import combatant.client.util.logging.DebugLog;
@@ -62,6 +63,8 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_POS_TEX_COLOR_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color.vert");
     public static final Identifier SHADER_POS_TEX_COLOR_PARAMS2_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_params2.vert");
     public static final Identifier SHADER_POS_TEX_COLOR_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color.frag");
+    public static final Identifier SHADER_RIG_TEXTURED_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/rig_textured.vert");
+    public static final Identifier SHADER_RIG_TEXTURED_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/rig_textured.frag");
     public static final Identifier SHADER_GUI_TEXTURE_LOOKUP_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/gui_texture_lookup.frag");
     public static final Identifier SHADER_POS_TEX_COLOR_TINT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_tint.frag");
     public static final Identifier SHADER_POS_TEX_COLOR_SKY_FOG_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_sky_fog.vert");
@@ -131,9 +134,31 @@ public enum CombatantRenderPipelines {
     private static final RenderPipeline.Snippet MESH_UNIFORMS = new ExtendedRenderPipelineBuilder()
             .withUniform("MeshData", UniformType.UNIFORM_BUFFER)
             .buildSnippet();
+    private static final RenderPipeline.Snippet RIG_UNIFORMS = new ExtendedRenderPipelineBuilder()
+            .withUniform("RigBones", UniformType.UNIFORM_BUFFER)
+            .withUniform("RigDeform", UniformType.UNIFORM_BUFFER)
+            .buildSnippet();
     private static final RenderPipeline.Snippet UI_BATCH_UNIFORMS = new ExtendedRenderPipelineBuilder()
             .withUniform("UIBatch", UniformType.UNIFORM_BUFFER)
             .buildSnippet();
+    /**
+     * Backend-neutral rigged textured geometry. Local procedural deformation runs before skinning.
+     * The same pipeline is consumed by both native Combatant RHI backends.
+     */
+    public static final RenderPipeline RIG_TEXTURED = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, RIG_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/rig_textured"))
+            .withDomain(PipelineDomain.WORLD)
+            .withVertexFormat(CombatantVertexFormats.RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_RIG_TEXTURED_VERT)
+            .withFragmentShader(SHADER_RIG_TEXTURED_FRAG)
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
+            .withDepthWrite(true)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
+
     /**
      * No depth test; translucent; triangles.
      */

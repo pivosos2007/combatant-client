@@ -157,4 +157,19 @@ public enum CombatantVertexFormats {
             .addAttribute("Params5", CombatantVertexFormatElements.PARAMS5)
             .build();
 
+    /**
+     * Rigged textured 3D vertex. Attribute order is mirrored by rig_textured.vert.
+     * 12 + 8 + 12 + 4 + 4 + 4 + 16 + 4 = 64 bytes.
+     */
+    public static final VertexFormat RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM = VertexFormat.builder(0)
+            .addAttribute("Position", CombatantVertexFormatElements.POS3)
+            .addAttribute("UV0", CombatantVertexFormatElements.TEXTURE)
+            .addAttribute("Normal", CombatantVertexFormatElements.NORMAL)
+            .addAttribute("Color", CombatantVertexFormatElements.COLOR)
+            .addAttribute("BoneIndices", CombatantVertexFormatElements.BONE_INDICES)
+            .addAttribute("BoneWeights", CombatantVertexFormatElements.BONE_WEIGHTS)
+            .addAttribute("DeformCoord", CombatantVertexFormatElements.DEFORM_COORD)
+            .addAttribute("DeformMeta", CombatantVertexFormatElements.DEFORM_META)
+            .build();
+
 }

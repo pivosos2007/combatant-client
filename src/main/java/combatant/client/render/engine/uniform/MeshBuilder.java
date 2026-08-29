@@ -120,6 +120,14 @@ public final class MeshBuilder implements AutoCloseable {
     }
 
     /**
+     * Begin a model/local-space 3D mesh. No camera anchoring or UI coordinate transform is applied.
+     * This is the preferred entry point for reusable geometry that will be transformed by the draw command.
+     */
+    public void beginLocal() {
+        beginInternal(false, Vec3.ZERO);
+    }
+
+    /**
      * Begin a world-space mesh with an explicit camera anchor.
      *
      * <p>World vertices keep full Y, but X/Z are written camera-relative to avoid
@@ -303,6 +311,52 @@ public final class MeshBuilder implements AutoCloseable {
                 argb & 0xFF,
                 (argb >>> 24) & 0xFF
         );
+    }
+
+    /** Writes four raw unsigned 8-bit vertex components. */
+    public MeshBuilder u8x4(int x, int y, int z, int w) {
+        debugVertexWriteCapacity(4, "U8x4");
+        long p = verticesPtr;
+        memPutByte(p, checkedUnsignedByte(x, "x"));
+        memPutByte(p + 1, checkedUnsignedByte(y, "y"));
+        memPutByte(p + 2, checkedUnsignedByte(z, "z"));
+        memPutByte(p + 3, checkedUnsignedByte(w, "w"));
+        verticesPtr += 4;
+        return this;
+    }
+
+    /** Writes four normalized unsigned 8-bit components from [0, 1] floats. */
+    public MeshBuilder unorm8x4(float x, float y, float z, float w) {
+        debugVertexWriteCapacity(4, "UNorm8x4");
+        long p = verticesPtr;
+        memPutByte(p, (byte) quantizeUnorm8(x));
+        memPutByte(p + 1, (byte) quantizeUnorm8(y));
+        memPutByte(p + 2, (byte) quantizeUnorm8(z));
+        memPutByte(p + 3, (byte) quantizeUnorm8(w));
+        verticesPtr += 4;
+        return this;
+    }
+
+    /** Writes one raw unsigned 32-bit vertex component. Java stores it in an int bit-pattern. */
+    public MeshBuilder uint(int value) {
+        debugVertexWriteCapacity(Integer.BYTES, "UInt");
+        memPutInt(verticesPtr, value);
+        verticesPtr += Integer.BYTES;
+        return this;
+    }
+
+    private static byte checkedUnsignedByte(int value, String component) {
+        if ((value & ~0xFF) != 0) {
+            throw new IllegalArgumentException("Unsigned byte component " + component + " outside [0,255]: " + value);
+        }
+        return (byte) value;
+    }
+
+    private static int quantizeUnorm8(float value) {
+        if (!Float.isFinite(value)) {
+            throw new IllegalArgumentException("UNORM8 component must be finite: " + value);
+        }
+        return Math.round(Math.max(0.0f, Math.min(1.0f, value)) * 255.0f);
     }
 
     public int next() {
