@@ -8,10 +8,12 @@
 package combatant.client.render.iris;
 
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.irisshaders.iris.api.v0.IrisProgram;
 import net.irisshaders.iris.pathways.HandRenderer;
+import net.irisshaders.iris.vertices.ImmediateState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.ItemStack;
 import combatant.client.render.CombatantEntityRenderTypes;
@@ -62,8 +64,25 @@ enum IrisRuntimeBridge {
                 || !HandRenderer.INSTANCE.isHandTranslucent(client.player.getOffhandItem());
     }
 
+    static boolean beginNativeShaderBypass() {
+        boolean previous = ImmediateState.bypass;
+        ImmediateState.bypass = true;
+        return previous;
+    }
+
+    static void restoreNativeShaderBypass(boolean previous) {
+        ImmediateState.bypass = previous;
+    }
+
     private static void assign(IrisApi api, RenderPipeline pipeline, IrisProgram program) {
         if (api == null || pipeline == null || program == null) return;
+
+        // Iris' public program mapping resolves a ShaderKey using the pipeline's vertex format. Entity mappings
+        // are defined for the vanilla ENTITY layout; assigning a Combatant rig pipeline here would let Iris
+        // fall back to an entity shader whose attribute contract does not match the rig vertex format. Keep
+        // custom rig pipelines Combatant-owned and only map pipelines that really use vanilla ENTITY vertices.
+        if (pipeline.getVertexFormatBinding(0) != DefaultVertexFormat.ENTITY) return;
+
         try {
             api.assignPipeline(pipeline, program);
         } catch (IllegalStateException ignored) {

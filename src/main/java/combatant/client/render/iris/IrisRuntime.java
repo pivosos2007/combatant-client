@@ -7,16 +7,19 @@
 
 package combatant.client.render.iris;
 
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.systems.RenderPass;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.world.item.ItemStack;
 import combatant.client.util.logging.DebugLog;
 
 public enum IrisRuntime {
     ;
+    private static final boolean MOD_LOADED = FabricLoader.getInstance().isModLoaded("iris");
     private static volatile boolean loggedApiFailure;
 
     public static IrisRuntimeSnapshot snapshot() {
-        if (!FabricLoader.getInstance().isModLoaded("iris")) {
+        if (!MOD_LOADED) {
             return IrisRuntimeSnapshot.UNLOADED;
         }
 
@@ -32,7 +35,7 @@ public enum IrisRuntime {
     }
 
     public static boolean isModLoaded() {
-        return FabricLoader.getInstance().isModLoaded("iris");
+        return MOD_LOADED;
     }
 
     public static boolean isShaderpackRendererActive() {
@@ -46,7 +49,7 @@ public enum IrisRuntime {
     }
 
     public static boolean isHandRenderingSolid() {
-        if (!FabricLoader.getInstance().isModLoaded("iris")) {
+        if (!MOD_LOADED) {
             return false;
         }
         try {
@@ -57,7 +60,7 @@ public enum IrisRuntime {
     }
 
     public static boolean isHeldItemTranslucent(ItemStack stack) {
-        if (stack == null || !FabricLoader.getInstance().isModLoaded("iris")) {
+        if (stack == null || !MOD_LOADED) {
             return false;
         }
         try {
@@ -68,7 +71,7 @@ public enum IrisRuntime {
     }
 
     public static boolean hasAnySolidHand() {
-        if (!FabricLoader.getInstance().isModLoaded("iris")) {
+        if (!MOD_LOADED) {
             return false;
         }
         try {
@@ -78,8 +81,67 @@ public enum IrisRuntime {
         }
     }
 
+    /**
+     * Hot-path variant used by Combatant RHI. No lambda/allocation per draw.
+     */
+    public static void setNativePipeline(RenderPass pass, RenderPipeline pipeline) {
+        if (pass == null || pipeline == null) return;
+        if (!MOD_LOADED) {
+            pass.setPipeline(pipeline);
+            return;
+        }
+
+        final boolean previous;
+        try {
+            previous = IrisRuntimeBridge.beginNativeShaderBypass();
+        } catch (LinkageError | RuntimeException ignored) {
+            pass.setPipeline(pipeline);
+            return;
+        }
+
+        try {
+            pass.setPipeline(pipeline);
+        } finally {
+            try {
+                IrisRuntimeBridge.restoreNativeShaderBypass(previous);
+            } catch (LinkageError | RuntimeException ignored) {
+                // Iris reload/teardown: pipeline was already set, never issue the draw operation twice.
+            }
+        }
+    }
+
+    /**
+     * Executes a native Combatant pipeline operation without allowing Iris to replace its shader program.
+     * Used only for pipelines with a custom vertex contract that cannot be consumed by an Iris ShaderKey.
+     */
+    public static void runWithNativeShaderBypass(Runnable action) {
+        if (action == null) return;
+        if (!MOD_LOADED) {
+            action.run();
+            return;
+        }
+
+        final boolean previous;
+        try {
+            previous = IrisRuntimeBridge.beginNativeShaderBypass();
+        } catch (LinkageError | RuntimeException ignored) {
+            action.run();
+            return;
+        }
+
+        try {
+            action.run();
+        } finally {
+            try {
+                IrisRuntimeBridge.restoreNativeShaderBypass(previous);
+            } catch (LinkageError | RuntimeException ignored) {
+                // Iris may be tearing down/reloading. The native operation already completed; do not rerun it.
+            }
+        }
+    }
+
     public static void registerCombatantPipelines() {
-        if (!FabricLoader.getInstance().isModLoaded("iris")) {
+        if (!MOD_LOADED) {
             return;
         }
 

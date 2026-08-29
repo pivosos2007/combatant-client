@@ -30,6 +30,8 @@ import combatant.client.render.engine.rhi.fullscreen.Blaze3dFullscreenBackend;
 import combatant.client.render.engine.rhi.msaa.MsaaControl;
 import combatant.client.render.engine.rhi.msaa.SodiumGlMsaaControl;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
+import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
+import combatant.client.render.iris.IrisRuntime;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineSpec;
 import combatant.client.render.engine.rhi.resource.RenderResourceManager;
 import combatant.client.render.engine.rhi.state.PipelineStateBackend;
@@ -222,7 +224,11 @@ public final class SodiumGlBackend implements CombatantRhi {
                 }
 
                 if (command.pipelineSpec == null) pipelines.require(command.pipeline);
-                pass.setPipeline(command.pipeline);
+                if (CombatantRenderPipelines.isRigPipeline(command.pipeline)) {
+                    IrisRuntime.setNativePipeline(pass, command.pipeline);
+                } else {
+                    pass.setPipeline(command.pipeline);
+                }
                 if (meshData != null) pass.setUniform("MeshData", meshData);
                 if (uiBatch != null) pass.setUniform("UIBatch", uiBatch);
                 for (RhiUniformBinding uniform : command.uniforms) {

@@ -24,6 +24,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import combatant.client.mixininterface.IRenderPipeline;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
+import combatant.client.render.engine.rig.shader.RigRenderMode;
+import combatant.client.render.iris.IrisRuntime;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
 import combatant.client.render.engine.rhi.pipeline.PipelineDomain;
 import combatant.client.render.engine.shader.CombatantShaderSources;
@@ -65,6 +67,8 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_POS_TEX_COLOR_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color.frag");
     public static final Identifier SHADER_RIG_TEXTURED_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/rig_textured.vert");
     public static final Identifier SHADER_RIG_TEXTURED_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/rig_textured.frag");
+    public static final Identifier SHADER_RIG_ENTITY_CUTOUT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/rig_entity_cutout.frag");
+    public static final Identifier SHADER_RIG_ENTITY_TRANSLUCENT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/rig_entity_translucent.frag");
     public static final Identifier SHADER_GUI_TEXTURE_LOOKUP_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/gui_texture_lookup.frag");
     public static final Identifier SHADER_POS_TEX_COLOR_TINT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_tint.frag");
     public static final Identifier SHADER_POS_TEX_COLOR_SKY_FOG_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_sky_fog.vert");
@@ -137,27 +141,41 @@ public enum CombatantRenderPipelines {
     private static final RenderPipeline.Snippet RIG_UNIFORMS = new ExtendedRenderPipelineBuilder()
             .withUniform("RigBones", UniformType.UNIFORM_BUFFER)
             .withUniform("RigDeform", UniformType.UNIFORM_BUFFER)
+            .withUniform("RigRibbon", UniformType.UNIFORM_BUFFER)
             .buildSnippet();
     private static final RenderPipeline.Snippet UI_BATCH_UNIFORMS = new ExtendedRenderPipelineBuilder()
             .withUniform("UIBatch", UniformType.UNIFORM_BUFFER)
             .buildSnippet();
     /**
-     * Backend-neutral rigged textured geometry. Local procedural deformation runs before skinning.
-     * The same pipeline is consumed by both native Combatant RHI backends.
+     * Backend-neutral rigged entity geometry. Geometry/deformation stays identical between variants;
+     * only the entity alpha/cull/depth policy changes. This avoids forcing cutout skin geometry through
+     * a translucent pipeline and keeps no-depth-write fades separate from ordinary translucent layers.
      */
-    public static final RenderPipeline RIG_TEXTURED = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, RIG_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/rig_textured"))
-            .withDomain(PipelineDomain.WORLD)
-            .withVertexFormat(CombatantVertexFormats.RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(SHADER_RIG_TEXTURED_VERT)
-            .withFragmentShader(SHADER_RIG_TEXTURED_FRAG)
-            .withSampler("u_Texture")
-            .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
-            .withDepthWrite(true)
-            .withBlend(BlendFunction.TRANSLUCENT)
-            .withCull(true)
-            .build()
-    );
+    public static final RenderPipeline RIG_ENTITY_CUTOUT = add(rigEntityPipeline(
+            "rig_entity_cutout", SHADER_RIG_ENTITY_CUTOUT_FRAG, false, true, false
+    ));
+    public static final RenderPipeline RIG_ENTITY_CUTOUT_CULL = add(rigEntityPipeline(
+            "rig_entity_cutout_cull", SHADER_RIG_ENTITY_CUTOUT_FRAG, true, true, false
+    ));
+    public static final RenderPipeline RIG_ENTITY_TRANSLUCENT = add(rigEntityPipeline(
+            "rig_entity_translucent", SHADER_RIG_ENTITY_TRANSLUCENT_FRAG, false, true, true
+    ));
+    public static final RenderPipeline RIG_ENTITY_TRANSLUCENT_CULL = add(rigEntityPipeline(
+            "rig_entity_translucent_cull", SHADER_RIG_ENTITY_TRANSLUCENT_FRAG, true, true, true
+    ));
+    public static final RenderPipeline RIG_ENTITY_TRANSLUCENT_NO_DEPTH_WRITE = add(rigEntityPipeline(
+            "rig_entity_translucent_no_depth_write", SHADER_RIG_ENTITY_TRANSLUCENT_FRAG, false, false, true
+    ));
+    public static final RenderPipeline RIG_ENTITY_TRANSLUCENT_NO_DEPTH_WRITE_CULL = add(rigEntityPipeline(
+            "rig_entity_translucent_no_depth_write_cull", SHADER_RIG_ENTITY_TRANSLUCENT_FRAG, true, false, true
+    ));
+
+    /**
+     * Compatibility alias for callers written against the first rig pipeline.
+     * New code should choose a {@link RigRenderMode} explicitly.
+     */
+    @Deprecated
+    public static final RenderPipeline RIG_TEXTURED = RIG_ENTITY_TRANSLUCENT_CULL;
 
     /**
      * No depth test; translucent; triangles.
@@ -1461,10 +1479,15 @@ public enum CombatantRenderPipelines {
             DebugLog.renderThread("   VF = " + pipeline.getVertexFormatBinding(0));
             DebugLog.renderThread("   MODE = " + pipeline.getPrimitiveTopology());
 
-            device.precompilePipeline(pipeline, (identifier, shaderType) -> {
+            Runnable compile = () -> device.precompilePipeline(pipeline, (identifier, shaderType) -> {
                 DebugLog.renderThread("[Combatant]   loading " + shaderType + " " + identifier);
                 return CombatantShaderSources.load(resources, identifier, shaderType);
             });
+            if (isRigPipeline(pipeline)) {
+                IrisRuntime.runWithNativeShaderBypass(compile);
+            } else {
+                compile.run();
+            }
         }
 
         DebugLog.renderThread("[Combatant] Precompile finished");
@@ -1484,6 +1507,40 @@ public enum CombatantRenderPipelines {
 
     public static RenderPipeline registerAddonPipeline(RenderPipeline pipeline) {
         return add(pipeline);
+    }
+
+    public static RenderPipeline rigEntity(RigRenderMode mode) {
+        RigRenderMode resolved = mode == null ? RigRenderMode.CUTOUT : mode;
+        return switch (resolved) {
+            case CUTOUT -> RIG_ENTITY_CUTOUT;
+            case CUTOUT_CULL -> RIG_ENTITY_CUTOUT_CULL;
+            case TRANSLUCENT -> RIG_ENTITY_TRANSLUCENT;
+            case TRANSLUCENT_CULL -> RIG_ENTITY_TRANSLUCENT_CULL;
+            case TRANSLUCENT_NO_DEPTH_WRITE -> RIG_ENTITY_TRANSLUCENT_NO_DEPTH_WRITE;
+            case TRANSLUCENT_NO_DEPTH_WRITE_CULL -> RIG_ENTITY_TRANSLUCENT_NO_DEPTH_WRITE_CULL;
+        };
+    }
+
+    public static boolean isRigPipeline(RenderPipeline pipeline) {
+        return pipeline != null
+                && pipeline.getVertexFormatBinding(0) == CombatantVertexFormats.RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM;
+    }
+
+    private static RenderPipeline rigEntityPipeline(String path, Identifier fragmentShader, boolean cull,
+                                                    boolean depthWrite, boolean translucent) {
+        ExtendedRenderPipelineBuilder builder = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, RIG_UNIFORMS)
+                .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/" + path))
+                .withDomain(PipelineDomain.WORLD)
+                .withVertexFormat(CombatantVertexFormats.RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM,
+                        com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+                .withVertexShader(SHADER_RIG_TEXTURED_VERT)
+                .withFragmentShader(fragmentShader)
+                .withSampler("u_Texture")
+                .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
+                .withDepthWrite(depthWrite)
+                .withCull(cull);
+        if (translucent) builder.withBlend(BlendFunction.TRANSLUCENT);
+        return builder.build();
     }
 
     private static RenderPipeline add(RenderPipeline pipeline) {

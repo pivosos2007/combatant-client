@@ -8,6 +8,7 @@
 package combatant.client.render.engine.rig.core;
 
 import combatant.client.render.engine.rig.deform.RigDeformState;
+import combatant.client.render.engine.rig.deform.RigRibbonState;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 
@@ -22,6 +23,7 @@ public final class RigInstance {
     private final Matrix4f[] skinMatrices;
     private final RigSocketState sockets;
     private final RigDeformState deformState;
+    private final RigRibbonState ribbonState;
     private boolean poseDirty = true;
 
     public RigInstance(RigDefinition definition) {
@@ -33,6 +35,7 @@ public final class RigInstance {
         this.skinMatrices = allocateMatrices(definition.boneCount());
         this.sockets = new RigSocketState(definition);
         this.deformState = new RigDeformState();
+        this.ribbonState = new RigRibbonState();
     }
 
     public RigDefinition definition() {
@@ -50,6 +53,10 @@ public final class RigInstance {
 
     public RigDeformState deform() {
         return deformState;
+    }
+
+    public RigRibbonState ribbon() {
+        return ribbonState;
     }
 
     public boolean poseDirty() {

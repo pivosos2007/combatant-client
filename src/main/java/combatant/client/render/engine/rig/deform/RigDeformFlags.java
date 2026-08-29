@@ -12,7 +12,8 @@ public final class RigDeformFlags {
     public static final int NONE = 0;
     public static final int BEND = 1;
     public static final int TWIST = 1 << 1;
-    public static final int ALL = BEND | TWIST;
+    public static final int RIBBON = 1 << 2;
+    public static final int ALL = BEND | TWIST | RIBBON;
 
     private RigDeformFlags() {
     }

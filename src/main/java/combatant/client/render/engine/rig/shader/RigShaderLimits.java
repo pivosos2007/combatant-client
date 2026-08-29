@@ -11,6 +11,8 @@ package combatant.client.render.engine.rig.shader;
 public final class RigShaderLimits {
     public static final int MAX_BONES = 64;
     public static final int MAX_DEFORMS = 16;
+    public static final int MAX_RIBBON_SAMPLES = 16;
+    public static final int MAX_RIBBON_FRAMES = MAX_DEFORMS * MAX_RIBBON_SAMPLES;
 
     private RigShaderLimits() {
     }
