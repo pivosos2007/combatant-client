@@ -88,8 +88,9 @@ public final class VanillaRigCubeCompiler {
         }
 
         RigMeshPart.Builder output = new RigMeshPart.Builder(partName, expectedVertices, expectedIndices);
+        RigSkinBinding.Sample skinSample = new RigSkinBinding.Sample();
         for (ModelPart.Polygon polygon : polygons) {
-            appendPolygon(output, polygon, bounds, deformationAxis, longitudinalSections, skin, deformId, deformFlags);
+            appendPolygon(output, polygon, bounds, deformationAxis, longitudinalSections, skin, skinSample, deformId, deformFlags);
         }
         return output.build();
     }
@@ -100,6 +101,7 @@ public final class VanillaRigCubeCompiler {
                                       RigAxis deformationAxis,
                                       int longitudinalSections,
                                       RigSkinBinding skin,
+                                      RigSkinBinding.Sample skinSample,
                                       int deformId,
                                       int deformFlags) {
         ModelPart.Vertex[] vertices = requireQuad(polygon);
@@ -125,16 +127,14 @@ public final class VanillaRigCubeCompiler {
                 float v = bilerp(a.v(), b.v(), c.v(), d.v(), s, t);
 
                 float longitudinal = bounds.normalized(deformationAxis, x, y, z);
-                float secondWeight = skin.secondWeight(longitudinal);
-                float firstWeight = 1.0f - secondWeight;
-                int secondBone = secondWeight > 0.0f ? skin.secondBone() : RigVertex.UNUSED_BONE;
+                skin.sample(longitudinal, skinSample);
 
                 output.addVertex(new RigVertex(
                         x, y, z,
                         u, v,
                         normal.x(), normal.y(), normal.z(),
-                        skin.firstBone(), secondBone, RigVertex.UNUSED_BONE, RigVertex.UNUSED_BONE,
-                        firstWeight, secondWeight, 0.0f, 0.0f,
+                        skinSample.bone(0), skinSample.bone(1), skinSample.bone(2), skinSample.bone(3),
+                        skinSample.weight(0), skinSample.weight(1), skinSample.weight(2), skinSample.weight(3),
                         longitudinal,
                         bounds.lateral(deformationAxis, x, y, z),
                         bounds.depth(deformationAxis, x, y, z),

@@ -21,6 +21,7 @@ import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.gui.preview.VisualPreviewRuntime;
 import combatant.client.features.hmi_recode.HoldMyItems;
+import combatant.client.features.playeranimator.PlayerAnimator;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -68,6 +69,9 @@ public class ViewModel extends Module {
     private static final String SETTING_HMI_SWITCH_STRENGTH = "hmi_switch_strength";
     private static final String SETTING_HMI_USE_STRENGTH = "hmi_use_strength";
     private static final String SETTING_HMI_IMPACT_STRENGTH = "hmi_impact_strength";
+    private static final String SETTING_PLAYER_RIG = "player_rig";
+    private static final String SETTING_PLAYER_RIG_STYLE = "player_rig_style";
+    private static final String SETTING_PLAYER_RIG_STRENGTH = "player_rig_strength";
     public final Minecraft mc = Minecraft.getInstance();
     private final ModeValue mode = modeSetting("mode", SETTING_MODE, MODE_BASIC, MODE_BASIC, MODE_HMI);
     public final NumberValue<Float> liquidOffsetZ =
@@ -161,8 +165,20 @@ public class ViewModel extends Module {
     private final NumberValue<Float> hmiImpactStrength =
             visibleWhen(num("hmi_impact_strength", SETTING_HMI_IMPACT_STRENGTH, 0.85f, 0.0f, 2.0f), this::isHmiModeActive);
 
+    /* -----------------------------
+     * THIRD-PERSON ANATOMICAL RIG
+     * ----------------------------- */
+    private final BooleanValue playerRig = bool("player_rig", SETTING_PLAYER_RIG, false);
+    private final ModeValue playerRigStyle = visibleWhen(modeSetting(
+            "player_rig_style", SETTING_PLAYER_RIG_STYLE, "Hybrid", "Hybrid", "Smooth", "Combat"
+    ), playerRig::get);
+    private final NumberValue<Float> playerRigStrength = visibleWhen(
+            num("player_rig_strength", SETTING_PLAYER_RIG_STRENGTH, 1.0f, 0.0f, 2.0f), playerRig::get
+    );
+
     private float currentSpin = 0.0f;
     private boolean hmiBackendActive;
+    private boolean playerRigBackendActive;
 
     public boolean isBasicModeActive() {
         return isActiveForHandRender() && isBasicMode();
@@ -182,14 +198,21 @@ public class ViewModel extends Module {
 
     private void syncBackend() {
         boolean shouldUseHmi = isHmiModeActive();
-        if (shouldUseHmi == hmiBackendActive) return;
+        if (shouldUseHmi != hmiBackendActive) {
+            if (shouldUseHmi) {
+                HoldMyItems.activate();
+                hmiBackendActive = true;
+            } else {
+                HoldMyItems.deactivate();
+                hmiBackendActive = false;
+            }
+        }
 
-        if (shouldUseHmi) {
-            HoldMyItems.activate();
-            hmiBackendActive = true;
-        } else {
-            HoldMyItems.deactivate();
-            hmiBackendActive = false;
+        boolean shouldUsePlayerRig = isPlayerRigActive();
+        if (shouldUsePlayerRig != playerRigBackendActive) {
+            playerRigBackendActive = shouldUsePlayerRig;
+            if (shouldUsePlayerRig) PlayerAnimator.invalidateScripts();
+            else PlayerAnimator.close();
         }
     }
 
@@ -219,6 +242,24 @@ public class ViewModel extends Module {
         HoldMyItems.deactivate();
     }
 
+    public boolean isPlayerRigActive() {
+        return isEnabled() && playerRig.get();
+    }
+
+    public String playerRigStyle() {
+        return playerRigStyle.get();
+    }
+
+    public float playerRigStrength() {
+        return playerRigStrength.get();
+    }
+
+    public void shutdownPlayerRigBackend() {
+        if (!playerRigBackendActive) return;
+        playerRigBackendActive = false;
+        PlayerAnimator.close();
+    }
+
     @Override
     public void onEnable() {
         syncBackend();
@@ -227,6 +268,7 @@ public class ViewModel extends Module {
     @Override
     public void onDisable() {
         shutdownHmiBackend();
+        shutdownPlayerRigBackend();
     }
 
     @Override

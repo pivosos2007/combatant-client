@@ -11,9 +11,11 @@ import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import combatant.client.render.ViewObstructionFadeState;
+import combatant.client.features.playeranimator.PlayerRigInstance;
+import combatant.client.features.playeranimator.PlayerRigRenderState;
 
 @Mixin(LivingEntityRenderState.class)
-public abstract class LivingEntityRenderStateMixin implements ViewObstructionFadeState {
+public abstract class LivingEntityRenderStateMixin implements ViewObstructionFadeState, PlayerRigRenderState {
     @Unique
     private boolean combatant$viewObstructionFadeActive;
 
@@ -22,6 +24,9 @@ public abstract class LivingEntityRenderStateMixin implements ViewObstructionFad
 
     @Unique
     private boolean combatant$seeInvisibleFadeActive;
+
+    @Unique
+    private PlayerRigInstance combatant$playerRig;
 
     @Override
     public boolean combatant$isViewObstructionFadeActive() {
@@ -51,5 +56,15 @@ public abstract class LivingEntityRenderStateMixin implements ViewObstructionFad
     @Override
     public void combatant$setSeeInvisibleFadeActive(boolean active) {
         this.combatant$seeInvisibleFadeActive = active;
+    }
+
+    @Override
+    public PlayerRigInstance combatant$getPlayerRig() {
+        return combatant$playerRig;
+    }
+
+    @Override
+    public void combatant$setPlayerRig(PlayerRigInstance rig) {
+        this.combatant$playerRig = rig;
     }
 }

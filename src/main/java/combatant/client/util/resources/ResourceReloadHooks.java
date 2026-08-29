@@ -8,6 +8,7 @@
 package combatant.client.util.resources;
 
 import combatant.client.features.module.Modules;
+import combatant.client.features.playeranimator.PlayerAnimator;
 import combatant.client.features.gui.clickgui.settings.I18nDuplicateScanner;
 import combatant.client.features.gui.clickgui.settings.I18nPreflightManager;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -47,6 +48,7 @@ public enum ResourceReloadHooks {
             // Reset dynamic media textures (e.g. artwork) so they re-register.
             MediaSessionService.get().onResourceReload();
             CombatantVisuals.onResourceReload(manager);
+            PlayerAnimator.invalidateScripts();
 
             try {
                 IrisRuntime.registerCombatantPipelines();

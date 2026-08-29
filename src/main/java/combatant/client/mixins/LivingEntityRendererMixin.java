@@ -8,17 +8,34 @@
 package combatant.client.mixins;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
+import com.mojang.blaze3d.vertex.PoseStack;
+import combatant.client.features.module.modules.visuals.ViewModel;
 import combatant.client.util.screen.ClientScreen;
+import combatant.client.features.playeranimator.PlayerAnimator;
+import combatant.client.features.playeranimator.PlayerRigRenderContext;
+import combatant.client.features.playeranimator.PlayerRigRenderState;
+import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer;
+import combatant.client.render.helpers.TickDelta;
+import net.minecraft.client.model.Model;
+import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.client.renderer.entity.state.AvatarRenderState;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
@@ -66,6 +83,20 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             at = @At("TAIL")
     )
     private void combatant$updateViewObstructionFadeState(T entity, S state, float tickProgress, CallbackInfo ci) {
+        if (state instanceof PlayerRigRenderState rigState) {
+            ViewModel viewModel = Modules.get(ViewModel.class);
+            rigState.combatant$setPlayerRig(viewModel != null
+                    && viewModel.isPlayerRigActive()
+                    && entity instanceof AbstractClientPlayer player
+                    ? PlayerAnimator.animate(
+                            player,
+                            tickProgress,
+                            TickDelta.frameDeltaSeconds(),
+                            viewModel.playerRigStyle(),
+                            viewModel.playerRigStrength()
+                    ) : null);
+        }
+
         if (!(state instanceof ViewObstructionFadeState fadeState)) {
             return;
         }
@@ -91,6 +122,40 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
         fadeState.combatant$setViewObstructionFadeActive(active);
         fadeState.combatant$setViewObstructionFadeAlpha(active ? alpha : 1.0f);
         fadeState.combatant$setSeeInvisibleFadeActive(seeInvisibleFadeActive);
+    }
+
+    @WrapOperation(
+            method = "submit",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/SubmitNodeCollector;submitModel(Lnet/minecraft/client/model/Model;Ljava/lang/Object;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/rendertype/RenderType;IIILnet/minecraft/client/renderer/texture/TextureAtlasSprite;ILnet/minecraft/client/renderer/feature/ModelFeatureRenderer$CrumblingOverlay;)V"
+            )
+    )
+    private void combatant$submitAnatomicalPlayer(
+            SubmitNodeCollector collector,
+            Model<?> model,
+            Object modelState,
+            PoseStack matrices,
+            RenderType renderType,
+            int light,
+            int overlay,
+            int tint,
+            TextureAtlasSprite sprite,
+            int outlineColor,
+            ModelFeatureRenderer.CrumblingOverlay crumbling,
+            Operation<Void> original
+    ) {
+        if (model instanceof PlayerModel playerModel
+                && modelState instanceof AvatarRenderState avatarState
+                && avatarState instanceof PlayerRigRenderState rigState
+                && PlayerRigCpuRenderer.submitPlayer(
+                        collector, playerModel, avatarState, rigState.combatant$getPlayerRig(), matrices,
+                        renderType, light, overlay, tint, sprite, outlineColor, crumbling
+                )) {
+            return;
+        }
+        original.call(collector, model, modelState, matrices, renderType, light, overlay, tint,
+                sprite, outlineColor, crumbling);
     }
 
     @ModifyExpressionValue(
@@ -187,10 +252,12 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
     @Inject(method = "submit", at = @At("HEAD"))
     private void combatant$pushViewObstructionFadeContext(S state, com.mojang.blaze3d.vertex.PoseStack matrixStack, net.minecraft.client.renderer.SubmitNodeCollector orderedRenderCommandQueue, net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState, CallbackInfo ci) {
         ViewObstructionFadeContext.push(state instanceof ViewObstructionFadeState fadeState ? fadeState : null);
+        PlayerRigRenderContext.push(state);
     }
 
     @Inject(method = "submit", at = @At("RETURN"))
     private void combatant$popViewObstructionFadeContext(S state, com.mojang.blaze3d.vertex.PoseStack matrixStack, net.minecraft.client.renderer.SubmitNodeCollector orderedRenderCommandQueue, net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState, CallbackInfo ci) {
+        PlayerRigRenderContext.pop();
         ViewObstructionFadeContext.pop();
     }
 }

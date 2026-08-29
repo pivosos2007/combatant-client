@@ -53,6 +53,7 @@ public final class RigCuboidSubdivision {
         int expectedVertices = sideFaces * ((longitudinalSections + 1) * 2) + capFaces * 4;
         int expectedIndices = sideFaces * longitudinalSections * 6 + capFaces * 6;
         RigMeshPart.Builder output = new RigMeshPart.Builder(partName, expectedVertices, expectedIndices);
+        RigSkinBinding.Sample skinSample = new RigSkinBinding.Sample();
 
         for (RigFace face : RigFace.values()) {
             RigFaceUv uv = cuboid.faceUv(face);
@@ -70,16 +71,14 @@ public final class RigCuboidSubdivision {
                     float y = face.y(cuboid, s, t);
                     float z = face.z(cuboid, s, t);
                     float longitudinal = deformationAxis.normalized(cuboid, x, y, z);
-                    float secondWeight = skin.secondWeight(longitudinal);
-                    float firstWeight = 1f - secondWeight;
-                    int secondBone = secondWeight > 0f ? skin.secondBone() : RigVertex.UNUSED_BONE;
+                    skin.sample(longitudinal, skinSample);
 
                     output.addVertex(new RigVertex(
                             x, y, z,
                             uv.u(s, t), uv.v(s, t),
                             face.normalX(), face.normalY(), face.normalZ(),
-                            skin.firstBone(), secondBone, RigVertex.UNUSED_BONE, RigVertex.UNUSED_BONE,
-                            firstWeight, secondWeight, 0f, 0f,
+                            skinSample.bone(0), skinSample.bone(1), skinSample.bone(2), skinSample.bone(3),
+                            skinSample.weight(0), skinSample.weight(1), skinSample.weight(2), skinSample.weight(3),
                             longitudinal,
                             deformationAxis.lateral(cuboid, x, y, z),
                             deformationAxis.depth(cuboid, x, y, z),
