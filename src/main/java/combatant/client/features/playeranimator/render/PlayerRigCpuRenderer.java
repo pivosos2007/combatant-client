@@ -11,6 +11,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.PrimitiveTopology;
 import combatant.client.features.playeranimator.PlayerRigInstance;
+import combatant.client.render.ViewObstructionFadeContext;
+import combatant.client.render.engine.msaa.MsaaWorldTarget;
 import combatant.client.render.engine.rig.deform.RigDeformDefinition;
 import combatant.client.render.engine.rig.deform.RigDeformFlags;
 import combatant.client.render.engine.rig.deform.RigDeformState;
@@ -56,7 +58,8 @@ public final class PlayerRigCpuRenderer {
             mesh = PLAYER_MESHES.computeIfAbsent(model, key -> PlayerRigModelCompiler.compile(key, true));
         }
         Predicate<String> visible = name -> playerPartVisible(state, name);
-        submitWithOutline(collector, mesh, rig, matrices, renderType, light, overlay, tint,
+        int effectiveTint = ViewObstructionFadeContext.applyToArgb(tint, MsaaWorldTarget.isActive());
+        submitWithOutline(collector, mesh, rig, matrices, renderType, light, overlay, effectiveTint,
                 sprite, outlineColor, visible);
         return true;
     }
@@ -79,7 +82,8 @@ public final class PlayerRigCpuRenderer {
                 drawable(model.leftArm), drawable(model.rightArm),
                 drawable(model.leftLeg), drawable(model.rightLeg)
         );
-        submitWithOutline(collector, mesh, rig, matrices, renderType, light, overlay, tint,
+        int effectiveTint = ViewObstructionFadeContext.applyToArgb(tint, MsaaWorldTarget.isActive());
+        submitWithOutline(collector, mesh, rig, matrices, renderType, light, overlay, effectiveTint,
                 sprite, outlineColor, visibility::test);
         return true;
     }

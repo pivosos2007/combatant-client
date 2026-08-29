@@ -109,10 +109,16 @@ If Javet fails at runtime, check:
 ## Font MSDF Assets
 
 Custom UI text uses compact MSDF atlases for the selected Combatant family.
-Missing Unicode runs are delegated to Combatant's bundled Noto-backed Minecraft
-font provider. It covers European Latin (including German and Latvian), CJK
-(Han, Japanese kana and Korean Hangul), RTL scripts and major Indic/Southeast
-Asian scripts. Minecraft creates GPU glyph pages only for characters actually
+BetterChat's four Iosevka styles are generated from full upstream Iosevka and
+contain every Unicode-mapped BMP glyph supplied by that family (about 5,000 per
+style), including German, Latvian, Vietnamese, Greek, Cyrillic, Armenian, IPA
+and combining marks. Only styles requested by the UI are uploaded, and each
+atlas remains at or below 2048x2048.
+
+Iosevka, Inter and Onest do not contain CJK. Missing Unicode runs are delegated
+to Combatant's bundled Noto-backed Minecraft font provider, covering Han,
+Japanese kana, Korean Hangul, RTL and major Indic/Southeast Asian scripts.
+Minecraft creates those fallback GPU glyph pages only for characters actually
 encountered instead of keeping the full font collection in texture memory.
 
 The bundled icon/symbol atlases can be regenerated after changing their TTF
@@ -121,6 +127,9 @@ sources with:
 ```powershell
 .\gradlew.bat generateFontMsdf
 ```
+
+The text-family atlases, including the broad Iosevka set, are regenerated with
+`tools/msdf/GenerateMsdfAtlases.ps1`.
 
 ## MediaPlayerInfo Native Code
 

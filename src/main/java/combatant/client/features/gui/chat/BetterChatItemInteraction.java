@@ -14,16 +14,9 @@ import net.minecraft.world.item.ItemStack;
 public enum BetterChatItemInteraction {
     ;
 
-    private static volatile boolean requireControl = true;
-
-    public static boolean tryOpenPreview(ItemStack stack, boolean controlDown) {
+    public static boolean tryOpenPreview(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
-        if (requireControl && !controlDown) return false;
         VisualPreviewScreen.open(new ItemVisualPreviewProvider(stack));
         return true;
-    }
-
-    public static void setRequireControl(boolean value) {
-        requireControl = value;
     }
 }

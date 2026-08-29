@@ -36,6 +36,7 @@ public class CustomTextRenderer implements TextRenderer {
     private boolean scaleOnly;
     private boolean meshStarted;
     private boolean fastUiText;
+    private boolean requiresGeneralPipeline;
     private double fontScale = 1;
     private double scale = 1;
 
@@ -144,6 +145,7 @@ public class CustomTextRenderer implements TextRenderer {
         this.building = true;
         this.scaleOnly = scaleOnly;
         this.meshStarted = false;
+        this.requiresGeneralPipeline = false;
         selectGlyphFont(scale, big);
     }
 
@@ -233,6 +235,7 @@ public class CustomTextRenderer implements TextRenderer {
     public double renderGradient(String text, double x, double y, Font.GlyphGradient gradient, boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
+        requireGeneralPipeline();
         ensureMeshStarted();
 
         double width;
@@ -256,6 +259,7 @@ public class CustomTextRenderer implements TextRenderer {
     public double renderQuadGradient(String text, double x, double y, Font.GlyphQuadGradient gradient, boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
+        requireGeneralPipeline();
         ensureMeshStarted();
 
         double width;
@@ -286,6 +290,7 @@ public class CustomTextRenderer implements TextRenderer {
                                        boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
+        requireGeneralPipeline();
         ensureMeshStarted();
 
         double glyphScale = scale / 1.5;
@@ -392,7 +397,7 @@ public class CustomTextRenderer implements TextRenderer {
                         "Combatant UI Text",
                         font,
                         mesh,
-                        fastUiText
+                        fastUiText && !requiresGeneralPipeline
                                 ? (font.isMsdf() ? CombatantRenderPipelines.UI_TEXT_MSDF_FAST : CombatantRenderPipelines.UI_TEXT_FAST)
                                 : (font.isMsdf() ? CombatantRenderPipelines.UI_TEXT_MSDF : CombatantRenderPipelines.UI_TEXT),
                         TextPlacementMode.UI
@@ -404,7 +409,18 @@ public class CustomTextRenderer implements TextRenderer {
         scaleOnly = false;
         meshStarted = false;
         fastUiText = false;
+        requiresGeneralPipeline = false;
         scale = 1;
+    }
+
+    /**
+     * Per-vertex effects must not be submitted through the uniform/fast UI path. A renderer can
+     * contain ordinary and gradient glyphs in the same begin/end batch, so one such command
+     * promotes the entire batch to the general pipeline.
+     */
+    private void requireGeneralPipeline() {
+        requiresGeneralPipeline = true;
+        fastUiText = false;
     }
 
     private void ensureMeshStarted() {

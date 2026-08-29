@@ -136,6 +136,7 @@
   "better_chat.context.copy_time": "Скопировать время",
   "better_chat.context.copy_date": "Скопировать дату",
   "better_chat.context.copy_unix": "Скопировать Unix-время",
+  "better_chat.context.preview_item": "Открыть просмотр предмета",
   "setting.clickgui.theme": "Тема",
   "setting.clickgui.theme.option.classic": "Classic",
   "setting.clickgui.theme.option.amber": "Amber",
@@ -3462,5 +3463,6 @@
   "clickgui.hints.visual_preview.free_fly": "WASD/Space/Shift - полёт",
   "clickgui.hints.visual_preview.free_speed": "Колесо - скорость полёта",
   "clickgui.hints.visual_preview.object.rotate": "ЛКМ - вращать предмет",
-  "clickgui.hints.visual_preview.object.zoom": "Колесо - масштаб предмета"
+  "clickgui.hints.visual_preview.object.zoom": "Колесо - масштаб предмета",
+  "clickgui.modules.visual_preview": "Настройка на глаз"
 }

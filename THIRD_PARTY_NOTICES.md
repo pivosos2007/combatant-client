@@ -68,6 +68,14 @@ The terrain vertex implementation contains a local source comment crediting Sodi
 - License texts: `THIRD_PARTY_LICENSES/Noto-OFL-1.1.txt` and `THIRD_PARTY_LICENSES/Noto-CJK-OFL-1.1.txt`
 - Scope: the bundled data-driven Unicode fallback fonts under `assets/combatant/font/unicode/**`. These fonts provide CJK, Arabic, Hebrew, Indic, Southeast Asian, Georgian, Armenian, Ethiopic and other script coverage. Glyph textures are rasterized lazily by Minecraft's font atlas.
 
+## Iosevka
+
+- Upstream: https://github.com/be5invis/Iosevka
+- Copyright: 2015-2026 Renzhi Li (Belleve Invis)
+- License: SIL Open Font License 1.1
+- License text: `THIRD_PARTY_LICENSES/Iosevka-OFL-1.1.txt`
+- Scope: the bundled full Iosevka 34.8.1 Medium/Bold and italic source fonts and their generated MSDF atlases. The atlases retain the Unicode-mapped BMP glyphs actually supplied by Iosevka, including broad Latin, Greek, Cyrillic, Armenian, IPA, combining-mark and symbol coverage. Iosevka does not contain CJK; those scripts continue through the lazy Noto fallback.
+
 ## Hold My Items
 
 - Upstream project: Hold My Items

@@ -40,6 +40,7 @@ Upstream: https://github.com/MeteorDevelopment/meteor-client
 - **Sodium / Iris**: explicitly noted implementation concepts in the terrain vertex path where applicable.
 - **Hold My Items** by sapling: first-person hand/item pose system and resource-pack animation API adapted for Minecraft 26.2. Port source: the supplied HMI 5.1.1 (Minecraft 1.21.11) jar; project page: https://modrinth.com/mod/hold-my-items. Combatant ports its Lua behavior to the existing Javet/JavaScript runtime in `java/combatant/client/features/hmi/**`, `java/combatant/client/mixins/hmi/**`, and `resources/assets/minecraft/holdmyitems/**`. The supplied jar declares/bundles CC0-1.0; that bundled license text is retained verbatim.
 - **Noto / Noto CJK** by the Noto Project Authors and contributors: bundled OFL-1.1 Unicode fallback fonts for multilingual UI text. GPU glyph pages are populated only for characters encountered at runtime.
+- **Iosevka** by Renzhi Li (Belleve Invis): full OFL-1.1 Iosevka 34.8.1 sources used for BetterChat's broad European/Greek/Cyrillic MSDF coverage. CJK remains delegated to the Noto fallback because upstream Iosevka does not include CJK glyphs.
 
 ## Authorship assessment for this snapshot
 

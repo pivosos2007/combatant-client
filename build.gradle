@@ -394,6 +394,9 @@ jar {
     from("THIRD_PARTY_LICENSES/Noto-CJK-OFL-1.1.txt") {
         into "THIRD_PARTY_LICENSES"
     }
+    from("THIRD_PARTY_LICENSES/Iosevka-OFL-1.1.txt") {
+        into "THIRD_PARTY_LICENSES"
+    }
     from {
         configurations.bundledLibrary.collect { it.isDirectory() ? it : zipTree(it) }
     }

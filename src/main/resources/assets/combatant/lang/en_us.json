@@ -136,6 +136,7 @@
   "better_chat.context.copy_time": "Copy time",
   "better_chat.context.copy_date": "Copy date",
   "better_chat.context.copy_unix": "Copy Unix timestamp",
+  "better_chat.context.preview_item": "Open item preview",
   "setting.clickgui.theme": "Theme",
   "setting.clickgui.theme.option.classic": "Classic",
   "setting.clickgui.theme.option.amber": "Amber",
@@ -3683,5 +3684,6 @@
   "clickgui.hints.visual_preview.free_fly": "WASD/Space/Shift - fly",
   "clickgui.hints.visual_preview.free_speed": "Wheel - flight speed",
   "clickgui.hints.visual_preview.object.rotate": "LMB - rotate subject",
-  "clickgui.hints.visual_preview.object.zoom": "Wheel - zoom subject"
+  "clickgui.hints.visual_preview.object.zoom": "Wheel - zoom subject",
+  "clickgui.modules.visual_preview": "Tune visually"
 }

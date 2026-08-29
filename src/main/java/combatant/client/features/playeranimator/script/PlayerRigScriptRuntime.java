@@ -149,6 +149,15 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
                   twist(deformer,angle,falloff=1) { __rig_push_angle(9,__rig_deform(deformer),__rig_number(angle)*__rig_rad,falloff); },
                   twistRadians(deformer,angle,falloff=1) { __rig_push_angle(9,__rig_deform(deformer),angle,falloff); },
                   clearDeform(deformer) { const target=__rig_deform(deformer); if(target>=0) __rig_commands.push([10,target]); },
+                  reachHand(side,targetBone,x=0,y=0,z=0,hintX=0,hintY=.35,hintZ=.15,weight=1) {
+                    side=String(side).toLowerCase();
+                    const upper=__rig_bone(side==='left'?'left_upper_arm':side==='right'?'right_upper_arm':'');
+                    const target=__rig_bone(targetBone);
+                    if(upper>=0 && target>=0) __rig_commands.push([11,upper,target,
+                      __rig_number(x),__rig_number(y),__rig_number(z),
+                      __rig_number(hintX),__rig_number(hintY,.35),__rig_number(hintZ,.15),
+                      Math.max(0,Math.min(1,__rig_number(weight,1)))]);
+                  },
                   animation(name) { return globalThis.RigAnimationLibrary?.get(String(name)) ?? null; },
                   play(name,time,weight=1,options=null) {
                     return globalThis.RigAnimationLibrary?.play(String(name), playerRig, __rig_number(time), __rig_number(weight,1), options) ?? false;
@@ -203,7 +212,7 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
                     maxCrossbowChargeDuration: Math.max(1e-4,__rig_number(packed?.[68],25)),
                     creativeFlying: !!packed?.[69],
                     attackCooldown: Math.max(0,Math.min(1,__rig_number(packed?.[70],1))),
-                    attackDuration: Math.max(.28,__rig_number(packed?.[71],.62)),
+                    attackDuration: Math.max(.05,__rig_number(packed?.[71],.62)),
                     useTimeSeconds: Math.max(0,__rig_number(packed?.[59], useTicks) / 20),
                     walkTime: __rig_number(packed?.[39]) / 20,
                     walkPhase: __rig_number(packed?.[39]) * 0.6662

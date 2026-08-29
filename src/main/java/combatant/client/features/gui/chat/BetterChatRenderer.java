@@ -157,7 +157,6 @@ public enum BetterChatRenderer {
     private static int leftDownMsgIndex = -1;
     private static int leftDownCharIndex = -1;
     private static Style leftDownStyle = null;
-    private static ItemStack leftDownItem = ItemStack.EMPTY;
     private static final List<PasswordMaskRect> passwordMaskRects = new ArrayList<>();
     private static boolean passwordReveal = false;
     private static boolean passwordMaskClickPending = false;
@@ -985,8 +984,8 @@ public enum BetterChatRenderer {
                     breakGlyphIdx = -1;
                     breakCharIdx = -1;
                 }
-                String accessible = seg.text().isEmpty() ? "[item]" : seg.text();
-                int logicalLength = Math.max(1, accessible.length());
+                String accessible = seg.text();
+                int logicalLength = Math.max(0, seg.logicalLength());
                 glyphs.add(new Glyph(
                         lineX,
                         lineX + itemSize,
@@ -1005,16 +1004,7 @@ public enum BetterChatRenderer {
             }
 
             if (hover instanceof HoverEvent.ShowItem(net.minecraft.world.item.ItemStackTemplate itemTemplate)) {
-                net.minecraft.world.item.ItemStack item = itemTemplate.create();
-                net.minecraft.world.item.ItemStack stack = item.copy();
-
-                BetterChatHoverCache cache = BetterChatStoreManager.getActiveCache();
-                if (cache != null) {
-                    String keyId = BetterChatStoreManager.hoverItemKey(stack);
-                    String itemId = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
-                    net.minecraft.world.item.ItemStack cachedStack = cache.getItemByKeyOrId(keyId, itemId);
-                    if (!cachedStack.isEmpty()) stack = cachedStack;
-                }
+                ItemStack stack = resolveCachedItem(itemTemplate.create());
 
                 if (IllegalItemUtil.isIllegal(stack)) {
                     color = IllegalItemUtil.illegalColor();
@@ -1039,7 +1029,8 @@ public enum BetterChatRenderer {
 
             for (int c = 0; c < txt.length(); ) {
                 int cp = txt.codePointAt(c);
-                int cpLen = Character.charCount(cp);
+                int clusterEnd = nextTextClusterEnd(txt, c);
+                int cpLen = clusterEnd - c;
 
                 if (cp == '\n') {
                     rebuilt.add(new CachedLine(lineStartIndex, Math.max(lineStartIndex, charIndex - 1), glyphs));
@@ -1053,9 +1044,9 @@ public enum BetterChatRenderer {
                     continue;
                 }
 
-                String glyphText = new String(Character.toChars(cp));
+                String glyphText = txt.substring(c, clusterEnd);
 
-                String resolvedFont = fontForGlyph(font, cp);
+                String resolvedFont = fontForCluster(font, glyphText);
                 boolean svgGlyph = TextGlyphFallback.isSvgFontKey(resolvedFont);
                 TextRenderer tr = svgGlyph ? null : fontRenderer(resolvedFont);
 
@@ -1171,18 +1162,102 @@ public enum BetterChatRenderer {
         BetterChatMessage safe = message == null ? BetterChatMessage.empty() : message;
         for (var node : safe.nodes()) {
             if (node instanceof TextNode text) {
+                String[] previousItemKey = {null};
                 text.component().visit((style, string) -> {
                     if (string != null && !string.isEmpty()) {
-                        segments.add(new Segment(string, style == null ? Style.EMPTY : style, null));
+                        Style safeStyle = style == null ? Style.EMPTY : style;
+                        ItemStack hoveredItem = resolveItemFromStyle(safeStyle);
+                        if (!hoveredItem.isEmpty()) {
+                            String itemKey = BetterChatStoreManager.hoverItemKey(hoveredItem);
+                            if (!itemKey.equals(previousItemKey[0])) {
+                                segments.add(Segment.decorativeItem(hoveredItem));
+                            }
+                            previousItemKey[0] = itemKey;
+                        } else {
+                            previousItemKey[0] = null;
+                        }
+                        segments.add(Segment.text(string, safeStyle));
                     }
                     return Optional.empty();
                 }, Style.EMPTY);
             } else if (node instanceof ItemNode item) {
                 ItemStack stack = item.stack();
-                if (!stack.isEmpty()) segments.add(new Segment(item.plainText(), Style.EMPTY, stack));
+                if (!stack.isEmpty()) segments.add(Segment.richItem(item.plainText(), stack));
             }
         }
         return segments;
+    }
+
+    static ItemStack resolveItemFromStyle(Style style) {
+        if (style == null) return ItemStack.EMPTY;
+        HoverEvent hover = style.getHoverEvent();
+        if (!(hover instanceof HoverEvent.ShowItem(net.minecraft.world.item.ItemStackTemplate template))) {
+            return ItemStack.EMPTY;
+        }
+        return resolveCachedItem(template.create());
+    }
+
+    private static ItemStack resolveCachedItem(ItemStack source) {
+        if (source == null || source.isEmpty()) return ItemStack.EMPTY;
+        BetterChatHoverCache cache = BetterChatStoreManager.getActiveCache();
+        if (cache == null) return source.copy();
+        String key = BetterChatStoreManager.hoverItemKey(source);
+        ItemStack cached = cache.getItem(key);
+        return cached.isEmpty() ? source.copy() : cached;
+    }
+
+    private static ItemStack resolvePreviewItem(PickResult pick) {
+        if (pick == null) return ItemStack.EMPTY;
+        GlyphBox glyph = pick.glyph();
+        if (glyph != null) {
+            if (glyph.item() != null && !glyph.item().isEmpty()) return glyph.item().copy();
+            ItemStack styled = resolveItemFromStyle(glyph.style());
+            if (!styled.isEmpty()) return styled;
+        }
+
+        if (pick.line() != null && pick.line().message() != null) {
+            String raw = pick.line().message().text().getString();
+            HoverTip inferred = ChatHoverUtil.inferFromDisplay(
+                    wordAt(raw, glyph == null ? 0 : glyph.charIndex()),
+                    true,
+                    Minecraft.getInstance()
+            );
+            if (inferred != null && inferred.item() != null && !inferred.item().isEmpty()) {
+                return inferred.item().copy();
+            }
+        }
+
+        BetterChatMessage message = pick.line() != null && pick.line().message() != null
+                ? pick.line().message().message()
+                : null;
+        if (message == null) return ItemStack.EMPTY;
+
+        ItemStack found = ItemStack.EMPTY;
+        for (var node : message.nodes()) {
+            ItemStack candidate = ItemStack.EMPTY;
+            if (node instanceof ItemNode item) {
+                candidate = resolveCachedItem(item.stack());
+            } else if (node instanceof TextNode text) {
+                final ItemStack[] fromText = {ItemStack.EMPTY};
+                text.component().visit((style, value) -> {
+                    if (fromText[0].isEmpty()) fromText[0] = resolveItemFromStyle(style);
+                    return Optional.empty();
+                }, Style.EMPTY);
+                candidate = fromText[0];
+            }
+            if (candidate.isEmpty()) continue;
+            if (!found.isEmpty() && !sameItemIdentity(found, candidate)) {
+                return ItemStack.EMPTY;
+            }
+            found = candidate.copy();
+        }
+        return found;
+    }
+
+    private static boolean sameItemIdentity(ItemStack left, ItemStack right) {
+        return left.getItem() == right.getItem()
+                && left.getCount() == right.getCount()
+                && java.util.Objects.equals(left.getComponents(), right.getComponents());
     }
 
     private static void updateSearchHotkey(Minecraft mc, boolean chatOpen) {
@@ -1669,8 +1744,6 @@ public enum BetterChatRenderer {
                 leftDownMsgIndex = pick.line().messageIndex();
                 leftDownCharIndex = pick.glyph().charIndex();
                 leftDownStyle = pick.glyph().style();
-                leftDownItem = pick.glyph().item() == null ? ItemStack.EMPTY : pick.glyph().item().copy();
-
                 selecting = false;              // не выделяем сразу
                 contextMenu = ContextMenu.closed();
                 return true;                    // важно: блокируем ванильный suggest по клику
@@ -1686,9 +1759,7 @@ public enum BetterChatRenderer {
                     }
 
                     // одиночный клик (без drag)
-                    boolean handled = BetterChatItemInteraction.tryOpenPreview(leftDownItem, ctrlDown);
-                    leftDownItem = ItemStack.EMPTY;
-                    if (!handled) handled = handleClickEvent(leftDownStyle, ctrlDown);
+                    boolean handled = handleClickEvent(leftDownStyle, ctrlDown);
                     if (!handled && ctrlDown) {
                         handled = tryPrefillTellFromClick(leftDownMsgIndex, leftDownCharIndex);
                     }
@@ -1698,7 +1769,8 @@ public enum BetterChatRenderer {
             }
         } else if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
             if (pressed) {
-                openContextMenu(pick, mx, my);
+                openContextMenu(pick, mx, my, resolvePreviewItem(pick));
+                return true;
             }
         }
         return false;
@@ -1773,7 +1845,7 @@ public enum BetterChatRenderer {
         return new PickResult(bestLine, glyph);
     }
 
-    private static void openContextMenu(PickResult pick, double mx, double my) {
+    private static void openContextMenu(PickResult pick, double mx, double my, ItemStack previewItem) {
         List<ContextMenu.MenuEntry> entries = new ArrayList<>();
         ChatLine msg = pick.line().message();
         String full = msg.text().getString();
@@ -1788,6 +1860,14 @@ public enum BetterChatRenderer {
             entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_selection"), () -> ClipboardUtil.copy(selected)));
         } else {
             entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_message"), () -> ClipboardUtil.copy(full)));
+        }
+
+        if (previewItem != null && !previewItem.isEmpty()) {
+            ItemStack stack = previewItem.copy();
+            entries.add(new ContextMenu.MenuEntry(
+                    I18n.get("better_chat.context.preview_item"),
+                    () -> BetterChatItemInteraction.tryOpenPreview(stack)
+            ));
         }
 
         List<String> nickCandidates = ChatNameUtil.extractNicks(full);
@@ -2129,6 +2209,57 @@ public enum BetterChatRenderer {
     private static String fontForGlyph(String baseFont, int codePoint) {
         TextRenderer preferred = fontRenderer(baseFont);
         return TextGlyphFallback.fontKeyForGlyph(baseFont, preferred, codePoint, "iosevka_medium");
+    }
+
+    private static String fontForCluster(String baseFont, String cluster) {
+        if (cluster == null || cluster.isEmpty()) return baseFont;
+        int first = cluster.codePointAt(0);
+        if (Character.charCount(first) == cluster.length()) {
+            return fontForGlyph(baseFont, first);
+        }
+
+        TextRenderer preferred = fontRenderer(baseFont);
+        if (preferred != null) {
+            boolean complete = true;
+            for (int offset = 0; offset < cluster.length(); ) {
+                int codePoint = cluster.codePointAt(offset);
+                if (!preferred.hasGlyph(codePoint)) {
+                    complete = false;
+                    break;
+                }
+                offset += Character.charCount(codePoint);
+            }
+            if (complete) return baseFont != null ? baseFont : "iosevka_medium";
+        }
+        return TextGlyphFallback.VANILLA_KEY;
+    }
+
+    private static int nextTextClusterEnd(String text, int start) {
+        int offset = start + Character.charCount(text.codePointAt(start));
+        boolean afterJoiner = false;
+        while (offset < text.length()) {
+            int codePoint = text.codePointAt(offset);
+            if (afterJoiner) {
+                offset += Character.charCount(codePoint);
+                afterJoiner = false;
+                continue;
+            }
+            if (codePoint == 0x200D) {
+                offset += Character.charCount(codePoint);
+                afterJoiner = true;
+                continue;
+            }
+            int type = Character.getType(codePoint);
+            boolean combining = type == Character.NON_SPACING_MARK
+                    || type == Character.COMBINING_SPACING_MARK
+                    || type == Character.ENCLOSING_MARK;
+            boolean variationSelector = codePoint >= 0xFE00 && codePoint <= 0xFE0F
+                    || codePoint >= 0xE0100 && codePoint <= 0xE01EF;
+            boolean emojiModifier = codePoint >= 0x1F3FB && codePoint <= 0x1F3FF;
+            if (!combining && !variationSelector && !emojiModifier) break;
+            offset += Character.charCount(codePoint);
+        }
+        return offset;
     }
 
     private static TextRenderer rendererForGlyph(TextRenderer preferred, int codePoint) {
@@ -2802,7 +2933,20 @@ public enum BetterChatRenderer {
     private record PasswordMaskRect(float x, float y, float w, float h) {
     }
 
-    private record Segment(String text, Style style, ItemStack item) {
+    private record Segment(String text, Style style, ItemStack item, int logicalLength) {
+        static Segment text(String text, Style style) {
+            String safe = text == null ? "" : text;
+            return new Segment(safe, style == null ? Style.EMPTY : style, null, safe.length());
+        }
+
+        static Segment richItem(String accessibleText, ItemStack item) {
+            String safe = accessibleText == null ? "" : accessibleText;
+            return new Segment(safe, Style.EMPTY, item == null ? ItemStack.EMPTY : item.copy(), safe.length());
+        }
+
+        static Segment decorativeItem(ItemStack item) {
+            return new Segment("", Style.EMPTY, item == null ? ItemStack.EMPTY : item.copy(), 0);
+        }
     }
 
     private record VisualLine(ChatLine message, int messageIndex, int messageGroup, int startChar, int endChar, List<Glyph> glyphs) {

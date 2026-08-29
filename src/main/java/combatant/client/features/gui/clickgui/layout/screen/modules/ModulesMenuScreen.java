@@ -741,7 +741,7 @@ public final class ModulesMenuScreen {
                         SvgRenderOptions.overrideColor(withAlpha(ModulesMenuStyle.text(), alpha)));
                 ClickGuiRenderer.drawText(
                         medium,
-                        "Настройка на глаз",
+                        ClickGuiI18n.tr("clickgui.modules.visual_preview", "Tune visually"),
                         settingsX + 19.0f * scale,
                         y + middle(textHeight(medium, 7.2f * scale), actionH),
                         7.2f * scale,

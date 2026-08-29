@@ -53,7 +53,7 @@ public enum PlayerAnimator {
         float attack = state.attackTime;
         MotionState motion = MOTION.computeIfAbsent(player, ignored -> new MotionState());
         float continuousSeconds = state.ageInTicks / 20.0f;
-        float attackCooldownSeconds = Mth.clamp(player.getCurrentItemAttackStrengthDelay() / 20.0f, 0.28f, 1.35f);
+        float attackCooldownSeconds = Mth.clamp(player.getCurrentItemAttackStrengthDelay() / 20.0f, 0.05f, 4.0f);
         motion.updateAttack(attack, continuousSeconds, attackCooldownSeconds);
 
         PlayerRigInstance instance = INSTANCES.computeIfAbsent(player, ignored -> new InstancePool())
@@ -143,7 +143,7 @@ public enum PlayerAnimator {
                 attackStartSeconds = continuousSeconds;
                 attackTimeSeconds = 0f;
                 attackDurationSeconds = Float.isFinite(requestedDurationSeconds)
-                        ? Mth.clamp(requestedDurationSeconds, 0.28f, 1.35f)
+                        ? Mth.clamp(requestedDurationSeconds, 0.05f, 4.0f)
                         : DEFAULT_ATTACK_WINDOW_SECONDS;
                 attackActive = true;
             } else if (attackActive) {

@@ -36,16 +36,17 @@
       this.rootForward=0; this.rootStrafe=0; this.rootVertical=0;
       this.looseForward=0; this.looseStrafe=0; this.looseVertical=0;
       this.inertiaForward=0; this.inertiaStrafe=0; this.inertiaVertical=0;
-      this.surfaceSwimPhase=0; this.swimPhase=0;
-      this.surfaceSwimRate=.62; this.swimRate=.68;
+      this.surfaceSwimPhase=0; this.swimPhase=0; this.sneakPhase=0;
+      this.surfaceSwimRate=.62; this.swimRate=.68; this.sneakRate=.58;
       this.modeWeights=Object.create(null);
       this.modeWeights[mode]=1;
       this.poseWeights=Object.create(null);
       this.previousGround=!!c.onGround;
       this.airTime=0; this.landTime=99;
       this.takeoffPhase=c.walkPhase||0;
+      this.airStridePhase=c.walkPhase||0;
       this.landingPhase=c.walkPhase||0;
-      this.takeoffForward=0; this.takeoffStrafe=0; this.takeoffSpeed=0;
+      this.takeoffForward=0; this.takeoffStrafe=0; this.takeoffSpeed=0; this.takeoffVertical=0;
       this.takeoffSprinting=!!c.sprinting;
       this.attackBlend=0;
       this.lookBodyYaw=0; this.lookBodyPitch=0;
@@ -114,16 +115,25 @@
         if (this.previousGround) {
           this.airTime=0;
           this.takeoffPhase=c.walkPhase;
+          this.airStridePhase=c.walkPhase;
           this.takeoffForward=this.forward;
           this.takeoffStrafe=this.strafe;
           this.takeoffSpeed=this.speed;
+          this.takeoffVertical=this.vertical;
           this.takeoffSprinting=!!c.sprinting;
-        } else this.airTime+=dt;
+        } else {
+          this.airTime+=dt;
+          // Carry the actual running cadence into the air instead of freezing the takeoff frame.
+          // Cadence gradually loses energy, while the landing phase remains coherent with the legs.
+          const launch=saturate(this.takeoffSpeed/.18);
+          const cadenceHz=(this.takeoffSprinting?2.05:1.35)*(0.38+0.62*Math.exp(-this.airTime*1.25))*launch;
+          this.airStridePhase=(this.airStridePhase+TAU*cadenceHz*dt)%TAU;
+        }
         this.landTime=99;
       } else {
         if (!this.previousGround) {
           this.landTime=0;
-          this.landingPhase=c.walkPhase;
+          this.landingPhase=this.airStridePhase;
         } else this.landTime+=dt;
         this.airTime=0;
       }
@@ -175,27 +185,29 @@
       if (weight<=1e-4) return;
       const motion=saturate(moving);
       const gait=Math.sin(phase), gait90=Math.cos(phase);
-      const stride=gait*12.0*motion;
-      // Preserve the tactical stagger, then animate around it instead of reducing sneak to a
-      // nearly static pose. -X is forward, +X is back; RIGHT +Z / LEFT -Z is outward.
+      // A sneak is slow, not static. Give each leg a readable transfer phase while preserving the
+      // tactical stagger and keeping the feet compensated against the full hip/knee chain.
+      const stride=gait*29.0*motion;
       const pelvis=5.0;
-      const rightThigh=10-stride*.82;
-      const leftThigh=-15+stride*.92;
-      const rightKnee=22+Math.max(0,stride)*.62+Math.max(0,-stride)*.18;
-      const leftKnee=50+Math.max(0,-stride)*.55+Math.max(0,stride)*.16;
-      const rightZ=.070+gait*.030*motion;
-      const leftZ=-.052-gait*.030*motion;
-      const lateral=gait90*.010*motion;
+      const rightThigh=10-stride*1.00;
+      const leftThigh=-15+stride*1.04;
+      const rightForward=saturate((-rightThigh+4)/28);
+      const leftForward=saturate((-leftThigh+4)/28);
+      const rightKnee=22+rightForward*24+Math.max(0,rightThigh)*.20;
+      const leftKnee=42+leftForward*22+Math.max(0,leftThigh)*.18;
+      const stepTravel=gait*.094*motion;
+      const sideTravel=gait90*.022*motion;
+      const rightGround=clamp(AnatomicalJoints.groundCorrection(pelvis,rightThigh,rightKnee,1.45),-.04,.04);
+      const leftGround=clamp(AnatomicalJoints.groundCorrection(pelvis,leftThigh,leftKnee,1.45),-.04,.04);
 
-      this.rig.move('right_thigh',(-.026+lateral)*weight,0,rightZ*weight);
-      this.rig.move('left_thigh',( .017+lateral)*weight,0,leftZ*weight);
-      this.rig.rotate('right_thigh',rightThigh*weight,(-5-gait90*3*motion)*weight,(8+gait90*2*motion)*weight);
-      this.rig.rotate('left_thigh',leftThigh*weight,(4-gait90*3*motion)*weight,(-7+gait90*2*motion)*weight);
+      this.rig.move('right_thigh',(-.028+sideTravel)*weight,rightGround*weight,(.070+stepTravel)*weight);
+      this.rig.move('left_thigh',( .020+sideTravel)*weight,leftGround*weight,(-.058-stepTravel)*weight);
+      this.rig.rotate('right_thigh',rightThigh*weight,(-6-gait90*5*motion)*weight,(9+gait90*4*motion)*weight);
+      this.rig.rotate('left_thigh',leftThigh*weight,(5-gait90*5*motion)*weight,(-8+gait90*4*motion)*weight);
       this.rig.rotate('right_knee',rightKnee*weight,0,0);
       this.rig.rotate('left_knee',leftKnee*weight,0,0);
-      // Counter the complete pelvis+hip+knee chain so the soles stay level during the step.
-      this.rig.rotate('right_foot',-(pelvis+rightThigh+rightKnee)*weight,0,-gait90*2.0*motion*weight);
-      this.rig.rotate('left_foot',-(pelvis+leftThigh+leftKnee)*weight,0,-gait90*2.0*motion*weight);
+      this.rig.rotate('right_foot',-(pelvis+rightThigh+rightKnee)*weight,0,-gait90*4.0*motion*weight);
+      this.rig.rotate('left_foot',-(pelvis+leftThigh+leftKnee)*weight,0,-gait90*4.0*motion*weight);
     }
     combatStance(attackArm,weight,unarmed) {
       if (weight<=1e-4) return;
@@ -290,7 +302,14 @@
     apply(c,m,w,strength) {
       if (w<=1e-4) return;
       const k=w*strength;
-      const moving=saturate(Math.max(c.walkAnimationSpeed/Math.max(.001,c.speedValue),m.speed/.12));
+      const moving=smooth01(saturate(Math.max(
+        c.walkAnimationSpeed/Math.max(.001,c.speedValue)*1.75,
+        m.speed/.075,
+        c.horizontalSpeed/.075
+      )));
+      // Slow deliberate stepping, but with enough travel to actually read as locomotion.
+      const sneakHz=.46+.34*moving;
+      const sneakPhase=m.advanceCycle('sneak',sneakHz,2.6);
       // Tactical crouch: center of mass goes down/forward, but the spine remains nearly vertical.
       // Foot height is solved by AnatomicalJoints.crouch() instead of blindly lowering the pelvis.
       this.rig.move('pelvis',0,(1.45/16)*k,-.018*k);
@@ -301,7 +320,7 @@
       this.rig.rotate('chest',.6*k,m.strafe*4*k,m.inertiaStrafe*2.2*k);
       this.rig.rotate('right_upper_arm',-3*k,0,2*k);
       this.rig.rotate('left_upper_arm',-3*k,0,-2*k);
-      this.joints.crouch(k,moving,c.walkPhase);
+      this.joints.crouch(k,moving,sneakPhase);
     }
   }
 
@@ -311,49 +330,57 @@
       if (w<=1e-4) return;
       const k=w*strength;
       const vy=m.vertical;
-      const rising=smooth01((vy+.005)/.17);
-      const falling=smooth01((-vy-.015)/.28);
+      const rising=smooth01(saturate((vy+.01)/.22));
+      const falling=smooth01(saturate((-vy-.015)/.30));
       const hover=saturate(1-Math.max(rising,falling));
-      const sprintJump=m.takeoffSprinting && m.takeoffSpeed>.14;
-      const carry=Math.exp(-m.airTime*(sprintJump?1.8:3.6))*saturate(m.takeoffSpeed/.20);
-      const gait=Math.cos(m.takeoffPhase);
-      const rightLead=gait>=0;
+      const sprintJump=m.takeoffSprinting && m.takeoffSpeed>.13;
+      const launchSpeed=saturate(m.takeoffSpeed/.20);
+      const runCarry=Math.exp(-m.airTime*(sprintJump?1.10:2.5))*launchSpeed;
+      const landingPrep=smooth01(falling*saturate((m.airTime-.10)/.34));
+      const gaitWeight=saturate((sprintJump?.34:.14)+runCarry*(sprintJump?.92:.58))*(1-landingPrep*.58);
+      const gait=Math.cos(m.airStridePhase);
+      const gait90=Math.sin(m.airStridePhase);
+      const rightSwing=gait;
+      const leftSwing=-gait;
 
-      // Keep a real split stance throughout the jump. RIGHT +Z and LEFT -Z abduct outward.
-      const leadHip=sprintJump?-20:-14;
-      const trailHip=sprintJump?13:9;
-      const riseLeadKnee=sprintJump?18:15;
-      const riseTrailKnee=sprintJump?38:30;
-      let rHip=(rightLead?leadHip:trailHip)*carry;
-      let lHip=(rightLead?trailHip:leadHip)*carry;
-      let rKnee=(rightLead?riseLeadKnee:riseTrailKnee)*carry;
-      let lKnee=(rightLead?riseTrailKnee:riseLeadKnee)*carry;
+      // Preserve the takeoff running cycle in the air. A sprint jump continues to scissor the legs,
+      // then progressively converges into a landing-ready split instead of freezing one frame.
+      let rHip=rightSwing*(sprintJump?31:22)*gaitWeight;
+      let lHip=leftSwing*(sprintJump?31:22)*gaitWeight;
+      let rKnee=(9+Math.max(0,-rightSwing)*(sprintJump?33:25))*gaitWeight;
+      let lKnee=(9+Math.max(0,-leftSwing)*(sprintJump?33:25))*gaitWeight;
 
-      if (rising>1e-4) {
-        rHip+=(rightLead?-11:8)*rising;
-        lHip+=(rightLead?8:-11)*rising;
-        rKnee+=(rightLead?8:20)*rising;
-        lKnee+=(rightLead?20:8)*rising;
-      }
+      const takeoffImpulse=saturate((m.takeoffVertical+.02)/.34)*Math.exp(-m.airTime*4.2);
+      // On ascent, compress the forward leg and extend the rear one. The impulse is strongest just
+      // after leaving the ground and therefore visually connects the jump to the running step.
+      rHip+=(-rightSwing*7-6)*rising*takeoffImpulse;
+      lHip+=(-leftSwing*7-6)*rising*takeoffImpulse;
+      rKnee+=(18+Math.max(0,-rightSwing)*16)*rising*takeoffImpulse;
+      lKnee+=(18+Math.max(0,-leftSwing)*16)*rising*takeoffImpulse;
+
       if (hover>1e-4) {
-        const drift=Math.sin(c.continuousSeconds*TAU*.32);
-        rHip+=(rightLead?-8:5)*hover + drift*1.2*hover;
-        lHip+=(rightLead?5:-8)*hover - drift*1.2*hover;
-        rKnee+=(rightLead?18:27)*hover + drift*2*hover;
-        lKnee+=(rightLead?27:18)*hover - drift*2*hover;
-      }
-      if (falling>1e-4) {
-        const severity=saturate((-vy-.02)/.45);
-        // Prepare the same lead/rear relation for landing; do not collapse both legs to center.
-        rHip+=(rightLead?-10:7)*falling;
-        lHip+=(rightLead?7:-10)*falling;
-        rKnee+=(rightLead?18:30+severity*5)*falling;
-        lKnee+=(rightLead?30+severity*5:18)*falling;
+        const free=Math.sin(c.continuousSeconds*TAU*.28);
+        rHip+=(-5+free*2.0)*hover;
+        lHip+=(4-free*2.0)*hover;
+        rKnee+=(20+free*3)*hover;
+        lKnee+=(25-free*3)*hover;
       }
 
-      const outward=10+hover*4+rising*2;
-      const rFoot=-(rHip+rKnee)*.48-hover*3-falling*2;
-      const lFoot=-(lHip+lKnee)*.48-hover*3-falling*2;
+      if (landingPrep>1e-4) {
+        const rightLead=Math.cos(m.airStridePhase)>=0;
+        const targetRHip=rightLead?-13:8;
+        const targetLHip=rightLead?8:-13;
+        const targetRKnee=rightLead?24:36;
+        const targetLKnee=rightLead?36:24;
+        rHip=rHip+(targetRHip-rHip)*landingPrep;
+        lHip=lHip+(targetLHip-lHip)*landingPrep;
+        rKnee=rKnee+(targetRKnee-rKnee)*landingPrep;
+        lKnee=lKnee+(targetLKnee-lKnee)*landingPrep;
+      }
+
+      const outward=(sprintJump?12:10)+hover*4+Math.abs(gait90)*2*gaitWeight;
+      const rFoot=-(rHip+rKnee)*.50-hover*3-landingPrep*2;
+      const lFoot=-(lHip+lKnee)*.50-hover*3-landingPrep*2;
       this.rig.move('right_thigh',m.inertiaStrafe*.130*k,0,-m.inertiaForward*.095*k);
       this.rig.move('left_thigh',m.inertiaStrafe*.130*k,0,-m.inertiaForward*.095*k);
       this.rig.rotate('right_thigh',rHip*k,-4*k,outward*k+m.inertiaStrafe*8*k);
@@ -363,21 +390,20 @@
       this.rig.rotate('right_foot',rFoot*k,0,-2*k);
       this.rig.rotate('left_foot',lFoot*k,0,2*k);
 
-      // Root/chest react in the opposite sense to loose lower limbs, making acceleration readable.
-      this.rig.move('pelvis',-m.inertiaStrafe*.032*k,0,m.inertiaForward*.024*k);
-      this.rig.rotate('spine_lower',-m.inertiaForward*5*k,0,-m.inertiaStrafe*6*k);
-      this.rig.rotate('chest',(sprintJump?8*carry:2*rising)*k-m.inertiaForward*5*k,0,-m.inertiaStrafe*8*k);
+      this.rig.move('pelvis',-m.inertiaStrafe*.032*k,-.018*takeoffImpulse*k,m.inertiaForward*.024*k);
+      this.rig.rotate('spine_lower',(-m.inertiaForward*5+takeoffImpulse*4)*k,0,-m.inertiaStrafe*6*k);
+      this.rig.rotate('chest',((sprintJump?8:3)*takeoffImpulse+2*rising)*k-m.inertiaForward*5*k,0,-m.inertiaStrafe*8*k);
 
-      // Jump arms fold FORWARD, not down/back. During a sprint jump they keep more launch intent.
+      // Arms carry the running counter-swing into takeoff and then fold forward with the jump
+      // impulse. They do not drop into a static hanging pose the moment onGround becomes false.
       const armGate=1-m.attackBlend;
       if (armGate>1e-4) {
-        const launch=(sprintJump?1:.72)*carry;
-        const free=saturate(rising*.75+hover*.85+falling*.55);
-        const base=-((sprintJump?30:22)*launch + 16*free);
-        this.rig.rotate('right_upper_arm',base*k*armGate,0,(9+free*3)*k*armGate);
-        this.rig.rotate('left_upper_arm',base*k*armGate,0,-(9+free*3)*k*armGate);
-        flexElbow(this.rig,'right',(28+launch*18+hover*8)*k*armGate);
-        flexElbow(this.rig,'left',(28+launch*18+hover*8)*k*armGate);
+        const armCycle=(sprintJump?27:18)*gaitWeight;
+        const forwardFold=(sprintJump?28:20)*takeoffImpulse+12*rising+8*hover;
+        this.rig.rotate('right_upper_arm',(-rightSwing*armCycle-forwardFold)*k*armGate,0,(8+hover*3)*k*armGate);
+        this.rig.rotate('left_upper_arm',(-leftSwing*armCycle-forwardFold)*k*armGate,0,-(8+hover*3)*k*armGate);
+        flexElbow(this.rig,'right',(20+takeoffImpulse*24+hover*10+Math.max(0,rightSwing)*10*gaitWeight)*k*armGate);
+        flexElbow(this.rig,'left',(20+takeoffImpulse*24+hover*10+Math.max(0,leftSwing)*10*gaitWeight)*k*armGate);
       }
     }
     landing(c,m,w,strength) {
@@ -715,37 +741,62 @@
         this.rig.setRotation(forearm(useArm),0,0,0);
         this.rig.setRotation(wrist(useArm),0,0,0);
         if (charging) {
-          const p=saturate(c.vanillaUseTicks/Math.max(1,c.maxCrossbowChargeDuration));
-          const mainY=(-sign*45.84);
-          const otherY=sign*(22.92+(48.70-22.92)*p);
-          const otherX=-55.62+(-90+55.62)*p;
+          const p=smoother01(saturate(c.vanillaUseTicks/Math.max(1,c.maxCrossbowChargeDuration)));
+          const mainY=-sign*45.84;
           this.rig.rotate(upper(useArm),-55.62*k,mainY*k,0);
-          this.rig.rotate(upper(other),otherX*k,otherY*k,0);
-          flexElbow(this.rig,other,(54-18*p)*k);
+          this.rig.rotate(useArm+'_clavicle',0,-sign*2.8*k,sign*1.5*k);
+          this.rig.rotate(other+'_clavicle',0,sign*(4.0+2.0*p)*k,-sign*2.0*k);
+
+          // The draw/support hand now reaches an actual point on the item-bearing hand chain. The
+          // target moves with the crossbow arm, so charging cannot desync into a free-floating hand.
+          const targetX=(other==='left'?1:-1)*(1.15-.45*p)/16;
+          const targetY=(.30+.60*p)/16;
+          const targetZ=(-.45+.70*p)/16;
+          this.rig.reachHand(other,useArm+'_item_control',targetX,targetY,targetZ,
+            other==='right'?-1:1,.45,.18,k);
+          this.rig.rotate(wrist(other),(-6-12*p)*k,0,(other==='right'?-5:5)*k);
         } else {
-          // Charged/aiming basis: item hand is a straight sight line; the second hand stays closer
-          // to the torso instead of forcing a two-elbow crossbow pose.
+          // Charged/aiming: item arm is the sight line and the support hand remains physically on
+          // the crossbow body rather than merely posing somewhere near the opposite shoulder.
           this.rig.rotate(upper(useArm),(-90+aimPitch)*k,(aimYaw-sign*9)*k,-sign*2*k);
-          this.rig.rotate(upper(other),-32*k,(aimYaw+sign*12)*k,sign*7*k);
-          flexElbow(this.rig,other,52*k);
+          this.rig.setRotation(elbow(useArm),0,0,0);
+          this.rig.setRotation(forearm(useArm),0,0,0);
+          const targetX=(other==='left'?1:-1)*1.25/16;
+          this.rig.reachHand(other,useArm+'_item_control',targetX,.55/16,-.2/16,
+            other==='right'?-1:1,.35,.18,k);
+          this.rig.rotate(wrist(other),-8*k,0,(other==='right'?-4:4)*k);
         }
       }
 
       if (eat>1e-4 || drink>1e-4) {
         const drinkMode=drink>eat;
         const k=Math.max(eat,drink);
-        // Right arm must fold INWARD: right Z is negative, left Z is positive.
-        const rhythm=Math.sin(c.continuousSeconds*TAU*(drinkMode?1.35:1.55));
-        const motion=(drinkMode?1.8:2.7)*rhythm;
-        this.rig.rotate('chest',(drinkMode?1.0:1.6)*k,-sign*1.5*k,0);
-        this.rig.rotate(upper(useArm),(-60+motion)*k,-sign*6*k,-sign*(drinkMode?17:22)*k);
-        flexElbow(this.rig,useArm,(78+(drinkMode?2.5:4.0)*rhythm)*k,0,sign*2*k);
-        this.rig.rotate(forearm(useArm),0,sign*2*k,0);
-        this.rig.rotate(wrist(useArm),(drinkMode?-18:-8)*k,0,-sign*2*k);
+        const usePhase=Math.max(0,c.vanillaUseTicks);
+        const biteWave=Math.sin(usePhase*(drinkMode?.36:.48));
+        const bite=(biteWave*.5+.5);
+
+        // The torso meets the hand slightly, but the target itself is attached to HEAD. Therefore
+        // looking up/down/sideways moves the mouth target first and the arm IK follows it exactly.
+        this.rig.rotate('spine_upper',(drinkMode?2.0:3.0)*k,-sign*(drinkMode?1.4:2.2)*k,0);
+        this.rig.rotate('chest',(drinkMode?3.6:4.8)*k,-sign*(drinkMode?3.0:4.4)*k,sign*1.0*k);
+        this.rig.rotate('neck_lower',(drinkMode?.5:1.0)*k,sign*.7*k,0);
+        this.rig.rotate('head',(drinkMode?1.0:1.8)*k,sign*1.0*k,0);
+        this.rig.rotate(useArm+'_scapula',0,-sign*3.5*k,sign*2.5*k);
+        this.rig.rotate(useArm+'_clavicle',0,-sign*6.5*k,sign*4.5*k);
+
+        // Mouth point in head-local model pixels: slightly toward the active side, near the lower
+        // front face. A tiny bite/drink depth pulse moves the hand/item into the mouth, not the elbow.
+        const mouthX=-sign*(drinkMode?.45:.70)/16;
+        const mouthY=(drinkMode?-2.0:-2.35)/16;
+        const mouthZ=(-4.05-(drinkMode?.25:.42)*bite)/16;
+        this.rig.reachHand(useArm,'head',mouthX,mouthY,mouthZ,
+          useArm==='right'?-1:1,.62,.10,k);
+        this.rig.rotate(wrist(useArm),(drinkMode?-31:-13)*k,sign*(drinkMode?3:5)*k,-sign*(drinkMode?5:8)*k);
+        this.rig.move(useArm+'_item_control',0,-(drinkMode?.004:.006)*k,-(drinkMode?.010:.014)*k);
       }
 
       if (active && item.includes('map')) {
-        this.d.play('nea:MapHoldingAnimation',c.continuousSeconds,weight);
+        this.d.play('utility:MapHoldingAnimation',c.continuousSeconds,weight);
         return true;
       }
       return Math.max(spear,shield,bow,crossbow,eat,drink)>1e-3;
@@ -773,7 +824,7 @@
       const cross=m.blend('hold_crossbow',!!crossArm?1:0,5,5)*weight*heldGate;
 
       if (main.includes('map')||off.includes('map')) {
-        this.d.play('nea:MapHoldingAnimation',c.continuousSeconds,weight*heldGate);
+        this.d.play('utility:MapHoldingAnimation',c.continuousSeconds,weight*heldGate);
         return;
       }
       if (spearArm && spear>1e-4) {
@@ -797,8 +848,10 @@
           this.rig.setRotation(elbow(aimArm),0,0,0);
           this.rig.setRotation(forearm(aimArm),0,0,0);
           this.rig.setRotation(wrist(aimArm),0,0,0);
-          this.rig.rotate(upper(support),-24*k,sign*10*k,(support==='right'?-7:7)*k);
-          flexElbow(this.rig,support,48*k);
+          this.rig.reachHand(support,aimArm+'_item_control',
+            (support==='left'?1:-1)*1.25/16,.55/16,-.2/16,
+            support==='right'?-1:1,.35,.18,k);
+          this.rig.rotate(wrist(support),-8*k,0,(support==='right'?-4:4)*k);
         } else {
           this.rig.rotate(upper(crossArm),-28*k,-sign*7*k,-sign*4*k);
           flexElbow(this.rig,crossArm,12*k);
@@ -820,14 +873,20 @@
       // attackTime pulse. Sword/axe recovery therefore occupies the same cooldown the gameplay uses.
       const active=!!c.attackActive || c.vanillaAttackTime>1e-4;
       if (!active) return false;
-      const duration=Math.max(.28,c.attackDuration||.62);
+      const duration=Math.max(.05,c.attackDuration||.62);
       const u=!!c.attackActive ? saturate(c.attackTime/duration) : saturate(c.vanillaAttackTime);
-      const envelope=Math.sin(Math.PI*u)*weight;
+      // Respect the complete gameplay cooldown even for fast weapons. The forward commitment has
+      // an absolute minimum duration, so fists do not collapse into a ~50 ms twitch; heavier items
+      // still commit sharply while spending most of their cooldown in controlled recovery.
+      const commitSeconds=clamp(duration*.24,.105,.17);
+      const commitFrac=clamp(commitSeconds/duration,.16,.42);
+      const commit=smoother01(saturate(u/commitFrac));
+      const recover=1-smooth01(saturate((u-commitFrac)/Math.max(1e-4,1-commitFrac)));
+      const envelope=commit*recover*weight;
       if (envelope<=1e-4) return false;
-      const swing=smoother01(saturate(u));
-      const strike=smoother01(saturate((u-.16)/.50));
+      const strike=commit;
       const alternate=(c.swingIndex&1)!==0?-1:1;
-      const direction=alternate*(swing*2-1);
+      const direction=alternate*(2*commit-1);
 
       this.joints.combatStance(arm,envelope,unarmed);
 
