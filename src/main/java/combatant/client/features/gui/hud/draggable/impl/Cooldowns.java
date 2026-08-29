@@ -357,6 +357,20 @@ public final class Cooldowns extends DraggableHudElement {
             );
         }
 
+        HudRenderUtil.ThemeGradient headerIconGradient = isThemeMode()
+                ? HudRenderUtil.themeForegroundGradient(255)
+                : new HudRenderUtil.ThemeGradient(resolvedHeaderIconColor, resolvedHeaderIconColor, 45.0f);
+        if (isThemeMode() && headerIconPulse.get()) {
+            headerIconGradient = HudTextEffects.animatedGradient(
+                    headerIconGradient,
+                    HudTextEffects.Effect.PULSE,
+                    headerIconPulseSpeed.get(),
+                    (float) (Util.getMillis() / 1000.0),
+                    0.0f,
+                    headerIconPulseIntensity.get() / 100.0f
+            );
+        }
+
         List<LinkedHashMap<String, Object>> panelRows = ScriptedListHudPanel.rows();
         rowTextRenderer.begin(drawFontScale, false, false);
         if (showExampleRow) {
@@ -428,6 +442,10 @@ public final class Cooldowns extends DraggableHudElement {
                         hasEffect(),
                         Math.min(1.0f, (blurAlpha.get() / 255.0f) * (isThemeMode() ? 1.15f : 1.0f)),
                         resolvedHeaderIconColor,
+                        isThemeMode(),
+                        headerIconGradient.start(),
+                        headerIconGradient.end(),
+                        headerIconGradient.angleDeg(),
                         HudPanelLayoutModes.current(layoutMode),
                         strokeEnabled.get(),
                         strokeAlpha.get() / 255.0f,

@@ -48,6 +48,7 @@ final class ModulesMenuPanel {
     float settingsScrollbarHandleY, settingsScrollbarHandleH;
     boolean settingsScrollbarDragging;
     float settingsScrollbarDragOffset;
+    float previewX, previewY, previewW, previewH;
 
     float swap;
     float anim;
@@ -72,6 +73,7 @@ final class ModulesMenuPanel {
         swap = 0.0f;
         hits.clear();
         settingHits.clear();
+        previewX = previewY = previewW = previewH = 0.0f;
     }
 
     void update() {
@@ -104,6 +106,12 @@ final class ModulesMenuPanel {
             if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && ModulesMenuScreen.inside(mx, my, x, backY, w, backH)) {
                 closeSettings();
                 return true;
+            }
+
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+                    && previewW > 0.0f
+                    && ModulesMenuScreen.inside(mx, my, previewX, previewY, previewW, previewH)) {
+                return ModulesMenuResolver.openPreview(selected);
             }
 
             try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, ModulesMenuScreen.computePortScale())) {
@@ -164,7 +172,7 @@ final class ModulesMenuPanel {
 
             if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
                 ModulesMenuResolver.ResolvedSettings resolved = ModulesMenuResolver.resolveSettings(hit.id);
-                if (resolved == null || resolved.settings().isEmpty()) return true;
+                if (resolved == null) return true;
 
                 selected = resolved.getId();
                 selectedTitle = resolved.title();

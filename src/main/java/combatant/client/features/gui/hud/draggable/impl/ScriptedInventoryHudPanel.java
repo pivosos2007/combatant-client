@@ -151,6 +151,10 @@ final class ScriptedInventoryHudPanel {
                  int strokeStartColor,
                  int strokeEndColor,
                  int headerIconColor,
+                 boolean headerIconGradient,
+                 int headerIconGradientStart,
+                 int headerIconGradientEnd,
+                 float headerIconGradientAngle,
                  int gridDivider,
                  String layout,
                  ScriptedListHudPanel.Palette palette,
@@ -180,6 +184,10 @@ final class ScriptedInventoryHudPanel {
             out.put("strokeStartColor", ScriptedListHudPanel.hex(strokeStartColor));
             out.put("strokeEndColor", ScriptedListHudPanel.hex(strokeEndColor));
             out.put("headerIconColor", ScriptedListHudPanel.hex(headerIconColor));
+            out.put("headerIconGradient", headerIconGradient);
+            out.put("headerIconGradientStart", ScriptedListHudPanel.hex(headerIconGradientStart));
+            out.put("headerIconGradientEnd", ScriptedListHudPanel.hex(headerIconGradientEnd));
+            out.put("headerIconGradientAngle", headerIconGradientAngle);
             out.put("gridDivider", ScriptedListHudPanel.hex(gridDivider));
             out.put("layout", layout != null ? layout : HudPanelLayoutModes.SPLIT_HEADER);
             out.put("cols", 9);
@@ -229,6 +237,8 @@ final class ScriptedInventoryHudPanel {
             h = CachedUiScriptRuntime.mix(h, strokeGradient);
             h = CachedUiScriptRuntime.mix(h, strokeStartColor);
             h = CachedUiScriptRuntime.mix(h, strokeEndColor);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradient);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientAngle);
             h = CachedUiScriptRuntime.mix(h, gridDivider);
             h = CachedUiScriptRuntime.mix(h, layout);
             h = mixPalette(h);
@@ -247,6 +257,8 @@ final class ScriptedInventoryHudPanel {
             long h = 0xcbf29ce484222325L;
             h = CachedUiScriptRuntime.mix(h, (int) Math.min(Integer.MAX_VALUE, Math.max(0L, itemCount)));
             h = CachedUiScriptRuntime.mix(h, headerIconColor);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientStart);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientEnd);
             h = CachedUiScriptRuntime.mix(h, strokeEnabled);
             h = CachedUiScriptRuntime.mix(h, strokeAlpha);
             h = CachedUiScriptRuntime.mix(h, strokeGradient);
@@ -279,6 +291,8 @@ final class ScriptedInventoryHudPanel {
             LinkedHashMap<String, LinkedHashMap<String, Object>> patches = new LinkedHashMap<>();
             putPatch(patches, "header:count-value", "text", String.valueOf(Math.max(0L, itemCount)));
             putPatch(patches, "header:icon", "color", ScriptedListHudPanel.hex(headerIconColor));
+            putPatch(patches, "header:icon", "gradientStartColor", ScriptedListHudPanel.hex(headerIconGradientStart));
+            putPatch(patches, "header:icon", "gradientEndColor", ScriptedListHudPanel.hex(headerIconGradientEnd));
             if (items != null) {
                 for (LinkedHashMap<String, Object> item : items) {
                     String key = "item:" + intValue(item.get("slot"));

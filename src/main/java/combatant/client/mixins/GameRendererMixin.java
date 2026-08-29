@@ -10,7 +10,9 @@ package combatant.client.mixins;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import com.mojang.blaze3d.vertex.PoseStack;
+import combatant.client.features.gui.preview.VisualPreviewRuntime;
 import combatant.client.features.module.modules.visuals.*;
 import combatant.client.render.engine.postprocess.PostProcessPass;
 import combatant.client.util.screen.ClientScreen;
@@ -20,6 +22,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.ProjectionMatrixBuffer;
 import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -33,6 +36,7 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -436,15 +440,37 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
 
     @Inject(method = "renderLevel", at = @At("HEAD"))
     private void combatant$beginWorldMsaa(DeltaTracker tickCounter, CallbackInfo ci) {
-        IrisCombatantFrameHooks.beginRenderLevel(tickCounter);
         CombatantWorldMatrices.reset();
+        if (VisualPreviewRuntime.isActive()) return;
+        IrisCombatantFrameHooks.beginRenderLevel(tickCounter);
         int samples = MainConfig.get().getMsaa3dSamples();
         MsaaWorldTarget.begin(minecraft, samples, combatant$needsResolvedMainDepth());
     }
 
     @Inject(method = "renderLevel", at = @At("RETURN"))
     private void combatant$endIrisFrameHooks(DeltaTracker tickCounter, CallbackInfo ci) {
+        if (VisualPreviewRuntime.isActive()) return;
         IrisCombatantFrameHooks.endRenderLevel(tickCounter);
+    }
+
+    @Redirect(
+            method = "renderLevel",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/LevelRenderer;render(Lcom/mojang/blaze3d/resource/GraphicsResourceAllocator;Lnet/minecraft/client/DeltaTracker;ZLnet/minecraft/client/renderer/state/level/CameraRenderState;Lorg/joml/Matrix4fc;Lcom/mojang/blaze3d/buffers/GpuBufferSlice;Lorg/joml/Vector4f;Z)V"
+            )
+    )
+    private void combatant$skipWorldForVisualPreview(LevelRenderer renderer,
+                                                      GraphicsResourceAllocator resources,
+                                                      DeltaTracker tickCounter,
+                                                      boolean renderBlockOutline,
+                                                      CameraRenderState camera,
+                                                      Matrix4fc positionMatrix,
+                                                      GpuBufferSlice fog,
+                                                      Vector4f clearColor,
+                                                      boolean renderSky) {
+        if (VisualPreviewRuntime.isActive()) return;
+        renderer.render(resources, tickCounter, renderBlockOutline, camera, positionMatrix, fog, clearColor, renderSky);
     }
 
     @WrapOperation(
@@ -484,6 +510,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             )
     )
     private void combatant$postProcess(DeltaTracker tickCounter, CallbackInfo ci) {
+        if (VisualPreviewRuntime.isActive()) return;
         if (IrisRuntime.isShaderpackRendererActive()
                 && IrisCompatibilityGuards.deferIrisFinalizationForSecondHandScene()) {
             return;
@@ -543,6 +570,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
 
     @Override
     public void combatant$renderAfterIrisFinalization(DeltaTracker tickCounter) {
+        if (VisualPreviewRuntime.isActive()) return;
         combatant$renderPreHandPostProcess(tickCounter);
     }
 
@@ -555,6 +583,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             )
     )
     private void combatant$postProcessAfterHand(DeltaTracker tickCounter, CallbackInfo ci) {
+        if (VisualPreviewRuntime.isActive()) return;
         try (ProfilerPhase.Scope profilerScope = ProfilerPhase.scope("3d:post_after_hand");
              TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("3d:post_after_hand")) {
             if (minecraft != null) {
@@ -713,6 +742,10 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
 
     @Inject(method = "renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;FLorg/joml/Matrix4fc;)V", at = @At("HEAD"), cancellable = true)
     private void freecam$hand(CameraRenderState cameraRenderState, float tickDelta, Matrix4fc positionMatrix, CallbackInfo ci) {
+        if (VisualPreviewRuntime.isActive()) {
+            ci.cancel();
+            return;
+        }
         Freecam fc = Modules.get(Freecam.class);
         if (fc != null && fc.isEnabled() && !fc.renderHand()) {
             ci.cancel();

@@ -96,6 +96,28 @@ public enum HudTextEffects {
         return HudRenderUtil.mixColor(darkColor, lightColor, t);
     }
 
+    public static HudRenderUtil.ThemeGradient animatedGradient(HudRenderUtil.ThemeGradient gradient,
+                                                                Effect effect,
+                                                                int speed,
+                                                                float timeSec,
+                                                                float phase,
+                                                                float intensity) {
+        if (gradient == null) return null;
+        float mix = Math.max(0.0f, Math.min(1.0f, intensity));
+        if (effect == null || effect == Effect.NONE || mix <= 0.0f) return gradient;
+        int start = HudRenderUtil.mixColor(
+                gradient.start(),
+                animatedColor(gradient.start(), effect, speed, timeSec, phase),
+                mix
+        );
+        int end = HudRenderUtil.mixColor(
+                gradient.end(),
+                animatedColor(gradient.end(), effect, speed, timeSec, phase),
+                mix
+        );
+        return new HudRenderUtil.ThemeGradient(start, end, gradient.angleDeg());
+    }
+
     public enum Effect implements EnumValue.IdProvider {
         NONE("None"),
         MIX("Mix"),

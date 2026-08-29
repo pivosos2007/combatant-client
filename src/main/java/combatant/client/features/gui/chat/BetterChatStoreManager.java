@@ -18,6 +18,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.world.item.ItemStack;
+import combatant.client.features.gui.chat.rich.BetterChatMessage;
+import combatant.client.features.gui.chat.rich.BetterChatMessageJson;
+import combatant.client.features.gui.chat.rich.ItemNode;
+import combatant.client.features.gui.chat.rich.TextNode;
 import combatant.client.config.ConfigPaths;
 import combatant.client.features.gui.hud.draggable.impl.BetterChat;
 import combatant.client.util.logging.DebugLog;
@@ -68,19 +72,24 @@ public enum BetterChatStoreManager {
      * @return false only when BetterChat anti-spam deliberately suppresses the message.
      */
     public static boolean addMessage(Component text) {
+        return addMessage(BetterChatMessage.text(LegacyTextUtil.convertLegacyCodes(text)));
+    }
+
+    public static boolean addMessage(BetterChatMessage message) {
         Minecraft mc = Minecraft.getInstance();
         BetterChatStore store = getActiveStore(mc);
         if (store == null) return true;
 
-        text = LegacyTextUtil.convertLegacyCodes(text);
+        BetterChatMessage safeMessage = message == null ? BetterChatMessage.empty() : message;
         BetterChat cfg = BetterChat.get();
-        if (cfg != null && cfg.antiSpam() && ChatSpamHeuristics.isLikelyGibberish(text)) {
+        if (cfg != null && cfg.antiSpam()
+                && ChatSpamHeuristics.isLikelyGibberish(safeMessage.accessibleComponent())) {
             return false;
         }
 
         boolean stackDuplicates = cfg == null || cfg.stackDuplicates();
-        store.add(text, System.currentTimeMillis(), stackDuplicates);
-        boolean cacheChanged = captureHovers(text, activeCache);
+        store.add(safeMessage, System.currentTimeMillis(), stackDuplicates);
+        boolean cacheChanged = captureHovers(safeMessage, activeCache);
         BetterChatRenderer.onNewMessage();
         boolean historyOn = cfg == null || cfg.historyEnabled();
         if (historyOn) {
@@ -129,7 +138,11 @@ public enum BetterChatStoreManager {
                     String json = obj.has("text") ? obj.get("text").getAsString() : null;
                     long ts = obj.has("time") ? obj.get("time").getAsLong() : System.currentTimeMillis();
                     int repeatCount = obj.has("count") ? Math.max(1, obj.get("count").getAsInt()) : 1;
-                    if (json != null) {
+                    if (obj.has("nodes") && obj.get("nodes").isJsonArray()) {
+                        BetterChatMessage message = BetterChatMessageJson.decode(obj.getAsJsonArray("nodes"));
+                        store.add(message, ts, false, repeatCount);
+                        captureHovers(message, cache);
+                    } else if (json != null) {
                         var txt = TextJsonUtil.fromJson(json);
                         if (txt != null) {
                             store.add(txt, ts, false, repeatCount);
@@ -203,6 +216,9 @@ public enum BetterChatStoreManager {
                 JsonObject obj = new JsonObject();
                 String json = serializedText(line);
                 obj.addProperty("text", json);
+                if (!line.rawMessage().isTextOnly()) {
+                    obj.add("nodes", BetterChatMessageJson.encode(line.rawMessage()));
+                }
                 obj.addProperty("time", line.timestampMs());
                 if (line.repeatCount() > 1) obj.addProperty("count", line.repeatCount());
                 arr.add(obj);
@@ -384,6 +400,20 @@ public enum BetterChatStoreManager {
             return Optional.empty();
         }, Style.EMPTY);
         return changed[0];
+    }
+
+    private static boolean captureHovers(BetterChatMessage message, BetterChatHoverCache cache) {
+        if (message == null || cache == null) return false;
+        boolean changed = false;
+        for (var node : message.nodes()) {
+            if (node instanceof ItemNode item) {
+                ItemStack stack = item.stack();
+                if (!stack.isEmpty()) changed |= cache.putItem(hoverItemKey(stack), stack);
+            } else if (node instanceof TextNode text) {
+                changed |= captureHovers(text.component(), cache);
+            }
+        }
+        return changed;
     }
 
     public static String hoverItemKey(ItemStack stack) {

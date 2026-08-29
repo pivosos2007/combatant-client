@@ -393,6 +393,10 @@ export class HudPanelLayout {
         key: "header:icon",
         text: c(this.p.headerIcon, ""),
         color: c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF")),
+        textGradient: this.p.headerIconGradient === true,
+        gradientStartColor: c(this.p.headerIconGradientStart, c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))),
+        gradientEndColor: c(this.p.headerIconGradientEnd, c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))),
+        gradientAngle: n(this.p.headerIconGradientAngle, 45),
         class: cls(abs(n(prop(this.v, "titleIconX", 5), 5) * bs, iconY, 12 * bs * iconScale, iconH + 4 * bs), font(c(prop(this.v, "headerIconFont", "IconsNur"), "IconsNur"), fs * iconScale), `text-${c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))}`),
       }),
       ui.text({

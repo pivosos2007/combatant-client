@@ -104,21 +104,39 @@ public final class UiRenderer {
                                 color
                         );
                     } else {
-                        String effect = node.props().string("textEffect", style.textEffect());
-                        int effectSpeed = Math.max(1, (int) node.props().number("textEffectSpeed", style.textEffectSpeed()));
-                        float effectPhase = node.props().number("textEffectPhase", 0.0f);
-                        TextEffectSpec effectSpec = TextEffectSpec.of(effect, Math.max(0.1f, effectSpeed * 0.08f)).withPhase(effectPhase);
                         String textBackend = node.props().string("textBackend", node.props().string("backend", style.textBackend()));
-                        textRenderer.render(
-                                context.textRenderer(),
-                                text,
-                                textX,
-                                textY,
-                                style,
-                                color,
-                                effectSpec,
-                                textBackend
-                        );
+                        boolean textGradient = node.props().bool("textGradient", false);
+                        if (textGradient) {
+                            int gradientStart = UiColor.parse(node.props().string("gradientStartColor", ""), color);
+                            int gradientEnd = UiColor.parse(node.props().string("gradientEndColor", ""), color);
+                            float gradientAngle = node.props().number("gradientAngle", 90.0f);
+                            textRenderer.renderLinearGradient(
+                                    context.textRenderer(),
+                                    text,
+                                    textX,
+                                    textY,
+                                    style,
+                                    gradientStart,
+                                    gradientEnd,
+                                    gradientAngle,
+                                    textBackend
+                            );
+                        } else {
+                            String effect = node.props().string("textEffect", style.textEffect());
+                            int effectSpeed = Math.max(1, (int) node.props().number("textEffectSpeed", style.textEffectSpeed()));
+                            float effectPhase = node.props().number("textEffectPhase", 0.0f);
+                            TextEffectSpec effectSpec = TextEffectSpec.of(effect, Math.max(0.1f, effectSpeed * 0.08f)).withPhase(effectPhase);
+                            textRenderer.render(
+                                    context.textRenderer(),
+                                    text,
+                                    textX,
+                                    textY,
+                                    style,
+                                    color,
+                                    effectSpec,
+                                    textBackend
+                            );
+                        }
                     }
                 } else if (node.type() == UiNodeType.IMAGE || node.type() == UiNodeType.SVG) {
                     UiAssetRef asset = assetResolver.resolve(node.props());

@@ -9,7 +9,6 @@ package combatant.client.render.engine.core;
 
 /**
  * Explicit render phase used by the Combatant frame graph.
- * This is intentionally independent from Fabric/Minecraft event names: event hooks map into these phases.
  */
 public enum RenderPhase {
     NONE,

@@ -334,6 +334,20 @@ public final class Statistics extends DraggableHudElement {
             );
         }
 
+        HudRenderUtil.ThemeGradient headerIconGradient = isThemeMode()
+                ? HudRenderUtil.themeForegroundGradient(255)
+                : new HudRenderUtil.ThemeGradient(resolvedHeaderIconColor, resolvedHeaderIconColor, 45.0f);
+        if (isThemeMode() && headerIconPulse.get()) {
+            headerIconGradient = HudTextEffects.animatedGradient(
+                    headerIconGradient,
+                    HudTextEffects.Effect.PULSE,
+                    headerIconPulseSpeed.get(),
+                    (float) (Util.getMillis() / 1000.0),
+                    0.0f,
+                    headerIconPulseIntensity.get() / 100.0f
+            );
+        }
+
         if (shadowEnabled.get()) {
             boolean themeShadow = isThemeShadow();
             HudRenderUtil.drawHudShadow(
@@ -417,6 +431,10 @@ public final class Statistics extends DraggableHudElement {
                         accentStart,
                         accentEnd,
                         resolvedHeaderIconColor,
+                        isThemeMode(),
+                        headerIconGradient.start(),
+                        headerIconGradient.end(),
+                        headerIconGradient.angleDeg(),
                         true,
                         new ScriptedListHudPanel.Palette(
                                 uiHeaderLeft, uiHeaderRight, uiBodyLeft, uiBodyRight,

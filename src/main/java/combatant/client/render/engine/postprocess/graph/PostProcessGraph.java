@@ -17,6 +17,7 @@ import combatant.client.render.engine.rhi.CombatantRhi;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Predicate;
 
 public final class PostProcessGraph implements AutoCloseable {
     private final List<PostProcessGraphPass> passes = new ArrayList<>();
@@ -57,9 +58,19 @@ public final class PostProcessGraph implements AutoCloseable {
                            RenderFrameContext context,
                            CombatantRhi rhi,
                            GraphCopy copy) {
+        return execute(phase, tickDelta, context, rhi, copy, pass -> true);
+    }
+
+    /** Executes only graph passes accepted by {@code selector}, preserving the normal ping-pong path. */
+    public boolean execute(PostProcessPass.Phase phase,
+                           float tickDelta,
+                           RenderFrameContext context,
+                           CombatantRhi rhi,
+                           GraphCopy copy,
+                           Predicate<? super PostProcessGraphPass> selector) {
         activePasses.clear();
         for (PostProcessGraphPass pass : passes) {
-            if (pass.phase() == phase && pass.enabled(context)) activePasses.add(pass);
+            if (pass.phase() == phase && selector.test(pass) && pass.enabled(context)) activePasses.add(pass);
         }
         if (activePasses.isEmpty()) return false;
         String gpuGraphLabel = phase == PostProcessPass.Phase.PRE_HAND

@@ -2049,6 +2049,49 @@ public final class Renderer2D {
         endAutoBatch(auto);
     }
 
+    public void roundedTexMaskRectGradient(double x, double y, double w, double h,
+                                           float radius, float softness,
+                                           double texX1, double texY1, double texX2, double texY2,
+                                           int startArgb, int endArgb, float angleDeg,
+                                           GpuTextureView samplerView, GpuSampler sampler) {
+        if (!textured) {
+            throw new IllegalStateException("Renderer2D is not configured for textures.");
+        }
+        if (samplerView == null || sampler == null) return;
+
+        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.roundedRect(x, y, w, h, radius),
+                UiPaint.linear(startArgb, endArgb, angleDeg, 0.0f),
+                (float) texX1, (float) texY1, (float) texX2, (float) texY2, true));
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
+        if (batch == null) return;
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+
+        computeLinearGradientColors((float) w, (float) h, startArgb, endArgb, angleDeg, 0.0f, gradientTmp);
+        int tl = gradientTmp[0];
+        int tr = gradientTmp[1];
+        int br = gradientTmp[2];
+        int bl = gradientTmp[3];
+        float clampedRadius = clampRoundedRadius(radius, w, h);
+        int i1 = mesh.vec2(x, y).raw2(texX1, texY1).local2(x, y)
+                .color((tl >>> 16) & 0xFF, (tl >>> 8) & 0xFF, tl & 0xFF, (tl >>> 24) & 0xFF)
+                .vec4(x, y, w, h).vec4(clampedRadius, softness, 1f, 0f).next();
+        int i2 = mesh.vec2(x, y + h).raw2(texX1, texY2).local2(x, y + h)
+                .color((bl >>> 16) & 0xFF, (bl >>> 8) & 0xFF, bl & 0xFF, (bl >>> 24) & 0xFF)
+                .vec4(x, y, w, h).vec4(clampedRadius, softness, 1f, 0f).next();
+        int i3 = mesh.vec2(x + w, y + h).raw2(texX2, texY2).local2(x + w, y + h)
+                .color((br >>> 16) & 0xFF, (br >>> 8) & 0xFF, br & 0xFF, (br >>> 24) & 0xFF)
+                .vec4(x, y, w, h).vec4(clampedRadius, softness, 1f, 0f).next();
+        int i4 = mesh.vec2(x + w, y).raw2(texX2, texY1).local2(x + w, y)
+                .color((tr >>> 16) & 0xFF, (tr >>> 8) & 0xFF, tr & 0xFF, (tr >>> 24) & 0xFF)
+                .vec4(x, y, w, h).vec4(clampedRadius, softness, 1f, 0f).next();
+        mesh.quad(i1, i2, i3, i4);
+
+        endAutoBatch(auto);
+    }
+
     public void roundedTexRect(double x, double y, double w, double h,
                                float radius, float softness, int argb,
                                Identifier textureId) {
@@ -2091,6 +2134,24 @@ public final class Renderer2D {
                                    float radius, int argb,
                                    Identifier textureId) {
         roundedTexMaskRect(x, y, w, h, radius, 0.0f, argb, textureId);
+    }
+
+    public void roundedTexMaskRectGradient(double x, double y, double w, double h,
+                                           float radius, float softness,
+                                           int startArgb, int endArgb, float angleDeg,
+                                           Identifier textureId) {
+        if (!textured) {
+            throw new IllegalStateException("Renderer2D is not configured for textures.");
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || textureId == null) return;
+        AbstractTexture tex = mc.getTextureManager().getTexture(textureId);
+        if (tex == null) return;
+        GpuTextureView view = tex.getTextureView();
+        GpuSampler sampler = tex.getSampler();
+        if (view == null || sampler == null) return;
+        roundedTexMaskRectGradient(x, y, w, h, radius, softness, 0, 0, 1, 1,
+                startArgb, endArgb, angleDeg, view, sampler);
     }
 
     public void roundedTexRect(double x, double y, double w, double h,

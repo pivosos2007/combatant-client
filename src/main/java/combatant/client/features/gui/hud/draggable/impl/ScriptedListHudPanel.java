@@ -265,8 +265,9 @@ final class ScriptedListHudPanel {
     record Panel(Variant variant, Palette palette, float x, float y, float width, float height, float drawScale,
                  float baseScale, float fontScale, float headerIconHeight, float headerTextHeight, float rowTextHeight,
                  float countLabelWidth, float countValueWidth,
-                 int activeCount, boolean blur, float blurAlpha, int headerIconColor, String layout,
-                 boolean strokeEnabled, float strokeAlpha, boolean strokeGradient,
+                 int activeCount, boolean blur, float blurAlpha, int headerIconColor,
+                 boolean headerIconGradient, int headerIconGradientStart, int headerIconGradientEnd, float headerIconGradientAngle,
+                 String layout, boolean strokeEnabled, float strokeAlpha, boolean strokeGradient,
                  int strokeStartColor, int strokeEndColor, boolean shadowControlled,
                  List<LinkedHashMap<String, Object>> rows) {
         Panel(Variant variant,
@@ -287,6 +288,10 @@ final class ScriptedListHudPanel {
               boolean blur,
               float blurAlpha,
               int headerIconColor,
+              boolean headerIconGradient,
+              int headerIconGradientStart,
+              int headerIconGradientEnd,
+              float headerIconGradientAngle,
               String layout,
               boolean strokeEnabled,
               float strokeAlpha,
@@ -313,6 +318,10 @@ final class ScriptedListHudPanel {
             this.blur = blur;
             this.blurAlpha = blurAlpha;
             this.headerIconColor = headerIconColor;
+            this.headerIconGradient = headerIconGradient;
+            this.headerIconGradientStart = headerIconGradientStart;
+            this.headerIconGradientEnd = headerIconGradientEnd;
+            this.headerIconGradientAngle = headerIconGradientAngle;
             this.layout = layout != null ? layout : HudPanelLayoutModes.SPLIT_HEADER;
             this.strokeEnabled = strokeEnabled;
             this.strokeAlpha = Math.max(0.0f, Math.min(1.0f, strokeAlpha));
@@ -342,6 +351,10 @@ final class ScriptedListHudPanel {
             out.put("blur", blur);
             out.put("blurAlpha", blurAlpha);
             out.put("headerIconColor", hex(headerIconColor));
+            out.put("headerIconGradient", headerIconGradient);
+            out.put("headerIconGradientStart", hex(headerIconGradientStart));
+            out.put("headerIconGradientEnd", hex(headerIconGradientEnd));
+            out.put("headerIconGradientAngle", headerIconGradientAngle);
             out.put("layout", layout);
             out.put("strokeEnabled", strokeEnabled);
             out.put("strokeAlpha", strokeAlpha);
@@ -392,6 +405,8 @@ final class ScriptedListHudPanel {
             h = CachedUiScriptRuntime.mix(h, countValueWidth);
             h = CachedUiScriptRuntime.mix(h, blur);
             h = CachedUiScriptRuntime.mix(h, blurAlpha);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradient);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientAngle);
             h = CachedUiScriptRuntime.mix(h, layout);
             h = CachedUiScriptRuntime.mix(h, strokeEnabled);
             h = CachedUiScriptRuntime.mix(h, strokeAlpha);
@@ -424,6 +439,8 @@ final class ScriptedListHudPanel {
             long h = 0xcbf29ce484222325L;
             h = CachedUiScriptRuntime.mix(h, activeCount);
             h = CachedUiScriptRuntime.mix(h, headerIconColor);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientStart);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientEnd);
             for (LinkedHashMap<String, Object> row : rows) {
                 h = CachedUiScriptRuntime.mix(h, string(row.get("key")));
                 h = CachedUiScriptRuntime.mix(h, string(row.get("icon")));
@@ -455,6 +472,8 @@ final class ScriptedListHudPanel {
             LinkedHashMap<String, LinkedHashMap<String, Object>> patches = new LinkedHashMap<>();
             putPatch(patches, "header:count-value", "text", String.valueOf(Math.max(0, activeCount)));
             putPatch(patches, "header:icon", "color", hex(headerIconColor));
+            putPatch(patches, "header:icon", "gradientStartColor", hex(headerIconGradientStart));
+            putPatch(patches, "header:icon", "gradientEndColor", hex(headerIconGradientEnd));
             for (LinkedHashMap<String, Object> row : rows) {
                 String key = string(row.get("key"));
                 String rowPrefix = "row:" + key;

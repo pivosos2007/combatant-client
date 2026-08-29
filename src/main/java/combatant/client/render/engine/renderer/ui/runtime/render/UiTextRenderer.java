@@ -137,6 +137,77 @@ public final class UiTextRenderer {
         }
     }
 
+    public void renderLinearGradient(TextRenderer fallback,
+                                     String text,
+                                     float x,
+                                     float y,
+                                     UiStyle style,
+                                     int startColor,
+                                     int endColor,
+                                     float angleDeg,
+                                     String backend) {
+        if (text == null || text.isEmpty()) return;
+        if (((startColor | endColor) >>> 24) == 0) return;
+        TextRenderer renderer = resolve(fallback, style, backend);
+        float scale = Math.max(0.01f, style.textScale());
+        renderer.begin(scale, false, false);
+        try {
+            String renderText = style.ellipsis() && style.maxTextWidth() > 0.0f
+                    ? ellipsize(renderer, text, style.maxTextWidth(), style.textShadow())
+                    : text;
+            renderer.renderQuadGradient(renderText, x, y, (idx, cp, x0, y0, x1, y1, out) ->
+                    linearGradientColors(x0, y0, x1, y1, startColor, endColor, angleDeg, out),
+                    style.textShadow());
+        } finally {
+            renderer.end();
+        }
+    }
+
+    private static void linearGradientColors(double x0,
+                                             double y0,
+                                             double x1,
+                                             double y1,
+                                             int startColor,
+                                             int endColor,
+                                             float angleDeg,
+                                             int[] out) {
+        double width = Math.max(0.0001, Math.abs(x1 - x0));
+        double height = Math.max(0.0001, Math.abs(y1 - y0));
+        double angle = Math.toRadians(angleDeg);
+        double dirX = Math.cos(angle);
+        double dirY = Math.sin(angle);
+
+        double p0 = 0.0;
+        double p1 = width * dirX;
+        double p2 = height * dirY;
+        double p3 = p1 + p2;
+        double min = Math.min(Math.min(p0, p1), Math.min(p2, p3));
+        double max = Math.max(Math.max(p0, p1), Math.max(p2, p3));
+        double range = Math.max(0.0001, max - min);
+
+        out[0] = mixArgb(startColor, endColor, (p0 - min) / range);
+        out[1] = mixArgb(startColor, endColor, (p2 - min) / range);
+        out[2] = mixArgb(startColor, endColor, (p3 - min) / range);
+        out[3] = mixArgb(startColor, endColor, (p1 - min) / range);
+    }
+
+    private static int mixArgb(int start, int end, double t) {
+        double k = Math.max(0.0, Math.min(1.0, t));
+        int sa = (start >>> 24) & 0xFF;
+        int sr = (start >>> 16) & 0xFF;
+        int sg = (start >>> 8) & 0xFF;
+        int sb = start & 0xFF;
+        int ea = (end >>> 24) & 0xFF;
+        int er = (end >>> 16) & 0xFF;
+        int eg = (end >>> 8) & 0xFF;
+        int eb = end & 0xFF;
+        int a = (int) Math.round(sa + (ea - sa) * k);
+        int r = (int) Math.round(sr + (er - sr) * k);
+        int g = (int) Math.round(sg + (eg - sg) * k);
+        int b = (int) Math.round(sb + (eb - sb) * k);
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
     public void renderHorizontalFadeClipped(TextRenderer fallback,
                                             String text,
                                             float x,

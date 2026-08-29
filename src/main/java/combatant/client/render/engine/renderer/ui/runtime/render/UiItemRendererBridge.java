@@ -28,18 +28,36 @@ public final class UiItemRendererBridge {
                 Math.max(0.0f, node.props().number("renderHeight", rawBounds.height()))
         );
         float scale = Math.max(0.01f, Math.min(bounds.width(), bounds.height()) / 16.0f);
-        int flags = node.props().bool("overlay", true)
-                ? Renderer2D.ITEM_OVERLAY_ALL
-                : Renderer2D.ITEM_OVERLAY_NONE;
+        boolean overlay = node.props().bool("overlay", true);
+        String overlayMode = node.props().string("overlayMode", "all");
+        int flags = overlay ? overlayFlags(overlayMode) : Renderer2D.ITEM_OVERLAY_NONE;
+        int durabilityThreshold = Math.max(0, Math.min(100, Math.round(node.props().number("durabilityThreshold", 100.0f))));
+        int durabilityColorThreshold = Math.max(0, Math.min(100, Math.round(node.props().number("durabilityColorThreshold", 70.0f))));
+        int seed = Math.round(node.props().number("seed", 0.0f));
         context.renderer().item(
                 stack,
                 bounds.x(),
                 bounds.y(),
                 scale,
-                0,
+                seed,
                 flags,
-                node.props().string("countText", null)
+                node.props().string("countText", null),
+                durabilityThreshold,
+                durabilityColorThreshold
         );
+    }
+
+    private static int overlayFlags(String mode) {
+        if (mode == null || mode.isBlank()) return Renderer2D.ITEM_OVERLAY_ALL;
+        return switch (mode.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "none" -> Renderer2D.ITEM_OVERLAY_NONE;
+            case "count" -> Renderer2D.ITEM_OVERLAY_COUNT;
+            case "durability" -> Renderer2D.ITEM_OVERLAY_DURABILITY;
+            case "durability-text", "durability_text", "text" -> Renderer2D.ITEM_OVERLAY_DURABILITY_TEXT;
+            case "durability+count", "durability-count" -> Renderer2D.ITEM_OVERLAY_DURABILITY | Renderer2D.ITEM_OVERLAY_COUNT;
+            case "durability-text+count", "durability-text-count" -> Renderer2D.ITEM_OVERLAY_DURABILITY_TEXT | Renderer2D.ITEM_OVERLAY_COUNT;
+            default -> Renderer2D.ITEM_OVERLAY_ALL;
+        };
     }
 
     private ItemStack stack(UiNode node) {

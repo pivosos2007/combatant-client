@@ -3664,5 +3664,18 @@
   "screen.combatant.main_menu.date.month.october": "October",
   "screen.combatant.main_menu.date.month.november": "November",
   "screen.combatant.main_menu.date.month.december": "December",
-  "screen.combatant.main_menu.open_source": "Combatant Client is open source."
+  "screen.combatant.main_menu.open_source": "Combatant Client is open source.",
+  "clickgui.hints.visual_preview.settings.hide": "Alt+S - hide settings",
+  "clickgui.hints.visual_preview.settings.show": "Alt+S - show settings",
+  "clickgui.hints.visual_preview.hand.orbit": "LMB/RMB - orbit camera",
+  "clickgui.hints.visual_preview.hand.rotate_subject": "MMB - rotate subject",
+  "clickgui.hints.visual_preview.hand.distance": "Wheel - camera distance",
+  "clickgui.hints.visual_preview.reset": "R - reset view",
+  "clickgui.hints.visual_preview.back": "Esc - back to ClickGui",
+  "clickgui.hints.visual_preview.fixed": "Fixed camera for ViewModel positioning",
+  "clickgui.hints.visual_preview.free_look": "LMB/RMB - look around",
+  "clickgui.hints.visual_preview.free_fly": "WASD/Space/Shift - fly",
+  "clickgui.hints.visual_preview.free_speed": "Wheel - flight speed",
+  "clickgui.hints.visual_preview.object.rotate": "LMB - rotate subject",
+  "clickgui.hints.visual_preview.object.zoom": "Wheel - zoom subject"
 }

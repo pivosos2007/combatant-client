@@ -39,6 +39,7 @@ import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.profiler.RenderProfiler2D;
 import combatant.client.render.engine.profiler.TracyGpuProfiler;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.draw.UiMeshGeometry;
 import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
@@ -123,6 +124,9 @@ public enum ClickGuiRenderer {
     private static float pickerIconScissorX, pickerIconScissorY, pickerIconScissorW, pickerIconScissorH;
     private static Renderer2D renderer;
     private static float renderAlphaMultiplier = 1.0f;
+    private static boolean verticalAlphaFadeEnabled;
+    private static float verticalAlphaFadeStart;
+    private static float verticalAlphaFadeEnd;
     private static ClickGuiScreen mainScreen;
     private static ClickGuiPickerScreen pickerScreen;
     private static boolean textBatchActive;
@@ -1111,10 +1115,43 @@ public enum ClickGuiRenderer {
         renderAlphaMultiplier = Math.max(0.0f, Math.min(1.0f, previous));
     }
 
+    /**
+     * Applies a real vertex/glyph alpha ramp to ClickGUI content. Geometry remains hard-clipped
+     * separately at {@code endY}; this scope owns only the smooth part of the bottom edge.
+     */
+    public static VerticalAlphaFadeScope pushBottomAlphaFade(float startY, float endY) {
+        VerticalAlphaFadeScope scope = new VerticalAlphaFadeScope(
+                verticalAlphaFadeEnabled,
+                verticalAlphaFadeStart,
+                verticalAlphaFadeEnd
+        );
+        verticalAlphaFadeEnabled = endY > startY;
+        verticalAlphaFadeStart = startY;
+        verticalAlphaFadeEnd = Math.max(startY, endY);
+        return scope;
+    }
+
     private static int applyAlpha(int argb) {
         if (renderAlphaMultiplier >= 0.999f) return argb;
         int a = (argb >>> 24) & 0xFF;
         int na = Math.round(a * renderAlphaMultiplier);
+        return (argb & 0x00FFFFFF) | ((na & 0xFF) << 24);
+    }
+
+    private static float verticalAlphaAt(float y) {
+        return verticalAlphaAt(y, verticalAlphaFadeEnabled, verticalAlphaFadeStart, verticalAlphaFadeEnd);
+    }
+
+    private static float verticalAlphaAt(float y, boolean enabled, float start, float end) {
+        if (!enabled) return 1.0f;
+        if (y <= start) return 1.0f;
+        if (y >= end) return 0.0f;
+        return 1.0f - (y - start) / Math.max(0.0001f, end - start);
+    }
+
+    private static int multiplyAlpha(int argb, float factor) {
+        int a = (argb >>> 24) & 0xFF;
+        int na = Math.round(a * Math.max(0.0f, Math.min(1.0f, factor)));
         return (argb & 0x00FFFFFF) | ((na & 0xFF) << 24);
     }
 
@@ -1184,7 +1221,7 @@ public enum ClickGuiRenderer {
             float scale = scaleForSize(size);
             tr.begin(scale, false, false);
             for (TextBatchItem item : entry.getValue()) {
-                tr.render(item.text, item.x, item.y, new RenderColor(item.argb), item.shadow);
+                renderTextItem(tr, item);
             }
             tr.end();
         }
@@ -1197,13 +1234,34 @@ public enum ClickGuiRenderer {
         argb = applyAlpha(argb);
         if (((argb >>> 24) & 0xFF) <= 0) return;
         if (textBatchActive) {
-            TEXT_BATCH.add(new TextBatchItem(tr, text, x, y, size, argb, shadow));
+            TEXT_BATCH.add(new TextBatchItem(
+                    tr, text, x, y, size, argb, shadow,
+                    verticalAlphaFadeEnabled, verticalAlphaFadeStart, verticalAlphaFadeEnd
+            ));
             return;
         }
         float scale = scaleForSize(size);
         tr.begin(scale, false, false);
-        tr.render(text, x, y, new RenderColor(argb), shadow);
+        renderTextItem(tr, new TextBatchItem(
+                tr, text, x, y, size, argb, shadow,
+                verticalAlphaFadeEnabled, verticalAlphaFadeStart, verticalAlphaFadeEnd
+        ));
         tr.end();
+    }
+
+    private static void renderTextItem(TextRenderer tr, TextBatchItem item) {
+        if (!item.fadeEnabled) {
+            tr.render(item.text, item.x, item.y, new RenderColor(item.argb), item.shadow);
+            return;
+        }
+        tr.renderQuadGradient(item.text, item.x, item.y, (index, codePoint, x0, y0, x1, y1, out) -> {
+            int top = multiplyAlpha(item.argb, verticalAlphaAt((float) y0, true, item.fadeStart, item.fadeEnd));
+            int bottom = multiplyAlpha(item.argb, verticalAlphaAt((float) y1, true, item.fadeStart, item.fadeEnd));
+            out[0] = top;
+            out[1] = bottom;
+            out[2] = bottom;
+            out[3] = top;
+        }, item.shadow);
     }
 
     public static String fitText(TextRenderer tr, String text, float size, float maxWidth) {
@@ -1308,14 +1366,27 @@ public enum ClickGuiRenderer {
         if (renderer == null) return;
         argb = applyAlpha(argb);
         if (((argb >>> 24) & 0xFF) <= 0) return;
-        renderer.roundedRect(x, y, w, h, radius, 1.1f, argb);
+        if (verticalAlphaFadeEnabled) {
+            int top = multiplyAlpha(argb, verticalAlphaAt(y));
+            int bottom = multiplyAlpha(argb, verticalAlphaAt(y + h));
+            renderer.roundedRectGradientQuad(x, y, w, h, radius, 1.1f, top, top, bottom, bottom);
+        } else {
+            renderer.roundedRect(x, y, w, h, radius, 1.1f, argb);
+        }
     }
 
     public static void drawRoundedRectStroke(float x, float y, float w, float h, float radius, float thickness, int argb) {
         if (renderer == null) return;
         argb = applyAlpha(argb);
         if (((argb >>> 24) & 0xFF) <= 0) return;
-        renderer.roundedRectStroke(x, y, w, h, radius, 1.1f, thickness, argb);
+        if (verticalAlphaFadeEnabled) {
+            int top = multiplyAlpha(argb, verticalAlphaAt(y));
+            int bottom = multiplyAlpha(argb, verticalAlphaAt(y + h));
+            renderer.roundedRectStrokeGradientQuad(x, y, w, h, radius, 1.1f, thickness,
+                    top, top, bottom, bottom);
+        } else {
+            renderer.roundedRectStroke(x, y, w, h, radius, 1.1f, thickness, argb);
+        }
     }
 
     public static void drawRoundedRectGlow(float x, float y, float w, float h,
@@ -1340,7 +1411,17 @@ public enum ClickGuiRenderer {
         startArgb = applyAlpha(startArgb);
         endArgb = applyAlpha(endArgb);
         if (((startArgb >>> 24) & 0xFF) <= 0 && ((endArgb >>> 24) & 0xFF) <= 0) return;
-        renderer.roundedRectGradient(x, y, w, h, radius, 1.1f, startArgb, endArgb, angleDeg);
+        if (verticalAlphaFadeEnabled) {
+            int[] colors = new int[4];
+            UiMeshGeometry.computeLinearGradientColors(w, h, startArgb, endArgb, angleDeg, 0.0f, colors);
+            float topAlpha = verticalAlphaAt(y);
+            float bottomAlpha = verticalAlphaAt(y + h);
+            renderer.roundedRectGradientQuad(x, y, w, h, radius, 1.1f,
+                    multiplyAlpha(colors[0], topAlpha), multiplyAlpha(colors[1], topAlpha),
+                    multiplyAlpha(colors[2], bottomAlpha), multiplyAlpha(colors[3], bottomAlpha));
+        } else {
+            renderer.roundedRectGradient(x, y, w, h, radius, 1.1f, startArgb, endArgb, angleDeg);
+        }
     }
 
     public static void drawRoundedRectStrokeGradient(float x, float y, float w, float h, float radius, float thickness,
@@ -1349,7 +1430,17 @@ public enum ClickGuiRenderer {
         startArgb = applyAlpha(startArgb);
         endArgb = applyAlpha(endArgb);
         if (((startArgb >>> 24) & 0xFF) <= 0 && ((endArgb >>> 24) & 0xFF) <= 0) return;
-        renderer.roundedRectStrokeGradient(x, y, w, h, radius, 1.1f, thickness, startArgb, endArgb, angleDeg);
+        if (verticalAlphaFadeEnabled) {
+            int[] colors = new int[4];
+            UiMeshGeometry.computeLinearGradientColors(w, h, startArgb, endArgb, angleDeg, 0.0f, colors);
+            float topAlpha = verticalAlphaAt(y);
+            float bottomAlpha = verticalAlphaAt(y + h);
+            renderer.roundedRectStrokeGradientQuad(x, y, w, h, radius, 1.1f, thickness,
+                    multiplyAlpha(colors[0], topAlpha), multiplyAlpha(colors[1], topAlpha),
+                    multiplyAlpha(colors[2], bottomAlpha), multiplyAlpha(colors[3], bottomAlpha));
+        } else {
+            renderer.roundedRectStrokeGradient(x, y, w, h, radius, 1.1f, thickness, startArgb, endArgb, angleDeg);
+        }
     }
 
     public static void drawRoundedRectCorners(float x, float y, float w, float h,
@@ -1358,14 +1449,27 @@ public enum ClickGuiRenderer {
         if (renderer == null) return;
         argb = applyAlpha(argb);
         if (((argb >>> 24) & 0xFF) <= 0) return;
-        renderer.roundedRectCorners(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL, 1.1f, argb);
+        if (verticalAlphaFadeEnabled) {
+            int top = multiplyAlpha(argb, verticalAlphaAt(y));
+            int bottom = multiplyAlpha(argb, verticalAlphaAt(y + h));
+            renderer.roundedRectCornersQuad(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL, 1.1f,
+                    top, top, bottom, bottom);
+        } else {
+            renderer.roundedRectCorners(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL, 1.1f, argb);
+        }
     }
 
     public static void drawRect(float x, float y, float w, float h, int argb) {
         if (renderer == null) return;
         argb = applyAlpha(argb);
         if (((argb >>> 24) & 0xFF) <= 0) return;
-        renderer.quad(x, y, w, h, argb);
+        if (verticalAlphaFadeEnabled) {
+            int top = multiplyAlpha(argb, verticalAlphaAt(y));
+            int bottom = multiplyAlpha(argb, verticalAlphaAt(y + h));
+            renderer.quadGradient(x, y, w, h, top, top, bottom, bottom);
+        } else {
+            renderer.quad(x, y, w, h, argb);
+        }
     }
 
     public static void flushRenderer() {
@@ -1380,10 +1484,10 @@ public enum ClickGuiRenderer {
     public static void drawGradientRect(float x, float y, float w, float h,
                                         int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
         if (renderer == null) return;
-        cTopLeft = applyAlpha(cTopLeft);
-        cTopRight = applyAlpha(cTopRight);
-        cBottomRight = applyAlpha(cBottomRight);
-        cBottomLeft = applyAlpha(cBottomLeft);
+        cTopLeft = multiplyAlpha(applyAlpha(cTopLeft), verticalAlphaAt(y));
+        cTopRight = multiplyAlpha(applyAlpha(cTopRight), verticalAlphaAt(y));
+        cBottomRight = multiplyAlpha(applyAlpha(cBottomRight), verticalAlphaAt(y + h));
+        cBottomLeft = multiplyAlpha(applyAlpha(cBottomLeft), verticalAlphaAt(y + h));
         renderer.quadGradient(x, y, w, h, cTopLeft, cTopRight, cBottomRight, cBottomLeft);
     }
 
@@ -1391,7 +1495,14 @@ public enum ClickGuiRenderer {
         if (renderer == null) return;
         argb = applyAlpha(argb);
         if (((argb >>> 24) & 0xFF) <= 0) return;
-        renderer.circle(cx, cy, r, argb);
+        if (verticalAlphaFadeEnabled) {
+            int top = multiplyAlpha(argb, verticalAlphaAt(cy - r));
+            int bottom = multiplyAlpha(argb, verticalAlphaAt(cy + r));
+            renderer.roundedRectGradientQuad(cx - r, cy - r, r * 2f, r * 2f, r, 1.1f,
+                    top, top, bottom, bottom);
+        } else {
+            renderer.circle(cx, cy, r, argb);
+        }
     }
 
     public static void drawLine(float x1, float y1, float x2, float y2, int argb) {
@@ -1868,8 +1979,30 @@ public enum ClickGuiRenderer {
                                       boolean pickerActive) {
     }
 
+    public static final class VerticalAlphaFadeScope implements AutoCloseable {
+        private final boolean previousEnabled;
+        private final float previousStart;
+        private final float previousEnd;
+        private boolean closed;
+
+        private VerticalAlphaFadeScope(boolean previousEnabled, float previousStart, float previousEnd) {
+            this.previousEnabled = previousEnabled;
+            this.previousStart = previousStart;
+            this.previousEnd = previousEnd;
+        }
+
+        @Override
+        public void close() {
+            if (closed) return;
+            closed = true;
+            verticalAlphaFadeEnabled = previousEnabled;
+            verticalAlphaFadeStart = previousStart;
+            verticalAlphaFadeEnd = previousEnd;
+        }
+    }
+
     private record TextBatchItem(TextRenderer renderer, String text, float x, float y, float size, int argb,
-                                 boolean shadow) {
+                                 boolean shadow, boolean fadeEnabled, float fadeStart, float fadeEnd) {
     }
 
     private record TextBatchKey(TextRenderer renderer, int sizeBits, boolean shadow) {

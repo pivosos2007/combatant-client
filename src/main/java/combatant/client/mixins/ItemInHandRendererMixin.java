@@ -85,7 +85,7 @@ public abstract class ItemInHandRendererMixin {
             CallbackInfo ci
     ) {
         ViewModel viewModel = Modules.get(ViewModel.class);
-        if (viewModel == null || !viewModel.isEnabled()) return;
+        if (viewModel == null || !viewModel.isActiveForHandRender()) return;
 
         viewModel.syncHmiBackendForRender();
         if (viewModel.isHmiModeActive()) {
@@ -265,7 +265,7 @@ public abstract class ItemInHandRendererMixin {
             CallbackInfo ci
     ) {
         ViewModel viewModel = Modules.get(ViewModel.class);
-        if (viewModel == null || !viewModel.isEnabled()) return;
+        if (viewModel == null || !viewModel.isActiveForHandRender()) return;
         if (!ctx.firstPerson()) return;
 
         viewModel.syncHmiBackendForRender();
@@ -293,7 +293,7 @@ public abstract class ItemInHandRendererMixin {
             CallbackInfo ci
     ) {
         ViewModel viewModel = Modules.get(ViewModel.class);
-        if (viewModel == null || !viewModel.isEnabled()) return;
+        if (viewModel == null || !viewModel.isActiveForHandRender()) return;
 
         if (viewModel.isHmiModeActive()) {
             // HMI owns swings in JavaScript. This still matters for the dedicated vanilla map path,
@@ -317,7 +317,6 @@ public abstract class ItemInHandRendererMixin {
         viewModel.applySwingAnimation(swingProgress, ms, arm);
     }
 }
-
 
 
 

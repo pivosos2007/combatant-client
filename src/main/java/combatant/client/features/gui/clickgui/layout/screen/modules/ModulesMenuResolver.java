@@ -12,6 +12,7 @@ import combatant.client.features.gui.clickgui.layout.screen.settings.implement.m
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleManager;
+import combatant.client.features.gui.preview.VisualPreviewRegistry;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -35,7 +36,7 @@ enum ModulesMenuResolver {
                     module.getDisplayName(),
                     "",
                     bind == null ? "" : bind,
-                    !module.getSettings().isEmpty(),
+                    !module.getSettings().isEmpty() || VisualPreviewRegistry.supports(module),
                     module.isEnabled(),
                     true,
                     module.isShownInModuleList(),
@@ -69,7 +70,8 @@ enum ModulesMenuResolver {
         Module module = moduleById(id);
         if (module == null) return null;
         List<Setting> settings = module.getSettings();
-        if (settings == null || settings.isEmpty()) return null;
+        if ((settings == null || settings.isEmpty()) && !VisualPreviewRegistry.supports(module)) return null;
+        if (settings == null) settings = List.of();
         for (Setting setting : settings) {
             if (setting == null) continue;
             setting.preflightI18n();
@@ -80,6 +82,14 @@ enum ModulesMenuResolver {
     static Module moduleById(String id) {
         if (id == null || id.isBlank()) return null;
         return ModuleManager.get(id);
+    }
+
+    static boolean supportsPreview(String id) {
+        return VisualPreviewRegistry.supports(moduleById(id));
+    }
+
+    static boolean openPreview(String id) {
+        return VisualPreviewRegistry.open(moduleById(id));
     }
 
     record ResolvedSettings(String id, String title, List<Setting> settings) {

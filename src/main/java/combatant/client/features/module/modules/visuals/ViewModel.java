@@ -19,6 +19,7 @@ import combatant.client.config.values.ItemIdSetValue;
 import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
+import combatant.client.features.gui.preview.VisualPreviewRuntime;
 import combatant.client.features.hmi_recode.HoldMyItems;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
@@ -164,11 +165,15 @@ public class ViewModel extends Module {
     private boolean hmiBackendActive;
 
     public boolean isBasicModeActive() {
-        return isEnabled() && isBasicMode();
+        return isActiveForHandRender() && isBasicMode();
     }
 
     public boolean isHmiModeActive() {
-        return isEnabled() && MODE_HMI.equals(mode.get());
+        return isActiveForHandRender() && MODE_HMI.equals(mode.get());
+    }
+
+    public boolean isActiveForHandRender() {
+        return isEnabled() || VisualPreviewRuntime.isPreviewingModule("viewmodel");
     }
 
     private boolean isBasicMode() {
@@ -276,7 +281,7 @@ public class ViewModel extends Module {
      * -------------------------------------------- */
 
     public boolean shouldScale(ItemStack st) {
-        if (!isEnabled()) return false;
+        if (!isActiveForHandRender()) return false;
         if (miniAll.get()) return true;
         if (st == null || st.isEmpty()) return false;
         String id = BuiltInRegistries.ITEM.getKey(st.getItem()).toString();

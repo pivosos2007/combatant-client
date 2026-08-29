@@ -43,13 +43,20 @@ public final class UiImageRendererBridge {
         UiStyle style = node.style();
         String explicitTint = node.props().string("tint", "");
         int tint = UiColor.parse(explicitTint, style.textColor() != null ? style.textColor() : 0xFFFFFFFF);
-        if ((tint >>> 24) == 0) return;
+        boolean gradientEnabled = node.props().bool("gradientEnabled", false);
+        int gradientStart = UiColor.parse(node.props().string("gradientStartColor", ""), tint);
+        int gradientEnd = UiColor.parse(node.props().string("gradientEndColor", ""), tint);
+        float gradientAngle = node.props().number("gradientAngle", 90.0f);
+        if (!gradientEnabled && (tint >>> 24) == 0) return;
+        if (gradientEnabled && ((gradientStart | gradientEnd) >>> 24) == 0) return;
         if (asset.kind() == UiAssetKind.SVG) {
             Identifier svgId = SvgRegistry.resolve(asset.getId());
             if (svgId == null) return;
-            SvgRenderOptions options = explicitTint == null || explicitTint.isBlank()
+            SvgRenderOptions options = gradientEnabled
+                    ? SvgRenderOptions.linearGradient(gradientStart, gradientEnd, gradientAngle)
+                    : (explicitTint == null || explicitTint.isBlank()
                     ? SvgRenderOptions.DEFAULT
-                    : SvgRenderOptions.overrideColor(tint);
+                    : SvgRenderOptions.overrideColor(tint));
             context.renderer().svg(svgId, bounds.x(), bounds.y(), bounds.width(), bounds.height(), options);
             return;
         }
@@ -79,15 +86,30 @@ public final class UiImageRendererBridge {
         }
         boolean mask = node.props().bool("mask", false) || node.props().bool("alphaMask", false);
         if (mask) {
-            Renderer2D.TEXTURE.roundedTexMaskRect(
-                    bounds.x(),
-                    bounds.y(),
-                    bounds.width(),
-                    bounds.height(),
-                    style.radius(),
-                    tint,
-                    id
-            );
+            if (gradientEnabled) {
+                Renderer2D.TEXTURE.roundedTexMaskRectGradient(
+                        bounds.x(),
+                        bounds.y(),
+                        bounds.width(),
+                        bounds.height(),
+                        style.radius(),
+                        0.0f,
+                        gradientStart,
+                        gradientEnd,
+                        gradientAngle,
+                        id
+                );
+            } else {
+                Renderer2D.TEXTURE.roundedTexMaskRect(
+                        bounds.x(),
+                        bounds.y(),
+                        bounds.width(),
+                        bounds.height(),
+                        style.radius(),
+                        tint,
+                        id
+                );
+            }
             return;
         }
         Renderer2D.TEXTURE.roundedTexRect(

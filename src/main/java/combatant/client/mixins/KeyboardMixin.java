@@ -9,6 +9,7 @@ package combatant.client.mixins;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import combatant.client.features.gui.clickgui.*;
+import combatant.client.features.gui.preview.VisualPreviewScreen;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.KeyboardHandler;
@@ -80,6 +81,9 @@ public class KeyboardMixin {
             ci.cancel();
             return;
         }
+        // VisualPreviewScreen owns its text fields. The enabled ClickGui module must not route
+        // characters into the hidden ClickGui section while this separate screen is active.
+        if (ClientScreen.current() instanceof VisualPreviewScreen) return;
         if (!RuntimeGate.canRunClientLogic() || !ModuleManager.isEnabled("clickgui")) return;
 
         char c = (char) input.codepoint();
@@ -99,6 +103,10 @@ public class KeyboardMixin {
     @Inject(method = "keyPress", at = @At("HEAD"), cancellable = true)
     private void combatant$onKey(long window, int action, KeyEvent input, CallbackInfo ci) {
         KeyManager.handleKeyEvent(input.key(), input.scancode(), action);
+
+        // Preserve low-level key state above, then leave the event entirely to the active preview
+        // Screen. In particular, do this before addon events and the global ClickGui Esc handler.
+        if (ClientScreen.current() instanceof VisualPreviewScreen) return;
 
         Minecraft mc = Minecraft.getInstance();
         KeyInputEvent event = new KeyInputEvent(action, input);
@@ -250,8 +258,6 @@ public class KeyboardMixin {
         }
     }
 }
-
-
 
 
 

@@ -27,6 +27,7 @@ import combatant.client.features.gui.clickgui.ClickGuiEditorScreen;
 import combatant.client.features.gui.clickgui.ClickGuiPickerScreen;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiScreen;
+import combatant.client.features.gui.preview.VisualPreviewScreen;
 import combatant.client.features.gui.hud.nondraggable.StaticHudElementRegistry;
 import combatant.client.features.gui.hud.nondraggable.impl.DynamicIsland;
 import combatant.client.features.module.ModuleManager;
@@ -62,7 +63,8 @@ public class MouseMixin {
                 && ModuleManager.isEnabled("clickgui")
                 && !(ClientScreen.current() instanceof ClickGuiScreen
                 || ClientScreen.current() instanceof ClickGuiPickerScreen
-                || ClientScreen.current() instanceof ClickGuiEditorScreen)) {
+                || ClientScreen.current() instanceof ClickGuiEditorScreen
+                || ClientScreen.current() instanceof VisualPreviewScreen)) {
             ClickGuiRenderer.onMouseScroll(lastX, lastY, vertical);
             ci.cancel();
             return;
@@ -125,7 +127,8 @@ public class MouseMixin {
                 && ModuleManager.isEnabled("clickgui")
                 && !(ClientScreen.current() instanceof ClickGuiScreen
                 || ClientScreen.current() instanceof ClickGuiPickerScreen
-                || ClientScreen.current() instanceof ClickGuiEditorScreen)) {
+                || ClientScreen.current() instanceof ClickGuiEditorScreen
+                || ClientScreen.current() instanceof VisualPreviewScreen)) {
 
             // action == 1 — это "нажато" (см. оригинальный код: boolean bl = action == 1;)
             boolean pressed = (action == 1);
@@ -156,7 +159,8 @@ public class MouseMixin {
                 && ModuleManager.isEnabled("clickgui")
                 && !(ClientScreen.current() instanceof ClickGuiScreen
                 || ClientScreen.current() instanceof ClickGuiPickerScreen
-                || ClientScreen.current() instanceof ClickGuiEditorScreen)) {
+                || ClientScreen.current() instanceof ClickGuiEditorScreen
+                || ClientScreen.current() instanceof VisualPreviewScreen)) {
             ClickGuiRenderer.onMouseMove(x, y);
             ci.cancel();
             return;

@@ -217,6 +217,28 @@ public enum HudRenderUtil {
         return new ThemeGradient(setAlpha(start, a), setAlpha(end, a), 90.0f);
     }
 
+    /**
+     * Returns the theme's foreground accent gradient for small HUD glyphs/icons.
+     * Unlike {@link #themeAccentGradient(int)}, this preserves the theme gradient angle.
+     */
+    public static ThemeGradient themeForegroundGradient(int alpha) {
+        int a = Math.max(0, Math.min(255, alpha));
+        Themes.ThemeEntry entry = Theme.currentEntry();
+        Themes.GradientSpec cardGradient = entry != null ? entry.cardGradient() : null;
+        if (cardGradient != null && cardGradient.enabled()) {
+            return new ThemeGradient(
+                    setAlpha(cardGradient.start(), a),
+                    setAlpha(cardGradient.end(), a),
+                    cardGradient.angleDeg()
+            );
+        }
+
+        Themes.Theme current = Theme.theme();
+        int start = current != null ? current.accent() : 0xFF5CC8E7;
+        int end = current != null ? current.accentSoft() : 0x805CC8E7;
+        return new ThemeGradient(setAlpha(start, a), setAlpha(end, a), 45.0f);
+    }
+
     /** Returns the actual theme surface gradient, falling back to its accent gradient. */
     public static ThemeGradient themePanelGradient(int alpha) {
         int a = Math.max(0, Math.min(255, alpha));

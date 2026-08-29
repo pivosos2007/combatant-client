@@ -566,6 +566,20 @@ public final class Triangulator extends DraggableHudElement {
             );
         }
 
+        HudRenderUtil.ThemeGradient headerIconGradient = isThemeMode()
+                ? HudRenderUtil.themeForegroundGradient(255)
+                : new HudRenderUtil.ThemeGradient(headerIconColor, headerIconColor, 45.0f);
+        if (isThemeMode() && iconEffect.get() != HudTextEffects.Effect.NONE) {
+            headerIconGradient = HudTextEffects.animatedGradient(
+                    headerIconGradient,
+                    iconEffect.get(),
+                    iconEffectSpeed.get(),
+                    (float) (Util.getMillis() / 1000.0),
+                    0.0f,
+                    1.0f
+            );
+        }
+
         List<LinkedHashMap<String, Object>> panelRows = ScriptedTriangulatorHudPanel.rows();
         for (int i = 0; i < displayThrows.size(); i++) {
             CachedThrow cachedThrow = displayThrows.get(i);
@@ -634,6 +648,10 @@ public final class Triangulator extends DraggableHudElement {
                         resolveStrokeGradientEnd(),
                         ScriptedTriangulatorHudPanel.idString(HEADER_ICON),
                         headerIconColor,
+                        isThemeMode(),
+                        headerIconGradient.start(),
+                        headerIconGradient.end(),
+                        headerIconGradient.angleDeg(),
                         showClearButton,
                         uiDanger,
                         showCopyButton,

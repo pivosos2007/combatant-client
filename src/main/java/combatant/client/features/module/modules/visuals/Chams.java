@@ -43,6 +43,8 @@ import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.postprocess.PostProcessPass;
+import combatant.client.render.engine.postprocess.graph.LegacyPostProcessGraphPass;
+import combatant.client.features.gui.preview.VisualPreviewRuntime;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.profiler.TracyGpuProfiler;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
@@ -316,7 +318,7 @@ public class Chams extends Module {
     public void onTick() {
         // Do not carry a stale temporal silhouette across modes where no first-person hand mask
         // is being produced. Buffers are cleared lazily when Ghosting becomes active again.
-        if (!hands.get() || !ghosting.get() || !mc.options.getCameraType().isFirstPerson()) {
+        if (!hands.get() || !ghosting.get() || !isFirstPersonHandContext()) {
             ghostMaskReady = false;
             ghostHistoryNeedsClear = true;
         }
@@ -358,10 +360,10 @@ public class Chams extends Module {
     }
 
     public boolean renderHandMask(GameRenderer renderer, CameraRenderState cameraRenderState, float tickDelta, Matrix4fc positionMatrix) {
-        if (!isEnabled() || mc.player == null || mc.level == null) return false;
+        if (!isActiveForHandRender() || mc.player == null || mc.level == null) return false;
         if (mc.gameMode == null) return false;
         if (!hands.get() || !shouldRenderHand()) return false;
-        if (!mc.options.getCameraType().isFirstPerson()) return false;
+        if (!isFirstPersonHandContext()) return false;
 
         maskReady = false;
         ensureBuffers();
@@ -407,10 +409,10 @@ public class Chams extends Module {
         // renderAllFeatures() consumes/clears its SubmitNodeStorage in 26.2. Chams must never feed
         // Minecraft's live hand storage into the auxiliary mask dispatcher, otherwise the real
         // vanilla hand pass that follows has no submits left to draw.
-        if (IrisRuntime.isShaderpackRendererActive()) return null;
-        if (!isEnabled() || mc.player == null || mc.level == null) return null;
+        if (IrisRuntime.isShaderpackRendererActive() && !VisualPreviewRuntime.isRenderingSubject()) return null;
+        if (!isActiveForHandRender() || mc.player == null || mc.level == null) return null;
         if (storage == null || !hands.get() || !shouldRenderHand()) return null;
-        if (!mc.options.getCameraType().isFirstPerson()) return null;
+        if (!isFirstPersonHandContext()) return null;
 
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("chams:hand_snapshot")) {
             SubmitNodeStorage snapshot = new SubmitNodeStorage();
@@ -461,11 +463,11 @@ public class Chams extends Module {
     public boolean renderPreparedHandScene(SubmitNodeStorage storage) {
         // The storage passed here is an isolated snapshot. Minecraft's original hand storage has
         // already been rendered to the scene by the vanilla dispatcher before this method runs.
-        if (IrisRuntime.isShaderpackRendererActive()) return false;
-        if (!isEnabled() || mc.player == null || mc.level == null) return false;
+        if (IrisRuntime.isShaderpackRendererActive() && !VisualPreviewRuntime.isRenderingSubject()) return false;
+        if (!isActiveForHandRender() || mc.player == null || mc.level == null) return false;
         if (storage == null) return false;
         if (!hands.get() || !shouldRenderHand()) return false;
-        if (!mc.options.getCameraType().isFirstPerson()) return false;
+        if (!isFirstPersonHandContext()) return false;
 
         maskReady = false;
         ensureBuffers();
@@ -506,10 +508,10 @@ public class Chams extends Module {
                                       CameraRenderState cameraRenderState,
                                       Matrix4fc positionMatrix,
                                       float tickDelta) {
-        if (!IrisRuntime.isShaderpackRendererActive() || !isEnabled() || mc.player == null || mc.level == null) {
+        if (!IrisRuntime.isShaderpackRendererActive() || !isActiveForHandRender() || mc.player == null || mc.level == null) {
             return false;
         }
-        if (!hands.get() || !shouldRenderHand() || !mc.options.getCameraType().isFirstPerson()) {
+        if (!hands.get() || !shouldRenderHand() || !isFirstPersonHandContext()) {
             return false;
         }
         if (renderer == null || cameraRenderState == null || positionMatrix == null) {
@@ -594,8 +596,26 @@ public class Chams extends Module {
     }
 
     private boolean shouldRenderHand() {
+        if (VisualPreviewRuntime.isRenderingSubject()) return true;
         Freecam fc = Modules.get(Freecam.class);
         return fc == null || !fc.isEnabled() || fc.renderHand();
+    }
+
+    private boolean isActiveForHandRender() {
+        return isEnabled() || VisualPreviewRuntime.isPreviewingModule("chams");
+    }
+
+    private boolean isFirstPersonHandContext() {
+        return VisualPreviewRuntime.isRenderingSubject() || mc.options.getCameraType().isFirstPerson();
+    }
+
+    /** Composites only Chams' hand material and trail passes for an isolated preview scene. */
+    public void compositePreparedHandScene(float tickDelta) {
+        PostProcessManager.renderSelected(PostProcessPass.Phase.POST_HAND, tickDelta, pass -> {
+            if (!(pass instanceof LegacyPostProcessGraphPass legacy)) return false;
+            PostProcessPass delegate = legacy.delegate();
+            return delegate == handsPass || delegate == ghostingPass;
+        });
     }
 
     private void markHandMaskReady() {
@@ -1057,11 +1077,11 @@ public class Chams extends Module {
     private final class HandsPass implements PostProcessPass {
         @Override
         public boolean isActive() {
-            return Chams.this.isEnabled()
+            return isActiveForHandRender()
                     && mc.player != null
                     && mc.level != null
                     && hands.get()
-                    && mc.options.getCameraType().isFirstPerson();
+                    && isFirstPersonHandContext();
         }
 
         @Override
@@ -1071,8 +1091,8 @@ public class Chams extends Module {
 
         @Override
         public boolean render(GpuTextureView src, GpuTextureView dst, float tickDelta) {
-            if (!Chams.this.isEnabled() || mc.player == null || mc.level == null) return false;
-            if (!hands.get() || !mc.options.getCameraType().isFirstPerson()) return false;
+            if (!isActiveForHandRender() || mc.player == null || mc.level == null) return false;
+            if (!hands.get() || !isFirstPersonHandContext()) return false;
             return Chams.this.renderHands(src, dst, tickDelta);
         }
     }
@@ -1080,12 +1100,12 @@ public class Chams extends Module {
     private final class GhostingPass implements PostProcessPass {
         @Override
         public boolean isActive() {
-            return Chams.this.isEnabled()
+            return isActiveForHandRender()
                     && mc.player != null
                     && mc.level != null
                     && hands.get()
                     && ghosting.get()
-                    && mc.options.getCameraType().isFirstPerson();
+                    && isFirstPersonHandContext();
         }
 
         @Override

@@ -186,6 +186,10 @@ final class ScriptedTriangulatorHudPanel {
                  int strokeEndColor,
                  String headerIcon,
                  int headerIconColor,
+                 boolean headerIconGradient,
+                 int headerIconGradientStart,
+                 int headerIconGradientEnd,
+                 float headerIconGradientAngle,
                  boolean clearVisible,
                  int clearIconColor,
                  boolean copyVisible,
@@ -218,6 +222,10 @@ final class ScriptedTriangulatorHudPanel {
               int strokeEndColor,
               String headerIcon,
               int headerIconColor,
+              boolean headerIconGradient,
+              int headerIconGradientStart,
+              int headerIconGradientEnd,
+              float headerIconGradientAngle,
               boolean clearVisible,
               int clearIconColor,
               boolean copyVisible,
@@ -250,6 +258,10 @@ final class ScriptedTriangulatorHudPanel {
             this.strokeEndColor = strokeEndColor;
             this.headerIcon = headerIcon != null ? headerIcon : "";
             this.headerIconColor = headerIconColor;
+            this.headerIconGradient = headerIconGradient;
+            this.headerIconGradientStart = headerIconGradientStart;
+            this.headerIconGradientEnd = headerIconGradientEnd;
+            this.headerIconGradientAngle = headerIconGradientAngle;
             this.clearVisible = clearVisible;
             this.clearIconColor = clearIconColor;
             this.copyVisible = copyVisible;
@@ -286,6 +298,10 @@ final class ScriptedTriangulatorHudPanel {
             out.put("strokeEndColor", hex(strokeEndColor));
             out.put("headerIcon", headerIcon);
             out.put("headerIconColor", hex(headerIconColor));
+            out.put("headerIconGradient", headerIconGradient);
+            out.put("headerIconGradientStart", hex(headerIconGradientStart));
+            out.put("headerIconGradientEnd", hex(headerIconGradientEnd));
+            out.put("headerIconGradientAngle", headerIconGradientAngle);
             out.put("clearVisible", clearVisible);
             out.put("clearIcon", "x");
             out.put("clearIconColor", hex(clearIconColor));
@@ -318,6 +334,8 @@ final class ScriptedTriangulatorHudPanel {
             h = CachedUiScriptRuntime.mix(h, strokeEnabled);
             h = CachedUiScriptRuntime.mix(h, strokeAlpha);
             h = CachedUiScriptRuntime.mix(h, strokeGradient);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradient);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientAngle);
             h = CachedUiScriptRuntime.mix(h, clearVisible);
             h = CachedUiScriptRuntime.mix(h, copyVisible);
             h = CachedUiScriptRuntime.mix(h, String.valueOf(Math.max(0, activeCount)).length());
@@ -347,6 +365,8 @@ final class ScriptedTriangulatorHudPanel {
             h = CachedUiScriptRuntime.mix(h, strokeEndColor);
             h = CachedUiScriptRuntime.mix(h, headerIcon);
             h = CachedUiScriptRuntime.mix(h, headerIconColor);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientStart);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientEnd);
             h = CachedUiScriptRuntime.mix(h, clearIconColor);
             h = CachedUiScriptRuntime.mix(h, copyIconColor);
             h = CachedUiScriptRuntime.mix(h, statusText);
@@ -379,6 +399,8 @@ final class ScriptedTriangulatorHudPanel {
             LinkedHashMap<String, LinkedHashMap<String, Object>> patches = new LinkedHashMap<>();
             putPatch(patches, "header:count-value", "text", String.valueOf(Math.max(0, activeCount)));
             putPatch(patches, "header:icon", "tint", hex(headerIconColor));
+            putPatch(patches, "header:icon", "gradientStartColor", hex(headerIconGradientStart));
+            putPatch(patches, "header:icon", "gradientEndColor", hex(headerIconGradientEnd));
             putPatch(patches, "clear:icon", "tint", hex(clearIconColor));
             putPatch(patches, "copy:icon", "tint", hex(copyIconColor));
             putPatch(patches, "summary:status", "text", statusText);

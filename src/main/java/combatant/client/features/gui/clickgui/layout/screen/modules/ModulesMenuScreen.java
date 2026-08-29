@@ -716,6 +716,44 @@ public final class ModulesMenuScreen {
         float y = clipY - panel.settingsSmoothScroll;
         float total = 0.0f;
 
+        panel.previewX = panel.previewY = panel.previewW = panel.previewH = 0.0f;
+        if (ModulesMenuResolver.supportsPreview(panel.selected)) {
+            float actionH = 20.0f * scale;
+            float actionGap = 5.0f * scale;
+            panel.previewX = settingsX;
+            panel.previewY = y;
+            panel.previewW = settingsW;
+            panel.previewH = actionH;
+            if (y + actionH >= clipY && y <= clipY + clipH) {
+                boolean hovered = inside(mouseX, mouseY, settingsX, y, settingsW, actionH);
+                int left = withAlpha(hovered ? ModulesMenuStyle.rowHover() : ModulesMenuStyle.panelBgGlassDark(), alpha * (hovered ? 0.92f : 0.72f));
+                int right = withAlpha(hovered ? ModulesMenuStyle.categoryFxPrimary(panel.category, alpha) : ModulesMenuStyle.panelStroke(), alpha * (hovered ? 0.54f : 0.46f));
+                LayoutRender2D.roundedQuad(settingsX, y, settingsW, actionH, 6.0f * scale, left, right, right, left);
+                LayoutRender2D.roundedStrokeQuad(
+                        settingsX, y, settingsW, actionH, 6.0f * scale, 0.45f * scale,
+                        withAlpha(ModulesMenuStyle.textMuted(), alpha * 0.34f),
+                        withAlpha(ModulesMenuStyle.text(), alpha * 0.18f),
+                        withAlpha(ModulesMenuStyle.text(), alpha * 0.14f),
+                        withAlpha(ModulesMenuStyle.textMuted(), alpha * 0.28f)
+                );
+                float icon = 7.0f * scale;
+                Renderer2D.COLOR.svg("combatant:svg/eye", settingsX + 8.0f * scale, y + (actionH - icon) * 0.5f, icon, icon,
+                        SvgRenderOptions.overrideColor(withAlpha(ModulesMenuStyle.text(), alpha)));
+                ClickGuiRenderer.drawText(
+                        medium,
+                        "Настройка на глаз",
+                        settingsX + 19.0f * scale,
+                        y + middle(textHeight(medium, 7.2f * scale), actionH),
+                        7.2f * scale,
+                        withAlpha(ModulesMenuStyle.text(), alpha),
+                        false
+                );
+                if (hovered) SystemCursor.set(SystemCursor.CursorType.HAND);
+            }
+            y += actionH + actionGap;
+            total += actionH + actionGap;
+        }
+
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, scale)) {
             for (Setting setting : panel.selectedSettings) {
                 float vis = setting.updateVisibilityAnim();

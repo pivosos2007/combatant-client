@@ -70,3 +70,12 @@ The terrain vertex implementation contains a local source comment crediting Sodi
 - License text copied verbatim from that jar: `THIRD_PARTY_LICENSES/HoldMyItems-CC0-1.0.txt`
 - Scope: the HMI compatibility subsystem in `java/combatant/client/features/hmi/**`, its rendering mixins in `java/combatant/client/mixins/hmi/**`, and the JavaScript pose/model scripts in `resources/assets/minecraft/holdmyitems/**`.
 - Porting note: the original Lua/LuaJ script-facing behavior was adapted to Combatant's existing Javet JavaScript stack and the Minecraft 26.2 item rendering pipeline. No LuaJ runtime is bundled by this port.
+
+## Protean Clouds
+
+- Upstream work: Protean clouds
+- Author: nimitz (`@stormoid`)
+- Source: https://www.shadertoy.com/view/3l23Rh
+- License: Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported
+- Scope: the adapted stationary world-space volume in `assets/combatant/shaders/visual_preview_clouds.frag`.
+- Licensing contact: contact the upstream author for other licensing options.

@@ -27,10 +27,14 @@ import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.minecraft.util.Util;
+import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 import combatant.client.features.command.CommandManager;
 import combatant.client.features.command.CommandOutput;
 import combatant.client.features.gui.chat.ChatHoverUtil.HoverTip;
+import combatant.client.features.gui.chat.rich.BetterChatMessage;
+import combatant.client.features.gui.chat.rich.ItemNode;
+import combatant.client.features.gui.chat.rich.TextNode;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
@@ -153,6 +157,7 @@ public enum BetterChatRenderer {
     private static int leftDownMsgIndex = -1;
     private static int leftDownCharIndex = -1;
     private static Style leftDownStyle = null;
+    private static ItemStack leftDownItem = ItemStack.EMPTY;
     private static final List<PasswordMaskRect> passwordMaskRects = new ArrayList<>();
     private static boolean passwordReveal = false;
     private static boolean passwordMaskClickPending = false;
@@ -470,7 +475,9 @@ public enum BetterChatRenderer {
             lastHoverWasOutsideSuggest = true;
         }
 
-        if (hover != null && hover.glyph().hover() != null && !overSuggestWindow) {
+        if (hover != null && hover.glyph().item() != null && !hover.glyph().item().isEmpty() && !overSuggestWindow) {
+            hoverTip = ChatHoverUtil.buildItemTip(hover.glyph().item(), mc, false);
+        } else if (hover != null && hover.glyph().hover() != null && !overSuggestWindow) {
             hoverTip = ChatHoverUtil.fromHover(hover.glyph().hover(), mc);
             if (hoverTip != null) hoverEntityUuid = hoverTip.uuid();
         }
@@ -711,6 +718,25 @@ public enum BetterChatRenderer {
             List<GlyphBox> glyphs = line.glyphs();
             for (int gi = 0; gi < glyphs.size(); gi++) {
                 GlyphBox g = glyphs.get(gi);
+                if (g.item() != null && !g.item().isEmpty()) {
+                    if (current != null) {
+                        current.end();
+                        current = null;
+                    }
+                    float iconSize = Math.max(1.0f, g.x1() - g.x0());
+                    float gx = g.x0() + xOffset;
+                    float itemY = baseY + (lineHeight - iconSize) * 0.5f;
+                    renderer.item(
+                            g.item(),
+                            gx,
+                            itemY,
+                            iconSize / 16.0f,
+                            31 * line.messageIndex() + gi,
+                            Renderer2D.ITEM_OVERLAY_NONE,
+                            null
+                    );
+                    continue;
+                }
                 if (commandLine && g.charIndex() < CommandOutput.PREFIX.length() && !TextGlyphFallback.isSvgFontKey(g.font())) {
                     if (current != null) {
                         current.end();
@@ -926,7 +952,7 @@ public enum BetterChatRenderer {
             return cached.lines();
         }
 
-        List<Segment> segments = SEGMENT_CACHE.computeIfAbsent(msg, m -> flatten(m.text()));
+        List<Segment> segments = SEGMENT_CACHE.computeIfAbsent(msg, m -> flatten(m.message()));
         List<CachedLine> rebuilt = new ArrayList<>();
         TextRenderer activeRenderer = null;
         String activeFont = null;
@@ -944,6 +970,39 @@ public enum BetterChatRenderer {
             String font = fontForStyle(style);
             int color = style.getColor() != null ? (0xFF << 24) | style.getColor().getValue() : theme().textPrimary();
             HoverEvent hover = style.getHoverEvent();
+
+            if (seg.item() != null && !seg.item().isEmpty()) {
+                if (activeRenderer != null) {
+                    activeRenderer.end();
+                    activeRenderer = null;
+                }
+                float itemSize = Math.max(12.0f, fontSize);
+                if (lineX + itemSize > maxWidth && lineX > 0f) {
+                    rebuilt.add(new CachedLine(lineStartIndex, Math.max(lineStartIndex, charIndex - 1), glyphs));
+                    glyphs = new ArrayList<>();
+                    lineX = 0f;
+                    lineStartIndex = charIndex;
+                    breakGlyphIdx = -1;
+                    breakCharIdx = -1;
+                }
+                String accessible = seg.text().isEmpty() ? "[item]" : seg.text();
+                int logicalLength = Math.max(1, accessible.length());
+                glyphs.add(new Glyph(
+                        lineX,
+                        lineX + itemSize,
+                        charIndex,
+                        charIndex + logicalLength,
+                        theme().textPrimary(),
+                        null,
+                        "",
+                        accessible,
+                        Style.EMPTY,
+                        seg.item().copy()
+                ));
+                lineX += itemSize;
+                charIndex += logicalLength;
+                continue;
+            }
 
             if (hover instanceof HoverEvent.ShowItem(net.minecraft.world.item.ItemStackTemplate itemTemplate)) {
                 net.minecraft.world.item.ItemStack item = itemTemplate.create();
@@ -1041,7 +1100,8 @@ public enum BetterChatRenderer {
                                     g.hover(),
                                     g.font(),
                                     g.text(),
-                                    g.style()
+                                    g.style(),
+                                    g.item()
                             ));
                             nx += gw;
                         }
@@ -1066,7 +1126,8 @@ public enum BetterChatRenderer {
                         hover,
                         activeFont != null ? activeFont : resolvedFont,
                         glyphText,
-                        style
+                        style,
+                        null
                 ));
                 lineX += cw;
 
@@ -1093,7 +1154,8 @@ public enum BetterChatRenderer {
                     null,
                     "iosevka_medium",
                     " ",
-                    Style.EMPTY
+                    Style.EMPTY,
+                    null
             ))));
         }
 
@@ -1104,14 +1166,22 @@ public enum BetterChatRenderer {
         return rebuilt;
     }
 
-    private static List<Segment> flatten(Component text) {
+    private static List<Segment> flatten(BetterChatMessage message) {
         List<Segment> segments = new ArrayList<>();
-        text.visit((style, string) -> {
-            if (string != null && !string.isEmpty()) {
-                segments.add(new Segment(string, style == null ? Style.EMPTY : style));
+        BetterChatMessage safe = message == null ? BetterChatMessage.empty() : message;
+        for (var node : safe.nodes()) {
+            if (node instanceof TextNode text) {
+                text.component().visit((style, string) -> {
+                    if (string != null && !string.isEmpty()) {
+                        segments.add(new Segment(string, style == null ? Style.EMPTY : style, null));
+                    }
+                    return Optional.empty();
+                }, Style.EMPTY);
+            } else if (node instanceof ItemNode item) {
+                ItemStack stack = item.stack();
+                if (!stack.isEmpty()) segments.add(new Segment(item.plainText(), Style.EMPTY, stack));
             }
-            return Optional.empty();
-        }, Style.EMPTY);
+        }
         return segments;
     }
 
@@ -1599,6 +1669,7 @@ public enum BetterChatRenderer {
                 leftDownMsgIndex = pick.line().messageIndex();
                 leftDownCharIndex = pick.glyph().charIndex();
                 leftDownStyle = pick.glyph().style();
+                leftDownItem = pick.glyph().item() == null ? ItemStack.EMPTY : pick.glyph().item().copy();
 
                 selecting = false;              // не выделяем сразу
                 contextMenu = ContextMenu.closed();
@@ -1615,7 +1686,9 @@ public enum BetterChatRenderer {
                     }
 
                     // одиночный клик (без drag)
-                    boolean handled = handleClickEvent(leftDownStyle, ctrlDown);
+                    boolean handled = BetterChatItemInteraction.tryOpenPreview(leftDownItem, ctrlDown);
+                    leftDownItem = ItemStack.EMPTY;
+                    if (!handled) handled = handleClickEvent(leftDownStyle, ctrlDown);
                     if (!handled && ctrlDown) {
                         handled = tryPrefillTellFromClick(leftDownMsgIndex, leftDownCharIndex);
                     }
@@ -2729,7 +2802,7 @@ public enum BetterChatRenderer {
     private record PasswordMaskRect(float x, float y, float w, float h) {
     }
 
-    private record Segment(String text, Style style) {
+    private record Segment(String text, Style style, ItemStack item) {
     }
 
     private record VisualLine(ChatLine message, int messageIndex, int messageGroup, int startChar, int endChar, List<Glyph> glyphs) {
@@ -2744,7 +2817,8 @@ public enum BetterChatRenderer {
             HoverEvent hover,
             String font,
             String text,
-            Style style
+            Style style,
+            ItemStack item
     ) {
     }
 
@@ -2759,7 +2833,8 @@ public enum BetterChatRenderer {
             String font,
             HoverEvent hover,
             String text,
-            Style style
+            Style style,
+            ItemStack item
     ) {
     }
 
@@ -2808,7 +2883,8 @@ public enum BetterChatRenderer {
                             g.font(),
                             g.hover(),
                             g.text(),
-                            g.style()
+                            g.style(),
+                            g.item()
                     ));
                 }
                 list.add(new FrameLine(vl.message(), vl.messageIndex(), vl.messageGroup(), y0, y1, boxes));

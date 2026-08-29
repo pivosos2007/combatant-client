@@ -8,14 +8,21 @@
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.module;
 
 import combatant.client.config.MainConfig;
+import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.hud.script.HudScriptLayouts;
+import combatant.client.features.theme.Theme;
+import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.renderer.RenderWarpStack;
-import combatant.client.render.engine.svg.SvgRenderOptions;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
+import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
+import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
+import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsGlassMaterial;
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.gui.clickgui.settings.SettingRenderContext;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
@@ -30,19 +37,24 @@ import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class SettingsPanelComponent {
+    private static final String PANEL_LAYOUT_ID = "combatant:api/clickgui/settings_panel";
     private static final float DROPDOWN_PANEL_W = 115.0f;
     private static final float DROPDOWN_PANEL_H = 240.0f;
-    private static final float DROPDOWN_HEADER_H = 24.0f;
-    private static final float DROPDOWN_SEPARATOR_H = 4.0f;
-    private static final float DROPDOWN_RADIUS = 10.0f;
+    private static final float DROPDOWN_HEADER_H = 22.0f;
+    private static final float DROPDOWN_SEPARATOR_H = 0.0f;
     private final List<Setting> settings = new ArrayList<>();
     private final List<SettingRow> rows = new ArrayList<>();
     private final List<SettingHit> hits = new ArrayList<>();
     private final SettingRenderSurface renderSurface;
     private final Minecraft mc = Minecraft.getInstance();
+    private final UiScriptModuleHandle panelModuleHandle = HudScriptLayouts.handle(PANEL_LAYOUT_ID);
+    private final CachedUiScriptRuntime panelRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
     private String targetId = "";
     private String title = "Settings";
     private boolean hudContext = false;
@@ -81,6 +93,7 @@ public final class SettingsPanelComponent {
     private float pillW;
     private float pillH;
     private float pillActiveAnim = 1f;
+    private boolean hintsVisible = true;
     private HudPreviewMode hudPreviewMode = HudPreviewMode.ONLY_CURRENT;
     private float lastSettingScale = 1.0f;
     public SettingsPanelComponent() {
@@ -90,21 +103,16 @@ public final class SettingsPanelComponent {
         this.renderSurface = renderSurface == null ? SettingRenderSurface.SETTINGS : renderSurface;
     }
 
+    public void setHintsVisible(boolean visible) {
+        this.hintsVisible = visible;
+    }
+
     private static boolean inside(float mx, float my, float x, float y, float w, float h) {
         return mx >= x && mx <= x + w && my >= y && my <= y + h;
     }
 
     private static boolean isHintToggle(int keyCode, int modifiers) {
         return keyCode == GLFW.GLFW_KEY_H && (modifiers & GLFW.GLFW_MOD_ALT) != 0;
-    }
-
-    private static int mixColor(int from, int to, float t) {
-        t = Math.max(0f, Math.min(1f, t));
-        int a = (int) (((from >>> 24) & 0xFF) * (1 - t) + ((to >>> 24) & 0xFF) * t);
-        int r = (int) (((from >>> 16) & 0xFF) * (1 - t) + ((to >>> 16) & 0xFF) * t);
-        int g = (int) (((from >>> 8) & 0xFF) * (1 - t) + ((to >>> 8) & 0xFF) * t);
-        int b = (int) (((from) & 0xFF) * (1 - t) + ((to) & 0xFF) * t);
-        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     public void open(String id, String title, List<Setting> source, boolean hudContext) {
@@ -157,7 +165,7 @@ public final class SettingsPanelComponent {
     }
 
     public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my, float scale) {
-        float dt = AnimationUtility.deltaTime();
+        float dt = AnimationUtility.deltaTime(AnimationUtility.Mode.MILLIS);
         float openTargetValue = openTarget ? 1f : 0f;
         openAnim = AnimationUtility.approach(openAnim, openTargetValue, dt, openTarget ? 12f : 13f);
         openAnim = AnimationUtility.snap(openAnim, openTargetValue, 0.01f);
@@ -213,35 +221,24 @@ public final class SettingsPanelComponent {
         SettingsGuiPalette palette = SettingsGuiPalette.current();
 
         try (RenderWarpStack.Scope lifecycleScope = pushLifecycleWarp(distanceProgress)) {
-            int bgTl = LayoutRender2D.alpha(palette.panelBgLeft(), fadeProgress);
-            int bgTr = LayoutRender2D.alpha(palette.panelBgRight(), fadeProgress);
-            int bgBr = LayoutRender2D.alpha(SettingsGuiPalette.darken(palette.panelBgRight(), 0.08f), fadeProgress);
-            int bgBl = LayoutRender2D.alpha(SettingsGuiPalette.darken(palette.panelBgLeft(), 0.05f), fadeProgress);
-            int stroke = LayoutRender2D.alpha(palette.panelStroke(), fadeProgress);
-            int line = LayoutRender2D.alpha(palette.panelDivider(), 0.52f * fadeProgress);
-            int text = LayoutRender2D.alpha(palette.panelText(), fadeProgress);
-            int mutedBase = LayoutRender2D.alpha(palette.panelMuted(), fadeProgress);
-
-            String header = title;
-            closeW = 16f * panelScale;
-            closeH = 14f * panelScale;
-            closeX = panelX + panelW - closeW - 6f * panelScale;
+            closeW = 14f * panelScale;
+            closeH = 12f * panelScale;
+            closeX = panelX + panelW - closeW - 5.5f * panelScale;
             closeY = panelY + (DROPDOWN_HEADER_H * panelScale - closeH) * 0.5f;
             boolean closeHover = inside(mx, my, closeX, closeY, closeW, closeH);
             closeHoverAnim = AnimationUtility.approach(closeHoverAnim, closeHover ? 1f : 0f, dt, 10f);
-            int muted = mixColor(mutedBase, text, closeHoverAnim * 0.7f);
+            if (closeHoverAnim > 0.08f) SystemCursor.set(SystemCursor.CursorType.HAND);
 
-            renderMatteChrome(header, panelScale, bgTl, bgTr, bgBr, bgBl, stroke, line, text, muted, palette);
+            if (hudContext) updateHudModePillBounds(panelScale);
 
             float contentStartY = panelY + (DROPDOWN_HEADER_H + DROPDOWN_SEPARATOR_H) * panelScale;
             if (hudContext) {
-                renderHudModePill(panelScale, text, muted, palette);
                 contentStartY += hudExtraTop;
             }
 
-            contentPadLeft = 6f * panelScale;
-            contentPadRight = 13f * panelScale;
-            float contentClipInset = 2.2f * panelScale;
+            contentPadLeft = 7f * panelScale;
+            contentPadRight = 11f * panelScale;
+            float contentClipInset = 3.0f * panelScale;
             contentX = panelX + contentPadLeft;
             contentY = contentStartY + contentClipInset;
             contentW = Math.max(1f, panelW - contentPadLeft - contentPadRight);
@@ -252,29 +249,38 @@ public final class SettingsPanelComponent {
             smoothedScroll = AnimationUtility.approach(smoothedScroll, scroll, dt, 14f);
             smoothedScroll = AnimationUtility.snap(smoothedScroll, scroll, 0.1f);
 
+            renderScriptedPanel(panelScale, fadeProgress, mx, my, palette);
+
             hits.clear();
             float rowsReveal = fadeProgress;
             boolean clipped = ScissorFunction.pushRaw(contentX, contentY, contentW, contentH);
+            float fadeBottom = contentY + contentH;
+            float fadeStart = maxScroll > 0.0f
+                    ? fadeBottom - Math.min(contentH, 14f * panelScale)
+                    : fadeBottom;
 
-            float y = contentY + smoothedScroll;
-            for (SettingRow row : rows) {
-                float sh = row.height() * rowsReveal;
-                float gap = row.gap() * rowsReveal;
-                if (sh > 0.5f) {
-                    hits.add(new SettingHit(row.setting(), contentX, y, contentW, sh, row.scale()));
-                    if (y + sh >= contentY - 1.0f * panelScale && y <= contentY + contentH + 1.0f * panelScale) {
-                        float slide = (1f - row.anim()) * 6f * panelScale;
-                        boolean itemClip = ScissorFunction.pushRaw(contentX, y, contentW, sh);
-                        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, row.scale())) {
-                            row.setting().render(contentX, y + slide, contentW, mx, my);
-                        }
-                        ClickGuiRenderer.flushRenderer();
-                        if (itemClip) {
-                            ScissorFunction.pop();
+            try (ClickGuiRenderer.VerticalAlphaFadeScope ignoredFade =
+                         ClickGuiRenderer.pushBottomAlphaFade(fadeStart, fadeBottom)) {
+                float y = contentY + smoothedScroll;
+                for (SettingRow row : rows) {
+                    float sh = row.height() * rowsReveal;
+                    float gap = row.gap() * rowsReveal;
+                    if (sh > 0.5f) {
+                        hits.add(new SettingHit(row.setting(), contentX, y, contentW, sh, row.scale()));
+                        if (y + sh >= contentY - 1.0f * panelScale && y <= contentY + contentH + 1.0f * panelScale) {
+                            float slide = (1f - row.anim()) * 6f * panelScale;
+                            boolean itemClip = ScissorFunction.pushRaw(contentX, y, contentW, sh);
+                            try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, row.scale())) {
+                                row.setting().render(contentX, y + slide, contentW, mx, my);
+                            }
+                            ClickGuiRenderer.flushRenderer();
+                            if (itemClip) {
+                                ScissorFunction.pop();
+                            }
                         }
                     }
+                    y += sh + gap;
                 }
-                y += sh + gap;
             }
 
             ClickGuiRenderer.flushRenderer();
@@ -282,10 +288,11 @@ public final class SettingsPanelComponent {
                 ScissorFunction.pop();
             }
 
-            renderScrollbar(panelScale, palette);
         }
-        renderHudEditorHints(menuX, menuY, menuW, menuH, panelScale, fadeProgress);
-        renderSettingsPanelHints(menuX, menuY, menuW, menuH, panelScale, fadeProgress);
+        if (hintsVisible) {
+            renderHudEditorHints(menuX, menuY, menuW, menuH, panelScale, fadeProgress);
+            renderSettingsPanelHints(menuX, menuY, menuW, menuH, panelScale, fadeProgress);
+        }
     }
 
     public boolean mouseClicked(float mx, float my, int button, float scale) {
@@ -413,78 +420,11 @@ public final class SettingsPanelComponent {
         return false;
     }
 
-    private void renderHudModePill(float scale, int text, int muted, SettingsGuiPalette palette) {
-        updateHudModePillBounds(scale);
-
-        float dt = AnimationUtility.deltaTime();
-        float mx = ClickGuiRenderer.getMouseX();
-        float my = ClickGuiRenderer.getMouseY();
-        float segmentW = pillW * 0.5f;
-        boolean enabledHover = inside(mx, my, pillX, pillY, segmentW, pillH);
-        boolean onlyHover = inside(mx, my, pillX + segmentW, pillY, segmentW, pillH);
-        int baseA = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelPillBase(), palette.panelBgLeft(), 0.32f), openAnim);
-        int baseB = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelPillBase(), palette.panelBgRight(), 0.40f), openAnim);
-        int strokeA = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelStroke(), palette.moduleDividerStart(), 0.32f), openAnim);
-        int strokeB = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.moduleDividerEnd(), palette.menuCategorySelectedRight(), 0.20f), openAnim);
-
-        ClickGuiRenderer.drawBlur(pillX, pillY, pillW, pillH, 5.5f * scale, palette.panelBlurTint(), (105f / 255f) * openAnim);
-        LayoutRender2D.roundedQuad(pillX, pillY, pillW, pillH, 5.5f * scale, baseA, baseB, SettingsGuiPalette.darken(baseB, 0.05f), baseA);
-        LayoutRender2D.roundedStrokeQuad(pillX, pillY, pillW, pillH, 5.5f * scale, 0.45f * scale, strokeA, strokeB, LayoutRender2D.alpha(strokeB, 0.82f), LayoutRender2D.alpha(strokeA, 0.88f));
-
-        float innerPad = 1.3f * scale;
-        float activeW = segmentW - innerPad * 2f;
-        float activeH = pillH - innerPad * 2f;
-        float pillT = AnimationUtility.easeInOutCubic(pillActiveAnim);
-        float activeX = pillX + innerPad + (segmentW * pillT);
-        int activeA = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelPillActive(), palette.menuCategorySelectedLeft(), 0.18f), openAnim);
-        int activeB = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelPillActive(), palette.menuCategorySelectedRight(), 0.24f), openAnim);
-        int activeC = LayoutRender2D.alpha(SettingsGuiPalette.darken(activeB, 0.10f), openAnim);
-        LayoutRender2D.roundedSoftShadow(activeX, pillY + innerPad, activeW, activeH, 4.4f * scale, 4.0f * scale, 0.018f, LayoutRender2D.alpha(palette.menuShadow(), openAnim * 0.55f));
-        LayoutRender2D.roundedQuad(activeX, pillY + innerPad, activeW, activeH, 4.4f * scale, activeA, activeB, activeC, activeA);
-        LayoutRender2D.roundedStrokeQuad(activeX, pillY + innerPad, activeW, activeH, 4.4f * scale, 0.28f * scale, LayoutRender2D.alpha(palette.moduleDividerStart(), openAnim * 0.86f), LayoutRender2D.alpha(palette.moduleDividerEnd(), openAnim * 0.92f), LayoutRender2D.alpha(palette.moduleDividerEnd(), openAnim * 0.72f), LayoutRender2D.alpha(palette.moduleDividerStart(), openAnim * 0.78f));
-
-        float sepX = pillX + segmentW;
-        LayoutRender2D.roundedQuad(sepX - 0.42f * scale, pillY + 4.0f * scale, 0.84f * scale, pillH - 8.0f * scale, 0.42f * scale,
-                LayoutRender2D.alpha(palette.moduleDividerStart(), 0.35f * openAnim),
-                LayoutRender2D.alpha(palette.moduleDividerEnd(), 0.50f * openAnim),
-                LayoutRender2D.alpha(palette.moduleDividerEnd(), 0.42f * openAnim),
-                LayoutRender2D.alpha(palette.moduleDividerStart(), 0.28f * openAnim));
-
-        float ty = pillY + (pillH - ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterMedium(), 6.2f * scale)) * 0.5f;
-        int enabledColor = mixColor(mixColor(text, muted, pillT), text, enabledHover ? 0.10f : 0f);
-        int onlyColor = mixColor(mixColor(muted, text, pillT), text, onlyHover ? 0.10f : 0f);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), "Enabled", pillX + 8.0f * scale, ty, 6.2f * scale, enabledColor, false);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), "Only this", pillX + segmentW + 8.0f * scale, ty, 6.2f * scale, onlyColor, false);
-    }
-
     private void updateHudModePillBounds(float scale) {
         pillX = panelX + 7f * scale;
         pillY = panelY + DROPDOWN_HEADER_H * scale + 4f * scale;
         pillW = panelW - 14f * scale;
-        pillH = 16f * scale;
-    }
-
-    private void renderScrollbar(float scale, SettingsGuiPalette palette) {
-        if (!limitedHeight || maxScroll <= 0f) return;
-
-        float trackW = 2.5f * scale;
-        float trackX = panelX + panelW - 5f * scale;
-        float trackY = contentY + 5f * scale;
-        float viewableH = Math.max(1f, contentH);
-        float trackH = Math.max(8f * scale, viewableH - 10f * scale);
-
-        float rowsH = Math.max(1f, totalRowsHeight());
-        float handleH = Math.min(trackH, Math.max(20f * scale, (viewableH / rowsH) * trackH));
-        float ratio = maxScroll <= 0f ? 0f : (-smoothedScroll / maxScroll);
-        float handleY = trackY + (trackH - handleH) * ratio;
-
-        int trTl = LayoutRender2D.alpha(palette.panelScrollTrackA(), openAnim);
-        int trTr = LayoutRender2D.alpha(palette.panelScrollTrackB(), openAnim);
-        int hdTl = LayoutRender2D.alpha(palette.panelScrollHandleA(), openAnim);
-        int hdTr = LayoutRender2D.alpha(palette.panelScrollHandleB(), openAnim);
-
-        LayoutRender2D.roundedQuad(trackX, trackY, trackW, trackH, 1.25f * scale, trTl, trTr, trTr, trTl);
-        LayoutRender2D.roundedQuad(trackX, handleY, trackW, handleH, 1.25f * scale, hdTl, hdTr, hdTr, hdTl);
+        pillH = 15f * scale;
     }
 
     private void renderHudEditorHints(float fallbackX, float fallbackY, float fallbackW, float fallbackH, float scale, float alpha) {
@@ -546,61 +486,230 @@ public final class SettingsPanelComponent {
         );
     }
 
-    private void renderMatteChrome(String header,
-                                   float scale,
-                                   int bgTl,
-                                   int bgTr,
-                                   int bgBr,
-                                   int bgBl,
-                                   int stroke,
-                                   int line,
-                                   int text,
-                                   int muted,
-                                   SettingsGuiPalette palette) {
-        if (panelW <= 0.5f || panelH <= 0.5f || openAnim <= 0.001f) return;
+    private void renderScriptedPanel(float scale,
+                                     float alpha,
+                                     float mouseX,
+                                     float mouseY,
+                                     SettingsGuiPalette palette) {
+        if (panelW <= 0.5f || panelH <= 0.5f || alpha <= 0.001f) return;
+        if (panelModuleHandle.isRuntimeBlocked() || mc == null || mc.getResourceManager() == null) return;
 
-        float radius = DROPDOWN_RADIUS * scale;
-        float headerBottom = panelY + DROPDOWN_HEADER_H * scale;
-        int shadow = LayoutRender2D.alpha(palette.panelShadow(), 0.72f * openAnim);
-        int topWashA = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelBgLeft(), palette.menuCategorySelectedLeft(), 0.16f), openAnim);
-        int topWashB = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelBgRight(), palette.menuCategorySelectedRight(), 0.18f), openAnim);
-        int accent = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelPillActive(), palette.menuCategorySelectedRight(), 0.18f), 0.55f * openAnim);
-        int accentSoft = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelPillActive(), palette.panelBgRight(), 0.42f), 0.22f * openAnim);
-        int strokeTop = LayoutRender2D.alpha(SettingsGuiPalette.mix(stroke, palette.moduleDividerEnd(), 0.22f), openAnim);
-        int strokeBottom = LayoutRender2D.alpha(SettingsGuiPalette.mix(stroke, palette.panelBgRight(), 0.22f), 0.82f * openAnim);
+        HudScriptLayouts.pollReloadCombo(mc);
+        if (panelModuleHandle.consumeChanged()) panelRuntime.reset();
+        UiScriptModule module = ensurePanelModule();
+        if (module == null) return;
 
-        LayoutRender2D.roundedSoftShadow(panelX - 1.4f * scale, panelY + 1.2f * scale, panelW + 2.8f * scale, panelH + 2.4f * scale, radius + 1.6f * scale, 9.5f * scale, 0.028f, shadow);
-        SettingsGlassMaterial.elevated(panelX, panelY, panelW, panelH, radius, scale, palette, openAnim);
+        float segmentW = hudContext ? pillW * 0.5f : 0f;
+        boolean enabledHover = hudContext && inside(mouseX, mouseY, pillX, pillY, segmentW, pillH);
+        boolean onlyHover = hudContext && inside(mouseX, mouseY, pillX + segmentW, pillY, segmentW, pillH);
+        Map<String, Object> props = panelTemplateProps(scale, alpha, enabledHover, onlyHover, palette);
+        long treeSignature = CachedUiScriptRuntime.signature(props);
+        long layoutSignature = 0xcbf29ce484222325L;
+        layoutSignature = CachedUiScriptRuntime.mix(layoutSignature, panelX);
+        layoutSignature = CachedUiScriptRuntime.mix(layoutSignature, panelY);
+        layoutSignature = CachedUiScriptRuntime.mix(layoutSignature, panelW);
+        layoutSignature = CachedUiScriptRuntime.mix(layoutSignature, panelH);
 
-        LayoutRender2D.roundedQuad(panelX + 1.0f * scale, panelY + 1.0f * scale, panelW - 2.0f * scale, DROPDOWN_HEADER_H * scale - 1.0f * scale, Math.max(0f, radius - 1.0f * scale), topWashA, topWashB, LayoutRender2D.alpha(SettingsGuiPalette.darken(topWashB, 0.18f), 0.64f), LayoutRender2D.alpha(SettingsGuiPalette.darken(topWashA, 0.14f), 0.64f));
-        LayoutRender2D.rectQuad(panelX + 8.0f * scale, headerBottom, panelW - 16.0f * scale, Math.max(0.45f, 0.55f * scale), LayoutRender2D.alpha(line, 0.55f), line, LayoutRender2D.alpha(line, 0.28f), LayoutRender2D.alpha(line, 0.28f));
-        LayoutRender2D.rectQuad(panelX + 8.0f * scale, headerBottom + 0.6f * scale, panelW - 16.0f * scale, Math.max(0.45f, 0.65f * scale), accent, accentSoft, 0x00000000, 0x00000000);
+        UiRuntime runtime = panelRuntime.updatePersistent(
+                panelModuleHandle,
+                module,
+                "settings-panel",
+                treeSignature,
+                layoutSignature,
+                panelW,
+                panelH,
+                ClickGuiRenderer.getInterRegular(),
+                panelX,
+                panelY,
+                panelW,
+                panelH,
+                () -> props,
+                () -> Collections.<String, Map<String, ?>>emptyMap()
+        );
+        if (runtime == null) return;
 
-        float markW = 2.4f * scale;
-        float markH = 9.2f * scale;
-        LayoutRender2D.roundedQuad(panelX + 8.0f * scale, panelY + 7.2f * scale, markW, markH, markW * 0.5f, accent, accentSoft, accentSoft, accent);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), header, panelX + 14.0f * scale, panelY + 7.0f * scale, 8.0f * scale, text, false);
+        ClickGuiRenderer.flushRenderer();
 
-        renderCloseButton(scale, text, muted, palette);
+        // Inventory/Potions-style material: soft outer shadow + an explicit square blur
+        // pass below the chrome. Radius stays zero: this is not a rounded glass card.
+        HudRenderUtil.drawHudShadow(
+                Renderer2D.COLOR,
+                panelX, panelY, panelW, panelH,
+                0.0f, Math.max(0.85f, scale * 0.72f),
+                false, 46, alpha
+        );
+        // Use the normal ClickGUI blur path so this panel gets the same Kawase blur
+        // as the rest of ClickGUI instead of the weaker local pass.
+        ClickGuiRenderer.drawBlur(
+                panelX, panelY, panelW, panelH,
+                0.0f,
+                0xFFFFFFFF,
+                0.92f * alpha
+        );
+        ClickGuiRenderer.flushRenderer();
+
+        runtime.render(new UiRenderContext(
+                Renderer2D.COLOR,
+                ClickGuiRenderer.getInterRegular(),
+                null,
+                0f,
+                UiProjectionMode.CURRENT,
+                1f
+        ));
+        ClickGuiRenderer.flushRenderer();
     }
 
-    private void renderCloseButton(float scale, int text, int muted, SettingsGuiPalette palette) {
-        int bgA = SettingsGuiPalette.mix(palette.panelPillBase(), palette.menuCategoryHoverLeft(), 0.16f + closeHoverAnim * 0.26f);
-        int bgB = SettingsGuiPalette.mix(palette.panelPillBase(), palette.menuCategoryHoverRight(), 0.18f + closeHoverAnim * 0.28f);
-        int bgC = SettingsGuiPalette.mix(SettingsGuiPalette.darken(palette.panelBgRight(), 0.06f), palette.menuCategoryHoverRight(), 0.12f + closeHoverAnim * 0.20f);
-        int strokeA = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.panelStroke(), palette.moduleDividerStart(), 0.26f), openAnim * (0.72f + closeHoverAnim * 0.22f));
-        int strokeB = LayoutRender2D.alpha(SettingsGuiPalette.mix(palette.moduleDividerEnd(), palette.menuCategorySelectedRight(), 0.22f), openAnim * (0.78f + closeHoverAnim * 0.20f));
-        float radius = closeH * 0.50f;
+    private UiScriptModule ensurePanelModule() {
+        if (!panelModuleHandle.ensureLoaded(mc.getResourceManager())) {
+            HudScriptLayouts.reportLoadError(panelModuleHandle);
+            return null;
+        }
+        panelModuleHandle.consumeChanged();
+        return panelModuleHandle.module();
+    }
 
-        ClickGuiRenderer.drawBlur(closeX, closeY, closeW, closeH, radius, palette.panelBlurTint(), (72f / 255f) * openAnim);
-        LayoutRender2D.roundedSoftShadow(closeX, closeY + 0.4f * scale, closeW, closeH, radius, 4.0f * scale, 0.018f + closeHoverAnim * 0.018f, LayoutRender2D.alpha(palette.menuShadow(), openAnim * (0.38f + closeHoverAnim * 0.36f)));
-        LayoutRender2D.roundedQuad(closeX, closeY, closeW, closeH, radius, LayoutRender2D.alpha(bgA, openAnim), LayoutRender2D.alpha(bgB, openAnim), LayoutRender2D.alpha(bgC, openAnim), LayoutRender2D.alpha(bgA, openAnim));
-        LayoutRender2D.roundedStrokeQuad(closeX, closeY, closeW, closeH, radius, 0.42f * scale, strokeA, strokeB, LayoutRender2D.alpha(strokeB, 0.74f), LayoutRender2D.alpha(strokeA, 0.78f));
+    private Map<String, Object> panelTemplateProps(float scale,
+                                                   float alpha,
+                                                   boolean enabledHover,
+                                                   boolean onlyHover,
+                                                   SettingsGuiPalette palette) {
+        Themes.Theme theme = Theme.theme();
+        Themes.ThemeEntry entry = Theme.currentEntry();
+        Themes.GradientSpec strokeGradient = entry == null ? null : entry.strokeGradient();
+        boolean strokeGradientEnabled = strokeGradient != null && strokeGradient.enabled();
 
-        float icon = 6.8f * scale;
-        int iconColor = LayoutRender2D.alpha(SettingsGuiPalette.mix(muted, text, 0.42f + closeHoverAnim * 0.48f), openAnim);
-        Renderer2D.COLOR.svg("x", closeX + (closeW - icon) * 0.5f, closeY + (closeH - icon) * 0.5f, icon, icon, SvgRenderOptions.overrideColor(iconColor));
-        if (closeHoverAnim > 0.08f) SystemCursor.set(SystemCursor.CursorType.HAND);
+        // Same neutral chrome recipe as Inventory/Potions: window/header/surface/deep.
+        // Do not spread the accent/card gradient across the whole panel material.
+        int chromeAlpha = 184;
+        int window = SettingsGuiPalette.withAlpha(theme.windowBg(), chromeAlpha);
+        int header = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(theme.windowHeader(), theme.surface(), 0.18f),
+                Math.min(255, chromeAlpha + 14)
+        );
+        int surface = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(theme.surface(), theme.windowBg(), 0.22f),
+                Math.min(255, chromeAlpha + 6)
+        );
+        int deep = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(theme.surface(), theme.windowHeader(), 0.42f),
+                Math.min(255, chromeAlpha + 18)
+        );
+
+        int headerStart = SettingsGuiPalette.mix(header, window, 0.22f);
+        int headerEnd = SettingsGuiPalette.mix(surface, header, 0.52f);
+        int bodyStart = SettingsGuiPalette.mix(window, surface, 0.24f);
+        int bodyEnd = SettingsGuiPalette.mix(deep, surface, 0.18f);
+        float chromeAngle = 90.0f;
+
+        int headerGlintStart = SettingsGuiPalette.withAlpha(theme.textPrimary(), 14);
+        int headerGlintEnd = SettingsGuiPalette.withAlpha(theme.textPrimary(), 0);
+        int bodyGlintStart = SettingsGuiPalette.withAlpha(theme.textPrimary(), 8);
+        int bodyGlintEnd = SettingsGuiPalette.withAlpha(theme.textPrimary(), 0);
+
+        int neutralStroke = SettingsGuiPalette.mix(theme.windowStroke(), theme.strokeSoft(), 0.18f);
+        int rawStrokeStart = strokeGradientEnabled ? strokeGradient.start() : neutralStroke;
+        int rawStrokeEnd = strokeGradientEnabled ? strokeGradient.end() : neutralStroke;
+        float strokeAngle = strokeGradientEnabled ? strokeGradient.angleDeg() : chromeAngle;
+
+        // Stroke can inherit the theme gradient, but most of its chroma is mixed back
+        // into neutral chrome so the frame does not become a saturated accent cage.
+        int strokeStart = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(rawStrokeStart, neutralStroke, 0.78f), 70);
+        int strokeEnd = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(rawStrokeEnd, neutralStroke, 0.80f), 64);
+        int dividerStart = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(rawStrokeStart, neutralStroke, 0.84f), 52);
+        int dividerEnd = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(rawStrokeEnd, neutralStroke, 0.86f), 46);
+
+        int selectorSurfaceStart = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(theme.surface(), theme.windowBg(), 0.30f), 118);
+        int selectorSurfaceEnd = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(theme.surfaceHover(), theme.windowHeader(), 0.34f), 132);
+        int selectorActiveStart = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(theme.surfaceHover(), theme.accent(), 0.10f), 166);
+        int selectorActiveEnd = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(theme.surface(), theme.accentSoft(), 0.12f), 154);
+
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("width", panelW);
+        props.put("height", panelH);
+        props.put("scale", scale);
+        props.put("open", alpha);
+        props.put("title", title);
+        props.put("headerH", DROPDOWN_HEADER_H * scale);
+        props.put("hudContext", hudContext);
+        props.put("closeHover", closeHoverAnim);
+        props.put("closeTint", hex(SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(theme.textMuted(), theme.textPrimary(), closeHoverAnim * 0.62f), 222)));
+        props.put("closeHoverBg", hex(SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(theme.surfaceHover(), theme.windowHeader(), 0.18f), 34)));
+        props.put("hudMode", hudPreviewMode == HudPreviewMode.ONLY_CURRENT ? "only" : "enabled");
+        props.put("pillProgress", AnimationUtility.easeInOutCubic(pillActiveAnim));
+        props.put("enabledHover", enabledHover);
+        props.put("onlyHover", onlyHover);
+
+        // Keep the scripted blur node too; the explicit Java pass above makes the
+        // square framebuffer blur reliable even through persistent UI batching.
+        props.put("blurAlpha", 0.22f * alpha);
+        props.put("blurBrightness", 0.96f);
+        props.put("blurQuality", ClickGuiRenderer.clickGuiBlurQuality());
+
+        props.put("bodyA", hex(bodyStart));
+        props.put("bodyB", hex(bodyEnd));
+        props.put("bodyAngle", chromeAngle);
+        props.put("bodyGlintA", hex(bodyGlintStart));
+        props.put("bodyGlintB", hex(bodyGlintEnd));
+
+        props.put("headerA", hex(headerStart));
+        props.put("headerB", hex(headerEnd));
+        props.put("headerAngle", chromeAngle);
+        props.put("headerGlintA", hex(headerGlintStart));
+        props.put("headerGlintB", hex(headerGlintEnd));
+
+        props.put("strokeA", hex(strokeStart));
+        props.put("strokeB", hex(strokeEnd));
+        props.put("strokeAngle", strokeAngle);
+        props.put("dividerA", hex(dividerStart));
+        props.put("dividerB", hex(dividerEnd));
+
+        props.put("text", hex(SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(theme.textPrimary(), theme.accent(), 0.04f), 240)));
+        props.put("muted", hex(SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(theme.textMuted(), theme.textPrimary(), 0.16f), 184)));
+
+        props.put("surfaceA", hex(selectorSurfaceStart));
+        props.put("surfaceB", hex(selectorSurfaceEnd));
+        props.put("surfaceAngle", chromeAngle);
+        props.put("activeA", hex(selectorActiveStart));
+        props.put("activeB", hex(selectorActiveEnd));
+        props.put("activeAngle", chromeAngle);
+
+        boolean scrollbarVisible = limitedHeight && maxScroll > 0f;
+        float trackW = 1.5f * scale;
+        float trackX = panelW - 4.5f * scale;
+        float trackY = contentY - panelY + 5.0f * scale;
+        float viewableH = Math.max(1f, contentH);
+        float trackH = Math.max(8f * scale, viewableH - 10f * scale);
+        float rowsH = Math.max(1f, totalRowsHeight());
+        float handleH = Math.min(trackH, Math.max(18f * scale, (viewableH / rowsH) * trackH));
+        float ratio = maxScroll <= 0f ? 0f : (-smoothedScroll / maxScroll);
+        float handleY = trackY + (trackH - handleH) * ratio;
+        props.put("scrollbarVisible", scrollbarVisible);
+        props.put("scrollbarX", trackX);
+        props.put("scrollbarY", trackY);
+        props.put("scrollbarW", trackW);
+        props.put("scrollbarH", trackH);
+        props.put("scrollbarThumbY", handleY);
+        props.put("scrollbarThumbH", handleH);
+        props.put("scrollbarTrack", hex(SettingsGuiPalette.withAlpha(palette.panelScrollTrackA(), 54)));
+        props.put("scrollbarThumbA", hex(SettingsGuiPalette.withAlpha(strokeStart, 112)));
+        props.put("scrollbarThumbB", hex(SettingsGuiPalette.withAlpha(strokeEnd, 104)));
+        return props;
+    }
+
+    private static String hex(int argb) {
+        return "#" + String.format("%08X", argb);
     }
 
     private void buildRows(float menuScale) {

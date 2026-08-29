@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.chat;
 
+import combatant.client.features.gui.chat.rich.BetterChatMessage;
+import combatant.client.features.gui.chat.rich.TextNode;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.TextColor;
@@ -34,22 +36,30 @@ public final class ChatLine {
             0xE38BFF
     };
 
-    private final Component rawText;
-    private final Component displayText;
+    private final BetterChatMessage rawMessage;
+    private final BetterChatMessage displayMessage;
     private final long timestampMs;
     private final int repeatCount;
 
     public ChatLine(Component text, long timestampMs) {
-        this(text, timestampMs, 1);
+        this(BetterChatMessage.text(text), timestampMs, 1);
     }
 
     public ChatLine(Component text, long timestampMs, int repeatCount) {
-        this.rawText = text == null ? Component.empty() : text;
+        this(BetterChatMessage.text(text), timestampMs, repeatCount);
+    }
+
+    public ChatLine(BetterChatMessage message, long timestampMs) {
+        this(message, timestampMs, 1);
+    }
+
+    public ChatLine(BetterChatMessage message, long timestampMs, int repeatCount) {
+        this.rawMessage = message == null ? BetterChatMessage.empty() : message;
         this.timestampMs = timestampMs;
         this.repeatCount = Math.max(1, repeatCount);
-        this.displayText = this.repeatCount > 1
-                ? this.rawText.copy().append(repeatBadge(this.repeatCount))
-                : this.rawText;
+        this.displayMessage = this.repeatCount > 1
+                ? this.rawMessage.append(new TextNode(repeatBadge(this.repeatCount)))
+                : this.rawMessage;
     }
 
 
@@ -97,11 +107,19 @@ public final class ChatLine {
     }
 
     public Component text() {
-        return displayText;
+        return displayMessage.accessibleComponent();
     }
 
     public Component rawText() {
-        return rawText;
+        return rawMessage.accessibleComponent();
+    }
+
+    public BetterChatMessage message() {
+        return displayMessage;
+    }
+
+    public BetterChatMessage rawMessage() {
+        return rawMessage;
     }
 
     public long timestampMs() {
@@ -113,7 +131,7 @@ public final class ChatLine {
     }
 
     public ChatLine repeated(long latestTimestampMs) {
-        return new ChatLine(rawText, latestTimestampMs, repeatCount + 1);
+        return new ChatLine(rawMessage, latestTimestampMs, repeatCount + 1);
     }
 
     public float ageSeconds() {

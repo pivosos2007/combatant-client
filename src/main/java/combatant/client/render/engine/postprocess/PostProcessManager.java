@@ -20,6 +20,7 @@ import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.postprocess.graph.PostProcessGraph;
+import combatant.client.render.engine.postprocess.graph.PostProcessGraphPass;
 import combatant.client.render.engine.profiler.RenderCostProfiler;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.renderer.MeshRenderer;
@@ -27,6 +28,7 @@ import combatant.client.render.engine.rhi.FullscreenDrawCommand;
 import combatant.client.runtime.RuntimeGate;
 
 import java.util.OptionalDouble;
+import java.util.function.Predicate;
 
 public enum PostProcessManager {
     ;
@@ -42,7 +44,18 @@ public enum PostProcessManager {
     }
 
     public static void renderAll(PostProcessPass.Phase phase, float tickDelta) {
+        renderSelected(phase, tickDelta, pass -> true);
+    }
+
+    /**
+     * Runs a deliberately isolated subset of a phase. Preview scenes use this to reuse a feature's
+     * real compositor without pulling unrelated world post effects into the preview framebuffer.
+     */
+    public static void renderSelected(PostProcessPass.Phase phase,
+                                      float tickDelta,
+                                      Predicate<? super PostProcessGraphPass> selector) {
         if (!RuntimeGate.canRunRender()) return;
+        if (selector == null) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.gameRenderer.mainRenderTarget() == null) return;
 
@@ -63,10 +76,11 @@ public enum PostProcessManager {
             GRAPH.execute(
                     phase,
                     tickDelta,
-                    CombatantRenderSystem.ensureFrameContext(),
-                    CombatantRenderSystem.rhi(),
-                    PostProcessManager::copy
-            );
+                     CombatantRenderSystem.ensureFrameContext(),
+                     CombatantRenderSystem.rhi(),
+                     PostProcessManager::copy,
+                     selector
+             );
         } finally {
             MeshRenderer.setProjection(previousProjection);
             if (previousProjectionBuffer != null && previousProjectionType != null) {

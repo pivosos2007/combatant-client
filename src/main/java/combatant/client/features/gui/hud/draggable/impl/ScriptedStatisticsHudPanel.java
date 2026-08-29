@@ -128,6 +128,10 @@ final class ScriptedStatisticsHudPanel {
                  int accentStartColor,
                  int accentEndColor,
                  int headerIconColor,
+                 boolean headerIconGradient,
+                 int headerIconGradientStart,
+                 int headerIconGradientEnd,
+                 float headerIconGradientAngle,
                  boolean shadowControlled,
                  ScriptedListHudPanel.Palette palette,
                  List<LinkedHashMap<String, Object>> rows,
@@ -175,6 +179,10 @@ final class ScriptedStatisticsHudPanel {
             out.put("accentStartColor", hex(accentStartColor));
             out.put("accentEndColor", hex(accentEndColor));
             out.put("headerIconColor", hex(headerIconColor));
+            out.put("headerIconGradient", headerIconGradient);
+            out.put("headerIconGradientStart", hex(headerIconGradientStart));
+            out.put("headerIconGradientEnd", hex(headerIconGradientEnd));
+            out.put("headerIconGradientAngle", headerIconGradientAngle);
             out.put("shadowControlled", shadowControlled);
             out.put("palette", palette.toProps());
             out.put("rows", rows.toArray());
@@ -213,6 +221,8 @@ final class ScriptedStatisticsHudPanel {
             h = CachedUiScriptRuntime.mix(h, strokeEndColor);
             h = CachedUiScriptRuntime.mix(h, accentStartColor);
             h = CachedUiScriptRuntime.mix(h, accentEndColor);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradient);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientAngle);
             h = CachedUiScriptRuntime.mix(h, shadowControlled);
             h = CachedUiScriptRuntime.mix(h, rows.size());
             for (Map<String, Object> row : rows) {
@@ -231,6 +241,8 @@ final class ScriptedStatisticsHudPanel {
             h = CachedUiScriptRuntime.mix(h, arcEndAngle);
             h = CachedUiScriptRuntime.mix(h, arcHashTime);
             h = CachedUiScriptRuntime.mix(h, headerIconColor);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientStart);
+            h = CachedUiScriptRuntime.mix(h, headerIconGradientEnd);
             for (Map<String, Object> row : rows) {
                 h = CachedUiScriptRuntime.mix(h, string(row.get("value")));
                 h = CachedUiScriptRuntime.mix(h, string(row.get("valueColor")));
@@ -263,6 +275,8 @@ final class ScriptedStatisticsHudPanel {
                 putPatch(patches, "playtime:arc", "hashTime", arcHashTime);
             }
             putPatch(patches, "header:icon", "tint", hex(headerIconColor));
+            putPatch(patches, "header:icon", "gradientStartColor", hex(headerIconGradientStart));
+            putPatch(patches, "header:icon", "gradientEndColor", hex(headerIconGradientEnd));
             if (showGraph) {
                 putPatch(patches, "graph:average", "text", "Average: " + averageSpeed);
                 putPatch(patches, "graph:area", "points", graphPoints);

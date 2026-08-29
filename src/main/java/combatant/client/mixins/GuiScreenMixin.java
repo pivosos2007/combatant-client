@@ -24,6 +24,9 @@ import combatant.client.features.gui.clickgui.ClickGuiEditorScreen;
 import combatant.client.features.gui.clickgui.ClickGuiPickerScreen;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiScreen;
+import combatant.client.features.gui.preview.VisualPreviewRenderer;
+import combatant.client.features.gui.preview.VisualPreviewRuntime;
+import combatant.client.features.gui.preview.VisualPreviewScreen;
 import combatant.client.features.gui.hud.nondraggable.impl.CustomBar;
 import combatant.client.features.gui.hud.nondraggable.impl.DynamicIsland;
 import combatant.client.features.module.modules.misc.ClickGui;
@@ -66,7 +69,8 @@ public abstract class GuiScreenMixin {
 
         if (screen instanceof ClickGuiScreen
                 || screen instanceof ClickGuiPickerScreen
-                || screen instanceof ClickGuiEditorScreen) {
+                || screen instanceof ClickGuiEditorScreen
+                || screen instanceof VisualPreviewScreen) {
             return;
         }
 
@@ -95,8 +99,11 @@ public abstract class GuiScreenMixin {
 
         drawContext.nextStratum();
         combatant$extractCustomBarHeads(drawContext, tickCounter);
+        VisualPreviewRenderer.renderTopLayer(drawContext, tickCounter.getGameTimeDeltaTicks());
         DynamicIsland.renderScreenOverlay(drawContext, tickCounter.getGameTimeDeltaTicks());
-        ClickGuiRenderer.renderTopLayer(drawContext, tickCounter.getGameTimeDeltaTicks());
+        if (!VisualPreviewRuntime.isActive()) {
+            ClickGuiRenderer.renderTopLayer(drawContext, tickCounter.getGameTimeDeltaTicks());
+        }
     }
 
 }

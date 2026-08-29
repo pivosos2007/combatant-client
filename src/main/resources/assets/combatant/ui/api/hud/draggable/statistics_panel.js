@@ -29,6 +29,10 @@ class StatisticsPanelLayout extends HudPanelLayout {
         key: "header:icon",
         asset: c(this.p.headerIconAsset, "chart-spline"),
         tint: c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF")),
+        gradientEnabled: this.p.headerIconGradient === true,
+        gradientStartColor: c(this.p.headerIconGradientStart, c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))),
+        gradientEndColor: c(this.p.headerIconGradientEnd, c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))),
+        gradientAngle: n(this.p.headerIconGradientAngle, 45),
         class: abs(5 * bs, (headerH - 9 * bs) * 0.5, 9 * bs, 9 * bs),
       }),
       ui.text({
