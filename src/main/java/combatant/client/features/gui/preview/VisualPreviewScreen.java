@@ -24,7 +24,7 @@ import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
 public final class VisualPreviewScreen extends Screen {
-    private final ClickGuiScreen parent;
+    private final Screen parent;
     private final VisualPreviewProvider provider;
     private final SettingsPanelComponent settingsPanel = new SettingsPanelComponent(SettingRenderSurface.MODULES);
 
@@ -61,7 +61,7 @@ public final class VisualPreviewScreen extends Screen {
     private boolean closing;
     private boolean settingsVisible = true;
 
-    public VisualPreviewScreen(ClickGuiScreen parent, VisualPreviewProvider provider) {
+    public VisualPreviewScreen(Screen parent, VisualPreviewProvider provider) {
         super(Component.literal(provider == null ? "Visual Preview" : provider.title()));
         if (provider == null) throw new IllegalArgumentException("provider");
         this.parent = parent;
@@ -76,12 +76,9 @@ public final class VisualPreviewScreen extends Screen {
     public static void open(VisualPreviewProvider provider) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || provider == null) return;
-        ClickGuiScreen parent;
-        if (ClientScreen.current() instanceof ClickGuiScreen clickGuiScreen) {
+        Screen parent = ClientScreen.current();
+        if (parent instanceof ClickGuiScreen) {
             ClickGuiRenderer.captureMainScreen();
-            parent = clickGuiScreen;
-        } else {
-            parent = ClickGuiRenderer.ensureMainScreen();
         }
         ClientScreen.show(mc, new VisualPreviewScreen(parent, provider));
     }
@@ -242,8 +239,12 @@ public final class VisualPreviewScreen extends Screen {
         dragging = false;
         dragButton = -1;
         Minecraft mc = Minecraft.getInstance();
-        ClientScreen.show(mc, parent != null ? parent : ClickGuiRenderer.ensureMainScreen());
-        ClickGuiRenderer.ensureCursorShown();
+        ClientScreen.show(mc, parent);
+        if (parent == null) {
+            ClickGuiRenderer.releaseCursorForGameplay();
+        } else if (parent instanceof ClickGuiScreen) {
+            ClickGuiRenderer.ensureCursorShown();
+        }
     }
 
     @Override
@@ -394,7 +395,7 @@ public final class VisualPreviewScreen extends Screen {
         targetCameraYaw = 0.0f;
         targetCameraPitch = 0.0f;
         targetCameraDolly = 0.0f;
-        targetZoom = 1.0f;
+        targetZoom = Mth.clamp(provider.initialZoom(), 0.35f, 3.5f);
         targetPanX = targetPanY = 0.0f;
         targetCameraX = targetCameraY = targetCameraZ = 0.0f;
         if (!immediate) return;

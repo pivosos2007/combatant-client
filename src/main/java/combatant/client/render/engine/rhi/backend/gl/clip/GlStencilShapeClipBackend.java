@@ -41,7 +41,6 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
     private boolean cullStateCaptured;
     private boolean previousCullFace;
     private String lastFailure = "none";
-    private int offscreenPassBypassDepth;
 
     private static int clampRef(int value) {
         if (value < 0) return 0;
@@ -93,12 +92,6 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
         currentDepthView = depthView;
         currentPassPrepared = false;
 
-        if (offscreenPassBypassDepth > 0) {
-            resetNativeStateOnly();
-            checkGlErrors("beginRenderPass(offscreen-bypass)");
-            return;
-        }
-
         boolean shouldPrepare = renderPassAttachmentRequired || mode != Mode.DISABLED || clearRequested;
         if (!shouldPrepare) {
             checkGlErrors("beginRenderPass(no-clip)");
@@ -133,20 +126,15 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
         currentPassPrepared = false;
         currentPipelineContract = ShapeClipRenderPassContract.NONE;
         currentPipelineName = "<no-pipeline>";
-        if (offscreenPassBypassDepth == 0) {
-            renderPassAttachmentRequired = false;
-            attachmentReason = "none";
-        }
-        checkGlErrors(offscreenPassBypassDepth > 0 ? "endRenderPass(offscreen-bypass)" : "endRenderPass");
+        renderPassAttachmentRequired = false;
+        attachmentReason = "none";
+        checkGlErrors("endRenderPass");
     }
 
     @Override
     public void bindPipeline(RenderPipeline pipeline, ShapeClipRenderPassContract contract) {
         currentPipelineContract = contract == null ? ShapeClipRenderPassContract.NONE : contract;
         currentPipelineName = pipeline == null || pipeline.getLocation() == null ? "<unknown>" : pipeline.getLocation().toString();
-        if (offscreenPassBypassDepth > 0) {
-            return;
-        }
         if (mode != Mode.DISABLED && currentPipelineContract == ShapeClipRenderPassContract.NONE) {
             DebugLog.warnOnce(
                     "shapeclip.stale.pipeline.contract." + currentPipelineName,
@@ -216,20 +204,6 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
     }
 
     @Override
-    public void pushOffscreenPassBypass() {
-        offscreenPassBypassDepth++;
-        if (offscreenPassBypassDepth == 1) {
-            resetNativeStateOnly();
-        }
-    }
-
-    @Override
-    public void popOffscreenPassBypass() {
-        if (offscreenPassBypassDepth <= 0) return;
-        offscreenPassBypassDepth--;
-    }
-
-    @Override
     public void disable() {
         resetNativeStateOnly();
         mode = Mode.DISABLED;
@@ -240,18 +214,12 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
         clearRequested = false;
         attachmentReason = "none";
         clearReason = "none";
-        offscreenPassBypassDepth = 0;
         framebuffers.restoreActiveAttachments();
         checkGlErrors("disable");
     }
 
     @Override
     public void applyNativeState() {
-        if (offscreenPassBypassDepth > 0) {
-            resetNativeStateOnly();
-            checkGlErrors("applyNativeState(offscreen-bypass)");
-            return;
-        }
         if (mode == Mode.DISABLED) {
             resetNativeStateOnly();
             checkGlErrors("applyNativeState(disabled)");
@@ -415,7 +383,6 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
                 + ", contract=" + currentPipelineContract
                 + ", attachmentRequired=" + renderPassAttachmentRequired
                 + ", clearRequested=" + clearRequested
-                + ", offscreenBypassDepth=" + offscreenPassBypassDepth
                 + ", supported=" + supported()
                 + ", framebuffer=" + framebuffers.describe()
                 + '}';

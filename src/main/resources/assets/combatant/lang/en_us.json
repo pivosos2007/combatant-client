@@ -3061,6 +3061,9 @@
   "setting.common.tone_map.option.filmic": "Filmic",
   "setting.common.tooltip_alpha": "Alpha",
   "setting.common.tooltip_bg_alpha": "Background alpha",
+  "setting.common.tooltip_header_tint_alpha": "Header alpha",
+  "setting.common.tooltip_divider_alpha": "Divider alpha",
+  "setting.common.tooltip_gradient_angle_offset": "Gradient angle offset",
   "setting.common.tooltip_bg_effect": "Background effect",
   "setting.common.tooltip_bg_effect.option.blur": "Blur",
   "setting.common.tooltip_bg_effect.option.none": "None",
@@ -3685,5 +3688,8 @@
   "clickgui.hints.visual_preview.free_speed": "Wheel - flight speed",
   "clickgui.hints.visual_preview.object.rotate": "LMB - rotate subject",
   "clickgui.hints.visual_preview.object.zoom": "Wheel - zoom subject",
+  "clickgui.hints.visual_preview.object.orbit": "LMB/RMB - orbit camera",
+  "clickgui.hints.visual_preview.object.rotate_middle": "MMB - rotate subject",
+  "clickgui.hints.visual_preview.object.distance": "Wheel - camera distance",
   "clickgui.modules.visual_preview": "Tune visually"
 }

@@ -83,15 +83,17 @@ public enum VisualPreviewRenderer {
         float scale = Math.max(0.85f, Math.min(1.35f, scene.height() / 720.0f));
         float titleSize = 13.0f * scale;
 
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterMedium(),
-                scene.screen().provider().title() + " | " + Math.max(0, FastFps.getFps()) + " FPS",
-                20.0f * scale,
-                17.0f * scale,
-                titleSize,
-                0xFFF2F5F8,
-                false
-        );
+        if (scene.screen().provider().showSceneTitle()) {
+            ClickGuiRenderer.drawText(
+                    ClickGuiRenderer.getInterMedium(),
+                    scene.screen().provider().title() + " | " + Math.max(0, FastFps.getFps()) + " FPS",
+                    20.0f * scale,
+                    17.0f * scale,
+                    titleSize,
+                    0xFFF2F5F8,
+                    false
+            );
+        }
         scene.screen().provider().renderOverlay(scene, renderer);
         scene.screen().renderSettings(scene.width(), scene.height());
         renderHints(scene);
@@ -105,7 +107,7 @@ public enum VisualPreviewRenderer {
         String reset = hint("reset", "R - reset view");
         String back = hint("back", "Esc - back to ClickGui");
         VisualPreviewInteractionProfile profile = scene.screen().provider().interactionProfile();
-        if (profile.equals(VisualPreviewInteractionProfile.HAND_INSPECTION)) {
+        if (scene.screen().provider().controlMode() == VisualPreviewControlMode.HAND_VIEW) {
             ClickGuiHintOverlay.renderBottomLeft(
                     0.0f, 0.0f, scene.width(), scene.height(), 2.0f, 1.0f,
                     hint("hand.orbit", "LMB/RMB - orbit camera"),
@@ -128,6 +130,16 @@ public enum VisualPreviewRenderer {
                     hint("free_look", "LMB/RMB - look around"),
                     hint("free_fly", "WASD/Space/Shift - fly"),
                     hint("free_speed", "Wheel - flight speed"),
+                    reset,
+                    settings,
+                    back
+            );
+        } else if (profile.middleSubjectDrag()) {
+            ClickGuiHintOverlay.renderBottomLeft(
+                    0.0f, 0.0f, scene.width(), scene.height(), 2.0f, 1.0f,
+                    hint("object.orbit", "LMB/RMB - orbit camera"),
+                    hint("object.rotate_middle", "MMB - rotate subject"),
+                    hint("object.distance", "Wheel - camera distance"),
                     reset,
                     settings,
                     back

@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.script;
 
+import combatant.client.util.resources.asset.UiScriptAsset;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -18,13 +19,11 @@ import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
 import combatant.client.render.engine.text.TextRenderer;
 
+@UiScriptAsset("combatant:api/hud/draggable/compact_stat")
 public final class ScriptedCompactHudStatRenderer {
     public static final ScriptedCompactHudStatRenderer INSTANCE = new ScriptedCompactHudStatRenderer();
-
-    private static final String LAYOUT_ID = "combatant:api/hud/draggable/compact_stat";
-
-    private final Minecraft mc = Minecraft.getInstance();
-    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(LAYOUT_ID);
+private final Minecraft mc = Minecraft.getInstance();
+    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedCompactHudStatRenderer.class);
     private final CachedUiScriptRuntime scriptRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
     private ScriptedCompactHudStatRenderer() {

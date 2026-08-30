@@ -13,6 +13,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.util.resources.asset.AssetAutoLoader;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,9 +28,8 @@ import java.util.regex.PatternSyntaxException;
 
 public enum ShaderPatchEngine {
     ;
-    private static final String INDEX_RESOURCE = "assets/combatant/shaders/iris-patches/index.json";
     private static final CopyOnWriteArrayList<String> EXTRA_MANIFEST_RESOURCES = new CopyOnWriteArrayList<>();
-    private static final AtomicReference<Repository> REPOSITORY = new AtomicReference<>(Repository.load(List.of()));
+    private static final AtomicReference<Repository> REPOSITORY = new AtomicReference<>();
     private static final Map<String, String> DIAGNOSTICS = new ConcurrentHashMap<>();
     private static final ThreadLocal<String> LOADING_SHADER_PACK_NAME = new ThreadLocal<>();
     private static final AtomicReference<String> GLOBAL_LOADING_SHADER_PACK_NAME = new AtomicReference<>();
@@ -104,6 +104,10 @@ public enum ShaderPatchEngine {
     }
 
     private static Repository repository() {
+        Repository current = REPOSITORY.get();
+        if (current != null) return current;
+        Repository loaded = Repository.load(List.copyOf(EXTRA_MANIFEST_RESOURCES));
+        if (REPOSITORY.compareAndSet(null, loaded)) return loaded;
         return REPOSITORY.get();
     }
 
@@ -320,8 +324,9 @@ public enum ShaderPatchEngine {
             Map<String, List<Target>> targets = new HashMap<>();
             Map<String, Manifest> manifests = new HashMap<>();
             try {
-                JsonObject index = readObject(INDEX_RESOURCE);
-                requireSchema(index, INDEX_RESOURCE);
+                String indexResource = AssetAutoLoader.classpathResource(ShaderPatchResources.INDEX);
+                JsonObject index = readObject(indexResource);
+                requireSchema(index, indexResource);
                 for (JsonElement element : requireArray(index, "manifests")) {
                     addManifest(targets, manifests, element.getAsString());
                 }

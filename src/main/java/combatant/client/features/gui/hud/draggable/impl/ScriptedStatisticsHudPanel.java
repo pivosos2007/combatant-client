@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
@@ -23,10 +24,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@UiScriptAsset("combatant:api/hud/draggable/statistics_panel")
 final class ScriptedStatisticsHudPanel {
-    private static final String LAYOUT_ID = "combatant:api/hud/draggable/statistics_panel";
-
-    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(LAYOUT_ID);
+    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedStatisticsHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
     private static String hex(int argb) {

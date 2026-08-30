@@ -75,11 +75,41 @@ final class LanguageFallbackTextRendererTest {
         assertTrue(primary.rendered.isEmpty());
     }
 
+    @Test
+    void preservesNativeVertexGradientsAcrossLanguageRuns() {
+        FakeRenderer primary = new FakeRenderer(cp -> cp < 0x80, 1.0, 10.0);
+        FakeRenderer fallback = new FakeRenderer(cp -> true, 2.0, 12.0);
+        LanguageFallbackTextRenderer renderer = new LanguageFallbackTextRenderer(primary, fallback);
+
+        renderer.begin(1.0, false, false);
+        assertEquals(4.0, renderer.renderQuadGradient(
+                "A中B",
+                0.0,
+                0.0,
+                (index, codePoint, x0, y0, x1, y1, out) -> {
+                    out[0] = 0xFFFF0000 | index;
+                    out[1] = 0xFF00FF00 | index;
+                    out[2] = 0xFF0000FF | index;
+                    out[3] = 0xFFFFFFFF - index;
+                },
+                false
+        ));
+        renderer.end();
+
+        assertEquals(List.of(0, 0), primary.quadGradientIndices);
+        assertEquals(List.of(0), fallback.quadGradientIndices);
+        assertEquals(0xFFFF0000, primary.quadGradientColors.get(0)[0]);
+        assertEquals(0xFF00FF01, fallback.quadGradientColors.get(0)[1]);
+        assertEquals(0xFFFFFFFD, primary.quadGradientColors.get(1)[3]);
+    }
+
     private static final class FakeRenderer implements TextRenderer {
         private final IntPredicate coverage;
         private final double advance;
         private final double height;
         private final List<String> rendered = new ArrayList<>();
+        private final List<Integer> quadGradientIndices = new ArrayList<>();
+        private final List<int[]> quadGradientColors = new ArrayList<>();
         private boolean building;
 
         private FakeRenderer(IntPredicate coverage, double advance, double height) {
@@ -118,6 +148,27 @@ final class LanguageFallbackTextRendererTest {
         public double render(String text, double x, double y, RenderColor color, boolean shadow) {
             rendered.add(text);
             return x + getWidth(text, false);
+        }
+
+        @Override
+        public double renderQuadGradient(String text,
+                                         double x,
+                                         double y,
+                                         Font.GlyphQuadGradient gradient,
+                                         boolean shadow) {
+            int[] colors = new int[4];
+            int index = 0;
+            double cursor = x;
+            for (int offset = 0; offset < text.length(); ) {
+                int codePoint = text.codePointAt(offset);
+                gradient.colors(index, codePoint, cursor, y, cursor + advance, y + height, colors);
+                quadGradientIndices.add(index);
+                quadGradientColors.add(colors.clone());
+                cursor += advance;
+                offset += Character.charCount(codePoint);
+                index++;
+            }
+            return cursor;
         }
 
         @Override

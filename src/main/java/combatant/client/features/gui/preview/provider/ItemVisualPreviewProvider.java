@@ -8,17 +8,24 @@
 package combatant.client.features.gui.preview.provider;
 
 import combatant.client.features.gui.chat.ChatHoverUtil;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.features.gui.hud.script.ScriptedTooltipPanel;
 import combatant.client.features.gui.preview.VisualPreviewControlMode;
+import combatant.client.features.gui.preview.VisualPreviewInteractionProfile;
 import combatant.client.features.gui.preview.VisualPreviewProvider;
 import combatant.client.features.gui.preview.VisualPreviewSceneContext;
 import combatant.client.features.gui.preview.render.VisualPreviewItemRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
+import combatant.client.render.engine.text.TextRenderer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public final class ItemVisualPreviewProvider implements VisualPreviewProvider {
     private final ItemStack stack;
+    private final ScriptedTooltipPanel tooltipPanel = new ScriptedTooltipPanel("item_preview");
 
     public ItemVisualPreviewProvider(ItemStack stack) {
         this.stack = stack == null ? ItemStack.EMPTY : stack.copy();
@@ -40,6 +47,16 @@ public final class ItemVisualPreviewProvider implements VisualPreviewProvider {
     }
 
     @Override
+    public VisualPreviewInteractionProfile interactionProfile() {
+        return VisualPreviewInteractionProfile.OBJECT_INSPECTION;
+    }
+
+    @Override
+    public float initialZoom() {
+        return 0.72f;
+    }
+
+    @Override
     public void renderSubject(VisualPreviewSceneContext context) {
         VisualPreviewItemRenderer.render(stack, context);
     }
@@ -51,24 +68,44 @@ public final class ItemVisualPreviewProvider implements VisualPreviewProvider {
         if (tip == null || tip.lines().isEmpty()) return;
 
         float scale = Math.max(0.85f, Math.min(1.35f, context.height() / 720.0f));
-        float fontSize = 8.0f * scale;
-        float x = 20.0f * scale;
-        float y = 49.0f * scale;
-        float lineHeight = 11.0f * scale;
-        int limit = Math.min(14, tip.lines().size());
-        for (int i = 0; i < limit; i++) {
-            ChatHoverUtil.ColoredLine line = tip.lines().get(i);
-            int color = line.color() == 0 ? 0xFFDDE3EA : line.color();
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getIosevkaRegular(),
-                    line.text(),
-                    x,
-                    y + i * lineHeight,
-                    fontSize,
-                    color,
-                    false
-            );
+        float maxContentWidth = Math.max(160.0f * scale,
+                Math.min(360.0f * scale, context.width() * 0.31f));
+        List<ScriptedTooltipPanel.Line> lines = new ArrayList<>(Math.min(18, tip.lines().size()));
+        int sourceLimit = Math.min(18, tip.lines().size());
+        for (int i = 0; i < sourceLimit; i++) {
+            ChatHoverUtil.ColoredLine source = tip.lines().get(i);
+            lines.add(new ScriptedTooltipPanel.Line(
+                    source.text() != null ? source.text() : "",
+                    source.color()
+            ));
         }
+
+        TextRenderer fallback = TextRenderer.get();
+        ScriptedTooltipPanel.Prepared prepared = tooltipPanel.prepare(
+                context.minecraft(),
+                fallback,
+                lines,
+                scale,
+                maxContentWidth,
+                0.0f,
+                0.0f,
+                1.0f,
+                ScriptedTooltipPanel.Style.DEFAULT,
+                ScriptedTooltipPanel.Context.ITEM
+        );
+        if (prepared == null) return;
+
+        tooltipPanel.render(
+                context.minecraft(),
+                prepared,
+                renderer,
+                fallback,
+                null,
+                context.tickDelta(),
+                18.0f * scale,
+                47.0f * scale,
+                UiProjectionMode.CURRENT
+        );
     }
 
     public ItemStack stack() {

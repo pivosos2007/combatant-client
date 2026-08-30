@@ -1,0 +1,6 @@
+// motion:slow_falling/slow_falling
+(() => {
+  const L=globalThis.RigAnimationLibrary;
+  class MotionSlowFallingSlowFallingd96617e7Animation extends L.RigKeyframeClip { constructor() { super("motion:slow_falling/slow_falling",0.55,"loop","motion",[{b:"right_upper_arm",rx:[0.0,-180.0,0,0.2357,-167.5,0,0.5107,-180.0,0],ry:[0.0,0.0,0,0.2357,0.0,0,0.5107,0.0,0],rz:[0.0,-15.0,0,0.2357,-15.0,0,0.5107,-15.0,0]},{b:"left_upper_arm",rx:[0.0,-175.1695,0,0.2357,-193.7871,0,0.5107,-175.1695,0],ry:[0.0,-1.29256,0,0.2357,-1.91313,0,0.5107,-1.29256,0],rz:[0.0,14.94548,0,0.2357,16.89565,0,0.5107,14.94548,0]},{b:"right_thigh",rx:[0.0,-14.87739,0,0.2357,12.37231,0,0.5107,-14.87739,0],ry:[0.0,1.93597,0,0.2357,-2.60948,0,0.5107,1.93597,0],rz:[0.0,7.24721,0,0.2357,12.65939,0,0.5107,7.24721,0]},{b:"left_thigh",rx:[0.0,2.04589,0,0.2357,-12.81477,0,0.5107,2.04589,0],ry:[0.0,2.99318,0,0.2357,3.55072,0,0.5107,2.99318,0],rz:[0.0,-17.25002,0,0.2357,-14.809,0,0.5107,-17.25002,0]}]); } }
+  L.registerKeyframe(new MotionSlowFallingSlowFallingd96617e7Animation());
+})();

@@ -37,6 +37,10 @@ public record VisualPreviewInteractionProfile(
             VisualPreviewCameraMode.ORBIT, VisualPreviewSubjectMode.ROTATE, VisualPreviewWheelMode.CAMERA_DOLLY,
             true, true, true, 0.42f, 0.42f
     );
+    public static final VisualPreviewInteractionProfile OBJECT_INSPECTION = new VisualPreviewInteractionProfile(
+            VisualPreviewCameraMode.ORBIT, VisualPreviewSubjectMode.ROTATE, VisualPreviewWheelMode.CAMERA_DOLLY,
+            true, true, true, 0.42f, 0.42f
+    );
     public static final VisualPreviewInteractionProfile FREE_FLIGHT = new VisualPreviewInteractionProfile(
             VisualPreviewCameraMode.FREE_FLY, VisualPreviewSubjectMode.FIXED, VisualPreviewWheelMode.FLY_SPEED,
             true, true, false, 0.34f, 0.0f

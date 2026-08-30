@@ -63,7 +63,10 @@ public abstract class GuiScreenMixin {
             return;
         }
 
-        if (ClickGuiRenderer.waitingForKey) {
+        // A real replacement screen (especially DeathScreen) must always win over ClickGUI input.
+        // Keeping the module alive while waiting for a bind makes MouseMixin consume that screen's
+        // clicks, including the respawn button.
+        if (ClickGuiRenderer.waitingForKey && screen == null) {
             return;
         }
 
@@ -80,6 +83,10 @@ public abstract class GuiScreenMixin {
                 ModuleManager.setEnabled("clickgui", false);
             } finally {
                 ClickGui.setSuppressScreenClose(false);
+                // Gui#setScreen replaces one non-null screen with another, so vanilla assumes the
+                // cursor is already released. ClickGUI's immediate shutdown disables it; restore
+                // the normal screen cursor explicitly for DeathScreen and every other GUI.
+                ClickGuiRenderer.ensureCursorShown();
             }
         }
     }

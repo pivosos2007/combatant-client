@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.nondraggable.impl;
 
+import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -68,12 +69,10 @@ import java.util.UUID;
 import static combatant.client.features.theme.Theme.theme;
 
 @HudElementRegister(order = 60)
+@UiScriptAsset("combatant:api/hud/static/dynamic_island")
 public final class DynamicIsland extends AbstractHudElement {
     public static final DynamicIsland INSTANCE = new DynamicIsland();
-
-    private static final String LAYOUT_ID = "combatant:api/hud/static/dynamic_island";
-
-    private static final float TOP_Y = 18f;
+private static final float TOP_Y = 18f;
     private static final float CLOSED_HEIGHT = 35f;
     private static final float EXPANDED_HEIGHT = 98f;
     private static final float CLOSED_RADIUS = 17f;
@@ -126,7 +125,7 @@ public final class DynamicIsland extends AbstractHudElement {
     private final RGBColorValue textColor = new RGBColorValue("dynamic_island_text", "#F5F7FA");
     private final RGBColorValue mutedColor = new RGBColorValue("dynamic_island_muted", "#A9B1BC");
 
-    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(LAYOUT_ID);
+    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(DynamicIsland.class);
     private final CachedUiScriptRuntime scriptRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
     private float visibilityAnim;

@@ -7,10 +7,15 @@
 
 package combatant.client.render.engine;
 
+import combatant.client.util.resources.asset.AssetAutoLoader;
+import combatant.client.util.resources.asset.AssetLoad;
+import combatant.client.util.resources.asset.TextureCatalog;
+import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.resources.Identifier;
 
+@TextureCatalog
 public enum TextureStorage {
     ;
     public static final Identifier BLOOM =
@@ -45,21 +50,12 @@ public enum TextureStorage {
     public static final Identifier CAPTURE =
             Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/capture.png");
 
+    @AssetLoad(order = 200)
     public static void preload() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
         TextureManager tm = mc.getTextureManager();
-        tm.getTexture(BLOOM);
-        tm.getTexture(FIRE_FLY);
-        tm.getTexture(DEFAULT_CIRCLE);
-        tm.getTexture(JUMP_CIRCLE);
-        tm.getTexture(BUBBLE);
-        tm.getTexture(FUNNEL_EYE);
-        tm.getTexture(FUNNEL_DISTORTION);
-        tm.getTexture(PARTICLE_STARS);
-        tm.getTexture(CAPTURE);
-        for (Identifier id : RANDOM_PARTICLES) {
-            tm.getTexture(id);
-        }
+        int loaded = AssetAutoLoader.preloadTextures(tm);
+        DebugLog.renderThread("[Combatant][Assets] preloaded %d textures", loaded);
     }
 }

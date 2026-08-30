@@ -11,6 +11,7 @@ import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer;
 import combatant.client.features.playeranimator.script.PlayerRigScriptCommand;
 import combatant.client.features.playeranimator.script.PlayerRigScriptContext;
 import combatant.client.features.playeranimator.script.PlayerRigScriptRuntime;
+import combatant.client.util.resources.asset.AssetLoad;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.util.Mth;
@@ -110,6 +111,7 @@ public enum PlayerAnimator {
         MOTION.clear();
     }
 
+    @AssetLoad(order = 500)
     public static synchronized void invalidateScripts() {
         SCRIPTS.invalidate();
     }

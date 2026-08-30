@@ -7,11 +7,12 @@
 
 package combatant.client.render.engine;
 
+import combatant.client.util.resources.asset.AssetAutoLoader;
 import combatant.client.render.engine.guard.RenderBoundaryAudit;
 import combatant.client.render.engine.renderer.Renderer2D;
-import combatant.client.render.engine.svg.SvgRegistry;
 import combatant.client.render.engine.visuals.CombatantVisuals;
 import combatant.client.render.iris.IrisRuntime;
+import net.minecraft.client.Minecraft;
 
 public enum CombatantRenderEngineBootstrap {
     ;
@@ -22,7 +23,8 @@ public enum CombatantRenderEngineBootstrap {
         // created the final GpuDevice, which would permanently select the wrong backend on Vulkan.
         Renderer2D.init();
         IrisRuntime.registerCombatantPipelines();
-        SvgRegistry.init();
+        Minecraft mc = Minecraft.getInstance();
+        AssetAutoLoader.initialize(mc != null ? mc.getResourceManager() : null);
         CombatantVisuals.init();
     }
 

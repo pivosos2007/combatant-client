@@ -8,6 +8,7 @@
 package combatant.client.render.engine.renderer.ui;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.render.GuiItemAtlas;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.item.TrackingItemStackRenderState;
 import net.minecraft.util.Mth;
@@ -33,6 +34,8 @@ public final class ItemDrawCommand {
     final int durabilityTextColorThresholdPercent;
     final float alpha;
     TrackingItemStackRenderState resolvedState;
+    @Nullable GuiItemAtlas.SlotView preparedSlot;
+    boolean atlasPreparationRegistered;
 
     public ItemDrawCommand(@Nullable GuiGraphicsExtractor context,
                             @Nullable LocalPlayer player,

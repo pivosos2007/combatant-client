@@ -8,6 +8,7 @@
 package combatant.client.util.sound;
 
 import combatant.client.events.Events;
+import combatant.client.util.resources.asset.AssetLoad;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.sound.event.SoundErrorEvent;
 import combatant.client.util.sound.event.SoundLoadedEvent;
@@ -191,6 +192,11 @@ public final class SoundSystem {
         AL10.alSource3f(sound.source, AL10.AL_POSITION,
                 (float) position.x, (float) position.y, (float) position.z);
         return true;
+    }
+
+    @AssetLoad(order = 400)
+    public static void reloadAssets() {
+        get().reset();
     }
 
     /** Called by the Minecraft audio-library lifecycle mixin. */

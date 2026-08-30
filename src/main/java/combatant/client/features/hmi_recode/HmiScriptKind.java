@@ -8,30 +8,34 @@
 /* HoldMyItems Recode; original project by sapling, CC0-1.0. */
 package combatant.client.features.hmi_recode;
 
+import combatant.client.util.resources.asset.AssetAutoLoader;
+import combatant.client.util.resources.asset.ScriptAsset;
+import combatant.client.util.resources.asset.ScriptCatalog;
 import net.minecraft.resources.Identifier;
 
+@ScriptCatalog(namespace = "minecraft", root = "holdmyitems")
 public enum HmiScriptKind {
-    HAND_POSE("hand_pose.js", "hand_addon.js", "context"),
-    HAND_RELATIVE_POSE("hand_relative_pose.js", "hand_relative_addon.js", "context"),
-    ITEM_POSE("item_pose.js", "item_addon.js", "context"),
-    ITEM_MODEL("item_model.js", "item_model_addon.js", "data");
+    @ScriptAsset(value = "hand_pose.js", addon = "hand_addon.js")
+    HAND_POSE("context"),
+    @ScriptAsset(value = "hand_relative_pose.js", addon = "hand_relative_addon.js")
+    HAND_RELATIVE_POSE("context"),
+    @ScriptAsset(value = "item_pose.js", addon = "item_addon.js")
+    ITEM_POSE("context"),
+    @ScriptAsset(value = "item_model.js", addon = "item_model_addon.js")
+    ITEM_MODEL("data");
 
-    private final String fileName;
-    private final String addonFileName;
     private final String argumentName;
 
-    HmiScriptKind(String fileName, String addonFileName, String argumentName) {
-        this.fileName = fileName;
-        this.addonFileName = addonFileName;
+    HmiScriptKind(String argumentName) {
         this.argumentName = argumentName;
     }
 
     public Identifier resourceId() {
-        return Identifier.fromNamespaceAndPath("minecraft", "holdmyitems/" + fileName);
+        return AssetAutoLoader.scriptAsset(this).resource();
     }
 
     public Identifier addonResourceId() {
-        return Identifier.fromNamespaceAndPath("minecraft", "holdmyitems/" + addonFileName);
+        return AssetAutoLoader.scriptAsset(this).addonResource();
     }
 
     public String argumentName() {

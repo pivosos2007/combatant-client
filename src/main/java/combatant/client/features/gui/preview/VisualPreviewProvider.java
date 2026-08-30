@@ -27,6 +27,14 @@ public interface VisualPreviewProvider {
         return List.of();
     }
 
+    default float initialZoom() {
+        return 1.0f;
+    }
+
+    default boolean showSceneTitle() {
+        return true;
+    }
+
     void renderSubject(VisualPreviewSceneContext context);
 
     default void renderOverlay(VisualPreviewSceneContext context, Renderer2D renderer) {

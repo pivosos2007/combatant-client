@@ -17,10 +17,21 @@ import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.gui.hud.nondraggable.StaticHudElementRegistry;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleManager;
-import combatant.client.render.engine.text.FontInfo;
+import combatant.client.util.resources.asset.AssetAutoLoader;
+
+import java.util.List;
 
 public enum RenderPrewarmContributors {
     INSTANCE;
+
+    /**
+     * Usage/performance hints only. SVG discovery/loading remains owned by SvgRegistry; adding an
+     * icon here merely asks the MSDF prewarm pass to prepare a likely first-frame dependency.
+     */
+    private static final List<String> CORE_GUI_SVG_USAGE_HINTS = List.of(
+            "arrow", "check", "save", "x", "palette", "brush", "paintbrush", "copy",
+            "trash", "folder-cog", "user-pen", "columns-3-cog"
+    );
 
     @EventHandler(priority = 1000)
     private void onCollect(RenderPrewarmCollectEvent event) {
@@ -30,22 +41,11 @@ public enum RenderPrewarmContributors {
     }
 
     private static void collectCoreGui(RenderPrewarmCollectEvent event) {
-        event.font("Inter", FontInfo.Type.Regular)
-                .font("Inter", FontInfo.Type.Bold)
-                .font("Inter", FontInfo.Type.Italic)
-                .font("InterMedium", FontInfo.Type.Regular)
-                .font("OnestMedium", FontInfo.Type.Regular)
-                .font("Onest", FontInfo.Type.Regular)
-                .font("Onest", FontInfo.Type.Bold)
-                .font("OnestMedium", FontInfo.Type.Regular)
-                .font("OnestBold", FontInfo.Type.Regular)
-                .font("OnestLight", FontInfo.Type.Regular)
-                .font("Monsterrat", FontInfo.Type.Regular)
-                .font("Comfortaa", FontInfo.Type.Regular)
-                .font("Icons", FontInfo.Type.Regular)
-                .font("IconsNur", FontInfo.Type.Regular)
-                .font("GuiIcons", FontInfo.Type.Regular)
-                .font("RichIcons", FontInfo.Type.Regular);
+        for (AssetAutoLoader.FontDefinition font : AssetAutoLoader.fontAssets()) {
+            if (font.prewarm()) {
+                event.font(font.info());
+            }
+        }
 
         for (ModulesMenuCategory category : ModulesMenuCategory.values()) {
             event.svg(category.icon());
@@ -56,18 +56,9 @@ public enum RenderPrewarmContributors {
             }
         }
 
-        event.svg("arrow")
-                .svg("check")
-                .svg("save")
-                .svg("x")
-                .svg("palette")
-                .svg("brush")
-                .svg("paintbrush")
-                .svg("copy")
-                .svg("trash")
-                .svg("folder-cog")
-                .svg("user-pen")
-                .svg("columns-3-cog");
+        for (String svgHint : CORE_GUI_SVG_USAGE_HINTS) {
+            event.svg(svgHint);
+        }
     }
 
     private static void collectEnabledModules(RenderPrewarmCollectEvent event) {

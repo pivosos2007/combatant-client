@@ -35,11 +35,13 @@ public final class UiDeferredScheduler {
             new EnumMap<>(Renderer2D.Deferred2DLayer.class);
     private static final ObjectArrayList<Deferred2DSubmit> DRAINING = new ObjectArrayList<>(256);
     private static final ObjectArrayList<OrderedUiBatcher> BATCHER_POOL = new ObjectArrayList<>(8);
+    private static final ObjectArrayList<ItemBatch> ITEM_PREPARATION_BATCHES = new ObjectArrayList<>(64);
     private static final int MAX_BATCHER_POOL = Integer.getInteger("combatant.render.deferredBatcherPool", 16);
 
     private static ProjectionMatrixBuffer projection;
     private static boolean recording;
     private static boolean draining;
+    private static boolean deferredItemsPrepared;
     private static Renderer2D.Deferred2DLayer forcedLayer;
 
     static {
@@ -58,6 +60,7 @@ public final class UiDeferredScheduler {
         UiBlurResources.beginDeferredFrame();
         releaseSubmits(RECORDING);
         RECORDING.clear();
+        deferredItemsPrepared = false;
         recording = true;
     }
 
@@ -75,6 +78,32 @@ public final class UiDeferredScheduler {
         }
         RECORDING.clear();
         recording = false;
+    }
+
+    /**
+     * Mirror vanilla GuiRenderer's lifecycle: item models/atlas slots are prepared before draw
+     * replay starts. In particular this keeps GuiItemAtlas's offscreen pass out of HUD marker
+     * replay, rounded clips and liquid-glass batches on every backend.
+     */
+    public static void prepareDeferredUiItems() {
+        if (deferredItemsPrepared || recording || draining) return;
+
+        ITEM_PREPARATION_BATCHES.clear();
+        for (ObjectArrayList<Deferred2DSubmit> ready : READY_BY_LAYER.values()) {
+            for (int i = 0, size = ready.size(); i < size; i++) {
+                Deferred2DSubmit submit = ready.get(i);
+                if (submit instanceof DeferredOrderedSubmit ordered && ordered.batcher() != null) {
+                    ordered.batcher().collectItemBatches(ITEM_PREPARATION_BATCHES);
+                }
+            }
+        }
+
+        try {
+            ItemBatchRenderer.prepareUiItems(ITEM_PREPARATION_BATCHES);
+            deferredItemsPrepared = true;
+        } finally {
+            ITEM_PREPARATION_BATCHES.clear();
+        }
     }
 
     public static void drain(Renderer2D.Deferred2DLayer layer) {
@@ -136,6 +165,10 @@ public final class UiDeferredScheduler {
 
     public static boolean shouldDefer() {
         return recording && !draining;
+    }
+
+    static boolean isDraining() {
+        return draining;
     }
 
     public static void withLayer(Renderer2D.Deferred2DLayer layer, Runnable action) {

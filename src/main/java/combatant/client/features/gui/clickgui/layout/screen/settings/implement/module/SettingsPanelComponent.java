@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.module;
 
+import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.config.MainConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
@@ -42,9 +43,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@UiScriptAsset("combatant:api/clickgui/settings_panel")
 public final class SettingsPanelComponent {
-    private static final String PANEL_LAYOUT_ID = "combatant:api/clickgui/settings_panel";
-    private static final float DROPDOWN_PANEL_W = 115.0f;
+private static final float DROPDOWN_PANEL_W = 115.0f;
     private static final float DROPDOWN_PANEL_H = 240.0f;
     private static final float DROPDOWN_HEADER_H = 22.0f;
     private static final float DROPDOWN_SEPARATOR_H = 0.0f;
@@ -53,7 +54,7 @@ public final class SettingsPanelComponent {
     private final List<SettingHit> hits = new ArrayList<>();
     private final SettingRenderSurface renderSurface;
     private final Minecraft mc = Minecraft.getInstance();
-    private final UiScriptModuleHandle panelModuleHandle = HudScriptLayouts.handle(PANEL_LAYOUT_ID);
+    private final UiScriptModuleHandle panelModuleHandle = HudScriptLayouts.handle(SettingsPanelComponent.class);
     private final CachedUiScriptRuntime panelRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
     private String targetId = "";
     private String title = "Settings";

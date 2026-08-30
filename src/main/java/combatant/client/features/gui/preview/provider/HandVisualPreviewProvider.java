@@ -33,7 +33,12 @@ public final class HandVisualPreviewProvider implements VisualPreviewProvider {
 
     @Override
     public String title() {
-        return module.getDisplayName() + " — hands";
+        return module.getDisplayName();
+    }
+
+    @Override
+    public boolean showSceneTitle() {
+        return false;
     }
 
     @Override

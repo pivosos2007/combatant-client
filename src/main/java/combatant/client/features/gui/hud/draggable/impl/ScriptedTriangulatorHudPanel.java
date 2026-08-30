@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.util.resources.asset.UiScriptAsset;
 import java.util.LinkedHashMap;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -24,9 +25,9 @@ import net.minecraft.resources.Identifier;
 import java.util.ArrayList;
 import java.util.List;
 
+@UiScriptAsset("combatant:api/hud/draggable/triangulator")
 final class ScriptedTriangulatorHudPanel {
-    private static final String LAYOUT_ID = "combatant:api/hud/draggable/triangulator";
-    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(LAYOUT_ID);
+    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedTriangulatorHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
     static String hex(int argb) {

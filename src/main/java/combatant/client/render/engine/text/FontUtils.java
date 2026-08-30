@@ -7,6 +7,7 @@
 
 package combatant.client.render.engine.text;
 
+import combatant.client.util.resources.asset.AssetAutoLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -17,8 +18,11 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Stream;
 
 public enum FontUtils {
@@ -26,77 +30,14 @@ public enum FontUtils {
     private static final String FONT_ROOT = "font";
     private static final String MSDF_ROOT = "font/msdf";
 
-    private static final Map<String, BuiltinEntry[]> BUILTIN;
-
-    static {
-        Map<String, BuiltinEntry[]> map = new LinkedHashMap<>();
-        map.put("Comfortaa", new BuiltinEntry[]{
-                new BuiltinEntry("comfortaa.ttf", FontInfo.Type.Regular)
-        });
-        map.put("Monsterrat", new BuiltinEntry[]{
-                new BuiltinEntry("monsterrat.ttf", FontInfo.Type.Regular)
-        });
-        map.put("ProFont", new BuiltinEntry[]{
-                new BuiltinEntry("profont.ttf", FontInfo.Type.Regular)
-        });
-        map.put("MainMenuIcons", new BuiltinEntry[]{
-                new BuiltinEntry("mainmenuicons.ttf", FontInfo.Type.Regular, true)
-        });
-        map.put("GuiIcons", new BuiltinEntry[]{
-                new BuiltinEntry("guiicons.ttf", FontInfo.Type.Regular, true)
-        });
-        map.put("RichIcons", new BuiltinEntry[]{
-                new BuiltinEntry("richicons.ttf", FontInfo.Type.Regular, true)
-        });
-        map.put("Icons", new BuiltinEntry[]{
-                new BuiltinEntry("icons.ttf", FontInfo.Type.Regular)
-        });
-        map.put("IconsNur", new BuiltinEntry[]{
-                new BuiltinEntry("iconsnur.ttf", FontInfo.Type.Regular)
-        });
-        map.put("WeatherIcons", new BuiltinEntry[]{
-                new BuiltinEntry("weather_icons.ttf", FontInfo.Type.Regular)
-        });
-        map.put("MediaPlayer", new BuiltinEntry[]{
-                new BuiltinEntry("mediaplayer.ttf", FontInfo.Type.Regular)
-        });
-        map.put("VanillaSymbols", new BuiltinEntry[]{
-                new BuiltinEntry("vanilla_symbols.ttf", FontInfo.Type.Regular)
-        });
-        map.put("Inter", new BuiltinEntry[]{
-                new BuiltinEntry("inter_regular.ttf", FontInfo.Type.Regular),
-                new BuiltinEntry("inter_bold.ttf", FontInfo.Type.Bold)
-        });
-        map.put("InterMedium", new BuiltinEntry[]{
-                new BuiltinEntry("inter_medium.ttf", FontInfo.Type.Regular)
-        });
-        map.put("Onest", new BuiltinEntry[]{
-                new BuiltinEntry("onest_regular.ttf", FontInfo.Type.Regular),
-                new BuiltinEntry("onest_bold.ttf", FontInfo.Type.Bold)
-        });
-        map.put("OnestMedium", new BuiltinEntry[]{
-                new BuiltinEntry("onest_medium.ttf", FontInfo.Type.Regular)
-        });
-        map.put("OnestBold", new BuiltinEntry[]{
-                new BuiltinEntry("onest_bold.ttf", FontInfo.Type.Regular)
-        });
-        map.put("OnestLight", new BuiltinEntry[]{
-                new BuiltinEntry("onest_light.ttf", FontInfo.Type.Regular)
-        });
-        map.put("Iosevka", new BuiltinEntry[]{
-                new BuiltinEntry("iosevka-medium.ttf", FontInfo.Type.Regular),
-                new BuiltinEntry("iosevka-mediumitalic.ttf", FontInfo.Type.Italic),
-                new BuiltinEntry("iosevka-bold.ttf", FontInfo.Type.Bold),
-                new BuiltinEntry("iosevka-bolditalic.ttf", FontInfo.Type.BoldItalic)
-        });
-        BUILTIN = Collections.unmodifiableMap(map);
+    public static InputStream streamBuiltin(String name) {
+        return streamBuiltin(Identifier.fromNamespaceAndPath("combatant", FONT_ROOT + "/" + name));
     }
 
-    public static InputStream streamBuiltin(String name) {
+    public static InputStream streamBuiltin(Identifier id) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null) return null;
+        if (mc == null || id == null) return null;
         ResourceManager rm = mc.getResourceManager();
-        Identifier id = Identifier.fromNamespaceAndPath("combatant", FONT_ROOT + "/" + name);
         try {
             var res = rm.getResource(id);
             if (res.isEmpty()) return null;
@@ -108,21 +49,62 @@ public enum FontUtils {
 
     public static Identifier msdfResource(FontInfo info, String extension) {
         if (info == null || extension == null || extension.isBlank()) return null;
-        String file = getBuiltinFileName(info);
-        if (file == null) return null;
+        AssetAutoLoader.FontDefinition definition = builtinDefinition(info);
+        if (definition == null) return null;
+        Identifier resource = definition.resource();
+        String path = resource.getPath();
+        int slash = path.lastIndexOf('/');
+        String file = slash >= 0 ? path.substring(slash + 1) : path;
         int dot = file.lastIndexOf('.');
         String base = dot > 0 ? file.substring(0, dot) : file;
-        return Identifier.fromNamespaceAndPath("combatant", MSDF_ROOT + "/" + base + "." + extension);
+        return Identifier.fromNamespaceAndPath(resource.getNamespace(), MSDF_ROOT + "/" + base + "." + extension);
     }
 
     public static String getBuiltinFileName(FontInfo info) {
         if (info == null) return null;
-        BuiltinEntry[] entries = BUILTIN.get(info.family());
-        if (entries == null || entries.length == 0) return null;
-        for (BuiltinEntry entry : entries) {
-            if (entry.type == info.type()) return entry.file;
+        AssetAutoLoader.FontDefinition definition = builtinDefinition(info);
+        if (definition == null || definition.resource() == null) return null;
+        String path = definition.resource().getPath();
+        int slash = path.lastIndexOf('/');
+        return slash >= 0 ? path.substring(slash + 1) : path;
+    }
+
+    public static List<String> getBuiltinFamilies() {
+        Set<String> families = new LinkedHashSet<>();
+        for (AssetAutoLoader.FontDefinition definition : AssetAutoLoader.fontAssets()) {
+            if (definition.info() != null && definition.info().family() != null) {
+                families.add(definition.info().family());
+            }
         }
-        return entries[0].file;
+        return List.copyOf(families);
+    }
+
+    public static String primaryBuiltinFamily() {
+        List<AssetAutoLoader.FontDefinition> definitions = AssetAutoLoader.fontAssets();
+        for (AssetAutoLoader.FontDefinition definition : definitions) {
+            if (definition.primary()) return definition.info().family();
+        }
+        return definitions.isEmpty() ? null : definitions.getFirst().info().family();
+    }
+
+    public static void loadBuiltin(List<FontFamily> families, String familyName) {
+        if (familyName == null || familyName.isBlank()) return;
+        FontFamily family = null;
+        for (AssetAutoLoader.FontDefinition definition : AssetAutoLoader.fontAssets()) {
+            FontInfo info = definition.info();
+            if (info == null || !familyName.equalsIgnoreCase(info.family())) continue;
+            if (family == null) family = getOrCreate(families, info.family());
+            if (family.hasType(info.type())) continue;
+            family.addFont(new BuiltinFontFace(info, definition.resource(), definition.atlasOnly()));
+        }
+    }
+
+    public static FontInfo getBuiltinFontInfo(String familyName) {
+        if (familyName == null || familyName.isBlank()) return new FontInfo(familyName, FontInfo.Type.Regular);
+        for (AssetAutoLoader.FontDefinition definition : AssetAutoLoader.fontAssets()) {
+            if (familyName.equalsIgnoreCase(definition.info().family())) return definition.info();
+        }
+        return new FontInfo(familyName, FontInfo.Type.Regular);
     }
 
     public static boolean isIconFamily(String family) {
@@ -141,23 +123,6 @@ public enum FontUtils {
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    public static void loadBuiltin(List<FontFamily> families, String familyName) {
-        BuiltinEntry[] entries = BUILTIN.get(familyName);
-        if (entries == null || entries.length == 0) return;
-
-        FontFamily family = getOrCreate(families, familyName);
-        for (BuiltinEntry entry : entries) {
-            if (family.hasType(entry.type)) continue;
-            family.addFont(new BuiltinFontFace(new FontInfo(familyName, entry.type), entry.file, entry.atlasOnly));
-        }
-    }
-
-    public static FontInfo getBuiltinFontInfo(String familyName) {
-        BuiltinEntry[] entries = BUILTIN.get(familyName);
-        if (entries == null || entries.length == 0) return new FontInfo(familyName, FontInfo.Type.Regular);
-        return new FontInfo(familyName, entries[0].type);
     }
 
     public static List<String> getSearchPaths() {
@@ -206,6 +171,17 @@ public enum FontUtils {
         }
     }
 
+    private static AssetAutoLoader.FontDefinition builtinDefinition(FontInfo info) {
+        AssetAutoLoader.FontDefinition familyFallback = null;
+        for (AssetAutoLoader.FontDefinition definition : AssetAutoLoader.fontAssets()) {
+            FontInfo candidate = definition.info();
+            if (candidate == null || !candidate.family().equals(info.family())) continue;
+            if (familyFallback == null) familyFallback = definition;
+            if (candidate.equals(info)) return definition;
+        }
+        return familyFallback;
+    }
+
     private static FontFamily getOrCreate(List<FontFamily> families, String name) {
         for (FontFamily f : families) {
             if (f.getName().equalsIgnoreCase(name)) return f;
@@ -229,12 +205,6 @@ public enum FontUtils {
             return new FontInfo(family, type);
         } catch (Throwable ignored) {
             return null;
-        }
-    }
-
-    private record BuiltinEntry(String file, FontInfo.Type type, boolean atlasOnly) {
-        private BuiltinEntry(String file, FontInfo.Type type) {
-            this(file, type, false);
         }
     }
 }

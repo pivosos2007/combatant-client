@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.theme;
 
+import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.features.theme.Themes;
@@ -26,13 +27,13 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+@UiScriptAsset("combatant:api/clickgui/theme_preview")
 public final class ThemeEditorPreviewComponent {
-    private static final String PREVIEW_LAYOUT_ID = "combatant:api/clickgui/theme_preview";
-    private static final float DESIGN_W = 320f;
+private static final float DESIGN_W = 320f;
     private static final float DESIGN_H = 190f;
 
     private final Minecraft mc = Minecraft.getInstance();
-    private final UiScriptModuleHandle previewModuleHandle = HudScriptLayouts.handle(PREVIEW_LAYOUT_ID);
+    private final UiScriptModuleHandle previewModuleHandle = HudScriptLayouts.handle(ThemeEditorPreviewComponent.class);
     private final CachedUiScriptRuntime previewRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
     private float previewAnim;
 

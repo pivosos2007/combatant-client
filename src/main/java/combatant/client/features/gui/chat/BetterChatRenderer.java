@@ -725,15 +725,21 @@ public enum BetterChatRenderer {
                     float iconSize = Math.max(1.0f, g.x1() - g.x0());
                     float gx = g.x0() + xOffset;
                     float itemY = baseY + (lineHeight - iconSize) * 0.5f;
-                    renderer.item(
-                            g.item(),
-                            gx,
-                            itemY,
-                            iconSize / 16.0f,
-                            31 * line.messageIndex() + gi,
-                            Renderer2D.ITEM_OVERLAY_NONE,
-                            null
-                    );
+                    double previousRendererAlpha = renderer.getAlpha();
+                    try {
+                        renderer.setAlpha(previousRendererAlpha * alpha);
+                        renderer.item(
+                                g.item(),
+                                gx,
+                                itemY,
+                                iconSize / 16.0f,
+                                31 * line.messageIndex() + gi,
+                                Renderer2D.ITEM_OVERLAY_NONE,
+                                null
+                        );
+                    } finally {
+                        renderer.setAlpha(previousRendererAlpha);
+                    }
                     continue;
                 }
                 if (commandLine && g.charIndex() < CommandOutput.PREFIX.length() && !TextGlyphFallback.isSvgFontKey(g.font())) {
@@ -992,10 +998,10 @@ public enum BetterChatRenderer {
                         charIndex,
                         charIndex + logicalLength,
                         theme().textPrimary(),
-                        null,
+                        hover,
                         "",
                         accessible,
-                        Style.EMPTY,
+                        style,
                         seg.item().copy()
                 ));
                 lineX += itemSize;
@@ -1170,13 +1176,22 @@ public enum BetterChatRenderer {
                         if (!hoveredItem.isEmpty()) {
                             String itemKey = BetterChatStoreManager.hoverItemKey(hoveredItem);
                             if (!itemKey.equals(previousItemKey[0])) {
-                                segments.add(Segment.decorativeItem(hoveredItem));
+                                int iconOffset = showItemIconOffset(string);
+                                if (iconOffset > 0) {
+                                    segments.add(Segment.text(string.substring(0, iconOffset), safeStyle));
+                                }
+                                segments.add(Segment.decorativeItem(hoveredItem, safeStyle));
+                                if (iconOffset < string.length()) {
+                                    segments.add(Segment.text(string.substring(iconOffset), safeStyle));
+                                }
+                            } else {
+                                segments.add(Segment.text(string, safeStyle));
                             }
                             previousItemKey[0] = itemKey;
                         } else {
                             previousItemKey[0] = null;
+                            segments.add(Segment.text(string, safeStyle));
                         }
-                        segments.add(Segment.text(string, safeStyle));
                     }
                     return Optional.empty();
                 }, Style.EMPTY);
@@ -1186,6 +1201,12 @@ public enum BetterChatRenderer {
             }
         }
         return segments;
+    }
+
+    /** Keep the vanilla item brackets and place the real icon just inside the opening bracket. */
+    private static int showItemIconOffset(String text) {
+        if (text == null || text.isEmpty()) return 0;
+        return text.codePointAt(0) == '[' ? Character.charCount(text.codePointAt(0)) : 0;
     }
 
     static ItemStack resolveItemFromStyle(Style style) {
@@ -2944,8 +2965,9 @@ public enum BetterChatRenderer {
             return new Segment(safe, Style.EMPTY, item == null ? ItemStack.EMPTY : item.copy(), safe.length());
         }
 
-        static Segment decorativeItem(ItemStack item) {
-            return new Segment("", Style.EMPTY, item == null ? ItemStack.EMPTY : item.copy(), 0);
+        static Segment decorativeItem(ItemStack item, Style style) {
+            return new Segment("", style == null ? Style.EMPTY : style,
+                    item == null ? ItemStack.EMPTY : item.copy(), 0);
         }
     }
 

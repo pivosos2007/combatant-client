@@ -4080,6 +4080,10 @@ public final class Renderer2D {
         UiDeferredScheduler.endExtractFrame();
     }
 
+    public static void prepareDeferredUiItems() {
+        UiDeferredScheduler.prepareDeferredUiItems();
+    }
+
     public static void drainDeferred2D(Deferred2DLayer layer) {
         UiDeferredScheduler.drain(layer);
     }

@@ -7,6 +7,8 @@
 
 package combatant.client.render.engine.svg;
 
+import combatant.client.util.resources.asset.AssetLoad;
+import combatant.client.util.resources.asset.AssetLoadPhase;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
@@ -24,12 +26,14 @@ public enum SvgRegistry {
     private static final Map<String, Identifier> BY_RELATIVE = new HashMap<>();
     private static final Map<String, Identifier> BY_BASENAME = new HashMap<>();
 
+    @AssetLoad(value = AssetLoadPhase.INITIALIZE, order = 100)
     public static void init() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
         reload(mc.getResourceManager());
     }
 
+    @AssetLoad(order = 300)
     public static void reload(@Nullable ResourceManager manager) {
         BY_RELATIVE.clear();
         BY_BASENAME.clear();

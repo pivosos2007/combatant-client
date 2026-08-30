@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.util.resources.asset.UiScriptAsset;
 import java.util.LinkedHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+@UiScriptAsset("combatant:api/hud/draggable/list_panel")
 final class ScriptedListHudPanel {
     static final Variant POTIONS = new Variant(
             "potions", "Potions", String.valueOf((char) 0x42),
@@ -54,8 +56,7 @@ final class ScriptedListHudPanel {
     static final float ROW_STEP = 11.0f;
     static final float PANEL_RADIUS = 4.0f;
     static final float PANEL_STROKE = 0.55f;
-    private static final String LAYOUT_ID = "combatant:api/hud/draggable/list_panel";
-    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(LAYOUT_ID);
+    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedListHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
     static String hex(int argb) {

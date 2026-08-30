@@ -47,7 +47,6 @@ public enum VulkanRenderStateBridge {
         stencilCompareReference = 0;
         stencilClearRequested = false;
         currentRenderPassStencilAttachment = false;
-        stencilOffscreenBypassDepth = 0;
         String key = runtimeStencilDisableReason + "|" + (t == null ? "null" : t.getClass().getSimpleName());
         DebugLog.errorOnChange("shapeclip.vulkan.disabled.after.failure", key,
                 "[ShapeClip/Vulkan] disabling stencil after failure: reason=%s error=%s: %s",
@@ -92,7 +91,6 @@ public enum VulkanRenderStateBridge {
     private static volatile int stencilCompareReference;
     private static volatile boolean stencilClearRequested;
     private static volatile boolean currentRenderPassStencilAttachment;
-    private static volatile int stencilOffscreenBypassDepth;
     private static volatile boolean runtimeStencilDisabled;
     private static volatile String runtimeStencilDisableReason = "none";
     private static volatile boolean runtimeMsaaDisabled;
@@ -110,7 +108,6 @@ public enum VulkanRenderStateBridge {
             stencilCompareReference = 0;
             stencilClearRequested = false;
             currentRenderPassStencilAttachment = false;
-            stencilOffscreenBypassDepth = 0;
             runtimeStencilDisabled = false;
             runtimeStencilDisableReason = "none";
             runtimeMsaaDisabled = false;
@@ -207,7 +204,7 @@ public enum VulkanRenderStateBridge {
     }
 
     private static boolean stencilAttachmentRequiredForNextPass() {
-        if (forceDisableStencil() || stencilOffscreenBypassDepth > 0) return false;
+        if (forceDisableStencil()) return false;
         return stencilMode != StencilMode.DISABLED || stencilClearRequested;
     }
 
@@ -273,19 +270,6 @@ public enum VulkanRenderStateBridge {
         return 1;
     }
 
-    public static void pushStencilOffscreenBypass() {
-        stencilOffscreenBypassDepth++;
-    }
-
-    public static void popStencilOffscreenBypass() {
-        if (stencilOffscreenBypassDepth <= 0) return;
-        stencilOffscreenBypassDepth--;
-    }
-
-    public static boolean stencilOffscreenBypassed() {
-        return stencilOffscreenBypassDepth > 0;
-    }
-
     public static void setStencilMode(StencilMode mode, int reference, int compareReference) {
         if (forceDisableStencil()) {
             stencilMode = StencilMode.DISABLED;
@@ -345,16 +329,14 @@ public enum VulkanRenderStateBridge {
     }
 
     public static boolean stencilTestEnabledForCurrentPipeline(RenderPipeline pipeline) {
-        return !stencilOffscreenBypassed()
-                && currentRenderPassHasStencilAttachment()
+        return currentRenderPassHasStencilAttachment()
                 && pipelineParticipatesInShapeClip(pipeline)
                 && stencilMode != StencilMode.DISABLED;
     }
 
     public static boolean suppressColorWrites() {
         RenderPipeline pipeline = COMPILING_PIPELINE.get();
-        return !stencilOffscreenBypassed()
-                && currentRenderPassHasStencilAttachment()
+        return currentRenderPassHasStencilAttachment()
                 && pipeline != null
                 && pipelineParticipatesInShapeClip(pipeline)
                 && (stencilMode == StencilMode.WRITE || stencilMode == StencilMode.RESTORE);

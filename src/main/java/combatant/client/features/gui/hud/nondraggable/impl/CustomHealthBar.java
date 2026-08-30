@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.nondraggable.impl;
 
+import combatant.client.util.resources.asset.UiScriptAsset;
 import java.util.LinkedHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -38,11 +39,11 @@ import java.util.List;
 import static combatant.client.features.theme.Theme.theme;
 
 @HudElementRegister(order = 50)
+@UiScriptAsset("combatant:api/hud/static/custom_health_bar")
 public final class CustomHealthBar extends AbstractHudElement {
 
     public static final CustomHealthBar INSTANCE = new CustomHealthBar();
-    private static final String LAYOUT_ID = "combatant:api/hud/static/custom_health_bar";
-    private static final float HEALTH_BAR_WIDTH = 81f;
+private static final float HEALTH_BAR_WIDTH = 81f;
     private static final float HEALTH_BAR_HEIGHT = 9f;
     private static final float HEALTH_BAR_RADIUS = 5.0f;
     private static final float HEALTH_TEXT_SCALE = 0.24f;
@@ -67,7 +68,7 @@ public final class CustomHealthBar extends AbstractHudElement {
             new NumberValue<>("custom_text_scale", 0.24f, 0.12f, 0.6f);
     private final NumberValue<Integer> customTextPadding =
             new NumberValue<>("custom_text_padding", 3, 0, 12);
-    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(LAYOUT_ID);
+    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(CustomHealthBar.class);
     private final CachedUiScriptRuntime scriptRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
     private CustomHealthBar() {

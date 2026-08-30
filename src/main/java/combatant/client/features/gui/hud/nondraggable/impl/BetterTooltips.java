@@ -25,31 +25,19 @@ import org.joml.Vector2ic;
 import combatant.client.config.SettingDef;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
-import combatant.client.features.gui.hud.HudRenderUtil;
-import combatant.client.features.gui.hud.script.HudScriptLayouts;
-import combatant.client.features.theme.Themes;
-import combatant.client.render.engine.color.RenderColor;
+import combatant.client.features.gui.hud.script.ScriptedTooltipPanel;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.renderer.Renderer2D;
-import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
-import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
-import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
-import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
-import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
-import combatant.client.render.engine.text.FontInfo;
-import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.input.KeyManager;
 import combatant.client.util.item.TopEnchantUtil;
 
-import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 @HudElementRegister(order = 20)
 public final class BetterTooltips extends AbstractHudElement {
@@ -58,18 +46,8 @@ public final class BetterTooltips extends AbstractHudElement {
     public static final String GROUP_TOOLTIP_GUI = "vanilla_tooltip_gui";
     public static final String GROUP_TOOLTIP_ITEMS = "vanilla_tooltip_items";
     public static final String GROUP_SHULKER_PREVIEW = "vanilla_shulker_preview";
-    private static final String TOOLTIP_PANEL_LAYOUT_ID = "combatant:api/hud/static/tooltip_panel";
-    private static final int TOOLTIP_PAD_X = 4;
-    private static final int TOOLTIP_PAD_Y = 3;
-    private static final float TOOLTIP_STROKE_WIDTH = 0.55f;
-    private static final float TOOLTIP_GLOW_SIZE = 3.75f;
     private static final int TOOLTIP_BG_ALPHA = 0xEE;
-    private static final int TOOLTIP_STROKE_ALPHA = 0xDC;
-    private static final int TOOLTIP_GLOW_ALPHA = 0x5C;
-    private static final float TOOLTIP_TEXT_SCALE = 0.35f;
-    private static final int TOOLTIP_LINE_GAP = 0;
-    private static final int TOOLTIP_PREVIEW_GAP = 3;
-    private static final int TOOLTIP_TITLE_GAP = 2;
+    private static final float TOOLTIP_VISUAL_SCALE = 0.43448275f;
     private static final int SHULKER_HINT_COLOR = 0xFFFFAA00;
     private static final float SHULKER_BG_RADIUS = 1.5f;
     private static final float SHULKER_BG_SOFTNESS = 0.45f;
@@ -96,13 +74,31 @@ public final class BetterTooltips extends AbstractHudElement {
     private final BooleanValue itemTooltipEnabled = bool("item_tooltip", true);
     private final BooleanValue shulkerPreviewEnabled = bool("shulker_preview", true);
     private final BooleanValue itemInfoColorize = bool("item_info_colorize", true);
+    /*
+     * New ids intentionally do not reuse the experimental tooltip-panel settings from 27/28.
+     * Their saved defaults described the incorrect replacement visual. 255/0 here means the
+     * exact old ItemVisualPreviewProvider palette, with theme gradient mixing opt-in.
+     */
+    private final NumberValue<Integer> tooltipBgAlpha =
+            num("tooltip_surface_alpha", "tooltip_bg_alpha", 255, 0, 255);
+    private final NumberValue<Integer> tooltipGradientStrength =
+            num("tooltip_theme_gradient_mix", "theme_gradient_strength", 0, 0, 250);
+    private final NumberValue<Integer> tooltipStrokeAlpha =
+            num("tooltip_panel_stroke_alpha", "stroke_alpha", 255, 0, 255);
+    private final NumberValue<Integer> tooltipShadowAlpha =
+            num("tooltip_panel_shadow_alpha", "shadow_alpha", 255, 0, 255);
+    private final NumberValue<Integer> tooltipHeaderAlpha =
+            num("tooltip_header_alpha", "tooltip_header_tint_alpha", 255, 0, 255);
+    private final NumberValue<Integer> tooltipDividerAlpha =
+            num("tooltip_divider_layer_alpha", "tooltip_divider_alpha", 255, 0, 255);
+    private final NumberValue<Integer> tooltipGradientAngleOffset =
+            num("tooltip_gradient_angle_offset", "tooltip_gradient_angle_offset", 0, -180, 180);
     private final ItemIdSetValue topIgnore = registerTopIgnore();
     private final NumberValue<Float> shulkerPreviewSlotSize =
             visibleWhen(num("shulker_slot_size", 18.0f, 12.0f, 24.0f), this::isShulkerPreviewEnabled);
     private final KeyBindValue shulkerPreviewHold =
             visibleWhen(bind("shulker_preview_hold", "LEFT_SHIFT", BindMode.HOLD), this::isShulkerPreviewEnabled);
-    private final UiScriptModuleHandle tooltipPanelHandle = HudScriptLayouts.handle(TOOLTIP_PANEL_LAYOUT_ID);
-    private final CachedUiScriptRuntime tooltipRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
+    private final ScriptedTooltipPanel tooltipPanel = new ScriptedTooltipPanel("better_tooltips");
     private BetterTooltips() {
         super("vanilla_tooltips", "Tooltips", true);
     }
@@ -198,40 +194,44 @@ public final class BetterTooltips extends AbstractHudElement {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
 
-        TextRenderer tr = Fonts.renderer("Iosevka", FontInfo.Type.Regular, TextRenderer.get());
-        if (tr == null) return;
-
         PreviewLayout preview = buildShulkerPreviewLayout();
         boolean previewOpen = preview != null;
         List<TooltipLine> finalLines = prepareTooltipLines(lines, previewOpen);
+        if (finalLines == null || finalLines.isEmpty()) {
+            finalLines = List.of(new TooltipLine(" ", 0));
+        }
 
-        float textScale = TOOLTIP_TEXT_SCALE * TOOLTIP_SCALE_OVERRIDE;
-        tr.begin(textScale, false, false);
-        int maxWidth = 0;
+        ArrayList<ScriptedTooltipPanel.Line> scriptLines = new ArrayList<>(finalLines.size());
         for (TooltipLine line : finalLines) {
-            maxWidth = Math.max(maxWidth, (int) Math.ceil(tr.getWidth(line.text, false)));
-        }
-        int lineHeight = (int) Math.ceil(tr.getHeight(false));
-        tr.end();
-
-        if (finalLines.isEmpty()) {
-            finalLines = List.of(new TooltipLine(" ", Theme.theme().textPrimary()));
+            scriptLines.add(new ScriptedTooltipPanel.Line(line.text(), line.color()));
         }
 
-        int textHeight = finalLines.size() * lineHeight;
-        if (finalLines.size() > 1) {
-            textHeight += TOOLTIP_TITLE_GAP;
-            textHeight += Math.max(0, finalLines.size() - 2) * TOOLTIP_LINE_GAP;
-        }
-        int previewW = preview != null ? preview.width : 0;
-        int previewH = preview != null ? preview.height : 0;
-        int contentWidth = Math.max(maxWidth, previewW);
-        int totalW = contentWidth + TOOLTIP_PAD_X * 2;
-        int totalH = TOOLTIP_PAD_Y * 2 + textHeight;
-        if (preview != null) {
-            totalH += TOOLTIP_PREVIEW_GAP + previewH;
-        }
+        float visualScale = TOOLTIP_VISUAL_SCALE * TOOLTIP_SCALE_OVERRIDE;
+        float screenLimit = Math.max(40.0f, mc.getWindow().getGuiScaledWidth() - 32.0f);
+        float maxContentWidth = Math.max(160.0f * visualScale,
+                Math.min(360.0f * visualScale, screenLimit));
+        float footerW = preview != null ? preview.width : 0.0f;
+        float footerH = preview != null ? preview.height : 0.0f;
 
+        TextRenderer fallback = TextRenderer.get();
+        ScriptedTooltipPanel.Prepared prepared = INSTANCE.tooltipPanel.prepare(
+                mc,
+                fallback,
+                scriptLines,
+                visualScale,
+                maxContentWidth,
+                footerW,
+                footerH,
+                1.0f,
+                INSTANCE.tooltipStyle(),
+                TOOLTIP_STACK != null && !TOOLTIP_STACK.isEmpty()
+                        ? ScriptedTooltipPanel.Context.ITEM
+                        : ScriptedTooltipPanel.Context.GENERIC
+        );
+        if (prepared == null) return;
+
+        int totalW = Math.max(1, (int) Math.ceil(prepared.width()));
+        int totalH = Math.max(1, (int) Math.ceil(prepared.height()));
         int x = mouseX;
         int y = mouseY;
         if (positioner != null) {
@@ -245,114 +245,33 @@ public final class BetterTooltips extends AbstractHudElement {
             y = pos.y();
         }
 
-        Themes.Theme theme = Theme.theme();
-        int bg = HudRenderUtil.setAlpha(theme.windowBg(), TOOLTIP_BG_ALPHA);
-        int edgeBase = HudRenderUtil.mixColor(theme.accentSoft(), theme.accent(), 0.34f);
-        int glowColor = HudRenderUtil.setAlpha(edgeBase, TOOLTIP_GLOW_ALPHA);
-        int strokeTopLeft = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(theme.accentSoft(), theme.accent(), 0.14f), TOOLTIP_STROKE_ALPHA);
-        int strokeTopRight = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(theme.accentSoft(), theme.accent(), 0.82f), TOOLTIP_STROKE_ALPHA);
-        int strokeBottomRight = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(theme.accentSoft(), theme.accent(), 0.58f), TOOLTIP_STROKE_ALPHA);
-        int strokeBottomLeft = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(theme.accentSoft(), theme.accent(), 0.24f), TOOLTIP_STROKE_ALPHA);
-
         ViewportContext.beginScaled(TOOLTIP_CTX);
-        boolean panelRendered = INSTANCE.renderTooltipPanelScripted(
-                mc,
-                Renderer2D.COLOR,
-                tr,
-                x,
-                y,
-                totalW,
-                totalH,
-                bg,
-                strokeTopLeft,
-                strokeTopRight,
-                strokeBottomRight,
-                strokeBottomLeft,
-                glowColor,
-                TOOLTIP_STROKE_WIDTH,
-                TOOLTIP_GLOW_SIZE,
-                1.0f
-        );
-        if (!panelRendered) {
-            drawTooltipPanelFallback(x, y, totalW, totalH, bg,
-                    strokeTopLeft, strokeTopRight, strokeBottomRight, strokeBottomLeft,
-                    glowColor);
+        ScriptedTooltipPanel.Rendered rendered;
+        try {
+            rendered = INSTANCE.tooltipPanel.render(
+                    mc,
+                    prepared,
+                    Renderer2D.COLOR,
+                    fallback,
+                    TOOLTIP_CTX,
+                    0.0f,
+                    x,
+                    y,
+                    UiProjectionMode.CURRENT
+            );
+        } finally {
+            ViewportContext.end(TOOLTIP_CTX);
         }
 
-        int textX = x + TOOLTIP_PAD_X;
-        int textY = y + TOOLTIP_PAD_Y;
-        tr.begin(textScale, false, false);
-        for (int i = 0; i < finalLines.size(); i++) {
-            TooltipLine line = finalLines.get(i);
-            tr.render(line.text, textX, textY, new RenderColor(line.color), true);
-            textY += lineHeight;
-            if (i == 0 && finalLines.size() > 1) {
-                textY += TOOLTIP_TITLE_GAP;
-            } else if (i + 1 < finalLines.size()) {
-                textY += TOOLTIP_LINE_GAP;
-            }
-        }
-        tr.end();
-        ViewportContext.end(TOOLTIP_CTX);
-
-        if (preview != null) {
-            int contentW = totalW - TOOLTIP_PAD_X * 2;
-            int previewX = x + TOOLTIP_PAD_X + Math.max(0, (contentW - preview.width) / 2);
-            int previewY = y + TOOLTIP_PAD_Y + textHeight + TOOLTIP_PREVIEW_GAP;
+        if (preview != null && rendered != null && rendered.footerBounds().height() > 0.0f) {
+            int previewX = Math.round(rendered.footerBounds().x());
+            int previewY = Math.round(rendered.footerBounds().y());
             renderShulkerPreview(preview, previewX, previewY);
-        }
-    }
-
-    private static String hex(int argb) {
-        return String.format("#%08X", argb);
-    }
-
-    private static void drawTooltipPanelFallback(float x, float y, float width, float height,
-                                                 int bg,
-                                                 int strokeTopLeft,
-                                                 int strokeTopRight,
-                                                 int strokeBottomRight,
-                                                 int strokeBottomLeft,
-                                                 int glow) {
-        float scale = ViewportContext.getScaleFactor();
-        float xb = x * scale;
-        float yb = y * scale;
-        float wb = width * scale;
-        float hb = height * scale;
-        float strokeWidth = TOOLTIP_STROKE_WIDTH * scale;
-        ViewportContext.unscaledProjection();
-        Renderer2D.COLOR.roundedRectGlow(
-                xb, yb, wb, hb,
-                0.0f,
-                0.0f,
-                TOOLTIP_GLOW_SIZE * scale,
-                glow
-        );
-        Renderer2D.COLOR.quad(xb, yb, wb, hb, bg);
-        drawQuadStrokeGradient(Renderer2D.COLOR, xb, yb, wb, hb, strokeWidth,
-                strokeTopLeft, strokeTopRight, strokeBottomRight, strokeBottomLeft);
-        ViewportContext.scaledProjection();
-    }
-
-    private static void drawQuadStrokeGradient(Renderer2D renderer,
-                                               float x, float y, float width, float height,
-                                               float thickness,
-                                               int cTopLeft, int cTopRight,
-                                               int cBottomRight, int cBottomLeft) {
-        if (renderer == null || thickness <= 0.0f || width <= 0.0f || height <= 0.0f) return;
-        float t = Math.min(thickness, Math.min(width, height) * 0.5f);
-        renderer.quadGradient(x, y, width, t, cTopLeft, cTopRight, cTopRight, cTopLeft);
-        renderer.quadGradient(x, y + height - t, width, t, cBottomLeft, cBottomRight, cBottomRight, cBottomLeft);
-        float innerHeight = Math.max(0.0f, height - t * 2.0f);
-        if (innerHeight > 0.0f) {
-            renderer.quadGradient(x, y + t, t, innerHeight, cTopLeft, cTopLeft, cBottomLeft, cBottomLeft);
-            renderer.quadGradient(x + width - t, y + t, t, innerHeight, cTopRight, cTopRight, cBottomRight, cBottomRight);
         }
     }
 
     private static List<TooltipLine> convertOrdered(List<? extends FormattedCharSequence> lines) {
         List<TooltipLine> out = new ArrayList<>();
-        int fallback = Theme.theme().textPrimary();
         for (FormattedCharSequence line : lines) {
             StringBuilder sb = new StringBuilder();
             int[] color = new int[]{0};
@@ -363,8 +282,7 @@ public final class BetterTooltips extends AbstractHudElement {
                 }
                 return true;
             });
-            if (sb.length() == 0) sb.append(' ');
-            int c = color[0] != 0 ? color[0] : fallback;
+            int c = color[0];
             out.add(new TooltipLine(sb.toString(), c));
         }
         return out;
@@ -648,8 +566,14 @@ public final class BetterTooltips extends AbstractHudElement {
         if (group == null) return List.of();
         List<SettingDef> defs = new ArrayList<>();
         switch (group) {
-            case TOOLTIP_GUI -> defs.add(enabledSettingDef());
-            case TOOLTIP_ITEMS -> add(defs, itemTooltipEnabled, itemInfoColorize, topIgnore);
+            case TOOLTIP_GUI -> {
+                defs.add(enabledSettingDef());
+                addTooltipVisualSettings(defs);
+            }
+            case TOOLTIP_ITEMS -> {
+                add(defs, itemTooltipEnabled, itemInfoColorize, topIgnore);
+                addTooltipVisualSettings(defs);
+            }
             case SHULKER_PREVIEW -> addShulkerPreviewSettings(defs);
         }
         return defs;
@@ -658,6 +582,30 @@ public final class BetterTooltips extends AbstractHudElement {
     private ItemIdSetValue registerTopIgnore() {
         ItemIdSetValue value = TopEnchantUtil.ignoreValue();
         return declareSetting(value, SettingDef.textList(value));
+    }
+
+    private void addTooltipVisualSettings(List<SettingDef> defs) {
+        add(defs,
+                tooltipBgAlpha,
+                tooltipGradientStrength,
+                tooltipStrokeAlpha,
+                tooltipShadowAlpha,
+                tooltipHeaderAlpha,
+                tooltipDividerAlpha,
+                tooltipGradientAngleOffset
+        );
+    }
+
+    private ScriptedTooltipPanel.Style tooltipStyle() {
+        return new ScriptedTooltipPanel.Style(
+                tooltipBgAlpha.get(),
+                tooltipGradientStrength.get(),
+                tooltipStrokeAlpha.get(),
+                tooltipShadowAlpha.get(),
+                tooltipHeaderAlpha.get(),
+                tooltipDividerAlpha.get(),
+                tooltipGradientAngleOffset.get()
+        );
     }
 
     private void addShulkerPreviewSettings(List<SettingDef> defs) {
@@ -803,113 +751,6 @@ public final class BetterTooltips extends AbstractHudElement {
         if (!value.isNone()) {
             KeyManager.registerCombo(name, value.get());
         }
-    }
-
-    private boolean renderTooltipPanelScripted(Minecraft mc,
-                                               Renderer2D renderer,
-                                               TextRenderer textRenderer,
-                                               float x,
-                                               float y,
-                                               float width,
-                                               float height,
-                                               int bg,
-                                               int strokeTopLeft,
-                                               int strokeTopRight,
-                                               int strokeBottomRight,
-                                               int strokeBottomLeft,
-                                               int glow,
-                                               float strokeWidth,
-                                               float glowSize,
-                                               float panelAlpha) {
-        if (mc == null || renderer == null || textRenderer == null || tooltipPanelHandle.isRuntimeBlocked())
-            return false;
-        HudScriptLayouts.pollReloadCombo(mc);
-        if (tooltipPanelHandle.consumeChanged()) {
-            resetTooltipPanelRuntime();
-        }
-        UiScriptModule module = ensureTooltipPanelModule(mc);
-        if (module == null) return false;
-
-        float fbScale = ViewportContext.getScaleFactor();
-        float drawX = x * fbScale;
-        float drawY = y * fbScale;
-        float drawW = width * fbScale;
-        float drawH = height * fbScale;
-
-        float strokeWidthPx = strokeWidth * fbScale;
-        float glowSizePx = glowSize * fbScale;
-        Map<String, Object> props = tooltipPanelProps(
-                drawW, drawH, bg, strokeTopLeft, strokeTopRight, strokeBottomRight, strokeBottomLeft, glow, strokeWidthPx, glowSizePx
-        );
-        long signature = CachedUiScriptRuntime.signature(props);
-        long layoutSignature = CachedUiScriptRuntime.mix(
-                CachedUiScriptRuntime.mix(signature, drawX),
-                drawY
-        );
-        UiRuntime baked = tooltipRuntime.bake(
-                tooltipPanelHandle,
-                module,
-                "tooltip_panel",
-                signature,
-                layoutSignature,
-                drawW,
-                drawH,
-                textRenderer,
-                drawX,
-                drawY,
-                drawW,
-                drawH,
-                () -> props
-        );
-        if (baked == null) return false;
-
-        ViewportContext.unscaledProjection();
-        boolean startedBatch = !Renderer2D.isBatching();
-        if (startedBatch) renderer.begin();
-        baked.render(new UiRenderContext(renderer, textRenderer, TOOLTIP_CTX, 0.0f, UiProjectionMode.RAW_FRAMEBUFFER, panelAlpha));
-        if (startedBatch) {
-            renderer.render();
-        }
-        ViewportContext.scaledProjection();
-        return true;
-    }
-
-    private Map<String, Object> tooltipPanelProps(float drawW,
-                                                  float drawH,
-                                                  int bg,
-                                                  int strokeTopLeft,
-                                                  int strokeTopRight,
-                                                  int strokeBottomRight,
-                                                  int strokeBottomLeft,
-                                                  int glow,
-                                                  float strokeWidthPx,
-                                                  float glowSizePx) {
-        LinkedHashMap<String, Object> props = new LinkedHashMap<>(12);
-        props.put("width", drawW);
-        props.put("height", drawH);
-        props.put("bg", hex(bg));
-        props.put("strokeTopLeft", hex(strokeTopLeft));
-        props.put("strokeTopRight", hex(strokeTopRight));
-        props.put("strokeBottomRight", hex(strokeBottomRight));
-        props.put("strokeBottomLeft", hex(strokeBottomLeft));
-        props.put("strokeWidth", strokeWidthPx);
-        props.put("glow", hex(glow));
-        props.put("glowSize", glowSizePx);
-        return props;
-    }
-
-    private UiScriptModule ensureTooltipPanelModule(Minecraft mc) {
-        if (mc == null || mc.getResourceManager() == null) return null;
-        if (!tooltipPanelHandle.ensureLoaded(mc.getResourceManager())) {
-            HudScriptLayouts.reportLoadError(tooltipPanelHandle);
-            return null;
-        }
-        tooltipPanelHandle.consumeChanged();
-        return tooltipPanelHandle.module();
-    }
-
-    private void resetTooltipPanelRuntime() {
-        tooltipRuntime.reset();
     }
 
     private enum SettingsGroup {

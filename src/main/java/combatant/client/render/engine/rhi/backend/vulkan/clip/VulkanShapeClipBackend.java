@@ -29,7 +29,6 @@ public final class VulkanShapeClipBackend implements ShapeClipBackend, AutoClose
     private String currentPassLabel = "<no-pass>";
     private String currentPipelineName = "<no-pipeline>";
     private ShapeClipRenderPassContract currentPipelineContract = ShapeClipRenderPassContract.NONE;
-    private int offscreenPassBypassDepth;
 
     public VulkanShapeClipBackend() {
         VulkanShapeClipBridge.install(attachments);
@@ -65,7 +64,6 @@ public final class VulkanShapeClipBackend implements ShapeClipBackend, AutoClose
     @Override
     public void beginRenderPass(String label, @Nullable GpuTextureView colorView, @Nullable GpuTextureView depthView) {
         currentPassLabel = label == null ? "<unnamed-pass>" : label;
-        if (offscreenPassBypassDepth > 0) return;
         if (renderPassAttachmentRequired || isActive()) {
             DebugLog.stencilOnChange("shapeclip.vulkan.pass.required", currentPassLabel + "|" + attachmentReason,
                     "[ShapeClip/Vulkan] stencil attachment required: pass=%s reason=%s",
@@ -76,10 +74,8 @@ public final class VulkanShapeClipBackend implements ShapeClipBackend, AutoClose
     @Override
     public void endRenderPass() {
         currentPassLabel = "<no-pass>";
-        if (offscreenPassBypassDepth == 0) {
-            renderPassAttachmentRequired = false;
-            attachmentReason = "none";
-        }
+        renderPassAttachmentRequired = false;
+        attachmentReason = "none";
         currentPipelineContract = ShapeClipRenderPassContract.NONE;
         currentPipelineName = "<no-pipeline>";
     }
@@ -88,7 +84,6 @@ public final class VulkanShapeClipBackend implements ShapeClipBackend, AutoClose
     public void bindPipeline(RenderPipeline pipeline, ShapeClipRenderPassContract contract) {
         currentPipelineContract = contract == null ? ShapeClipRenderPassContract.NONE : contract;
         currentPipelineName = pipeline == null || pipeline.getLocation() == null ? "<unknown>" : pipeline.getLocation().toString();
-        if (offscreenPassBypassDepth > 0) return;
         if (mode != VulkanRenderStateBridge.StencilMode.DISABLED && currentPipelineContract == ShapeClipRenderPassContract.NONE) {
             DebugLog.warnOnce(
                     "shapeclip.vulkan.stale.pipeline.contract." + currentPipelineName,
@@ -151,39 +146,17 @@ public final class VulkanShapeClipBackend implements ShapeClipBackend, AutoClose
     }
 
     @Override
-    public void pushOffscreenPassBypass() {
-        offscreenPassBypassDepth++;
-        if (offscreenPassBypassDepth == 1) {
-            VulkanRenderStateBridge.pushStencilOffscreenBypass();
-        }
-    }
-
-    @Override
-    public void popOffscreenPassBypass() {
-        if (offscreenPassBypassDepth <= 0) return;
-        offscreenPassBypassDepth--;
-        if (offscreenPassBypassDepth == 0) {
-            VulkanRenderStateBridge.popStencilOffscreenBypass();
-        }
-    }
-
-    @Override
     public void disable() {
         mode = VulkanRenderStateBridge.StencilMode.DISABLED;
         reference = 0;
         compareReference = 0;
         renderPassAttachmentRequired = false;
         attachmentReason = "none";
-        while (offscreenPassBypassDepth > 0) {
-            offscreenPassBypassDepth--;
-            VulkanRenderStateBridge.popStencilOffscreenBypass();
-        }
         VulkanRenderStateBridge.setStencilMode(mode, 0, 0);
     }
 
     @Override
     public void applyNativeState() {
-        if (offscreenPassBypassDepth > 0) return;
         if (!supported()) {
             VulkanRenderStateBridge.setStencilMode(VulkanRenderStateBridge.StencilMode.DISABLED, 0, 0);
             return;
@@ -203,7 +176,6 @@ public final class VulkanShapeClipBackend implements ShapeClipBackend, AutoClose
                 ", pass='" + currentPassLabel + '\'' +
                 ", pipeline='" + currentPipelineName + '\'' +
                 ", contract=" + currentPipelineContract +
-                ", offscreenBypassDepth=" + offscreenPassBypassDepth +
                 '}';
     }
 

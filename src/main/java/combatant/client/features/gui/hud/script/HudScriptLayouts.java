@@ -7,6 +7,10 @@
 
 package combatant.client.features.gui.hud.script;
 
+import combatant.client.util.resources.asset.AssetAutoLoader;
+import combatant.client.util.resources.asset.AssetLoad;
+import combatant.client.util.resources.asset.AssetLoadPhase;
+import combatant.client.util.resources.asset.UiScriptAsset;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.packs.resources.ResourceManager;
 import org.lwjgl.glfw.GLFW;
@@ -37,6 +41,22 @@ public enum HudScriptLayouts {
         UiScriptModuleHandle handle = REGISTRY.handle(UiScriptModuleId.of(id));
         DebugLog.info("[UI Scripts] handle requested id=%s", handle.getId());
         return handle;
+    }
+
+    public static UiScriptModuleHandle handle(Class<?> owner) {
+        if (owner == null) throw new IllegalArgumentException("UI script owner cannot be null");
+        UiScriptAsset asset = owner.getAnnotation(UiScriptAsset.class);
+        if (asset == null || asset.value().isBlank()) {
+            throw new IllegalArgumentException(owner.getName() + " must be annotated with @UiScriptAsset");
+        }
+        return handle(asset.value());
+    }
+
+    @AssetLoad(value = AssetLoadPhase.INITIALIZE, order = 200)
+    public static void registerDiscoveredAssets() {
+        for (String id : AssetAutoLoader.uiScriptIds()) {
+            REGISTRY.handle(UiScriptModuleId.of(id));
+        }
     }
 
     public static CachedUiScriptRuntime.Reporter runtimeReporter() {

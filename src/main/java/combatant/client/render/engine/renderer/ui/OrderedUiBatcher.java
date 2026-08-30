@@ -49,6 +49,7 @@ public final class OrderedUiBatcher {
     final ObjectArrayList<DrawBatch>[] pools = new ObjectArrayList[UiBatchType.values().length];
     final ObjectArrayList<ItemBatch> itemPool = new ObjectArrayList<>(32);
     final ObjectArrayList<TextBatch> textPool = new ObjectArrayList<>(32);
+    final ObjectArrayList<ItemBatch> itemPreparationScratch = new ObjectArrayList<>(16);
     // Text must remain in the exact draw order. Chat, nametags, layered HUD widgets and
     // marquee/clip stacks rely on text being interleaved with shapes/items. Only adjacent
     // compatible text runs are merged; text is never moved across another draw entry.
@@ -293,6 +294,20 @@ public final class OrderedUiBatcher {
                     Renderer2D.BATCH_STATS.setActive(false);
                 }
                 return;
+            }
+
+            // Deferred UI items are prepared once at the GuiRenderer preparation boundary.
+            // Immediate batchers can still contain items (screen/addon paths), but even there
+            // atlas preparation belongs at the start of the batcher -- never in the middle of
+            // ordered replay between liquid-glass/clip draws.
+            if (!UiDeferredScheduler.isDraining()) {
+                itemPreparationScratch.clear();
+                collectItemBatches(itemPreparationScratch);
+                try {
+                    ItemBatchRenderer.prepareUiItems(itemPreparationScratch);
+                } finally {
+                    itemPreparationScratch.clear();
+                }
             }
 
             float screenW = mc.getWindow().getWidth();
@@ -579,6 +594,16 @@ public final class OrderedUiBatcher {
             }
         }
         return true;
+    }
+
+    void collectItemBatches(ObjectArrayList<ItemBatch> destination) {
+        if (destination == null || order.isEmpty()) return;
+        for (int i = 0, size = order.size(); i < size; i++) {
+            Object entry = order.get(i);
+            if (entry instanceof ItemBatch itemBatch && !itemBatch.isEmpty()) {
+                destination.add(itemBatch);
+            }
+        }
     }
 
     void deferCurrent(boolean finish) {

@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.util.resources.asset.UiScriptAsset;
 import java.util.LinkedHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -25,9 +26,9 @@ import combatant.client.render.engine.text.TextRenderer;
 import java.util.ArrayList;
 import java.util.List;
 
+@UiScriptAsset("combatant:api/hud/draggable/inventory_panel")
 final class ScriptedInventoryHudPanel {
-    private static final String LAYOUT_ID = "combatant:api/hud/draggable/inventory_panel";
-    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(LAYOUT_ID);
+    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedInventoryHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
     static List<LinkedHashMap<String, Object>> cells(List<ItemStack> stacks) {

@@ -15,6 +15,7 @@ import combatant.client.features.playeranimator.PlayerRigDeformer;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.renderer.ui.runtime.script.JavetRuntimeBootstrap;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.util.resources.asset.AssetAutoLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
@@ -22,7 +23,9 @@ import net.minecraft.server.packs.resources.ResourceManager;
 
 import java.io.BufferedReader;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -33,15 +36,6 @@ import java.util.stream.Collectors;
  * runtime never parses animation JSON.
  */
 public final class PlayerRigScriptRuntime implements AutoCloseable {
-    public static final Identifier ANIMATION_LIBRARY = Identifier.fromNamespaceAndPath(
-            "combatant", "playeranimator/player_animation_library.js"
-    );
-    public static final Identifier SCRIPT = Identifier.fromNamespaceAndPath(
-            "combatant", "playeranimator/player_rig.js"
-    );
-    public static final Identifier ADDON_SCRIPT = Identifier.fromNamespaceAndPath(
-            "combatant", "playeranimator/player_rig_addon.js"
-    );
 
     private V8Runtime runtime;
     private boolean dirty = true;
@@ -91,11 +85,8 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
                 .executeVoid();
 
         ResourceManager manager = Minecraft.getInstance().getResourceManager();
-        executeResource(manager, ANIMATION_LIBRARY);
-
-        String source = loadStack(manager);
-        if (!source.isBlank()) {
-            runtime.getExecutor(source).setResourceName(SCRIPT.toString()).executeVoid();
+        for (AssetAutoLoader.ScriptDefinition definition : AssetAutoLoader.scriptAssets(PlayerRigScriptAssets.class)) {
+            executeDefinition(manager, definition);
         }
         dirty = false;
     }
@@ -156,6 +147,15 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
                     if(upper>=0 && target>=0) __rig_commands.push([11,upper,target,
                       __rig_number(x),__rig_number(y),__rig_number(z),
                       __rig_number(hintX),__rig_number(hintY,.35),__rig_number(hintZ,.15),
+                      Math.max(0,Math.min(1,__rig_number(weight,1)))]);
+                  },
+                  placeItem(side,targetBone,x=0,y=0,z=0,rx=0,ry=0,rz=0,weight=1) {
+                    side=String(side).toLowerCase();
+                    const control=__rig_bone(side==='left'?'left_item_control':side==='right'?'right_item_control':'');
+                    const target=__rig_bone(targetBone);
+                    if(control>=0 && target>=0) __rig_commands.push([12,control,target,
+                      __rig_number(x),__rig_number(y),__rig_number(z),
+                      __rig_number(rx)*__rig_rad,__rig_number(ry)*__rig_rad,__rig_number(rz)*__rig_rad,
                       Math.max(0,Math.min(1,__rig_number(weight,1)))]);
                   },
                   animation(name) { return globalThis.RigAnimationLibrary?.get(String(name)) ?? null; },
@@ -253,30 +253,43 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
         return out.append('}').toString();
     }
 
+    private void executeDefinition(ResourceManager manager, AssetAutoLoader.ScriptDefinition definition) throws Exception {
+        if (definition.tree()) {
+            executeDirectory(manager, definition.resource());
+        } else {
+            executeResource(manager, definition.resource());
+        }
+        Identifier addon = definition.addonResource();
+        if (addon != null) {
+            for (Resource resource : manager.getResourceStack(addon)) {
+                executeResource(addon, resource);
+            }
+        }
+    }
+
     private void executeResource(ResourceManager manager, Identifier id) throws Exception {
         Resource resource = manager.getResource(id).orElseThrow(
                 () -> new IllegalStateException("Missing player animation resource: " + id)
         );
+        executeResource(id, resource);
+    }
+
+    /** Loads one declared script tree in deterministic resource-id order. */
+    private void executeDirectory(ResourceManager manager, Identifier directory) throws Exception {
+        String root = directory.getPath();
+        List<Map.Entry<Identifier, Resource>> resources = new ArrayList<>(
+                manager.listResources(root, id -> id.getPath().endsWith(".js")).entrySet()
+        );
+        resources.sort(Comparator.comparing(entry -> entry.getKey().toString()));
+        for (Map.Entry<Identifier, Resource> entry : resources) {
+            executeResource(entry.getKey(), entry.getValue());
+        }
+    }
+
+    private void executeResource(Identifier id, Resource resource) throws Exception {
         try (BufferedReader reader = resource.openAsReader()) {
             String source = reader.lines().collect(Collectors.joining("\n"));
             runtime.getExecutor(source).setResourceName(id.toString()).executeVoid();
-        }
-    }
-
-    private static String loadStack(ResourceManager manager) {
-        List<String> chunks = new ArrayList<>();
-        manager.getResource(SCRIPT).ifPresent(resource -> readResource(SCRIPT, resource, chunks));
-        for (Resource addon : manager.getResourceStack(ADDON_SCRIPT)) {
-            readResource(ADDON_SCRIPT, addon, chunks);
-        }
-        return String.join("\n", chunks);
-    }
-
-    private static void readResource(Identifier id, Resource resource, List<String> chunks) {
-        try (BufferedReader reader = resource.openAsReader()) {
-            chunks.add(reader.lines().collect(Collectors.joining("\n")));
-        } catch (Exception e) {
-            DebugLog.error("[PlayerAnimator] Failed to load %s from %s", e, id, resource.sourcePackId());
         }
     }
 

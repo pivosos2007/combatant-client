@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
@@ -25,10 +26,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
+@UiScriptAsset("combatant:api/hud/draggable/armor")
 final class ScriptedArmorHudPanel {
-    private static final String LAYOUT_ID = "combatant:api/hud/draggable/armor";
-
-    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(LAYOUT_ID);
+    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedArmorHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
     boolean render(Renderer2D renderer,

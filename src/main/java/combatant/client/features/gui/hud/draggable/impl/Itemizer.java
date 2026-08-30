@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
@@ -43,9 +44,9 @@ import java.util.List;
 import java.util.Map;
 
 @HudElementRegister(order = 200)
+@UiScriptAsset("combatant:api/hud/draggable/itemizer")
 public final class Itemizer extends DraggableHudElement {
-    private static final String LAYOUT_ID = "combatant:api/hud/draggable/itemizer";
-    private static final float BASE_ICON_CARD = 24.0f;
+private static final float BASE_ICON_CARD = 24.0f;
     private static final float BASE_COMPACT_W = 72.0f;
     private static final float BASE_COMPACT_H = 24.0f;
     private static final float BASE_GAP = 4.0f;
@@ -55,7 +56,7 @@ public final class Itemizer extends DraggableHudElement {
     public static Itemizer INSTANCE;
 
     private final Minecraft mc = Minecraft.getInstance();
-    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(LAYOUT_ID);
+    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(Itemizer.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
     private final LinkedHashMap<ItemizerEvent, Entry> entries = new LinkedHashMap<>();
     private final List<ItemRenderTask> itemTasks = new ArrayList<>(5);

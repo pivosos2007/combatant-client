@@ -26,6 +26,7 @@ public record PlayerRigScriptCommand(int operation, int target, float[] argument
     public static final int SET_TWIST = 9;
     public static final int CLEAR_DEFORM = 10;
     public static final int REACH_HAND_TO_BONE = 11;
+    public static final int PLACE_ITEM_TO_BONE = 12;
 
     public static List<PlayerRigScriptCommand> decode(Object raw) {
         if (!(raw instanceof Iterable<?> iterable)) return List.of();
@@ -60,6 +61,13 @@ public record PlayerRigScriptCommand(int operation, int target, float[] argument
             case SET_TWIST -> instance.setTwist(target, arg(0), arg(1, 1f));
             case CLEAR_DEFORM -> instance.clearDeform(target);
             case REACH_HAND_TO_BONE -> instance.reachHandToBone(
+                    target,
+                    Math.round(arg(0, -1f)),
+                    arg(1), arg(2), arg(3),
+                    arg(4), arg(5), arg(6),
+                    arg(7, 1f)
+            );
+            case PLACE_ITEM_TO_BONE -> instance.placeItemToBone(
                     target,
                     Math.round(arg(0, -1f)),
                     arg(1), arg(2), arg(3),

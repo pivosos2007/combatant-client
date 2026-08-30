@@ -38,9 +38,13 @@ public final class PlayerRigInstance {
     private final Vector3f ikUpperDirection = new Vector3f();
     private final Vector3f ikLowerDirection = new Vector3f();
     private final Vector3f ikLowerLocalDirection = new Vector3f();
+    private final Vector3f ikDesiredHingeAxis = new Vector3f();
+    private final Vector3f ikCurrentHingeAxis = new Vector3f();
+    private final Vector3f ikCrossScratch = new Vector3f();
     private final Quaternionf ikUpperRotation = new Quaternionf();
     private final Quaternionf ikElbowRotation = new Quaternionf();
     private final Quaternionf ikInverseUpperRotation = new Quaternionf();
+    private final Quaternionf ikRollRotation = new Quaternionf();
     private final Quaternionf ikBlendedRotation = new Quaternionf();
 
     public PlayerRigInstance() {
@@ -204,16 +208,37 @@ public final class PlayerRigInstance {
         ikUpperDirection.set(ikElbowPoint).sub(ikShoulderPoint).normalize();
         ikLowerDirection.set(ikTargetPoint).sub(ikElbowPoint).normalize();
 
+        // rotationTo(+Y, upper) alone leaves roll around the upper-arm axis undefined. While the
+        // player strafes that minimal-rotation solution can jump between equivalent rolls, making a
+        // mouth reach look like the forearm corkscrews even though the hand target is correct.
+        // Lock local +X to the actual elbow hinge plane and solve the elbow as X-only flexion.
         ikUpperRotation.rotationTo(
                 0f, 1f, 0f,
                 ikUpperDirection.x, ikUpperDirection.y, ikUpperDirection.z
         ).normalize();
+        ikDesiredHingeAxis.set(ikLowerDirection).cross(ikUpperDirection);
+        if (ikDesiredHingeAxis.lengthSquared() < 1.0e-8f) {
+            ikDesiredHingeAxis.set(ikTargetDirection).cross(ikPerpendicular);
+        }
+        if (ikDesiredHingeAxis.lengthSquared() > 1.0e-8f) {
+            ikDesiredHingeAxis.normalize();
+            ikCurrentHingeAxis.set(1f, 0f, 0f);
+            ikUpperRotation.transform(ikCurrentHingeAxis).normalize();
+            float rollSin = ikUpperDirection.dot(
+                    ikCrossScratch.set(ikCurrentHingeAxis).cross(ikDesiredHingeAxis)
+            );
+            float rollCos = Math.max(-1f, Math.min(1f, ikCurrentHingeAxis.dot(ikDesiredHingeAxis)));
+            float rollAngle = (float) Math.atan2(rollSin, rollCos);
+            ikRollRotation.rotationAxis(rollAngle, ikUpperDirection.x, ikUpperDirection.y, ikUpperDirection.z)
+                    .mul(ikUpperRotation)
+                    .normalize();
+            ikUpperRotation.set(ikRollRotation);
+        }
+
         ikInverseUpperRotation.set(ikUpperRotation).conjugate();
         ikInverseUpperRotation.transform(ikLowerDirection, ikLowerLocalDirection).normalize();
-        ikElbowRotation.rotationTo(
-                0f, 1f, 0f,
-                ikLowerLocalDirection.x, ikLowerLocalDirection.y, ikLowerLocalDirection.z
-        ).normalize();
+        float elbowAngle = (float) Math.atan2(ikLowerLocalDirection.z, ikLowerLocalDirection.y);
+        ikElbowRotation.rotationX(elbowAngle).normalize();
 
         float blend = Math.max(0f, Math.min(1f, weight));
         if (blend <= 1.0e-5f) return this;
@@ -226,6 +251,71 @@ public final class PlayerRigInstance {
             rig.pose().setRotation(upperArmIndex, ikUpperRotation);
             rig.pose().setRotation(elbowIndex, ikElbowRotation);
         }
+        return this;
+    }
+
+    /**
+     * Places a held-item socket in another bone's local frame while keeping the visible hand pose
+     * independent. This is used for actions such as eating/drinking: the hand can be solved toward
+     * the face anatomically, while the rendered item itself stays locked to a stable mouth frame
+     * instead of inheriting wrist roll and drifting as the head turns.
+     */
+    public PlayerRigInstance placeItemToBone(int itemControlIndex, int targetBoneIndex,
+                                             float targetX, float targetY, float targetZ,
+                                             float rotationX, float rotationY, float rotationZ,
+                                             float weight) {
+        int leftControl = PlayerRigDefinition.index(PlayerRigBone.LEFT_ITEM_CONTROL);
+        int rightControl = PlayerRigDefinition.index(PlayerRigBone.RIGHT_ITEM_CONTROL);
+        final PlayerRigSocket socket;
+        if (itemControlIndex == leftControl) {
+            socket = PlayerRigSocket.LEFT_ITEM;
+        } else if (itemControlIndex == rightControl) {
+            socket = PlayerRigSocket.RIGHT_ITEM;
+        } else {
+            return this;
+        }
+        if (targetBoneIndex < 0 || targetBoneIndex >= rig.definition().boneCount()) return this;
+
+        int parentIndex = rig.definition().bone(itemControlIndex).parentIndex();
+        if (parentIndex < 0) return this;
+        float blend = Math.max(0f, Math.min(1f, weight));
+        if (blend <= 1.0e-5f) return this;
+
+        // Resolve all commands emitted before this placement. Capture the current rendered socket
+        // first: blending in model space makes the item travel continuously from the real hand grip
+        // to the mouth instead of interpolating ITEM_CONTROL local coordinates through a curved arm.
+        rig.solve();
+        int socketIndex = PlayerRigDefinition.socketIndex(socket);
+        rig.sockets().modelMatrix(socketIndex, ikParentMatrix);
+        ikParentMatrix.getTranslation(ikShoulderPoint);
+        ikParentMatrix.getNormalizedRotation(ikBlendedRotation).normalize();
+
+        // Desired socket frame is HEAD-local (or any requested target bone). Head yaw/pitch therefore
+        // moves both the mouth point and its orientation as one rigid frame.
+        rig.modelMatrix(targetBoneIndex, ikTargetMatrix);
+        ikUpperMatrix.set(ikTargetMatrix)
+                .translate(targetX, targetY, targetZ)
+                .rotateXYZ(rotationX, rotationY, rotationZ);
+        ikUpperMatrix.getTranslation(ikTargetPoint);
+        ikUpperMatrix.getNormalizedRotation(ikUpperRotation).normalize();
+
+        if (blend < 0.99999f) {
+            ikShoulderPoint.lerp(ikTargetPoint, blend);
+            ikBlendedRotation.slerp(ikUpperRotation, blend).normalize();
+            ikUpperMatrix.identity().translate(ikShoulderPoint).rotate(ikBlendedRotation);
+        }
+
+        // The renderer consumes the ITEM socket, not ITEM_CONTROL itself. Factor the immutable grip
+        // out and convert the resulting ITEM_CONTROL model transform back into its parent's space.
+        rig.definition().socket(socketIndex).local().matrix(ikInverseParentMatrix).invert();
+        ikUpperMatrix.mul(ikInverseParentMatrix);
+        rig.modelMatrix(parentIndex, ikParentMatrix).invert();
+        ikParentMatrix.mul(ikUpperMatrix, ikUpperMatrix);
+        ikUpperMatrix.getTranslation(ikTargetPoint);
+        ikUpperMatrix.getNormalizedRotation(ikUpperRotation).normalize();
+
+        rig.pose().setTranslation(itemControlIndex, ikTargetPoint);
+        rig.pose().setRotation(itemControlIndex, ikUpperRotation);
         return this;
     }
 

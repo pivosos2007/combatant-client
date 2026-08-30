@@ -16,6 +16,7 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.render.GuiItemAtlas;
@@ -77,6 +78,8 @@ public final class ItemBatchRenderer {
     private static boolean uiItemFrameOpen;
     private static final Object2ObjectOpenHashMap<ItemResolveKey, TrackingItemStackRenderState> uiResolvedStates =
             new Object2ObjectOpenHashMap<>(128);
+    private static final ObjectArrayList<ItemDrawCommand> uiPreparedCommands = new ObjectArrayList<>(256);
+    private static final ObjectArrayList<ItemDrawCommand> uiNewPreparedCommands = new ObjectArrayList<>(64);
     private static final ObjectOpenHashSet<Object> uiModelIdentities = new ObjectOpenHashSet<>();
     private static final List<WorldItemAtlasPage> worldItemAtlases = new ArrayList<>();
     private static int worldItemAtlasCursor;
@@ -372,6 +375,100 @@ public final class ItemBatchRenderer {
         return beginItemOverlayMesh(itemCooldownMesh, commandCount, 1);
     }
 
+    /**
+     * Prepare all item models and GuiItemAtlas slots before ordered UI replay.
+     *
+     * <p>This intentionally mirrors vanilla GuiRenderer.prepareItemElements(): the atlas is an
+     * offscreen preparation pass, not an ordered HUD draw. Keeping getOrUpdate() here prevents
+     * its projection/lighting/render-target transitions from occurring between liquid-glass,
+     * stencil/clip and ordinary UI draws. The path is backend-agnostic; no GL/Vulkan state
+     * probing or backend bypass is involved.</p>
+     */
+    static void prepareUiItems(List<ItemBatch> batches) {
+        if (batches == null || batches.isEmpty()) return;
+
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gameRenderer == null) return;
+
+        boolean foundNewCommand = false;
+        uiNewPreparedCommands.clear();
+        for (ItemBatch batch : batches) {
+            if (batch == null || batch.isEmpty()) continue;
+
+            for (ItemDrawCommand command : batch.commands) {
+                if (command == null || command.stack.isEmpty() || !command.drawItem || command.alpha <= 0.001f) {
+                    continue;
+                }
+                if (command.atlasPreparationRegistered) {
+                    continue;
+                }
+
+                command.preparedSlot = null;
+                ItemResolveKey key = new ItemResolveKey(command.player, command.stack, command.seed);
+                TrackingItemStackRenderState renderState = uiResolvedStates.get(key);
+                if (renderState == null) {
+                    try (RenderCostProfiler.Scope ignoredResolve = RenderCostProfiler.itemRender("resolve_model")) {
+                        renderState = new TrackingItemStackRenderState();
+                        mc.getItemModelResolver().updateForTopItem(
+                                renderState,
+                                command.stack,
+                                ItemDisplayContext.GUI,
+                                command.player != null ? command.player.level() : mc.level,
+                                command.player,
+                                command.seed
+                        );
+                    }
+                    uiResolvedStates.put(key, renderState);
+                }
+
+                command.resolvedState = renderState;
+                if (renderState.isEmpty()) continue;
+
+                uiModelIdentities.add(renderState.getModelIdentity());
+                command.atlasPreparationRegistered = true;
+                uiPreparedCommands.add(command);
+                uiNewPreparedCommands.add(command);
+                foundNewCommand = true;
+            }
+        }
+
+        if (!foundNewCommand || uiModelIdentities.isEmpty()) {
+            uiNewPreparedCommands.clear();
+            return;
+        }
+
+        try {
+            GuiItemAtlas previousAtlas = itemAtlas;
+            GuiItemAtlas atlas = ensureItemAtlas(mc, getItemFeatureDispatcher(mc), uiModelIdentities);
+            uiItemFrameOpen = true;
+
+            // Existing slots stay stable while DynamicAtlasAllocator reclaims entries because the
+            // frame-wide identity set retains every active model. Only an actual atlas recreation
+            // invalidates prior SlotViews; in that rare case refresh them all in this safe prepass.
+            ObjectArrayList<ItemDrawCommand> commandsToUpdate = atlas != previousAtlas
+                    ? uiPreparedCommands
+                    : uiNewPreparedCommands;
+            for (int i = 0, size = commandsToUpdate.size(); i < size; i++) {
+                ItemDrawCommand command = commandsToUpdate.get(i);
+                TrackingItemStackRenderState renderState = command.resolvedState;
+                if (renderState == null || renderState.isEmpty()) {
+                    command.preparedSlot = null;
+                    continue;
+                }
+
+                try (RenderCostProfiler.Scope ignoredReplay = RenderCostProfiler.itemRender("atlas_model")) {
+                    GuiItemAtlas.SlotView slot = atlas.getOrUpdate(renderState);
+                    command.preparedSlot = slot != null && slot.textureView() != null ? slot : null;
+                }
+            }
+        } catch (RuntimeException failure) {
+            resetUiItemRenderer();
+            throw failure;
+        } finally {
+            uiNewPreparedCommands.clear();
+        }
+    }
+
     static int flush(ItemBatch batch) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.gameRenderer == null || batch.isEmpty()) {
@@ -380,175 +477,112 @@ public final class ItemBatchRenderer {
 
         try (RenderCostProfiler.Scope ignoredItems = RenderCostProfiler.itemRender("item_batch")) {
             int drawCalls = 0;
-            GpuTextureView previousOutputColor = RenderSystem.outputColorTextureOverride;
-            GpuTextureView previousOutputDepth = RenderSystem.outputDepthTextureOverride;
+            MeshBuilder itemMesh = null;
+            GpuTextureView itemAtlasTextureView = null;
+            for (ItemDrawCommand command : batch.commands) {
+                GuiItemAtlas.SlotView slot = command.preparedSlot;
+                if (slot == null || slot.textureView() == null || command.alpha <= 0.001f) continue;
+
+                if (itemMesh == null) {
+                    itemMesh = beginItemBlitMesh(batch.commands.size());
+                }
+                itemAtlasTextureView = slot.textureView();
+                appendItemAtlasBlit(itemMesh, command, slot);
+            }
+
+            GpuSampler itemSampler = itemMesh != null
+                    ? RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST)
+                    : null;
+            if (submitItemBlitMesh(mc, itemMesh, itemAtlasTextureView, itemSampler)) {
+                drawCalls++;
+            }
+
+            MeshBuilder durabilityGlowMesh = null;
+            MeshBuilder durabilityRoundedMesh = null;
+            MeshBuilder cooldownMesh = null;
+            for (ItemDrawCommand command : batch.commands) {
+                if (hasItemDurabilityBar(command)) {
+                    if (durabilityGlowMesh == null) {
+                        durabilityGlowMesh = beginItemDurabilityGlowMesh(batch.commands.size());
+                    }
+                    if (durabilityRoundedMesh == null) {
+                        durabilityRoundedMesh = beginItemDurabilityRoundedMesh(batch.commands.size());
+                    }
+                    appendItemDurabilityBar(command, durabilityGlowMesh, durabilityRoundedMesh);
+                }
+
+                if (hasItemCooldownOverlay(mc, command)) {
+                    if (cooldownMesh == null) {
+                        cooldownMesh = beginItemCooldownMesh(batch.commands.size());
+                    }
+                    appendItemCooldownOverlayQuads(mc, command, cooldownMesh);
+                }
+            }
+
+            if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_ROUNDED_GLOW_BATCH, durabilityGlowMesh, true)) {
+                drawCalls++;
+            }
+            if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_ROUNDED_BATCH, durabilityRoundedMesh, true)) {
+                drawCalls++;
+            }
+            if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_COLORED, cooldownMesh, false)) {
+                drawCalls++;
+            }
+
+            TextRenderer overlayTextRenderer = null;
+            float overlayTextScale = Float.NaN;
             try {
-                FeatureRenderDispatcher dispatcher = getItemFeatureDispatcher(mc);
-                uiModelIdentities.clear();
                 for (ItemDrawCommand command : batch.commands) {
-                    if (command.stack.isEmpty() || !command.drawItem || command.alpha <= 0.001f) {
+                    if (hasItemDurabilityText(command)) {
+                        String durabilityText = getItemDurabilityText(command);
+                        if (durabilityText != null && !durabilityText.isEmpty()) {
+                            float textScale = Math.max(0.0001f, command.scaleX * 0.44f);
+                            if (overlayTextRenderer == null) {
+                                overlayTextRenderer = TextRenderer.get();
+                            }
+                            if (!overlayTextRenderer.isBuilding() || Float.compare(overlayTextScale, textScale) != 0) {
+                                if (overlayTextRenderer.isBuilding()) {
+                                    overlayTextRenderer.end();
+                                }
+                                overlayTextRenderer.begin(textScale, false, false);
+                                overlayTextScale = textScale;
+                            }
+
+                            float textW = (float) overlayTextRenderer.getWidth(durabilityText, false);
+                            float textX = command.x + (16.0f * command.scaleX - textW) * 0.5f;
+                            float textY = command.y + 11.0f * command.scaleX;
+                            overlayTextRenderer.render(durabilityText, textX, textY,
+                                    new RenderColor(multiplyAlpha(getItemDurabilityTextColor(command), command.alpha)), true);
+                        }
+                    }
+
+                    String overlayText = getItemOverlayText(command);
+                    if (overlayText == null || overlayText.isEmpty()) {
                         continue;
                     }
 
-                    ItemResolveKey key = new ItemResolveKey(command.player, command.stack, command.seed);
-                    TrackingItemStackRenderState renderState = uiResolvedStates.get(key);
-                    if (renderState == null) {
-                        try (RenderCostProfiler.Scope ignoredResolve = RenderCostProfiler.itemRender("resolve_model")) {
-                            renderState = new TrackingItemStackRenderState();
-                            mc.getItemModelResolver().updateForTopItem(
-                                    renderState,
-                                    command.stack,
-                                    ItemDisplayContext.GUI,
-                                    command.player != null ? command.player.level() : mc.level,
-                                    command.player,
-                                    command.seed
-                            );
-                        }
-                        uiResolvedStates.put(key, renderState);
+                    float textScale = Math.max(0.0001f, command.scaleX * 0.5f);
+                    if (overlayTextRenderer == null) {
+                        overlayTextRenderer = TextRenderer.get();
                     }
-                    command.resolvedState = renderState;
-
-                    if (!renderState.isEmpty()) {
-                        uiModelIdentities.add(renderState.getModelIdentity());
-                    }
-                }
-
-                GuiItemAtlas atlas = null;
-                MeshBuilder itemMesh = null;
-                GpuSampler itemSampler = null;
-                if (!uiModelIdentities.isEmpty()) {
-                    atlas = ensureItemAtlas(mc, dispatcher, uiModelIdentities);
-                    itemMesh = beginItemBlitMesh(batch.commands.size());
-                    itemSampler = RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST);
-                }
-
-                GpuTextureView itemAtlasTextureView = null;
-                GuiAtlasRenderState atlasState = GuiAtlasRenderState.capture();
-                try {
-                    atlasState.enterGuiPass();
-                    for (ItemDrawCommand command : batch.commands) {
-                        if (atlas == null || itemMesh == null || itemSampler == null || command.stack.isEmpty() || !command.drawItem || command.alpha <= 0.001f) {
-                            continue;
+                    if (!overlayTextRenderer.isBuilding() || Float.compare(overlayTextScale, textScale) != 0) {
+                        if (overlayTextRenderer.isBuilding()) {
+                            overlayTextRenderer.end();
                         }
-
-                        TrackingItemStackRenderState renderState = command.resolvedState;
-                        if (renderState == null || renderState.isEmpty()) {
-                            continue;
-                        }
-
-                        try (RenderCostProfiler.Scope ignoredReplay = RenderCostProfiler.itemRender("atlas_model")) {
-                            uiItemFrameOpen = true;
-                            GuiItemAtlas.SlotView slot = atlas.getOrUpdate(renderState);
-                            if (slot != null && slot.textureView() != null) {
-                                itemAtlasTextureView = slot.textureView();
-                                appendItemAtlasBlit(itemMesh, command, slot);
-                            }
-                        }
-                    }
-                } finally {
-                    atlasState.restore();
-                }
-
-                if (submitItemBlitMesh(mc, itemMesh, itemAtlasTextureView, itemSampler)) {
-                    drawCalls++;
-                }
-                MeshBuilder durabilityGlowMesh = null;
-                MeshBuilder durabilityRoundedMesh = null;
-                MeshBuilder cooldownMesh = null;
-                for (ItemDrawCommand command : batch.commands) {
-                    if (hasItemDurabilityBar(command)) {
-                        if (durabilityGlowMesh == null) {
-                            durabilityGlowMesh = beginItemDurabilityGlowMesh(batch.commands.size());
-                        }
-                        if (durabilityRoundedMesh == null) {
-                            durabilityRoundedMesh = beginItemDurabilityRoundedMesh(batch.commands.size());
-                        }
-                        appendItemDurabilityBar(command, durabilityGlowMesh, durabilityRoundedMesh);
+                        overlayTextRenderer.begin(textScale, false, false);
+                        overlayTextScale = textScale;
                     }
 
-                    if (hasItemCooldownOverlay(mc, command)) {
-                        if (cooldownMesh == null) {
-                            cooldownMesh = beginItemCooldownMesh(batch.commands.size());
-                        }
-                        appendItemCooldownOverlayQuads(mc, command, cooldownMesh);
-                    }
+                    float textX = command.x + 19.0f * command.scaleX - 2.0f * command.scaleX
+                            - (float) overlayTextRenderer.getWidth(overlayText, false);
+                    float textY = command.y + 9.0f * command.scaleX;
+                    overlayTextRenderer.render(overlayText, textX, textY,
+                            new RenderColor(multiplyAlpha(CommonColors.WHITE, command.alpha)), true);
                 }
-
-                if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_ROUNDED_GLOW_BATCH, durabilityGlowMesh, true)) {
-                    drawCalls++;
-                }
-                if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_ROUNDED_BATCH, durabilityRoundedMesh, true)) {
-                    drawCalls++;
-                }
-                if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_COLORED, cooldownMesh, false)) {
-                    drawCalls++;
-                }
-
-                TextRenderer overlayTextRenderer = null;
-                float overlayTextScale = Float.NaN;
-                try {
-                    for (ItemDrawCommand command : batch.commands) {
-                        if (hasItemDurabilityText(command)) {
-                            String durabilityText = getItemDurabilityText(command);
-                            if (durabilityText != null && !durabilityText.isEmpty()) {
-                                float textScale = Math.max(0.0001f, command.scaleX * 0.44f);
-                                if (overlayTextRenderer == null) {
-                                    overlayTextRenderer = TextRenderer.get();
-                                }
-                                if (!overlayTextRenderer.isBuilding() || Float.compare(overlayTextScale, textScale) != 0) {
-                                    if (overlayTextRenderer.isBuilding()) {
-                                        overlayTextRenderer.end();
-                                    }
-                                    overlayTextRenderer.begin(textScale, false, false);
-                                    overlayTextScale = textScale;
-                                }
-
-                                float textW = (float) overlayTextRenderer.getWidth(durabilityText, false);
-                                float textX = command.x + (16.0f * command.scaleX - textW) * 0.5f;
-                                float textY = command.y + 11.0f * command.scaleX;
-                                overlayTextRenderer.render(durabilityText, textX, textY,
-                                        new RenderColor(multiplyAlpha(getItemDurabilityTextColor(command), command.alpha)), true);
-                            }
-                        }
-
-                        String overlayText = getItemOverlayText(command);
-                        if (overlayText == null || overlayText.isEmpty()) {
-                            continue;
-                        }
-
-                        float textScale = Math.max(0.0001f, command.scaleX * 0.5f);
-                        if (overlayTextRenderer == null) {
-                            overlayTextRenderer = TextRenderer.get();
-                        }
-                        if (!overlayTextRenderer.isBuilding() || Float.compare(overlayTextScale, textScale) != 0) {
-                            if (overlayTextRenderer.isBuilding()) {
-                                overlayTextRenderer.end();
-                            }
-                            overlayTextRenderer.begin(textScale, false, false);
-                            overlayTextScale = textScale;
-                        }
-
-                        float textX = command.x + 19.0f * command.scaleX - 2.0f * command.scaleX
-                                - (float) overlayTextRenderer.getWidth(overlayText, false);
-                        float textY = command.y + 9.0f * command.scaleX;
-                        overlayTextRenderer.render(overlayText, textX, textY, new RenderColor(multiplyAlpha(CommonColors.WHITE, command.alpha)), true);
-                    }
-                } finally {
-                    if (overlayTextRenderer != null && overlayTextRenderer.isBuilding()) {
-                        overlayTextRenderer.end();
-                    }
-                }
-            } catch (RuntimeException failure) {
-                // If feature preparation failed after PreparedFrame.begin(), this dispatcher can
-                // no longer be reused safely. Recreate the isolated UI renderer on the next batch
-                // and preserve the original exception instead of crashing later with the misleading
-                // secondary "PreparedFrame already in use" error.
-                resetUiItemRenderer();
-                throw failure;
             } finally {
-                RenderSystem.outputColorTextureOverride = previousOutputColor;
-                RenderSystem.outputDepthTextureOverride = previousOutputDepth;
-                uiModelIdentities.clear();
+                if (overlayTextRenderer != null && overlayTextRenderer.isBuilding()) {
+                    overlayTextRenderer.end();
+                }
             }
 
             return drawCalls;
@@ -677,7 +711,16 @@ public final class ItemBatchRenderer {
 
     /** Finish vanilla's item-atlas resources at the real frame boundary, not per ordered batch. */
     public static void finishUiItemFrame() {
+        for (int i = 0, size = uiPreparedCommands.size(); i < size; i++) {
+            ItemDrawCommand command = uiPreparedCommands.get(i);
+            if (command != null) {
+                command.preparedSlot = null;
+                command.atlasPreparationRegistered = false;
+            }
+        }
         uiResolvedStates.clear();
+        uiPreparedCommands.clear();
+        uiNewPreparedCommands.clear();
         uiModelIdentities.clear();
         if (uiItemFrameOpen) {
             if (itemAtlas != null) itemAtlas.endFrame();
@@ -688,7 +731,16 @@ public final class ItemBatchRenderer {
 
     private static void resetUiItemRenderer() {
         uiItemFrameOpen = false;
+        for (int i = 0, size = uiPreparedCommands.size(); i < size; i++) {
+            ItemDrawCommand command = uiPreparedCommands.get(i);
+            if (command != null) {
+                command.preparedSlot = null;
+                command.atlasPreparationRegistered = false;
+            }
+        }
         uiResolvedStates.clear();
+        uiPreparedCommands.clear();
+        uiNewPreparedCommands.clear();
         uiModelIdentities.clear();
         closeItemAtlas();
         if (uiItemFeatureDispatcher != null) {
@@ -833,9 +885,19 @@ public final class ItemBatchRenderer {
                 .attachments(mc.gameRenderer.mainRenderTarget().getColorTextureView(), null)
                 .pipeline(CombatantRenderPipelines.UI_TEXTURED_PREMULTIPLIED_ALPHA)
                 .mesh(mesh)
+                .uniform("UIBatch", itemBlitUiBatch(mc))
                 .sampler("u_Texture", atlasTextureView, sampler)
                 .end();
         return true;
+    }
+
+    /**
+     * Item-atlas blits are pure screen-space UI. Bind their only transform input explicitly so
+     * the draw cannot observe the projection/model-view state temporarily used by GuiItemAtlas.
+     */
+    private static GpuBufferSlice itemBlitUiBatch(Minecraft mc) {
+        UIBatchUniforms.update(mc.getWindow().getWidth(), mc.getWindow().getHeight());
+        return UIBatchUniforms.get();
     }
 
     private static void appendItemAtlasBlit(MeshBuilder mesh, ItemDrawCommand command, GuiItemAtlas.SlotView slot) {

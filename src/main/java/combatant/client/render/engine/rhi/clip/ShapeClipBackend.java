@@ -72,15 +72,6 @@ public interface ShapeClipBackend {
 
     void beginTest(int activeReference);
 
-    /**
-     * Temporarily excludes renderer-owned offscreen preparation passes (blur pyramids, captures)
-     * from the active shape clip without changing the logical clip stack. The final composite pass
-     * resumes the same mask/reference after the bypass is popped.
-     */
-    void pushOffscreenPassBypass();
-
-    void popOffscreenPassBypass();
-
     void disable();
 
     /**

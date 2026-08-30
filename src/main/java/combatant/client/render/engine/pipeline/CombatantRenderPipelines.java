@@ -24,6 +24,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import combatant.client.mixininterface.IRenderPipeline;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
+import combatant.client.util.resources.asset.AssetLoad;
+import combatant.client.util.resources.asset.AssetLoadPhase;
 import combatant.client.render.engine.rig.shader.RigRenderMode;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
@@ -700,12 +702,13 @@ public enum CombatantRenderPipelines {
     /**
      * UI textured triangles for premultiplied-alpha sources such as GuiItemAtlas.
      */
-    public static final RenderPipeline UI_TEXTURED_PREMULTIPLIED_ALPHA = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+    public static final RenderPipeline UI_TEXTURED_PREMULTIPLIED_ALPHA = add(new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_textured_premultiplied_alpha"))
             .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(SHADER_POS_TEX_COLOR_VERT)
+            .withVertexShader(SHADER_UI_POS_TEX_COLOR_FAST_VERT)
             .withFragmentShader(SHADER_POS_TEX_COLOR_FRAG)
             .withSampler("u_Texture")
+            .withContract(RenderPipelineContract.UI_FAST)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA)
@@ -1461,6 +1464,7 @@ public enum CombatantRenderPipelines {
     /**
      * Compile all registered pipelines (use after resource reload).
      */
+    @AssetLoad(value = AssetLoadPhase.POST_RELOAD, order = 100)
     public static void precompile(ResourceManager resources) {
         final GpuDevice device;
         try {

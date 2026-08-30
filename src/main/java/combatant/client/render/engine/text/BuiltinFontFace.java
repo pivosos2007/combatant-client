@@ -13,29 +13,35 @@
 
 package combatant.client.render.engine.text;
 
+import net.minecraft.resources.Identifier;
+
 import java.io.InputStream;
 
 public class BuiltinFontFace extends FontFace {
-    private final String name;
+    private final Identifier resource;
     private final boolean atlasOnly;
 
     public BuiltinFontFace(FontInfo info, String name) {
-        this(info, name, false);
+        this(info, Identifier.fromNamespaceAndPath("combatant", "font/" + name), false);
     }
 
     public BuiltinFontFace(FontInfo info, String name, boolean atlasOnly) {
+        this(info, Identifier.fromNamespaceAndPath("combatant", "font/" + name), atlasOnly);
+    }
+
+    public BuiltinFontFace(FontInfo info, Identifier resource, boolean atlasOnly) {
         super(info);
-        this.name = name;
+        this.resource = resource;
         this.atlasOnly = atlasOnly;
     }
 
     @Override
     public InputStream toStream() {
         if (atlasOnly) {
-            throw new RuntimeException("Builtin font " + name + " is atlas-only.");
+            throw new RuntimeException("Builtin font " + resource + " is atlas-only.");
         }
-        InputStream in = FontUtils.streamBuiltin(name);
-        if (in == null) throw new RuntimeException("Failed to load builtin font " + name + ".");
+        InputStream in = FontUtils.streamBuiltin(resource);
+        if (in == null) throw new RuntimeException("Failed to load builtin font " + resource + ".");
         return in;
     }
 

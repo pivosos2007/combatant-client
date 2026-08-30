@@ -13,31 +13,13 @@
 
 package combatant.client.render.engine.text;
 
+import combatant.client.util.resources.asset.AssetLoad;
+
 import java.io.File;
 import java.util.*;
 
 public enum Fonts {
     ;
-    public static final String[] BUILTIN_FONTS = {
-            "Comfortaa",
-            "Inter",
-            "InterMedium",
-            "Onest",
-            "OnestMedium",
-            "OnestBold",
-            "OnestLight",
-            "Iosevka",
-            "Monsterrat",
-            "ProFont",
-            "MainMenuIcons",
-            "GuiIcons",
-            "RichIcons",
-            "IconsNur",
-            "Icons",
-            "WeatherIcons",
-            "MediaPlayer",
-            "VanillaSymbols",
-    };
     public static final List<FontFamily> FONT_FAMILIES = new ArrayList<>();
     private static final Map<FontInfo, TextRenderer> RENDERER_CACHE = new HashMap<>();
     private static final Map<String, FontFamily> FAMILY_BY_NAME = new HashMap<>();
@@ -49,6 +31,7 @@ public enum Fonts {
     public static CustomTextRenderer RENDERER;
     private static TextRenderer DEFAULT_RENDERER;
 
+    @AssetLoad(order = 100)
     public static void refresh() {
         destroyCachedRenderers();
 
@@ -59,7 +42,7 @@ public enum Fonts {
         NORMALIZED_CACHE.clear();
         ensureAliases();
 
-        for (String builtin : BUILTIN_FONTS) {
+        for (String builtin : FontUtils.getBuiltinFamilies()) {
             FontUtils.loadBuiltin(FONT_FAMILIES, builtin);
         }
 
@@ -73,8 +56,15 @@ public enum Fonts {
             FAMILY_BY_NAME.put(family.getName().toLowerCase(Locale.ROOT), family);
         }
 
-        DEFAULT_FONT_FAMILY = BUILTIN_FONTS[0];
-        DEFAULT_FONT = getFamily(DEFAULT_FONT_FAMILY).get(FontInfo.Type.Regular);
+        DEFAULT_FONT_FAMILY = FontUtils.primaryBuiltinFamily();
+        FontFamily defaultFamily = getFamily(DEFAULT_FONT_FAMILY);
+        if (defaultFamily == null) {
+            throw new IllegalStateException("No builtin font family discovered");
+        }
+        DEFAULT_FONT = defaultFamily.get(FontInfo.Type.Regular);
+        if (DEFAULT_FONT == null) {
+            throw new IllegalStateException("Default builtin font has no regular face: " + DEFAULT_FONT_FAMILY);
+        }
 
         load(DEFAULT_FONT);
     }

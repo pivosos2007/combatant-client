@@ -21,6 +21,7 @@ import org.lwjgl.system.MemoryUtil;
 import combatant.client.render.engine.Texture;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.util.logging.DebugLog;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -71,6 +72,17 @@ public final class MsdfFont implements GlyphFont {
 
     private static void setLastError(String reason) {
         lastError = reason != null ? reason : "";
+    }
+
+    private static void warnBadAtlas(Identifier resource, String issue, String details) {
+        String resourceName = resource != null ? resource.toString() : "<unknown>";
+        String issueName = issue != null ? issue : "invalid";
+        DebugLog.warnOnce(
+                "bad-msdf-atlas:" + resourceName + ':' + issueName,
+                "[MSDF] Bad atlas %s: %s",
+                resourceName,
+                details
+        );
     }
 
     @Override
@@ -381,60 +393,121 @@ public final class MsdfFont implements GlyphFont {
                 return null;
             }
 
+            var jsonResource = rm.getResource(jsonId);
+            if (jsonResource.isEmpty()) {
+                // Most bundled fonts intentionally have no MSDF variant. Absence is a normal
+                // bitmap fallback; only a present but broken MSDF bundle deserves a warning.
+                setLastError("msdf json missing: " + jsonId);
+                return null;
+            }
+
             JsonObject root;
-            try (InputStream in = rm.getResource(jsonId).orElseThrow().open()) {
+            try (InputStream in = jsonResource.get().open()) {
                 String json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
                 root = JsonParser.parseString(json).getAsJsonObject();
-            } catch (Exception ignored) {
+            } catch (Exception exception) {
                 setLastError("msdf json missing/invalid: " + jsonId);
+                warnBadAtlas(jsonId, "json", "metadata JSON cannot be parsed (" + exception.getClass().getSimpleName() + ")");
                 return null;
             }
 
             BufferedImage image;
-            try (InputStream in = rm.getResource(pngId).orElseThrow().open()) {
+            var pngResource = rm.getResource(pngId);
+            if (pngResource.isEmpty()) {
+                setLastError("msdf png missing: " + pngId);
+                warnBadAtlas(jsonId, "png-missing", "metadata exists but texture " + pngId + " is missing");
+                return null;
+            }
+            try (InputStream in = pngResource.get().open()) {
                 image = ImageIO.read(in);
-                if (image == null) return null;
-            } catch (Exception ignored) {
+                if (image == null) {
+                    setLastError("msdf png invalid: " + pngId);
+                    warnBadAtlas(jsonId, "png-invalid", "texture " + pngId + " is not a readable image");
+                    return null;
+                }
+            } catch (Exception exception) {
                 setLastError("msdf png missing/invalid: " + pngId);
+                warnBadAtlas(jsonId, "png-invalid", "texture " + pngId + " cannot be read ("
+                        + exception.getClass().getSimpleName() + ")");
                 return null;
             }
 
-            JsonObject atlasObj = root.has("atlas") ? root.getAsJsonObject("atlas") : null;
+            JsonObject atlasObj = getObject(root, "atlas");
             float distanceRange = getFloat(atlasObj, "distanceRange", 4f);
             int atlasWidth = getInt(atlasObj, "width", image.getWidth());
             int atlasHeight = getInt(atlasObj, "height", image.getHeight());
             if (atlasWidth <= 0) atlasWidth = image.getWidth();
             if (atlasHeight <= 0) atlasHeight = image.getHeight();
+            if (atlasWidth != image.getWidth() || atlasHeight != image.getHeight()) {
+                setLastError("msdf atlas/image size mismatch: " + jsonId);
+                warnBadAtlas(jsonId, "dimensions", "metadata size " + atlasWidth + 'x' + atlasHeight
+                        + " does not match texture size " + image.getWidth() + 'x' + image.getHeight());
+                return null;
+            }
+            if (!Float.isFinite(distanceRange) || distanceRange <= 0f) {
+                setLastError("msdf distanceRange invalid: " + jsonId);
+                warnBadAtlas(jsonId, "distance-range", "distanceRange must be finite and greater than zero");
+                return null;
+            }
             String yOrigin = getString(atlasObj, "yOrigin", "bottom");
             boolean yOriginBottom = !"top".equalsIgnoreCase(yOrigin);
 
-            JsonObject metricsObj = root.has("metrics") ? root.getAsJsonObject("metrics") : null;
+            JsonObject metricsObj = getObject(root, "metrics");
             float emSize = getFloat(metricsObj, "emSize", 1f);
             float lineHeight = getFloat(metricsObj, "lineHeight", emSize);
             float ascender = getFloat(metricsObj, "ascender", lineHeight);
+            if (!Float.isFinite(lineHeight) || lineHeight <= 0f || !Float.isFinite(ascender)) {
+                setLastError("msdf metrics invalid: " + jsonId);
+                warnBadAtlas(jsonId, "metrics", "lineHeight and ascender must be finite, with lineHeight greater than zero");
+                return null;
+            }
             if (ascender < 0f) ascender = -ascender;
-            if (lineHeight <= 0f) lineHeight = 1f;
 
             Int2ObjectOpenHashMap<Glyph> glyphs = new Int2ObjectOpenHashMap<>();
-            JsonArray glyphArray = root.has("glyphs") ? root.getAsJsonArray("glyphs") : null;
+            JsonArray glyphArray = getArray(root, "glyphs");
+            int missingUnicode = 0;
+            int duplicateUnicode = 0;
             if (glyphArray != null) {
                 float invW = 1f / atlasWidth;
                 float invH = 1f / atlasHeight;
 
                 for (JsonElement el : glyphArray) {
-                    if (!el.isJsonObject()) continue;
+                    if (!el.isJsonObject()) {
+                        missingUnicode++;
+                        continue;
+                    }
                     JsonObject g = el.getAsJsonObject();
 
                     int codePoint = readUnicode(g.get("unicode"));
-                    if (codePoint < 0) continue;
+                    if (!isUnicodeScalar(codePoint)) {
+                        missingUnicode++;
+                        continue;
+                    }
 
                     float advance = getFloat(g, "advance", 0f);
-                    Bounds plane = readBounds(g.has("planeBounds") ? g.getAsJsonObject("planeBounds") : null);
-                    Bounds atlas = readBounds(g.has("atlasBounds") ? g.getAsJsonObject("atlasBounds") : null);
+                    Bounds plane = readBounds(getObject(g, "planeBounds"));
+                    Bounds atlas = readBounds(getObject(g, "atlasBounds"));
 
                     Glyph glyph = Glyph.from(advance, plane, atlas, yOriginBottom, atlasWidth, atlasHeight, invW, invH);
-                    glyphs.put(codePoint, glyph);
+                    if (glyphs.put(codePoint, glyph) != null) duplicateUnicode++;
                 }
+            }
+
+            if (missingUnicode > 0) {
+                warnBadAtlas(jsonId, "unicode", "ignored " + missingUnicode
+                        + " glyph entries without a valid Unicode mapping; do not generate runtime atlases with -allglyphs");
+            }
+            if (duplicateUnicode > 0) {
+                warnBadAtlas(jsonId, "unicode-duplicate", "contains " + duplicateUnicode
+                        + " duplicate Unicode mappings");
+            }
+
+            if (glyphs.isEmpty()) {
+                setLastError("msdf glyphs empty: " + jsonId);
+                warnBadAtlas(jsonId, "glyphs-empty", glyphArray == null
+                        ? "glyphs array is missing"
+                        : "no loadable Unicode-mapped glyphs were found");
+                return null;
             }
 
             Glyph fallback = glyphs.get(32);
@@ -443,12 +516,7 @@ public final class MsdfFont implements GlyphFont {
             Texture texture = uploadTexture(image);
             if (texture == null) {
                 setLastError("msdf texture upload failed: " + pngId);
-                return null;
-            }
-
-            if (glyphs.isEmpty()) {
-                texture.close();
-                setLastError("msdf glyphs empty: " + jsonId);
+                warnBadAtlas(jsonId, "texture-upload", "texture " + pngId + " could not be uploaded to the GPU");
                 return null;
             }
 
@@ -493,6 +561,26 @@ public final class MsdfFont implements GlyphFont {
             }
         }
 
+        private static JsonObject getObject(JsonObject obj, String key) {
+            if (obj == null || key == null || !obj.has(key)) return null;
+            try {
+                JsonElement element = obj.get(key);
+                return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+
+        private static JsonArray getArray(JsonObject obj, String key) {
+            if (obj == null || key == null || !obj.has(key)) return null;
+            try {
+                JsonElement element = obj.get(key);
+                return element != null && element.isJsonArray() ? element.getAsJsonArray() : null;
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+
         private static int getInt(JsonObject obj, String key, int fallback) {
             if (obj == null || key == null || !obj.has(key)) return fallback;
             try {
@@ -530,6 +618,11 @@ public final class MsdfFont implements GlyphFont {
             } catch (Exception ignored) {
             }
             return -1;
+        }
+
+        private static boolean isUnicodeScalar(int codePoint) {
+            return Character.isValidCodePoint(codePoint)
+                    && (codePoint < Character.MIN_SURROGATE || codePoint > Character.MAX_SURROGATE);
         }
 
         private static Bounds readBounds(JsonObject obj) {

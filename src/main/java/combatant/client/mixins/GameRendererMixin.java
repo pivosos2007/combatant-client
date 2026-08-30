@@ -799,6 +799,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     )
     private void combatant$captureWorldForHudGlass(DeltaTracker tickCounter, boolean tick, CallbackInfo ci) {
         MenuBackgroundRenderer.drainDeferred(minecraft);
+        Renderer2D.prepareDeferredUiItems();
         Renderer2D.captureWorldGlassSource();
         if (AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.SCREEN_BEFORE_VANILLA_GUI)) {
             float tickDelta = tickCounter.getGameTimeDeltaPartialTick(true);

@@ -51,26 +51,10 @@ public final class Potions extends DraggableHudElement {
     private static final float HEADER_HEIGHT = 15.5f;
     private static final float BODY_Y_OFFSET = 18.5f;
     private static final float CONTENT_START_Y = 25.0f;
-    private static final float BODY_INSET_Y = 6.5f;
     private static final float ROW_STEP = 11.0f;
     private static final float MIN_WIDTH = 95.0f;
-    private static final float PANEL_RADIUS = 4.0f;
-    private static final float PANEL_SOFTNESS = 1.0f;
-    private static final float PANEL_STROKE = 0.55f;
-    private static final float HEADER_DIVIDER_X = 18.0f;
-    private static final float HEADER_DIVIDER_Y = 5.0f;
-    private static final float HEADER_DIVIDER_H = 6.0f;
-    private static final float ROW_DIVIDER_X = 14.0f;
-    private static final float ROW_DIVIDER_H = 7.0f;
-    private static final float TITLE_ICON_X = 5.0f;
     private static final float TITLE_TEXT_X = 22.0f;
     private static final float COUNT_LABEL_OFFSET = 22.0f;
-    private static final float COUNT_VALUE_OFFSET = 3.0f;
-    private static final float ROW_ICON_X = 3.5f;
-    private static final float ROW_ICON_SIZE = 8.0f;
-    private static final float ROW_TEXT_X = 18.0f;
-    private static final float ROW_TIME_RIGHT = 8.0f;
-    private static final float ROW_CONTENT_CENTER_OFFSET = 2.1f;
     private static final int BLINK_THRESHOLD_TICKS = 200;
     private static final double BLINK_SPEED = 0.009;
     private static final String COLOR_THEME = "Theme";
@@ -446,54 +430,6 @@ public final class Potions extends DraggableHudElement {
     @Override
     public boolean isDraggable() {
         return super.isDraggable();
-    }
-
-    private void renderExampleRow(Renderer2D renderer,
-                                  TextRenderer rowTextRenderer,
-                                  float fontScale,
-                                  float rowTextH,
-                                  float baseScale,
-                                  float renderWidth,
-                                  float centerY,
-                                  float renderX) {
-        int textColor = withAlpha(uiText & 0x00FFFFFF, 255);
-        int timeColor = withAlpha(uiCounter & 0x00FFFFFF, 255);
-        int dividerColor = withAlpha(uiMuted & 0x00FFFFFF, 130);
-        float iconSize = ROW_ICON_SIZE * baseScale;
-        float rowContentCenterY = centerY + (ROW_CONTENT_CENTER_OFFSET * baseScale);
-        Identifier previewIcon = PREVIEW_ICONS[(int) ((System.currentTimeMillis() / 1000L) % PREVIEW_ICONS.length)];
-
-        Renderer2D.TEXTURE.roundedTexRect(
-                renderX + (ROW_ICON_X * baseScale),
-                rowContentCenterY - (iconSize * 0.5f),
-                iconSize,
-                iconSize,
-                Math.min(1.15f * baseScale, iconSize * 0.18f),
-                1.0f,
-                withAlpha(0x00FFFFFF, 255),
-                previewIcon
-        );
-
-        renderer.quad(
-                renderX + (ROW_DIVIDER_X * baseScale),
-                rowContentCenterY - ((ROW_DIVIDER_H * baseScale) * 0.5f),
-                Math.max(0.5f, 0.5f * baseScale),
-                ROW_DIVIDER_H * baseScale,
-                dividerColor
-        );
-
-        rowTextRenderer.begin(fontScale, false, false);
-        float textY = rowContentCenterY - (rowTextH * 0.5f);
-        rowTextRenderer.render("Example effect",
-                renderX + (ROW_TEXT_X * baseScale), textY, new RenderColor(textColor), false);
-        float durationWidth = (float) rowTextRenderer.getWidth("**:**", false);
-        rowTextRenderer.render("**:**",
-                renderX + renderWidth - durationWidth - (ROW_TIME_RIGHT * baseScale),
-                textY,
-                new RenderColor(timeColor),
-                false
-        );
-        rowTextRenderer.end();
     }
 
     private List<Row> collectRows() {
