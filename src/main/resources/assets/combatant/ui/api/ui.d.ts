@@ -325,6 +325,8 @@ export type UiConnectorNode = UiNode & {
     | "orthogonal"
     | "node-edge"
     | "spline"
+    | "wave"
+    | "waveform"
     | "spline-area"
     | "rounded-edge"
     | "rounded-node-edge"
@@ -370,6 +372,18 @@ export type UiConnectorNode = UiNode & {
   points?: Array<{ x: number; y: number }> | number[];
   /** Local y coordinate used as the bottom edge of a spline area fill. Defaults to node height. */
   baseline?: number;
+  /** Local center line for analytic wave/waveform connectors. */
+  centerY?: number;
+  /** Analytic wave amplitude in logical pixels. */
+  amplitude?: number;
+  /** Wave phase in radians. */
+  phase?: number;
+  /** Wave wavelength in logical pixels. */
+  wavelength?: number;
+  /** Secondary harmonic strength [0..0.45]. */
+  harmonic?: number;
+  /** Endpoint settling distance in logical pixels. */
+  edgeFade?: number;
   fillStartColor?: string | number;
   fillEndColor?: string | number;
   fillBottomStartColor?: string | number;
@@ -500,7 +514,13 @@ export interface UiFactory {
   fmt(value: number, digits?: number, fallback?: string): string;
   cls(...parts: Array<string | false | null | undefined>): string;
   abs(x?: number, y?: number, w?: number, h?: number, extra?: string): string;
+  /** Safe property lookup supporting plain objects and host map-like values. */
+  prop<T = unknown>(value: unknown, key: string, fallback?: T): T | unknown;
+  /** Converts arrays/iterables/host collections to a plain JS array, or [] on failure. */
+  arr<T = unknown>(value: unknown): T[];
   color: {
+    /** Reads a string color from a plain object or host map-like value. */
+    get(value: unknown, key: string, fallback?: string): string;
     alpha(hex: string, alpha?: number, fallback?: string): string;
     opacity(hex: string, fallback?: number): number;
   };

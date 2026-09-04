@@ -69,7 +69,7 @@ import java.util.UUID;
 import static combatant.client.features.theme.Theme.theme;
 
 @HudElementRegister(order = 60)
-@UiScriptAsset("combatant:api/hud/static/dynamic_island")
+@UiScriptAsset("combatant:modules/hud/static/dynamic_island")
 public final class DynamicIsland extends AbstractHudElement {
     public static final DynamicIsland INSTANCE = new DynamicIsland();
 private static final float TOP_Y = 18f;
@@ -159,6 +159,22 @@ private static final float TOP_Y = 18f;
     private float playHover;
     private float nextHover;
     private float repeatHover;
+    private float shufflePress;
+    private float prevPress;
+    private float playPress;
+    private float nextPress;
+    private float repeatPress;
+    private float bodyHover;
+    private float bodyPress;
+    private float progressHover;
+    private float progressPress;
+    private float mainBodyX;
+    private float mainBodyY;
+    private float mainBodyW;
+    private float mainBodyH;
+    private float progressX;
+    private float progressY;
+    private float progressW;
 
     private int uiFillTop;
     private int uiFillBottom;
@@ -189,18 +205,29 @@ private static final float TOP_Y = 18f;
                                          String key,
                                          float x,
                                          float y,
-                                         float size) {
-        putBounds(patches, key + ":hover", x, y, size, size);
-        putBounds(patches, key, x, y + 4.0f, size, Math.max(0.0f, size - 4.0f));
+                                         float size,
+                                         float press) {
+        float down = clamp01(press);
+        float haloSize = size * (1.0f - 0.055f * down);
+        float haloOffset = (size - haloSize) * 0.5f;
+        float iconScale = 1.0f - 0.08f * down;
+        float iconW = size * iconScale;
+        float iconH = Math.max(0.0f, (size - 4.0f) * iconScale);
+        putBounds(patches, key + ":hover", x + haloOffset, y + haloOffset, haloSize, haloSize);
+        putBounds(patches, key, x + (size - iconW) * 0.5f, y + 4.0f + ((size - 4.0f) - iconH) * 0.5f, iconW, iconH);
     }
 
     private static void putSvgControlBounds(UiBoundsPatchSet patches,
                                             String key,
                                             float x,
                                             float y,
-                                            float size) {
-        float iconSize = Math.max(0.0f, size * 0.74f);
-        putBounds(patches, key + ":hover", x, y, size, size);
+                                            float size,
+                                            float press) {
+        float down = clamp01(press);
+        float haloSize = size * (1.0f - 0.055f * down);
+        float haloOffset = (size - haloSize) * 0.5f;
+        float iconSize = Math.max(0.0f, size * 0.74f * (1.0f - 0.08f * down));
+        putBounds(patches, key + ":hover", x + haloOffset, y + haloOffset, haloSize, haloSize);
         putBounds(patches, key, x + (size - iconSize) * 0.5f, y + (size - iconSize) * 0.5f, iconSize, iconSize);
     }
 
@@ -219,9 +246,14 @@ private static final float TOP_Y = 18f;
                                      String iconColor,
                                      String accentSoft,
                                      float expandedAlpha,
-                                     float hover) {
+                                     float hover,
+                                     float press,
+                                     boolean primary) {
         patchText(patches, key, icon, scaleHexAlpha(iconColor, expandedAlpha));
-        patchShape(patches, key + ":hover", "fill", scaleHexAlpha(accentSoft, Math.max(0.0f, hover) * 0.3f * expandedAlpha));
+        float interaction = (primary ? 0.13f : 0.0f)
+                + Math.max(0.0f, hover) * 0.23f
+                + Math.max(0.0f, press) * 0.34f;
+        patchShape(patches, key + ":hover", "fill", scaleHexAlpha(accentSoft, interaction * expandedAlpha));
     }
 
     private static void patchSvgControl(UiScriptPatchSet patches,
@@ -230,9 +262,11 @@ private static final float TOP_Y = 18f;
                                         String iconColor,
                                         String accentSoft,
                                         float expandedAlpha,
-                                        float hover) {
+                                        float hover,
+                                        float press) {
         patchImage(patches, key, asset, scaleHexAlpha(iconColor, expandedAlpha));
-        patchShape(patches, key + ":hover", "fill", scaleHexAlpha(accentSoft, Math.max(0.0f, hover) * 0.3f * expandedAlpha));
+        float interaction = Math.max(0.0f, hover) * 0.23f + Math.max(0.0f, press) * 0.34f;
+        patchShape(patches, key + ":hover", "fill", scaleHexAlpha(accentSoft, interaction * expandedAlpha));
     }
 
     private static void patchText(UiScriptPatchSet patches,
@@ -426,34 +460,51 @@ private static final float TOP_Y = 18f;
     public boolean onMouseClicked(float mx, float my, int button) {
         if (mc == null || !isInteractiveScreen(ClientScreen.current())) return false;
         if (!contains(mx, my)) return false;
+        if (currentMode != IslandMode.MUSIC || button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
 
-        if (currentMode == IslandMode.MUSIC && expandAnim > 0.01f && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (expandAnim > 0.01f) {
+            if (progressW > 1.0f && currentSnapshot != null && currentSnapshot.supportsSeek()
+                    && hit(mx, my, progressX - 2.0f, progressY - 5.0f, progressW + 4.0f, PROGRESS_H + 10.0f)) {
+                float fraction = clamp01((mx - progressX) / progressW);
+                long duration = Math.max(0L, currentSnapshot.durationSeconds());
+                if (duration > 0L) {
+                    mediaService.seekTo(Math.round(duration * fraction));
+                    progressPress = 1.0f;
+                }
+                return true;
+            }
             if (currentSnapshot != null && currentSnapshot.supportsShuffle()
                     && hit(mx, my, shuffleX, shuffleY, controlSize, controlSize)) {
+                shufflePress = 1.0f;
                 mediaService.toggleShuffle();
                 return true;
             }
             if (hit(mx, my, prevX, prevY, controlSize, controlSize)) {
+                prevPress = 1.0f;
                 mediaService.previous();
                 return true;
             }
             if (hit(mx, my, playX, playY, controlSize, controlSize)) {
+                playPress = 1.0f;
                 mediaService.playPause();
                 return true;
             }
             if (hit(mx, my, nextX, nextY, controlSize, controlSize)) {
+                nextPress = 1.0f;
                 mediaService.next();
                 return true;
             }
             if (currentSnapshot != null && currentSnapshot.supportsRepeat()
                     && hit(mx, my, repeatX, repeatY, controlSize, controlSize)) {
+                repeatPress = 1.0f;
                 mediaService.cycleRepeatMode();
                 return true;
             }
         }
 
-        if (currentMode == IslandMode.MUSIC
-                && (button == GLFW.GLFW_MOUSE_BUTTON_LEFT || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+        // Context chips are part of the overall bounds but are not the toggle surface.
+        if (hit(mx, my, mainBodyX, mainBodyY, mainBodyW, mainBodyH)) {
+            bodyPress = 1.0f;
             expanded = !expanded;
             return true;
         }
@@ -601,15 +652,19 @@ private static final float TOP_Y = 18f;
         int accent = accentFor(currentMode);
 
         setBounds(drawX, drawY, drawWidth, drawHeight);
+        mainBodyX = drawX + mainX;
+        mainBodyY = drawY;
+        mainBodyW = drawMainWidth;
+        mainBodyH = drawHeight;
 
         float expandedContentAlpha = currentMode == IslandMode.MUSIC ? AnimationUtility.easeOutCubic(expandAnim) * alpha : 0f;
         float compactContentAlpha = currentMode == IslandMode.MUSIC ? (1f - AnimationUtility.easeOutCubic(expandAnim)) * alpha : 0f;
         if (expandedContentAlpha > 0.01f) {
             updateMusicControls(drawX + mainX, drawY, drawMainWidth, valueRenderer);
-            updateControlHover(isInteractiveScreen(currentScreen));
         } else {
             resetControls();
         }
+        updateInteractionAnimation(isInteractiveScreen(currentScreen), dt);
 
         if (!renderScripted(renderer, fallback, titleRenderer, metaRenderer, ctx, tickDelta, screenW, screenH, drawWidth, drawHeight,
                 drawMainWidth, mainX, leftContextWidthAnim, rightContextWidthAnim,
@@ -713,6 +768,11 @@ private static final float TOP_Y = 18f;
             patchShape(patches, "shell:fill", "startColor", props.get("fillTop"), "endColor", props.get("fillBottom"), "radius", props.get("radius"));
             patchShape(patches, "shell:tint", "startColor", props.get("tintTop"), "endColor", props.get("tintBottom"), "radius", props.get("radius"));
             patchShape(patches, "shell:stroke", "stroke", props.get("stroke"), "radius", props.get("radius"));
+            float shellInteraction = numberProp(props, "bodyHover", 0.0f) * 0.07f
+                    + numberProp(props, "bodyPress", 0.0f) * 0.13f;
+            patchShape(patches, "shell:interaction",
+                    "fill", scaleHexAlpha(accentSoft, shellInteraction),
+                    "radius", props.get("radius"));
         }
 
         if (timeMode) {
@@ -753,22 +813,37 @@ private static final float TOP_Y = 18f;
             patchClippedText(patches, "music:title:expanded", numberProp(props, "titleWidthExpanded", 0.0f), Math.max(0.0f, mainWidth - 72.0f), numberProp(props, "titleScrollTime", 0.0f), 1.0f, 18.0f, 16.0f);
             patchText(patches, "music:artist:expanded", stringProp(props, "artist", ""), scaleHexAlpha(secondary, expandedAlpha));
             patchClippedText(patches, "music:artist:expanded", numberProp(props, "artistWidthExpanded", 0.0f), Math.max(0.0f, mainWidth - 72.0f), numberProp(props, "titleScrollTime", 0.0f), 1.4f, 14.0f, 16.0f);
-            patchShape(patches, "music:progress:bg", "fill", scaleHexAlpha(stringProp(props, "progressBg", "#00FFFFFF"), expandedAlpha));
-            patchShape(patches, "music:progress:fill",
-                    "fill", scaleHexAlpha(accent, expandedAlpha),
-                    "renderWidth", Math.max(0.0f, mainWidth - 26.0f) * progress);
+            float progressFocus = Math.max(numberProp(props, "progressHover", 0.0f), numberProp(props, "progressPress", 0.0f));
+            patchShape(patches, "music:progress:bg",
+                    "fill", scaleHexAlpha(stringProp(props, "progressBg", "#00FFFFFF"), expandedAlpha * (0.86f + 0.14f * progressFocus)));
+            float progressWidth = Math.max(0.0f, mainWidth - 26.0f);
+            float waveSpan = progressWidth * progress;
+            float waveSpanFactor = clamp01(waveSpan / 24.0f);
+            waveSpanFactor = waveSpanFactor * waveSpanFactor * (3.0f - 2.0f * waveSpanFactor);
+            float waveAmplitude = boolProp(props, "playing", false)
+                    ? (2.15f + 0.30f * progressFocus) * waveSpanFactor
+                    : 0.0f;
+            patchShape(patches, "music:progress:wave",
+                    "x2", waveSpan,
+                    "phase", props.get("wavePhase"),
+                    "amplitude", waveAmplitude,
+                    "strokeWidth", 4.6f + 0.65f * progressFocus,
+                    "startColor", scaleHexAlpha(accent, expandedAlpha),
+                    "endColor", scaleHexAlpha(accent, expandedAlpha));
+            patchShape(patches, "music:progress:thumb",
+                    "fill", scaleHexAlpha(primary, expandedAlpha * (0.94f + 0.06f * progressFocus)));
             patchText(patches, "music:elapsed:expanded", stringProp(props, "elapsed", "0:00"), scaleHexAlpha(secondary, expandedAlpha));
             patchText(patches, "music:total:expanded", stringProp(props, "total", "0:00"), scaleHexAlpha(secondary, expandedAlpha));
             patchImage(patches, "artwork:expanded", stringProp(props, "artworkTexture", ""), scaleHexAlpha("#FFFFFFFF", expandedAlpha));
             patchShape(patches, "artwork:expanded:fallback", "fill", scaleHexAlpha(accent, 0.92f * expandedAlpha), "stroke", scaleHexAlpha("#33FFFFFF", expandedAlpha));
             if (boolProp(props, "showShuffle", false)) {
-                patchControl(patches, "music:shuffle", stringProp(props, "iconShuffle", ""), stringProp(props, "shuffleColor", primary), accentSoft, expandedAlpha, numberProp(props, "shuffleHover", 0.0f));
+                patchControl(patches, "music:shuffle", stringProp(props, "iconShuffle", ""), stringProp(props, "shuffleColor", primary), accentSoft, expandedAlpha, numberProp(props, "shuffleHover", 0.0f), numberProp(props, "shufflePress", 0.0f), false);
             }
-            patchControl(patches, "music:prev", stringProp(props, "iconPrev", ""), primary, accentSoft, expandedAlpha, numberProp(props, "prevHover", 0.0f));
-            patchControl(patches, "music:play", stringProp(props, "iconPlay", ""), primary, accentSoft, expandedAlpha, numberProp(props, "playHover", 0.0f));
-            patchControl(patches, "music:next", stringProp(props, "iconNext", ""), primary, accentSoft, expandedAlpha, numberProp(props, "nextHover", 0.0f));
+            patchControl(patches, "music:prev", stringProp(props, "iconPrev", ""), primary, accentSoft, expandedAlpha, numberProp(props, "prevHover", 0.0f), numberProp(props, "prevPress", 0.0f), false);
+            patchControl(patches, "music:play", stringProp(props, "iconPlay", ""), primary, accentSoft, expandedAlpha, numberProp(props, "playHover", 0.0f), numberProp(props, "playPress", 0.0f), true);
+            patchControl(patches, "music:next", stringProp(props, "iconNext", ""), primary, accentSoft, expandedAlpha, numberProp(props, "nextHover", 0.0f), numberProp(props, "nextPress", 0.0f), false);
             if (boolProp(props, "showRepeat", false)) {
-                patchSvgControl(patches, "music:repeat", stringProp(props, "repeatAsset", "repeat-off"), stringProp(props, "repeatColor", "#99000000"), accentSoft, expandedAlpha, numberProp(props, "repeatHover", 0.0f));
+                patchSvgControl(patches, "music:repeat", stringProp(props, "repeatAsset", "repeat-off"), stringProp(props, "repeatColor", "#99000000"), accentSoft, expandedAlpha, numberProp(props, "repeatHover", 0.0f), numberProp(props, "repeatPress", 0.0f));
             }
         }
 
@@ -798,6 +873,7 @@ private static final float TOP_Y = 18f;
             putBounds(patches, "shell:fill", rootX + mainX, rootY, mainWidth, height);
             putBounds(patches, "shell:tint", rootX + mainX, rootY, mainWidth, height);
             putBounds(patches, "shell:stroke", rootX + mainX, rootY, mainWidth, height);
+            putBounds(patches, "shell:interaction", rootX + mainX, rootY, mainWidth, height);
         }
 
         if (musicMode || clickGuiMode) {
@@ -832,7 +908,6 @@ private static final float TOP_Y = 18f;
                                        UiScriptProps props,
                                        float mainX,
                                        float width) {
-        float waveX = mainX + width - 26.0f;
         putBounds(patches, "music:elapsed:compact", rootX + mainX + 11.0f, rootY + 10.5f, 38.0f, 13.0f);
         putBounds(patches, "music:divider", rootX + mainX + 49.0f, rootY + 7.0f, 1.0f, 18.0f);
         putBounds(patches, "artwork:compact", rootX + mainX + 58.0f, rootY + 6.5f, 22.0f, 22.0f);
@@ -841,6 +916,7 @@ private static final float TOP_Y = 18f;
         putBounds(patches, "music:title:compact:clip", rootX + mainX + 89.0f, rootY + 8.5f, titleW, 18.0f);
         putBounds(patches, "music:title:compact", rootX + mainX + 89.0f, rootY + 8.5f, titleW, 18.0f);
 
+        float waveX = mainX + width - 26.0f;
         float centerY = 17.5f;
         float t = Util.getMillis() / 1000.0f;
         boolean playing = boolProp(props, "playing", false);
@@ -866,19 +942,32 @@ private static final float TOP_Y = 18f;
         putBounds(patches, "music:title:expanded", rootX + mainX + 59.0f, rootY + 11.0f, titleW, 16.0f);
         putBounds(patches, "music:artist:expanded:clip", rootX + mainX + 59.0f, rootY + 28.0f, titleW, 14.0f);
         putBounds(patches, "music:artist:expanded", rootX + mainX + 59.0f, rootY + 28.0f, titleW, 14.0f);
-        putBounds(patches, "music:progress:bg", rootX + mainX + 13.0f, rootY + 52.0f, progressW, 5.0f);
-        putBounds(patches, "music:progress:fill", rootX + mainX + 13.0f, rootY + 52.0f, progressW, 5.0f);
+        float progressFocus = Math.max(numberProp(props, "progressHover", 0.0f), numberProp(props, "progressPress", 0.0f));
+        float progress = clamp01(numberProp(props, "progress", 0.0f));
+        float activeW = progressW * progress;
+        float inactiveH = 3.0f + 0.75f * progressFocus;
+        float inactiveY = 54.5f - inactiveH * 0.5f;
+        putBounds(patches, "music:progress:bg",
+                rootX + mainX + 13.0f + activeW,
+                rootY + inactiveY,
+                Math.max(0.0f, progressW - activeW),
+                inactiveH);
+        putBounds(patches, "music:progress:wave", rootX + mainX + 13.0f, rootY + 48.0f, progressW, 13.0f);
+        float thumbSize = 7.5f + 1.5f * progressFocus;
+        float thumbCenterX = rootX + mainX + 13.0f + activeW;
+        float thumbCenterY = rootY + 54.5f;
+        putBounds(patches, "music:progress:thumb", thumbCenterX - thumbSize * 0.5f, thumbCenterY - thumbSize * 0.5f, thumbSize, thumbSize);
         putBounds(patches, "music:elapsed:expanded", rootX + mainX + 13.0f, rootY + 65.0f, 44.0f, 14.0f);
         putBounds(patches, "music:total:expanded", rootX + mainX + width - 57.0f, rootY + 65.0f, 44.0f, 14.0f);
 
         if (boolProp(props, "showShuffle", false)) {
-            putControlBounds(patches, "music:shuffle", shuffleX, shuffleY, controlSize);
+            putControlBounds(patches, "music:shuffle", shuffleX, shuffleY, controlSize, numberProp(props, "shufflePress", 0.0f));
         }
-        putControlBounds(patches, "music:prev", prevX, prevY, controlSize);
-        putControlBounds(patches, "music:play", playX, playY, controlSize);
-        putControlBounds(patches, "music:next", nextX, nextY, controlSize);
+        putControlBounds(patches, "music:prev", prevX, prevY, controlSize, numberProp(props, "prevPress", 0.0f));
+        putControlBounds(patches, "music:play", playX, playY, controlSize, numberProp(props, "playPress", 0.0f));
+        putControlBounds(patches, "music:next", nextX, nextY, controlSize, numberProp(props, "nextPress", 0.0f));
         if (boolProp(props, "showRepeat", false)) {
-            putSvgControlBounds(patches, "music:repeat", repeatX, repeatY, controlSize);
+            putSvgControlBounds(patches, "music:repeat", repeatX, repeatY, controlSize, numberProp(props, "repeatPress", 0.0f));
         }
     }
 
@@ -939,7 +1028,15 @@ private static final float TOP_Y = 18f;
         props.put("progress", currentSnapshot != null && currentSnapshot.durationSeconds() > 0
                 ? AnimationUtility.clamp((float) currentSnapshot.predictedPositionSeconds() / (float) currentSnapshot.durationSeconds(), 0f, 1f)
                 : 0f);
-        props.put("playing", currentSnapshot != null && currentSnapshot.isPlaying());
+        boolean playing = currentSnapshot != null && currentSnapshot.isPlaying();
+        props.put("playing", playing);
+        float waveSeconds = Util.getMillis() / 1000.0f;
+        props.put("wavePhase", waveSeconds * (playing ? 1.15f : 0.0f));
+        props.put("bodyHover", bodyHover);
+        props.put("bodyPress", bodyPress);
+        props.put("progressHover", progressHover);
+        props.put("progressPress", progressPress);
+        props.put("supportsSeek", currentSnapshot != null && currentSnapshot.supportsSeek());
         Identifier artwork = currentSnapshot != null ? currentSnapshot.artworkTexture() : null;
         props.put("artworkTexture", artwork != null ? artwork.toString() : "");
         props.put("fillTop", hex(HudRenderUtil.scaleAlpha(uiFillTop, 0.88f * alpha)));
@@ -979,6 +1076,11 @@ private static final float TOP_Y = 18f;
         props.put("playHover", playHover);
         props.put("nextHover", nextHover);
         props.put("repeatHover", repeatHover);
+        props.put("shufflePress", shufflePress);
+        props.put("prevPress", prevPress);
+        props.put("playPress", playPress);
+        props.put("nextPress", nextPress);
+        props.put("repeatPress", repeatPress);
         props.put("iconShuffle", iconString(ICON_SHUFFLE));
         props.put("iconPrev", iconString(ICON_PREV));
         props.put("iconPlay", iconString(currentSnapshot != null && currentSnapshot.isPlaying() ? ICON_PAUSE : ICON_PLAY));
@@ -1035,9 +1137,9 @@ private static final float TOP_Y = 18f;
     }
 
     private void updateMusicControls(float drawX, float drawY, float width, TextRenderer valueRenderer) {
-        float progressX = drawX + EXPANDED_PAD_X;
-        float progressW = width - EXPANDED_PAD_X * 2f;
-        float progressY = drawY + 52f;
+        progressX = drawX + EXPANDED_PAD_X;
+        progressW = Math.max(0f, width - EXPANDED_PAD_X * 2f);
+        progressY = drawY + 52f;
         float timeH = measureHeight(valueRenderer, 0.80f);
 
         controlSize = CONTROL_SIZE;
@@ -1129,13 +1231,24 @@ private static final float TOP_Y = 18f;
                 HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(BASE_STROKE, accent, 0.18f), 0.18f * alpha));
     }
 
-    private void updateControlHover(boolean chatOpen) {
-        if (!chatOpen || controlSize <= 0f || mc == null || mc.getWindow() == null) {
-            shuffleHover = AnimationUtility.approach(shuffleHover, 0f, 0.25f);
-            prevHover = AnimationUtility.approach(prevHover, 0f, 0.25f);
-            playHover = AnimationUtility.approach(playHover, 0f, 0.25f);
-            nextHover = AnimationUtility.approach(nextHover, 0f, 0.25f);
-            repeatHover = AnimationUtility.approach(repeatHover, 0f, 0.25f);
+    private void updateInteractionAnimation(boolean interactive, float dt) {
+        float decaySpeed = 16.0f;
+        bodyPress = AnimationUtility.approach(bodyPress, 0f, dt, decaySpeed);
+        progressPress = AnimationUtility.approach(progressPress, 0f, dt, decaySpeed);
+        shufflePress = AnimationUtility.approach(shufflePress, 0f, dt, decaySpeed);
+        prevPress = AnimationUtility.approach(prevPress, 0f, dt, decaySpeed);
+        playPress = AnimationUtility.approach(playPress, 0f, dt, decaySpeed);
+        nextPress = AnimationUtility.approach(nextPress, 0f, dt, decaySpeed);
+        repeatPress = AnimationUtility.approach(repeatPress, 0f, dt, decaySpeed);
+
+        if (!interactive || mc == null || mc.getWindow() == null) {
+            bodyHover = AnimationUtility.approach(bodyHover, 0f, dt, 12f);
+            progressHover = AnimationUtility.approach(progressHover, 0f, dt, 14f);
+            shuffleHover = AnimationUtility.approach(shuffleHover, 0f, dt, 14f);
+            prevHover = AnimationUtility.approach(prevHover, 0f, dt, 14f);
+            playHover = AnimationUtility.approach(playHover, 0f, dt, 14f);
+            nextHover = AnimationUtility.approach(nextHover, 0f, dt, 14f);
+            repeatHover = AnimationUtility.approach(repeatHover, 0f, dt, 14f);
             return;
         }
 
@@ -1144,14 +1257,27 @@ private static final float TOP_Y = 18f;
         float uiScale = HudScale.scale(fbw, fbh);
         float mx = HudScale.toVirtual((float) mc.mouseHandler.xpos(), uiScale);
         float my = HudScale.toVirtual((float) mc.mouseHandler.ypos(), uiScale);
+        boolean music = currentMode == IslandMode.MUSIC;
+        boolean expandedInteractive = music && expandAnim > 0.01f && controlSize > 0f;
         boolean showShuffle = currentSnapshot != null && currentSnapshot.supportsShuffle();
         boolean showRepeat = currentSnapshot != null && currentSnapshot.supportsRepeat();
 
-        shuffleHover = AnimationUtility.approach(shuffleHover, showShuffle && hit(mx, my, shuffleX, shuffleY, controlSize, controlSize) ? 1f : 0f, 0.25f);
-        prevHover = AnimationUtility.approach(prevHover, hit(mx, my, prevX, prevY, controlSize, controlSize) ? 1f : 0f, 0.25f);
-        playHover = AnimationUtility.approach(playHover, hit(mx, my, playX, playY, controlSize, controlSize) ? 1f : 0f, 0.25f);
-        nextHover = AnimationUtility.approach(nextHover, hit(mx, my, nextX, nextY, controlSize, controlSize) ? 1f : 0f, 0.25f);
-        repeatHover = AnimationUtility.approach(repeatHover, showRepeat && hit(mx, my, repeatX, repeatY, controlSize, controlSize) ? 1f : 0f, 0.25f);
+        bodyHover = AnimationUtility.approach(bodyHover,
+                music && hit(mx, my, mainBodyX, mainBodyY, mainBodyW, mainBodyH) ? 1f : 0f, dt, 12f);
+        progressHover = AnimationUtility.approach(progressHover,
+                expandedInteractive && progressW > 1f
+                        && hit(mx, my, progressX - 2f, progressY - 5f, progressW + 4f, PROGRESS_H + 10f) ? 1f : 0f,
+                dt, 16f);
+        shuffleHover = AnimationUtility.approach(shuffleHover,
+                expandedInteractive && showShuffle && hit(mx, my, shuffleX, shuffleY, controlSize, controlSize) ? 1f : 0f, dt, 16f);
+        prevHover = AnimationUtility.approach(prevHover,
+                expandedInteractive && hit(mx, my, prevX, prevY, controlSize, controlSize) ? 1f : 0f, dt, 16f);
+        playHover = AnimationUtility.approach(playHover,
+                expandedInteractive && hit(mx, my, playX, playY, controlSize, controlSize) ? 1f : 0f, dt, 16f);
+        nextHover = AnimationUtility.approach(nextHover,
+                expandedInteractive && hit(mx, my, nextX, nextY, controlSize, controlSize) ? 1f : 0f, dt, 16f);
+        repeatHover = AnimationUtility.approach(repeatHover,
+                expandedInteractive && showRepeat && hit(mx, my, repeatX, repeatY, controlSize, controlSize) ? 1f : 0f, dt, 16f);
     }
 
     private void resetControls() {
@@ -1160,12 +1286,20 @@ private static final float TOP_Y = 18f;
         playX = playY = 0f;
         nextX = nextY = 0f;
         repeatX = repeatY = 0f;
+        progressX = progressY = progressW = 0f;
         controlSize = 0f;
         shuffleHover = 0f;
         prevHover = 0f;
         playHover = 0f;
         nextHover = 0f;
         repeatHover = 0f;
+        progressHover = 0f;
+        shufflePress = 0f;
+        prevPress = 0f;
+        playPress = 0f;
+        nextPress = 0f;
+        repeatPress = 0f;
+        progressPress = 0f;
     }
 
     private int accentFor(IslandMode mode) {

@@ -238,8 +238,54 @@ function musicExpanded(p) {
       fade: true,
       color: colorAlpha(p.textSecondary, alpha),
     }),
-    ui.roundedRect({ key: "music:progress:bg", x: x + 13, y: 52, w: progressW, h: 5, radius: 2.5, fill: colorAlpha(p.progressBg, alpha), strokeWidth: 0 }),
-    ui.roundedRect({ key: "music:progress:fill", x: x + 13, y: 52, w: progressW * ui.clamp(p.progress, 0, 1), h: 5, radius: 2.5, fill: colorAlpha(p.accent, alpha), strokeWidth: 0 }),
+    ...(() => {
+      const progress = ui.clamp(num(p.progress, 0), 0, 1);
+      const activeW = progressW * progress;
+      const focus = Math.max(num(p.progressHover, 0), num(p.progressPress, 0));
+      const inactiveH = 3 + 0.75 * focus;
+      const spanT = ui.clamp(activeW / 24, 0, 1);
+      const spanEase = spanT * spanT * (3 - 2 * spanT);
+      const amplitude = p.playing === true ? (2.15 + 0.30 * focus) * spanEase : 0;
+      const thumbSize = 7.5 + 1.5 * focus;
+      const thumbCx = x + 13 + activeW;
+      const thumbCy = 54.5;
+      return [
+        // Only the unplayed remainder is a straight neutral rail. There is deliberately
+        // no accent rectangle underneath the active waveform.
+        ui.roundedRect({
+          key: "music:progress:bg",
+          x: x + 13 + activeW,
+          y: thumbCy - inactiveH * 0.5,
+          w: Math.max(0, progressW - activeW),
+          h: inactiveH,
+          radius: inactiveH * 0.5,
+          fill: colorAlpha(p.progressBg, alpha),
+          strokeWidth: 0,
+        }),
+        ui.connector({
+          key: "music:progress:wave",
+          connector: "wave",
+          class: abs(x + 13, 48, progressW, 13),
+          x1: 0,
+          x2: activeW,
+          centerY: 6.5,
+          amplitude,
+          wavelength: 29,
+          phase: num(p.wavePhase, 0),
+          harmonic: 0.18,
+          edgeFade: 5.0,
+          strokeWidth: 4.6 + 0.65 * focus,
+          startColor: colorAlpha(p.accent, alpha),
+          endColor: colorAlpha(p.accent, alpha),
+        }),
+        ui.shape({
+          key: "music:progress:thumb",
+          shape: "circle",
+          class: abs(thumbCx - thumbSize * 0.5, thumbCy - thumbSize * 0.5, thumbSize, thumbSize),
+          fill: colorAlpha(p.textPrimary, 0.96 * alpha),
+        }),
+      ];
+    })(),
     ui.text({ key: "music:elapsed:expanded", text: p.elapsed || "0:00", color: colorAlpha(p.textSecondary, alpha), class: cls(abs(x + 13, 65, 44, 14), "font-inter-medium-0.80", `text-${colorAlpha(p.textSecondary, alpha)}`) }),
     ui.text({ key: "music:total:expanded", text: p.total || "0:00", color: colorAlpha(p.textSecondary, alpha), class: cls(abs(x + w - 57, 65, 44, 14), "font-inter-medium-0.80 text-align-right", `text-${colorAlpha(p.textSecondary, alpha)}`) }),
     ...control(p, "music:prev", p.iconPrev, p.prevX, p.prevY, num(p.prevHover, 0)),

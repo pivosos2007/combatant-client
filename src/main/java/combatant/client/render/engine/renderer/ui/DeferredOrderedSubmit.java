@@ -10,8 +10,12 @@ package combatant.client.render.engine.renderer.ui;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.Renderer2D.Deferred2DLayer;
+import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 
-public record DeferredOrderedSubmit(Deferred2DLayer layer, ViewportContext viewport, int[] framebufferScissor, OrderedUiBatcher batcher) implements Deferred2DSubmit {
+public record DeferredOrderedSubmit(Deferred2DLayer layer, ViewportContext viewport,
+                                    UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot,
+                                    OrderedUiBatcher batcher) implements Deferred2DSubmit {
     @Override
     public void submit() {
         if (batcher == null) return;

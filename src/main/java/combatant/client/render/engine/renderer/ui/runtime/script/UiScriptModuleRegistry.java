@@ -9,7 +9,9 @@ package combatant.client.render.engine.renderer.ui.runtime.script;
 
 import net.minecraft.server.packs.resources.ResourceManager;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class UiScriptModuleRegistry {
@@ -39,6 +41,7 @@ public final class UiScriptModuleRegistry {
         int errors = 0;
         String firstError = "";
         Throwable firstCause = null;
+        ArrayList<ReloadFailure> failures = new ArrayList<>();
         for (UiScriptModuleHandle handle : handles.values()) {
             UiScriptModuleHandle.ReloadResult result = initialOnly && handle.module() == null
                     ? (handle.ensureLoaded(manager) ? UiScriptModuleHandle.ReloadResult.CHANGED : UiScriptModuleHandle.ReloadResult.ERROR)
@@ -48,16 +51,37 @@ public final class UiScriptModuleRegistry {
                 case UNCHANGED -> unchanged++;
                 case ERROR -> {
                     errors++;
+                    String moduleId = handle.getId().toString();
+                    String message = handle.lastError();
+                    Throwable cause = handle.lastErrorCause();
+                    failures.add(new ReloadFailure(moduleId, message, cause));
                     if (firstError.isBlank()) {
-                        firstError = handle.getId() + ": " + handle.lastError();
-                        firstCause = handle.lastErrorCause();
+                        firstError = moduleId + ": " + message;
+                        firstCause = cause;
                     }
                 }
             }
         }
-        return new ReloadStats(changed, unchanged, errors, firstError, firstCause);
+        return new ReloadStats(changed, unchanged, errors, firstError, firstCause, failures);
     }
 
-    public record ReloadStats(int changed, int unchanged, int errors, String firstError, Throwable firstCause) {
+    public record ReloadStats(
+            int changed,
+            int unchanged,
+            int errors,
+            String firstError,
+            Throwable firstCause,
+            List<ReloadFailure> failures
+    ) {
+        public ReloadStats {
+            failures = failures == null ? List.of() : List.copyOf(failures);
+        }
+
+        public ReloadStats(int changed, int unchanged, int errors, String firstError, Throwable firstCause) {
+            this(changed, unchanged, errors, firstError, firstCause, List.of());
+        }
+    }
+
+    public record ReloadFailure(String moduleId, String message, Throwable cause) {
     }
 }

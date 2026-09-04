@@ -61,7 +61,7 @@ import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.core.RenderPhaseScope;
 import combatant.client.render.engine.depth.WorldSceneDepth;
-// import combatant.client.render.engine.debug.RenderThread2DDebugRenderer; // disabled: debug probes are manual-only
+import combatant.client.render.engine.debug.UiClipDebugScene;
 import combatant.client.render.engine.msaa.MsaaWorldTarget;
 import combatant.client.config.MainConfig;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
@@ -854,6 +854,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                     null, Renderer2D.COLOR, TextRenderer.get(), null, tickDelta);
             Renderer2D.COLOR.render();
         }
+        UiClipDebugScene.renderAfterGui();
         // Debug 2D probe intentionally disabled after projection validation.
         // RenderThread2DDebugRenderer.renderImmediateAfterGui(tickCounter);
     }

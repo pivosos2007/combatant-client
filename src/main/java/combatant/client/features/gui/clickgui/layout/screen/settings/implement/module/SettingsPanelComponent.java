@@ -43,7 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-@UiScriptAsset("combatant:api/clickgui/settings_panel")
+@UiScriptAsset("combatant:modules/clickgui/settings_panel")
 public final class SettingsPanelComponent {
 private static final float DROPDOWN_PANEL_W = 115.0f;
     private static final float DROPDOWN_PANEL_H = 240.0f;

@@ -26,7 +26,7 @@ import combatant.client.render.engine.text.TextRenderer;
 import java.util.ArrayList;
 import java.util.List;
 
-@UiScriptAsset("combatant:api/hud/draggable/inventory_panel")
+@UiScriptAsset("combatant:modules/hud/draggable/inventory_panel")
 final class ScriptedInventoryHudPanel {
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedInventoryHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());

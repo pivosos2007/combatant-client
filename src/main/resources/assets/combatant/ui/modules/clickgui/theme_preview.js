@@ -5,29 +5,12 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-function n(value, fallback) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function c(value, fallback) {
-  return typeof value === "string" && value.length > 0 ? value : fallback;
-}
-
-function b(value, fallback) {
-  return typeof value === "boolean" ? value : fallback;
-}
-
-function s(value) {
-  return Number.isFinite(value) ? value.toFixed(2) : "0";
-}
-
-function cls(...parts) {
-  return parts.filter(Boolean).join(" ");
-}
-
-function abs(x, y, w, h, extra) {
-  return cls("absolute", `x-${s(x)}`, `y-${s(y)}`, `w-${s(w)}`, `h-${s(h)}`, extra);
-}
+const n = ui.num;
+const c = ui.str;
+const b = ui.bool;
+const s = ui.fmt;
+const cls = ui.cls;
+const abs = ui.abs;
 
 function font(name, scale, weight) {
   if (name === "Onest") {

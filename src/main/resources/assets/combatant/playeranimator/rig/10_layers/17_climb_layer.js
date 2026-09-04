@@ -14,8 +14,12 @@
       this.rig.rotate('left_upper_arm',(-112-g*42)*k,0,-8*k);
       flexElbow(this.rig,'right',(36-g*18)*k);
       flexElbow(this.rig,'left',(36+g*18)*k);
-      this.rig.rotate('right_thigh',(12-g*25)*k,0,-4*k);
-      this.rig.rotate('left_thigh',(12+g*25)*k,0,4*k);
+      // Ladder is in front of the player (-Z). A positive thigh X rotation sends the knee
+      // toward +Z (behind the body), which made both legs fold away from the ladder. Keep the
+      // normal positive knee flexion, but drive the hips forward so the planted and stepping feet
+      // remain on the ladder side of the pelvis throughout the cycle.
+      this.rig.rotate('right_thigh',(-34-g*25)*k,0,-4*k);
+      this.rig.rotate('left_thigh',(-34+g*25)*k,0,4*k);
       this.rig.rotate('right_knee',(35+g*20)*k,0,0);
       this.rig.rotate('left_knee',(35-g*20)*k,0,0);
     }

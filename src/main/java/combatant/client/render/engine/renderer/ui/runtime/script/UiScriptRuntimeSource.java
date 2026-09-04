@@ -86,6 +86,30 @@ enum UiScriptRuntimeSource {
                 abs(x = 0, y = 0, w = 0, h = 0, extra = "") {
                   return api.cls("absolute", `x-${api.fmt(x)}`, `y-${api.fmt(y)}`, `w-${api.fmt(w)}`, `h-${api.fmt(h)}`, extra);
                 },
+                prop(value, key, fallback = undefined) {
+                  if (value === null || value === undefined) return fallback;
+                  try {
+                    const direct = value[key];
+                    if (direct !== undefined && direct !== null) return direct;
+                  } catch (_) {
+                  }
+                  try {
+                    if (typeof value.get === "function") {
+                      const resolved = value.get(key);
+                      if (resolved !== undefined && resolved !== null) return resolved;
+                    }
+                  } catch (_) {
+                  }
+                  return fallback;
+                },
+                arr(value) {
+                  if (value === null || value === undefined) return [];
+                  try {
+                    return Array.from(value);
+                  } catch (_) {
+                    return [];
+                  }
+                },
                 roundedRect({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, fill, stroke, strokeWidth = 0, class: extra = "", ...rest } = {}) {
                   return api.shape({ key, shape: "rounded", class: api.abs(x, y, w, h, extra), radius: r ?? radius, fill, stroke, strokeWidth, ...rest });
                 },
@@ -150,6 +174,9 @@ enum UiScriptRuntimeSource {
                   });
                 },
                 color: {
+                  get(value, key, fallback = "#00000000") {
+                    return api.str(api.prop(value, key, fallback), fallback);
+                  },
                   alpha(hex, alpha = 1, fallback = "#00000000") {
                     const src = api.str(hex, fallback);
                     if (!src.startsWith("#") || src.length !== 9) return src;

@@ -1480,25 +1480,30 @@ enum UnifiedSettingRenderer {
         float rawTextW = UnifiedSettingsSkin.textWidth(font, displayText, size);
         float wantedChipW = rawTextW + chipPad * 2f;
 
-        float sameLineMaxChipW = Math.max(m(48f, 30f), w - pad * 3f - modeBlockW - minLabelW);
-        boolean nextLine = sameLineMaxChipW < m(48f, 30f);
+        float cardInsetX = m(2f, 2f);
+        float cardInsetY = m(3f, 2f);
+        float cardBottomInset = m(3f, 2f);
+        float cardX = x + cardInsetX;
+        float cardW = Math.max(1f, w - cardInsetX * 2f);
+        float innerW = Math.max(1f, cardW - pad * 2f);
+        float minChipW = m(48f, 30f);
+        float sameLineRoom = innerW - minLabelW - pad - modeBlockW;
+        boolean nextLine = sameLineRoom < minChipW;
         float maxChipW = nextLine
-                ? Math.max(m(48f, 30f), w - pad * 2f - modeBlockW)
-                : sameLineMaxChipW;
-        float chipW = Math.max(m(48f, 30f), Math.min(wantedChipW, maxChipW));
-        float labelMax = nextLine ? w - pad * 2f : Math.max(1f, w - pad * 3f - modeBlockW - chipW);
-        if (!nextLine && labelMax < minLabelW) {
-            nextLine = true;
-            maxChipW = Math.max(m(48f, 30f), w - pad * 2f - modeBlockW);
-            chipW = Math.max(m(48f, 30f), Math.min(wantedChipW, maxChipW));
-            labelMax = w - pad * 2f;
-        }
+                ? Math.max(1f, innerW - modeBlockW)
+                : sameLineRoom;
+        float effectiveMinChipW = Math.min(minChipW, maxChipW);
+        float chipW = Math.max(effectiveMinChipW, Math.min(wantedChipW, maxChipW));
+        float labelMax = nextLine ? innerW : Math.max(1f, innerW - pad - modeBlockW - chipW);
 
-        float rowH = nextLine ? m(48f, 31f) : m(38f, 22f);
-        float cardX = x + m(2f, 2f);
-        float cardY = y + m(3f, 2f);
-        float cardW = Math.max(1f, w - m(4f, 4f));
-        float cardH = Math.max(m(30f, 18f), rowH - m(6f, 4f));
+        float nextLineLabelY = m(7f, 4f);
+        float nextLineGap = m(4f, 2f);
+        float nextLineChipY = nextLineLabelY + UnifiedSettingsSkin.textHeight(font, size) + nextLineGap;
+        float rowH = nextLine
+                ? Math.max(m(48f, 31f), nextLineChipY + chipH + cardBottomInset)
+                : m(38f, 22f);
+        float cardY = y + cardInsetY;
+        float cardH = Math.max(m(30f, 18f), rowH - cardInsetY - cardBottomInset);
         float cardRadius = m(8f, 5f);
         boolean hover = UnifiedSettingsSkin.inside(mx, my, cardX, cardY, cardW, cardH);
         float hoverAnim = bindHoverAnim(uiObj, hover);
@@ -1511,16 +1516,18 @@ enum UnifiedSettingRenderer {
             ClickGuiRenderer.drawRoundedRectStroke(cardX, cardY, cardW, cardH, cardRadius, m(0.65f, 0.42f), UnifiedSettingsSkin.mix(strokeA, strokeB, Math.max(waitAnim, hoverAnim * 0.28f)));
         }
 
-        float labelY = y + (nextLine ? m(7f, 4f) : (rowH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f);
-        float chipY = nextLine ? y + m(27f, 16f) : y + (rowH - chipH) * 0.5f;
+        float labelY = y + (nextLine ? nextLineLabelY : (rowH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f);
+        float chipY = nextLine ? y + nextLineChipY : y + (rowH - chipH) * 0.5f;
         float chipX;
         float modeX = 0f;
         float modeY = chipY;
+        float innerLeft = cardX + pad;
+        float innerRight = cardX + cardW - pad;
         if (nextLine) {
-            chipX = cardX + pad;
-            if (modeW > 0f) modeX = x + w - pad - modeW;
+            chipX = innerLeft;
+            if (modeW > 0f) modeX = innerRight - modeW;
         } else {
-            chipX = x + w - pad - chipW;
+            chipX = innerRight - chipW;
             if (modeW > 0f) modeX = chipX - gap - modeW;
         }
 
@@ -1640,14 +1647,25 @@ enum UnifiedSettingRenderer {
         float modeBlockW = modeW > 0f ? modeW + gap : 0f;
         String displayText = display == null || display.isBlank() ? "NONE" : display;
         float wantedChipW = UnifiedSettingsSkin.textWidth(font, displayText, size) + chipPad * 2f;
-        float sameLineMaxChipW = Math.max(m(48f, 30f), w - pad * 3f - modeBlockW - minLabelW);
-        boolean nextLine = sameLineMaxChipW < m(48f, 30f);
+        float cardInsetX = m(2f, 2f);
+        float cardW = Math.max(1f, w - cardInsetX * 2f);
+        float innerW = Math.max(1f, cardW - pad * 2f);
+        float minChipW = m(48f, 30f);
+        float sameLineRoom = innerW - minLabelW - pad - modeBlockW;
+        boolean nextLine = sameLineRoom < minChipW;
         if (!nextLine) {
-            float chipW = Math.max(m(48f, 30f), Math.min(wantedChipW, sameLineMaxChipW));
-            float labelMax = w - pad * 3f - modeBlockW - chipW;
+            float chipW = Math.max(minChipW, Math.min(wantedChipW, sameLineRoom));
+            float labelMax = innerW - pad - modeBlockW - chipW;
             nextLine = labelMax < minLabelW;
         }
-        return nextLine ? m(48f, 31f) : m(38f, 22f);
+        if (!nextLine) return m(38f, 22f);
+
+        float chipH = m(22f, 13.5f);
+        float cardBottomInset = m(3f, 2f);
+        float nextLineLabelY = m(7f, 4f);
+        float nextLineGap = m(4f, 2f);
+        float nextLineChipY = nextLineLabelY + UnifiedSettingsSkin.textHeight(font, size) + nextLineGap;
+        return Math.max(m(48f, 31f), nextLineChipY + chipH + cardBottomInset);
     }
 
     static void render(ColorSetting setting, float x, float y, float w, float mx, float my) {

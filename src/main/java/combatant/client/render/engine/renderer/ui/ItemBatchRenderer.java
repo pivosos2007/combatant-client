@@ -42,6 +42,8 @@ import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
+import combatant.client.render.engine.uniform.impl.UiClipUniforms;
+import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -493,7 +495,7 @@ public final class ItemBatchRenderer {
             GpuSampler itemSampler = itemMesh != null
                     ? RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST)
                     : null;
-            if (submitItemBlitMesh(mc, itemMesh, itemAtlasTextureView, itemSampler)) {
+            if (submitItemBlitMesh(mc, itemMesh, itemAtlasTextureView, itemSampler, batch.clipSnapshot)) {
                 drawCalls++;
             }
 
@@ -870,7 +872,8 @@ public final class ItemBatchRenderer {
     private static boolean submitItemBlitMesh(Minecraft mc,
                                               @Nullable MeshBuilder mesh,
                                               @Nullable GpuTextureView atlasTextureView,
-                                              @Nullable GpuSampler sampler) {
+                                              @Nullable GpuSampler sampler,
+                                              UiClipSnapshot clipSnapshot) {
         if (mesh == null || sampler == null || atlasTextureView == null) {
             return false;
         }
@@ -881,13 +884,21 @@ public final class ItemBatchRenderer {
             return false;
         }
 
-        MeshRenderer.begin()
+        UiClipSnapshot clip = clipSnapshot != null ? clipSnapshot : UiClipSnapshot.NONE;
+        RenderPipeline pipeline = CombatantRenderPipelines.UI_TEXTURED_PREMULTIPLIED_ALPHA;
+        if (clip.usesAnalyticPipeline()) {
+            pipeline = CombatantRenderPipelines.analyticClipTexturedPipeline(pipeline);
+        }
+        MeshRenderer renderer = MeshRenderer.begin()
                 .attachments(mc.gameRenderer.mainRenderTarget().getColorTextureView(), null)
-                .pipeline(CombatantRenderPipelines.UI_TEXTURED_PREMULTIPLIED_ALPHA)
+                .pipeline(pipeline)
                 .mesh(mesh)
                 .uniform("UIBatch", itemBlitUiBatch(mc))
-                .sampler("u_Texture", atlasTextureView, sampler)
-                .end();
+                .sampler("u_Texture", atlasTextureView, sampler);
+        if (clip.usesAnalyticPipeline()) {
+            renderer.uniform("UIClip", UiClipUniforms.write(clip));
+        }
+        renderer.end();
         return true;
     }
 

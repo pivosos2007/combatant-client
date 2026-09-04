@@ -19,6 +19,7 @@ import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.helpers.ScissorFunction;
+import combatant.client.render.helpers.ClipFunction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.renderer.ProjectionMatrixBuffer;
 import org.joml.Matrix4f;
@@ -191,7 +192,8 @@ public final class UiDeferredScheduler {
         enqueue(new DeferredActionSubmit(
                 layerForCurrentPhase(false),
                 snapshotViewport(),
-                ScissorFunction.currentFramebufferScissor(),
+                ScissorFunction.currentSnapshot(),
+                ClipFunction.currentSnapshot(),
                 action
         ));
     }

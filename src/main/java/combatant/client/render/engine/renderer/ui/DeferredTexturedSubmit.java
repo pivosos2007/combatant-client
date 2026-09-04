@@ -16,9 +16,13 @@ import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.Renderer2D.Deferred2DLayer;
+import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 
-public record DeferredTexturedSubmit(Deferred2DLayer layer, ViewportContext viewport, int[] framebufferScissor, String samplerName,
+public record DeferredTexturedSubmit(Deferred2DLayer layer, ViewportContext viewport,
+                                    UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot, String samplerName,
                                     GpuTextureView samplerView, GpuSampler sampler, MeshBuilder mesh) implements Deferred2DSubmit {
     @Override
     public void submit() {
@@ -27,12 +31,20 @@ public record DeferredTexturedSubmit(Deferred2DLayer layer, ViewportContext view
         if (mc == null || mc.gameRenderer == null) return;
         RenderTarget fb = mc.gameRenderer.mainRenderTarget();
         if (fb == null) return;
-        MeshRenderer.begin()
+        UiClipSnapshot clip = clipSnapshot != null ? clipSnapshot : UiClipSnapshot.NONE;
+        com.mojang.blaze3d.pipeline.RenderPipeline pipeline = CombatantRenderPipelines.UI_TEXTURED;
+        if (clip.usesAnalyticPipeline()) {
+            pipeline = CombatantRenderPipelines.analyticClipTexturedPipeline(pipeline);
+        }
+        MeshRenderer draw = MeshRenderer.begin()
                 .attachments(fb.getColorTextureView(), null)
-                .pipeline(CombatantRenderPipelines.UI_TEXTURED)
+                .pipeline(pipeline)
                 .mesh(mesh)
-                .sampler(samplerName != null ? samplerName : "u_Texture", samplerView, sampler)
-                .end();
+                .sampler(samplerName != null ? samplerName : "u_Texture", samplerView, sampler);
+        if (clip.usesAnalyticPipeline()) {
+            draw.uniform("UIClip", UiClipUniforms.write(clip));
+        }
+        draw.end();
         Renderer2D.flushUiLayer();
     }
 

@@ -34,7 +34,7 @@ import java.util.Map;
  * this class only supplies data, performs the intrinsic measurement pass and renders
  * the baked tree in the caller's current projection.
  */
-@UiScriptAsset("combatant:api/hud/static/tooltip_panel")
+@UiScriptAsset("combatant:modules/hud/static/tooltip_panel")
 public final class ScriptedTooltipPanel {
     private static final float MEASURE_EXTRA_WIDTH = 512.0f;
     private static final float MEASURE_HEIGHT = 4096.0f;

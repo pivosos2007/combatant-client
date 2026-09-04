@@ -10,38 +10,36 @@ package combatant.client.render.helpers;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.*;
-import combatant.client.render.engine.renderer.ui.draw.*;
+import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiClipStack;
+import combatant.client.render.engine.renderer.ui.clip.UiClipStrategy;
 import combatant.client.render.engine.rhi.clip.ShapeClipBackend;
 import combatant.client.util.logging.DebugLog;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
-
 /**
- * Higher-level clipping stack.
+ * Compatibility facade over the renderer-owned shape clipping stack.
  *
- * <p>Rectangles are routed to ScissorFunction. Non-rect primitives use the active RHI
- * shape-clip backend. The GL backend currently implements this with stencil.</p>
+ * <p>This state is deliberately independent from {@link ScissorFunction}. The current RHI backend
+ * still lowers masks through stencil while analytic pipeline variants are introduced.</p>
  */
 public enum ClipFunction {
     ;
     private static final int MAX_SHAPE_DEPTH = 250;
     private static final int MASK_COLOR = 0xFFFFFFFF;
-    private static final Deque<Layer> STACK = new ArrayDeque<>();
+    private static final UiClipStack STACK = new UiClipStack(MAX_SHAPE_DEPTH);
     private static final double[] POINTS = new double[512];
     private static boolean warnedShapeUnsupported;
     private static boolean warnedShapeDepth;
 
+    /** @deprecated use {@link ScissorFunction#pushRaw(float, float, float, float)} for raster scissor semantics. */
+    @Deprecated
     public static boolean pushRaw(float x, float y, float width, float height) {
         return pushRect(x, y, width, height);
     }
 
+    /** Shape-aware rectangular clip. This no longer aliases {@link ScissorFunction}. */
     public static boolean pushRect(double x, double y, double width, double height) {
-        boolean pushed = ScissorFunction.pushRaw((float) x, (float) y, (float) width, (float) height);
-        if (pushed) {
-            STACK.push(Layer.rect());
-        }
-        return pushed;
+        return push(UiShape.rect(x, y, width, height));
     }
 
     public static boolean pushRoundedRect(double x, double y, double width, double height, double radius) {
@@ -53,6 +51,11 @@ public enum ClipFunction {
         return push(UiShape.roundedRect(x, y, width, height, topLeft, topRight, bottomRight, bottomLeft));
     }
 
+    /** Transitional fallback for subtrees whose material families cannot yet consume analytic clip state. */
+    public static boolean pushRoundedRectMsaaStencil(double x, double y, double width, double height, double radius) {
+        return push(UiShape.roundedRect(x, y, width, height, radius), UiClipStrategy.MSAA_STENCIL);
+    }
+
     public static boolean pushChamferedRect(double x, double y, double width, double height, double chamfer) {
         return push(UiShape.chamferedRect(x, y, width, height, chamfer, chamfer, chamfer, chamfer));
     }
@@ -62,62 +65,81 @@ public enum ClipFunction {
     }
 
     public static boolean push(UiShape shape) {
+        return push(shape, null);
+    }
+
+    public static boolean pushMsaaStencil(UiShape shape) {
+        return push(shape, UiClipStrategy.MSAA_STENCIL);
+    }
+
+    private static boolean push(UiShape shape, UiClipStrategy requestedStrategy) {
         if (shape == null) return false;
         UiRect bounds = shape.bounds();
         if (bounds == null || bounds.empty()) return false;
 
-        if (isPlainRect(shape)) {
-            return pushRect(bounds.x(), bounds.y(), bounds.width(), bounds.height());
-        }
-
-        if (activeShapeDepth() >= MAX_SHAPE_DEPTH) {
+        if (!STACK.canPush()) {
             warnShapeDepth();
             return false;
         }
 
         Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
         // A clipped liquid-glass consumer must refresh the shared blur before this
-        // shape installs its bounds scissor/stencil. The refresh remains on the normal
+        // shape installs its clip state. The refresh remains on the normal
         // shared Kawase chain and therefore never needs a clip-state bypass.
         Renderer2D.prepareLiquidGlassBlurBeforeShapeClipIfRequested();
+        UiClipSnapshot parentSnapshot = STACK.current();
+        UiClipStack.Layer layer = requestedStrategy != null
+                ? STACK.push(shape, requestedStrategy)
+                : STACK.push(shape);
+        if (layer == null) return false;
+        UiClipSnapshot snapshot = layer.snapshot();
+        if (snapshot.usesAnalyticPipeline()) {
+            return true;
+        }
+
         ShapeClipBackend clip = clipBackend();
         if (!clip.supported()) {
+            STACK.pop();
             warnShapeUnsupported(shape, clip, "backend unsupported");
             return false;
         }
-
-        boolean scissor = ScissorFunction.pushRaw(bounds.x(), bounds.y(), bounds.width(), bounds.height());
-        if (!scissor) return false;
-
-        int parent = currentShapeReference();
-        int reference = parent + 1;
-        boolean clear = activeShapeDepth() == 0;
+        int parent = layer.parentReference();
+        int reference = layer.reference();
+        boolean clear = parent == 0;
+        boolean rebuildFromAnalyticParent = parentSnapshot.usesAnalyticPipeline();
         String attachmentReason = "ClipFunction.push kind=" + shape.kind() + " bounds=" + bounds;
 
         if (Renderer2D.isDeferredExtractRecording()) {
             Renderer2D.deferRenderThreadAction(() -> {
                 ShapeClipBackend renderClip = clipBackend();
                 renderClip.requireRenderPassAttachment(attachmentReason);
-                if (clear) {
+                if (clear || rebuildFromAnalyticParent) {
                     renderClip.requestClear("first shape layer");
                 }
-                renderClip.beginWrite(parent, reference);
-                renderMaskShape(shape);
-                renderClip.beginTest(reference);
+                if (rebuildFromAnalyticParent) {
+                    renderStencilSnapshot(renderClip, snapshot);
+                } else {
+                    renderClip.beginWrite(parent, reference);
+                    renderMaskShape(shape);
+                    renderClip.beginTest(reference);
+                }
                 renderStencilDebugProbe(shape, reference, false);
             });
         } else {
             clip.requireRenderPassAttachment(attachmentReason);
-            if (clear) {
+            if (clear || rebuildFromAnalyticParent) {
                 clip.requestClear("first shape layer");
             }
-            clip.beginWrite(parent, reference);
-            renderMaskShape(shape);
-            clip.beginTest(reference);
+            if (rebuildFromAnalyticParent) {
+                renderStencilSnapshot(clip, snapshot);
+            } else {
+                clip.beginWrite(parent, reference);
+                renderMaskShape(shape);
+                clip.beginTest(reference);
+            }
             renderStencilDebugProbe(shape, reference, false);
         }
 
-        STACK.push(Layer.shape(shape, reference, parent));
         return true;
     }
 
@@ -132,48 +154,59 @@ public enum ClipFunction {
     }
 
     public static void pop() {
-        if (STACK.isEmpty()) return;
-        Layer layer = STACK.pop();
-        if (!layer.shape) {
-            ScissorFunction.pop();
-            applyPreviousShapeTest();
+        if (STACK.depth() == 0) return;
+        // Flush while the closing scope is still current so deferred submit metadata captures it.
+        Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
+        UiClipStack.Layer layer = STACK.pop();
+        if (layer == null) return;
+        UiClipSnapshot previous = STACK.current();
+        if (layer.snapshot().usesAnalyticPipeline()) {
             return;
         }
-
-        Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
-        int previousReference = currentShapeReference();
+        int previousReference = previous.stencilReference();
+        boolean returnsToAnalytic = previous.usesAnalyticPipeline();
         if (Renderer2D.isDeferredExtractRecording()) {
             Renderer2D.deferRenderThreadAction(() -> {
-                renderStencilDebugProbe(layer.shapeValue, layer.reference, true);
-                Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
                 ShapeClipBackend renderClip = clipBackend();
-                renderClip.beginRestore(layer.reference, layer.parentReference);
-                renderMaskShape(layer.shapeValue);
+                if (returnsToAnalytic || previousReference == 0) {
+                    renderClip.disable();
+                    return;
+                }
+                renderStencilDebugProbe(layer.shape(), layer.reference(), true);
+                Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
+                renderClip.beginRestore(layer.reference(), layer.parentReference());
+                renderMaskShape(layer.shape());
                 if (previousReference > 0) {
                     renderClip.beginTest(previousReference);
                 } else {
                     renderClip.disable();
                 }
             });
-            ScissorFunction.pop();
             return;
         }
 
         ShapeClipBackend clip = clipBackend();
-        renderStencilDebugProbe(layer.shapeValue, layer.reference, true);
+        if (returnsToAnalytic || previousReference == 0) {
+            clip.disable();
+            return;
+        }
+        renderStencilDebugProbe(layer.shape(), layer.reference(), true);
         Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
-        clip.beginRestore(layer.reference, layer.parentReference);
-        renderMaskShape(layer.shapeValue);
-        ScissorFunction.pop();
+        clip.beginRestore(layer.reference(), layer.parentReference());
+        renderMaskShape(layer.shape());
         applyPreviousShapeTest();
     }
 
     public static int depth() {
-        return STACK.size();
+        return STACK.depth();
     }
 
     public static boolean isShapeClipActive() {
-        return currentShapeReference() > 0;
+        return currentSnapshot().active();
+    }
+
+    public static UiClipSnapshot currentSnapshot() {
+        return STACK.current();
     }
 
     /**
@@ -190,12 +223,12 @@ public enum ClipFunction {
         UiRect bounds = shape.bounds();
         DebugLog.warnOnChange(
                 "clipfunction.shape.unsupported",
-                reason + "|" + shape.kind() + "|" + bounds + "|" + activeShapeDepth() + "|" + backend,
+                reason + "|" + shape.kind() + "|" + bounds + "|" + STACK.depth() + "|" + backend,
                 "ClipFunction: shape push rejected: %s. kind=%s bounds=%s depth=%d backend=%s",
                 reason,
                 shape.kind(),
                 bounds,
-                activeShapeDepth(),
+                STACK.depth(),
                 backend
         );
     }
@@ -248,22 +281,7 @@ public enum ClipFunction {
     }
 
     private static int currentShapeReference() {
-        for (Layer layer : STACK) {
-            if (layer.shape) return layer.reference;
-        }
-        return 0;
-    }
-
-    private static int activeShapeDepth() {
-        int depth = 0;
-        for (Layer layer : STACK) {
-            if (layer.shape) depth++;
-        }
-        return depth;
-    }
-
-    private static boolean isPlainRect(UiShape shape) {
-        return shape.kind() == UiShapeKind.RECT && shape.cornerMode() == UiCornerMode.NONE;
+        return STACK.currentReference();
     }
 
     private static void renderMaskShape(UiShape shape) {
@@ -275,6 +293,17 @@ public enum ClipFunction {
         } else {
             Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
         }
+    }
+
+    private static void renderStencilSnapshot(ShapeClipBackend clip, UiClipSnapshot snapshot) {
+        int reference = 0;
+        for (UiShape primitive : snapshot.primitives()) {
+            int next = reference + 1;
+            clip.beginWrite(reference, next);
+            renderMaskShape(primitive);
+            reference = next;
+        }
+        clip.beginTest(reference);
     }
 
     private static void emitMaskShape(Renderer2D renderer, UiShape shape) {
@@ -470,16 +499,6 @@ public enum ClipFunction {
 
     private static float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
-    }
-
-    private record Layer(boolean shape, UiShape shapeValue, int reference, int parentReference) {
-        static Layer rect() {
-            return new Layer(false, null, 0, 0);
-        }
-
-        static Layer shape(UiShape shape, int reference, int parentReference) {
-            return new Layer(true, shape, reference, parentReference);
-        }
     }
 
     public static final class Scope implements AutoCloseable {

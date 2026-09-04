@@ -283,11 +283,11 @@ public final class ThemeComponent {
                     SettingsGuiPalette.withAlpha(t.accent(), Math.round(38f * selected))
             );
             LayoutRender2D.roundedStrokeQuad(
-                    x + 0.35f * scale,
-                    y + 0.35f * scale,
-                    w - 0.7f * scale,
-                    h - 0.7f * scale,
-                    4.7f * scale,
+                    x,
+                    y,
+                    w,
+                    h,
+                    5f * scale,
                     (0.55f + 0.35f * selected) * scale,
                     SettingsGuiPalette.withAlpha(t.accent(), Math.round(235f * selected)),
                     SettingsGuiPalette.withAlpha(t.accentSoft(), Math.round(190f * selected)),

@@ -9,13 +9,21 @@ package combatant.client.render.engine.renderer.ui;
 
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.Renderer2D.Deferred2DLayer;
+import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 
 public interface Deferred2DSubmit {
     Deferred2DLayer layer();
 
     ViewportContext viewport();
 
-    int[] framebufferScissor();
+    UiScissorSnapshot scissorSnapshot();
+
+    UiClipSnapshot clipSnapshot();
+
+    default int[] framebufferScissor() {
+        return scissorSnapshot().framebufferRect();
+    }
 
     void submit();
 

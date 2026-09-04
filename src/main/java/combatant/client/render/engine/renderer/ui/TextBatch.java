@@ -11,22 +11,26 @@ import com.mojang.blaze3d.pipeline.RenderPipeline;
 import combatant.client.render.engine.text.GlyphFont;
 import combatant.client.render.engine.text.backend.TextPlacementMode;
 import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 
 public final class TextBatch {
     public String label;
     public GlyphFont font;
     public RenderPipeline pipeline;
     public TextPlacementMode placement;
-    public boolean shapeClipActive;
+    public UiClipSnapshot clipSnapshot = UiClipSnapshot.NONE;
+    public UiScissorSnapshot scissorSnapshot = UiScissorSnapshot.NONE;
     public MeshBuilder mesh;
 
     public void begin(String label, GlyphFont font, RenderPipeline pipeline,
-               TextPlacementMode placement, boolean shapeClipActive) {
+               TextPlacementMode placement, UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot) {
         this.label = label != null ? label : "Combatant UI Text Batch";
         this.font = font;
         this.pipeline = pipeline;
         this.placement = placement != null ? placement : TextPlacementMode.UI;
-        this.shapeClipActive = shapeClipActive;
+        this.scissorSnapshot = scissorSnapshot != null ? scissorSnapshot : UiScissorSnapshot.NONE;
+        this.clipSnapshot = clipSnapshot != null ? clipSnapshot : UiClipSnapshot.NONE;
         if (mesh == null) {
             mesh = new MeshBuilder(pipeline);
         } else if (mesh.isBuilding()) {
@@ -35,11 +39,13 @@ public final class TextBatch {
         mesh.begin();
     }
 
-    public boolean canMerge(GlyphFont font, RenderPipeline pipeline, TextPlacementMode placement, boolean shapeClipActive) {
+    public boolean canMerge(GlyphFont font, RenderPipeline pipeline, TextPlacementMode placement,
+                            UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot) {
         return this.font == font
                 && this.pipeline == pipeline
                 && this.placement == (placement != null ? placement : TextPlacementMode.UI)
-                && this.shapeClipActive == shapeClipActive;
+                && this.scissorSnapshot.id() == scissorSnapshot.id()
+                && this.clipSnapshot.id() == clipSnapshot.id();
     }
 
     public void append(MeshBuilder source) {
@@ -47,7 +53,7 @@ public final class TextBatch {
         if (source.isBuilding()) source.end();
         if (source.getIndicesCount() <= 0) return;
         if (mesh == null || !mesh.isBuilding()) {
-            begin(label, font, pipeline, placement, shapeClipActive);
+            begin(label, font, pipeline, placement, scissorSnapshot, clipSnapshot);
         }
         mesh.appendMesh(source);
     }

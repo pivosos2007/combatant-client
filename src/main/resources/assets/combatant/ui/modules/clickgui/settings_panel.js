@@ -5,25 +5,20 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-function n(value, fallback) {
+function numCoerce(value, fallback) {
   const out = Number(value);
   return Number.isFinite(out) ? out : fallback;
 }
 
-function c(value, fallback) {
-  return typeof value === "string" && value.length > 0 ? value : fallback;
-}
-
-function b(value, fallback) {
-  return typeof value === "boolean" ? value : fallback;
-}
+const c = ui.str;
+const b = ui.bool;
 
 function clamp01(value) {
-  return Math.max(0, Math.min(1, n(value, 0)));
+  return Math.max(0, Math.min(1, numCoerce(value, 0)));
 }
 
 function fixed(value) {
-  return n(value, 0).toFixed(2);
+  return numCoerce(value, 0).toFixed(2);
 }
 
 function alpha(color, amount) {
@@ -31,17 +26,7 @@ function alpha(color, amount) {
   return ui.color.alpha(value, clamp01(amount), value);
 }
 
-function abs(x, y, w, h, extra) {
-  const parts = [
-    "absolute",
-    `x-${fixed(x)}`,
-    `y-${fixed(y)}`,
-    `w-${fixed(w)}`,
-    `h-${fixed(h)}`,
-  ];
-  if (extra) parts.push(extra);
-  return parts.join(" ");
-}
+const abs = ui.abs;
 
 function rect(key, x, y, w, h, fill, extra) {
   return ui.shape({
@@ -60,7 +45,7 @@ function quadGradient(key, x, y, w, h, startColor, endColor, angle) {
     class: abs(x, y, w, h),
     startColor,
     endColor,
-    angle: n(angle, 90),
+    angle: numCoerce(angle, 90),
   });
 }
 
@@ -75,7 +60,7 @@ function gradientStroke(key, x, y, w, h, thickness, startColor, endColor, angle)
     strokeWidth: thickness,
     strokeStartColor: startColor,
     strokeEndColor: endColor,
-    strokeAngle: n(angle, 90),
+    strokeAngle: numCoerce(angle, 90),
   });
 }
 
@@ -91,29 +76,29 @@ function label(key, value, x, y, w, h, color, size, align, family) {
 
 export function buildTemplate(ctx) {
   const p = ctx.props || {};
-  const w = Math.max(1, n(p.width, 180));
-  const h = Math.max(1, n(p.height, 220));
-  const scale = Math.max(0.25, n(p.scale, 1));
+  const w = Math.max(1, numCoerce(p.width, 180));
+  const h = Math.max(1, numCoerce(p.height, 220));
+  const scale = Math.max(0.25, numCoerce(p.scale, 1));
   const open = clamp01(p.open);
-  const headerH = Math.max(1, n(p.headerH, 22 * scale));
+  const headerH = Math.max(1, numCoerce(p.headerH, 22 * scale));
   const strokeW = Math.max(0.22, 0.14 * scale);
   const dividerH = Math.max(0.18, 0.10 * scale);
 
   const bodyA = alpha(c(p.bodyA, "#C2181B20"), open);
   const bodyB = alpha(c(p.bodyB, "#C20E1116"), open);
-  const bodyAngle = n(p.bodyAngle, 90);
+  const bodyAngle = numCoerce(p.bodyAngle, 90);
   const bodyGlintA = alpha(c(p.bodyGlintA, "#08FFFFFF"), open);
   const bodyGlintB = alpha(c(p.bodyGlintB, "#00FFFFFF"), open);
 
   const headerA = alpha(c(p.headerA, "#D0181B20"), open);
   const headerB = alpha(c(p.headerB, "#D014171C"), open);
-  const headerAngle = n(p.headerAngle, 90);
+  const headerAngle = numCoerce(p.headerAngle, 90);
   const headerGlintA = alpha(c(p.headerGlintA, "#0EFFFFFF"), open);
   const headerGlintB = alpha(c(p.headerGlintB, "#00FFFFFF"), open);
 
   const strokeA = alpha(c(p.strokeA, "#465A5A64"), open);
   const strokeB = alpha(c(p.strokeB, "#4050505A"), open);
-  const strokeAngle = n(p.strokeAngle, 90);
+  const strokeAngle = numCoerce(p.strokeAngle, 90);
   const dividerA = alpha(c(p.dividerA, p.strokeA || "#345A5A64"), open);
   const dividerB = alpha(c(p.dividerB, p.strokeB || "#2E50505A"), open);
 
@@ -125,10 +110,10 @@ export function buildTemplate(ctx) {
 
   const surfaceA = alpha(c(p.surfaceA, "#76161B23"), open);
   const surfaceB = alpha(c(p.surfaceB, "#84202733"), open);
-  const surfaceAngle = n(p.surfaceAngle, 90);
+  const surfaceAngle = numCoerce(p.surfaceAngle, 90);
   const activeA = alpha(c(p.activeA, "#A0475664"), open);
   const activeB = alpha(c(p.activeB, "#96504760"), open);
-  const activeAngle = n(p.activeAngle, 90);
+  const activeAngle = numCoerce(p.activeAngle, 90);
 
   const closeW = 14 * scale;
   const closeH = 12 * scale;
@@ -145,8 +130,8 @@ export function buildTemplate(ctx) {
       h,
       radius: 0,
       alpha: clamp01(p.blurAlpha) * open,
-      brightness: n(p.blurBrightness, 0.96),
-      blurQuality: n(p.blurQuality, 27.35),
+      brightness: numCoerce(p.blurBrightness, 0.96),
+      blurQuality: numCoerce(p.blurQuality, 27.35),
     }),
     quadGradient("settings-panel:body", 0, 0, w, h, bodyA, bodyB, bodyAngle),
     quadGradient("settings-panel:body-glint", 1, 1,
@@ -227,12 +212,12 @@ export function buildTemplate(ctx) {
   }
 
   if (b(p.scrollbarVisible, false)) {
-    const sx = n(p.scrollbarX, w - 5 * scale);
-    const sy = n(p.scrollbarY, headerH + 5 * scale);
-    const sw = Math.max(0.7, n(p.scrollbarW, 1.5 * scale));
-    const sh = Math.max(1, n(p.scrollbarH, h - headerH - 10 * scale));
-    const thumbY = n(p.scrollbarThumbY, sy);
-    const thumbH = Math.max(1, n(p.scrollbarThumbH, 18 * scale));
+    const sx = numCoerce(p.scrollbarX, w - 5 * scale);
+    const sy = numCoerce(p.scrollbarY, headerH + 5 * scale);
+    const sw = Math.max(0.7, numCoerce(p.scrollbarW, 1.5 * scale));
+    const sh = Math.max(1, numCoerce(p.scrollbarH, h - headerH - 10 * scale));
+    const thumbY = numCoerce(p.scrollbarThumbY, sy);
+    const thumbH = Math.max(1, numCoerce(p.scrollbarThumbH, 18 * scale));
     children.push(
       rect("settings-panel:scroll-track", sx, sy, sw, sh,
         alpha(c(p.scrollbarTrack, "#303A3A3A"), open)),

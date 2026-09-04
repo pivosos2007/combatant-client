@@ -55,6 +55,15 @@ public final class GlobalScissorState {
         return set;
     }
 
+    public static Snapshot snapshot() {
+        return set ? new Snapshot(x, y, width, height) : null;
+    }
+
+    public static void replace(int x, int y, int width, int height) {
+        if (set) pop();
+        push(x, y, width, height);
+    }
+
     public static boolean applyTo(RenderPass pass, RenderPass.RenderArea renderArea) {
         if (!set || pass == null || renderArea == null) {
             return false;
@@ -77,5 +86,11 @@ public final class GlobalScissorState {
 
         pass.enableScissor(sx1, sy1, sw, sh);
         return true;
+    }
+
+    public record Snapshot(int x, int y, int width, int height) {
+        public int[] rect() {
+            return new int[]{x, y, width, height};
+        }
     }
 }

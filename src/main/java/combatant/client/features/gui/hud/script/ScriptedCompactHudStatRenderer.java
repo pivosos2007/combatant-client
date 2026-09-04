@@ -19,7 +19,7 @@ import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
 import combatant.client.render.engine.text.TextRenderer;
 
-@UiScriptAsset("combatant:api/hud/draggable/compact_stat")
+@UiScriptAsset("combatant:modules/hud/draggable/compact_stat")
 public final class ScriptedCompactHudStatRenderer {
     public static final ScriptedCompactHudStatRenderer INSTANCE = new ScriptedCompactHudStatRenderer();
 private final Minecraft mc = Minecraft.getInstance();

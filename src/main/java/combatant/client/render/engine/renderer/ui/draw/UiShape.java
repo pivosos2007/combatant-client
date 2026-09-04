@@ -113,6 +113,13 @@ public final class UiShape {
                 UiCornerRadii.ZERO, UiChamferRadii.ZERO, 0f, 0f, 0f, copy, safeCount, false, null);
     }
 
+    public static UiShape spline(double[] points, int pointCount, boolean closed) {
+        int safeCount = Math.max(0, Math.min(pointCount, points != null ? points.length / 2 : 0));
+        double[] copy = safeCount == 0 ? new double[0] : Arrays.copyOf(points, safeCount * 2);
+        return new UiShape(UiShapeKind.SPLINE, computeBounds(copy, safeCount), UiCornerMode.CUSTOM_POLYGON,
+                UiCornerRadii.ZERO, UiChamferRadii.ZERO, 0f, 0f, 0f, copy, safeCount, closed, null);
+    }
+
     private static UiRect computeBounds(double[] points, int pointCount) {
         if (pointCount <= 0) return new UiRect(0f, 0f, 0f, 0f);
         double minX = points[0], maxX = points[0], minY = points[1], maxY = points[1];

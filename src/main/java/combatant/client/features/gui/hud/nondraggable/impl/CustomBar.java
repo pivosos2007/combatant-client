@@ -97,12 +97,16 @@ public final class CustomBar extends AbstractHudElement {
     private static final float LOCATOR_LABEL_SCALE = 0.27f;
     private static final float LOCATOR_LABEL_OFFSET = 2.4f;
     private static final float LOCATOR_LABEL_ANIM_SPEED = 14f;
-    private static final float LOCATOR_LABEL_ROW_GAP = 0.7f;
-    private static final float LOCATOR_LABEL_ROW_WIDTH = 94.0f;
-    private static final float LOCATOR_LABEL_ROW_HEIGHT = 7.4f;
-    private static final float LOCATOR_LABEL_CHIP_PAD_X = 3.0f;
+    private static final float LOCATOR_LABEL_ROW_GAP = 0.8f;
+    private static final float LOCATOR_LABEL_ROW_MIN_WIDTH = 38.0f;
+    private static final float LOCATOR_LABEL_ROW_MAX_WIDTH = 70.0f;
+    private static final float LOCATOR_LABEL_ROW_HEIGHT = 8.2f;
+    private static final float LOCATOR_LABEL_CHIP_PAD_X = 2.8f;
+    private static final float LOCATOR_LABEL_LEAD_RESERVE = 2.5f;
     private static final float LOCATOR_LABEL_ACCENT_W = 1.0f;
-    private static final float LOCATOR_LABEL_RADIUS = 2.4f;
+    private static final float LOCATOR_LABEL_DISTANCE_GAP = 2.4f;
+    private static final float LOCATOR_LABEL_DISTANCE_WIDTH = 17.0f;
+    private static final float LOCATOR_LABEL_RADIUS = 2.2f;
     private static final int LOCATOR_LABEL_MAX_ROWS = 3;
     private static final String COLOR_THEME = "Theme";
     private static final String COLOR_CUSTOM = "Custom";
@@ -652,12 +656,11 @@ public final class CustomBar extends AbstractHudElement {
                 TextRenderer tr = Fonts.renderer("Iosevka");
                 Renderer2D r2d = Renderer2D.COLOR;
                 float labelScale = LOCATOR_LABEL_SCALE * scale;
-                float rowW = LOCATOR_LABEL_ROW_WIDTH * scale;
                 float rowH = LOCATOR_LABEL_ROW_HEIGHT * scale;
                 float rowGap = LOCATOR_LABEL_ROW_GAP * scale;
                 float rowStep = rowH + rowGap;
-                float rowX = (screenW * scale - rowW) * 0.5f;
                 float rowBottom = barY * scale - LOCATOR_LABEL_OFFSET * scale;
+                float screenCenterX = screenW * scale * 0.5f;
 
                 List<LocatorLabel> slotted = new ArrayList<>(LOCATOR_LABEL_MAX_ROWS);
                 labels.sort(Comparator
@@ -673,8 +676,12 @@ public final class CustomBar extends AbstractHudElement {
                 slotted.sort(Comparator.comparingInt(label -> LOCATOR_LABEL_SLOTS.getOrDefault(label.key(), Integer.MAX_VALUE)));
 
                 if (!slotted.isEmpty()) {
+                    Map<String, Float> rowWidths = new HashMap<>(slotted.size());
                     tr.begin(labelScale, false, false);
                     float textH = (float) tr.getHeight(true);
+                    for (LocatorLabel label : slotted) {
+                        rowWidths.put(label.key(), locatorLabelRowWidth(tr, label, scale));
+                    }
                     tr.end();
 
                     boolean startedLabelBatch = beginOwnedColorBatch();
@@ -684,8 +691,10 @@ public final class CustomBar extends AbstractHudElement {
                             if (slot < 0 || slot >= LOCATOR_LABEL_MAX_ROWS) continue;
                             float anim = Mth.clamp(label.alpha(), 0f, 1f);
                             float ease = locatorLabelEase(anim);
+                            float rowW = rowWidths.getOrDefault(label.key(), LOCATOR_LABEL_ROW_MIN_WIDTH * scale);
+                            float rowX = screenCenterX - rowW * 0.5f;
                             float rowY = rowBottom - rowH - slot * rowStep;
-                            float drawY = rowY + (1.0f - ease) * 1.4f * scale;
+                            float drawY = rowY + (1.0f - ease) * 1.2f * scale;
                             drawLocatorLabelRow(r2d, bm, label, rowX, drawY, rowW, rowH,
                                     LOCATOR_LABEL_RADIUS * scale, scale, ease);
                         }
@@ -696,22 +705,25 @@ public final class CustomBar extends AbstractHudElement {
                             if (slot < 0 || slot >= LOCATOR_LABEL_MAX_ROWS) continue;
                             float anim = Mth.clamp(label.alpha(), 0f, 1f);
                             float ease = locatorLabelEase(anim);
-                            float rowY = rowBottom - rowH - slot * rowStep + (1.0f - ease) * 1.4f * scale;
+                            float rowW = rowWidths.getOrDefault(label.key(), LOCATOR_LABEL_ROW_MIN_WIDTH * scale);
+                            float rowX = screenCenterX - rowW * 0.5f;
+                            float rowY = rowBottom - rowH - slot * rowStep + (1.0f - ease) * 1.2f * scale;
                             float padX = LOCATOR_LABEL_CHIP_PAD_X * scale;
-                            float accentReserve = label.target() ? 3.5f * scale : 0.0f;
-                            float distanceGap = 4.2f * scale;
-                            float distanceW = label.distance().isEmpty() ? 0.0f : (float) tr.getWidth(label.distance(), true);
-                            float nameMaxW = rowW - padX * 2.0f - accentReserve
-                                    - (distanceW > 0.0f ? distanceGap + distanceW : 0.0f);
+                            float leadReserve = LOCATOR_LABEL_LEAD_RESERVE * scale;
+                            float distanceAreaW = label.distance().isEmpty() ? 0.0f : LOCATOR_LABEL_DISTANCE_WIDTH * scale;
+                            float distanceGap = distanceAreaW > 0.0f ? LOCATOR_LABEL_DISTANCE_GAP * scale : 0.0f;
+                            float nameMaxW = rowW - padX * 2.0f - leadReserve - distanceGap - distanceAreaW;
                             String visibleName = fitLocatorText(tr, label.name(), Math.max(8.0f * scale, nameMaxW));
                             float textY = rowY + (rowH - textH) * 0.5f;
-                            float textX = rowX + padX + accentReserve;
+                            float textX = rowX + padX + leadReserve;
                             int nameArgb = applyBarAlpha(ColorMath.scaleAlpha(theme().textPrimary(), ease * (label.target() ? 1.0f : 0.90f)), bm);
                             tr.render(visibleName, textX, textY, new RenderColor(nameArgb), true);
-                            if (distanceW > 0.0f) {
+                            if (distanceAreaW > 0.0f) {
+                                String visibleDistance = fitLocatorText(tr, label.distance(), distanceAreaW);
+                                float distanceW = (float) tr.getWidth(visibleDistance, true);
                                 float distanceX = rowX + rowW - padX - distanceW;
-                                int distanceArgb = applyBarAlpha(ColorMath.scaleAlpha(theme().textMuted(), ease * 0.72f), bm);
-                                tr.render(label.distance(), distanceX, textY, new RenderColor(distanceArgb), true);
+                                int distanceArgb = applyBarAlpha(ColorMath.scaleAlpha(theme().textMuted(), ease * 0.76f), bm);
+                                tr.render(visibleDistance, distanceX, textY, new RenderColor(distanceArgb), true);
                             }
                         }
                         tr.end();
@@ -726,6 +738,23 @@ public final class CustomBar extends AbstractHudElement {
     }
 
 
+    private static float locatorLabelRowWidth(TextRenderer tr, LocatorLabel label, float scale) {
+        if (tr == null || label == null) return LOCATOR_LABEL_ROW_MIN_WIDTH * scale;
+
+        float padX = LOCATOR_LABEL_CHIP_PAD_X * scale;
+        float leadReserve = LOCATOR_LABEL_LEAD_RESERVE * scale;
+        float distanceAreaW = label.distance().isEmpty() ? 0.0f : LOCATOR_LABEL_DISTANCE_WIDTH * scale;
+        float distanceGap = distanceAreaW > 0.0f ? LOCATOR_LABEL_DISTANCE_GAP * scale : 0.0f;
+        float nameW = label.name() == null || label.name().isEmpty()
+                ? 0.0f
+                : (float) tr.getWidth(label.name(), true);
+
+        float wanted = padX * 2.0f + leadReserve + nameW + distanceGap + distanceAreaW;
+        return Mth.clamp(wanted,
+                LOCATOR_LABEL_ROW_MIN_WIDTH * scale,
+                LOCATOR_LABEL_ROW_MAX_WIDTH * scale);
+    }
+
     private static void drawLocatorLabelRow(Renderer2D r2d,
                                             CustomBar bm,
                                             LocatorLabel label,
@@ -738,34 +767,44 @@ public final class CustomBar extends AbstractHudElement {
                                             float alpha) {
         if (r2d == null || label == null || alpha <= 0.001f || w <= 0f || h <= 0f) return;
 
-        int fillTop = label.target()
-                ? applyBarAlpha(ColorMath.scaleAlpha(HudRenderUtil.mixColor(theme().surfaceHover(), theme().accentSoft(), 0.24f), alpha * 0.88f), bm)
-                : applyBarAlpha(ColorMath.scaleAlpha(theme().surfaceHover(), alpha * 0.68f), bm);
-        int fillBottom = applyBarAlpha(ColorMath.scaleAlpha(theme().windowBg(), alpha * 0.78f), bm);
-        int stroke = applyBarAlpha(ColorMath.scaleAlpha(theme().strokeSoft(), alpha * 0.52f), bm);
+        int fill = label.target()
+                ? applyBarAlpha(ColorMath.scaleAlpha(HudRenderUtil.mixColor(theme().surfaceHover(), theme().accentSoft(), 0.16f), alpha * 0.86f), bm)
+                : applyBarAlpha(ColorMath.scaleAlpha(theme().surface(), alpha * 0.72f), bm);
+        r2d.roundedRect(x, y, w, h, radius, Math.max(0.45f, 0.55f * scale), fill);
 
-        r2d.roundedRectShadow(x, y, w, h, radius, Math.max(0.5f, 0.65f * scale), 3.0f * scale,
-                HudRenderUtil.scaleAlpha(0xFF000000, alpha * 0.12f));
-        r2d.roundedRectGradient(x, y, w, h, radius, Math.max(0.5f, 0.6f * scale),
-                fillTop, fillBottom, 90.0f);
-        r2d.roundedRectStroke(x, y, w, h, radius, Math.max(0.45f, 0.55f * scale),
-                Math.max(0.45f, 0.55f * scale), stroke);
-
+        float markerW = LOCATOR_LABEL_ACCENT_W * scale;
+        float markerH = Math.max(1.0f * scale, h - 3.0f * scale);
+        int markerColor;
         if (label.target()) {
-            float markerW = LOCATOR_LABEL_ACCENT_W * scale;
-            float markerH = Math.max(1.0f * scale, h - 3.2f * scale);
-            int markerColor = bm != null && bm.isLocatorSearchEnabled()
-                    ? applyBarAlpha(ColorMath.scaleAlpha(0xFF000000 | bm.getLocatorSearchColorRgb(), alpha * 0.92f), bm)
-                    : applyBarAlpha(ColorMath.scaleAlpha(theme().accent(), alpha * 0.90f), bm);
-            r2d.roundedRect(
-                    x + 1.45f * scale,
-                    y + (h - markerH) * 0.5f,
-                    markerW,
-                    markerH,
-                    markerW * 0.5f,
-                    0f,
-                    markerColor
-            );
+            markerColor = bm != null && bm.isLocatorSearchEnabled()
+                    ? applyBarAlpha(ColorMath.scaleAlpha(0xFF000000 | bm.getLocatorSearchColorRgb(), alpha * 0.94f), bm)
+                    : applyBarAlpha(ColorMath.scaleAlpha(theme().accent(), alpha * 0.92f), bm);
+        } else {
+            markerColor = applyBarAlpha(ColorMath.scaleAlpha(theme().strokeSoft(), alpha * 0.46f), bm);
+        }
+        r2d.roundedRect(
+                x + 1.15f * scale,
+                y + (h - markerH) * 0.5f,
+                markerW,
+                markerH,
+                markerW * 0.5f,
+                0f,
+                markerColor
+        );
+
+        if (!label.distance().isEmpty()) {
+            float padX = LOCATOR_LABEL_CHIP_PAD_X * scale;
+            float chipW = LOCATOR_LABEL_DISTANCE_WIDTH * scale;
+            float chipH = Math.max(2.0f * scale, h - 2.0f * scale);
+            float chipX = x + w - padX - chipW;
+            float chipY = y + (h - chipH) * 0.5f;
+            int chipFill = applyBarAlpha(ColorMath.scaleAlpha(
+                    label.target()
+                            ? HudRenderUtil.mixColor(theme().windowBg(), theme().accentSoft(), 0.10f)
+                            : theme().windowBg(),
+                    alpha * 0.54f), bm);
+            r2d.roundedRect(chipX, chipY, chipW, chipH, Math.min(radius, chipH * 0.5f),
+                    Math.max(0.35f, 0.45f * scale), chipFill);
         }
     }
 

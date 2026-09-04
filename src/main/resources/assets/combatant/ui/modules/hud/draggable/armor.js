@@ -5,45 +5,13 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-function n(value, fallback) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function c(value, fallback) {
-  return typeof value === "string" && value.length > 0 ? value : fallback;
-}
-
-function s(value) {
-  return Number.isFinite(value) ? value.toFixed(2) : "0";
-}
-
-function cls(...parts) {
-  return parts.filter(Boolean).join(" ");
-}
-
-function abs(x, y, w, h, extra) {
-  return cls("absolute", `x-${s(x)}`, `y-${s(y)}`, `w-${s(w)}`, `h-${s(h)}`, extra);
-}
-
-function prop(obj, key, fallback) {
-  if (!obj) return fallback;
-  const direct = obj[key];
-  if (direct !== undefined && direct !== null) return direct;
-  if (typeof obj.get === "function") {
-    const value = obj.get(key);
-    return value !== undefined && value !== null ? value : fallback;
-  }
-  return fallback;
-}
-
-function arr(value) {
-  if (!value) return [];
-  try {
-    return Array.from(value);
-  } catch (_) {
-    return [];
-  }
-}
+const n = ui.num;
+const c = ui.str;
+const s = ui.fmt;
+const cls = ui.cls;
+const abs = ui.abs;
+const prop = ui.prop;
+const arr = ui.arr;
 
 function parseArgb(value, fallback = "#FFFFFFFF") {
   const src = c(value, fallback);

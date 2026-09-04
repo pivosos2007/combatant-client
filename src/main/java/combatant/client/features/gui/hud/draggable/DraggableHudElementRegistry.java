@@ -1314,7 +1314,7 @@ public enum DraggableHudElementRegistry {
                 parentY = parent.getY();
                 childX = child.getX() + child.getWidth() * 0.5;
                 childY = child.getY() + child.getHeight();
-                double c = Math.max(14.0, Math.abs(childY - parentY) * 0.45);
+                double c = linkHandleLength(parentX, parentY, childX, childY, true);
                 parentCx = parentX;
                 parentCy = parentY - c;
                 childCx = childX;
@@ -1325,7 +1325,7 @@ public enum DraggableHudElementRegistry {
                 parentY = parent.getY() + parent.getHeight();
                 childX = child.getX() + child.getWidth() * 0.5;
                 childY = child.getY();
-                double c = Math.max(14.0, Math.abs(childY - parentY) * 0.45);
+                double c = linkHandleLength(parentX, parentY, childX, childY, true);
                 parentCx = parentX;
                 parentCy = parentY + c;
                 childCx = childX;
@@ -1336,7 +1336,7 @@ public enum DraggableHudElementRegistry {
                 parentY = parent.getY() + parent.getHeight() * 0.5;
                 childX = child.getX() + child.getWidth();
                 childY = child.getY() + child.getHeight() * 0.5;
-                double c = Math.max(14.0, Math.abs(childX - parentX) * 0.45);
+                double c = linkHandleLength(parentX, parentY, childX, childY, false);
                 parentCx = parentX - c;
                 parentCy = parentY;
                 childCx = childX + c;
@@ -1347,7 +1347,7 @@ public enum DraggableHudElementRegistry {
                 parentY = parent.getY() + parent.getHeight() * 0.5;
                 childX = child.getX();
                 childY = child.getY() + child.getHeight() * 0.5;
-                double c = Math.max(14.0, Math.abs(childX - parentX) * 0.45);
+                double c = linkHandleLength(parentX, parentY, childX, childY, false);
                 parentCx = parentX + c;
                 parentCy = parentY;
                 childCx = childX - c;
@@ -1359,7 +1359,18 @@ public enum DraggableHudElementRegistry {
         }
 
         renderer.bezierConnectorGradient(childX, childY, childCx, childCy, parentCx, parentCy, parentX, parentY,
-                18, thickness, startArgb, endArgb);
+                thickness, startArgb, endArgb);
+    }
+
+    private static double linkHandleLength(double parentX, double parentY, double childX, double childY, boolean vertical) {
+        double dx = childX - parentX;
+        double dy = childY - parentY;
+        double distance = Math.hypot(dx, dy);
+        double normalSeparation = Math.abs(vertical ? dy : dx);
+        double lateralSeparation = Math.abs(vertical ? dx : dy);
+        double handle = 3.5 + distance * 0.20 + normalSeparation * 0.08 + lateralSeparation * 0.12;
+        double upper = Math.max(6.0, Math.min(58.0, distance * 0.62 + 8.0));
+        return Math.max(4.5, Math.min(upper, handle));
     }
 
     private static void applyDragAnchorLock(DraggableHudElement w, int screenW, int screenH) {

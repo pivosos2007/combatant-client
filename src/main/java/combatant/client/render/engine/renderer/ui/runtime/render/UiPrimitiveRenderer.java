@@ -1062,11 +1062,10 @@ public final class UiPrimitiveRenderer {
                 double cy1 = bounds.y() + props.number("cy1", props.number("y1", bounds.height() * 0.5f));
                 double cx2 = bounds.x() + props.number("cx2", props.number("x2", bounds.width()) - bounds.width() * 0.33f);
                 double cy2 = bounds.y() + props.number("cy2", props.number("y2", bounds.height() * 0.5f));
-                int segments = (int) props.number("segments", 20.0f);
                 if (gradient) {
-                    renderer.bezierConnectorGradient(x1, y1, cx1, cy1, cx2, cy2, x2, y2, segments, thickness, start, end);
+                    renderer.bezierConnectorGradient(x1, y1, cx1, cy1, cx2, cy2, x2, y2, thickness, start, end);
                 } else {
-                    renderer.bezierConnector(x1, y1, cx1, cy1, cx2, cy2, x2, y2, segments, thickness, stroke);
+                    renderer.bezierConnector(x1, y1, cx1, cy1, cx2, cy2, x2, y2, thickness, stroke);
                 }
             }
             case "orthogonal", "orthogonal-connector", "orthogonal_connector" -> {
@@ -1094,6 +1093,24 @@ public final class UiPrimitiveRenderer {
                     }
                 }
             }
+            case "wave", "waveform" -> {
+                double span = Math.abs(x2 - x1);
+                if (span >= 0.25) {
+                    double center = bounds.y() + props.number("centerY", bounds.height() * 0.5f);
+                    double amplitude = Math.max(0.0, props.number("amplitude", Math.max(1.0f, bounds.height() * 0.30f)));
+                    double phase = props.number("phase", 0.0f);
+                    double wavelength = Math.max(1.0, props.number("wavelength", 14.0f));
+                    double harmonic = Math.max(0.0, Math.min(0.45, props.number("harmonic", 0.12f)));
+                    double edgeFadePx = Math.max(0.0, props.number("edgeFade", Math.min(4.0f, (float) span * 0.18f)));
+                    if (gradient) {
+                        renderer.analyticWaveGradient(x1, x2, center, amplitude, thickness, wavelength,
+                                phase, harmonic, edgeFadePx, start, end);
+                    } else {
+                        renderer.analyticWave(x1, x2, center, amplitude, thickness, wavelength,
+                                phase, harmonic, edgeFadePx, stroke);
+                    }
+                }
+            }
             case "spline-area", "spline_area", "area-spline", "area_spline" -> {
                 int count = readPoints(props.get("points"), bounds.x(), bounds.y());
                 if (count >= 2) {
@@ -1102,7 +1119,7 @@ public final class UiPrimitiveRenderer {
                     int fillEnd = color(props.get("fillEndColor"), UiColor.multiplyAlpha(end, 0.24f));
                     int bottomStart = color(props.get("fillBottomStartColor"), fillStart & 0x00FFFFFF);
                     int bottomEnd = color(props.get("fillBottomEndColor"), fillEnd & 0x00FFFFFF);
-                    renderSplineArea(renderer, count, baseline, fillStart, fillEnd, bottomStart, bottomEnd);
+                    renderer.splineAreaGradient(points, count, baseline, fillStart, fillEnd, bottomStart, bottomEnd);
                 }
             }
             case "wire" -> {
@@ -1146,64 +1163,6 @@ public final class UiPrimitiveRenderer {
             }
         }
         return count;
-    }
-
-    /**
-     * Draws a two-axis gradient under an x-monotonic spline. Narrow overlapping
-     * columns follow the curve closely while keeping the fill independent from
-     * polygon vertex/triangulation limits. The stroke is rendered separately on
-     * top, hiding the sub-pixel column boundary along the curve.
-     */
-    private void renderSplineArea(Renderer2D renderer,
-                                  int pointCount,
-                                  double baseline,
-                                  int topStart,
-                                  int topEnd,
-                                  int bottomStart,
-                                  int bottomEnd) {
-        final double maxColumnWidth = 1.25;
-        for (int i = 0; i < pointCount - 1; i++) {
-            double x0 = points[i * 2];
-            double y0 = Math.min(baseline, points[i * 2 + 1]);
-            double x1 = points[(i + 1) * 2];
-            double y1 = Math.min(baseline, points[(i + 1) * 2 + 1]);
-            double span = x1 - x0;
-            if (span <= 0.0) continue;
-
-            int columns = Math.max(1, (int) Math.ceil(span / maxColumnWidth));
-            for (int column = 0; column < columns; column++) {
-                double t0 = column / (double) columns;
-                double t1 = (column + 1.0) / columns;
-                double left = x0 + span * t0;
-                double right = x0 + span * t1;
-                double top = lerp(y0, y1, (t0 + t1) * 0.5);
-                double height = baseline - top;
-                if (height <= 0.0) continue;
-
-                double pathT0 = (i + t0) / Math.max(1.0, pointCount - 1.0);
-                double pathT1 = (i + t1) / Math.max(1.0, pointCount - 1.0);
-                int cTopLeft = lerpArgb(topStart, topEnd, pathT0);
-                int cTopRight = lerpArgb(topStart, topEnd, pathT1);
-                int cBottomRight = lerpArgb(bottomStart, bottomEnd, pathT1);
-                int cBottomLeft = lerpArgb(bottomStart, bottomEnd, pathT0);
-
-                renderer.quadGradient(left, top, right - left, height,
-                        cTopLeft, cTopRight, cBottomRight, cBottomLeft);
-            }
-        }
-    }
-
-    private static double lerp(double from, double to, double t) {
-        return from + (to - from) * Math.max(0.0, Math.min(1.0, t));
-    }
-
-    private static int lerpArgb(int from, int to, double t) {
-        double clamped = Math.max(0.0, Math.min(1.0, t));
-        int a = (int) Math.round(((from >>> 24) & 0xFF) + (((to >>> 24) & 0xFF) - ((from >>> 24) & 0xFF)) * clamped);
-        int r = (int) Math.round(((from >>> 16) & 0xFF) + (((to >>> 16) & 0xFF) - ((from >>> 16) & 0xFF)) * clamped);
-        int g = (int) Math.round(((from >>> 8) & 0xFF) + (((to >>> 8) & 0xFF) - ((from >>> 8) & 0xFF)) * clamped);
-        int b = (int) Math.round((from & 0xFF) + ((to & 0xFF) - (from & 0xFF)) * clamped);
-        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     private int color(Object value, int fallback) {

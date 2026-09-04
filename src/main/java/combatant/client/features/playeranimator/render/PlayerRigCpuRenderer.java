@@ -155,12 +155,17 @@ public final class PlayerRigCpuRenderer {
         deform(vertex, deform, scratch);
         skin(vertex, rig, scratch);
         int color = ARGB.multiply(tint, vertex.colorArgb());
-        consumer.addVertex(pose, scratch.position)
-                .setColor(color)
-                .setUv(vertex.u(), vertex.v())
-                .setOverlay(overlay)
-                .setLight(light)
-                .setNormal(pose, scratch.normal);
+        // Do not use a fluent chain here. TextureAtlasSprite.wrap(...) returns a
+        // SpriteCoordinateExpander, whose addVertex(...) forwards to and returns the delegate.
+        // Chaining setUv(...) from that return value therefore bypasses sprite UV expansion and
+        // makes trim passes sample the whole armor-trims atlas. Keep every attribute write on the
+        // wrapper itself so atlas-backed armor trims receive the same UV remap as vanilla models.
+        consumer.addVertex(pose, scratch.position);
+        consumer.setColor(color);
+        consumer.setUv(vertex.u(), vertex.v());
+        consumer.setOverlay(overlay);
+        consumer.setLight(light);
+        consumer.setNormal(pose, scratch.normal);
     }
 
     private static void skin(RigVertex vertex, PlayerRigInstance rig, SkinScratch out) {

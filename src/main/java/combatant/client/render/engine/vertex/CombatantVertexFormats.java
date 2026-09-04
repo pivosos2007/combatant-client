@@ -34,6 +34,13 @@ public enum CombatantVertexFormats {
             .addAttribute("Color", CombatantVertexFormatElements.COLOR)
             .build();
 
+    /** Continuous UI path vertex: screen position, color, and edge/path parameters. */
+    public static final VertexFormat POS2_COLOR_PARAMS = VertexFormat.builder(0)
+            .addAttribute("Position", CombatantVertexFormatElements.POS2)
+            .addAttribute("Color", CombatantVertexFormatElements.COLOR)
+            .addAttribute("Params", CombatantVertexFormatElements.PARAMS)
+            .build();
+
     /**
      * World-space wide line vertex.
      * Position is the current endpoint, Color is endpoint color, Line packs the opposite endpoint in xyz

@@ -10,6 +10,7 @@
  * - Flame reference by Anatole Duprat (XT95), 2013
  *   Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported.
  * - Procedural water reference by afl_ext, 2017-2024, MIT License.
+ * - Crystal hover uses a lightweight continuous faceted surface inspired by Xenolith-style crystal glazing.
  */
 
 in vec4 v_Local;
@@ -264,199 +265,9 @@ vec4 flameSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1
     return vec4(color, saturate(alpha));
 }
 
-float snowLayer(vec2 p, float time, float seed, float scale, float speed, float roundness, float densityThreshold) {
-    vec2 windP = rotate2(-0.19) * p;
-    vec2 q = windP * scale + vec2(time * speed, -time * speed * 0.16);
-    vec2 cell = floor(q);
-    vec2 f = fract(q) - 0.5;
-    vec2 rnd = hash22(cell + vec2(seed * 37.0, seed * 61.0));
-    f -= (rnd - 0.5) * 0.58;
-
-    float angle = mix(-0.20, 0.20, rnd.x);
-    f = rotate2(angle) * f;
-    float halfLength = mix(0.08, 0.27, rnd.y);
-    float thickness = mix(0.018, 0.052, hash21(cell + seed * 17.0));
-
-    vec2 d = vec2(max(abs(f.x) - halfLength, 0.0), f.y);
-    float streak = 1.0 - smoothstep(thickness, thickness * 2.1, length(d));
-    float flake = 1.0 - smoothstep(thickness * 0.8, thickness * 2.2, length(f));
-    return mix(streak, flake, roundness) * step(densityThreshold, hash21(cell + seed * 83.0));
-}
-
-vec4 blizzardSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1, vec3 hi) {
-    vec2 flowP = rotate2(-0.19) * p;
-    float broad = fbm21(flowP * vec2(0.72, 2.10) + vec2(time * 0.36, seed * 11.0));
-    float torn = ridged21(flowP * vec2(1.30, 3.60) + vec2(time * 0.72, -time * 0.15));
-    float mist = smoothstep(0.57, 0.84, broad * 0.74 + torn * 0.22);
-
-    float farSnow = snowLayer(p, time, seed + 1.7, 2.6, 0.58, 0.24, 0.72);
-    float midSnow = snowLayer(p, time, seed + 4.1, 4.8, 0.92, 0.16, 0.82);
-    float nearSnow = snowLayer(p, time, seed + 8.9, 7.4, 1.34, 0.62, 0.92);
-    float snow = farSnow * 0.24 + midSnow * 0.39 + nearSnow * 0.58;
-
-    float iceGrain = ridged21(p * vec2(3.2, 7.0) + vec2(seed * 17.0, time * 0.09));
-    float frost = smoothstep(0.76, 0.98, iceGrain) * (0.22 + mist * 0.46);
-    float whiteout = saturate(mist * 0.46 + snow * 0.72 + frost * 0.20);
-
-    vec3 color = mix(c0 * 0.44, c1 * 0.92, saturate(mist * 0.68 + torn * 0.14));
-    color = mix(color, hi * 1.08, saturate(snow * 0.68 + frost * 0.31));
-    color += hi * whiteout * 0.075;
-
-    float textBand = exp(-p.y * p.y * 28.0);
-    float readability = 1.0 - textBand * 0.56;
-    float alpha = mist * (0.095 + torn * 0.075) + snow * 0.48 + frost * mist * 0.085;
-    alpha *= readability * easeOutCubic(reveal);
-    return vec4(color, saturate(alpha));
-}
-
-float octahedronSDF(vec3 p, vec3 scale) {
-    vec3 safeScale = max(scale, vec3(0.015));
-    vec3 q = p / safeScale;
-    return (dot(abs(q), vec3(1.0)) - 1.0) * min(safeScale.x, min(safeScale.y, safeScale.z)) * 0.82;
-}
-
-float crystalScene(vec3 world, float time, float reveal, float seed) {
-    const float spacing = 1.38;
-    float cellId = floor((world.x + spacing * 0.5) / spacing);
-    float localX = mod(world.x + spacing * 0.5, spacing) - spacing * 0.5;
-    float cellRnd = hash11(cellId + seed * 79.0);
-    float growth = 0.08 + easeOutCubic(reveal) * 0.92;
-
-    vec3 centerCrystal = vec3(localX + (cellRnd - 0.5) * 0.12, world.y, world.z);
-    centerCrystal.y -= mix(0.48, -0.02, growth);
-    centerCrystal.xy = rotate2((cellRnd - 0.5) * 0.26 + sin(time * 0.12 + cellRnd * 7.0) * 0.025) * centerCrystal.xy;
-    float centerDistance = octahedronSDF(centerCrystal, vec3(0.30, 0.72 * growth, 0.38));
-
-    vec3 leftCrystal = vec3(localX + 0.36, world.y - mix(0.43, 0.08, growth), world.z + 0.05);
-    leftCrystal.xy = rotate2(-0.34 + cellRnd * 0.12) * leftCrystal.xy;
-    float leftDistance = octahedronSDF(leftCrystal, vec3(0.22, 0.48 * growth, 0.29));
-
-    vec3 rightCrystal = vec3(localX - 0.38, world.y - mix(0.45, 0.10, growth), world.z - 0.04);
-    rightCrystal.xy = rotate2(0.31 - cellRnd * 0.10) * rightCrystal.xy;
-    float rightDistance = octahedronSDF(rightCrystal, vec3(0.20, 0.42 * growth, 0.27));
-
-    return min(centerDistance, min(leftDistance, rightDistance));
-}
-
-vec3 crystalNormal(vec3 p, float time, float reveal, float seed) {
-    float e = 0.0045;
-    float center = crystalScene(p, time, reveal, seed);
-    return normalize(vec3(
-        crystalScene(p + vec3(e, 0.0, 0.0), time, reveal, seed) - center,
-        crystalScene(p + vec3(0.0, e, 0.0), time, reveal, seed) - center,
-        crystalScene(p + vec3(0.0, 0.0, e), time, reveal, seed) - center
-    ));
-}
-
-vec4 crystalSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1, vec3 hi) {
-    float rayT = -1.35;
-    float hitMask = 0.0;
-    float proximityGlow = 0.0;
-    vec3 hitPosition = vec3(p, 0.0);
-
-    for (int i = 0; i < 42; i++) {
-        vec3 position = vec3(p, rayT);
-        float sceneDistance = crystalScene(position, time, reveal, seed);
-        proximityGlow += exp(-abs(sceneDistance) * 34.0) * 0.010 * (1.0 - proximityGlow);
-        if (sceneDistance < 0.0045) {
-            hitMask = 1.0;
-            hitPosition = position;
-            break;
-        }
-        rayT += clamp(sceneDistance * 0.74, 0.006, 0.125);
-        if (rayT > 1.38) break;
-    }
-
-    vec3 normal = crystalNormal(hitPosition, time, reveal, seed);
-    vec3 viewDirection = vec3(0.0, 0.0, -1.0);
-    vec3 keyLight = normalize(vec3(-0.48, -0.34, -0.82));
-    vec3 reflected = reflect(viewDirection, normal);
-    vec3 refracted = refract(viewDirection, normal, 0.74);
-
-    float diffuse = 0.16 + 0.84 * max(dot(normal, keyLight), 0.0);
-    float fresnel = pow(1.0 - abs(dot(normal, -viewDirection)), 3.2);
-    float specular = pow(max(dot(reflected, -keyLight), 0.0), 42.0);
-    float internal = fbm31(hitPosition * 3.4 + refracted * 2.1 + vec3(time * 0.07, seed * 31.0, 0.0));
-    float facetWire = pow(saturate(1.0 - abs(normal.x * normal.y * normal.z) * 5.8), 8.0);
-    float spectralPhase = dot(refracted, vec3(2.3, 3.7, 5.1)) + internal * 5.0 + seed * 9.0;
-    vec3 dispersion = 0.5 + 0.5 * cos(vec3(0.0, 2.1, 4.2) + spectralPhase);
-
-    vec3 color = mix(c0 * 0.40, c1 * 1.16, saturate(diffuse * 0.72 + internal * 0.43));
-    color = mix(color, dispersion * c1 * 1.20, fresnel * 0.28);
-    color = mix(color, hi * 1.62, saturate(specular * 0.92 + facetWire * 0.18));
-    color += hi * proximityGlow * 0.42;
-
-    float alpha = hitMask * (0.26 + diffuse * 0.16 + fresnel * 0.24 + specular * 0.48 + facetWire * 0.09);
-    alpha += proximityGlow * 0.24;
-    alpha *= easeOutCubic(reveal);
-    return vec4(color, saturate(alpha));
-}
-
-vec2 waveDx(vec2 position, vec2 direction, float frequency, float phase) {
-    float x = dot(direction, position) * frequency + phase;
-    float wave = exp(sin(x) - 1.0);
-    return vec2(wave, -wave * cos(x));
-}
-
-float waterWaves(vec2 position, float time, float seed) {
-    float phaseShift = length(position) * 0.12;
-    float iter = seed * 17.0;
-    float frequency = 1.0;
-    float timeMultiplier = 1.75;
-    float weight = 1.0;
-    float valueSum = 0.0;
-    float weightSum = 0.0;
-
-    for (int i = 0; i < 12; i++) {
-        vec2 direction = vec2(sin(iter), cos(iter));
-        vec2 wave = waveDx(position, direction, frequency, time * timeMultiplier + phaseShift);
-        position += direction * wave.y * weight * 0.28;
-        valueSum += wave.x * weight;
-        weightSum += weight;
-        weight *= 0.80;
-        frequency *= 1.19;
-        timeMultiplier *= 1.07;
-        iter += 12.399963;
-    }
-
-    return valueSum / max(weightSum, 0.0001);
-}
-
-vec4 waterSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1, vec3 hi) {
-    vec2 waterP = p * 1.34 + vec2(seed * 11.0, 0.0);
-    float center = waterWaves(waterP, time, seed);
-    float epsilon = 0.018;
-    float dx = waterWaves(waterP + vec2(epsilon, 0.0), time, seed) - center;
-    float dy = waterWaves(waterP + vec2(0.0, epsilon), time, seed) - center;
-    vec3 normal = normalize(vec3(-dx / epsilon, -dy / epsilon, 1.55));
-
-    vec3 viewDir = normalize(vec3(p * 0.055, 1.0));
-    vec3 sunDir = normalize(vec3(-0.44, -0.31, 1.0));
-    vec3 halfDir = normalize(viewDir + sunDir);
-    float fresnel = 0.04 + 0.96 * pow(1.0 - max(dot(normal, viewDir), 0.0), 5.0);
-    float specular = pow(max(dot(normal, halfDir), 0.0), 72.0);
-
-    float interference = abs(dx) + abs(dy);
-    float caustic = pow(saturate(1.0 - interference * 5.2), 11.0);
-    float deepFlow = fbm21(waterP * vec2(0.72, 1.35) + vec2(time * 0.12, -time * 0.08));
-    float foam = smoothstep(0.78, 1.03, center + interference * 1.35);
-
-    vec3 reflectedRay = reflect(-viewDir, normal);
-    float horizon = saturate(reflectedRay.y * 0.5 + 0.5);
-    float sunReflection = pow(max(dot(reflectedRay, sunDir), 0.0), 96.0);
-    vec3 atmosphere = mix(c0 * 0.46, c1 * 0.92, horizon);
-    atmosphere = mix(atmosphere, hi * 1.24, sunReflection);
-
-    float depth = saturate(0.28 + center * 0.52 + deepFlow * 0.32);
-    vec3 subsurface = mix(c0 * 0.30, c1 * 0.78, depth);
-    vec3 refractedColor = mix(subsurface, c1, saturate(normal.x * 0.16 + normal.y * 0.13 + 0.44));
-    vec3 color = mix(refractedColor, atmosphere, saturate(fresnel * 0.82 + 0.08));
-    color += hi * (specular * 1.42 + sunReflection * 0.82 + caustic * 0.12 + foam * 0.16);
-
-    float alpha = 0.12 + depth * 0.12 + fresnel * 0.25 + specular * 0.54 + sunReflection * 0.34 + foam * 0.12;
-    alpha *= easeOutCubic(reveal);
-    return vec4(color, saturate(alpha));
-}
+#moj_import <combatant:ui_module_hover_movement.glsl>
+#moj_import <combatant:ui_module_hover_crystal.glsl>
+#moj_import <combatant:ui_module_hover_water.glsl>
 
 vec4 plasmaSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1, vec3 hi) {
     vec2 q = p * vec2(0.92, 2.4);
@@ -513,7 +324,7 @@ void main() {
     if (mode < 0.5) {
         material = flameSurface(p, time, reveal, seed, c0, c1, hi);
     } else if (mode < 1.5) {
-        material = blizzardSurface(p, time, reveal, seed, c0, c1, hi);
+        material = movementSurface(p, time, reveal, seed, c0, c1, hi);
     } else if (mode < 2.5) {
         material = crystalSurface(p, time, reveal, seed, c0, c1, hi);
     } else if (mode < 3.5) {
@@ -525,25 +336,33 @@ void main() {
     vec2 mouseUv = clamp(v_EdgeModes.yz, vec2(0.0), vec2(1.0));
     vec2 mouseP = vec2((mouseUv.x - 0.5) * aspect, mouseUv.y - 0.5);
     vec2 mouseDelta = p - mouseP;
-    float mouseGlint = exp(-dot(mouseDelta, mouseDelta) * 5.8);
+    float mouseDistance2 = dot(mouseDelta, mouseDelta);
+    float mouseGlint = 1.0 / (1.0 + mouseDistance2 * 5.8);
+    mouseGlint *= mouseGlint;
     material.rgb += hi * mouseGlint * 0.075 * material.a;
 
-    float normalStep = max(max(logicalPixel.x, logicalPixel.y), 0.75);
-    float shapeDx = roundedBoxSDF(shapePosition + vec2(normalStep, 0.0), halfSize, radius)
-                  - roundedBoxSDF(shapePosition - vec2(normalStep, 0.0), halfSize, radius);
-    float shapeDy = roundedBoxSDF(shapePosition + vec2(0.0, normalStep), halfSize, radius)
-                  - roundedBoxSDF(shapePosition - vec2(0.0, normalStep), halfSize, radius);
-    vec2 shapeNormal = normalize(vec2(shapeDx, shapeDy) + vec2(0.00001));
-    float topLight = saturate(dot(shapeNormal, normalize(vec2(-0.32, -1.0))) * 0.5 + 0.5);
+    // Cheap row-rim lighting. The previous version reconstructed a rounded-box
+    // normal with four extra SDF evaluations for every hover pixel. For this
+    // shallow module-row surface, a vertical light bias is visually equivalent
+    // and substantially cheaper.
+    float topLight = 1.0 - uv.y;
     float insideDistance = max(-shapeDistance, 0.0);
     float edgeGradient = 1.0 - saturate(insideDistance / max(radius * 0.92, 2.5));
     float hairline = 1.0 - smoothstep(0.0, aa * 1.65, abs(shapeDistance));
-    float glassRim = saturate(edgeGradient * edgeGradient * (0.055 + topLight * 0.085) + hairline * (0.12 + topLight * 0.16));
+    float glassRim = saturate(edgeGradient * edgeGradient * (0.060 + topLight * 0.070)
+                            + hairline * (0.105 + topLight * 0.115));
     glassRim *= easeOutCubic(reveal);
 
-    material.rgb = acesApprox(material.rgb * 1.28);
+    if (mode >= 1.5 && mode < 3.5) {
+        // Crystal/water are already low-energy translucent materials. Avoid the
+        // full ACES rational curve here; it both costs ALU and muddies facet/color separation.
+        material.rgb = clamp(material.rgb * 1.06, 0.0, 1.0);
+    } else {
+        material.rgb = acesApprox(material.rgb * 1.28);
+    }
     vec3 rimColor = mix(hi, c1, 0.16 + (1.0 - topLight) * 0.10);
-    float rimMix = saturate(glassRim * (0.52 + 0.48 * (1.0 - material.a)));
+    float refractiveRimScale = (mode >= 1.5 && mode < 3.5) ? 0.68 : 1.0;
+    float rimMix = saturate(glassRim * refractiveRimScale * (0.52 + 0.48 * (1.0 - material.a)));
     material.rgb = mix(material.rgb, rimColor, rimMix);
 
     float materialAlpha = saturate(material.a * intensity * v_Color.a) * shapeAlpha;

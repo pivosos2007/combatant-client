@@ -24,7 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-@UiScriptAsset("combatant:api/hud/draggable/statistics_panel")
+@UiScriptAsset("combatant:modules/hud/draggable/statistics_panel")
 final class ScriptedStatisticsHudPanel {
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedStatisticsHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());

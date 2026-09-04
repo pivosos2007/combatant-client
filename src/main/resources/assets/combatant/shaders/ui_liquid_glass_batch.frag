@@ -1,5 +1,7 @@
 #version 330 core
 
+#moj_import <combatant:ui_geometry.glsl>
+
 /*
  * This file is part of the Combatant Client distribution.
  * Copyright (c) 2026 pivosos2007.
@@ -27,23 +29,9 @@ layout (std140) uniform UIBatch {
     vec4 uScreen; // xy = framebuffer size, zw = logical size
 };
 
-vec4 normalizeRadii(vec4 r, vec2 size) {
-    float maxR = 0.5 * min(size.x, size.y);
-    r = clamp(r, 0.0, maxR);
-
-    float top = r.x + r.y;
-    float bottom = r.w + r.z;
-    float left = r.x + r.w;
-    float right = r.y + r.z;
-
-    float scale = 1.0;
-    if (top > size.x && top > 0.0) scale = min(scale, size.x / top);
-    if (bottom > size.x && bottom > 0.0) scale = min(scale, size.x / bottom);
-    if (left > size.y && left > 0.0) scale = min(scale, size.y / left);
-    if (right > size.y && right > 0.0) scale = min(scale, size.y / right);
-
-    return r * scale;
-}
+#ifdef COMBATANT_ANALYTIC_CLIP
+#moj_import <combatant:ui_clip.glsl>
+#endif
 
 float roundedBoxSDF(vec2 p, vec2 halfSize, vec4 r, float smoothness) {
     // r order: TL, TR, BR, BL
@@ -259,7 +247,15 @@ void main() {
     bool primitive = v_Params6.w > 0.5;
     vec2 halfSize = size * 0.5 - ((squircle || primitive) ? 0.0 : 1.0);
 
-    float d = glassShapeSDF(pos, halfSize, radius, cornerSmoothness, squircle);
+    float selfDistance = glassShapeSDF(pos, halfSize, radius, cornerSmoothness, squircle);
+#ifdef COMBATANT_ANALYTIC_CLIP
+    vec2 clipPosition = combatantLogicalFragCoord();
+    float clipDistance = combatantClipDistance(clipPosition);
+    bool clipOwnsVisibleEdge = clipDistance > selfDistance;
+    float d = max(selfDistance, clipDistance);
+#else
+    float d = selfDistance;
+#endif
     float aa = max(max(logicalScale.x, logicalScale.y) * 1.35, 0.75);
     float shapeAlpha = 1.0 - smoothstep(-aa * 0.5, aa, d);
 
@@ -279,6 +275,14 @@ void main() {
              - glassShapeSDF(pos - vec2(nStep, 0.0), halfSize, radius, cornerSmoothness, squircle);
     float dy = glassShapeSDF(pos + vec2(0.0, nStep), halfSize, radius, cornerSmoothness, squircle)
              - glassShapeSDF(pos - vec2(0.0, nStep), halfSize, radius, cornerSmoothness, squircle);
+#ifdef COMBATANT_ANALYTIC_CLIP
+    if (clipOwnsVisibleEdge) {
+        dx = combatantClipDistance(clipPosition + vec2(nStep, 0.0))
+           - combatantClipDistance(clipPosition - vec2(nStep, 0.0));
+        dy = combatantClipDistance(clipPosition + vec2(0.0, nStep))
+           - combatantClipDistance(clipPosition - vec2(0.0, nStep));
+    }
+#endif
     vec2 sdfNormal = safeNormalize(vec2(dx, dy), safeNormalize(pos, vec2(0.0, -1.0)));
     vec2 uvNormal = vec2(sdfNormal.x, -sdfNormal.y);
 

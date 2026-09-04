@@ -16,6 +16,7 @@ layout (location = 5) in vec4 Params2;
 layout (location = 6) in vec4 Params3;
 
 #moj_import <combatant:ui_batch.glsl>
+#moj_import <combatant:ui_warp.glsl>
 
 out vec4 v_Local;
 out vec4 v_Color;
@@ -25,10 +26,10 @@ out vec4 v_Params2;
 out vec4 v_Params3;
 
 void main() {
-    vec2 logicalSize = max(uScreen.zw, vec2(1.0));
-    vec2 clip = Position.xy / logicalSize * 2.0 - 1.0;
-    gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
-    v_Local = Local;
+    // Position.xy is already CPU-mapped by RenderWarp; Local carries source * invW and invW.
+    // Supplying the matching homogeneous W preserves source-space SDF coordinates.
+    gl_Position = uiProjectiveClipPosition(Position.xy, uScreen.zw, Local);
+    v_Local = uiProjectiveSourceLocal(Local);
     v_Color = Color;
     v_Rect = Rect;
     v_Params = Params;

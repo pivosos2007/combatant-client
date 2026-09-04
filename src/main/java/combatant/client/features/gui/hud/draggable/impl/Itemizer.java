@@ -44,7 +44,7 @@ import java.util.List;
 import java.util.Map;
 
 @HudElementRegister(order = 200)
-@UiScriptAsset("combatant:api/hud/draggable/itemizer")
+@UiScriptAsset("combatant:modules/hud/draggable/itemizer")
 public final class Itemizer extends DraggableHudElement {
 private static final float BASE_ICON_CARD = 24.0f;
     private static final float BASE_COMPACT_W = 72.0f;

@@ -5,25 +5,11 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-function n(value, fallback) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function c(value, fallback) {
-  return typeof value === "string" && value.length > 0 ? value : fallback;
-}
-
-function s(value) {
-  return Number.isFinite(value) ? value.toFixed(2) : "0";
-}
-
-function cls(...parts) {
-  return parts.filter(Boolean).join(" ");
-}
-
-function abs(x, y, w, h, extra) {
-  return cls("absolute", `x-${s(x)}`, `y-${s(y)}`, `w-${s(w)}`, `h-${s(h)}`, extra);
-}
+const n = ui.num;
+const c = ui.str;
+const s = ui.fmt;
+const cls = ui.cls;
+const abs = ui.abs;
 
 const layout = {
   iconX: 5.0,
@@ -64,13 +50,7 @@ const layout = {
   },
 };
 
-function alpha(hex, amount) {
-  const src = c(hex, "#00000000");
-  if (!src.startsWith("#") || src.length !== 9) return src;
-  const raw = Number.parseInt(src.slice(1), 16);
-  const nextA = Math.max(0, Math.min(255, Math.round(((raw >>> 24) & 255) * amount)));
-  return "#" + (((nextA << 24) | (raw & 0x00ffffff)) >>> 0).toString(16).padStart(8, "0").toUpperCase();
-}
+const alpha = ui.color.alpha;
 
 function withAlpha(hex, amount) {
   const src = c(hex, "#00000000");
@@ -80,12 +60,7 @@ function withAlpha(hex, amount) {
   return "#" + (((nextA << 24) | (raw & 0x00ffffff)) >>> 0).toString(16).padStart(8, "0").toUpperCase();
 }
 
-function alpha01(hex) {
-  const src = c(hex, "#00000000");
-  if (!src.startsWith("#") || src.length !== 9) return 1;
-  const raw = Number.parseInt(src.slice(1), 16);
-  return Math.max(0, Math.min(1, ((raw >>> 24) & 255) / 255));
-}
+const alpha01 = ui.color.opacity;
 
 function font(family, scale) {
   const name = c(family, "OnestMedium");

@@ -111,7 +111,7 @@ public class JumpCircles extends Module {
             if (prevGround && !nowGround) {
                 double surfaceY = groundedFeetY.getOrDefault(id, pl.getBoundingBox().minY);
                 circles.add(new Circle(
-                        new Vec3(pl.getX(), surfaceY + 0.001, pl.getZ()),
+                        new Vec3(pl.getX(), surfaceY + 0.015625, pl.getZ()),
                         new Timer()
                 ));
             }

@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.script;
 
+import combatant.client.features.hmi_recode.HoldMyItems;
+import combatant.client.features.playeranimator.PlayerAnimator;
 import combatant.client.util.resources.asset.AssetAutoLoader;
 import combatant.client.util.resources.asset.AssetLoad;
 import combatant.client.util.resources.asset.AssetLoadPhase;
@@ -18,7 +20,9 @@ import combatant.client.features.gui.hud.draggable.impl.HudNotifier;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.script.*;
 import combatant.client.util.logging.DebugLog;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 
 public enum HudScriptLayouts {
     ;
@@ -57,6 +61,18 @@ public enum HudScriptLayouts {
         for (String id : AssetAutoLoader.uiScriptIds()) {
             REGISTRY.handle(UiScriptModuleId.of(id));
         }
+    }
+
+    /**
+     * Resource reload ordering is intentionally HMI (450) -> PlayerAnimator (500) -> UI (550).
+     * The animation runtimes invalidate lazily; UI modules can reload immediately against the new
+     * ResourceManager. Keeping this as an @AssetLoad hook makes resource reload and manual reload
+     * use the same subsystem order.
+     */
+    @AssetLoad(value = AssetLoadPhase.RELOAD, order = 550)
+    public static void reloadRegisteredAssets(ResourceManager manager) {
+        UiScriptModuleRegistry.ReloadStats stats = REGISTRY.reloadChanged(manager);
+        logUiReloadFailures("resource reload", stats);
     }
 
     public static CachedUiScriptRuntime.Reporter runtimeReporter() {
@@ -120,17 +136,77 @@ public enum HudScriptLayouts {
 
     public static void reloadChanged(Minecraft mc) {
         if (mc == null || mc.getResourceManager() == null) return;
-        UiScriptModuleRegistry.ReloadStats stats = REGISTRY.reloadChanged(mc.getResourceManager());
-        if (stats.errors() > 0) {
-            DebugLog.error("[UI Scripts] reload failed: " + stats.firstError(), stats.firstCause());
-            HudNotifier.pushMessage("UI scripts reload errors: " + stats.firstError(), HudNotifier.NotifyType.NO);
+
+        ArrayList<ReloadFailure> failures = new ArrayList<>();
+
+        // Keep the exact same order as @AssetLoad resource reload hooks:
+        // HMI (450) -> PlayerAnimator (500) -> UI (550).
+        invalidateRuntime("HMI", HoldMyItems::invalidateScripts, failures);
+        invalidateRuntime("PlayerAnimator", PlayerAnimator::invalidateScripts, failures);
+
+        UiScriptModuleRegistry.ReloadStats uiStats = REGISTRY.reloadChanged(mc.getResourceManager());
+        for (UiScriptModuleRegistry.ReloadFailure failure : uiStats.failures()) {
+            failures.add(new ReloadFailure(
+                    "UI " + failure.moduleId(),
+                    failure.message(),
+                    failure.cause()
+            ));
+        }
+
+        if (!failures.isEmpty()) {
+            for (ReloadFailure failure : failures) {
+                String message = failure.message() == null || failure.message().isBlank()
+                        ? "unknown error"
+                        : failure.message();
+                DebugLog.error("[Scripts] " + failure.runtime() + " reload failed: " + message, failure.cause());
+            }
+            ReloadFailure first = failures.getFirst();
+            String firstMessage = first.message() == null || first.message().isBlank()
+                    ? "unknown error"
+                    : first.message();
+            DebugLog.error("[Scripts] reload completed with " + failures.size() + " error(s)");
+            HudNotifier.pushMessage(
+                    "Scripts reload errors (" + failures.size() + "): " + first.runtime() + ": " + firstMessage,
+                    HudNotifier.NotifyType.NO
+            );
             return;
         }
-        if (stats.changed() > 0) {
-            HudNotifier.pushMessage("UI scripts reloaded: " + stats.changed() + " changed", HudNotifier.NotifyType.INFO);
+
+        if (uiStats.changed() > 0) {
+            HudNotifier.pushMessage(
+                    "Scripts reloaded: UI " + uiStats.changed() + " changed; HMI/PlayerAnimator invalidated",
+                    HudNotifier.NotifyType.INFO
+            );
         } else {
-            HudNotifier.pushMessage("UI scripts unchanged", HudNotifier.NotifyType.INFO);
+            HudNotifier.pushMessage(
+                    "Scripts reloaded: UI unchanged; HMI/PlayerAnimator invalidated",
+                    HudNotifier.NotifyType.INFO
+            );
         }
+    }
+
+    private static void invalidateRuntime(String name, Runnable invalidation, List<ReloadFailure> failures) {
+        try {
+            invalidation.run();
+        } catch (Throwable error) {
+            failures.add(new ReloadFailure(name, error.getMessage(), error));
+        }
+    }
+
+    private static void logUiReloadFailures(String reason, UiScriptModuleRegistry.ReloadStats stats) {
+        if (stats == null || stats.failures().isEmpty()) return;
+        for (UiScriptModuleRegistry.ReloadFailure failure : stats.failures()) {
+            String message = failure.message() == null || failure.message().isBlank()
+                    ? "unknown error"
+                    : failure.message();
+            DebugLog.error(
+                    "[UI Scripts] " + reason + " failed for " + failure.moduleId() + ": " + message,
+                    failure.cause()
+            );
+        }
+    }
+
+    private record ReloadFailure(String runtime, String message, Throwable cause) {
     }
 
     private static void report(String id, String message, Throwable cause, String stack) {

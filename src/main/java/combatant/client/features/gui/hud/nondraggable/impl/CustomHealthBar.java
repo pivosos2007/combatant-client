@@ -39,7 +39,7 @@ import java.util.List;
 import static combatant.client.features.theme.Theme.theme;
 
 @HudElementRegister(order = 50)
-@UiScriptAsset("combatant:api/hud/static/custom_health_bar")
+@UiScriptAsset("combatant:modules/hud/static/custom_health_bar")
 public final class CustomHealthBar extends AbstractHudElement {
 
     public static final CustomHealthBar INSTANCE = new CustomHealthBar();

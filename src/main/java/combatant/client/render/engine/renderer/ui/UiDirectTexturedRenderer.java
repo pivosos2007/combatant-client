@@ -15,7 +15,10 @@ import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.render.engine.uniform.impl.UiClipUniforms;
+import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
 import combatant.client.render.helpers.ScissorFunction;
+import combatant.client.render.helpers.ClipFunction;
 import net.minecraft.client.Minecraft;
 
 /** Immediate textured submission path kept outside the Renderer2D drawing facade. */
@@ -39,7 +42,8 @@ public final class UiDirectTexturedRenderer {
                     UiDeferredScheduler.enqueue(new DeferredTexturedSubmit(
                             UiDeferredScheduler.layerForCurrentPhase(false),
                             UiDeferredScheduler.snapshotViewport(),
-                            ScissorFunction.currentFramebufferScissor(),
+                            ScissorFunction.currentSnapshot(),
+                            ClipFunction.currentSnapshot(),
                             samplerName,
                             samplerView,
                             sampler,
@@ -63,12 +67,20 @@ public final class UiDirectTexturedRenderer {
             RenderTarget framebuffer = minecraft.gameRenderer.mainRenderTarget();
             if (framebuffer == null) return;
 
-            MeshRenderer.begin()
+            UiClipSnapshot clip = ClipFunction.currentSnapshot();
+            RenderPipeline pipeline = CombatantRenderPipelines.UI_TEXTURED;
+            if (clip.usesAnalyticPipeline()) {
+                pipeline = CombatantRenderPipelines.analyticClipTexturedPipeline(pipeline);
+            }
+            MeshRenderer draw = MeshRenderer.begin()
                     .attachments(framebuffer.getColorTextureView(), null)
-                    .pipeline(CombatantRenderPipelines.UI_TEXTURED)
+                    .pipeline(pipeline)
                     .mesh(mesh)
-                    .sampler(samplerName, samplerView, sampler)
-                    .end();
+                    .sampler(samplerName, samplerView, sampler);
+            if (clip.usesAnalyticPipeline()) {
+                draw.uniform("UIClip", UiClipUniforms.write(clip));
+            }
+            draw.end();
         } finally {
             UiRenderDispatcher.flushLayer();
         }

@@ -54,7 +54,7 @@ public final class VulkanStencilAttachmentManager implements AutoCloseable {
         );
         GpuTextureView view = RenderSystem.getDevice().createTextureView(texture);
         DebugLog.stencilOnChange("shapeclip.vulkan.stencil.alloc", label + "|" + width + "x" + height + "|" + samples,
-                "[ShapeClip/Vulkan] allocated stencil attachment %s size=%dx%d samples=%d",
+                "[ShapeClip/Vulkan] UI clip attachment format=S8_UINT label=%s size=%dx%d samples=%d",
                 label, width, height, samples);
         return new Attachment(texture, view, width, height, samples);
     }

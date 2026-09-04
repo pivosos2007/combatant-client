@@ -14,12 +14,14 @@ import net.minecraft.client.renderer.texture.AbstractTexture;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
 import combatant.client.render.engine.rhi.resource.GlyphAtlasManager;
 import combatant.client.render.engine.text.backend.*;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
+import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -113,11 +115,32 @@ public enum TextRenderSystem {
                                               MeshBuilder mesh,
                                               RenderPipeline pipeline,
                                               TextPlacementMode placement) {
+        appendGlyphMeshCommand(commands, label, font, mesh, pipeline, placement, UiClipSnapshot.NONE);
+    }
+
+    /** Appends glyph geometry with the immutable clip state captured when the text was enqueued. */
+    public static void appendGlyphMeshCommand(List<RhiDrawCommand> commands,
+                                              String label,
+                                              GlyphFont font,
+                                              MeshBuilder mesh,
+                                              RenderPipeline pipeline,
+                                              TextPlacementMode placement,
+                                              UiClipSnapshot clipSnapshot) {
         if (commands == null) return;
         if (font == null || mesh == null || pipeline == null) return;
         if (mesh.isBuilding()) mesh.end();
         if (mesh.getIndicesCount() <= 0) return;
         if (!font.isReady()) return;
+
+        UiClipSnapshot clip = clipSnapshot != null ? clipSnapshot : UiClipSnapshot.NONE;
+        RenderPipeline resolvedPipeline = pipeline;
+        if (clip.usesAnalyticPipeline()) {
+            resolvedPipeline = CombatantRenderPipelines.analyticClipTextPipeline(pipeline);
+            if (resolvedPipeline == null) {
+                throw new IllegalStateException("UI text pipeline " + pipeline.getLocation()
+                        + " has no ANALYTIC_CLIP variant for clip snapshot " + clip.id());
+            }
+        }
 
         AbstractTexture texture = font.getTexture();
         if (texture == null || texture.getTextureView() == null || texture.getSampler() == null) return;
@@ -136,10 +159,14 @@ public enum TextRenderSystem {
             STATS.backend(font.isMsdf() ? TextBackendPreference.MSDF : TextBackendPreference.BITMAP_ATLAS);
 
             RhiDrawCommand.Builder command = RhiDrawCommand.builder(label != null ? label : "Combatant Text")
-                    .pipeline(pipeline)
+                    .pipeline(resolvedPipeline)
                     .colorAttachment(mc.gameRenderer.mainRenderTarget().getColorTextureView())
                     .mesh(handle)
                     .sampler("u_Texture", texture.getTextureView(), texture.getSampler());
+
+            if (clip.usesAnalyticPipeline()) {
+                command.uniform("UIClip", UiClipUniforms.write(clip));
+            }
 
             if (font.isMsdf()) {
                 MsdfTextUniforms.update(font.getPxRange(), font.getAtlasWidth(), font.getAtlasHeight());

@@ -25,7 +25,7 @@ import net.minecraft.resources.Identifier;
 import java.util.ArrayList;
 import java.util.List;
 
-@UiScriptAsset("combatant:api/hud/draggable/triangulator")
+@UiScriptAsset("combatant:modules/hud/draggable/triangulator")
 final class ScriptedTriangulatorHudPanel {
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedTriangulatorHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());

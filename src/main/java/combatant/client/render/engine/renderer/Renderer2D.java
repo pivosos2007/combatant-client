@@ -133,9 +133,9 @@ public final class Renderer2D {
     private final double[] rectShapeTmp = new double[256];
     private final double[] connectorTmp = new double[64];
     private final double[] connectorAnchorTmp = new double[4];
+    private final UiPathRenderer pathRenderer = new UiPathRenderer();
     private final int[] polygonIndexTmp = new int[64];
     private final int[] polygonVertexTmp = new int[64];
-    private final int[] warpedShapeVertexTmp = new int[81];
     private final double[] progressShapeTmp = new double[256];
     private double alpha = 1.0;
 
@@ -774,21 +774,17 @@ public final class Renderer2D {
         double w = outerRadius * 2.0;
         double h = outerRadius * 2.0;
 
-        if (RenderWarpStack.active()) {
-            appendWarpedSdfGrid(mesh, x, y, w, h, argb, argb, argb, argb,
-                    UiRect.of(x, y, w, h), UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0.0f);
-        } else {
-            mesh.ensureQuadCapacity();
-            int i1 = appendGeometryVertex(mesh, x, y, argb, UiRect.of(x, y, w, h),
-                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
-            int i2 = appendGeometryVertex(mesh, x, y + h, argb, UiRect.of(x, y, w, h),
-                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
-            int i3 = appendGeometryVertex(mesh, x + w, y + h, argb, UiRect.of(x, y, w, h),
-                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
-            int i4 = appendGeometryVertex(mesh, x + w, y, argb, UiRect.of(x, y, w, h),
-                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
-            mesh.quad(i1, i2, i3, i4);
-        }
+        mesh.ensureQuadCapacity();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGeometryVertex(mesh, x, y, argb, bounds,
+                UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
+        int i2 = appendGeometryVertex(mesh, x, y + h, argb, bounds,
+                UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
+        int i3 = appendGeometryVertex(mesh, x + w, y + h, argb, bounds,
+                UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
+        int i4 = appendGeometryVertex(mesh, x + w, y, argb, bounds,
+                UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, 0f);
+        mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
     }
@@ -823,22 +819,17 @@ public final class Renderer2D {
         double w = outerRadius * 2.0;
         double h = outerRadius * 2.0;
 
-        if (RenderWarpStack.active()) {
-            appendWarpedSdfGrid(mesh, x, y, w, h, argb, argb, argb, argb,
-                    UiRect.of(x, y, w, h), UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
-        } else {
-            mesh.ensureQuadCapacity();
-            UiRect bounds = UiRect.of(x, y, w, h);
-            int i1 = appendGeometryVertex(mesh, x, y, argb, bounds,
-                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
-            int i2 = appendGeometryVertex(mesh, x, y + h, argb, bounds,
-                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
-            int i3 = appendGeometryVertex(mesh, x + w, y + h, argb, bounds,
-                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
-            int i4 = appendGeometryVertex(mesh, x + w, y, argb, bounds,
-                    UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
-            mesh.quad(i1, i2, i3, i4);
-        }
+        mesh.ensureQuadCapacity();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        int i1 = appendGeometryVertex(mesh, x, y, argb, bounds,
+                UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
+        int i2 = appendGeometryVertex(mesh, x, y + h, argb, bounds,
+                UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
+        int i3 = appendGeometryVertex(mesh, x + w, y + h, argb, bounds,
+                UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
+        int i4 = appendGeometryVertex(mesh, x + w, y, argb, bounds,
+                UiFastShapeParams.KIND_CIRCLE, (float) radius, softness, stroke);
+        mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
     }
@@ -1906,7 +1897,6 @@ public final class Renderer2D {
                                       int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
         shape(UiShape.roundedRect(maskX, maskY, maskW, maskH, radius), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft));
         boolean auto = beginAutoBatch();
-        boolean warped = RenderWarpStack.active();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
@@ -1916,23 +1906,11 @@ public final class Renderer2D {
         UiFastShapeParams params = UiFastShapeParams.rounded(clampedRadius, UiStroke.NONE, true, softness);
         UiRect bounds = UiRect.of(maskX, maskY, maskW, maskH);
 
-        int i1;
-        int i2;
-        int i3;
-        int i4;
-        if (warped) {
-            appendWarpedSdfGrid(mesh, x, y, w, h,
-                    cTopLeft, cTopRight, cBottomRight, cBottomLeft,
-                    bounds, params.kind(), params.shape(), params.strokeWidth(), params.flags());
-            endAutoBatch(auto);
-            return;
-        } else {
-            mesh.ensureQuadCapacity();
-            i1 = appendShapeVertex(mesh, x, y, cTopLeft, bounds, params);
-            i2 = appendShapeVertex(mesh, x, y + h, cBottomLeft, bounds, params);
-            i3 = appendShapeVertex(mesh, x + w, y + h, cBottomRight, bounds, params);
-            i4 = appendShapeVertex(mesh, x + w, y, cTopRight, bounds, params);
-        }
+        mesh.ensureQuadCapacity();
+        int i1 = appendShapeVertex(mesh, x, y, cTopLeft, bounds, params);
+        int i2 = appendShapeVertex(mesh, x, y + h, cBottomLeft, bounds, params);
+        int i3 = appendShapeVertex(mesh, x + w, y + h, cBottomRight, bounds, params);
+        int i4 = appendShapeVertex(mesh, x + w, y, cTopRight, bounds, params);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1943,7 +1921,6 @@ public final class Renderer2D {
                                               int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
         shapeStroke(UiShape.roundedRect(x, y, w, h, radius), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
-        boolean warped = RenderWarpStack.active();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
@@ -1954,23 +1931,11 @@ public final class Renderer2D {
         UiFastShapeParams params = UiFastShapeParams.rounded(clampedRadius, UiStroke.of(stroke), false, softness);
         UiRect bounds = UiRect.of(x, y, w, h);
 
-        int i1;
-        int i2;
-        int i3;
-        int i4;
-        if (warped) {
-            appendWarpedSdfGrid(mesh, x, y, w, h,
-                    cTopLeft, cTopRight, cBottomRight, cBottomLeft,
-                    bounds, params.kind(), params.shape(), params.strokeWidth(), params.flags());
-            endAutoBatch(auto);
-            return;
-        } else {
-            mesh.ensureQuadCapacity();
-            i1 = appendShapeVertex(mesh, x, y, cTopLeft, bounds, params);
-            i2 = appendShapeVertex(mesh, x, y + h, cBottomLeft, bounds, params);
-            i3 = appendShapeVertex(mesh, x + w, y + h, cBottomRight, bounds, params);
-            i4 = appendShapeVertex(mesh, x + w, y, cTopRight, bounds, params);
-        }
+        mesh.ensureQuadCapacity();
+        int i1 = appendShapeVertex(mesh, x, y, cTopLeft, bounds, params);
+        int i2 = appendShapeVertex(mesh, x, y + h, cBottomLeft, bounds, params);
+        int i3 = appendShapeVertex(mesh, x + w, y + h, cBottomRight, bounds, params);
+        int i4 = appendShapeVertex(mesh, x + w, y, cTopRight, bounds, params);
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -2534,6 +2499,72 @@ public final class Renderer2D {
         chamferedRectStrokeGradient(x, y, width, height, bevel, thickness, startArgb, endArgb, angleDeg, offsetPx);
     }
 
+    /**
+     * Draws a media-style analytic waveform as one GPU quad. The wave itself is reconstructed
+     * per fragment; this path intentionally does not use {@link UiPathRenderer} or CPU samples.
+     */
+    public void analyticWave(double x1, double x2, double centerY,
+                             double amplitude, double thickness, double wavelength,
+                             double phase, double harmonic, double edgeFadePx,
+                             int argb) {
+        analyticWaveGradient(x1, x2, centerY, amplitude, thickness, wavelength,
+                phase, harmonic, edgeFadePx, argb, argb);
+    }
+
+    /** Analytic waveform with color interpolation along the active timeline span. */
+    public void analyticWaveGradient(double x1, double x2, double centerY,
+                                     double amplitude, double thickness, double wavelength,
+                                     double phase, double harmonic, double edgeFadePx,
+                                     int startArgb, int endArgb) {
+        if (textured) {
+            throw new IllegalStateException("Analytic wave drawing is supported only on Renderer2D.COLOR.");
+        }
+        if (!Double.isFinite(x1) || !Double.isFinite(x2) || !Double.isFinite(centerY)) return;
+
+        double left = Math.min(x1, x2);
+        double right = Math.max(x1, x2);
+        double span = right - left;
+        double t = Math.max(0.0, thickness);
+        if (span < 0.25 || t <= 0.0) return;
+
+        double amp = Math.max(0.0, amplitude);
+        double lambda = Math.max(1.0, wavelength);
+        double h = Math.max(0.0, Math.min(0.45, harmonic));
+        double fade = Math.max(0.0, Math.min(span * 0.5, edgeFadePx));
+
+        // Only the conservative shader support bounds are geometry. Wave curvature is never
+        // tessellated: four vertices cover every frequency/amplitude combination.
+        double guard = 1.5;
+        double half = t * 0.5;
+        double minX = left - half - guard;
+        double maxX = right + half + guard;
+        double extentY = amp + half + guard;
+        double minY = centerY - extentY;
+        double maxY = centerY + extentY;
+
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.WAVE, null, null);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+
+        int i1 = appendAnalyticWaveVertex(mesh, minX, minY, startArgb,
+                left, right, centerY, amp, t, lambda, phase, h, fade);
+        int i2 = appendAnalyticWaveVertex(mesh, minX, maxY, startArgb,
+                left, right, centerY, amp, t, lambda, phase, h, fade);
+        int i3 = appendAnalyticWaveVertex(mesh, maxX, maxY, endArgb,
+                left, right, centerY, amp, t, lambda, phase, h, fade);
+        int i4 = appendAnalyticWaveVertex(mesh, maxX, minY, endArgb,
+                left, right, centerY, amp, t, lambda, phase, h, fade);
+        mesh.quad(i1, i2, i3, i4);
+
+        endAutoBatch(auto);
+    }
+
     public void connector(double x1, double y1, double x2, double y2, double thickness, int argb) {
         connectorTmp[0] = x1;
         connectorTmp[1] = y1;
@@ -2692,8 +2723,26 @@ public final class Renderer2D {
                                 int segments,
                                 double thickness,
                                 int argb) {
-        int count = buildBezier(connectorTmp, x1, y1, cx1, cy1, cx2, cy2, x2, y2, segments);
-        polyline(connectorTmp, count, thickness, false, argb, false);
+        if (textured) throw new IllegalStateException("Bezier drawing is supported only on Renderer2D.COLOR.");
+        double t = Math.max(0.0, thickness);
+        if (t <= 0.0) return;
+        connectorTmp[0] = x1; connectorTmp[1] = y1;
+        connectorTmp[2] = cx1; connectorTmp[3] = cy1;
+        connectorTmp[4] = cx2; connectorTmp[5] = cy2;
+        connectorTmp[6] = x2; connectorTmp[7] = y2;
+        path(UiShape.bezier(connectorTmp, 4), UiPaint.solid(argb), UiStroke.of(t).withRoundCapsAndJoins(), false);
+        int count = pathRenderer.resolveBezier(x1, y1, cx1, cy1, cx2, cy2, x2, y2);
+        appendResolvedPathStroke(count, false, t, UiPathCap.ROUND, UiPathJoin.ROUND, argb, argb);
+    }
+
+    public void bezierConnectorGradient(double x1, double y1,
+                                        double cx1, double cy1,
+                                        double cx2, double cy2,
+                                        double x2, double y2,
+                                        double thickness,
+                                        int startArgb,
+                                        int endArgb) {
+        bezierConnectorGradient(x1, y1, cx1, cy1, cx2, cy2, x2, y2, 0, thickness, startArgb, endArgb);
     }
 
     public void bezierConnectorGradient(double x1, double y1,
@@ -2704,8 +2753,17 @@ public final class Renderer2D {
                                         double thickness,
                                         int startArgb,
                                         int endArgb) {
-        int count = buildBezier(connectorTmp, x1, y1, cx1, cy1, cx2, cy2, x2, y2, segments);
-        polylineGradient(connectorTmp, count, thickness, false, startArgb, endArgb, false);
+        if (textured) throw new IllegalStateException("Bezier drawing is supported only on Renderer2D.COLOR.");
+        double t = Math.max(0.0, thickness);
+        if (t <= 0.0) return;
+        connectorTmp[0] = x1; connectorTmp[1] = y1;
+        connectorTmp[2] = cx1; connectorTmp[3] = cy1;
+        connectorTmp[4] = cx2; connectorTmp[5] = cy2;
+        connectorTmp[6] = x2; connectorTmp[7] = y2;
+        path(UiShape.bezier(connectorTmp, 4), UiPaint.corners(startArgb, endArgb, endArgb, startArgb),
+                UiStroke.of(t).withRoundCapsAndJoins(), false);
+        int count = pathRenderer.resolveBezier(x1, y1, cx1, cy1, cx2, cy2, x2, y2);
+        appendResolvedPathStroke(count, false, t, UiPathCap.ROUND, UiPathJoin.ROUND, startArgb, endArgb);
     }
 
     public void nodeGraphEdge(double x1, double y1, double x2, double y2, double thickness, int argb) {
@@ -2718,18 +2776,54 @@ public final class Renderer2D {
                                       double thickness, int startArgb, int endArgb) {
         double dx = Math.abs(x2 - x1);
         double c = Math.max(24.0, dx * 0.5);
-        bezierConnectorGradient(x1, y1, x1 + c, y1, x2 - c, y2, x2, y2, 20, thickness, startArgb, endArgb);
+        bezierConnectorGradient(x1, y1, x1 + c, y1, x2 - c, y2, x2, y2, thickness, startArgb, endArgb);
     }
 
     public void spline(double[] points, int pointCount, double thickness, boolean closed, int argb) {
+        if (textured) throw new IllegalStateException("Spline drawing is supported only on Renderer2D.COLOR.");
         if (points == null || pointCount < 2) return;
-        polyline(points, pointCount, thickness, closed, argb, true);
+        double t = Math.max(0.0, thickness);
+        if (t <= 0.0) return;
+        path(UiShape.spline(points, pointCount, closed), UiPaint.solid(argb), UiStroke.of(t).withRoundCapsAndJoins(), false);
+        int count = pathRenderer.resolveSpline(points, pointCount, closed);
+        appendResolvedPathStroke(count, closed, t, UiPathCap.ROUND, UiPathJoin.ROUND, argb, argb);
     }
 
     public void splineGradient(double[] points, int pointCount, double thickness, boolean closed,
                                int startArgb, int endArgb) {
+        if (textured) throw new IllegalStateException("Spline drawing is supported only on Renderer2D.COLOR.");
         if (points == null || pointCount < 2) return;
-        polylineGradient(points, pointCount, thickness, closed, startArgb, endArgb, true);
+        double t = Math.max(0.0, thickness);
+        if (t <= 0.0) return;
+        path(UiShape.spline(points, pointCount, closed), UiPaint.corners(startArgb, endArgb, endArgb, startArgb),
+                UiStroke.of(t).withRoundCapsAndJoins(), false);
+        int count = pathRenderer.resolveSpline(points, pointCount, closed);
+        appendResolvedPathStroke(count, closed, t, UiPathCap.ROUND, UiPathJoin.ROUND, startArgb, endArgb);
+    }
+
+    /**
+     * Continuous spline area using the exact same resolved top boundary as spline()/splineGradient().
+     * Intended for streaming graphs where fill/glow/stroke must stay geometrically aligned.
+     */
+    public void splineAreaGradient(double[] points, int pointCount, double baseline,
+                                   int topStartArgb, int topEndArgb,
+                                   int bottomStartArgb, int bottomEndArgb) {
+        if (textured) throw new IllegalStateException("Spline area drawing is supported only on Renderer2D.COLOR.");
+        if (points == null || pointCount < 2) return;
+        path(UiShape.spline(points, pointCount, false), UiPaint.corners(topStartArgb, topEndArgb, bottomEndArgb, bottomStartArgb),
+                UiStroke.NONE, true);
+        int count = pathRenderer.resolveSpline(points, pointCount, false);
+        if (count < 2) return;
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.PATH, null, null);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        pathRenderer.appendAreaToBaseline(mesh, count, baseline, topStartArgb, topEndArgb, bottomStartArgb, bottomEndArgb);
+        endAutoBatch(auto);
     }
 
     public void texQuad(double x, double y, double width, double height,
@@ -3746,7 +3840,6 @@ public final class Renderer2D {
         if (w <= 0.0 || h <= 0.0 || (!fill && (stroke == null || !stroke.enabled()))) return;
 
         boolean auto = beginAutoBatch();
-        boolean warped = RenderWarpStack.active();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
         if (batch == null) {
             endAutoBatch(auto);
@@ -3774,17 +3867,12 @@ public final class Renderer2D {
         double qy = y - strokeOutset;
         double qw = w + strokeOutset * 2.0;
         double qh = h + strokeOutset * 2.0;
-        if (warped) {
-            appendWarpedSdfGrid(mesh, qx, qy, qw, qh, cTL, cTR, cBR, cBL,
-                    bounds, params.kind(), params.shape(), params.strokeWidth(), params.flags());
-        } else {
-            mesh.ensureQuadCapacity();
-            int i1 = appendShapeVertex(mesh, qx, qy, cTL, bounds, params);
-            int i2 = appendShapeVertex(mesh, qx, qy + qh, cBL, bounds, params);
-            int i3 = appendShapeVertex(mesh, qx + qw, qy + qh, cBR, bounds, params);
-            int i4 = appendShapeVertex(mesh, qx + qw, qy, cTR, bounds, params);
-            mesh.quad(i1, i2, i3, i4);
-        }
+        mesh.ensureQuadCapacity();
+        int i1 = appendShapeVertex(mesh, qx, qy, cTL, bounds, params);
+        int i2 = appendShapeVertex(mesh, qx, qy + qh, cBL, bounds, params);
+        int i3 = appendShapeVertex(mesh, qx + qw, qy + qh, cBR, bounds, params);
+        int i4 = appendShapeVertex(mesh, qx + qw, qy, cTR, bounds, params);
+        mesh.quad(i1, i2, i3, i4);
         endAutoBatch(auto);
     }
 
@@ -3794,7 +3882,7 @@ public final class Renderer2D {
         int r = (argb >>> 16) & 0xFF;
         int g = (argb >>> 8) & 0xFF;
         int b = argb & 0xFF;
-        mesh.vec2(x, y).rawLocal2(x, y);
+        mesh.vec2(x, y).local2(x, y);
         return mesh.color(r, g, b, a)
                 .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
                 .vec4(p.kind(), p.shape(), p.strokeWidth(), p.flags())
@@ -3823,11 +3911,27 @@ public final class Renderer2D {
         int r = (argb >>> 16) & 0xFF;
         int g = (argb >>> 8) & 0xFF;
         int b = argb & 0xFF;
-        return mesh.vec2(x, y).rawLocal2(x, y).color(r, g, b, a)
+        return mesh.vec2(x, y).local2(x, y).color(r, g, b, a)
                 .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
                 .vec4(p0, p1, p2, p3)
                 .vec4(p20, p21, p22, p23)
                 .vec4(p30, p31, p32, p33).next();
+    }
+
+    private static int appendAnalyticWaveVertex(MeshBuilder mesh,
+                                                double x, double y, int argb,
+                                                double left, double right, double centerY,
+                                                double amplitude, double thickness, double wavelength, double phase,
+                                                double harmonic, double edgeFadePx) {
+        int a = (argb >>> 24) & 0xFF;
+        int r = (argb >>> 16) & 0xFF;
+        int g = (argb >>> 8) & 0xFF;
+        int b = argb & 0xFF;
+        return mesh.vec2(x, y).local2(x, y).color(r, g, b, a)
+                .vec4(left, right, centerY, 0.0)
+                .vec4(amplitude, thickness, wavelength, phase)
+                .vec4(harmonic, edgeFadePx, 0.0, 0.0)
+                .vec4(0.0, 0.0, 0.0, 0.0).next();
     }
 
     private static void appendGeometryQuad(MeshBuilder mesh,
@@ -3857,83 +3961,6 @@ public final class Renderer2D {
                 .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
                 .vec4(kind, radius, softness, glowRadius)
                 .vec4(centerX, centerY, 0f, 0f).next();
-    }
-
-    private void appendWarpedSdfGrid(
-            MeshBuilder mesh,
-            double x,
-            double y,
-            double width,
-            double height,
-            int cTopLeft,
-            int cTopRight,
-            int cBottomRight,
-            int cBottomLeft,
-            UiRect sdfBounds,
-            float param0,
-            float param1,
-            float param2,
-            float param3
-    ) {
-        int columns = warpedGridSegments(width);
-        int rows = warpedGridSegments(height);
-        int stride = columns + 1;
-        int vertexCount = stride * (rows + 1);
-        int indexCount = columns * rows * 6;
-        mesh.ensureCapacity(vertexCount, indexCount);
-
-        for (int row = 0; row <= rows; row++) {
-            double v = row / (double) rows;
-            double py = y + height * v;
-            for (int column = 0; column <= columns; column++) {
-                double u = column / (double) columns;
-                double px = x + width * u;
-                int argb = bilerpArgb(cTopLeft, cTopRight, cBottomRight, cBottomLeft, u, v);
-                int a = (argb >>> 24) & 0xFF;
-                int r = (argb >>> 16) & 0xFF;
-                int g = (argb >>> 8) & 0xFF;
-                int b = argb & 0xFF;
-                warpedShapeVertexTmp[row * stride + column] = mesh
-                        .vec2(px, py)
-                        .rawLocal2(px, py)
-                        .color(r, g, b, a)
-                        .vec4(sdfBounds.x(), sdfBounds.y(), sdfBounds.width(), sdfBounds.height())
-                        .vec4(param0, param1, param2, param3)
-                        .vec4(0f, 0f, 0f, 0f)
-                        .vec4(0f, 0f, 0f, 0f)
-                        .next();
-            }
-        }
-
-        for (int row = 0; row < rows; row++) {
-            for (int column = 0; column < columns; column++) {
-                int topLeft = warpedShapeVertexTmp[row * stride + column];
-                int topRight = warpedShapeVertexTmp[row * stride + column + 1];
-                int bottomLeft = warpedShapeVertexTmp[(row + 1) * stride + column];
-                int bottomRight = warpedShapeVertexTmp[(row + 1) * stride + column + 1];
-                mesh.quad(topLeft, bottomLeft, bottomRight, topRight);
-            }
-        }
-    }
-
-    private static int warpedGridSegments(double extent) {
-        return Math.max(4, Math.min(8, (int) Math.ceil(Math.abs(extent) / 18.0)));
-    }
-
-    private static int bilerpArgb(int topLeft, int topRight, int bottomRight, int bottomLeft,
-                                  double u, double v) {
-        int top = lerpArgb(topLeft, topRight, u);
-        int bottom = lerpArgb(bottomLeft, bottomRight, u);
-        return lerpArgb(top, bottom, v);
-    }
-
-    private static int lerpArgb(int from, int to, double t) {
-        double clamped = Math.max(0.0, Math.min(1.0, t));
-        int a = (int) Math.round(((from >>> 24) & 0xFF) + (((to >>> 24) & 0xFF) - ((from >>> 24) & 0xFF)) * clamped);
-        int r = (int) Math.round(((from >>> 16) & 0xFF) + (((to >>> 16) & 0xFF) - ((from >>> 16) & 0xFF)) * clamped);
-        int g = (int) Math.round(((from >>> 8) & 0xFF) + (((to >>> 8) & 0xFF) - ((from >>> 8) & 0xFF)) * clamped);
-        int b = (int) Math.round((from & 0xFF) + ((to & 0xFF) - (from & 0xFF)) * clamped);
-        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     public void polygon(double[] points, int pointCount, int argb) {
@@ -3995,18 +4022,10 @@ public final class Renderer2D {
         double t = Math.max(0.0, thickness);
         if (t <= 0.0) return;
 
-        path(UiShape.polyline(points, pointCount, closed), UiPaint.solid(argb),
-                roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t), false);
-        boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) {
-            endAutoBatch(auto);
-            return;
-        }
-        MeshBuilder mesh = batch.mesh;
-        mesh.alpha = alpha;
-        appendPolyline(mesh, points, pointCount, t, closed, argb, roundCapsAndJoins);
-        endAutoBatch(auto);
+        UiStroke stroke = roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t);
+        path(UiShape.polyline(points, pointCount, closed), UiPaint.solid(argb), stroke, false);
+        int count = pathRenderer.resolvePolyline(points, pointCount, closed);
+        appendResolvedPathStroke(count, closed, t, stroke.cap(), stroke.join(), argb, argb);
     }
 
     private void polylineGradient(double[] points, int pointCount, double thickness, boolean closed,
@@ -4018,18 +4037,10 @@ public final class Renderer2D {
         double t = Math.max(0.0, thickness);
         if (t <= 0.0) return;
 
-        path(UiShape.polyline(points, pointCount, closed), UiPaint.corners(startArgb, endArgb, endArgb, startArgb),
-                roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t), false);
-        boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) {
-            endAutoBatch(auto);
-            return;
-        }
-        MeshBuilder mesh = batch.mesh;
-        mesh.alpha = alpha;
-        appendPolylineGradient(mesh, points, pointCount, t, closed, startArgb, endArgb, roundCapsAndJoins);
-        endAutoBatch(auto);
+        UiStroke stroke = roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t);
+        path(UiShape.polyline(points, pointCount, closed), UiPaint.corners(startArgb, endArgb, endArgb, startArgb), stroke, false);
+        int count = pathRenderer.resolvePolyline(points, pointCount, closed);
+        appendResolvedPathStroke(count, closed, t, stroke.cap(), stroke.join(), startArgb, endArgb);
     }
 
     private void polylineLinearGradient(double[] points, int pointCount, double thickness, boolean closed,
@@ -4043,18 +4054,35 @@ public final class Renderer2D {
         double t = Math.max(0.0, thickness);
         if (t <= 0.0) return;
 
-        path(UiShape.polyline(points, pointCount, closed), UiPaint.linear(startArgb, endArgb, angleDeg, offsetPx),
-                roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t), false);
+        UiStroke stroke = roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t);
+        path(UiShape.polyline(points, pointCount, closed), UiPaint.linear(startArgb, endArgb, angleDeg, offsetPx), stroke, false);
+        int count = pathRenderer.resolvePolyline(points, pointCount, closed);
+        if (count < 2) return;
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.PATH, null, null);
         if (batch == null) {
             endAutoBatch(auto);
             return;
         }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
-        appendPolylineLinearGradient(mesh, points, pointCount, t, closed,
-                x, y, width, height, startArgb, endArgb, angleDeg, offsetPx, roundCapsAndJoins);
+        pathRenderer.appendStrokeLinearGradient(mesh, count, closed, t, stroke.cap(), stroke.join(),
+                x, y, width, height, startArgb, endArgb, angleDeg, offsetPx);
+        endAutoBatch(auto);
+    }
+
+    private void appendResolvedPathStroke(int pointCount, boolean closed, double thickness,
+                                          UiPathCap cap, UiPathJoin join, int startArgb, int endArgb) {
+        if (pointCount < 2 || thickness <= 0.0) return;
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.PATH, null, null);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        pathRenderer.appendStroke(mesh, pointCount, closed, thickness, cap, join, startArgb, endArgb);
         endAutoBatch(auto);
     }
 

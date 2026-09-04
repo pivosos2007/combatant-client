@@ -45,25 +45,11 @@ const SKIN = Object.freeze({
   },
 });
 
-function n(value, fallback) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function c(value, fallback) {
-  return typeof value === "string" && value.length > 0 ? value : fallback;
-}
-
-function s(value) {
-  return Number.isFinite(value) ? value.toFixed(2) : "0";
-}
-
-function cls(...parts) {
-  return parts.filter(Boolean).join(" ");
-}
-
-function abs(x, y, w, h, extra) {
-  return cls("absolute", `x-${s(x)}`, `y-${s(y)}`, `w-${s(w)}`, `h-${s(h)}`, extra);
-}
+const n = ui.num;
+const c = ui.str;
+const s = ui.fmt;
+const cls = ui.cls;
+const abs = ui.abs;
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, n(value, 0)));

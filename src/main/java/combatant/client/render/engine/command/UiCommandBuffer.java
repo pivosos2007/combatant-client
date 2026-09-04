@@ -9,6 +9,8 @@ package combatant.client.render.engine.command;
 
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.RenderFrameContext;
+import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,6 +21,7 @@ import java.util.List;
  */
 public final class UiCommandBuffer implements RenderCommandBuffer {
     private final List<UiCommand> commands = new ArrayList<>();
+    private final List<UiRecordedCommand> entries = new ArrayList<>();
     private final UiCommandStats stats = new UiCommandStats();
 
     public void beginFrame(RenderFrameContext context) {
@@ -28,19 +31,28 @@ public final class UiCommandBuffer implements RenderCommandBuffer {
     }
 
     public void add(UiCommand command) {
+        add(command, UiScissorSnapshot.NONE, UiClipSnapshot.NONE);
+    }
+
+    public void add(UiCommand command, UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot) {
         if (command == null) return;
         RenderFrameContext ctx = CombatantRenderSystem.currentContext();
         if (ctx != null) stats.beginFrame(ctx.frameId());
         commands.add(command);
+        entries.add(new UiRecordedCommand(command, scissorSnapshot, clipSnapshot));
         stats.record(command);
     }
 
     public List<UiCommand> commands() {
-        return commands;
+        return Collections.unmodifiableList(commands);
     }
 
     public List<UiCommand> snapshot() {
         return Collections.unmodifiableList(commands);
+    }
+
+    public List<UiRecordedCommand> entries() {
+        return Collections.unmodifiableList(entries);
     }
 
     public UiCommandStats stats() {
@@ -54,6 +66,7 @@ public final class UiCommandBuffer implements RenderCommandBuffer {
     @Override
     public void clear() {
         commands.clear();
+        entries.clear();
     }
 
     @Override

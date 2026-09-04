@@ -1,5 +1,7 @@
 #version 330 core
 
+#moj_import <combatant:ui_geometry.glsl>
+
 in vec4 v_Local;
 in vec2 v_TexCoord;
 in vec4 v_Color;
@@ -14,16 +16,15 @@ layout (std140) uniform UIBatch {
     vec4 uScreen;
 };
 
+#ifdef COMBATANT_ANALYTIC_CLIP
+#moj_import <combatant:ui_clip.glsl>
+#endif
+
 vec2 warpedLocal(vec4 local) {
     float invW = abs(local.z) > 0.000001 ? local.z : 1.0;
     return local.xy / invW;
 }
 
-float roundedBoxSdf(vec2 p, vec2 halfSize, float radius) {
-    float r = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
-    vec2 q = abs(p) - halfSize + r;
-    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
-}
 
 void main() {
     vec2 logicalScale = uScreen.zw / max(uScreen.xy, vec2(1.0));
@@ -39,4 +40,10 @@ void main() {
     } else {
         fragColor = vec4(texel.rgb * v_Color.rgb, texel.a * v_Color.a * shapeAlpha);
     }
+#ifdef COMBATANT_ANALYTIC_CLIP
+    fragColor.a *= combatantClipCoverage(
+        combatantClipDistance(combatantLogicalFragCoord()), logicalScale
+    );
+    if (fragColor.a <= 0.001) discard;
+#endif
 }

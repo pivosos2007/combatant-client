@@ -18,6 +18,7 @@ layout (location = 7) in vec4 Params4;
 layout (location = 8) in vec4 Params5;
 
 #moj_import <combatant:ui_batch.glsl>
+#moj_import <combatant:ui_warp.glsl>
 
 out vec4 v_Local;
 out vec4 v_Color;
@@ -29,10 +30,8 @@ out vec4 v_Params4;
 out vec4 v_Params5;
 
 void main() {
-    vec2 logicalSize = max(uScreen.zw, vec2(1.0));
-    vec2 clip = Position.xy / logicalSize * 2.0 - 1.0;
-    gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
-    v_Local = Local;
+    gl_Position = uiProjectiveClipPosition(Position.xy, uScreen.zw, Local);
+    v_Local = uiProjectiveSourceLocal(Local);
     v_Color = Color;
     v_Rect = Rect;
     v_Params = Params;

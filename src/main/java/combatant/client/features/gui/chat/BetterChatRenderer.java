@@ -77,6 +77,7 @@ public enum BetterChatRenderer {
     private static final float PADDING = 8f;
     private static final float LINE_SPACING = 3f;
     private static final float RADIUS = 24f;
+    private static final float CLIP_AA_GUARD = 1.5f;
     private static final float MESSAGE_PAD_X = 8f;
     private static final float MESSAGE_PAD_Y = 5f;
     private static final float MESSAGE_GAP = 4f;
@@ -441,6 +442,15 @@ public enum BetterChatRenderer {
             );
         }
         drawMessageBubbles(frame.bubbles(), activeChatSurface);
+
+        // Keep the cheap rectangular reject for embedded items, then let shape/text/MSDF pipelines
+        // consume the same analytic rounded boundary. Clip selection is orthogonal to fast/warped text.
+        boolean contentScissor = clipBounds != null && ScissorFunction.pushRaw(
+                clipBounds.x() - CLIP_AA_GUARD,
+                clipBounds.y() - CLIP_AA_GUARD,
+                clipBounds.w() + CLIP_AA_GUARD * 2.0f,
+                clipBounds.h() + CLIP_AA_GUARD * 2.0f
+        );
         for (FrameLine line : frame.lines()) {
             float alpha = activeChatSurface ? 1f : fade(line.message().ageSeconds());
             if (alpha <= 0.01f) continue;
@@ -463,6 +473,7 @@ public enum BetterChatRenderer {
                     hoverTip
             );
         }
+        if (contentScissor) ScissorFunction.pop();
         if (chatClip) ClipFunction.pop();
         PickResult hover = frame.pick(mouseX, mouseY);
         boolean overSuggestWindow = isInsideSuggestWindow(mouse.fx(), mouse.fy(), mouse.rawX(), mouse.rawY());

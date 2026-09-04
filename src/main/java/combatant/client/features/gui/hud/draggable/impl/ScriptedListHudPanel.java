@@ -26,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-@UiScriptAsset("combatant:api/hud/draggable/list_panel")
+@UiScriptAsset("combatant:modules/hud/draggable/list_panel")
 final class ScriptedListHudPanel {
     static final Variant POTIONS = new Variant(
             "potions", "Potions", String.valueOf((char) 0x42),

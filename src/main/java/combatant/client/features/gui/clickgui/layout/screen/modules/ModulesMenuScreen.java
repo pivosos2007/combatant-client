@@ -471,9 +471,9 @@ public final class ModulesMenuScreen {
         float clipY = panel.y + (HEADER_H + SEPARATOR_H) * scale;
         float clipH = panel.h - (HEADER_H + SEPARATOR_H) * scale - 0.5f * scale;
 
-        boolean clipped = ClipFunction.pushRaw(panel.x, clipY, panel.w, clipH);
+        boolean clipped = ScissorFunction.pushRaw(panel.x, clipY, panel.w, clipH);
         ClickGuiRenderer.flushRenderer();
-        boolean panelShapeClip = ClipFunction.pushRoundedRect(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale);
+        boolean panelShapeClip = ClipFunction.pushRoundedRectMsaaStencil(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale);
         float listW = Math.max(1.0f, panel.w - 7.0f * scale);
 
         float y = listY - panel.modulesSmoothScroll;
@@ -501,7 +501,7 @@ public final class ModulesMenuScreen {
         panel.modulesSmoothScroll = AnimationUtility.approach(panel.modulesSmoothScroll, panel.modulesScroll, 0.22f);
         panel.modulesSmoothScroll = AnimationUtility.snap(panel.modulesSmoothScroll, panel.modulesScroll, 0.05f);
 
-        if (clipped) ClipFunction.pop();
+        if (clipped) ScissorFunction.pop();
 
         renderScrollbar(panel, panel.modulesSmoothScroll, panel.maxModulesScroll, clipY, clipH, alpha, mouseX, mouseY);
     }
@@ -597,7 +597,7 @@ public final class ModulesMenuScreen {
         boolean ownsPanelClip = false;
         boolean panelClip = ClipFunction.isShapeClipActive();
         if (!panelClip) {
-            panelClip = ClipFunction.pushRoundedRect(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale);
+            panelClip = ClipFunction.pushRoundedRectMsaaStencil(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale);
             ownsPanelClip = panelClip;
         }
         if (!panelClip) {

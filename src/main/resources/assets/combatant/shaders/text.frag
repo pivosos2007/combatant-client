@@ -17,9 +17,26 @@ out vec4 color;
 
 uniform sampler2D u_Texture;
 
+#ifdef COMBATANT_ANALYTIC_CLIP
+layout (std140) uniform UIBatch {
+    vec4 uScreen; // xy = framebuffer size, zw = logical size
+};
+
+#moj_import <combatant:ui_geometry.glsl>
+#moj_import <combatant:ui_clip.glsl>
+#endif
+
 in vec2 v_TexCoord;
 in vec4 v_Color;
 
 void main() {
-    color = vec4(1.0, 1.0, 1.0, texture(u_Texture, v_TexCoord).r) * v_Color;
+    float alpha = texture(u_Texture, v_TexCoord).r * v_Color.a;
+#ifdef COMBATANT_ANALYTIC_CLIP
+    vec2 logicalScale = max(uScreen.zw, vec2(1.0)) / max(uScreen.xy, vec2(1.0));
+    alpha *= combatantClipCoverage(
+        combatantClipDistance(combatantLogicalFragCoord()), logicalScale
+    );
+    if (alpha <= 0.001) discard;
+#endif
+    color = vec4(v_Color.rgb, alpha);
 }

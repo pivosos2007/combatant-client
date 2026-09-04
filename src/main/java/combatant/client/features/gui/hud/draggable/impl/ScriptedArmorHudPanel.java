@@ -26,7 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
-@UiScriptAsset("combatant:api/hud/draggable/armor")
+@UiScriptAsset("combatant:modules/hud/draggable/armor")
 final class ScriptedArmorHudPanel {
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedArmorHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());

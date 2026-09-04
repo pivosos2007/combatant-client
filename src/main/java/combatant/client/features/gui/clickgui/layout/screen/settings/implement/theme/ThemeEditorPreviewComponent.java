@@ -27,7 +27,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-@UiScriptAsset("combatant:api/clickgui/theme_preview")
+@UiScriptAsset("combatant:modules/clickgui/theme_preview")
 public final class ThemeEditorPreviewComponent {
 private static final float DESIGN_W = 320f;
     private static final float DESIGN_H = 190f;

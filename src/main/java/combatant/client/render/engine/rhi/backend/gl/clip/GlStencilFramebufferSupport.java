@@ -29,11 +29,9 @@ import java.util.Map;
 /**
  * GL-only runtime stencil attachment/probe for Mojang framebuffers.
  *
- * <p>Minecraft 1.21.x framebuffers normally expose a color texture plus a DEPTH32 texture. Some GL
- * drivers reject adding a separate GL_STENCIL_INDEX8 renderbuffer to that color/depth combination
- * with GL_FRAMEBUFFER_UNSUPPORTED (0x8CDD). When that happens this backend switches to a real packed
- * depth-stencil renderbuffer for the active clip scope and restores the original attachments when
- * shape clipping is disabled.</p>
+ * <p>UI clipping owns a stencil-only {@code GL_STENCIL_INDEX8} attachment. Depth is not part of
+ * this subsystem: if a target cannot accept the stencil-only attachment, the caller must select a
+ * higher-level clipping fallback instead of silently allocating packed depth/stencil storage.</p>
  */
 final class GlStencilFramebufferSupport {
     /**
@@ -358,13 +356,7 @@ final class GlStencilFramebufferSupport {
 
             attachment.captureOriginalAttachments();
 
-            if (!attachment.separateStencilRejected && tryAttachSeparateStencil(framebuffer, attachment)) {
-                owner.setStencilAvailable(true);
-                lastFailure = "none";
-                return true;
-            }
-
-            if (tryAttachPackedDepthStencil(framebuffer, attachment)) {
+            if (tryAttachStencil(framebuffer, attachment)) {
                 owner.setStencilAvailable(true);
                 lastFailure = "none";
                 return true;
@@ -399,13 +391,14 @@ final class GlStencilFramebufferSupport {
         }
     }
 
-    private boolean tryAttachSeparateStencil(int framebuffer, Attachment attachment) {
-        if (!attachment.separateStencilAllocationOk) {
-            attachment.separateStencilRejected = true;
-            lastFailure = "separate GL_STENCIL_INDEX8 allocation failed: fbo=" + framebuffer
+    private boolean tryAttachStencil(int framebuffer, Attachment attachment) {
+        if (!attachment.stencilAllocationOk) {
+            lastFailure = "GL_STENCIL_INDEX8 allocation failed: fbo=" + framebuffer
                     + ", size=" + attachment.width + "x" + attachment.height
                     + ", samples=" + attachment.samples;
-            DebugLog.stencilOnce("shapeclip.separate.alloc.failed." + attachment.samples, "[ShapeClip/GL] separate stencil allocation failed; packed depth-stencil will be tried. %s", lastFailure);
+            DebugLog.stencilOnce("shapeclip.stencil.alloc.failed." + attachment.samples,
+                    "[ShapeClip/GL] stencil-only allocation failed; shape clipping requires a higher-level fallback. %s",
+                    lastFailure);
             return false;
         }
         GL30C.glFramebufferRenderbuffer(
@@ -417,62 +410,24 @@ final class GlStencilFramebufferSupport {
         int status = GL30C.glCheckFramebufferStatus(GL30C.GL_FRAMEBUFFER);
         if (status == GL30C.GL_FRAMEBUFFER_COMPLETE) {
             attachment.attached = true;
-            attachment.mode = AttachmentMode.SEPARATE_STENCIL;
-            DebugLog.stencilOnce("shapeclip.separate.stencil." + framebuffer, "[ShapeClip/GL] using separate GL_STENCIL_INDEX8. fbo=%d size=%dx%d samples=%d", framebuffer, attachment.width, attachment.height, attachment.samples);
-            checkGlErrors("tryAttachSeparateStencil(success)");
+            attachment.mode = AttachmentMode.STENCIL_ONLY;
+            DebugLog.stencilOnce("shapeclip.stencil.only." + framebuffer,
+                    "[ShapeClip/GL] UI clip attachment format=GL_STENCIL_INDEX8 fbo=%d size=%dx%d samples=%d",
+                    framebuffer, attachment.width, attachment.height, attachment.samples);
+            checkGlErrors("tryAttachStencil(success)");
             return true;
         }
 
         GL30C.glFramebufferRenderbuffer(GL30C.GL_FRAMEBUFFER, GL30C.GL_STENCIL_ATTACHMENT, GL30C.GL_RENDERBUFFER, 0);
         attachment.restoreOriginalAttachments();
-        lastFailure = "separate GL_STENCIL_INDEX8 incomplete: status=0x"
+        lastFailure = "GL_STENCIL_INDEX8 incomplete: status=0x"
                 + Integer.toHexString(status)
                 + ", fbo=" + framebuffer
                 + ", size=" + attachment.width + "x" + attachment.height
                 + ", samples=" + attachment.samples;
-        attachment.separateStencilRejected = true;
-        DebugLog.stencilOnce("shapeclip.separate.rejected", "[ShapeClip/GL] separate stencil attach failed, using packed depth-stencil path from now on. %s", lastFailure);
-        return false;
-    }
-
-    private boolean tryAttachPackedDepthStencil(int framebuffer, Attachment attachment) {
-        if (!attachment.packedDepthStencilAllocationOk) {
-            lastFailure = "packed GL_DEPTH24_STENCIL8 allocation failed: fbo=" + framebuffer
-                    + ", size=" + attachment.width + "x" + attachment.height
-                    + ", samples=" + attachment.samples;
-            DebugLog.warnOnChange("shapeclip.packed.alloc.failed", framebuffer + "|" + attachment.samples, "[ShapeClip/GL] packed depth-stencil allocation failed. %s", lastFailure);
-            return false;
-        }
-        GL30C.glFramebufferRenderbuffer(
-                GL30C.GL_FRAMEBUFFER,
-                GL30C.GL_DEPTH_ATTACHMENT,
-                GL30C.GL_RENDERBUFFER,
-                attachment.depthStencilRenderbuffer
-        );
-        GL30C.glFramebufferRenderbuffer(
-                GL30C.GL_FRAMEBUFFER,
-                GL30C.GL_STENCIL_ATTACHMENT,
-                GL30C.GL_RENDERBUFFER,
-                attachment.depthStencilRenderbuffer
-        );
-        int status = GL30C.glCheckFramebufferStatus(GL30C.GL_FRAMEBUFFER);
-        if (status == GL30C.GL_FRAMEBUFFER_COMPLETE) {
-            attachment.attached = true;
-            attachment.mode = AttachmentMode.PACKED_DEPTH_STENCIL;
-            if (!attachment.loggedPackedMode) {
-                attachment.loggedPackedMode = true;
-                DebugLog.stencilOnce("shapeclip.packed.depth.stencil." + framebuffer, "[ShapeClip/GL] using packed depth-stencil for shape clip. fbo=%d size=%dx%d samples=%d",
-                        framebuffer, attachment.width, attachment.height, attachment.samples);
-            }
-            checkGlErrors("tryAttachPackedDepthStencil(success)");
-            return true;
-        }
-
-        lastFailure = "packed GL_DEPTH24_STENCIL8 incomplete: status=0x"
-                + Integer.toHexString(status)
-                + ", fbo=" + framebuffer
-                + ", size=" + attachment.width + "x" + attachment.height
-                + ", samples=" + attachment.samples;
+        DebugLog.stencilOnce("shapeclip.stencil.rejected." + framebuffer,
+                "[ShapeClip/GL] stencil-only attachment rejected; shape clipping requires a higher-level fallback. %s",
+                lastFailure);
         return false;
     }
 
@@ -489,24 +444,18 @@ final class GlStencilFramebufferSupport {
 
     private enum AttachmentMode {
         NONE,
-        SEPARATE_STENCIL,
-        PACKED_DEPTH_STENCIL
+        STENCIL_ONLY
     }
 
     private static final class Attachment {
         final int stencilRenderbuffer;
-        final int depthStencilRenderbuffer;
         final int width;
         final int height;
         final int samples;
-        final boolean separateStencilAllocationOk;
-        final boolean packedDepthStencilAllocationOk;
+        final boolean stencilAllocationOk;
         boolean deleted;
         boolean attached;
-        boolean separateStencilRejected;
-        boolean loggedPackedMode;
         AttachmentMode mode = AttachmentMode.NONE;
-        SavedAttachment originalDepth = SavedAttachment.none();
         SavedAttachment originalStencil = SavedAttachment.none();
 
         Attachment(int width, int height, int samples) {
@@ -518,11 +467,7 @@ final class GlStencilFramebufferSupport {
             try {
                 this.stencilRenderbuffer = GL30C.glGenRenderbuffers();
                 GL30C.glBindRenderbuffer(GL30C.GL_RENDERBUFFER, stencilRenderbuffer);
-                this.separateStencilAllocationOk = allocateRenderbuffer(GL30C.GL_STENCIL_INDEX8, width, height, this.samples);
-
-                this.depthStencilRenderbuffer = GL30C.glGenRenderbuffers();
-                GL30C.glBindRenderbuffer(GL30C.GL_RENDERBUFFER, depthStencilRenderbuffer);
-                this.packedDepthStencilAllocationOk = allocateRenderbuffer(GL30C.GL_DEPTH24_STENCIL8, width, height, this.samples);
+                this.stencilAllocationOk = allocateRenderbuffer(GL30C.GL_STENCIL_INDEX8, width, height, this.samples);
             } finally {
                 GL30C.glBindRenderbuffer(GL30C.GL_RENDERBUFFER, previousRenderbuffer);
             }
@@ -548,12 +493,10 @@ final class GlStencilFramebufferSupport {
 
         void captureOriginalAttachments() {
             if (attached) return;
-            originalDepth = SavedAttachment.capture(GL30C.GL_DEPTH_ATTACHMENT);
             originalStencil = SavedAttachment.capture(GL30C.GL_STENCIL_ATTACHMENT);
         }
 
         void restoreOriginalAttachments() {
-            originalDepth.restore(GL30C.GL_DEPTH_ATTACHMENT);
             originalStencil.restore(GL30C.GL_STENCIL_ATTACHMENT);
             attached = false;
             mode = AttachmentMode.NONE;
@@ -564,7 +507,6 @@ final class GlStencilFramebufferSupport {
             restoreOriginalAttachments();
             deleted = true;
             GL30C.glDeleteRenderbuffers(stencilRenderbuffer);
-            GL30C.glDeleteRenderbuffers(depthStencilRenderbuffer);
         }
     }
 

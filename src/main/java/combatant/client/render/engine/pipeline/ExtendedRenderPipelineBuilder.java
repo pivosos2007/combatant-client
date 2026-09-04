@@ -48,6 +48,8 @@ public class ExtendedRenderPipelineBuilder {
     private DepthTestFunction depthTestFunction;
     private net.minecraft.resources.Identifier location;
     private boolean depthWrite = true;
+    private float depthBiasScaleFactor;
+    private float depthBiasConstant;
     private boolean customDepthState;
     private boolean bindGroupLayoutApplied;
     private RenderPipelineContract contract = RenderPipelineContract.EXTENDED;
@@ -104,6 +106,18 @@ public class ExtendedRenderPipelineBuilder {
 
     public ExtendedRenderPipelineBuilder withDepthWrite(boolean write) {
         this.depthWrite = write;
+        this.customDepthState = true;
+        applyDepthStencilState();
+        return this;
+    }
+
+    /**
+     * Applies raster depth bias in the same units used by Mojang's DepthStencilState.
+     * Positive values move a fragment toward the camera under Minecraft's reversed-Z projection.
+     */
+    public ExtendedRenderPipelineBuilder withDepthBias(float scaleFactor, float constant) {
+        this.depthBiasScaleFactor = scaleFactor;
+        this.depthBiasConstant = constant;
         this.customDepthState = true;
         applyDepthStencilState();
         return this;
@@ -292,7 +306,8 @@ public class ExtendedRenderPipelineBuilder {
             delegate.withDepthStencilState(Optional.empty());
             return;
         }
-        delegate.withDepthStencilState(new DepthStencilState(depthTestFunction.compareOp(), depthWrite));
+        delegate.withDepthStencilState(new DepthStencilState(
+                depthTestFunction.compareOp(), depthWrite, depthBiasScaleFactor, depthBiasConstant));
     }
 
     private void applyBindGroupLayout() {

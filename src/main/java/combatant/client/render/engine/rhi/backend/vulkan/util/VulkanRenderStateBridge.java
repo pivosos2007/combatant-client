@@ -162,11 +162,14 @@ public enum VulkanRenderStateBridge {
     }
 
     public static int depthResolveMode() {
-        if ((supportedDepthResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT) != 0) {
-            return VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-        }
+        // Minecraft uses reversed-Z, so larger depth is closer. Prefer MAX to preserve the
+        // closest covered sample when resolving multisampled scene depth. SAMPLE_ZERO can
+        // punch holes at geometry edges depending on which sample happens to be selected.
         if ((supportedDepthResolveModes & VK_RESOLVE_MODE_MAX_BIT) != 0) {
             return VK_RESOLVE_MODE_MAX_BIT;
+        }
+        if ((supportedDepthResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT) != 0) {
+            return VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
         }
         throw new IllegalStateException("Vulkan device exposes no supported depth resolve mode");
     }

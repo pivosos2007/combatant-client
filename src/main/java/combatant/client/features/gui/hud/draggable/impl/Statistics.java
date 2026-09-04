@@ -789,10 +789,17 @@ public final class Statistics extends DraggableHudElement {
             graphDisplayCeiling += (targetCeiling - graphDisplayCeiling) * scaleFollow;
         }
 
+        // Keep one continuous representation even when every displayed sample is zero.
+        // Degenerate zero-area geometry is filtered by UiPathRenderer; collapsing this graph to
+        // averaged endpoints would cause a visible topology pop on the first non-zero delta.
+        float safeCeiling = Math.max(0.001f, graphDisplayCeiling);
         List<LinkedHashMap<String, Object>> points = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             float px = plotWidth * i / Math.max(1, count - 1);
-            float py = plotHeight - Math.min(1.0f, graphDisplayValues[i] / Math.max(0.001f, graphDisplayCeiling)) * plotHeight;
+            float value = Float.isFinite(graphDisplayValues[i])
+                    ? Math.max(0.0f, graphDisplayValues[i])
+                    : 0.0f;
+            float py = plotHeight - Math.min(1.0f, value / safeCeiling) * plotHeight;
             LinkedHashMap<String, Object> point = new LinkedHashMap<>();
             point.put("x", px);
             point.put("y", py);

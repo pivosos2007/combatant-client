@@ -13,6 +13,8 @@ import combatant.client.render.engine.command.UiCommandBuffer;
 import combatant.client.render.engine.command.UiStatsSnapshot;
 import combatant.client.render.engine.core.RenderFrameContext;
 import combatant.client.render.engine.rhi.CombatantRhi;
+import combatant.client.render.helpers.ClipFunction;
+import combatant.client.render.helpers.ScissorFunction;
 
 /**
  * UI rendering gateway: Renderer2D records normalized commands here, the compiler builds a
@@ -35,11 +37,11 @@ public final class UiRendererSubsystem {
     }
 
     public void record(UiCommand command) {
-        commands.add(command);
+        commands.add(command, ScissorFunction.currentSnapshot(), ClipFunction.currentSnapshot());
     }
 
     public void recordBackendCommand(String backend, String batchType) {
-        commands.add(new UiBatchBackendCommand(backend, batchType));
+        record(new UiBatchBackendCommand(backend, batchType));
     }
 
     public boolean hasPendingCommands() {

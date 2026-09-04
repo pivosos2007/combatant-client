@@ -5,28 +5,14 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-function n(value, fallback) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
+const n = ui.num;
+const c = ui.str;
+const arr = ui.arr;
+const prop = ui.prop;
+const cls = ui.cls;
 
-function c(value, fallback) {
-  return typeof value === "string" && value.length > 0 ? value : fallback;
-}
-
-function arr(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function prop(value, key, fallback) {
-  return value && typeof value === "object" && value[key] !== undefined ? value[key] : fallback;
-}
-
-function s(value) {
-  return Number.isFinite(value) ? value.toFixed(3) : "0";
-}
-
-function cls(...parts) {
-  return parts.filter(Boolean).join(" ");
+function fmt3(value) {
+  return ui.fmt(value, 3, "0");
 }
 
 function clamp(value, min, max) {
@@ -243,8 +229,8 @@ function structure(p, m, colors) {
 
 function fontClass(m, maxWidth, shadow) {
   return cls(
-    `font-Iosevka-Regular-${s(m.fontScale)}`,
-    `text-max-${s(maxWidth)}`,
+    `font-Iosevka-Regular-${fmt3(m.fontScale)}`,
+    `text-max-${fmt3(maxWidth)}`,
     "ellipsis",
     shadow ? "shadow-text" : ""
   );
@@ -260,7 +246,7 @@ function measureTree(p, m, colors) {
       text: line.text,
       color: line.color,
       class: cls(
-        line.gapBefore > 0 ? `mt-${s(line.gapBefore)}` : "",
+        line.gapBefore > 0 ? `mt-${fmt3(line.gapBefore)}` : "",
         fontClass(m, widthLimit, false),
         `text-${line.color}`
       ),
@@ -274,13 +260,13 @@ function measureTree(p, m, colors) {
       key: "footer",
       intrinsicWidth: footerW,
       intrinsicHeight: footerH,
-      class: cls(`w-${s(footerW)}`, `h-${s(footerH)}`, `mt-${s(m.previewGap)}`),
+      class: cls(`w-${fmt3(footerW)}`, `h-${fmt3(footerH)}`, `mt-${fmt3(m.previewGap)}`),
     }));
   }
 
   return ui.column({
     key: "measure-content",
-    class: cls(`px-${s(m.padX)}`, `py-${s(m.padY)}`, `min-w-${s(m.minCardW)}`),
+    class: cls(`px-${fmt3(m.padX)}`, `py-${fmt3(m.padY)}`, `min-w-${fmt3(m.minCardW)}`),
     children: nodes,
   });
 }
@@ -423,7 +409,7 @@ function renderTree(p, m, colors) {
 
   return ui.root({
     key: "tooltip-panel",
-    class: cls(`w-${s(width)}`, `h-${s(height)}`),
+    class: cls(`w-${fmt3(width)}`, `h-${fmt3(height)}`),
     children,
   });
 }

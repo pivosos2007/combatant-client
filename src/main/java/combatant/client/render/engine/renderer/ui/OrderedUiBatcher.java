@@ -36,7 +36,10 @@ import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
 import combatant.client.render.engine.uniform.impl.UIBlurUniforms;
+import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
+import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -113,13 +116,14 @@ public final class OrderedUiBatcher {
 
     public DrawBatch getOrCreate(UiBatchType type, GpuTextureView view, GpuSampler sampler) {
         if (!active) return null;
-        boolean shapeClipActive = ClipFunction.isShapeClipActive();
+        UiScissorSnapshot scissor = ScissorFunction.currentSnapshot();
+        UiClipSnapshot clip = ClipFunction.currentSnapshot();
         if (!order.isEmpty()) {
             Object last = order.get(order.size() - 1);
-            if (last instanceof DrawBatch drawBatch && drawBatch.canMerge(type, view, sampler, shapeClipActive)) return drawBatch;
+            if (last instanceof DrawBatch drawBatch && drawBatch.canMerge(type, view, sampler, scissor, clip)) return drawBatch;
         }
         DrawBatch batch = obtain(type);
-        batch.begin(view, sampler, shapeClipActive);
+        batch.begin(view, sampler, scissor, clip);
         order.add(batch);
         UiRenderDispatcher.recordBackendCommand(type);
         return batch;
@@ -131,18 +135,19 @@ public final class OrderedUiBatcher {
         if (type.usesPreparedGlass()) {
             UiBlurResources.requestLiquidGlassBlur();
         }
-        boolean shapeClipActive = ClipFunction.isShapeClipActive();
+        UiScissorSnapshot scissor = ScissorFunction.currentSnapshot();
+        UiClipSnapshot clip = ClipFunction.currentSnapshot();
         Renderer2D.BlurQuality normalizedQuality = quality != null ? quality : Renderer2D.DEFAULT_BLUR_QUALITY;
         float normalizedOffset = Float.isFinite(offsetPx) ? Math.max(0.0f, offsetPx) : Renderer2D.DEFAULT_KAWASE_OFFSET_PX;
         if (!order.isEmpty()) {
             Object last = order.get(order.size() - 1);
             if (last instanceof DrawBatch drawBatch
-                    && drawBatch.canMergeBlur(type, view, sampler, normalizedQuality, normalizedOffset, shapeClipActive)) {
+                    && drawBatch.canMergeBlur(type, view, sampler, normalizedQuality, normalizedOffset, scissor, clip)) {
                 return drawBatch;
             }
         }
         DrawBatch batch = obtain(type);
-        batch.beginBlur(view, sampler, normalizedQuality, normalizedOffset, shapeClipActive);
+        batch.beginBlur(view, sampler, normalizedQuality, normalizedOffset, scissor, clip);
         order.add(batch);
         UiRenderDispatcher.recordBackendCommand(type);
         return batch;
@@ -150,15 +155,16 @@ public final class OrderedUiBatcher {
 
     public DrawBatch getOrCreateMsdf(GpuTextureView view, GpuSampler sampler, float pxRange, int atlasWidth, int atlasHeight) {
         if (!active) return null;
-        boolean shapeClipActive = ClipFunction.isShapeClipActive();
+        UiScissorSnapshot scissor = ScissorFunction.currentSnapshot();
+        UiClipSnapshot clip = ClipFunction.currentSnapshot();
         if (!order.isEmpty()) {
             Object last = order.get(order.size() - 1);
-            if (last instanceof DrawBatch drawBatch && drawBatch.canMergeMsdf(view, sampler, pxRange, atlasWidth, atlasHeight, shapeClipActive)) {
+            if (last instanceof DrawBatch drawBatch && drawBatch.canMergeMsdf(view, sampler, pxRange, atlasWidth, atlasHeight, scissor, clip)) {
                 return drawBatch;
             }
         }
         DrawBatch batch = obtain(UiBatchType.SVG_MSDF);
-        batch.beginMsdf(view, sampler, pxRange, atlasWidth, atlasHeight, shapeClipActive);
+        batch.beginMsdf(view, sampler, pxRange, atlasWidth, atlasHeight, scissor, clip);
         order.add(batch);
         UiRenderDispatcher.recordBackendCommand(UiBatchType.SVG_MSDF);
         return batch;
@@ -168,14 +174,15 @@ public final class OrderedUiBatcher {
                                    ItemStack stack) {
         if (!active) return null;
         ScreenRectangle scissor = context != null ? context.scissorStack.peek() : null;
+        UiClipSnapshot clip = ClipFunction.currentSnapshot();
         if (!order.isEmpty()) {
             Object last = order.get(order.size() - 1);
-            if (last instanceof ItemBatch itemBatch && itemBatch.canMerge(context, scissor)) {
+            if (last instanceof ItemBatch itemBatch && itemBatch.canMerge(context, scissor, clip)) {
                 return itemBatch;
             }
         }
         ItemBatch batch = obtainItemBatch();
-        batch.begin(context, scissor);
+        batch.begin(context, scissor, clip);
         order.add(batch);
         UiRenderDispatcher.recordBackendCommand("ITEM");
         return batch;
@@ -185,18 +192,19 @@ public final class OrderedUiBatcher {
                                     TextPlacementMode placement) {
         if (!active) return null;
         TextPlacementMode normalizedPlacement = placement != null ? placement : TextPlacementMode.UI;
-        boolean shapeClipActive = ClipFunction.isShapeClipActive();
+        UiScissorSnapshot scissor = ScissorFunction.currentSnapshot();
+        UiClipSnapshot clip = ClipFunction.currentSnapshot();
 
         if (!order.isEmpty()) {
             Object last = order.get(order.size() - 1);
             if (last instanceof TextBatch textBatch
-                    && textBatch.canMerge(font, pipeline, normalizedPlacement, shapeClipActive)) {
+                    && textBatch.canMerge(font, pipeline, normalizedPlacement, scissor, clip)) {
                 return textBatch;
             }
         }
 
         TextBatch batch = obtainTextBatch();
-        batch.begin(label, font, pipeline, normalizedPlacement, shapeClipActive);
+        batch.begin(label, font, pipeline, normalizedPlacement, scissor, clip);
         order.add(batch);
         UiRenderDispatcher.recordBackendCommand("TEXT");
         return batch;
@@ -370,7 +378,7 @@ public final class OrderedUiBatcher {
                         indices += textBatch.mesh.getIndicesCount();
                         drawCalls++;
                         TextRenderSystem.appendGlyphMeshCommand(pendingDraws, textBatch.label, textBatch.font,
-                                textBatch.mesh, textBatch.pipeline, textBatch.placement);
+                                textBatch.mesh, textBatch.pipeline, textBatch.placement, textBatch.clipSnapshot);
                     }
                     continue;
                 }
@@ -390,7 +398,7 @@ public final class OrderedUiBatcher {
                     if (sharedBlurredView != null && sharedBlurredSampler != null) {
                         MeshRenderer builder = MeshRenderer.begin()
                                 .attachments(mainColorView, null)
-                                .pipeline(batch.type.pipeline)
+                                .pipeline(pipelineFor(batch))
                                 .mesh(batch.mesh);
 
                         if (uiBatch == null) {
@@ -413,7 +421,7 @@ public final class OrderedUiBatcher {
                     flushPendingDraws(pendingDraws);
                     GpuTextureView sourceView = liquidSourceView != null ? liquidSourceView : batch.view;
                     GpuSampler sourceSampler = liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
-                    boolean clippedComposite = batch.shapeClipActive;
+                    boolean clippedComposite = batch.clipSnapshot.active();
                     if (clippedComposite) {
                         adoptFrameBlurCache(sourceView, sourceSampler, screenW, screenH, uiScale,
                                 batch.blurQuality, batch.blurOffsetPx);
@@ -437,7 +445,7 @@ public final class OrderedUiBatcher {
 
                     MeshRenderer directBuilder = MeshRenderer.begin()
                             .attachments(mainColorView, null)
-                            .pipeline(batch.type.pipeline)
+                            .pipeline(pipelineFor(batch))
                             .mesh(batch.mesh);
 
                     if (uiBatch == null) {
@@ -445,6 +453,7 @@ public final class OrderedUiBatcher {
                         uiBatch = UIBatchUniforms.get();
                     }
                     directBuilder.uniform("UIBatch", uiBatch);
+                    bindAnalyticClip(directBuilder, batch);
                     directBuilder.sampler("u_Texture", sourceView, sourceSampler);
                     directBuilder.sampler("u_BlurTexture", liquidBlurView, liquidBlurSampler);
                     directBuilder.endTo(pendingDraws);
@@ -468,7 +477,7 @@ public final class OrderedUiBatcher {
                         MeshRenderer fxBuilder = MeshRenderer.begin()
                                 .attachments(fxBuffer)
                                 .clearColor(0x00000000)
-                                .pipeline(batch.type.pipeline)
+                                .pipeline(pipelineFor(batch))
                                 .mesh(batch.mesh);
 
                         if (batch.type.needsUiBatch) {
@@ -522,7 +531,7 @@ public final class OrderedUiBatcher {
 
                 MeshRenderer builder = MeshRenderer.begin()
                         .attachments(mainColorView, null)
-                        .pipeline(batch.type.pipeline)
+                        .pipeline(pipelineFor(batch))
                         .mesh(batch.mesh);
 
                 if (batch.type.needsUiBatch) {
@@ -532,6 +541,7 @@ public final class OrderedUiBatcher {
                     }
                     builder.uniform("UIBatch", uiBatch);
                 }
+                bindAnalyticClip(builder, batch);
                 if (batch.type.usesSampler) {
                     GpuTextureView sourceView = batch.type.usesPreparedGlass() && liquidSourceView != null ? liquidSourceView : batch.view;
                     GpuSampler sourceSampler = batch.type.usesPreparedGlass() && liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
@@ -586,6 +596,20 @@ public final class OrderedUiBatcher {
         }
     }
 
+    private static RenderPipeline pipelineFor(DrawBatch batch) {
+        if (batch.clipSnapshot.usesAnalyticPipeline() && !batch.type.supportsAnalyticClip()) {
+            throw new IllegalStateException("UI batch " + batch.type
+                    + " has no ANALYTIC_CLIP pipeline for clip snapshot " + batch.clipSnapshot.id());
+        }
+        return batch.type.pipelineFor(batch.clipSnapshot);
+    }
+
+    private static void bindAnalyticClip(MeshRenderer builder, DrawBatch batch) {
+        if (builder != null && batch.clipSnapshot.usesAnalyticPipeline()) {
+            builder.uniform("UIClip", UiClipUniforms.write(batch.clipSnapshot));
+        }
+    }
+
     boolean isPureItemBatchOrder() {
         if (order.isEmpty()) return false;
         for (int i = 0, size = order.size(); i < size; i++) {
@@ -637,7 +661,8 @@ public final class OrderedUiBatcher {
         UiDeferredScheduler.enqueue(new DeferredOrderedSubmit(
                 UiDeferredScheduler.layerForCurrentPhase(isPureItemBatchOrder()),
                 UiDeferredScheduler.snapshotViewport(),
-                ScissorFunction.currentFramebufferScissor(),
+                ScissorFunction.currentSnapshot(),
+                ClipFunction.currentSnapshot(),
                 submitted
         ));
 

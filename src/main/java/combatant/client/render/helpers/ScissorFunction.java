@@ -12,6 +12,7 @@ import net.minecraft.client.Minecraft;
 import combatant.client.mixininterface.IGpuDevice;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -25,8 +26,9 @@ public enum ScissorFunction {
     ;
 
     private static final Minecraft mc = Minecraft.getInstance();
-    private static final Deque<ScissorRect> STACK = new ArrayDeque<>();
-    private static ScissorRect appliedScissor;
+    private static final Deque<ScissorState> STACK = new ArrayDeque<>();
+    private static ScissorState appliedScissor;
+    private static long nextSnapshotId = 1L;
 
     /**
      * Push scissor using top-left coordinates in the caller's current framebuffer/UI space.
@@ -64,7 +66,7 @@ public enum ScissorFunction {
         ScissorRect clipped = clampToFramebuffer(raw, fbw, fbh);
 
         if (!STACK.isEmpty()) {
-            ScissorRect top = STACK.peek();
+            ScissorRect top = STACK.peek().rect;
             clipped = intersect(top, clipped);
             if (clipped.isEmpty()) {
                 // Completely outside the parent clip. Keep the parent scissor active and let
@@ -78,7 +80,10 @@ public enum ScissorFunction {
             return false;
         }
 
-        STACK.push(clipped);
+        Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
+        STACK.push(new ScissorState(clipped, new UiScissorSnapshot(
+                allocateSnapshotId(), clipped.x, clipped.y, clipped.w, clipped.h
+        )));
         applyTop();
         return true;
     }
@@ -137,13 +142,18 @@ public enum ScissorFunction {
 
 
     public static int[] currentFramebufferScissor() {
-        ScissorRect rect = appliedScissor;
-        if (rect == null || rect.isEmpty()) return null;
-        return new int[]{rect.x, rect.y, rect.w, rect.h};
+        return currentSnapshot().framebufferRect();
+    }
+
+    public static UiScissorSnapshot currentSnapshot() {
+        ScissorState state = appliedScissor;
+        return state != null ? state.snapshot : UiScissorSnapshot.NONE;
     }
 
     public static void pop() {
         if (STACK.isEmpty()) return;
+        // Preserve the closing scissor in deferred submit metadata.
+        Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
         STACK.pop();
         applyTop();
     }
@@ -153,24 +163,32 @@ public enum ScissorFunction {
     }
 
     private static void applyTop() {
-        ScissorRect next = STACK.peek();
-        if (next != null && next.equals(appliedScissor)) {
+        ScissorState next = STACK.peek();
+        if (next != null && appliedScissor != null && next.rect.equals(appliedScissor.rect)) {
+            // Logical identity still changes even when the effective GPU rectangle does not.
+            appliedScissor = next;
             return;
         }
-        Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
-
         if (appliedScissor != null) {
             ((IGpuDevice) RenderSystem.getDevice()).combatant$popScissor();
             appliedScissor = null;
         }
 
         if (next == null) return;
-        if (next.isEmpty()) {
+        if (next.rect.isEmpty()) {
             throw new IllegalStateException("Attempted to apply empty scissor: " + next);
         }
 
-        ((IGpuDevice) RenderSystem.getDevice()).combatant$pushScissor(next.x, next.y, next.w, next.h);
+        ((IGpuDevice) RenderSystem.getDevice()).combatant$pushScissor(
+                next.rect.x, next.rect.y, next.rect.w, next.rect.h
+        );
         appliedScissor = next;
+    }
+
+    private static long allocateSnapshotId() {
+        long id = nextSnapshotId++;
+        if (id == 0L) id = nextSnapshotId++;
+        return id;
     }
 
     private static ScissorRect clampToFramebuffer(ScissorRect r, int fbw, int fbh) {
@@ -214,5 +232,8 @@ public enum ScissorFunction {
         boolean isEmpty() {
             return w <= 0 || h <= 0;
         }
+    }
+
+    private record ScissorState(ScissorRect rect, UiScissorSnapshot snapshot) {
     }
 }

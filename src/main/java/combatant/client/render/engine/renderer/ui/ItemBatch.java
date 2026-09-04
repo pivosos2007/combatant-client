@@ -12,6 +12,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.navigation.ScreenRectangle;
 import org.jetbrains.annotations.Nullable;
+import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
 
 import java.util.Objects;
 
@@ -20,15 +21,22 @@ public final class ItemBatch {
     final PoseStack matrices = new PoseStack();
     @Nullable GuiGraphicsExtractor context;
     @Nullable ScreenRectangle scissor;
+    UiClipSnapshot clipSnapshot = UiClipSnapshot.NONE;
 
-    void begin(@Nullable GuiGraphicsExtractor context, @Nullable ScreenRectangle scissor) {
+    void begin(@Nullable GuiGraphicsExtractor context, @Nullable ScreenRectangle scissor,
+               UiClipSnapshot clipSnapshot) {
         this.context = context;
         this.scissor = scissor;
+        this.clipSnapshot = clipSnapshot != null ? clipSnapshot : UiClipSnapshot.NONE;
         this.commands.clear();
     }
 
-    boolean canMerge(@Nullable GuiGraphicsExtractor context, @Nullable ScreenRectangle scissor) {
-        return this.context == context && Objects.equals(this.scissor, scissor);
+    boolean canMerge(@Nullable GuiGraphicsExtractor context, @Nullable ScreenRectangle scissor,
+                     UiClipSnapshot clipSnapshot) {
+        UiClipSnapshot clip = clipSnapshot != null ? clipSnapshot : UiClipSnapshot.NONE;
+        return this.context == context
+                && Objects.equals(this.scissor, scissor)
+                && this.clipSnapshot.id() == clip.id();
     }
 
     public void add(ItemDrawCommand command) {
