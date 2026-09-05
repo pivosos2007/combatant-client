@@ -16,6 +16,8 @@ import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.RenderFrameContext;
 import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.core.ViewportContext;
+import combatant.client.render.engine.profiler.ProfilerPhase;
+import combatant.client.render.engine.profiler.TracyGpuProfiler;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.helpers.ScissorFunction;
@@ -130,25 +132,51 @@ public final class UiDeferredScheduler {
             pushedModelView = true;
             modelView.identity();
 
-            for (int i = 0, size = DRAINING.size(); i < size; i++) {
-                Deferred2DSubmit command = DRAINING.get(i);
-                if (command == null) continue;
-                applyViewport(command.viewport());
-                int[] scissor = UiMsaaClipLayer.mapFramebufferScissor(command.framebufferScissor());
-                boolean scissored = false;
-                try {
-                    if (scissor != null && scissor.length == 4) {
-                        ((IGpuDevice) RenderSystem.getDevice())
-                                .combatant$pushScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
-                        scissored = true;
+            String layerLabel = layer == Renderer2D.Deferred2DLayer.AFTER_VANILLA_GUI
+                    ? "after_vanilla_gui"
+                    : "before_vanilla_gui";
+            try (ProfilerPhase.Scope ignoredCpu = ProfilerPhase.scope("ui:deferred_drain:" + layerLabel);
+                 TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("2d:deferred_" + layerLabel)) {
+                for (int i = 0, size = DRAINING.size(); i < size; ) {
+                    Deferred2DSubmit command = DRAINING.get(i);
+                    if (command == null) {
+                        i++;
+                        continue;
                     }
-                    command.submit();
-                } finally {
-                    if (scissored) {
-                        ((IGpuDevice) RenderSystem.getDevice()).combatant$popScissor();
+
+                    if (command instanceof DeferredOrderedSubmit firstOrdered) {
+                        int end = i + 1;
+                        while (end < size) {
+                            Deferred2DSubmit next = DRAINING.get(end);
+                            if (!(next instanceof DeferredOrderedSubmit nextOrdered)
+                                    || !sameReplayState(firstOrdered, nextOrdered)) {
+                                break;
+                            }
+                            end++;
+                        }
+                        submitOrderedGroup(i, end, firstOrdered);
+                        i = end;
+                        continue;
                     }
-                    command.release();
-                    DRAINING.set(i, null);
+
+                    applyViewport(command.viewport());
+                    int[] scissor = UiMsaaClipLayer.mapFramebufferScissor(command.framebufferScissor());
+                    boolean scissored = false;
+                    try {
+                        if (scissor != null && scissor.length == 4) {
+                            ((IGpuDevice) RenderSystem.getDevice())
+                                    .combatant$pushScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
+                            scissored = true;
+                        }
+                        command.submit();
+                    } finally {
+                        if (scissored) {
+                            ((IGpuDevice) RenderSystem.getDevice()).combatant$popScissor();
+                        }
+                        command.release();
+                        DRAINING.set(i, null);
+                    }
+                    i++;
                 }
             }
         } finally {
@@ -163,6 +191,62 @@ public final class UiDeferredScheduler {
             releaseSubmits(DRAINING);
             DRAINING.clear();
         }
+    }
+
+    private static void submitOrderedGroup(int start,
+                                           int end,
+                                           DeferredOrderedSubmit first) {
+        applyViewport(first.viewport());
+        int[] scissor = UiMsaaClipLayer.mapFramebufferScissor(first.framebufferScissor());
+        boolean scissored = false;
+        try {
+            if (scissor != null && scissor.length == 4) {
+                ((IGpuDevice) RenderSystem.getDevice())
+                        .combatant$pushScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
+                scissored = true;
+            }
+
+            // Enqueue every compatible facade submission before compiling. UiPassCompiler can
+            // then join their direct RHI streams and the backend can continue one render pass
+            // across UI-runtime/HUD tree boundaries without changing draw order.
+            for (int i = start; i < end; i++) {
+                DeferredOrderedSubmit ordered = (DeferredOrderedSubmit) DRAINING.get(i);
+                if (ordered != null && ordered.batcher() != null) {
+                    ordered.batcher().flush(true);
+                }
+            }
+            Renderer2D.flushUiLayer();
+        } finally {
+            if (scissored) {
+                ((IGpuDevice) RenderSystem.getDevice()).combatant$popScissor();
+            }
+            for (int i = start; i < end; i++) {
+                Deferred2DSubmit ordered = DRAINING.get(i);
+                if (ordered != null) ordered.release();
+                DRAINING.set(i, null);
+            }
+        }
+    }
+
+    private static boolean sameReplayState(DeferredOrderedSubmit first,
+                                           DeferredOrderedSubmit next) {
+        if (first == null || next == null || first.layer() != next.layer()) return false;
+        if (!first.scissorSnapshot().equals(next.scissorSnapshot())) return false;
+        if (!first.clipSnapshot().equals(next.clipSnapshot())) return false;
+        return sameViewport(first.viewport(), next.viewport());
+    }
+
+    private static boolean sameViewport(ViewportContext first, ViewportContext next) {
+        if (first == next) return true;
+        if (first == null || next == null) return false;
+        return first.framebufferWidth() == next.framebufferWidth()
+                && first.framebufferHeight() == next.framebufferHeight()
+                && Float.floatToIntBits(first.scaleFactor()) == Float.floatToIntBits(next.scaleFactor())
+                && Float.floatToIntBits(first.width()) == Float.floatToIntBits(next.width())
+                && Float.floatToIntBits(first.height()) == Float.floatToIntBits(next.height())
+                && Float.floatToIntBits(first.uiScale()) == Float.floatToIntBits(next.uiScale())
+                && first.projectionMode() == next.projectionMode()
+                && first.projectionMatrix().equals(next.projectionMatrix());
     }
 
     public static boolean shouldDefer() {

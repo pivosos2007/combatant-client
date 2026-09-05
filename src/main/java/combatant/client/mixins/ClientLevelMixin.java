@@ -9,6 +9,7 @@ package combatant.client.mixins;
 
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ItemParticleOption;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
@@ -68,5 +69,43 @@ public abstract class ClientLevelMixin {
             }
         }
     }
-}
 
+@Inject(method = "addDestroyBlockEffect", at = @At("HEAD"), cancellable = true)
+    private void combatant$noRenderBlockBreakParticles(BlockPos pos, BlockState state, CallbackInfo ci) {
+        NoRender noRender = Modules.get(NoRender.class);
+        if (noRender != null
+                && (noRender.offParticle("all_particles") || noRender.offParticle("block_break_particles"))) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "addBreakingBlockEffect", at = @At("HEAD"), cancellable = true)
+    private void combatant$noRenderBlockBreakingParticles(BlockPos pos, Direction direction, CallbackInfo ci) {
+        NoRender noRender = Modules.get(NoRender.class);
+        if (noRender != null
+                && (noRender.offParticle("all_particles") || noRender.offParticle("block_breaking_particles"))) {
+            ci.cancel();
+        }
+    }
+
+    @org.spongepowered.asm.mixin.injection.Redirect(
+            method = "tickWeatherEffects",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/multiplayer/ClientLevel;addParticle(Lnet/minecraft/core/particles/ParticleOptions;DDDDDD)V"
+            )
+    )
+    private void combatant$noRenderRainSplash(
+            ClientLevel level,
+            ParticleOptions effect,
+            double x, double y, double z,
+            double vx, double vy, double vz
+    ) {
+        NoRender noRender = Modules.get(NoRender.class);
+        if (noRender != null
+                && (noRender.offParticle("all_particles") || noRender.offParticle("rain_splash_particles"))) {
+            return;
+        }
+        level.addParticle(effect, x, y, z, vx, vy, vz);
+    }
+}

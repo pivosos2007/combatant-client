@@ -245,6 +245,8 @@ class StatisticsPanelLayout extends HudPanelLayout {
     const accentStart = c(this.p.accentStartColor, color(this.pal, "counter", "#FFFFFFFF"));
     const accentEnd = c(this.p.accentEndColor, color(this.pal, "text", "#FFFFFFFF"));
     const graphPoints = arr(this.p.graphPoints);
+    if (graphPoints.length < 2) return nodes;
+
     const lineWidth = Math.max(1.5, Math.round(1.4 * bs * 2) / 2);
     const glowWidth = Math.max(3, Math.round(lineWidth * 2.25 * 2) / 2);
     nodes.push(ui.connector({

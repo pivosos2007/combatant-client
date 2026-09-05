@@ -7,6 +7,8 @@
 
 package combatant.client.render.engine.profiler;
 
+import combatant.client.render.engine.rhi.RhiStatsSnapshot;
+
 public enum TracyProfiler {
     ;
     private static final boolean DEV = DevProfilerBridge.available("TracyProfiler");
@@ -59,6 +61,28 @@ public enum TracyProfiler {
     public static void plotUiBatch(int draws, int vertices) {
         if (!DEV) return;
         DevProfilerBridge.invoke("TracyProfiler", "plotUiBatch", new Class<?>[]{int.class, int.class}, draws, vertices);
+    }
+
+    /** Sends frame counters directly to Tracy; independent from the optional 2D profiler tree. */
+    public static void plotUiPipeline(UiPipelineStatsSnapshot snapshot) {
+        if (!DEV || snapshot == null) return;
+        DevProfilerBridge.invoke(
+                "TracyProfiler",
+                "plotUiPipeline",
+                new Class<?>[]{UiPipelineStatsSnapshot.class},
+                snapshot
+        );
+    }
+
+    /** Sends RHI binding/pass/upload counters without depending on a tree profiler. */
+    public static void plotRhiPipeline(RhiStatsSnapshot snapshot) {
+        if (!DEV || snapshot == null) return;
+        DevProfilerBridge.invoke(
+                "TracyProfiler",
+                "plotRhiPipeline",
+                new Class<?>[]{RhiStatsSnapshot.class},
+                snapshot
+        );
     }
 
     public static final class Scope implements AutoCloseable {

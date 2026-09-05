@@ -11,9 +11,10 @@ import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11C;
-import org.lwjgl.opengl.GL20C;
 import combatant.client.render.engine.rhi.clip.ShapeClipBackend;
+import combatant.client.render.engine.rhi.backend.gl.GlValidation;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
+import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.util.logging.DebugLog;
 
 /**
@@ -97,6 +98,7 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
             checkGlErrors("beginRenderPass(no-clip)");
             return;
         }
+        UiPipelineTelemetry.recordStencilRenderPass();
 
         if (!prepareCurrentPassTarget("beginRenderPass")) {
             DebugLog.errorOnChange("shapeclip.renderpass.prepare.failed", currentPassLabel + "|" + attachmentReason + "|" + lastFailureReason(), "[ShapeClip/GL] render pass stencil prepare failed: pass=%s reason=%s lastFailure=%s", currentPassLabel, attachmentReason, lastFailureReason());
@@ -106,6 +108,7 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
 
         if (clearRequested) {
             boolean cleared = framebuffers.clear(currentColorView, currentDepthView);
+            if (cleared) UiPipelineTelemetry.recordStencilClear();
             if (!cleared) {
                 lastFailure = "clear failed: " + framebuffers.lastFailure();
                 DebugLog.errorOnChange("shapeclip.renderpass.clear.failed", currentPassLabel + "|" + clearReason + "|" + lastFailure, "[ShapeClip/GL] render pass stencil clear failed: pass=%s reason=%s lastFailure=%s", currentPassLabel, clearReason, lastFailure);
@@ -253,37 +256,28 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
                 captureCullStateIfNeeded();
                 GL11C.glDisable(GL11C.GL_CULL_FACE);
                 GL11C.glStencilMask(0xFF);
-                GL20C.glStencilMaskSeparate(GL11C.GL_FRONT_AND_BACK, 0xFF);
                 int compareFunc = compareReference == 0 ? GL11C.GL_ALWAYS : GL11C.GL_EQUAL;
                 GL11C.glStencilFunc(compareFunc, compareReference, 0xFF);
-                GL20C.glStencilFuncSeparate(GL11C.GL_FRONT_AND_BACK, compareFunc, compareReference, 0xFF);
                 // The stack model stores child = parent + 1. GL_REPLACE cannot express
                 // "compare against parent but write child", because REPLACE writes the
                 // same ref value supplied to glStencilFunc. Increment/decrement keeps the
                 // compare ref independent from the value transition.
                 GL11C.glStencilOp(GL11C.GL_KEEP, GL11C.GL_INCR, GL11C.GL_INCR);
-                GL20C.glStencilOpSeparate(GL11C.GL_FRONT_AND_BACK, GL11C.GL_KEEP, GL11C.GL_INCR, GL11C.GL_INCR);
                 GL11C.glColorMask(false, false, false, false);
             }
             case RESTORE -> {
                 captureCullStateIfNeeded();
                 GL11C.glDisable(GL11C.GL_CULL_FACE);
                 GL11C.glStencilMask(0xFF);
-                GL20C.glStencilMaskSeparate(GL11C.GL_FRONT_AND_BACK, 0xFF);
                 GL11C.glStencilFunc(GL11C.GL_EQUAL, compareReference, 0xFF);
-                GL20C.glStencilFuncSeparate(GL11C.GL_FRONT_AND_BACK, GL11C.GL_EQUAL, compareReference, 0xFF);
                 GL11C.glStencilOp(GL11C.GL_KEEP, GL11C.GL_DECR, GL11C.GL_DECR);
-                GL20C.glStencilOpSeparate(GL11C.GL_FRONT_AND_BACK, GL11C.GL_KEEP, GL11C.GL_DECR, GL11C.GL_DECR);
                 GL11C.glColorMask(false, false, false, false);
             }
             case TEST -> {
                 restoreCullStateIfNeeded();
                 GL11C.glStencilMask(0x00);
-                GL20C.glStencilMaskSeparate(GL11C.GL_FRONT_AND_BACK, 0x00);
                 GL11C.glStencilFunc(GL11C.GL_EQUAL, reference, 0xFF);
-                GL20C.glStencilFuncSeparate(GL11C.GL_FRONT_AND_BACK, GL11C.GL_EQUAL, reference, 0xFF);
                 GL11C.glStencilOp(GL11C.GL_KEEP, GL11C.GL_KEEP, GL11C.GL_KEEP);
-                GL20C.glStencilOpSeparate(GL11C.GL_FRONT_AND_BACK, GL11C.GL_KEEP, GL11C.GL_KEEP, GL11C.GL_KEEP);
                 GL11C.glColorMask(true, true, true, true);
             }
             case DISABLED -> resetNativeStateOnly();
@@ -315,11 +309,8 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
     private void resetNativeStateOnly() {
         GL11C.glDisable(GL11C.GL_STENCIL_TEST);
         GL11C.glStencilMask(0x00);
-        GL20C.glStencilMaskSeparate(GL11C.GL_FRONT_AND_BACK, 0x00);
         GL11C.glStencilFunc(GL11C.GL_ALWAYS, 0, 0xFF);
-        GL20C.glStencilFuncSeparate(GL11C.GL_FRONT_AND_BACK, GL11C.GL_ALWAYS, 0, 0xFF);
         GL11C.glStencilOp(GL11C.GL_KEEP, GL11C.GL_KEEP, GL11C.GL_KEEP);
-        GL20C.glStencilOpSeparate(GL11C.GL_FRONT_AND_BACK, GL11C.GL_KEEP, GL11C.GL_KEEP, GL11C.GL_KEEP);
         GL11C.glColorMask(true, true, true, true);
         restoreDepthStateIfNeeded();
         restoreCullStateIfNeeded();
@@ -393,6 +384,7 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
     }
 
     private void checkGlErrors(String where) {
+        if (!GlValidation.errorsEnabled()) return;
         int guard = 0;
         int error;
         while ((error = GL11C.glGetError()) != GL11C.GL_NO_ERROR && guard++ < 16) {

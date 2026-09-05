@@ -1433,6 +1433,11 @@ public final class Renderer2D {
      */
     public void moduleCategorySurface(double x, double y, double w, double h,
                                       float radius,
+                                      double backdropX,
+                                      double backdropY,
+                                      double backdropW,
+                                      double backdropH,
+                                      float shaderBackdropRadius,
                                       int effectMode,
                                       float reveal,
                                       float time,
@@ -1466,7 +1471,6 @@ public final class Renderer2D {
         float r1 = ((secondaryArgb >>> 16) & 0xFF) / 255.0f;
         float g1 = ((secondaryArgb >>> 8) & 0xFF) / 255.0f;
         float b1 = (secondaryArgb & 0xFF) / 255.0f;
-        float a1 = ((secondaryArgb >>> 24) & 0xFF) / 255.0f;
 
         float r2 = ((highlightArgb >>> 16) & 0xFF) / 255.0f;
         float g2 = ((highlightArgb >>> 8) & 0xFF) / 255.0f;
@@ -1480,34 +1484,34 @@ public final class Renderer2D {
         int i1 = mesh.vec2(x, y).local2(x, y).color(r0, g0, b0, a0)
                 .vec4((float) x, (float) y, (float) w, (float) h)
                 .vec4(radius, mode, safeReveal, safeIntensity)
-                .vec4(r1, g1, b1, a1)
+                .vec4(r1, g1, b1, shaderBackdropRadius)
                 .vec4(r2, g2, b2, a2)
                 .vec4(time, mx, my, seed)
-                .vec4(0.0f, 0.0f, 0.0f, 0.0f)
+                .vec4((float) backdropX, (float) backdropY, (float) backdropW, (float) backdropH)
                 .next();
         int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(r0, g0, b0, a0)
                 .vec4((float) x, (float) y, (float) w, (float) h)
                 .vec4(radius, mode, safeReveal, safeIntensity)
-                .vec4(r1, g1, b1, a1)
+                .vec4(r1, g1, b1, shaderBackdropRadius)
                 .vec4(r2, g2, b2, a2)
                 .vec4(time, mx, my, seed)
-                .vec4(0.0f, 0.0f, 0.0f, 0.0f)
+                .vec4((float) backdropX, (float) backdropY, (float) backdropW, (float) backdropH)
                 .next();
         int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(r0, g0, b0, a0)
                 .vec4((float) x, (float) y, (float) w, (float) h)
                 .vec4(radius, mode, safeReveal, safeIntensity)
-                .vec4(r1, g1, b1, a1)
+                .vec4(r1, g1, b1, shaderBackdropRadius)
                 .vec4(r2, g2, b2, a2)
                 .vec4(time, mx, my, seed)
-                .vec4(0.0f, 0.0f, 0.0f, 0.0f)
+                .vec4((float) backdropX, (float) backdropY, (float) backdropW, (float) backdropH)
                 .next();
         int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(r0, g0, b0, a0)
                 .vec4((float) x, (float) y, (float) w, (float) h)
                 .vec4(radius, mode, safeReveal, safeIntensity)
-                .vec4(r1, g1, b1, a1)
+                .vec4(r1, g1, b1, shaderBackdropRadius)
                 .vec4(r2, g2, b2, a2)
                 .vec4(time, mx, my, seed)
-                .vec4(0.0f, 0.0f, 0.0f, 0.0f)
+                .vec4((float) backdropX, (float) backdropY, (float) backdropW, (float) backdropH)
                 .next();
         mesh.quad(i1, i2, i3, i4);
 
@@ -1636,13 +1640,19 @@ public final class Renderer2D {
         GpuSampler sampler = PostProcessManager.getSampler();
         if (sampler == null) return;
 
+        UiShape backdropShape = UiShape.rect(x, y, w, h);
+        UiBackdropRequest backdrop = UiBackdropRequest.capturedSceneGlass(
+                backdropShape.bounds(), UiBlurQuality.ULTRA, 2.35f);
+        effect(UiEffectSpec.liquidGlass(backdropShape, 0.0, 0.0, 0.0, baseArgb, backdrop));
+
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(
                 UiBatchType.MAIN_MENU_HONEYCOMB,
                 framebuffer.getColorTextureView(),
                 sampler,
                 BlurQuality.ULTRA,
-                2.35f);
+                2.35f,
+                backdrop);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -3044,9 +3054,15 @@ public final class Renderer2D {
         double h = bounds.height();
         if (w <= 0.0 || h <= 0.0) return;
 
+        BlurQuality preparedBlurQuality = blurQuality != null ? blurQuality : DEFAULT_LIQUID_GLASS_BLUR_QUALITY;
+        float preparedBlurOffset = Float.isFinite(blurOffsetPx)
+                ? Math.max(0.0f, blurOffsetPx)
+                : LIQUID_GLASS_KAWASE_OFFSET_PX;
+        UiShape glassShape = UiShape.polyline(primitive.points(), primitive.pointCount(), true);
+        UiBackdropRequest backdrop = UiBackdropRequest.capturedSceneGlass(
+                bounds, UiBlurQuality.fromRenderer(preparedBlurQuality), preparedBlurOffset);
         effect(UiEffectSpec.liquidGlass(
-                UiShape.polyline(primitive.points(), primitive.pointCount(), true),
-                primitive.rounding(), thickness, distortPx, tintArgb));
+                glassShape, primitive.rounding(), thickness, distortPx, tintArgb, backdrop));
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
         RenderTarget fb = mc.gameRenderer.mainRenderTarget();
@@ -3063,12 +3079,8 @@ public final class Renderer2D {
         }
 
         boolean auto = beginAutoBatch();
-        BlurQuality preparedBlurQuality = blurQuality != null ? blurQuality : DEFAULT_LIQUID_GLASS_BLUR_QUALITY;
-        float preparedBlurOffset = Float.isFinite(blurOffsetPx)
-                ? Math.max(0.0f, blurOffsetPx)
-                : LIQUID_GLASS_KAWASE_OFFSET_PX;
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
-                preparedBlurQuality, preparedBlurOffset);
+                preparedBlurQuality, preparedBlurOffset, backdrop);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -3544,7 +3556,9 @@ public final class Renderer2D {
         UiShape glassShape = wholeBoxSquircle
                 ? UiShapes.squircle(x, y, w, h, shapePower)
                 : UiShape.roundedRect(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL);
-        effect(UiEffectSpec.liquidGlass(glassShape, softness, softness, distortPx, tintArgb));
+        UiBackdropRequest backdrop = UiBackdropRequest.capturedSceneGlass(
+                glassShape.bounds(), UiBlurQuality.HIGH, LIQUID_GLASS_KAWASE_OFFSET_PX);
+        effect(UiEffectSpec.liquidGlass(glassShape, softness, softness, distortPx, tintArgb, backdrop));
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
         RenderTarget fb = mc.gameRenderer.mainRenderTarget();
@@ -3556,7 +3570,7 @@ public final class Renderer2D {
 
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
-                DEFAULT_LIQUID_GLASS_BLUR_QUALITY, LIQUID_GLASS_KAWASE_OFFSET_PX);
+                DEFAULT_LIQUID_GLASS_BLUR_QUALITY, LIQUID_GLASS_KAWASE_OFFSET_PX, backdrop);
         if (batch == null) return;
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
@@ -3654,14 +3668,18 @@ public final class Renderer2D {
                              float quality, float brightness, float alpha, int ignoredTintRgb) {
         if (w <= 0.0 || h <= 0.0 || alpha <= 0.001f) return;
         UiBoxShape box = UiBoxShape.squircle(x, y, w, h, exponent);
-        effect(UiEffectSpec.blur(box, 0.0, ignoredTintRgb));
+        BlurQuality blurQuality = legacyBlurQuality(quality);
+        float blurOffset = legacyKawaseOffset(quality);
+        UiBackdropRequest backdrop = UiBackdropRequest.currentTargetBlur(
+                box.bounds(), UiBlurQuality.fromRenderer(blurQuality), blurOffset);
+        effect(UiEffectSpec.blur(UiShape.box(box), 0.0, ignoredTintRgb, backdrop));
         BlurSource source = getBlurSource();
         if (source == null) return;
 
         boolean auto = beginAutoBatch();
         try {
             DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.BLUR, source.view, source.sampler,
-                    legacyBlurQuality(quality), legacyKawaseOffset(quality));
+                    blurQuality, blurOffset, backdrop);
             if (batch == null) return;
             MeshBuilder mesh = batch.mesh;
             mesh.alpha = 1.0;
@@ -3683,14 +3701,18 @@ public final class Renderer2D {
         if (w <= 0.0 || h <= 0.0) return;
         if (alpha <= 0.001f) return;
 
-        effect(UiEffectSpec.blur(UiShape.roundedRect(x, y, w, h, radius), radius, ignoredTintRgb));
+        UiShape blurShape = UiShape.roundedRect(x, y, w, h, radius);
+        float blurOffset = legacyKawaseOffset(quality);
+        UiBackdropRequest backdrop = UiBackdropRequest.currentTargetBlur(
+                blurShape.bounds(), UiBlurQuality.HIGH, blurOffset);
+        effect(UiEffectSpec.blur(blurShape, radius, ignoredTintRgb, backdrop));
         BlurSource source = getBlurSource();
         if (source == null) return;
 
         boolean auto = beginAutoBatch();
         try {
             DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.BLUR_CORNERS, source.view, source.sampler,
-                    BlurQuality.HIGH, legacyKawaseOffset(quality));
+                    BlurQuality.HIGH, blurOffset, backdrop);
             if (batch == null) return;
             MeshBuilder mesh = batch.mesh;
             mesh.alpha = 1.0;
@@ -3735,14 +3757,19 @@ public final class Renderer2D {
         if (w <= 0.0 || h <= 0.0) return;
         if (alpha <= 0.001f) return;
 
-        effect(UiEffectSpec.blur(UiShape.roundedRect(x, y, w, h, radius), radius, ignoredTintRgb));
+        UiShape blurShape = UiShape.roundedRect(x, y, w, h, radius);
+        BlurQuality blurQuality = legacyBlurQuality(quality);
+        float blurOffset = legacyKawaseOffset(quality);
+        UiBackdropRequest backdrop = UiBackdropRequest.currentTargetBlur(
+                blurShape.bounds(), UiBlurQuality.fromRenderer(blurQuality), blurOffset);
+        effect(UiEffectSpec.blur(blurShape, radius, ignoredTintRgb, backdrop));
         BlurSource source = getBlurSource();
         if (source == null) return;
 
         boolean auto = beginAutoBatch();
         try {
             DrawBatch batch = UI_BATCHER.getOrCreateBlur(batchType, source.view, source.sampler,
-                    legacyBlurQuality(quality), legacyKawaseOffset(quality));
+                    blurQuality, blurOffset, backdrop);
             if (batch == null) return;
             MeshBuilder mesh = batch.mesh;
             mesh.alpha = 1.0;
@@ -3777,9 +3804,12 @@ public final class Renderer2D {
         BlurSource source = getBlurSource();
         if (source == null) return;
 
+        UiBackdropRequest backdrop = UiBackdropRequest.currentTargetBlur(
+                null, UiBlurQuality.MEDIUM, DEFAULT_KAWASE_OFFSET_PX);
+
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.BLUR_CORNERS, source.view, source.sampler,
-                DEFAULT_BLUR_QUALITY, DEFAULT_KAWASE_OFFSET_PX);
+                DEFAULT_BLUR_QUALITY, DEFAULT_KAWASE_OFFSET_PX, backdrop);
         if (batch == null) return;
 
         MeshBuilder mesh = batch.mesh;

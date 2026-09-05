@@ -321,6 +321,21 @@ void main() {
     float shapeAlpha = 1.0 - smoothstep(-aa * 0.5, aa, shapeDistance);
     if (shapeAlpha <= 0.001) discard;
 
+    // Normal mode keeps this material outside the shared analytic scope to avoid a dedicated
+    // MODULE_CATEGORY_SURFACE clip permutation. In that mode the positive packed radius enables
+    // the same analytic rounded-backdrop boundary here. MSAA mode packs zero and owns clipping
+    // entirely through stencil instead.
+    float backdropAlpha = 1.0;
+    float shaderBackdropRadius = v_CornerExtentX.a;
+    if (shaderBackdropRadius > 0.001) {
+        vec2 backdropSize = max(v_EdgeData.zw, vec2(1.0));
+        vec2 backdropCenter = v_EdgeData.xy + backdropSize * 0.5;
+        vec2 backdropHalfSize = max(backdropSize * 0.5 - vec2(0.75), vec2(0.01));
+        float boundedRadius = clamp(shaderBackdropRadius, 0.0, min(backdropHalfSize.x, backdropHalfSize.y));
+        float backdropDistance = roundedBoxSDF(frag - backdropCenter, backdropHalfSize, boundedRadius);
+        backdropAlpha = 1.0 - smoothstep(-aa * 0.5, aa, backdropDistance);
+        if (backdropAlpha <= 0.001) discard;
+    }
     vec4 material;
     if (mode < 0.5) {
         material = flameSurface(p, time, reveal, seed, c0, c1, hi);
@@ -369,6 +384,7 @@ void main() {
     float materialAlpha = saturate(material.a * intensity * v_Color.a) * shapeAlpha;
     float rimAlpha = glassRim * shapeAlpha * v_Color.a;
     float finalAlpha = saturate(materialAlpha + rimAlpha * (1.0 - materialAlpha));
+    finalAlpha *= backdropAlpha;
     if (finalAlpha <= 0.001) discard;
 
     fragColor = vec4(material.rgb, finalAlpha);

@@ -10,6 +10,9 @@ package combatant.client.features.module.modules.visuals;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -17,6 +20,8 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import combatant.client.config.values.BooleanValue;
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.PacketEvent;
 import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
@@ -62,6 +67,8 @@ public class KillEffect extends Module implements PostProcessPass {
     private static final float LIGHTNING_ALPHA = 0.40f;
     private static final long KILL_BLUR_ATTACK_MS = 55L;
     private static final long KILL_BLUR_DURATION_MS = 520L;
+    private static final long DAMAGE_CREDIT_TTL_MS = 30_000L;
+    private static final double EFFECT_DETECTION_RADIUS = 192.0;
     private static final String SETTING_MODE = "mode";
     private static final String SETTING_Y_SPEED = "y_speed";
     private static final String SETTING_PLAY_SOUND = "play_sound";
@@ -87,6 +94,7 @@ public class KillEffect extends Module implements PostProcessPass {
     private final BooleanValue mobs = bool("killEffectMobs", SETTING_MOBS, false);
     private final BooleanValue killBlur = bool("killEffectKillBlur", SETTING_KILL_BLUR, true);
     private final Map<Integer, Long> handled = new HashMap<>();
+    private final Map<Integer, DamageCredit> damageCredits = new HashMap<>();
     private final List<OrthodoxMark> orthodoxMarks = new ArrayList<>();
     private final List<Ember> embers = new ArrayList<>();
     private final List<FlashRing> flashes = new ArrayList<>();
@@ -198,8 +206,9 @@ public class KillEffect extends Module implements PostProcessPass {
 
         long now = System.currentTimeMillis();
         handled.entrySet().removeIf(e -> now - e.getValue() > 6000);
+        damageCredits.entrySet().removeIf(e -> now - e.getValue().recordedAtMs() > DAMAGE_CREDIT_TTL_MS);
 
-        for (LivingEntity entity : mc.level.getEntitiesOfClass(LivingEntity.class, mc.player.getBoundingBox().inflate(128), e -> true)) {
+        for (LivingEntity entity : mc.level.getEntitiesOfClass(LivingEntity.class, mc.player.getBoundingBox().inflate(EFFECT_DETECTION_RADIUS), e -> true)) {
             if (entity == mc.player) continue;
             if (!mobs.get() && !(entity instanceof Player)) continue;
             if (entity.isAlive() || entity.getHealth() > 0) continue;
@@ -207,7 +216,11 @@ public class KillEffect extends Module implements PostProcessPass {
             int id = entity.getId();
             if (handled.containsKey(id)) continue;
             handled.put(id, now);
-            if (killBlur.get()) {
+            DamageCredit damageCredit = damageCredits.remove(id);
+            boolean killedByLocalPlayer = damageCredit != null
+                    && damageCredit.byLocalPlayer()
+                    && now - damageCredit.recordedAtMs() <= DAMAGE_CREDIT_TTL_MS;
+            if (killBlur.get() && killedByLocalPlayer) {
                 killBlurStartedMs = now;
             }
 
@@ -246,13 +259,43 @@ public class KillEffect extends Module implements PostProcessPass {
 
     @SoundCatalog(namespace = "combatant", root = "sounds/misc", idPrefix = "kill_effect")
     private enum KillSound implements SoundKey {
-        @SoundAsset("orthodox.wav")
+        @SoundAsset(
+                value = "orthodox.wav",
+                gain = 1.40f,
+                rolloff = 0.28f,
+                referenceDistance = 10.0f,
+                maxDistance = 192.0f
+        )
         ORTHODOX
+    }
+
+    @EventHandler
+    private void onDamagePacket(PacketEvent.Receive event) {
+        if (!isEnabled() || event == null || mc.level == null || mc.player == null) return;
+        if (!(event.getPacket() instanceof ClientboundDamageEventPacket packet)) return;
+
+        Entity damaged = mc.level.getEntity(packet.entityId());
+        if (!(damaged instanceof LivingEntity living) || living == mc.player) return;
+
+        Entity sourceEntity = null;
+        try {
+            DamageSource source = packet.getSource(mc.level);
+            if (source != null) {
+                sourceEntity = source.getEntity();
+                if (sourceEntity == null) sourceEntity = source.getDirectEntity();
+            }
+        } catch (RuntimeException ignored) {
+            // A missing/late source reference cannot safely be attributed to the local player.
+        }
+
+        damageCredits.put(living.getId(),
+                new DamageCredit(sourceEntity == mc.player, System.currentTimeMillis()));
     }
 
     @Override
     public void onDisable() {
         handled.clear();
+        damageCredits.clear();
         orthodoxMarks.clear();
         embers.clear();
         flashes.clear();
@@ -541,5 +584,9 @@ public class KillEffect extends Module implements PostProcessPass {
             return Math.max(0f, Math.min(1f, appear * fade));
         }
     }
+
+    private record DamageCredit(boolean byLocalPlayer, long recordedAtMs) {
+    }
+
 }
 

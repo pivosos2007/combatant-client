@@ -13,6 +13,7 @@ import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.config.values.*;
 import combatant.client.addon.ModuleExtensionManager;
 import combatant.client.features.gui.clickgui.settings.*;
+import combatant.client.features.gui.hud.HudRenderSpace;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import combatant.client.config.*;
@@ -1076,6 +1077,15 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
 
     public HudPhase getHudPhase() {
         return HudPhase.NONE;
+    }
+
+    /**
+     * Coordinate space used by the engine HUD callbacks for this module.
+     * Modules default to raw framebuffer coordinates for compatibility; overlays that
+     * define their geometry in Combatant logical HUD units override this explicitly.
+     */
+    public HudRenderSpace getHudRenderSpace() {
+        return HudRenderSpace.UNSCALED;
     }
 
     public WorldPhase getWorldPhase() {

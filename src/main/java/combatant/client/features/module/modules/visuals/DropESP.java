@@ -8,9 +8,12 @@
 package combatant.client.features.module.modules.visuals;
 
 import combatant.client.config.values.*;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -21,6 +24,7 @@ import net.minecraft.world.phys.Vec3;
 import combatant.client.config.SettingDef;
 import combatant.client.config.values.*;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
+import combatant.client.features.gui.hud.HudRenderSpace;
 import combatant.client.features.module.HudPhase;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
@@ -29,21 +33,24 @@ import combatant.client.features.module.WorldPhase;
 import combatant.client.mixininterface.IEntity;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.RenderState;
+import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.renderer.ui.ItemBatchRenderer;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.text.FontInfo;
+import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.VanillaTextRenderer;
 import combatant.client.render.engine.text.WorldTextRenderer;
 import combatant.client.render.engine.world.WorldBillboardRenderer;
 import combatant.client.render.engine.world.WorldUiPresentationService;
-import combatant.client.render.helpers.MatteHudStyle;
 import combatant.client.render.helpers.ScreenProjection;
 import combatant.client.render.helpers.ScreenSpaceOverlay2D;
 import combatant.client.util.item.IllegalItemUtil;
 import combatant.client.util.item.RarityColorUtil;
 import combatant.client.util.item.TopEnchantUtil;
+import combatant.client.util.text.TextRenderUtil;
 
 //todo Description
 @ModuleInfo(id = "dropesp", displayName = "DropESP", category = ModuleCategory.VISUALS)
@@ -63,17 +70,23 @@ public class DropESP extends Module {
     private static final String SETTING_WORLD_SIZE = "world_size";
     private static final String SETTING_DYNAMIC_WORLD_SCALE = "dynamic_world_scale";
     private static final String SETTING_DYNAMIC_WORLD_SCALE_COEFFICIENT = "dynamic_world_scale_coefficient";
-    private static final double ITEM_BOX_EXPAND_XZ = 0.05;
-    private static final double ITEM_BOX_EXPAND_TOP = 0.15;
-    private static final double MATTE_LABEL_PAD_X = 3.5;
-    private static final double MATTE_LABEL_PAD_Y = 2.0;
-    private static final double MATTE_ICON_SIZE = 14.0;
-    private static final double MATTE_ICON_GAP = 4.0;
-    private static final float MATTE_ICON_SCALE = (float) (MATTE_ICON_SIZE / 16.0);
+    private static final double ITEM_BOX_EXPAND_XZ = 0.10;
+    private static final double ITEM_BOX_EXPAND_TOP = 0.10;
+    // Direct UNSCALED_LOGICAL dimensions. No framebuffer/gui-scale compensation.
+    // Slightly larger than rich_src's default presentation for readability.
+    private static final double RICH_TEXT_LOGICAL_HEIGHT = 20.0;
+    private static final double DROP_TEXT_SCALE = 1.06;
+    private static final double MATTE_LABEL_PAD_X = 4.2;
+    private static final double MATTE_LABEL_PAD_Y = 1.55;
+    private static final float MATTE_LABEL_RADIUS = 4.2f;
+    private static final int MATTE_BACKDROP_ALPHA = 148;
+    private static final double MATTE_ICON_SIZE = 17.0;
+    private static final double MATTE_ICON_GAP = 4.2;
+    private static final float MATTE_ICON_SCALE = 1.0625f;
     private static final WorldUiPresentationService.Policy WORLD_PRESENTATION_POLICY =
             new WorldUiPresentationService.Policy(0.0150, 12.0, 18.0, 32.0, 0.45, 4.00);
     private final Minecraft mc = Minecraft.getInstance();
-    private final ModeValue modeValue = modeSetting("dropEspMode", SETTING_MODE, "Matte", "Vanilla", "New", "Matte");
+    private final ModeValue modeValue = modeSetting("dropEspMode", SETTING_MODE, "Matte", "Vanilla", "Matte");
     private final EnumValue<WorldUiPresentationService.Mode> presentationMode =
             enumSetting("dropEspPresentationMode", SETTING_PRESENTATION_MODE,
                     WorldUiPresentationService.Mode.HYBRID, WorldUiPresentationService.Mode.values());
@@ -90,11 +103,11 @@ public class DropESP extends Module {
     private final NumberValue<Integer> commonMaxDistanceValue =
             visibleWhen(num("dropEspCommonMaxDistance", SETTING_COMMON_MAX_DISTANCE, 32, 4, 256), limitCommonDistanceValue::get);
     private final BooleanValue textShadowValue =
-            visibleWhen(bool("dropEspTextShadow", SETTING_TEXT_SHADOW, true), this::isNewMode);
+            visibleWhen(bool("dropEspTextShadow", SETTING_TEXT_SHADOW, false), this::isOverlayMode);
     private final BooleanValue frameValue =
             visibleWhen(bool("dropEspFrame", SETTING_FRAME, true), this::isOverlayMode);
     private final BooleanValue itemIconValue =
-            visibleWhen(bool("dropEspItemIcon", SETTING_ITEM_ICON, true),
+            visibleWhen(bool("dropEspItemIcon", SETTING_ITEM_ICON, false),
                     () -> isMatteMode() || presentationMode.get() != WorldUiPresentationService.Mode.SCREEN);
     private final RGBColorValue specialColorValue = colorNoAlpha("dropEspSpecialColor", SETTING_SPECIAL_ITEMS_COLOR, "#FFAA00");
     private final ItemIdSetValue topIgnore = TopEnchantUtil.ignoreValue();
@@ -125,6 +138,11 @@ public class DropESP extends Module {
     }
 
     @Override
+    public HudRenderSpace getHudRenderSpace() {
+        return HudRenderSpace.UNSCALED_LOGICAL;
+    }
+
+    @Override
     public HudPhase getHudPhase() {
         return HudPhase.FIRST;
     }
@@ -139,7 +157,7 @@ public class DropESP extends Module {
         if (!isEnabled() || renderer == null || mc.level == null || mc.player == null) return;
         if (presentationMode.get() == WorldUiPresentationService.Mode.SCREEN) return;
 
-        TextRenderer labelRenderer = ScreenSpaceOverlay2D.labelRenderer(TextRenderer.get());
+        TextRenderer labelRenderer = dropLabelRenderer(TextRenderer.get());
         Vec3 cameraPos = presentationCameraPosition(tickDelta);
         boolean framesEnabled = frameValue.get();
         java.util.List<DropWorldEntry> entries = new java.util.ArrayList<>();
@@ -158,8 +176,9 @@ public class DropESP extends Module {
             if (presentation.worldAlpha() <= 0.001f) continue;
 
             ItemStack stack = item.getItem().copy();
-            String text = stack.getHoverName().getString() + " x" + stack.getCount();
-            Vec3 anchor = new Vec3(pos.x, pos.y + Math.max(0.35, item.getBbHeight() + 0.18), pos.z);
+            Component text = formatReferenceItemLabel(stack);
+            AABB labelBox = item.getBoundingBox().move(pos.subtract(item.position())).inflate(0.1);
+            Vec3 anchor = new Vec3(labelBox.getCenter().x, labelBox.maxY, labelBox.getCenter().z);
 
             Vec3 frameAnchor = null;
             double frameWorldWidth = 0.0;
@@ -170,14 +189,7 @@ public class DropESP extends Module {
                         pos.y - item.getY(),
                         pos.z - item.getZ()
                 );
-                frameBox = new AABB(
-                        frameBox.minX - ITEM_BOX_EXPAND_XZ,
-                        frameBox.minY,
-                        frameBox.minZ - ITEM_BOX_EXPAND_XZ,
-                        frameBox.maxX + ITEM_BOX_EXPAND_XZ,
-                        frameBox.maxY + ITEM_BOX_EXPAND_TOP,
-                        frameBox.maxZ + ITEM_BOX_EXPAND_XZ
-                );
+                frameBox = frameBox.inflate(0.1);
                 frameAnchor = new Vec3(
                         (frameBox.minX + frameBox.maxX) * 0.5,
                         (frameBox.minY + frameBox.maxY) * 0.5,
@@ -219,11 +231,11 @@ public class DropESP extends Module {
 
         boolean matteMode = isMatteMode();
         boolean overlayMode = isOverlayMode();
-        TextRenderer labelRenderer = overlayMode ? ScreenSpaceOverlay2D.labelRenderer(textRenderer) : VanillaTextRenderer.INSTANCE;
+        TextRenderer labelRenderer = overlayMode ? dropLabelRenderer(textRenderer) : VanillaTextRenderer.INSTANCE;
         boolean measureStarted = false;
         java.util.List<DropOverlayEntry> overlayEntries = new java.util.ArrayList<>();
         java.util.List<DropVanillaEntry> vanillaEntries = new java.util.ArrayList<>();
-        double textScale = overlayMode ? ScreenSpaceOverlay2D.TEXT_SCALE : ScreenSpaceOverlay2D.VANILLA_TEXT_SCALE;
+        double textScale = overlayMode ? DROP_TEXT_SCALE : ScreenSpaceOverlay2D.VANILLA_TEXT_SCALE;
 
         if (!labelRenderer.isBuilding()) {
             labelRenderer.begin(textScale, true, false);
@@ -246,18 +258,17 @@ public class DropESP extends Module {
             if (presentationAlpha <= 0.001f) continue;
 
             ItemStack stack = item.getItem();
-            String text = stack.getHoverName().getString() + " x" + stack.getCount();
+            Component text = formatReferenceItemLabel(stack);
             int color = resolveDisplayColor(stack);
             int sortPriority = resolveSortPriority(stack);
 
             if (overlayMode) {
-                ScreenSpaceOverlay2D.ScreenRect rect = ScreenSpaceOverlay2D.projectEntityBox(
-                        item,
-                        pos,
-                        tickDelta,
-                        ITEM_BOX_EXPAND_XZ,
-                        ITEM_BOX_EXPAND_TOP
-                );
+                AABB overlayBox = item.getBoundingBox().move(
+                        pos.x - item.getX(),
+                        pos.y - item.getY(),
+                        pos.z - item.getZ()
+                ).inflate(0.1);
+                ScreenSpaceOverlay2D.ScreenRect rect = ScreenSpaceOverlay2D.projectBox(overlayBox, tickDelta);
                 if (rect == null) continue;
 
                 DropLabelEntry matteLabel = matteMode
@@ -265,7 +276,7 @@ public class DropESP extends Module {
                         : null;
                 ScreenSpaceOverlay2D.LabelEntry label = matteMode
                         ? null
-                        : ScreenSpaceOverlay2D.createCenteredLabel(labelRenderer, text, color, rect);
+                        : ScreenSpaceOverlay2D.createCenteredLabel(labelRenderer, text.getString(), color, rect);
                 overlayEntries.add(new DropOverlayEntry(
                         sortPriority, distSq, rect, color, matteLabel, label, presentationAlpha));
             } else {
@@ -284,10 +295,10 @@ public class DropESP extends Module {
                 Vec3 screen = ScreenProjection.worldToScreen(center, tickDelta);
                 if (screen == null) continue;
 
-                double x = screen.x - (labelRenderer.getWidth(text, true) / 2.0);
+                double x = screen.x - (labelRenderer.getWidth(text.getString(), true) / 2.0);
                 double y = screen.y;
                 vanillaEntries.add(new DropVanillaEntry(
-                        sortPriority, distSq, ScreenSpaceOverlay2D.labelAt(text, x, y, color), presentationAlpha));
+                        sortPriority, distSq, ScreenSpaceOverlay2D.labelAt(text.getString(), x, y, color), presentationAlpha));
             }
         }
 
@@ -329,7 +340,8 @@ public class DropESP extends Module {
             if (matteMode) {
                 DropLabelEntry label = entry.matteLabel();
                 if (label == null) return;
-                MatteHudStyle.drawPlate(renderer, label.x(), label.y(), label.width(), label.height(), 2.0f, 1.0f);
+                renderer.roundedRect(label.x(), label.y(), label.width(), label.height(),
+                        MATTE_LABEL_RADIUS, 0.0f, withAlpha(0x000000, MATTE_BACKDROP_ALPHA));
                 if (label.icon()) {
                     renderer.item(label.stack(), label.iconX(), label.iconY(), MATTE_ICON_SCALE, 0, Renderer2D.ITEM_OVERLAY_NONE, null);
                 }
@@ -337,10 +349,7 @@ public class DropESP extends Module {
             } else {
                 ScreenSpaceOverlay2D.LabelEntry label = entry.label();
                 if (label == null) return;
-                if (textShadowValue.get()) {
-                    ScreenSpaceOverlay2D.renderLabelBackplate(renderer, label);
-                }
-                renderSingleLabel(labelRenderer, label, false, textScale, entry.alpha());
+                renderSingleLabel(labelRenderer, label, textShadowValue.get(), textScale, entry.alpha());
             }
         } finally {
             renderer.setAlpha(previousAlpha);
@@ -356,8 +365,12 @@ public class DropESP extends Module {
             renderStarted = true;
         }
         try {
-            labelRenderer.render(label.text(), label.textX(), label.textY(),
-                    new RenderColor(MatteHudStyle.scaleAlpha(label.color(), alpha)), false);
+            double cursor = label.textX();
+            for (TextRenderUtil.Part part : TextRenderUtil.flattenStyled(label.text(), label.color())) {
+                labelRenderer.render(part.text(), cursor, label.textY(),
+                        new RenderColor(scaleAlpha(part.color(), alpha)), textShadowValue.get());
+                cursor += labelRenderer.getWidth(part.text());
+            }
         } finally {
             if (renderStarted) labelRenderer.end();
         }
@@ -382,24 +395,33 @@ public class DropESP extends Module {
 
     private DropLabelEntry createMatteDropLabel(TextRenderer labelRenderer,
                                                 ItemStack stack,
-                                                String text,
+                                                Component text,
                                                 int color,
                                                 ScreenSpaceOverlay2D.ScreenRect rect,
                                                 boolean icon) {
-        double textWidth = labelRenderer.getWidth(text, false);
-        double textHeight = labelRenderer.getHeight(false);
+        double textWidth = styledTextWidth(labelRenderer, text, DROP_TEXT_SCALE, color);
+        double measuredTextHeight = WorldTextRenderer.measure(labelRenderer, "Ag", DROP_TEXT_SCALE, false).height();
+        double textHeight = Math.max(RICH_TEXT_LOGICAL_HEIGHT, measuredTextHeight);
         double iconBlock = icon ? MATTE_ICON_SIZE + MATTE_ICON_GAP : 0.0;
         double width = textWidth + iconBlock + MATTE_LABEL_PAD_X * 2.0;
-        double height = Math.max(textHeight + MATTE_LABEL_PAD_Y * 2.0, icon ? MATTE_ICON_SIZE + MATTE_LABEL_PAD_Y * 2.0 : 0.0);
+        double contentHeight = Math.max(textHeight, icon ? MATTE_ICON_SIZE : 0.0);
+        double height = contentHeight + MATTE_LABEL_PAD_Y * 2.0;
         double x = rect.minX() + (rect.width() - width) * 0.5;
-        double y = rect.minY() - height - 4.0;
-        x = Math.floor(x + 0.5);
-        y = Math.floor(y + 0.5);
+        double y = rect.minY() - height + MATTE_LABEL_PAD_Y;
         double iconX = x + MATTE_LABEL_PAD_X;
         double iconY = y + (height - MATTE_ICON_SIZE) * 0.5;
         double textX = x + MATTE_LABEL_PAD_X + iconBlock;
-        double textY = y + (height - textHeight) * 0.5;
+        double textY = y + (height - measuredTextHeight) * 0.5;
         return new DropLabelEntry(stack, text, x, y, width, height, icon, iconX, iconY, textX, textY, color);
+    }
+
+    private static double styledTextWidth(TextRenderer renderer, Component text, double scale, int defaultColor) {
+        if (renderer == null || text == null) return 0.0;
+        double width = 0.0;
+        for (TextRenderUtil.Part part : TextRenderUtil.flattenStyled(text, defaultColor)) {
+            width += WorldTextRenderer.measure(renderer, part.text(), scale, false).width();
+        }
+        return width;
     }
 
     private void renderWorldDrop(Renderer3D renderer,
@@ -407,36 +429,35 @@ public class DropESP extends Module {
                                  TextRenderer labelRenderer,
                                  DropWorldEntry entry,
                                  ItemBatchRenderer.WorldItemSprite itemSprite) {
-        double textScale = ScreenSpaceOverlay2D.TEXT_SCALE;
-        WorldTextRenderer.Metrics metrics = WorldTextRenderer.measure(labelRenderer, entry.text(), textScale, false);
+        double textScale = DROP_TEXT_SCALE;
+        double textWidth = styledTextWidth(labelRenderer, entry.text(), textScale, entry.color());
+        double measuredTextHeight = WorldTextRenderer.measure(labelRenderer, "Ag", textScale, false).height();
         boolean icon = itemIconValue.get() && itemSprite != null;
         double iconBlock = icon ? MATTE_ICON_SIZE + MATTE_ICON_GAP : 0.0;
-        double width = metrics.width() + iconBlock + MATTE_LABEL_PAD_X * 2.0;
-        double height = Math.max(
-                metrics.height() + MATTE_LABEL_PAD_Y * 2.0,
-                icon ? MATTE_ICON_SIZE + MATTE_LABEL_PAD_Y * 2.0 : 0.0);
+        double textHeight = Math.max(RICH_TEXT_LOGICAL_HEIGHT, measuredTextHeight);
+        double contentHeight = Math.max(textHeight, icon ? MATTE_ICON_SIZE : 0.0);
+        double width = textWidth + iconBlock + MATTE_LABEL_PAD_X * 2.0;
+        double height = contentHeight + MATTE_LABEL_PAD_Y * 2.0;
         double x = -width * 0.5;
-        double y = -height;
+        double y = -height + MATTE_LABEL_PAD_Y;
 
         if (entry.frameAnchor() != null && entry.frameWorldWidth() > 0.0 && entry.frameWorldHeight() > 0.0) {
-            double frameWidth = entry.frameWorldWidth() / entry.worldScale();
-            double frameHeight = entry.frameWorldHeight() / entry.worldScale();
-            WorldBillboardRenderer.rectangularFrame(
-                    renderer,
-                    basis,
-                    entry.frameAnchor(),
-                    -frameWidth * 0.5,
-                    -frameHeight * 0.5,
-                    frameWidth,
-                    frameHeight,
-                    entry.worldScale(),
-                    entry.color(),
-                    entry.alpha()
-            );
+            double fw = entry.frameWorldWidth() / entry.worldScale();
+            double fh = entry.frameWorldHeight() / entry.worldScale();
+            double fx = -fw * 0.5;
+            double fy = -fh * 0.5;
+            double t = 0.5;
+            int c = scaleAlpha(entry.color(), entry.alpha());
+            WorldBillboardRenderer.quad(renderer, basis, entry.frameAnchor(), fx - t, fy - t, fw + t * 2.0, t, entry.worldScale(), c);
+            WorldBillboardRenderer.quad(renderer, basis, entry.frameAnchor(), fx - t, fy - t, t, fh + t * 2.0, entry.worldScale(), c);
+            WorldBillboardRenderer.quad(renderer, basis, entry.frameAnchor(), fx - t, fy + fh, fw + t * 2.0, t, entry.worldScale(), c);
+            WorldBillboardRenderer.quad(renderer, basis, entry.frameAnchor(), fx + fw, fy - t, t, fh + t * 2.0, entry.worldScale(), c);
         }
 
-        WorldBillboardRenderer.mattePlate(renderer, basis, entry.anchor(), x, y, width, height,
-                2.0, 4.0, entry.worldScale(), entry.alpha());
+        WorldBillboardRenderer.roundedRect(
+                renderer, basis, entry.anchor(), x, y, width, height, MATTE_LABEL_RADIUS, entry.worldScale(),
+                withAlpha(0x000000, Math.round(MATTE_BACKDROP_ALPHA * entry.alpha()))
+        );
 
         double cursorX = x + MATTE_LABEL_PAD_X;
         if (icon) {
@@ -445,9 +466,39 @@ public class DropESP extends Module {
                     cursorX, iconY, MATTE_ICON_SIZE, entry.worldScale(), entry.alpha());
             cursorX += iconBlock;
         }
-        double textY = y + (height - metrics.height()) * 0.5;
-        WorldBillboardRenderer.text(renderer, basis, labelRenderer, entry.text(), entry.anchor(),
-                cursorX, textY, textScale, entry.worldScale(), entry.color(), entry.alpha(), true);
+        double textY = y + (height - measuredTextHeight) * 0.5;
+        double textCursor = cursorX;
+        for (TextRenderUtil.Part part : TextRenderUtil.flattenStyled(entry.text(), entry.color())) {
+            WorldBillboardRenderer.text(renderer, basis, labelRenderer, part.text(), entry.anchor(),
+                    textCursor, textY, textScale, entry.worldScale(), part.color(), entry.alpha(), false);
+            textCursor += WorldTextRenderer.measure(labelRenderer, part.text(), textScale, false).width();
+        }
+    }
+
+    private static TextRenderer dropLabelRenderer(TextRenderer fallback) {
+        return Fonts.renderer("InterMedium", FontInfo.Type.Regular, fallback);
+    }
+
+    private static Component formatReferenceItemLabel(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return Component.empty();
+        MutableComponent text = Component.literal(stack.getHoverName().getString());
+        if (stack.getCount() > 1) {
+            text.append(Component.literal(" [").withStyle(ChatFormatting.WHITE));
+            text.append(Component.literal(Integer.toString(stack.getCount())).withStyle(ChatFormatting.RED));
+            text.append(Component.literal("x").withStyle(ChatFormatting.GRAY));
+            text.append(Component.literal("]").withStyle(ChatFormatting.WHITE));
+        }
+        return text;
+    }
+
+    private static int withAlpha(int rgb, int alpha) {
+        int a = Math.max(0, Math.min(255, alpha));
+        return (rgb & 0x00FFFFFF) | (a << 24);
+    }
+
+    private static int scaleAlpha(int argb, float alpha) {
+        int source = (argb >>> 24) & 0xFF;
+        return withAlpha(argb, Math.round(source * Math.max(0.0f, Math.min(1.0f, alpha))));
     }
 
     private boolean passesDistanceFilter(ItemEntity item, double dist) {
@@ -479,9 +530,8 @@ public class DropESP extends Module {
 
     private WorldUiPresentationService.Snapshot resolvePresentation(double distance) {
         double projectionYScale = RenderState.worldProjection.m11();
-        double logicalHeight = mc != null && mc.getWindow() != null
-                ? mc.getWindow().getGuiScaledHeight()
-                : 0.0;
+        ViewportContext viewport = ViewportContext.current();
+        double logicalHeight = viewport != null ? viewport.height() : 0.0;
         return WorldUiPresentationService.resolve(
                 presentationMode.get(), distance, WORLD_PRESENTATION_POLICY, projectionYScale, logicalHeight,
                 worldSize.get(), dynamicWorldScale.get(), dynamicWorldScaleCoefficient.get());
@@ -503,16 +553,12 @@ public class DropESP extends Module {
         return list;
     }
 
-    private boolean isNewMode() {
-        return "New".equalsIgnoreCase(modeValue.get());
-    }
-
     private boolean isMatteMode() {
         return "Matte".equalsIgnoreCase(modeValue.get());
     }
 
     private boolean isOverlayMode() {
-        return isNewMode() || isMatteMode();
+        return isMatteMode();
     }
 
     private int resolveSortPriority(ItemStack stack) {
@@ -589,11 +635,11 @@ public class DropESP extends Module {
                                   double worldScale,
                                   float alpha,
                                   ItemStack stack,
-                                  String text,
+                                  Component text,
                                   int color) {
     }
 
-    private record DropLabelEntry(ItemStack stack, String text, double x, double y, double width, double height,
+    private record DropLabelEntry(ItemStack stack, Component text, double x, double y, double width, double height,
                                   boolean icon, double iconX, double iconY, double textX, double textY, int color) {
     }
 }

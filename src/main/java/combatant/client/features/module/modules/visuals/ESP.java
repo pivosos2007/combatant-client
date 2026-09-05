@@ -21,6 +21,7 @@ import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.config.values.*;
+import combatant.client.features.gui.hud.HudRenderSpace;
 import combatant.client.features.module.*;
 import combatant.client.features.module.Module;
 import net.minecraft.client.Minecraft;
@@ -82,7 +83,6 @@ import java.util.*;
 public class ESP extends Module {
 
     private static final String MODE_FULL = "Full";
-    private static final String MODE_CHAMFERED = "Chamfered";
     private static final String MODE_CORNERS = "Corners";
     private static final String MODE_3D = "3D";
     private static final String MODE_SHADER = "Шейдер";
@@ -105,7 +105,6 @@ public class ESP extends Module {
     private static final float HEALTH_BAR_INSET = 1.0f;
     private static final double AABB_TOP_OFFSET = 0.18;
     private static final float CORNER_SEGMENT_FRACTION = 0.27f;
-    private static final float CHAMFER_FRACTION = 0.16f;
     private static final boolean PIXEL_SNAP = true;
     private static final double SHADER_MAX_DISTANCE = 128.0;
     private static final float BOX_3D_GRADIENT_SPEED = 0.00115f;
@@ -121,7 +120,7 @@ public class ESP extends Module {
     private final BooleanValue renderSelf =
             bool("espRenderSelf", "render_self", false);
     private final ModeValue boxMode =
-            modeCommon("espBoxMode", "box_mode", CommonSettingSchemas.ESP_BOX_MODE, MODE_FULL, MODE_FULL, MODE_CORNERS, MODE_3D, MODE_CHAMFERED, MODE_SHADER);
+            modeCommon("espBoxMode", "box_mode", CommonSettingSchemas.ESP_BOX_MODE, MODE_FULL, MODE_FULL, MODE_CORNERS, MODE_3D, MODE_SHADER);
     private final SetValue shaderChamsEntities =
             visibleWhen(textList("espShaderChamsEntities", "shader_chams_entities",
                     TextListSetting.PickerMode.ENTITIES, Set.of("minecraft:end_crystal")), this::isShaderBox);
@@ -487,6 +486,11 @@ public class ESP extends Module {
         int og = Math.round(ag + (bg - ag) * clamped);
         int ob = Math.round(ab + (bb - ab) * clamped);
         return (clamp(oa) << 24) | (clamp(or) << 16) | (clamp(og) << 8) | clamp(ob);
+    }
+
+    @Override
+    public HudRenderSpace getHudRenderSpace() {
+        return HudRenderSpace.UNSCALED_LOGICAL;
     }
 
     @Override
@@ -1193,7 +1197,6 @@ public class ESP extends Module {
         int baseRgb = baseColor & 0x00FFFFFF;
         int darkRgb = mixRgb(baseRgb, 0x000000, GRAD_DARKEN);
         int lightRgb = mixRgb(baseRgb, 0xFFFFFF, GRAD_LIGHTEN);
-
         Gradient gradient = new Gradient(
                 withAlpha(lightRgb, COLOR_ALPHA),
                 withAlpha(baseRgb, COLOR_ALPHA),
@@ -1201,14 +1204,12 @@ public class ESP extends Module {
                 withAlpha(darkRgb, COLOR_ALPHA)
         );
         int outline = withAlpha(0x000000, OUTLINE_ALPHA);
-
         drawOutline(renderer,
                 minX - OUTLINE_EXPAND, minY - OUTLINE_EXPAND,
                 maxX + OUTLINE_EXPAND, maxY + OUTLINE_EXPAND,
                 OUTLINE_THICKNESS, SolidColor.of(outline));
 
         drawOutline(renderer, minX, minY, maxX, maxY, COLOR_THICKNESS, gradient);
-
         double innerInset = COLOR_THICKNESS;
         drawOutline(renderer,
                 minX + innerInset, minY + innerInset,
@@ -1280,49 +1281,10 @@ public class ESP extends Module {
             return;
         }
 
-        if (isChamferedBox()) {
-            drawOutlineChamfered(renderer, x1, y1, x2, y2, thickness, colors);
-            return;
-        }
-
         drawGradientQuad(renderer, x1, y1, x2, y1 + thickness, x1, y1, x2, y2, colors);
         drawGradientQuad(renderer, x1, y2 - thickness, x2, y2, x1, y1, x2, y2, colors);
         drawGradientQuad(renderer, x1, y1, x1 + thickness, y2, x1, y1, x2, y2, colors);
         drawGradientQuad(renderer, x2 - thickness, y1, x2, y2, x1, y1, x2, y2, colors);
-    }
-
-    private void drawOutlineChamfered(Renderer2D renderer, double x1, double y1, double x2, double y2,
-                                      double thickness, ColorResolver colors) {
-        double width = x2 - x1;
-        double height = y2 - y1;
-        if (width <= 0.0 || height <= 0.0) return;
-
-        double chamfer = Math.min(width, height) * CHAMFER_FRACTION;
-        chamfer = Math.max(chamfer, thickness * 3.0);
-        chamfer = Math.min(chamfer, Math.min(width, height) * 0.32);
-        if (chamfer <= thickness) {
-            drawGradientQuad(renderer, x1, y1, x2, y1 + thickness, x1, y1, x2, y2, colors);
-            drawGradientQuad(renderer, x1, y2 - thickness, x2, y2, x1, y1, x2, y2, colors);
-            drawGradientQuad(renderer, x1, y1, x1 + thickness, y2, x1, y1, x2, y2, colors);
-            drawGradientQuad(renderer, x2 - thickness, y1, x2, y2, x1, y1, x2, y2, colors);
-            return;
-        }
-
-        renderer.chamferedRectStrokeQuad(
-                x1,
-                y1,
-                width,
-                height,
-                chamfer,
-                chamfer,
-                chamfer,
-                chamfer,
-                thickness,
-                colors.colorAt(x1, y1, x1, y1, x2, y2),
-                colors.colorAt(x2, y1, x1, y1, x2, y2),
-                colors.colorAt(x2, y2, x1, y1, x2, y2),
-                colors.colorAt(x1, y2, x1, y1, x2, y2)
-        );
     }
 
     private void drawOutlineCorners(Renderer2D renderer, double x1, double y1, double x2, double y2,
@@ -1416,8 +1378,7 @@ public class ESP extends Module {
 
     private boolean isNameTagsLiftBoxMode() {
         return MODE_FULL.equalsIgnoreCase(boxMode.get())
-                || MODE_CORNERS.equalsIgnoreCase(boxMode.get())
-                || MODE_CHAMFERED.equalsIgnoreCase(boxMode.get());
+                || MODE_CORNERS.equalsIgnoreCase(boxMode.get());
     }
 
     private boolean isShaderSmokeFill() {
@@ -1439,10 +1400,6 @@ public class ESP extends Module {
 
     private boolean isCornerBox() {
         return MODE_CORNERS.equalsIgnoreCase(boxMode.get());
-    }
-
-    private boolean isChamferedBox() {
-        return MODE_CHAMFERED.equalsIgnoreCase(boxMode.get());
     }
 
     private boolean is3DBox() {

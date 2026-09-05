@@ -13,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateBridge;
 import combatant.client.render.engine.rhi.clip.ShapeClipBackend;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
+import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.util.logging.DebugLog;
 
 /**
@@ -65,6 +66,7 @@ public final class VulkanShapeClipBackend implements ShapeClipBackend, AutoClose
     public void beginRenderPass(String label, @Nullable GpuTextureView colorView, @Nullable GpuTextureView depthView) {
         currentPassLabel = label == null ? "<unnamed-pass>" : label;
         if (renderPassAttachmentRequired || isActive()) {
+            UiPipelineTelemetry.recordStencilRenderPass();
             DebugLog.stencilOnChange("shapeclip.vulkan.pass.required", currentPassLabel + "|" + attachmentReason,
                     "[ShapeClip/Vulkan] stencil attachment required: pass=%s reason=%s",
                     currentPassLabel, attachmentReason);

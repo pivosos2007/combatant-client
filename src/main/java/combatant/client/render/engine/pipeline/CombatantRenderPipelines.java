@@ -31,6 +31,7 @@ import combatant.client.render.iris.IrisRuntime;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
 import combatant.client.render.engine.rhi.pipeline.PipelineDomain;
 import combatant.client.render.engine.shader.CombatantShaderSources;
+import combatant.client.render.engine.shader.ShaderCostRegistry;
 import combatant.client.render.engine.vertex.CombatantVertexFormats;
 import combatant.client.util.logging.DebugLog;
 
@@ -1730,6 +1731,7 @@ public enum CombatantRenderPipelines {
         }
 
         DebugLog.renderThread("[Combatant] Precompiling pipelines: " + PIPELINES.size());
+        ShaderCostRegistry.clear();
 
         for (RenderPipeline pipeline : PIPELINES) {
             DebugLog.renderThread("[Combatant] -> pipeline " + pipeline.getLocation());
@@ -1740,7 +1742,9 @@ public enum CombatantRenderPipelines {
 
             Runnable compile = () -> device.precompilePipeline(pipeline, (identifier, shaderType) -> {
                 DebugLog.renderThread("[Combatant]   loading " + shaderType + " " + identifier);
-                return CombatantShaderSources.load(resources, identifier, shaderType);
+                String source = CombatantShaderSources.load(resources, identifier, shaderType);
+                ShaderCostRegistry.analyze(identifier, shaderType, source);
+                return source;
             });
             if (isRigPipeline(pipeline)) {
                 IrisRuntime.runWithNativeShaderBypass(compile);
@@ -1749,7 +1753,18 @@ public enum CombatantRenderPipelines {
             }
         }
 
-        DebugLog.renderThread("[Combatant] Precompile finished");
+        DebugLog.renderThread("[Combatant] Precompile finished; shader cost audit entries="
+                + ShaderCostRegistry.all().size());
+        for (var estimate : ShaderCostRegistry.top(12)) {
+            DebugLog.renderThread("[ShaderCost] " + estimate.shaderId()
+                    + " stage=" + estimate.stage()
+                    + " score=" + estimate.weightedScore()
+                    + " alu=" + estimate.aluOps()
+                    + " trans=" + estimate.transcendentalOps()
+                    + " tex=" + estimate.textureOps()
+                    + " branch=" + estimate.branchOps()
+                    + " loops=" + estimate.loopOps());
+        }
     }
 
     /**

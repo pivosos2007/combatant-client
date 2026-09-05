@@ -256,9 +256,14 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
             float rowsReveal = fadeProgress;
             boolean clipped = ScissorFunction.pushRaw(contentX, contentY, contentW, contentH);
             float fadeBottom = contentY + contentH;
-            float fadeStart = maxScroll > 0.0f
-                    ? fadeBottom - Math.min(contentH, 14f * panelScale)
-                    : fadeBottom;
+            float baseFadeDepth = Math.min(contentH, 14f * panelScale);
+            // The fade is an affordance for content that still exists below the viewport,
+            // not a permanent readability penalty on the final setting. As the scroll
+            // approaches its lower bound, collapse the ramp with the remaining distance.
+            // At the exact bottom start == end, so pushBottomAlphaFade disables itself.
+            float remainingScroll = Math.max(0f, maxScroll + smoothedScroll);
+            float activeFadeDepth = Math.min(baseFadeDepth, remainingScroll);
+            float fadeStart = fadeBottom - activeFadeDepth;
 
             try (ClickGuiRenderer.VerticalAlphaFadeScope ignoredFade =
                          ClickGuiRenderer.pushBottomAlphaFade(fadeStart, fadeBottom)) {

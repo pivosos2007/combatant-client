@@ -24,6 +24,8 @@ import combatant.client.render.engine.depth.WorldSceneDepth;
 import combatant.client.render.engine.framegraph.CombatantFrameGraph;
 import combatant.client.render.engine.profiler.FrameStutterProfiler;
 import combatant.client.render.engine.profiler.RenderFrameProfiler;
+import combatant.client.render.engine.profiler.TracyProfiler;
+import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.RhiStatsSnapshot;
 import combatant.client.render.engine.rhi.backend.SodiumGlBackend;
@@ -217,6 +219,8 @@ public enum CombatantRenderSystem {
         SodiumFrameContext sodiumFrame;
         if (!frameOpen) {
             frameId++;
+            UiPipelineTelemetry.beginFrame(frameId);
+            activeRhi.stats().setDetailedPipelineStats(TracyProfiler.isEnabled());
             activeRhi.beginFrame(frameId);
             UNIFORMS.beginFrame(frameId);
             TextRenderSystem.beginFrame();
@@ -320,7 +324,10 @@ public enum CombatantRenderSystem {
             if (FrameStutterProfiler.isEnabled()) {
                 FrameStutterProfiler.onFramePresented(rhiStatsSnapshot(), uniformStatsSnapshot(), resourceStatsSnapshot());
             }
-            RenderFrameProfiler.endFrame(null, null);
+            RhiStatsSnapshot rhiSnapshot = rhi().stats().snapshot(TracyProfiler.isEnabled());
+            TracyProfiler.plotUiPipeline(UiPipelineTelemetry.snapshot());
+            TracyProfiler.plotRhiPipeline(rhiSnapshot);
+            RenderFrameProfiler.endFrame(rhiSnapshot, uniformStatsSnapshot());
             lifecycle = FrameLifecycle.PRESENTED;
         } finally {
             currentContext = null;

@@ -271,7 +271,7 @@ public class Combatant implements ClientModInitializer {
                 // Raw HUD pass
                 if (rawMain) {
                     Renderer2D.COLOR.begin();
-                    ModuleManager.renderHudEngine(phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
+                    ModuleManager.renderHudEngine(phase, HudRenderSpace.UNSCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     StaticHudElementRegistry.renderAllEngine(phase, HudRenderSpace.UNSCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_RAW, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     Renderer2D.COLOR.render();
@@ -290,6 +290,7 @@ public class Combatant implements ClientModInitializer {
                 if (logicalMain) {
                     ViewportContext.beginUnscaledLogical(ctx);
                     Renderer2D.COLOR.begin();
+                    ModuleManager.renderHudEngine(phase, HudRenderSpace.UNSCALED_LOGICAL, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     StaticHudElementRegistry.renderAllEngine(phase, HudRenderSpace.UNSCALED_LOGICAL, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     DraggableHudElementRegistry.renderAllEngine(phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_LOGICAL, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
@@ -300,7 +301,7 @@ public class Combatant implements ClientModInitializer {
                 if (rawForeground) {
                     ViewportContext.beginUnscaled(ctx);
                     Renderer2D.COLOR.begin();
-                    ModuleManager.renderHudEngineForeground(phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
+                    ModuleManager.renderHudEngineForeground(phase, HudRenderSpace.UNSCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     StaticHudElementRegistry.renderAllEngineForeground(phase, HudRenderSpace.UNSCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_RAW_FOREGROUND, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     Renderer2D.COLOR.render();
@@ -319,6 +320,7 @@ public class Combatant implements ClientModInitializer {
                 if (logicalForeground) {
                     ViewportContext.beginUnscaledLogical(ctx);
                     Renderer2D.COLOR.begin();
+                    ModuleManager.renderHudEngineForeground(phase, HudRenderSpace.UNSCALED_LOGICAL, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     StaticHudElementRegistry.renderAllEngineForeground(phase, HudRenderSpace.UNSCALED_LOGICAL, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     DraggableHudElementRegistry.renderAllEngineForeground(phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_LOGICAL_FOREGROUND, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
@@ -407,14 +409,14 @@ public class Combatant implements ClientModInitializer {
     }
 
     private static boolean hasHudMainPassWork(HudPhase phase, HudRenderSpace space) {
-        boolean moduleWork = space == HudRenderSpace.UNSCALED && ModuleManager.hasHudEngineWork(phase);
+        boolean moduleWork = ModuleManager.hasHudEngineWork(phase, space);
         boolean staticWork = StaticHudElementRegistry.hasEngineWork(phase, space, false);
         boolean draggableWork = space == HudRenderSpace.UNSCALED_LOGICAL && DraggableHudElementRegistry.hasEngineWork(phase, false);
         return moduleWork || staticWork || draggableWork;
     }
 
     private static boolean hasHudForegroundPassWork(HudPhase phase, HudRenderSpace space) {
-        boolean moduleWork = space == HudRenderSpace.UNSCALED && ModuleManager.hasHudEngineForegroundWork(phase);
+        boolean moduleWork = ModuleManager.hasHudEngineForegroundWork(phase, space);
         boolean staticWork = StaticHudElementRegistry.hasEngineWork(phase, space, true);
         boolean draggableWork = space == HudRenderSpace.UNSCALED_LOGICAL && DraggableHudElementRegistry.hasEngineWork(phase, true);
         return moduleWork || staticWork || draggableWork;

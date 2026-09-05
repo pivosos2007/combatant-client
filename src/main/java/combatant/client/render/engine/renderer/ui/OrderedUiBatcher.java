@@ -27,6 +27,8 @@ import org.joml.Matrix4f;
 import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
+import combatant.client.render.engine.profiler.ProfilerPhase;
+import combatant.client.render.engine.profiler.TracyGpuProfiler;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.GlyphFont;
@@ -41,6 +43,8 @@ import combatant.client.render.engine.rhi.RhiDrawCommand;
 import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
 import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
+import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
+import combatant.client.render.engine.renderer.ui.draw.UiBlurQuality;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -131,8 +135,20 @@ public final class OrderedUiBatcher {
 
     public DrawBatch getOrCreateBlur(UiBatchType type, GpuTextureView view, GpuSampler sampler,
                                      Renderer2D.BlurQuality quality, float offsetPx) {
+        UiBackdropRequest backdropRequest = type.usesPreparedGlass()
+                ? UiBackdropRequest.capturedSceneGlass(null, UiBlurQuality.fromRenderer(quality), offsetPx)
+                : UiBackdropRequest.currentTargetBlur(null, UiBlurQuality.fromRenderer(quality), offsetPx);
+        return getOrCreateBlur(type, view, sampler, quality, offsetPx, backdropRequest);
+    }
+
+    public DrawBatch getOrCreateBlur(UiBatchType type, GpuTextureView view, GpuSampler sampler,
+                                     Renderer2D.BlurQuality quality, float offsetPx,
+                                     UiBackdropRequest backdropRequest) {
         if (!active) return null;
-        if (type.usesPreparedGlass()) {
+        UiBackdropRequest normalizedBackdrop = backdropRequest != null
+                ? backdropRequest
+                : UiBackdropRequest.NONE;
+        if (normalizedBackdrop.requiresCapturedScene() && normalizedBackdrop.sceneBlur().enabled()) {
             UiBlurResources.requestLiquidGlassBlur();
         }
         UiScissorSnapshot scissor = ScissorFunction.currentSnapshot();
@@ -142,12 +158,13 @@ public final class OrderedUiBatcher {
         if (!order.isEmpty()) {
             Object last = order.get(order.size() - 1);
             if (last instanceof DrawBatch drawBatch
-                    && drawBatch.canMergeBlur(type, view, sampler, normalizedQuality, normalizedOffset, scissor, clip)) {
+                    && drawBatch.canMergeBlur(type, view, sampler, normalizedQuality, normalizedOffset,
+                    normalizedBackdrop, scissor, clip)) {
                 return drawBatch;
             }
         }
         DrawBatch batch = obtain(type);
-        batch.beginBlur(view, sampler, normalizedQuality, normalizedOffset, scissor, clip);
+        batch.beginBlur(view, sampler, normalizedQuality, normalizedOffset, normalizedBackdrop, scissor, clip);
         order.add(batch);
         return batch;
     }
@@ -331,10 +348,11 @@ public final class OrderedUiBatcher {
             com.mojang.blaze3d.buffers.GpuBufferSlice uiBatch = null;
             resetSharedBlur();
 
-            boolean hasLiquidGlass = false;
+            boolean hasCapturedSceneBackdrop = false;
             for (Object orderedEntry : order) {
-                if (orderedEntry instanceof DrawBatch orderedBatch && orderedBatch.type.usesPreparedGlass()) {
-                    hasLiquidGlass = true;
+                if (orderedEntry instanceof DrawBatch orderedBatch
+                        && orderedBatch.backdropRequest.requiresCapturedScene()) {
+                    hasCapturedSceneBackdrop = true;
                     break;
                 }
             }
@@ -351,7 +369,7 @@ public final class OrderedUiBatcher {
             GpuSampler fxSampler = null;
             MeshBuilder fxCompositeMesh = null;
 
-            if (hasLiquidGlass) {
+            if (hasCapturedSceneBackdrop) {
                 /*
                  * The HUD/world glass source is captured before GUI extraction. Never perform a
                  * fallback copy of the active main framebuffer from inside a batch flush: doing so
@@ -425,10 +443,13 @@ public final class OrderedUiBatcher {
 
                 if (batch.type.usesPreparedGlass()) {
                     flushPendingDraws(pendingDraws);
-                    GpuTextureView sourceView = liquidSourceView != null ? liquidSourceView : batch.view;
-                    GpuSampler sourceSampler = liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
+                    boolean capturedScene = batch.backdropRequest.requiresCapturedScene();
+                    GpuTextureView sourceView = capturedScene && liquidSourceView != null ? liquidSourceView : batch.view;
+                    GpuSampler sourceSampler = capturedScene && liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
                     boolean clippedComposite = batch.clipSnapshot.active();
-                    if (clippedComposite) {
+                    if (!batch.backdropRequest.sceneBlur().enabled()) {
+                        resetSharedBlur();
+                    } else if (clippedComposite && capturedScene) {
                         adoptFrameBlurCache(sourceView, sourceSampler, screenW, screenH, uiScale,
                                 batch.blurQuality, batch.blurOffsetPx);
                     } else {
@@ -494,8 +515,10 @@ public final class OrderedUiBatcher {
                             fxBuilder.uniform("UIBatch", uiBatch);
                         }
                         if (batch.type.usesSampler) {
-                            GpuTextureView sourceView = batch.type.usesPreparedGlass() && liquidSourceView != null ? liquidSourceView : batch.view;
-                            GpuSampler sourceSampler = batch.type.usesPreparedGlass() && liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
+                            boolean capturedScene = batch.type.usesPreparedGlass()
+                                    && batch.backdropRequest.requiresCapturedScene();
+                            GpuTextureView sourceView = capturedScene && liquidSourceView != null ? liquidSourceView : batch.view;
+                            GpuSampler sourceSampler = capturedScene && liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
                             fxBuilder.sampler("u_Texture", sourceView, sourceSampler);
                         }
                         if (batch.type.usesPreparedGlass()) {
@@ -523,7 +546,9 @@ public final class OrderedUiBatcher {
                     // If offscreen FX target is unavailable, skip this pass to avoid undefined behavior.
                     if (batch.type.usesSampler
                             && batch.view == mainColorView
-                            && !(batch.type.usesPreparedGlass() && liquidSourceView != null)) {
+                            && !(batch.type.usesPreparedGlass()
+                            && batch.backdropRequest.requiresCapturedScene()
+                            && liquidSourceView != null)) {
                         continue;
                     }
                 }
@@ -531,7 +556,9 @@ public final class OrderedUiBatcher {
                 if ((batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS || batch.type.usesPreparedGlass())
                         && batch.type.usesSampler
                         && batch.view == mainColorView
-                        && !(batch.type.usesPreparedGlass() && liquidSourceView != null)) {
+                        && !(batch.type.usesPreparedGlass()
+                        && batch.backdropRequest.requiresCapturedScene()
+                        && liquidSourceView != null)) {
                     continue;
                 }
 
@@ -549,8 +576,10 @@ public final class OrderedUiBatcher {
                 }
                 bindAnalyticClip(builder, batch);
                 if (batch.type.usesSampler) {
-                    GpuTextureView sourceView = batch.type.usesPreparedGlass() && liquidSourceView != null ? liquidSourceView : batch.view;
-                    GpuSampler sourceSampler = batch.type.usesPreparedGlass() && liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
+                    boolean capturedScene = batch.type.usesPreparedGlass()
+                            && batch.backdropRequest.requiresCapturedScene();
+                    GpuTextureView sourceView = capturedScene && liquidSourceView != null ? liquidSourceView : batch.view;
+                    GpuSampler sourceSampler = capturedScene && liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
                     builder.sampler("u_Texture", sourceView, sourceSampler);
                 }
                 if (batch.type == UiBatchType.SVG_MSDF) {
@@ -585,6 +614,182 @@ public final class OrderedUiBatcher {
                 if (command != null && command.mesh != null) command.mesh.close();
             }
             pendingDraws.clear();
+            flushing = false;
+        }
+    }
+
+    /**
+     * Executes ordinary draw/text batches interleaved with item batches without entering the
+     * capture-aware blur/glass replay. Item boundaries flush only the pending RHI draw segment,
+     * preserving exact order while avoiding all legacy effect setup and per-entry effect branches.
+     */
+    void executeCompiledMixedItems(boolean finish) {
+        if (!active) return;
+
+        flushing = true;
+        List<RhiDrawCommand> pendingDraws = new ArrayList<>(order.size());
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.gameRenderer == null) {
+                Renderer2D.BATCH_STATS.noteFailure("mixed item pass: mc null");
+                return;
+            }
+            RenderTarget framebuffer = mc.gameRenderer.mainRenderTarget();
+            GpuTextureView mainColorView = UiMsaaClipLayer.currentColorAttachment(
+                    framebuffer != null ? framebuffer.getColorTextureView() : null);
+            if (mainColorView == null) {
+                Renderer2D.BATCH_STATS.noteFailure("mixed item pass: framebuffer color view null");
+                return;
+            }
+
+            if (!UiDeferredScheduler.isDraining()) {
+                itemPreparationScratch.clear();
+                collectItemBatches(itemPreparationScratch);
+                try {
+                    ItemBatchRenderer.prepareUiItems(itemPreparationScratch);
+                } finally {
+                    itemPreparationScratch.clear();
+                }
+            }
+
+            float screenW = mc.getWindow().getWidth();
+            float screenH = mc.getWindow().getHeight();
+            com.mojang.blaze3d.buffers.GpuBufferSlice uiBatch = null;
+            int drawCalls = 0;
+            int vertices = 0;
+            int indices = 0;
+
+            for (Object entry : order) {
+                if (entry instanceof ItemBatch itemBatch) {
+                    flushPendingDraws(pendingDraws);
+                    if (!itemBatch.isEmpty()) {
+                        drawCalls += ItemBatchRenderer.flush(itemBatch);
+                    }
+                    continue;
+                }
+
+                if (entry instanceof TextBatch textBatch) {
+                    if (!textBatch.isEmpty()) {
+                        vertices += textBatch.mesh.getVertexCount();
+                        indices += textBatch.mesh.getIndicesCount();
+                        drawCalls++;
+                        TextRenderSystem.appendGlyphMeshCommand(
+                                pendingDraws,
+                                textBatch.label,
+                                textBatch.font,
+                                textBatch.mesh,
+                                textBatch.pipeline,
+                                textBatch.placement,
+                                textBatch.clipSnapshot
+                        );
+                    }
+                    continue;
+                }
+
+                DrawBatch batch = (DrawBatch) entry;
+                if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS
+                        || batch.type.usesPreparedGlass()) {
+                    throw new IllegalStateException("Capture-dependent batch entered mixed item pass: " + batch.type);
+                }
+                if (batch.mesh.isBuilding()) batch.mesh.end();
+                if (batch.mesh.getIndicesCount() <= 0) continue;
+
+                drawCalls++;
+                vertices += batch.mesh.getVertexCount();
+                indices += batch.mesh.getIndicesCount();
+                MeshRenderer builder = MeshRenderer.begin()
+                        .attachments(mainColorView, null)
+                        .clearColor(UiMsaaClipLayer.consumePendingColorClear(mainColorView))
+                        .pipeline(pipelineFor(batch))
+                        .mesh(batch.mesh);
+
+                if (batch.type.needsUiBatch) {
+                    if (uiBatch == null) {
+                        UIBatchUniforms.update(screenW, screenH);
+                        uiBatch = UIBatchUniforms.get();
+                    }
+                    builder.uniform("UIBatch", uiBatch);
+                }
+                bindAnalyticClip(builder, batch);
+                if (batch.type.usesSampler) {
+                    builder.sampler("u_Texture", batch.view, batch.sampler);
+                }
+                if (batch.type == UiBatchType.SVG_MSDF) {
+                    MsdfTextUniforms.update(batch.msdfPxRange, batch.msdfAtlasWidth, batch.msdfAtlasHeight);
+                    builder.uniform("MsdfText", MsdfTextUniforms.get());
+                }
+                builder.endTo(pendingDraws);
+            }
+
+            flushPendingDraws(pendingDraws);
+            int batches = order.size();
+            Renderer2D.BATCH_STATS.update(active, batches, drawCalls, vertices, indices, poolTotal());
+            Renderer2D.BATCH_STATS.addFrame(batches, drawCalls, vertices, indices);
+        } catch (RuntimeException | Error failure) {
+            Renderer2D.BATCH_STATS.noteFailure("compiled mixed item pass failed: "
+                    + failure.getClass().getSimpleName());
+            throw failure;
+        } finally {
+            for (RhiDrawCommand command : pendingDraws) {
+                if (command != null && command.mesh != null) command.mesh.close();
+            }
+            pendingDraws.clear();
+            resetOrder();
+            if (finish) {
+                resetSharedBlur();
+                active = false;
+                Renderer2D.BATCH_STATS.setActive(false);
+            }
+            flushing = false;
+        }
+    }
+
+    /**
+     * Executes a compiler-classified item-only submission. Item atlas preparation remains an
+     * explicit pre-draw stage, while the submission itself is no longer hidden inside the generic
+     * OrderedSpecial replay path.
+     */
+    void executeCompiledItems(boolean finish) {
+        if (!active) return;
+        if (!isPureItemBatchOrder()) {
+            throw new IllegalStateException("Item pass received a mixed ordered submission");
+        }
+
+        flushing = true;
+        int drawCalls = 0;
+        boolean completed = false;
+        try {
+            if (!UiDeferredScheduler.isDraining()) {
+                itemPreparationScratch.clear();
+                collectItemBatches(itemPreparationScratch);
+                try {
+                    ItemBatchRenderer.prepareUiItems(itemPreparationScratch);
+                } finally {
+                    itemPreparationScratch.clear();
+                }
+            }
+
+            for (int i = 0, size = order.size(); i < size; i++) {
+                ItemBatch itemBatch = (ItemBatch) order.get(i);
+                if (itemBatch != null && !itemBatch.isEmpty()) {
+                    drawCalls += ItemBatchRenderer.flush(itemBatch);
+                }
+            }
+
+            int batches = order.size();
+            Renderer2D.BATCH_STATS.update(active, batches, drawCalls, 0, 0, poolTotal());
+            Renderer2D.BATCH_STATS.addFrame(batches, drawCalls, 0, 0);
+            completed = true;
+        } finally {
+            resetOrder();
+            if (finish) {
+                resetSharedBlur();
+                active = false;
+                Renderer2D.BATCH_STATS.setActive(false);
+            }
+            if (!completed) {
+                Renderer2D.BATCH_STATS.noteFailure("compiled item pass failed");
+            }
             flushing = false;
         }
     }
@@ -802,60 +1007,76 @@ public final class OrderedUiBatcher {
 
         resetSharedBlur();
 
-        GpuSampler blurSampler = PostProcessManager.getSampler();
-        if (blurSampler == null) {
-            return 0;
-        }
-
-        GpuTextureView currentView = sourceView;
-        GpuSampler currentSampler = sourceSampler;
-        int sourceW = Math.max(1, Math.round(screenW));
-        int sourceH = Math.max(1, Math.round(screenH));
-        int drawCalls = 0;
-
-        for (int level = 0; level < iterations; level++) {
-            TextureTarget target = UiBlurResources.ensureKawaseDown(mc, level);
-            if (target == null) return 0;
-            if (!drawKawasePass(target, currentView, currentSampler, sourceW, sourceH, passOffset, false)) {
+        String blurProfile = blurProfile(sourceView, quality);
+        try (ProfilerPhase.Scope ignoredCpu = ProfilerPhase.scope("ui:blur_prepare:" + blurProfile);
+             TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("2d:ui_blur_" + blurProfile)) {
+            GpuSampler blurSampler = PostProcessManager.getSampler();
+            if (blurSampler == null) {
                 return 0;
             }
 
-            currentView = target.getColorTextureView();
-            currentSampler = blurSampler;
-            sourceW = Math.max(1, target.width);
-            sourceH = Math.max(1, target.height);
-            drawCalls++;
-            if (currentView == null) return 0;
-        }
+            GpuTextureView currentView = sourceView;
+            GpuSampler currentSampler = sourceSampler;
+            int sourceW = Math.max(1, Math.round(screenW));
+            int sourceH = Math.max(1, Math.round(screenH));
+            int drawCalls = 0;
 
-        for (int level = iterations - 2; level >= 0; level--) {
-            TextureTarget target = UiBlurResources.ensureKawaseUp(mc, level);
-            if (target == null) return 0;
-            if (!drawKawasePass(target, currentView, currentSampler, sourceW, sourceH, passOffset, true)) {
+            for (int level = 0; level < iterations; level++) {
+                TextureTarget target = UiBlurResources.ensureKawaseDown(mc, level, sourceView);
+                if (target == null) return 0;
+                if (!drawKawasePass(target, currentView, currentSampler, sourceW, sourceH, passOffset, false)) {
+                    return 0;
+                }
+
+                currentView = target.getColorTextureView();
+                currentSampler = blurSampler;
+                sourceW = Math.max(1, target.width);
+                sourceH = Math.max(1, target.height);
+                drawCalls++;
+                if (currentView == null) return 0;
+            }
+
+            for (int level = iterations - 2; level >= 0; level--) {
+                TextureTarget target = UiBlurResources.ensureKawaseUp(mc, level, sourceView);
+                if (target == null) return 0;
+                if (!drawKawasePass(target, currentView, currentSampler, sourceW, sourceH, passOffset, true)) {
+                    return 0;
+                }
+
+                currentView = target.getColorTextureView();
+                currentSampler = blurSampler;
+                sourceW = Math.max(1, target.width);
+                sourceH = Math.max(1, target.height);
+                drawCalls++;
+                if (currentView == null) return 0;
+            }
+
+            if (currentView == null) {
                 return 0;
             }
 
-            currentView = target.getColorTextureView();
-            currentSampler = blurSampler;
-            sourceW = Math.max(1, target.width);
-            sourceH = Math.max(1, target.height);
-            drawCalls++;
-            if (currentView == null) return 0;
+            sharedBlurSourceView = sourceView;
+            sharedBlurSourceSampler = sourceSampler;
+            sharedBlurredView = currentView;
+            sharedBlurredSampler = blurSampler;
+            sharedBlurQuality = quality;
+            sharedBlurOffsetPx = passOffset;
+            UiBlurResources.remember(frameId, phase, sourceView, sourceSampler, currentView, blurSampler,
+                    screenW, screenH, uiScale, quality, passOffset);
+            return drawCalls;
         }
+    }
 
-        if (currentView == null) {
-            return 0;
-        }
-
-        sharedBlurSourceView = sourceView;
-        sharedBlurSourceSampler = sourceSampler;
-        sharedBlurredView = currentView;
-        sharedBlurredSampler = blurSampler;
-        sharedBlurQuality = quality;
-        sharedBlurOffsetPx = passOffset;
-        UiBlurResources.remember(frameId, phase, sourceView, sourceSampler, currentView, blurSampler,
-                screenW, screenH, uiScale, quality, passOffset);
-        return drawCalls;
+    private static String blurProfile(@Nullable GpuTextureView sourceView,
+                                      Renderer2D.BlurQuality quality) {
+        String source = UiBlurResources.isCapturedWorldSource(sourceView) ? "captured_world" : "surface";
+        String level = switch (quality != null ? quality : Renderer2D.DEFAULT_BLUR_QUALITY) {
+            case LOW -> "low";
+            case MEDIUM -> "medium";
+            case HIGH -> "high";
+            case ULTRA -> "ultra";
+        };
+        return source + "_" + level;
     }
 
     private static boolean drawKawasePass(TextureTarget target,

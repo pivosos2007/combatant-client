@@ -91,6 +91,11 @@ final class ModulesMenuPanel {
         return next;
     }
 
+    float enabledAnimValue(String id) {
+        Float value = enabledAnim.get(id);
+        return value != null ? value : 0.0f;
+    }
+
     float hoverAnim(String id, boolean hover) {
         Float prev = hoverAnim.get(id);
         float next = AnimationUtility.approach(prev == null ? 0.0f : prev, hover ? 1.0f : 0.0f, 0.18f);

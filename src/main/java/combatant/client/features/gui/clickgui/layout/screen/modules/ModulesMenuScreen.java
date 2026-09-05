@@ -478,34 +478,65 @@ public final class ModulesMenuScreen {
         float total = 0.0f;
 
         List<ModuleComponent.CardEntry> entries = ModulesMenuResolver.buildCards(panel.category);
-        for (ModuleComponent.CardEntry entry : entries) {
-            if (!ClickGuiSearch.matches(entry.title(), entry.searchAliases())) continue;
-
-            if (y + MODULE_ROW_H * scale >= clipY && y <= clipY + clipH) {
-                float rowH = MODULE_ROW_H * scale;
-                boolean hover = inside(mouseX, mouseY, pageX, y, listW, rowH);
-                float hoverAnim = panel.hoverAnim(entry.getId(), hover);
-                renderModuleRowHover(panel, entry.getId(), pageX, y, listW, rowH,
-                        mouseX, mouseY, alpha, hoverAnim);
-            }
-
-            y += MODULE_ROW_H * scale;
-            total += MODULE_ROW_H * scale;
+        boolean panelShapeClip = false;
+        if (ClipFunction.usesMsaaStencilByDefault()) {
+            // The selected fallback owns the complete panel subtree, including procedural hovers.
+            // This is one local MSAA layer per panel, never one layer per hovered module.
+            panelShapeClip = ClipFunction.pushRoundedRect(
+                    panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale);
         }
-
-        // The procedural hover material is already a rounded SDF and is bounded by the explicit
-        // list scissor. Flush it before entering the shared analytic clip used by text/shapes.
-        ClickGuiRenderer.flushRenderer();
-        boolean panelShapeClip = ClipFunction.pushRoundedRect(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale);
-        y = listY - panel.modulesSmoothScroll;
         try {
             for (ModuleComponent.CardEntry entry : entries) {
                 if (!ClickGuiSearch.matches(entry.title(), entry.searchAliases())) continue;
+
                 if (y + MODULE_ROW_H * scale >= clipY && y <= clipY + clipH) {
-                    renderModuleRow(panel, entry, pageX, y, listW, alpha,
-                            panel.hoverAnimValue(entry.getId()));
+                    float rowH = MODULE_ROW_H * scale;
+                    boolean hover = inside(mouseX, mouseY, pageX, y, listW, rowH);
+                    float hoverAnim = panel.hoverAnim(entry.getId(), hover);
+                    renderModuleRowHover(panel, entry.getId(), pageX, y, listW, rowH,
+                            mouseX, mouseY, alpha, hoverAnim);
                 }
+
                 y += MODULE_ROW_H * scale;
+                total += MODULE_ROW_H * scale;
+            }
+
+            ClickGuiRenderer.flushRenderer();
+            if (!panelShapeClip) {
+                // In the normal analytic mode the material has no analytic permutation, so only
+                // text/shapes enter the analytic scope. MSAA mode above keeps everything together.
+                panelShapeClip = ClipFunction.pushRoundedRect(
+                        panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale);
+            }
+            // Every standalone TextRenderer.end() is an execution boundary. Without this scope,
+            // each visible module label splits otherwise compatible shape/text work into another
+            // tiny mesh upload, render pass and pipeline round-trip. The complete row list shares
+            // one scissor and one shape clip, so batching its foreground text preserves ordering.
+            ClickGuiRenderer.beginTextBatch();
+            try {
+                y = listY - panel.modulesSmoothScroll;
+                for (ModuleComponent.CardEntry entry : entries) {
+                    if (!ClickGuiSearch.matches(entry.title(), entry.searchAliases())) continue;
+                    if (y + MODULE_ROW_H * scale >= clipY && y <= clipY + clipH) {
+                        renderModuleRow(panel, entry, pageX, y, listW, alpha,
+                                panel.hoverAnimValue(entry.getId()));
+                    }
+                    y += MODULE_ROW_H * scale;
+                }
+
+                // Enabled checkmarks do not overlap the row dividers. Emitting them after the
+                // geometry layer keeps exact visible ordering while preventing every SVG from
+                // splitting one compatible analytic geometry batch into another render pass.
+                y = listY - panel.modulesSmoothScroll;
+                for (ModuleComponent.CardEntry entry : entries) {
+                    if (!ClickGuiSearch.matches(entry.title(), entry.searchAliases())) continue;
+                    if (y + MODULE_ROW_H * scale >= clipY && y <= clipY + clipH) {
+                        renderModuleRowCheck(panel, entry, pageX, y, listW, alpha);
+                    }
+                    y += MODULE_ROW_H * scale;
+                }
+            } finally {
+                ClickGuiRenderer.endTextBatch();
             }
         } finally {
             ClickGuiRenderer.flushRenderer();
@@ -569,22 +600,32 @@ public final class ModulesMenuScreen {
         int divider = withAlpha(ModulesMenuStyle.text(), alpha * 0.02f);
         LayoutRender2D.rect(x + 3.0f * scale, y + h, Math.max(1f, rowW - 6.0f * scale), 0.5f * scale, divider);
 
-        if (enabled > 0.001f) {
-            float check = 6.0f * scale;
-            float checkX = x + rowW - 15.0f * scale - 2.0f * scale * enabled;
-            float checkY = y + 7.0f * scale;
-
-            Renderer2D.COLOR.svg(
-                    "check",
-                    checkX,
-                    checkY,
-                    check,
-                    check,
-                    SvgRenderOptions.overrideColor(withAlpha(ModulesMenuStyle.text(), alpha * (0.10f + 0.90f * enabled)))
-            );
-        }
-
         panel.hits.add(new ModulesMenuPanel.ModuleHit(entry.getId(), x, y, rowW, h, entry.hasSettings(), entry.toggleable()));
+    }
+
+    private void renderModuleRowCheck(ModulesMenuPanel panel,
+                                      ModuleComponent.CardEntry entry,
+                                      float x,
+                                      float y,
+                                      float rowW,
+                                      float alpha) {
+        float enabled = panel.enabledAnimValue(entry.getId());
+        if (enabled <= 0.001f) return;
+
+        float check = 6.0f * scale;
+        float checkX = x + rowW - 15.0f * scale - 2.0f * scale * enabled;
+        float checkY = y + 7.0f * scale;
+        Renderer2D.COLOR.svg(
+                "check",
+                checkX,
+                checkY,
+                check,
+                check,
+                SvgRenderOptions.overrideColor(withAlpha(
+                        ModulesMenuStyle.text(),
+                        alpha * (0.10f + 0.90f * enabled)
+                ))
+        );
     }
 
     private void renderModuleRowHover(ModulesMenuPanel panel,
@@ -607,17 +648,19 @@ public final class ModulesMenuScreen {
 
         float clipTop = panel.y + (HEADER_H + SEPARATOR_H) * scale;
         float clipBottom = panel.y + panel.h - 0.5f * scale;
-        float visibleTop = Math.max(ry, clipTop);
-        float visibleBottom = Math.min(ry + rh, clipBottom);
-        float visibleHeight = visibleBottom - visibleTop;
-        if (visibleHeight <= 0.5f) return;
+        if (ry + rh <= clipTop || ry >= clipBottom) return;
 
         Renderer2D.COLOR.moduleCategorySurface(
                 rx,
-                visibleTop,
+                ry,
                 rw,
-                visibleHeight,
-                Math.min(5.0f * scale, visibleHeight * 0.5f),
+                rh,
+                5.0f * scale,
+                panel.x,
+                panel.y,
+                panel.w,
+                panel.h,
+                ClipFunction.usesMsaaStencilByDefault() ? 0.0f : PANEL_RADIUS * scale,
                 categoryEffectMode(panel.category),
                 hoverAnim,
                 categoryEffectTime(),
@@ -847,18 +890,9 @@ public final class ModulesMenuScreen {
                 : PrismaticGlassTransition.CALM;
         float distortion = (panel ? 0.190f : 0.155f) * materialAlpha * (1f + prism.strength() * 0.55f);
 
-        Renderer2D.COLOR.blurRect(
-                x,
-                y,
-                w,
-                h,
-                radius,
-                ClickGuiRenderer.clickGuiBlurQuality(),
-                1.0f,
-                blurAlpha,
-                0xFFFFFF
-        );
-
+        // liquidGlassRect already composites its prepared blur as an independent alpha layer.
+        // A blurRect immediately before it prepares and draws a second blur chain for every panel,
+        // while also evicting the reusable captured-world blur from the single-frame cache.
         Renderer2D.COLOR.liquidGlassRect(
                 x,
                 y,

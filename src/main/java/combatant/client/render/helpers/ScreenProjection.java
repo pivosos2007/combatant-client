@@ -16,9 +16,10 @@ import org.joml.Quaternionf;
 import org.joml.Vector4f;
 import combatant.client.features.module.modules.visuals.AspectRatio;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
+import combatant.client.render.engine.core.ViewportContext;
 
 /**
- * Helper for projecting world-space points into screen-space pixels.
+ * Helper for projecting world-space points into the currently active 2D viewport space.
  *
  * Screen overlays must use the same stable camera projection space as vanilla
  * GameRenderer.projectPointToScreen: raw camera projection * view rotation.
@@ -33,7 +34,7 @@ public enum ScreenProjection {
     private static final Quaternionf TMP_ROT = new Quaternionf();
 
     /**
-     * @return screen coords (x, y, z) or null if behind camera
+     * @return coordinates in the currently active 2D viewport space (x, y, z), or null if behind camera
      */
     public static Vec3 worldToScreen(Vec3 worldPos, float tickDelta) {
         Minecraft mc = Minecraft.getInstance();
@@ -71,8 +72,11 @@ public enum ScreenProjection {
         double ndcZ = pos.z / pos.w;
         if (!Double.isFinite(ndcX) || !Double.isFinite(ndcY) || !Double.isFinite(ndcZ)) return null;
 
-        double sx = (mc.getWindow().getWidth() / 2.0) * (1.0 + ndcX);
-        double sy = (mc.getWindow().getHeight() / 2.0) * (1.0 - ndcY);
+        ViewportContext viewport = ViewportContext.current();
+        double viewportWidth = viewport != null ? viewport.width() : mc.getWindow().getWidth();
+        double viewportHeight = viewport != null ? viewport.height() : mc.getWindow().getHeight();
+        double sx = (viewportWidth * 0.5) * (1.0 + ndcX);
+        double sy = (viewportHeight * 0.5) * (1.0 - ndcY);
 
         return new Vec3(sx, sy, ndcZ);
     }

@@ -194,6 +194,24 @@ public enum WorldBillboardRenderer {
         }
     }
 
+    /** Raw camera-facing colored quad. No SDF.**/
+    public static void quad(Renderer3D renderer,
+                            Basis basis,
+                            Vec3 anchor,
+                            double x,
+                            double y,
+                            double width,
+                            double height,
+                            double worldScale,
+                            int argb) {
+        if (renderer == null || basis == null || anchor == null
+                || width <= 0.0 || height <= 0.0 || worldScale <= 0.0
+                || ((argb >>> 24) & 0xFF) <= 0) {
+            return;
+        }
+        emitColorQuad(renderer, basis, anchor, x, y, width, height, worldScale, argb);
+    }
+
     private static void emitColorQuad(Renderer3D renderer,
                                       Basis basis,
                                       Vec3 anchor,

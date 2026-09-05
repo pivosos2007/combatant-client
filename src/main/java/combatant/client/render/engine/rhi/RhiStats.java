@@ -8,16 +8,33 @@
 package combatant.client.render.engine.rhi;
 
 import combatant.client.render.engine.guard.LegacyRenderPath;
+import combatant.client.render.engine.rhi.pipeline.RenderPipelineSpec;
+import combatant.client.render.engine.shader.ShaderCostEstimate;
+import combatant.client.render.engine.shader.ShaderCostRegistry;
 
 import java.util.EnumMap;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class RhiStats {
     private final EnumMap<LegacyRenderPath, Long> legacyPathBreakdown = new EnumMap<>(LegacyRenderPath.class);
     private long frameId;
     private long drawCalls;
+    private long multiDrawCalls;
+    private long multiDrawLogicalDraws;
     private long renderPasses;
     private long renderPassAttachmentSwitches;
+    private long pipelineBinds;
+    private long pipelineBindSkips;
+    private long pipelineSwitches;
+    private long uniformBinds;
+    private long samplerBinds;
+    private long estimatedShaderAluOps;
+    private long estimatedShaderTranscendentalOps;
+    private long estimatedShaderTextureOps;
+    private long estimatedShaderBranchOps;
+    private long estimatedShaderLoopOps;
     private long fullscreenPasses;
     private long textureFastCopies;
     private long textureShaderCopies;
@@ -31,6 +48,10 @@ public final class RhiStats {
     private long legacyPathUses;
     private int lastRenderPassColorIdentity;
     private int lastRenderPassDepthIdentity;
+    private int lastPipelineIdentity;
+    private final IdentityHashMap<Object, Boolean> framePipelines = new IdentityHashMap<>();
+    private final IdentityHashMap<Object, PipelineFrameStats> framePipelineBreakdown = new IdentityHashMap<>();
+    private boolean detailedPipelineStats;
     private long dynamicArenaAllocations;
     private long dynamicPersistentArenaAllocations;
     private long dynamicSpillArenaAllocations;
@@ -44,12 +65,18 @@ public final class RhiStats {
 
     public void beginFrame(long frameId) {
         this.frameId = frameId;
-        drawCalls = renderPasses = renderPassAttachmentSwitches = fullscreenPasses = textureFastCopies = textureShaderCopies = 0L;
+        drawCalls = multiDrawCalls = multiDrawLogicalDraws = renderPasses = renderPassAttachmentSwitches = fullscreenPasses = textureFastCopies = textureShaderCopies = 0L;
+        pipelineBinds = pipelineBindSkips = pipelineSwitches = uniformBinds = samplerBinds = 0L;
+        estimatedShaderAluOps = estimatedShaderTranscendentalOps = estimatedShaderTextureOps = 0L;
+        estimatedShaderBranchOps = estimatedShaderLoopOps = 0L;
         meshUploads = uploadedVertexBytes = uploadedIndexBytes = 0L;
         ringWraps = ringStalls = immediateFallbackUploads = temporaryOwnedMeshes = 0L;
         legacyPathUses = 0L;
         lastRenderPassColorIdentity = 0;
         lastRenderPassDepthIdentity = 0;
+        lastPipelineIdentity = 0;
+        framePipelines.clear();
+        framePipelineBreakdown.clear();
         legacyPathBreakdown.clear();
         dynamicArenaAllocations = 0L;
         dynamicArenaReuses = 0L;
@@ -66,6 +93,13 @@ public final class RhiStats {
         drawCalls++;
     }
 
+    /** One backend multi-draw call which executes {@code logicalDraws} indexed draws. */
+    public void multiDrawCall(int logicalDraws) {
+        drawCalls++;
+        multiDrawCalls++;
+        multiDrawLogicalDraws += Math.max(0, logicalDraws);
+    }
+
     public void renderPass(Object colorAttachment, Object depthAttachment) {
         int colorIdentity = System.identityHashCode(colorAttachment);
         int depthIdentity = System.identityHashCode(depthAttachment);
@@ -75,6 +109,58 @@ public final class RhiStats {
         renderPasses++;
         lastRenderPassColorIdentity = colorIdentity;
         lastRenderPassDepthIdentity = depthIdentity;
+    }
+
+    /** Records one draw's binding workload and whether the backend had to emit setPipeline. */
+    public void pipelineUse(Object pipeline, RenderPipelineSpec spec, int uniforms, int samplers, boolean bindPipeline) {
+        int identity = System.identityHashCode(pipeline);
+        boolean switched = bindPipeline && pipelineBinds > 0 && identity != lastPipelineIdentity;
+        if (bindPipeline) {
+            if (switched) pipelineSwitches++;
+            pipelineBinds++;
+            lastPipelineIdentity = identity;
+        } else {
+            pipelineBindSkips++;
+        }
+        uniformBinds += Math.max(0, uniforms);
+        samplerBinds += Math.max(0, samplers);
+        if (pipeline != null) framePipelines.put(pipeline, Boolean.TRUE);
+        if (!detailedPipelineStats) return;
+        ShaderCostEstimate vertex = ShaderCostEstimate.NONE;
+        ShaderCostEstimate fragment = ShaderCostEstimate.NONE;
+        if (spec != null) {
+            vertex = ShaderCostRegistry.get(spec.vertexShaderId(), "vertex");
+            fragment = ShaderCostRegistry.get(spec.fragmentShaderId(), "fragment");
+            addShaderEstimate(vertex);
+            addShaderEstimate(fragment);
+        }
+        if (pipeline != null) {
+            PipelineFrameStats pipelineStats = framePipelineBreakdown.computeIfAbsent(
+                    pipeline,
+                    ignored -> new PipelineFrameStats(spec)
+            );
+            pipelineStats.record(bindPipeline, switched, vertex, fragment);
+        }
+    }
+
+    /** Compatibility entry point for call sites that always emit a real pipeline bind. */
+    public void pipelineBind(Object pipeline, RenderPipelineSpec spec, int uniforms, int samplers) {
+        pipelineUse(pipeline, spec, uniforms, samplers, true);
+    }
+
+    /** Enables allocation-bearing shader/pipeline attribution only while an external profiler needs it. */
+    public void setDetailedPipelineStats(boolean enabled) {
+        detailedPipelineStats = enabled;
+        if (!enabled) framePipelineBreakdown.clear();
+    }
+
+    private void addShaderEstimate(ShaderCostEstimate estimate) {
+        if (estimate == null) return;
+        estimatedShaderAluOps += estimate.aluOps();
+        estimatedShaderTranscendentalOps += estimate.transcendentalOps();
+        estimatedShaderTextureOps += estimate.textureOps();
+        estimatedShaderBranchOps += estimate.branchOps();
+        estimatedShaderLoopOps += estimate.loopOps();
     }
 
     public void fullscreenPass() {
@@ -159,12 +245,64 @@ public final class RhiStats {
         return drawCalls;
     }
 
+    public long multiDrawCalls() {
+        return multiDrawCalls;
+    }
+
+    public long multiDrawLogicalDraws() {
+        return multiDrawLogicalDraws;
+    }
+
     public long renderPasses() {
         return renderPasses;
     }
 
     public long renderPassAttachmentSwitches() {
         return renderPassAttachmentSwitches;
+    }
+
+    public long pipelineBinds() {
+        return pipelineBinds;
+    }
+
+    public long pipelineBindSkips() {
+        return pipelineBindSkips;
+    }
+
+    public long pipelineSwitches() {
+        return pipelineSwitches;
+    }
+
+    public long uniquePipelines() {
+        return framePipelines.size();
+    }
+
+    public long uniformBinds() {
+        return uniformBinds;
+    }
+
+    public long samplerBinds() {
+        return samplerBinds;
+    }
+
+    public long estimatedShaderAluOps() {
+        return estimatedShaderAluOps;
+    }
+
+    public long estimatedShaderTranscendentalOps() {
+        return estimatedShaderTranscendentalOps;
+    }
+
+    public long estimatedShaderTextureOps() {
+        return estimatedShaderTextureOps;
+    }
+
+    public long estimatedShaderBranchOps() {
+        return estimatedShaderBranchOps;
+    }
+
+    public long estimatedShaderLoopOps() {
+        return estimatedShaderLoopOps;
     }
 
     public long fullscreenPasses() {
@@ -212,13 +350,76 @@ public final class RhiStats {
     }
 
     public RhiStatsSnapshot snapshot() {
-        return new RhiStatsSnapshot(frameId, drawCalls, renderPasses, renderPassAttachmentSwitches,
+        return snapshot(false);
+    }
+
+    public RhiStatsSnapshot snapshot(boolean includePipelineBreakdown) {
+        List<RhiPipelineStatsSnapshot> pipelineBreakdown = includePipelineBreakdown
+                ? framePipelineBreakdown.values().stream()
+                .map(PipelineFrameStats::snapshot)
+                .sorted(java.util.Comparator.comparingLong(RhiPipelineStatsSnapshot::draws).reversed())
+                .toList()
+                : List.of();
+        return new RhiStatsSnapshot(frameId, drawCalls, multiDrawCalls, multiDrawLogicalDraws, renderPasses, renderPassAttachmentSwitches,
+                pipelineBinds, pipelineBindSkips, pipelineSwitches, framePipelines.size(), uniformBinds, samplerBinds,
+                estimatedShaderAluOps, estimatedShaderTranscendentalOps, estimatedShaderTextureOps,
+                estimatedShaderBranchOps, estimatedShaderLoopOps,
                 fullscreenPasses, textureFastCopies, textureShaderCopies,
                 meshUploads, uploadedVertexBytes, uploadedIndexBytes, ringWraps, ringStalls,
                 immediateFallbackUploads, temporaryOwnedMeshes,
                 dynamicArenaAllocations, dynamicPersistentArenaAllocations, dynamicSpillArenaAllocations,
                 dynamicArenaReuses, dynamicArenaRetires, dynamicFenceChecks, dynamicFenceCompletions,
                 dynamicArenaBacklogEvents, dynamicPersistentArenaBytes, dynamicSpillArenaBytes,
-                legacyPathUses, legacyPathBreakdown.isEmpty() ? Map.of() : new EnumMap<>(legacyPathBreakdown));
+                legacyPathUses, legacyPathBreakdown.isEmpty() ? Map.of() : new EnumMap<>(legacyPathBreakdown),
+                pipelineBreakdown);
+    }
+
+    private static final class PipelineFrameStats {
+        private final String pipelineId;
+        private final String vertexShaderId;
+        private final String fragmentShaderId;
+        private long draws;
+        private long binds;
+        private long switchesInto;
+        private long estimatedAluOps;
+        private long estimatedTranscendentalOps;
+        private long estimatedTextureOps;
+        private long estimatedBranchOps;
+        private long estimatedLoopOps;
+
+        private PipelineFrameStats(RenderPipelineSpec spec) {
+            pipelineId = spec != null ? spec.id() : "external";
+            vertexShaderId = spec != null ? spec.vertexShaderId() : "";
+            fragmentShaderId = spec != null ? spec.fragmentShaderId() : "";
+        }
+
+        private void record(boolean bound,
+                            boolean switched,
+                            ShaderCostEstimate vertex,
+                            ShaderCostEstimate fragment) {
+            draws++;
+            if (bound) binds++;
+            if (switched) switchesInto++;
+            add(vertex);
+            add(fragment);
+        }
+
+        private void add(ShaderCostEstimate estimate) {
+            if (estimate == null) return;
+            estimatedAluOps += estimate.aluOps();
+            estimatedTranscendentalOps += estimate.transcendentalOps();
+            estimatedTextureOps += estimate.textureOps();
+            estimatedBranchOps += estimate.branchOps();
+            estimatedLoopOps += estimate.loopOps();
+        }
+
+        private RhiPipelineStatsSnapshot snapshot() {
+            return new RhiPipelineStatsSnapshot(
+                    pipelineId, vertexShaderId, fragmentShaderId,
+                    draws, binds, switchesInto,
+                    estimatedAluOps, estimatedTranscendentalOps, estimatedTextureOps,
+                    estimatedBranchOps, estimatedLoopOps
+            );
+        }
     }
 }

@@ -47,10 +47,12 @@ public final class UiPathRenderer {
     private final double[] endRightX = new double[MAX_SEGMENTS];
     private final double[] endRightY = new double[MAX_SEGMENTS];
 
-    private long cachedSplineHash = Long.MIN_VALUE;
-    private int cachedSplineInputCount = -1;
-    private boolean cachedSplineClosed;
-    private int cachedSplineResolvedCount;
+    // The resolved[] buffer is shared by polyline/bezier/spline lowering.  A spline cache hit is
+    // valid only while that buffer still contains the exact spline geometry associated with the
+    // cached key.  Non-spline resolves explicitly invalidate this ownership.
+    private long resolvedSplineHash = Long.MIN_VALUE;
+    private int resolvedSplineInputCount = -1;
+    private boolean resolvedSplineClosed;
 
     public double[] resolvedPoints() {
         return resolved;
@@ -61,6 +63,7 @@ public final class UiPathRenderer {
     }
 
     public int resolvePolyline(double[] points, int pointCount, boolean closed) {
+        invalidateResolvedSplineOwnership();
         resolvedCount = cleanCopy(points, pointCount, closed);
         return resolvedCount;
     }
@@ -69,6 +72,7 @@ public final class UiPathRenderer {
                              double x1, double y1,
                              double x2, double y2,
                              double x3, double y3) {
+        invalidateResolvedSplineOwnership();
         resolvedCount = 0;
         appendResolved(x0, y0);
         flattenCubic(x0, y0, x1, y1, x2, y2, x3, y3, 0, false,
@@ -83,19 +87,21 @@ public final class UiPathRenderer {
     public int resolveSpline(double[] points, int pointCount, boolean closed) {
         int safeCount = Math.min(Math.max(pointCount, 0), points != null ? points.length / 2 : 0);
         if (safeCount < 2) {
+            invalidateResolvedSplineOwnership();
             resolvedCount = 0;
             return 0;
         }
 
         long hash = splineHash(points, safeCount, closed);
-        if (hash == cachedSplineHash && safeCount == cachedSplineInputCount && closed == cachedSplineClosed) {
-            resolvedCount = cachedSplineResolvedCount;
+        if (hash == resolvedSplineHash
+                && safeCount == resolvedSplineInputCount
+                && closed == resolvedSplineClosed) {
             return resolvedCount;
         }
 
         if (safeCount == 2 && !closed) {
             resolvedCount = cleanCopy(points, safeCount, false);
-            rememberSpline(hash, safeCount, closed);
+            rememberResolvedSpline(hash, safeCount, closed);
             return resolvedCount;
         }
 
@@ -142,7 +148,7 @@ public final class UiPathRenderer {
                 resolvedCount--;
             }
         }
-        rememberSpline(hash, safeCount, closed);
+        rememberResolvedSpline(hash, safeCount, closed);
         return resolvedCount;
     }
 
@@ -390,6 +396,10 @@ public final class UiPathRenderer {
         boolean hasLeft = Double.isFinite(leftT);
         double leftX = hasLeft ? leftAx + dirX[prev] * leftT : 0.0;
         double leftY = hasLeft ? leftAy + dirY[prev] * leftT : 0.0;
+        // Offset-line intersections become numerically/visually unbounded as a path approaches
+        // a 180-degree reversal. This limit is required for every join style, not only MITER:
+        // ROUND/BEVEL also use the concave intersection as their wedge root.
+        hasLeft = hasLeft && distance(px, py, leftX, leftY) <= half * MITER_LIMIT;
 
         double rightAx = px - normX[prev] * half;
         double rightAy = py - normY[prev] * half;
@@ -398,10 +408,9 @@ public final class UiPathRenderer {
         boolean hasRight = Double.isFinite(rightT);
         double rightX = hasRight ? rightAx + dirX[prev] * rightT : 0.0;
         double rightY = hasRight ? rightAy + dirY[prev] * rightT : 0.0;
+        hasRight = hasRight && distance(px, py, rightX, rightY) <= half * MITER_LIMIT;
 
-        if (join == UiPathJoin.MITER && hasLeft && hasRight
-                && distance(px, py, leftX, leftY) <= half * MITER_LIMIT
-                && distance(px, py, rightX, rightY) <= half * MITER_LIMIT) {
+        if (join == UiPathJoin.MITER && hasLeft && hasRight) {
             endLeftX[prev] = startLeftX[next] = leftX;
             endLeftY[prev] = startLeftY[next] = leftY;
             endRightX[prev] = startRightX[next] = rightX;
@@ -430,8 +439,16 @@ public final class UiPathRenderer {
         double px = resolved[point * 2];
         double py = resolved[point * 2 + 1];
         boolean leftInner = cross > 0.0;
-        double innerX = leftInner ? endLeftX[prev] : endRightX[prev];
-        double innerY = leftInner ? endLeftY[prev] : endRightY[prev];
+        double innerPrevX = leftInner ? endLeftX[prev] : endRightX[prev];
+        double innerPrevY = leftInner ? endLeftY[prev] : endRightY[prev];
+        double innerNextX = leftInner ? startLeftX[next] : startRightX[next];
+        double innerNextY = leftInner ? startLeftY[next] : startRightY[next];
+        // A normal join has one shared concave intersection after prepareSegments(). If that
+        // intersection was rejected by the bounded-intersection rule, root the wedge at the path
+        // center instead of emitting a long triangle toward an arbitrary offset-line crossing.
+        boolean sharedInner = distanceSq(innerPrevX, innerPrevY, innerNextX, innerNextY) <= EPSILON * EPSILON;
+        double innerX = sharedInner ? (innerPrevX + innerNextX) * 0.5 : px;
+        double innerY = sharedInner ? (innerPrevY + innerNextY) * 0.5 : py;
         double outerPrevX = leftInner ? endRightX[prev] : endLeftX[prev];
         double outerPrevY = leftInner ? endRightY[prev] : endLeftY[prev];
         double outerNextX = leftInner ? startRightX[next] : startLeftX[next];
@@ -702,11 +719,16 @@ public final class UiPathRenderer {
         resolvedCount++;
     }
 
-    private void rememberSpline(long hash, int inputCount, boolean closed) {
-        cachedSplineHash = hash;
-        cachedSplineInputCount = inputCount;
-        cachedSplineClosed = closed;
-        cachedSplineResolvedCount = resolvedCount;
+    private void rememberResolvedSpline(long hash, int inputCount, boolean closed) {
+        resolvedSplineHash = hash;
+        resolvedSplineInputCount = inputCount;
+        resolvedSplineClosed = closed;
+    }
+
+    private void invalidateResolvedSplineOwnership() {
+        resolvedSplineHash = Long.MIN_VALUE;
+        resolvedSplineInputCount = -1;
+        resolvedSplineClosed = false;
     }
 
     private static long splineHash(double[] points, int count, boolean closed) {

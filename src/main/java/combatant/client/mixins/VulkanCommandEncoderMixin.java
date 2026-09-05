@@ -15,6 +15,7 @@ import com.mojang.blaze3d.vulkan.VulkanCommandEncoder;
 import com.mojang.blaze3d.vulkan.VulkanGpuTextureView;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkClearDepthStencilValue;
+import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import org.lwjgl.vulkan.VkClearValue;
 import org.lwjgl.vulkan.VkRenderingAttachmentInfo;
 import org.lwjgl.vulkan.VkRenderingInfo;
@@ -54,6 +55,7 @@ public abstract class VulkanCommandEncoderMixin {
             } else {
                 VulkanRenderStateBridge.markCurrentRenderPassStencilAttachment(true);
                 boolean clear = VulkanShapeClipBridge.consumeStencilClear();
+                if (clear) UiPipelineTelemetry.recordStencilClear();
                 VkRenderingAttachmentInfo stencilAttachment = VkRenderingAttachmentInfo.calloc(stack).sType$Default();
                 stencilAttachment
                         .imageView(vkView.vkImageView())

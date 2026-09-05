@@ -34,17 +34,43 @@ public final class UiItemRendererBridge {
         int durabilityThreshold = Math.max(0, Math.min(100, Math.round(node.props().number("durabilityThreshold", 100.0f))));
         int durabilityColorThreshold = Math.max(0, Math.min(100, Math.round(node.props().number("durabilityColorThreshold", 70.0f))));
         int seed = Math.round(node.props().number("seed", 0.0f));
-        context.renderer().item(
-                stack,
-                bounds.x(),
-                bounds.y(),
-                scale,
-                seed,
-                flags,
-                node.props().string("countText", null),
-                durabilityThreshold,
-                durabilityColorThreshold
-        );
+        Renderer2D renderer = context.renderer();
+        // Keep the ordinary ui.item path identical to the pre-fade implementation.
+        // Only nodes that explicitly opt into alpha (timed-list disappearing rows)
+        // temporarily compose renderer alpha; Inventory/item-count overlays never do.
+        if (!node.props().values().containsKey("alpha")) {
+            renderer.item(
+                    stack,
+                    bounds.x(),
+                    bounds.y(),
+                    scale,
+                    seed,
+                    flags,
+                    node.props().string("countText", null),
+                    durabilityThreshold,
+                    durabilityColorThreshold
+            );
+            return;
+        }
+
+        double previousAlpha = renderer.getAlpha();
+        double itemAlpha = Math.max(0.0, Math.min(1.0, node.props().number("alpha", 1.0f)));
+        renderer.setAlpha(previousAlpha * itemAlpha);
+        try {
+            renderer.item(
+                    stack,
+                    bounds.x(),
+                    bounds.y(),
+                    scale,
+                    seed,
+                    flags,
+                    node.props().string("countText", null),
+                    durabilityThreshold,
+                    durabilityColorThreshold
+            );
+        } finally {
+            renderer.setAlpha(previousAlpha);
+        }
     }
 
     private static int overlayFlags(String mode) {

@@ -525,7 +525,7 @@ export interface UiFactory {
     opacity(hex: string, fallback?: number): number;
   };
   connector(init?: Omit<UiConnectorNode, "type">): UiConnectorNode;
-  item(init?: NodeInit): UiNode;
+  item(init?: NodeInit & { /** Multiplies Renderer2D item alpha for this node. */ alpha?: number }): UiNode;
   button(init?: NodeInit): UiNode;
   scroll(init?: NodeInit): UiNode;
   spacer(init?: NodeInit): UiNode;

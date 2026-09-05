@@ -1,7 +1,10 @@
 #version 330 core
 
 /*
- * Combatant procedural vanilla-widget material.
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
  */
 
 in vec4 v_Local;

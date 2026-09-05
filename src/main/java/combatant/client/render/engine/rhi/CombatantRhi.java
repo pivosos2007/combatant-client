@@ -33,6 +33,10 @@ public interface CombatantRhi extends AutoCloseable {
 
     RhiStats stats();
 
+    default RhiCapabilities capabilities() {
+        return RhiCapabilities.current();
+    }
+
     RenderPipelineRegistry pipelines();
 
     RenderResourceManager resources();

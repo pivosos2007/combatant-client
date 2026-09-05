@@ -44,15 +44,21 @@ public final class UiBatcher {
         }
 
         int orderedBatches = 0;
+        int legacySpecialPasses = 0;
         for (UiBatchPlan.Pass pass : executablePasses) {
-            if (pass != null) orderedBatches += pass.orderedBatchCount();
+            if (pass != null) {
+                orderedBatches += pass.orderedBatchCount();
+                if (pass.label().startsWith("Renderer2D.OrderedSpecial")) legacySpecialPasses++;
+            }
         }
 
         if (commands != null) {
             commands.stats().addCompiledPasses(executablePasses.size());
             commands.stats().addCompiledOrderedBatches(orderedBatches);
+            commands.stats().addCompiledLegacySpecialPasses(legacySpecialPasses);
         }
 
+        UiBackdropPlan backdropPlan = UiBackdropPlan.compile(commands);
         return new UiBatchPlan(
                 executablePasses,
                 commandCount,
@@ -65,7 +71,8 @@ public final class UiBatcher {
                 effects,
                 orderedBatches,
                 0,
-                0
+                0,
+                backdropPlan
         );
     }
 }

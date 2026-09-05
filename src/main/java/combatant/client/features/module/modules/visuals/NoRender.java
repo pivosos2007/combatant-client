@@ -19,6 +19,7 @@ import net.minecraft.world.phys.Vec3;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
+import combatant.client.compat.sodiumextra.SodiumExtraNoRenderCompat;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -34,6 +35,9 @@ import java.util.Optional;
 public class NoRender extends Module {
 
     private static final String SETTING_TOGGLES = "toggles";
+    private static final String SETTING_WORLD_TOGGLES = "world_toggles";
+    private static final String SETTING_ENTITY_TOGGLES = "entity_toggles";
+    private static final String SETTING_PARTICLE_TOGGLES = "particle_toggles";
     private static final String SETTING_VIEW_OBSTRUCTION_FADE_LIVING_ENTITIES = "view_obstruction_fade_living_entities";
     private static final String SETTING_VIEW_OBSTRUCTION_FADE_STRENGTH = "view_obstruction_fade_strength";
     private static final String SETTING_FIRE_ONLY_IF_RESISTANT = "fire_only_if_resistant";
@@ -64,6 +68,42 @@ public class NoRender extends Module {
                 put(KEY_VIEW_OBSTRUCTION_FADE, false);
             }}
     );
+    private final BooleanMapValue worldToggles = group(
+            "norender_world_toggles",
+            SETTING_WORLD_TOGGLES,
+            new java.util.LinkedHashMap<>() {{
+                put("sky", false);
+                put("sun", false);
+                put("moon", false);
+                put("stars", false);
+                put("weather", false);
+            }}
+    );
+    private final BooleanMapValue entityToggles = group(
+            "norender_entity_toggles",
+            SETTING_ENTITY_TOGGLES,
+            new java.util.LinkedHashMap<>() {{
+                put("item_frames", false);
+                put("armor_stands", false);
+                put("paintings", false);
+                put("moving_pistons", false);
+                put("beacon_beams", false);
+                put("enchanting_table_book", false);
+                put("item_frame_name_tags", false);
+                put("player_name_tags", false);
+            }}
+    );
+    private final BooleanMapValue particleToggles = group(
+            "norender_particle_toggles",
+            SETTING_PARTICLE_TOGGLES,
+            new java.util.LinkedHashMap<>() {{
+                put("all_particles", false);
+                put("rain_splash_particles", false);
+                put("block_break_particles", false);
+                put("block_breaking_particles", false);
+            }}
+    );
+
     private final BooleanValue viewObstructionFadeLivingEntities =
             visibleWhen(bool("norender_view_obstruction_fade_living_entities", SETTING_VIEW_OBSTRUCTION_FADE_LIVING_ENTITIES, true),
                     this::viewObstructionFadeEnabled);
@@ -93,6 +133,44 @@ public class NoRender extends Module {
         if (!isEnabled()) return false;
 
         return toggles.get(key);
+    }
+
+    public boolean offWorld(String key) {
+        return isEnabled() && worldToggles.get(key);
+    }
+
+    public boolean offEntity(String key) {
+        return isEnabled() && entityToggles.get(key);
+    }
+
+    public boolean offParticle(String key) {
+        return isEnabled() && particleToggles.get(key);
+    }
+
+    private void syncSodiumExtraNoRenderOwnership() {
+        SodiumExtraNoRenderCompat.syncMigratedOptions(
+                worldToggles.getAll(),
+                entityToggles.getAll(),
+                particleToggles.getAll()
+        );
+    }
+
+    @Override
+    public void onEnable() {
+        syncSodiumExtraNoRenderOwnership();
+    }
+
+    @Override
+    public void onTick() {
+        // Combatant is authoritative while NoRender is enabled. Keep overlapping
+        // Sodium Extra render switches mirrored from the module tick so its hooks
+        // cannot override Combatant in the opposite direction.
+        syncSodiumExtraNoRenderOwnership();
+    }
+
+    @Override
+    public void onDisable() {
+        SodiumExtraNoRenderCompat.releaseMigratedOptions();
     }
 
     public boolean fireOnlyWhenResistant() {

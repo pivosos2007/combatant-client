@@ -29,9 +29,12 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class UiBlurResources {
     private static final int MAX_KAWASE_LEVELS = Renderer2D.BlurQuality.ULTRA.iterations;
-    private static final TextureTarget[] KAWASE_DOWN = new TextureTarget[MAX_KAWASE_LEVELS];
-    private static final TextureTarget[] KAWASE_UP = new TextureTarget[MAX_KAWASE_LEVELS];
-    private static final FrameBlurCacheEntry FRAME_CACHE = new FrameBlurCacheEntry();
+    private static final TextureTarget[] SURFACE_KAWASE_DOWN = new TextureTarget[MAX_KAWASE_LEVELS];
+    private static final TextureTarget[] SURFACE_KAWASE_UP = new TextureTarget[MAX_KAWASE_LEVELS];
+    private static final TextureTarget[] CAPTURED_WORLD_KAWASE_DOWN = new TextureTarget[MAX_KAWASE_LEVELS];
+    private static final TextureTarget[] CAPTURED_WORLD_KAWASE_UP = new TextureTarget[MAX_KAWASE_LEVELS];
+    private static final FrameBlurCacheEntry SURFACE_FRAME_CACHE = new FrameBlurCacheEntry();
+    private static final FrameBlurCacheEntry CAPTURED_WORLD_FRAME_CACHE = new FrameBlurCacheEntry();
 
     private static TextureTarget effects;
     private static TextureTarget glassSource;
@@ -46,7 +49,7 @@ public final class UiBlurResources {
     }
 
     public static FrameBlurCacheEntry frameCache() {
-        return FRAME_CACHE;
+        return SURFACE_FRAME_CACHE;
     }
 
     public static void beginDeferredFrame() {
@@ -133,13 +136,39 @@ public final class UiBlurResources {
 
     public static TextureTarget ensureKawaseDown(Minecraft minecraft, int level) {
         return ensureKawaseTarget(
-                minecraft, KAWASE_DOWN, "combatant-ui-kawase-down-", "Renderer2D.kawaseDown", level
+                minecraft, SURFACE_KAWASE_DOWN, "combatant-ui-kawase-down-", "Renderer2D.kawaseDown", level
         );
     }
 
     public static TextureTarget ensureKawaseUp(Minecraft minecraft, int level) {
         return ensureKawaseTarget(
-                minecraft, KAWASE_UP, "combatant-ui-kawase-up-", "Renderer2D.kawaseUp", level
+                minecraft, SURFACE_KAWASE_UP, "combatant-ui-kawase-up-", "Renderer2D.kawaseUp", level
+        );
+    }
+
+    static TextureTarget ensureKawaseDown(Minecraft minecraft,
+                                          int level,
+                                          @Nullable GpuTextureView sourceView) {
+        if (!isCapturedWorldSource(sourceView)) return ensureKawaseDown(minecraft, level);
+        return ensureKawaseTarget(
+                minecraft,
+                CAPTURED_WORLD_KAWASE_DOWN,
+                "combatant-ui-glass-kawase-down-",
+                "Renderer2D.glassKawaseDown",
+                level
+        );
+    }
+
+    static TextureTarget ensureKawaseUp(Minecraft minecraft,
+                                        int level,
+                                        @Nullable GpuTextureView sourceView) {
+        if (!isCapturedWorldSource(sourceView)) return ensureKawaseUp(minecraft, level);
+        return ensureKawaseTarget(
+                minecraft,
+                CAPTURED_WORLD_KAWASE_UP,
+                "combatant-ui-glass-kawase-up-",
+                "Renderer2D.glassKawaseUp",
+                level
         );
     }
 
@@ -195,7 +224,8 @@ public final class UiBlurResources {
             float offsetPx) {
         RenderPhase cachePhase = cachePhaseForSource(phase, sourceView);
         float cacheUiScale = cacheScaleForSource(sourceView, uiScale);
-        return FRAME_CACHE.matches(
+        FrameBlurCacheEntry cache = cacheForSource(sourceView);
+        return cache.matches(
                 frameId,
                 cachePhase,
                 sourceView,
@@ -205,7 +235,7 @@ public final class UiBlurResources {
                 cacheUiScale,
                 blurQuality,
                 offsetPx
-        ) ? FRAME_CACHE : null;
+        ) ? cache : null;
     }
 
     public static void remember(
@@ -220,7 +250,7 @@ public final class UiBlurResources {
             float uiScale,
             Renderer2D.BlurQuality blurQuality,
             float offsetPx) {
-        FRAME_CACHE.set(
+        cacheForSource(sourceView).set(
                 frameId,
                 cachePhaseForSource(phase, sourceView),
                 sourceView,
@@ -288,9 +318,13 @@ public final class UiBlurResources {
         return isCapturedWorldSource(sourceView) ? 1.0f : uiScale;
     }
 
-    private static boolean isCapturedWorldSource(@Nullable GpuTextureView sourceView) {
+    static boolean isCapturedWorldSource(@Nullable GpuTextureView sourceView) {
         return sourceView != null
                 && glassSource != null
                 && sourceView == glassSource.getColorTextureView();
+    }
+
+    private static FrameBlurCacheEntry cacheForSource(@Nullable GpuTextureView sourceView) {
+        return isCapturedWorldSource(sourceView) ? CAPTURED_WORLD_FRAME_CACHE : SURFACE_FRAME_CACHE;
     }
 }

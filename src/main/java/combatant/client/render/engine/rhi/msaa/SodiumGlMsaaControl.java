@@ -25,11 +25,15 @@ import combatant.client.mixins.accessors.GlTextureInvoker;
 import combatant.client.render.engine.msaa.MsaaTextureRegistry;
 import combatant.client.render.engine.msaa.MsaaWorldTarget;
 import combatant.client.render.engine.rhi.backend.gl.GlBackendAccess;
+import combatant.client.render.engine.rhi.backend.gl.GlValidation;
 import combatant.client.util.logging.DebugLog;
 
 import static org.lwjgl.opengl.GL11C.glDisable;
 import static org.lwjgl.opengl.GL11C.glEnable;
 import static org.lwjgl.opengl.GL13C.GL_SAMPLE_ALPHA_TO_COVERAGE;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Current MSAA implementation for the GL/Sodium backend.
@@ -42,6 +46,22 @@ public final class SodiumGlMsaaControl implements MsaaControl {
     private static final Identifier ENTITY_SHADER_ID = Identifier.withDefaultNamespace("core/entity");
     private static final int GL_MAX_COLOR_TEXTURE_SAMPLES = 0x910E;
     private static final int GL_MAX_DEPTH_TEXTURE_SAMPLES = 0x910F;
+    private static final int MAX_RESOLVE_FRAMEBUFFERS = 32;
+
+    /**
+     * Resolve FBOs are pure attachment state. Rebuilding them for every local MSAA resolve
+     * turns a cheap blit into gen/attach/validate/delete churn. Keep a small access-ordered
+     * cache keyed by the actual texture wrapper objects and resolve aspect.
+     */
+    private final LinkedHashMap<ResolveFramebufferKey, Integer> resolveFramebuffers =
+            new LinkedHashMap<>(16, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<ResolveFramebufferKey, Integer> eldest) {
+                    if (size() <= MAX_RESOLVE_FRAMEBUFFERS) return false;
+                    deleteResolveFramebuffer(eldest.getValue());
+                    return true;
+                }
+            };
 
 
     private static int maxSamplesFor(GpuFormat format) {
@@ -136,6 +156,16 @@ public final class SodiumGlMsaaControl implements MsaaControl {
     @Override
     public void unregisterTexture(int nativeTextureId) {
         MsaaTextureRegistry.unregister(nativeTextureId);
+        if (nativeTextureId > 0 && !resolveFramebuffers.isEmpty()) {
+            var it = resolveFramebuffers.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<ResolveFramebufferKey, Integer> entry = it.next();
+                if (entry.getKey().referencesNativeTexture(nativeTextureId)) {
+                    deleteResolveFramebuffer(entry.getValue());
+                    it.remove();
+                }
+            }
+        }
     }
 
     @Override
@@ -219,14 +249,12 @@ public final class SodiumGlMsaaControl implements MsaaControl {
 
         int prevRead = GlStateManager.getFrameBuffer(GL30.GL_READ_FRAMEBUFFER);
         int prevDraw = GlStateManager.getFrameBuffer(GL30.GL_DRAW_FRAMEBUFFER);
-        int srcFramebuffer = 0;
-        int dstFramebuffer = 0;
 
         int mask = (color ? GL30.GL_COLOR_BUFFER_BIT : 0) | (depth ? GL30.GL_DEPTH_BUFFER_BIT : 0);
 
         try {
-            srcFramebuffer = createResolveFramebuffer(src, color, depth, "read");
-            dstFramebuffer = createResolveFramebuffer(dst, color, depth, "draw");
+            int srcFramebuffer = resolveFramebuffer(src, color, depth, "read");
+            int dstFramebuffer = resolveFramebuffer(dst, color, depth, "draw");
             if (srcFramebuffer == 0 || dstFramebuffer == 0) {
                 return false;
             }
@@ -239,24 +267,36 @@ public final class SodiumGlMsaaControl implements MsaaControl {
                     mask,
                     GL30.GL_NEAREST
             );
-            int error = GlStateManager._getError();
-            if (error != 0) {
-                DebugLog.warnOnChange("msaa.resolve.gl_error", error + "|" + color + "|" + depth,
-                        "[MSAA/GL] resolve blit failed. error=0x%s color=%s depth=%s src=%dx%d dst=%dx%d",
-                        Integer.toHexString(error), color, depth, src.width, src.height, dst.width, dst.height);
-                return false;
+            if (GlValidation.errorsEnabled()) {
+                int error = GlStateManager._getError();
+                if (error != 0) {
+                    DebugLog.warnOnChange("msaa.resolve.gl_error", error + "|" + color + "|" + depth,
+                            "[MSAA/GL] resolve blit failed. error=0x%s color=%s depth=%s src=%dx%d dst=%dx%d",
+                            Integer.toHexString(error), color, depth, src.width, src.height, dst.width, dst.height);
+                    return false;
+                }
             }
             return true;
         } finally {
             GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevRead);
             GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDraw);
-            if (srcFramebuffer != 0) {
-                GL30.glDeleteFramebuffers(srcFramebuffer);
-            }
-            if (dstFramebuffer != 0) {
-                GL30.glDeleteFramebuffers(dstFramebuffer);
-            }
         }
+    }
+
+    private int resolveFramebuffer(RenderTarget framebuffer, boolean color, boolean depth, String role) {
+        GpuTexture colorTexture = color ? framebuffer.getColorTexture() : null;
+        GpuTexture depthTexture = depth ? framebuffer.getDepthTexture() : null;
+        ResolveFramebufferKey key = new ResolveFramebufferKey(colorTexture, depthTexture, color, depth);
+        Integer cached = resolveFramebuffers.get(key);
+        if (cached != null && cached != 0) {
+            return cached;
+        }
+
+        int fbo = createResolveFramebuffer(framebuffer, color, depth, role);
+        if (fbo != 0) {
+            resolveFramebuffers.put(key, fbo);
+        }
+        return fbo;
     }
 
     private int createResolveFramebuffer(RenderTarget framebuffer, boolean color, boolean depth, String role) {
@@ -266,7 +306,7 @@ public final class SodiumGlMsaaControl implements MsaaControl {
         if (color) {
             int colorId = textureId(framebuffer.getColorTexture());
             if (colorId <= 0) {
-                GL30.glDeleteFramebuffers(fbo);
+                deleteResolveFramebuffer(fbo);
                 return 0;
             }
             GlStateManager._glFramebufferTexture2D(
@@ -293,7 +333,7 @@ public final class SodiumGlMsaaControl implements MsaaControl {
         if (depth) {
             int depthId = textureId(framebuffer.getDepthTexture());
             if (depthId <= 0) {
-                GL30.glDeleteFramebuffers(fbo);
+                deleteResolveFramebuffer(fbo);
                 return 0;
             }
             GlStateManager._glFramebufferTexture2D(
@@ -315,11 +355,27 @@ public final class SodiumGlMsaaControl implements MsaaControl {
                     depth,
                     color ? samples(textureId(framebuffer.getColorTexture())) : 1,
                     depth ? samples(textureId(framebuffer.getDepthTexture())) : 1);
-            GL30.glDeleteFramebuffers(fbo);
+            deleteResolveFramebuffer(fbo);
             return 0;
         }
 
         return fbo;
+    }
+
+    private static void deleteResolveFramebuffer(Integer framebuffer) {
+        if (framebuffer != null && framebuffer != 0) {
+            GL30.glDeleteFramebuffers(framebuffer);
+        }
+    }
+
+    private record ResolveFramebufferKey(GpuTexture colorTexture,
+                                         GpuTexture depthTexture,
+                                         boolean color,
+                                         boolean depth) {
+        boolean referencesNativeTexture(int nativeTextureId) {
+            return (colorTexture != null && textureId(colorTexture) == nativeTextureId)
+                    || (depthTexture != null && textureId(depthTexture) == nativeTextureId);
+        }
     }
 
     @Override
@@ -334,5 +390,13 @@ public final class SodiumGlMsaaControl implements MsaaControl {
     @Override
     public void resetPipelineState() {
         glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
+    }
+
+    public void close() {
+        if (!RenderSystem.isOnRenderThread()) return;
+        for (Integer framebuffer : resolveFramebuffers.values()) {
+            deleteResolveFramebuffer(framebuffer);
+        }
+        resolveFramebuffers.clear();
     }
 }

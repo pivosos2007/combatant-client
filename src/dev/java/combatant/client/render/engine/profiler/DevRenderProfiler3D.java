@@ -165,10 +165,16 @@ public enum DevRenderProfiler3D {
         if (rhi.drawCalls() > 0 || rhi.renderPasses() > 0 || rhi.meshUploads() > 0 || rhi.fullscreenPasses() > 0
                 || rhi.textureFastCopies() > 0 || rhi.textureShaderCopies() > 0) {
             lines.add(String.format(
-                    "rhi: draws %d, passes/switches %d/%d, meshUploads %d, fullscreen %d, copies fast/shader %d/%d, uploaded v/i %s/%s",
+                    "rhi: draws %d, passes/attachments %d/%d, pipelines bind/skip/switch/unique %d/%d/%d/%d, uniforms/samplers %d/%d, meshUploads %d, fullscreen %d, copies fast/shader %d/%d, uploaded v/i %s/%s",
                     rhi.drawCalls(),
                     rhi.renderPasses(),
                     rhi.renderPassAttachmentSwitches(),
+                    rhi.pipelineBinds(),
+                    rhi.pipelineBindSkips(),
+                    rhi.pipelineSwitches(),
+                    rhi.uniquePipelines(),
+                    rhi.uniformBinds(),
+                    rhi.samplerBinds(),
                     rhi.meshUploads(),
                     rhi.fullscreenPasses(),
                     rhi.textureFastCopies(),

@@ -18,6 +18,7 @@ public record UiStatsSnapshot(long frameId,
                               int effectCommands,
                               int compiledPasses,
                               int compiledOrderedBatches,
+                              int compiledLegacySpecialPasses,
                               int rhiDrawCommands,
                               int backendDrawCalls) {
 }

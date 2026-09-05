@@ -193,10 +193,11 @@ final class ScriptedInventoryHudPanel {
             out.put("layout", layout != null ? layout : HudPanelLayoutModes.SPLIT_HEADER);
             out.put("cols", 9);
             out.put("rowsCount", 3);
-            out.put("gridStartX", 4.0f);
+            // Horizontal grid inset is owned by panel_base.js so header/body alignment
+            // cannot drift independently. Only the vertical grid geometry stays local.
             out.put("gridStartY", 22.0f);
             out.put("gridStep", 13.0f);
-            out.put("gridLineOffsetX", 11.0f);
+            out.put("gridLineOffsetX", 10.25f);
             out.put("gridLineOffsetY", 10.0f);
             out.put("gridLineLength", 9.0f);
             out.put("gridLineThickness", 0.5f);
@@ -210,9 +211,9 @@ final class ScriptedInventoryHudPanel {
         private LinkedHashMap<String, Object> variantProps() {
             LinkedHashMap<String, Object> out = new LinkedHashMap<>();
             out.put("bodyY", 18.4f);
-            out.put("headerDividerX", 18.0f);
-            out.put("titleIconX", 4.5f);
-            out.put("titleTextX", 22.0f);
+            // Header icon slot, divider, title and content inset are one shared
+            // horizontal contract in panel_base.js. Inventory only supplies
+            // feature-specific values here.
             out.put("countLabelOffset", 21.0f);
             out.put("countValueOffset", 2.0f);
             return out;

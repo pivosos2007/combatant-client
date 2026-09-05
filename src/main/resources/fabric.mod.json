@@ -7,8 +7,7 @@
   "authors": [
     "pivosos2007"
   ],
-  "contact": {
-  },
+  "contact": {},
   "license": "${mod_license}",
   "environment": "client",
   "entrypoints": {
@@ -27,6 +26,7 @@
   "suggests": {
     "iris": "*",
     "immediatelyfast": "*",
-    "viafabricplus": "*"
+    "viafabricplus": "*",
+    "sodium-extra": "*"
   }
 }

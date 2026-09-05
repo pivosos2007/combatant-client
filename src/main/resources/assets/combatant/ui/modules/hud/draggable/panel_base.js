@@ -42,8 +42,14 @@ export class HudPanelLayout {
       radius: 4.0,
       stroke: 0.55,
       softness: 1.0,
-      headerDividerY: 5.0,
       headerDividerH: 6.0,
+      // One optical rail for headers and list rows.  The icon occupies a fixed
+      // slot, the divider is centered after an equal visual gap, and text starts
+      // from the same rail everywhere.  Do not reintroduce per-panel X magic.
+      leftInsetX: 4.0,
+      headerIconSlotW: 8.0,
+      headerIconDividerGap: 3.0,
+      headerDividerTitleGap: 2.75,
     };
   }
 
@@ -61,6 +67,39 @@ export class HudPanelLayout {
 
   h() {
     return n(this.p.height, this.ctx.height || 30);
+  }
+
+  horizontalLayout() {
+    const bs = this.bs();
+    const left = n(prop(this.v, "leftInsetX", this.base.leftInsetX), this.base.leftInsetX) * bs;
+    const iconSlotW = n(prop(this.v, "headerIconSlotW", this.base.headerIconSlotW), this.base.headerIconSlotW) * bs;
+    const iconDividerGap = n(
+      prop(this.v, "headerIconDividerGap", this.base.headerIconDividerGap),
+      this.base.headerIconDividerGap
+    ) * bs;
+    const dividerTitleGap = n(
+      prop(this.v, "headerDividerTitleGap", this.base.headerDividerTitleGap),
+      this.base.headerDividerTitleGap
+    ) * bs;
+    const dividerW = Math.max(0.5 * n(this.p.drawScale, 1), 0.5 * bs);
+    const dividerCenterX = left + iconSlotW + iconDividerGap;
+    const dividerX = dividerCenterX - dividerW * 0.5;
+    const titleX = dividerCenterX + dividerW * 0.5 + dividerTitleGap;
+    const contentInsetX = n(prop(this.v, "contentInsetX", this.base.leftInsetX), this.base.leftInsetX) * bs;
+    return {
+      left,
+      iconSlotW,
+      iconCenterX: left + iconSlotW * 0.5,
+      dividerW,
+      dividerCenterX,
+      dividerX,
+      titleX,
+      contentInsetX,
+    };
+  }
+
+  contentInsetX() {
+    return this.horizontalLayout().contentInsetX;
   }
 
   panelShape(key, x, y, w, h, radii, colors, stroke, strokeW, extra = {}) {
@@ -296,11 +335,15 @@ export class HudPanelLayout {
 
   headerIconDivider(fillOverride) {
     const bs = this.bs();
+    const horizontal = this.horizontalLayout();
+    const headerH = this.base.headerH * bs;
+    const dividerH = this.base.headerDividerH * bs;
+    const dividerY = (headerH - dividerH) * 0.5;
     return ui.shape({
       key: "header:divider",
       shape: "rounded",
-      class: abs(n(prop(this.v, "headerDividerX", 18), 18) * bs, this.base.headerDividerY * bs, Math.max(0.5 * n(this.p.drawScale, 1), 0.5 * bs), this.base.headerDividerH * bs),
-      radius: 0.5 * bs,
+      class: abs(horizontal.dividerX, dividerY, horizontal.dividerW, dividerH),
+      radius: Math.min(0.5 * bs, horizontal.dividerW * 0.5),
       fill: fillOverride || color(this.pal, "divider", "#66FFFFFF"),
     });
   }
@@ -314,6 +357,7 @@ export class HudPanelLayout {
     const titleH = n(this.p.headerTextHeight, 8);
     const iconH = n(this.p.headerIconHeight, 8);
     const iconScale = Math.max(0.25, n(prop(this.v, "headerIconScale", 1), 1));
+    const horizontal = this.horizontalLayout();
     const count = String(Math.max(0, Math.round(n(this.p.activeCount, 0))));
     const counterLabelText = c(counterLabel, "Active:");
     const measuredCountValueW = n(this.p.countValueWidth, 0);
@@ -324,10 +368,10 @@ export class HudPanelLayout {
     const countValueX = w - countValueW - n(prop(this.v, "countValueOffset", 3), 3) * bs;
     const countLabelX = countValueX - countLabelW - countGap;
     const countY = (headerH - rowTextH) * 0.5 + 0.8 * bs;
-    const titleX = n(prop(this.v, "titleTextX", 22), 22) * bs;
+    const titleX = horizontal.titleX;
     const titleW = Math.max(0, countLabelX - titleX - 4 * bs);
-    const titleY = (headerH - titleH) * 0.5 + 0.25 * bs;
-    const iconY = (headerH - iconH) * 0.5 - 0.1 * bs;
+    const titleY = (headerH - titleH) * 0.5;
+    const iconY = (headerH - iconH) * 0.5;
 
     return [
       ui.text({
@@ -350,7 +394,7 @@ export class HudPanelLayout {
         gradientStartColor: c(this.p.headerIconGradientStart, c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))),
         gradientEndColor: c(this.p.headerIconGradientEnd, c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))),
         gradientAngle: n(this.p.headerIconGradientAngle, 45),
-        class: cls(abs(n(prop(this.v, "titleIconX", 5), 5) * bs, iconY, 12 * bs * iconScale, iconH + 4 * bs), font(c(prop(this.v, "headerIconFont", "IconsNur"), "IconsNur"), fs * iconScale), `text-${c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))}`),
+        class: cls(abs(horizontal.left, iconY, horizontal.iconSlotW, iconH + 4 * bs), font(c(prop(this.v, "headerIconFont", "IconsNur"), "IconsNur"), fs * iconScale), `text-${c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))}`, "text-align-center"),
       }),
       ui.text({
         key: "header:title",

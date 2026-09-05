@@ -11,8 +11,6 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import combatant.client.mixininterface.IGpuDevice;
 import combatant.client.render.engine.core.ViewportContext;
-import combatant.client.render.engine.renderer.RenderWarp;
-import combatant.client.render.engine.renderer.RenderWarpStack;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 
@@ -31,7 +29,6 @@ public enum ScissorFunction {
     private static final Deque<ScissorState> STACK = new ArrayDeque<>();
     private static ScissorState appliedScissor;
     private static long nextSnapshotId = 1L;
-    private static final ThreadLocal<double[]> WARP_BOUNDS = ThreadLocal.withInitial(() -> new double[4]);
 
     /**
      * Push scissor using top-left coordinates in the caller's current framebuffer/UI space.
@@ -43,19 +40,6 @@ public enum ScissorFunction {
             float height
     ) {
         if (mc == null || mc.getWindow() == null) return false;
-
-        // Raster scissors stay axis-aligned, so under a perspective UI warp use the conservative
-        // screen-space AABB of the same logical rectangle. The exact rounded boundary remains the
-        // job of the shape clip; this coarse guard must never amputate its warped edges.
-        RenderWarp warp = RenderWarpStack.current();
-        if (warp.active()) {
-            double[] warped = WARP_BOUNDS.get();
-            warp.mapBounds(x, y, width, height, warped);
-            x = (float) warped[0];
-            y = (float) warped[1];
-            width = (float) warped[2];
-            height = (float) warped[3];
-        }
 
         float uiScale = ViewportContext.getUiScale();
         if (uiScale != 1.0f) {

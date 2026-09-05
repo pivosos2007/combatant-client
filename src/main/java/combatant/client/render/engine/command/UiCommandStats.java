@@ -19,6 +19,7 @@ public final class UiCommandStats {
     private int effectCommands;
     private int compiledPasses;
     private int compiledOrderedBatches;
+    private int compiledLegacySpecialPasses;
     private int rhiDrawCommands;
     private int backendDrawCalls;
 
@@ -27,7 +28,7 @@ public final class UiCommandStats {
         this.frameId = frameId;
         recordedCommands = shapeCommands = pathCommands = primitiveCommands = textureCommands = 0;
         textCommands = itemCommands = effectCommands = 0;
-        compiledPasses = compiledOrderedBatches = rhiDrawCommands = backendDrawCalls = 0;
+        compiledPasses = compiledOrderedBatches = compiledLegacySpecialPasses = rhiDrawCommands = backendDrawCalls = 0;
     }
 
     public void record(UiCommand command) {
@@ -52,6 +53,10 @@ public final class UiCommandStats {
         compiledOrderedBatches += Math.max(0, count);
     }
 
+    public void addCompiledLegacySpecialPasses(int count) {
+        compiledLegacySpecialPasses += Math.max(0, count);
+    }
+
     public void addExecutionStats(int drawCommands, int drawCalls) {
         rhiDrawCommands += Math.max(0, drawCommands);
         backendDrawCalls += Math.max(0, drawCalls);
@@ -70,6 +75,7 @@ public final class UiCommandStats {
                 effectCommands,
                 compiledPasses,
                 compiledOrderedBatches,
+                compiledLegacySpecialPasses,
                 rhiDrawCommands,
                 backendDrawCalls
         );

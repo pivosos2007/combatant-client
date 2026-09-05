@@ -17,8 +17,8 @@ import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.msaa.MsaaFramebuffer;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
+import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.render.engine.renderer.MeshRenderer;
-import combatant.client.render.engine.renderer.RenderWarp;
 import combatant.client.render.engine.renderer.ui.draw.UiRect;
 import combatant.client.render.engine.rhi.scissor.GlobalScissorState;
 import combatant.client.render.engine.uniform.MeshBuilder;
@@ -44,25 +44,27 @@ public final class UiMsaaClipLayer {
     private static @Nullable ActiveLayer active;
     private static @Nullable MeshBuilder compositeMesh;
     private static boolean colorClearPending;
-    private static final ThreadLocal<double[]> WARP_BOUNDS = ThreadLocal.withInitial(() -> new double[4]);
     private static int allocatedSamples;
     private static String state = "idle";
 
     private UiMsaaClipLayer() {
     }
 
-    public static boolean begin(UiClipSnapshot snapshot, @Nullable RenderWarp warp) {
+    public static boolean begin(UiClipSnapshot snapshot) {
         if (snapshot == null || !snapshot.usesMsaaStencil()) return false;
         if (active != null) return true;
+        UiPipelineTelemetry.recordMsaaLayerAttempt();
 
         Minecraft minecraft = Minecraft.getInstance();
         ViewportContext viewport = ViewportContext.current();
         if (minecraft == null || minecraft.gameRenderer == null || viewport == null) {
             state = "missing_context";
+            UiPipelineTelemetry.recordMsaaLayerFallback();
             return false;
         }
         if (!CombatantRenderSystem.rhi().msaa().supported()) {
             state = "msaa_unsupported";
+            UiPipelineTelemetry.recordMsaaLayerFallback();
             return false;
         }
 
@@ -71,14 +73,14 @@ public final class UiMsaaClipLayer {
                 parentTarget != null ? parentTarget.getColorTextureView() : null);
         if (parentColor == null) {
             state = "missing_parent_color";
+            UiPipelineTelemetry.recordMsaaLayerFallback();
             return false;
         }
 
-        UiRect sourceBounds = snapshot.logicalBounds();
-        UiRect screenBounds = warpedBounds(sourceBounds, warp);
-        PixelBounds pixels = pixelBounds(screenBounds, viewport);
+        PixelBounds pixels = pixelBounds(snapshot.logicalBounds(), viewport);
         if (pixels == null) {
             state = "empty_bounds";
+            UiPipelineTelemetry.recordMsaaLayerFallback();
             return false;
         }
 
@@ -87,6 +89,7 @@ public final class UiMsaaClipLayer {
             ensureTargets(pixels.width(), pixels.height(), requestedSamples);
             if (msaaTarget == null || resolveTarget == null || msaaTarget.getColorTextureView() == null) {
                 state = "allocation_failed";
+                UiPipelineTelemetry.recordMsaaLayerFallback();
                 return false;
             }
 
@@ -100,6 +103,8 @@ public final class UiMsaaClipLayer {
             applyLocalViewport(viewport);
             replaceScissorForLocalLayer(parentScissor);
             state = "active";
+            UiPipelineTelemetry.recordMsaaLayerBegin(
+                    pixels.width(), pixels.height(), msaaTarget.getSamples());
             DebugLog.stencilOnChange(
                     "ui.clip.msaa.active",
                     pixels.width() + "x" + pixels.height() + "|" + msaaTarget.getSamples(),
@@ -116,6 +121,7 @@ public final class UiMsaaClipLayer {
                 ViewportContext.applyCaptured(failed.parentViewport());
             }
             state = "begin_failed";
+            UiPipelineTelemetry.recordMsaaLayerFallback();
             DebugLog.warnOnChange(
                     "ui.clip.msaa.begin_failed",
                     t.getClass().getSimpleName() + "|" + t.getMessage(),
@@ -148,6 +154,8 @@ public final class UiMsaaClipLayer {
             restoreScissor(layer.parentScissor());
             ViewportContext.applyCaptured(layer.parentViewport());
         }
+
+        UiPipelineTelemetry.recordMsaaResolve(resolved);
 
         if (resolved) {
             composite(layer);
@@ -256,8 +264,10 @@ public final class UiMsaaClipLayer {
             }
             msaaTarget = new MsaaFramebuffer("combatant-ui-msaa-clip", width, height, false, samples);
             allocatedSamples = samples;
+            UiPipelineTelemetry.recordMsaaTargetAllocation();
         } else if (msaaTarget.width != width || msaaTarget.height != height) {
             msaaTarget.resize(width, height);
+            UiPipelineTelemetry.recordMsaaTargetResize();
         }
         resolveTarget = CombatantRenderSystem.resources().persistentFramebuffer(
                 "combatant-ui-msaa-clip-resolve", width, height, false, RESOLVE_OWNER
@@ -280,6 +290,7 @@ public final class UiMsaaClipLayer {
                 .uniform("UIBatch", UIBatchUniforms.get())
                 .sampler("u_Texture", resolveTarget.getColorTextureView(), sampler)
                 .end();
+        UiPipelineTelemetry.recordMsaaComposite();
     }
 
     private static MeshBuilder texturedFramebufferQuad(UiRect bounds) {
@@ -292,22 +303,13 @@ public final class UiMsaaClipLayer {
         float x2 = x + bounds.width();
         float y2 = y + bounds.height();
         // Render-target textures use a bottom-left framebuffer origin.
-        // The resolved pixels are already warped inside this screen-space AABB. Applying the
-        // current RenderWarp again here would distort and crop the composite a second time.
-        int i1 = mesh.raw2(x, y).raw2(0.0, 1.0).color(255, 255, 255, 255).next();
-        int i2 = mesh.raw2(x, y2).raw2(0.0, 0.0).color(255, 255, 255, 255).next();
-        int i3 = mesh.raw2(x2, y2).raw2(1.0, 0.0).color(255, 255, 255, 255).next();
-        int i4 = mesh.raw2(x2, y).raw2(1.0, 1.0).color(255, 255, 255, 255).next();
+        int i1 = mesh.vec2(x, y).raw2(0.0, 1.0).color(255, 255, 255, 255).next();
+        int i2 = mesh.vec2(x, y2).raw2(0.0, 0.0).color(255, 255, 255, 255).next();
+        int i3 = mesh.vec2(x2, y2).raw2(1.0, 0.0).color(255, 255, 255, 255).next();
+        int i4 = mesh.vec2(x2, y).raw2(1.0, 1.0).color(255, 255, 255, 255).next();
         mesh.quad(i1, i2, i3, i4);
         mesh.end();
         return mesh;
-    }
-
-    private static UiRect warpedBounds(UiRect bounds, @Nullable RenderWarp warp) {
-        if (bounds == null || bounds.empty() || warp == null || !warp.active()) return bounds;
-        double[] mapped = WARP_BOUNDS.get();
-        warp.mapBounds(bounds.x(), bounds.y(), bounds.width(), bounds.height(), mapped);
-        return new UiRect((float) mapped[0], (float) mapped[1], (float) mapped[2], (float) mapped[3]);
     }
 
     private static @Nullable PixelBounds pixelBounds(UiRect bounds, ViewportContext viewport) {

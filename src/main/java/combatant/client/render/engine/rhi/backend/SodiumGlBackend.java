@@ -17,6 +17,8 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
 import org.joml.Vector4f;
 import org.joml.Vector4fc;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.MemoryStack;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.profiler.RenderCostProfiler;
@@ -44,13 +46,17 @@ import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Current production RHI backend for the Sodium/GL era.
  * Sodium is the priority integration target; Mojang GPU objects are used as the compatibility surface where needed.
  */
 public final class SodiumGlBackend implements CombatantRhi {
+    private static final int MAX_MULTI_DRAW_GROUP = 1024;
     private final RhiStats stats = new RhiStats();
+    private RhiCapabilities capabilities;
     private final Blaze3dDynamicMeshBackend dynamicMeshes = new Blaze3dDynamicMeshBackend(stats);
     private final Blaze3dFullscreenBackend fullscreen = new Blaze3dFullscreenBackend();
     private final Blaze3dTextureBlitter blitter = new Blaze3dTextureBlitter(stats);
@@ -133,6 +139,12 @@ public final class SodiumGlBackend implements CombatantRhi {
     }
 
     @Override
+    public RhiCapabilities capabilities() {
+        if (capabilities == null) capabilities = RhiCapabilities.current();
+        return capabilities;
+    }
+
+    @Override
     public RenderPipelineRegistry pipelines() {
         return pipelines;
     }
@@ -191,13 +203,34 @@ public final class SodiumGlBackend implements CombatantRhi {
         RhiDrawCommand first = commands.get(start);
         stats.renderPass(first.colorAttachment, first.depthAttachment);
         try (RenderPass pass = createPass(first.label, first.colorAttachment, first.clearColor, first.depthAttachment, first.clearDepth)) {
-            for (int i = start; i < end; i++) {
-                drawInPass(pass, commands.get(i));
+            PassBindingCache bindings = new PassBindingCache();
+            com.mojang.blaze3d.pipeline.RenderPipeline activePipeline = null;
+            boolean multiDrawAvailable = capabilities().multiDrawDirectSeparate();
+
+            int cursor = start;
+            while (cursor < end) {
+                RhiDrawCommand command = commands.get(cursor);
+                int groupEnd = cursor + 1;
+                if (multiDrawAvailable && multiDrawCandidate(command)) {
+                    int hardEnd = Math.min(end, cursor + MAX_MULTI_DRAW_GROUP);
+                    while (groupEnd < hardEnd && canMultiDrawTogether(command, commands.get(groupEnd))) {
+                        groupEnd++;
+                    }
+                }
+
+                boolean bindPipeline = command.pipeline != activePipeline;
+                if (groupEnd - cursor >= 2) {
+                    drawMultiInPass(pass, commands, cursor, groupEnd, bindPipeline, bindings);
+                } else {
+                    drawInPass(pass, command, bindPipeline, bindings);
+                }
+                activePipeline = command.pipeline;
+                cursor = groupEnd;
             }
         }
     }
 
-    private void drawInPass(RenderPass pass, RhiDrawCommand command) {
+    private void drawInPass(RenderPass pass, RhiDrawCommand command, boolean bindPipeline, PassBindingCache bindings) {
         command.mesh.validateForDraw(command.label);
         try (RenderCostProfiler.Scope ignoredCost = RenderCostProfiler.rhiDraw(command.label)) {
             boolean pushMv = command.transform != null || command.applyWorldCameraY;
@@ -208,46 +241,157 @@ public final class SodiumGlBackend implements CombatantRhi {
                 if (command.transform != null) RenderSystem.getModelViewStack().mul(command.transform);
                 if (command.applyWorldCameraY) applyCameraPosY(RenderSystem.getModelViewStack());
 
-                GpuBufferSlice meshData = null;
-                if (requiresMeshData(command.pipelineSpec)) {
-                    MeshUniforms.update(
-                            MeshRenderer.copyProjection(projectionScratch),
-                            meshModelView(command),
-                            command.colorAttachment.getWidth(0),
-                            command.colorAttachment.getHeight(0)
-                    );
-                    meshData = MeshUniforms.get();
-                }
-                GpuBufferSlice uiBatch = null;
-                if (requiresUiBatch(command.pipelineSpec) && !command.hasUniform("UIBatch")) {
-                    ViewportContext viewport = ViewportContext.current();
-                    UIBatchUniforms.update(
-                            viewport != null ? viewport.framebufferWidth() : command.colorAttachment.getWidth(0),
-                            viewport != null ? viewport.framebufferHeight() : command.colorAttachment.getHeight(0));
-                    uiBatch = UIBatchUniforms.get();
-                }
-
-                if (command.pipelineSpec == null) pipelines.require(command.pipeline);
-                if (CombatantRenderPipelines.isRigPipeline(command.pipeline)) {
-                    IrisRuntime.setNativePipeline(pass, command.pipeline);
-                } else {
-                    pass.setPipeline(command.pipeline);
-                }
-                if (meshData != null) pass.setUniform("MeshData", meshData);
-                if (uiBatch != null) pass.setUniform("UIBatch", uiBatch);
-                for (RhiUniformBinding uniform : command.uniforms) {
-                    pass.setUniform(uniform.name(), uniform.slice());
-                }
-                for (RhiSamplerBinding sampler : command.samplers) {
-                    pass.bindTexture(sampler.name(), sampler.view(), sampler.sampler());
-                }
-                pass.setVertexBuffer(0, command.mesh.vertexBuffer().slice());
-                pass.setIndexBuffer(command.mesh.indexBuffer(), command.mesh.indexType());
+                BindingCounts emitted = bindDrawState(pass, command, bindPipeline, bindings);
+                stats.pipelineUse(command.pipeline, command.pipelineSpec, emitted.uniforms(), emitted.samplers(), bindPipeline);
                 command.mesh.drawIndexed(pass, command.label);
                 stats.drawCall();
             } finally {
                 RenderState.lineWidth = previousLineWidth;
                 if (pushMv) RenderSystem.getModelViewStack().popMatrix();
+            }
+        }
+    }
+
+    private void drawMultiInPass(RenderPass pass, List<RhiDrawCommand> commands, int start, int end,
+                                 boolean bindPipeline, PassBindingCache bindings) {
+        RhiDrawCommand first = commands.get(start);
+        String label = first.label + " [multi x" + (end - start) + "]";
+        try (RenderCostProfiler.Scope ignoredCost = RenderCostProfiler.rhiDraw(label);
+             MemoryStack stack = MemoryStack.stackPush()) {
+            for (int i = start; i < end; i++) {
+                commands.get(i).mesh.validateForDraw(commands.get(i).label);
+            }
+
+            float previousLineWidth = RenderState.lineWidth;
+            try {
+                RenderState.lineWidth = first.lineWidth > 0.0f ? first.lineWidth : previousLineWidth;
+                BindingCounts emitted = bindDrawState(pass, first, bindPipeline, bindings);
+
+                int drawCount = end - start;
+                PointerBuffer firstIndexOffsets = stack.mallocPointer(drawCount);
+                java.nio.IntBuffer indexCounts = stack.mallocInt(drawCount);
+                java.nio.IntBuffer baseVertices = stack.mallocInt(drawCount);
+                int indexBytes = first.mesh.indexType().bytes;
+                for (int i = start; i < end; i++) {
+                    GpuMeshHandle mesh = commands.get(i).mesh;
+                    int out = i - start;
+                    firstIndexOffsets.put(out, (long) mesh.firstIndex() * indexBytes);
+                    indexCounts.put(out, mesh.indexCount());
+                    baseVertices.put(out, mesh.baseVertex());
+                }
+
+                pass.multiDrawIndexed(firstIndexOffsets, indexCounts, baseVertices, drawCount);
+                stats.pipelineUse(first.pipeline, first.pipelineSpec, emitted.uniforms(), emitted.samplers(), bindPipeline);
+                for (int i = start + 1; i < end; i++) {
+                    RhiDrawCommand command = commands.get(i);
+                    stats.pipelineUse(command.pipeline, command.pipelineSpec, 0, 0, false);
+                }
+                stats.multiDrawCall(drawCount);
+            } finally {
+                RenderState.lineWidth = previousLineWidth;
+            }
+        }
+    }
+
+    private BindingCounts bindDrawState(RenderPass pass, RhiDrawCommand command, boolean bindPipeline, PassBindingCache bindings) {
+        GpuBufferSlice meshData = null;
+        if (requiresMeshData(command.pipelineSpec)) {
+            MeshUniforms.update(
+                    MeshRenderer.copyProjection(projectionScratch),
+                    meshModelView(command),
+                    command.colorAttachment.getWidth(0),
+                    command.colorAttachment.getHeight(0)
+            );
+            meshData = MeshUniforms.get();
+        }
+        GpuBufferSlice uiBatch = null;
+        if (requiresUiBatch(command.pipelineSpec) && !command.hasUniform("UIBatch")) {
+            ViewportContext viewport = ViewportContext.current();
+            UIBatchUniforms.update(
+                    viewport != null ? viewport.framebufferWidth() : command.colorAttachment.getWidth(0),
+                    viewport != null ? viewport.framebufferHeight() : command.colorAttachment.getHeight(0));
+            uiBatch = UIBatchUniforms.get();
+        }
+
+        if (command.pipelineSpec == null) pipelines.require(command.pipeline);
+        if (bindPipeline) {
+            if (CombatantRenderPipelines.isRigPipeline(command.pipeline)) {
+                IrisRuntime.setNativePipeline(pass, command.pipeline);
+            } else {
+                pass.setPipeline(command.pipeline);
+            }
+        }
+
+        int uniformBinds = 0;
+        int samplerBinds = 0;
+        if (meshData != null && bindings.bindUniform(pass, "MeshData", meshData)) uniformBinds++;
+        if (uiBatch != null && bindings.bindUniform(pass, "UIBatch", uiBatch)) uniformBinds++;
+        for (RhiUniformBinding uniform : command.uniforms) {
+            if (bindings.bindUniform(pass, uniform.name(), uniform.slice())) uniformBinds++;
+        }
+        for (RhiSamplerBinding sampler : command.samplers) {
+            if (bindings.bindSampler(pass, sampler)) samplerBinds++;
+        }
+        bindings.bindMesh(pass, command.mesh);
+        return new BindingCounts(uniformBinds, samplerBinds);
+    }
+
+    private static boolean multiDrawCandidate(RhiDrawCommand command) {
+        return drawable(command)
+                && command.transform == null
+                && !command.applyWorldCameraY
+                && !CombatantRenderPipelines.isRigPipeline(command.pipeline);
+    }
+
+    private static boolean canMultiDrawTogether(RhiDrawCommand first, RhiDrawCommand next) {
+        if (!multiDrawCandidate(next)) return false;
+        return first.pipeline == next.pipeline
+                && first.mesh.vertexBuffer() == next.mesh.vertexBuffer()
+                && first.mesh.indexBuffer() == next.mesh.indexBuffer()
+                && first.mesh.indexType() == next.mesh.indexType()
+                && Float.compare(first.lineWidth, next.lineWidth) == 0
+                && first.uniforms.equals(next.uniforms)
+                && first.samplers.equals(next.samplers);
+    }
+
+    private record BindingCounts(int uniforms, int samplers) {
+    }
+
+    private record SamplerState(com.mojang.blaze3d.textures.GpuTextureView view,
+                                com.mojang.blaze3d.textures.GpuSampler sampler) {
+    }
+
+    private static final class PassBindingCache {
+        private final Map<String, GpuBufferSlice> uniforms = new HashMap<>();
+        private final Map<String, SamplerState> samplers = new HashMap<>();
+        private com.mojang.blaze3d.buffers.GpuBuffer vertexBuffer;
+        private com.mojang.blaze3d.buffers.GpuBuffer indexBuffer;
+        private com.mojang.blaze3d.IndexType indexType;
+
+        boolean bindUniform(RenderPass pass, String name, GpuBufferSlice slice) {
+            if (slice.equals(uniforms.get(name))) return false;
+            pass.setUniform(name, slice);
+            uniforms.put(name, slice);
+            return true;
+        }
+
+        boolean bindSampler(RenderPass pass, RhiSamplerBinding binding) {
+            SamplerState next = new SamplerState(binding.view(), binding.sampler());
+            if (next.equals(samplers.get(binding.name()))) return false;
+            pass.bindTexture(binding.name(), binding.view(), binding.sampler());
+            samplers.put(binding.name(), next);
+            return true;
+        }
+
+        void bindMesh(RenderPass pass, GpuMeshHandle mesh) {
+            if (vertexBuffer != mesh.vertexBuffer()) {
+                pass.setVertexBuffer(0, mesh.vertexBuffer().slice());
+                vertexBuffer = mesh.vertexBuffer();
+            }
+            if (indexBuffer != mesh.indexBuffer() || indexType != mesh.indexType()) {
+                pass.setIndexBuffer(mesh.indexBuffer(), mesh.indexType());
+                indexBuffer = mesh.indexBuffer();
+                indexType = mesh.indexType();
             }
         }
     }
@@ -299,6 +443,8 @@ public final class SodiumGlBackend implements CombatantRhi {
                     clearColor(command.clearColor)
             )) {
                 if (command.pipelineSpec == null) pipelines.require(command.pipeline);
+                stats.pipelineUse(command.pipeline, command.pipelineSpec,
+                        command.uniforms.size() + 1, command.samplers.size(), true);
                 pass.setPipeline(command.pipeline);
                 pass.setUniform("MeshData", meshData);
                 for (RhiUniformBinding uniform : command.uniforms) {
@@ -330,6 +476,7 @@ public final class SodiumGlBackend implements CombatantRhi {
 
     @Override
     public void close() {
+        msaa.close();
         dynamicMeshes.close();
         fullscreen.close();
         resources.close();

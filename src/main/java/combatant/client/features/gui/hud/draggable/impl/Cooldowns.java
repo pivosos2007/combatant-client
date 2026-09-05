@@ -85,6 +85,8 @@ public final class Cooldowns extends DraggableHudElement {
     private static final String COLOR_CUSTOM = "Custom";
     private static final String EFFECT_NONE = "None";
     private static final String EFFECT_BLUR = "Blur";
+    private static final String TIME_TEXT = "Text";
+    private static final String TIME_PILL = "Pill";
     private static final int PVP_ACTIVE_COLOR = 0xFFFFA500;
     private static final int PVP_IDLE_COLOR = 0xFF00A0FF;
     private static final int PVP_BLOCKED_COLOR = 0xFFFF5656;
@@ -112,6 +114,10 @@ public final class Cooldowns extends DraggableHudElement {
             new NumberValue<>("cooldowns_theme_gradient_strength", 72, 0, 100);
     private final ModeValue bgEffect =
             new ModeValue("cooldowns_bg_effect", "Blur", EFFECT_NONE, EFFECT_BLUR);
+    private final ModeValue timeDisplay =
+            new ModeValue("cooldowns_time_display", TIME_PILL, TIME_TEXT, TIME_PILL);
+    private final NumberValue<Integer> timePillAlpha =
+            new NumberValue<>("cooldowns_time_pill_alpha", 188, 0, 255);
     private final BooleanValue blink =
             new BooleanValue("cooldowns_blink", true);
     private final RGBAColorValue bg =
@@ -152,6 +158,7 @@ public final class Cooldowns extends DraggableHudElement {
 
     private final Map<String, Float> entryAnim = new LinkedHashMap<>();
     private final Map<String, Row> lastEntries = new LinkedHashMap<>();
+    private final Map<String, Float> rightTextWidthReserve = new LinkedHashMap<>();
     private final List<QueuedItemIcon> pendingItemTasks = new ArrayList<>(9);
     private float displayWidth = -1.0f;
     private float displayHeight = -1.0f;
@@ -215,6 +222,8 @@ public final class Cooldowns extends DraggableHudElement {
         defs.add(SettingDef.colorNoAlpha(muted).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.mode(bgEffect));
         defs.add(SettingDef.number(blurAlpha).visibleWhen(this::hasEffect));
+        defs.add(SettingDef.mode(timeDisplay));
+        defs.add(SettingDef.number(timePillAlpha).visibleWhen(this::isTimePill));
         defs.add(SettingDef.bool(blink));
         defs.add(SettingDef.bool(headerIconPulse));
         defs.add(SettingDef.number(headerIconPulseSpeed).visibleWhen(headerIconPulse::get));
@@ -249,7 +258,7 @@ public final class Cooldowns extends DraggableHudElement {
         }
 
         boolean chatPreview = ClientScreen.current() instanceof ChatScreen;
-        List<Row> rows = collectRows();
+        List<Row> rows = collectRows(tickDelta);
         List<AnimatedRow> animatedRows = animateRows(rows);
         boolean showExampleRow = rows.isEmpty() && (forceVisible || chatPreview);
         boolean showWidget = !rows.isEmpty() || showExampleRow;
@@ -286,14 +295,53 @@ public final class Cooldowns extends DraggableHudElement {
         rowTextRenderer.begin(fontScale, true, false);
         float rowTextH = (float) rowTextRenderer.getHeight(false);
         float maxWidth = MIN_WIDTH * baseScale;
-        if (showExampleRow) {
-            float previewWidth = (float) rowTextRenderer.getWidth("Example Cooldowns**:**", false) + (30.0f * baseScale);
-            maxWidth = Math.max(maxWidth, previewWidth);
+        if (!isTimePill()) {
+            // Preserve the exact legacy text-mode sizing. Decimal/pill envelopes are
+            // pill-only state and must never resize the ordinary cooldown panel.
+            rightTextWidthReserve.clear();
+            if (showExampleRow) {
+                float previewWidth = (float) rowTextRenderer.getWidth("Example Cooldowns**:**", false) + (30.0f * baseScale);
+                maxWidth = Math.max(maxWidth, previewWidth);
+            } else {
+                for (AnimatedRow animatedRow : animatedRows) {
+                    Row row = animatedRow.row();
+                    float widthCandidate = (float) rowTextRenderer.getWidth(row.name() + row.duration(), false) + (30.0f * baseScale);
+                    maxWidth = Math.max(maxWidth, widthCandidate);
+                }
+            }
         } else {
-            for (AnimatedRow animatedRow : animatedRows) {
-                Row row = animatedRow.row();
-                float widthCandidate = (float) rowTextRenderer.getWidth(row.name() + row.duration(), false) + (30.0f * baseScale);
-                maxWidth = Math.max(maxWidth, widthCandidate);
+            float widestDigitWidth = ScriptedListHudPanel.widestDigitWidth(rowTextRenderer);
+            // Cooldowns switch to a decimal format below ten seconds. Reserve that measured
+            // formatter shape only for the pill, where stable geometry is required.
+            float subTenEnvelope = ScriptedListHudPanel.stableNumericTextWidth(
+                    rowTextRenderer, formatSeconds(9.9f), widestDigitWidth
+            );
+            if (showExampleRow) {
+                float labelWidth = (float) rowTextRenderer.getWidth("Example Cooldowns", false);
+                float timeWidth = Math.max(
+                        ScriptedListHudPanel.stableNumericTextWidth(rowTextRenderer, "**:**", widestDigitWidth),
+                        subTenEnvelope
+                );
+                maxWidth = Math.max(maxWidth, ScriptedListHudPanel.rowRequiredWidth(
+                        ScriptedListHudPanel.COOLDOWNS, baseScale, labelWidth,
+                        ScriptedListHudPanel.timePillWidth(timeWidth, baseScale)
+                ));
+            } else {
+                for (AnimatedRow animatedRow : animatedRows) {
+                    Row row = animatedRow.row();
+                    float labelWidth = (float) rowTextRenderer.getWidth(row.name(), false);
+                    float measuredTimeWidth = Math.max(
+                            ScriptedListHudPanel.stableNumericTextWidth(rowTextRenderer, row.duration(), widestDigitWidth),
+                            subTenEnvelope
+                    );
+                    float timeWidth = ScriptedListHudPanel.reserveMeasuredWidth(
+                            rightTextWidthReserve, row.key(), measuredTimeWidth
+                    );
+                    maxWidth = Math.max(maxWidth, ScriptedListHudPanel.rowRequiredWidth(
+                            ScriptedListHudPanel.COOLDOWNS, baseScale, labelWidth,
+                            ScriptedListHudPanel.timePillWidth(timeWidth, baseScale)
+                    ));
+                }
             }
         }
         rowTextRenderer.end();
@@ -375,7 +423,7 @@ public final class Cooldowns extends DraggableHudElement {
         rowTextRenderer.begin(drawFontScale, false, false);
         if (showExampleRow) {
             ItemStack stack = previewStacks()[(int) ((System.currentTimeMillis() / 1000L) % previewStacks().length)];
-            panelRows.add(ScriptedListHudPanel.row(
+            LinkedHashMap<String, Object> row = ScriptedListHudPanel.row(
                     "preview",
                     "item",
                     BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(),
@@ -384,17 +432,33 @@ public final class Cooldowns extends DraggableHudElement {
                     withAlpha(uiCounter & 0x00FFFFFF, 255),
                     withAlpha(uiMuted & 0x00FFFFFF, 130),
                     1.0f
-            ));
+            );
+            ScriptedListHudPanel.rowLayoutProgress(row, 1.0f);
+            if (isTimePill()) {
+                float previewTimeWidth = Math.max(
+                        ScriptedListHudPanel.stableNumericTextWidth(
+                                rowTextRenderer, "**:**", ScriptedListHudPanel.widestDigitWidth(rowTextRenderer)
+                        ),
+                        ScriptedListHudPanel.stableNumericTextWidth(
+                                rowTextRenderer, formatSeconds(9.9f), ScriptedListHudPanel.widestDigitWidth(rowTextRenderer)
+                        )
+                );
+                ScriptedListHudPanel.timePillTextWidth(row, previewTimeWidth);
+                applyTimePill(row, "preview", 0.62f, uiCounter, false, 1.0f);
+            }
+            panelRows.add(row);
         } else {
             for (AnimatedRow animatedRow : animatedRows) {
                 float anim = animatedRow.anim();
                 if (anim <= 0.01f) continue;
+                float visualAlpha = animatedRow.visualAlpha();
+                float layoutProgress = animatedRow.layoutProgress();
                 Row rowData = animatedRow.row();
-                int rowBaseAlpha = clamp255(Math.round(255.0f * anim));
+                int rowBaseAlpha = clamp255(Math.round(255.0f * visualAlpha));
                 int iconAlpha = getBlinkAlpha(rowData, rowBaseAlpha, 110);
                 int textAlpha = getBlinkAlpha(rowData, rowBaseAlpha, 95);
                 int timeAlpha = getBlinkAlpha(rowData, rowBaseAlpha, 60);
-                panelRows.add(ScriptedListHudPanel.row(
+                LinkedHashMap<String, Object> row = ScriptedListHudPanel.row(
                         rowData.key(),
                         "item",
                         BuiltInRegistries.ITEM.getKey(rowData.stack().getItem()).toString(),
@@ -402,8 +466,17 @@ public final class Cooldowns extends DraggableHudElement {
                         rowData.duration(),
                         withAlpha(rowData.timeColor() & 0x00FFFFFF, timeAlpha),
                         withAlpha(uiMuted & 0x00FFFFFF, Math.max(26, iconAlpha - 120)),
-                        anim
-                ));
+                        visualAlpha
+                );
+                ScriptedListHudPanel.rowLayoutProgress(row, layoutProgress);
+                if (isTimePill()) {
+                    float reservedTimeWidth = rightTextWidthReserve.getOrDefault(
+                            rowData.key(), (float) rowTextRenderer.getWidth(rowData.duration(), false) / Math.max(0.0001f, drawScale)
+                    ) * drawScale;
+                    ScriptedListHudPanel.timePillTextWidth(row, reservedTimeWidth);
+                    applyTimePill(row, rowData.key(), rowData.timeProgress(), rowData.timeAccentColor(), rowData.danger(), visualAlpha);
+                }
+                panelRows.add(row);
             }
         }
         rowTextRenderer.end();
@@ -539,7 +612,7 @@ public final class Cooldowns extends DraggableHudElement {
         itemTasks.add(new QueuedItemIcon(stack.copy(), itemDrawX, itemDrawY, itemScale, seed));
     }
 
-    private List<Row> collectRows() {
+    private List<Row> collectRows(float tickDelta) {
         List<Row> rows = new ArrayList<>();
         if (mc != null && mc.player != null) {
             var manager = mc.player.getCooldowns();
@@ -552,8 +625,10 @@ public final class Cooldowns extends DraggableHudElement {
                 ItemStack stack = new ItemStack(item);
                 String name = stack.isEmpty() ? (id != null ? id.getPath() : "Unknown") : stack.getHoverName().getString();
                 String key = "vanilla:" + (id != null ? id.toString() : name);
+                float progress = clamp01(manager.getCooldownPercent(stack, tickDelta));
                 rows.add(new Row(key, stack, name, formatSeconds(remainingTicks / 20.0f), remainingTicks,
-                        uiMuted != 0 ? uiMuted : theme().textMuted()));
+                        uiMuted != 0 ? uiMuted : theme().textMuted(),
+                        uiCounter, progress, false));
             });
 
             PvpCooldowns pvpCooldowns = Modules.get(PvpCooldowns.class);
@@ -568,7 +643,7 @@ public final class Cooldowns extends DraggableHudElement {
                     float seconds = snapshot.cooling()
                             ? snapshot.cooldownRemainingMs() / 1000.0f
                             : snapshot.useWindowRemainingMs() / 1000.0f;
-                    String text = snapshot.cooling()
+                    String text = snapshot.cooling() || isTimePill()
                             ? formatSeconds(seconds)
                             : snapshot.compactText();
                     int remainingTicks = snapshot.cooling()
@@ -581,7 +656,12 @@ public final class Cooldowns extends DraggableHudElement {
                             stack.getHoverName().getString(),
                             text,
                             remainingTicks,
-                            snapshot.cooling() ? stateColor : (uiMuted != 0 ? uiMuted : theme().textMuted())
+                            snapshot.cooling() ? stateColor : (uiMuted != 0 ? uiMuted : theme().textMuted()),
+                            stateColor,
+                            snapshot.cooling()
+                                    ? snapshot.cooldownProgress()
+                                    : remainingFraction(snapshot.useWindowRemainingMs(), snapshot.useWindowTotalMs()),
+                            false
                     ));
                 }
             }
@@ -597,7 +677,10 @@ public final class Cooldowns extends DraggableHudElement {
                             pearlStack.getHoverName().getString(),
                             formatSeconds(secondsLeft),
                             remainingTicks,
-                            PVP_BLOCKED_COLOR
+                            PVP_BLOCKED_COLOR,
+                            PVP_BLOCKED_COLOR,
+                            pvpTagProgress(secondsLeft),
+                            true
                     ));
                     ItemStack chorusStack = new ItemStack(Items.CHORUS_FRUIT);
                     rows.add(new Row(
@@ -606,7 +689,10 @@ public final class Cooldowns extends DraggableHudElement {
                             chorusStack.getHoverName().getString(),
                             formatSeconds(secondsLeft),
                             remainingTicks,
-                            PVP_BLOCKED_COLOR
+                            PVP_BLOCKED_COLOR,
+                            PVP_BLOCKED_COLOR,
+                            pvpTagProgress(secondsLeft),
+                            true
                     ));
                 }
             }
@@ -646,13 +732,14 @@ public final class Cooldowns extends DraggableHudElement {
         for (String key : toRemove) {
             entryAnim.remove(key);
             lastEntries.remove(key);
+            rightTextWidthReserve.remove(key);
         }
 
         List<AnimatedRow> out = new ArrayList<>();
         for (Map.Entry<String, Row> entry : lastEntries.entrySet()) {
             float anim = entryAnim.getOrDefault(entry.getKey(), 0.0f);
             if (anim > 0.01f) {
-                out.add(new AnimatedRow(entry.getValue(), anim));
+                out.add(new AnimatedRow(entry.getValue(), anim, !current.containsKey(entry.getKey())));
             }
         }
         return out;
@@ -661,7 +748,7 @@ public final class Cooldowns extends DraggableHudElement {
     private float totalAnimatedHeight(List<AnimatedRow> rows, float rowStep) {
         float out = 0.0f;
         for (AnimatedRow row : rows) {
-            out += rowStep * row.anim();
+            out += rowStep * row.layoutProgress();
         }
         return out;
     }
@@ -678,6 +765,78 @@ public final class Cooldowns extends DraggableHudElement {
         float factor = (float) ((wave + 1.0) * 0.5);
         int minAlpha = Math.max(0, Math.min(baseAlpha, minAlphaFloor));
         return clamp255(Math.round(minAlpha + (baseAlpha - minAlpha) * (1.0f - factor)));
+    }
+
+    private void applyTimePill(LinkedHashMap<String, Object> row,
+                               String key,
+                               float progress,
+                               int semanticAccent,
+                               boolean danger,
+                               float rowAlpha) {
+        float clampedProgress = clamp01(progress);
+        float pulse = timePulse(key, danger, clampedProgress);
+        float panelAlpha = Math.max((uiBodyLeft >>> 24) & 0xFF, (uiBodyRight >>> 24) & 0xFF) / 255.0f;
+        int localAlpha = clamp255(Math.round(timePillAlpha.get()
+                * Math.max(0.0f, Math.min(1.0f, rowAlpha))
+                * panelAlpha));
+
+        HudRenderUtil.ThemeGradient themeGradient = isThemeMode()
+                ? HudRenderUtil.themeAccentGradient(255)
+                : new HudRenderUtil.ThemeGradient(uiCounter, uiCounter, 0.0f);
+        int accentStart = HudRenderUtil.mixColor(themeGradient.start(), semanticAccent, danger ? 0.78f : 0.32f);
+        int accentEnd = HudRenderUtil.mixColor(themeGradient.end(), semanticAccent, danger ? 0.70f : 0.26f);
+
+        int fillStartRgb = HudRenderUtil.mixColor(uiBodyLeft, accentStart, 0.17f + pulse * 0.06f);
+        int fillEndRgb = HudRenderUtil.mixColor(uiBodyRight, accentEnd, 0.13f + pulse * 0.05f);
+        int strokeStartRgb = HudRenderUtil.mixColor(uiOutline, accentStart, 0.46f + pulse * 0.24f);
+        int strokeEndRgb = HudRenderUtil.mixColor(uiOutline, accentEnd, 0.40f + pulse * 0.20f);
+
+        int fillAlpha = clamp255(Math.round(localAlpha * (0.42f + pulse * 0.09f)));
+        int strokeAlpha = clamp255(Math.round(localAlpha * (0.56f + pulse * 0.26f)));
+        int baseArcAlpha = clamp255(Math.round(localAlpha * 0.34f));
+        int arcAlpha = clamp255(Math.round(localAlpha * (0.84f + pulse * 0.16f)));
+
+        // Shared arc convention: 0 degrees is 12 o'clock. Full progress closes at 360.
+        float arcStart = 0.0f;
+        float arcEnd = 360.0f * clampedProgress;
+        ScriptedListHudPanel.timePill(
+                row,
+                arcStart,
+                arcEnd,
+                withAlpha(fillStartRgb & 0x00FFFFFF, fillAlpha),
+                withAlpha(fillEndRgb & 0x00FFFFFF, fillAlpha),
+                withAlpha(strokeStartRgb & 0x00FFFFFF, strokeAlpha),
+                withAlpha(strokeEndRgb & 0x00FFFFFF, strokeAlpha),
+                withAlpha(uiMuted & 0x00FFFFFF, baseArcAlpha),
+                withAlpha(accentStart & 0x00FFFFFF, arcAlpha),
+                withAlpha(accentEnd & 0x00FFFFFF, arcAlpha)
+        );
+    }
+
+    private float timePulse(String key, boolean danger, float progress) {
+        double speed = danger ? 0.0084 : 0.0050;
+        double phase = Util.getMillis() * speed + Math.floorMod(key.hashCode(), 991) * 0.029;
+        float wave = (float) ((Math.sin(phase) + 1.0) * 0.5);
+        float urgency = 1.0f - clamp01(progress);
+        float weight = danger
+                ? 0.26f + 0.74f * urgency * urgency
+                : 0.10f + 0.36f * urgency;
+        return clamp01(wave * weight);
+    }
+
+    private static float remainingFraction(long remainingMs, long totalMs) {
+        if (totalMs <= 0L) return 1.0f;
+        return clamp01((float) remainingMs / (float) totalMs);
+    }
+
+    private static float clamp01(float value) {
+        return Math.max(0.0f, Math.min(1.0f, value));
+    }
+
+    private static float pvpTagProgress(float secondsLeft) {
+        Float maxSeconds = PvpState.getMaxSeconds();
+        if (maxSeconds == null || maxSeconds <= 0.0f) return 1.0f;
+        return clamp01(secondsLeft / maxSeconds);
     }
 
     private void updatePalette() {
@@ -786,14 +945,30 @@ public final class Cooldowns extends DraggableHudElement {
         return COLOR_CUSTOM.equals(colorMode.get());
     }
 
+    private boolean isTimePill() {
+        return TIME_PILL.equals(timeDisplay.get());
+    }
+
     private boolean hasEffect() {
         return !EFFECT_NONE.equals(bgEffect.get());
     }
 
-    private record Row(String key, ItemStack stack, String name, String duration, int remainingTicks, int timeColor) {
+    private record Row(String key, ItemStack stack, String name, String duration, int remainingTicks, int timeColor,
+                       int timeAccentColor, float timeProgress, boolean danger) {
     }
 
-    private record AnimatedRow(Row row, float anim) {
+    private record AnimatedRow(Row row, float anim, boolean exiting) {
+        float layoutProgress() {
+            float a = clamp01(anim);
+            return exiting ? (float) Math.sqrt(a) : a;
+        }
+
+        float visualAlpha() {
+            float a = clamp01(anim);
+            if (!exiting) return a;
+            float t = clamp01((a - 0.18f) / 0.64f);
+            return t * t * (3.0f - 2.0f * t);
+        }
     }
 
     private record QueuedItemIcon(ItemStack stack, float x, float y, float scale, int seed) {

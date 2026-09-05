@@ -7,6 +7,8 @@
 
 package combatant.client.features.module;
 
+import combatant.client.features.gui.hud.HudRenderSpace;
+
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.addon.ModuleExtensionManager;
 import combatant.client.util.screen.ClientScreen;
@@ -259,14 +261,14 @@ public enum ModuleManager {
         }
     }
 
-    public static void renderHudEngine(HudPhase phase, Renderer2D renderer, TextRenderer textRenderer, GuiGraphicsExtractor ctx, float tickDelta) {
+    public static void renderHudEngine(HudPhase phase, HudRenderSpace space, Renderer2D renderer, TextRenderer textRenderer, GuiGraphicsExtractor ctx, float tickDelta) {
         if (!RuntimeGate.canRunHud()) return;
 
         Module[] phaseModules = HUD_PHASE_SNAPSHOTS.get(phase);
         if (phaseModules == null) return;
 
         for (Module m : phaseModules) {
-            if (m.isEnabled()) {
+            if (m.isEnabled() && m.getHudRenderSpace() == space) {
                 try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:hud:" + m.name());
                      RenderProfiler2D.Section ignored = RenderProfiler2D.section("module:" + m.name())) {
                     if (ModuleExtensionManager.beforeHudRender(m, renderer, textRenderer, ctx, tickDelta)) {
@@ -278,18 +280,18 @@ public enum ModuleManager {
         }
     }
 
-    public static boolean hasHudEngineWork(HudPhase phase) {
-        return hasEnabledHudPhaseModule(phase);
+    public static boolean hasHudEngineWork(HudPhase phase, HudRenderSpace space) {
+        return hasEnabledHudPhaseModule(phase, space);
     }
 
-    public static void renderHudEngineForeground(HudPhase phase, Renderer2D renderer, TextRenderer textRenderer, GuiGraphicsExtractor ctx, float tickDelta) {
+    public static void renderHudEngineForeground(HudPhase phase, HudRenderSpace space, Renderer2D renderer, TextRenderer textRenderer, GuiGraphicsExtractor ctx, float tickDelta) {
         if (!RuntimeGate.canRunHud()) return;
 
         Module[] phaseModules = HUD_PHASE_SNAPSHOTS.get(phase);
         if (phaseModules == null) return;
 
         for (Module m : phaseModules) {
-            if (m.isEnabled()) {
+            if (m.isEnabled() && m.getHudRenderSpace() == space) {
                 try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("module:hud_fg:" + m.name());
                      RenderProfiler2D.Section ignored = RenderProfiler2D.section("module_fg:" + m.name())) {
                     m.onRenderHudEngineForeground(renderer, textRenderer, ctx, tickDelta);
@@ -298,17 +300,17 @@ public enum ModuleManager {
         }
     }
 
-    public static boolean hasHudEngineForegroundWork(HudPhase phase) {
-        return hasEnabledHudPhaseModule(phase);
+    public static boolean hasHudEngineForegroundWork(HudPhase phase, HudRenderSpace space) {
+        return hasEnabledHudPhaseModule(phase, space);
     }
 
-    private static boolean hasEnabledHudPhaseModule(HudPhase phase) {
+    private static boolean hasEnabledHudPhaseModule(HudPhase phase, HudRenderSpace space) {
         if (!RuntimeGate.canRunHud()) return false;
         Module[] phaseModules = HUD_PHASE_SNAPSHOTS.get(phase);
         if (phaseModules == null) return false;
 
         for (Module m : phaseModules) {
-            if (m.isEnabled()) return true;
+            if (m.isEnabled() && m.getHudRenderSpace() == space) return true;
         }
         return false;
     }

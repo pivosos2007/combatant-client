@@ -858,4 +858,25 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
         // RenderThread2DDebugRenderer.renderImmediateAfterGui(tickCounter);
     }
 
+@Inject(method = "bobHurt", at = @At("HEAD"), cancellable = true)
+    private void combatant$disableHurtCamera(CameraRenderState cameraRenderState, PoseStack matrices, CallbackInfo ci) {
+        NoRender noRender = Modules.get(NoRender.class);
+        if (noRender != null && noRender.off("camera_shake")) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "bobView", at = @At("HEAD"), cancellable = true)
+    private void combatant$disableViewBobbing(CameraRenderState cameraRenderState, PoseStack matrices, CallbackInfo ci) {
+        Freecam freecam = Modules.get(Freecam.class);
+        if (freecam != null && freecam.isEnabled()) {
+            ci.cancel();
+            return;
+        }
+
+        NoRender noRender = Modules.get(NoRender.class);
+        if (noRender != null && noRender.off("view_bob")) {
+            ci.cancel();
+        }
+    }
 }

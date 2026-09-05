@@ -27,6 +27,7 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.client.renderer.entity.state.ArmorStandRenderState;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
@@ -70,9 +71,41 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             cancellable = true
     )
     private void combatant$hideVanillaLabels(T entity, double distanceSq, CallbackInfoReturnable<Boolean> cir) {
-        if (entity instanceof Player && Modules.get(NameTags.class) != null && Modules.get(NameTags.class).isEnabled()) {
+        if (!(entity instanceof Player)) {
+            return;
+        }
+
+        NameTags nameTags = Modules.get(NameTags.class);
+        NoRender noRender = Modules.get(NoRender.class);
+        if ((nameTags != null && nameTags.isEnabled())
+                || (noRender != null && noRender.offEntity("player_name_tags"))) {
             cir.setReturnValue(false);
         }
+    }
+
+@Inject(
+            method = "submit(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
+            at = @At("HEAD"),
+            cancellable = true
+    )
+    private void combatant$noRenderArmorStand(
+            S state,
+            PoseStack poseStack,
+            SubmitNodeCollector collector,
+            net.minecraft.client.renderer.state.level.CameraRenderState cameraState,
+            CallbackInfo ci
+    ) {
+        NoRender noRender = Modules.get(NoRender.class);
+        if (!(state instanceof ArmorStandRenderState)
+                || noRender == null
+                || !noRender.offEntity("armor_stands")) {
+            return;
+        }
+
+        if (state.nameTag != null) {
+            this.submitNameDisplay(state, poseStack, collector, cameraState);
+        }
+        ci.cancel();
     }
 
     @Inject(

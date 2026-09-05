@@ -34,9 +34,11 @@ import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static combatant.client.features.theme.Theme.theme;
 
@@ -61,6 +63,8 @@ public final class Potions extends DraggableHudElement {
     private static final String COLOR_CUSTOM = "Custom";
     private static final String EFFECT_NONE = "None";
     private static final String EFFECT_BLUR = "Blur";
+    private static final String TIME_TEXT = "Text";
+    private static final String TIME_PILL = "Pill";
     private static final int NEGATIVE_EFFECT_RGB = 0xFFFF554B;
     private static final Identifier[] PREVIEW_ICONS = new Identifier[]{
             Identifier.fromNamespaceAndPath("minecraft", "textures/mob_effect/speed.png"),
@@ -87,6 +91,10 @@ public final class Potions extends DraggableHudElement {
             new NumberValue<>("potions_theme_gradient_strength", 72, 0, 100);
     private final ModeValue bgEffect =
             new ModeValue("potions_bg_effect", "Blur", EFFECT_NONE, EFFECT_BLUR);
+    private final ModeValue timeDisplay =
+            new ModeValue("potions_time_display", TIME_PILL, TIME_TEXT, TIME_PILL);
+    private final NumberValue<Integer> timePillAlpha =
+            new NumberValue<>("potions_time_pill_alpha", 188, 0, 255);
     private final RGBAColorValue bg =
             new RGBAColorValue("potions_bg", "#EB784F4F");
     private final RGBAColorValue bg2 =
@@ -125,6 +133,8 @@ public final class Potions extends DraggableHudElement {
 
     private final Map<String, Float> entryAnim = new LinkedHashMap<>();
     private final Map<String, Row> lastEntries = new LinkedHashMap<>();
+    private final Map<String, Float> rightTextWidthReserve = new LinkedHashMap<>();
+    private final Map<String, Integer> durationReferenceTicks = new LinkedHashMap<>();
     private float displayWidth = -1.0f;
     private float displayHeight = -1.0f;
     private float visibilityAnim = 0.0f;
@@ -171,6 +181,8 @@ public final class Potions extends DraggableHudElement {
         defs.add(SettingDef.colorNoAlpha(muted).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.mode(bgEffect));
         defs.add(SettingDef.number(blurAlpha).visibleWhen(this::hasEffect));
+        defs.add(SettingDef.mode(timeDisplay));
+        defs.add(SettingDef.number(timePillAlpha).visibleWhen(this::isTimePill));
         defs.add(SettingDef.bool(headerIconPulse));
         defs.add(SettingDef.number(headerIconPulseSpeed)
                 .visibleWhen(headerIconPulse::get));
@@ -241,15 +253,48 @@ public final class Potions extends DraggableHudElement {
         rowTextRenderer.begin(fontScale, true, false);
         float rowTextH = (float) rowTextRenderer.getHeight(false);
         float maxWidth = MIN_WIDTH * baseScale;
-        if (showExampleRow) {
-            float previewWidth = (float) rowTextRenderer.getWidth("Example effect**:**", false) + (30.0f * baseScale);
-            maxWidth = Math.max(maxWidth, previewWidth);
+        if (!isTimePill()) {
+            // Preserve the pre-pill sizing contract for the ordinary text mode.
+            // Timed-pill width stabilization must not alter legacy panel widths.
+            rightTextWidthReserve.clear();
+            if (showExampleRow) {
+                float previewWidth = (float) rowTextRenderer.getWidth("Example effect**:**", false) + (30.0f * baseScale);
+                maxWidth = Math.max(maxWidth, previewWidth);
+            } else {
+                for (AnimatedRow animatedRow : animatedRows) {
+                    Row row = animatedRow.row();
+                    String label = row.name() + (row.amp().isEmpty() ? "" : " " + row.amp());
+                    float widthCandidate = (float) rowTextRenderer.getWidth(label + row.duration(), false) + (30.0f * baseScale);
+                    maxWidth = Math.max(maxWidth, widthCandidate);
+                }
+            }
         } else {
-            for (AnimatedRow animatedRow : animatedRows) {
-                Row row = animatedRow.row();
-                String label = row.name() + (row.amp().isEmpty() ? "" : " " + row.amp());
-                float widthCandidate = (float) rowTextRenderer.getWidth(label + row.duration(), false) + (30.0f * baseScale);
-                maxWidth = Math.max(maxWidth, widthCandidate);
+            float widestDigitWidth = ScriptedListHudPanel.widestDigitWidth(rowTextRenderer);
+            if (showExampleRow) {
+                float labelWidth = (float) rowTextRenderer.getWidth("Example effect", false);
+                float timeWidth = ScriptedListHudPanel.stableNumericTextWidth(
+                        rowTextRenderer, "**:**", widestDigitWidth
+                );
+                maxWidth = Math.max(maxWidth, ScriptedListHudPanel.rowRequiredWidth(
+                        ScriptedListHudPanel.POTIONS, baseScale, labelWidth,
+                        ScriptedListHudPanel.timePillWidth(timeWidth, baseScale)
+                ));
+            } else {
+                for (AnimatedRow animatedRow : animatedRows) {
+                    Row row = animatedRow.row();
+                    String label = row.name() + (row.amp().isEmpty() ? "" : " " + row.amp());
+                    float labelWidth = (float) rowTextRenderer.getWidth(label, false);
+                    float measuredTimeWidth = ScriptedListHudPanel.stableNumericTextWidth(
+                            rowTextRenderer, row.duration(), widestDigitWidth
+                    );
+                    float timeWidth = ScriptedListHudPanel.reserveMeasuredWidth(
+                            rightTextWidthReserve, row.key(), measuredTimeWidth
+                    );
+                    maxWidth = Math.max(maxWidth, ScriptedListHudPanel.rowRequiredWidth(
+                            ScriptedListHudPanel.POTIONS, baseScale, labelWidth,
+                            ScriptedListHudPanel.timePillWidth(timeWidth, baseScale)
+                    ));
+                }
             }
         }
         rowTextRenderer.end();
@@ -344,13 +389,23 @@ public final class Potions extends DraggableHudElement {
                     1.0f
             );
             row.put("iconTint", ScriptedListHudPanel.hex(withAlpha(0x00FFFFFF, 255)));
+            ScriptedListHudPanel.rowLayoutProgress(row, 1.0f);
+            if (isTimePill()) {
+                float previewTimeWidth = ScriptedListHudPanel.stableNumericTextWidth(
+                        rowTextRenderer, "**:**", ScriptedListHudPanel.widestDigitWidth(rowTextRenderer)
+                );
+                ScriptedListHudPanel.timePillTextWidth(row, previewTimeWidth);
+                applyTimePill(row, "preview", 0.72f, false, false, 1.0f);
+            }
             panelRows.add(row);
         } else {
             for (AnimatedRow animatedRow : animatedRows) {
                 float anim = animatedRow.anim();
                 if (anim <= 0.01f) continue;
+                float visualAlpha = animatedRow.visualAlpha();
+                float layoutProgress = animatedRow.layoutProgress();
                 Row rowData = animatedRow.row();
-                int rowBaseAlpha = clamp255(Math.round(255.0f * anim));
+                int rowBaseAlpha = clamp255(Math.round(255.0f * visualAlpha));
                 int blinkAlpha = getBlinkAlpha(rowData, rowBaseAlpha, 100);
                 boolean bad = isBadEffect(rowData.effect());
                 int nameColor = withAlpha(bad ? NEGATIVE_EFFECT_RGB : (uiText & 0x00FFFFFF), blinkAlpha);
@@ -369,9 +424,17 @@ public final class Potions extends DraggableHudElement {
                         rowData.duration(),
                         withAlpha(uiCounter & 0x00FFFFFF, blinkAlpha),
                         dividerColor,
-                        anim
+                        visualAlpha
                 );
                 row.put("iconTint", ScriptedListHudPanel.hex(withAlpha(0x00FFFFFF, blinkAlpha)));
+                ScriptedListHudPanel.rowLayoutProgress(row, layoutProgress);
+                if (isTimePill()) {
+                    float reservedTimeWidth = rightTextWidthReserve.getOrDefault(
+                            rowData.key(), (float) rowTextRenderer.getWidth(rowData.duration(), false) / Math.max(0.0001f, drawScale)
+                    ) * drawScale;
+                    ScriptedListHudPanel.timePillTextWidth(row, reservedTimeWidth);
+                    applyTimePill(row, rowData.key(), rowData.timeProgress(), rowData.indeterminateTime(), bad, visualAlpha);
+                }
                 panelRows.add(row);
             }
         }
@@ -434,6 +497,7 @@ public final class Potions extends DraggableHudElement {
 
     private List<Row> collectRows() {
         List<Row> rows = new ArrayList<>();
+        Set<String> activeKeys = new HashSet<>();
         if (mc != null && mc.player != null) {
             mc.player.getActiveEffects().stream()
                     .sorted((a, b) -> String.CASE_INSENSITIVE_ORDER.compare(
@@ -449,9 +513,19 @@ public final class Potions extends DraggableHudElement {
                         Identifier iconId = effectId != null
                                 ? Identifier.fromNamespaceAndPath("minecraft", "textures/mob_effect/" + effectId.getPath() + ".png")
                                 : null;
-                        rows.add(new Row(key, inst, name, amp, duration, iconId));
+                        int rawTicks = inst.getDuration();
+                        boolean indeterminate = rawTicks < 0;
+                        float progress = 1.0f;
+                        if (!indeterminate) {
+                            int ticks = Math.max(1, rawTicks);
+                            int reference = durationReferenceTicks.merge(key, ticks, Math::max);
+                            progress = clamp01((float) ticks / Math.max(1.0f, reference));
+                        }
+                        activeKeys.add(key);
+                        rows.add(new Row(key, inst, name, amp, duration, iconId, progress, indeterminate));
                     });
         }
+        durationReferenceTicks.keySet().retainAll(activeKeys);
         return rows;
     }
 
@@ -485,13 +559,14 @@ public final class Potions extends DraggableHudElement {
         for (String key : toRemove) {
             entryAnim.remove(key);
             lastEntries.remove(key);
+            rightTextWidthReserve.remove(key);
         }
 
         List<AnimatedRow> out = new ArrayList<>();
         for (Map.Entry<String, Row> entry : lastEntries.entrySet()) {
             float anim = entryAnim.getOrDefault(entry.getKey(), 0.0f);
             if (anim > 0.01f) {
-                out.add(new AnimatedRow(entry.getValue(), anim));
+                out.add(new AnimatedRow(entry.getValue(), anim, !current.containsKey(entry.getKey())));
             }
         }
         return out;
@@ -500,7 +575,7 @@ public final class Potions extends DraggableHudElement {
     private float totalAnimatedHeight(List<AnimatedRow> rows, float rowStep) {
         float out = 0.0f;
         for (AnimatedRow row : rows) {
-            out += rowStep * row.anim();
+            out += rowStep * row.layoutProgress();
         }
         return out;
     }
@@ -536,6 +611,74 @@ public final class Potions extends DraggableHudElement {
 
     private boolean isBadEffect(MobEffectInstance effect) {
         return effect != null && effect.getEffect().value().getCategory() == MobEffectCategory.HARMFUL;
+    }
+
+    private void applyTimePill(LinkedHashMap<String, Object> row,
+                               String key,
+                               float progress,
+                               boolean indeterminate,
+                               boolean harmful,
+                               float rowAlpha) {
+        float clampedProgress = clamp01(progress);
+        float pulse = timePulse(key, harmful, clampedProgress);
+        float panelAlpha = Math.max((uiBodyLeft >>> 24) & 0xFF, (uiBodyRight >>> 24) & 0xFF) / 255.0f;
+        int localAlpha = clamp255(Math.round(timePillAlpha.get()
+                * Math.max(0.0f, Math.min(1.0f, rowAlpha))
+                * panelAlpha));
+
+        HudRenderUtil.ThemeGradient themeGradient = isThemeMode()
+                ? HudRenderUtil.themeAccentGradient(255)
+                : new HudRenderUtil.ThemeGradient(uiCounter, uiCounter, 0.0f);
+        int accentStart = themeGradient.start();
+        int accentEnd = themeGradient.end();
+        if (harmful) {
+            accentStart = HudRenderUtil.mixColor(NEGATIVE_EFFECT_RGB, accentStart, 0.14f);
+            accentEnd = HudRenderUtil.mixColor(NEGATIVE_EFFECT_RGB, isThemeMode() ? theme().textPrimary() : uiText, 0.18f);
+        }
+
+        float semanticMix = harmful ? 0.28f : 0.17f;
+        int fillStartRgb = HudRenderUtil.mixColor(uiBodyLeft, accentStart, semanticMix + pulse * 0.06f);
+        int fillEndRgb = HudRenderUtil.mixColor(uiBodyRight, accentEnd, semanticMix * 0.82f + pulse * 0.05f);
+        int strokeStartRgb = HudRenderUtil.mixColor(uiOutline, accentStart, 0.44f + pulse * 0.26f);
+        int strokeEndRgb = HudRenderUtil.mixColor(uiOutline, accentEnd, 0.38f + pulse * 0.22f);
+
+        int fillAlpha = clamp255(Math.round(localAlpha * (0.42f + pulse * 0.10f)));
+        int strokeAlpha = clamp255(Math.round(localAlpha * (0.58f + pulse * 0.28f)));
+        int baseArcAlpha = clamp255(Math.round(localAlpha * 0.34f));
+        int arcAlpha = clamp255(Math.round(localAlpha * (0.82f + pulse * 0.18f)));
+
+        // Arc convention in the shared shape shader is 0 degrees at 12 o'clock.
+        // A full/indeterminate ring therefore starts at 0 and closes exactly at 360.
+        float arcStart = 0.0f;
+        float arcEnd = indeterminate ? 360.0f : (360.0f * clampedProgress);
+
+        ScriptedListHudPanel.timePill(
+                row,
+                arcStart,
+                arcEnd,
+                withAlpha(fillStartRgb & 0x00FFFFFF, fillAlpha),
+                withAlpha(fillEndRgb & 0x00FFFFFF, fillAlpha),
+                withAlpha(strokeStartRgb & 0x00FFFFFF, strokeAlpha),
+                withAlpha(strokeEndRgb & 0x00FFFFFF, strokeAlpha),
+                withAlpha(uiMuted & 0x00FFFFFF, baseArcAlpha),
+                withAlpha(accentStart & 0x00FFFFFF, arcAlpha),
+                withAlpha(accentEnd & 0x00FFFFFF, arcAlpha)
+        );
+    }
+
+    private float timePulse(String key, boolean harmful, float progress) {
+        double speed = harmful ? 0.0080 : 0.0046;
+        double phase = Util.getMillis() * speed + Math.floorMod(key.hashCode(), 997) * 0.031;
+        float wave = (float) ((Math.sin(phase) + 1.0) * 0.5);
+        float urgency = 1.0f - clamp01(progress);
+        float weight = harmful
+                ? 0.24f + 0.76f * urgency * urgency
+                : 0.08f + 0.34f * urgency;
+        return clamp01(wave * weight);
+    }
+
+    private static float clamp01(float value) {
+        return Math.max(0.0f, Math.min(1.0f, value));
     }
 
     private void updatePalette() {
@@ -639,14 +782,29 @@ public final class Potions extends DraggableHudElement {
         return COLOR_CUSTOM.equals(colorMode.get());
     }
 
+    private boolean isTimePill() {
+        return TIME_PILL.equals(timeDisplay.get());
+    }
+
     private boolean hasEffect() {
         return !EFFECT_NONE.equals(bgEffect.get());
     }
 
     private record Row(String key, MobEffectInstance effect, String name, String amp, String duration,
-                       Identifier iconId) {
+                       Identifier iconId, float timeProgress, boolean indeterminateTime) {
     }
 
-    private record AnimatedRow(Row row, float anim) {
+    private record AnimatedRow(Row row, float anim, boolean exiting) {
+        float layoutProgress() {
+            float a = clamp01(anim);
+            return exiting ? (float) Math.sqrt(a) : a;
+        }
+
+        float visualAlpha() {
+            float a = clamp01(anim);
+            if (!exiting) return a;
+            float t = clamp01((a - 0.18f) / 0.64f);
+            return t * t * (3.0f - 2.0f * t);
+        }
     }
 }

@@ -30,23 +30,23 @@ import java.util.Map;
 final class ScriptedListHudPanel {
     static final Variant POTIONS = new Variant(
             "potions", "Potions", String.valueOf((char) 0x42),
-            95.0f, 18.0f, 5.0f, 22.0f, 22.0f, 3.0f,
-            3.5f, 8.0f, 14.0f, 7.0f, 18.0f, 8.0f, 2.1f
+            95.0f, 22.0f, 3.0f,
+            8.0f, 7.0f, 8.0f, 2.1f
     );
     static final Variant COOLDOWNS = new Variant(
             "cooldowns", "Cooldowns", "C",
-            110.0f, 18.0f, 4.0f, 22.0f, 22.0f, 2.5f,
-            3.5f, 8.0f, 15.0f, 6.0f, 18.0f, 8.0f, 1.9f
+            110.0f, 22.0f, 2.5f,
+            8.0f, 6.0f, 8.0f, 1.9f
     );
     static final Variant ADMINS = new Variant(
             "admins", "Admins", String.valueOf((char) 0x45),
-            96.0f, 18.0f, 5.0f, 22.0f, 22.0f, 3.0f,
-            3.5f, 8.0f, 15.0f, 6.0f, 18.0f, 8.0f, 1.95f
+            96.0f, 22.0f, 3.0f,
+            8.0f, 6.0f, 8.0f, 1.95f
     );
     static final Variant KEYBINDS = new Variant(
             "keybinds", "Keybinds", "M",
-            102.0f, 18.0f, 5.0f, 22.0f, 22.0f, 3.0f,
-            3.5f, 8.0f, 15.0f, 6.0f, 18.0f, 8.0f, 1.95f,
+            102.0f, 22.0f, 3.0f,
+            8.0f, 6.0f, 8.0f, 1.95f,
             "Icons", 1.18f
     );
     static final float HEADER_HEIGHT = 15.5f;
@@ -56,6 +56,16 @@ final class ScriptedListHudPanel {
     static final float ROW_STEP = 11.0f;
     static final float PANEL_RADIUS = 4.0f;
     static final float PANEL_STROKE = 0.55f;
+
+    // Shared timed-list geometry. Text width itself is never guessed from character count:
+    // callers pass a TextRenderer-measured stable glyph reservation into the row props.
+    static final float ROW_TEXT_START_X = 18.0f;
+    static final float ROW_TEXT_RIGHT_GAP = 4.0f;
+    static final float TIME_PILL_HEIGHT = 8.4f;
+    static final float TIME_PILL_LEFT_PAD = 2.0f;
+    static final float TIME_PILL_RING_BOX = 6.5f;
+    static final float TIME_PILL_RING_TEXT_GAP = 1.35f;
+    static final float TIME_PILL_RIGHT_PAD = 2.3f;
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedListHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
@@ -89,6 +99,93 @@ final class ScriptedListHudPanel {
         row.put("dividerColor", hex(dividerColor));
         row.put("alpha", alpha);
         return row;
+    }
+
+
+    static void timePill(LinkedHashMap<String, Object> row,
+                         float arcStart,
+                         float arcEnd,
+                         int fillStart,
+                         int fillEnd,
+                         int strokeStart,
+                         int strokeEnd,
+                         int arcBase,
+                         int arcStartColor,
+                         int arcEndColor) {
+        if (row == null) return;
+        row.put("rightMode", "time-pill");
+        row.put("timeArcStart", arcStart);
+        row.put("timeArcEnd", arcEnd);
+        row.put("timeFillStart", hex(fillStart));
+        row.put("timeFillEnd", hex(fillEnd));
+        row.put("timeStrokeStart", hex(strokeStart));
+        row.put("timeStrokeEnd", hex(strokeEnd));
+        row.put("timeArcBase", hex(arcBase));
+        row.put("timeArcStartColor", hex(arcStartColor));
+        row.put("timeArcEndColor", hex(arcEndColor));
+    }
+
+    static void rowLayoutProgress(LinkedHashMap<String, Object> row, float layoutProgress) {
+        if (row == null) return;
+        row.put("layoutProgress", Math.max(0.0f, Math.min(1.0f, layoutProgress)));
+    }
+
+    static void timePillTextWidth(LinkedHashMap<String, Object> row, float rightTextWidth) {
+        if (row == null) return;
+        row.put("rightTextWidth", Math.max(0.0f, rightTextWidth));
+    }
+
+    static float widestDigitWidth(TextRenderer renderer) {
+        if (renderer == null) return 0.0f;
+        float widest = 0.0f;
+        for (char c = '0'; c <= '9'; c++) {
+            widest = Math.max(widest, (float) renderer.getWidth(String.valueOf(c), false));
+        }
+        return widest;
+    }
+
+    static float stableNumericTextWidth(TextRenderer renderer, String text, float widestDigitWidth) {
+        if (renderer == null) return 0.0f;
+        String value = text != null ? text : "";
+        float width = 0.0f;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c >= '0' && c <= '9') {
+                width += widestDigitWidth;
+            } else {
+                width += (float) renderer.getWidth(String.valueOf(c), false);
+            }
+        }
+        return Math.max(width, (float) renderer.getWidth(value, false));
+    }
+
+    static float reserveMeasuredWidth(Map<String, Float> reserve,
+                                      String key,
+                                      float measuredWidth) {
+        if (reserve == null) return Math.max(0.0f, measuredWidth);
+        String safeKey = key != null ? key : "";
+        float next = Math.max(Math.max(0.0f, measuredWidth), reserve.getOrDefault(safeKey, 0.0f));
+        reserve.put(safeKey, next);
+        return next;
+    }
+
+    static float timePillWidth(float measuredTextWidth, float baseScale) {
+        float chrome = TIME_PILL_LEFT_PAD + TIME_PILL_RING_BOX
+                + TIME_PILL_RING_TEXT_GAP + TIME_PILL_RIGHT_PAD;
+        return Math.max(0.0f, measuredTextWidth) + chrome * Math.max(0.0f, baseScale);
+    }
+
+    static float rowRequiredWidth(Variant variant,
+                                  float baseScale,
+                                  float labelWidth,
+                                  float rightVisualWidth) {
+        float scale = Math.max(0.0f, baseScale);
+        float rightPad = (variant != null ? variant.rowRightPad : 8.0f) * scale;
+        return ROW_TEXT_START_X * scale
+                + Math.max(0.0f, labelWidth)
+                + ROW_TEXT_RIGHT_GAP * scale
+                + Math.max(0.0f, rightVisualWidth)
+                + rightPad;
     }
 
     static String idString(Identifier id) {
@@ -177,16 +274,10 @@ final class ScriptedListHudPanel {
                    String title,
                    String headerIcon,
                    float minWidth,
-                   float headerDividerX,
-                   float titleIconX,
-                   float titleTextX,
                    float countLabelOffset,
                    float countValueOffset,
-                   float rowIconX,
                    float rowIconSize,
-                   float rowDividerX,
                    float rowDividerH,
-                   float rowTextX,
                    float rowRightPad,
                    float rowCenterOffset,
                    String headerIconFont,
@@ -195,43 +286,14 @@ final class ScriptedListHudPanel {
                 String title,
                 String headerIcon,
                 float minWidth,
-                float headerDividerX,
-                float titleIconX,
-                float titleTextX,
                 float countLabelOffset,
                 float countValueOffset,
-                float rowIconX,
                 float rowIconSize,
-                float rowDividerX,
                 float rowDividerH,
-                float rowTextX,
-                float rowRightPad,
-                float rowCenterOffset,
-                String headerIconFont) {
-            this(id, title, headerIcon, minWidth, headerDividerX, titleIconX, titleTextX,
-                    countLabelOffset, countValueOffset, rowIconX, rowIconSize, rowDividerX,
-                    rowDividerH, rowTextX, rowRightPad, rowCenterOffset, headerIconFont, 1.0f);
-        }
-
-        Variant(String id,
-                String title,
-                String headerIcon,
-                float minWidth,
-                float headerDividerX,
-                float titleIconX,
-                float titleTextX,
-                float countLabelOffset,
-                float countValueOffset,
-                float rowIconX,
-                float rowIconSize,
-                float rowDividerX,
-                float rowDividerH,
-                float rowTextX,
                 float rowRightPad,
                 float rowCenterOffset) {
-            this(id, title, headerIcon, minWidth, headerDividerX, titleIconX, titleTextX,
-                    countLabelOffset, countValueOffset, rowIconX, rowIconSize, rowDividerX,
-                    rowDividerH, rowTextX, rowRightPad, rowCenterOffset, "IconsNur", 1.0f);
+            this(id, title, headerIcon, minWidth, countLabelOffset, countValueOffset,
+                    rowIconSize, rowDividerH, rowRightPad, rowCenterOffset, "IconsNur", 1.0f);
         }
     }
 
@@ -372,20 +434,19 @@ final class ScriptedListHudPanel {
         private Map<String, Object> variantProps() {
             LinkedHashMap<String, Object> out = new LinkedHashMap<>();
             out.put("minWidth", variant.minWidth);
-            out.put("headerDividerX", variant.headerDividerX);
-            out.put("titleIconX", variant.titleIconX);
-            out.put("titleTextX", variant.titleTextX);
             out.put("countLabelOffset", variant.countLabelOffset);
             out.put("countValueOffset", variant.countValueOffset);
-            out.put("rowIconX", variant.rowIconX);
             out.put("rowIconSize", variant.rowIconSize);
-            out.put("rowDividerX", variant.rowDividerX);
             out.put("rowDividerH", variant.rowDividerH);
-            out.put("rowTextX", variant.rowTextX);
             out.put("rowRightPad", variant.rowRightPad);
             out.put("rowCenterOffset", variant.rowCenterOffset);
             out.put("headerIconFont", variant.headerIconFont);
             out.put("headerIconScale", variant.headerIconScale);
+            out.put("timePillHeight", TIME_PILL_HEIGHT);
+            out.put("timePillLeftPad", TIME_PILL_LEFT_PAD);
+            out.put("timePillRingBox", TIME_PILL_RING_BOX);
+            out.put("timePillRingTextGap", TIME_PILL_RING_TEXT_GAP);
+            out.put("timePillRightPad", TIME_PILL_RIGHT_PAD);
             return out;
         }
 
@@ -422,8 +483,10 @@ final class ScriptedListHudPanel {
                 String key = string(row.get("key"));
                 h = CachedUiScriptRuntime.mix(h, key);
                 h = CachedUiScriptRuntime.mix(h, string(row.get("iconKind")));
+                h = CachedUiScriptRuntime.mix(h, string(row.get("rightMode")));
                 h = CachedUiScriptRuntime.mix(h, string(row.get("rightText")).length());
-                h = CachedUiScriptRuntime.mix(h, Math.round(floatValue(row.get("alpha")) * 100.0f));
+                h = CachedUiScriptRuntime.mix(h, Math.round(floatValue(row.get("layoutProgress")) * 100.0f));
+                h = CachedUiScriptRuntime.mix(h, Math.round(floatValue(row.get("rightTextWidth")) * 100.0f));
                 Object partsValue = row.get("nameParts");
                 Object[] parts = partsValue instanceof Object[] arr ? arr : new Object[0];
                 h = CachedUiScriptRuntime.mix(h, parts.length);
@@ -449,6 +512,17 @@ final class ScriptedListHudPanel {
                 h = CachedUiScriptRuntime.mix(h, string(row.get("rightText")));
                 h = CachedUiScriptRuntime.mix(h, string(row.get("rightColor")));
                 h = CachedUiScriptRuntime.mix(h, string(row.get("dividerColor")));
+                if ("time-pill".equals(string(row.get("rightMode")))) {
+                    h = CachedUiScriptRuntime.mix(h, floatValue(row.get("timeArcStart")));
+                    h = CachedUiScriptRuntime.mix(h, floatValue(row.get("timeArcEnd")));
+                    h = CachedUiScriptRuntime.mix(h, string(row.get("timeFillStart")));
+                    h = CachedUiScriptRuntime.mix(h, string(row.get("timeFillEnd")));
+                    h = CachedUiScriptRuntime.mix(h, string(row.get("timeStrokeStart")));
+                    h = CachedUiScriptRuntime.mix(h, string(row.get("timeStrokeEnd")));
+                    h = CachedUiScriptRuntime.mix(h, string(row.get("timeArcBase")));
+                    h = CachedUiScriptRuntime.mix(h, string(row.get("timeArcStartColor")));
+                    h = CachedUiScriptRuntime.mix(h, string(row.get("timeArcEndColor")));
+                }
                 Object partsValue = row.get("nameParts");
                 Object[] parts = partsValue instanceof Object[] arr ? arr : new Object[0];
                 for (Object partValue : parts) {
@@ -494,8 +568,24 @@ final class ScriptedListHudPanel {
                     putPatch(patches, rowPrefix + ":svg", "tint", iconTint);
                 }
                 putPatch(patches, rowPrefix + ":divider", "fill", string(row.get("dividerColor")));
-                putPatch(patches, rowPrefix + ":right", "text", string(row.get("rightText")));
-                putPatch(patches, rowPrefix + ":right", "color", string(row.get("rightColor")));
+                if ("time-pill".equals(string(row.get("rightMode")))) {
+                    putPatch(patches, rowPrefix + ":time-pill", "startColor", string(row.get("timeFillStart")));
+                    putPatch(patches, rowPrefix + ":time-pill", "endColor", string(row.get("timeFillEnd")));
+                    putPatch(patches, rowPrefix + ":time-pill", "stroke", string(row.get("timeStrokeStart")));
+                    putPatch(patches, rowPrefix + ":time-pill", "strokeStartColor", string(row.get("timeStrokeStart")));
+                    putPatch(patches, rowPrefix + ":time-pill", "strokeEndColor", string(row.get("timeStrokeEnd")));
+                    putPatch(patches, rowPrefix + ":time-arc-base", "stroke", string(row.get("timeArcBase")));
+                    putPatch(patches, rowPrefix + ":time-arc", "startAngle", floatValue(row.get("timeArcStart")));
+                    putPatch(patches, rowPrefix + ":time-arc", "endAngle", floatValue(row.get("timeArcEnd")));
+                    putPatch(patches, rowPrefix + ":time-arc", "stroke", string(row.get("timeArcStartColor")));
+                    putPatch(patches, rowPrefix + ":time-arc", "startColor", string(row.get("timeArcStartColor")));
+                    putPatch(patches, rowPrefix + ":time-arc", "endColor", string(row.get("timeArcEndColor")));
+                    putPatch(patches, rowPrefix + ":time-text", "text", string(row.get("rightText")));
+                    putPatch(patches, rowPrefix + ":time-text", "color", string(row.get("rightColor")));
+                } else {
+                    putPatch(patches, rowPrefix + ":right", "text", string(row.get("rightText")));
+                    putPatch(patches, rowPrefix + ":right", "color", string(row.get("rightColor")));
+                }
                 Object partsValue = row.get("nameParts");
                 Object[] parts = partsValue instanceof Object[] arr ? arr : new Object[0];
                 for (int i = 0; i < parts.length; i++) {
@@ -512,16 +602,10 @@ final class ScriptedListHudPanel {
             h = CachedUiScriptRuntime.mix(h, variant.title);
             h = CachedUiScriptRuntime.mix(h, variant.headerIcon);
             h = CachedUiScriptRuntime.mix(h, variant.minWidth);
-            h = CachedUiScriptRuntime.mix(h, variant.headerDividerX);
-            h = CachedUiScriptRuntime.mix(h, variant.titleIconX);
-            h = CachedUiScriptRuntime.mix(h, variant.titleTextX);
             h = CachedUiScriptRuntime.mix(h, variant.countLabelOffset);
             h = CachedUiScriptRuntime.mix(h, variant.countValueOffset);
-            h = CachedUiScriptRuntime.mix(h, variant.rowIconX);
             h = CachedUiScriptRuntime.mix(h, variant.rowIconSize);
-            h = CachedUiScriptRuntime.mix(h, variant.rowDividerX);
             h = CachedUiScriptRuntime.mix(h, variant.rowDividerH);
-            h = CachedUiScriptRuntime.mix(h, variant.rowTextX);
             h = CachedUiScriptRuntime.mix(h, variant.rowRightPad);
             h = CachedUiScriptRuntime.mix(h, variant.rowCenterOffset);
             h = CachedUiScriptRuntime.mix(h, variant.headerIconFont);

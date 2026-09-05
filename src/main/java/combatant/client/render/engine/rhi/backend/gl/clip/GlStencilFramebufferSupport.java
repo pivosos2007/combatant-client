@@ -19,6 +19,7 @@ import org.lwjgl.opengl.*;
 import combatant.client.mixininterface.IGlBackendInfo;
 import combatant.client.render.engine.msaa.MsaaTextureRegistry;
 import combatant.client.render.engine.rhi.backend.gl.GlBackendAccess;
+import combatant.client.render.engine.rhi.backend.gl.GlValidation;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.HashMap;
@@ -173,6 +174,7 @@ final class GlStencilFramebufferSupport {
     }
 
     private static void checkGlErrors(String where) {
+        if (!GlValidation.errorsEnabled()) return;
         int guard = 0;
         int error;
         while ((error = GL11C.glGetError()) != GL11C.GL_NO_ERROR && guard++ < 16) {
@@ -239,7 +241,7 @@ final class GlStencilFramebufferSupport {
             int framebuffer = framebufferFor(backend, glColorView, depthView);
             int width = Math.max(1, colorView.getWidth(0));
             int height = Math.max(1, colorView.getHeight(0));
-            return ensureAttachment(framebuffer, width, height);
+            return ensureAttachment(framebuffer, width, height, colorView, depthView);
         } catch (Throwable t) {
             return fail("exception while preparing framebuffer: " + t.getClass().getSimpleName() + ": " + t.getMessage());
         }
@@ -259,20 +261,20 @@ final class GlStencilFramebufferSupport {
         try {
             int framebuffer = framebufferFor(backend, glColorView, depthView);
             GlStateManager._glBindFramebuffer(GlConst.GL_FRAMEBUFFER, framebuffer);
-            int status = GL30C.glCheckFramebufferStatus(GL30C.GL_FRAMEBUFFER);
-            if (status != GL30C.GL_FRAMEBUFFER_COMPLETE) {
-                // Do not issue glClear on an incomplete FBO: that is what produces the scary
-                // GL_INVALID_FRAMEBUFFER_OPERATION debug spam on stricter drivers. Rebuild the
-                // attachment once because the owning GlTextureView may have recreated its backing FBO.
-                invalidateAttachment(framebuffer, "clear preflight incomplete status=0x" + Integer.toHexString(status));
-                if (!ensure(colorView, depthView)) {
-                    return false;
-                }
-                framebuffer = framebufferFor(backend, glColorView, depthView);
-                GlStateManager._glBindFramebuffer(GlConst.GL_FRAMEBUFFER, framebuffer);
-                status = GL30C.glCheckFramebufferStatus(GL30C.GL_FRAMEBUFFER);
+            if (GlValidation.fullEnabled()) {
+                int status = GL30C.glCheckFramebufferStatus(GL30C.GL_FRAMEBUFFER);
                 if (status != GL30C.GL_FRAMEBUFFER_COMPLETE) {
-                    return fail("clear target still incomplete after rebuild: status=0x" + Integer.toHexString(status) + ", fbo=" + framebuffer);
+                    // Validation mode deliberately pays the preflight query cost and can rebuild a stale FBO.
+                    invalidateAttachment(framebuffer, "clear preflight incomplete status=0x" + Integer.toHexString(status));
+                    if (!ensure(colorView, depthView)) {
+                        return false;
+                    }
+                    framebuffer = framebufferFor(backend, glColorView, depthView);
+                    GlStateManager._glBindFramebuffer(GlConst.GL_FRAMEBUFFER, framebuffer);
+                    status = GL30C.glCheckFramebufferStatus(GL30C.GL_FRAMEBUFFER);
+                    if (status != GL30C.GL_FRAMEBUFFER_COMPLETE) {
+                        return fail("clear target still incomplete after rebuild: status=0x" + Integer.toHexString(status) + ", fbo=" + framebuffer);
+                    }
                 }
             }
             GL11C.glDisable(GL11C.GL_SCISSOR_TEST);
@@ -325,24 +327,48 @@ final class GlStencilFramebufferSupport {
         return warnedUnsupported;
     }
 
-    private boolean ensureAttachment(int framebuffer, int width, int height) {
+    private boolean ensureAttachment(int framebuffer, int width, int height,
+                                     GpuTextureView colorView, @Nullable GpuTextureView depthView) {
         Attachment attachment = attachments.get(framebuffer);
+
+        // Exact target/view match means this FBO was already validated when the attachment was
+        // installed. Do not re-query attachment object types, sample counts, renderbuffer state and
+        // framebuffer completeness on every render-pass/pipeline transition.
+        if (attachment != null
+                && attachment.attached
+                && !attachment.deleted
+                && attachment.width == width
+                && attachment.height == height
+                && attachment.colorView == colorView
+                && attachment.depthView == depthView) {
+            owner.setStencilAvailable(true);
+            lastFailure = "none";
+            return true;
+        }
+
         int previousReadFramebuffer = GlStateManager.getFrameBuffer(GlConst.GL_READ_FRAMEBUFFER);
         int previousDrawFramebuffer = GlStateManager.getFrameBuffer(GlConst.GL_DRAW_FRAMEBUFFER);
         try {
             GlStateManager._glBindFramebuffer(GlConst.GL_FRAMEBUFFER, framebuffer);
             int samples = detectBoundFramebufferSamples();
 
-            if (attachment == null || attachment.width != width || attachment.height != height || attachment.samples != samples || attachment.deleted) {
+            if (attachment == null || attachment.width != width || attachment.height != height
+                    || attachment.samples != samples || attachment.deleted
+                    || attachment.colorView != colorView || attachment.depthView != depthView) {
                 if (attachment != null) {
                     attachment.restoreOriginalAttachments();
                     attachment.delete();
                 }
-                attachment = new Attachment(width, height, samples);
+                attachment = new Attachment(width, height, samples, colorView, depthView);
                 attachments.put(framebuffer, attachment);
             }
 
             if (attachment.attached) {
+                if (!GlValidation.fullEnabled()) {
+                    owner.setStencilAvailable(true);
+                    lastFailure = "none";
+                    return true;
+                }
                 int status = GL30C.glCheckFramebufferStatus(GL30C.GL_FRAMEBUFFER);
                 if (status == GL30C.GL_FRAMEBUFFER_COMPLETE) {
                     owner.setStencilAvailable(true);
@@ -452,16 +478,21 @@ final class GlStencilFramebufferSupport {
         final int width;
         final int height;
         final int samples;
+        final GpuTextureView colorView;
+        final @Nullable GpuTextureView depthView;
         final boolean stencilAllocationOk;
         boolean deleted;
         boolean attached;
         AttachmentMode mode = AttachmentMode.NONE;
         SavedAttachment originalStencil = SavedAttachment.none();
 
-        Attachment(int width, int height, int samples) {
+        Attachment(int width, int height, int samples,
+                   GpuTextureView colorView, @Nullable GpuTextureView depthView) {
             this.width = width;
             this.height = height;
             this.samples = Math.max(1, samples);
+            this.colorView = colorView;
+            this.depthView = depthView;
 
             int previousRenderbuffer = GL11C.glGetInteger(GL30C.GL_RENDERBUFFER_BINDING);
             try {

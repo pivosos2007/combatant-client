@@ -189,11 +189,17 @@ public final class CombatantVulkanBackend implements CombatantRhi {
         RhiDrawCommand first = commands.get(start);
         stats.renderPass(first.colorAttachment, first.depthAttachment);
         try (RenderPass pass = createPass(first.label, first.colorAttachment, first.clearColor, first.depthAttachment, first.clearDepth)) {
-            for (int i = start; i < end; i++) drawInPass(pass, commands.get(i));
+            com.mojang.blaze3d.pipeline.RenderPipeline activePipeline = null;
+            for (int i = start; i < end; i++) {
+                RhiDrawCommand command = commands.get(i);
+                boolean bindPipeline = command.pipeline != activePipeline;
+                drawInPass(pass, command, bindPipeline);
+                activePipeline = command.pipeline;
+            }
         }
     }
 
-    private void drawInPass(RenderPass pass, RhiDrawCommand command) {
+    private void drawInPass(RenderPass pass, RhiDrawCommand command, boolean bindPipeline) {
         command.mesh.validateForDraw(command.label);
         try (RenderCostProfiler.Scope ignoredCost = RenderCostProfiler.rhiDraw(command.label)) {
             boolean pushMv = command.transform != null || command.applyWorldCameraY;
@@ -218,7 +224,14 @@ public final class CombatantVulkanBackend implements CombatantRhi {
                 }
 
                 if (command.pipelineSpec == null) pipelines.require(command.pipeline);
-                pass.setPipeline(command.pipeline);
+                stats.pipelineUse(
+                        command.pipeline,
+                        command.pipelineSpec,
+                        command.uniforms.size() + (meshData != null ? 1 : 0) + (uiBatch != null ? 1 : 0),
+                        command.samplers.size(),
+                        bindPipeline
+                );
+                if (bindPipeline) pass.setPipeline(command.pipeline);
                 if (meshData != null) pass.setUniform("MeshData", meshData);
                 if (uiBatch != null) pass.setUniform("UIBatch", uiBatch);
                 for (RhiUniformBinding uniform : command.uniforms) pass.setUniform(uniform.name(), uniform.slice());
@@ -275,6 +288,8 @@ public final class CombatantVulkanBackend implements CombatantRhi {
                     clearColor(command.clearColor)
             )) {
                 if (command.pipelineSpec == null) pipelines.require(command.pipeline);
+                stats.pipelineUse(command.pipeline, command.pipelineSpec,
+                        command.uniforms.size() + 1, command.samplers.size(), true);
                 pass.setPipeline(command.pipeline);
                 pass.setUniform("MeshData", meshData);
                 for (RhiUniformBinding uniform : command.uniforms) {

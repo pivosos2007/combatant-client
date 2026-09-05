@@ -10,11 +10,25 @@ package combatant.client.render.engine.rhi;
 import combatant.client.render.engine.guard.LegacyRenderPath;
 
 import java.util.Map;
+import java.util.List;
 
 public record RhiStatsSnapshot(long frameId,
                                long drawCalls,
+                               long multiDrawCalls,
+                               long multiDrawLogicalDraws,
                                long renderPasses,
                                long renderPassAttachmentSwitches,
+                               long pipelineBinds,
+                               long pipelineBindSkips,
+                               long pipelineSwitches,
+                               long uniquePipelines,
+                               long uniformBinds,
+                               long samplerBinds,
+                               long estimatedShaderAluOps,
+                               long estimatedShaderTranscendentalOps,
+                               long estimatedShaderTextureOps,
+                               long estimatedShaderBranchOps,
+                               long estimatedShaderLoopOps,
                                long fullscreenPasses,
                                long textureFastCopies,
                                long textureShaderCopies,
@@ -36,5 +50,6 @@ public record RhiStatsSnapshot(long frameId,
                                long dynamicPersistentArenaBytes,
                                long dynamicSpillArenaBytes,
                                long legacyPathUses,
-                               Map<LegacyRenderPath, Long> legacyPathBreakdown) {
+                               Map<LegacyRenderPath, Long> legacyPathBreakdown,
+                               List<RhiPipelineStatsSnapshot> pipelineBreakdown) {
 }

@@ -202,9 +202,9 @@ public enum DevRenderProfiler2D {
         }
 
         UiStatsSnapshot uiDraw = Renderer2D.getUiStatsSnapshot();
-        if (uiDraw.recordedCommands() > 0 || uiDraw.compiledBatches() > 0) {
+        if (uiDraw.recordedCommands() > 0 || uiDraw.compiledPasses() > 0) {
             lines.add(String.format(
-                    "ui commands: total %d, shape/path/tex/text/item/effect %d/%d/%d/%d/%d/%d, compiled %d, backend %d",
+                    "ui commands: total %d, shape/path/tex/text/item/effect %d/%d/%d/%d/%d/%d, passes/ordered/legacy %d/%d/%d, rhi/backend %d/%d",
                     uiDraw.recordedCommands(),
                     uiDraw.shapeCommands(),
                     uiDraw.pathCommands(),
@@ -212,8 +212,11 @@ public enum DevRenderProfiler2D {
                     uiDraw.textCommands(),
                     uiDraw.itemCommands(),
                     uiDraw.effectCommands(),
-                    uiDraw.compiledBatches(),
-                    uiDraw.backendCommands()
+                    uiDraw.compiledPasses(),
+                    uiDraw.compiledOrderedBatches(),
+                    uiDraw.compiledLegacySpecialPasses(),
+                    uiDraw.rhiDrawCommands(),
+                    uiDraw.backendDrawCalls()
             ));
         }
 
@@ -295,10 +298,16 @@ public enum DevRenderProfiler2D {
         if (rhi.drawCalls() > 0 || rhi.renderPasses() > 0 || rhi.meshUploads() > 0 || rhi.fullscreenPasses() > 0
                 || rhi.textureFastCopies() > 0 || rhi.textureShaderCopies() > 0) {
             lines.add(String.format(
-                    "rhi: draws %d, passes/switches %d/%d, meshUploads %d, fullscreen %d, copies fast/shader %d/%d, uploaded v/i %s/%s",
+                    "rhi: draws %d, passes/attachments %d/%d, pipelines bind/skip/switch/unique %d/%d/%d/%d, uniforms/samplers %d/%d, meshUploads %d, fullscreen %d, copies fast/shader %d/%d, uploaded v/i %s/%s",
                     rhi.drawCalls(),
                     rhi.renderPasses(),
                     rhi.renderPassAttachmentSwitches(),
+                    rhi.pipelineBinds(),
+                    rhi.pipelineBindSkips(),
+                    rhi.pipelineSwitches(),
+                    rhi.uniquePipelines(),
+                    rhi.uniformBinds(),
+                    rhi.samplerBinds(),
                     rhi.meshUploads(),
                     rhi.fullscreenPasses(),
                     rhi.textureFastCopies(),

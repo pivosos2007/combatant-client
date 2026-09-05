@@ -366,47 +366,6 @@ public final class RenderWarp {
         mapProjective(px, py, out);
     }
 
-    /**
-     * Maps an axis-aligned source rectangle and returns the conservative axis-aligned bounds of
-     * its warped quadrilateral as {@code [x, y, width, height]}.
-     */
-    public void mapBounds(double sourceX, double sourceY, double sourceWidth, double sourceHeight, double[] out) {
-        if (out == null || out.length < 4) return;
-        if (!active) {
-            out[0] = sourceX;
-            out[1] = sourceY;
-            out[2] = sourceWidth;
-            out[3] = sourceHeight;
-            return;
-        }
-
-        double minX = Double.POSITIVE_INFINITY;
-        double minY = Double.POSITIVE_INFINITY;
-        double maxX = Double.NEGATIVE_INFINITY;
-        double maxY = Double.NEGATIVE_INFINITY;
-        for (int corner = 0; corner < 4; corner++) {
-            double px = (corner == 1 || corner == 2) ? sourceX + sourceWidth : sourceX;
-            double py = corner >= 2 ? sourceY + sourceHeight : sourceY;
-            double u = (px - x) / width;
-            double v = (py - y) / height;
-            double denom = h20 * u + h21 * v + 1.0;
-            double mappedX = px;
-            double mappedY = py;
-            if (Math.abs(denom) > 0.000001) {
-                mappedX = (h00 * u + h01 * v + h02) / denom;
-                mappedY = (h10 * u + h11 * v + h12) / denom;
-            }
-            minX = Math.min(minX, mappedX);
-            minY = Math.min(minY, mappedY);
-            maxX = Math.max(maxX, mappedX);
-            maxY = Math.max(maxY, mappedY);
-        }
-        out[0] = minX;
-        out[1] = minY;
-        out[2] = Math.max(0.0, maxX - minX);
-        out[3] = Math.max(0.0, maxY - minY);
-    }
-
     public void originalCorner(int corner, double[] out) {
         if (out == null || out.length < 2) return;
         switch (corner) {

@@ -29,7 +29,9 @@ class HudInventoryPanelLayout extends HudPanelLayout {
 
   slotFrame(row, col) {
     const bs = this.bs();
-    const gx = n(this.p.gridStartX, 4.0) * bs;
+    const gx = prop(this.p, "gridStartX", null) == null
+      ? this.contentInsetX()
+      : n(this.p.gridStartX, this.base.leftInsetX) * bs;
     const gy = n(this.p.gridStartY, 20.0) * bs;
     const step = n(this.p.gridStep, 13.0) * bs;
     const itemX = gx + col * step;
@@ -48,7 +50,9 @@ class HudInventoryPanelLayout extends HudPanelLayout {
 
   itemNode(cell, index) {
     const bs = this.bs();
-    const gx = n(this.p.gridStartX, 4.0) * bs;
+    const gx = prop(this.p, "gridStartX", null) == null
+      ? this.contentInsetX()
+      : n(this.p.gridStartX, this.base.leftInsetX) * bs;
     const gy = n(this.p.gridStartY, 20.0) * bs;
     const step = n(this.p.gridStep, 13.0) * bs;
     const slot = Math.max(0, Math.round(n(prop(cell, "slot", index), index)));

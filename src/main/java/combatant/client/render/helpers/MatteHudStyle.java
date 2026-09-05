@@ -52,6 +52,49 @@ public enum MatteHudStyle {
         drawPlate(renderer, textX - 3.0, textY - 1.5, textWidth + 6.0, textHeight + 3.0, 3.5f, alpha);
     }
 
+    /**
+     * Compact world/HUD label plate. Unlike {@link #drawPlate}, this deliberately avoids
+     * a vertical surface gradient and uses a much smaller shadow/stroke footprint. It is
+     * intended for dense ESP/name/drop labels where the old matte treatment looked too
+     * heavy at normal logical GUI scale.
+     */
+    public static void drawCompactPlate(Renderer2D renderer,
+                                        double x,
+                                        double y,
+                                        double width,
+                                        double height,
+                                        float radius,
+                                        float alpha) {
+        if (renderer == null || width <= 0.0 || height <= 0.0 || alpha <= 0.001f) return;
+        float a = clamp01(alpha);
+        float maxRadius = (float) Math.min(width, height) * 0.5f;
+        float r = Math.max(0.0f, Math.min(radius, maxRadius));
+        renderer.roundedRectSoftShadow(x, y, width, height, r, 2.25f, 0.045f, compactShadowColor(a));
+        renderer.roundedRect(x, y, width, height, r, 0.0f, compactSurfaceColor(a));
+        renderer.roundedRectStroke(x, y, width, height, r, 0.0f, 0.55f, compactStrokeColor(a));
+    }
+
+    public static int compactSurfaceColor(float alpha) {
+        float a = clamp01(alpha);
+        Themes.Theme theme = Theme.theme();
+        int window = theme != null ? theme.windowBg() : FALLBACK_SURFACE;
+        int surface = theme != null ? theme.surface() : FALLBACK_SURFACE;
+        int accent = theme != null ? theme.accent() : FALLBACK_ACCENT;
+        int compactRgb = mixRgb(mixRgb(window, surface & 0x00FFFFFF, 0.42f), accent & 0x00FFFFFF, 0.055f);
+        return withAlpha(compactRgb, Math.round(184.0f * a));
+    }
+
+    public static int compactStrokeColor(float alpha) {
+        float a = clamp01(alpha);
+        Themes.Theme theme = Theme.theme();
+        int strokeBase = theme != null ? theme.strokeSoft() : FALLBACK_STROKE;
+        return withAlpha(mixRgb(strokeBase, 0xFFFFFF, 0.055f), Math.round(48.0f * a));
+    }
+
+    public static int compactShadowColor(float alpha) {
+        return withAlpha(0x000000, Math.round(78.0f * clamp01(alpha)));
+    }
+
     public static void drawFrame(Renderer2D renderer,
                                  double x,
                                  double y,

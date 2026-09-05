@@ -84,6 +84,14 @@ public class Particle3D {
         return Mth.clamp(a, 0.0f, 1.0f);
     }
 
+    public long ageMs() {
+        return timer.getPassedTimeMs();
+    }
+
+    public float lifeProgress() {
+        return Mth.clamp(timer.getPassedTimeMs() / (float) lifeMs, 0.0f, 1.0f);
+    }
+
     public float size() {
         return size;
     }

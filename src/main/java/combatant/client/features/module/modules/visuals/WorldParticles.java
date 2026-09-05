@@ -49,6 +49,9 @@ public class WorldParticles extends Module {
     private static final float SPRITE_ALPHA_MULTIPLIER = 0.40f;
     private static final float DIAGONAL_ALPHA_MULTIPLIER = 0.40f;
     private static final float OUTLINE_ALPHA_MULTIPLIER = 205.0f / 255.0f;
+    private static final float QUAD_SWAY_MULTIPLIER = 0.22f;
+    private static final float QUAD_BREATHE_MULTIPLIER = 0.10f;
+    private static final float QUAD_ROLL_SPEED = 0.32f;
     private static final float BUBBLE_FILL_SIZE_MULTIPLIER = 3.15f;
     private static final float BUBBLE_GLOW_SIZE_MULTIPLIER = 5.10f;
     private static final float BUBBLE_CULL_EXTENT_MULTIPLIER = BUBBLE_GLOW_SIZE_MULTIPLIER * 1.56f;
@@ -117,7 +120,7 @@ public class WorldParticles extends Module {
     private final RGBAColorValue color =
             common(color("color", "#FF8ED4FF"), CommonSettingSchemas.RENDER_PRIMARY_COLOR.commonI18nKey());
     private final ModeValue colorMode =
-            modeSetting("worldParticlesColorMode", "color_mode", "Static",
+            modeSetting("worldParticlesColorMode", "color_mode", "Theme",
                     "Static", "Rainbow", "LightRainbow", "Sky", "Fade", "DoubleColor", "Analogous", "Theme");
     private final NumberValue<Integer> colorSpeed =
             num("worldParticlesColorSpeed", "color_speed", 18, 2, 54);
@@ -528,16 +531,33 @@ public class WorldParticles extends Module {
                         continue;
                     }
 
+                    long ageMs = particle.ageMs(nowMs);
+                    float ageSeconds = ageMs * 0.001f;
+                    float pulse = AnimationUtility.smoothstep(
+                            0.5f + 0.5f * (float) Math.sin(ageSeconds * 1.65f + particle.visualPhase));
+                    float appear = AnimationUtility.easeOutCubic(ageMs / 420.0f);
+                    float visualScale = (0.72f + 0.28f * appear)
+                            * (1.0f - QUAD_BREATHE_MULTIPLIER * 0.5f + QUAD_BREATHE_MULTIPLIER * pulse);
+                    float sway = particle.size * QUAD_SWAY_MULTIPLIER;
+                    float orbit = ageSeconds * 0.54f + particle.visualPhase;
+                    pos = pos.add(
+                            Math.cos(orbit) * sway,
+                            Math.sin(ageSeconds * 0.78f + particle.visualPhase) * sway * 0.32f,
+                            Math.sin(orbit) * sway
+                    );
+
                     if (spriteMesh != null) {
                         int spriteArgb = multiplyAlpha(baseColor, alpha * SPRITE_ALPHA_MULTIPLIER);
-                        addBillboardQuad(spriteMesh, pos.x, pos.y, pos.z, particle.size * SPRITE_SIZE_MULTIPLIER, camRot, spriteArgb);
+                        float roll = particle.visualPhase + ageSeconds * QUAD_ROLL_SPEED;
+                        addBillboardQuad(spriteMesh, pos.x, pos.y, pos.z,
+                                particle.size * SPRITE_SIZE_MULTIPLIER * visualScale, camRot, roll, spriteArgb);
                     }
 
                     if (lineMesh != null) {
                         Vec3 rotation = particle.interpolateRotation(tickDelta);
                         int diagonalArgb = multiplyAlpha(baseColor, alpha * DIAGONAL_ALPHA_MULTIPLIER);
                         int outlineArgb = multiplyAlpha(baseColor, alpha * OUTLINE_ALPHA_MULTIPLIER);
-                        addCube(lineMesh, pos, rotation, particle.size, diagonalArgb, outlineArgb);
+                        addCube(lineMesh, pos, rotation, particle.size * visualScale, diagonalArgb, outlineArgb);
                     }
                 }
             }
