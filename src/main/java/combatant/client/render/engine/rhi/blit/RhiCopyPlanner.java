@@ -34,19 +34,23 @@ public final class RhiCopyPlanner {
         if (request.scales() || request.filter() == RhiCopyRequest.Filter.LINEAR) {
             return RhiCopyPath.FRAMEBUFFER_BLIT;
         }
-        if (copyImageRequested() && capabilities != null && capabilities.copyImage()) {
+        if (copyImageRequested(capabilities) && capabilities != null && capabilities.copyImage()) {
             return RhiCopyPath.GL_COPY_IMAGE;
         }
         return RhiCopyPath.BACKEND_COPY;
     }
 
     /**
-     * AUTO intentionally stays on Mojang's measured baseline. A benchmark run can opt into the
-     * candidate with {@code -Dcombatant.rhi.copy.glCopyImage=force}; no extension-only auto-enable.
+     * AUTO selects raw image copy for exact desktop texture copies when the active Mojang GL
+     * context supports ARB_copy_image. Known problematic mobile/software renderer families retain
+     * Mojang's framebuffer blit. FORCE bypasses the renderer safety policy but never the capability
+     * check; OFF always uses the baseline.
      */
-    private static boolean copyImageRequested() {
+    private static boolean copyImageRequested(RhiCapabilities capabilities) {
         String mode = System.getProperty("combatant.rhi.copy.glCopyImage", "auto")
                 .trim().toLowerCase(Locale.ROOT);
-        return mode.equals("force") || mode.equals("on") || mode.equals("true");
+        if (mode.equals("off") || mode.equals("false") || mode.equals("baseline")) return false;
+        if (mode.equals("force") || mode.equals("on") || mode.equals("true")) return true;
+        return capabilities != null && capabilities.copyImageAutoSafe();
     }
 }

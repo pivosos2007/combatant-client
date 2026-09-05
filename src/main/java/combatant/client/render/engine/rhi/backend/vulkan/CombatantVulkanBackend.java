@@ -34,6 +34,7 @@ import combatant.client.render.engine.rhi.msaa.MsaaControl;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineSpec;
 import combatant.client.render.engine.rhi.resource.RenderResourceManager;
+import combatant.client.render.engine.rhi.shader.AdvancedShaderBackend;
 import combatant.client.render.engine.rhi.state.PipelineStateBackend;
 import combatant.client.render.engine.rhi.upload.DynamicMeshBackend;
 import combatant.client.render.engine.rhi.upload.Blaze3dDynamicMeshBackend;
@@ -60,6 +61,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
     private final VulkanPipelineStateBackend pipelineState = new VulkanPipelineStateBackend(msaa, shapeClip);
     private final RenderPipelineRegistry pipelines = RenderPipelineRegistry.global();
     private final RenderResourceManager resources = new RenderResourceManager();
+    private final VulkanAdvancedShaderBackend advancedShaders = new VulkanAdvancedShaderBackend(stats);
     private final Matrix4f projectionScratch = new Matrix4f();
     private final Matrix4f modelViewScratch = new Matrix4f();
 
@@ -143,6 +145,11 @@ public final class CombatantVulkanBackend implements CombatantRhi {
     @Override
     public RenderResourceManager resources() {
         return resources;
+    }
+
+    @Override
+    public AdvancedShaderBackend advancedShaders() {
+        return advancedShaders;
     }
 
     @Override
@@ -374,6 +381,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
 
     @Override
     public void close() {
+        advancedShaders.close();
         try {
             dynamicMeshes.close();
             fullscreen.close();

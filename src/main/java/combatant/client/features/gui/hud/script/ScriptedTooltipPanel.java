@@ -18,6 +18,9 @@ import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext
 import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
+import combatant.client.render.engine.text.FontInfo;
+import combatant.client.render.engine.text.Fonts;
+import combatant.client.render.engine.text.RuntimeTextLayout;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.util.resources.asset.UiScriptAsset;
 import net.minecraft.client.Minecraft;
@@ -38,6 +41,7 @@ import java.util.Map;
 public final class ScriptedTooltipPanel {
     private static final float MEASURE_EXTRA_WIDTH = 512.0f;
     private static final float MEASURE_HEIGHT = 4096.0f;
+    private static final float TOOLTIP_FONT_SCALE_RATIO = 14.5f / 18.0f;
 
     private final String runtimeKey;
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedTooltipPanel.class);
@@ -65,7 +69,13 @@ public final class ScriptedTooltipPanel {
         UiScriptModule module = ensureModule(mc);
         if (module == null) return null;
 
-        List<LinkedHashMap<String, Object>> lineProps = lineProps(lines);
+        TextRenderer layoutText = Fonts.renderer("Iosevka", FontInfo.Type.Regular, fallbackText);
+        List<LinkedHashMap<String, Object>> lineProps = lineProps(
+                layoutText,
+                lines,
+                Math.max(0.05f, scale),
+                Math.max(1.0f, maxContentWidth)
+        );
         SettingsGuiPalette palette = SettingsGuiPalette.current();
         Style resolvedStyle = style != null ? style : Style.DEFAULT;
         Context resolvedContext = context != null ? context : Context.GENERIC;
@@ -273,18 +283,117 @@ public final class ScriptedTooltipPanel {
         return props;
     }
 
-    private static List<LinkedHashMap<String, Object>> lineProps(List<Line> lines) {
+    private static List<LinkedHashMap<String, Object>> lineProps(TextRenderer renderer,
+                                                                    List<Line> lines,
+                                                                    float scale,
+                                                                    float maxContentWidth) {
         ArrayList<LinkedHashMap<String, Object>> out = new ArrayList<>();
-        if (lines != null) {
+        if (lines == null || lines.isEmpty()) return out;
+
+        float textScale = TOOLTIP_FONT_SCALE_RATIO * Math.max(0.05f, scale);
+        float widthLimit = Math.max(1.0f, maxContentWidth);
+        boolean started = renderer != null && !renderer.isBuilding();
+        if (started) renderer.begin(textScale, true, false);
+        try {
+            int logicalGroup = 0;
             for (Line line : lines) {
                 if (line == null) continue;
-                LinkedHashMap<String, Object> value = new LinkedHashMap<>(2);
-                value.put("text", line.text() != null ? line.text() : "");
-                value.put("color", line.color() != 0 ? hex(line.color()) : "");
-                out.add(value);
+                String text = RuntimeTextLayout.singleLine(line.text() != null ? line.text() : "");
+                String color = line.color() != 0 ? hex(line.color()) : "";
+
+                if (text.isBlank()) {
+                    LinkedHashMap<String, Object> blank = new LinkedHashMap<>(4);
+                    blank.put("text", "");
+                    blank.put("color", color);
+                    blank.put("group", -1);
+                    blank.put("continuation", false);
+                    out.add(blank);
+                    continue;
+                }
+
+                List<String> wrapped = wrapLine(renderer, text.trim(), widthLimit);
+                if (wrapped.isEmpty()) wrapped = List.of(text.trim());
+                for (int i = 0; i < wrapped.size(); i++) {
+                    LinkedHashMap<String, Object> value = new LinkedHashMap<>(4);
+                    value.put("text", wrapped.get(i));
+                    value.put("color", color);
+                    value.put("group", logicalGroup);
+                    value.put("continuation", i > 0);
+                    out.add(value);
+                }
+                logicalGroup++;
             }
+        } finally {
+            if (started && renderer.isBuilding()) renderer.end();
         }
         return out;
+    }
+
+    /**
+     * Tooltip UI text nodes are intentionally single-line primitives. Wrap logical tooltip lines
+     * before the script measure pass so panel width grows naturally up to maxContentWidth and the
+     * measured height contains every continuation line. No ellipsis/truncation is involved.
+     */
+    private static List<String> wrapLine(TextRenderer renderer, String text, float maxWidth) {
+        ArrayList<String> out = new ArrayList<>();
+        if (text == null || text.isEmpty()) return out;
+        if (renderer == null || maxWidth <= 1.0f || renderer.getWidth(text, false) <= maxWidth) {
+            out.add(text);
+            return out;
+        }
+
+        String remaining = text;
+        while (!remaining.isEmpty()) {
+            if (renderer.getWidth(remaining, false) <= maxWidth) {
+                out.add(remaining);
+                break;
+            }
+
+            int fitEnd = maxFittingCharIndex(renderer, remaining, maxWidth);
+            if (fitEnd <= 0) {
+                int cp = remaining.codePointAt(0);
+                fitEnd = Character.charCount(cp);
+            }
+
+            int split = lastWhitespaceStart(remaining, fitEnd);
+            if (split <= 0) split = fitEnd;
+
+            String row = remaining.substring(0, split).stripTrailing();
+            if (row.isEmpty()) {
+                row = remaining.substring(0, fitEnd);
+                split = fitEnd;
+            }
+            out.add(row);
+            remaining = remaining.substring(split).stripLeading();
+        }
+        return out;
+    }
+
+    private static int maxFittingCharIndex(TextRenderer renderer, String text, float maxWidth) {
+        int codePoints = text.codePointCount(0, text.length());
+        int low = 0;
+        int high = codePoints;
+        while (low < high) {
+            int mid = (low + high + 1) >>> 1;
+            int end = text.offsetByCodePoints(0, mid);
+            if (renderer.getWidth(text.substring(0, end), false) <= maxWidth) {
+                low = mid;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return text.offsetByCodePoints(0, low);
+    }
+
+    private static int lastWhitespaceStart(String text, int beforeOrAt) {
+        int cursor = Math.max(0, Math.min(beforeOrAt, text.length()));
+        while (cursor > 0) {
+            int cp = text.codePointBefore(cursor);
+            int start = cursor - Character.charCount(cp);
+            if (Character.isWhitespace(cp)) return start;
+            cursor = start;
+        }
+        return -1;
     }
 
     private static UiNode findByKey(UiNode node, String key) {

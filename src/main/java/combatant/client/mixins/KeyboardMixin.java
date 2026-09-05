@@ -75,6 +75,15 @@ public class KeyboardMixin {
         Minecraft mc = Minecraft.getInstance();
         if (RuntimeGate.canRunHud()
                 && ClientScreen.current() instanceof ChatScreen
+                && BetterChat.isActive()) {
+            BetterChat betterChat = BetterChat.get();
+            if (betterChat != null && betterChat.isPasswordRevealBindHeld()) {
+                ci.cancel();
+                return;
+            }
+        }
+        if (RuntimeGate.canRunHud()
+                && ClientScreen.current() instanceof ChatScreen
                 && BetterChat.isActive()
                 && BetterChatSearch.isActive()) {
             BetterChatSearch.append((char) input.codepoint());
@@ -114,6 +123,19 @@ public class KeyboardMixin {
         if (event.isCancelled()) {
             ci.cancel();
             return;
+        }
+
+        if (RuntimeGate.canRunHud()
+                && ClientScreen.current() instanceof ChatScreen
+                && BetterChat.isActive()) {
+            BetterChat betterChat = BetterChat.get();
+            if (betterChat != null && betterChat.consumePasswordRevealToggle()) {
+                if (action != GLFW.GLFW_RELEASE) {
+                    BetterChatRenderer.togglePasswordRevealFromBind();
+                    ci.cancel();
+                    return;
+                }
+            }
         }
 
         Screen screen = ClientScreen.current();

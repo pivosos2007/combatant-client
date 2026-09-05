@@ -135,9 +135,7 @@ public record UiBackdropRequest(SceneSource sceneSource,
                 && sceneSource == other.sceneSource
                 && uiUnderlayMode == other.uiUnderlayMode
                 && sceneBlur.equals(other.sceneBlur)
-                && uiBlur.equals(other.uiBlur)
-                && Float.compare(sceneMix, other.sceneMix) == 0
-                && Float.compare(uiMix, other.uiMix) == 0;
+                && uiBlur.equals(other.uiBlur);
     }
 
     public enum SceneSource {

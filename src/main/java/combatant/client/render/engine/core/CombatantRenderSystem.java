@@ -27,6 +27,7 @@ import combatant.client.render.engine.profiler.RenderFrameProfiler;
 import combatant.client.render.engine.profiler.TracyProfiler;
 import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.render.engine.rhi.CombatantRhi;
+import combatant.client.render.engine.rhi.RhiCapabilities;
 import combatant.client.render.engine.rhi.RhiStatsSnapshot;
 import combatant.client.render.engine.rhi.backend.SodiumGlBackend;
 import combatant.client.render.engine.rhi.backend.vulkan.CombatantVulkanBackend;
@@ -43,6 +44,8 @@ import combatant.client.render.sodium.SodiumRenderBridge;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Single owner of Combatant render lifecycle.
@@ -53,6 +56,7 @@ import java.util.Locale;
  */
 public enum CombatantRenderSystem {
     ;
+    private static final Logger LOGGER = LoggerFactory.getLogger("Combatant");
     private static final SodiumRenderBridge SODIUM = new SodiumRenderBridge();
     private static final CombatantFrameGraph FRAME_GRAPH = new CombatantFrameGraph();
     private static final CombatantUniformAllocator UNIFORMS = new CombatantUniformAllocator();
@@ -87,6 +91,7 @@ public enum CombatantRenderSystem {
                 "[CombatantRHI] backend initialized: %s",
                 backendKind
         );
+        logCapabilities();
         ensureBackendMatchesDevice();
     }
 
@@ -145,6 +150,36 @@ public enum CombatantRenderSystem {
                 previousKind,
                 backendKind
         );
+        logCapabilities();
+    }
+
+    private static void logCapabilities() {
+        try {
+            RhiCapabilities caps = RhiCapabilities.current();
+            if (backendKind == BackendKind.GL) {
+                LOGGER.info("[CombatantRHI] GL supplemental capabilities: vendor='{}', renderer='{}', "
+                                + "compute={}, ssbo={}, tessellation={}, geometry={}, multiBind={}, "
+                                + "copyImage={} (auto={}), invalidate={}, nativeDSA={}",
+                        caps.glVendor(), caps.glRenderer(),
+                        caps.computeShaders(), caps.shaderStorageBuffers(),
+                        caps.tessellationShaders(), caps.geometryShaders(), caps.multiBind(),
+                        caps.copyImage(), caps.copyImageAutoSafe(),
+                        caps.attachmentInvalidation(), caps.nativeDirectStateAccess());
+            } else if (backendKind == BackendKind.VULKAN) {
+                LOGGER.info("[CombatantRHI] Vulkan supplemental capabilities: compute={}, ssbo={}, "
+                                + "tessellation={}, geometry={}",
+                        caps.computeShaders(), caps.shaderStorageBuffers(),
+                        caps.tessellationShaders(), caps.geometryShaders());
+            }
+        } catch (Throwable t) {
+            DebugLog.warnOnChange(
+                    "combatant.rhi.capabilities.log.failed",
+                    t.getClass().getSimpleName() + "|" + t.getMessage(),
+                    "[CombatantRHI] capability logging failed: %s: %s",
+                    t.getClass().getSimpleName(),
+                    t.getMessage()
+            );
+        }
     }
 
     private static BackendKind detectBackendKind() {

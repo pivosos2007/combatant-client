@@ -26,6 +26,7 @@ import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.profiler.RenderCostProfiler;
 import combatant.client.render.engine.rhi.*;
 import combatant.client.render.engine.rhi.backend.gl.clip.GlStencilShapeClipBackend;
+import combatant.client.render.engine.rhi.backend.gl.GlAdvancedShaderBackend;
 import combatant.client.render.engine.rhi.backend.gl.state.SodiumGlPipelineStateBackend;
 import combatant.client.render.engine.rhi.blit.GlTextureBlitter;
 import combatant.client.render.engine.rhi.blit.TextureBlitter;
@@ -40,6 +41,7 @@ import combatant.client.render.iris.IrisRuntime;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineSpec;
 import combatant.client.render.engine.rhi.resource.RenderResourceManager;
 import combatant.client.render.engine.rhi.state.PipelineStateBackend;
+import combatant.client.render.engine.rhi.shader.AdvancedShaderBackend;
 import combatant.client.render.engine.rhi.upload.DynamicMeshBackend;
 import combatant.client.render.engine.rhi.upload.Blaze3dDynamicMeshBackend;
 import combatant.client.render.engine.uniform.impl.MeshUniforms;
@@ -66,6 +68,7 @@ public final class SodiumGlBackend implements CombatantRhi {
     private final SodiumGlMsaaControl msaa = new SodiumGlMsaaControl();
     private final GlStencilShapeClipBackend shapeClip = new GlStencilShapeClipBackend();
     private final SodiumGlPipelineStateBackend pipelineState = new SodiumGlPipelineStateBackend(msaa, shapeClip);
+    private final GlAdvancedShaderBackend advancedShaders = new GlAdvancedShaderBackend(stats);
     private final RenderPipelineRegistry pipelines = RenderPipelineRegistry.global();
     private final RenderResourceManager resources = new RenderResourceManager();
     private final Matrix4f projectionScratch = new Matrix4f();
@@ -134,6 +137,11 @@ public final class SodiumGlBackend implements CombatantRhi {
     @Override
     public PipelineStateBackend pipelineState() {
         return pipelineState;
+    }
+
+    @Override
+    public AdvancedShaderBackend advancedShaders() {
+        return advancedShaders;
     }
 
     @Override
@@ -516,6 +524,7 @@ public final class SodiumGlBackend implements CombatantRhi {
 
     @Override
     public void close() {
+        advancedShaders.close();
         msaa.close();
         dynamicMeshes.close();
         fullscreen.close();

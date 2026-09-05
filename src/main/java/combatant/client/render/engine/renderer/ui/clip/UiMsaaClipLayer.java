@@ -8,6 +8,7 @@
 package combatant.client.render.engine.renderer.ui.clip;
 
 import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.textures.GpuSampler;
@@ -39,6 +40,7 @@ import org.joml.Matrix4f;
 public final class UiMsaaClipLayer {
     private static final int COLOR_PAD_PIXELS = 2;
     private static final int TARGET_BUCKET_PIXELS = 16;
+    private static final String MSAA_OWNER = "UiMsaaClipLayer.msaa";
     private static final String RESOLVE_OWNER = "UiMsaaClipLayer.resolve";
 
     private static @Nullable MsaaFramebuffer msaaTarget;
@@ -46,7 +48,6 @@ public final class UiMsaaClipLayer {
     private static @Nullable ActiveLayer active;
     private static @Nullable MeshBuilder compositeMesh;
     private static boolean colorClearPending;
-    private static int allocatedSamples;
     private static String state = "idle";
 
     private UiMsaaClipLayer() {
@@ -165,6 +166,10 @@ public final class UiMsaaClipLayer {
         } else {
             state = "resolve_failed";
         }
+        // Physical lifetime belongs to RenderResourceManager. Keep no stale target handle between
+        // clip scopes/frames; the pool is free to reuse the allocation after frame presentation.
+        msaaTarget = null;
+        resolveTarget = null;
     }
 
     public static boolean active() {
@@ -247,30 +252,28 @@ public final class UiMsaaClipLayer {
         closeMesh(compositeMesh);
         compositeMesh = null;
         colorClearPending = false;
-        if (msaaTarget != null) {
-            MsaaFramebuffer retired = msaaTarget;
-            CombatantRenderSystem.rhi().msaa().abandonTarget(retired);
-            retired.destroyBuffers();
-            msaaTarget = null;
-        }
+        msaaTarget = null;
         resolveTarget = null;
-        allocatedSamples = 0;
         state = "shutdown";
     }
 
     private static void ensureTargets(int width, int height, int samples) {
-        if (msaaTarget == null || allocatedSamples != samples) {
-            if (msaaTarget != null) {
-                CombatantRenderSystem.rhi().msaa().abandonTarget(msaaTarget);
-                msaaTarget.destroyBuffers();
-            }
-            msaaTarget = new MsaaFramebuffer("combatant-ui-msaa-clip", width, height, false, samples);
-            allocatedSamples = samples;
+        TransientTargetDescriptor msaaDescriptor = new TransientTargetDescriptor(
+                "ui-msaa-clip-color-" + width + "x" + height + "x" + samples,
+                width,
+                height,
+                false,
+                GpuFormat.RGBA8_UNORM,
+                samples,
+                TransientTargetDescriptor.Lifetime.FRAME,
+                MSAA_OWNER
+        );
+        long createsBefore = CombatantRenderSystem.resources().msaaFramebuffers().creates();
+        msaaTarget = CombatantRenderSystem.resources().frameTransientMsaa(msaaDescriptor);
+        if (CombatantRenderSystem.resources().msaaFramebuffers().creates() > createsBefore) {
             UiPipelineTelemetry.recordMsaaTargetAllocation();
-        } else if (msaaTarget.width != width || msaaTarget.height != height) {
-            msaaTarget.resize(width, height);
-            UiPipelineTelemetry.recordMsaaTargetResize();
         }
+
         resolveTarget = CombatantRenderSystem.resources().frameTransient(
                 TransientTargetDescriptor.frame(
                         "ui-msaa-clip-resolve-" + width + "x" + height,

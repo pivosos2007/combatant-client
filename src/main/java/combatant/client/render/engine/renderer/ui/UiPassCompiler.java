@@ -406,8 +406,14 @@ public final class UiPassCompiler {
         if (screenWidth <= 0 || screenHeight <= 0) return List.of();
 
         LinkedHashMap<String, TransientTargetDescriptor> descriptors = new LinkedHashMap<>();
+        boolean needsEffectsTarget = false;
+        boolean needsCapturedScene = false;
+        boolean needsUiUnderlay = false;
         for (Object entry : batcher.order) {
             if (!(entry instanceof DrawBatch batch)) continue;
+            needsEffectsTarget |= batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS;
+            needsCapturedScene |= batch.backdropRequest.requiresCapturedScene();
+            needsUiUnderlay |= batch.backdropRequest.requiresUiUnderlayCapture();
             if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS
                     || batch.type.usesPreparedGlass() && batch.backdropRequest.sceneBlur().enabled()) {
                 String sceneDomain = batch.backdropRequest.requiresCapturedScene()
@@ -420,6 +426,24 @@ public final class UiPassCompiler {
                 Renderer2D.BlurQuality quality = rendererQuality(batch.backdropRequest.uiBlur().quality());
                 declareBlurChain(descriptors, "ui-underlay", quality.iterations, screenWidth, screenHeight);
             }
+        }
+        if (needsEffectsTarget) {
+            TransientTargetDescriptor descriptor = TransientTargetDescriptor.frame(
+                    "combatant-ui-effects", screenWidth, screenHeight, false, "Renderer2D.effects"
+            );
+            descriptors.putIfAbsent(descriptor.logicalKey(), descriptor);
+        }
+        if (needsCapturedScene) {
+            TransientTargetDescriptor descriptor = TransientTargetDescriptor.frame(
+                    "combatant-ui-glass-source", screenWidth, screenHeight, false, "Renderer2D.glassSource"
+            );
+            descriptors.putIfAbsent(descriptor.logicalKey(), descriptor);
+        }
+        if (needsUiUnderlay) {
+            TransientTargetDescriptor descriptor = TransientTargetDescriptor.frame(
+                    "combatant-ui-underlay", screenWidth, screenHeight, false, "Renderer2D.uiUnderlay"
+            );
+            descriptors.putIfAbsent(descriptor.logicalKey(), descriptor);
         }
         return descriptors.isEmpty() ? List.of() : List.copyOf(descriptors.values());
     }

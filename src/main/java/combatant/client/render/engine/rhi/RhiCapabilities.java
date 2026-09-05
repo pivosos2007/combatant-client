@@ -14,8 +14,6 @@ import com.mojang.blaze3d.systems.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.mixininterface.IGlBackendInfo;
 import combatant.client.render.engine.rhi.backend.gl.GlBackendAccess;
-import org.lwjgl.opengl.GL;
-import org.lwjgl.opengl.GLCapabilities;
 import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateBridge;
 
 import java.util.Set;
@@ -39,6 +37,8 @@ public final class RhiCapabilities {
     private final boolean multiBind;
     private final boolean copyImage;
     private final boolean attachmentInvalidation;
+    private final String glVendor;
+    private final String glRenderer;
 
     private RhiCapabilities(DeviceInfo deviceInfo,
                             boolean nativeDirectStateAccess,
@@ -49,7 +49,9 @@ public final class RhiCapabilities {
                             boolean shaderStorageBuffers,
                             boolean multiBind,
                             boolean copyImage,
-                            boolean attachmentInvalidation) {
+                            boolean attachmentInvalidation,
+                            String glVendor,
+                            String glRenderer) {
         this.deviceInfo = deviceInfo;
         this.nativeDirectStateAccess = nativeDirectStateAccess;
         this.khrDebug = khrDebug;
@@ -60,6 +62,8 @@ public final class RhiCapabilities {
         this.multiBind = multiBind;
         this.copyImage = copyImage;
         this.attachmentInvalidation = attachmentInvalidation;
+        this.glVendor = glVendor == null ? "" : glVendor;
+        this.glRenderer = glRenderer == null ? "" : glRenderer;
     }
 
     public static RhiCapabilities current() {
@@ -70,7 +74,6 @@ public final class RhiCapabilities {
 
         DeviceInfo info = device.getDeviceInfo();
         IGlBackendInfo gl = GlBackendAccess.current();
-        GLCapabilities glCaps = glCapabilities(gl != null);
         boolean vulkan = info.backendName() != null
                 && info.backendName().toLowerCase(java.util.Locale.ROOT).contains("vulkan");
         return new RhiCapabilities(
@@ -78,27 +81,19 @@ public final class RhiCapabilities {
                 gl != null && gl.combatant$nativeDirectStateAccess(),
                 gl != null && gl.combatant$khrDebug(),
                 vulkan ? VulkanRenderStateBridge.computeShadersSupported()
-                        : glCaps != null && (glCaps.OpenGL43 || glCaps.GL_ARB_compute_shader),
+                        : gl != null && gl.combatant$computeShaders(),
                 vulkan ? VulkanRenderStateBridge.tessellationShadersSupported()
-                        : glCaps != null && (glCaps.OpenGL40 || glCaps.GL_ARB_tessellation_shader),
+                        : gl != null && gl.combatant$tessellationShaders(),
                 vulkan ? VulkanRenderStateBridge.geometryShadersSupported()
-                        : glCaps != null && (glCaps.OpenGL32 || glCaps.GL_ARB_geometry_shader4),
+                        : gl != null && gl.combatant$geometryShaders(),
                 vulkan ? VulkanRenderStateBridge.shaderStorageBuffersSupported()
-                        : glCaps != null && (glCaps.OpenGL43 || glCaps.GL_ARB_shader_storage_buffer_object),
-                glCaps != null && (glCaps.OpenGL44 || glCaps.GL_ARB_multi_bind),
-                vulkan || glCaps != null && (glCaps.OpenGL43 || glCaps.GL_ARB_copy_image),
-                vulkan || glCaps != null && (glCaps.OpenGL43 || glCaps.GL_ARB_invalidate_subdata)
+                        : gl != null && gl.combatant$shaderStorageBuffers(),
+                !vulkan && gl != null && gl.combatant$multiBind(),
+                vulkan || gl != null && gl.combatant$copyImage(),
+                vulkan || gl != null && gl.combatant$attachmentInvalidation(),
+                gl != null ? gl.combatant$vendor() : "",
+                gl != null ? gl.combatant$renderer() : ""
         );
-    }
-
-    private static GLCapabilities glCapabilities(boolean glBackend) {
-        if (!glBackend) return null;
-        try {
-            // Reuse LWJGL's capability table created by GlDevice; this does not query extensions again.
-            return GL.getCapabilities();
-        } catch (Throwable ignored) {
-            return null;
-        }
     }
 
     public DeviceInfo deviceInfo() {
@@ -199,9 +194,38 @@ public final class RhiCapabilities {
         return attachmentInvalidation;
     }
 
-    /** Blaze3D 26.2 exposes only vertex/fragment pipelines; native dispatch is separate. */
+    public String glVendor() {
+        return glVendor;
+    }
+
+    public String glRenderer() {
+        return glRenderer;
+    }
+
+    /**
+     * Conservative AUTO policy for raw image copies.
+     *
+     * <p>ARB_copy_image is a direct image-memory copy and is usually a good fit for exact desktop
+     * texture-to-texture transfers. Known mobile/tile-based families have shipped pathological
+     * stalls/hangs in this path, so AUTO keeps Mojang's FBO blit there. FORCE still overrides this
+     * policy for diagnostics.</p>
+     */
+    public boolean copyImageAutoSafe() {
+        if (!copyImage || GlBackendAccess.current() == null) return false;
+        String identity = (glVendor + " " + glRenderer).toLowerCase(java.util.Locale.ROOT);
+        if (identity.isBlank()) return true;
+        return !(identity.contains("mali")
+                || identity.contains("powervr")
+                || identity.contains("imagination")
+                || identity.contains("vivante")
+                || identity.contains("swiftshader")
+                || identity.contains("llvmpipe")
+                || identity.contains("softpipe"));
+    }
+
+    /** Blaze3D 26.2 exposes no compute dispatch; Combatant supplies it only on the native GL tier today. */
     public boolean nativeComputeSubmission() {
-        return false;
+        return GlBackendAccess.current() != null && computeShaders && shaderStorageBuffers;
     }
 
     /** Blaze3D 26.2 exposes no tessellation stages; native pipeline lowering is separate. */

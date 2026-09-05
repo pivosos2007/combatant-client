@@ -62,6 +62,15 @@ public final class UiBlurResources {
         UI_UNDERLAY_REQUESTED.clear();
         activeUiUnderlayLayer = null;
         activeUiUnderlayFrame = Long.MIN_VALUE;
+        // These handles belong to FRAME transient allocations. Drop stale references before the
+        // pool is allowed to alias their physical storage to another logical resource.
+        effects = null;
+        glassSource = null;
+        uiUnderlay = null;
+        worldSourceReady = false;
+        SURFACE_FRAME_CACHE.clear();
+        CAPTURED_WORLD_FRAME_CACHE.clear();
+        UI_UNDERLAY_FRAME_CACHE.clear();
     }
 
     public static void requestUiUnderlay(Renderer2D.Deferred2DLayer layer) {
@@ -112,8 +121,10 @@ public final class UiBlurResources {
         int width = minecraft.getWindow().getWidth();
         int height = minecraft.getWindow().getHeight();
         if (width <= 0 || height <= 0) return null;
-        uiUnderlay = CombatantRenderSystem.resources().persistentFramebuffer(
-                "combatant-ui-underlay", width, height, false, "Renderer2D.uiUnderlay"
+        uiUnderlay = CombatantRenderSystem.resources().frameTransient(
+                TransientTargetDescriptor.frame(
+                        "combatant-ui-underlay", width, height, false, "Renderer2D.uiUnderlay"
+                )
         );
         return uiUnderlay;
     }
@@ -133,8 +144,10 @@ public final class UiBlurResources {
         int width = minecraft.getWindow().getWidth();
         int height = minecraft.getWindow().getHeight();
         if (width <= 0 || height <= 0) return null;
-        effects = CombatantRenderSystem.resources().persistentFramebuffer(
-                "combatant-ui-effects", width, height, false, "Renderer2D.effects"
+        effects = CombatantRenderSystem.resources().frameTransient(
+                TransientTargetDescriptor.frame(
+                        "combatant-ui-effects", width, height, false, "Renderer2D.effects"
+                )
         );
         return effects;
     }
@@ -144,8 +157,10 @@ public final class UiBlurResources {
         int width = minecraft.getWindow().getWidth();
         int height = minecraft.getWindow().getHeight();
         if (width <= 0 || height <= 0) return null;
-        glassSource = CombatantRenderSystem.resources().persistentFramebuffer(
-                "combatant-ui-glass-source", width, height, false, "Renderer2D.glassSource"
+        glassSource = CombatantRenderSystem.resources().frameTransient(
+                TransientTargetDescriptor.frame(
+                        "combatant-ui-glass-source", width, height, false, "Renderer2D.glassSource"
+                )
         );
         return glassSource;
     }

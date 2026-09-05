@@ -125,6 +125,18 @@ public enum KeyManager {
      * True once when combo transitions from not-pressed to pressed for this func.
      */
     public static boolean wasPressed(String func) {
+        return wasPressedInternal(func, false);
+    }
+
+    /**
+     * True once when combo transitions from not-pressed to pressed for this func,
+     * including while a Screen (chat, inventory, etc.) is open.
+     */
+    public static boolean wasPressedAllowScreen(String func) {
+        return wasPressedInternal(func, true);
+    }
+
+    private static boolean wasPressedInternal(String func, boolean allowScreen) {
         if (ClickGuiSearch.isActive()) return false;
         if (!comboBinds.containsKey(func)) return false;
 
@@ -132,7 +144,7 @@ public enum KeyManager {
         for (Set<Integer> combo : comboBinds.get(func)) {
             boolean allPressed = true;
             for (int key : combo) {
-                if (!isKeyPressed(key, false)) {
+                if (!isKeyPressed(key, allowScreen)) {
                     allPressed = false;
                     break;
                 }

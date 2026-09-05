@@ -33,6 +33,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateBridge;
+import combatant.client.mixininterface.IVulkanBackendInfo;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.HashMap;
@@ -42,12 +43,31 @@ import java.util.Set;
 import static org.lwjgl.vulkan.VK12.*;
 
 @Mixin(VulkanDevice.class)
-public abstract class VulkanDeviceMixin {
+public abstract class VulkanDeviceMixin implements IVulkanBackendInfo {
     @Shadow
     private ShaderSource defaultShaderSource;
 
     @Unique
     private final Map<VulkanRenderStateBridge.PipelineVariantKey, VulkanRenderPipeline> combatant$pipelineVariants = new HashMap<>();
+    @Unique private VkDevice combatant$vkDevice;
+    @Unique private long combatant$vma;
+    @Unique private VulkanPhysicalDevice combatant$physicalDevice;
+
+    @Override
+    public VkDevice combatant$vkDevice() {
+        return combatant$vkDevice;
+    }
+
+    @Override
+    public long combatant$vma() {
+        return combatant$vma;
+    }
+
+    @Override
+    public VulkanPhysicalDevice combatant$physicalDevice() {
+        return combatant$physicalDevice;
+    }
+
 
     @Invoker("compilePipeline")
     protected abstract VulkanRenderPipeline combatant$compilePipelineVariant(RenderPipeline pipeline, ShaderSource source);
@@ -61,6 +81,9 @@ public abstract class VulkanDeviceMixin {
                                                    long vma,
                                                    CheckpointExtension checkpointExtension,
                                                    CallbackInfo ci) {
+        combatant$vkDevice = device;
+        combatant$vma = vma;
+        combatant$physicalDevice = physicalDevice;
         if (physicalDevice == null || physicalDevice.vkPhysicalDeviceProperties() == null) return;
         VkPhysicalDeviceLimits limits = physicalDevice.vkPhysicalDeviceProperties().limits();
         int framebufferSamples = limits.framebufferColorSampleCounts()

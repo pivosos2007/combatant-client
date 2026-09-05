@@ -39,6 +39,12 @@ public final class RhiStats {
     private long textureFastCopies;
     private long textureShaderCopies;
     private long textureGlCopyImages;
+    private long computeDispatches;
+    private long computeWorkgroups;
+    private long computeStorageBindings;
+    private long storageBufferUploads;
+    private long storageBufferUploadBytes;
+    private long advancedShaderBarriers;
     private long meshUploads;
     private long uploadedVertexBytes;
     private long uploadedIndexBytes;
@@ -79,6 +85,7 @@ public final class RhiStats {
     public void beginFrame(long frameId) {
         this.frameId = frameId;
         drawCalls = multiDrawCalls = multiDrawLogicalDraws = renderPasses = renderPassAttachmentSwitches = fullscreenPasses = textureFastCopies = textureShaderCopies = textureGlCopyImages = 0L;
+        computeDispatches = computeWorkgroups = computeStorageBindings = storageBufferUploads = storageBufferUploadBytes = advancedShaderBarriers = 0L;
         pipelineBinds = pipelineBindSkips = pipelineSwitches = uniformBinds = samplerBinds = 0L;
         estimatedShaderAluOps = estimatedShaderTranscendentalOps = estimatedShaderTextureOps = 0L;
         estimatedShaderBranchOps = estimatedShaderLoopOps = 0L;
@@ -202,6 +209,26 @@ public final class RhiStats {
 
     public void textureGlCopyImage() {
         textureGlCopyImages++;
+    }
+
+    public void computeDispatch(int groupsX, int groupsY, int groupsZ, int storageBindings) {
+        computeDispatches++;
+        long x = Math.max(1, groupsX);
+        long y = Math.max(1, groupsY);
+        long z = Math.max(1, groupsZ);
+        long xy = x > Long.MAX_VALUE / y ? Long.MAX_VALUE : x * y;
+        long xyz = xy == Long.MAX_VALUE || xy > Long.MAX_VALUE / z ? Long.MAX_VALUE : xy * z;
+        computeWorkgroups = computeWorkgroups > Long.MAX_VALUE - xyz ? Long.MAX_VALUE : computeWorkgroups + xyz;
+        computeStorageBindings += Math.max(0, storageBindings);
+    }
+
+    public void storageBufferUpload(long bytes) {
+        storageBufferUploads++;
+        storageBufferUploadBytes += Math.max(0L, bytes);
+    }
+
+    public void advancedShaderBarrier() {
+        advancedShaderBarriers++;
     }
 
     public void meshUpload(long vertexBytes, long indexBytes) {
@@ -371,6 +398,30 @@ public final class RhiStats {
         return textureGlCopyImages;
     }
 
+    public long computeDispatches() {
+        return computeDispatches;
+    }
+
+    public long computeWorkgroups() {
+        return computeWorkgroups;
+    }
+
+    public long computeStorageBindings() {
+        return computeStorageBindings;
+    }
+
+    public long storageBufferUploads() {
+        return storageBufferUploads;
+    }
+
+    public long storageBufferUploadBytes() {
+        return storageBufferUploadBytes;
+    }
+
+    public long advancedShaderBarriers() {
+        return advancedShaderBarriers;
+    }
+
     public long meshUploads() {
         return meshUploads;
     }
@@ -419,6 +470,8 @@ public final class RhiStats {
                 estimatedShaderAluOps, estimatedShaderTranscendentalOps, estimatedShaderTextureOps,
                 estimatedShaderBranchOps, estimatedShaderLoopOps,
                 fullscreenPasses, textureFastCopies, textureShaderCopies, textureGlCopyImages,
+                computeDispatches, computeWorkgroups, computeStorageBindings,
+                storageBufferUploads, storageBufferUploadBytes, advancedShaderBarriers,
                 meshUploads, uploadedVertexBytes, uploadedIndexBytes, ringWraps, ringStalls,
                 immediateFallbackUploads, temporaryOwnedMeshes,
                 dynamicArenaAllocations, dynamicPersistentArenaAllocations, dynamicSpillArenaAllocations,

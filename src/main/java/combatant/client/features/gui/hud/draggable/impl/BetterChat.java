@@ -12,10 +12,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.ChatScreen;
 import combatant.client.config.values.BooleanMapValue;
+import combatant.client.config.values.BindMode;
+import combatant.client.config.values.KeyBindValue;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBColorValue;
 import combatant.client.features.gui.chat.BetterChatRenderer;
+import combatant.client.features.gui.clickgui.settings.FunctionBindSetting;
 import combatant.client.features.gui.hud.HudElementInfo;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
@@ -50,6 +53,10 @@ public final class BetterChat extends DraggableHudElement {
     private final BooleanValue stackDuplicates = bool("stack_duplicates", true);
     private final BooleanValue antiSpam = bool("anti_spam", true);
     private final BooleanValue passwordPrivacy = bool("password_privacy", true);
+    private final KeyBindValue passwordRevealBindValue =
+            visibleWhen(bind("password_reveal_bind", "LEFT_CTRL+LEFT_SHIFT+H", BindMode.PRESS), passwordPrivacy::get);
+    private final FunctionBindSetting passwordRevealAction =
+            new FunctionBindSetting("password_reveal_bind", passwordRevealBindValue, BindMode.PRESS);
     private final BooleanValue historyEnabled = bool("history_enabled", true);
     private final NumberValue<Integer> historyLimit = num("history_limit", 32000, 1000, 32000);
     private final BooleanValue timestampsEnabled = bool("timestamps_enabled", true);
@@ -78,6 +85,20 @@ public final class BetterChat extends DraggableHudElement {
 
     public static boolean isActive() {
         return RuntimeGate.canRunHud() && DraggableHudElementRegistry.isEnabled(BetterChat.class);
+    }
+
+    @Override
+    protected void onLoaded() {
+        // Register the runtime action after config load so the loaded combo is authoritative.
+        passwordRevealAction.setParent(this);
+    }
+
+    public boolean consumePasswordRevealToggle() {
+        return passwordRevealAction.isPressedAllowScreen();
+    }
+
+    public boolean isPasswordRevealBindHeld() {
+        return passwordRevealAction.isHeldForHud();
     }
 
     public float widthRatio() {

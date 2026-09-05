@@ -9,6 +9,7 @@ package combatant.client.render.engine.rhi.resource;
 
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.textures.GpuTexture;
+import combatant.client.render.engine.msaa.MsaaFramebuffer;
 
 /**
  * Single lifecycle owner for Combatant render resources.
@@ -18,6 +19,7 @@ public final class RenderResourceManager implements AutoCloseable {
     private final ResourceLeakTracker leakTracker = new ResourceLeakTracker();
     private final FrameResourceRetirementQueue retirementQueue = new FrameResourceRetirementQueue();
     private final FramebufferPool framebufferPool = new FramebufferPool(leakTracker);
+    private final MsaaFramebufferPool msaaFramebufferPool = new MsaaFramebufferPool(leakTracker);
     private final TexturePool texturePool = new TexturePool(leakTracker);
     private final SamplerCache samplerCache = new SamplerCache();
     private final GlyphAtlasManager glyphAtlasManager = new GlyphAtlasManager();
@@ -44,16 +46,26 @@ public final class RenderResourceManager implements AutoCloseable {
     }
 
     public TextureTarget frameTransient(TransientTargetDescriptor descriptor) {
+        if (descriptor != null && descriptor.samples() > 1) {
+            throw new IllegalArgumentException("Use frameTransientMsaa() for multisampled targets: "
+                    + descriptor.logicalName());
+        }
         return framebufferPool.acquireFrameTransient(descriptor);
+    }
+
+    public MsaaFramebuffer frameTransientMsaa(TransientTargetDescriptor descriptor) {
+        return msaaFramebufferPool.acquireFrameTransient(descriptor);
     }
 
     public void beginFrame() {
         framebufferPool.beginFrame();
+        msaaFramebufferPool.beginFrame();
     }
 
     public void onFramePresented() {
         frameId++;
         framebufferPool.releaseFrameTransients();
+        msaaFramebufferPool.releaseFrameTransients();
         // Budgeted cleanup: do not turn flipFrame into a blocking resource purge.
         retirementQueue.drain(16);
         texturePool.drain(8);
@@ -61,6 +73,10 @@ public final class RenderResourceManager implements AutoCloseable {
 
     public FramebufferPool framebuffers() {
         return framebufferPool;
+    }
+
+    public MsaaFramebufferPool msaaFramebuffers() {
+        return msaaFramebufferPool;
     }
 
     public TexturePool textures() {
@@ -81,26 +97,29 @@ public final class RenderResourceManager implements AutoCloseable {
 
     public void onResize() {
         framebufferPool.invalidateSizeDependent();
+        msaaFramebufferPool.invalidate();
     }
 
     public void onReload() {
         framebufferPool.invalidateSizeDependent();
+        msaaFramebufferPool.invalidate();
         glyphAtlasManager.clear();
         texturePool.drain(Integer.MAX_VALUE);
     }
 
     public void onWorldUnload() {
         framebufferPool.invalidateSizeDependent();
+        msaaFramebufferPool.invalidate();
     }
 
     public RenderResourceStatsSnapshot statsSnapshot() {
         return new RenderResourceStatsSnapshot(
                 frameId,
                 framebufferPool.persistentCount(),
-                framebufferPool.temporaryCount(),
+                framebufferPool.temporaryCount() + msaaFramebufferPool.pooledCount(),
                 framebufferPool.borrows(),
                 framebufferPool.releases(),
-                framebufferPool.creates(),
+                framebufferPool.creates() + msaaFramebufferPool.creates(),
                 framebufferPool.resizes(),
                 framebufferPool.invalidations(),
                 texturePool.retirements(),
@@ -109,13 +128,13 @@ public final class RenderResourceManager implements AutoCloseable {
                 retirementQueue.closed(),
                 retirementQueue.backlog(),
                 leakTracker.liveCount(),
-                framebufferPool.activeFrameTransientCount(),
-                framebufferPool.transientAcquires(),
-                framebufferPool.transientReuses(),
-                framebufferPool.transientReleases(),
-                framebufferPool.peakFrameTransients(),
-                framebufferPool.transientEvictions(),
-                framebufferPool.idleTransientBytes()
+                framebufferPool.activeFrameTransientCount() + msaaFramebufferPool.activeFrameTransientCount(),
+                framebufferPool.transientAcquires() + msaaFramebufferPool.acquires(),
+                framebufferPool.transientReuses() + msaaFramebufferPool.reuses(),
+                framebufferPool.transientReleases() + msaaFramebufferPool.releases(),
+                framebufferPool.peakFrameTransients() + msaaFramebufferPool.peakFrameLive(),
+                framebufferPool.transientEvictions() + msaaFramebufferPool.evictions(),
+                framebufferPool.idleTransientBytes() + msaaFramebufferPool.idleBytes()
         );
     }
 
@@ -123,6 +142,7 @@ public final class RenderResourceManager implements AutoCloseable {
     public void close() {
         retirementQueue.drainAll();
         framebufferPool.close();
+        msaaFramebufferPool.close();
         texturePool.close();
         glyphAtlasManager.clear();
         leakTracker.clear();

@@ -39,6 +39,7 @@ import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.gui.hud.draggable.impl.BetterChat;
+import combatant.client.features.module.Notifier;
 import combatant.client.features.gui.hud.nondraggable.impl.BetterTooltips;
 import combatant.client.mixins.accessors.ChatScreenAccessor;
 import combatant.client.mixins.accessors.TextFieldWidgetAccessor;
@@ -118,6 +119,12 @@ public enum BetterChatRenderer {
     private static int sbVisibleLines = 0;
     private static float inputBoxX = 0f, inputBoxY = 0f, inputBoxW = 0f, inputBoxH = 0f;
     private static boolean hasInputBox = false;
+    private static float inputTextX = 0f, inputTextY = 0f, inputTextW = 0f;
+    private static float inputFontSize = 0f, inputLineHeight = 0f;
+    private static String inputTextSnapshot = "";
+    private static List<InputLine> inputLinesSnapshot = List.of();
+    private static boolean inputSearchSnapshot = false;
+    private static boolean inputCaretDragging = false;
     // Suggest UI hitbox
     private static boolean suggestActive = false;
     private static float suggestX, suggestY, suggestW, suggestH, suggestItemH;
@@ -162,9 +169,7 @@ public enum BetterChatRenderer {
     private static int leftDownMsgIndex = -1;
     private static int leftDownCharIndex = -1;
     private static Style leftDownStyle = null;
-    private static final List<PasswordMaskRect> passwordMaskRects = new ArrayList<>();
     private static boolean passwordReveal = false;
-    private static boolean passwordMaskClickPending = false;
     private static float passwordRevealProgress = 0f;
     private static String passwordInputSnapshot = "";
 
@@ -252,6 +257,9 @@ public enum BetterChatRenderer {
             BetterChatSearch.deactivate();
             resetSuggestionTracking();
             resetPasswordPrivacy();
+            inputCaretDragging = false;
+            inputTextSnapshot = "";
+            inputLinesSnapshot = List.of();
         }
         if (chatOpen && ctx != null) {
             BetterTooltips.beginTooltipFrame();
@@ -1389,6 +1397,17 @@ public enum BetterChatRenderer {
 
         float textX = searchX + searchBoxW + iconGap;
         float textClipW = Math.max(20f, x + boxW - padX - textX - rightReserve);
+
+        // Capture the exact rendered input geometry for mouse -> caret hit testing.
+        inputTextX = textX;
+        inputTextY = inputY + padY;
+        inputTextW = textClipW;
+        inputFontSize = fontSize;
+        inputLineHeight = lineHeight;
+        inputTextSnapshot = text;
+        inputLinesSnapshot = List.copyOf(lines);
+        inputSearchSnapshot = searchMode;
+
         TextRenderer tr = getIosevkaRegular();
         float textScale = scaleForSize(fontSize);
         boolean clipped = ScissorFunction.pushRaw(textX, inputY, textClipW, h);
@@ -1426,15 +1445,7 @@ public enum BetterChatRenderer {
             }
         }
 
-        int caretLine = 0;
-        for (int i = 0; i < lines.size(); i++) {
-            InputLine line = lines.get(i);
-            if (cursor >= line.start() && cursor <= line.end()) {
-                caretLine = i;
-                break;
-            }
-        }
-
+        int caretLine = visualLineForCursor(lines, cursor);
         float caretX = textX + widthTo(text, lines, cursor, fontSize);
         float caretY = inputY + padY + caretLine * lineHeight;
         boolean blink = (System.currentTimeMillis() / 500L) % 2 == 0;
@@ -1467,10 +1478,8 @@ public enum BetterChatRenderer {
     }
 
     private static void updatePasswordPrivacyState(String fieldText, ChatPasswordHeuristics.SensitiveRange range) {
-        passwordMaskRects.clear();
         if (range == null) {
             passwordReveal = false;
-            passwordMaskClickPending = false;
             passwordRevealProgress = 0f;
             passwordInputSnapshot = "";
             return;
@@ -1481,7 +1490,6 @@ public enum BetterChatRenderer {
             // Editing a credential re-masks it immediately. Do not animate from a previously
             // revealed state, otherwise the new character could flash on screen.
             passwordReveal = false;
-            passwordMaskClickPending = false;
             passwordRevealProgress = 0f;
             passwordInputSnapshot = current;
         }
@@ -1495,9 +1503,7 @@ public enum BetterChatRenderer {
     }
 
     private static void resetPasswordPrivacy() {
-        passwordMaskRects.clear();
         passwordReveal = false;
-        passwordMaskClickPending = false;
         passwordRevealProgress = 0f;
         passwordInputSnapshot = "";
     }
@@ -1542,9 +1548,6 @@ public enum BetterChatRenderer {
             float maskX = cursorX - maskPadX;
             float maskW = Math.max(22f, secretW + maskPadX * 2f);
             drawPasswordPrivacyMask(maskX, maskY, maskW, maskH, maskAlpha);
-            if (!passwordReveal || passwordRevealProgress < 0.96f) {
-                passwordMaskRects.add(new PasswordMaskRect(maskX, maskY, maskW, maskH));
-            }
         }
 
         cursorX += secretW;
@@ -1583,16 +1586,6 @@ public enum BetterChatRenderer {
         if (clipped) ScissorFunction.pop();
     }
 
-    private static boolean isPasswordMaskHovered(double x, double y) {
-        if (passwordReveal && passwordRevealProgress >= 0.96f) return false;
-        for (PasswordMaskRect rect : passwordMaskRects) {
-            if (x >= rect.x() && x <= rect.x() + rect.w() && y >= rect.y() && y <= rect.y() + rect.h()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private static List<InputLine> wrapInput(String text, float fontSize, float maxWidth) {
         List<InputLine> lines = new ArrayList<>();
         int start = 0;
@@ -1621,13 +1614,21 @@ public enum BetterChatRenderer {
 
     private static float widthTo(String text, List<InputLine> lines, int cursorIndex, float fontSize) {
         if (lines.isEmpty()) return 0f;
-        for (InputLine line : lines) {
-            if (cursorIndex >= line.start() && cursorIndex <= line.end()) {
-                return textWidth(getIosevkaRegular(), safeSub(text, line.start(), cursorIndex), fontSize);
+        int lineIndex = visualLineForCursor(lines, cursorIndex);
+        InputLine line = lines.get(Mth.clamp(lineIndex, 0, lines.size() - 1));
+        return textWidth(getIosevkaRegular(), safeSub(text, line.start(), cursorIndex), fontSize);
+    }
+
+    private static int visualLineForCursor(List<InputLine> lines, int cursorIndex) {
+        if (lines == null || lines.isEmpty()) return 0;
+        for (int i = 0; i < lines.size(); i++) {
+            InputLine line = lines.get(i);
+            boolean last = i == lines.size() - 1;
+            if (cursorIndex >= line.start() && (cursorIndex < line.end() || (last && cursorIndex <= line.end()))) {
+                return i;
             }
         }
-        InputLine last = lines.getLast();
-        return textWidth(getIosevkaRegular(), safeSub(text, last.start(), last.end()), fontSize);
+        return lines.size() - 1;
     }
 
     public static boolean onScroll(double delta) {
@@ -1718,18 +1719,6 @@ public enum BetterChatRenderer {
             return true;
         }
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
-            if (pressed && isPasswordMaskHovered(fx, fy)) {
-                passwordReveal = true;
-                passwordMaskClickPending = true;
-                return true;
-            }
-            if (!pressed && passwordMaskClickPending) {
-                passwordMaskClickPending = false;
-                return true;
-            }
-        }
-
         if (searchHit) {
             boolean inside = fx >= searchRectX && fx <= searchRectX + searchRectW && fy >= searchRectY && fy <= searchRectY + searchRectH;
             if (inside && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
@@ -1740,6 +1729,32 @@ public enum BetterChatRenderer {
             }
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && pressed) {
                 BetterChatSearch.setActive(false);
+            }
+        }
+
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && hasInputBox && !inputSearchSnapshot) {
+            boolean insideInputText = isInsideInputText(fx, fy);
+            if (pressed && insideInputText) {
+                if (ClientScreen.current() instanceof ChatScreen chatScreen) {
+                    EditBox field = ((ChatScreenAccessor) chatScreen).getChatField();
+                    if (field != null) {
+                        int caret = inputCaretIndexAt(fx, fy);
+                        boolean extendSelection =
+                                InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_LEFT_SHIFT)
+                                        || InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_RIGHT_SHIFT);
+                        field.moveCursorTo(caret, extendSelection);
+                        inputCaretDragging = true;
+                        contextMenu = ContextMenu.closed();
+                        selection.clear();
+                        selecting = false;
+                        leftPending = false;
+                        return true;
+                    }
+                }
+            }
+            if (!pressed && inputCaretDragging) {
+                inputCaretDragging = false;
+                return true;
             }
         }
 
@@ -1827,6 +1842,16 @@ public enum BetterChatRenderer {
             return;
         }
         if (isInsideSuggestWindow(fx, fy, mouse.rawX(), mouse.rawY())) return;
+
+        if (inputCaretDragging && !inputSearchSnapshot) {
+            if (ClientScreen.current() instanceof ChatScreen chatScreen) {
+                EditBox field = ((ChatScreenAccessor) chatScreen).getChatField();
+                if (field != null) {
+                    field.moveCursorTo(inputCaretIndexAt(fx, fy), true);
+                }
+            }
+            return;
+        }
 
         if (leftPending && !selecting) {
             double dx = fx - leftDownFx;
@@ -2627,6 +2652,80 @@ public enum BetterChatRenderer {
         return s.substring(start, end);
     }
 
+    private static boolean isInsideInputText(double x, double y) {
+        return hasInputBox
+                && x >= inputTextX
+                && x <= inputTextX + inputTextW
+                && y >= inputBoxY
+                && y <= inputBoxY + inputBoxH;
+    }
+
+    private static int inputCaretIndexAt(double mouseX, double mouseY) {
+        String text = inputTextSnapshot == null ? "" : inputTextSnapshot;
+        List<InputLine> lines = inputLinesSnapshot;
+        if (lines == null || lines.isEmpty()) return 0;
+
+        float lineHeight = Math.max(1f, inputLineHeight);
+        int lineIndex = Mth.clamp((int) Math.floor((mouseY - inputTextY) / lineHeight), 0, lines.size() - 1);
+        InputLine line = lines.get(lineIndex);
+
+        double localX = mouseX - inputTextX;
+        if (localX <= 0.0) return line.start();
+        if (localX >= line.width()) return line.end();
+
+        float advance = 0f;
+        int index = Mth.clamp(line.start(), 0, text.length());
+        int lineEnd = Mth.clamp(line.end(), index, text.length());
+        TextRenderer tr = getIosevkaRegular();
+
+        while (index < lineEnd) {
+            int cp = text.codePointAt(index);
+            int cpLen = Character.charCount(cp);
+            if (index + cpLen > lineEnd) break;
+
+            String glyph = new String(Character.toChars(cp));
+            float glyphW = textWidth(tr, glyph, inputFontSize);
+            if (localX < advance + glyphW * 0.5f) {
+                return index;
+            }
+            advance += glyphW;
+            index += cpLen;
+        }
+        return lineEnd;
+    }
+
+    /**
+     * Toggles visibility only for the currently detected credential range.
+     * Editing the credential still re-masks immediately.
+     */
+    public static void togglePasswordRevealFromBind() {
+        BetterChat cfg = BetterChat.get();
+        if (cfg == null || !cfg.passwordPrivacy()) {
+            Notifier.warning(I18n.get("better_chat.password.privacy_disabled"));
+            return;
+        }
+        if (!(ClientScreen.current() instanceof ChatScreen chatScreen)) return;
+
+        EditBox field = ((ChatScreenAccessor) chatScreen).getChatField();
+        if (field == null) return;
+
+        String current = field.getValue();
+        ChatPasswordHeuristics.SensitiveRange range = ChatPasswordHeuristics.sensitiveRange(current);
+        if (range == null) {
+            passwordReveal = false;
+            passwordRevealProgress = 0f;
+            passwordInputSnapshot = current == null ? "" : current;
+            Notifier.info(I18n.get("better_chat.password.nothing_hidden"));
+            return;
+        }
+
+        passwordReveal = !passwordReveal;
+        passwordInputSnapshot = current == null ? "" : current;
+        Notifier.info(I18n.get(passwordReveal
+                ? "better_chat.password.revealed"
+                : "better_chat.password.hidden"));
+    }
+
     private static int selectionStart(EditBox field, int fallback) {
         if (field == null) return fallback;
         return Mth.clamp(field.getCursorPosition(), 0, field.getValue().length());
@@ -3167,9 +3266,6 @@ public enum BetterChatRenderer {
     }
 
     private record InputLine(int start, int end, float width) {
-    }
-
-    private record PasswordMaskRect(float x, float y, float w, float h) {
     }
 
     private record Segment(String text, Style style, ItemStack item, int logicalLength) {

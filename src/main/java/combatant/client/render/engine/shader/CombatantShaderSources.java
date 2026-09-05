@@ -32,6 +32,10 @@ public enum CombatantShaderSources {
     public static final String SHADER_PREFIX = "shaders/";
     public static final String VERT_EXTENSION = ".vert";
     public static final String FRAG_EXTENSION = ".frag";
+    public static final String COMPUTE_EXTENSION = ".comp";
+    public static final String TESS_CONTROL_EXTENSION = ".tesc";
+    public static final String TESS_EVALUATION_EXTENSION = ".tese";
+    public static final String GEOMETRY_EXTENSION = ".geom";
     public static final String ANALYTIC_CLIP_SUFFIX = "__analytic_clip";
     public static final String UI_UNDERLAY_SUFFIX = "__ui_underlay";
     private static final String ANALYTIC_CLIP_DEFINE = "#define COMBATANT_ANALYTIC_CLIP 1\n";
@@ -46,7 +50,11 @@ public enum CombatantShaderSources {
         return ShaderType.byLocation(id) != null
                 || path.endsWith(".glsl")
                 || path.endsWith(VERT_EXTENSION)
-                || path.endsWith(FRAG_EXTENSION);
+                || path.endsWith(FRAG_EXTENSION)
+                || path.endsWith(COMPUTE_EXTENSION)
+                || path.endsWith(TESS_CONTROL_EXTENSION)
+                || path.endsWith(TESS_EVALUATION_EXTENSION)
+                || path.endsWith(GEOMETRY_EXTENSION);
     }
 
     public static ShaderType typeByLocation(Identifier id) {
@@ -130,6 +138,37 @@ public enum CombatantShaderSources {
             path += type == ShaderType.VERTEX ? ".vsh" : ".fsh";
         }
         return id.withPath(path);
+    }
+
+
+    /**
+     * Loads a Combatant-native shader stage through the same Mojang GLSL import preprocessor used
+     * by ordinary graphics shaders. Native stages are intentionally not registered in ShaderManager
+     * because Blaze3D 26.2 has no public compute/tessellation ShaderType.
+     */
+    public static String loadNativeStage(ResourceManager resourceManager, Identifier id, String extension) {
+        if (resourceManager == null) throw new IllegalArgumentException("resourceManager");
+        if (id == null) throw new IllegalArgumentException("id");
+        if (!isNativeStageExtension(extension)) throw new IllegalArgumentException("Unsupported native shader extension: " + extension);
+
+        Identifier resourceId = nativeStageResourceId(id, extension);
+        Resource resource = resourceManager.getResource(resourceId)
+                .orElseThrow(() -> new IllegalStateException("Missing native shader resource: " + resourceId));
+        return load(resourceManager, resourceId, resource);
+    }
+
+    public static Identifier nativeStageResourceId(Identifier id, String extension) {
+        String path = id.getPath();
+        if (!path.startsWith(SHADER_PREFIX)) path = SHADER_PREFIX + path;
+        if (!path.endsWith(extension)) path += extension;
+        return id.withPath(path);
+    }
+
+    private static boolean isNativeStageExtension(String extension) {
+        return COMPUTE_EXTENSION.equals(extension)
+                || TESS_CONTROL_EXTENSION.equals(extension)
+                || TESS_EVALUATION_EXTENSION.equals(extension)
+                || GEOMETRY_EXTENSION.equals(extension);
     }
 
     public static String load(ResourceManager resourceManager, Identifier id) {

@@ -54,6 +54,14 @@ public class FunctionBindSetting extends Setting {
         return KeyManager.wasPressed(bindingName());
     }
 
+    /**
+     * PRESS edge which remains active while a Minecraft Screen is open.
+     * Intended for UI/HUD actions such as BetterChat controls.
+     */
+    public boolean isPressedAllowScreen() {
+        return KeyManager.wasPressedAllowScreen(bindingName());
+    }
+
     BindMode mode() {
         return mode;
     }
