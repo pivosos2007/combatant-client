@@ -21,6 +21,10 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
+#ifdef COMBATANT_ANALYTIC_CLIP
+#moj_import <combatant:ui_clip.glsl>
+#endif
+
 float roundedBoxSDF(vec2 center, vec2 size, float radius) {
     vec2 q = abs(center) - size + radius;
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - radius;
@@ -83,6 +87,11 @@ void main() {
                 : roundedBoxSDF(frag - v_Rect.xy - halfSize, halfSize, shapeSize));
     float aa = analyticAa(d, logicalScale);
     float smoothedAlpha = crispCoverage(d, aa);
+#ifdef COMBATANT_ANALYTIC_CLIP
+    smoothedAlpha *= combatantClipCoverage(
+        combatantClipDistance(combatantLogicalFragCoord()), logicalScale
+    );
+#endif
     if (smoothedAlpha <= 0.001) {
         discard;
     }

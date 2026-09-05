@@ -44,6 +44,8 @@ import combatant.client.features.module.modules.visuals.Freecam;
 import combatant.client.features.module.modules.visuals.ViewModel;
 import combatant.client.features.relations.StaffTracker;
 import combatant.client.render.helpers.TickDelta;
+import combatant.client.render.helpers.PlayerHeadRenderer;
+import combatant.client.util.player.PlayerSkinResolver;
 import combatant.client.util.combat.AntiBotTracker;
 import combatant.client.util.session.SessionChanger;
 import combatant.client.util.session.MinecraftGameConfigHolder;
@@ -191,6 +193,10 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
     @Inject(method = "disconnect(Lnet/minecraft/client/gui/screens/Screen;ZZ)V", at = @At("HEAD"))
     private void combatant$betterChat$saveOnDisconnect(net.minecraft.client.gui.screens.Screen screen, boolean transferring, boolean bl, CallbackInfo ci) {
         combatant$guardSingleplayerSaveWithAltUsername();
+        if (!transferring) {
+            PlayerHeadRenderer.clearSessionCache();
+            PlayerSkinResolver.clearAll();
+        }
         try {
             BetterChatStoreManager.flushAll();
         } catch (Throwable ignored) {

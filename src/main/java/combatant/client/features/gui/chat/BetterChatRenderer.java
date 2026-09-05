@@ -64,7 +64,9 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
@@ -129,6 +131,7 @@ public enum BetterChatRenderer {
     private static float suggestTrackX, suggestTrackY, suggestTrackW, suggestTrackH, suggestThumbH;
     private static int suggestCurrentStart = -1;
     private static int suggestCurrentSelection = -1;
+    private static float suggestAppearProgress = 0f;
     private static double lastMouseFx = 0.0;
     private static double lastMouseFy = 0.0;
     private static boolean lastMouseValid = false;
@@ -144,6 +147,7 @@ public enum BetterChatRenderer {
     private static int debugPerfAccumFrames = 0;
     private static FrameLayout frame = FrameLayout.empty();
     private static ContextMenu contextMenu = ContextMenu.closed();
+    private static float contextMenuAppearProgress = 0f;
     private static boolean selecting = false;
     private static boolean searchHit = false;
     private static float searchRectX = 0f, searchRectY = 0f, searchRectW = 0f, searchRectH = 0f;
@@ -1238,16 +1242,16 @@ public enum BetterChatRenderer {
         return cached.isEmpty() ? source.copy() : cached;
     }
 
-    private static ItemStack resolvePreviewItem(PickResult pick) {
+    private static ItemStack resolvePreviewItem(PickResult pick, boolean exactGlyphHit) {
         if (pick == null) return ItemStack.EMPTY;
         GlyphBox glyph = pick.glyph();
-        if (glyph != null) {
+        if (exactGlyphHit && glyph != null) {
             if (glyph.item() != null && !glyph.item().isEmpty()) return glyph.item().copy();
             ItemStack styled = resolveItemFromStyle(glyph.style());
             if (!styled.isEmpty()) return styled;
         }
 
-        if (pick.line() != null && pick.line().message() != null) {
+        if (exactGlyphHit && pick.line() != null && pick.line().message() != null) {
             String raw = pick.line().message().text().getString();
             HoverTip inferred = ChatHoverUtil.inferFromDisplay(
                     wordAt(raw, glyph == null ? 0 : glyph.charIndex()),
@@ -1750,7 +1754,8 @@ public enum BetterChatRenderer {
             }
         }
 
-        PickResult pick = frame.pick(fx, fy);
+        boolean contextPress = button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && pressed;
+        PickResult pick = contextPress ? frame.pickContext(fx, fy) : frame.pick(fx, fy);
         if (pick == null) {
             if (pressed && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
                 selection.clear();
@@ -1801,7 +1806,7 @@ public enum BetterChatRenderer {
             }
         } else if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
             if (pressed) {
-                openContextMenu(pick, mx, my, resolvePreviewItem(pick));
+                openContextMenu(pick, mx, my, isExactGlyphHit(pick, fx, fy));
                 return true;
             }
         }
@@ -1877,11 +1882,10 @@ public enum BetterChatRenderer {
         return new PickResult(bestLine, glyph);
     }
 
-    private static void openContextMenu(PickResult pick, double mx, double my, ItemStack previewItem) {
+    private static void openContextMenu(PickResult pick, double mx, double my, boolean exactGlyphHit) {
         List<ContextMenu.MenuEntry> entries = new ArrayList<>();
         ChatLine msg = pick.line().message();
         String full = msg.text().getString();
-        int safeLen = full.length();
         BetterChat settings = BetterChat.get();
         long ts = msg.timestampMs();
         boolean tsEnabled = settings != null && settings.timestampEnabled();
@@ -1894,7 +1898,8 @@ public enum BetterChatRenderer {
             entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_message"), () -> ClipboardUtil.copy(full)));
         }
 
-        if (previewItem != null && !previewItem.isEmpty()) {
+        ItemStack previewItem = resolvePreviewItem(pick, exactGlyphHit);
+        if (!previewItem.isEmpty()) {
             ItemStack stack = previewItem.copy();
             entries.add(new ContextMenu.MenuEntry(
                     I18n.get("better_chat.context.preview_item"),
@@ -1902,25 +1907,18 @@ public enum BetterChatRenderer {
             ));
         }
 
-        List<String> nickCandidates = ChatNameUtil.extractNicks(full);
-        String hovered = ChatNameUtil.normalizeNickCandidate(wordAt(full, pick.glyph().charIndex()));
-        String targetNick = null;
-        if (!hovered.isEmpty()
-                && ChatNameUtil.isNickLike(hovered)
-                && nickCandidates.stream().anyMatch(n -> n.equalsIgnoreCase(hovered))) {
-            targetNick = hovered;
-        } else if (nickCandidates.size() == 1) {
-            targetNick = nickCandidates.getFirst();
-        }
-        if (isOnlinePlayer(targetNick)) {
-            String nickToTell = targetNick;
+        ContextActionResolution resolved = resolveMessageContextActions(pick, exactGlyphHit);
+        if (resolved.targetNick() != null && isOnlinePlayer(resolved.targetNick())) {
+            String nickToTell = resolved.targetNick();
             entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.reply"), () -> prefillTell(nickToTell)));
         }
 
-        if (hoverEntityUuid != null && !hoverEntityUuid.isEmpty()) {
-            String uuidToCopy = hoverEntityUuid;
+        if (resolved.entityUuid() != null && !resolved.entityUuid().isEmpty()) {
+            String uuidToCopy = resolved.entityUuid();
             entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_uuid"), () -> ClipboardUtil.copy(uuidToCopy)));
         }
+
+        appendResolvedClickActions(entries, resolved.clickEvents());
 
         if (tsEnabled) {
             entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_time"), () -> ClipboardUtil.copy(formatTimestamp(ts, settings.timestampSeconds()))));
@@ -1930,7 +1928,170 @@ public enum BetterChatRenderer {
             }
         }
 
+        contextMenuAppearProgress = 0f;
         contextMenu = ContextMenu.open((float) mx, (float) my, entries);
+    }
+
+    private static ContextActionResolution resolveMessageContextActions(PickResult pick, boolean exactGlyphHit) {
+        if (pick == null || pick.line() == null || pick.line().message() == null) {
+            return ContextActionResolution.empty();
+        }
+
+        ChatLine line = pick.line().message();
+        BetterChatMessage message = line.message();
+        String full = line.text().getString();
+        GlyphBox glyph = pick.glyph();
+
+        String targetNick = null;
+        List<String> nickCandidates = ChatNameUtil.extractNicks(full);
+        if (exactGlyphHit && glyph != null) {
+            String hovered = ChatNameUtil.normalizeNickCandidate(wordAt(full, glyph.charIndex()));
+            if (!hovered.isEmpty()
+                    && ChatNameUtil.isNickLike(hovered)
+                    && nickCandidates.stream().anyMatch(n -> n.equalsIgnoreCase(hovered))) {
+                targetNick = hovered;
+            }
+        }
+        if (targetNick == null && nickCandidates.size() == 1) {
+            targetNick = nickCandidates.getFirst();
+        }
+
+        String exactUuid = exactGlyphHit && glyph != null ? entityUuidFromStyle(glyph.style()) : null;
+        String entityUuid = exactUuid != null ? exactUuid : uniqueEntityUuid(message);
+        if (entityUuid == null && targetNick != null) {
+            entityUuid = onlinePlayerUuid(targetNick);
+        }
+
+        LinkedHashMap<String, ClickEvent> clickEvents = new LinkedHashMap<>();
+        if (exactGlyphHit && glyph != null) {
+            addContextClickEvent(clickEvents, glyph.style() == null ? null : glyph.style().getClickEvent());
+        }
+        collectMessageClickEvents(message, clickEvents);
+
+        return new ContextActionResolution(targetNick, entityUuid, List.copyOf(clickEvents.values()));
+    }
+
+    private static void appendResolvedClickActions(List<ContextMenu.MenuEntry> entries, List<ClickEvent> events) {
+        if (events == null || events.isEmpty()) return;
+        for (ClickEvent evt : events) {
+            switch (evt) {
+                case ClickEvent.OpenUrl openUrl -> {
+                    String value = openUrl.uri().toString();
+                    String summary = contextValueSummary(value);
+                    entries.add(new ContextMenu.MenuEntry(
+                            I18n.get("better_chat.context.open_link", summary),
+                            () -> handleClickEvent(evt, true)
+                    ));
+                    entries.add(new ContextMenu.MenuEntry(
+                            I18n.get("better_chat.context.copy_link", summary),
+                            () -> ClipboardUtil.copy(value)
+                    ));
+                }
+                case ClickEvent.OpenFile openFile -> {
+                    String value = openFile.path();
+                    entries.add(new ContextMenu.MenuEntry(
+                            I18n.get("better_chat.context.open_file", contextValueSummary(value)),
+                            () -> handleClickEvent(evt, true)
+                    ));
+                }
+                case ClickEvent.RunCommand run -> {
+                    String value = run.command();
+                    entries.add(new ContextMenu.MenuEntry(
+                            I18n.get("better_chat.context.insert_command", contextValueSummary(value)),
+                            () -> prefillChat(value)
+                    ));
+                }
+                case ClickEvent.SuggestCommand suggest -> {
+                    String value = suggest.command();
+                    entries.add(new ContextMenu.MenuEntry(
+                            I18n.get("better_chat.context.insert_command", contextValueSummary(value)),
+                            () -> prefillChat(value)
+                    ));
+                }
+                case ClickEvent.CopyToClipboard copy -> {
+                    String value = copy.value();
+                    entries.add(new ContextMenu.MenuEntry(
+                            I18n.get("better_chat.context.copy_value", contextValueSummary(value)),
+                            () -> ClipboardUtil.copy(value)
+                    ));
+                }
+                default -> {
+                    // Dialog/page/custom events are intentionally left to vanilla click handling.
+                }
+            }
+        }
+    }
+
+    private static void collectMessageClickEvents(BetterChatMessage message, Map<String, ClickEvent> out) {
+        if (message == null || out == null) return;
+        for (var node : message.nodes()) {
+            if (!(node instanceof TextNode text)) continue;
+            text.component().visit((style, value) -> {
+                addContextClickEvent(out, style == null ? null : style.getClickEvent());
+                return Optional.empty();
+            }, Style.EMPTY);
+        }
+    }
+
+    private static void addContextClickEvent(Map<String, ClickEvent> out, ClickEvent evt) {
+        if (out == null || evt == null) return;
+        String value = clickEventValue(evt);
+        if (value == null || value.isEmpty()) return;
+        String family = switch (evt) {
+            case ClickEvent.OpenUrl ignored -> "open_url";
+            case ClickEvent.OpenFile ignored -> "open_file";
+            case ClickEvent.RunCommand ignored -> "insert_command";
+            case ClickEvent.SuggestCommand ignored -> "insert_command";
+            case ClickEvent.CopyToClipboard ignored -> "copy_value";
+            default -> null;
+        };
+        if (family == null) return;
+        out.putIfAbsent(family + '\u0000' + value, evt);
+    }
+
+    private static String uniqueEntityUuid(BetterChatMessage message) {
+        if (message == null) return null;
+        String[] found = {null};
+        boolean[] ambiguous = {false};
+        for (var node : message.nodes()) {
+            if (!(node instanceof TextNode text)) continue;
+            text.component().visit((style, value) -> {
+                String uuid = entityUuidFromStyle(style);
+                if (uuid != null) {
+                    if (found[0] == null) {
+                        found[0] = uuid;
+                    } else if (!found[0].equals(uuid)) {
+                        ambiguous[0] = true;
+                    }
+                }
+                return Optional.empty();
+            }, Style.EMPTY);
+            if (ambiguous[0]) return null;
+        }
+        return found[0];
+    }
+
+    private static String entityUuidFromStyle(Style style) {
+        if (style == null) return null;
+        HoverEvent hover = style.getHoverEvent();
+        if (hover instanceof HoverEvent.ShowEntity(HoverEvent.EntityTooltipInfo entity)) {
+            return entity.uuid.toString();
+        }
+        return null;
+    }
+
+    private static String contextValueSummary(String value) {
+        if (value == null) return "";
+        String normalized = value.replace('\n', ' ').replace('\r', ' ').trim();
+        final int max = 34;
+        if (normalized.length() <= max) return normalized;
+        return normalized.substring(0, max - 1) + "…";
+    }
+
+    private static boolean isExactGlyphHit(PickResult pick, double mx, double my) {
+        if (pick == null || pick.glyph() == null) return false;
+        GlyphBox glyph = pick.glyph();
+        return mx >= glyph.x0() && mx <= glyph.x1() && my >= glyph.y0() && my <= glyph.y1();
     }
 
     public static void copySelectionToClipboard() {
@@ -1971,19 +2132,12 @@ public enum BetterChatRenderer {
 
     private static boolean handleClickEvent(Style style, boolean ctrlDown) {
         if (style == null) return false;
-        ClickEvent evt = style.getClickEvent();
+        return handleClickEvent(style.getClickEvent(), ctrlDown);
+    }
+
+    private static boolean handleClickEvent(ClickEvent evt, boolean ctrlDown) {
         if (evt == null) return false;
-        String val = switch (evt) {
-            case ClickEvent.OpenUrl openUrl -> openUrl.uri().toString();
-            case ClickEvent.OpenFile openFile -> openFile.path();
-            case ClickEvent.RunCommand run -> run.command();
-            case ClickEvent.SuggestCommand sug -> sug.command();
-            case ClickEvent.CopyToClipboard copy -> copy.value();
-            case ClickEvent.ShowDialog showDialog -> showDialog.dialog().value().toString();
-            case ClickEvent.ChangePage changePage -> String.valueOf(changePage.page());
-            case ClickEvent.Custom custom -> custom.id().toString();
-            default -> null;
-        };
+        String val = clickEventValue(evt);
         if (val == null || val.isEmpty()) return false;
         try {
             if (evt instanceof ClickEvent.OpenUrl || evt instanceof ClickEvent.OpenFile) {
@@ -2014,6 +2168,21 @@ public enum BetterChatRenderer {
             //DebugLog.error("[BetterChat] click action failed", e);
             return false;
         }
+    }
+
+
+    private static String clickEventValue(ClickEvent evt) {
+        return switch (evt) {
+            case ClickEvent.OpenUrl openUrl -> openUrl.uri().toString();
+            case ClickEvent.OpenFile openFile -> openFile.path();
+            case ClickEvent.RunCommand run -> run.command();
+            case ClickEvent.SuggestCommand sug -> sug.command();
+            case ClickEvent.CopyToClipboard copy -> copy.value();
+            case ClickEvent.ShowDialog showDialog -> showDialog.dialog().value().toString();
+            case ClickEvent.ChangePage changePage -> String.valueOf(changePage.page());
+            case ClickEvent.Custom custom -> custom.id().toString();
+            default -> null;
+        };
     }
 
     private static boolean tryPrefillTellFromClick(int msgIndex, int charIndex) {
@@ -2061,11 +2230,18 @@ public enum BetterChatRenderer {
     }
 
     private static boolean isOnlinePlayer(String nick) {
-        if (nick == null || nick.isEmpty()) return false;
+        return onlinePlayerUuid(nick) != null;
+    }
+
+    private static String onlinePlayerUuid(String nick) {
+        if (nick == null || nick.isEmpty()) return null;
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.player == null || mc.player.connection == null) return false;
+        if (mc == null || mc.player == null || mc.player.connection == null) return null;
         return mc.player.connection.getOnlinePlayers().stream()
-                .anyMatch(e -> e.getProfile() != null && nick.equalsIgnoreCase(e.getProfile().name()));
+                .filter(e -> e.getProfile() != null && nick.equalsIgnoreCase(e.getProfile().name()))
+                .map(e -> e.getProfile().id().toString())
+                .findFirst()
+                .orElse(null);
     }
 
     private static int withAlpha(int argb, int alpha) {
@@ -2738,9 +2914,11 @@ public enum BetterChatRenderer {
         suggestRowsX = suggestRowsY = suggestRowsW = suggestRowsH = 0f;
         suggestCurrentStart = -1;
         suggestCurrentSelection = -1;
+        suggestAppearProgress = 0f;
     }
 
     private static void renderSuggestions() {
+        boolean wasSuggestActive = suggestActive;
         suggestActive = false;
         suggestHasScrollbar = false;
         if (storedScreen == null) return;
@@ -2856,7 +3034,21 @@ public enum BetterChatRenderer {
         float maxTextWidth = textWidthRange(snap.texts(), snap.startIndex(), visible, baseFont);
         w = Math.max(w, maxTextWidth + 18f + scrollbarReserve);
 
-        drawGlassPill(x, y, w, h, 7f, 0.82f, true);
+        if (!wasSuggestActive) {
+            suggestAppearProgress = 0f;
+        }
+        suggestAppearProgress = AnimationUtility.approach(
+                suggestAppearProgress,
+                1f,
+                AnimationUtility.deltaTime(),
+                12.0f
+        );
+        suggestAppearProgress = AnimationUtility.snap(suggestAppearProgress, 1f, 0.015f);
+        float suggestEase = AnimationUtility.easeInOutCubic(suggestAppearProgress);
+        float suggestOffsetY = (1f - suggestEase) * 7f;
+        float visualY = y + suggestOffsetY;
+
+        drawGlassPill(x, visualY, w, h, 7f, 0.82f * suggestEase, true);
 
         float trackW = hasScrollbar ? 4.8f : 0f;
         float trackX = x + w - trackW - 5f;
@@ -2869,20 +3061,31 @@ public enum BetterChatRenderer {
         float rowW = Math.max(0f, (hasScrollbar ? trackX - 3f : x + w - 3f) - rowX);
         float rowH = visible * itemH;
 
+        boolean suggestClip = ScissorFunction.pushRaw(x, visualY, w, h);
         for (int i = 0; i < visible; i++) {
             int idx = suggestCurrentStart + i;
             if (idx < 0 || idx >= snap.texts().size()) break;
-            float top = rowY + i * itemH;
-            boolean hoverRow = lastMouseValid &&
+            float rowEase = staggeredAppear(suggestAppearProgress, i, visible);
+            float top = rowY + i * itemH + suggestOffsetY + (1f - rowEase) * 3.5f;
+            boolean hoverRow = rowEase > 0.90f && lastMouseValid &&
                     lastMouseFx >= rowX && lastMouseFx <= rowX + rowW &&
                     lastMouseFy >= top && lastMouseFy <= top + itemH;
             if (hoverRow) {
-                drawLiquidHoverPill(rowX, top + 0.6f, rowW, itemH - 1.2f, 4.5f, 0.46f);
+                drawLiquidHoverPill(rowX, top + 0.6f, rowW, itemH - 1.2f, 4.5f, 0.46f * rowEase);
             }
             float textH = textHeight(getIosevkaRegular(), baseFont);
             float textY = top + (itemH - textH) * 0.5f;
-            drawText(getIosevkaRegular(), snap.texts().get(idx), rowX + 4f, textY, baseFont, theme().textPrimary(), true);
+            drawText(
+                    getIosevkaRegular(),
+                    snap.texts().get(idx),
+                    rowX + 4f + (1f - rowEase) * 5f,
+                    textY,
+                    baseFont,
+                    mulAlpha(theme().textPrimary(), rowEase * suggestEase),
+                    true
+            );
         }
+        if (suggestClip) ScissorFunction.pop();
 
         if (hasScrollbar) {
             boolean hotScroll = suggestDraggingScrollbar || (lastMouseValid
@@ -2891,17 +3094,21 @@ public enum BetterChatRenderer {
             if (hotScroll) {
                 SystemCursor.set(SystemCursor.CursorType.SCROLL);
             }
-            drawScrollbarGlass(trackX, trackY, trackW, trackH, thumbY, thumbH, hotScroll, hotScroll ? 0xB0 : 0x88, hotScroll ? 0xFF : 0xD8);
+            drawScrollbarGlass(
+                    trackX, trackY + suggestOffsetY, trackW, trackH, thumbY + suggestOffsetY, thumbH, hotScroll,
+                    Math.round((hotScroll ? 0xB0 : 0x88) * suggestEase),
+                    Math.round((hotScroll ? 0xFF : 0xD8) * suggestEase)
+            );
         }
 
         suggestActive = true;
         suggestX = x;
-        suggestY = y;
+        suggestY = visualY;
         suggestW = w;
         suggestH = h;
         suggestItemH = itemH;
         suggestRowsX = rowX;
-        suggestRowsY = rowY;
+        suggestRowsY = rowY + suggestOffsetY;
         suggestRowsW = rowW;
         suggestRowsH = rowH;
         suggestStart = suggestCurrentStart;
@@ -2910,7 +3117,7 @@ public enum BetterChatRenderer {
         suggestWindow = CommandSuggestorBridge.lastWindow();
         suggestHasScrollbar = hasScrollbar;
         suggestTrackX = trackX;
-        suggestTrackY = trackY;
+        suggestTrackY = trackY + suggestOffsetY;
         suggestTrackW = trackW;
         suggestTrackH = trackH;
         suggestThumbH = thumbH;
@@ -3144,9 +3351,65 @@ public enum BetterChatRenderer {
             }
             return null;
         }
+
+
+        PickResult pickContext(double mx, double my) {
+            PickResult direct = pick(mx, my);
+            if (direct != null) return direct;
+            if (!contains(mx, my)) return null;
+
+            for (MessageBubble bubble : bubbles) {
+                if (mx < bubble.x() || mx > bubble.x() + bubble.w()
+                        || my < bubble.y() || my > bubble.y() + bubble.h()) {
+                    continue;
+                }
+
+                FrameLine closestLine = null;
+                float bestLineDistance = Float.MAX_VALUE;
+                for (FrameLine line : lines) {
+                    if (line.messageGroup() != bubble.messageGroup() || line.glyphs().isEmpty()) continue;
+                    float dy = my < line.y0()
+                            ? (float) (line.y0() - my)
+                            : my > line.y1() ? (float) (my - line.y1()) : 0.0f;
+                    if (dy < bestLineDistance) {
+                        bestLineDistance = dy;
+                        closestLine = line;
+                    }
+                }
+                if (closestLine == null) return null;
+
+                GlyphBox closestGlyph = null;
+                float bestGlyphDistance = Float.MAX_VALUE;
+                for (GlyphBox glyph : closestLine.glyphs()) {
+                    float dx = mx < glyph.x0()
+                            ? (float) (glyph.x0() - mx)
+                            : mx > glyph.x1() ? (float) (mx - glyph.x1()) : 0.0f;
+                    if (dx < bestGlyphDistance) {
+                        bestGlyphDistance = dx;
+                        closestGlyph = glyph;
+                    }
+                }
+                return closestGlyph == null ? null : new PickResult(closestLine, closestGlyph);
+            }
+            return null;
+        }
     }
 
     private record PickResult(FrameLine line, GlyphBox glyph) {
+    }
+
+    private record ContextActionResolution(String targetNick, String entityUuid, List<ClickEvent> clickEvents) {
+        static ContextActionResolution empty() {
+            return new ContextActionResolution(null, null, List.of());
+        }
+    }
+
+    private static float staggeredAppear(float progress, int index, int count) {
+        if (count <= 1) return AnimationUtility.easeInOutCubic(progress);
+        float maxDelay = 0.34f;
+        float delay = maxDelay * ((float) index / (float) Math.max(1, count - 1));
+        float local = AnimationUtility.clamp01((progress - delay) / Math.max(0.001f, 1f - delay));
+        return AnimationUtility.easeInOutCubic(local);
     }
 
     private record ContextMenu(boolean open, float x, float y, List<MenuEntry> entries) {
@@ -3169,18 +3432,24 @@ public enum BetterChatRenderer {
         boolean contains(double mx, double my) {
             if (!open) return false;
             float fontSize = lastFontSizeForUi * 0.92f;
-            return mx >= x && mx <= x + width(fontSize) && my >= y && my <= y + height(fontSize);
+            float menuEase = AnimationUtility.easeInOutCubic(contextMenuAppearProgress);
+            float panelY = y + (1f - menuEase) * 6f;
+            return mx >= x && mx <= x + width(fontSize)
+                    && my >= panelY && my <= panelY + height(fontSize);
         }
 
         MenuEntry pick(double my) {
             if (!open) return null;
             float fontSize = lastFontSizeForUi * 0.92f;
             float itemH = itemHeight(fontSize);
+            float menuEase = AnimationUtility.easeInOutCubic(contextMenuAppearProgress);
+            float panelOffsetY = (1f - menuEase) * 6f;
             float cy = y + MENU_PAD_Y;
             for (int i = 0; i < entries.size(); i++) {
-                float top = cy + i * itemH;
+                float rowEase = staggeredAppear(contextMenuAppearProgress, i, entries.size());
+                float top = cy + i * itemH + panelOffsetY + (1f - rowEase) * 3.5f;
                 float bottom = top + itemH;
-                if (my >= top && my <= bottom) {
+                if (rowEase > 0.90f && my >= top && my <= bottom) {
                     return entries.get(i);
                 }
             }
@@ -3189,38 +3458,80 @@ public enum BetterChatRenderer {
 
         void render(float mouseX, float mouseY, float fontSize) {
             if (!open || entries.isEmpty()) return;
+
+            contextMenuAppearProgress = AnimationUtility.approach(
+                    contextMenuAppearProgress,
+                    1f,
+                    AnimationUtility.deltaTime(),
+                    12.0f
+            );
+            contextMenuAppearProgress = AnimationUtility.snap(contextMenuAppearProgress, 1f, 0.015f);
+            float menuEase = AnimationUtility.easeInOutCubic(contextMenuAppearProgress);
+
             float fs = Math.max(12f, fontSize * 0.92f);
             float itemH = itemHeight(fs);
             float w = width(fs);
             float h = height(fs);
+            float panelOffsetY = (1f - menuEase) * 6f;
+            float panelY = y + panelOffsetY;
 
-            drawGlassPill(x, y, w, h, MENU_RADIUS, 0.94f, true);
+            drawGlassPill(x, panelY, w, h, MENU_RADIUS, 0.94f * menuEase, true);
 
+            boolean menuClip = ScissorFunction.pushRaw(x, panelY, w, h);
             float accentX = x + 5f;
-            drawRoundedRect(accentX, y + MENU_PAD_Y + 2f, 2f, h - MENU_PAD_Y * 2f - 4f, 1f, withAlpha(theme().accent(), 0x72));
+            drawRoundedRect(
+                    accentX,
+                    panelY + MENU_PAD_Y + 2f,
+                    2f,
+                    h - MENU_PAD_Y * 2f - 4f,
+                    1f,
+                    mulAlpha(withAlpha(theme().accent(), 0x72), menuEase)
+            );
 
             float cy = y + MENU_PAD_Y;
-            for (MenuEntry entry : entries) {
-                boolean hover = mouseX >= x && mouseX <= x + w && mouseY >= cy && mouseY <= cy + itemH;
+            for (int i = 0; i < entries.size(); i++) {
+                MenuEntry entry = entries.get(i);
+                float rowEase = staggeredAppear(contextMenuAppearProgress, i, entries.size());
+                float finalTop = cy + i * itemH;
+                float top = finalTop + panelOffsetY + (1f - rowEase) * 3.5f;
+                boolean hover = rowEase > 0.90f
+                        && mouseX >= x && mouseX <= x + w
+                        && mouseY >= top && mouseY <= top + itemH;
                 if (hover) {
-                    drawRoundedRect(x + 8f, cy + 1f, w - 16f, itemH - 2f, itemH * 0.5f, withAlpha(theme().surfaceHover(), 0xAA));
+                    drawRoundedRect(
+                            x + 8f, top + 1f, w - 16f, itemH - 2f, itemH * 0.5f,
+                            mulAlpha(withAlpha(theme().surfaceHover(), 0xAA), rowEase)
+                    );
                     drawRoundedRectStrokeGradient(
-                            x + 8f, cy + 1f, w - 16f, itemH - 2f, itemH * 0.5f,
+                            x + 8f, top + 1f, w - 16f, itemH - 2f, itemH * 0.5f,
                             0.55f,
-                            withAlpha(theme().accent(), 0x66),
-                            withAlpha(theme().accentSoft(), 0x38)
+                            mulAlpha(withAlpha(theme().accent(), 0x66), rowEase),
+                            mulAlpha(withAlpha(theme().accentSoft(), 0x38), rowEase)
                     );
                 }
 
                 float dot = 3.2f;
                 int dotColor = hover ? withAlpha(theme().accent(), 0xE0) : withAlpha(theme().textMuted(), 0x70);
-                drawRoundedRect(x + 14f, cy + (itemH - dot) * 0.5f, dot, dot, dot * 0.5f, dotColor);
+                drawRoundedRect(
+                        x + 14f + (1f - rowEase) * 4f,
+                        top + (itemH - dot) * 0.5f,
+                        dot, dot, dot * 0.5f,
+                        mulAlpha(dotColor, rowEase * menuEase)
+                );
 
-                float textY = cy + (itemH - textHeight(getIosevkaRegular(), fs)) * 0.5f;
+                float textY = top + (itemH - textHeight(getIosevkaRegular(), fs)) * 0.5f;
                 int textColor = hover ? theme().textPrimary() : withAlpha(theme().textPrimary(), 0xE4);
-                drawText(getIosevkaRegular(), entry.label(), x + 24f, textY, fs, textColor, true);
-                cy += itemH;
+                drawText(
+                        getIosevkaRegular(),
+                        entry.label(),
+                        x + 24f + (1f - rowEase) * 5f,
+                        textY,
+                        fs,
+                        mulAlpha(textColor, rowEase * menuEase),
+                        true
+                );
             }
+            if (menuClip) ScissorFunction.pop();
         }
 
         private float width(float fontSize) {

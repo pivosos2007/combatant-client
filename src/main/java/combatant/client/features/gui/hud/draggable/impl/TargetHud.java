@@ -1459,9 +1459,8 @@ public final class TargetHud extends DraggableHudElement {
 
     private void drawGlass(float x, float y, float width, float height, float radius, float alphaFactor) {
         float blurStrength = (blurAlpha.get() / 255.0f) * alphaFactor;
-        float glassAlpha = alphaFactor;
         float glassScale = PANEL_RADIUS <= 0.0f ? 1.0f : radius / PANEL_RADIUS;
-        HudRenderUtil.drawLiquidGlass(x, y, width, height, radius, glassScale, true, blurStrength, glassAlpha);
+        HudRenderUtil.drawLiquidGlass(x, y, width, height, radius, glassScale, true, blurStrength, alphaFactor);
         if (isGradientPanelStyle()) {
             float strength = themeGradientStrength.get() / 100.0f;
             HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(

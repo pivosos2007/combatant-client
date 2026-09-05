@@ -21,6 +21,7 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.text.RuntimeTextLayout;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.MatteHudStyle;
 import combatant.client.render.helpers.ScreenProjection;
@@ -35,10 +36,10 @@ public class SoundESP extends Module {
     private static final String SETTING_MAX_DISTANCE = "max_distance";
     private static final String SETTING_LIFETIME_MS = "lifetime_ms";
     private static final String SETTING_COLOR = "color";
-    private static final double PAD_X = 4.0;
-    private static final double PAD_Y = 1.5;
-    private static final double LABEL_Y_OFFSET = 5.0;
-    private static final double TEXT_SCALE = 0.82;
+    private static final double PAD_X = 3.25;
+    private static final double PAD_Y = 1.15;
+    private static final double LABEL_Y_OFFSET = 4.25;
+    private static final double TEXT_SCALE = 0.74;
     private static final long FADE_IN_MS = 160L;
     private static final long FADE_OUT_MS = 360L;
     private final Minecraft mc = Minecraft.getInstance();
@@ -134,15 +135,15 @@ public class SoundESP extends Module {
             Vec3 screen = worldToScreen(ping.pos(), tickDelta);
             if (screen == null) continue;
 
-            String text = resolveName(ping.getId());
+            String text = RuntimeTextLayout.singleLine(resolveName(ping.getId()));
             if (text.isBlank()) continue;
 
             long age = now - ping.timestampMs();
             float alpha = computeAlpha(age, lifetime);
             if (alpha <= 0.001f) continue;
 
-            double textWidth = textRenderer.getWidth(text, false);
-            double textHeight = textRenderer.getHeight(false);
+            double textWidth = Math.max(0.0, textRenderer.getWidth(text, false));
+            double textHeight = Math.max(0.0, textRenderer.getHeight(false));
             double width = textWidth + PAD_X * 2.0;
             double height = textHeight + PAD_Y * 2.0;
             double x = Math.floor(screen.x - width * 0.5 + 0.5);
@@ -157,8 +158,17 @@ public class SoundESP extends Module {
         }
         if (labels.isEmpty()) return;
 
+        int baseTextColor = color.getArgb();
         for (SoundLabel label : labels) {
-            MatteHudStyle.drawPlate(renderer, label.x(), label.y(), label.width(), label.height(), 2.0f, label.alpha());
+            MatteHudStyle.drawEspMattePlate(
+                    renderer,
+                    label.x(),
+                    label.y(),
+                    label.width(),
+                    label.height(),
+                    3.6f,
+                    label.alpha()
+            );
         }
 
         boolean renderStarted = false;
@@ -166,7 +176,6 @@ public class SoundESP extends Module {
             textRenderer.begin(TEXT_SCALE);
             renderStarted = true;
         }
-        int baseTextColor = color.getArgb();
         for (SoundLabel label : labels) {
             textRenderer.render(label.text(), label.textX(), label.textY(), new RenderColor(MatteHudStyle.scaleAlpha(baseTextColor, label.alpha())), false);
         }

@@ -93,6 +93,13 @@ public abstract class CommandEncoderMixin {
             return;
         }
         try {
+            // A newly created Blaze3D pass is an explicit ownership boundary. GL-native state
+            // not represented by GlStateManager must be considered unknown before Combatant applies it.
+            CombatantRenderSystem.rhi().pipelineState().invalidateForeignState();
+        } catch (Throwable t) {
+            DebugLog.error("[RHI] render pass native-state boundary hook failed for %s", t, combatant$label(descriptor.label()));
+        }
+        try {
             GlobalScissorState.applyTo(pass, descriptor.renderArea);
         } catch (Throwable t) {
             DebugLog.error("[Scissor] render pass scissor hook failed for %s", t, combatant$label(descriptor.label()));
@@ -118,6 +125,20 @@ public abstract class CommandEncoderMixin {
             CombatantRenderSystem.rhi().pipelineState().resetRenderPassState();
         } catch (Throwable t) {
             DebugLog.error("[ShapeClip/GL] render pass reset hook failed", t);
+        }
+    }
+
+    @Inject(method = "submitRenderPass", at = @At("RETURN"))
+    private void combatant$invalidateRhiNativeStateAfterSubmit(CallbackInfo ci) {
+        if (combatant$isVulkanBackend()) {
+            return;
+        }
+        try {
+            // Blaze3D has just executed/closed a pass and may have changed native GL state behind
+            // Combatant's narrow stencil/MSAA tracker. Never carry that shadow into the next pass.
+            CombatantRenderSystem.rhi().pipelineState().invalidateForeignState();
+        } catch (Throwable t) {
+            DebugLog.error("[RHI/GL] post-render-pass native-state invalidation failed", t);
         }
     }
 

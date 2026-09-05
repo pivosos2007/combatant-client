@@ -254,14 +254,14 @@ final class TabListModel {
         if (display == null) {
             display = Component.literal(fallbackName);
         }
-        return LegacyTextUtil.convertLegacyCodes(display);
+        return LegacyTextUtil.convertLegacyCodesRobust(display);
     }
 
     private static Component tabText(PlayerTabOverlay overlay, boolean header) {
         if (!(overlay instanceof PlayerTabOverlayAccessor accessor)) return null;
         Component value = header ? accessor.combatant$getHeader() : accessor.combatant$getFooter();
         if (value == null || value.getString().isBlank()) return null;
-        return LegacyTextUtil.convertLegacyCodes(value);
+        return LegacyTextUtil.convertLegacyCodesRobust(value);
     }
 
     private static List<Component> splitTabText(Minecraft mc, Component component, int maxVanillaWidth) {

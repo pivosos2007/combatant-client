@@ -19,6 +19,7 @@ import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -28,6 +29,11 @@ import combatant.client.mixininterface.IGlBackendInfo;
 
 @Mixin(targets = "com.mojang.blaze3d.opengl.GlDevice")
 public abstract class GlDeviceBackendMixin implements IGlBackendInfo {
+    @Shadow
+    protected static boolean USE_GL_KHR_debug;
+    @Shadow
+    protected static boolean USE_GL_ARB_direct_state_access;
+
     @Override
     @Invoker("directStateAccess")
     public abstract DirectStateAccess combatant$directStateAccess();
@@ -35,6 +41,16 @@ public abstract class GlDeviceBackendMixin implements IGlBackendInfo {
     @Override
     @Invoker("frameBufferCache")
     public abstract FrameBufferCache combatant$frameBufferCache();
+
+    @Override
+    public boolean combatant$nativeDirectStateAccess() {
+        return USE_GL_ARB_direct_state_access;
+    }
+
+    @Override
+    public boolean combatant$khrDebug() {
+        return USE_GL_KHR_debug;
+    }
     @Unique
     private ProfilerPhase.Scope combatant$pipelineCompileScope;
 

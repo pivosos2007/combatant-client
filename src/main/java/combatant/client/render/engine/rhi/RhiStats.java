@@ -62,6 +62,18 @@ public final class RhiStats {
     private long dynamicArenaBacklogEvents;
     private long dynamicPersistentArenaBytes;
     private long dynamicSpillArenaBytes;
+    private long dynamicMappedUploadBytes;
+    private long dynamicBufferSubDataUploadBytes;
+    private long dynamicMappedUploads;
+    private long dynamicBufferSubDataUploads;
+    private long dynamicArenaVertexHighWaterBytes;
+    private long dynamicArenaIndexHighWaterBytes;
+    private long dynamicArenaVertexCapacityObservedBytes;
+    private long dynamicArenaIndexCapacityObservedBytes;
+    private long dynamicArenaVertexUsedObservedBytes;
+    private long dynamicArenaIndexUsedObservedBytes;
+    private long dynamicLargestVertexAllocationBytes;
+    private long dynamicLargestIndexAllocationBytes;
 
     public void beginFrame(long frameId) {
         this.frameId = frameId;
@@ -86,7 +98,19 @@ public final class RhiStats {
         dynamicArenaBacklogEvents = 0L;
         dynamicSpillArenaAllocations = 0L;
         dynamicSpillArenaBytes = 0L;
-        // Persistent arena totals are lifetime-level and intentionally not reset here.
+        dynamicMappedUploadBytes = 0L;
+        dynamicBufferSubDataUploadBytes = 0L;
+        dynamicMappedUploads = 0L;
+        dynamicBufferSubDataUploads = 0L;
+        dynamicArenaVertexHighWaterBytes = 0L;
+        dynamicArenaIndexHighWaterBytes = 0L;
+        dynamicArenaVertexCapacityObservedBytes = 0L;
+        dynamicArenaIndexCapacityObservedBytes = 0L;
+        dynamicArenaVertexUsedObservedBytes = 0L;
+        dynamicArenaIndexUsedObservedBytes = 0L;
+        dynamicLargestVertexAllocationBytes = 0L;
+        dynamicLargestIndexAllocationBytes = 0L;
+        // Persistent arena allocation totals are lifetime-level and intentionally not reset here.
     }
 
     public void drawCall() {
@@ -216,8 +240,29 @@ public final class RhiStats {
     }
 
     public void dynamicArenaAllocation(long vertexBytes, long indexBytes, boolean persistent) {
-        // Per-mesh arena suballocation. The byte totals still live in meshUpload(); this counter exists for
-        // backend-specific diagnostics and symmetry with future staging paths.
+        dynamicLargestVertexAllocationBytes = Math.max(dynamicLargestVertexAllocationBytes, Math.max(0L, vertexBytes));
+        dynamicLargestIndexAllocationBytes = Math.max(dynamicLargestIndexAllocationBytes, Math.max(0L, indexBytes));
+    }
+
+    public void dynamicArenaUploadPath(long bytes, boolean persistentMapped) {
+        long safeBytes = Math.max(0L, bytes);
+        if (persistentMapped) {
+            dynamicMappedUploads++;
+            dynamicMappedUploadBytes += safeBytes;
+        } else {
+            dynamicBufferSubDataUploads++;
+            dynamicBufferSubDataUploadBytes += safeBytes;
+        }
+    }
+
+    public void dynamicArenaFrameUsage(long vertexUsed, long vertexCapacity,
+                                       long indexUsed, long indexCapacity) {
+        dynamicArenaVertexHighWaterBytes = Math.max(dynamicArenaVertexHighWaterBytes, Math.max(0L, vertexUsed));
+        dynamicArenaIndexHighWaterBytes = Math.max(dynamicArenaIndexHighWaterBytes, Math.max(0L, indexUsed));
+        dynamicArenaVertexUsedObservedBytes += Math.max(0L, vertexUsed);
+        dynamicArenaIndexUsedObservedBytes += Math.max(0L, indexUsed);
+        dynamicArenaVertexCapacityObservedBytes += Math.max(0L, vertexCapacity);
+        dynamicArenaIndexCapacityObservedBytes += Math.max(0L, indexCapacity);
     }
 
     public void dynamicArenaReuse() {
@@ -370,6 +415,11 @@ public final class RhiStats {
                 dynamicArenaAllocations, dynamicPersistentArenaAllocations, dynamicSpillArenaAllocations,
                 dynamicArenaReuses, dynamicArenaRetires, dynamicFenceChecks, dynamicFenceCompletions,
                 dynamicArenaBacklogEvents, dynamicPersistentArenaBytes, dynamicSpillArenaBytes,
+                dynamicMappedUploads, dynamicMappedUploadBytes, dynamicBufferSubDataUploads, dynamicBufferSubDataUploadBytes,
+                dynamicArenaVertexHighWaterBytes, dynamicArenaIndexHighWaterBytes,
+                dynamicArenaVertexUsedObservedBytes, dynamicArenaIndexUsedObservedBytes,
+                dynamicArenaVertexCapacityObservedBytes, dynamicArenaIndexCapacityObservedBytes,
+                dynamicLargestVertexAllocationBytes, dynamicLargestIndexAllocationBytes,
                 legacyPathUses, legacyPathBreakdown.isEmpty() ? Map.of() : new EnumMap<>(legacyPathBreakdown),
                 pipelineBreakdown);
     }

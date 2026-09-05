@@ -396,7 +396,8 @@ public final class CustomTabList extends AbstractHudElement {
             float headY = row.y + (row.h - HEAD_SIZE) * 0.5f;
             int alpha = Math.max(0, Math.min(255, Math.round(255f * row.alpha)));
 
-            if (entry.skin() != null) {
+            var skin = PlayerHeadRenderer.resolveCachedSkin(entry.id(), entry.name(), entry.skin());
+            if (skin != null) {
                 headColor.a = alpha;
                 PlayerHeadRenderer.drawRounded(
                         ctx,
@@ -404,7 +405,7 @@ public final class CustomTabList extends AbstractHudElement {
                         headY,
                         HEAD_SIZE,
                         1f,
-                        entry.skin(),
+                        skin,
                         headColor,
                         true,
                         transparentHeadOutline,

@@ -29,6 +29,7 @@ import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.script.ScriptedTooltipPanel;
 import combatant.client.render.engine.core.ViewportContext;
+import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
@@ -215,6 +216,29 @@ public final class BetterTooltips extends AbstractHudElement {
         return stack;
     }
 
+    /**
+     * ItemStack#getTooltipLines is also queried by code that never schedules an item tooltip.
+     * The fallback stack therefore cannot be trusted by identity/timing alone. Only promote a
+     * generic GuiGraphics tooltip to ITEM context when its first visible text line is the
+     * producing stack's hover name. Explicit item-tooltip overloads do not need this heuristic.
+     */
+    public static boolean matchesItemTooltip(List<ClientTooltipComponent> components, ItemStack stack) {
+        if (components == null || components.isEmpty() || stack == null || stack.isEmpty()) return false;
+        String expected = stack.getHoverName().getString();
+        if (expected == null || expected.isBlank()) return false;
+        expected = expected.trim();
+
+        for (ClientTooltipComponent component : components) {
+            if (!(component instanceof ClientTextTooltip text)) continue;
+            FormattedCharSequence sequence = ((ClientTextTooltipAccessor) (Object) text).combatant$getText();
+            if (sequence == null) continue;
+            String actual = plainText(sequence).trim();
+            if (actual.isEmpty()) continue;
+            return actual.equals(expected);
+        }
+        return false;
+    }
+
     public static void renderTooltip() {
         if (!hasTooltip()) return;
         renderTooltipInternal(
@@ -271,6 +295,7 @@ public final class BetterTooltips extends AbstractHudElement {
                 fallback,
                 scriptLines,
                 visualScale,
+                tooltipRasterDetailScale(mc),
                 maxContentWidth,
                 footerW,
                 footerH,
@@ -320,6 +345,33 @@ public final class BetterTooltips extends AbstractHudElement {
             int previewY = Math.round(rendered.footerBounds().y());
             renderShulkerPreview(preview, previewX, previewY);
         }
+    }
+
+
+    /**
+     * BetterTooltips renders in vanilla SCALED projection, where one logical unit is
+     * multiplied by the current GUI scale in framebuffer pixels. ItemPreview renders
+     * in Combatant UNSCALED_LOGICAL projection instead. Compensate only raster-detail
+     * widths (stroke etc.) so the tooltip outline has the same framebuffer thickness
+     * as the ItemPreview outline instead of growing with GUI scale.
+     */
+    private static float tooltipRasterDetailScale(Minecraft mc) {
+        if (mc == null || mc.getWindow() == null) return 1.0f;
+        int fbw = Math.max(1, mc.getWindow().getWidth());
+        int fbh = Math.max(1, mc.getWindow().getHeight());
+        float hudScale = Math.max(0.01f, HudScale.scale(fbw, fbh));
+        float guiScale = Math.max(1.0f, (float) mc.getWindow().getGuiScale());
+        return hudScale / guiScale;
+    }
+
+    private static String plainText(FormattedCharSequence line) {
+        if (line == null) return "";
+        StringBuilder sb = new StringBuilder();
+        line.accept((idx, style, codePoint) -> {
+            sb.appendCodePoint(codePoint);
+            return true;
+        });
+        return sb.toString();
     }
 
     private static List<TooltipLine> convertOrdered(List<? extends FormattedCharSequence> lines) {

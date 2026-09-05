@@ -395,13 +395,14 @@ public final class UiPrimitiveRenderer {
                     case "health", "health-bar", "health_bar" -> Renderer2D.LiquidGlassPreset.HEALTH_BAR;
                     default -> Renderer2D.LiquidGlassPreset.BALANCED;
                 };
-                renderer.liquidGlassPrimitive(
-                        primitive,
-                        color(props.get("glassTint"), 0xFFFFFFFF),
-                        props.number("glassAlpha", 1.0f),
-                        props.number("blurAlpha", style.blurAlpha()) * renderAlpha,
-                        glassPreset
-                );
+                UiBackdropRuntime.drawLiquidGlass(renderer, props, () ->
+                        renderer.liquidGlassPrimitive(
+                                primitive,
+                                color(props.get("glassTint"), 0xFFFFFFFF),
+                                props.number("glassAlpha", 1.0f),
+                                props.number("blurAlpha", style.blurAlpha()) * renderAlpha,
+                                glassPreset
+                        ));
             }
             UiPaint fillPaint = buildPaint(props, fill, linearGradient, gradientStart, gradientEnd, gradientAngle, gradientOffset);
             if ((fillPaint.solidColor() >>> 24) > 0 || linearGradient || hasFillCornerColors(props)) {

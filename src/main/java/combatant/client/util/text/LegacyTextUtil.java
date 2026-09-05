@@ -88,6 +88,31 @@ public enum LegacyTextUtil {
         return changed[0] ? out : in;
     }
 
+    /**
+     * Also handles malformed server components that split a legacy marker and
+     * its code (for example {@code "&"} and {@code "3Name"}) across siblings.
+     * Native component styles are preserved unless such a leaked marker remains.
+     */
+    public static Component convertLegacyCodesRobust(Component in) {
+        Component converted = convertLegacyCodes(in);
+        String flattened = converted.getString();
+        if (!containsLegacyMarker(flattened)) return converted;
+        return convertLegacyCodes(Component.literal(flattened));
+    }
+
+    private static boolean containsLegacyMarker(String value) {
+        if (value == null || value.length() < 2) return false;
+        for (int i = 0; i + 1 < value.length(); i++) {
+            char marker = value.charAt(i);
+            if (marker != '&' && marker != '\u00A7') continue;
+            char code = Character.toLowerCase(value.charAt(i + 1));
+            if ((code >= '0' && code <= '9') || (code >= 'a' && code <= 'z') || code == '/') {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static MutableComponent parseLegacySegment(String s, Style base) {
         MutableComponent out = Component.empty();
         Style cur = base;

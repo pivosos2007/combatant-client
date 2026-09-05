@@ -177,13 +177,18 @@ function hasExplicitBreakAfterFirst(p) {
   return false;
 }
 
-function shouldDrawDivider(p, visibleLineCount) {
-  if (visibleLineCount <= 1) return false;
+function shouldDrawHeader(p) {
   if (c(p.context, "generic").toLowerCase() === "item") return true;
   return hasExplicitBreakAfterFirst(p);
 }
 
-function normalizeLines(p, m, colors) {
+function shouldDrawDivider(p, visibleLineCount, header) {
+  if (!header || visibleLineCount <= 1) return false;
+  if (c(p.context, "generic").toLowerCase() === "item") return true;
+  return hasExplicitBreakAfterFirst(p);
+}
+
+function normalizeLines(p, m, colors, header) {
   const source = arr(p.lines);
   const lines = [];
   let pendingGroupGap = false;
@@ -199,9 +204,9 @@ function normalizeLines(p, m, colors) {
     let gapBefore = 0;
     if (lines.length > 0) {
       gapBefore += m.rowGap;
-      // Exact old ItemVisualPreviewProvider layout: every tooltip with a second visible
-      // line gets the title gap, independently from whether a divider is appropriate.
-      if (lines.length === 1) gapBefore += m.headerGap;
+      // A title/header gap only exists when the panel actually has a header. Generic
+      // compact tooltips are one continuous surface and use ordinary row spacing.
+      if (header && lines.length === 1) gapBefore += m.headerGap;
       if (pendingGroupGap) gapBefore += m.groupGap;
     }
     pendingGroupGap = false;
@@ -220,10 +225,12 @@ function normalizeLines(p, m, colors) {
 }
 
 function structure(p, m, colors) {
-  const lines = normalizeLines(p, m, colors);
+  const header = shouldDrawHeader(p);
+  const lines = normalizeLines(p, m, colors, header);
   return {
     lines,
-    divider: shouldDrawDivider(p, lines.length),
+    header,
+    divider: shouldDrawDivider(p, lines.length, header),
   };
 }
 
@@ -314,8 +321,12 @@ function renderTree(p, m, colors) {
   const layout = structure(p, m, colors);
   const headerH = Math.min(height, m.padY + lineHeight + m.headerGap * 0.55);
   const innerRadius = Math.max(0, m.radius - m.scale);
-  const strokeWidth = Math.max(0.55, 0.65 * m.scale);
-  const dividerH = Math.max(0.65, 0.65 * m.scale);
+  // Stroke/divider are raster-detail thicknesses, not layout geometry. They must not
+  // inflate with the vanilla SCALED projection used by BetterTooltips. ItemPreview
+  // supplies rasterDetailScale=1, so its visual-scale behavior stays the reference.
+  const rasterDetailScale = Math.max(0.01, n(p.rasterDetailScale, 1.0));
+  const strokeWidth = 0.72 * rasterDetailScale;
+  const dividerH = Math.max(0.01, 0.65 * m.scale * rasterDetailScale);
   const children = [];
 
   // 1:1 with renderer.roundedRectShadow(..., 11*scale, 1.5*scale, palette.panelShadow()).
@@ -344,40 +355,43 @@ function renderTree(p, m, colors) {
     angle: colors.gradientAngle,
   }));
 
-  // 1:1 old header primitive: TL/TR = headerA, BR/BL = headerB.
-  children.push(ui.shape({
-    key: "header",
-    shape: "rounded-corners",
-    class: ui.abs(0, 0, width, headerH),
-    radiusTL: m.radius,
-    radiusTR: m.radius,
-    radiusBR: 0,
-    radiusBL: 0,
-    topLeftColor: colors.headerA,
-    topRightColor: colors.headerA,
-    bottomRightColor: colors.headerB,
-    bottomLeftColor: colors.headerB,
-  }));
+  // Item tooltips (and explicit generic title/body layouts) retain the richer header.
+  // Compact generic tooltips deliberately remain one continuous body surface.
+  if (layout.header) {
+    children.push(ui.shape({
+      key: "header",
+      shape: "rounded-corners",
+      class: ui.abs(0, 0, width, headerH),
+      radiusTL: m.radius,
+      radiusTR: m.radius,
+      radiusBR: 0,
+      radiusBL: 0,
+      topLeftColor: colors.headerA,
+      topRightColor: colors.headerA,
+      bottomRightColor: colors.headerB,
+      bottomLeftColor: colors.headerB,
+    }));
 
-  // Exact old glint: height 42% and 0x12/0x08 top alpha.
-  children.push(ui.shape({
-    key: "header-glint",
-    shape: "rounded-corners",
-    class: ui.abs(
-      m.scale,
-      m.scale,
-      Math.max(1, width - 2.0 * m.scale),
-      Math.max(1, headerH * 0.42)
-    ),
-    radiusTL: innerRadius,
-    radiusTR: innerRadius,
-    radiusBR: 0,
-    radiusBL: 0,
-    topLeftColor: colors.glintTL,
-    topRightColor: colors.glintTR,
-    bottomRightColor: colors.glintBR,
-    bottomLeftColor: colors.glintBL,
-  }));
+    // Exact old glint for full-header tooltips: height 42% and 0x12/0x08 top alpha.
+    children.push(ui.shape({
+      key: "header-glint",
+      shape: "rounded-corners",
+      class: ui.abs(
+        m.scale,
+        m.scale,
+        Math.max(1, width - 2.0 * m.scale),
+        Math.max(1, headerH * 0.42)
+      ),
+      radiusTL: innerRadius,
+      radiusTR: innerRadius,
+      radiusBR: 0,
+      radiusBL: 0,
+      topLeftColor: colors.glintTL,
+      topRightColor: colors.glintTR,
+      bottomRightColor: colors.glintBR,
+      bottomLeftColor: colors.glintBL,
+    }));
+  }
 
   children.push(ui.roundedStrokeGradient({
     key: "stroke",

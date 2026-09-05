@@ -167,6 +167,10 @@ public final class UiPassCompiler {
         if (framebuffer == null) return legacyOrderedPass(batcher, finish, orderedBatchCount, "missing_framebuffer");
         GpuTextureView mainColorView = UiMsaaClipLayer.currentColorAttachment(framebuffer.getColorTextureView());
         if (mainColorView == null) return legacyOrderedPass(batcher, finish, orderedBatchCount, "missing_color");
+        GpuTextureView uiUnderlayView = batcher.resolveUiUnderlayView(mc);
+        GpuTextureView secondaryReplayView = batcher.hudBackdropContribution
+                ? batcher.resolveHudBackdropView(mc)
+                : uiUnderlayView;
 
         float screenW = mc.getWindow().getWidth();
         float screenH = mc.getWindow().getHeight();
@@ -187,6 +191,7 @@ public final class UiPassCompiler {
                     vertices += textBatch.mesh.getVertexCount();
                     indices += textBatch.mesh.getIndicesCount();
                     logicalDraws++;
+                    int mirrorStart = draws.size();
                     TextRenderSystem.appendGlyphMeshCommand(
                             draws,
                             textBatch.label,
@@ -196,6 +201,8 @@ public final class UiPassCompiler {
                             textBatch.placement,
                             textBatch.clipSnapshot
                     );
+                    OrderedUiBatcher.mirrorNewDraws(draws, mirrorStart,
+                            textBatch.clipSnapshot.usesMsaaStencil() ? null : secondaryReplayView);
                     continue;
                 }
 
@@ -231,14 +238,19 @@ public final class UiPassCompiler {
                     builder.uniform("MsdfText", MsdfTextUniforms.get());
                 }
 
+                int mirrorStart = draws.size();
                 builder.endTo(draws);
+                OrderedUiBatcher.mirrorNewDraws(draws, mirrorStart,
+                        batch.clipSnapshot.usesMsaaStencil() ? null : secondaryReplayView);
             }
         } catch (Throwable failure) {
             closeDraws(draws);
             throw failure;
         }
 
-        List<RhiDrawCommand> compiledDraws = draws.isEmpty() ? List.of() : List.copyOf(draws);
+        List<RhiDrawCommand> compiledDraws = draws.isEmpty()
+                ? List.of()
+                : List.copyOf(OrderedUiBatcher.groupUiUnderlayReplays(draws));
         int compiledLogicalDraws = logicalDraws;
         int compiledVertices = vertices;
         int compiledIndices = indices;
@@ -294,11 +306,12 @@ public final class UiPassCompiler {
                 merged.add(pass);
                 orderedBatches += pass.orderedBatchCount();
             }
+            List<RhiDrawCommand> groupedDraws = OrderedUiBatcher.groupUiUnderlayReplays(draws);
             List<UiBatchPlan.Pass> callbacks = List.copyOf(merged);
             output.add(new UiBatchPlan.Pass(
                     "Renderer2D.RhiDrawSequence[x" + callbacks.size() + "]",
                     orderedBatches,
-                    draws,
+                    groupedDraws,
                     (frame, rhi) -> {
                         for (UiBatchPlan.Pass pass : callbacks) pass.executeWork(frame, rhi);
                     }
@@ -414,6 +427,10 @@ public final class UiPassCompiler {
                 batcher.poolTotal()
         );
         Renderer2D.BATCH_STATS.addFrame(orderedBatchCount, logicalDraws, vertices, indices);
+
+        if (batcher.hudBackdropContribution) {
+            UiBlurResources.backdropContributionsSubmitted();
+        }
 
         batcher.resetOrder();
         if (finish) {

@@ -36,6 +36,7 @@ public final class RhiDrawCommand {
     public final float lineWidth;
     public final List<RhiUniformBinding> uniforms;
     public final List<RhiSamplerBinding> samplers;
+    public final boolean uiUnderlayReplay;
 
     private RhiDrawCommand(Builder b) {
         this.label = b.label;
@@ -51,6 +52,7 @@ public final class RhiDrawCommand {
         this.lineWidth = b.lineWidth;
         this.uniforms = b.uniforms == null ? List.of() : List.copyOf(b.uniforms);
         this.samplers = b.samplers == null ? List.of() : List.copyOf(b.samplers);
+        this.uiUnderlayReplay = b.uiUnderlayReplay;
     }
 
     public static Builder builder(String label) {
@@ -63,6 +65,30 @@ public final class RhiDrawCommand {
             if (name.equals(binding.name())) return true;
         }
         return false;
+    }
+
+    /**
+     * Replays the same uploaded geometry and bindings into another color attachment. The mesh
+     * handle remains owned by the combined command stream and is closed once all replays finish.
+     */
+    public RhiDrawCommand retargetColor(String labelSuffix, GpuTextureView colorAttachment) {
+        Builder copy = builder(label + (labelSuffix != null ? labelSuffix : ""))
+                .pipeline(pipeline)
+                .pipelineSpec(pipelineSpec)
+                .colorAttachment(colorAttachment)
+                .depthAttachment(null)
+                .mesh(mesh)
+                .transform(transform)
+                .applyWorldCameraY(applyWorldCameraY)
+                .lineWidth(lineWidth)
+                .uiUnderlayReplay(true);
+        for (RhiUniformBinding uniform : uniforms) {
+            copy.uniform(uniform.name(), uniform.slice());
+        }
+        for (RhiSamplerBinding sampler : samplers) {
+            copy.sampler(sampler.name(), sampler.view(), sampler.sampler());
+        }
+        return copy.build();
     }
 
     public static final class Builder {
@@ -79,6 +105,7 @@ public final class RhiDrawCommand {
         private @Nullable Matrix4f transform;
         private boolean applyWorldCameraY;
         private float lineWidth = 1.0f;
+        private boolean uiUnderlayReplay;
 
         private Builder(String label) {
             this.label = label;
@@ -131,6 +158,11 @@ public final class RhiDrawCommand {
 
         public Builder lineWidth(float lineWidth) {
             this.lineWidth = lineWidth > 0.0f ? lineWidth : 1.0f;
+            return this;
+        }
+
+        public Builder uiUnderlayReplay(boolean uiUnderlayReplay) {
+            this.uiUnderlayReplay = uiUnderlayReplay;
             return this;
         }
 

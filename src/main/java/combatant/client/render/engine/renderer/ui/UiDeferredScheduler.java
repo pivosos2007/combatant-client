@@ -128,6 +128,7 @@ public final class UiDeferredScheduler {
 
         draining = true;
         try {
+            UiBlurResources.beginUiUnderlayLayer(net.minecraft.client.Minecraft.getInstance(), layer);
             modelView.pushMatrix();
             pushedModelView = true;
             modelView.identity();

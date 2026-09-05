@@ -16,11 +16,29 @@ import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.util.player.PlayerSkinResolver;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.Locale;
+
 public enum PlayerHeadRenderer {
     ;
 
     private static final float SOFTNESS = 1.0f;
     private static final float INSET_FACTOR = 0.06f;
+
+    /**
+     * Session-local player skin cache. Entries intentionally have no short TTL: a UUID -> Identifier
+     * pair is tiny, and keeping it for the lifetime of the current server connection prevents HUD
+     * heads from collapsing to a default skin when the entity/PlayerInfo temporarily disappears
+     * (dimension changes, world swaps inside the same connection, locator snapshots, etc.).
+     *
+     * The cache is still bounded as a safety valve and is cleared explicitly on server disconnect.
+     */
+    private static final int SESSION_SKIN_CACHE_LIMIT = 1024;
+    private static final Map<UUID, Identifier> SESSION_SKIN_CACHE =
+            new LinkedHashMap<>(128, 0.75f, true);
+    private static final Map<String, UUID> SESSION_NAME_INDEX = new LinkedHashMap<>();
 
     // 64x64 skin UVs
     private static final float FACE_U1 = 8f / 64f;
@@ -48,7 +66,7 @@ public enum PlayerHeadRenderer {
             float outlineThickness,
             boolean unscaled
     ) {
-        Identifier skin = PlayerSkinResolver.resolvePlayerSkin(player);
+        Identifier skin = resolveCachedSkin(player);
         drawRounded(ctx, x, y, size, radius, skin, color, secondLayer, outlineColor, outlineThickness, unscaled);
     }
 
@@ -130,7 +148,7 @@ public enum PlayerHeadRenderer {
             float outlineThickness,
             boolean unscaled
     ) {
-        Identifier skin = PlayerSkinResolver.resolvePlayerSkin(player);
+        Identifier skin = resolveCachedSkin(player);
         drawRect(ctx, x, y, size, skin, color, secondLayer, outlineColor, outlineThickness, unscaled);
     }
 
@@ -189,6 +207,105 @@ public enum PlayerHeadRenderer {
             tex.end();
         }
         tex.render(skin);
+    }
+
+
+    /* ============================================================
+       SESSION SKIN CACHE
+       ============================================================ */
+
+    public static Identifier resolveCachedSkin(AbstractClientPlayer player) {
+        if (player == null) return null;
+        String name = player.getGameProfile() != null ? player.getGameProfile().name() : null;
+        return resolveCachedSkin(player.getUUID(), name, PlayerSkinResolver.resolvePlayerSkin(player));
+    }
+
+    /**
+     * Returns the best skin known for this UUID and remembers useful candidates for the current
+     * server session. Runtime skins always replace older values; a later default/fallback texture
+     * never overwrites an already known runtime skin.
+     */
+    public static Identifier resolveCachedSkin(UUID playerId, Identifier candidate) {
+        return resolveCachedSkin(playerId, null, candidate);
+    }
+
+    public static Identifier resolveCachedSkin(UUID playerId, String playerName, Identifier candidate) {
+        synchronized (SESSION_SKIN_CACHE) {
+            UUID indexedId = playerId;
+            String normalizedName = normalizePlayerName(playerName);
+            if (indexedId == null && normalizedName != null) {
+                indexedId = SESSION_NAME_INDEX.get(normalizedName);
+            }
+
+            Identifier normalized = PlayerSkinResolver.normalizeSkinId(candidate);
+            if (indexedId == null) return normalized;
+
+            Identifier cached = SESSION_SKIN_CACHE.get(indexedId);
+            if (normalized != null && shouldReplaceCachedSkin(cached, normalized)) {
+                SESSION_SKIN_CACHE.put(indexedId, normalized);
+                cached = normalized;
+                trimSessionCache();
+            }
+            if (normalizedName != null) {
+                SESSION_NAME_INDEX.put(normalizedName, indexedId);
+            }
+
+            return cached != null ? cached : normalized;
+        }
+    }
+
+    public static Identifier getCachedSkin(UUID playerId) {
+        if (playerId == null) return null;
+        synchronized (SESSION_SKIN_CACHE) {
+            return SESSION_SKIN_CACHE.get(playerId);
+        }
+    }
+
+    public static Identifier getCachedSkin(String playerName) {
+        String normalizedName = normalizePlayerName(playerName);
+        if (normalizedName == null) return null;
+        synchronized (SESSION_SKIN_CACHE) {
+            UUID id = SESSION_NAME_INDEX.get(normalizedName);
+            return id != null ? SESSION_SKIN_CACHE.get(id) : null;
+        }
+    }
+
+    public static void clearSessionCache() {
+        synchronized (SESSION_SKIN_CACHE) {
+            SESSION_SKIN_CACHE.clear();
+            SESSION_NAME_INDEX.clear();
+        }
+    }
+
+    private static boolean shouldReplaceCachedSkin(Identifier cached, Identifier candidate) {
+        if (candidate == null) return false;
+        if (cached == null || cached.equals(candidate)) return true;
+
+        boolean cachedRuntime = isRuntimeSkin(cached);
+        boolean candidateRuntime = isRuntimeSkin(candidate);
+        if (candidateRuntime) return true;
+        return !cachedRuntime;
+    }
+
+    private static String normalizePlayerName(String name) {
+        if (name == null || name.isBlank()) return null;
+        return name.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean isRuntimeSkin(Identifier id) {
+        if (id == null) return false;
+        String path = id.getPath();
+        return path.startsWith("skins/") || path.startsWith("skin/");
+    }
+
+    private static void trimSessionCache() {
+        while (SESSION_SKIN_CACHE.size() > SESSION_SKIN_CACHE_LIMIT) {
+            var iterator = SESSION_SKIN_CACHE.entrySet().iterator();
+            if (!iterator.hasNext()) return;
+            UUID evicted = iterator.next().getKey();
+            iterator.remove();
+            SESSION_NAME_INDEX.entrySet().removeIf(entry -> evicted.equals(entry.getValue()));
+        }
     }
 
     /* ============================================================

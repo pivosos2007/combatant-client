@@ -44,6 +44,34 @@ public enum HudRenderUtil {
         return scaleAlpha(GLASS_BG, alphaFactor * GLASS_SMALL_FILL_ALPHA);
     }
 
+    public static void drawBackdropBlur(float x,
+                                        float y,
+                                        float w,
+                                        float h,
+                                        float radius,
+                                        boolean large,
+                                        float alpha) {
+        Renderer2D.COLOR.backdropBlurRect(
+                x, y, w, h, radius, large ? 12.0f : 6.0f, 1.0f,
+                AnimationUtility.clamp(alpha, 0.0f, 1.0f));
+    }
+
+    public static void drawBackdropBlurCorners(float x,
+                                               float y,
+                                               float w,
+                                               float h,
+                                               float radiusTL,
+                                               float radiusTR,
+                                               float radiusBR,
+                                               float radiusBL,
+                                               boolean large,
+                                               float alpha) {
+        Renderer2D.COLOR.backdropBlurRectCorners(
+                x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL,
+                large ? 12.0f : 6.0f, 1.0f,
+                AnimationUtility.clamp(alpha, 0.0f, 1.0f));
+    }
+
     public static void drawLiquidGlass(float x,
                                        float y,
                                        float w,
@@ -69,6 +97,11 @@ public enum HudRenderUtil {
         float blurStrength = AnimationUtility.clamp(blurAlpha, 0.0f, 1.0f);
         float materialAlpha = AnimationUtility.clamp(glassAlpha, 0.0f, 1.0f);
         float safeScale = Math.max(0.001f, scale);
+
+        if (materialAlpha <= 0.001f) {
+            drawBackdropBlur(x, y, w, h, radius, large, blurStrength);
+            return;
+        }
 
         float fresnelPower = large ? -22.0f : -18.0f;
         float thickness = (large ? 13.0f : 11.0f) * safeScale;
@@ -156,6 +189,12 @@ public enum HudRenderUtil {
         float blurStrength = AnimationUtility.clamp(blurAlpha, 0.0f, 1.0f);
         float materialAlpha = AnimationUtility.clamp(glassAlpha, 0.0f, 1.0f);
         float safeScale = Math.max(0.001f, scale);
+
+        if (materialAlpha <= 0.001f) {
+            drawBackdropBlurCorners(
+                    x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL, large, blurStrength);
+            return;
+        }
 
         float fresnelPower = large ? -22.0f : -18.0f;
         float thickness = (large ? 13.0f : 11.0f) * safeScale;

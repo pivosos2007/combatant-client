@@ -19,5 +19,12 @@ import com.mojang.blaze3d.pipeline.RenderPipeline;
 public interface PipelineStateBackend {
     void applyPipelineState(RenderPipeline pipeline);
 
+    /**
+     * Marks backend-native shadow state unknown after crossing code owned by Blaze3D/another renderer.
+     * Backends whose state is fully explicit (for example Vulkan) may keep the default no-op.
+     */
+    default void invalidateForeignState() {
+    }
+
     void resetRenderPassState();
 }

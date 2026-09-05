@@ -77,4 +77,18 @@ public final class FrameBlurCacheEntry {
         this.blurQualityId = quality.id;
         this.blurOffsetBits = Float.floatToIntBits(Float.isFinite(offsetPx) ? Math.max(0.0f, offsetPx) : Renderer2D.DEFAULT_KAWASE_OFFSET_PX);
     }
+
+    public void clear() {
+        frameId = Long.MIN_VALUE;
+        phase = RenderPhase.NONE;
+        sourceView = null;
+        sourceSampler = null;
+        blurredView = null;
+        blurredSampler = null;
+        screenW = 0;
+        screenH = 0;
+        uiScaleBits = 0;
+        blurQualityId = 0;
+        blurOffsetBits = 0;
+    }
 }

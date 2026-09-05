@@ -15,6 +15,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.text.RuntimeTextLayout;
 
 import java.util.List;
 
@@ -103,10 +104,11 @@ public enum ScreenSpaceOverlay2D {
 
     public static LabelEntry createCenteredLabel(TextRenderer textRenderer, String leftText, String rightText,
                                                  int leftColor, int rightColor, ScreenRect rect) {
-        String left = leftText == null ? "" : leftText;
-        String right = rightText == null || rightText.isBlank() ? null : rightText;
-        double leftWidth = textRenderer.getWidth(left, false);
-        double rightWidth = right == null ? 0.0 : textRenderer.getWidth(right, false);
+        String left = RuntimeTextLayout.singleLine(leftText);
+        String rightValue = RuntimeTextLayout.singleLine(rightText);
+        String right = rightValue.isBlank() ? null : rightValue;
+        double leftWidth = Math.max(0.0, textRenderer.getWidth(left, false));
+        double rightWidth = right == null ? 0.0 : Math.max(0.0, textRenderer.getWidth(right, false));
         double gap = right == null ? 0.0 : LABEL_SIDE_GAP;
         double totalWidth = leftWidth + gap + rightWidth;
         double height = textRenderer.getHeight(false);

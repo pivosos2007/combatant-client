@@ -53,16 +53,12 @@ public class WorldParticles extends Module {
     private static final float QUAD_BREATHE_MULTIPLIER = 0.10f;
     private static final float QUAD_ROLL_SPEED = 0.32f;
     private static final float BUBBLE_FILL_SIZE_MULTIPLIER = 3.15f;
-    private static final float BUBBLE_GLOW_SIZE_MULTIPLIER = 5.10f;
-    private static final float BUBBLE_CULL_EXTENT_MULTIPLIER = BUBBLE_GLOW_SIZE_MULTIPLIER * 1.56f;
-    private static final float BUBBLE_HIGHLIGHT_SIZE_MULTIPLIER = 0.34f;
-    private static final float BUBBLE_SECONDARY_HIGHLIGHT_SIZE_MULTIPLIER = 0.20f;
-    private static final float BUBBLE_FILL_ALPHA_MULTIPLIER = 0.34f;
-    private static final float BUBBLE_GLOW_ALPHA_MULTIPLIER = 0.13f;
-    private static final float BUBBLE_DEPTH_ALPHA_MULTIPLIER = 0.22f;
-    private static final float BUBBLE_HIGHLIGHT_ALPHA_MULTIPLIER = 0.74f;
-    private static final int BUBBLE_SPHERE_STACKS = 5;
-    private static final int BUBBLE_SPHERE_SLICES = 12;
+    // Dense geometry is intentional here: the shell itself owns depth, so the silhouette must not
+    // collapse to a visibly faceted low-poly sphere at close range. 16x32 stays cheap enough for
+    // the module's default particle counts while keeping world-depth intersections stable.
+    private static final float BUBBLE_CULL_EXTENT_MULTIPLIER = BUBBLE_FILL_SIZE_MULTIPLIER * 1.18f;
+    private static final int BUBBLE_SPHERE_STACKS = 16;
+    private static final int BUBBLE_SPHERE_SLICES = 32;
     private static final int BUBBLE_SPHERE_ROW_SIZE = BUBBLE_SPHERE_SLICES + 1;
     private static final int BUBBLE_SPHERE_SAMPLE_COUNT = (BUBBLE_SPHERE_STACKS + 1) * BUBBLE_SPHERE_ROW_SIZE;
     private static final int BUBBLE_SPHERE_INTERIOR_STACKS = BUBBLE_SPHERE_STACKS - 1;
@@ -71,7 +67,6 @@ public class WorldParticles extends Module {
     private static final float[] BUBBLE_SPHERE_X = new float[BUBBLE_SPHERE_SAMPLE_COUNT];
     private static final float[] BUBBLE_SPHERE_Y = new float[BUBBLE_SPHERE_SAMPLE_COUNT];
     private static final float[] BUBBLE_SPHERE_Z = new float[BUBBLE_SPHERE_SAMPLE_COUNT];
-    private static final Vector3f BUBBLE_LIGHT = new Vector3f(-0.36f, 0.84f, -0.40f).normalize();
     private static final float FUNNEL_EYE_SIZE_MULTIPLIER = 4.35f;
     private static final float FUNNEL_DISTORTION_SIZE_MULTIPLIER = 5.25f;
     private static final float FUNNEL_DISTORTION_OUTER_SIZE_MULTIPLIER = 6.85f;
@@ -157,8 +152,6 @@ public class WorldParticles extends Module {
     private final NumberValue<Float> funnelTintStrength =
             visibleWhen(num("funnel_tint_strength", "funnel_tint_strength", 0.45f, 0.0f, 1.0f), this::isFunnelTintControlsVisible);
     private final List<Particle> particles = new ArrayList<>();
-    private final Quaternionf bubbleSphereRotation = new Quaternionf();
-    private final Vector3f bubbleSphereNormal = new Vector3f();
 
     private static double randomDoubleClosed(ThreadLocalRandom random, double min, double max) {
         if (!Double.isFinite(min) || !Double.isFinite(max)) {
@@ -323,32 +316,29 @@ public class WorldParticles extends Module {
 
     private static void addSphereShell(MeshBuilder mesh,
                                        Vec3 center,
-                                       Quaternionf rotation,
-                                       Vector3f normal,
                                        float radius,
                                        int baseColor,
-                                       int brightColor,
-                                       int shadowColor,
-                                       float alpha) {
+                                       float alpha,
+                                       float ageSeconds,
+                                       float visualPhase) {
         int baseVertex = mesh.getVertexCount();
         mesh.ensureCapacity(BUBBLE_SPHERE_MESH_VERTEX_COUNT, BUBBLE_SPHERE_MESH_INDEX_COUNT);
 
-        addSphereVertex(mesh, center, rotation, normal, radius, baseColor, brightColor, shadowColor, alpha, 0);
+        addSphereVertex(mesh, center, radius, baseColor, alpha, ageSeconds, visualPhase, 0);
         for (int stack = 1; stack < BUBBLE_SPHERE_STACKS; stack++) {
             int sampleRow = stack * BUBBLE_SPHERE_ROW_SIZE;
             for (int slice = 0; slice < BUBBLE_SPHERE_SLICES; slice++) {
-                addSphereVertex(mesh, center, rotation, normal, radius,
-                        baseColor, brightColor, shadowColor, alpha, sampleRow + slice);
+                addSphereVertex(mesh, center, radius, baseColor, alpha, ageSeconds, visualPhase, sampleRow + slice);
             }
         }
-        addSphereVertex(mesh, center, rotation, normal, radius, baseColor, brightColor, shadowColor, alpha,
+        addSphereVertex(mesh, center, radius, baseColor, alpha, ageSeconds, visualPhase,
                 BUBBLE_SPHERE_STACKS * BUBBLE_SPHERE_ROW_SIZE);
 
         int firstRing = baseVertex + 1;
         int bottom = firstRing + BUBBLE_SPHERE_INTERIOR_STACKS * BUBBLE_SPHERE_SLICES;
         for (int slice = 0; slice < BUBBLE_SPHERE_SLICES; slice++) {
             int next = (slice + 1) % BUBBLE_SPHERE_SLICES;
-            mesh.triangle(baseVertex, firstRing + slice, firstRing + next);
+            mesh.triangle(baseVertex, firstRing + next, firstRing + slice);
         }
         for (int stack = 0; stack < BUBBLE_SPHERE_INTERIOR_STACKS - 1; stack++) {
             int row = firstRing + stack * BUBBLE_SPHERE_SLICES;
@@ -359,43 +349,42 @@ public class WorldParticles extends Module {
                 int b = nextRow + slice;
                 int c = nextRow + next;
                 int d = row + next;
-                mesh.triangle(a, b, c);
-                mesh.triangle(c, d, a);
+                mesh.triangle(a, c, b);
+                mesh.triangle(c, a, d);
             }
         }
         int lastRing = bottom - BUBBLE_SPHERE_SLICES;
         for (int slice = 0; slice < BUBBLE_SPHERE_SLICES; slice++) {
             int next = (slice + 1) % BUBBLE_SPHERE_SLICES;
-            mesh.triangle(bottom, lastRing + next, lastRing + slice);
+            mesh.triangle(bottom, lastRing + slice, lastRing + next);
         }
     }
 
     private static void addSphereVertex(MeshBuilder mesh,
                                         Vec3 center,
-                                        Quaternionf rotation,
-                                        Vector3f normal,
                                         float radius,
                                         int baseColor,
-                                        int brightColor,
-                                        int shadowColor,
                                         float alpha,
+                                        float ageSeconds,
+                                        float visualPhase,
                                         int sample) {
-        normal.set(BUBBLE_SPHERE_X[sample], BUBBLE_SPHERE_Y[sample], BUBBLE_SPHERE_Z[sample]).rotate(rotation);
-        float px = (float) center.x + normal.x() * radius;
-        float py = (float) center.y + normal.y() * radius;
-        float pz = (float) center.z + normal.z() * radius;
-        int vertexColor = sphereSurfaceColor(baseColor, brightColor, shadowColor, normal, alpha);
-        mesh.vec3(px, py, pz).colorArgb(vertexColor).next();
-    }
+        float nx = BUBBLE_SPHERE_X[sample];
+        float ny = BUBBLE_SPHERE_Y[sample];
+        float nz = BUBBLE_SPHERE_Z[sample];
+        float px = (float) center.x + nx * radius;
+        float py = (float) center.y + ny * radius;
+        float pz = (float) center.z + nz * radius;
 
-    private static int sphereSurfaceColor(int baseColor, int brightColor, int shadowColor,
-                                          Vector3f normal, float alpha) {
-        float lit = Mth.clamp(normal.dot(BUBBLE_LIGHT) * 0.5f + 0.5f, 0.0f, 1.0f);
-        float rim = 1.0f - Math.abs(normal.z());
-        float vertical = Mth.clamp(normal.y() * 0.5f + 0.5f, 0.0f, 1.0f);
-        int midColor = AnimatedRenderColors.mixArgb(shadowColor, baseColor, 0.36f + vertical * 0.24f);
-        int mixed = AnimatedRenderColors.mixArgb(midColor, brightColor, Mth.clamp(lit * 0.74f + rim * 0.24f, 0.0f, 1.0f));
-        return multiplyAlpha(mixed, alpha * (0.22f + lit * 0.22f + rim * 0.16f));
+        // POS3_TEXTURE_COLOR_PARAMS2 is reused as a compact world-surface payload:
+        // Params.xyz = unit normal, Params.w = radius; Params2.xy = age/phase.
+        // The custom vertex shader performs the membrane deformation from this data, keeping
+        // deformation and the rasterized depth surface identical.
+        mesh.vec3(px, py, pz)
+                .vec2(0.0, 0.0)
+                .colorArgb(multiplyAlpha(baseColor, alpha))
+                .vec4(nx, ny, nz, radius)
+                .vec4(ageSeconds, visualPhase, 0.0f, 0.0f)
+                .next();
     }
 
     private static int multiplyAlpha(int argb, float alphaMultiplier) {
@@ -456,7 +445,7 @@ public class WorldParticles extends Module {
             }
 
             boolean bubbleMode = isBubbleMode();
-            MeshBuilder spriteMesh = renderer.batchTextured(
+            MeshBuilder spriteMesh = bubbleMode ? null : renderer.batchTextured(
                     useDepth ? CombatantRenderPipelines.WORLD_TEXTURED_ADDITIVE_LIQUID_IGNORE
                             : CombatantRenderPipelines.WORLD_TEXTURED_ADDITIVE,
                     TextureStorage.BLOOM,
@@ -479,12 +468,10 @@ public class WorldParticles extends Module {
             }
 
             Quaternionf camRot = RenderState.cameraRotation;
-            Vector3f bubbleRight = bubbleMode ? new Vector3f(1.0f, 0.0f, 0.0f).rotate(camRot) : null;
-            Vector3f bubbleUp = bubbleMode ? new Vector3f(0.0f, 1.0f, 0.0f).rotate(camRot) : null;
             MeshBuilder bubbleShellMesh = bubbleMode
                     ? renderer.batch(
-                            useDepth ? CombatantRenderPipelines.WORLD_COLORED_LIQUID_IGNORE
-                                    : CombatantRenderPipelines.WORLD_COLORED,
+                            useDepth ? CombatantRenderPipelines.WORLD_BUBBLE_SURFACE_DEPTH
+                                    : CombatantRenderPipelines.WORLD_BUBBLE_SURFACE,
                             depthMode
                     )
                     : null;
@@ -497,10 +484,7 @@ public class WorldParticles extends Module {
                 );
             }
             if (spriteMesh != null) {
-                spriteMesh.ensureCapacity(
-                        bubbleMode ? particleCount * 20 : particleCount * 4,
-                        bubbleMode ? particleCount * 30 : particleCount * 6
-                );
+                spriteMesh.ensureCapacity(particleCount * 4, particleCount * 6);
             }
             if (lineMesh != null) {
                 lineMesh.ensureCapacity(
@@ -526,8 +510,7 @@ public class WorldParticles extends Module {
                     int baseColor = colorForParticle(particle, i);
 
                     if (bubbleMode) {
-                        renderAirBubble(bubbleShellMesh, spriteMesh, particle, pos,
-                                bubbleRight, bubbleUp, alpha, baseColor, nowMs);
+                        renderAirBubble(bubbleShellMesh, particle, pos, alpha, baseColor, nowMs);
                         continue;
                     }
 
@@ -705,122 +688,24 @@ public class WorldParticles extends Module {
     }
 
     private void renderAirBubble(MeshBuilder shellMesh,
-                                 MeshBuilder spriteMesh,
                                  Particle particle,
                                  Vec3 pos,
-                                 Vector3f billboardRight,
-                                 Vector3f billboardUp,
                                  float alpha,
                                  int baseColor,
                                  long nowMs) {
+        if (shellMesh == null) return;
+
         long ageMs = particle.ageMs(nowMs);
         float ageSeconds = ageMs / 1000.0f;
-        float lifeT = particle.lifeProgress(ageMs);
         float pulse = 0.5f + 0.5f * (float) Math.sin(ageSeconds * 3.1f + particle.visualPhase);
-        float pop = 1.0f + AnimationUtility.smoothstep(pulse) * 0.09f;
-        float radius = particle.size * BUBBLE_FILL_SIZE_MULTIPLIER * pop;
-        float lightAngle = particle.visualPhase + 2.35f + ageSeconds * 0.16f;
-        float depthAngle = lightAngle + (float) Math.PI;
-        int brightColor = AnimatedRenderColors.mixArgb(baseColor, 0xFFFFFFFF, 0.72f);
-        int softColor = AnimatedRenderColors.mixArgb(baseColor, 0xFFFFFFFF, 0.32f);
-        int shadowColor = AnimatedRenderColors.mixArgb(baseColor, 0xFF000000, 0.42f);
-        int sphereShadowColor = AnimatedRenderColors.mixArgb(baseColor, 0xFF000000, 0.38f);
-        Quaternionf sphereRotation = bubbleSphereRotation.identity()
-                .rotateY(particle.visualPhase + ageSeconds * 0.34f)
-                .rotateX(particle.visualPhase * 0.47f + ageSeconds * 0.22f)
-                .rotateZ(particle.visualPhase * -0.31f + ageSeconds * 0.16f);
-        float sphereRadius = radius * 0.82f;
+        float pop = 1.0f + AnimationUtility.smoothstep(pulse) * 0.065f;
+        float sphereRadius = particle.size * BUBBLE_FILL_SIZE_MULTIPLIER * pop;
 
-        if (shellMesh != null) {
-            addSphereShell(shellMesh, pos, sphereRotation, bubbleSphereNormal, sphereRadius,
-                    baseColor, brightColor, sphereShadowColor, alpha);
-        }
-
-        if (spriteMesh != null) {
-            addBillboardQuadGradient(
-                    spriteMesh,
-                    pos.x, pos.y, pos.z,
-                    particle.size * BUBBLE_GLOW_SIZE_MULTIPLIER * pop,
-                    billboardRight, billboardUp,
-                    particle.visualPhase * 0.22f + ageSeconds * 0.12f,
-                    multiplyAlpha(shadowColor, alpha * BUBBLE_GLOW_ALPHA_MULTIPLIER * 0.58f),
-                    multiplyAlpha(baseColor, alpha * BUBBLE_GLOW_ALPHA_MULTIPLIER * 0.88f),
-                    multiplyAlpha(brightColor, alpha * BUBBLE_GLOW_ALPHA_MULTIPLIER * 1.32f),
-                    multiplyAlpha(softColor, alpha * BUBBLE_GLOW_ALPHA_MULTIPLIER)
-            );
-
-            float depthDistance = radius * 0.22f;
-            float depthRightScale = (float) Math.cos(depthAngle) * depthDistance;
-            float depthUpScale = (float) Math.sin(depthAngle) * depthDistance;
-            double depthX = pos.x + billboardRight.x() * depthRightScale + billboardUp.x() * depthUpScale;
-            double depthY = pos.y + billboardRight.y() * depthRightScale + billboardUp.y() * depthUpScale;
-            double depthZ = pos.z + billboardRight.z() * depthRightScale + billboardUp.z() * depthUpScale;
-            float depthAlpha = alpha * BUBBLE_DEPTH_ALPHA_MULTIPLIER * (0.78f + pulse * 0.18f);
-            addBillboardQuadGradient(
-                    spriteMesh,
-                    depthX, depthY, depthZ,
-                    radius * 0.58f,
-                    billboardRight, billboardUp,
-                    particle.visualPhase * 0.31f,
-                    multiplyAlpha(shadowColor, depthAlpha * 0.92f),
-                    multiplyAlpha(baseColor, depthAlpha * 0.76f),
-                    multiplyAlpha(softColor, depthAlpha * 0.42f),
-                    multiplyAlpha(shadowColor, depthAlpha * 0.58f)
-            );
-
-            float fillAlpha = alpha * BUBBLE_FILL_ALPHA_MULTIPLIER;
-            addBillboardQuadGradient(
-                    spriteMesh,
-                    pos.x, pos.y, pos.z,
-                    radius,
-                    billboardRight, billboardUp,
-                    particle.visualPhase * -0.16f,
-                    multiplyAlpha(shadowColor, fillAlpha * 0.92f),
-                    multiplyAlpha(baseColor, fillAlpha * 1.06f),
-                    multiplyAlpha(brightColor, fillAlpha * 0.98f),
-                    multiplyAlpha(softColor, fillAlpha * 1.18f)
-            );
-
-            float highlightDistance = radius * 0.42f;
-            float highlightRightScale = (float) Math.cos(lightAngle) * highlightDistance;
-            float highlightUpScale = (float) Math.sin(lightAngle) * highlightDistance;
-            double highlightX = pos.x + billboardRight.x() * highlightRightScale + billboardUp.x() * highlightUpScale;
-            double highlightY = pos.y + billboardRight.y() * highlightRightScale + billboardUp.y() * highlightUpScale;
-            double highlightZ = pos.z + billboardRight.z() * highlightRightScale + billboardUp.z() * highlightUpScale;
-            float highlightAlpha = alpha * BUBBLE_HIGHLIGHT_ALPHA_MULTIPLIER * (1.0f - lifeT * 0.22f);
-            addBillboardQuadGradient(
-                    spriteMesh,
-                    highlightX, highlightY, highlightZ,
-                    particle.size * BUBBLE_HIGHLIGHT_SIZE_MULTIPLIER * (0.74f + pulse * 0.22f),
-                    billboardRight, billboardUp,
-                    particle.visualPhase,
-                    multiplyAlpha(softColor, highlightAlpha * 0.46f),
-                    multiplyAlpha(brightColor, highlightAlpha * 0.72f),
-                    multiplyAlpha(0xFFFFFFFF, highlightAlpha),
-                    multiplyAlpha(brightColor, highlightAlpha * 0.86f)
-            );
-
-            float secondaryAngle = lightAngle - 0.92f;
-            float secondaryDistance = radius * 0.18f;
-            float secondaryRightScale = (float) Math.cos(secondaryAngle) * secondaryDistance;
-            float secondaryUpScale = (float) Math.sin(secondaryAngle) * secondaryDistance;
-            double secondaryX = pos.x + billboardRight.x() * secondaryRightScale + billboardUp.x() * secondaryUpScale;
-            double secondaryY = pos.y + billboardRight.y() * secondaryRightScale + billboardUp.y() * secondaryUpScale;
-            double secondaryZ = pos.z + billboardRight.z() * secondaryRightScale + billboardUp.z() * secondaryUpScale;
-            float secondaryHighlightAlpha = alpha * BUBBLE_HIGHLIGHT_ALPHA_MULTIPLIER * 0.42f * (0.84f + pulse * 0.16f);
-            addBillboardQuadGradient(
-                    spriteMesh,
-                    secondaryX, secondaryY, secondaryZ,
-                    particle.size * BUBBLE_SECONDARY_HIGHLIGHT_SIZE_MULTIPLIER,
-                    billboardRight, billboardUp,
-                    particle.visualPhase * -0.38f,
-                    multiplyAlpha(baseColor, secondaryHighlightAlpha * 0.44f),
-                    multiplyAlpha(brightColor, secondaryHighlightAlpha * 0.68f),
-                    multiplyAlpha(0xFFFFFFFF, secondaryHighlightAlpha * 0.82f),
-                    multiplyAlpha(softColor, secondaryHighlightAlpha * 0.58f)
-            );
-        }
-
+        // The old bubble mixed a tiny low-poly sphere with several billboard quads. Those quads
+        // looked smooth, but their depth was the depth of a flat card. The shell now owns the
+        // complete visible membrane: dense geometry gives the silhouette/depth, while the custom
+        // shader supplies Fresnel, specular and thin-film motion without any flat depth impostors.
+        addSphereShell(shellMesh, pos, sphereRadius, baseColor, alpha, ageSeconds, particle.visualPhase);
     }
 
     private static boolean bubbleInFrustum(Particle particle, Vec3 pos) {

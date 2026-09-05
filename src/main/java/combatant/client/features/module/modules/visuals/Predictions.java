@@ -60,6 +60,7 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.render.helpers.MatteHudStyle;
 import combatant.client.render.helpers.ScreenProjection;
 import combatant.client.util.target.TargetManager;
 
@@ -94,12 +95,15 @@ public class Predictions extends Module {
     private static final float GLOW_SOFT_SIZE = 0.16f;
     private static final float GLOW_CORE_ALPHA = 0.74f;
     private static final float GLOW_SOFT_ALPHA = 0.32f;
-    private static final int AIM_GLOW_SUBSTEPS = 7;
-    private static final float AIM_GLOW_CORE_SIZE = 0.055f;
-    private static final float AIM_GLOW_SOFT_SIZE = 0.105f;
-    private static final float AIM_GLOW_CORE_ALPHA = 0.42f;
-    private static final float AIM_GLOW_SOFT_ALPHA = 0.17f;
-    private static final double AIM_GLOW_MIN_CAMERA_DISTANCE_SQ = 0.56;
+    private static final float AIM_TRAJECTORY_LINE_WIDTH = 1.0f;
+    private static final float AIM_TRAJECTORY_DASH_LENGTH = 0.17f;
+    private static final float AIM_TRAJECTORY_DASH_GAP = 0.105f;
+    private static final float AIM_TRAJECTORY_ALPHA_MIN = 0.08f;
+    private static final float AIM_TRAJECTORY_ALPHA_MAX = 0.58f;
+    private static final double AIM_TRAJECTORY_MIN_CAMERA_DISTANCE_SQ = 0.64;
+    private static final double AIM_SMOOTH_RATE = 19.0;
+    private static final double AIM_SMOOTH_MAX_DT = 0.05;
+    private static final double AIM_SMOOTH_SNAP_DISTANCE_SQ = 9.0;
     private static final float IMPACT_CORE_SIZE = 0.24f;
     private static final float IMPACT_SOFT_SIZE = 0.48f;
     private static final float IMPACT_CORE_ALPHA = 0.95f;
@@ -108,37 +112,34 @@ public class Predictions extends Module {
     private static final int ENTITY_HIT_FILL_ALPHA = 34;
     private static final int ENTITY_HIT_LINE_ALPHA = 170;
     private static final float ENTITY_HIT_LINE_WIDTH = 1.5f;
-    private static final float PLATE_RADIUS = 1.7f;
-    private static final float PLATE_TEXT_SCALE = 0.68f;
-    private static final float PLATE_TEXT_PADDING = 24.0f;
-    private static final float PLATE_HEIGHT = 16.0f;
-    private static final float PLATE_BG_OFFSET_X = 2.0f;
-    private static final float PLATE_BG_OFFSET_Y = 0.0f;
-    private static final float PLATE_BG_SHRINK = 3.0f;
-    private static final float PLATE_ICON_SIZE = 13.0f;
-    private static final float PLATE_ICON_OFFSET_X = 4.0f;
-    private static final float PLATE_ICON_TEXT_GAP = 4.0f;
+    private static final float PLATE_RADIUS = 3.6f;
+    private static final float PLATE_TEXT_SCALE = 0.84f;
+    private static final float PLATE_HEIGHT = 19.0f;
+    private static final float PLATE_PAD_X = 3.6f;
+    private static final float PLATE_ICON_SIZE = 15.0f;
+    private static final float PLATE_ICON_TEXT_GAP = 3.6f;
     private static final float PLATE_TEXT_OFFSET_Y = 0.0f;
-    private static final int PLATE_SHADOW = 0xAA000000;
-    private static final float PLATE_SHADOW_BLUR = 3.6f;
-    private static final float PLATE_SHADOW_INNER_ALPHA = 0.18f;
     private static final float TRAJECTORY_LINE_WIDTH = 1.35f;
     private static final float TRAJECTORY_LINE_ALPHA_START = 0.16f;
     private static final float TRAJECTORY_LINE_ALPHA_END = 0.78f;
-    private static final int IMPACT_RING_SEGMENTS = 64;
-    private static final float IMPACT_RING_RADIUS = 0.30f;
-    private static final float IMPACT_RING_CROSS_RADIUS = 0.18f;
-    private static final float IMPACT_RING_LINE_WIDTH = 1.2f;
-    private static final float IMPACT_RING_ALPHA = 0.88f;
-    private static final float IMPACT_DECAL_RADIUS = 0.34f;
-    private static final float IMPACT_DECAL_EDGE_SOFTNESS = 0.085f;
-    private static final float IMPACT_DECAL_STROKE_WIDTH = 0.10f;
-    private static final float IMPACT_DECAL_PATTERN_SCALE = 4.25f;
-    private static final float IMPACT_DECAL_FILL_ALPHA = 0.48f;
-    private static final float IMPACT_DECAL_STROKE_ALPHA = 0.92f;
-    private static final float IMPACT_DECAL_PATTERN_STRENGTH = 0.10f;
-    private static final float IMPACT_DECAL_QUAD_PADDING = 1.18f;
+    private static final float ENTITY_HIT_OUTLINE_WIDTH = 1.2f;
+    private static final float IMPACT_DECAL_RADIUS = 0.38f;
+    private static final float IMPACT_DECAL_EDGE_SOFTNESS = 0.018f;
+    private static final float IMPACT_DECAL_STROKE_WIDTH = 0.022f;
+    private static final float IMPACT_DECAL_PATTERN_SCALE = 22.0f;
+    private static final float IMPACT_DECAL_FILL_ALPHA = 0.07f;
+    private static final float IMPACT_DECAL_STROKE_ALPHA = 0.90f;
+    private static final float IMPACT_DECAL_PATTERN_STRENGTH = 0.68f;
+    private static final float IMPACT_DECAL_QUAD_PADDING = 1.16f;
     private static final double IMPACT_DECAL_OFFSET = 0.004;
+    private static final float AIM_DECAL_RADIUS = 0.48f;
+    private static final float AIM_DECAL_EDGE_SOFTNESS = 0.014f;
+    private static final float AIM_DECAL_LINE_WIDTH = 0.020f;
+    private static final float AIM_DECAL_PRIMARY_ALPHA = 0.90f;
+    private static final float AIM_DECAL_SECONDARY_ALPHA = 0.54f;
+    private static final float AIM_DECAL_FILL_ALPHA = 0.035f;
+    private static final float AIM_DECAL_QUAD_PADDING = 1.15f;
+    private static final double AIM_DECAL_OFFSET = 0.0045;
 
     private final Minecraft mc = Minecraft.getInstance();
 
@@ -176,6 +177,12 @@ public class Predictions extends Module {
 
     private ItemStack tntTimerIcon = ItemStack.EMPTY;
     private final List<TimerPlate> timerPlates = new ArrayList<>();
+    private List<Vec3> smoothedAimPoints = List.of();
+    private Vec3 smoothedAimHitPos;
+    private Vec3 smoothedAimNormal;
+    private Kind smoothedAimKind;
+    private Entity smoothedAimEntity;
+    private long lastAimSmoothNanos;
 
     private static boolean canHitPredictedEntity(Entity projectile, Entity entity, AABB collisionBox) {
         if (projectile == null || entity == null || !entity.isAlive() || !entity.canBeHitByProjectile()) {
@@ -210,95 +217,93 @@ public class Predictions extends Module {
         mesh.line(i1, i2);
     }
 
-    private static void addImpactRing(MeshBuilder mesh, Vec3 center, Vec3 normal, float radius, int argb) {
-        if (mesh == null || center == null) return;
-
-        Vec3 useNormal = normal == null || normal.lengthSqr() < 1.0E-6
+    private static Vec3 resolveDecalNormal(Vec3 normal) {
+        return normal == null || normal.lengthSqr() < 1.0E-6
                 ? new Vec3(0.0, 1.0, 0.0)
                 : normal.normalize();
-        Vec3 axis = Math.abs(useNormal.y) < 0.95 ? new Vec3(0.0, 1.0, 0.0) : new Vec3(1.0, 0.0, 0.0);
-        Vec3 tangent = useNormal.cross(axis);
-        if (tangent.lengthSqr() < 1.0E-6) {
-            tangent = new Vec3(1.0, 0.0, 0.0);
-        } else {
-            tangent = tangent.normalize();
-        }
-        Vec3 bitangent = useNormal.cross(tangent).normalize();
-
-        for (int i = 0; i < IMPACT_RING_SEGMENTS; i++) {
-            double angle0 = (Math.PI * 2.0 * i) / IMPACT_RING_SEGMENTS;
-            double angle1 = (Math.PI * 2.0 * (i + 1)) / IMPACT_RING_SEGMENTS;
-            Vec3 p0 = center
-                    .add(tangent.scale(Math.cos(angle0) * radius))
-                    .add(bitangent.scale(Math.sin(angle0) * radius));
-            Vec3 p1 = center
-                    .add(tangent.scale(Math.cos(angle1) * radius))
-                    .add(bitangent.scale(Math.sin(angle1) * radius));
-            addGradientLine(mesh, p0, p1, argb, argb);
-        }
-
-        Vec3 crossTangent = tangent.scale(IMPACT_RING_CROSS_RADIUS);
-        Vec3 crossBitangent = bitangent.scale(IMPACT_RING_CROSS_RADIUS);
-        addGradientLine(mesh, center.subtract(crossTangent), center.add(crossTangent), argb, argb);
-        addGradientLine(mesh, center.subtract(crossBitangent), center.add(crossBitangent), argb, argb);
     }
 
-    private static void addImpactDecal(MeshBuilder mesh, Vec3 center, Vec3 normal, float radius, int argb) {
-        if (mesh == null || center == null || radius <= 0.0f) {
-            return;
+    private static Vec3 resolveDecalTangent(Vec3 normal, Vec3 preferredDirection) {
+        Vec3 useNormal = resolveDecalNormal(normal);
+        if (preferredDirection != null && preferredDirection.lengthSqr() > 1.0E-6) {
+            Vec3 projected = preferredDirection.subtract(useNormal.scale(preferredDirection.dot(useNormal)));
+            if (projected.lengthSqr() > 1.0E-6) {
+                return projected.normalize();
+            }
         }
 
-        Vec3 useNormal = normal == null || normal.lengthSqr() < 1.0E-6
+        Vec3 axis = Math.abs(useNormal.y) < 0.95
                 ? new Vec3(0.0, 1.0, 0.0)
-                : normal.normalize();
-        Vec3 axis = Math.abs(useNormal.y) < 0.95 ? new Vec3(0.0, 1.0, 0.0) : new Vec3(1.0, 0.0, 0.0);
+                : new Vec3(1.0, 0.0, 0.0);
         Vec3 tangent = useNormal.cross(axis);
-        if (tangent.lengthSqr() < 1.0E-6) {
-            tangent = new Vec3(1.0, 0.0, 0.0);
-        } else {
-            tangent = tangent.normalize();
-        }
-        Vec3 bitangent = useNormal.cross(tangent).normalize();
-        Vec3 offsetCenter = center.add(useNormal.scale(IMPACT_DECAL_OFFSET));
-        float quadRadius = radius * IMPACT_DECAL_QUAD_PADDING;
-        float sdfRadius = 1.0f / IMPACT_DECAL_QUAD_PADDING;
+        return tangent.lengthSqr() < 1.0E-6
+                ? new Vec3(1.0, 0.0, 0.0)
+                : tangent.normalize();
+    }
+
+    private static Vec3 impactDirection(TrajectoryResult result) {
+        if (result == null || result.points() == null || result.points().size() < 2) return null;
+        List<Vec3> points = result.points();
+        Vec3 direction = points.getLast().subtract(points.get(points.size() - 2));
+        return direction.lengthSqr() > 1.0E-6 ? direction.normalize() : null;
+    }
+
+    private static void addImpactDecal(MeshBuilder mesh, Vec3 center, Vec3 normal, Vec3 preferredDirection,
+                                       float radius, int argb) {
+        addDecalQuad(
+                mesh, center, normal, preferredDirection, radius, IMPACT_DECAL_QUAD_PADDING, IMPACT_DECAL_OFFSET, argb,
+                1.0f / IMPACT_DECAL_QUAD_PADDING, IMPACT_DECAL_EDGE_SOFTNESS, IMPACT_DECAL_STROKE_WIDTH, IMPACT_DECAL_PATTERN_SCALE,
+                IMPACT_DECAL_FILL_ALPHA, IMPACT_DECAL_STROKE_ALPHA, IMPACT_DECAL_PATTERN_STRENGTH, 0.0f
+        );
+    }
+
+    private static void addAimDecal(MeshBuilder mesh, Vec3 center, Vec3 normal, Vec3 preferredDirection,
+                                    float radius, int argb, float pulse) {
+        addDecalQuad(
+                mesh, center, normal, preferredDirection, radius, AIM_DECAL_QUAD_PADDING, AIM_DECAL_OFFSET, argb,
+                1.0f / AIM_DECAL_QUAD_PADDING, AIM_DECAL_EDGE_SOFTNESS, AIM_DECAL_LINE_WIDTH, pulse,
+                AIM_DECAL_PRIMARY_ALPHA, AIM_DECAL_SECONDARY_ALPHA, AIM_DECAL_FILL_ALPHA, 0.0f
+        );
+    }
+
+    private static void addDecalQuad(MeshBuilder mesh, Vec3 center, Vec3 normal, Vec3 preferredDirection,
+                                     float radius, float quadPadding, double offset, int argb,
+                                     float p0, float p1, float p2, float p3,
+                                     float q0, float q1, float q2, float q3) {
+        if (mesh == null || center == null || radius <= 0.0f) return;
+
+        Vec3 useNormal = resolveDecalNormal(normal);
+        Vec3 tangent = resolveDecalTangent(useNormal, preferredDirection);
+        Vec3 bitangent = useNormal.cross(tangent);
+        if (bitangent.lengthSqr() < 1.0E-6) return;
+        bitangent = bitangent.normalize();
+
+        Vec3 offsetCenter = center.add(useNormal.scale(offset));
+        float quadRadius = radius * quadPadding;
         Vec3 tangentScaled = tangent.scale(quadRadius);
         Vec3 bitangentScaled = bitangent.scale(quadRadius);
+        Vec3 p00 = offsetCenter.subtract(tangentScaled).subtract(bitangentScaled);
+        Vec3 p10 = offsetCenter.add(tangentScaled).subtract(bitangentScaled);
+        Vec3 p11 = offsetCenter.add(tangentScaled).add(bitangentScaled);
+        Vec3 p01 = offsetCenter.subtract(tangentScaled).add(bitangentScaled);
 
         mesh.ensureQuadCapacity();
-        int i1 = mesh.vec3(offsetCenter.subtract(tangentScaled).subtract(bitangentScaled).x,
-                        offsetCenter.subtract(tangentScaled).subtract(bitangentScaled).y,
-                        offsetCenter.subtract(tangentScaled).subtract(bitangentScaled).z)
-                .vec2(0.0, 0.0)
-                .color(new RenderColor(argb))
-                .vec4(sdfRadius, IMPACT_DECAL_EDGE_SOFTNESS, IMPACT_DECAL_STROKE_WIDTH, IMPACT_DECAL_PATTERN_SCALE)
-                .vec4(IMPACT_DECAL_FILL_ALPHA, IMPACT_DECAL_STROKE_ALPHA, IMPACT_DECAL_PATTERN_STRENGTH, 0.0f)
-                .next();
-        int i2 = mesh.vec3(offsetCenter.add(tangentScaled).subtract(bitangentScaled).x,
-                        offsetCenter.add(tangentScaled).subtract(bitangentScaled).y,
-                        offsetCenter.add(tangentScaled).subtract(bitangentScaled).z)
-                .vec2(1.0, 0.0)
-                .color(new RenderColor(argb))
-                .vec4(sdfRadius, IMPACT_DECAL_EDGE_SOFTNESS, IMPACT_DECAL_STROKE_WIDTH, IMPACT_DECAL_PATTERN_SCALE)
-                .vec4(IMPACT_DECAL_FILL_ALPHA, IMPACT_DECAL_STROKE_ALPHA, IMPACT_DECAL_PATTERN_STRENGTH, 0.0f)
-                .next();
-        int i3 = mesh.vec3(offsetCenter.add(tangentScaled).add(bitangentScaled).x,
-                        offsetCenter.add(tangentScaled).add(bitangentScaled).y,
-                        offsetCenter.add(tangentScaled).add(bitangentScaled).z)
-                .vec2(1.0, 1.0)
-                .color(new RenderColor(argb))
-                .vec4(sdfRadius, IMPACT_DECAL_EDGE_SOFTNESS, IMPACT_DECAL_STROKE_WIDTH, IMPACT_DECAL_PATTERN_SCALE)
-                .vec4(IMPACT_DECAL_FILL_ALPHA, IMPACT_DECAL_STROKE_ALPHA, IMPACT_DECAL_PATTERN_STRENGTH, 0.0f)
-                .next();
-        int i4 = mesh.vec3(offsetCenter.subtract(tangentScaled).add(bitangentScaled).x,
-                        offsetCenter.subtract(tangentScaled).add(bitangentScaled).y,
-                        offsetCenter.subtract(tangentScaled).add(bitangentScaled).z)
-                .vec2(0.0, 1.0)
-                .color(new RenderColor(argb))
-                .vec4(sdfRadius, IMPACT_DECAL_EDGE_SOFTNESS, IMPACT_DECAL_STROKE_WIDTH, IMPACT_DECAL_PATTERN_SCALE)
-                .vec4(IMPACT_DECAL_FILL_ALPHA, IMPACT_DECAL_STROKE_ALPHA, IMPACT_DECAL_PATTERN_STRENGTH, 0.0f)
-                .next();
+        int i1 = addDecalVertex(mesh, p00, 0.0f, 0.0f, argb, p0, p1, p2, p3, q0, q1, q2, q3);
+        int i2 = addDecalVertex(mesh, p10, 1.0f, 0.0f, argb, p0, p1, p2, p3, q0, q1, q2, q3);
+        int i3 = addDecalVertex(mesh, p11, 1.0f, 1.0f, argb, p0, p1, p2, p3, q0, q1, q2, q3);
+        int i4 = addDecalVertex(mesh, p01, 0.0f, 1.0f, argb, p0, p1, p2, p3, q0, q1, q2, q3);
         mesh.quad(i1, i2, i3, i4);
+    }
+
+    private static int addDecalVertex(MeshBuilder mesh, Vec3 pos, float u, float v, int argb,
+                                      float p0, float p1, float p2, float p3,
+                                      float q0, float q1, float q2, float q3) {
+        return mesh.vec3(pos.x, pos.y, pos.z)
+                .vec2(u, v)
+                .color(new RenderColor(argb))
+                .vec4(p0, p1, p2, p3)
+                .vec4(q0, q1, q2, q3)
+                .next();
     }
 
     private static Vec3 resolveImpactNormal(HitResult hit, Vec3 velocity) {
@@ -485,6 +490,7 @@ public class Predictions extends Module {
     @Override
     public void onDisable() {
         TargetManager.setPredictionTarget(null);
+        resetAimSmoothing();
     }
 
     @Override
@@ -495,18 +501,21 @@ public class Predictions extends Module {
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
         if (!isEnabled() || mc.level == null) {
             TargetManager.setPredictionTarget(null);
+            resetAimSmoothing();
             return;
         }
 
         List<TrajectoryResult> results = simulateProjectiles(tickDelta);
-        updatePredictionTarget(tickDelta);
+        AimPrediction rawAim = mc.player != null ? computeAimPrediction(mc.player, tickDelta) : null;
+        AimPrediction aim = smoothAimPrediction(rawAim);
+        updatePredictionTarget(aim);
 
         int baseColor = lineColorValue.getArgb();
         if (aimTrajectoryValue.get()) {
-            renderAimTrajectoryGlow(renderer, tickDelta, baseColor);
+            renderAimTrajectory(renderer, tickDelta, baseColor, aim);
         }
         if (aimIndicatorValue.get()) {
-            renderAimIndicatorWorld(renderer, tickDelta);
+            renderAimIndicatorWorld(renderer, tickDelta, aim);
         }
 
         if (results.isEmpty()) return;
@@ -811,6 +820,102 @@ public class Predictions extends Module {
         return new AimPrediction(hitEntity, hitPos, anchorPos, result.impactNormal(), result.iconStack(), result);
     }
 
+    private AimPrediction smoothAimPrediction(AimPrediction raw) {
+        if (raw == null || raw.trajectory() == null || raw.trajectory().points().isEmpty()) {
+            resetAimSmoothing();
+            return null;
+        }
+
+        long now = System.nanoTime();
+        List<Vec3> rawPoints = raw.trajectory().points();
+        boolean snap = smoothedAimPoints.isEmpty()
+                || smoothedAimKind != raw.trajectory().kind()
+                || smoothedAimEntity != raw.entity()
+                || smoothedAimPoints.getFirst().distanceToSqr(rawPoints.getFirst()) > AIM_SMOOTH_SNAP_DISTANCE_SQ;
+
+        if (snap) {
+            smoothedAimPoints = List.copyOf(rawPoints);
+            smoothedAimHitPos = raw.hitPos();
+            smoothedAimNormal = raw.hitNormal();
+            smoothedAimKind = raw.trajectory().kind();
+            smoothedAimEntity = raw.entity();
+            lastAimSmoothNanos = now;
+            return raw;
+        }
+
+        double dt = lastAimSmoothNanos == 0L
+                ? (1.0 / 60.0)
+                : Math.min(AIM_SMOOTH_MAX_DT, Math.max(1.0 / 240.0, (now - lastAimSmoothNanos) * 1.0E-9));
+        lastAimSmoothNanos = now;
+        double alpha = 1.0 - Math.exp(-AIM_SMOOTH_RATE * dt);
+
+        List<Vec3> nextPoints = new ArrayList<>(rawPoints.size());
+        int count = rawPoints.size();
+        for (int i = 0; i < count; i++) {
+            double t = count <= 1 ? 0.0 : i / (double) (count - 1);
+            Vec3 previous = samplePathByIndex(smoothedAimPoints, t);
+            Vec3 current = rawPoints.get(i);
+            double pointAlpha = Mth.clamp(alpha * (0.92 + 0.18 * t), 0.0, 1.0);
+            nextPoints.add(previous.lerp(current, pointAlpha));
+        }
+
+        Vec3 nextHit = smoothedAimHitPos == null
+                ? raw.hitPos()
+                : smoothedAimHitPos.lerp(raw.hitPos(), Mth.clamp(alpha * 1.08, 0.0, 1.0));
+        Vec3 nextNormal = smoothNormal(smoothedAimNormal, raw.hitNormal(), alpha);
+        if (!nextPoints.isEmpty()) {
+            nextPoints.set(nextPoints.size() - 1, nextHit);
+        }
+
+        smoothedAimPoints = List.copyOf(nextPoints);
+        smoothedAimHitPos = nextHit;
+        smoothedAimNormal = nextNormal;
+        smoothedAimKind = raw.trajectory().kind();
+        smoothedAimEntity = raw.entity();
+
+        TrajectoryResult rawTrajectory = raw.trajectory();
+        TrajectoryResult smoothedTrajectory = new TrajectoryResult(
+                smoothedAimPoints,
+                rawTrajectory.flightTicks(),
+                rawTrajectory.impactTick(),
+                rawTrajectory.iconStack(),
+                rawTrajectory.argb(),
+                rawTrajectory.kind(),
+                nextHit,
+                nextNormal,
+                rawTrajectory.hitEntity(),
+                rawTrajectory.hitBlock()
+        );
+        return new AimPrediction(raw.entity(), nextHit, raw.anchorPos(), nextNormal, raw.displayStack(), smoothedTrajectory);
+    }
+
+    private static Vec3 samplePathByIndex(List<Vec3> points, double t) {
+        if (points == null || points.isEmpty()) return Vec3.ZERO;
+        if (points.size() == 1) return points.getFirst();
+
+        double scaled = Mth.clamp(t, 0.0, 1.0) * (points.size() - 1);
+        int index = Math.min(points.size() - 2, Math.max(0, (int) Math.floor(scaled)));
+        double local = scaled - index;
+        return points.get(index).lerp(points.get(index + 1), local);
+    }
+
+    private static Vec3 smoothNormal(Vec3 previous, Vec3 current, double alpha) {
+        if (current == null || current.lengthSqr() < 1.0E-6) return previous;
+        Vec3 normalizedCurrent = current.normalize();
+        if (previous == null || previous.lengthSqr() < 1.0E-6) return normalizedCurrent;
+        Vec3 mixed = previous.normalize().lerp(normalizedCurrent, Mth.clamp(alpha, 0.0, 1.0));
+        return mixed.lengthSqr() < 1.0E-6 ? normalizedCurrent : mixed.normalize();
+    }
+
+    private void resetAimSmoothing() {
+        smoothedAimPoints = List.of();
+        smoothedAimHitPos = null;
+        smoothedAimNormal = null;
+        smoothedAimKind = null;
+        smoothedAimEntity = null;
+        lastAimSmoothNanos = 0L;
+    }
+
     private Projectile createHeldProjectile(Player player, float tickDelta) {
         if (mc.level == null) {
             return null;
@@ -887,7 +992,9 @@ public class Predictions extends Module {
 
         Vec3 eye = player.getEyePosition(tickDelta);
         projectile.absSnapTo(eye.x, eye.y, eye.z);
-        setHeldProjectileVelocity(projectile, player, player.getXRot(), player.getYRot(), roll, speed);
+        float viewPitch = player.getViewXRot(tickDelta);
+        float viewYaw = player.getViewYRot(tickDelta);
+        setHeldProjectileVelocity(projectile, player, viewPitch, viewYaw, roll, speed);
         return projectile;
     }
 
@@ -997,19 +1104,22 @@ public class Predictions extends Module {
 
         TextRenderer tr = Fonts.renderer("OnestMedium", FontInfo.Type.Regular, textRenderer);
         float textW = (float) tr.getWidth(txt) * PLATE_TEXT_SCALE;
-        float plateW = textW + PLATE_TEXT_PADDING;
+        float contentW = PLATE_ICON_SIZE + PLATE_ICON_TEXT_GAP + textW;
+        float plateW = PLATE_PAD_X * 2.0f + contentW;
         float plateX = sx - plateW * 0.5f;
         float plateY = sy;
 
-        float bgX = plateX + PLATE_BG_OFFSET_X;
-        float bgY = plateY + PLATE_BG_OFFSET_Y;
-        float bgW = plateW - PLATE_BG_SHRINK;
-        int plateShadow = argb != 0
-                ? (argb & 0x00FFFFFF) | (PLATE_SHADOW & 0xFF000000)
-                : PLATE_SHADOW;
-        renderer.roundedRectSoftShadow(bgX, bgY, bgW, PLATE_HEIGHT, PLATE_RADIUS, PLATE_SHADOW_BLUR, PLATE_SHADOW_INNER_ALPHA, plateShadow);
+        MatteHudStyle.drawEspMattePlate(
+                renderer,
+                plateX,
+                plateY,
+                plateW,
+                PLATE_HEIGHT,
+                PLATE_RADIUS,
+                1.0f
+        );
 
-        float iconX = plateX + PLATE_ICON_OFFSET_X;
+        float iconX = plateX + PLATE_PAD_X;
         float iconY = plateY + (PLATE_HEIGHT - PLATE_ICON_SIZE) * 0.5f;
         float iconScale = PLATE_ICON_SIZE / 16.0f;
         if (iconStack == null || iconStack.isEmpty()) {
@@ -1071,101 +1181,116 @@ public class Predictions extends Module {
         };
     }
 
-    private void renderAimTrajectoryGlow(Renderer3D renderer, float tickDelta, int baseColor) {
+    private void renderAimTrajectory(Renderer3D renderer, float tickDelta, int baseColor, AimPrediction pred) {
         Player player = mc.player;
-        if (player == null) return;
-
-        AimPrediction pred = computeAimPrediction(player, tickDelta);
-        if (pred == null || pred.trajectory() == null) return;
+        if (player == null || pred == null || pred.trajectory() == null) return;
 
         List<Vec3> points = pred.trajectory().points();
         if (points.size() < 2) return;
 
         boolean walls = glowWallsValue.get();
         RenderPipeline pipeline = walls
-                ? CombatantRenderPipelines.WORLD_TEXTURED_ADDITIVE
-                : CombatantRenderPipelines.WORLD_TEXTURED_ADDITIVE_LIQUID_IGNORE;
+                ? CombatantRenderPipelines.WORLD_COLORED_LINES_LIQUID_BLEND
+                : CombatantRenderPipelines.WORLD_COLORED_LINES_LIQUID_IGNORE;
         Renderer3D.DepthMode depthMode = walls ? Renderer3D.DepthMode.MAIN : Renderer3D.DepthMode.PRE_DEPTH;
-        MeshBuilder mesh = renderer.batchTextured(pipeline, TextureStorage.BLOOM, depthMode);
-        if (mesh == null) return;
-
-        int color = pred.entity() != null
-                ? HIT_ENTITY_COLOR
-                : pred.trajectory().argb() != 0 ? pred.trajectory().argb() : baseColor;
-        Quaternionf camRot = RenderState.cameraRotation;
-        Vec3 cameraPos = RenderState.cameraPos != null ? RenderState.cameraPos : player.getEyePosition(tickDelta);
-        int totalSegments = points.size() - 1;
-
-        for (int i = 1; i < points.size(); i++) {
-            Vec3 from = points.get(i - 1);
-            Vec3 to = points.get(i);
-
-            for (int step = 0; step <= AIM_GLOW_SUBSTEPS; step++) {
-                float stepT = step / (float) AIM_GLOW_SUBSTEPS;
-                Vec3 pos = from.lerp(to, stepT);
-                if (pos.distanceToSqr(cameraPos) < AIM_GLOW_MIN_CAMERA_DISTANCE_SQ) {
-                    continue;
-                }
-                float segmentProgress = ((i - 1) + stepT) / Math.max(1.0f, totalSegments);
-                float strength = 0.28f + 0.72f * AnimationUtility.easeOutCubic(segmentProgress);
-
-                addBillboardQuad(
-                        mesh,
-                        pos.x, pos.y, pos.z,
-                        AIM_GLOW_CORE_SIZE,
-                        camRot,
-                        multiplyAlpha(color, AIM_GLOW_CORE_ALPHA * strength)
-                );
-                addBillboardQuad(
-                        mesh,
-                        pos.x, pos.y, pos.z,
-                        AIM_GLOW_SOFT_SIZE,
-                        camRot,
-                        multiplyAlpha(color, AIM_GLOW_SOFT_ALPHA * strength)
-                );
-            }
-        }
-    }
-
-    private void renderAimIndicatorWorld(Renderer3D renderer, float tickDelta) {
-        Player player = mc.player;
-        if (player == null) return;
-
-        AimPrediction pred = computeAimPrediction(player, tickDelta);
-        if (pred == null) return;
-
-        RenderPipeline pipeline = CombatantRenderPipelines.WORLD_COLORED_LINES_LIQUID_IGNORE;
-        Renderer3D.DepthMode depthMode = Renderer3D.DepthMode.NONE;
 
         float prevWidth = RenderState.lineWidth;
-        RenderState.lineWidth = IMPACT_RING_LINE_WIDTH;
+        RenderState.lineWidth = AIM_TRAJECTORY_LINE_WIDTH;
         try {
             MeshBuilder mesh = renderer.batch(pipeline, depthMode);
             if (mesh == null) return;
 
-            int color = pred.entity() != null ? HIT_ENTITY_COLOR : lineColorValue.getArgb();
-            float pulseTime = (mc.level.getGameTime() + tickDelta) * 0.085f;
-            float pulse = 0.9f + 0.1f * AnimationUtility.smoothstep((float) ((Math.sin(pulseTime) + 1.0) * 0.5));
-            Vec3 normal = pred.hitNormal() != null ? pred.hitNormal() : new Vec3(0.0, 1.0, 0.0);
-            addImpactRing(mesh, pred.hitPos(), normal, IMPACT_RING_RADIUS * pulse, multiplyAlpha(color, IMPACT_RING_ALPHA));
+            int color = pred.entity() != null
+                    ? HIT_ENTITY_COLOR
+                    : pred.trajectory().argb() != 0 ? pred.trajectory().argb() : baseColor;
+            Vec3 cameraPos = RenderState.cameraPos != null ? RenderState.cameraPos : player.getEyePosition(tickDelta);
+            addDashedAimPath(mesh, points, cameraPos, color);
         } finally {
             RenderState.lineWidth = prevWidth;
         }
     }
 
-    private void updatePredictionTarget(float tickDelta) {
+    private static void addDashedAimPath(MeshBuilder mesh, List<Vec3> points, Vec3 cameraPos, int color) {
+        if (mesh == null || points == null || points.size() < 2) return;
+
+        double totalLength = 0.0;
+        for (int i = 1; i < points.size(); i++) {
+            totalLength += points.get(i - 1).distanceTo(points.get(i));
+        }
+        if (totalLength <= 1.0E-6) return;
+
+        double patternLength = AIM_TRAJECTORY_DASH_LENGTH + AIM_TRAJECTORY_DASH_GAP;
+        double travelled = 0.0;
+        for (int i = 1; i < points.size(); i++) {
+            Vec3 from = points.get(i - 1);
+            Vec3 to = points.get(i);
+            double segmentLength = from.distanceTo(to);
+            if (segmentLength <= 1.0E-6) continue;
+
+            double local = 0.0;
+            while (local < segmentLength - 1.0E-6) {
+                double phase = (travelled + local) % patternLength;
+                boolean inDash = phase < AIM_TRAJECTORY_DASH_LENGTH;
+                double phaseRemaining = inDash
+                        ? AIM_TRAJECTORY_DASH_LENGTH - phase
+                        : patternLength - phase;
+                double run = Math.min(segmentLength - local, Math.max(1.0E-5, phaseRemaining));
+
+                if (inDash) {
+                    double t0 = local / segmentLength;
+                    double t1 = (local + run) / segmentLength;
+                    Vec3 p0 = from.lerp(to, t0);
+                    Vec3 p1 = from.lerp(to, t1);
+                    if (cameraPos == null
+                            || (p0.distanceToSqr(cameraPos) >= AIM_TRAJECTORY_MIN_CAMERA_DISTANCE_SQ
+                            && p1.distanceToSqr(cameraPos) >= AIM_TRAJECTORY_MIN_CAMERA_DISTANCE_SQ)) {
+                        float progress0 = (float) ((travelled + local) / totalLength);
+                        float progress1 = (float) ((travelled + local + run) / totalLength);
+                        float alpha0 = aimTrajectoryAlpha(progress0);
+                        float alpha1 = aimTrajectoryAlpha(progress1);
+                        addGradientLine(mesh, p0, p1, multiplyAlpha(color, alpha0), multiplyAlpha(color, alpha1));
+                    }
+                }
+                local += run;
+            }
+            travelled += segmentLength;
+        }
+    }
+
+    private static float aimTrajectoryAlpha(float progress) {
+        float t = Mth.clamp(progress, 0.0f, 1.0f);
+        float headFade = AnimationUtility.smoothstep(Mth.clamp(t / 0.14f, 0.0f, 1.0f));
+        float tailFade = AnimationUtility.smoothstep(Mth.clamp((1.0f - t) / 0.12f, 0.0f, 1.0f));
+        float body = Mth.lerp(AnimationUtility.easeOutCubic(t), AIM_TRAJECTORY_ALPHA_MIN, AIM_TRAJECTORY_ALPHA_MAX);
+        return body * headFade * tailFade;
+    }
+
+    private void renderAimIndicatorWorld(Renderer3D renderer, float tickDelta, AimPrediction pred) {
+        if (pred == null || mc.level == null) return;
+
+        boolean walls = glowWallsValue.get();
+        RenderPipeline pipeline = walls
+                ? CombatantRenderPipelines.WORLD_AIM_DECAL
+                : CombatantRenderPipelines.WORLD_AIM_DECAL_DEPTH;
+        Renderer3D.DepthMode depthMode = walls ? Renderer3D.DepthMode.NONE : Renderer3D.DepthMode.PRE_DEPTH;
+        MeshBuilder mesh = renderer.batch(pipeline, depthMode);
+        if (mesh == null) return;
+
+        int color = pred.entity() != null ? HIT_ENTITY_COLOR : lineColorValue.getArgb();
+        float pulseTime = (mc.level.getGameTime() + tickDelta) * 0.075f;
+        float pulse01 = (float) ((Math.sin(pulseTime) + 1.0) * 0.5);
+        float pulse = 0.965f + 0.035f * AnimationUtility.smoothstep(pulse01);
+        Vec3 normal = pred.hitNormal() != null ? pred.hitNormal() : new Vec3(0.0, 1.0, 0.0);
+        Vec3 incoming = impactDirection(pred.trajectory());
+        addAimDecal(mesh, pred.hitPos(), normal, incoming, AIM_DECAL_RADIUS * pulse, color, pulse01);
+    }
+
+    private void updatePredictionTarget(AimPrediction pred) {
         if (!targetHudOnAimValue.get()) {
             TargetManager.setPredictionTarget(null);
             return;
         }
 
-        Player player = mc.player;
-        if (player == null || mc.level == null) {
-            TargetManager.setPredictionTarget(null);
-            return;
-        }
-
-        AimPrediction pred = computeAimPrediction(player, tickDelta);
         if (pred != null && pred.entity() instanceof LivingEntity living && living.isAlive() && !living.isRemoved()) {
             TargetManager.setPredictionTarget(living);
             return;
@@ -1265,18 +1390,13 @@ public class Predictions extends Module {
 
     private void renderImpactEffects(Renderer3D renderer, List<TrajectoryResult> results, int baseColor, float tickDelta) {
         boolean walls = glowWallsValue.get();
-        RenderPipeline linePipeline = walls
-                ? CombatantRenderPipelines.WORLD_COLORED_LINES_LIQUID_BLEND
-                : CombatantRenderPipelines.WORLD_COLORED_LINES_LIQUID_IGNORE;
-        Renderer3D.DepthMode lineDepthMode = walls ? Renderer3D.DepthMode.MAIN : Renderer3D.DepthMode.PRE_DEPTH;
         RenderPipeline decalPipeline = walls
                 ? CombatantRenderPipelines.WORLD_DECAL_SDF
                 : CombatantRenderPipelines.WORLD_DECAL_SDF_DEPTH;
         Renderer3D.DepthMode decalDepthMode = walls ? Renderer3D.DepthMode.NONE : Renderer3D.DepthMode.PRE_DEPTH;
         float prevWidth = RenderState.lineWidth;
-        RenderState.lineWidth = IMPACT_RING_LINE_WIDTH;
+        RenderState.lineWidth = ENTITY_HIT_OUTLINE_WIDTH;
         try {
-            MeshBuilder lineMesh = renderer.batch(linePipeline, lineDepthMode);
             MeshBuilder decalMesh = renderer.batch(decalPipeline, decalDepthMode);
             for (TrajectoryResult res : results) {
                 Vec3 impact = res.impactPos();
@@ -1285,7 +1405,7 @@ public class Predictions extends Module {
                     float pulseTime = (mc.level.getGameTime() + tickDelta) * 0.085f;
                     float pulse = 0.85f + 0.15f * AnimationUtility.smoothstep((float) ((Math.sin(pulseTime) + 1.0) * 0.5));
                     Vec3 normal = res.impactNormal() != null ? res.impactNormal() : new Vec3(0.0, 1.0, 0.0);
-                    addImpactDecal(decalMesh, impact, normal, IMPACT_DECAL_RADIUS * pulse, color);
+                    addImpactDecal(decalMesh, impact, normal, impactDirection(res), IMPACT_DECAL_RADIUS * pulse, color);
                 }
 
                 if (res.hitEntity() != null && res.hitEntity().isAlive()) {

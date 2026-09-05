@@ -25,6 +25,13 @@ out vec4 fragColor;
 uniform sampler2D u_Texture;     // clean scene/background source
 uniform sampler2D u_BlurTexture; // existing prepared UI blur source
 
+#ifdef COMBATANT_UI_UNDERLAY
+uniform sampler2D u_UiUnderlayTexture;
+layout (std140) uniform UIBackdrop {
+    vec4 uUiBackdrop; // x = UI underlay mix
+};
+#endif
+
 layout (std140) uniform UIBatch {
     vec4 uScreen; // xy = framebuffer size, zw = logical size
     vec4 uLayer;
@@ -376,6 +383,14 @@ void main() {
 
     vec4 blurColor = texture(u_BlurTexture, centerUv);
     vec4 cleanColor = texture(u_Texture, centerUv);
+#ifdef COMBATANT_UI_UNDERLAY
+    // The accumulation target stores ordinary translucent UI with premultiplied RGB.
+    // Recover its straight color, then place it over both scene sources before the glass
+    // material is evaluated. PASS_THROUGH binds the sharp target; BLUR binds its cheap chain.
+    vec4 uiUnderlay = texture(u_UiUnderlayTexture, centerUv);
+    float uiCoverage = clamp(uiUnderlay.a * uUiBackdrop.x, 0.0, 1.0);
+    vec3 uiUnderlayColor = uiUnderlay.rgb / max(uiUnderlay.a, 0.0001);
+#endif
     vec4 mirrorColor = texture(u_Texture, mirrorUv);
     vec4 blurMirrorColor = texture(u_BlurTexture, mirrorUv);
 
@@ -487,6 +502,11 @@ void main() {
     }
 
     vec3 blurLayerColor = blurColor.rgb;
+#ifdef COMBATANT_UI_UNDERLAY
+    // UI is a backdrop contribution, not an optical input to the glass material. Keeping this
+    // blend after rim/refraction evaluation prevents HUD colors/luminance from driving the rim.
+    blurLayerColor = mix(blurLayerColor, uiUnderlayColor, uiCoverage);
+#endif
     finalColor = (blurLayerColor * blurLayerAlpha * (1.0 - materialAlpha) + finalColor * materialAlpha) / max(finalAlpha, 1e-5);
 
     fragColor = vec4(finalColor, finalAlpha);

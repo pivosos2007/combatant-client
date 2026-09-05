@@ -20,6 +20,7 @@ import combatant.client.mixininterface.IGlBackendInfo;
 import combatant.client.render.engine.msaa.MsaaTextureRegistry;
 import combatant.client.render.engine.rhi.backend.gl.GlBackendAccess;
 import combatant.client.render.engine.rhi.backend.gl.GlValidation;
+import combatant.client.render.engine.rhi.backend.gl.GlNativeStateTracker;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.HashMap;
@@ -78,14 +79,14 @@ final class GlStencilFramebufferSupport {
         );
     }
 
-    private static int detectBoundFramebufferSamples() {
-        int colorSamples = attachmentSamples(GL30C.GL_COLOR_ATTACHMENT0);
-        int depthSamples = attachmentSamples(GL30C.GL_DEPTH_ATTACHMENT);
-        int stencilSamples = attachmentSamples(GL30C.GL_STENCIL_ATTACHMENT);
+    private static int detectBoundFramebufferSamples(IGlBackendInfo backend) {
+        int colorSamples = attachmentSamples(backend, GL30C.GL_COLOR_ATTACHMENT0);
+        int depthSamples = attachmentSamples(backend, GL30C.GL_DEPTH_ATTACHMENT);
+        int stencilSamples = attachmentSamples(backend, GL30C.GL_STENCIL_ATTACHMENT);
         return Math.max(1, Math.max(colorSamples, Math.max(depthSamples, stencilSamples)));
     }
 
-    private static int attachmentSamples(int attachmentPoint) {
+    private static int attachmentSamples(IGlBackendInfo backend, int attachmentPoint) {
         int type = GL30C.glGetFramebufferAttachmentParameteri(
                 GL30C.GL_FRAMEBUFFER,
                 attachmentPoint,
@@ -99,7 +100,7 @@ final class GlStencilFramebufferSupport {
                     attachmentPoint,
                     GL30C.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME
             );
-            return renderbufferSamples(renderbuffer);
+            return renderbufferSamples(backend, renderbuffer);
         }
 
         if (type == GL11C.GL_TEXTURE) {
@@ -108,13 +109,13 @@ final class GlStencilFramebufferSupport {
                     attachmentPoint,
                     GL30C.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME
             );
-            return textureSamples(texture);
+            return textureSamples(backend, texture);
         }
 
         return 1;
     }
 
-    private static int textureSamples(int texture) {
+    private static int textureSamples(IGlBackendInfo backend, int texture) {
         if (texture == 0) return 1;
 
         int registeredSamples = MsaaTextureRegistry.getSamples(texture);
@@ -126,16 +127,16 @@ final class GlStencilFramebufferSupport {
             return 1;
         }
 
-        GLCapabilities capabilities = GL.getCapabilities();
-        if (capabilities == null || (!capabilities.OpenGL45 && !capabilities.GL_ARB_direct_state_access)) {
+        // Do not re-run LWJGL capability detection here. Mojang already decided whether native
+        // ARB_direct_state_access is enabled for this device (including its heuristics/deny paths).
+        if (backend == null || !backend.combatant$nativeDirectStateAccess()) {
             return 1;
         }
 
         try {
             clearGlErrorsSilently();
-            int samples = capabilities.OpenGL45
-                    ? GL45C.glGetTextureLevelParameteri(texture, 0, GL32C.GL_TEXTURE_SAMPLES)
-                    : ARBDirectStateAccess.glGetTextureLevelParameteri(texture, 0, GL32C.GL_TEXTURE_SAMPLES);
+            int samples = ARBDirectStateAccess.glGetTextureLevelParameteri(
+                    texture, 0, GL32C.GL_TEXTURE_SAMPLES);
             int error = GL11C.glGetError();
             if (error == GL11C.GL_NO_ERROR) {
                 return Math.max(1, samples);
@@ -151,18 +152,25 @@ final class GlStencilFramebufferSupport {
         return 1;
     }
 
-    private static int renderbufferSamples(int renderbuffer) {
+    private static int renderbufferSamples(IGlBackendInfo backend, int renderbuffer) {
         if (renderbuffer == 0) return 1;
-        int previousRenderbuffer = GL11C.glGetInteger(GL30C.GL_RENDERBUFFER_BINDING);
         try {
-            GL30C.glBindRenderbuffer(GL30C.GL_RENDERBUFFER, renderbuffer);
-            int samples = GL30C.glGetRenderbufferParameteri(GL30C.GL_RENDERBUFFER, GL30C.GL_RENDERBUFFER_SAMPLES);
-            return Math.max(1, samples);
+            if (backend != null && backend.combatant$nativeDirectStateAccess()) {
+                return Math.max(1, ARBDirectStateAccess.glGetNamedRenderbufferParameteri(
+                        renderbuffer, GL30C.GL_RENDERBUFFER_SAMPLES));
+            }
+
+            int previousRenderbuffer = GL11C.glGetInteger(GL30C.GL_RENDERBUFFER_BINDING);
+            try {
+                GL30C.glBindRenderbuffer(GL30C.GL_RENDERBUFFER, renderbuffer);
+                return Math.max(1, GL30C.glGetRenderbufferParameteri(
+                        GL30C.GL_RENDERBUFFER, GL30C.GL_RENDERBUFFER_SAMPLES));
+            } finally {
+                GL30C.glBindRenderbuffer(GL30C.GL_RENDERBUFFER, previousRenderbuffer);
+            }
         } catch (Throwable ignored) {
             clearGlErrorsSilently();
             return 1;
-        } finally {
-            GL30C.glBindRenderbuffer(GL30C.GL_RENDERBUFFER, previousRenderbuffer);
         }
     }
 
@@ -223,6 +231,7 @@ final class GlStencilFramebufferSupport {
     }
 
     boolean ensure(@Nullable GpuTextureView colorView, @Nullable GpuTextureView depthView) {
+        cleanupClosedOrResized();
         IGlBackendInfo backend = GlBackendAccess.current();
         if (backend == null) {
             return fail("RenderSystem device is not GlBackend");
@@ -257,7 +266,6 @@ final class GlStencilFramebufferSupport {
         int previousReadFramebuffer = GlStateManager.getFrameBuffer(GlConst.GL_READ_FRAMEBUFFER);
         int previousDrawFramebuffer = GlStateManager.getFrameBuffer(GlConst.GL_DRAW_FRAMEBUFFER);
         boolean scissorWasEnabled = GL11C.glIsEnabled(GL11C.GL_SCISSOR_TEST);
-        int previousStencilMask = GL11C.glGetInteger(GL11C.GL_STENCIL_WRITEMASK);
         try {
             int framebuffer = framebufferFor(backend, glColorView, depthView);
             GlStateManager._glBindFramebuffer(GlConst.GL_FRAMEBUFFER, framebuffer);
@@ -277,26 +285,29 @@ final class GlStencilFramebufferSupport {
                     }
                 }
             }
-            GL11C.glDisable(GL11C.GL_SCISSOR_TEST);
-            GL11C.glStencilMask(0xFF);
+            GlStateManager._disableScissorTest();
+            GlNativeStateTracker.stencilMask(0xFF);
             GL11C.glClearStencil(0);
-            GL11C.glClear(GL11C.GL_STENCIL_BUFFER_BIT);
-            GL11C.glStencilMask(previousStencilMask);
+            GlStateManager._clear(GL11C.GL_STENCIL_BUFFER_BIT);
+            // Clear is an internal stencil ownership boundary. Leave a neutral write mask and let
+            // the logical clip mode re-apply its exact state before the next draw.
+            GlNativeStateTracker.stencilMask(0x00);
             checkGlErrors("clearStencil");
             return true;
         } catch (Throwable t) {
             return fail("exception while clearing stencil: " + t.getClass().getSimpleName() + ": " + t.getMessage());
         } finally {
             if (scissorWasEnabled) {
-                GL11C.glEnable(GL11C.GL_SCISSOR_TEST);
+                GlStateManager._enableScissorTest();
             } else {
-                GL11C.glDisable(GL11C.GL_SCISSOR_TEST);
+                GlStateManager._disableScissorTest();
             }
             restoreFramebufferBindings(previousReadFramebuffer, previousDrawFramebuffer);
         }
     }
 
     void restoreActiveAttachments() {
+        cleanupClosedOrResized();
         int previousReadFramebuffer = GlStateManager.getFrameBuffer(GlConst.GL_READ_FRAMEBUFFER);
         int previousDrawFramebuffer = GlStateManager.getFrameBuffer(GlConst.GL_DRAW_FRAMEBUFFER);
         try {
@@ -316,10 +327,28 @@ final class GlStencilFramebufferSupport {
     void cleanupClosedOrResized() {
         Iterator<Map.Entry<Integer, Attachment>> it = attachments.entrySet().iterator();
         while (it.hasNext()) {
-            Attachment attachment = it.next().getValue();
+            Map.Entry<Integer, Attachment> entry = it.next();
+            Attachment attachment = entry.getValue();
             if (attachment.deleted) {
                 it.remove();
+                continue;
             }
+
+            boolean colorClosed = attachment.colorView == null || attachment.colorView.isClosed();
+            boolean depthClosed = attachment.depthView != null && attachment.depthView.isClosed();
+            if (!colorClosed && !depthClosed) continue;
+
+            // FrameBufferCache owns the FBO and GlTextureView.close() removes its cached FBOs. The
+            // numeric GL id can later be reused, so never bind/restore an old SavedAttachment here.
+            // Only release the Combatant-owned stencil renderbuffer and forget this generation.
+            attachment.abandonAfterOwnerFramebufferClosed();
+            it.remove();
+            DebugLog.stencilOnChange(
+                    "shapeclip.attachment.owner.closed",
+                    entry.getKey() + "|" + colorClosed + "|" + depthClosed,
+                    "[ShapeClip/GL] released stencil cache generation after Mojang target close. fbo=%d colorClosed=%s depthClosed=%s",
+                    entry.getKey(), colorClosed, depthClosed
+            );
         }
     }
 
@@ -350,7 +379,7 @@ final class GlStencilFramebufferSupport {
         int previousDrawFramebuffer = GlStateManager.getFrameBuffer(GlConst.GL_DRAW_FRAMEBUFFER);
         try {
             GlStateManager._glBindFramebuffer(GlConst.GL_FRAMEBUFFER, framebuffer);
-            int samples = detectBoundFramebufferSamples();
+            int samples = detectBoundFramebufferSamples(GlBackendAccess.current());
 
             if (attachment == null || attachment.width != width || attachment.height != height
                     || attachment.samples != samples || attachment.deleted
@@ -359,7 +388,7 @@ final class GlStencilFramebufferSupport {
                     attachment.restoreOriginalAttachments();
                     attachment.delete();
                 }
-                attachment = new Attachment(width, height, samples, colorView, depthView);
+                attachment = new Attachment(GlBackendAccess.current(), width, height, samples, colorView, depthView);
                 attachments.put(framebuffer, attachment);
             }
 
@@ -486,7 +515,7 @@ final class GlStencilFramebufferSupport {
         AttachmentMode mode = AttachmentMode.NONE;
         SavedAttachment originalStencil = SavedAttachment.none();
 
-        Attachment(int width, int height, int samples,
+        Attachment(@Nullable IGlBackendInfo backend, int width, int height, int samples,
                    GpuTextureView colorView, @Nullable GpuTextureView depthView) {
             this.width = width;
             this.height = height;
@@ -494,17 +523,48 @@ final class GlStencilFramebufferSupport {
             this.colorView = colorView;
             this.depthView = depthView;
 
-            int previousRenderbuffer = GL11C.glGetInteger(GL30C.GL_RENDERBUFFER_BINDING);
-            try {
-                this.stencilRenderbuffer = GL30C.glGenRenderbuffers();
-                GL30C.glBindRenderbuffer(GL30C.GL_RENDERBUFFER, stencilRenderbuffer);
-                this.stencilAllocationOk = allocateRenderbuffer(GL30C.GL_STENCIL_INDEX8, width, height, this.samples);
-            } finally {
-                GL30C.glBindRenderbuffer(GL30C.GL_RENDERBUFFER, previousRenderbuffer);
+            if (backend != null && backend.combatant$nativeDirectStateAccess()) {
+                // Native DSA is selected by Mojang's GlDevice policy. Combatant only uses it for
+                // its own stencil renderbuffer, which Blaze3D does not expose through the public RHI.
+                this.stencilRenderbuffer = ARBDirectStateAccess.glCreateRenderbuffers();
+                this.stencilAllocationOk = allocateRenderbufferDsa(
+                        stencilRenderbuffer, GL30C.GL_STENCIL_INDEX8, width, height, this.samples);
+            } else {
+                int previousRenderbuffer = GL11C.glGetInteger(GL30C.GL_RENDERBUFFER_BINDING);
+                try {
+                    this.stencilRenderbuffer = GL30C.glGenRenderbuffers();
+                    GL30C.glBindRenderbuffer(GL30C.GL_RENDERBUFFER, stencilRenderbuffer);
+                    this.stencilAllocationOk = allocateRenderbufferBound(
+                            GL30C.GL_STENCIL_INDEX8, width, height, this.samples);
+                } finally {
+                    GL30C.glBindRenderbuffer(GL30C.GL_RENDERBUFFER, previousRenderbuffer);
+                }
             }
         }
 
-        private static boolean allocateRenderbuffer(int internalFormat, int width, int height, int samples) {
+        private static boolean allocateRenderbufferDsa(int renderbuffer, int internalFormat,
+                                                       int width, int height, int samples) {
+            clearGlErrorsSilently();
+            if (samples > 1) {
+                ARBDirectStateAccess.glNamedRenderbufferStorageMultisample(
+                        renderbuffer, samples, internalFormat, width, height);
+            } else {
+                ARBDirectStateAccess.glNamedRenderbufferStorage(renderbuffer, internalFormat, width, height);
+            }
+            int error = GL11C.glGetError();
+            if (error != GL11C.GL_NO_ERROR) return false;
+
+            int storedWidth = ARBDirectStateAccess.glGetNamedRenderbufferParameteri(
+                    renderbuffer, GL30C.GL_RENDERBUFFER_WIDTH);
+            int storedHeight = ARBDirectStateAccess.glGetNamedRenderbufferParameteri(
+                    renderbuffer, GL30C.GL_RENDERBUFFER_HEIGHT);
+            int storedSamples = ARBDirectStateAccess.glGetNamedRenderbufferParameteri(
+                    renderbuffer, GL30C.GL_RENDERBUFFER_SAMPLES);
+            return storedWidth == width && storedHeight == height
+                    && Math.max(1, storedSamples) == Math.max(1, samples);
+        }
+
+        private static boolean allocateRenderbufferBound(int internalFormat, int width, int height, int samples) {
             clearGlErrorsSilently();
             if (samples > 1) {
                 GL32C.glRenderbufferStorageMultisample(GL30C.GL_RENDERBUFFER, samples, internalFormat, width, height);
@@ -512,9 +572,7 @@ final class GlStencilFramebufferSupport {
                 GL30C.glRenderbufferStorage(GL30C.GL_RENDERBUFFER, internalFormat, width, height);
             }
             int error = GL11C.glGetError();
-            if (error != GL11C.GL_NO_ERROR) {
-                return false;
-            }
+            if (error != GL11C.GL_NO_ERROR) return false;
 
             int storedWidth = GL30C.glGetRenderbufferParameteri(GL30C.GL_RENDERBUFFER, GL30C.GL_RENDERBUFFER_WIDTH);
             int storedHeight = GL30C.glGetRenderbufferParameteri(GL30C.GL_RENDERBUFFER, GL30C.GL_RENDERBUFFER_HEIGHT);
@@ -536,6 +594,15 @@ final class GlStencilFramebufferSupport {
         void delete() {
             if (deleted) return;
             restoreOriginalAttachments();
+            deleted = true;
+            GL30C.glDeleteRenderbuffers(stencilRenderbuffer);
+        }
+
+        void abandonAfterOwnerFramebufferClosed() {
+            if (deleted) return;
+            attached = false;
+            mode = AttachmentMode.NONE;
+            originalStencil = SavedAttachment.none();
             deleted = true;
             GL30C.glDeleteRenderbuffers(stencilRenderbuffer);
         }

@@ -88,6 +88,13 @@ public record UiBackdropRequest(SceneSource sceneSource,
         );
     }
 
+    /** Cheap backdrop blur: sample only the scene captured before HUD/UI, with no glass material. */
+    public static UiBackdropRequest capturedSceneBlur(@Nullable UiRect bounds,
+                                                      UiBlurQuality quality,
+                                                      float offsetPx) {
+        return capturedSceneGlass(bounds, quality, offsetPx);
+    }
+
     public UiBackdropRequest withUiUnderlay(UiUnderlayMode mode,
                                             @Nullable BlurParameters blur,
                                             float mix) {

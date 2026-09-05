@@ -26,11 +26,8 @@ import combatant.client.render.engine.msaa.MsaaTextureRegistry;
 import combatant.client.render.engine.msaa.MsaaWorldTarget;
 import combatant.client.render.engine.rhi.backend.gl.GlBackendAccess;
 import combatant.client.render.engine.rhi.backend.gl.GlValidation;
+import combatant.client.render.engine.rhi.backend.gl.GlNativeStateTracker;
 import combatant.client.util.logging.DebugLog;
-
-import static org.lwjgl.opengl.GL11C.glDisable;
-import static org.lwjgl.opengl.GL11C.glEnable;
-import static org.lwjgl.opengl.GL13C.GL_SAMPLE_ALPHA_TO_COVERAGE;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -247,40 +244,35 @@ public final class SodiumGlMsaaControl implements MsaaControl {
             return false;
         }
 
-        int prevRead = GlStateManager.getFrameBuffer(GL30.GL_READ_FRAMEBUFFER);
-        int prevDraw = GlStateManager.getFrameBuffer(GL30.GL_DRAW_FRAMEBUFFER);
-
         int mask = (color ? GL30.GL_COLOR_BUFFER_BIT : 0) | (depth ? GL30.GL_DEPTH_BUFFER_BIT : 0);
+        IGlBackendInfo backend = GlBackendAccess.current();
+        if (backend == null) return false;
 
-        try {
-            int srcFramebuffer = resolveFramebuffer(src, color, depth, "read");
-            int dstFramebuffer = resolveFramebuffer(dst, color, depth, "draw");
-            if (srcFramebuffer == 0 || dstFramebuffer == 0) {
+        int srcFramebuffer = resolveFramebuffer(src, color, depth, "read");
+        int dstFramebuffer = resolveFramebuffer(dst, color, depth, "draw");
+        if (srcFramebuffer == 0 || dstFramebuffer == 0) {
+            return false;
+        }
+
+        // Blaze3D owns the DSA-vs-emulated decision. Core uses glBlitNamedFramebuffer; the
+        // emulated path performs bind/blit/restore through GlStateManager, so Combatant does not
+        // duplicate capability checks or framebuffer state reconciliation here.
+        backend.combatant$directStateAccess().blitFrameBuffers(
+                srcFramebuffer, dstFramebuffer,
+                0, 0, src.width, src.height,
+                0, 0, dst.width, dst.height,
+                mask, GL30.GL_NEAREST
+        );
+        if (GlValidation.errorsEnabled()) {
+            int error = GlStateManager._getError();
+            if (error != 0) {
+                DebugLog.warnOnChange("msaa.resolve.gl_error", error + "|" + color + "|" + depth,
+                        "[MSAA/GL] resolve blit failed. error=0x%s color=%s depth=%s src=%dx%d dst=%dx%d",
+                        Integer.toHexString(error), color, depth, src.width, src.height, dst.width, dst.height);
                 return false;
             }
-
-            GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, srcFramebuffer);
-            GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, dstFramebuffer);
-            GL30.glBlitFramebuffer(
-                    0, 0, src.width, src.height,
-                    0, 0, dst.width, dst.height,
-                    mask,
-                    GL30.GL_NEAREST
-            );
-            if (GlValidation.errorsEnabled()) {
-                int error = GlStateManager._getError();
-                if (error != 0) {
-                    DebugLog.warnOnChange("msaa.resolve.gl_error", error + "|" + color + "|" + depth,
-                            "[MSAA/GL] resolve blit failed. error=0x%s color=%s depth=%s src=%dx%d dst=%dx%d",
-                            Integer.toHexString(error), color, depth, src.width, src.height, dst.width, dst.height);
-                    return false;
-                }
-            }
-            return true;
-        } finally {
-            GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevRead);
-            GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDraw);
         }
+        return true;
     }
 
     private int resolveFramebuffer(RenderTarget framebuffer, boolean color, boolean depth, String role) {
@@ -300,71 +292,90 @@ public final class SodiumGlMsaaControl implements MsaaControl {
     }
 
     private int createResolveFramebuffer(RenderTarget framebuffer, boolean color, boolean depth, String role) {
-        int fbo = GL30.glGenFramebuffers();
-        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
+        IGlBackendInfo backend = GlBackendAccess.current();
+        if (backend == null) return 0;
 
-        if (color) {
-            int colorId = textureId(framebuffer.getColorTexture());
-            if (colorId <= 0) {
+        int previousReadFramebuffer = GlStateManager.getFrameBuffer(GL30.GL_READ_FRAMEBUFFER);
+        int previousDrawFramebuffer = GlStateManager.getFrameBuffer(GL30.GL_DRAW_FRAMEBUFFER);
+        int fbo = backend.combatant$directStateAccess().createFrameBufferObject();
+        if (fbo == 0) return 0;
+
+        try {
+            // DirectStateAccess deliberately does not expose arbitrary multisample attachment target
+            // selection on its emulated path (it assumes GL_TEXTURE_2D), so attachment setup remains
+            // Combatant-owned here. Binding goes through GlStateManager to keep Mojang's FBO cache in sync.
+            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
+
+            if (color) {
+                int colorId = textureId(framebuffer.getColorTexture());
+                if (colorId <= 0) {
+                    deleteResolveFramebuffer(fbo);
+                    return 0;
+                }
+                GlStateManager._glFramebufferTexture2D(
+                        GL30.GL_FRAMEBUFFER,
+                        GL30.GL_COLOR_ATTACHMENT0,
+                        framebufferTextureTarget(colorId),
+                        colorId,
+                        0
+                );
+                GL11.glReadBuffer(GL30.GL_COLOR_ATTACHMENT0);
+                GL11.glDrawBuffer(GL30.GL_COLOR_ATTACHMENT0);
+            } else {
+                GlStateManager._glFramebufferTexture2D(
+                        GL30.GL_FRAMEBUFFER,
+                        GL30.GL_COLOR_ATTACHMENT0,
+                        GL11.GL_TEXTURE_2D,
+                        0,
+                        0
+                );
+                GL11.glReadBuffer(GL11.GL_NONE);
+                GL11.glDrawBuffer(GL11.GL_NONE);
+            }
+
+            if (depth) {
+                int depthId = textureId(framebuffer.getDepthTexture());
+                if (depthId <= 0) {
+                    deleteResolveFramebuffer(fbo);
+                    return 0;
+                }
+                GlStateManager._glFramebufferTexture2D(
+                        GL30.GL_FRAMEBUFFER,
+                        GL30.GL_DEPTH_ATTACHMENT,
+                        framebufferTextureTarget(depthId),
+                        depthId,
+                        0
+                );
+            }
+
+            int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
+            if (status != GL30.GL_FRAMEBUFFER_COMPLETE) {
+                DebugLog.warnOnChange("msaa.resolve.incomplete", role + "|" + status + "|" + color + "|" + depth,
+                        "[MSAA/GL] resolve framebuffer incomplete. role=%s status=0x%s color=%s depth=%s colorSamples=%d depthSamples=%d",
+                        role,
+                        Integer.toHexString(status),
+                        color,
+                        depth,
+                        color ? samples(textureId(framebuffer.getColorTexture())) : 1,
+                        depth ? samples(textureId(framebuffer.getDepthTexture())) : 1);
                 deleteResolveFramebuffer(fbo);
                 return 0;
             }
-            GlStateManager._glFramebufferTexture2D(
-                    GL30.GL_FRAMEBUFFER,
-                    GL30.GL_COLOR_ATTACHMENT0,
-                    framebufferTextureTarget(colorId),
-                    colorId,
-                    0
-            );
-            GL11.glReadBuffer(GL30.GL_COLOR_ATTACHMENT0);
-            GL11.glDrawBuffer(GL30.GL_COLOR_ATTACHMENT0);
-        } else {
-            GlStateManager._glFramebufferTexture2D(
-                    GL30.GL_FRAMEBUFFER,
-                    GL30.GL_COLOR_ATTACHMENT0,
-                    GL11.GL_TEXTURE_2D,
-                    0,
-                    0
-            );
-            GL11.glReadBuffer(GL11.GL_NONE);
-            GL11.glDrawBuffer(GL11.GL_NONE);
-        }
 
-        if (depth) {
-            int depthId = textureId(framebuffer.getDepthTexture());
-            if (depthId <= 0) {
-                deleteResolveFramebuffer(fbo);
-                return 0;
+            return fbo;
+        } finally {
+            if (previousReadFramebuffer == previousDrawFramebuffer) {
+                GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousReadFramebuffer);
+            } else {
+                GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFramebuffer);
+                GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer);
             }
-            GlStateManager._glFramebufferTexture2D(
-                    GL30.GL_FRAMEBUFFER,
-                    GL30.GL_DEPTH_ATTACHMENT,
-                    framebufferTextureTarget(depthId),
-                    depthId,
-                    0
-            );
         }
-
-        int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
-        if (status != GL30.GL_FRAMEBUFFER_COMPLETE) {
-            DebugLog.warnOnChange("msaa.resolve.incomplete", role + "|" + status + "|" + color + "|" + depth,
-                    "[MSAA/GL] resolve framebuffer incomplete. role=%s status=0x%s color=%s depth=%s colorSamples=%d depthSamples=%d",
-                    role,
-                    Integer.toHexString(status),
-                    color,
-                    depth,
-                    color ? samples(textureId(framebuffer.getColorTexture())) : 1,
-                    depth ? samples(textureId(framebuffer.getDepthTexture())) : 1);
-            deleteResolveFramebuffer(fbo);
-            return 0;
-        }
-
-        return fbo;
     }
 
     private static void deleteResolveFramebuffer(Integer framebuffer) {
         if (framebuffer != null && framebuffer != 0) {
-            GL30.glDeleteFramebuffers(framebuffer);
+            GlStateManager._glDeleteFramebuffers(framebuffer);
         }
     }
 
@@ -381,15 +392,15 @@ public final class SodiumGlMsaaControl implements MsaaControl {
     @Override
     public void applyPipelineState(RenderPipeline pipeline) {
         if (pipeline != null && MsaaWorldTarget.isActive() && ENTITY_SHADER_ID.equals(pipeline.getFragmentShader())) {
-            glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
+            GlNativeStateTracker.sampleAlphaToCoverage(true);
         } else {
-            glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
+            GlNativeStateTracker.sampleAlphaToCoverage(false);
         }
     }
 
     @Override
     public void resetPipelineState() {
-        glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
+        GlNativeStateTracker.sampleAlphaToCoverage(false);
     }
 
     public void close() {

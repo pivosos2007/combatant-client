@@ -86,6 +86,7 @@ public final class ItemVisualPreviewProvider implements VisualPreviewProvider {
                 fallback,
                 lines,
                 scale,
+                1.0f,
                 maxContentWidth,
                 0.0f,
                 0.0f,

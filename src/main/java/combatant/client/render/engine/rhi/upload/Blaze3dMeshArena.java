@@ -9,6 +9,7 @@ package combatant.client.render.engine.rhi.upload;
 
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderSystem;
 import org.jetbrains.annotations.Nullable;
 
@@ -28,17 +29,19 @@ final class Blaze3dMeshArena implements AutoCloseable {
     private final int indexCapacity;
     private final GpuBuffer vertexBuffer;
     private final GpuBuffer indexBuffer;
+    private final boolean persistentMappedWrites;
 
     private int vertexCursor;
     private int indexCursor;
     private boolean usedThisFrame;
     private @Nullable Blaze3dFrameFence fence;
 
-    Blaze3dMeshArena(String name, int vertexCapacity, int indexCapacity, boolean persistent) {
+    Blaze3dMeshArena(String name, int vertexCapacity, int indexCapacity, boolean persistent, boolean persistentMappedWrites) {
         this.name = name;
         this.persistent = persistent;
         this.vertexCapacity = vertexCapacity;
         this.indexCapacity = indexCapacity;
+        this.persistentMappedWrites = persistentMappedWrites;
         this.vertexBuffer = RenderSystem.getDevice().createBuffer(named(name, " vertices"),
                 GpuBuffer.USAGE_MAP_WRITE | GpuBuffer.USAGE_VERTEX, vertexCapacity);
         this.indexBuffer = RenderSystem.getDevice().createBuffer(named(name, " indices"),
@@ -49,7 +52,7 @@ final class Blaze3dMeshArena implements AutoCloseable {
         return () -> name + suffix;
     }
 
-    private static void write(String owner, GpuBufferSlice slice, ByteBuffer src, int expectedBytes) {
+    private void write(String owner, GpuBufferSlice slice, ByteBuffer src, int expectedBytes, @Nullable CommandEncoder encoder) {
         if (src == null) {
             throw new IllegalArgumentException(owner + ": source buffer is null");
         }
@@ -57,6 +60,17 @@ final class Blaze3dMeshArena implements AutoCloseable {
             throw new IllegalStateException(owner + ": source byte count mismatch: expected=" + expectedBytes
                     + ", remaining=" + src.remaining());
         }
+
+        if (!persistentMappedWrites) {
+            if (encoder == null) {
+                throw new IllegalStateException(owner + ": non-persistent upload requires a Blaze3D CommandEncoder");
+            }
+            // Blaze3D's GL backend lowers this to DirectStateAccess.bufferSubData(). Avoid a
+            // Combatant-specific map/unmap fallback when Mojang already owns the efficient path.
+            encoder.writeToBuffer(slice, src.duplicate());
+            return;
+        }
+
         try (GpuBufferSlice.MappedView view = slice.map(false, true)) {
             ByteBuffer dst = view.data();
             if (dst.remaining() < expectedBytes) {
@@ -103,6 +117,18 @@ final class Blaze3dMeshArena implements AutoCloseable {
 
     boolean persistent() {
         return persistent;
+    }
+
+    boolean persistentMappedWrites() {
+        return persistentMappedWrites;
+    }
+
+    int vertexUsedBytes() {
+        return vertexCursor;
+    }
+
+    int indexUsedBytes() {
+        return indexCursor;
     }
 
     boolean usedThisFrame() {
@@ -188,14 +214,16 @@ final class Blaze3dMeshArena implements AutoCloseable {
         }
     }
 
-    void writeVertices(int offsetBytes, int bytes, ByteBuffer src) {
-        validateRange("vertex upload", offsetBytes, bytes, vertexCapacity);
-        write(name + " vertex upload", vertexBuffer.slice(offsetBytes, bytes), src, bytes);
-    }
+    void writeAllocation(int vertexOffsetBytes, int vertexBytes, ByteBuffer vertexSrc,
+                         int indexOffsetBytes, int indexBytes, ByteBuffer indexSrc) {
+        validateRange("vertex upload", vertexOffsetBytes, vertexBytes, vertexCapacity);
+        validateRange("index upload", indexOffsetBytes, indexBytes, indexCapacity);
 
-    void writeIndices(int offsetBytes, int bytes, ByteBuffer src) {
-        validateRange("index upload", offsetBytes, bytes, indexCapacity);
-        write(name + " index upload", indexBuffer.slice(offsetBytes, bytes), src, bytes);
+        // Compatibility-tier uploads use one Mojang encoder for the vertex+index pair instead of
+        // constructing one wrapper per buffer write. Persistent mapping needs no encoder at all.
+        CommandEncoder encoder = persistentMappedWrites ? null : RenderSystem.getDevice().createCommandEncoder();
+        write(name + " vertex upload", vertexBuffer.slice(vertexOffsetBytes, vertexBytes), vertexSrc, vertexBytes, encoder);
+        write(name + " index upload", indexBuffer.slice(indexOffsetBytes, indexBytes), indexSrc, indexBytes, encoder);
     }
 
     private void validateRange(String owner, int offsetBytes, int bytes, int capacity) {

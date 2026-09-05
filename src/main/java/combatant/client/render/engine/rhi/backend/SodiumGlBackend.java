@@ -8,10 +8,12 @@
 package combatant.client.render.engine.rhi.backend;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.rhi.*;
+import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.Minecraft;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
@@ -57,6 +59,7 @@ public final class SodiumGlBackend implements CombatantRhi {
     private static final int MAX_MULTI_DRAW_GROUP = 1024;
     private final RhiStats stats = new RhiStats();
     private RhiCapabilities capabilities;
+    private boolean multiDrawRuntimeDisabled;
     private final Blaze3dDynamicMeshBackend dynamicMeshes = new Blaze3dDynamicMeshBackend(stats);
     private final Blaze3dFullscreenBackend fullscreen = new Blaze3dFullscreenBackend();
     private final Blaze3dTextureBlitter blitter = new Blaze3dTextureBlitter(stats);
@@ -175,6 +178,10 @@ public final class SodiumGlBackend implements CombatantRhi {
     public void drawMeshes(List<RhiDrawCommand> commands) {
         if (commands == null || commands.isEmpty()) return;
         try {
+            // One Blaze3D encoder owns the whole ordered RHI sequence. Individual render passes still
+            // end only on attachment/clear barriers, but we avoid recreating an encoder wrapper for
+            // every continuation segment and keep the backend submission shape compact.
+            CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
             int cursor = 0;
             while (cursor < commands.size()) {
                 while (cursor < commands.size() && !drawable(commands.get(cursor))) cursor++;
@@ -185,7 +192,7 @@ public final class SodiumGlBackend implements CombatantRhi {
                 while (end < commands.size() && sharesRenderPass(first, commands.get(end))) {
                     end++;
                 }
-                drawPass(commands, cursor, end);
+                drawPass(encoder, commands, cursor, end);
                 cursor = end;
             }
         } finally {
@@ -199,13 +206,13 @@ public final class SodiumGlBackend implements CombatantRhi {
         }
     }
 
-    private void drawPass(List<RhiDrawCommand> commands, int start, int end) {
+    private void drawPass(CommandEncoder encoder, List<RhiDrawCommand> commands, int start, int end) {
         RhiDrawCommand first = commands.get(start);
         stats.renderPass(first.colorAttachment, first.depthAttachment);
-        try (RenderPass pass = createPass(first.label, first.colorAttachment, first.clearColor, first.depthAttachment, first.clearDepth)) {
+        try (RenderPass pass = createPass(encoder, first.label, first.colorAttachment, first.clearColor, first.depthAttachment, first.clearDepth)) {
             PassBindingCache bindings = new PassBindingCache();
             com.mojang.blaze3d.pipeline.RenderPipeline activePipeline = null;
-            boolean multiDrawAvailable = capabilities().multiDrawDirectSeparate();
+            boolean multiDrawAvailable = !multiDrawRuntimeDisabled && capabilities().multiDrawDirectSeparate();
 
             int cursor = start;
             while (cursor < end) {
@@ -220,7 +227,25 @@ public final class SodiumGlBackend implements CombatantRhi {
 
                 boolean bindPipeline = command.pipeline != activePipeline;
                 if (groupEnd - cursor >= 2) {
-                    drawMultiInPass(pass, commands, cursor, groupEnd, bindPipeline, bindings);
+                    boolean multiDrawOk = false;
+                    try {
+                        drawMultiInPass(pass, commands, cursor, groupEnd, bindPipeline, bindings);
+                        multiDrawOk = true;
+                    } catch (UnsupportedOperationException | IllegalArgumentException ex) {
+                        // DeviceFeatures said this path is available, but the active backend rejected
+                        // the concrete call. Disable it for the rest of this RHI lifetime and fall
+                        // back to ordinary Blaze3D indexed draws without probing GL ourselves.
+                        multiDrawRuntimeDisabled = true;
+                        bindings.invalidate();
+                        DebugLog.warnOnce("rhi.multidraw.runtime.disabled",
+                                "[RHI/GL] Blaze3D multiDrawIndexed rejected at runtime; disabling Combatant coalescing fallback. %s: %s",
+                                ex.getClass().getSimpleName(), ex.getMessage());
+                    }
+                    if (!multiDrawOk) {
+                        for (int i = cursor; i < groupEnd; i++) {
+                            drawInPass(pass, commands.get(i), i == cursor, bindings);
+                        }
+                    }
                 } else {
                     drawInPass(pass, command, bindPipeline, bindings);
                 }
@@ -262,9 +287,13 @@ public final class SodiumGlBackend implements CombatantRhi {
                 commands.get(i).mesh.validateForDraw(commands.get(i).label);
             }
 
+            boolean pushMv = first.transform != null || first.applyWorldCameraY;
             float previousLineWidth = RenderState.lineWidth;
             try {
                 RenderState.lineWidth = first.lineWidth > 0.0f ? first.lineWidth : previousLineWidth;
+                if (pushMv) RenderSystem.getModelViewStack().pushMatrix();
+                if (first.transform != null) RenderSystem.getModelViewStack().mul(first.transform);
+                if (first.applyWorldCameraY) applyCameraPosY(RenderSystem.getModelViewStack());
                 BindingCounts emitted = bindDrawState(pass, first, bindPipeline, bindings);
 
                 int drawCount = end - start;
@@ -289,6 +318,7 @@ public final class SodiumGlBackend implements CombatantRhi {
                 stats.multiDrawCall(drawCount);
             } finally {
                 RenderState.lineWidth = previousLineWidth;
+                if (pushMv) RenderSystem.getModelViewStack().popMatrix();
             }
         }
     }
@@ -338,8 +368,6 @@ public final class SodiumGlBackend implements CombatantRhi {
 
     private static boolean multiDrawCandidate(RhiDrawCommand command) {
         return drawable(command)
-                && command.transform == null
-                && !command.applyWorldCameraY
                 && !CombatantRenderPipelines.isRigPipeline(command.pipeline);
     }
 
@@ -350,6 +378,8 @@ public final class SodiumGlBackend implements CombatantRhi {
                 && first.mesh.indexBuffer() == next.mesh.indexBuffer()
                 && first.mesh.indexType() == next.mesh.indexType()
                 && Float.compare(first.lineWidth, next.lineWidth) == 0
+                && first.applyWorldCameraY == next.applyWorldCameraY
+                && java.util.Objects.equals(first.transform, next.transform)
                 && first.uniforms.equals(next.uniforms)
                 && first.samplers.equals(next.samplers);
     }
@@ -393,6 +423,14 @@ public final class SodiumGlBackend implements CombatantRhi {
                 indexBuffer = mesh.indexBuffer();
                 indexType = mesh.indexType();
             }
+        }
+
+        void invalidate() {
+            uniforms.clear();
+            samplers.clear();
+            vertexBuffer = null;
+            indexBuffer = null;
+            indexType = null;
         }
     }
 
@@ -463,15 +501,16 @@ public final class SodiumGlBackend implements CombatantRhi {
         }
     }
 
-    private RenderPass createPass(String label,
+    private RenderPass createPass(CommandEncoder encoder,
+                                  String label,
                                   com.mojang.blaze3d.textures.GpuTextureView color,
                                   OptionalInt clearColor,
                                   com.mojang.blaze3d.textures.GpuTextureView depth,
                                   OptionalDouble clearDepth) {
         if (depth != null) {
-            return RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> label, color, clearColor(clearColor), depth, clearDepth);
+            return encoder.createRenderPass(() -> label, color, clearColor(clearColor), depth, clearDepth);
         }
-        return RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> label, color, clearColor(clearColor));
+        return encoder.createRenderPass(() -> label, color, clearColor(clearColor));
     }
 
     @Override

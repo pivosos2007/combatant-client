@@ -33,6 +33,19 @@ final class CombatantShaderSourcesTest {
         assertEquals(1, occurrences(result, "TEST_VARIANT"));
     }
 
+    @Test
+    void underlayAndAnalyticClipAxesComposeAndRemainReversible() {
+        Identifier base = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_liquid_glass_batch.frag");
+        Identifier combined = CombatantShaderSources.uiUnderlayVariantId(
+                CombatantShaderSources.analyticClipVariantId(base));
+
+        assertEquals("shaders/ui_liquid_glass_batch__analytic_clip__ui_underlay.frag", combined.getPath());
+        assertTrue(CombatantShaderSources.isAnalyticClipVariant(combined));
+        assertTrue(CombatantShaderSources.isUiUnderlayVariant(combined));
+        assertEquals(base, CombatantShaderSources.uiUnderlayBaseId(
+                CombatantShaderSources.analyticClipBaseId(combined)));
+    }
+
     private static int occurrences(String value, String needle) {
         int count = 0;
         int offset = 0;

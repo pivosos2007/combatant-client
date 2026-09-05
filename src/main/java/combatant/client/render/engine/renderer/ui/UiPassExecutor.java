@@ -21,8 +21,14 @@ public final class UiPassExecutor {
             return compiled;
         }
 
+        int submittedRhiCommands = 0;
+        for (UiBatchPlan.Pass pass : compiled.passes()) {
+            if (pass != null && !pass.drawCommands().isEmpty()) {
+                submittedRhiCommands = saturatingAdd(submittedRhiCommands, pass.drawCommands().size());
+            }
+        }
+
         long drawsBefore = rhi.stats().drawCalls();
-        long fullscreenBefore = rhi.stats().fullscreenPasses();
         try {
             for (UiBatchPlan.Pass pass : compiled.passes()) {
                 if (pass == null) continue;
@@ -33,9 +39,7 @@ public final class UiPassExecutor {
             }
         } finally {
             long backendDraws = Math.max(0L, rhi.stats().drawCalls() - drawsBefore);
-            long fullscreenDraws = Math.max(0L, rhi.stats().fullscreenPasses() - fullscreenBefore);
-            long meshDrawCommands = Math.max(0L, backendDraws - fullscreenDraws);
-            lastPlan = compiled.withExecutionStats(saturatingInt(meshDrawCommands), saturatingInt(backendDraws));
+            lastPlan = compiled.withExecutionStats(submittedRhiCommands, saturatingInt(backendDraws));
         }
         return lastPlan;
     }
@@ -46,5 +50,11 @@ public final class UiPassExecutor {
 
     private static int saturatingInt(long value) {
         return value >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) Math.max(0L, value);
+    }
+
+    private static int saturatingAdd(int current, int delta) {
+        if (delta <= 0) return current;
+        long sum = (long) current + delta;
+        return sum >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) sum;
     }
 }

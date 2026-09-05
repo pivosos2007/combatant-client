@@ -261,8 +261,8 @@ public class KillEffect extends Module implements PostProcessPass {
     private enum KillSound implements SoundKey {
         @SoundAsset(
                 value = "orthodox.wav",
-                gain = 1.40f,
-                rolloff = 0.28f,
+                gain = 4.5f,
+                rolloff = 0.09f,
                 referenceDistance = 10.0f,
                 maxDistance = 192.0f
         )

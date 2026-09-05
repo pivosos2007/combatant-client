@@ -254,6 +254,12 @@ public class Combatant implements ClientModInitializer {
                 || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_SCALED_FOREGROUND);
         boolean logicalForeground = hasHudForegroundPassWork(phase, HudRenderSpace.UNSCALED_LOGICAL)
                 || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_LOGICAL_FOREGROUND);
+        boolean moduleRawMain = ModuleManager.hasHudEngineWork(phase, HudRenderSpace.UNSCALED);
+        boolean moduleScaledMain = ModuleManager.hasHudEngineWork(phase, HudRenderSpace.SCALED);
+        boolean moduleLogicalMain = ModuleManager.hasHudEngineWork(phase, HudRenderSpace.UNSCALED_LOGICAL);
+        boolean moduleRawForeground = ModuleManager.hasHudEngineForegroundWork(phase, HudRenderSpace.UNSCALED);
+        boolean moduleScaledForeground = ModuleManager.hasHudEngineForegroundWork(phase, HudRenderSpace.SCALED);
+        boolean moduleLogicalForeground = ModuleManager.hasHudEngineForegroundWork(phase, HudRenderSpace.UNSCALED_LOGICAL);
         if (!rawMain && !scaledMain && !logicalMain && !rawForeground && !scaledForeground && !logicalForeground) {
             return false;
         }
@@ -270,8 +276,14 @@ public class Combatant implements ClientModInitializer {
             try (RenderPhaseScope hudPhase = CombatantRenderSystem.phase(RenderPhase.HUD_MAIN, "2d:phase:" + phase.name())) {
                 // Raw HUD pass
                 if (rawMain) {
+                    if (moduleRawMain) {
+                        Renderer2D.withHudBackdropContribution(() -> {
+                            Renderer2D.COLOR.begin();
+                            ModuleManager.renderHudEngine(phase, HudRenderSpace.UNSCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
+                            Renderer2D.COLOR.render();
+                        });
+                    }
                     Renderer2D.COLOR.begin();
-                    ModuleManager.renderHudEngine(phase, HudRenderSpace.UNSCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     StaticHudElementRegistry.renderAllEngine(phase, HudRenderSpace.UNSCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_RAW, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     Renderer2D.COLOR.render();
@@ -280,6 +292,13 @@ public class Combatant implements ClientModInitializer {
                 // Scaled fixed HUD pass
                 if (scaledMain) {
                     ViewportContext.beginScaled(ctx);
+                    if (moduleScaledMain) {
+                        Renderer2D.withHudBackdropContribution(() -> {
+                            Renderer2D.COLOR.begin();
+                            ModuleManager.renderHudEngine(phase, HudRenderSpace.SCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
+                            Renderer2D.COLOR.render();
+                        });
+                    }
                     Renderer2D.COLOR.begin();
                     StaticHudElementRegistry.renderAllEngine(phase, HudRenderSpace.SCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_SCALED, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
@@ -289,8 +308,14 @@ public class Combatant implements ClientModInitializer {
                 // Logical HUD pass
                 if (logicalMain) {
                     ViewportContext.beginUnscaledLogical(ctx);
+                    if (moduleLogicalMain) {
+                        Renderer2D.withHudBackdropContribution(() -> {
+                            Renderer2D.COLOR.begin();
+                            ModuleManager.renderHudEngine(phase, HudRenderSpace.UNSCALED_LOGICAL, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
+                            Renderer2D.COLOR.render();
+                        });
+                    }
                     Renderer2D.COLOR.begin();
-                    ModuleManager.renderHudEngine(phase, HudRenderSpace.UNSCALED_LOGICAL, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     StaticHudElementRegistry.renderAllEngine(phase, HudRenderSpace.UNSCALED_LOGICAL, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     DraggableHudElementRegistry.renderAllEngine(phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_LOGICAL, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
@@ -300,8 +325,14 @@ public class Combatant implements ClientModInitializer {
                 // Raw foreground
                 if (rawForeground) {
                     ViewportContext.beginUnscaled(ctx);
+                    if (moduleRawForeground) {
+                        Renderer2D.withHudBackdropContribution(() -> {
+                            Renderer2D.COLOR.begin();
+                            ModuleManager.renderHudEngineForeground(phase, HudRenderSpace.UNSCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
+                            Renderer2D.COLOR.render();
+                        });
+                    }
                     Renderer2D.COLOR.begin();
-                    ModuleManager.renderHudEngineForeground(phase, HudRenderSpace.UNSCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     StaticHudElementRegistry.renderAllEngineForeground(phase, HudRenderSpace.UNSCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_RAW_FOREGROUND, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     Renderer2D.COLOR.render();
@@ -310,6 +341,13 @@ public class Combatant implements ClientModInitializer {
                 // Scaled fixed HUD foreground
                 if (scaledForeground) {
                     ViewportContext.beginScaled(ctx);
+                    if (moduleScaledForeground) {
+                        Renderer2D.withHudBackdropContribution(() -> {
+                            Renderer2D.COLOR.begin();
+                            ModuleManager.renderHudEngineForeground(phase, HudRenderSpace.SCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
+                            Renderer2D.COLOR.render();
+                        });
+                    }
                     Renderer2D.COLOR.begin();
                     StaticHudElementRegistry.renderAllEngineForeground(phase, HudRenderSpace.SCALED, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_SCALED_FOREGROUND, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
@@ -319,8 +357,14 @@ public class Combatant implements ClientModInitializer {
                 // Logical foreground
                 if (logicalForeground) {
                     ViewportContext.beginUnscaledLogical(ctx);
+                    if (moduleLogicalForeground) {
+                        Renderer2D.withHudBackdropContribution(() -> {
+                            Renderer2D.COLOR.begin();
+                            ModuleManager.renderHudEngineForeground(phase, HudRenderSpace.UNSCALED_LOGICAL, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
+                            Renderer2D.COLOR.render();
+                        });
+                    }
                     Renderer2D.COLOR.begin();
-                    ModuleManager.renderHudEngineForeground(phase, HudRenderSpace.UNSCALED_LOGICAL, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     StaticHudElementRegistry.renderAllEngineForeground(phase, HudRenderSpace.UNSCALED_LOGICAL, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     DraggableHudElementRegistry.renderAllEngineForeground(phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_LOGICAL_FOREGROUND, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);

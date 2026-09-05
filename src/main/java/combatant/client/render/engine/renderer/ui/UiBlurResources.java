@@ -23,6 +23,8 @@ import combatant.client.render.engine.vertex.CombatantVertexFormats;
 import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.EnumSet;
+
 /**
  * Owns UI render targets, captured glass state and the frame-local Kawase cache.
  * These are backend resources, not part of the shape drawing facade.
@@ -33,11 +35,19 @@ public final class UiBlurResources {
     private static final TextureTarget[] SURFACE_KAWASE_UP = new TextureTarget[MAX_KAWASE_LEVELS];
     private static final TextureTarget[] CAPTURED_WORLD_KAWASE_DOWN = new TextureTarget[MAX_KAWASE_LEVELS];
     private static final TextureTarget[] CAPTURED_WORLD_KAWASE_UP = new TextureTarget[MAX_KAWASE_LEVELS];
+    private static final TextureTarget[] UI_UNDERLAY_KAWASE_DOWN = new TextureTarget[MAX_KAWASE_LEVELS];
+    private static final TextureTarget[] UI_UNDERLAY_KAWASE_UP = new TextureTarget[MAX_KAWASE_LEVELS];
     private static final FrameBlurCacheEntry SURFACE_FRAME_CACHE = new FrameBlurCacheEntry();
     private static final FrameBlurCacheEntry CAPTURED_WORLD_FRAME_CACHE = new FrameBlurCacheEntry();
+    private static final FrameBlurCacheEntry UI_UNDERLAY_FRAME_CACHE = new FrameBlurCacheEntry();
+    private static final EnumSet<Renderer2D.Deferred2DLayer> UI_UNDERLAY_REQUESTED =
+            EnumSet.noneOf(Renderer2D.Deferred2DLayer.class);
 
     private static TextureTarget effects;
     private static TextureTarget glassSource;
+    private static TextureTarget uiUnderlay;
+    private static Renderer2D.Deferred2DLayer activeUiUnderlayLayer;
+    private static long activeUiUnderlayFrame = Long.MIN_VALUE;
     private static MeshBuilder compositeMesh;
     private static int compositeWidth = -1;
     private static int compositeHeight = -1;
@@ -55,6 +65,73 @@ public final class UiBlurResources {
     public static void beginDeferredFrame() {
         liquidGlassBlurRequested = false;
         blurBeforeNextShapeClipRequested = false;
+        UI_UNDERLAY_REQUESTED.clear();
+        activeUiUnderlayLayer = null;
+        activeUiUnderlayFrame = Long.MIN_VALUE;
+    }
+
+    public static void requestUiUnderlay(Renderer2D.Deferred2DLayer layer) {
+        if (layer != null) UI_UNDERLAY_REQUESTED.add(layer);
+    }
+
+    public static boolean isUiUnderlayRequested(Renderer2D.Deferred2DLayer layer) {
+        if (layer == null) return false;
+        if (!isHudLayer(layer)) return UI_UNDERLAY_REQUESTED.contains(layer);
+        for (Renderer2D.Deferred2DLayer requested : UI_UNDERLAY_REQUESTED) {
+            if (isHudLayer(requested)) return true;
+        }
+        return false;
+    }
+
+    public static @Nullable TextureTarget beginUiUnderlayLayer(
+            Minecraft minecraft,
+            Renderer2D.Deferred2DLayer layer) {
+        if (minecraft == null || !isUiUnderlayRequested(layer)) return null;
+        TextureTarget target = ensureUiUnderlay(minecraft);
+        if (target == null || target.getColorTexture() == null) return null;
+
+        long frame = currentFrameId();
+        Renderer2D.Deferred2DLayer domain = underlayDomain(layer);
+        if (activeUiUnderlayFrame != frame || activeUiUnderlayLayer != domain) {
+            RenderSystem.getDevice().createCommandEncoder().clearColorTexture(
+                    target.getColorTexture(), new org.joml.Vector4f(0.0f, 0.0f, 0.0f, 0.0f));
+            activeUiUnderlayFrame = frame;
+            activeUiUnderlayLayer = domain;
+        }
+        return target;
+    }
+
+    public static @Nullable TextureTarget uiUnderlayTarget(
+            Minecraft minecraft,
+            Renderer2D.Deferred2DLayer layer) {
+        return beginUiUnderlayLayer(minecraft, layer);
+    }
+
+    public static @Nullable GpuTextureView activeUiUnderlayView() {
+        return activeUiUnderlayLayer != null && uiUnderlay != null
+                ? uiUnderlay.getColorTextureView()
+                : null;
+    }
+
+    private static @Nullable TextureTarget ensureUiUnderlay(Minecraft minecraft) {
+        if (minecraft == null) return null;
+        int width = minecraft.getWindow().getWidth();
+        int height = minecraft.getWindow().getHeight();
+        if (width <= 0 || height <= 0) return null;
+        uiUnderlay = CombatantRenderSystem.resources().persistentFramebuffer(
+                "combatant-ui-underlay", width, height, false, "Renderer2D.uiUnderlay"
+        );
+        return uiUnderlay;
+    }
+
+    private static boolean isHudLayer(Renderer2D.Deferred2DLayer layer) {
+        return layer != null
+                && layer.ordinal() >= Renderer2D.Deferred2DLayer.HUD_FIRST.ordinal()
+                && layer.ordinal() <= Renderer2D.Deferred2DLayer.HUD_LAST.ordinal();
+    }
+
+    private static Renderer2D.Deferred2DLayer underlayDomain(Renderer2D.Deferred2DLayer layer) {
+        return isHudLayer(layer) ? Renderer2D.Deferred2DLayer.HUD_FIRST : layer;
     }
 
     public static TextureTarget ensureEffects(Minecraft minecraft) {
@@ -126,6 +203,14 @@ public final class UiBlurResources {
         prepareCapturedWorldBlur();
     }
 
+    /** Module-only replays changed the HUD backdrop without changing its texture handle. */
+    public static void backdropContributionsSubmitted() {
+        CAPTURED_WORLD_FRAME_CACHE.clear();
+        if (worldSourceReady && liquidGlassBlurRequested) {
+            prepareCapturedWorldBlur();
+        }
+    }
+
     public static void invalidateWorldSource() {
         worldSourceReady = false;
     }
@@ -149,6 +234,15 @@ public final class UiBlurResources {
     static TextureTarget ensureKawaseDown(Minecraft minecraft,
                                           int level,
                                           @Nullable GpuTextureView sourceView) {
+        if (isUiUnderlaySource(sourceView)) {
+            return ensureKawaseTarget(
+                    minecraft,
+                    UI_UNDERLAY_KAWASE_DOWN,
+                    "combatant-ui-underlay-kawase-down-",
+                    "Renderer2D.uiUnderlayKawaseDown",
+                    level
+            );
+        }
         if (!isCapturedWorldSource(sourceView)) return ensureKawaseDown(minecraft, level);
         return ensureKawaseTarget(
                 minecraft,
@@ -162,6 +256,15 @@ public final class UiBlurResources {
     static TextureTarget ensureKawaseUp(Minecraft minecraft,
                                         int level,
                                         @Nullable GpuTextureView sourceView) {
+        if (isUiUnderlaySource(sourceView)) {
+            return ensureKawaseTarget(
+                    minecraft,
+                    UI_UNDERLAY_KAWASE_UP,
+                    "combatant-ui-underlay-kawase-up-",
+                    "Renderer2D.uiUnderlayKawaseUp",
+                    level
+            );
+        }
         if (!isCapturedWorldSource(sourceView)) return ensureKawaseUp(minecraft, level);
         return ensureKawaseTarget(
                 minecraft,
@@ -222,6 +325,10 @@ public final class UiBlurResources {
             float uiScale,
             Renderer2D.BlurQuality blurQuality,
             float offsetPx) {
+        // The underlay can receive more ordinary UI draws between two glass effects in the
+        // same frame. Until capture generations are explicit in the pass graph, reusing its
+        // earlier blur would be stale. PASS_THROUGH never enters this cache.
+        if (isUiUnderlaySource(sourceView)) return null;
         RenderPhase cachePhase = cachePhaseForSource(phase, sourceView);
         float cacheUiScale = cacheScaleForSource(sourceView, uiScale);
         FrameBlurCacheEntry cache = cacheForSource(sourceView);
@@ -250,6 +357,7 @@ public final class UiBlurResources {
             float uiScale,
             Renderer2D.BlurQuality blurQuality,
             float offsetPx) {
+        if (isUiUnderlaySource(sourceView)) return;
         cacheForSource(sourceView).set(
                 frameId,
                 cachePhaseForSource(phase, sourceView),
@@ -310,12 +418,13 @@ public final class UiBlurResources {
     }
 
     private static RenderPhase cachePhaseForSource(RenderPhase phase, @Nullable GpuTextureView sourceView) {
+        if (isUiUnderlaySource(sourceView)) return RenderPhase.HUD_EFFECTS;
         if (isCapturedWorldSource(sourceView)) return RenderPhase.HUD_CAPTURE;
         return phase != null ? phase : RenderPhase.NONE;
     }
 
     private static float cacheScaleForSource(@Nullable GpuTextureView sourceView, float uiScale) {
-        return isCapturedWorldSource(sourceView) ? 1.0f : uiScale;
+        return isCapturedWorldSource(sourceView) || isUiUnderlaySource(sourceView) ? 1.0f : uiScale;
     }
 
     static boolean isCapturedWorldSource(@Nullable GpuTextureView sourceView) {
@@ -324,7 +433,14 @@ public final class UiBlurResources {
                 && sourceView == glassSource.getColorTextureView();
     }
 
+    static boolean isUiUnderlaySource(@Nullable GpuTextureView sourceView) {
+        return sourceView != null
+                && uiUnderlay != null
+                && sourceView == uiUnderlay.getColorTextureView();
+    }
+
     private static FrameBlurCacheEntry cacheForSource(@Nullable GpuTextureView sourceView) {
+        if (isUiUnderlaySource(sourceView)) return UI_UNDERLAY_FRAME_CACHE;
         return isCapturedWorldSource(sourceView) ? CAPTURED_WORLD_FRAME_CACHE : SURFACE_FRAME_CACHE;
     }
 }

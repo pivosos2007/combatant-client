@@ -473,12 +473,21 @@ public final class ItemBatchRenderer {
     }
 
     static int flush(ItemBatch batch) {
+        return flush(batch, null);
+    }
+
+    static int flush(ItemBatch batch, @Nullable GpuTextureView replayTargetView) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.gameRenderer == null || batch.isEmpty()) {
             return 0;
         }
 
         try (RenderCostProfiler.Scope ignoredItems = RenderCostProfiler.itemRender("item_batch")) {
+            GpuTextureView uiUnderlayView = batch.clipSnapshot.usesMsaaStencil()
+                    ? null
+                    : (replayTargetView != null
+                    ? replayTargetView
+                    : UiBlurResources.activeUiUnderlayView());
             int drawCalls = 0;
             MeshBuilder itemMesh = null;
             GpuTextureView itemAtlasTextureView = null;
@@ -496,7 +505,8 @@ public final class ItemBatchRenderer {
             GpuSampler itemSampler = itemMesh != null
                     ? RenderSystem.getSamplerCache().getRepeat(FilterMode.NEAREST)
                     : null;
-            if (submitItemBlitMesh(mc, itemMesh, itemAtlasTextureView, itemSampler, batch.clipSnapshot)) {
+            if (submitItemBlitMesh(mc, itemMesh, itemAtlasTextureView, itemSampler,
+                    batch.clipSnapshot, uiUnderlayView)) {
                 drawCalls++;
             }
 
@@ -522,13 +532,16 @@ public final class ItemBatchRenderer {
                 }
             }
 
-            if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_ROUNDED_GLOW_BATCH, durabilityGlowMesh, true)) {
+            if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_ROUNDED_GLOW_BATCH,
+                    durabilityGlowMesh, true, uiUnderlayView)) {
                 drawCalls++;
             }
-            if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_ROUNDED_BATCH, durabilityRoundedMesh, true)) {
+            if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_ROUNDED_BATCH,
+                    durabilityRoundedMesh, true, uiUnderlayView)) {
                 drawCalls++;
             }
-            if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_COLORED, cooldownMesh, false)) {
+            if (submitItemOverlayMesh(mc, CombatantRenderPipelines.UI_COLORED,
+                    cooldownMesh, false, uiUnderlayView)) {
                 drawCalls++;
             }
 
@@ -874,7 +887,8 @@ public final class ItemBatchRenderer {
                                               @Nullable MeshBuilder mesh,
                                               @Nullable GpuTextureView atlasTextureView,
                                               @Nullable GpuSampler sampler,
-                                              UiClipSnapshot clipSnapshot) {
+                                              UiClipSnapshot clipSnapshot,
+                                              @Nullable GpuTextureView uiUnderlayView) {
         if (mesh == null || sampler == null || atlasTextureView == null) {
             return false;
         }
@@ -890,17 +904,31 @@ public final class ItemBatchRenderer {
         if (clip.usesAnalyticPipeline()) {
             pipeline = CombatantRenderPipelines.analyticClipTexturedPipeline(pipeline);
         }
+        GpuTextureView mainView = UiMsaaClipLayer.currentColorAttachment(
+                mc.gameRenderer.mainRenderTarget().getColorTextureView());
+        GpuBufferSlice uiBatch = itemBlitUiBatch(mc);
         MeshRenderer renderer = MeshRenderer.begin()
-                .attachments(UiMsaaClipLayer.currentColorAttachment(
-                        mc.gameRenderer.mainRenderTarget().getColorTextureView()), null)
+                .attachments(mainView, null)
                 .pipeline(pipeline)
                 .mesh(mesh)
-                .uniform("UIBatch", itemBlitUiBatch(mc))
+                .uniform("UIBatch", uiBatch)
                 .sampler("u_Texture", atlasTextureView, sampler);
         if (clip.usesAnalyticPipeline()) {
             renderer.uniform("UIClip", UiClipUniforms.write(clip));
         }
         renderer.end();
+        if (uiUnderlayView != null && uiUnderlayView != mainView) {
+            MeshRenderer replay = MeshRenderer.begin()
+                    .attachments(uiUnderlayView, null)
+                    .pipeline(pipeline)
+                    .mesh(mesh)
+                    .uniform("UIBatch", uiBatch)
+                    .sampler("u_Texture", atlasTextureView, sampler);
+            if (clip.usesAnalyticPipeline()) {
+                replay.uniform("UIClip", UiClipUniforms.write(clip));
+            }
+            replay.end();
+        }
         return true;
     }
 
@@ -964,7 +992,8 @@ public final class ItemBatchRenderer {
     private static boolean submitItemOverlayMesh(Minecraft mc,
                                                  RenderPipeline pipeline,
                                                  @Nullable MeshBuilder mesh,
-                                                 boolean uiBatchUniform) {
+                                                 boolean uiBatchUniform,
+                                                 @Nullable GpuTextureView uiUnderlayView) {
         if (mesh == null) {
             return false;
         }
@@ -975,16 +1004,27 @@ public final class ItemBatchRenderer {
             return false;
         }
 
+        GpuTextureView mainView = UiMsaaClipLayer.currentColorAttachment(
+                mc.gameRenderer.mainRenderTarget().getColorTextureView());
+        GpuBufferSlice uiBatch = null;
         MeshRenderer renderer = MeshRenderer.begin()
-                .attachments(UiMsaaClipLayer.currentColorAttachment(
-                        mc.gameRenderer.mainRenderTarget().getColorTextureView()), null)
+                .attachments(mainView, null)
                 .pipeline(pipeline)
                 .mesh(mesh);
         if (uiBatchUniform) {
             UIBatchUniforms.update(mc.getWindow().getWidth(), mc.getWindow().getHeight());
-            renderer.uniform("UIBatch", UIBatchUniforms.get());
+            uiBatch = UIBatchUniforms.get();
+            renderer.uniform("UIBatch", uiBatch);
         }
         renderer.end();
+        if (uiUnderlayView != null && uiUnderlayView != mainView) {
+            MeshRenderer replay = MeshRenderer.begin()
+                    .attachments(uiUnderlayView, null)
+                    .pipeline(pipeline)
+                    .mesh(mesh);
+            if (uiBatch != null) replay.uniform("UIBatch", uiBatch);
+            replay.end();
+        }
         return true;
     }
 

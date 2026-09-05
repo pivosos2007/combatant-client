@@ -140,9 +140,11 @@ public abstract class GuiGraphicsMixin implements IGuiGraphics {
                                                   boolean replaceExisting,
                                                   CallbackInfo ci) {
         ItemStack stack = combatant$tooltipStackContext;
-        if ((stack == null || stack.isEmpty())) {
+        if (stack == null || stack.isEmpty()) {
             ItemStack inferred = BetterTooltips.consumeLastTooltipStack();
-            if (inferred != null && !inferred.isEmpty()) stack = inferred;
+            if (BetterTooltips.matchesItemTooltip(components, inferred)) {
+                stack = inferred;
+            }
         }
         if (BetterTooltips.captureTooltipComponents(
                 components,

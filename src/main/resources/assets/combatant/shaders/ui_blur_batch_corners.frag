@@ -22,6 +22,10 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
+#ifdef COMBATANT_ANALYTIC_CLIP
+#moj_import <combatant:ui_clip.glsl>
+#endif
+
 vec4 normalizeRadii(vec4 r, vec2 size) {
     float maxR = 0.5 * min(size.x, size.y);
     r = clamp(r, 0.0, maxR);
@@ -81,6 +85,11 @@ void main() {
     float distance = roundedBoxSDF(pos, boxHalf, radii);
     float aa = analyticAa(distance, logicalScale);
     float alpha = crispCoverage(distance, aa);
+#ifdef COMBATANT_ANALYTIC_CLIP
+    alpha *= combatantClipCoverage(
+        combatantClipDistance(combatantLogicalFragCoord()), logicalScale
+    );
+#endif
     if (alpha <= 0.001) {
         discard;
     }

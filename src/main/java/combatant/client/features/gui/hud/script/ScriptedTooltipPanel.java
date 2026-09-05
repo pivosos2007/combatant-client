@@ -51,6 +51,7 @@ public final class ScriptedTooltipPanel {
                             TextRenderer fallbackText,
                             List<Line> lines,
                             float scale,
+                            float rasterDetailScale,
                             float maxContentWidth,
                             float footerWidth,
                             float footerHeight,
@@ -71,6 +72,7 @@ public final class ScriptedTooltipPanel {
         LinkedHashMap<String, Object> base = baseProps(
                 lineProps,
                 Math.max(0.05f, scale),
+                Math.max(0.01f, rasterDetailScale),
                 Math.max(1.0f, maxContentWidth),
                 Math.max(0.0f, footerWidth),
                 Math.max(0.0f, footerHeight),
@@ -111,6 +113,7 @@ public final class ScriptedTooltipPanel {
         return new Prepared(
                 List.copyOf(lineProps),
                 Math.max(0.05f, scale),
+                Math.max(0.01f, rasterDetailScale),
                 Math.max(1.0f, maxContentWidth),
                 Math.max(0.0f, footerWidth),
                 Math.max(0.0f, footerHeight),
@@ -146,6 +149,7 @@ public final class ScriptedTooltipPanel {
         props.put("phase", "render");
         props.put("lines", prepared.lines());
         props.put("scale", prepared.scale());
+        props.put("rasterDetailScale", prepared.rasterDetailScale());
         props.put("maxContentWidth", prepared.maxContentWidth());
         props.put("footerWidth", prepared.footerWidth());
         props.put("footerHeight", prepared.footerHeight());
@@ -213,6 +217,7 @@ public final class ScriptedTooltipPanel {
 
     private static LinkedHashMap<String, Object> baseProps(List<LinkedHashMap<String, Object>> lines,
                                                             float scale,
+                                                            float rasterDetailScale,
                                                             float maxContentWidth,
                                                             float footerWidth,
                                                             float footerHeight,
@@ -223,6 +228,7 @@ public final class ScriptedTooltipPanel {
         LinkedHashMap<String, Object> props = new LinkedHashMap<>();
         props.put("lines", lines);
         props.put("scale", scale);
+        props.put("rasterDetailScale", Math.max(0.01f, rasterDetailScale));
         props.put("maxContentWidth", maxContentWidth);
         props.put("footerWidth", footerWidth);
         props.put("footerHeight", footerHeight);
@@ -343,6 +349,7 @@ public final class ScriptedTooltipPanel {
 
     public record Prepared(List<LinkedHashMap<String, Object>> lines,
                            float scale,
+                           float rasterDetailScale,
                            float maxContentWidth,
                            float footerWidth,
                            float footerHeight,

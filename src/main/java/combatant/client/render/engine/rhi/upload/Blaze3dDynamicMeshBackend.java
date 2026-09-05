@@ -11,6 +11,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.render.engine.profiler.RenderCostProfiler;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.MeshOwnership;
+import combatant.client.render.engine.rhi.RhiCapabilities;
 import combatant.client.render.engine.rhi.RhiStats;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
@@ -47,6 +48,9 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
     private long frameId;
     private int spillArenaSequence;
     private boolean persistentArenasCreated;
+    private boolean persistentMappedWritesResolved;
+    private boolean persistentMappedWrites;
+    private int persistentArenaSequence;
 
     public Blaze3dDynamicMeshBackend(RhiStats stats) {
         this.stats = stats;
@@ -54,6 +58,9 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
 
     private static int align(int value, int alignment) {
         return (value + alignment - 1) & -alignment;
+    }
+
+    private record ArenaSelection(Blaze3dMeshArena arena, boolean reused) {
     }
 
     @Override
@@ -86,6 +93,7 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
                 allocation.write(mesh);
                 stats.meshUpload(vertexBytes, indexBytes);
                 stats.dynamicArenaAllocation(vertexBytes, indexBytes, arena.persistent());
+                stats.dynamicArenaUploadPath(vertexBytes + (long) indexBytes, arena.persistentMappedWrites());
                 GpuMeshHandle handle = allocation.toHandle(mesh);
                 handle.validateForDraw("dynamic mesh upload");
                 return handle;
@@ -98,17 +106,34 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
 
     private void ensurePersistentArenas() {
         if (persistentArenasCreated) return;
-        int arenaCount = Math.max(2, DEFAULT_PERSISTENT_ARENAS);
-        for (int i = 0; i < arenaCount; i++) {
-            persistentArenas.add(new Blaze3dMeshArena(
-                    "Combatant RHI Dynamic Mesh Arena #" + i,
-                    DEFAULT_VERTEX_ARENA_BYTES,
-                    DEFAULT_INDEX_ARENA_BYTES,
-                    true
-            ));
+        if (!persistentMappedWritesResolved) {
+            // RhiCapabilities delegates this decision to Mojang DeviceFeatures; do not re-probe GL.
+            persistentMappedWrites = RhiCapabilities.current().persistentMapping();
+            persistentMappedWritesResolved = true;
         }
+
+        // Do not reserve the entire configured ring up-front. One 32/8 MiB arena is enough for
+        // light UI frames; additional persistent arenas are created only after real pressure from
+        // capacity/fence overlap proves they are needed. Capacity of each arena remains unchanged
+        // until telemetry justifies tuning it separately.
+        persistentArenas.add(createPersistentArena());
         persistentArenasCreated = true;
-        stats.dynamicArenaCreated(arenaCount, DEFAULT_VERTEX_ARENA_BYTES, DEFAULT_INDEX_ARENA_BYTES, false);
+    }
+
+    private int maxPersistentArenas() {
+        return Math.max(2, DEFAULT_PERSISTENT_ARENAS);
+    }
+
+    private Blaze3dMeshArena createPersistentArena() {
+        Blaze3dMeshArena arena = new Blaze3dMeshArena(
+                "Combatant RHI Dynamic Mesh Arena #" + persistentArenaSequence++,
+                DEFAULT_VERTEX_ARENA_BYTES,
+                DEFAULT_INDEX_ARENA_BYTES,
+                true,
+                persistentMappedWrites
+        );
+        stats.dynamicArenaCreated(1, DEFAULT_VERTEX_ARENA_BYTES, DEFAULT_INDEX_ARENA_BYTES, false);
+        return arena;
     }
 
     private Blaze3dMeshArena selectArena(int vertexBytes, int indexBytes, int vertexStride) {
@@ -116,12 +141,12 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
             return currentArena;
         }
 
-        Blaze3dMeshArena available = findAvailablePersistentArena(vertexBytes, indexBytes, vertexStride);
-        if (available != null) {
-            currentArena = available;
-            markActive(available);
-            stats.dynamicArenaReuse();
-            return available;
+        ArenaSelection selection = findAvailablePersistentArena(vertexBytes, indexBytes, vertexStride);
+        if (selection != null) {
+            currentArena = selection.arena();
+            markActive(currentArena);
+            if (selection.reused()) stats.dynamicArenaReuse();
+            return currentArena;
         }
 
         stats.dynamicArenaBacklog();
@@ -130,14 +155,26 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
         return currentArena;
     }
 
-    private Blaze3dMeshArena findAvailablePersistentArena(int vertexBytes, int indexBytes, int vertexStride) {
+    private ArenaSelection findAvailablePersistentArena(int vertexBytes, int indexBytes, int vertexStride) {
         reclaimRetired(false);
         for (Blaze3dMeshArena arena : persistentArenas) {
             if (activeArenas.contains(arena)) continue;
-            stats.dynamicFenceCheck();
+            if (arena.isRetired()) stats.dynamicFenceCheck();
             if (!arena.canStartFrame()) continue;
             if (!arena.canAllocate(vertexBytes, indexBytes, vertexStride)) continue;
-            return arena;
+            return new ArenaSelection(arena, true);
+        }
+
+        // Grow the persistent ring lazily under observed pressure. This preserves the configured
+        // maximum buffering depth while avoiding the old unconditional allocation of every arena
+        // at the first mesh upload. Oversized single meshes still go to a spill arena instead of
+        // permanently inflating the persistent pool.
+        if (persistentArenas.size() < maxPersistentArenas()
+                && vertexBytes <= DEFAULT_VERTEX_ARENA_BYTES
+                && indexBytes <= DEFAULT_INDEX_ARENA_BYTES) {
+            Blaze3dMeshArena created = createPersistentArena();
+            persistentArenas.add(created);
+            return new ArenaSelection(created, false);
         }
         return null;
     }
@@ -149,7 +186,8 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
                 "Combatant RHI Dynamic Mesh Spill #" + spillArenaSequence++,
                 vertexCapacity,
                 indexCapacity,
-                false
+                false,
+                persistentMappedWrites
         );
         stats.dynamicArenaCreated(1, vertexCapacity, indexCapacity, true);
         return spill;
@@ -199,6 +237,10 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
         if (!activeArenas.isEmpty()) {
             Blaze3dFrameFence frameFence = new Blaze3dFrameFence(RenderSystem.getDevice().createCommandEncoder().createFence());
             for (Blaze3dMeshArena arena : activeArenas) {
+                stats.dynamicArenaFrameUsage(
+                        arena.vertexUsedBytes(), arena.vertexCapacity(),
+                        arena.indexUsedBytes(), arena.indexCapacity()
+                );
                 arena.retire(frameFence.retain());
                 retiredArenas.add(arena);
                 stats.dynamicArenaRetired();
@@ -245,5 +287,8 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
         persistentArenas.clear();
         currentArena = null;
         persistentArenasCreated = false;
+        persistentMappedWritesResolved = false;
+        persistentMappedWrites = false;
+        persistentArenaSequence = 0;
     }
 }

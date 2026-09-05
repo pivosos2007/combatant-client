@@ -20,6 +20,7 @@ import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.ui.draw.UiRect;
+import combatant.client.render.engine.renderer.ui.UiBlurResources;
 import combatant.client.render.engine.rhi.scissor.GlobalScissorState;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
@@ -290,6 +291,20 @@ public final class UiMsaaClipLayer {
                 .uniform("UIBatch", UIBatchUniforms.get())
                 .sampler("u_Texture", resolveTarget.getColorTextureView(), sampler)
                 .end();
+        // Mirror the already-resolved subtree as one premultiplied draw. Replaying its child
+        // commands directly into a full-size target would lose the local projection/stencil and
+        // would also reintroduce one attachment switch per child.
+        GpuTextureView underlayView = UiBlurResources.activeUiUnderlayView();
+        if (underlayView != null
+                && underlayView != layer.parentColor()) {
+            MeshRenderer.begin()
+                    .attachments(underlayView, null)
+                    .pipeline(CombatantRenderPipelines.UI_TEXTURED_PREMULTIPLIED_ALPHA)
+                    .mesh(compositeMesh)
+                    .uniform("UIBatch", UIBatchUniforms.get())
+                    .sampler("u_Texture", resolveTarget.getColorTextureView(), sampler)
+                    .end();
+        }
         UiPipelineTelemetry.recordMsaaComposite();
     }
 

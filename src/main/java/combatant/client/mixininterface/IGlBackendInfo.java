@@ -14,4 +14,10 @@ public interface IGlBackendInfo {
     DirectStateAccess combatant$directStateAccess();
 
     FrameBufferCache combatant$frameBufferCache();
+
+    /** Mojang-resolved GlDevice policy; do not re-probe ARB_direct_state_access in Combatant. */
+    boolean combatant$nativeDirectStateAccess();
+
+    /** Mojang-resolved GlDevice policy; do not re-probe KHR_debug in Combatant. */
+    boolean combatant$khrDebug();
 }

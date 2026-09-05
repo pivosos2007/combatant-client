@@ -705,7 +705,7 @@ public final class Admins extends DraggableHudElement {
     private Identifier resolveSkinByName(String name) {
         AbstractClientPlayer player = resolvePlayerByName(name);
         if (player != null) {
-            return PlayerSkinResolver.resolveProfileSkin(player.getGameProfile());
+            return PlayerHeadRenderer.resolveCachedSkin(player);
         }
 
         if (mc != null && mc.getConnection() != null) {
@@ -714,10 +714,10 @@ public final class Admins extends DraggableHudElement {
                 if (profile == null || profile.name() == null) continue;
                 if (!profile.name().equalsIgnoreCase(name)) continue;
                 Identifier skin = PlayerSkinResolver.resolveProfileSkin(profile);
-                if (skin != null) return skin;
+                return PlayerHeadRenderer.resolveCachedSkin(profile.id(), profile.name(), skin);
             }
         }
-        return null;
+        return PlayerHeadRenderer.getCachedSkin(name);
     }
 
     private int resolveStatusColor(StaffTracker.Status status) {

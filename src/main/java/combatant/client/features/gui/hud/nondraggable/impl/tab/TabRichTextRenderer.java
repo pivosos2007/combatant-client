@@ -14,9 +14,11 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextGlyphFallback;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.helpers.ScissorFunction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
+import net.minecraft.util.Util;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,10 +30,13 @@ import java.util.WeakHashMap;
 final class TabRichTextRenderer {
     private static final RenderColor TMP = new RenderColor(255, 255, 255, 255);
     private static final int CACHE_LIMIT = 4096;
+    private static final float MARQUEE_SPEED = 22.0f;
+    private static final float MARQUEE_GAP = 14.0f;
+    private static final float MARQUEE_PAUSE_SEC = 0.8f;
+    private static final float MARQUEE_FADE = 5.5f;
     private static final WeakHashMap<Component, List<Segment>> SEGMENT_CACHE = new WeakHashMap<>();
     private static final Map<TextWidthKey, Float> WIDTH_CACHE = new HashMap<>();
     private static final Map<TextHeightKey, Float> HEIGHT_CACHE = new HashMap<>();
-    private static final Map<FitKey, String> FIT_CACHE = new HashMap<>();
     private TabRichTextRenderer() {
     }
 
@@ -44,19 +49,12 @@ final class TabRichTextRenderer {
                      int fallbackColor,
                      float alpha) {
         if (component == null || maxWidth <= 0f || alpha <= 0f) return;
-        float cursor = x;
-        float remaining = maxWidth;
-        for (Segment segment : flatten(component)) {
-            if (remaining <= 1f) break;
-            TextRenderer font = font(segment.style());
-            int color = color(segment.style(), fallbackColor, alpha);
-            String text = fit(font, segment.text(), size, remaining);
-            drawString(renderer, font, text, cursor, y, size, color, true);
-            float width = width(font, text, size);
-            cursor += width;
-            remaining -= width;
-            if (text.length() < segment.text().length()) break;
+        float fullWidth = width(component, size);
+        if (fullWidth <= maxWidth * 1.01f) {
+            drawComponentAt(renderer, component, x, y, size, fallbackColor, alpha);
+            return;
         }
+        drawComponentMarquee(renderer, component, x, y, maxWidth, fullWidth, size, fallbackColor, alpha);
     }
 
     static float width(Component component, float size) {
@@ -82,8 +80,12 @@ final class TabRichTextRenderer {
         if (text == null || text.isEmpty() || maxWidth <= 0f || alpha <= 0f) return;
         TextRenderer font = font(Style.EMPTY);
         int color = color(Style.EMPTY, fallbackColor, alpha);
-        String fitted = fit(font, text, size, maxWidth);
-        drawString(renderer, font, fitted, x, y, size, color, true);
+        float fullWidth = width(font, text, size);
+        if (fullWidth <= maxWidth * 1.01f) {
+            drawString(renderer, font, text, x, y, size, color, true);
+            return;
+        }
+        drawPlainMarquee(renderer, font, text, x, y, maxWidth, fullWidth, size, color);
     }
 
     static float height(float size) {
@@ -132,43 +134,116 @@ final class TabRichTextRenderer {
         return (a << 24) | rgb;
     }
 
-    private static String fit(TextRenderer font, String text, float size, float maxWidth) {
-        if (text == null || text.isEmpty()) return "";
-        if (maxWidth <= 1f) return "";
-
-        FitKey key = new FitKey(fontId(font), text, sizeKey(size), Math.max(1, Math.round(maxWidth * 2f)));
-        String cached = FIT_CACHE.get(key);
-        if (cached != null) return cached;
-
-        String out;
-        if (width(font, text, size) <= maxWidth) {
-            out = text;
-        } else {
-            String suffix = "...";
-            float suffixW = width(font, suffix, size);
-            if (suffixW >= maxWidth) {
-                out = suffix;
-            } else {
-                int low = 0;
-                int high = text.length();
-                while (low < high) {
-                    int mid = (low + high + 1) >>> 1;
-                    int safeMid = safeCharBoundary(text, mid);
-                    if (safeMid <= low && mid > low) safeMid = mid;
-                    float w = width(font, text.substring(0, safeMid), size) + suffixW;
-                    if (w <= maxWidth) {
-                        low = safeMid;
-                    } else {
-                        high = Math.max(0, safeMid - 1);
-                    }
-                }
-                int end = safeCharBoundary(text, low);
-                out = end <= 0 ? suffix : text.substring(0, end) + suffix;
-            }
+    private static void drawComponentAt(Renderer2D renderer,
+                                        Component component,
+                                        float x,
+                                        float y,
+                                        float size,
+                                        int fallbackColor,
+                                        float alpha) {
+        float cursor = x;
+        for (Segment segment : flatten(component)) {
+            if (segment.text() == null || segment.text().isEmpty()) continue;
+            TextRenderer font = font(segment.style());
+            int color = color(segment.style(), fallbackColor, alpha);
+            drawString(renderer, font, segment.text(), cursor, y, size, color, true);
+            cursor += width(font, segment.text(), size);
         }
+    }
 
-        putBounded(FIT_CACHE, key, out);
-        return out;
+    private static void drawComponentMarquee(Renderer2D renderer,
+                                             Component component,
+                                             float x,
+                                             float y,
+                                             float viewWidth,
+                                             float fullWidth,
+                                             float size,
+                                             int fallbackColor,
+                                             float alpha) {
+        boolean clipped = ScissorFunction.pushRaw(x, y, viewWidth, Math.max(1.0f, height(size)));
+        if (!clipped) return;
+        try {
+            float offset = marqueeOffset(fullWidth, size);
+            float gap = MARQUEE_GAP * marqueeScale(size);
+            float cycleDistance = fullWidth + gap;
+            float fade = marqueeFade(viewWidth, size);
+            drawComponentAtFaded(renderer, component, x + offset, y, size, fallbackColor, alpha,
+                    x, x + viewWidth, fade);
+            if (cycleDistance > viewWidth * 0.5f) {
+                drawComponentAtFaded(renderer, component, x + offset + cycleDistance, y, size, fallbackColor, alpha,
+                        x, x + viewWidth, fade);
+            }
+        } finally {
+            ScissorFunction.pop();
+        }
+    }
+
+    private static void drawPlainMarquee(Renderer2D renderer,
+                                         TextRenderer font,
+                                         String text,
+                                         float x,
+                                         float y,
+                                         float viewWidth,
+                                         float fullWidth,
+                                         float size,
+                                         int color) {
+        boolean clipped = ScissorFunction.pushRaw(x, y, viewWidth, Math.max(1.0f, height(font, size)));
+        if (!clipped) return;
+        try {
+            float offset = marqueeOffset(fullWidth, size);
+            float gap = MARQUEE_GAP * marqueeScale(size);
+            float cycleDistance = fullWidth + gap;
+            float fade = marqueeFade(viewWidth, size);
+            drawStringFadeClipped(renderer, font, text, x + offset, y, size, color, true,
+                    x, x + viewWidth, fade);
+            if (cycleDistance > viewWidth * 0.5f) {
+                drawStringFadeClipped(renderer, font, text, x + offset + cycleDistance, y, size, color, true,
+                        x, x + viewWidth, fade);
+            }
+        } finally {
+            ScissorFunction.pop();
+        }
+    }
+
+    private static float marqueeFade(float viewWidth, float size) {
+        return Math.min(viewWidth * 0.24f, MARQUEE_FADE * marqueeScale(size));
+    }
+
+    private static void drawComponentAtFaded(Renderer2D renderer,
+                                             Component component,
+                                             float x,
+                                             float y,
+                                             float size,
+                                             int fallbackColor,
+                                             float alpha,
+                                             float clipLeft,
+                                             float clipRight,
+                                             float fade) {
+        float cursor = x;
+        for (Segment segment : flatten(component)) {
+            if (segment.text() == null || segment.text().isEmpty()) continue;
+            TextRenderer font = font(segment.style());
+            int color = color(segment.style(), fallbackColor, alpha);
+            drawStringFadeClipped(renderer, font, segment.text(), cursor, y, size, color, true,
+                    clipLeft, clipRight, fade);
+            cursor += width(font, segment.text(), size);
+        }
+    }
+
+    private static float marqueeOffset(float fullWidth, float size) {
+        float scale = marqueeScale(size);
+        float speed = MARQUEE_SPEED * scale;
+        float gap = MARQUEE_GAP * scale;
+        if (speed <= 0.0f) return 0.0f;
+        float cycleDistance = fullWidth + gap;
+        float cycleTime = MARQUEE_PAUSE_SEC + cycleDistance / speed;
+        if (cycleTime <= 0.0f) return 0.0f;
+        float t = (Util.getMillis() / 1000.0f) % cycleTime;
+        return t > MARQUEE_PAUSE_SEC ? -(t - MARQUEE_PAUSE_SEC) * speed : 0.0f;
+    }
+
+    private static float marqueeScale(float size) {
+        return Math.max(0.35f, size / 20.5f);
     }
 
     private static float width(TextRenderer font, String text, float size) {
@@ -285,6 +360,100 @@ final class TabRichTextRenderer {
 
     }
 
+    private static void drawStringFadeClipped(Renderer2D renderer,
+                                              TextRenderer font,
+                                              String text,
+                                              float x,
+                                              float y,
+                                              float size,
+                                              int argb,
+                                              boolean shadow,
+                                              float clipLeft,
+                                              float clipRight,
+                                              float fade) {
+        if (font == null || text == null || text.isEmpty() || ((argb >>> 24) & 0xFF) <= 0) return;
+        float scale = size / 18f;
+        float svgSize = svgGlyphSize(font, size);
+        float svgY = y + (height(font, size) - svgSize) * 0.5f;
+        TMP.a = (argb >>> 24) & 0xFF;
+        TMP.r = (argb >>> 16) & 0xFF;
+        TMP.g = (argb >>> 8) & 0xFF;
+        TMP.b = argb & 0xFF;
+
+        TextRenderer runFont = null;
+        int runStart = 0;
+        float cursorX = x;
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            int nextIndex = i + Character.charCount(cp);
+            if (TextGlyphFallback.shouldUseVanillaSvg(font, cp)) {
+                cursorX = drawRunFadeClipped(runFont, text, runStart, i, cursorX, y, scale, shadow,
+                        clipLeft, clipRight, fade);
+                runFont = null;
+                runStart = nextIndex;
+                String svgName = TextGlyphFallback.vanillaSvgName(cp);
+                if (renderer != null && svgName != null) {
+                    float fadeAlpha = fadeAlphaAt(cursorX + svgSize * 0.5f, clipLeft, clipRight, fade);
+                    float baseAlpha = ((argb >>> 24) & 0xFF) / 255f;
+                    if (fadeAlpha > 0.001f) {
+                        renderer.svg(svgName, cursorX, svgY, svgSize, svgSize,
+                                SvgRenderOptions.fromFile().withAlpha(baseAlpha * fadeAlpha));
+                    }
+                }
+                cursorX += svgSize;
+                i = nextIndex;
+                continue;
+            }
+
+            TextRenderer nextFont = TextGlyphFallback.rendererForGlyph(font, cp);
+            if (runFont == null) {
+                runFont = nextFont;
+                runStart = i;
+            } else if (nextFont != runFont) {
+                cursorX = drawRunFadeClipped(runFont, text, runStart, i, cursorX, y, scale, shadow,
+                        clipLeft, clipRight, fade);
+                runFont = nextFont;
+                runStart = i;
+            }
+            i = nextIndex;
+        }
+        drawRunFadeClipped(runFont, text, runStart, text.length(), cursorX, y, scale, shadow,
+                clipLeft, clipRight, fade);
+    }
+
+    private static float drawRunFadeClipped(TextRenderer font,
+                                            String text,
+                                            int start,
+                                            int end,
+                                            float x,
+                                            float y,
+                                            float scale,
+                                            boolean shadow,
+                                            float clipLeft,
+                                            float clipRight,
+                                            float fade) {
+        if (font == null || text == null || end <= start) return x;
+        String run = text.substring(start, end);
+        font.begin(scale, false, false);
+        try {
+            return (float) font.renderHorizontalFadeClipped(run, x, y, TMP,
+                    clipLeft, clipRight, fade, fade, shadow);
+        } finally {
+            font.end();
+        }
+    }
+
+    private static float fadeAlphaAt(float x, float clipLeft, float clipRight, float fade) {
+        if (clipRight <= clipLeft) return 1.0f;
+        if (x <= clipLeft || x >= clipRight) return 0.0f;
+        float f = Math.max(0.0f, fade);
+        if (f <= 0.0f) return 1.0f;
+        float alpha = 1.0f;
+        if (x < clipLeft + f) alpha = Math.min(alpha, (x - clipLeft) / f);
+        if (x > clipRight - f) alpha = Math.min(alpha, (clipRight - x) / f);
+        return Math.max(0.0f, Math.min(1.0f, alpha));
+    }
+
     private static float drawRun(TextRenderer font, String text, int start, int end, float x, float y, float scale, boolean shadow) {
         if (font == null || text == null || end <= start) return x;
         String run = text.substring(start, end);
@@ -308,14 +477,6 @@ final class TabRichTextRenderer {
         return Math.round(size * 100.0f);
     }
 
-    private static int safeCharBoundary(String text, int index) {
-        int out = Math.max(0, Math.min(text.length(), index));
-        if (out > 0 && out < text.length() && Character.isLowSurrogate(text.charAt(out))) {
-            out--;
-        }
-        return out;
-    }
-
     private static <K, V> void putBounded(Map<K, V> cache, K key, V value) {
         if (cache.size() > CACHE_LIMIT) {
             cache.clear();
@@ -329,8 +490,6 @@ final class TabRichTextRenderer {
     private record TextHeightKey(int fontId, int sizeKey) {
     }
 
-    private record FitKey(int fontId, String text, int sizeKey, int widthKey) {
-    }
 
     private record Segment(String text, Style style) {
     }

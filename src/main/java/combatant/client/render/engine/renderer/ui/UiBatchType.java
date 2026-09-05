@@ -26,8 +26,8 @@ public enum UiBatchType {
     PRIMITIVE(CombatantRenderPipelines.UI_PRIMITIVE_BATCH, true, false),
     GLOW(CombatantRenderPipelines.UI_GLOW_BATCH, true, false),
     TEXTURED_SHAPE(CombatantRenderPipelines.UI_TEXTURED_SHAPE_BATCH, CombatantRenderPipelines.UI_TEXTURED_SHAPE_BATCH_ANALYTIC_CLIP, true, true),
-    BLUR(CombatantRenderPipelines.UI_BLUR_BATCH, true, true),
-    BLUR_CORNERS(CombatantRenderPipelines.UI_BLUR_BATCH_CORNERS, true, true),
+    BLUR(CombatantRenderPipelines.UI_BLUR_BATCH, CombatantRenderPipelines.UI_BLUR_BATCH_ANALYTIC_CLIP, true, true),
+    BLUR_CORNERS(CombatantRenderPipelines.UI_BLUR_BATCH_CORNERS, CombatantRenderPipelines.UI_BLUR_BATCH_CORNERS_ANALYTIC_CLIP, true, true),
     LIQUID_GLASS(CombatantRenderPipelines.UI_LIQUID_GLASS_BATCH, CombatantRenderPipelines.UI_LIQUID_GLASS_BATCH_ANALYTIC_CLIP, true, true);
 
     public final RenderPipeline pipeline;

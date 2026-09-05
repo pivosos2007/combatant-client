@@ -46,7 +46,9 @@ record Blaze3dMeshAllocation(Blaze3dMeshArena arena,
 
     void write(MeshBuilder mesh) {
         mesh.validateComplete("dynamic mesh allocation write");
-        arena.writeVertices(vertexOffsetBytes, vertexBytes, mesh.vertexBufferView());
-        arena.writeIndices(indexOffsetBytes, indexBytes, mesh.indexBufferView());
+        arena.writeAllocation(
+                vertexOffsetBytes, vertexBytes, mesh.vertexBufferView(),
+                indexOffsetBytes, indexBytes, mesh.indexBufferView()
+        );
     }
 }

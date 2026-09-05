@@ -10,11 +10,11 @@ package combatant.client.render.engine.rhi.backend.gl.state;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import combatant.client.mixininterface.IRenderPipeline;
 import combatant.client.render.engine.rhi.clip.ShapeClipBackend;
+import combatant.client.render.engine.rhi.backend.gl.GlNativeStateTracker;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
 import combatant.client.render.engine.rhi.msaa.MsaaControl;
 import combatant.client.render.engine.rhi.state.PipelineStateBackend;
 
-import static org.lwjgl.opengl.GL11C.*;
 
 /**
  * GL implementation for out-of-band RenderPipeline state.
@@ -34,19 +34,19 @@ public final class SodiumGlPipelineStateBackend implements PipelineStateBackend 
     private static void applyLineSmooth(RenderPipeline pipeline) {
         boolean enabled = pipeline instanceof IRenderPipeline combatantPipeline && combatantPipeline.combatant$getLineSmooth();
         if (enabled) {
-            glEnable(GL_LINE_SMOOTH);
+            GlNativeStateTracker.lineSmooth(true);
             // Wide lines are expanded into geometry before draw submission. Keep native GL lines at 1px: relying
             // on glLineWidth for thickness is undefined on modern core-profile drivers and produces GL_INVALID_VALUE
             // on common AMD/Mesa paths where the supported aliased line range is effectively [1, 1].
-            glLineWidth(1.0f);
+            GlNativeStateTracker.lineWidth(1.0f);
         } else {
             resetLineSmooth();
         }
     }
 
     private static void resetLineSmooth() {
-        glDisable(GL_LINE_SMOOTH);
-        glLineWidth(1.0f);
+        GlNativeStateTracker.lineSmooth(false);
+        GlNativeStateTracker.lineWidth(1.0f);
     }
 
     @Override
@@ -60,6 +60,11 @@ public final class SodiumGlPipelineStateBackend implements PipelineStateBackend 
         }
         clip.bindPipeline(pipeline, contract);
         clip.applyNativeState();
+    }
+
+    @Override
+    public void invalidateForeignState() {
+        GlNativeStateTracker.invalidateAll();
     }
 
     @Override

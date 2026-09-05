@@ -37,6 +37,7 @@ import combatant.client.render.engine.text.backend.TextPlacementMode;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
+import combatant.client.render.engine.uniform.impl.UIBackdropUniforms;
 import combatant.client.render.engine.uniform.impl.UIBlurUniforms;
 import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
@@ -72,6 +73,8 @@ public final class OrderedUiBatcher {
     @Nullable GpuSampler sharedBlurredSampler;
     Renderer2D.BlurQuality sharedBlurQuality = Renderer2D.DEFAULT_BLUR_QUALITY;
     float sharedBlurOffsetPx = Renderer2D.DEFAULT_KAWASE_OFFSET_PX;
+    Renderer2D.Deferred2DLayer replayLayer;
+    boolean hudBackdropContribution;
 
     public OrderedUiBatcher() {
         for (int i = 0; i < pools.length; i++) {
@@ -103,6 +106,7 @@ public final class OrderedUiBatcher {
     public void begin() {
         resetOrder();
         resetSharedBlur();
+        hudBackdropContribution = Renderer2D.isHudBackdropContributionRecording();
         active = true;
         Renderer2D.BATCH_STATS.setActive(true);
     }
@@ -150,6 +154,10 @@ public final class OrderedUiBatcher {
                 : UiBackdropRequest.NONE;
         if (normalizedBackdrop.requiresCapturedScene() && normalizedBackdrop.sceneBlur().enabled()) {
             UiBlurResources.requestLiquidGlassBlur();
+        }
+        if (type == UiBatchType.LIQUID_GLASS
+                && normalizedBackdrop.uiUnderlayMode() != UiBackdropRequest.UiUnderlayMode.NONE) {
+            UiBlurResources.requestUiUnderlay(UiDeferredScheduler.layerForCurrentPhase(false));
         }
         UiScissorSnapshot scissor = ScissorFunction.currentSnapshot();
         UiClipSnapshot clip = ClipFunction.currentSnapshot();
@@ -326,6 +334,10 @@ public final class OrderedUiBatcher {
                 }
                 return;
             }
+            GpuTextureView uiUnderlayView = resolveUiUnderlayView(mc);
+            GpuTextureView secondaryReplayView = hudBackdropContribution
+                    ? resolveHudBackdropView(mc)
+                    : uiUnderlayView;
 
             // Deferred UI items are prepared once at the GuiRenderer preparation boundary.
             // Immediate batchers can still contain items (screen/addon paths), but even there
@@ -393,7 +405,7 @@ public final class OrderedUiBatcher {
                     if (itemBatch.isEmpty()) {
                         continue;
                     }
-                    drawCalls += ItemBatchRenderer.flush(itemBatch);
+                    drawCalls += ItemBatchRenderer.flush(itemBatch, secondaryReplayView);
                     continue;
                 }
                 if (entry instanceof TextBatch textBatch) {
@@ -401,8 +413,11 @@ public final class OrderedUiBatcher {
                         vertices += textBatch.mesh.getVertexCount();
                         indices += textBatch.mesh.getIndicesCount();
                         drawCalls++;
+                        int mirrorStart = pendingDraws.size();
                         TextRenderSystem.appendGlyphMeshCommand(pendingDraws, textBatch.label, textBatch.font,
                                 textBatch.mesh, textBatch.pipeline, textBatch.placement, textBatch.clipSnapshot);
+                        mirrorNewDraws(pendingDraws, mirrorStart,
+                                textBatch.clipSnapshot.usesMsaaStencil() ? null : secondaryReplayView);
                     }
                     continue;
                 }
@@ -417,7 +432,10 @@ public final class OrderedUiBatcher {
 
                 if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS) {
                     flushPendingDraws(pendingDraws);
-                    int blurPassCalls = prepareSharedBlur(mc, batch.view, batch.sampler, screenW, screenH, uiScale,
+                    boolean capturedScene = batch.backdropRequest.requiresCapturedScene();
+                    GpuTextureView blurSourceView = capturedScene ? liquidSourceView : batch.view;
+                    GpuSampler blurSourceSampler = capturedScene ? liquidSourceSampler : batch.sampler;
+                    int blurPassCalls = prepareSharedBlur(mc, blurSourceView, blurSourceSampler, screenW, screenH, uiScale,
                             batch.blurQuality, batch.blurOffsetPx);
                     if (sharedBlurredView != null && sharedBlurredSampler != null) {
                         MeshRenderer builder = MeshRenderer.begin()
@@ -430,13 +448,15 @@ public final class OrderedUiBatcher {
                             uiBatch = UIBatchUniforms.get();
                         }
                         builder.uniform("UIBatch", uiBatch);
+                        bindAnalyticClip(builder, batch);
                         builder.sampler("u_Texture", sharedBlurredView, sharedBlurredSampler);
                         builder.endTo(pendingDraws);
 
                         drawCalls += blurPassCalls;
                         continue;
                     }
-                    if (batch.view == mainColorView) {
+                    // Captured-scene blur must never degrade to the accumulated HUD target.
+                    if (capturedScene || batch.view == mainColorView) {
                         continue;
                     }
                 }
@@ -463,6 +483,34 @@ public final class OrderedUiBatcher {
                         liquidBlurSampler = sourceSampler;
                     }
 
+                    GpuTextureView glassUiUnderlayView = uiUnderlayView;
+                    GpuSampler glassUiUnderlaySampler = PostProcessManager.getSampler();
+                    boolean useUiUnderlay = batch.backdropRequest.requiresUiUnderlayCapture()
+                            && glassUiUnderlayView != null
+                            && glassUiUnderlaySampler != null;
+                    if (useUiUnderlay
+                            && batch.backdropRequest.uiUnderlayMode() == UiBackdropRequest.UiUnderlayMode.BLUR) {
+                        UiBackdropRequest.BlurParameters uiBlur = batch.backdropRequest.uiBlur();
+                        drawCalls += prepareSharedBlur(
+                                mc,
+                                glassUiUnderlayView,
+                                glassUiUnderlaySampler,
+                                screenW,
+                                screenH,
+                                1.0f,
+                                rendererQuality(uiBlur.quality()),
+                                uiBlur.offsetPx()
+                        );
+                        GpuTextureView preparedUiView = matchingSharedBlurView(
+                                glassUiUnderlayView, glassUiUnderlaySampler);
+                        GpuSampler preparedUiSampler = matchingSharedBlurSampler(
+                                glassUiUnderlayView, glassUiUnderlaySampler);
+                        if (preparedUiView != null && preparedUiSampler != null) {
+                            glassUiUnderlayView = preparedUiView;
+                            glassUiUnderlaySampler = preparedUiSampler;
+                        }
+                    }
+
                     if (sourceView == null || sourceSampler == null
                             || liquidBlurView == null || liquidBlurSampler == null
                             || sourceView == mainColorView
@@ -472,7 +520,7 @@ public final class OrderedUiBatcher {
 
                     MeshRenderer directBuilder = MeshRenderer.begin()
                             .attachments(mainColorView, null)
-                            .pipeline(pipelineFor(batch))
+                            .pipeline(pipelineForGlass(batch, useUiUnderlay))
                             .mesh(batch.mesh);
 
                     if (uiBatch == null) {
@@ -483,6 +531,12 @@ public final class OrderedUiBatcher {
                     bindAnalyticClip(directBuilder, batch);
                     directBuilder.sampler("u_Texture", sourceView, sourceSampler);
                     directBuilder.sampler("u_BlurTexture", liquidBlurView, liquidBlurSampler);
+                    if (useUiUnderlay) {
+                        directBuilder.uniform("UIBackdrop", UIBackdropUniforms.write(
+                                batch.backdropRequest.uiMix()));
+                        directBuilder.sampler("u_UiUnderlayTexture",
+                                glassUiUnderlayView, glassUiUnderlaySampler);
+                    }
                     directBuilder.endTo(pendingDraws);
                     continue;
                 }
@@ -594,10 +648,16 @@ public final class OrderedUiBatcher {
                     }
                 }
 
+                int mirrorStart = pendingDraws.size();
                 builder.endTo(pendingDraws);
+                mirrorNewDraws(pendingDraws, mirrorStart,
+                        batch.clipSnapshot.usesMsaaStencil() ? null : secondaryReplayView);
             }
 
             flushPendingDraws(pendingDraws);
+            if (hudBackdropContribution && secondaryReplayView != null) {
+                UiBlurResources.backdropContributionsSubmitted();
+            }
 
             int batches = order.size();
             Renderer2D.BATCH_STATS.update(active, batches, drawCalls, vertices, indices, poolTotal());
@@ -641,6 +701,10 @@ public final class OrderedUiBatcher {
                 Renderer2D.BATCH_STATS.noteFailure("mixed item pass: framebuffer color view null");
                 return;
             }
+            GpuTextureView uiUnderlayView = resolveUiUnderlayView(mc);
+            GpuTextureView secondaryReplayView = hudBackdropContribution
+                    ? resolveHudBackdropView(mc)
+                    : uiUnderlayView;
 
             if (!UiDeferredScheduler.isDraining()) {
                 itemPreparationScratch.clear();
@@ -663,7 +727,7 @@ public final class OrderedUiBatcher {
                 if (entry instanceof ItemBatch itemBatch) {
                     flushPendingDraws(pendingDraws);
                     if (!itemBatch.isEmpty()) {
-                        drawCalls += ItemBatchRenderer.flush(itemBatch);
+                        drawCalls += ItemBatchRenderer.flush(itemBatch, secondaryReplayView);
                     }
                     continue;
                 }
@@ -673,6 +737,7 @@ public final class OrderedUiBatcher {
                         vertices += textBatch.mesh.getVertexCount();
                         indices += textBatch.mesh.getIndicesCount();
                         drawCalls++;
+                        int mirrorStart = pendingDraws.size();
                         TextRenderSystem.appendGlyphMeshCommand(
                                 pendingDraws,
                                 textBatch.label,
@@ -682,6 +747,8 @@ public final class OrderedUiBatcher {
                                 textBatch.placement,
                                 textBatch.clipSnapshot
                         );
+                        mirrorNewDraws(pendingDraws, mirrorStart,
+                                textBatch.clipSnapshot.usesMsaaStencil() ? null : secondaryReplayView);
                     }
                     continue;
                 }
@@ -718,10 +785,16 @@ public final class OrderedUiBatcher {
                     MsdfTextUniforms.update(batch.msdfPxRange, batch.msdfAtlasWidth, batch.msdfAtlasHeight);
                     builder.uniform("MsdfText", MsdfTextUniforms.get());
                 }
+                int mirrorStart = pendingDraws.size();
                 builder.endTo(pendingDraws);
+                mirrorNewDraws(pendingDraws, mirrorStart,
+                        batch.clipSnapshot.usesMsaaStencil() ? null : secondaryReplayView);
             }
 
             flushPendingDraws(pendingDraws);
+            if (hudBackdropContribution && secondaryReplayView != null) {
+                UiBlurResources.backdropContributionsSubmitted();
+            }
             int batches = order.size();
             Renderer2D.BATCH_STATS.update(active, batches, drawCalls, vertices, indices, poolTotal());
             Renderer2D.BATCH_STATS.addFrame(batches, drawCalls, vertices, indices);
@@ -759,6 +832,10 @@ public final class OrderedUiBatcher {
         int drawCalls = 0;
         boolean completed = false;
         try {
+            Minecraft mc = Minecraft.getInstance();
+            GpuTextureView secondaryReplayView = hudBackdropContribution
+                    ? resolveHudBackdropView(mc)
+                    : null;
             if (!UiDeferredScheduler.isDraining()) {
                 itemPreparationScratch.clear();
                 collectItemBatches(itemPreparationScratch);
@@ -772,8 +849,12 @@ public final class OrderedUiBatcher {
             for (int i = 0, size = order.size(); i < size; i++) {
                 ItemBatch itemBatch = (ItemBatch) order.get(i);
                 if (itemBatch != null && !itemBatch.isEmpty()) {
-                    drawCalls += ItemBatchRenderer.flush(itemBatch);
+                    drawCalls += ItemBatchRenderer.flush(itemBatch, secondaryReplayView);
                 }
+            }
+
+            if (hudBackdropContribution && secondaryReplayView != null) {
+                UiBlurResources.backdropContributionsSubmitted();
             }
 
             int batches = order.size();
@@ -797,7 +878,7 @@ public final class OrderedUiBatcher {
     private static void flushPendingDraws(List<RhiDrawCommand> pendingDraws) {
         if (pendingDraws == null || pendingDraws.isEmpty()) return;
         try {
-            CombatantRenderSystem.rhi().drawMeshes(pendingDraws);
+            CombatantRenderSystem.rhi().drawMeshes(groupUiUnderlayReplays(pendingDraws));
         } finally {
             // Backends close every submitted range. This covers commands after an exceptional range.
             for (RhiDrawCommand command : pendingDraws) {
@@ -807,12 +888,81 @@ public final class OrderedUiBatcher {
         }
     }
 
+    static List<RhiDrawCommand> groupUiUnderlayReplays(List<RhiDrawCommand> draws) {
+        if (draws == null || draws.size() < 2) return draws;
+        boolean foundReplay = false;
+        boolean ordinaryAfterReplay = false;
+        for (RhiDrawCommand command : draws) {
+            if (command != null && command.uiUnderlayReplay) {
+                foundReplay = true;
+            } else if (foundReplay) {
+                ordinaryAfterReplay = true;
+                break;
+            }
+        }
+        if (!ordinaryAfterReplay) return draws;
+
+        ArrayList<RhiDrawCommand> grouped = new ArrayList<>(draws.size());
+        for (RhiDrawCommand command : draws) {
+            if (command == null || !command.uiUnderlayReplay) grouped.add(command);
+        }
+        for (RhiDrawCommand command : draws) {
+            if (command != null && command.uiUnderlayReplay) grouped.add(command);
+        }
+        return grouped;
+    }
+
+    @Nullable GpuTextureView resolveUiUnderlayView(Minecraft minecraft) {
+        Renderer2D.Deferred2DLayer layer = replayLayer != null
+                ? replayLayer
+                : UiDeferredScheduler.layerForCurrentPhase(false);
+        TextureTarget target = UiBlurResources.uiUnderlayTarget(minecraft, layer);
+        return target != null ? target.getColorTextureView() : null;
+    }
+
+    @Nullable GpuTextureView resolveHudBackdropView(Minecraft minecraft) {
+        if (!hudBackdropContribution || minecraft == null || !UiBlurResources.isWorldSourceReady()) {
+            return null;
+        }
+        TextureTarget target = UiBlurResources.ensureGlassSource(minecraft);
+        return target != null ? target.getColorTextureView() : null;
+    }
+
+    static void mirrorNewDraws(List<RhiDrawCommand> draws,
+                               int start,
+                               @Nullable GpuTextureView uiUnderlayView) {
+        if (draws == null || uiUnderlayView == null) return;
+        int end = draws.size();
+        if (start < 0 || start >= end) return;
+        for (int i = start; i < end; i++) {
+            RhiDrawCommand command = draws.get(i);
+            if (command == null || command.colorAttachment == uiUnderlayView) continue;
+            draws.add(command.retargetColor(" [UI underlay]", uiUnderlayView));
+        }
+    }
+
     private static RenderPipeline pipelineFor(DrawBatch batch) {
         if (batch.clipSnapshot.usesAnalyticPipeline() && !batch.type.supportsAnalyticClip()) {
             throw new IllegalStateException("UI batch " + batch.type
                     + " has no ANALYTIC_CLIP pipeline for clip snapshot " + batch.clipSnapshot.id());
         }
         return batch.type.pipelineFor(batch.clipSnapshot);
+    }
+
+    private static RenderPipeline pipelineForGlass(DrawBatch batch, boolean uiUnderlay) {
+        if (!uiUnderlay) return pipelineFor(batch);
+        return batch.clipSnapshot.usesAnalyticPipeline()
+                ? CombatantRenderPipelines.UI_LIQUID_GLASS_BATCH_UI_UNDERLAY_ANALYTIC_CLIP
+                : CombatantRenderPipelines.UI_LIQUID_GLASS_BATCH_UI_UNDERLAY;
+    }
+
+    private static Renderer2D.BlurQuality rendererQuality(UiBlurQuality quality) {
+        return switch (quality != null ? quality : UiBlurQuality.LOW) {
+            case LOW -> Renderer2D.BlurQuality.LOW;
+            case MEDIUM -> Renderer2D.BlurQuality.MEDIUM;
+            case HIGH -> Renderer2D.BlurQuality.HIGH;
+            case ULTRA -> Renderer2D.BlurQuality.ULTRA;
+        };
     }
 
     private static void bindAnalyticClip(MeshRenderer builder, DrawBatch batch) {
@@ -869,8 +1019,9 @@ public final class OrderedUiBatcher {
         }
 
         OrderedUiBatcher submitted = this;
+        submitted.replayLayer = UiDeferredScheduler.layerForCurrentPhase(isPureItemBatchOrder());
         UiDeferredScheduler.enqueue(new DeferredOrderedSubmit(
-                UiDeferredScheduler.layerForCurrentPhase(isPureItemBatchOrder()),
+                submitted.replayLayer,
                 UiDeferredScheduler.snapshotViewport(),
                 ScissorFunction.currentSnapshot(),
                 ClipFunction.currentSnapshot(),
@@ -888,6 +1039,8 @@ public final class OrderedUiBatcher {
     void prepareAsReplacement(boolean active) {
         resetOrder();
         resetSharedBlur();
+        replayLayer = null;
+        hudBackdropContribution = false;
         this.active = active;
     }
 
@@ -896,6 +1049,8 @@ public final class OrderedUiBatcher {
         resetSharedBlur();
         active = false;
         flushing = false;
+        replayLayer = null;
+        hudBackdropContribution = false;
     }
 
     private boolean adoptFrameBlurCache(@Nullable GpuTextureView sourceView,
@@ -1069,7 +1224,9 @@ public final class OrderedUiBatcher {
 
     private static String blurProfile(@Nullable GpuTextureView sourceView,
                                       Renderer2D.BlurQuality quality) {
-        String source = UiBlurResources.isCapturedWorldSource(sourceView) ? "captured_world" : "surface";
+        String source = UiBlurResources.isUiUnderlaySource(sourceView)
+                ? "ui_underlay"
+                : (UiBlurResources.isCapturedWorldSource(sourceView) ? "captured_world" : "surface");
         String level = switch (quality != null ? quality : Renderer2D.DEFAULT_BLUR_QUALITY) {
             case LOW -> "low";
             case MEDIUM -> "medium";

@@ -216,17 +216,18 @@ public final class UiRenderer {
         }
 
         if (style.liquidGlass()) {
-            context.renderer().liquidGlassRect(
-                    bounds.x(),
-                    bounds.y(),
-                    bounds.width(),
-                    bounds.height(),
-                    radius,
-                    0xFFFFFFFF,
-                    1.0f,
-                    blurAlpha,
-                    Renderer2D.LiquidGlassPreset.BALANCED
-            );
+            UiBackdropRuntime.drawLiquidGlass(context.renderer(), node.props(), () ->
+                    context.renderer().liquidGlassRect(
+                            bounds.x(),
+                            bounds.y(),
+                            bounds.width(),
+                            bounds.height(),
+                            radius,
+                            0xFFFFFFFF,
+                            1.0f,
+                            blurAlpha,
+                            Renderer2D.LiquidGlassPreset.BALANCED
+                    ));
         }
 
         if (style.backgroundColor() != null) {

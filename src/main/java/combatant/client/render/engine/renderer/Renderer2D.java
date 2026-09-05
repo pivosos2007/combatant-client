@@ -63,6 +63,7 @@ public final class Renderer2D {
     private static final int DEFAULT_ITEM_DURABILITY_TEXT_COLOR_THRESHOLD = 70;
     public static OrderedUiBatcher UI_BATCHER = new OrderedUiBatcher();
     public static final BatchStats BATCH_STATS = new BatchStats();
+    private static int backdropContributionDepth;
 
     /**
      * Frame-local blurred framebuffer cache.
@@ -139,6 +140,10 @@ public final class Renderer2D {
     private final int[] warpedShapeVertexTmp = new int[81];
     private final double[] progressShapeTmp = new double[256];
     private double alpha = 1.0;
+    private @Nullable UiBackdropRequest.UiUnderlayMode liquidGlassUiUnderlayOverride;
+    private UiBlurQuality liquidGlassUiBlurQuality = UiBlurQuality.LOW;
+    private float liquidGlassUiBlurOffsetPx = 0.85f;
+    private float liquidGlassUiMix = 1.0f;
 
     public Renderer2D(boolean textured) {
         this.textured = textured;
@@ -160,6 +165,50 @@ public final class Renderer2D {
     public double getAlpha() {
         return alpha;
     }
+
+    /** Records a module batch both to the visible HUD target and to the HUD backdrop source. */
+    public static void withHudBackdropContribution(Runnable draw) {
+        if (draw == null) return;
+        backdropContributionDepth++;
+        try {
+            draw.run();
+        } finally {
+            backdropContributionDepth = Math.max(0, backdropContributionDepth - 1);
+        }
+    }
+
+    public static boolean isHudBackdropContributionRecording() {
+        return backdropContributionDepth > 0;
+    }
+
+    /**
+     * Overrides the phase default for liquid-glass calls made by {@code draw}. NONE is useful for
+     * analytically isolated surfaces; PASS_THROUGH adds no blur passes; BLUR uses its own profile.
+     */
+    public void withLiquidGlassUiUnderlay(UiBackdropRequest.UiUnderlayMode mode,
+                                          UiBlurQuality blurQuality,
+                                          float blurOffsetPx,
+                                          float mix,
+                                          Runnable draw) {
+        if (draw == null) return;
+        UiBackdropRequest.UiUnderlayMode previousMode = liquidGlassUiUnderlayOverride;
+        UiBlurQuality previousQuality = liquidGlassUiBlurQuality;
+        float previousOffset = liquidGlassUiBlurOffsetPx;
+        float previousMix = liquidGlassUiMix;
+        liquidGlassUiUnderlayOverride = mode != null ? mode : UiBackdropRequest.UiUnderlayMode.NONE;
+        liquidGlassUiBlurQuality = blurQuality != null ? blurQuality : UiBlurQuality.LOW;
+        liquidGlassUiBlurOffsetPx = Float.isFinite(blurOffsetPx) ? Math.max(0.0f, blurOffsetPx) : 0.85f;
+        liquidGlassUiMix = clamp01(mix);
+        try {
+            draw.run();
+        } finally {
+            liquidGlassUiUnderlayOverride = previousMode;
+            liquidGlassUiBlurQuality = previousQuality;
+            liquidGlassUiBlurOffsetPx = previousOffset;
+            liquidGlassUiMix = previousMix;
+        }
+    }
+
 
     public void shape(UiShape shape, UiPaint paint) {
         shape(shape, paint, UiStroke.NONE, true);
@@ -2989,6 +3038,23 @@ public final class Renderer2D {
                 squirclePower);
     }
 
+    private UiBackdropRequest liquidGlassBackdrop(UiRect bounds,
+                                                   UiBlurQuality sceneQuality,
+                                                   float sceneOffsetPx) {
+        UiBackdropRequest request = UiBackdropRequest.capturedSceneGlass(
+                bounds, sceneQuality, sceneOffsetPx);
+        UiBackdropRequest.UiUnderlayMode mode = liquidGlassUiUnderlayOverride;
+        if (mode == null) {
+            mode = UiBackdropRequest.UiUnderlayMode.NONE;
+        }
+        if (mode == UiBackdropRequest.UiUnderlayMode.NONE) return request;
+
+        UiBackdropRequest.BlurParameters uiBlur = mode == UiBackdropRequest.UiUnderlayMode.BLUR
+                ? UiBackdropRequest.BlurParameters.of(liquidGlassUiBlurQuality, liquidGlassUiBlurOffsetPx)
+                : UiBackdropRequest.BlurParameters.NONE;
+        return request.withUiUnderlay(mode, uiBlur, liquidGlassUiMix);
+    }
+
     public void liquidGlassSquircle(UiBoxShape squircle,
                                     int tintArgb,
                                     float glassAlpha,
@@ -3059,7 +3125,7 @@ public final class Renderer2D {
                 ? Math.max(0.0f, blurOffsetPx)
                 : LIQUID_GLASS_KAWASE_OFFSET_PX;
         UiShape glassShape = UiShape.polyline(primitive.points(), primitive.pointCount(), true);
-        UiBackdropRequest backdrop = UiBackdropRequest.capturedSceneGlass(
+        UiBackdropRequest backdrop = liquidGlassBackdrop(
                 bounds, UiBlurQuality.fromRenderer(preparedBlurQuality), preparedBlurOffset);
         effect(UiEffectSpec.liquidGlass(
                 glassShape, primitive.rounding(), thickness, distortPx, tintArgb, backdrop));
@@ -3556,7 +3622,7 @@ public final class Renderer2D {
         UiShape glassShape = wholeBoxSquircle
                 ? UiShapes.squircle(x, y, w, h, shapePower)
                 : UiShape.roundedRect(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL);
-        UiBackdropRequest backdrop = UiBackdropRequest.capturedSceneGlass(
+        UiBackdropRequest backdrop = liquidGlassBackdrop(
                 glassShape.bounds(), UiBlurQuality.HIGH, LIQUID_GLASS_KAWASE_OFFSET_PX);
         effect(UiEffectSpec.liquidGlass(glassShape, softness, softness, distortPx, tintArgb, backdrop));
         Minecraft mc = Minecraft.getInstance();
@@ -3654,6 +3720,71 @@ public final class Renderer2D {
     public void blurRect(double x, double y, double w, double h,
                          float radius, float quality, float brightness, float alpha, int ignoredTintRgb) {
         blurRect(x, y, w, h, radius, quality, brightness, alpha, ignoredTintRgb, UiBatchType.BLUR);
+    }
+
+    /**
+     * Blurs the scene captured before HUD rendering. Already-rendered HUD/UI is deliberately
+     * excluded, so the result is stable regardless of widget order.
+     */
+    public void backdropBlurRect(double x, double y, double w, double h,
+                                 float radius, float quality, float brightness, float alpha) {
+        backdropBlurRectCorners(x, y, w, h, radius, radius, radius, radius,
+                quality, brightness, alpha);
+    }
+
+    /** Captured-scene-only backdrop blur with independent corner radii and no glass/rim shader. */
+    public void backdropBlurRectCorners(double x, double y, double w, double h,
+                                        float radiusTL, float radiusTR, float radiusBR, float radiusBL,
+                                        float quality, float brightness, float alpha) {
+        if (w <= 0.0 || h <= 0.0 || alpha <= 0.001f) return;
+
+        float rTL = Math.max(0.0f, radiusTL);
+        float rTR = Math.max(0.0f, radiusTR);
+        float rBR = Math.max(0.0f, radiusBR);
+        float rBL = Math.max(0.0f, radiusBL);
+        UiShape blurShape = UiShape.roundedRect(x, y, w, h, rTL, rTR, rBR, rBL);
+        // Captured scene is prewarmed before HUD extraction. Keep this key identical so clipped
+        // HUD consumers reuse that texture instead of trying to run Kawase passes inside stencil.
+        BlurQuality blurQuality = DEFAULT_LIQUID_GLASS_BLUR_QUALITY;
+        float blurOffset = LIQUID_GLASS_KAWASE_OFFSET_PX;
+        UiBackdropRequest backdrop = UiBackdropRequest.capturedSceneBlur(
+                blurShape.bounds(), UiBlurQuality.fromRenderer(blurQuality), blurOffset);
+        effect(UiEffectSpec.blur(blurShape, Math.max(Math.max(rTL, rTR), Math.max(rBR, rBL)),
+                0xFFFFFF, backdrop));
+        BlurSource source = getBlurSource();
+        if (source == null) return;
+
+        boolean auto = beginAutoBatch();
+        try {
+            DrawBatch batch = UI_BATCHER.getOrCreateBlur(
+                    UiBatchType.BLUR_CORNERS, source.view, source.sampler,
+                    blurQuality, blurOffset, backdrop);
+            if (batch == null) return;
+            MeshBuilder mesh = batch.mesh;
+            mesh.alpha = 1.0;
+
+            float finalAlpha = clamp01((float) (alpha * this.alpha));
+            if (finalAlpha <= 0.001f) return;
+            int a = Math.max(0, Math.min(255, Math.round(finalAlpha * 255.0f)));
+            float smoothness = 2.0f;
+
+            mesh.ensureQuadCapacity();
+            int i1 = mesh.vec2(x, y).local2(x, y).color(255, 255, 255, a)
+                    .vec4(x, y, w, h).vec4(rTL, rTR, rBR, rBL)
+                    .vec4(quality, brightness, smoothness, 0.0f).next();
+            int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(255, 255, 255, a)
+                    .vec4(x, y, w, h).vec4(rTL, rTR, rBR, rBL)
+                    .vec4(quality, brightness, smoothness, 0.0f).next();
+            int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(255, 255, 255, a)
+                    .vec4(x, y, w, h).vec4(rTL, rTR, rBR, rBL)
+                    .vec4(quality, brightness, smoothness, 0.0f).next();
+            int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(255, 255, 255, a)
+                    .vec4(x, y, w, h).vec4(rTL, rTR, rBR, rBL)
+                    .vec4(quality, brightness, smoothness, 0.0f).next();
+            mesh.quad(i1, i2, i3, i4);
+        } finally {
+            endAutoBatch(auto);
+        }
     }
 
     public void blurSquircle(double x, double y, double w, double h,

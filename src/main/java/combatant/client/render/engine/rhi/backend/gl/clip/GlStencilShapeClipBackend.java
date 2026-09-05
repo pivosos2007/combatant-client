@@ -8,11 +8,13 @@
 package combatant.client.render.engine.rhi.backend.gl.clip;
 
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11C;
 import combatant.client.render.engine.rhi.clip.ShapeClipBackend;
 import combatant.client.render.engine.rhi.backend.gl.GlValidation;
+import combatant.client.render.engine.rhi.backend.gl.GlNativeStateTracker;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
 import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.util.logging.DebugLog;
@@ -35,12 +37,8 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
     private String currentPassLabel = "<no-pass>";
     private boolean currentPassPrepared;
     private ShapeClipRenderPassContract currentPipelineContract = ShapeClipRenderPassContract.NONE;
+    private @Nullable RenderPipeline currentPipeline;
     private String currentPipelineName = "<no-pipeline>";
-    private boolean depthStateCaptured;
-    private boolean previousDepthTest;
-    private boolean previousDepthMask;
-    private boolean cullStateCaptured;
-    private boolean previousCullFace;
     private String lastFailure = "none";
 
     private static int clampRef(int value) {
@@ -128,6 +126,7 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
         currentPassLabel = "<no-pass>";
         currentPassPrepared = false;
         currentPipelineContract = ShapeClipRenderPassContract.NONE;
+        currentPipeline = null;
         currentPipelineName = "<no-pipeline>";
         renderPassAttachmentRequired = false;
         attachmentReason = "none";
@@ -136,6 +135,7 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
 
     @Override
     public void bindPipeline(RenderPipeline pipeline, ShapeClipRenderPassContract contract) {
+        currentPipeline = pipeline;
         currentPipelineContract = contract == null ? ShapeClipRenderPassContract.NONE : contract;
         currentPipelineName = pipeline == null || pipeline.getLocation() == null ? "<unknown>" : pipeline.getLocation().toString();
         if (mode != Mode.DISABLED && currentPipelineContract == ShapeClipRenderPassContract.NONE) {
@@ -246,39 +246,36 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
             return;
         }
 
-        captureDepthStateIfNeeded();
-        GL11C.glDisable(GL11C.GL_DEPTH_TEST);
-        GL11C.glDepthMask(false);
-        GL11C.glEnable(GL11C.GL_STENCIL_TEST);
+        GlStateManager._disableDepthTest();
+        GlStateManager._depthMask(false);
+        GlNativeStateTracker.stencilEnabled(true);
 
         switch (mode) {
             case WRITE -> {
-                captureCullStateIfNeeded();
-                GL11C.glDisable(GL11C.GL_CULL_FACE);
-                GL11C.glStencilMask(0xFF);
+                GlStateManager._disableCull();
+                GlNativeStateTracker.stencilMask(0xFF);
                 int compareFunc = compareReference == 0 ? GL11C.GL_ALWAYS : GL11C.GL_EQUAL;
-                GL11C.glStencilFunc(compareFunc, compareReference, 0xFF);
+                GlNativeStateTracker.stencilFunc(compareFunc, compareReference, 0xFF);
                 // The stack model stores child = parent + 1. GL_REPLACE cannot express
                 // "compare against parent but write child", because REPLACE writes the
                 // same ref value supplied to glStencilFunc. Increment/decrement keeps the
                 // compare ref independent from the value transition.
-                GL11C.glStencilOp(GL11C.GL_KEEP, GL11C.GL_INCR, GL11C.GL_INCR);
-                GL11C.glColorMask(false, false, false, false);
+                GlNativeStateTracker.stencilOp(GL11C.GL_KEEP, GL11C.GL_INCR, GL11C.GL_INCR);
+                GlStateManager._colorMask(0);
             }
             case RESTORE -> {
-                captureCullStateIfNeeded();
-                GL11C.glDisable(GL11C.GL_CULL_FACE);
-                GL11C.glStencilMask(0xFF);
-                GL11C.glStencilFunc(GL11C.GL_EQUAL, compareReference, 0xFF);
-                GL11C.glStencilOp(GL11C.GL_KEEP, GL11C.GL_DECR, GL11C.GL_DECR);
-                GL11C.glColorMask(false, false, false, false);
+                GlStateManager._disableCull();
+                GlNativeStateTracker.stencilMask(0xFF);
+                GlNativeStateTracker.stencilFunc(GL11C.GL_EQUAL, compareReference, 0xFF);
+                GlNativeStateTracker.stencilOp(GL11C.GL_KEEP, GL11C.GL_DECR, GL11C.GL_DECR);
+                GlStateManager._colorMask(0);
             }
             case TEST -> {
-                restoreCullStateIfNeeded();
-                GL11C.glStencilMask(0x00);
-                GL11C.glStencilFunc(GL11C.GL_EQUAL, reference, 0xFF);
-                GL11C.glStencilOp(GL11C.GL_KEEP, GL11C.GL_KEEP, GL11C.GL_KEEP);
-                GL11C.glColorMask(true, true, true, true);
+                restorePipelineCullState();
+                GlNativeStateTracker.stencilMask(0x00);
+                GlNativeStateTracker.stencilFunc(GL11C.GL_EQUAL, reference, 0xFF);
+                GlNativeStateTracker.stencilOp(GL11C.GL_KEEP, GL11C.GL_KEEP, GL11C.GL_KEEP);
+                restorePipelineColorMask();
             }
             case DISABLED -> resetNativeStateOnly();
         }
@@ -307,47 +304,47 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
     }
 
     private void resetNativeStateOnly() {
-        GL11C.glDisable(GL11C.GL_STENCIL_TEST);
-        GL11C.glStencilMask(0x00);
-        GL11C.glStencilFunc(GL11C.GL_ALWAYS, 0, 0xFF);
-        GL11C.glStencilOp(GL11C.GL_KEEP, GL11C.GL_KEEP, GL11C.GL_KEEP);
-        GL11C.glColorMask(true, true, true, true);
-        restoreDepthStateIfNeeded();
-        restoreCullStateIfNeeded();
+        GlNativeStateTracker.stencilEnabled(false);
+        GlNativeStateTracker.stencilMask(0x00);
+        GlNativeStateTracker.stencilFunc(GL11C.GL_ALWAYS, 0, 0xFF);
+        GlNativeStateTracker.stencilOp(GL11C.GL_KEEP, GL11C.GL_KEEP, GL11C.GL_KEEP);
+        restorePipelineDepthState();
+        restorePipelineCullState();
+        restorePipelineColorMask();
     }
 
-    private void captureDepthStateIfNeeded() {
-        if (depthStateCaptured) return;
-        previousDepthTest = GL11C.glIsEnabled(GL11C.GL_DEPTH_TEST);
-        previousDepthMask = GL11C.glGetBoolean(GL11C.GL_DEPTH_WRITEMASK);
-        depthStateCaptured = true;
-    }
-
-    private void restoreDepthStateIfNeeded() {
-        if (!depthStateCaptured) return;
-        if (previousDepthTest) {
-            GL11C.glEnable(GL11C.GL_DEPTH_TEST);
-        } else {
-            GL11C.glDisable(GL11C.GL_DEPTH_TEST);
+    /**
+     * Restore shared GL state from the current Blaze3D pipeline contract instead of querying the
+     * driver. These states are owned/cached by GlStateManager, so mutating through it also keeps
+     * Mojang's shadow state coherent after Combatant's temporary clip override.
+     */
+    private void restorePipelineDepthState() {
+        RenderPipeline pipeline = currentPipeline;
+        if (pipeline == null || pipeline.getDepthStencilState() == null) {
+            GlStateManager._disableDepthTest();
+            GlStateManager._depthMask(false);
+            return;
         }
-        GL11C.glDepthMask(previousDepthMask);
-        depthStateCaptured = false;
+        GlStateManager._enableDepthTest();
+        GlStateManager._depthMask(pipeline.getDepthStencilState().writeDepth());
     }
 
-    private void captureCullStateIfNeeded() {
-        if (cullStateCaptured) return;
-        previousCullFace = GL11C.glIsEnabled(GL11C.GL_CULL_FACE);
-        cullStateCaptured = true;
-    }
-
-    private void restoreCullStateIfNeeded() {
-        if (!cullStateCaptured) return;
-        if (previousCullFace) {
-            GL11C.glEnable(GL11C.GL_CULL_FACE);
+    private void restorePipelineCullState() {
+        RenderPipeline pipeline = currentPipeline;
+        if (pipeline != null && pipeline.isCull()) {
+            GlStateManager._enableCull();
         } else {
-            GL11C.glDisable(GL11C.GL_CULL_FACE);
+            GlStateManager._disableCull();
         }
-        cullStateCaptured = false;
+    }
+
+    private void restorePipelineColorMask() {
+        RenderPipeline pipeline = currentPipeline;
+        if (pipeline == null || pipeline.getColorTargetStates().length == 0 || pipeline.getColorTargetState() == null) {
+            GlStateManager._colorMask(15);
+            return;
+        }
+        GlStateManager._colorMask(pipeline.getColorTargetState().writeMask());
     }
 
     @Override

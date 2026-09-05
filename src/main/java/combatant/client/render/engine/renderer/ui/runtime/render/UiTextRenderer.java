@@ -11,6 +11,7 @@ import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.renderer.ui.runtime.style.UiStyle;
 import combatant.client.render.engine.text.VanillaTextRenderer;
 import combatant.client.render.engine.text.Fonts;
+import combatant.client.render.engine.text.RuntimeTextLayout;
 import combatant.client.render.engine.text.TextEffectSpec;
 import combatant.client.render.engine.text.TextRenderer;
 
@@ -52,7 +53,8 @@ public final class UiTextRenderer {
     }
 
     public float measureWidth(TextRenderer fallback, String text, UiStyle style) {
-        if (text == null || text.isEmpty()) return 0.0f;
+        text = RuntimeTextLayout.singleLine(text);
+        if (text.isEmpty()) return 0.0f;
         TextRenderer renderer = resolve(fallback, style);
         float scale = Math.max(0.01f, style.textScale());
         boolean shadow = style.textShadow();
@@ -110,7 +112,8 @@ public final class UiTextRenderer {
     }
 
     public void render(TextRenderer fallback, String text, float x, float y, UiStyle style, int color, TextEffectSpec effect, String backend) {
-        if (text == null || text.isEmpty()) return;
+        text = RuntimeTextLayout.singleLine(text);
+        if (text.isEmpty()) return;
         if ((color >>> 24) == 0) return;
         TextRenderer renderer = resolve(fallback, style, backend);
         float scale = Math.max(0.01f, style.textScale());
@@ -146,7 +149,8 @@ public final class UiTextRenderer {
                                      int endColor,
                                      float angleDeg,
                                      String backend) {
-        if (text == null || text.isEmpty()) return;
+        text = RuntimeTextLayout.singleLine(text);
+        if (text.isEmpty()) return;
         if (((startColor | endColor) >>> 24) == 0) return;
         TextRenderer renderer = resolve(fallback, style, backend);
         float scale = Math.max(0.01f, style.textScale());
@@ -231,7 +235,8 @@ public final class UiTextRenderer {
                                             float fadeLeft,
                                             float fadeRight,
                                             int color) {
-        if (text == null || text.isEmpty()) return;
+        text = RuntimeTextLayout.singleLine(text);
+        if (text.isEmpty()) return;
         if ((color >>> 24) == 0) return;
         TextRenderer renderer = resolve(fallback, style);
         float scale = Math.max(0.01f, style.textScale());
