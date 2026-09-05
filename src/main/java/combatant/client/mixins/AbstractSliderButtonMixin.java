@@ -34,13 +34,10 @@ public abstract class AbstractSliderButtonMixin {
 
         boolean hovered = widget.isMouseOver(mouseX, mouseY);
         boolean dragging = ((SliderWidgetAccessor) self).combatant$isDragging();
-        float hover = BetterButtons.updateHover(widget, hovered || dragging);
+        float hover = BetterButtons.updateHover(widget, hovered || dragging, mouseX, mouseY);
 
         double value = ((SliderWidgetAccessor) self).combatant$getValue();
         BetterButtons.enqueueSlider(widget, (float) value, dragging, hover);
-        if (hovered) {
-            BetterButtons.captureTooltip(widget, mouseX, mouseY);
-        }
         ci.cancel();
     }
 }

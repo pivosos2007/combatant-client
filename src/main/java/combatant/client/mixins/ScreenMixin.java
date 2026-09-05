@@ -19,6 +19,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.features.command.CommandManager;
 import combatant.client.features.gui.hud.nondraggable.impl.BetterButtons;
+import combatant.client.features.gui.hud.nondraggable.impl.BetterTooltips;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.NoRender;
 import combatant.client.render.engine.core.CombatantRenderSystem;
@@ -70,6 +71,8 @@ public abstract class ScreenMixin {
 
     @Inject(method = "extractRenderStateWithTooltipAndSubtitles(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V", at = @At("HEAD"))
     private void combatant$beginButtonQueue(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+        BetterTooltips.beginTooltipFrame();
+        BetterTooltips.setDrawContext(ctx);
         BetterButtons.beginFrame(ctx);
     }
 

@@ -43,9 +43,6 @@ public abstract class CycleButtonMixin<T> {
 
         boolean showLabel = accessor.combatant$getLabelType() != CycleButton.DisplayState.HIDE;
         BetterButtons.enqueueCyclingButton(self, icon, showLabel, hover, widget.isActive(), widget.isFocused());
-        if (hovered) {
-            BetterButtons.captureTooltip(widget, mouseX, mouseY);
-        }
 
         ci.cancel();
     }

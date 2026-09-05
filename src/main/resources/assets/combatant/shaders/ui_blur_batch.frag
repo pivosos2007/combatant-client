@@ -18,6 +18,7 @@ uniform sampler2D u_Texture;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen; // xy = framebuffer size, zw = logical size
+    vec4 uLayer;
 };
 
 float roundedBoxSDF(vec2 center, vec2 size, float radius) {

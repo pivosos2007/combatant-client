@@ -12,13 +12,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.*;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.data.AtlasIds;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Util;
 import combatant.client.config.SettingDef;
 import combatant.client.config.values.BooleanValue;
@@ -28,8 +26,7 @@ import combatant.client.config.values.RGBAColorValue;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
-import combatant.client.mixininterface.IRoundedHitbox;
-import combatant.client.mixins.accessors.ClickableWidgetAccessor;
+import combatant.client.features.theme.Themes;
 import combatant.client.mixins.accessors.TextIconButtonWidgetAccessor;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
@@ -137,7 +134,6 @@ public final class BetterButtons extends AbstractHudElement {
         LAST_CTX = ctx;
         QUEUE.clear();
         SCISSOR_STACK.clear();
-        BetterTooltips.beginTooltipFrame();
     }
 
     public static GuiGraphicsExtractor getLastContext() {
@@ -195,30 +191,11 @@ public final class BetterButtons extends AbstractHudElement {
         ScissorFunction.pop();
     }
 
-    public static void captureTooltip(AbstractWidget widget, int mouseX, int mouseY) {
-        if (widget == null) return;
-        BetterTooltips tooltips = BetterTooltips.get();
-        if (tooltips == null || !tooltips.useCustomGuiTooltips()) {
-            return;
-        }
-        WidgetTooltipHolder state = ((ClickableWidgetAccessor) widget).combatant$getTooltipState();
-        if (state == null) return;
-        Tooltip tooltip = state.get();
-        if (tooltip == null) return;
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null) return;
-        List<FormattedCharSequence> lines = tooltip.toCharSequence(mc);
-        if (lines == null || lines.isEmpty()) return;
-        BetterTooltips.captureTooltipOrdered(lines, DefaultTooltipPositioner.INSTANCE, mouseX, mouseY);
-    }
 
     public static boolean hasPending() {
         return !QUEUE.isEmpty();
     }
 
-    public static boolean hasTooltip() {
-        return BetterTooltips.hasTooltip();
-    }
 
     public static void enqueueButton(AbstractWidget widget,
                                      Component text,
@@ -325,13 +302,6 @@ public final class BetterButtons extends AbstractHudElement {
         );
     }
 
-    private static float parallaxShiftX(AbstractWidget widget, float hover) {
-        return computeParallax(widget, hover).shiftX;
-    }
-
-    private static float parallaxShiftY(AbstractWidget widget, float hover) {
-        return computeParallax(widget, hover).shiftY;
-    }
 
     public static void renderButton(GuiGraphicsExtractor ctx,
                                     AbstractWidget widget,
@@ -366,167 +336,128 @@ public final class BetterButtons extends AbstractHudElement {
         float y = widget.getY();
         float w = widget.getWidth();
         float h = widget.getHeight();
-
-        BetterButtons cfg = INSTANCE;
-        Style mode = cfg.style.get();
-        float radiusBase = BUTTON_RADIUS;
-        float softness = 0.0f;
-        float strokeSoft = 0.0f;
-        if (mode == Style.GRADIENT) {
-            softness = BUTTON_SOFTNESS;
-            strokeSoft = BUTTON_SOFTNESS;
-        } else if (mode == Style.CUSTOM) {
-            radiusBase = cfg.customRadius.get();
-            softness = cfg.customSoftness.get();
-            strokeSoft = cfg.customSoftness.get();
-        }
-
-        float radius = Math.min(radiusBase, h * 0.5f);
-        markRounded(widget, radius);
-
         float alpha = widget.getAlpha();
         float hoverEase = smoothHover(hover);
+        WidgetPalette palette = resolveWidgetPalette(enabled, hoverEase);
+        float radius = Math.min(resolveRadius(), h * 0.5f);
+        float softness = resolveSoftness();
+        ButtonParallax parallax = allowParallax ? computeParallax(widget, hover) : ButtonParallax.NONE;
 
         float xb = x * scale;
         float yb = y * scale;
         float wb = w * scale;
         float hb = h * scale;
-        float rb = radius * scale;
-        float softnessPx = softness * scale;
-        float strokeSoftPx = strokeSoft * scale;
-        ButtonParallax parallax = allowParallax ? computeParallax(widget, hover) : ButtonParallax.NONE;
+        float mx = MOUSE_X.getOrDefault(widget, x + w * 0.5f) * scale;
+        float my = MOUSE_Y.getOrDefault(widget, y + h * 0.5f) * scale;
+        float now = Util.getMillis() * 0.001f;
 
-        if (manageProjection) {
-            ViewportContext.beginUnscaled(null);
-        }
-        boolean batching = Renderer2D.isBatching();
-        if (!batching) {
-            Renderer2D.COLOR.begin();
-        }
-
+        if (manageProjection) ViewportContext.beginUnscaled(null);
         try (RenderWarpStack.Scope ignored = pushParallaxWarp(parallax, xb, yb, wb, hb)) {
-            if (mode == Style.DEFAULT) {
-                int baseBg = enabled ? 0xFF1B1B1B : 0xFF141414;
-                int hoverBg = enabled ? 0xFF2A2A2A : 0xFF141414;
-                int accent = theme().accent();
-
-                int darkBase = HudRenderUtil.mixColor(baseBg, 0xFF000000, 0.45f);
-                float hoverMix = enabled ? (0.08f + 0.22f * hoverEase) : 0.0f;
-                int bgBase = HudRenderUtil.mixColor(darkBase, hoverBg, hoverMix);
-                bgBase = HudRenderUtil.mixColor(bgBase, accent, 0.18f * hoverEase);
-                int strokeBase = HudRenderUtil.mixColor(bgBase, 0xFFFFFFFF, 0.18f);
-                strokeBase = HudRenderUtil.mixColor(strokeBase, accent, 0.16f * hoverEase + (focused ? 0.06f : 0.0f));
-
-                int bg = HudRenderUtil.scaleAlpha(bgBase, alpha);
-                int stroke = HudRenderUtil.scaleAlpha(strokeBase, 0.82f * alpha);
-
-                Renderer2D.COLOR.roundedRect(xb, yb, wb, hb, rb, 0.0f, bg);
-
-                int gradLight = HudRenderUtil.mixColor(bg, 0xFFFFFFFF, 0.36f + 0.10f * hoverEase);
-                int gradMid = HudRenderUtil.mixColor(bg, 0xFF000000, 0.03f);
-                int gradDark = HudRenderUtil.mixColor(bg, 0xFF000000, 0.20f + 0.10f * hoverEase);
-                if (hoverEase > 0.001f) {
-                    int accentTop = HudRenderUtil.mixColor(theme().accent(), bg, 0.65f);
-                    int accentBottom = HudRenderUtil.mixColor(theme().accentSoft(), bg, 0.75f);
-                    float t = Math.min(1.0f, hoverEase * 0.6f);
-                    gradLight = HudRenderUtil.mixColor(gradLight, accentTop, t);
-                    gradDark = HudRenderUtil.mixColor(gradDark, accentBottom, t * 0.85f);
-                }
-                Renderer2D.COLOR.roundedRectGradientQuad(xb, yb, wb, hb, rb, 0.0f, gradLight, gradMid, gradDark, gradMid);
-
-                float strokeThickness = 0.7f * scale;
-                int strokeInner = HudRenderUtil.scaleAlpha(strokeBase, 0.9f * alpha);
-                int strokeTop = HudRenderUtil.mixColor(strokeInner, 0xFFFFFFFF, 0.2f);
-                int strokeBottom = HudRenderUtil.mixColor(strokeInner, 0xFF000000, 0.25f);
-                Renderer2D.COLOR.roundedRectStrokeGradient(xb, yb, wb, hb, rb, 0.0f, strokeThickness, strokeTop, strokeBottom, 90f);
-
-                float halo = (focused ? 0.45f : 0.25f) * hoverEase;
-                if (enabled && halo > 0.01f) {
-                    int haloColor = HudRenderUtil.scaleAlpha(strokeBase, 0.35f * halo * alpha);
-                    Renderer2D.COLOR.roundedRectStroke(xb, yb, wb, hb, rb, 0.0f, strokeThickness + 1.1f * scale, haloColor);
-                }
-            } else if (mode == Style.GRADIENT) {
-                int base = cfg.gradientBaseColor.getArgb();
-                int grad = cfg.gradientColor.getArgb();
-                float intensity = clamp01(cfg.gradientIntensity.get());
-                float mix = clamp01(intensity + (enabled ? hoverEase * 0.2f : 0.0f));
-
-                int start = HudRenderUtil.mixColor(base, grad, mix);
-                int end = HudRenderUtil.mixColor(base, grad, intensity * 0.2f);
-                if (!enabled) {
-                    start = HudRenderUtil.mixColor(start, 0xFF000000, 0.2f);
-                    end = HudRenderUtil.mixColor(end, 0xFF000000, 0.2f);
-                }
-
-                int strokeBase = HudRenderUtil.mixColor(base, 0xFFFFFFFF, 0.18f);
-                strokeBase = HudRenderUtil.mixColor(strokeBase, grad, 0.12f * hoverEase);
-                if (!enabled) {
-                    strokeBase = HudRenderUtil.mixColor(strokeBase, 0xFF000000, 0.25f);
-                }
-
-                int bgStart = HudRenderUtil.scaleAlpha(start, alpha);
-                int bgEnd = HudRenderUtil.scaleAlpha(end, alpha);
-                int stroke = HudRenderUtil.scaleAlpha(strokeBase, 0.85f * alpha);
-
-                Renderer2D.COLOR.roundedRectGradient(xb, yb, wb, hb, rb, softnessPx, bgStart, bgEnd, cfg.gradientAngle.get());
-
-                float strokeThickness = 0.7f * scale;
-                Renderer2D.COLOR.roundedRectStroke(xb, yb, wb, hb, rb, strokeSoftPx, strokeThickness, stroke);
-
-                float halo = (focused ? 0.45f : 0.25f) * hoverEase;
-                if (enabled && halo > 0.01f) {
-                    int haloColor = HudRenderUtil.scaleAlpha(strokeBase, 0.35f * halo * alpha);
-                    Renderer2D.COLOR.roundedRectStroke(xb, yb, wb, hb, rb, strokeSoftPx, strokeThickness + 1.1f * scale, haloColor);
-                }
-            } else {
-                int base = cfg.customBg.getArgb();
-                int hoverBg = cfg.customBgHover.getArgb();
-                int disabledBg = cfg.customBgDisabled.getArgb();
-                int bg = enabled ? HudRenderUtil.mixColor(base, hoverBg, hoverEase) : disabledBg;
-
-                int strokeBase = enabled
-                        ? HudRenderUtil.mixColor(cfg.customStroke.getArgb(), cfg.customStrokeHover.getArgb(), hoverEase)
-                        : cfg.customStrokeDisabled.getArgb();
-
-                float strokeThickness = cfg.customStrokeThickness.get() * scale;
-
-                if (cfg.customGradient.get()) {
-                    float t = clamp01(cfg.customGradientIntensity.get());
-                    int grad = cfg.customGradientColor.getArgb();
-                    int start = HudRenderUtil.mixColor(bg, grad, t);
-                    int end = HudRenderUtil.mixColor(bg, grad, t * 0.2f);
-                    int bgStart = HudRenderUtil.scaleAlpha(start, alpha);
-                    int bgEnd = HudRenderUtil.scaleAlpha(end, alpha);
-                    Renderer2D.COLOR.roundedRectGradient(xb, yb, wb, hb, rb, softnessPx, bgStart, bgEnd, cfg.customGradientAngle.get());
-                } else {
-                    int fill = HudRenderUtil.scaleAlpha(bg, alpha);
-                    Renderer2D.COLOR.roundedRect(xb, yb, wb, hb, rb, softnessPx, fill);
-                }
-
-                int stroke = HudRenderUtil.scaleAlpha(strokeBase, 0.85f * alpha);
-                Renderer2D.COLOR.roundedRectStroke(xb, yb, wb, hb, rb, strokeSoftPx, strokeThickness, stroke);
-
-                float halo = (focused ? 0.45f : 0.25f) * hoverEase;
-                if (enabled && halo > 0.01f) {
-                    int haloColor = HudRenderUtil.scaleAlpha(strokeBase, 0.35f * halo * alpha);
-                    Renderer2D.COLOR.roundedRectStroke(xb, yb, wb, hb, rb, strokeSoftPx, strokeThickness + 1.1f * scale, haloColor);
-                }
-            }
-
+            Renderer2D.COLOR.widgetSurface(
+                    xb, yb, wb, hb,
+                    radius * scale,
+                    0,
+                    hoverEase,
+                    enabled,
+                    focused,
+                    palette.primary(),
+                    palette.secondary(),
+                    palette.accent(),
+                    now,
+                    mx, my,
+                    0.0f,
+                    false,
+                    softness * scale,
+                    alpha,
+                    palette.gradientAngle(),
+                    palette.gradientIntensity(),
+                    palette.fieldStrength()
+            );
         }
-
-        if (!batching) {
-            Renderer2D.COLOR.render();
-        }
-        if (manageProjection) {
-            ViewportContext.end(null);
-        }
+        if (manageProjection) ViewportContext.end(null);
 
         if (text != null && !text.getString().isEmpty()) {
+            // Keep one text coordinate contract for the entire hover lifetime. Switching to integer
+            // snapping at the exact frame warp becomes inactive was the source of the visible jump.
             try (RenderWarpStack.Scope ignored = pushParallaxWarp(parallax, x, y, w, h)) {
-                renderCenteredText(text, x, y, w, h, alpha, enabled, hover, !parallax.active);
+                renderCenteredText(text, x, y, w, h, alpha, enabled, hover, false);
             }
         }
+    }
+
+    private static WidgetPalette resolveWidgetPalette(boolean enabled, float hoverEase) {
+        BetterButtons cfg = INSTANCE;
+        Style mode = cfg.style.get();
+        int primary;
+        int secondary;
+        int accent;
+        float gradientAngle;
+        float gradientIntensity;
+        float fieldStrength;
+
+        if (mode == Style.GRADIENT) {
+            float intensity = clamp01(cfg.gradientIntensity.get());
+            primary = cfg.gradientBaseColor.getArgb();
+            secondary = HudRenderUtil.mixColor(primary, cfg.gradientColor.getArgb(), 0.28f + intensity * 0.72f);
+            accent = HudRenderUtil.mixColor(theme().accent(), cfg.gradientColor.getArgb(), 0.30f + intensity * 0.40f);
+            gradientAngle = cfg.gradientAngle.get();
+            gradientIntensity = intensity;
+            fieldStrength = 0.58f + intensity * 0.30f;
+        } else if (mode == Style.CUSTOM) {
+            primary = enabled
+                    ? HudRenderUtil.mixColor(cfg.customBg.getArgb(), cfg.customBgHover.getArgb(), hoverEase * 0.45f)
+                    : cfg.customBgDisabled.getArgb();
+            float intensity = cfg.customGradient.get() ? clamp01(cfg.customGradientIntensity.get()) : 0.28f;
+            secondary = cfg.customGradient.get()
+                    ? HudRenderUtil.mixColor(primary, cfg.customGradientColor.getArgb(), 0.20f + intensity * 0.80f)
+                    : cfg.customBgHover.getArgb();
+            accent = enabled
+                    ? HudRenderUtil.mixColor(cfg.customStroke.getArgb(), cfg.customStrokeHover.getArgb(), hoverEase)
+                    : cfg.customStrokeDisabled.getArgb();
+            gradientAngle = cfg.customGradient.get() ? cfg.customGradientAngle.get() : 90.0f;
+            gradientIntensity = intensity;
+            fieldStrength = 0.52f + intensity * 0.30f;
+        } else {
+            Themes.ThemeEntry entry = combatant.client.features.theme.Theme.currentEntry();
+            Themes.GradientSpec surfaceGradient = entry != null ? entry.surfaceGradient() : null;
+            Themes.GradientSpec strokeGradient = entry != null ? entry.strokeGradient() : null;
+
+            if (enabled) {
+                primary = surfaceGradient != null && surfaceGradient.enabled()
+                        ? forceOpaque(surfaceGradient.start())
+                        : forceOpaque(theme().surface());
+                secondary = surfaceGradient != null && surfaceGradient.enabled()
+                        ? forceOpaque(surfaceGradient.end())
+                        : forceOpaque(theme().surfaceHover());
+                primary = HudRenderUtil.mixColor(primary, forceOpaque(theme().surfaceHover()), hoverEase * 0.10f);
+                secondary = HudRenderUtil.mixColor(secondary, forceOpaque(theme().accentSoft()), hoverEase * 0.11f);
+                accent = strokeGradient != null && strokeGradient.enabled()
+                        ? HudRenderUtil.mixColor(forceOpaque(strokeGradient.start()), forceOpaque(strokeGradient.end()), 0.48f + hoverEase * 0.24f)
+                        : HudRenderUtil.mixColor(forceOpaque(theme().strokeSoft()), forceOpaque(theme().accent()), 0.52f + hoverEase * 0.24f);
+            } else {
+                primary = forceOpaque(theme().cardDisabled());
+                secondary = HudRenderUtil.mixColor(forceOpaque(theme().cardDisabled()), forceOpaque(theme().surface()), 0.34f);
+                accent = HudRenderUtil.mixColor(forceOpaque(theme().strokeSoft()), forceOpaque(theme().cardDisabled()), 0.58f);
+            }
+
+            gradientAngle = surfaceGradient != null && surfaceGradient.enabled()
+                    ? surfaceGradient.angleDeg()
+                    : 96.0f;
+            gradientIntensity = surfaceGradient != null && surfaceGradient.enabled() ? 0.82f : 0.52f;
+            fieldStrength = 0.72f + hoverEase * 0.16f;
+        }
+        return new WidgetPalette(primary, secondary, accent, gradientAngle, gradientIntensity, fieldStrength);
+    }
+
+    private static float resolveRadius() {
+        BetterButtons cfg = INSTANCE;
+        return cfg.style.get() == Style.CUSTOM ? cfg.customRadius.get() : BUTTON_RADIUS;
+    }
+
+    private static float resolveSoftness() {
+        BetterButtons cfg = INSTANCE;
+        if (cfg.style.get() == Style.CUSTOM) return cfg.customSoftness.get();
+        return cfg.style.get() == Style.GRADIENT ? BUTTON_SOFTNESS : 0.35f;
     }
 
     public static void renderSlider(GuiGraphicsExtractor ctx,
@@ -541,54 +472,48 @@ public final class BetterButtons extends AbstractHudElement {
         float w = widget.getWidth();
         float h = widget.getHeight();
         float scale = ViewportContext.getScaleFactor();
-
         float alpha = widget.getAlpha();
-        float radius = Math.min(4.0f, h * 0.5f);
-        markRounded(widget, radius);
-
-        renderButtonInternal(ctx, widget, null, hover, widget.isActive(), widget.isFocused(), scale, true, false);
-
-        float trackInset = 8f;
-        float trackX = x + trackInset;
-        float trackW = Math.max(12f, w - trackInset * 2f);
-        float trackH = Math.max(4f, h * 0.24f);
-        float trackY = y + (h - trackH) * 0.5f;
-        float fillW = trackW * value;
-
         float hoverEase = smoothHover(hover);
-        int track = HudRenderUtil.mixColor(forceOpaque(theme().surface()), 0xFF000000, 0.65f);
-        int fill = HudRenderUtil.mixColor(forceOpaque(theme().accentSoft()), forceOpaque(theme().accent()), 0.25f + 0.35f * hoverEase);
-        int stroke = HudRenderUtil.mixColor(forceOpaque(theme().strokeSoft()), 0xFF000000, 0.55f);
-        stroke = HudRenderUtil.mixColor(stroke, theme().accent(), 0.08f * hoverEase);
+        WidgetPalette palette = resolveWidgetPalette(widget.isActive(), hoverEase);
+        float radius = Math.min(resolveRadius(), h * 0.5f);
+        float softness = resolveSoftness();
+        ButtonParallax parallax = computeParallax(widget, hover);
 
-        track = HudRenderUtil.scaleAlpha(track, alpha);
-        fill = HudRenderUtil.scaleAlpha(fill, alpha);
-        stroke = HudRenderUtil.scaleAlpha(stroke, 0.6f * alpha);
-
-        float trackXb = trackX * scale;
-        float trackYb = trackY * scale;
-        float trackWb = trackW * scale;
-        float trackHb = trackH * scale;
-        float fillWb = fillW * scale;
+        float xb = x * scale;
+        float yb = y * scale;
+        float wb = w * scale;
+        float hb = h * scale;
+        float mx = MOUSE_X.getOrDefault(widget, x + w * 0.5f) * scale;
+        float my = MOUSE_Y.getOrDefault(widget, y + h * 0.5f) * scale;
 
         ViewportContext.beginUnscaled(null);
-        boolean batching = Renderer2D.isBatching();
-        if (!batching) {
-            Renderer2D.COLOR.begin();
-        }
-        float barRadius = Math.min(2.5f * scale, trackHb * 0.5f);
-        Renderer2D.COLOR.roundedRect(trackXb, trackYb, trackWb, trackHb, barRadius, scale, track);
-        if (fillW > 1f) {
-            Renderer2D.COLOR.roundedRect(trackXb, trackYb, fillWb, trackHb, barRadius, scale, fill);
-        }
-        Renderer2D.COLOR.roundedRectStroke(trackXb, trackYb, trackWb, trackHb, barRadius, scale, scale, stroke);
-        if (!batching) {
-            Renderer2D.COLOR.render();
+        try (RenderWarpStack.Scope ignored = pushParallaxWarp(parallax, xb, yb, wb, hb)) {
+            Renderer2D.COLOR.widgetSurface(
+                    xb, yb, wb, hb,
+                    radius * scale,
+                    1,
+                    hoverEase,
+                    widget.isActive(),
+                    widget.isFocused(),
+                    palette.primary(), palette.secondary(), palette.accent(),
+                    Util.getMillis() * 0.001f,
+                    mx, my,
+                    value,
+                    dragging,
+                    softness * scale,
+                    alpha,
+                    palette.gradientAngle(),
+                    palette.gradientIntensity(),
+                    palette.fieldStrength()
+            );
         }
         ViewportContext.end(null);
 
-        Component text = widget.getMessage();
-        renderCenteredText(text, x, y, w, h, alpha, widget.isActive(), hover);
+        try (RenderWarpStack.Scope ignored = pushParallaxWarp(parallax, x, y, w, h)) {
+            // Deliberately never integer-snap here; slider text follows the exact same continuous warp state.
+            renderCenteredText(widget.getMessage(), x, y - h * 0.10f, w, h * 0.72f,
+                    alpha, widget.isActive(), hover, false);
+        }
     }
 
     public static void renderTextIconButton(GuiGraphicsExtractor ctx,
@@ -603,31 +528,24 @@ public final class BetterButtons extends AbstractHudElement {
         TextIconButtonWidgetAccessor accessor = (TextIconButtonWidgetAccessor) widget;
         int texW = accessor.combatant$getTextureWidth();
         int texH = accessor.combatant$getTextureHeight();
-        int iconX;
-        int iconY = widget.getY() + widget.getHeight() / 2 - texH / 2;
-        if (iconOnly) {
-            iconX = widget.getX() + widget.getWidth() / 2 - texW / 2;
-        } else {
-            iconX = widget.getX() + widget.getWidth() - texW - 2;
-        }
+        float iconX = iconOnly
+                ? widget.getX() + (widget.getWidth() - texW) * 0.5f
+                : widget.getX() + widget.getWidth() - texW - 2.0f;
+        float iconY = widget.getY() + (widget.getHeight() - texH) * 0.5f;
         boolean hoverState = widget.isActive() && (widget.isHoveredOrFocused() || focused || hover > 0.001f);
         Identifier spriteId = accessor.combatant$getTexture().get(widget.isActive(), hoverState);
-        float sx = parallaxShiftX(widget, hover);
-        float sy = parallaxShiftY(widget, hover);
-        drawGuiSprite(spriteId, Math.round(iconX + sx), Math.round(iconY + sy), texW, texH, widget.getAlpha());
+        ButtonParallax parallax = computeParallax(widget, hover);
+        drawGuiSpriteWarped(spriteId, iconX, iconY, texW, texH, widget.getAlpha(), parallax,
+                widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
 
         if (!iconOnly) {
             float left = widget.getX() + 2f;
             float right = widget.getX() + widget.getWidth() - texW - 4f;
-            float top = widget.getY();
-            float bottom = widget.getY() + widget.getHeight();
-            Component text = widget.getMessage();
-            ButtonParallax parallax = computeParallax(widget, hover);
             try (RenderWarpStack.Scope ignored = pushParallaxWarp(parallax, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight())) {
-                renderLeftAlignedText(text, left, top, right, bottom, widget.getAlpha(), enabled, hover, !parallax.active);
+                renderLeftAlignedText(widget.getMessage(), left, widget.getY(), right, widget.getY() + widget.getHeight(),
+                        widget.getAlpha(), enabled, hover, false);
             }
         }
-
     }
 
     public static void renderCyclingButton(GuiGraphicsExtractor ctx,
@@ -639,22 +557,20 @@ public final class BetterButtons extends AbstractHudElement {
                                            boolean focused) {
         if (ctx == null || widget == null) return;
         renderButton(ctx, widget, null, hover, enabled, focused);
+        ButtonParallax parallax = computeParallax(widget, hover);
 
         if (icon != null) {
-            int size = Math.min(widget.getWidth(), widget.getHeight()) - 6;
-            float sx = parallaxShiftX(widget, hover);
-            float sy = parallaxShiftY(widget, hover);
-            int ix = Math.round(widget.getX() + (widget.getWidth() - size) / 2 + sx);
-            int iy = Math.round(widget.getY() + (widget.getHeight() - size) / 2 + sy);
-            ctx.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, icon, ix, iy, size, size, widget.getAlpha());
+            float size = Math.min(widget.getWidth(), widget.getHeight()) - 6.0f;
+            float ix = widget.getX() + (widget.getWidth() - size) * 0.5f;
+            float iy = widget.getY() + (widget.getHeight() - size) * 0.5f;
+            drawGuiSpriteWarped(icon, ix, iy, size, size, widget.getAlpha(), parallax,
+                    widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
         }
 
         if (showLabel) {
-            Component text = widget.getMessage();
-            ButtonParallax parallax = computeParallax(widget, hover);
             try (RenderWarpStack.Scope ignored = pushParallaxWarp(parallax, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight())) {
-                renderCenteredText(text, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight(),
-                        widget.getAlpha(), enabled, hover, !parallax.active);
+                renderCenteredText(widget.getMessage(), widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight(),
+                        widget.getAlpha(), enabled, hover, false);
             }
         }
     }
@@ -771,6 +687,10 @@ public final class BetterButtons extends AbstractHudElement {
         return enabled ? theme().textPrimary() : theme().textMuted();
     }
 
+    private static int forceOpaque(int argb) {
+        return 0xFF000000 | (argb & 0x00FFFFFF);
+    }
+
     private static float clamp01(float value) {
         return Math.max(0.0f, Math.min(1.0f, value));
     }
@@ -865,45 +785,37 @@ public final class BetterButtons extends AbstractHudElement {
         }
     }
 
-    private static void markRounded(AbstractWidget widget, float radius) {
-        if (widget instanceof IRoundedHitbox rounded) {
-            rounded.combatant$setRoundedHitbox(radius);
-        }
-    }
 
-    private static int forceOpaque(int argb) {
-        return (argb & 0x00FFFFFF) | 0xFF000000;
-    }
 
-    private static void drawGuiSprite(Identifier spriteId, int x, int y, int w, int h, float alpha) {
-        if (spriteId == null) return;
+    private static void drawGuiSpriteWarped(Identifier spriteId,
+                                            float x, float y, float w, float h, float alpha,
+                                            ButtonParallax parallax,
+                                            float buttonX, float buttonY, float buttonW, float buttonH) {
+        if (spriteId == null || w <= 0.0f || h <= 0.0f) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
         TextureAtlas atlas = mc.getAtlasManager().getAtlasOrThrow(AtlasIds.GUI);
         if (atlas == null) return;
         TextureAtlasSprite sprite = atlas.getSprite(spriteId);
-        if (sprite == null) return;
-        Identifier atlasId = atlas.location();
-        if (atlasId == null) return;
+        if (sprite == null || atlas.location() == null) return;
 
         float scale = ViewportContext.getScaleFactor();
-        float xb = x * scale;
-        float yb = y * scale;
-        float wb = w * scale;
-        float hb = h * scale;
         int argb = HudRenderUtil.scaleAlpha(0xFFFFFFFF, alpha);
-
         ViewportContext.beginUnscaled(null);
-        Renderer2D.TEXTURE.begin();
-        Renderer2D.TEXTURE.texQuad(xb, yb, wb, hb, sprite.getU0(), sprite.getV0(), sprite.getU1(), sprite.getV1(), argb);
-        Renderer2D.TEXTURE.end();
-        Renderer2D.TEXTURE.render(atlasId);
+        try (RenderWarpStack.Scope ignored = pushParallaxWarp(parallax,
+                buttonX * scale, buttonY * scale, buttonW * scale, buttonH * scale)) {
+            // Textured-shape path carries source-space local/invW, so UVs receive the same projective
+            // interpolation as the warped widget instead of being an affine sprite pasted on top.
+            Renderer2D.TEXTURE.roundedTexRect(
+                    x * scale, y * scale, w * scale, h * scale,
+                    0.0f, 0.0f,
+                    sprite.getU0(), sprite.getV0(), sprite.getU1(), sprite.getV1(),
+                    argb, atlas.location()
+            );
+        }
         ViewportContext.end(null);
     }
 
-    public static void renderTooltip() {
-        BetterTooltips.renderTooltipWithContext(LAST_CTX);
-    }
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
@@ -968,6 +880,8 @@ public final class BetterButtons extends AbstractHudElement {
     private interface RenderCall {
         void render(GuiGraphicsExtractor ctx);
     }
+
+    private record WidgetPalette(int primary, int secondary, int accent, float gradientAngle, float gradientIntensity, float fieldStrength) { }
 
     private record ButtonParallax(float yawDeg,
                                   float pitchDeg,

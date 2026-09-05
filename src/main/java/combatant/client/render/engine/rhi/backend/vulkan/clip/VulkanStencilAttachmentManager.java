@@ -17,6 +17,7 @@ import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateB
 import combatant.client.util.logging.DebugLog;
 
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 /**
@@ -41,26 +42,35 @@ public final class VulkanStencilAttachmentManager implements AutoCloseable {
 
     private static Attachment createAttachment(String ownerLabel, int width, int height, int samples) {
         String label = "combatant-vk-stencil:" + (ownerLabel == null ? "unnamed" : ownerLabel);
-        GpuTexture texture = VulkanRenderStateBridge.withTextureSamples(samples, () ->
-                RenderSystem.getDevice().createTexture(
-                        label,
-                        GpuTexture.USAGE_RENDER_ATTACHMENT,
-                        GpuFormat.S8_UINT,
-                        width,
-                        height,
-                        1,
-                        1
-                )
-        );
-        GpuTextureView view = RenderSystem.getDevice().createTextureView(texture);
-        DebugLog.stencilOnChange("shapeclip.vulkan.stencil.alloc", label + "|" + width + "x" + height + "|" + samples,
-                "[ShapeClip/Vulkan] UI clip attachment format=S8_UINT label=%s size=%dx%d samples=%d",
-                label, width, height, samples);
-        return new Attachment(texture, view, width, height, samples);
+        GpuTexture texture = null;
+        GpuTextureView view = null;
+        try {
+            texture = VulkanRenderStateBridge.withTextureSamples(samples, () ->
+                    RenderSystem.getDevice().createTexture(
+                            label,
+                            GpuTexture.USAGE_RENDER_ATTACHMENT,
+                            GpuFormat.S8_UINT,
+                            width,
+                            height,
+                            1,
+                            1
+                    )
+            );
+            view = RenderSystem.getDevice().createTextureView(texture);
+            DebugLog.stencilOnChange("shapeclip.vulkan.stencil.alloc", label + "|" + width + "x" + height + "|" + samples,
+                    "[ShapeClip/Vulkan] UI clip attachment format=S8_UINT label=%s size=%dx%d samples=%d",
+                    label, width, height, samples);
+            return new Attachment(texture, view, width, height, samples);
+        } catch (RuntimeException | Error failure) {
+            if (view != null && !view.isClosed()) view.close();
+            if (texture != null && !texture.isClosed()) texture.close();
+            throw failure;
+        }
     }
 
     public @Nullable GpuTextureView attachmentFor(RenderPassDescriptor descriptor) {
         if (descriptor == null) return null;
+        pruneClosedAttachments();
         GpuTextureView target = primaryTarget(descriptor);
         if (target == null || target.texture() == null) return null;
 
@@ -87,6 +97,23 @@ public final class VulkanStencilAttachmentManager implements AutoCloseable {
             lastAttachmentClear = clearRequested;
         }
         return attachment.view;
+    }
+
+    /**
+     * Resizable render targets replace their color texture identity. Retaining the old identity here
+     * also retained its private S8 image until backend shutdown, turning size jitter into a GPU leak.
+     */
+    private void pruneClosedAttachments() {
+        Iterator<Map.Entry<GpuTexture, Attachment>> iterator = attachments.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<GpuTexture, Attachment> entry = iterator.next();
+            GpuTexture owner = entry.getKey();
+            Attachment attachment = entry.getValue();
+            if (owner == null || owner.isClosed() || attachment == null || attachment.closed()) {
+                if (attachment != null) attachment.close();
+                iterator.remove();
+            }
+        }
     }
 
     public boolean consumeLastAttachmentClear() {

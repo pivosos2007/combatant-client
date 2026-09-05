@@ -18,6 +18,7 @@ out vec4 fragColor;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen; // xy = framebuffer size, zw = logical size
+    vec4 uLayer;
 };
 
 float cornerCut(float u, float v, float cutX, float cutY) {

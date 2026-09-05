@@ -15,6 +15,7 @@ uniform sampler2D u_Texture;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen;
+    vec4 uLayer;
 };
 
 layout (std140) uniform MenuTextureTransition {

@@ -27,6 +27,7 @@ uniform sampler2D u_BlurTexture; // existing prepared UI blur source
 
 layout (std140) uniform UIBatch {
     vec4 uScreen; // xy = framebuffer size, zw = logical size
+    vec4 uLayer;
 };
 
 #ifdef COMBATANT_ANALYTIC_CLIP
@@ -231,8 +232,8 @@ void main() {
     vec2 logicalSize = max(screen.zw, vec2(1.0));
     vec2 logicalScale = logicalSize / fbSize;
 
-    // Shape must use perspective-correct local coordinates. Screen-space
-    // gl_FragCoord is still used below for scene/blur sampling.
+    // Perspective-correct global logical coordinates also keep scene sampling stable
+    // when this material is rendered through a bounded local MSAA target.
     vec2 frag = warpedLocal(v_Local);
 
     vec2 size = max(v_Rect.zw, vec2(1.0));
@@ -286,7 +287,10 @@ void main() {
     vec2 sdfNormal = safeNormalize(vec2(dx, dy), safeNormalize(pos, vec2(0.0, -1.0)));
     vec2 uvNormal = vec2(sdfNormal.x, -sdfNormal.y);
 
-    vec2 uv = gl_FragCoord.xy / fbSize;
+    vec2 uv = vec2(
+        frag.x / logicalSize.x,
+        1.0 - frag.y / logicalSize.y
+    );
 
     float fresnelMix;
     float prismStrength;

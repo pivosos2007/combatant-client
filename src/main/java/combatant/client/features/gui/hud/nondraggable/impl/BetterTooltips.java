@@ -13,6 +13,8 @@ import combatant.client.config.values.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipPositioner;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTextTooltip;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponents;
@@ -33,6 +35,7 @@ import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMod
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.input.KeyManager;
+import combatant.client.mixins.accessors.ClientTextTooltipAccessor;
 import combatant.client.util.item.TopEnchantUtil;
 
 import java.util.ArrayList;
@@ -147,6 +150,55 @@ public final class BetterTooltips extends AbstractHudElement {
         TOOLTIP_MOUSE_Y = mouseY;
         TOOLTIP_STACK = stack;
         TOOLTIP_CTX = ctx;
+    }
+
+    /**
+     * Central GuiGraphicsExtractor tooltip entry. Every vanilla scheduling overload funnels through
+     * setTooltipForNextFrameInternal(), so widget-local tooltip hacks are unnecessary.
+     *
+     * @return true when Combatant owns/suppresses the vanilla deferred tooltip.
+     */
+    public static boolean captureTooltipComponents(List<ClientTooltipComponent> components,
+                                                   ClientTooltipPositioner positioner,
+                                                   int mouseX, int mouseY,
+                                                   ItemStack stack,
+                                                   GuiGraphicsExtractor ctx,
+                                                   boolean replaceExisting) {
+        BetterTooltips tooltips = INSTANCE;
+        boolean item = stack != null && !stack.isEmpty();
+        if (item ? !tooltips.useCustomItemTooltips() : !tooltips.useCustomGuiTooltips()) {
+            return false;
+        }
+        if (components == null || components.isEmpty()) return false;
+
+        // Preserve vanilla replaceExisting semantics even though Combatant no longer creates
+        // GuiGraphicsExtractor.deferredTooltip.
+        if (hasTooltip() && !replaceExisting) return true;
+
+        List<FormattedCharSequence> lines = new ArrayList<>(components.size());
+        boolean hasNonText = false;
+        for (ClientTooltipComponent component : components) {
+            if (component instanceof ClientTextTooltip text) {
+                FormattedCharSequence sequence = ((ClientTextTooltipAccessor) (Object) text).combatant$getText();
+                if (sequence != null) lines.add(sequence);
+            } else {
+                hasNonText = true;
+            }
+        }
+        if (lines.isEmpty()) return false;
+
+        // Item tooltips already have Combatant-owned preview handling (including shulkers). Vanilla
+        // visual components must not resurrect the old vanilla frame behind it. For non-item custom
+        // component tooltips, keep vanilla as a safety fallback until a semantic adapter exists.
+        if (hasNonText && !item) return false;
+
+        setDrawContext(ctx);
+        if (item) {
+            captureItemTooltipOrdered(lines, positioner, mouseX, mouseY, stack, ctx);
+        } else {
+            captureTooltipOrdered(lines, positioner, mouseX, mouseY);
+        }
+        return true;
     }
 
     public static void setDrawContext(GuiGraphicsExtractor ctx) {
@@ -626,17 +678,11 @@ public final class BetterTooltips extends AbstractHudElement {
     }
 
     public boolean useCustomGuiTooltips() {
-        if (RuntimeGate.isPanic()) return false;
-        BetterButtons buttons = BetterButtons.get();
-        if (buttons != null && buttons.useUiButtons()) return true;
-        return isEnabled();
+        return !RuntimeGate.isPanic() && isEnabled();
     }
 
     public boolean useCustomItemTooltips() {
-        if (RuntimeGate.isPanic()) return false;
-        BetterButtons buttons = BetterButtons.get();
-        if (buttons != null && buttons.useUiButtons()) return true;
-        return itemTooltipEnabled.get();
+        return !RuntimeGate.isPanic() && itemTooltipEnabled.get();
     }
 
     public boolean isItemInfoColorizeEnabled() {

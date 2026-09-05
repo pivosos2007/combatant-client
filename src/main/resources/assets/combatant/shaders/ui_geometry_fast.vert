@@ -28,7 +28,7 @@ out vec4 v_Params3;
 void main() {
     // Position.xy is already CPU-mapped by RenderWarp; Local carries source * invW and invW.
     // Supplying the matching homogeneous W preserves source-space SDF coordinates.
-    gl_Position = uiProjectiveClipPosition(Position.xy, uScreen.zw, Local);
+    gl_Position = uiProjectiveClipPosition(Position.xy, uLayer, Local);
     v_Local = uiProjectiveSourceLocal(Local);
     v_Color = Color;
     v_Rect = Rect;

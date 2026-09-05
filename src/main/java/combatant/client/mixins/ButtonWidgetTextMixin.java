@@ -32,9 +32,6 @@ public abstract class ButtonWidgetTextMixin {
         boolean hovered = widget.isMouseOver(mouseX, mouseY);
         float hover = BetterButtons.updateHover(widget, hovered, mouseX, mouseY);
         BetterButtons.enqueueButton(widget, widget.getMessage(), hover, widget.isActive(), widget.isFocused());
-        if (hovered) {
-            BetterButtons.captureTooltip(widget, mouseX, mouseY);
-        }
         ci.cancel();
     }
 }

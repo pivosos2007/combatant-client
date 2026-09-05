@@ -30,7 +30,6 @@ import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ClipFunction;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
-import combatant.client.util.logging.DebugLog;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -473,23 +472,40 @@ public final class ModulesMenuScreen {
 
         boolean clipped = ScissorFunction.pushRaw(panel.x, clipY, panel.w, clipH);
         ClickGuiRenderer.flushRenderer();
-        boolean panelShapeClip = ClipFunction.pushRoundedRectMsaaStencil(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale);
         float listW = Math.max(1.0f, panel.w - 7.0f * scale);
 
         float y = listY - panel.modulesSmoothScroll;
         float total = 0.0f;
 
+        List<ModuleComponent.CardEntry> entries = ModulesMenuResolver.buildCards(panel.category);
+        for (ModuleComponent.CardEntry entry : entries) {
+            if (!ClickGuiSearch.matches(entry.title(), entry.searchAliases())) continue;
+
+            if (y + MODULE_ROW_H * scale >= clipY && y <= clipY + clipH) {
+                float rowH = MODULE_ROW_H * scale;
+                boolean hover = inside(mouseX, mouseY, pageX, y, listW, rowH);
+                float hoverAnim = panel.hoverAnim(entry.getId(), hover);
+                renderModuleRowHover(panel, entry.getId(), pageX, y, listW, rowH,
+                        mouseX, mouseY, alpha, hoverAnim);
+            }
+
+            y += MODULE_ROW_H * scale;
+            total += MODULE_ROW_H * scale;
+        }
+
+        // The procedural hover material is already a rounded SDF and is bounded by the explicit
+        // list scissor. Flush it before entering the shared analytic clip used by text/shapes.
+        ClickGuiRenderer.flushRenderer();
+        boolean panelShapeClip = ClipFunction.pushRoundedRect(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale);
+        y = listY - panel.modulesSmoothScroll;
         try {
-            List<ModuleComponent.CardEntry> entries = ModulesMenuResolver.buildCards(panel.category);
             for (ModuleComponent.CardEntry entry : entries) {
                 if (!ClickGuiSearch.matches(entry.title(), entry.searchAliases())) continue;
-
                 if (y + MODULE_ROW_H * scale >= clipY && y <= clipY + clipH) {
-                    renderModuleRow(panel, entry, pageX, y, listW, mouseX, mouseY, alpha);
+                    renderModuleRow(panel, entry, pageX, y, listW, alpha,
+                            panel.hoverAnimValue(entry.getId()));
                 }
-
                 y += MODULE_ROW_H * scale;
-                total += MODULE_ROW_H * scale;
             }
         } finally {
             ClickGuiRenderer.flushRenderer();
@@ -512,17 +528,12 @@ public final class ModulesMenuScreen {
             float x,
             float y,
             float rowW,
-            float mouseX,
-            float mouseY,
-            float alpha
+            float alpha,
+            float hoverAnim
     ) {
         float h = MODULE_ROW_H * scale;
-        boolean hover = inside(mouseX, mouseY, x, y, rowW, h);
 
         float enabled = panel.enabledAnim(entry.getId(), entry.enabled());
-        float hoverAnim = panel.hoverAnim(entry.getId(), hover);
-
-        renderModuleRowHover(panel, entry.getId(), x, y, rowW, h, mouseX, mouseY, alpha, hoverAnim);
 
         String label = panel.bindingId != null && panel.bindingId.equals(entry.getId())
                 ? bindingLabel(entry)
@@ -594,51 +605,30 @@ public final class ModulesMenuScreen {
         float rh = h - 4.0f * scale;
         if (rw <= 0.5f || rh <= 0.5f) return;
 
-        boolean ownsPanelClip = false;
-        boolean panelClip = ClipFunction.isShapeClipActive();
-        if (!panelClip) {
-            panelClip = ClipFunction.pushRoundedRectMsaaStencil(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale);
-            ownsPanelClip = panelClip;
-        }
-        if (!panelClip) {
-            DebugLog.warnOnChange(
-                    "modules.hover.parent.clip.failed",
-                    panel.category.title(),
-                    "ModulesMenuScreen: hover clipped draw skipped because parent rounded glass clip failed. panel=%s panelBounds=[%.2f, %.2f, %.2f, %.2f]",
-                    panel.category.title(),
-                    panel.x, panel.y, panel.w, panel.h
-            );
-            return;
-        }
+        float clipTop = panel.y + (HEADER_H + SEPARATOR_H) * scale;
+        float clipBottom = panel.y + panel.h - 0.5f * scale;
+        float visibleTop = Math.max(ry, clipTop);
+        float visibleBottom = Math.min(ry + rh, clipBottom);
+        float visibleHeight = visibleBottom - visibleTop;
+        if (visibleHeight <= 0.5f) return;
 
-        try {
-            /*
-             * The quad is only a carrier for the procedural pass. The shader cuts its
-             * own asymmetric, noisy material field so the hover reads as a stain in
-             * the glass rather than a rectangular row fill. The existing panel
-             * ClipFunction remains the sole owner of the outer rounded silhouette.
-             */
-            Renderer2D.COLOR.moduleCategorySurface(
-                    rx,
-                    ry,
-                    rw,
-                    rh,
-                    5.0f * scale,
-                    categoryEffectMode(panel.category),
-                    hoverAnim,
-                    categoryEffectTime(),
-                    mouseX,
-                    mouseY,
-                    moduleEffectSeed(moduleId),
-                    ModulesMenuStyle.categoryFxPrimary(panel.category, alpha),
-                    ModulesMenuStyle.categoryFxSecondary(panel.category, alpha),
-                    ModulesMenuStyle.categoryFxHighlight(panel.category, alpha),
-                    1.0f
-            );
-        } finally {
-            Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
-            if (ownsPanelClip) ClipFunction.pop();
-        }
+        Renderer2D.COLOR.moduleCategorySurface(
+                rx,
+                visibleTop,
+                rw,
+                visibleHeight,
+                Math.min(5.0f * scale, visibleHeight * 0.5f),
+                categoryEffectMode(panel.category),
+                hoverAnim,
+                categoryEffectTime(),
+                mouseX,
+                mouseY,
+                moduleEffectSeed(moduleId),
+                ModulesMenuStyle.categoryFxPrimary(panel.category, alpha),
+                ModulesMenuStyle.categoryFxSecondary(panel.category, alpha),
+                ModulesMenuStyle.categoryFxHighlight(panel.category, alpha),
+                1.0f
+        );
     }
 
 

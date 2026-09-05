@@ -164,6 +164,19 @@ public enum CombatantVertexFormats {
             .addAttribute("Params5", CombatantVertexFormatElements.PARAMS5)
             .build();
 
+    public static final VertexFormat POS2_LOCAL_COLOR_RECT_PARAMS6 = VertexFormat.builder(0)
+            .addAttribute("Position", CombatantVertexFormatElements.POS2)
+            .addAttribute("Local", CombatantVertexFormatElements.LOCAL)
+            .addAttribute("Color", CombatantVertexFormatElements.COLOR)
+            .addAttribute("Rect", CombatantVertexFormatElements.RECT)
+            .addAttribute("Params", CombatantVertexFormatElements.PARAMS)
+            .addAttribute("Params2", CombatantVertexFormatElements.PARAMS2)
+            .addAttribute("Params3", CombatantVertexFormatElements.PARAMS3)
+            .addAttribute("Params4", CombatantVertexFormatElements.PARAMS4)
+            .addAttribute("Params5", CombatantVertexFormatElements.PARAMS5)
+            .addAttribute("Params6", CombatantVertexFormatElements.PARAMS6)
+            .build();
+
     /**
      * Rigged textured 3D vertex. Attribute order is mirrored by rig_textured.vert.
      * 12 + 8 + 12 + 4 + 4 + 4 + 16 + 4 = 64 bytes.

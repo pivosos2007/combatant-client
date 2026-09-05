@@ -11,32 +11,61 @@ import combatant.client.render.engine.command.UiCommand;
 import combatant.client.render.engine.command.UiCommandBuffer;
 import combatant.client.render.engine.command.UiCommandKind;
 
+import java.util.List;
+
+/** Builds the concrete ordered plan while retaining normalized-command diagnostics. */
 public final class UiBatcher {
-    public UiBatchPlan compile(UiCommandBuffer commands) {
-        if (commands == null || commands.size() == 0) {
-            return UiBatchPlan.EMPTY;
-        }
+    public UiBatchPlan compile(UiCommandBuffer commands, List<UiBatchPlan.Pass> passes) {
+        List<UiBatchPlan.Pass> executablePasses = passes == null ? List.of() : passes;
+
         int shapes = 0;
         int paths = 0;
+        int primitives = 0;
         int textures = 0;
         int text = 0;
         int items = 0;
         int effects = 0;
-        int backend = 0;
-        for (UiCommand command : commands.commands()) {
-            UiCommandKind kind = command.kind();
-            switch (kind) {
-                case SHAPE -> shapes++;
-                case PATH -> paths++;
-                case TEXTURE -> textures++;
-                case TEXT -> text++;
-                case ITEM -> items++;
-                case BLUR_REGION, LIQUID_GLASS_REGION, EFFECT_REGION -> effects++;
-                case PRIMITIVE -> backend++;
+        int commandCount = 0;
+
+        if (commands != null) {
+            commandCount = commands.size();
+            for (UiCommand command : commands.commands()) {
+                UiCommandKind kind = command.kind();
+                switch (kind) {
+                    case SHAPE -> shapes++;
+                    case PATH -> paths++;
+                    case PRIMITIVE -> primitives++;
+                    case TEXTURE -> textures++;
+                    case TEXT -> text++;
+                    case ITEM -> items++;
+                    case BLUR_REGION, LIQUID_GLASS_REGION, EFFECT_REGION -> effects++;
+                }
             }
         }
-        UiBatchPlan plan = new UiBatchPlan(commands.size(), shapes, paths, textures, text, items, effects, backend);
-        commands.stats().addCompiledBatches(plan.batchCount());
-        return plan;
+
+        int orderedBatches = 0;
+        for (UiBatchPlan.Pass pass : executablePasses) {
+            if (pass != null) orderedBatches += pass.orderedBatchCount();
+        }
+
+        if (commands != null) {
+            commands.stats().addCompiledPasses(executablePasses.size());
+            commands.stats().addCompiledOrderedBatches(orderedBatches);
+        }
+
+        return new UiBatchPlan(
+                executablePasses,
+                commandCount,
+                shapes,
+                paths,
+                primitives,
+                textures,
+                text,
+                items,
+                effects,
+                orderedBatches,
+                0,
+                0
+        );
     }
 }

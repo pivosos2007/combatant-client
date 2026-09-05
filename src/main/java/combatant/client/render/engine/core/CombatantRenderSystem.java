@@ -34,6 +34,7 @@ import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;
 import combatant.client.render.engine.rhi.uniform.UniformAllocatorStatsSnapshot;
 import combatant.client.render.engine.text.TextCommandStatsSnapshot;
 import combatant.client.render.engine.text.TextRenderSystem;
+import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 import combatant.client.render.engine.world.WorldRenderStatsSnapshot;
 import combatant.client.render.sodium.SodiumFrameContext;
 import combatant.client.render.sodium.SodiumRenderBridge;
@@ -369,6 +370,7 @@ public enum CombatantRenderSystem {
     public static void shutdown() {
         if (!initialized) return;
         try {
+            UiMsaaClipLayer.shutdown();
             UNIFORMS.close();
             rhi.close();
         } finally {

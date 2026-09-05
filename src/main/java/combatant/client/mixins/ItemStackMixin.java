@@ -51,11 +51,15 @@ public class ItemStackMixin {
 
     @Inject(method = "getTooltipLines", at = @At("RETURN"), cancellable = true)
     private void combatant$colorizeTooltip(Item.TooltipContext tooltipContext, @Nullable Player player, TooltipFlag type, CallbackInfoReturnable<List<Component>> cir) {
+        ItemStack self = (ItemStack) (Object) this;
+        // Item tooltip scheduling often reaches GuiGraphicsExtractor through the generic
+        // lines+optional-image overload. Capture the producing stack independently from text
+        // colorization so the central tooltip hook can still select the item renderer.
+        BetterTooltips.setLastTooltipStack(self);
+
         BetterTooltips tooltips = BetterTooltips.get();
         if (tooltips == null || !tooltips.isItemInfoColorizeEnabled()) return;
 
-        ItemStack self = (ItemStack) (Object) this;
-        BetterTooltips.setLastTooltipStack(self);
         List<Component> original = cir.getReturnValue();
         if (original == null || original.isEmpty()) return;
 

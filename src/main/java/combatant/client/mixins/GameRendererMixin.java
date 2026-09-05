@@ -47,6 +47,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.features.gui.hud.nondraggable.impl.BetterButtons;
+import combatant.client.features.gui.hud.nondraggable.impl.BetterTooltips;
 import combatant.client.addon.AddonRenderPipelineManager;
 import combatant.client.api.v0.render.CombatantRenderStage;
 import combatant.client.features.module.ModuleManager;
@@ -781,12 +782,10 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     private void combatant$flushQueuedButtons(DeltaTracker tickCounter, boolean tick, CallbackInfo ci) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || ClientScreen.current() == null) return;
-        if (!BetterButtons.hasPending()) {
-            BetterButtons.renderTooltip();
-            return;
+        if (BetterButtons.hasPending()) {
+            BetterButtons.flush();
         }
-        BetterButtons.flush();
-        BetterButtons.renderTooltip();
+        BetterTooltips.renderTooltipWithContext(BetterButtons.getLastContext());
     }
 
     @Inject(

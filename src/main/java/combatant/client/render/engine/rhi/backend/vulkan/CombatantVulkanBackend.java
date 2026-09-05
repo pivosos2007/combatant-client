@@ -18,6 +18,7 @@ import org.joml.Matrix4fStack;
 import org.joml.Vector4f;
 import org.joml.Vector4fc;
 import combatant.client.render.engine.RenderState;
+import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.profiler.RenderCostProfiler;
 import combatant.client.render.engine.rhi.*;
 import combatant.client.render.engine.rhi.backend.vulkan.clip.VulkanShapeClipBackend;
@@ -209,7 +210,10 @@ public final class CombatantVulkanBackend implements CombatantRhi {
                 }
                 GpuBufferSlice uiBatch = null;
                 if (requiresUiBatch(command.pipelineSpec) && !command.hasUniform("UIBatch")) {
-                    UIBatchUniforms.update(command.colorAttachment.getWidth(0), command.colorAttachment.getHeight(0));
+                    ViewportContext viewport = ViewportContext.current();
+                    UIBatchUniforms.update(
+                            viewport != null ? viewport.framebufferWidth() : command.colorAttachment.getWidth(0),
+                            viewport != null ? viewport.framebufferHeight() : command.colorAttachment.getHeight(0));
                     uiBatch = UIBatchUniforms.get();
                 }
 

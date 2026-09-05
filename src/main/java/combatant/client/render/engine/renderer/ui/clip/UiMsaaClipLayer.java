@@ -18,6 +18,7 @@ import combatant.client.render.engine.msaa.MsaaFramebuffer;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.renderer.MeshRenderer;
+import combatant.client.render.engine.renderer.RenderWarp;
 import combatant.client.render.engine.renderer.ui.draw.UiRect;
 import combatant.client.render.engine.rhi.scissor.GlobalScissorState;
 import combatant.client.render.engine.uniform.MeshBuilder;
@@ -35,20 +36,22 @@ import org.joml.Matrix4f;
  */
 public final class UiMsaaClipLayer {
     private static final int COLOR_PAD_PIXELS = 2;
+    private static final int TARGET_BUCKET_PIXELS = 16;
     private static final String RESOLVE_OWNER = "UiMsaaClipLayer.resolve";
 
     private static @Nullable MsaaFramebuffer msaaTarget;
     private static @Nullable TextureTarget resolveTarget;
     private static @Nullable ActiveLayer active;
-    private static @Nullable MeshBuilder clearMesh;
     private static @Nullable MeshBuilder compositeMesh;
+    private static boolean colorClearPending;
+    private static final ThreadLocal<double[]> WARP_BOUNDS = ThreadLocal.withInitial(() -> new double[4]);
     private static int allocatedSamples;
     private static String state = "idle";
 
     private UiMsaaClipLayer() {
     }
 
-    public static boolean begin(UiClipSnapshot snapshot) {
+    public static boolean begin(UiClipSnapshot snapshot, @Nullable RenderWarp warp) {
         if (snapshot == null || !snapshot.usesMsaaStencil()) return false;
         if (active != null) return true;
 
@@ -71,13 +74,15 @@ public final class UiMsaaClipLayer {
             return false;
         }
 
-        PixelBounds pixels = pixelBounds(snapshot.logicalBounds(), viewport);
+        UiRect sourceBounds = snapshot.logicalBounds();
+        UiRect screenBounds = warpedBounds(sourceBounds, warp);
+        PixelBounds pixels = pixelBounds(screenBounds, viewport);
         if (pixels == null) {
             state = "empty_bounds";
             return false;
         }
 
-        int requestedSamples = Math.max(2, snapshot.msaaSamples());
+        int requestedSamples = UiClipStack.MSAA_SAMPLES;
         try {
             ensureTargets(pixels.width(), pixels.height(), requestedSamples);
             if (msaaTarget == null || resolveTarget == null || msaaTarget.getColorTextureView() == null) {
@@ -91,14 +96,21 @@ public final class UiMsaaClipLayer {
                     snapshot.id(), viewport, parentColor, logicalBounds,
                     pixels.left(), pixels.top(), pixels.width(), pixels.height(), parentScissor
             );
+            colorClearPending = true;
             applyLocalViewport(viewport);
             replaceScissorForLocalLayer(parentScissor);
-            clearLayerColor(logicalBounds);
             state = "active";
+            DebugLog.stencilOnChange(
+                    "ui.clip.msaa.active",
+                    pixels.width() + "x" + pixels.height() + "|" + msaaTarget.getSamples(),
+                    "[UI clip/MSAA] local layer active: color=RGBA8 size=%dx%d samples=%d stencil=S8 bounds=%s",
+                    pixels.width(), pixels.height(), msaaTarget.getSamples(), logicalBounds
+            );
             return true;
         } catch (Throwable t) {
             ActiveLayer failed = active;
             active = null;
+            colorClearPending = false;
             if (failed != null) {
                 restoreScissor(failed.parentScissor());
                 ViewportContext.applyCaptured(failed.parentViewport());
@@ -132,6 +144,7 @@ public final class UiMsaaClipLayer {
             );
         } finally {
             active = null;
+            colorClearPending = false;
             restoreScissor(layer.parentScissor());
             ViewportContext.applyCaptured(layer.parentViewport());
         }
@@ -153,6 +166,15 @@ public final class UiMsaaClipLayer {
         if (layer == null || msaaTarget == null) return fallback;
         GpuTextureView view = msaaTarget.getColorTextureView();
         return view != null ? view : fallback;
+    }
+
+    /** Folds the local color clear into the first mask draw instead of opening a clear-only pass. */
+    public static @Nullable Integer consumePendingColorClear(@Nullable GpuTextureView colorAttachment) {
+        if (!colorClearPending || active == null || msaaTarget == null || colorAttachment == null) return null;
+        GpuTextureView local = msaaTarget.getColorTextureView();
+        if (local == null || local.texture() == null || colorAttachment.texture() != local.texture()) return null;
+        colorClearPending = false;
+        return 0x00000000;
     }
 
     /** Keeps the caller's logical coordinate system, changing only the projection window. */
@@ -212,10 +234,9 @@ public final class UiMsaaClipLayer {
 
     public static void shutdown() {
         active = null;
-        closeMesh(clearMesh);
         closeMesh(compositeMesh);
-        clearMesh = null;
         compositeMesh = null;
+        colorClearPending = false;
         if (msaaTarget != null) {
             MsaaFramebuffer retired = msaaTarget;
             CombatantRenderSystem.rhi().msaa().abandonTarget(retired);
@@ -243,18 +264,6 @@ public final class UiMsaaClipLayer {
         );
     }
 
-    private static void clearLayerColor(UiRect bounds) {
-        closeMesh(clearMesh);
-        clearMesh = coloredQuad(bounds, 0x00000000);
-        if (msaaTarget == null || clearMesh == null) return;
-        MeshRenderer.begin()
-                .attachments(msaaTarget.getColorTextureView(), null)
-                .clearColor(0x00000000)
-                .pipeline(CombatantRenderPipelines.UI_COLORED)
-                .mesh(clearMesh)
-                .end();
-    }
-
     private static void composite(ActiveLayer layer) {
         if (resolveTarget == null || resolveTarget.getColorTextureView() == null) return;
         GpuSampler sampler = PostProcessManager.getSampler();
@@ -273,26 +282,6 @@ public final class UiMsaaClipLayer {
                 .end();
     }
 
-    private static MeshBuilder coloredQuad(UiRect bounds, int argb) {
-        MeshBuilder mesh = new MeshBuilder(CombatantVertexFormats.POS2_COLOR, PrimitiveTopology.TRIANGLES, 4, 6);
-        mesh.begin();
-        int a = (argb >>> 24) & 0xFF;
-        int r = (argb >>> 16) & 0xFF;
-        int g = (argb >>> 8) & 0xFF;
-        int b = argb & 0xFF;
-        float x = bounds.x();
-        float y = bounds.y();
-        float x2 = x + bounds.width();
-        float y2 = y + bounds.height();
-        int i1 = mesh.vec2(x, y).color(r, g, b, a).next();
-        int i2 = mesh.vec2(x, y2).color(r, g, b, a).next();
-        int i3 = mesh.vec2(x2, y2).color(r, g, b, a).next();
-        int i4 = mesh.vec2(x2, y).color(r, g, b, a).next();
-        mesh.quad(i1, i2, i3, i4);
-        mesh.end();
-        return mesh;
-    }
-
     private static MeshBuilder texturedFramebufferQuad(UiRect bounds) {
         MeshBuilder mesh = new MeshBuilder(
                 CombatantVertexFormats.POS2_TEXTURE_COLOR, PrimitiveTopology.TRIANGLES, 4, 6
@@ -303,13 +292,22 @@ public final class UiMsaaClipLayer {
         float x2 = x + bounds.width();
         float y2 = y + bounds.height();
         // Render-target textures use a bottom-left framebuffer origin.
-        int i1 = mesh.vec2(x, y).raw2(0.0, 1.0).color(255, 255, 255, 255).next();
-        int i2 = mesh.vec2(x, y2).raw2(0.0, 0.0).color(255, 255, 255, 255).next();
-        int i3 = mesh.vec2(x2, y2).raw2(1.0, 0.0).color(255, 255, 255, 255).next();
-        int i4 = mesh.vec2(x2, y).raw2(1.0, 1.0).color(255, 255, 255, 255).next();
+        // The resolved pixels are already warped inside this screen-space AABB. Applying the
+        // current RenderWarp again here would distort and crop the composite a second time.
+        int i1 = mesh.raw2(x, y).raw2(0.0, 1.0).color(255, 255, 255, 255).next();
+        int i2 = mesh.raw2(x, y2).raw2(0.0, 0.0).color(255, 255, 255, 255).next();
+        int i3 = mesh.raw2(x2, y2).raw2(1.0, 0.0).color(255, 255, 255, 255).next();
+        int i4 = mesh.raw2(x2, y).raw2(1.0, 1.0).color(255, 255, 255, 255).next();
         mesh.quad(i1, i2, i3, i4);
         mesh.end();
         return mesh;
+    }
+
+    private static UiRect warpedBounds(UiRect bounds, @Nullable RenderWarp warp) {
+        if (bounds == null || bounds.empty() || warp == null || !warp.active()) return bounds;
+        double[] mapped = WARP_BOUNDS.get();
+        warp.mapBounds(bounds.x(), bounds.y(), bounds.width(), bounds.height(), mapped);
+        return new UiRect((float) mapped[0], (float) mapped[1], (float) mapped[2], (float) mapped[3]);
     }
 
     private static @Nullable PixelBounds pixelBounds(UiRect bounds, ViewportContext viewport) {
@@ -325,7 +323,18 @@ public final class UiMsaaClipLayer {
         int bottom = Math.min(viewport.framebufferHeight(),
                 (int) Math.ceil((bounds.y() + bounds.height()) * sy) + COLOR_PAD_PIXELS);
         if (right <= left || bottom <= top) return null;
-        return new PixelBounds(left, top, right - left, bottom - top);
+
+        // Animation and fractional UI scaling commonly alternate by one pixel. Stable allocation
+        // buckets keep that harmless jitter from recreating the MSAA color/S8/resolve targets.
+        int width = Math.min(viewport.framebufferWidth(), roundUp(right - left, TARGET_BUCKET_PIXELS));
+        int height = Math.min(viewport.framebufferHeight(), roundUp(bottom - top, TARGET_BUCKET_PIXELS));
+        left = Math.max(0, Math.min(left, viewport.framebufferWidth() - width));
+        top = Math.max(0, Math.min(top, viewport.framebufferHeight() - height));
+        return new PixelBounds(left, top, width, height);
+    }
+
+    private static int roundUp(int value, int bucket) {
+        return ((Math.max(1, value) + bucket - 1) / bucket) * bucket;
     }
 
     private static Matrix4f localProjection(UiRect bounds) {

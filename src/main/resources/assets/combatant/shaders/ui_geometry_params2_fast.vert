@@ -24,7 +24,7 @@ out vec4 v_Params;
 out vec4 v_Params2;
 
 void main() {
-    gl_Position = uiProjectiveClipPosition(Position.xy, uScreen.zw, Local);
+    gl_Position = uiProjectiveClipPosition(Position.xy, uLayer, Local);
     v_Local = uiProjectiveSourceLocal(Local);
     v_Color = Color;
     v_Rect = Rect;

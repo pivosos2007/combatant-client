@@ -8,11 +8,14 @@
 package combatant.client.render.helpers;
 
 import combatant.client.render.engine.core.CombatantRenderSystem;
+import combatant.client.render.engine.renderer.RenderWarp;
+import combatant.client.render.engine.renderer.RenderWarpStack;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.*;
 import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
 import combatant.client.render.engine.renderer.ui.clip.UiClipStack;
 import combatant.client.render.engine.renderer.ui.clip.UiClipStrategy;
+import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 import combatant.client.render.engine.rhi.clip.ShapeClipBackend;
 import combatant.client.util.logging.DebugLog;
 
@@ -26,10 +29,18 @@ public enum ClipFunction {
     ;
     private static final int MAX_SHAPE_DEPTH = 250;
     private static final int MASK_COLOR = 0xFFFFFFFF;
+    private static final boolean DEBUG_CLIP_SCENE_PREFERS_MSAA = Boolean.getBoolean("combatant.render.debug.clipScene")
+            || enabledValue(System.getenv("COMBATANT_UI_CLIP_DEBUG"));
+    private static final boolean STENCIL_DEBUG_OVERLAY = Boolean.getBoolean("combatant.render.debug.stencilOverlay");
     private static final UiClipStack STACK = new UiClipStack(MAX_SHAPE_DEPTH);
     private static final double[] POINTS = new double[512];
     private static boolean warnedShapeUnsupported;
     private static boolean warnedShapeDepth;
+    private static boolean warnedAnalyticRequired;
+
+    private static boolean enabledValue(String value) {
+        return "1".equals(value) || "true".equalsIgnoreCase(value) || "yes".equalsIgnoreCase(value);
+    }
 
     /** @deprecated use {@link ScissorFunction#pushRaw(float, float, float, float)} for raster scissor semantics. */
     @Deprecated
@@ -51,6 +62,30 @@ public enum ClipFunction {
         return push(UiShape.roundedRect(x, y, width, height, topLeft, topRight, bottomRight, bottomLeft));
     }
 
+    /**
+     * Requires the clip boundary to remain shader-visible. Returns false instead of silently
+     * promoting to stencil when the shape, parent strategy or analytic stack capacity cannot comply.
+     */
+    public static boolean pushAnalyticRequired(UiShape shape) {
+        if (!STACK.canPushAnalytic(shape)) {
+            warnAnalyticRequired(shape);
+            return false;
+        }
+        return push(shape, UiClipStrategy.ANALYTIC);
+    }
+
+    public static boolean pushRoundedRectAnalyticRequired(double x, double y, double width, double height,
+                                                          double radius) {
+        return pushAnalyticRequired(UiShape.roundedRect(x, y, width, height, radius));
+    }
+
+    public static boolean pushRoundedRectAnalyticRequired(double x, double y, double width, double height,
+                                                          double topLeft, double topRight,
+                                                          double bottomRight, double bottomLeft) {
+        return pushAnalyticRequired(UiShape.roundedRect(
+                x, y, width, height, topLeft, topRight, bottomRight, bottomLeft));
+    }
+
     /** Transitional fallback for subtrees whose material families cannot yet consume analytic clip state. */
     public static boolean pushRoundedRectMsaaStencil(double x, double y, double width, double height, double radius) {
         return push(UiShape.roundedRect(x, y, width, height, radius), UiClipStrategy.MSAA_STENCIL);
@@ -65,7 +100,7 @@ public enum ClipFunction {
     }
 
     public static boolean push(UiShape shape) {
-        return push(shape, null);
+        return push(shape, DEBUG_CLIP_SCENE_PREFERS_MSAA ? UiClipStrategy.MSAA_STENCIL : null);
     }
 
     public static boolean pushMsaaStencil(UiShape shape) {
@@ -107,25 +142,35 @@ public enum ClipFunction {
         int reference = layer.reference();
         boolean clear = parent == 0;
         boolean rebuildFromAnalyticParent = parentSnapshot.usesAnalyticPipeline();
+        boolean beginsLocalMsaaLayer = !parentSnapshot.usesMsaaStencil();
+        RenderWarp clipWarp = RenderWarpStack.current();
         String attachmentReason = "ClipFunction.push kind=" + shape.kind() + " bounds=" + bounds;
 
         if (Renderer2D.isDeferredExtractRecording()) {
             Renderer2D.deferRenderThreadAction(() -> {
-                ShapeClipBackend renderClip = clipBackend();
-                renderClip.requireRenderPassAttachment(attachmentReason);
-                if (clear || rebuildFromAnalyticParent) {
-                    renderClip.requestClear("first shape layer");
+                try (RenderWarpStack.Scope ignored = RenderWarpStack.push(clipWarp)) {
+                    if (beginsLocalMsaaLayer) {
+                        UiMsaaClipLayer.begin(snapshot, clipWarp);
+                    }
+                    ShapeClipBackend renderClip = clipBackend();
+                    renderClip.requireRenderPassAttachment(attachmentReason);
+                    if (clear || rebuildFromAnalyticParent) {
+                        renderClip.requestClear("first shape layer");
+                    }
+                    if (rebuildFromAnalyticParent) {
+                        renderStencilSnapshot(renderClip, snapshot);
+                    } else {
+                        renderClip.beginWrite(parent, reference);
+                        renderMaskShape(shape);
+                        renderClip.beginTest(reference);
+                    }
+                    renderStencilDebugProbe(shape, reference, false);
                 }
-                if (rebuildFromAnalyticParent) {
-                    renderStencilSnapshot(renderClip, snapshot);
-                } else {
-                    renderClip.beginWrite(parent, reference);
-                    renderMaskShape(shape);
-                    renderClip.beginTest(reference);
-                }
-                renderStencilDebugProbe(shape, reference, false);
             });
         } else {
+            if (beginsLocalMsaaLayer) {
+                UiMsaaClipLayer.begin(snapshot, clipWarp);
+            }
             clip.requireRenderPassAttachment(attachmentReason);
             if (clear || rebuildFromAnalyticParent) {
                 clip.requestClear("first shape layer");
@@ -165,21 +210,28 @@ public enum ClipFunction {
         }
         int previousReference = previous.stencilReference();
         boolean returnsToAnalytic = previous.usesAnalyticPipeline();
+        boolean endsLocalMsaaLayer = !previous.usesMsaaStencil();
+        RenderWarp clipWarp = RenderWarpStack.current();
         if (Renderer2D.isDeferredExtractRecording()) {
             Renderer2D.deferRenderThreadAction(() -> {
-                ShapeClipBackend renderClip = clipBackend();
-                if (returnsToAnalytic || previousReference == 0) {
-                    renderClip.disable();
-                    return;
-                }
-                renderStencilDebugProbe(layer.shape(), layer.reference(), true);
-                Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
-                renderClip.beginRestore(layer.reference(), layer.parentReference());
-                renderMaskShape(layer.shape());
-                if (previousReference > 0) {
-                    renderClip.beginTest(previousReference);
-                } else {
-                    renderClip.disable();
+                try (RenderWarpStack.Scope ignored = RenderWarpStack.push(clipWarp)) {
+                    ShapeClipBackend renderClip = clipBackend();
+                    if (returnsToAnalytic || previousReference == 0) {
+                        renderClip.disable();
+                        if (endsLocalMsaaLayer) {
+                            UiMsaaClipLayer.end(layer.snapshot().id());
+                        }
+                        return;
+                    }
+                    renderStencilDebugProbe(layer.shape(), layer.reference(), true);
+                    Renderer2D.flushBatch(Renderer2D.FlushReason.SCISSOR);
+                    renderClip.beginRestore(layer.reference(), layer.parentReference());
+                    renderMaskShape(layer.shape());
+                    if (previousReference > 0) {
+                        renderClip.beginTest(previousReference);
+                    } else {
+                        renderClip.disable();
+                    }
                 }
             });
             return;
@@ -188,6 +240,9 @@ public enum ClipFunction {
         ShapeClipBackend clip = clipBackend();
         if (returnsToAnalytic || previousReference == 0) {
             clip.disable();
+            if (endsLocalMsaaLayer) {
+                UiMsaaClipLayer.end(layer.snapshot().id());
+            }
             return;
         }
         renderStencilDebugProbe(layer.shape(), layer.reference(), true);
@@ -239,6 +294,15 @@ public enum ClipFunction {
         DebugLog.warn("ClipFunction: shape clip stack exceeded %d layers. Clip push rejected.", MAX_SHAPE_DEPTH);
     }
 
+    private static void warnAnalyticRequired(UiShape shape) {
+        if (warnedAnalyticRequired) return;
+        warnedAnalyticRequired = true;
+        DebugLog.warn("ClipFunction: ANALYTIC_REQUIRED clip rejected instead of falling back. kind=%s bounds=%s depth=%d",
+                shape != null ? shape.kind() : null,
+                shape != null ? shape.bounds() : null,
+                STACK.depth());
+    }
+
     private static void applyPreviousShapeTest() {
         int reference = currentShapeReference();
         if (reference > 0) {
@@ -250,7 +314,7 @@ public enum ClipFunction {
 
 
     private static void renderStencilDebugProbe(UiShape shape, int reference, boolean overlay) {
-        if (!DebugLog.isStencilDebugEnabled()) return;
+        if (!DebugLog.isStencilDebugEnabled() || !STENCIL_DEBUG_OVERLAY) return;
         UiRect b = shape.bounds();
         if (b == null || b.empty()) return;
 

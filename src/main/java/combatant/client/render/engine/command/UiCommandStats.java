@@ -12,18 +12,22 @@ public final class UiCommandStats {
     private int recordedCommands;
     private int shapeCommands;
     private int pathCommands;
+    private int primitiveCommands;
     private int textureCommands;
     private int textCommands;
     private int itemCommands;
     private int effectCommands;
-    private int compiledBatches;
-    private int backendCommands;
+    private int compiledPasses;
+    private int compiledOrderedBatches;
+    private int rhiDrawCommands;
+    private int backendDrawCalls;
 
     public void beginFrame(long frameId) {
         if (this.frameId == frameId) return;
         this.frameId = frameId;
-        recordedCommands = shapeCommands = pathCommands = textureCommands = textCommands = itemCommands = effectCommands = 0;
-        compiledBatches = backendCommands = 0;
+        recordedCommands = shapeCommands = pathCommands = primitiveCommands = textureCommands = 0;
+        textCommands = itemCommands = effectCommands = 0;
+        compiledPasses = compiledOrderedBatches = rhiDrawCommands = backendDrawCalls = 0;
     }
 
     public void record(UiCommand command) {
@@ -32,26 +36,42 @@ public final class UiCommandStats {
         switch (command.kind()) {
             case SHAPE -> shapeCommands++;
             case PATH -> pathCommands++;
+            case PRIMITIVE -> primitiveCommands++;
             case TEXTURE -> textureCommands++;
             case TEXT -> textCommands++;
             case ITEM -> itemCommands++;
             case BLUR_REGION, LIQUID_GLASS_REGION, EFFECT_REGION -> effectCommands++;
-            case PRIMITIVE -> backendCommands++;
-            default -> {
-            }
         }
     }
 
-    public void addCompiledBatches(int count) {
-        compiledBatches += Math.max(0, count);
+    public void addCompiledPasses(int count) {
+        compiledPasses += Math.max(0, count);
     }
 
-    public void addBackendCommand() {
-        backendCommands++;
+    public void addCompiledOrderedBatches(int count) {
+        compiledOrderedBatches += Math.max(0, count);
+    }
+
+    public void addExecutionStats(int drawCommands, int drawCalls) {
+        rhiDrawCommands += Math.max(0, drawCommands);
+        backendDrawCalls += Math.max(0, drawCalls);
     }
 
     public UiStatsSnapshot snapshot() {
-        return new UiStatsSnapshot(frameId, recordedCommands, shapeCommands, pathCommands, textureCommands,
-                textCommands, itemCommands, effectCommands, compiledBatches, backendCommands);
+        return new UiStatsSnapshot(
+                frameId,
+                recordedCommands,
+                shapeCommands,
+                pathCommands,
+                primitiveCommands,
+                textureCommands,
+                textCommands,
+                itemCommands,
+                effectCommands,
+                compiledPasses,
+                compiledOrderedBatches,
+                rhiDrawCommands,
+                backendDrawCalls
+        );
     }
 }

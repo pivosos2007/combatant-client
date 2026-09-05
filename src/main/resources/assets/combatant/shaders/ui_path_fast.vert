@@ -17,8 +17,8 @@ out vec4 v_Color;
 out vec4 v_Path;
 
 void main() {
-    vec2 logicalSize = max(uScreen.zw, vec2(1.0));
-    vec2 clip = Position.xy / logicalSize * 2.0 - 1.0;
+    vec2 logicalSize = max(uLayer.zw, vec2(1.0));
+    vec2 clip = (Position.xy - uLayer.xy) / logicalSize * 2.0 - 1.0;
     gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
     v_Color = Color;
     v_Path = Params;

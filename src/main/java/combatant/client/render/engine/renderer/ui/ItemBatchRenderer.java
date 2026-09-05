@@ -44,6 +44,7 @@ import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
 import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -890,7 +891,8 @@ public final class ItemBatchRenderer {
             pipeline = CombatantRenderPipelines.analyticClipTexturedPipeline(pipeline);
         }
         MeshRenderer renderer = MeshRenderer.begin()
-                .attachments(mc.gameRenderer.mainRenderTarget().getColorTextureView(), null)
+                .attachments(UiMsaaClipLayer.currentColorAttachment(
+                        mc.gameRenderer.mainRenderTarget().getColorTextureView()), null)
                 .pipeline(pipeline)
                 .mesh(mesh)
                 .uniform("UIBatch", itemBlitUiBatch(mc))
@@ -974,7 +976,8 @@ public final class ItemBatchRenderer {
         }
 
         MeshRenderer renderer = MeshRenderer.begin()
-                .attachments(mc.gameRenderer.mainRenderTarget().getColorTextureView(), null)
+                .attachments(UiMsaaClipLayer.currentColorAttachment(
+                        mc.gameRenderer.mainRenderTarget().getColorTextureView()), null)
                 .pipeline(pipeline)
                 .mesh(mesh);
         if (uiBatchUniform) {

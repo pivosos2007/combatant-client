@@ -7,7 +7,6 @@
 
 package combatant.client.render.engine.renderer.ui;
 
-import combatant.client.render.engine.command.UiBatchBackendCommand;
 import combatant.client.render.engine.command.UiCommand;
 import combatant.client.render.engine.command.UiCommandBuffer;
 import combatant.client.render.engine.command.UiStatsSnapshot;
@@ -17,16 +16,16 @@ import combatant.client.render.helpers.ClipFunction;
 import combatant.client.render.helpers.ScissorFunction;
 
 /**
- * UI rendering gateway: Renderer2D records normalized commands here, the compiler builds a
- * UI pass plan, and the executor owns the future RHI execution point. Renderer2D batcher mesh
- * draws are represented explicitly as backend commands.
+ * Single UI scheduling gateway. Normalized commands provide semantic/clip metadata while concrete
+ * production work is owned by {@link UiPassCompiler} and executed only by {@link UiPassExecutor}.
+ * {@link OrderedUiBatcher} remains an internal geometry/batching lowering component during migration.
  */
 public final class UiRendererSubsystem {
     private final UiCommandBuffer commands = new UiCommandBuffer();
     private final UiPassCompiler compiler = new UiPassCompiler();
     private final UiPassExecutor executor = new UiPassExecutor();
-    private final UiEffectGraph effects = new UiEffectGraph();
     private UiBatchPlan lastPlan = UiBatchPlan.EMPTY;
+    private boolean executing;
 
     public UiCommandBuffer commands() {
         return commands;
@@ -40,25 +39,43 @@ public final class UiRendererSubsystem {
         commands.add(command, ScissorFunction.currentSnapshot(), ClipFunction.currentSnapshot());
     }
 
-    public void recordBackendCommand(String backend, String batchType) {
-        record(new UiBatchBackendCommand(backend, batchType));
+    public boolean hasPendingCommands() {
+        return commands.size() > 0 || compiler.hasPendingWork();
     }
 
-    public boolean hasPendingCommands() {
-        return commands.size() > 0;
+    public void submitOrdered(OrderedUiBatcher batcher, boolean finish) {
+        if (batcher == null) return;
+        compiler.enqueueOrdered(batcher, finish);
+    }
+
+    public void submitImmediate(String label, int orderedBatchCount, UiBatchPlan.Work work) {
+        compiler.enqueue(label, orderedBatchCount, work);
     }
 
     public void flush(RenderFrameContext context, CombatantRhi rhi) {
         commands.beginFrame(context);
-        if (commands.size() == 0) {
-            lastPlan = UiBatchPlan.EMPTY;
-            executor.execute(lastPlan, context, rhi);
-            return;
+        if (executing) return;
+        if (commands.size() == 0 && !compiler.hasPendingWork()) return;
+
+        executing = true;
+        try {
+            while (commands.size() > 0 || compiler.hasPendingWork()) {
+                UiBatchPlan compiled = compiler.compile(commands);
+
+                // Clear before execution so re-entrant semantic recording belongs to the next plan.
+                // The compiler likewise drains its work queue before returning this plan.
+                commands.clear();
+
+                UiBatchPlan executed = executor.execute(compiled, context, rhi);
+                commands.stats().addExecutionStats(
+                        executed.rhiDrawCommandCount(),
+                        executed.backendDrawCallCount()
+                );
+                lastPlan = executed;
+            }
+        } finally {
+            executing = false;
         }
-        lastPlan = compiler.compile(commands);
-        effects.execute(commands, context, rhi);
-        executor.execute(lastPlan, context, rhi);
-        commands.clear();
     }
 
     public UiBatchPlan lastPlan() {

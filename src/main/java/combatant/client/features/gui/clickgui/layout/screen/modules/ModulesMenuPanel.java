@@ -98,6 +98,11 @@ final class ModulesMenuPanel {
         return next;
     }
 
+    float hoverAnimValue(String id) {
+        Float value = hoverAnim.get(id);
+        return value != null ? value : 0.0f;
+    }
+
     boolean mousePressed(float mx, float my, int button) {
         if (selected != null && swap > 0.2f) {
             float backY = y + 28.0f * ModulesMenuScreen.computePortScale();

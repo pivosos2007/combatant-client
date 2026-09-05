@@ -16,9 +16,7 @@ import combatant.client.render.engine.text.GlyphFont;
 import combatant.client.render.engine.text.backend.TextPlacementMode;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
-/**
- * Command-stream and ordered-batch gateway used by the Renderer2D facade.
- */
+/** Command-stream and executable-pass gateway used by the Renderer2D facade. */
 public final class UiRenderDispatcher {
     private static final UiRendererSubsystem SUBSYSTEM = new UiRendererSubsystem();
 
@@ -46,14 +44,12 @@ public final class UiRenderDispatcher {
         SUBSYSTEM.flush(CombatantRenderSystem.ensureFrameContext(), CombatantRenderSystem.rhi());
     }
 
-    public static void recordBackendCommand(UiBatchType type) {
-        if (type != null) recordBackendCommand(type.name());
+    static void submitOrderedBatcher(OrderedUiBatcher batcher, boolean finish) {
+        SUBSYSTEM.submitOrdered(batcher, finish);
     }
 
-    public static void recordBackendCommand(String batchType) {
-        if (batchType != null && !batchType.isEmpty()) {
-            SUBSYSTEM.recordBackendCommand("Renderer2D.OrderedUiBatcher", batchType);
-        }
+    public static void submitImmediate(String label, int orderedBatchCount, UiBatchPlan.Work work) {
+        SUBSYSTEM.submitImmediate(label, orderedBatchCount, work);
     }
 
     public static boolean enqueueTextMesh(
@@ -88,6 +84,7 @@ public final class UiRenderDispatcher {
         if (!auto) return;
         Renderer2D.BATCH_STATS.noteFlushReason(Renderer2D.FlushReason.AUTO_BATCH);
         Renderer2D.UI_BATCHER.flush(true);
+        flushLayer();
     }
 
     public static void flushBatch(Renderer2D.FlushReason reason) {

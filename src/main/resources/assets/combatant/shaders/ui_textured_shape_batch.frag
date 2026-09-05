@@ -1,7 +1,5 @@
 #version 330 core
 
-#moj_import <combatant:ui_geometry.glsl>
-
 in vec4 v_Local;
 in vec2 v_TexCoord;
 in vec4 v_Color;
@@ -14,8 +12,10 @@ uniform sampler2D u_Texture;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen;
+    vec4 uLayer;
 };
 
+#moj_import <combatant:ui_geometry.glsl>
 #ifdef COMBATANT_ANALYTIC_CLIP
 #moj_import <combatant:ui_clip.glsl>
 #endif
@@ -34,7 +34,9 @@ void main() {
     float aa = max(max(logicalScale.x, logicalScale.y), max(fwidth(d) * 0.75, 0.0001))
             + max(v_Params.y, 0.0);
     float shapeAlpha = clamp(0.5 - d / max(aa, 0.0001), 0.0, 1.0);
-    vec4 texel = texture(u_Texture, v_TexCoord);
+    float invW = abs(v_Local.z) > 0.000001 ? v_Local.z : 1.0;
+    vec2 projectiveUv = v_TexCoord / invW;
+    vec4 texel = texture(u_Texture, projectiveUv);
     if (v_Params.z > 0.5) {
         fragColor = vec4(v_Color.rgb, v_Color.a * texel.r * shapeAlpha);
     } else {

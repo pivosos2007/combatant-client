@@ -26,6 +26,7 @@ out vec4 fragColor;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen;
+    vec4 uLayer;
 };
 
 const float PI = 3.14159265359;

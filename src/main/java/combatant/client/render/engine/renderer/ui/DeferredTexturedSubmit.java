@@ -18,6 +18,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.Renderer2D.Deferred2DLayer;
 import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
 import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 
@@ -27,25 +28,39 @@ public record DeferredTexturedSubmit(Deferred2DLayer layer, ViewportContext view
     @Override
     public void submit() {
         if (mesh == null || samplerView == null || sampler == null) return;
+        UiClipSnapshot clip = clipSnapshot != null ? clipSnapshot : UiClipSnapshot.NONE;
+        String resolvedSamplerName = samplerName != null ? samplerName : "u_Texture";
+        UiRenderDispatcher.submitImmediate(
+                "Renderer2D.TEXTURE.deferred",
+                1,
+                (context, rhi) -> draw(mesh, resolvedSamplerName, samplerView, sampler, clip)
+        );
+        Renderer2D.flushUiLayer();
+    }
+
+    private static void draw(MeshBuilder mesh,
+                             String samplerName,
+                             GpuTextureView samplerView,
+                             GpuSampler sampler,
+                             UiClipSnapshot clip) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.gameRenderer == null) return;
         RenderTarget fb = mc.gameRenderer.mainRenderTarget();
         if (fb == null) return;
-        UiClipSnapshot clip = clipSnapshot != null ? clipSnapshot : UiClipSnapshot.NONE;
+
         com.mojang.blaze3d.pipeline.RenderPipeline pipeline = CombatantRenderPipelines.UI_TEXTURED;
         if (clip.usesAnalyticPipeline()) {
             pipeline = CombatantRenderPipelines.analyticClipTexturedPipeline(pipeline);
         }
         MeshRenderer draw = MeshRenderer.begin()
-                .attachments(fb.getColorTextureView(), null)
+                .attachments(UiMsaaClipLayer.currentColorAttachment(fb.getColorTextureView()), null)
                 .pipeline(pipeline)
                 .mesh(mesh)
-                .sampler(samplerName != null ? samplerName : "u_Texture", samplerView, sampler);
+                .sampler(samplerName, samplerView, sampler);
         if (clip.usesAnalyticPipeline()) {
             draw.uniform("UIClip", UiClipUniforms.write(clip));
         }
         draw.end();
-        Renderer2D.flushUiLayer();
     }
 
     @Override

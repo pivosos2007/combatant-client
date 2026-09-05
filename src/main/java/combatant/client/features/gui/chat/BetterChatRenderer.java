@@ -436,7 +436,7 @@ public enum BetterChatRenderer {
                 Renderer2D.requestLiquidGlassBlurBeforeNextShapeClip();
             }
             float clipRadius = Math.min(RADIUS, clipBounds.h() * 0.5f);
-            chatClip = ClipFunction.pushRoundedRect(
+            chatClip = ClipFunction.pushRoundedRectAnalyticRequired(
                     clipBounds.x(), clipBounds.y(), clipBounds.w(), clipBounds.h(),
                     clipRadius, clipRadius, 0.0f, 0.0f
             );

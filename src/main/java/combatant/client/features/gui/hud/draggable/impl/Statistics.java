@@ -74,10 +74,10 @@ public final class Statistics extends DraggableHudElement {
     private static final String INFO_BLOCKESP_VISIBLE = "blockesp_visible";
     private static final String INFO_BLOCKESP_BREAKDOWN = "blockesp_breakdown";
     private static final int MAX_BLOCKESP_ROWS = 6;
-    private static final int GRAPH_RENDER_POINTS = 64;
-    private static final float GRAPH_FOLLOW_RATE = 18.0f;
-    private static final float GRAPH_SCALE_RISE_RATE = 12.0f;
-    private static final float GRAPH_SCALE_FALL_RATE = 2.2f;
+    private static final int GRAPH_HISTORY_POINTS = 100;
+    private static final float GRAPH_MIN_CEILING_BPS = 6.0f;
+    private static final float GRAPH_HEADROOM = 1.25f;
+    private static final float GRAPH_ZERO_EPSILON_BPS = 0.03f;
 
     {
         defaultLayout(20.0f, 150.0f);
@@ -159,14 +159,12 @@ public final class Statistics extends DraggableHudElement {
     private int uiTitleText;
     private int uiDivider;
     private int uiBlurTint;
-    private final float[] graphDisplayValues = new float[GRAPH_RENDER_POINTS];
+    private final float[] graphFilteredValues = new float[GRAPH_HISTORY_POINTS];
+    private float graphDisplayCeiling = GRAPH_MIN_CEILING_BPS;
     private final Map<String, LinkedHashMap<String, Object>> lastInformationRows = new LinkedHashMap<>();
     private final Map<String, Float> informationRowAnimations = new LinkedHashMap<>();
-    private long graphAnimationNanos;
     private long lastBedWarsContextCheckMs;
     private long bedWarsContextUntilMs;
-    private float graphDisplayCeiling = 6.0f;
-    private boolean graphDisplayInitialized;
 
     public Statistics() {
         super("statistics", "Statistics", true);
@@ -385,7 +383,8 @@ public final class Statistics extends DraggableHudElement {
                 drawGraphHeight,
                 drawBaseScale,
                 snapshot.speedSamples(),
-                forceVisible && snapshot.speedSamples().size() < 2
+                forceVisible && snapshot.speedSamples().size() < 2,
+                tickDelta
         );
         HudRenderUtil.ThemeGradient accent = HudRenderUtil.themeAccentGradient(255);
         int accentStart = isThemeMode()
@@ -706,106 +705,117 @@ public final class Statistics extends DraggableHudElement {
                                                                  float drawGraphHeight,
                                                                  float drawBaseScale,
                                                                  List<Float> samples,
-                                                                 boolean preview) {
-        int sourceCount = preview ? 48 : samples.size();
-        if (sourceCount < 2 || drawGraphHeight <= 0.0f) {
-            graphAnimationNanos = 0L;
-            graphDisplayInitialized = false;
-            return List.of();
-        }
+                                                                 boolean preview,
+                                                                 float tickDelta) {
+        if (drawGraphHeight <= 0.0f) return List.of();
 
         float plotWidth = Math.max(1.0f, drawWidth - 14.0f * drawBaseScale);
         float plotHeight = Math.max(1.0f, drawGraphHeight - 25.0f * drawBaseScale);
-        float[] source = new float[sourceCount];
-        for (int i = 0; i < sourceCount; i++) {
-            if (preview) {
-                source[i] = 3.4f + (float) Math.sin(i * 0.28f) * 1.6f
-                        + (float) Math.sin(i * 0.09f) * 0.8f;
-            } else {
-                source[i] = Math.max(0.0f, samples.get(i));
+
+        if (preview) {
+            int count = 48;
+            float ceiling = GRAPH_MIN_CEILING_BPS;
+            for (int i = 0; i < count; i++) {
+                ceiling = Math.max(ceiling, previewGraphValue(i) * GRAPH_HEADROOM);
             }
+            List<LinkedHashMap<String, Object>> points = new ArrayList<>(count);
+            for (int i = 0; i < count; i++) {
+                addGraphPoint(points, plotWidth * i / Math.max(1.0f, count - 1.0f),
+                        previewGraphValue(i), plotHeight, ceiling);
+            }
+            return points;
         }
 
-        // Weighted smoothing removes tick-to-tick movement noise without making
-        // acceleration feel delayed. Catmull-Rom resampling below then gives the
-        // renderer evenly spaced, sub-pixel-friendly segments.
-        float[] smooth = new float[sourceCount];
-        for (int i = 0; i < sourceCount; i++) {
+        int sampleCount = samples != null ? Math.min(samples.size(), GRAPH_HISTORY_POINTS) : 0;
+        if (sampleCount < 2) return List.of();
+
+        int sourceStart = Math.max(0, samples.size() - sampleCount);
+        float peak = 0.0f;
+        for (int i = 0; i < sampleCount; i++) {
             float weighted = 0.0f;
             float weightSum = 0.0f;
             for (int offset = -2; offset <= 2; offset++) {
-                int index = Math.max(0, Math.min(sourceCount - 1, i + offset));
+                int index = Math.max(0, Math.min(sampleCount - 1, i + offset));
                 float weight = 3.0f - Math.abs(offset);
-                weighted += source[index] * weight;
+                weighted += graphSample(samples.get(sourceStart + index)) * weight;
                 weightSum += weight;
             }
-            smooth[i] = weighted / weightSum;
+            float value = weighted / Math.max(1.0f, weightSum);
+            if (value < GRAPH_ZERO_EPSILON_BPS) value = 0.0f;
+            graphFilteredValues[i] = value;
+            peak = Math.max(peak, value);
         }
 
-        float targetCeiling = 6.0f;
-        for (float sample : smooth) {
-            targetCeiling = Math.max(targetCeiling, sample * 1.15f);
-        }
-        if (preview) targetCeiling = Math.max(targetCeiling, 8.0f);
+        // Scale is continuous and independent from the curve data. A bucketed ceiling makes the
+        // whole graph jump whenever the peak crosses a bucket boundary, so slew the visible range
+        // instead. The slew is bounded relative to the current range, which prevents a large peak
+        // change from producing one large frame-to-frame rescale.
+        float targetCeiling = Math.max(GRAPH_MIN_CEILING_BPS, peak * GRAPH_HEADROOM);
+        float dt = Math.max(0.0f, Math.min(0.05f, AnimationUtility.deltaTime()));
+        float ceilingDelta = targetCeiling - graphDisplayCeiling;
+        float rate = ceilingDelta >= 0.0f ? 3.2f : 1.8f;
+        float maxStep = Math.max(0.01f, graphDisplayCeiling * rate * dt);
+        graphDisplayCeiling += Math.max(-maxStep, Math.min(maxStep, ceilingDelta));
+        if (!Float.isFinite(graphDisplayCeiling)) graphDisplayCeiling = targetCeiling;
+        float ceiling = Math.max(GRAPH_MIN_CEILING_BPS, graphDisplayCeiling);
 
-        long nowNanos = System.nanoTime();
-        float frameSeconds = graphAnimationNanos == 0L
-                ? 0.0f
-                : Math.min(0.10f, Math.max(0.0f, (nowNanos - graphAnimationNanos) / 1_000_000_000.0f));
-        graphAnimationNanos = nowNanos;
+        // Zero history has no meaningful curve. Still let the display range relax back toward its
+        // minimum above, but do not feed a degenerate baseline into the spline pipeline.
+        if (peak <= GRAPH_ZERO_EPSILON_BPS) return List.of();
 
-        float[] targetValues = new float[GRAPH_RENDER_POINTS];
-        int count = GRAPH_RENDER_POINTS;
-        for (int i = 0; i < count; i++) {
-            float position = (sourceCount - 1.0f) * i / Math.max(1, count - 1);
-            int index = Math.min(sourceCount - 1, (int) Math.floor(position));
-            float t = position - index;
-            float p0 = smooth[Math.max(0, index - 1)];
-            float p1 = smooth[index];
-            float p2 = smooth[Math.min(sourceCount - 1, index + 1)];
-            float p3 = smooth[Math.min(sourceCount - 1, index + 2)];
-            float t2 = t * t;
-            float t3 = t2 * t;
-            float value = 0.5f * ((2.0f * p1)
-                    + (-p0 + p2) * t
-                    + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2
-                    + (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
-            targetValues[i] = Math.max(Math.min(p1, p2), Math.min(Math.max(p1, p2), value));
-        }
+        // Samples are produced once per game tick. Smooth scrolling is purely a render-time X phase:
+        // there is no retained graph animation state and no second Y interpolation. At the next tick
+        // the ring buffer advances exactly one slot while tickDelta returns to zero, so shared samples
+        // remain at the same screen position instead of jumping ~1 slot at 20 Hz.
+        float phase = Math.max(0.0f, Math.min(1.0f, tickDelta));
+        float slotWidth = plotWidth / Math.max(1.0f, GRAPH_HISTORY_POINTS - 1.0f);
+        float scroll = slotWidth * phase;
+        float firstX = plotWidth - (sampleCount - 1) * slotWidth - scroll;
 
-        if (!graphDisplayInitialized || frameSeconds <= 0.0f) {
-            System.arraycopy(targetValues, 0, graphDisplayValues, 0, count);
-            graphDisplayCeiling = targetCeiling;
-            graphDisplayInitialized = true;
-        } else {
-            float valueFollow = 1.0f - (float) Math.exp(-GRAPH_FOLLOW_RATE * frameSeconds);
-            for (int i = 0; i < count; i++) {
-                graphDisplayValues[i] += (targetValues[i] - graphDisplayValues[i]) * valueFollow;
-            }
-            float scaleRate = targetCeiling > graphDisplayCeiling
-                    ? GRAPH_SCALE_RISE_RATE
-                    : GRAPH_SCALE_FALL_RATE;
-            float scaleFollow = 1.0f - (float) Math.exp(-scaleRate * frameSeconds);
-            graphDisplayCeiling += (targetCeiling - graphDisplayCeiling) * scaleFollow;
+        List<LinkedHashMap<String, Object>> points = new ArrayList<>(sampleCount + 2);
+        int firstSample = 0;
+        if (firstX < 0.0f && sampleCount >= 2) {
+            float t = Math.min(1.0f, -firstX / Math.max(0.0001f, slotWidth));
+            float boundaryValue = graphFilteredValues[0] + (graphFilteredValues[1] - graphFilteredValues[0]) * t;
+            addGraphPoint(points, 0.0f, boundaryValue, plotHeight, ceiling);
+            firstSample = 1;
         }
 
-        // Keep one continuous representation even when every displayed sample is zero.
-        // Degenerate zero-area geometry is filtered by UiPathRenderer; collapsing this graph to
-        // averaged endpoints would cause a visible topology pop on the first non-zero delta.
-        float safeCeiling = Math.max(0.001f, graphDisplayCeiling);
-        List<LinkedHashMap<String, Object>> points = new ArrayList<>(count);
-        for (int i = 0; i < count; i++) {
-            float px = plotWidth * i / Math.max(1, count - 1);
-            float value = Float.isFinite(graphDisplayValues[i])
-                    ? Math.max(0.0f, graphDisplayValues[i])
-                    : 0.0f;
-            float py = plotHeight - Math.min(1.0f, value / safeCeiling) * plotHeight;
-            LinkedHashMap<String, Object> point = new LinkedHashMap<>();
-            point.put("x", px);
-            point.put("y", py);
-            points.add(point);
+        for (int i = firstSample; i < sampleCount; i++) {
+            float x = plotWidth - (sampleCount - 1 - i) * slotWidth - scroll;
+            if (x <= 0.0001f && !points.isEmpty()) continue;
+            if (x < 0.0f || x > plotWidth) continue;
+            addGraphPoint(points, x, graphFilteredValues[i], plotHeight, ceiling);
         }
-        return points;
+
+        // Fill only the sub-tick gap on the right. The tail keeps the last sampled value; when the
+        // next sample arrives it becomes the new right endpoint and the previous sample is already
+        // exactly one slot to the left, so no whole-curve jump is introduced.
+        if (scroll > 0.0001f) {
+            addGraphPoint(points, plotWidth, graphFilteredValues[sampleCount - 1], plotHeight, ceiling);
+        }
+        return points.size() >= 2 ? points : List.of();
+    }
+
+    private static float graphSample(Float value) {
+        return value != null && Float.isFinite(value) ? Math.max(0.0f, value) : 0.0f;
+    }
+
+    private static float previewGraphValue(int index) {
+        return Math.max(0.0f, 3.4f + (float) Math.sin(index * 0.28f) * 1.6f
+                + (float) Math.sin(index * 0.09f) * 0.8f);
+    }
+
+    private static void addGraphPoint(List<LinkedHashMap<String, Object>> points,
+                                      float x,
+                                      float value,
+                                      float plotHeight,
+                                      float ceiling) {
+        float py = plotHeight - Math.min(1.0f, value / Math.max(0.001f, ceiling)) * plotHeight;
+        LinkedHashMap<String, Object> point = new LinkedHashMap<>();
+        point.put("x", x);
+        point.put("y", py);
+        points.add(point);
     }
 
     private static String formatPlayTime(long elapsedMs) {

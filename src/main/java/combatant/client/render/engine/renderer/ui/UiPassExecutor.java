@@ -10,18 +10,41 @@ package combatant.client.render.engine.renderer.ui;
 import combatant.client.render.engine.core.RenderFrameContext;
 import combatant.client.render.engine.rhi.CombatantRhi;
 
-/**
- * Executes compiled UI passes. Renderer2D ordered batches remain the production executor;
- * the normalized command stream is the source that future specialized passes lower from.
- */
+/** Production UI execution point. Command compilation and legacy lowering both terminate here. */
 public final class UiPassExecutor {
     private UiBatchPlan lastPlan = UiBatchPlan.EMPTY;
 
-    public void execute(UiBatchPlan plan, RenderFrameContext context, CombatantRhi rhi) {
-        lastPlan = plan != null ? plan : UiBatchPlan.EMPTY;
+    public UiBatchPlan execute(UiBatchPlan plan, RenderFrameContext context, CombatantRhi rhi) {
+        UiBatchPlan compiled = plan != null ? plan : UiBatchPlan.EMPTY;
+        if (rhi == null || compiled.passes().isEmpty()) {
+            lastPlan = compiled;
+            return compiled;
+        }
+
+        long drawsBefore = rhi.stats().drawCalls();
+        long fullscreenBefore = rhi.stats().fullscreenPasses();
+        try {
+            for (UiBatchPlan.Pass pass : compiled.passes()) {
+                if (pass == null) continue;
+                if (!pass.drawCommands().isEmpty()) {
+                    rhi.drawMeshes(pass.drawCommands());
+                }
+                pass.executeWork(context, rhi);
+            }
+        } finally {
+            long backendDraws = Math.max(0L, rhi.stats().drawCalls() - drawsBefore);
+            long fullscreenDraws = Math.max(0L, rhi.stats().fullscreenPasses() - fullscreenBefore);
+            long meshDrawCommands = Math.max(0L, backendDraws - fullscreenDraws);
+            lastPlan = compiled.withExecutionStats(saturatingInt(meshDrawCommands), saturatingInt(backendDraws));
+        }
+        return lastPlan;
     }
 
     public UiBatchPlan lastPlan() {
         return lastPlan;
+    }
+
+    private static int saturatingInt(long value) {
+        return value >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) Math.max(0L, value);
     }
 }

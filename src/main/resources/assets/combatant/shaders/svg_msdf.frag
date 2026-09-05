@@ -18,6 +18,7 @@ layout (std140) uniform MsdfText {
 #ifdef COMBATANT_ANALYTIC_CLIP
 layout (std140) uniform UIBatch {
     vec4 uScreen; // xy = framebuffer size, zw = logical size
+    vec4 uLayer;
 };
 
 #moj_import <combatant:ui_geometry.glsl>

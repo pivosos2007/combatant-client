@@ -274,12 +274,12 @@ public final class UiPathRenderer {
         int count = Math.min(pointCount, resolvedCount);
         if (count < 2) return;
 
-        // Exactly-on-baseline graphs have no area to rasterize. Keep their stroke path intact so
-        // leaving zero remains continuous; only skip the mathematically empty fill/fringe.
+        // A graph that lies entirely on its baseline has zero fill area. Emitting a top strip and
+        // AA fringe for it only creates degenerate triangles; keep the stroke path independent.
         boolean hasArea = false;
         for (int i = 0; i < count; i++) {
             double y = resolved[i * 2 + 1];
-            if (Double.isFinite(y) && baseline - y > EPSILON) {
+            if (Double.isFinite(y) && y < baseline - EPSILON) {
                 hasArea = true;
                 break;
             }

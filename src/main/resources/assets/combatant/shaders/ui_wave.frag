@@ -16,6 +16,7 @@ out vec4 fragColor;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen;
+    vec4 uLayer;
 };
 
 #ifdef COMBATANT_ANALYTIC_CLIP

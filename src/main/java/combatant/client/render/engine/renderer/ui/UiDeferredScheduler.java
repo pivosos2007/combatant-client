@@ -20,6 +20,7 @@ import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.ClipFunction;
+import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.renderer.ProjectionMatrixBuffer;
 import org.joml.Matrix4f;
@@ -133,7 +134,7 @@ public final class UiDeferredScheduler {
                 Deferred2DSubmit command = DRAINING.get(i);
                 if (command == null) continue;
                 applyViewport(command.viewport());
-                int[] scissor = command.framebufferScissor();
+                int[] scissor = UiMsaaClipLayer.mapFramebufferScissor(command.framebufferScissor());
                 boolean scissored = false;
                 try {
                     if (scissor != null && scissor.length == 4) {
@@ -269,10 +270,11 @@ public final class UiDeferredScheduler {
 
     private static void applyViewport(ViewportContext viewport) {
         if (viewport == null) return;
-        Matrix4f matrix = new Matrix4f(viewport.projectionMatrix());
+        ViewportContext targetViewport = UiMsaaClipLayer.viewportFor(viewport);
+        Matrix4f matrix = new Matrix4f(targetViewport.projectionMatrix());
         RenderSystem.setProjectionMatrix(projection().getBuffer(matrix), ProjectionType.ORTHOGRAPHIC);
         MeshRenderer.setProjection(matrix);
-        ViewportContext.applyCaptured(viewport);
+        ViewportContext.applyCaptured(targetViewport);
         RenderState.rendering3D = false;
     }
 }

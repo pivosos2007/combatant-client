@@ -11,10 +11,13 @@ public record UiStatsSnapshot(long frameId,
                               int recordedCommands,
                               int shapeCommands,
                               int pathCommands,
+                              int primitiveCommands,
                               int textureCommands,
                               int textCommands,
                               int itemCommands,
                               int effectCommands,
-                              int compiledBatches,
-                              int backendCommands) {
+                              int compiledPasses,
+                              int compiledOrderedBatches,
+                              int rhiDrawCommands,
+                              int backendDrawCalls) {
 }

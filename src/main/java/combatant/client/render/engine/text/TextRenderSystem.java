@@ -14,7 +14,9 @@ import net.minecraft.client.renderer.texture.AbstractTexture;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.UiRenderDispatcher;
 import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
 import combatant.client.render.engine.rhi.resource.GlyphAtlasManager;
@@ -87,11 +89,22 @@ public enum TextRenderSystem {
         // It may merge only with adjacent compatible text runs; it must never be moved across shapes,
         // items, scissor/marquee boundaries or world/placement-specific text.
         if (placement == null || placement == TextPlacementMode.UI || placement == TextPlacementMode.SCREEN_SPACE) {
-            boolean enqueued = Renderer2D.enqueueTextMesh(
-                    label, font, mesh, pipeline,
-                    placement != null ? placement : TextPlacementMode.UI);
-            if (enqueued) {
-                return;
+            TextPlacementMode uiPlacement = placement != null ? placement : TextPlacementMode.UI;
+            boolean enqueued = Renderer2D.enqueueTextMesh(label, font, mesh, pipeline, uiPlacement);
+            if (enqueued) return;
+
+            // UI text must not bypass the UI compiler/executor just because no caller-owned
+            // Renderer2D batch is active. Create the same short-lived ordered batch used by
+            // ordinary auto-batched primitives; deferred recording is handled by that batcher too.
+            boolean auto = UiRenderDispatcher.beginAutoBatch();
+            if (auto) {
+                try {
+                    if (Renderer2D.enqueueTextMesh(label, font, mesh, pipeline, uiPlacement)) {
+                        return;
+                    }
+                } finally {
+                    UiRenderDispatcher.endAutoBatch(true);
+                }
             }
         }
 
@@ -160,7 +173,8 @@ public enum TextRenderSystem {
 
             RhiDrawCommand.Builder command = RhiDrawCommand.builder(label != null ? label : "Combatant Text")
                     .pipeline(resolvedPipeline)
-                    .colorAttachment(mc.gameRenderer.mainRenderTarget().getColorTextureView())
+                    .colorAttachment(UiMsaaClipLayer.currentColorAttachment(
+                            mc.gameRenderer.mainRenderTarget().getColorTextureView()))
                     .mesh(handle)
                     .sampler("u_Texture", texture.getTextureView(), texture.getSampler());
 

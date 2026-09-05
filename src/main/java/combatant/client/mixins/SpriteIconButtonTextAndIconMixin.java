@@ -35,9 +35,6 @@ public abstract class SpriteIconButtonTextAndIconMixin {
         float hover = BetterButtons.updateHover(widget, hovered, mouseX, mouseY);
 
         BetterButtons.enqueueTextIconButton(self, false, hover, widget.isActive(), widget.isFocused());
-        if (hovered) {
-            BetterButtons.captureTooltip(widget, mouseX, mouseY);
-        }
 
         ci.cancel();
     }

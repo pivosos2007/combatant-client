@@ -10,18 +10,17 @@ package combatant.client.mixins;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipPositioner;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.joml.Matrix3x2fStack;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -107,134 +106,55 @@ public abstract class GuiGraphicsMixin implements IGuiGraphics {
     @Invoker("itemCooldown")
     public abstract void combatant$invokeDrawCooldownProgress(ItemStack stack, int x, int y);
 
-    @Accessor("deferredTooltip")
-    public abstract Runnable combatant$getTooltipDrawer();
-
-    @Accessor("deferredTooltip")
-    public abstract void combatant$setTooltipDrawer(Runnable drawer);
-
-    @Inject(method = "extractDeferredElements", at = @At("HEAD"))
-    private void combatant$suppressVanillaTooltip(int mouseX, int mouseY, float tickDelta, CallbackInfo ci) {
-        if (!BetterTooltips.hasTooltip()) return;
-        if (combatant$getTooltipDrawer() == null) return;
-        combatant$setTooltipDrawer(null);
-    }
+    @Unique
+    private ItemStack combatant$tooltipStackContext = ItemStack.EMPTY;
 
     @Inject(
-            method = "setTooltipForNextFrame(Lnet/minecraft/client/gui/Font;Ljava/util/List;Lnet/minecraft/client/gui/screens/inventory/tooltip/ClientTooltipPositioner;IIZ)V",
-            at = @At("HEAD"),
-            cancellable = true
+            method = "setTooltipForNextFrame(Lnet/minecraft/client/gui/Font;Lnet/minecraft/world/item/ItemStack;II)V",
+            at = @At("HEAD")
     )
-    private void combatant$drawCustomTooltip(net.minecraft.client.gui.Font tr,
-                                             java.util.List<FormattedCharSequence> lines,
-                                             ClientTooltipPositioner positioner,
-                                             int x, int y, boolean focused,
-                                             CallbackInfo ci) {
-        BetterTooltips tooltips = BetterTooltips.get();
-        if (tooltips == null || !tooltips.useCustomGuiTooltips()) return;
-        if (lines == null || lines.isEmpty()) return;
-        BetterTooltips.setDrawContext((GuiGraphicsExtractor) (Object) this);
-        BetterTooltips.captureTooltipOrdered(lines, positioner, x, y);
-        ci.cancel();
+    private void combatant$beginItemTooltipContext(net.minecraft.client.gui.Font font,
+                                                   ItemStack stack,
+                                                   int x, int y,
+                                                   CallbackInfo ci) {
+        combatant$tooltipStackContext = stack != null ? stack : ItemStack.EMPTY;
     }
 
     @Inject(
             method = "setTooltipForNextFrame(Lnet/minecraft/client/gui/Font;Lnet/minecraft/world/item/ItemStack;II)V",
-            at = @At("HEAD"),
-            cancellable = true
+            at = @At("RETURN")
     )
-    private void combatant$drawCustomItemTooltip(net.minecraft.client.gui.Font tr,
+    private void combatant$endItemTooltipContext(net.minecraft.client.gui.Font font,
                                                  ItemStack stack,
                                                  int x, int y,
                                                  CallbackInfo ci) {
-        BetterTooltips tooltips = BetterTooltips.get();
-        if (tooltips == null || !tooltips.useCustomItemTooltips()) return;
-        if (stack == null || stack.isEmpty()) return;
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null) return;
-        java.util.List<net.minecraft.network.chat.Component> textLines = Screen.getTooltipFromItem(mc, stack);
-        if (textLines == null || textLines.isEmpty()) return;
-        java.util.List<FormattedCharSequence> ordered = new java.util.ArrayList<>();
-        for (net.minecraft.network.chat.Component t : textLines) {
-            ordered.addAll(tr.split(t, 200));
+        combatant$tooltipStackContext = ItemStack.EMPTY;
+    }
+
+    @Inject(method = "setTooltipForNextFrameInternal", at = @At("HEAD"), cancellable = true)
+    private void combatant$captureTooltipGlobally(net.minecraft.client.gui.Font font,
+                                                  java.util.List<ClientTooltipComponent> components,
+                                                  int x, int y,
+                                                  ClientTooltipPositioner positioner,
+                                                  net.minecraft.resources.Identifier style,
+                                                  boolean replaceExisting,
+                                                  CallbackInfo ci) {
+        ItemStack stack = combatant$tooltipStackContext;
+        if ((stack == null || stack.isEmpty())) {
+            ItemStack inferred = BetterTooltips.consumeLastTooltipStack();
+            if (inferred != null && !inferred.isEmpty()) stack = inferred;
         }
-        BetterTooltips.captureItemTooltipOrdered(
-                ordered,
-                net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE,
+        if (BetterTooltips.captureTooltipComponents(
+                components,
+                positioner,
                 x, y,
-                stack,
-                (GuiGraphicsExtractor) (Object) this
-        );
-        ci.cancel();
+                stack != null ? stack : ItemStack.EMPTY,
+                (GuiGraphicsExtractor) (Object) this,
+                replaceExisting
+        )) {
+            ci.cancel();
+        }
     }
-
-    @Inject(
-            method = "setTooltipForNextFrame(Lnet/minecraft/client/gui/Font;Ljava/util/List;Ljava/util/Optional;IILnet/minecraft/resources/Identifier;)V",
-            at = @At("HEAD"),
-            cancellable = true
-    )
-    private void combatant$drawCustomTooltipWithData(net.minecraft.client.gui.Font tr,
-                                                     java.util.List<net.minecraft.network.chat.Component> lines,
-                                                     java.util.Optional<net.minecraft.world.inventory.tooltip.TooltipComponent> data,
-                                                     int x, int y,
-                                                     net.minecraft.resources.Identifier style,
-                                                     CallbackInfo ci) {
-        BetterTooltips tooltips = BetterTooltips.get();
-        if (tooltips == null || !tooltips.useCustomItemTooltips()) return;
-        if (lines == null || lines.isEmpty()) return;
-        java.util.List<FormattedCharSequence> ordered = new java.util.ArrayList<>();
-        for (net.minecraft.network.chat.Component t : lines) {
-            ordered.addAll(tr.split(t, 200));
-        }
-        BetterTooltips.setDrawContext((GuiGraphicsExtractor) (Object) this);
-        ItemStack stack = BetterTooltips.consumeLastTooltipStack();
-        if (stack != null && !stack.isEmpty()) {
-            BetterTooltips.captureItemTooltipOrdered(
-                    ordered,
-                    net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE,
-                    x, y,
-                    stack,
-                    (GuiGraphicsExtractor) (Object) this
-            );
-        } else {
-            BetterTooltips.captureTooltipOrdered(ordered, net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE, x, y);
-        }
-        ci.cancel();
-    }
-
-    @Inject(
-            method = "setTooltipForNextFrame(Lnet/minecraft/client/gui/Font;Ljava/util/List;Ljava/util/Optional;II)V",
-            at = @At("HEAD"),
-            cancellable = true
-    )
-    private void combatant$drawCustomTooltipWithDataNoStyle(net.minecraft.client.gui.Font tr,
-                                                            java.util.List<net.minecraft.network.chat.Component> lines,
-                                                            java.util.Optional<net.minecraft.world.inventory.tooltip.TooltipComponent> data,
-                                                            int x, int y,
-                                                            CallbackInfo ci) {
-        BetterTooltips tooltips = BetterTooltips.get();
-        if (tooltips == null || !tooltips.useCustomItemTooltips()) return;
-        if (lines == null || lines.isEmpty()) return;
-        java.util.List<FormattedCharSequence> ordered = new java.util.ArrayList<>();
-        for (net.minecraft.network.chat.Component t : lines) {
-            ordered.addAll(tr.split(t, 200));
-        }
-        BetterTooltips.setDrawContext((GuiGraphicsExtractor) (Object) this);
-        ItemStack stack = BetterTooltips.consumeLastTooltipStack();
-        if (stack != null && !stack.isEmpty()) {
-            BetterTooltips.captureItemTooltipOrdered(
-                    ordered,
-                    net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE,
-                    x, y,
-                    stack,
-                    (GuiGraphicsExtractor) (Object) this
-            );
-        } else {
-            BetterTooltips.captureTooltipOrdered(ordered, net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE, x, y);
-        }
-        ci.cancel();
-    }
-
 
     @Inject(method = "itemCooldown", at = @At("HEAD"), cancellable = true)
     private void combatant$renderCustomPvpCooldown(ItemStack stack, int x, int y, CallbackInfo ci) {

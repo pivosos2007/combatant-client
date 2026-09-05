@@ -22,12 +22,14 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.svg.SvgRenderOptions;
+import combatant.client.render.engine.renderer.ui.draw.UiShape;
 import combatant.client.render.helpers.ClipFunction;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.util.logging.DebugLog;
 
 /**
- * Manual renderer acceptance overlay for analytic clipping.
+ * Manual hybrid clip acceptance overlay. Ordinary clip calls prefer the 2x MSAA fallback while
+ * explicitly required material-visible boundaries remain analytic.
  * Enable with {@code -Dcombatant.render.debug.clipScene=true} or
  * {@code COMBATANT_UI_CLIP_DEBUG=1}.
  */
@@ -94,13 +96,13 @@ public enum UiClipDebugScene {
         renderer.begin();
         renderer.roundedRect(x, y, panelW, panelH, 14.0f, 0xF20A0D14);
         renderer.roundedRectStroke(x, y, panelW, panelH, 14.0f, 1.0f, 0xAA78A8FF);
-        drawLabel("ANALYTIC CLIP ACCEPTANCE  |  fractional phase " + (frame % 120L), x + 12.0f, y + 8.0f, 11.0f, 0xFFEAF2FF);
+        drawLabel("HYBRID CLIP ACCEPTANCE  |  DEFAULT=2x  |  phase " + (frame % 120L), x + 12.0f, y + 8.0f, 11.0f, 0xFFEAF2FF);
 
         drawRadiusRow(renderer, innerX, innerY, innerW);
         drawShapeMatrix(renderer, mc, innerX, innerY + 58.0f, innerW);
         drawNestedAndMaterialMatrix(renderer, mc, innerX, innerY + 126.0f, innerW);
         drawFractionalText(renderer, innerX, innerY + 230.0f, innerW);
-        drawExplicitScissor(renderer, viewport, innerX, innerY + 286.0f, innerW);
+        drawExplicitScissorAndMsaa(renderer, viewport, mc, innerX, innerY + 286.0f, innerW);
 
         renderer.render();
     }
@@ -169,7 +171,7 @@ public enum UiClipDebugScene {
 
         float gx = tx + cellW + gap;
         Renderer2D.requestLiquidGlassBlurBeforeNextShapeClip();
-        boolean glassClip = ClipFunction.pushRoundedRect(gx, y, cellW, h, 22.0f);
+        boolean glassClip = ClipFunction.pushRoundedRectAnalyticRequired(gx, y, cellW, h, 22.0f);
         renderer.liquidGlassRect(gx - 24.0f, y + 8.0f, cellW + 48.0f, 70.0f,
                 24.0f, 0xFF8AB4FF, 0.92f, Renderer2D.LiquidGlassPreset.BALANCED);
         drawLabel("VISIBLE GLASS EDGE", gx + 8.0f, y + 38.0f, 9.0f, 0xFFFFFFFF);
@@ -187,18 +189,38 @@ public enum UiClipDebugScene {
         if (clipped) ClipFunction.pop();
     }
 
-    private static void drawExplicitScissor(Renderer2D renderer, ViewportContext viewport,
-                                             float x, float y, float width) {
+    private static void drawExplicitScissorAndMsaa(Renderer2D renderer, ViewportContext viewport,
+                                                    Minecraft mc, float x, float y, float width) {
+        float gap = 10.0f;
+        float scissorW = width * 0.58f;
         float scale = Math.max(1.0f, viewport.scaleFactor());
-        boolean scissored = ScissorFunction.pushScaled(x, y, width, 32.0f, scale);
+        boolean scissored = ScissorFunction.pushScaled(x, y, scissorW, 32.0f, scale);
         try {
-            renderer.quad(x - 40.0f, y, width + 80.0f, 32.0f,
+            renderer.quad(x - 40.0f, y, scissorW + 80.0f, 32.0f,
                     0xFF55336F, 0xFF31567A, 0xFF1E8A76, 0xFF7D3F58);
-            drawLabel("EXPLICIT RECT SCISSOR — independent from shape clip",
+            drawLabel("RECT SCISSOR — independent",
                     x + 8.0f, y + 9.0f, 9.0f, 0xFFFFFFFF);
         } finally {
             if (scissored) ScissorFunction.pop();
         }
+
+        float px = x + scissorW + gap;
+        float pw = width - scissorW - gap;
+        double[] polygon = {
+                px + 8.0f, y,
+                px + pw - 18.0f, y + 1.0f,
+                px + pw, y + 13.0f,
+                px + pw - 7.0f, y + 32.0f,
+                px + 20.0f, y + 30.0f,
+                px, y + 17.0f
+        };
+        boolean analyticParent = ClipFunction.pushRoundedRectAnalyticRequired(px, y, pw, 32.0f, 9.0f);
+        boolean clipped = ClipFunction.pushMsaaStencil(UiShape.polyline(polygon, 6, true));
+        renderer.quad(px - 10.0f, y - 7.0f, pw + 20.0f, 46.0f, 0xFF18304A);
+        drawTexture(renderer, mc, px + pw - 42.0f, y - 8.0f, 50.0f, 50.0f);
+        drawLabel("ANALYTIC > 2x", px + 8.0f, y + 9.0f, 8.5f, 0xFFFFFFFF);
+        if (clipped) ClipFunction.pop();
+        if (analyticParent) ClipFunction.pop();
     }
 
     private static void drawCrossingContent(Renderer2D renderer, Minecraft mc,

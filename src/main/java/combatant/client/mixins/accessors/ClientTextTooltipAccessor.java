@@ -7,15 +7,13 @@
 
 package combatant.client.mixins.accessors;
 
-import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.gui.components.WidgetTooltipHolder;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTextTooltip;
+import net.minecraft.util.FormattedCharSequence;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-@Mixin(AbstractWidget.class)
-public interface ClickableWidgetAccessor {
-    @Accessor("tooltip")
-    WidgetTooltipHolder combatant$getTooltipState();
+@Mixin(ClientTextTooltip.class)
+public interface ClientTextTooltipAccessor {
+    @Accessor("text")
+    FormattedCharSequence combatant$getText();
 }
-
-

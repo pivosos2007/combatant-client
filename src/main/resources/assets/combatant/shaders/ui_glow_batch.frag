@@ -10,6 +10,7 @@ out vec4 fragColor;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen;
+    vec4 uLayer;
 };
 
 vec2 warpedLocal(vec4 local) {

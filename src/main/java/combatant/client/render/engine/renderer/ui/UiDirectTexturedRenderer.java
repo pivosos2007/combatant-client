@@ -17,11 +17,12 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.ClipFunction;
 import net.minecraft.client.Minecraft;
 
-/** Immediate textured submission path kept outside the Renderer2D drawing facade. */
+/** Direct textured lowering routed through the production UiPassExecutor. */
 public final class UiDirectTexturedRenderer {
     private UiDirectTexturedRenderer() {
     }
@@ -53,7 +54,6 @@ public final class UiDirectTexturedRenderer {
                 return;
             }
 
-            UiRenderDispatcher.recordBackendCommand("TEXTURED_DIRECT");
             OrderedUiBatcher batcher = Renderer2D.UI_BATCHER;
             if (batcher.isActive()) {
                 if (batcher.hasPendingWork() || UiRenderDispatcher.hasPendingCommands()) {
@@ -62,28 +62,41 @@ public final class UiDirectTexturedRenderer {
                 batcher.flush(false);
             }
 
-            Minecraft minecraft = Minecraft.getInstance();
-            if (minecraft == null) return;
-            RenderTarget framebuffer = minecraft.gameRenderer.mainRenderTarget();
-            if (framebuffer == null) return;
-
             UiClipSnapshot clip = ClipFunction.currentSnapshot();
-            RenderPipeline pipeline = CombatantRenderPipelines.UI_TEXTURED;
-            if (clip.usesAnalyticPipeline()) {
-                pipeline = CombatantRenderPipelines.analyticClipTexturedPipeline(pipeline);
-            }
-            MeshRenderer draw = MeshRenderer.begin()
-                    .attachments(framebuffer.getColorTextureView(), null)
-                    .pipeline(pipeline)
-                    .mesh(mesh)
-                    .sampler(samplerName, samplerView, sampler);
-            if (clip.usesAnalyticPipeline()) {
-                draw.uniform("UIClip", UiClipUniforms.write(clip));
-            }
-            draw.end();
+            String resolvedSamplerName = samplerName != null ? samplerName : "u_Texture";
+            UiRenderDispatcher.submitImmediate(
+                    "Renderer2D.TEXTURE",
+                    1,
+                    (context, rhi) -> draw(mesh, resolvedSamplerName, samplerView, sampler, clip)
+            );
         } finally {
             UiRenderDispatcher.flushLayer();
         }
+    }
+
+    private static void draw(MeshBuilder mesh,
+                             String samplerName,
+                             GpuTextureView samplerView,
+                             GpuSampler sampler,
+                             UiClipSnapshot clip) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) return;
+        RenderTarget framebuffer = minecraft.gameRenderer.mainRenderTarget();
+        if (framebuffer == null) return;
+
+        RenderPipeline pipeline = CombatantRenderPipelines.UI_TEXTURED;
+        if (clip.usesAnalyticPipeline()) {
+            pipeline = CombatantRenderPipelines.analyticClipTexturedPipeline(pipeline);
+        }
+        MeshRenderer draw = MeshRenderer.begin()
+                    .attachments(UiMsaaClipLayer.currentColorAttachment(framebuffer.getColorTextureView()), null)
+                .pipeline(pipeline)
+                .mesh(mesh)
+                .sampler(samplerName, samplerView, sampler);
+        if (clip.usesAnalyticPipeline()) {
+            draw.uniform("UIClip", UiClipUniforms.write(clip));
+        }
+        draw.end();
     }
 
     private static MeshBuilder copyMesh(MeshBuilder source, RenderPipeline pipeline) {

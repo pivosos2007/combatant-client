@@ -16,9 +16,10 @@ layout (std140) uniform UIClip {
 vec2 combatantLogicalFragCoord() {
     vec2 framebuffer = max(uScreen.xy, vec2(1.0));
     vec2 logical = max(uScreen.zw, vec2(1.0));
+    vec2 logicalScale = logical / framebuffer;
     return vec2(
-        gl_FragCoord.x * logical.x / framebuffer.x,
-        (framebuffer.y - gl_FragCoord.y) * logical.y / framebuffer.y
+        uLayer.x + gl_FragCoord.x * logicalScale.x,
+        uLayer.y + uLayer.w - gl_FragCoord.y * logicalScale.y
     );
 }
 

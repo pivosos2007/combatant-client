@@ -47,7 +47,7 @@ final class UiClipStackTest {
         stack.push(UiShape.polyline(new double[]{10, 10, 90, 10, 50, 90}, 3, true));
         UiClipSnapshot complexChild = stack.current();
         assertEquals(UiClipStrategy.MSAA_STENCIL, complexChild.strategy());
-        assertEquals(4, complexChild.msaaSamples());
+        assertEquals(2, complexChild.msaaSamples());
 
         stack.push(UiShape.circle(50, 50, 10));
         assertEquals(UiClipStrategy.MSAA_STENCIL, stack.current().strategy());
@@ -82,5 +82,16 @@ final class UiClipStackTest {
 
         stack.push(UiShape.circle(50, 50, 20));
         assertEquals(UiClipStrategy.MSAA_STENCIL, stack.current().strategy());
+    }
+
+    @Test
+    void analyticRequirementCanBeCheckedWithoutSilentMsaaPromotion() {
+        UiClipStack stack = new UiClipStack(8);
+        UiShape polygon = UiShape.polyline(new double[]{0, 0, 20, 0, 10, 20}, 3, true);
+        assertFalse(stack.canPushAnalytic(polygon));
+
+        assertTrue(stack.canPushAnalytic(UiShape.roundedRect(0, 0, 40, 40, 8)));
+        stack.push(UiShape.roundedRect(0, 0, 40, 40, 8), UiClipStrategy.MSAA_STENCIL);
+        assertFalse(stack.canPushAnalytic(UiShape.circle(20, 20, 10)));
     }
 }

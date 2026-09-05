@@ -22,6 +22,7 @@ uniform sampler2D u_BlurTexture; // prepared Dual Kawase blur
 
 layout (std140) uniform UIBatch {
     vec4 uScreen;
+    vec4 uLayer;
 };
 
 const float SQRT3 = 1.73205080757;
@@ -130,7 +131,11 @@ void main() {
     cursor = cursor * cursor * (3.0 - 2.0 * cursor);
 
     vec2 framebufferSize = max(uScreen.xy, vec2(1.0));
-    vec2 uv = gl_FragCoord.xy / framebufferSize;
+    vec2 logicalSize = max(uScreen.zw, vec2(1.0));
+    vec2 uv = vec2(
+        position.x / logicalSize.x,
+        1.0 - position.y / logicalSize.y
+    );
 
     // Only a restrained boundary bend. No mirror/chromatic/lens stack here.
     float refractionPx = edge * (1.10 + cursor * 1.75);

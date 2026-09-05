@@ -19,6 +19,7 @@ import java.util.List;
 /** Renderer-owned logical shape-clip stack behind the {@code ClipFunction} facade. */
 public final class UiClipStack {
     public static final int MAX_ANALYTIC_PRIMITIVES = 4;
+    public static final int MSAA_SAMPLES = 2;
     private final Deque<Layer> layers = new ArrayDeque<>();
     private final int maxDepth;
     private long nextSnapshotId = 1L;
@@ -29,6 +30,14 @@ public final class UiClipStack {
 
     public boolean canPush() {
         return layers.size() < maxDepth;
+    }
+
+    /** True only when the next scope can remain analytic without promotion or truncation. */
+    public boolean canPushAnalytic(UiShape shape) {
+        if (shape == null || !canPush() || strategyFor(shape) != UiClipStrategy.ANALYTIC) return false;
+        UiClipSnapshot parent = current();
+        return !parent.usesMsaaStencil()
+                && parent.primitives().size() < MAX_ANALYTIC_PRIMITIVES;
     }
 
     public Layer push(UiShape shape) {
@@ -58,7 +67,7 @@ public final class UiClipStack {
         UiRect bounds = parent.active() ? intersect(parent.logicalBounds(), shape.bounds()) : shape.bounds();
         UiClipSnapshot snapshot = new UiClipSnapshot(
                 allocateSnapshotId(), strategy, bounds, primitives, reference,
-                strategy == UiClipStrategy.MSAA_STENCIL ? 4 : 1
+                strategy == UiClipStrategy.MSAA_STENCIL ? MSAA_SAMPLES : 1
         );
         Layer layer = new Layer(shape, reference, parentReference, snapshot);
         layers.push(layer);

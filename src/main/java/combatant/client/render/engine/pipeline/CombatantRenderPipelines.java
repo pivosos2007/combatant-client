@@ -65,6 +65,7 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_POS_LOCAL_COLOR_RECT_PARAMS_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_local_color_rect_params.vert");
     public static final Identifier SHADER_POS_LOCAL_COLOR_RECT_PARAMS2_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_local_color_rect_params2.vert");
     public static final Identifier SHADER_POS_LOCAL_COLOR_RECT_PARAMS5_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_local_color_rect_params5.vert");
+    public static final Identifier SHADER_POS_LOCAL_COLOR_RECT_PARAMS6_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_local_color_rect_params6.vert");
     public static final Identifier SHADER_POS_LOCAL_COLOR_RECT_PARAMS5_GENERIC_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_local_color_rect_params5_generic.vert");
     public static final Identifier SHADER_UI_POS_COLOR_FAST_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_pos_color_fast.vert");
     public static final Identifier SHADER_UI_PATH_FAST_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_path_fast.vert");
@@ -114,6 +115,7 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_ROUNDED_RECT_BATCH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/rounded_rect_batch.frag");
     public static final Identifier SHADER_UI_ROUNDED_FILL_SMOKE_BATCH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_rounded_fill_smoke_batch.frag");
     public static final Identifier SHADER_UI_MODULE_CATEGORY_SURFACE_BATCH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_module_category_surface_batch.frag");
+    public static final Identifier SHADER_UI_WIDGET_SURFACE_BATCH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_widget_surface_batch.frag");
     public static final Identifier SHADER_UI_MAIN_MENU_HONEYCOMB_BATCH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_main_menu_honeycomb_batch.frag");
     public static final Identifier SHADER_ROUNDED_RECT_STROKE_ANGULAR_BATCH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/rounded_rect_stroke_angular_batch.frag");
     public static final Identifier SHADER_UI_SHAPE_BATCH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_shape_batch.frag");
@@ -1495,6 +1497,17 @@ public enum CombatantRenderPipelines {
             .withCull(true)
             .build()
     );
+    public static final RenderPipeline UI_WIDGET_SURFACE_BATCH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_widget_surface_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS6, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_POS_LOCAL_COLOR_RECT_PARAMS6_VERT)
+            .withFragmentShader(SHADER_UI_WIDGET_SURFACE_BATCH_FRAG)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
     public static final RenderPipeline UI_MAIN_MENU_HONEYCOMB_BATCH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_main_menu_honeycomb_batch"))
             .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS5, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
@@ -1508,12 +1521,11 @@ public enum CombatantRenderPipelines {
             .withCull(true)
             .build()
     );
-    public static final RenderPipeline UI_ROUNDED_STROKE_ANGULAR_BATCH = add(new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
+    public static final RenderPipeline UI_ROUNDED_STROKE_ANGULAR_BATCH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_rounded_stroke_angular_batch"))
             .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(SHADER_UI_GEOMETRY_PARAMS2_FAST_VERT)
+            .withVertexShader(SHADER_POS_LOCAL_COLOR_RECT_PARAMS2_VERT)
             .withFragmentShader(SHADER_ROUNDED_RECT_STROKE_ANGULAR_BATCH_FRAG)
-            .withContract(RenderPipelineContract.UI_WARPED)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)

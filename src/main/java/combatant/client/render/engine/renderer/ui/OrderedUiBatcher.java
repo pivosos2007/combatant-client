@@ -40,6 +40,7 @@ import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
 import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
 import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
+import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -125,7 +126,6 @@ public final class OrderedUiBatcher {
         DrawBatch batch = obtain(type);
         batch.begin(view, sampler, scissor, clip);
         order.add(batch);
-        UiRenderDispatcher.recordBackendCommand(type);
         return batch;
     }
 
@@ -149,7 +149,6 @@ public final class OrderedUiBatcher {
         DrawBatch batch = obtain(type);
         batch.beginBlur(view, sampler, normalizedQuality, normalizedOffset, scissor, clip);
         order.add(batch);
-        UiRenderDispatcher.recordBackendCommand(type);
         return batch;
     }
 
@@ -166,7 +165,6 @@ public final class OrderedUiBatcher {
         DrawBatch batch = obtain(UiBatchType.SVG_MSDF);
         batch.beginMsdf(view, sampler, pxRange, atlasWidth, atlasHeight, scissor, clip);
         order.add(batch);
-        UiRenderDispatcher.recordBackendCommand(UiBatchType.SVG_MSDF);
         return batch;
     }
 
@@ -184,7 +182,6 @@ public final class OrderedUiBatcher {
         ItemBatch batch = obtainItemBatch();
         batch.begin(context, scissor, clip);
         order.add(batch);
-        UiRenderDispatcher.recordBackendCommand("ITEM");
         return batch;
     }
 
@@ -206,7 +203,6 @@ public final class OrderedUiBatcher {
         TextBatch batch = obtainTextBatch();
         batch.begin(label, font, pipeline, normalizedPlacement, scissor, clip);
         order.add(batch);
-        UiRenderDispatcher.recordBackendCommand("TEXT");
         return batch;
     }
 
@@ -251,12 +247,22 @@ public final class OrderedUiBatcher {
         return batch;
     }
 
+    public int pendingBatchCount() {
+        return order.size();
+    }
+
     public void flush(boolean finish) {
         if (!active) return;
         if (this == Renderer2D.UI_BATCHER && UiDeferredScheduler.shouldDefer()) {
             deferCurrent(finish);
             return;
         }
+        UiRenderDispatcher.submitOrderedBatcher(this, finish);
+    }
+
+    /** Executes a compiler-owned opaque ordered pass. Never call directly from facade code. */
+    void executeCompiled(boolean finish) {
+        if (!active) return;
         flushing = true;
         List<RhiDrawCommand> pendingDraws = new ArrayList<>(order.size());
         try {
@@ -292,7 +298,7 @@ public final class OrderedUiBatcher {
                 }
                 return;
             }
-            GpuTextureView mainColorView = fb.getColorTextureView();
+            GpuTextureView mainColorView = UiMsaaClipLayer.currentColorAttachment(fb.getColorTextureView());
             if (mainColorView == null) {
                 Renderer2D.BATCH_STATS.noteFailure("framebuffer color view null");
                 resetOrder();

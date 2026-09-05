@@ -18,6 +18,7 @@ out vec4 fragColor;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen; // xy = framebuffer size, zw = logical size
+    vec4 uLayer;
 };
 
 float chamferedBoxSDF(vec2 p, vec2 halfSize, vec4 chamfer) {

@@ -27,7 +27,8 @@ out vec4 v_Params;
 
 void main() {
     gl_Position = u_Proj * u_ModelView * Position;
-    v_TexCoord = UV0;
+    float combatantInvW = abs(Local.z) > 0.000001 ? Local.z : 1.0;
+    v_TexCoord = UV0 * combatantInvW;
     v_Local = Local;
     v_Color = Color;
     v_Rect = Rect;
