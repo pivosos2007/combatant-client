@@ -15,6 +15,7 @@ package combatant.client.render.engine.pipeline;
 
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.*;
+import com.mojang.blaze3d.platform.BlendFactor;
 import com.mojang.blaze3d.shaders.UniformType;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import combatant.client.mixininterface.IRenderPipeline;
@@ -125,6 +126,24 @@ public class ExtendedRenderPipelineBuilder {
 
     public ExtendedRenderPipelineBuilder withBlend(BlendFunction blend) {
         delegate.withColorTargetState(new ColorTargetState(Optional.of(blend), GpuFormat.RGBA8_UNORM, ColorTargetState.WRITE_ALL));
+        return this;
+    }
+
+    public ExtendedRenderPipelineBuilder withBlend(BlendFactor source, BlendFactor destination) {
+        return withBlend(BlendFunctions.of(source, destination));
+    }
+
+    public ExtendedRenderPipelineBuilder withBlendSeparate(BlendFactor sourceColor,
+                                                           BlendFactor destinationColor,
+                                                           BlendFactor sourceAlpha,
+                                                           BlendFactor destinationAlpha) {
+        return withBlend(BlendFunctions.separate(
+                sourceColor, destinationColor, sourceAlpha, destinationAlpha));
+    }
+
+    public ExtendedRenderPipelineBuilder withoutBlend() {
+        delegate.withColorTargetState(new ColorTargetState(
+                Optional.empty(), GpuFormat.RGBA8_UNORM, ColorTargetState.WRITE_ALL));
         return this;
     }
 

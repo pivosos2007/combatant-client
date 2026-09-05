@@ -3503,5 +3503,6 @@
   "setting.norender.particle_toggles.option.all_particles": "Все частицы",
   "setting.norender.particle_toggles.option.rain_splash_particles": "Брызги дождя",
   "setting.norender.particle_toggles.option.block_break_particles": "Частицы разрушения блоков",
-  "setting.norender.particle_toggles.option.block_breaking_particles": "Частицы ломания блоков"
+  "setting.norender.particle_toggles.option.block_breaking_particles": "Частицы ломания блоков",
+  "hud.media_player.unavailable_profile": "Поддержка медиа исключена профилем сборки"
 }

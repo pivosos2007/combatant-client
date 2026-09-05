@@ -10,6 +10,7 @@ import com.caoccao.javet.exceptions.JavetException;
 import com.caoccao.javet.interop.V8Host;
 import com.caoccao.javet.interop.V8Runtime;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.runtime.distribution.DistributionCapabilities;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -26,13 +27,16 @@ public final class JavetRuntimeBootstrap {
     }
 
     public static synchronized void installNativeLoader() {
-        if (shuttingDown) return;
+        if (shuttingDown || !DistributionCapabilities.isJavetAvailable()) return;
         JavetNativeResourceLoader.install();
     }
 
     public static synchronized V8Runtime createRuntime(AutoCloseable owner) throws JavetException {
         if (owner == null) throw new IllegalArgumentException("Javet runtime owner must not be null");
         if (shuttingDown) throw new IllegalStateException("Javet runtime is shutting down");
+        if (!DistributionCapabilities.isJavetAvailable()) {
+            throw new IllegalStateException(DistributionCapabilities.javetUnavailableReason());
+        }
 
         JavetNativeResourceLoader.install();
         V8Runtime previous = RUNTIMES.remove(owner);

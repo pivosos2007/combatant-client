@@ -18,10 +18,10 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.runtime.distribution.DistributionCapabilities;
 
 import java.io.ByteArrayInputStream;
 import java.util.List;
-import java.util.Locale;
 
 public final class MediaSessionService {
 
@@ -76,8 +76,15 @@ public final class MediaSessionService {
     }
 
     public static boolean isMediaAvailable() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        return os.startsWith("windows") || os.equals("linux");
+        return DistributionCapabilities.isMediaSessionAvailable();
+    }
+
+    public static boolean isMediaIntentionallyOmitted() {
+        return DistributionCapabilities.isMediaSessionIntentionallyOmitted();
+    }
+
+    public static String mediaUnavailableReason() {
+        return DistributionCapabilities.mediaSessionUnavailableReason();
     }
 
     public synchronized void init() {

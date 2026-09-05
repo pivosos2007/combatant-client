@@ -479,6 +479,9 @@ public class Combatant implements ClientModInitializer {
         CommandManager.init();
         MediaSessionService.get().init();
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            // Stop all Combatant callbacks before native-backed subsystems begin one-way shutdown.
+            // Minecraft can still extract one final GUI frame while disconnecting.
+            ClientRuntime.beginShutdown("client stopping");
             // Restore process-level security state before subsystem shutdown.
             NativeMemoryGuard.shutdown();
             MediaSessionService.get().shutdown();

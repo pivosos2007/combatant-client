@@ -14,6 +14,7 @@
 package combatant.client.render.engine.text;
 
 import net.minecraft.resources.Identifier;
+import combatant.client.runtime.distribution.DistributionCapabilities;
 
 import java.io.InputStream;
 
@@ -32,7 +33,7 @@ public class BuiltinFontFace extends FontFace {
     public BuiltinFontFace(FontInfo info, Identifier resource, boolean atlasOnly) {
         super(info);
         this.resource = resource;
-        this.atlasOnly = atlasOnly;
+        this.atlasOnly = atlasOnly || DistributionCapabilities.isAtlasOnlyBuiltinFont(resource);
     }
 
     @Override

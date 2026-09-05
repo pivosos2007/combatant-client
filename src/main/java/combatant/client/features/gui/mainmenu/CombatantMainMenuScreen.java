@@ -421,7 +421,7 @@ public final class CombatantMainMenuScreen extends Screen {
     private void renderFooter(float opacity) {
         TextRenderer font = Fonts.renderer("OnestBold", FontInfo.Type.Regular, TextRenderer.get());
         String openSource = tr("screen.combatant.main_menu.open_source");
-        String version = "v" + CombatantBuild.version();
+        String version = "v" + CombatantBuild.displayVersion();
 
         int color = withAlpha(0xFF9AA5B1, Math.round(opacity * 188f));
         float textHeight = measureHeight(font, FOOTER_FONT);

@@ -36,6 +36,10 @@ repositories {
         url = 'https://jitpack.io'
     }
     maven {
+        name = "Xaero's Maven"
+        url = 'https://chocolateminecraft.com/maven'
+    }
+    maven {
         url = uri("$rootDir/local-maven")
     }
 }
@@ -91,9 +95,13 @@ sourceSets {
 
 configurations {
     bundledLibrary
+    linuxBundledLibrary
     javetNativeBundle
-    compileOnly.extendsFrom bundledLibrary
-    runtimeOnly.extendsFrom bundledLibrary
+    modImplementation
+    compileOnly.extendsFrom bundledLibrary, linuxBundledLibrary
+    runtimeOnly.extendsFrom bundledLibrary, linuxBundledLibrary
+    implementation.extendsFrom modImplementation
+    runtimeOnly.extendsFrom modImplementation
     devImplementation.extendsFrom implementation
     devCompileOnly.extendsFrom compileOnly
     devAnnotationProcessor.extendsFrom annotationProcessor
@@ -144,9 +152,9 @@ dependencies {
         runtimeOnly "maven.modrinth:immediatelyfast:${project.immediatelyfast_version}"
     }
 
-    // Dev-only Xaero API for optional triangulator waypoint compat.
-    // Pulled from Modrinth Maven so IDE sources/classes follow the selected MC version.
-    compileOnly "maven.modrinth:xaeros-minimap:${project.xaero_minimap_version}"
+    // Xaero is a typed development/runtime integration target. Loom does not bundle
+    // modImplementation dependencies into Combatant's distributable jar.
+    modImplementation "xaero.minimap:xaerominimap-fabric-${project.minecraft_version}:${project.xaero_minimap_version}"
     compileOnly "maven.modrinth:xaeros-world-map:${project.xaero_worldmap_version}"
 
     // ViaFabricPlus (optional)
@@ -161,9 +169,10 @@ dependencies {
 
     bundledLibrary "de.marhali:json5-java:3.0.0"
 
-    // Linux MPRIS backend for the built-in media session service.
-    bundledLibrary "com.github.hypfvieh:dbus-java-core:4.3.1"
-    bundledLibrary "com.github.hypfvieh:dbus-java-transport-native-unixsocket:4.3.1"
+    // Linux-only MPRIS backend dependencies. Kept in a separate bundle so slim
+    // distributions can remove the complete transitive payload safely.
+    linuxBundledLibrary "com.github.hypfvieh:dbus-java-core:4.3.1"
+    linuxBundledLibrary "com.github.hypfvieh:dbus-java-transport-native-unixsocket:4.3.1"
 
     // Provided by Minecraft runtime; keep it out of the bundled jar.
     compileOnly 'com.google.code.gson:gson:2.10.1'
@@ -176,9 +185,8 @@ dependencies {
     // Javet core only. Native V8 binaries are copied into resources/javet/natives.
     bundledLibrary "com.caoccao.javet:javet:${javetVersion}"
 
-    // Javet in minimal V8 mode only: no Node runtime. Keep every desktop native
-    // in the universal client jar; the resource loader extracts only the file
-    // selected by Javet for the current OS/architecture.
+    // Javet in minimal V8 mode only: no Node runtime. The canonical remap jar
+    // stays universal; release slim artifacts retain only their target native.
     javetNativeBundle "com.caoccao.javet:javet-v8-windows-x86_64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-linux-x86_64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-linux-arm64:${javetVersion}"
@@ -398,7 +406,8 @@ jar {
         into "THIRD_PARTY_LICENSES"
     }
     from {
-        configurations.bundledLibrary.collect { it.isDirectory() ? it : zipTree(it) }
+        [configurations.bundledLibrary, configurations.linuxBundledLibrary]
+                .collectMany { configuration -> configuration.collect { it.isDirectory() ? it : zipTree(it) } }
     }
     exclude "com/google/gson/**"
     exclude "org/slf4j/**"
@@ -444,3 +453,7 @@ publishing {
         }
     }
 }
+
+// Release profile packaging lives separately from the ordinary Loom build.
+ext.combatantJavetVersion = javetVersion
+apply from: rootProject.file("gradle/release-distributions.gradle")

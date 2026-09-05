@@ -12,7 +12,8 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
-import combatant.client.compat.xaero.TriangulatorXaeroMinimapCompat;
+import combatant.client.compat.xaero.XaeroIntegration;
+import combatant.client.compat.xaero.XaeroMinimapIntegration;
 import xaero.common.minimap.waypoints.Waypoint;
 import xaero.hud.minimap.element.render.MinimapElementRenderLocation;
 import xaero.hud.minimap.waypoint.WaypointCollector;
@@ -34,19 +35,19 @@ public abstract class AbstractWaypointRenderProviderMixin {
                     target = "Lxaero/hud/minimap/waypoint/WaypointCollector;collect(Ljava/util/List;)V"
             )
     )
-    private void combatant$addTriangulatorWaypoint(WaypointCollector instance,
-                                                   List<Waypoint> destination,
-                                                   Operation<Void> original,
-                                                   MinimapElementRenderLocation location,
-                                                   AbstractWaypointRenderContext context) {
-        Waypoint waypoint = null;
+    private void combatant$addWaypoints(WaypointCollector instance,
+                                        List<Waypoint> destination,
+                                        Operation<Void> original,
+                                        MinimapElementRenderLocation location,
+                                        AbstractWaypointRenderContext context) {
+        XaeroIntegration.RenderTarget target = null;
         if (context instanceof WaypointWorldRenderContext) {
-            waypoint = TriangulatorXaeroMinimapCompat.getHudWaypoint();
+            target = XaeroIntegration.RenderTarget.WORLD_HUD;
         } else if (context instanceof WaypointMapRenderContext) {
-            waypoint = TriangulatorXaeroMinimapCompat.getMinimapWaypoint();
+            target = XaeroIntegration.RenderTarget.MINIMAP;
         }
-        if (waypoint != null) {
-            destination.add(waypoint);
+        if (target != null) {
+            destination.addAll(XaeroMinimapIntegration.waypoints(target));
         }
         original.call(instance, destination);
     }

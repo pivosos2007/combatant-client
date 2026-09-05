@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import combatant.client.compat.xaero.TriangulatorXaeroWorldMapCompat;
+import combatant.client.compat.xaero.XaeroWorldMapIntegration;
 import xaero.map.element.render.ElementRenderLocation;
 import xaero.map.mods.SupportXaeroMinimap;
 import xaero.map.mods.gui.Waypoint;
@@ -41,10 +41,7 @@ public final class WaypointRenderProviderMixin {
                                  WaypointRenderContext context,
                                  CallbackInfo ci) {
         combatant$pendingWaypoints = new ArrayDeque<>();
-        Waypoint triangulatorWaypoint = TriangulatorXaeroWorldMapCompat.getWaypoint(minimap);
-        if (triangulatorWaypoint != null) {
-            combatant$pendingWaypoints.add(triangulatorWaypoint);
-        }
+        combatant$pendingWaypoints.addAll(XaeroWorldMapIntegration.waypoints(minimap));
         combatant$originalHadNext = false;
     }
 

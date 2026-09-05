@@ -425,9 +425,14 @@ public final class MediaPlayer extends DraggableHudElement {
         float contentY = padding + (bodyH - contentH) * 0.5f;
 
         if (!hasSession) {
-            String statusKey = mediaAvailable
-                    ? "hud.media_player.available"
-                    : "hud.media_player.unavailable";
+            String statusKey;
+            if (mediaAvailable) {
+                statusKey = "hud.media_player.available";
+            } else if (MediaSessionService.isMediaIntentionallyOmitted()) {
+                statusKey = "hud.media_player.unavailable_profile";
+            } else {
+                statusKey = "hud.media_player.unavailable";
+            }
             String status = I18n.get(statusKey);
 
             metaRenderer.begin(metaScale * scale, false, false);

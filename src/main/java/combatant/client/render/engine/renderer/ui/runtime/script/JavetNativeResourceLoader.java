@@ -10,6 +10,7 @@ package combatant.client.render.engine.renderer.ui.runtime.script;
 import com.caoccao.javet.enums.JSRuntimeType;
 import com.caoccao.javet.interop.loader.IJavetLibLoadingListener;
 import com.caoccao.javet.interop.loader.JavetLibLoader;
+import combatant.client.runtime.distribution.DistributionCapabilities;
 
 import java.io.File;
 import java.io.IOException;
@@ -31,6 +32,7 @@ enum JavetNativeResourceLoader {
     private static final String RESOURCE_ROOT = "/javet/natives/";
 
     static void install() {
+        if (!DistributionCapabilities.isJavetAvailable()) return;
         if (!INSTALLED.compareAndSet(false, true)) return;
         String libFileName = detectLibFileName();
         if (libFileName == null || !resourceExists(libFileName)) {

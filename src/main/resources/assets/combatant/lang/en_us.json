@@ -3733,5 +3733,6 @@
   "setting.norender.particle_toggles.option.all_particles": "All particles",
   "setting.norender.particle_toggles.option.rain_splash_particles": "Rain splash particles",
   "setting.norender.particle_toggles.option.block_break_particles": "Block break particles",
-  "setting.norender.particle_toggles.option.block_breaking_particles": "Block breaking particles"
+  "setting.norender.particle_toggles.option.block_breaking_particles": "Block breaking particles",
+  "hud.media_player.unavailable_profile": "Media support omitted by this build profile"
 }

@@ -77,10 +77,8 @@ public final class SodiumExtraNoRenderCompat {
     }
 
     /**
-     * Reflection is deliberately lazy. Mixin config/prepare code may load this
-     * class, but it must never trigger Knot class loading while the transformer
-     * selection lock is held. The bridge is resolved only from NoRender runtime
-     * synchronization.
+     * Mixin config/prepare code may load this class, but it must never trigger Knot class loading while the transformer
+     * selection lock is held. The bridge is resolved only from NoRender runtime synchronization.
      */
     private static Bridge resolveBridge() {
         if (bridgeResolved) {

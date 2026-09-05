@@ -213,12 +213,8 @@ final class XaeroWaypointRuntime {
 
     private static void requestWorldMapRefresh() {
         try {
-            Class<?> supportMods = Class.forName("xaero.map.mods.SupportMods");
-            Object support = supportMods.getField("xaeroMinimap").get(null);
-            if (support != null) {
-                support.getClass().getMethod("requestWaypointsRefresh").invoke(support);
-            }
-        } catch (Throwable ignored) {
+            XaeroWorldMapIntegration.requestRefresh();
+        } catch (NoClassDefFoundError | ExceptionInInitializerError ignored) {
             // World Map is optional; minimap hover/list deletion works through the real Xaero set without it.
         }
     }

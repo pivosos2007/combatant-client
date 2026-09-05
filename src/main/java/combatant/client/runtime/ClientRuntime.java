@@ -127,6 +127,19 @@ public enum ClientRuntime {
         DebugLog.warn("Runtime restart requested (%s)", safeReason(reason));
     }
 
+    public static void beginShutdown(String reason) {
+        while (true) {
+            ClientRuntimeState current = STATE.get();
+            if (current == ClientRuntimeState.SHUTDOWN_PENDING || current == ClientRuntimeState.DEAD) {
+                return;
+            }
+            if (STATE.compareAndSet(current, ClientRuntimeState.SHUTDOWN_PENDING)) {
+                DebugLog.info("Runtime state %s -> SHUTDOWN_PENDING (%s)", current, safeReason(reason));
+                return;
+            }
+        }
+    }
+
     public static void markDead(String reason) {
         STATE.set(ClientRuntimeState.DEAD);
         restartRequired = true;

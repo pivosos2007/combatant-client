@@ -1,0 +1,19 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+package combatant.client.features.map.duplex;
+
+public enum DuplexMessageType {
+    HELLO,
+    SESSION_STATE,
+    CLOCK_SYNC,
+    BEARING_SAMPLE,
+    HEARTBEAT,
+    ACK,
+    ERROR,
+    GOODBYE
+}

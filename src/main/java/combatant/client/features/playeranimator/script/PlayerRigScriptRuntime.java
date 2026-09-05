@@ -7,7 +7,6 @@
 
 package combatant.client.features.playeranimator.script;
 
-import com.caoccao.javet.interop.V8Host;
 import com.caoccao.javet.interop.V8Runtime;
 import com.caoccao.javet.interop.converters.JavetObjectConverter;
 import combatant.client.features.playeranimator.PlayerRigBone;
@@ -75,8 +74,7 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
         if (!dirty && runtime != null) return;
         closeRuntime();
 
-        JavetRuntimeBootstrap.installNativeLoader();
-        runtime = V8Host.getV8Instance().createV8Runtime();
+        runtime = JavetRuntimeBootstrap.createRuntime(this);
         runtime.setConverter(new JavetObjectConverter());
         runtime.setMemorySaverModeEnabled(false);
         runtime.setBatterySaverModeEnabled(false);
@@ -301,7 +299,7 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
     private void closeRuntime() {
         if (runtime == null) return;
         try {
-            runtime.close();
+            JavetRuntimeBootstrap.closeRuntime(this, runtime);
         } catch (Throwable ignored) {
         } finally {
             runtime = null;

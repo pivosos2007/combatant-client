@@ -13,9 +13,8 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Items;
 
-public final class AutoCrystalDamageRules {
-    private AutoCrystalDamageRules() {
-    }
+public enum AutoCrystalDamageRules {
+    ;
 
     public static boolean shouldOverrideMinDamage(LivingEntity target, float damage, float faceplaceHealth) {
         if (target == null) {
