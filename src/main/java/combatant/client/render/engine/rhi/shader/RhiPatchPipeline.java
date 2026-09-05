@@ -12,6 +12,10 @@ public interface RhiPatchPipeline extends AutoCloseable {
 
     int controlPoints();
 
+    default ShaderResourceLayout resources() {
+        return ShaderResourceLayout.EMPTY;
+    }
+
     @Override
     void close();
 }

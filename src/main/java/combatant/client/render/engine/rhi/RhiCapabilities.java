@@ -34,6 +34,7 @@ public final class RhiCapabilities {
     private final boolean tessellationShaders;
     private final boolean geometryShaders;
     private final boolean shaderStorageBuffers;
+    private final boolean imageLoadStore;
     private final boolean multiBind;
     private final boolean copyImage;
     private final boolean attachmentInvalidation;
@@ -47,6 +48,7 @@ public final class RhiCapabilities {
                             boolean tessellationShaders,
                             boolean geometryShaders,
                             boolean shaderStorageBuffers,
+                            boolean imageLoadStore,
                             boolean multiBind,
                             boolean copyImage,
                             boolean attachmentInvalidation,
@@ -59,6 +61,7 @@ public final class RhiCapabilities {
         this.tessellationShaders = tessellationShaders;
         this.geometryShaders = geometryShaders;
         this.shaderStorageBuffers = shaderStorageBuffers;
+        this.imageLoadStore = imageLoadStore;
         this.multiBind = multiBind;
         this.copyImage = copyImage;
         this.attachmentInvalidation = attachmentInvalidation;
@@ -88,6 +91,7 @@ public final class RhiCapabilities {
                         : gl != null && gl.combatant$geometryShaders(),
                 vulkan ? VulkanRenderStateBridge.shaderStorageBuffersSupported()
                         : gl != null && gl.combatant$shaderStorageBuffers(),
+                vulkan || gl != null && gl.combatant$imageLoadStore(),
                 !vulkan && gl != null && gl.combatant$multiBind(),
                 vulkan || gl != null && gl.combatant$copyImage(),
                 vulkan || gl != null && gl.combatant$attachmentInvalidation(),
@@ -182,6 +186,10 @@ public final class RhiCapabilities {
         return shaderStorageBuffers;
     }
 
+    public boolean imageLoadStore() {
+        return imageLoadStore;
+    }
+
     public boolean multiBind() {
         return multiBind;
     }
@@ -223,17 +231,24 @@ public final class RhiCapabilities {
                 || identity.contains("softpipe"));
     }
 
-    /** Blaze3D 26.2 exposes no compute dispatch; Combatant supplies it only on the native GL tier today. */
+    /** Blaze3D 26.2 exposes no public compute dispatch; Combatant lowers it natively per backend. */
     public boolean nativeComputeSubmission() {
-        return GlBackendAccess.current() != null && computeShaders && shaderStorageBuffers;
+        if (!computeShaders || !shaderStorageBuffers) return false;
+        return GlBackendAccess.current() != null
+                || combatant.client.render.engine.rhi.backend.vulkan.VulkanBackendAccess.current() != null;
     }
 
-    /** Blaze3D 26.2 exposes no tessellation stages; native pipeline lowering is separate. */
+    /** Blaze3D 26.2 exposes no tessellation stages; Combatant lowers patches natively per backend. */
     public boolean nativeTessellationSubmission() {
-        return false;
+        if (!tessellationShaders) return false;
+        return GlBackendAccess.current() != null
+                || combatant.client.render.engine.rhi.backend.vulkan.VulkanBackendAccess.current() != null;
     }
 
+    /** Geometry shaders use the same native advanced-pipeline ownership as tessellation. */
     public boolean nativeGeometrySubmission() {
-        return false;
+        if (!geometryShaders) return false;
+        return GlBackendAccess.current() != null
+                || combatant.client.render.engine.rhi.backend.vulkan.VulkanBackendAccess.current() != null;
     }
 }

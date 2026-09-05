@@ -10,6 +10,10 @@ package combatant.client.render.engine.rhi.shader;
 public interface RhiComputePipeline extends AutoCloseable {
     String label();
 
+    default ShaderResourceLayout resources() {
+        return ShaderResourceLayout.EMPTY;
+    }
+
     @Override
     void close();
 }

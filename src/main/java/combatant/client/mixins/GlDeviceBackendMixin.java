@@ -10,6 +10,7 @@ package combatant.client.mixins;
 import com.mojang.blaze3d.opengl.DirectStateAccess;
 import com.mojang.blaze3d.opengl.FrameBufferCache;
 import com.mojang.blaze3d.opengl.GlRenderPipeline;
+import com.mojang.blaze3d.opengl.VertexArrayCache;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.shaders.ShaderSource;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
@@ -45,6 +46,10 @@ public abstract class GlDeviceBackendMixin implements IGlBackendInfo {
     public abstract FrameBufferCache combatant$frameBufferCache();
 
     @Override
+    @Invoker("vertexArrayCache")
+    public abstract VertexArrayCache combatant$vertexArrayCache();
+
+    @Override
     public boolean combatant$nativeDirectStateAccess() {
         return USE_GL_ARB_direct_state_access;
     }
@@ -67,6 +72,7 @@ public abstract class GlDeviceBackendMixin implements IGlBackendInfo {
         combatant$tessellationShaders = caps.OpenGL40 || caps.GL_ARB_tessellation_shader;
         combatant$geometryShaders = caps.OpenGL32 || caps.GL_ARB_geometry_shader4;
         combatant$shaderStorageBuffers = caps.OpenGL43 || caps.GL_ARB_shader_storage_buffer_object;
+        combatant$imageLoadStore = caps.OpenGL42 || caps.GL_ARB_shader_image_load_store;
         combatant$multiBind = caps.OpenGL44 || caps.GL_ARB_multi_bind;
         combatant$copyImage = caps.OpenGL43 || caps.GL_ARB_copy_image;
         combatant$attachmentInvalidation = caps.OpenGL43 || caps.GL_ARB_invalidate_subdata;
@@ -86,6 +92,9 @@ public abstract class GlDeviceBackendMixin implements IGlBackendInfo {
 
     @Override
     public boolean combatant$shaderStorageBuffers() { return combatant$shaderStorageBuffers; }
+
+    @Override
+    public boolean combatant$imageLoadStore() { return combatant$imageLoadStore; }
 
     @Override
     public boolean combatant$multiBind() { return combatant$multiBind; }
@@ -115,6 +124,7 @@ public abstract class GlDeviceBackendMixin implements IGlBackendInfo {
     @Unique private boolean combatant$tessellationShaders;
     @Unique private boolean combatant$geometryShaders;
     @Unique private boolean combatant$shaderStorageBuffers;
+    @Unique private boolean combatant$imageLoadStore;
     @Unique private boolean combatant$multiBind;
     @Unique private boolean combatant$copyImage;
     @Unique private boolean combatant$attachmentInvalidation;

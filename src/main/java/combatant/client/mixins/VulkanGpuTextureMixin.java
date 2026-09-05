@@ -19,6 +19,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.mixininterface.IMsaaTexture;
 import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateBridge;
+import combatant.client.render.engine.rhi.shader.RhiTextureUsage;
 import org.lwjgl.vulkan.VkImageSubresourceRange;
 
 import static org.lwjgl.vulkan.VK12.*;
@@ -41,6 +42,9 @@ public abstract class VulkanGpuTextureMixin implements IMsaaTexture {
         int vkUsage = com.mojang.blaze3d.vulkan.VulkanConst.textureUsageToVk(usage, format);
         if (format != null && format.hasStencilAspect() && (usage & com.mojang.blaze3d.textures.GpuTexture.USAGE_RENDER_ATTACHMENT) != 0) {
             vkUsage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        }
+        if ((usage & RhiTextureUsage.STORAGE_IMAGE) != 0) {
+            vkUsage |= VK_IMAGE_USAGE_STORAGE_BIT;
         }
         return vkUsage;
     }

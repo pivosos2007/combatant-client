@@ -27,18 +27,17 @@ public interface AdvancedShaderBackend extends AutoCloseable {
         }
 
         @Override
-        public RhiComputePipeline createComputePipeline(String label, Identifier shader) {
+        public RhiStorageImage createStorageImage(StorageImageDescriptor descriptor) {
+            throw new UnsupportedOperationException("Native storage-image backend is unavailable");
+        }
+
+        @Override
+        public RhiComputePipeline createComputePipeline(ComputePipelineDescriptor descriptor) {
             throw new UnsupportedOperationException("Native compute backend is unavailable");
         }
 
         @Override
-        public RhiPatchPipeline createPatchPipeline(String label,
-                                                    Identifier vertexShader,
-                                                    Identifier tessControlShader,
-                                                    Identifier tessEvaluationShader,
-                                                    Identifier geometryShader,
-                                                    Identifier fragmentShader,
-                                                    int controlPoints) {
+        public RhiPatchPipeline createPatchPipeline(PatchPipelineDescriptor descriptor) {
             throw new UnsupportedOperationException("Native tessellation backend is unavailable");
         }
 
@@ -70,15 +69,16 @@ public interface AdvancedShaderBackend extends AutoCloseable {
 
     RhiStorageBuffer createStorageBuffer(StorageBufferDescriptor descriptor);
 
-    RhiComputePipeline createComputePipeline(String label, Identifier shader);
+    RhiStorageImage createStorageImage(StorageImageDescriptor descriptor);
 
-    RhiPatchPipeline createPatchPipeline(String label,
-                                         Identifier vertexShader,
-                                         Identifier tessControlShader,
-                                         Identifier tessEvaluationShader,
-                                         Identifier geometryShader,
-                                         Identifier fragmentShader,
-                                         int controlPoints);
+    RhiComputePipeline createComputePipeline(ComputePipelineDescriptor descriptor);
+
+    /** Convenience overload for simple SSBO-free kernels. */
+    default RhiComputePipeline createComputePipeline(String label, Identifier shader) {
+        return createComputePipeline(new ComputePipelineDescriptor(label, shader, ShaderResourceLayout.EMPTY));
+    }
+
+    RhiPatchPipeline createPatchPipeline(PatchPipelineDescriptor descriptor);
 
     void dispatch(ComputeDispatchCommand command);
 

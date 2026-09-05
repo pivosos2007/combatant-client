@@ -70,12 +70,13 @@ public final class ScriptedTooltipPanel {
         if (module == null) return null;
 
         TextRenderer layoutText = Fonts.renderer("Iosevka", FontInfo.Type.Regular, fallbackText);
-        List<LinkedHashMap<String, Object>> lineProps = lineProps(
+        PreparedLines preparedLines = prepareLines(
                 layoutText,
                 lines,
                 Math.max(0.05f, scale),
                 Math.max(1.0f, maxContentWidth)
         );
+        List<LinkedHashMap<String, Object>> lineProps = preparedLines.lines();
         SettingsGuiPalette palette = SettingsGuiPalette.current();
         Style resolvedStyle = style != null ? style : Style.DEFAULT;
         Context resolvedContext = context != null ? context : Context.GENERIC;
@@ -84,6 +85,7 @@ public final class ScriptedTooltipPanel {
                 Math.max(0.05f, scale),
                 Math.max(0.01f, rasterDetailScale),
                 Math.max(1.0f, maxContentWidth),
+                preparedLines.contentWidthFloor(),
                 Math.max(0.0f, footerWidth),
                 Math.max(0.0f, footerHeight),
                 Math.max(0.0f, Math.min(1.0f, alpha)),
@@ -125,6 +127,7 @@ public final class ScriptedTooltipPanel {
                 Math.max(0.05f, scale),
                 Math.max(0.01f, rasterDetailScale),
                 Math.max(1.0f, maxContentWidth),
+                preparedLines.contentWidthFloor(),
                 Math.max(0.0f, footerWidth),
                 Math.max(0.0f, footerHeight),
                 Math.max(0.0f, Math.min(1.0f, alpha)),
@@ -161,6 +164,7 @@ public final class ScriptedTooltipPanel {
         props.put("scale", prepared.scale());
         props.put("rasterDetailScale", prepared.rasterDetailScale());
         props.put("maxContentWidth", prepared.maxContentWidth());
+        props.put("contentWidthFloor", prepared.contentWidthFloor());
         props.put("footerWidth", prepared.footerWidth());
         props.put("footerHeight", prepared.footerHeight());
         props.put("alpha", prepared.alpha());
@@ -229,6 +233,7 @@ public final class ScriptedTooltipPanel {
                                                             float scale,
                                                             float rasterDetailScale,
                                                             float maxContentWidth,
+                                                            float contentWidthFloor,
                                                             float footerWidth,
                                                             float footerHeight,
                                                             float alpha,
@@ -240,6 +245,7 @@ public final class ScriptedTooltipPanel {
         props.put("scale", scale);
         props.put("rasterDetailScale", Math.max(0.01f, rasterDetailScale));
         props.put("maxContentWidth", maxContentWidth);
+        props.put("contentWidthFloor", Math.max(0.0f, Math.min(maxContentWidth, contentWidthFloor)));
         props.put("footerWidth", footerWidth);
         props.put("footerHeight", footerHeight);
         props.put("alpha", alpha);
@@ -283,22 +289,39 @@ public final class ScriptedTooltipPanel {
         return props;
     }
 
-    private static List<LinkedHashMap<String, Object>> lineProps(TextRenderer renderer,
-                                                                    List<Line> lines,
-                                                                    float scale,
-                                                                    float maxContentWidth) {
+    private static PreparedLines prepareLines(TextRenderer renderer,
+                                              List<Line> lines,
+                                              float scale,
+                                              float maxContentWidth) {
         ArrayList<LinkedHashMap<String, Object>> out = new ArrayList<>();
-        if (lines == null || lines.isEmpty()) return out;
+        if (lines == null || lines.isEmpty()) {
+            return new PreparedLines(List.of(), 0.0f);
+        }
 
         float textScale = TOOLTIP_FONT_SCALE_RATIO * Math.max(0.05f, scale);
         float widthLimit = Math.max(1.0f, maxContentWidth);
         boolean started = renderer != null && !renderer.isBuilding();
         if (started) renderer.begin(textScale, true, false);
         try {
+            float longest = 0.0f;
+            for (Line line : lines) {
+                if (line == null) continue;
+                String text = normalizeTooltipLine(line.text());
+                if (text.isBlank()) continue;
+                longest = Math.max(longest, textWidth(renderer, text));
+            }
+
+            // The panel first grows to the real required width. Wrapping is only a fallback once
+            // the longest logical line exceeds the configured/screen-safe content cap. Keeping
+            // this floor prevents a wrapped line from making the card shrink back to the width
+            // of its longest individual continuation row.
+            float contentWidthFloor = Math.min(longest, widthLimit);
+            float wrapWidth = Math.max(1.0f, contentWidthFloor > 0.0f ? contentWidthFloor : widthLimit);
+
             int logicalGroup = 0;
             for (Line line : lines) {
                 if (line == null) continue;
-                String text = RuntimeTextLayout.singleLine(line.text() != null ? line.text() : "");
+                String text = normalizeTooltipLine(line.text());
                 String color = line.color() != 0 ? hex(line.color()) : "";
 
                 if (text.isBlank()) {
@@ -311,11 +334,14 @@ public final class ScriptedTooltipPanel {
                     continue;
                 }
 
-                List<String> wrapped = wrapLine(renderer, text.trim(), widthLimit);
-                if (wrapped.isEmpty()) wrapped = List.of(text.trim());
-                for (int i = 0; i < wrapped.size(); i++) {
+                List<String> rows = textWidth(renderer, text) <= wrapWidth
+                        ? List.of(text)
+                        : wrapLine(renderer, text, wrapWidth);
+                if (rows.isEmpty()) rows = List.of(text);
+
+                for (int i = 0; i < rows.size(); i++) {
                     LinkedHashMap<String, Object> value = new LinkedHashMap<>(4);
-                    value.put("text", wrapped.get(i));
+                    value.put("text", rows.get(i));
                     value.put("color", color);
                     value.put("group", logicalGroup);
                     value.put("continuation", i > 0);
@@ -323,48 +349,65 @@ public final class ScriptedTooltipPanel {
                 }
                 logicalGroup++;
             }
+            return new PreparedLines(List.copyOf(out), Math.max(0.0f, contentWidthFloor));
         } finally {
             if (started && renderer.isBuilding()) renderer.end();
         }
-        return out;
+    }
+
+    private static String normalizeTooltipLine(String text) {
+        return RuntimeTextLayout.singleLine(text != null ? text : "");
+    }
+
+    private static float textWidth(TextRenderer renderer, String text) {
+        if (renderer == null || text == null || text.isEmpty()) return 0.0f;
+        return (float) renderer.getWidth(text, false);
     }
 
     /**
-     * Tooltip UI text nodes are intentionally single-line primitives. Wrap logical tooltip lines
-     * before the script measure pass so panel width grows naturally up to maxContentWidth and the
-     * measured height contains every continuation line. No ellipsis/truncation is involved.
+     * Wrap one logical tooltip line using the exact renderer/scale used by the scripted panel.
+     * Whitespace is only consumed at an actual wrap boundary; the original line is otherwise kept
+     * intact. Long unbroken tokens fall back to code-point-safe hard wrapping.
      */
     private static List<String> wrapLine(TextRenderer renderer, String text, float maxWidth) {
         ArrayList<String> out = new ArrayList<>();
         if (text == null || text.isEmpty()) return out;
-        if (renderer == null || maxWidth <= 1.0f || renderer.getWidth(text, false) <= maxWidth) {
+        if (renderer == null || maxWidth <= 1.0f || textWidth(renderer, text) <= maxWidth) {
             out.add(text);
             return out;
         }
 
-        String remaining = text;
-        while (!remaining.isEmpty()) {
-            if (renderer.getWidth(remaining, false) <= maxWidth) {
+        int start = 0;
+        while (start < text.length()) {
+            String remaining = text.substring(start);
+            if (textWidth(renderer, remaining) <= maxWidth) {
                 out.add(remaining);
                 break;
             }
 
-            int fitEnd = maxFittingCharIndex(renderer, remaining, maxWidth);
-            if (fitEnd <= 0) {
-                int cp = remaining.codePointAt(0);
-                fitEnd = Character.charCount(cp);
+            int relativeFitEnd = maxFittingCharIndex(renderer, remaining, maxWidth);
+            if (relativeFitEnd <= 0) {
+                relativeFitEnd = Character.charCount(remaining.codePointAt(0));
             }
 
-            int split = lastWhitespaceStart(remaining, fitEnd);
-            if (split <= 0) split = fitEnd;
+            int fitEnd = start + relativeFitEnd;
+            int breakStart = lastWhitespaceStart(text, start, fitEnd);
+            int rowEnd = breakStart > start ? breakStart : fitEnd;
+            if (rowEnd <= start) rowEnd = fitEnd;
 
-            String row = remaining.substring(0, split).stripTrailing();
+            String row = stripTrailingWrapWhitespace(text.substring(start, rowEnd));
             if (row.isEmpty()) {
-                row = remaining.substring(0, fitEnd);
-                split = fitEnd;
+                row = text.substring(start, fitEnd);
+                rowEnd = fitEnd;
             }
             out.add(row);
-            remaining = remaining.substring(split).stripLeading();
+
+            start = rowEnd;
+            while (start < text.length()) {
+                int cp = text.codePointAt(start);
+                if (!Character.isWhitespace(cp)) break;
+                start += Character.charCount(cp);
+            }
         }
         return out;
     }
@@ -376,7 +419,7 @@ public final class ScriptedTooltipPanel {
         while (low < high) {
             int mid = (low + high + 1) >>> 1;
             int end = text.offsetByCodePoints(0, mid);
-            if (renderer.getWidth(text.substring(0, end), false) <= maxWidth) {
+            if (textWidth(renderer, text.substring(0, end)) <= maxWidth) {
                 low = mid;
             } else {
                 high = mid - 1;
@@ -385,15 +428,28 @@ public final class ScriptedTooltipPanel {
         return text.offsetByCodePoints(0, low);
     }
 
-    private static int lastWhitespaceStart(String text, int beforeOrAt) {
-        int cursor = Math.max(0, Math.min(beforeOrAt, text.length()));
-        while (cursor > 0) {
+    private static int lastWhitespaceStart(String text, int minInclusive, int beforeOrAt) {
+        int cursor = Math.max(minInclusive, Math.min(beforeOrAt, text.length()));
+        while (cursor > minInclusive) {
             int cp = text.codePointBefore(cursor);
             int start = cursor - Character.charCount(cp);
             if (Character.isWhitespace(cp)) return start;
             cursor = start;
         }
         return -1;
+    }
+
+    private static String stripTrailingWrapWhitespace(String value) {
+        int end = value.length();
+        while (end > 0) {
+            int cp = value.codePointBefore(end);
+            if (!Character.isWhitespace(cp)) break;
+            end -= Character.charCount(cp);
+        }
+        return end == value.length() ? value : value.substring(0, end);
+    }
+
+    private record PreparedLines(List<LinkedHashMap<String, Object>> lines, float contentWidthFloor) {
     }
 
     private static UiNode findByKey(UiNode node, String key) {
@@ -460,6 +516,7 @@ public final class ScriptedTooltipPanel {
                            float scale,
                            float rasterDetailScale,
                            float maxContentWidth,
+                           float contentWidthFloor,
                            float footerWidth,
                            float footerHeight,
                            float alpha,

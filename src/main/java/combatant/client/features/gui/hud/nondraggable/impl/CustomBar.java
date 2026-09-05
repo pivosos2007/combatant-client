@@ -40,7 +40,7 @@ import combatant.client.render.helpers.MatteHudStyle;
 import combatant.client.render.helpers.PlayerHeadRenderer;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.input.KeyManager;
-import combatant.client.util.map.MapPlayersCache;
+import combatant.client.util.map.maplink.runtime.MapLinkLocatorBridge;
 import combatant.client.util.player.PlayerSkinResolver;
 
 import java.awt.*;
@@ -464,7 +464,9 @@ public final class CustomBar extends AbstractHudElement {
             }
         };
 
-        Set<UUID> mapPlayers = MapPlayersCache.getPlayers(mc, bm);
+        Set<UUID> mapPlayers = bm.isLocatorMapFilterEnabled()
+                ? MapLinkLocatorBridge.exactPlayerIds(mc, bm.getLocatorMapServer(), bm.getLocatorMapUrl())
+                : Collections.emptySet();
         boolean labelsEnabled = drawHeads && bm.isLocatorLabelsEnabled();
         LocatorLabelMode labelMode = labelsEnabled
                 ? bm.getLocatorLabelMode()

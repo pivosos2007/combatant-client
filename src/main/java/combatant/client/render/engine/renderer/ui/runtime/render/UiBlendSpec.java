@@ -9,16 +9,34 @@ package combatant.client.render.engine.renderer.ui.runtime.render;
 
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.platform.BlendFactor;
+import combatant.client.render.engine.pipeline.BlendFunctions;
 
 import java.util.Locale;
 
 public record UiBlendSpec(BlendFunction function) {
     public static final UiBlendSpec NONE = new UiBlendSpec(null);
-    public static final UiBlendSpec TRANSLUCENT = new UiBlendSpec(BlendFunction.TRANSLUCENT);
-    public static final UiBlendSpec PREMULTIPLIED_ALPHA = new UiBlendSpec(BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA);
-    public static final UiBlendSpec ADDITIVE = new UiBlendSpec(BlendFunction.ADDITIVE);
-    public static final UiBlendSpec OVERLAY = new UiBlendSpec(BlendFunction.OVERLAY);
-    public static final UiBlendSpec INVERT = new UiBlendSpec(BlendFunction.INVERT);
+    public static final UiBlendSpec TRANSLUCENT = new UiBlendSpec(BlendFunctions.ALPHA);
+    public static final UiBlendSpec PREMULTIPLIED_ALPHA = new UiBlendSpec(BlendFunctions.PREMULTIPLIED_ALPHA);
+    public static final UiBlendSpec ADDITIVE = new UiBlendSpec(BlendFunctions.ADDITIVE);
+    public static final UiBlendSpec ALPHA_ADDITIVE = new UiBlendSpec(BlendFunctions.ALPHA_ADDITIVE);
+    public static final UiBlendSpec OVERLAY = new UiBlendSpec(BlendFunctions.OVERLAY);
+    public static final UiBlendSpec INVERT = new UiBlendSpec(BlendFunctions.INVERT);
+
+    public static UiBlendSpec of(BlendFactor source, BlendFactor destination) {
+        return new UiBlendSpec(BlendFunctions.of(source, destination));
+    }
+
+    public static UiBlendSpec separate(BlendFactor sourceColor,
+                                       BlendFactor destinationColor,
+                                       BlendFactor sourceAlpha,
+                                       BlendFactor destinationAlpha) {
+        return new UiBlendSpec(BlendFunctions.separate(
+                sourceColor,
+                destinationColor,
+                sourceAlpha,
+                destinationAlpha
+        ));
+    }
 
     public static UiBlendSpec parse(String value) {
         if (value == null || value.isBlank()) return TRANSLUCENT;
@@ -40,14 +58,14 @@ public record UiBlendSpec(BlendFunction function) {
         if (parts.length == 2) {
             BlendFactor source = source(parts[0], BlendFactor.SRC_ALPHA);
             BlendFactor dest = dest(parts[1], BlendFactor.ONE_MINUS_SRC_ALPHA);
-            return new UiBlendSpec(new BlendFunction(source, dest));
+            return of(source, dest);
         }
         if (parts.length == 4) {
             BlendFactor sourceColor = source(parts[0], BlendFactor.SRC_ALPHA);
             BlendFactor destColor = dest(parts[1], BlendFactor.ONE_MINUS_SRC_ALPHA);
             BlendFactor sourceAlpha = source(parts[2], BlendFactor.ONE);
             BlendFactor destAlpha = dest(parts[3], BlendFactor.ONE_MINUS_SRC_ALPHA);
-            return new UiBlendSpec(new BlendFunction(sourceColor, destColor, sourceAlpha, destAlpha));
+            return separate(sourceColor, destColor, sourceAlpha, destAlpha);
         }
         return TRANSLUCENT;
     }

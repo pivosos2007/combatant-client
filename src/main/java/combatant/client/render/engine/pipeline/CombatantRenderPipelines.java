@@ -15,7 +15,6 @@ package combatant.client.render.engine.pipeline;
 
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.BlendFactor;
 import com.mojang.blaze3d.shaders.UniformType;
 import com.mojang.blaze3d.systems.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -370,7 +369,7 @@ public enum CombatantRenderPipelines {
             .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
             .withDepthBias(WORLD_OVERLAY_DEPTH_BIAS_SLOPE, WORLD_OVERLAY_DEPTH_BIAS_CONSTANT)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(false)
             .build()
     );
@@ -522,7 +521,7 @@ public enum CombatantRenderPipelines {
             .withSampler("u_Texture")
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(false)
             .build()
     );
@@ -538,7 +537,7 @@ public enum CombatantRenderPipelines {
             .withUniform("TextureTint", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(false)
             .build()
     );
@@ -554,7 +553,7 @@ public enum CombatantRenderPipelines {
             .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
             .withDepthBias(WORLD_OVERLAY_DEPTH_BIAS_SLOPE, WORLD_OVERLAY_DEPTH_BIAS_CONSTANT)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(false)
             .build()
     );
@@ -665,7 +664,7 @@ public enum CombatantRenderPipelines {
             .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
             .withDepthBias(WORLD_OVERLAY_DEPTH_BIAS_SLOPE, WORLD_OVERLAY_DEPTH_BIAS_CONSTANT)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(false)
             .build()
     );
@@ -728,7 +727,7 @@ public enum CombatantRenderPipelines {
             .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
             .withDepthBias(WORLD_OVERLAY_DEPTH_BIAS_SLOPE, WORLD_OVERLAY_DEPTH_BIAS_CONSTANT)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(false)
             .build()
     );
@@ -745,7 +744,7 @@ public enum CombatantRenderPipelines {
             .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
             .withDepthBias(WORLD_OVERLAY_DEPTH_BIAS_SLOPE, WORLD_OVERLAY_DEPTH_BIAS_CONSTANT)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(false)
             .build()
     );
@@ -943,7 +942,7 @@ public enum CombatantRenderPipelines {
             .withSampler("u_Texture")
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(true)
             .build()
     );
@@ -956,7 +955,7 @@ public enum CombatantRenderPipelines {
             .withContract(RenderPipelineContract.UI_EXTENDED)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(true)
             .build()
     );
@@ -1344,7 +1343,7 @@ public enum CombatantRenderPipelines {
             .withUniform("SkySun", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(false)
             .build()
     );
@@ -1506,7 +1505,7 @@ public enum CombatantRenderPipelines {
             .withUniform("SkyboxShader", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(false)
             .build()
     );
@@ -1698,7 +1697,7 @@ public enum CombatantRenderPipelines {
             .withFragmentShader(SHADER_ROUNDED_RECT_GLOW_BATCH_FRAG)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(true)
             .build()
     );
@@ -1709,7 +1708,7 @@ public enum CombatantRenderPipelines {
             .withFragmentShader(SHADER_UI_GLOW_BATCH_FRAG)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
-            .withBlend(new BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE))
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(true)
             .build()
     );

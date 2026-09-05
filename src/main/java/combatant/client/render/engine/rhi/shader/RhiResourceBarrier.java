@@ -14,7 +14,8 @@ public record RhiResourceBarrier(Stage sourceStage,
                                  Access sourceAccess,
                                  Stage destinationStage,
                                  Access destinationAccess,
-                                 List<RhiStorageBuffer> buffers) {
+                                 List<RhiStorageBuffer> buffers,
+                                 List<RhiStorageImage> images) {
     public enum Stage { COMPUTE, GRAPHICS, INDIRECT, TRANSFER }
     public enum Access { READ, WRITE, READ_WRITE }
 
@@ -24,5 +25,12 @@ public record RhiResourceBarrier(Stage sourceStage,
             throw new IllegalArgumentException("Barrier stage/access must be explicit");
         }
         buffers = buffers == null || buffers.isEmpty() ? List.of() : List.copyOf(buffers);
+        images = images == null || images.isEmpty() ? List.of() : List.copyOf(images);
+    }
+
+    /** Compatibility overload for buffer-only dependencies. */
+    public RhiResourceBarrier(Stage sourceStage, Access sourceAccess, Stage destinationStage, Access destinationAccess,
+                              List<RhiStorageBuffer> buffers) {
+        this(sourceStage, sourceAccess, destinationStage, destinationAccess, buffers, List.of());
     }
 }

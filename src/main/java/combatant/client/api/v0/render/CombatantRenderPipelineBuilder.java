@@ -10,6 +10,7 @@ package combatant.client.api.v0.render;
 import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.platform.BlendFactor;
 import com.mojang.blaze3d.shaders.UniformType;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
@@ -69,6 +70,24 @@ public final class CombatantRenderPipelineBuilder {
 
     public CombatantRenderPipelineBuilder blend(BlendFunction blend) {
         delegate.withBlend(blend);
+        return this;
+    }
+
+    public CombatantRenderPipelineBuilder blend(BlendFactor source, BlendFactor destination) {
+        delegate.withBlend(source, destination);
+        return this;
+    }
+
+    public CombatantRenderPipelineBuilder blendSeparate(BlendFactor sourceColor,
+                                                         BlendFactor destinationColor,
+                                                         BlendFactor sourceAlpha,
+                                                         BlendFactor destinationAlpha) {
+        delegate.withBlendSeparate(sourceColor, destinationColor, sourceAlpha, destinationAlpha);
+        return this;
+    }
+
+    public CombatantRenderPipelineBuilder noBlend() {
+        delegate.withoutBlend();
         return this;
     }
 

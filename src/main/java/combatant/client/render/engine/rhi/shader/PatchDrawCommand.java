@@ -18,7 +18,9 @@ public record PatchDrawCommand(String label,
                                GpuTextureView colorAttachment,
                                @Nullable GpuTextureView depthAttachment,
                                GpuMeshHandle mesh,
-                               List<StorageBinding> storageBindings) {
+                               List<StorageBinding> storageBindings,
+                               List<SampledTextureBinding> sampledTextures,
+                               List<StorageImageBinding> storageImages) {
     public PatchDrawCommand {
         label = label == null || label.isBlank() ? "combatant-patches" : label;
         if (pipeline == null || colorAttachment == null || mesh == null) {
@@ -27,5 +29,18 @@ public record PatchDrawCommand(String label,
         storageBindings = storageBindings == null || storageBindings.isEmpty()
                 ? List.of()
                 : List.copyOf(storageBindings);
+        sampledTextures = sampledTextures == null || sampledTextures.isEmpty()
+                ? List.of()
+                : List.copyOf(sampledTextures);
+        storageImages = storageImages == null || storageImages.isEmpty()
+                ? List.of()
+                : List.copyOf(storageImages);
+    }
+
+    /** Compatibility overload for SSBO-only patch draws. */
+    public PatchDrawCommand(String label, RhiPatchPipeline pipeline, GpuTextureView colorAttachment,
+                            @Nullable GpuTextureView depthAttachment, GpuMeshHandle mesh,
+                            List<StorageBinding> storageBindings) {
+        this(label, pipeline, colorAttachment, depthAttachment, mesh, storageBindings, List.of(), List.of());
     }
 }

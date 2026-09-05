@@ -7,6 +7,8 @@
 
 package combatant.client.render.engine.rhi.backend.vulkan;
 
+import com.mojang.blaze3d.vulkan.Destroyable;
+import com.mojang.blaze3d.vulkan.VulkanDevice;
 import combatant.client.mixininterface.IVulkanBackendInfo;
 import combatant.client.render.engine.rhi.RhiStats;
 import combatant.client.render.engine.rhi.shader.RhiStorageBuffer;
@@ -34,6 +36,7 @@ import static org.lwjgl.vulkan.VK10.*;
 final class VulkanStorageBuffer implements RhiStorageBuffer {
     private final StorageBufferDescriptor descriptor;
     private final RhiStats stats;
+    private final VulkanDevice ownerDevice;
     private final long allocator;
     private final long buffer;
     private final long allocation;
@@ -47,8 +50,12 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
             throw new IllegalStateException("Mojang Vulkan VMA allocator is unavailable");
         }
         if (descriptor == null) throw new IllegalArgumentException("descriptor");
+        if (!(backend instanceof VulkanDevice device)) {
+            throw new IllegalStateException("Vulkan backend bridge is not the active Mojang VulkanDevice");
+        }
         this.descriptor = descriptor;
         this.stats = stats;
+        this.ownerDevice = device;
         this.allocator = backend.combatant$vma();
 
         long size = descriptor.byteSize();
@@ -145,6 +152,8 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) return;
-        vmaDestroyBuffer(allocator, buffer, allocation);
+        ownerDevice.createCommandEncoder().queueForDestroy(
+                (Destroyable) () -> vmaDestroyBuffer(allocator, buffer, allocation)
+        );
     }
 }

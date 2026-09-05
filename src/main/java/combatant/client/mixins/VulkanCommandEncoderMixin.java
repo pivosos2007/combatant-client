@@ -13,6 +13,10 @@ import com.mojang.blaze3d.systems.RenderPassDescriptor;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vulkan.VulkanCommandEncoder;
 import com.mojang.blaze3d.vulkan.VulkanGpuTextureView;
+import org.lwjgl.vulkan.VkCommandBuffer;
+import org.spongepowered.asm.mixin.gen.Invoker;
+import org.spongepowered.asm.mixin.gen.Accessor;
+import combatant.client.mixininterface.IVulkanCommandEncoderAccess;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkClearDepthStencilValue;
 import combatant.client.render.engine.profiler.UiPipelineTelemetry;
@@ -20,6 +24,7 @@ import org.lwjgl.vulkan.VkClearValue;
 import org.lwjgl.vulkan.VkRenderingAttachmentInfo;
 import org.lwjgl.vulkan.VkRenderingInfo;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -32,11 +37,32 @@ import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateB
 import static org.lwjgl.vulkan.VK12.*;
 
 @Mixin(VulkanCommandEncoder.class)
-public abstract class VulkanCommandEncoderMixin {
+public abstract class VulkanCommandEncoderMixin implements IVulkanCommandEncoderAccess {
+    @Unique
+    private boolean combatant$renderPassActive;
+
+    @Override
+    @Invoker("commandBuffer")
+    public abstract VkCommandBuffer combatant$commandBuffer();
+
+    @Override
+    public boolean combatant$renderPassActive() {
+        return combatant$renderPassActive;
+    }
+
+    @Override
+    @Accessor("currentSubmitIndex")
+    public abstract long combatant$currentSubmitIndex();
+
     @Inject(method = "createRenderPass", at = @At("HEAD"))
     private void combatant$beginVulkanRenderPassState(RenderPassDescriptor descriptor, CallbackInfoReturnable<RenderPassBackend> cir) {
         VulkanMsaaResolveBridge.beginRenderPass();
         VulkanRenderStateBridge.beginRenderPass(descriptor);
+    }
+
+    @Inject(method = "createRenderPass", at = @At("RETURN"))
+    private void combatant$markRenderPassActive(RenderPassDescriptor descriptor, CallbackInfoReturnable<RenderPassBackend> cir) {
+        combatant$renderPassActive = cir.getReturnValue() != null;
     }
 
 
@@ -86,6 +112,7 @@ public abstract class VulkanCommandEncoderMixin {
 
     @Inject(method = "submitRenderPass", at = @At("TAIL"))
     private void combatant$endVulkanRenderPassState(CallbackInfo ci) {
+        combatant$renderPassActive = false;
         VulkanMsaaResolveBridge.finishRenderPass();
         try {
             CombatantRenderSystem.rhi().shapeClip().endRenderPass();
