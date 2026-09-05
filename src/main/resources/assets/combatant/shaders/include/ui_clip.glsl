@@ -1,4 +1,6 @@
 /* Analytic shape-clip contract. Included only by COMBATANT_ANALYTIC_CLIP variants. */
+#moj_import <combatant:ui_geometry.glsl>
+
 const int COMBATANT_MAX_ANALYTIC_CLIPS = 4;
 const float COMBATANT_CLIP_RECT = 0.0;
 const float COMBATANT_CLIP_ROUNDED = 1.0;

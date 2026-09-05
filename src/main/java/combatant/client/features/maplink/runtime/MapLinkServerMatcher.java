@@ -3,7 +3,7 @@
  * Copyright (c) 2026 pivosos2007.
  * Licensed under the GNU General Public License v3.0.
  */
-package combatant.client.util.map.maplink.runtime;
+package combatant.client.features.maplink.runtime;
 
 import java.util.Locale;
 import java.util.regex.Pattern;

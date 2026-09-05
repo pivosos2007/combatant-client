@@ -7,7 +7,6 @@
 
 package combatant.client.render.engine.rhi.backend.vulkan;
 
-import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.IndexType;
 import com.mojang.blaze3d.vulkan.Destroyable;
 import com.mojang.blaze3d.vulkan.VulkanCommandEncoder;

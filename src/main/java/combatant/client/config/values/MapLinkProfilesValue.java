@@ -5,8 +5,8 @@
  */
 package combatant.client.config.values;
 
-import combatant.client.util.map.maplink.model.MapLinkProfile;
-import combatant.client.util.map.maplink.model.MapLinkProviderType;
+import combatant.client.features.maplink.model.MapLinkProfile;
+import combatant.client.features.maplink.model.MapLinkProviderType;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

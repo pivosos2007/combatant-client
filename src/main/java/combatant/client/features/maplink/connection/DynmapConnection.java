@@ -9,15 +9,15 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-package combatant.client.util.map.maplink.connection;
+package combatant.client.features.maplink.connection;
 
-import combatant.client.util.map.maplink.model.MapLinkFetchContext;
-import combatant.client.util.map.maplink.model.MapLinkFetchResult;
-import combatant.client.util.map.maplink.model.MapLinkProfile;
-import combatant.client.util.map.maplink.model.MapLinkProviderType;
-import combatant.client.util.map.maplink.model.MapLinkRawPlayer;
-import combatant.client.util.map.maplink.net.MapLinkHttpClient;
-import combatant.client.util.map.maplink.net.MapLinkUris;
+import combatant.client.features.maplink.model.MapLinkFetchContext;
+import combatant.client.features.maplink.model.MapLinkFetchResult;
+import combatant.client.features.maplink.model.MapLinkProfile;
+import combatant.client.features.maplink.model.MapLinkProviderType;
+import combatant.client.features.maplink.model.MapLinkRawPlayer;
+import combatant.client.features.maplink.net.MapLinkHttpClient;
+import combatant.client.features.maplink.net.MapLinkUris;
 
 import java.io.IOException;
 import java.net.URI;

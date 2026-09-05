@@ -3,11 +3,11 @@
  * Copyright (c) 2026 pivosos2007.
  * Licensed under the GNU General Public License v3.0.
  */
-package combatant.client.util.map.maplink.connection;
+package combatant.client.features.maplink.connection;
 
-import combatant.client.util.map.maplink.model.MapLinkFetchContext;
-import combatant.client.util.map.maplink.model.MapLinkFetchResult;
-import combatant.client.util.map.maplink.model.MapLinkProviderType;
+import combatant.client.features.maplink.model.MapLinkFetchContext;
+import combatant.client.features.maplink.model.MapLinkFetchResult;
+import combatant.client.features.maplink.model.MapLinkProviderType;
 
 import java.io.IOException;
 

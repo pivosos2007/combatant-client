@@ -9,7 +9,7 @@ import combatant.client.config.SettingDef;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.MapLinkProfilesValue;
 import combatant.client.config.values.NumberValue;
-import combatant.client.util.map.maplink.model.MapLinkProfile;
+import combatant.client.features.maplink.model.MapLinkProfile;
 
 import java.util.Comparator;
 import java.util.List;

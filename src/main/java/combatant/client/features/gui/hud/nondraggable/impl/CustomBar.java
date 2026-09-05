@@ -40,7 +40,7 @@ import combatant.client.render.helpers.MatteHudStyle;
 import combatant.client.render.helpers.PlayerHeadRenderer;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.input.KeyManager;
-import combatant.client.util.map.maplink.runtime.MapLinkLocatorBridge;
+import combatant.client.features.maplink.runtime.MapLinkLocatorBridge;
 import combatant.client.util.player.PlayerSkinResolver;
 
 import java.awt.*;

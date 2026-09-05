@@ -3,10 +3,10 @@
  * Copyright (c) 2026 pivosos2007.
  * Licensed under the GNU General Public License v3.0.
  */
-package combatant.client.util.map.maplink.connection;
+package combatant.client.features.maplink.connection;
 
-import combatant.client.util.map.maplink.model.MapLinkProfile;
-import combatant.client.util.map.maplink.net.MapLinkHttpClient;
+import combatant.client.features.maplink.model.MapLinkProfile;
+import combatant.client.features.maplink.net.MapLinkHttpClient;
 
 import java.util.UUID;
 

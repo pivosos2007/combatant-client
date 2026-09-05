@@ -4,7 +4,7 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-package combatant.client.util.map.maplink.model;
+package combatant.client.features.maplink.model;
 
 /** Web-map provider families supported by the Combatant MapLink backend. */
 public enum MapLinkProviderType {

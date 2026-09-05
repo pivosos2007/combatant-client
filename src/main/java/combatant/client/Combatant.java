@@ -74,7 +74,7 @@ import combatant.client.util.combat.VulcanReachController;
 import combatant.client.util.entity.simulation.BoatSimulationCache;
 import combatant.client.render.engine.renderer.ui.runtime.script.JavetRuntimeBootstrap;
 import combatant.client.util.media.MediaSessionService;
-import combatant.client.util.map.maplink.runtime.MapLinkRuntime;
+import combatant.client.features.maplink.runtime.MapLinkRuntime;
 import combatant.client.util.network.BacktrackController;
 import combatant.client.util.network.BlinkManager;
 import combatant.client.util.proxy.ProxyBackend;

@@ -3,12 +3,12 @@
  * Copyright (c) 2026 pivosos2007.
  * Licensed under the GNU General Public License v3.0.
  */
-package combatant.client.util.map.maplink.net;
+package combatant.client.features.maplink.net;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import combatant.client.config.subsystem.MapLinkConfig;
-import combatant.client.util.map.maplink.model.MapLinkProfile;
+import combatant.client.features.maplink.model.MapLinkProfile;
 
 import java.io.IOException;
 import java.lang.reflect.Type;

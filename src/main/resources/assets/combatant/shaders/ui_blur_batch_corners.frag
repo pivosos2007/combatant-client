@@ -22,27 +22,10 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
+#moj_import <combatant:ui_geometry.glsl>
 #ifdef COMBATANT_ANALYTIC_CLIP
 #moj_import <combatant:ui_clip.glsl>
 #endif
-
-vec4 normalizeRadii(vec4 r, vec2 size) {
-    float maxR = 0.5 * min(size.x, size.y);
-    r = clamp(r, 0.0, maxR);
-
-    float top = r.x + r.y;
-    float bottom = r.w + r.z;
-    float left = r.x + r.w;
-    float right = r.y + r.z;
-
-    float scale = 1.0;
-    if (top > size.x && top > 0.0) scale = min(scale, size.x / top);
-    if (bottom > size.x && bottom > 0.0) scale = min(scale, size.x / bottom);
-    if (left > size.y && left > 0.0) scale = min(scale, size.y / left);
-    if (right > size.y && right > 0.0) scale = min(scale, size.y / right);
-
-    return r * scale;
-}
 
 float pixelAa(vec2 logicalScale) {
     return max(max(logicalScale.x, logicalScale.y), 0.0001);
@@ -54,13 +37,6 @@ float analyticAa(float d, vec2 logicalScale) {
 
 float crispCoverage(float d, float aa) {
     return clamp(0.5 - d / max(aa, 0.0001), 0.0, 1.0);
-}
-
-float roundedBoxSDF(vec2 p, vec2 halfSize, vec4 r) {
-    vec2 corner = (p.x < 0.0) ? vec2(r.x, r.w) : vec2(r.y, r.z);
-    float radius = (p.y < 0.0) ? corner.x : corner.y;
-    vec2 q = abs(p) - halfSize + radius;
-    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - radius;
 }
 
 vec4 blur(vec2 uv, float brightness) {
@@ -82,7 +58,7 @@ void main() {
     vec2 boxHalf = center;
     vec2 pos = (frag - v_Rect.xy) - center;
     vec4 radii = normalizeRadii(v_Params, size);
-    float distance = roundedBoxSDF(pos, boxHalf, radii);
+    float distance = roundedCornersSdf(pos, boxHalf, radii);
     float aa = analyticAa(distance, logicalScale);
     float alpha = crispCoverage(distance, aa);
 #ifdef COMBATANT_ANALYTIC_CLIP

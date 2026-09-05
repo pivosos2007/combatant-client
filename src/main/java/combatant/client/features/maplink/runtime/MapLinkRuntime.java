@@ -3,25 +3,25 @@
  * Copyright (c) 2026 pivosos2007.
  * Licensed under the GNU General Public License v3.0.
  */
-package combatant.client.util.map.maplink.runtime;
+package combatant.client.features.maplink.runtime;
 
 import combatant.client.config.subsystem.MapLinkConfig;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.GameTickEvent;
 import combatant.client.util.logging.DebugLog;
-import combatant.client.util.map.maplink.connection.MapLinkConnection;
-import combatant.client.util.map.maplink.connection.MapLinkConnectionFactory;
-import combatant.client.util.map.maplink.model.MapLinkFetchContext;
-import combatant.client.util.map.maplink.model.MapLinkFetchResult;
-import combatant.client.util.map.maplink.model.MapLinkObservation;
-import combatant.client.util.map.maplink.model.MapLinkProfile;
-import combatant.client.util.map.maplink.model.MapLinkProfileState;
-import combatant.client.util.map.maplink.model.MapLinkProfileStatus;
-import combatant.client.util.map.maplink.model.MapLinkRawPlayer;
-import combatant.client.util.map.maplink.model.MapLinkSnapshot;
-import combatant.client.util.map.maplink.net.MapLinkHttpClient;
-import combatant.client.util.map.maplink.net.MapLinkHttpException;
-import combatant.client.util.map.maplink.net.MapLinkParseException;
+import combatant.client.features.maplink.connection.MapLinkConnection;
+import combatant.client.features.maplink.connection.MapLinkConnectionFactory;
+import combatant.client.features.maplink.model.MapLinkFetchContext;
+import combatant.client.features.maplink.model.MapLinkFetchResult;
+import combatant.client.features.maplink.model.MapLinkObservation;
+import combatant.client.features.maplink.model.MapLinkProfile;
+import combatant.client.features.maplink.model.MapLinkProfileState;
+import combatant.client.features.maplink.model.MapLinkProfileStatus;
+import combatant.client.features.maplink.model.MapLinkRawPlayer;
+import combatant.client.features.maplink.model.MapLinkSnapshot;
+import combatant.client.features.maplink.net.MapLinkHttpClient;
+import combatant.client.features.maplink.net.MapLinkHttpException;
+import combatant.client.features.maplink.net.MapLinkParseException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.multiplayer.ServerData;
