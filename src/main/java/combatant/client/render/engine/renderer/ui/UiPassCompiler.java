@@ -18,6 +18,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
+import combatant.client.render.engine.rhi.resource.TransientTargetDescriptor;
 import combatant.client.render.engine.text.TextRenderSystem;
 import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
@@ -27,6 +28,7 @@ import net.minecraft.client.Minecraft;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 
 /**
  * Owns the production UI work queue and compiles it into one ordered executable plan.
@@ -312,6 +314,7 @@ public final class UiPassCompiler {
                     "Renderer2D.RhiDrawSequence[x" + callbacks.size() + "]",
                     orderedBatches,
                     groupedDraws,
+                    mergedTransientTargets(callbacks),
                     (frame, rhi) -> {
                         for (UiBatchPlan.Pass pass : callbacks) pass.executeWork(frame, rhi);
                     }
@@ -374,8 +377,90 @@ public final class UiPassCompiler {
         return new UiBatchPlan.Pass(
                 "Renderer2D.OrderedSpecial[" + normalizedReason + "]",
                 orderedBatchCount,
+                List.of(),
+                transientTargetsFor(batcher),
                 (frame, rhi) -> batcher.executeCompiled(finish)
         );
+    }
+
+    private static List<TransientTargetDescriptor> mergedTransientTargets(List<UiBatchPlan.Pass> passes) {
+        if (passes == null || passes.isEmpty()) return List.of();
+        LinkedHashMap<String, TransientTargetDescriptor> merged = new LinkedHashMap<>();
+        for (UiBatchPlan.Pass pass : passes) {
+            if (pass == null) continue;
+            for (TransientTargetDescriptor descriptor : pass.transientTargets()) {
+                merged.putIfAbsent(descriptor.logicalKey(), descriptor);
+            }
+        }
+        return merged.isEmpty() ? List.of() : List.copyOf(merged.values());
+    }
+
+    /** Declares frame-live Kawase resources before the legacy effect pass executes them. */
+    private static List<TransientTargetDescriptor> transientTargetsFor(OrderedUiBatcher batcher) {
+        if (batcher == null || batcher.order.isEmpty()) return List.of();
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.getWindow() == null) return List.of();
+
+        int screenWidth = minecraft.getWindow().getWidth();
+        int screenHeight = minecraft.getWindow().getHeight();
+        if (screenWidth <= 0 || screenHeight <= 0) return List.of();
+
+        LinkedHashMap<String, TransientTargetDescriptor> descriptors = new LinkedHashMap<>();
+        for (Object entry : batcher.order) {
+            if (!(entry instanceof DrawBatch batch)) continue;
+            if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS
+                    || batch.type.usesPreparedGlass() && batch.backdropRequest.sceneBlur().enabled()) {
+                String sceneDomain = batch.backdropRequest.requiresCapturedScene()
+                        ? "captured-world"
+                        : "surface";
+                declareBlurChain(descriptors, sceneDomain, batch.blurQuality.iterations, screenWidth, screenHeight);
+            }
+            if (batch.type.usesPreparedGlass()
+                    && batch.backdropRequest.uiUnderlayMode() == combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest.UiUnderlayMode.BLUR) {
+                Renderer2D.BlurQuality quality = rendererQuality(batch.backdropRequest.uiBlur().quality());
+                declareBlurChain(descriptors, "ui-underlay", quality.iterations, screenWidth, screenHeight);
+            }
+        }
+        return descriptors.isEmpty() ? List.of() : List.copyOf(descriptors.values());
+    }
+
+    private static Renderer2D.BlurQuality rendererQuality(
+            combatant.client.render.engine.renderer.ui.draw.UiBlurQuality quality) {
+        return switch (quality != null ? quality
+                : combatant.client.render.engine.renderer.ui.draw.UiBlurQuality.LOW) {
+            case LOW -> Renderer2D.BlurQuality.LOW;
+            case MEDIUM -> Renderer2D.BlurQuality.MEDIUM;
+            case HIGH -> Renderer2D.BlurQuality.HIGH;
+            case ULTRA -> Renderer2D.BlurQuality.ULTRA;
+        };
+    }
+
+    private static void declareBlurChain(LinkedHashMap<String, TransientTargetDescriptor> output,
+                                         String sourceDomain,
+                                         int iterations,
+                                         int screenWidth,
+                                         int screenHeight) {
+        int levels = Math.max(1, Math.min(Renderer2D.BlurQuality.ULTRA.iterations, iterations));
+        for (int level = 0; level < levels; level++) {
+            declareBlurTarget(output, sourceDomain, level, screenWidth, screenHeight);
+        }
+    }
+
+    private static void declareBlurTarget(LinkedHashMap<String, TransientTargetDescriptor> output,
+                                          String sourceDomain,
+                                          int level,
+                                          int screenWidth,
+                                          int screenHeight) {
+        int divisor = 1 << (level + 1);
+        String logicalName = "ui-blur-" + sourceDomain + "-level-" + level;
+        TransientTargetDescriptor descriptor = TransientTargetDescriptor.frame(
+                logicalName,
+                Math.max(1, screenWidth / divisor),
+                Math.max(1, screenHeight / divisor),
+                false,
+                "UiPassCompiler.blur"
+        );
+        output.putIfAbsent(descriptor.logicalKey(), descriptor);
     }
 
     private static String legacyReason(OrderedUiBatcher batcher) {

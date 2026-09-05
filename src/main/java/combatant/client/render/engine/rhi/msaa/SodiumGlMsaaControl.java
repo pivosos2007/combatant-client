@@ -19,6 +19,9 @@ import net.minecraft.resources.Identifier;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL43C;
+import org.lwjgl.opengl.GL45C;
+import org.lwjgl.system.MemoryStack;
 import combatant.client.mixininterface.IGlBackendInfo;
 import combatant.client.mixininterface.IMsaaTexture;
 import combatant.client.mixins.accessors.GlTextureInvoker;
@@ -27,6 +30,8 @@ import combatant.client.render.engine.msaa.MsaaWorldTarget;
 import combatant.client.render.engine.rhi.backend.gl.GlBackendAccess;
 import combatant.client.render.engine.rhi.backend.gl.GlValidation;
 import combatant.client.render.engine.rhi.backend.gl.GlNativeStateTracker;
+import combatant.client.render.engine.rhi.RhiCapabilities;
+import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.LinkedHashMap;
@@ -271,6 +276,31 @@ public final class SodiumGlMsaaControl implements MsaaControl {
                         Integer.toHexString(error), color, depth, src.width, src.height, dst.width, dst.height);
                 return false;
             }
+        }
+        return true;
+    }
+
+    @Override
+    public boolean resolveTransient(RenderTarget src, RenderTarget dst, boolean color, boolean depth) {
+        boolean resolved = resolve(src, dst, color, depth);
+        if (!resolved || src == null || !RhiCapabilities.current().attachmentInvalidation()) return resolved;
+
+        int framebuffer = resolveFramebuffer(src, color, depth, "discard");
+        if (framebuffer == 0) return true;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            java.nio.IntBuffer attachments = stack.mallocInt((color ? 1 : 0) + (depth ? 1 : 0));
+            if (color) attachments.put(GL30.GL_COLOR_ATTACHMENT0);
+            if (depth) attachments.put(GL30.GL_DEPTH_ATTACHMENT);
+            attachments.flip();
+            if (RhiCapabilities.current().nativeDirectStateAccess()) {
+                GL45C.glInvalidateNamedFramebufferData(framebuffer, attachments);
+            } else {
+                int previous = GlStateManager.getFrameBuffer(GL30.GL_READ_FRAMEBUFFER);
+                GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, framebuffer);
+                GL43C.glInvalidateFramebuffer(GL30.GL_READ_FRAMEBUFFER, attachments);
+                GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previous);
+            }
+            UiPipelineTelemetry.recordMsaaDiscard();
         }
         return true;
     }

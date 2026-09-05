@@ -21,6 +21,7 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkImageFormatProperties;
 import org.lwjgl.vulkan.VkPhysicalDeviceDepthStencilResolvePropertiesKHR;
+import org.lwjgl.vulkan.VkPhysicalDeviceFeatures;
 import org.lwjgl.vulkan.VkPhysicalDeviceLimits;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties2;
 import org.spongepowered.asm.mixin.Mixin;
@@ -67,6 +68,14 @@ public abstract class VulkanDeviceMixin {
                 & limits.framebufferStencilSampleCounts();
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkPhysicalDeviceFeatures features = VkPhysicalDeviceFeatures.calloc(stack);
+            vkGetPhysicalDeviceFeatures(physicalDevice.vkPhysicalDevice(), features);
+            VulkanRenderStateBridge.configureAdvancedShaderCapabilities(
+                    physicalDevice.computeQueueFamilyAndIndex() != null,
+                    features.tessellationShader(),
+                    features.geometryShader(),
+                    limits.maxStorageBufferRange() > 0
+            );
             int textureUsage = GpuTexture.USAGE_COPY_DST
                     | GpuTexture.USAGE_COPY_SRC
                     | GpuTexture.USAGE_TEXTURE_BINDING

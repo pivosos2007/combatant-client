@@ -24,6 +24,7 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.ModeValue;
+import combatant.client.config.values.NumberValue;
 import combatant.client.features.module.*;
 import combatant.client.features.relations.CategoryService;
 import combatant.client.mixininterface.IEntity;
@@ -47,6 +48,8 @@ public class Tracers extends Module {
     private static final String SETTING_MOVE_RADIUS_BONUS = "move_radius_bonus";
     private static final String SETTING_MODE = "mode";
     private static final String SETTING_ARROW_TEXTURE = "arrow_texture";
+    private static final String SETTING_ARROW_RADIUS = "arrow_radius";
+    private static final String SETTING_ARROW_SIZE = "arrow_size";
     private static final Identifier ARROW_1 = Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/arrow.png");
     private static final Identifier ARROW_2 = Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/arrow2.png");
     private static final Identifier ARROW_3 = Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/arrow3.png");
@@ -75,6 +78,10 @@ public class Tracers extends Module {
     private final ModeValue arrowTexture =
             visibleWhen(modeSetting("tracersArrowTexture", SETTING_ARROW_TEXTURE, "Arrow", "Arrow", "Arrow2", "Arrow3", "Arrow4"),
                     this::isArrowsMode);
+    private final NumberValue<Float> arrowRadius =
+            visibleWhen(num("tracersArrowRadius", SETTING_ARROW_RADIUS, BASE_RADIUS, 20.0f, 140.0f), this::isArrowsMode);
+    private final NumberValue<Float> arrowSize =
+            visibleWhen(num("tracersArrowSize", SETTING_ARROW_SIZE, 1.0f, 0.5f, 2.0f), this::isArrowsMode);
     private float animationStep;
     private float animatedYaw;
     private float animatedPitch;
@@ -215,7 +222,7 @@ public class Tracers extends Module {
 
         yaw = AnimationUtility.fast(yaw, getActiveCameraYaw(), 10.0f);
 
-        float size = BASE_RADIUS;
+        float size = arrowRadius.get();
         if (ClientScreen.current() instanceof InventoryScreen) {
             size += INVENTORY_RADIUS_BONUS;
         }
@@ -252,7 +259,7 @@ public class Tracers extends Module {
 
             int color = withAlpha(resolveColor(player), ARROW_ALPHA);
             float rotRad = (float) Math.toRadians(angleDeg + ARROW_ROTATION_OFFSET_DEG);
-            renderArrow(textureId, x2, y2, rotRad, color, scale);
+            renderArrow(textureId, x2, y2, rotRad, color, scale * arrowSize.get());
         }
     }
 

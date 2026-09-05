@@ -4,6 +4,7 @@ import com.mojang.jtracy.Plot;
 import com.mojang.jtracy.TracyClient;
 import com.mojang.jtracy.Zone;
 import combatant.client.render.engine.rhi.RhiStatsSnapshot;
+import combatant.client.render.engine.rhi.resource.RenderResourceStatsSnapshot;
 import combatant.client.render.engine.rhi.RhiPipelineStatsSnapshot;
 
 import java.util.Map;
@@ -29,6 +30,7 @@ public enum DevTracyProfiler {
     private static volatile Plot uiBatchVerticesPlot;
     private static volatile Plot[] uiPipelinePlots;
     private static volatile Plot[] rhiPipelinePlots;
+    private static volatile Plot[] renderResourcePlots;
     private static final Map<String, Plot[]> PIPELINE_DETAIL_PLOTS = new ConcurrentHashMap<>();
 
     public static boolean isEnabled() {
@@ -133,6 +135,7 @@ public enum DevTracyProfiler {
         p[23].setValue(s.legacyBlurCapture());
         p[24].setValue(s.legacyPreparedGlass());
         p[25].setValue(s.legacyUnsupported());
+        p[26].setValue(s.msaaDiscards());
     }
 
     /** Called directly from the render frame lifecycle, never through a UI/world tree profiler. */
@@ -174,7 +177,23 @@ public enum DevTracyProfiler {
         p[32].setValue(s.dynamicPersistentArenaBytes());
         p[33].setValue(s.dynamicSpillArenaBytes());
         p[34].setValue(s.legacyPathUses());
+        p[35].setValue(s.textureGlCopyImages());
         plotPipelineBreakdown(s.pipelineBreakdown());
+    }
+
+    public static void plotRenderResources(RenderResourceStatsSnapshot s) {
+        if (!isEnabled() || s == null) return;
+        Plot[] p = renderResourcePlots();
+        p[0].setValue(s.activeFrameTransients());
+        p[1].setValue(s.transientAcquires());
+        p[2].setValue(s.transientReuses());
+        p[3].setValue(s.transientReleases());
+        p[4].setValue(s.peakFrameTransients());
+        p[5].setValue(s.temporaryFramebuffers());
+        p[6].setValue(s.framebufferCreates());
+        p[7].setValue(s.framebufferResizes());
+        p[8].setValue(s.transientEvictions());
+        p[9].setValue(s.idleTransientBytes());
     }
 
     private static void plotPipelineBreakdown(java.util.List<RhiPipelineStatsSnapshot> snapshots) {
@@ -368,7 +387,8 @@ public enum DevTracyProfiler {
                         "render.ui_compiler.legacy_mixed_items",
                         "render.ui_compiler.legacy_blur_capture",
                         "render.ui_compiler.legacy_prepared_glass",
-                        "render.ui_compiler.legacy_unsupported"
+                        "render.ui_compiler.legacy_unsupported",
+                        "render.ui_msaa.discards"
                 };
                 Plot[] created = new Plot[names.length];
                 for (int i = 0; i < names.length; i++) {
@@ -420,13 +440,39 @@ public enum DevTracyProfiler {
                         "render.rhi.dynamic.backlog_events",
                         "render.rhi.dynamic.persistent_arena_bytes",
                         "render.rhi.dynamic.spill_arena_bytes",
-                        "render.rhi.legacy_path_uses"
+                        "render.rhi.legacy_path_uses",
+                        "render.rhi.texture_gl_copy_image"
                 };
                 Plot[] created = new Plot[names.length];
                 for (int i = 0; i < names.length; i++) created[i] = TracyClient.createPlot(names[i]);
                 rhiPipelinePlots = created;
             }
             return rhiPipelinePlots;
+        }
+    }
+
+    private static Plot[] renderResourcePlots() {
+        Plot[] plots = renderResourcePlots;
+        if (plots != null) return plots;
+        synchronized (DevTracyProfiler.class) {
+            if (renderResourcePlots == null) {
+                String[] names = {
+                        "render.resources.transient.active",
+                        "render.resources.transient.acquires",
+                        "render.resources.transient.reuses",
+                        "render.resources.transient.releases",
+                        "render.resources.transient.peak",
+                        "render.resources.framebuffers.temporary",
+                        "render.resources.framebuffers.creates_total",
+                        "render.resources.framebuffers.resizes_total",
+                        "render.resources.transient.evictions_total",
+                        "render.resources.transient.idle_bytes"
+                };
+                Plot[] created = new Plot[names.length];
+                for (int i = 0; i < names.length; i++) created[i] = TracyClient.createPlot(names[i]);
+                renderResourcePlots = created;
+            }
+            return renderResourcePlots;
         }
     }
 

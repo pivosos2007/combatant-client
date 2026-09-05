@@ -18,6 +18,7 @@ import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.rhi.resource.TransientTargetDescriptor;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.vertex.CombatantVertexFormats;
 import net.minecraft.client.Minecraft;
@@ -30,13 +31,6 @@ import java.util.EnumSet;
  * These are backend resources, not part of the shape drawing facade.
  */
 public final class UiBlurResources {
-    private static final int MAX_KAWASE_LEVELS = Renderer2D.BlurQuality.ULTRA.iterations;
-    private static final TextureTarget[] SURFACE_KAWASE_DOWN = new TextureTarget[MAX_KAWASE_LEVELS];
-    private static final TextureTarget[] SURFACE_KAWASE_UP = new TextureTarget[MAX_KAWASE_LEVELS];
-    private static final TextureTarget[] CAPTURED_WORLD_KAWASE_DOWN = new TextureTarget[MAX_KAWASE_LEVELS];
-    private static final TextureTarget[] CAPTURED_WORLD_KAWASE_UP = new TextureTarget[MAX_KAWASE_LEVELS];
-    private static final TextureTarget[] UI_UNDERLAY_KAWASE_DOWN = new TextureTarget[MAX_KAWASE_LEVELS];
-    private static final TextureTarget[] UI_UNDERLAY_KAWASE_UP = new TextureTarget[MAX_KAWASE_LEVELS];
     private static final FrameBlurCacheEntry SURFACE_FRAME_CACHE = new FrameBlurCacheEntry();
     private static final FrameBlurCacheEntry CAPTURED_WORLD_FRAME_CACHE = new FrameBlurCacheEntry();
     private static final FrameBlurCacheEntry UI_UNDERLAY_FRAME_CACHE = new FrameBlurCacheEntry();
@@ -160,19 +154,10 @@ public final class UiBlurResources {
         if (source == null || target == null) return false;
         if (source.getColorTexture() == null || target.getColorTexture() == null) return false;
 
-        int width = Math.min(source.width, target.width);
-        int height = Math.min(source.height, target.height);
-        if (width <= 0 || height <= 0) return false;
-
         try {
-            RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(
-                    source.getColorTexture(),
-                    target.getColorTexture(),
-                    0, 0, 0,
-                    0, 0,
-                    width, height
+            return CombatantRenderSystem.rhi().textureBlitter().copyFast(
+                    source.getColorTextureView(), target.getColorTextureView()
             );
-            return true;
         } catch (Throwable ignored) {
             return false;
         }
@@ -220,59 +205,31 @@ public final class UiBlurResources {
     }
 
     public static TextureTarget ensureKawaseDown(Minecraft minecraft, int level) {
-        return ensureKawaseTarget(
-                minecraft, SURFACE_KAWASE_DOWN, "combatant-ui-kawase-down-", "Renderer2D.kawaseDown", level
-        );
+        return ensureKawaseTarget(minecraft, "surface", level);
     }
 
     public static TextureTarget ensureKawaseUp(Minecraft minecraft, int level) {
-        return ensureKawaseTarget(
-                minecraft, SURFACE_KAWASE_UP, "combatant-ui-kawase-up-", "Renderer2D.kawaseUp", level
-        );
+        return ensureKawaseTarget(minecraft, "surface", level);
     }
 
     static TextureTarget ensureKawaseDown(Minecraft minecraft,
                                           int level,
                                           @Nullable GpuTextureView sourceView) {
         if (isUiUnderlaySource(sourceView)) {
-            return ensureKawaseTarget(
-                    minecraft,
-                    UI_UNDERLAY_KAWASE_DOWN,
-                    "combatant-ui-underlay-kawase-down-",
-                    "Renderer2D.uiUnderlayKawaseDown",
-                    level
-            );
+            return ensureKawaseTarget(minecraft, "ui-underlay", level);
         }
         if (!isCapturedWorldSource(sourceView)) return ensureKawaseDown(minecraft, level);
-        return ensureKawaseTarget(
-                minecraft,
-                CAPTURED_WORLD_KAWASE_DOWN,
-                "combatant-ui-glass-kawase-down-",
-                "Renderer2D.glassKawaseDown",
-                level
-        );
+        return ensureKawaseTarget(minecraft, "captured-world", level);
     }
 
     static TextureTarget ensureKawaseUp(Minecraft minecraft,
                                         int level,
                                         @Nullable GpuTextureView sourceView) {
         if (isUiUnderlaySource(sourceView)) {
-            return ensureKawaseTarget(
-                    minecraft,
-                    UI_UNDERLAY_KAWASE_UP,
-                    "combatant-ui-underlay-kawase-up-",
-                    "Renderer2D.uiUnderlayKawaseUp",
-                    level
-            );
+            return ensureKawaseTarget(minecraft, "ui-underlay", level);
         }
         if (!isCapturedWorldSource(sourceView)) return ensureKawaseUp(minecraft, level);
-        return ensureKawaseTarget(
-                minecraft,
-                CAPTURED_WORLD_KAWASE_UP,
-                "combatant-ui-glass-kawase-up-",
-                "Renderer2D.glassKawaseUp",
-                level
-        );
+        return ensureKawaseTarget(minecraft, "captured-world", level);
     }
 
     public static MeshBuilder ensureCompositeMesh(int width, int height) {
@@ -396,25 +353,25 @@ public final class UiBlurResources {
         );
     }
 
-    private static TextureTarget ensureKawaseTarget(
-            Minecraft minecraft,
-            TextureTarget[] targets,
-            String namePrefix,
-            String labelPrefix,
-            int level) {
-        if (minecraft == null || targets == null || level < 0 || level >= targets.length) return null;
+    private static TextureTarget ensureKawaseTarget(Minecraft minecraft,
+                                                    String sourceDomain,
+                                                    int level) {
+        if (minecraft == null || level < 0 || level >= Renderer2D.BlurQuality.ULTRA.iterations) return null;
         int divisor = 1 << (level + 1);
         int width = Math.max(1, minecraft.getWindow().getWidth() / divisor);
         int height = Math.max(1, minecraft.getWindow().getHeight() / divisor);
-        TextureTarget target = CombatantRenderSystem.resources().persistentFramebuffer(
-                namePrefix + level,
-                width,
-                height,
-                false,
-                labelPrefix + level
+        // The up pass reuses down[level] after its last read. Only the final level-zero result
+        // remains live for frame-cache consumers, so a second up[] allocation is unnecessary.
+        String logicalName = "ui-blur-" + sourceDomain + "-level-" + level;
+        return CombatantRenderSystem.resources().frameTransient(
+                TransientTargetDescriptor.frame(
+                        logicalName,
+                        width,
+                        height,
+                        false,
+                        "UiPassCompiler.blur"
+                )
         );
-        targets[level] = target;
-        return target;
     }
 
     private static RenderPhase cachePhaseForSource(RenderPhase phase, @Nullable GpuTextureView sourceView) {

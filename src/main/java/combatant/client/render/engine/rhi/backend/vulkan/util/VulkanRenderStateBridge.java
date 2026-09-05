@@ -98,6 +98,10 @@ public enum VulkanRenderStateBridge {
     private static volatile int supportedFramebufferSampleCounts = VK_SAMPLE_COUNT_1_BIT;
     private static volatile int supportedDepthResolveModes;
     private static volatile boolean independentResolveNone;
+    private static volatile boolean computeShadersSupported;
+    private static volatile boolean tessellationShadersSupported;
+    private static volatile boolean geometryShadersSupported;
+    private static volatile boolean shaderStorageBuffersSupported;
 
     public static void setVulkanBackendActive(boolean active) {
         vulkanBackendActive = active;
@@ -153,6 +157,32 @@ public enum VulkanRenderStateBridge {
         supportedFramebufferSampleCounts = framebufferSampleCounts | VK_SAMPLE_COUNT_1_BIT;
         supportedDepthResolveModes = depthResolveModes;
         independentResolveNone = supportsIndependentResolveNone;
+    }
+
+    public static void configureAdvancedShaderCapabilities(boolean compute,
+                                                           boolean tessellation,
+                                                           boolean geometry,
+                                                           boolean storageBuffers) {
+        computeShadersSupported = compute;
+        tessellationShadersSupported = tessellation;
+        geometryShadersSupported = geometry;
+        shaderStorageBuffersSupported = storageBuffers;
+    }
+
+    public static boolean computeShadersSupported() {
+        return computeShadersSupported;
+    }
+
+    public static boolean tessellationShadersSupported() {
+        return tessellationShadersSupported;
+    }
+
+    public static boolean geometryShadersSupported() {
+        return geometryShadersSupported;
+    }
+
+    public static boolean shaderStorageBuffersSupported() {
+        return shaderStorageBuffersSupported;
     }
 
     public static boolean msaaSupported() {

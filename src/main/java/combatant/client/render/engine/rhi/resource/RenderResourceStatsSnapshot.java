@@ -21,6 +21,13 @@ public record RenderResourceStatsSnapshot(
         long retirementQueued,
         long retirementClosed,
         int retirementBacklog,
-        int leakedResources
+        int leakedResources,
+        int activeFrameTransients,
+        long transientAcquires,
+        long transientReuses,
+        long transientReleases,
+        int peakFrameTransients,
+        long transientEvictions,
+        long idleTransientBytes
 ) {
 }

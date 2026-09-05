@@ -22,6 +22,7 @@ import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.ui.draw.UiRect;
 import combatant.client.render.engine.renderer.ui.UiBlurResources;
 import combatant.client.render.engine.rhi.scissor.GlobalScissorState;
+import combatant.client.render.engine.rhi.resource.TransientTargetDescriptor;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
 import combatant.client.render.engine.vertex.CombatantVertexFormats;
@@ -140,7 +141,7 @@ public final class UiMsaaClipLayer {
         boolean resolved = false;
         try {
             if (msaaTarget != null && resolveTarget != null) {
-                resolved = CombatantRenderSystem.rhi().msaa().resolve(msaaTarget, resolveTarget, true, false);
+                resolved = CombatantRenderSystem.rhi().msaa().resolveTransient(msaaTarget, resolveTarget, true, false);
             }
         } catch (Throwable t) {
             DebugLog.warnOnChange(
@@ -270,8 +271,11 @@ public final class UiMsaaClipLayer {
             msaaTarget.resize(width, height);
             UiPipelineTelemetry.recordMsaaTargetResize();
         }
-        resolveTarget = CombatantRenderSystem.resources().persistentFramebuffer(
-                "combatant-ui-msaa-clip-resolve", width, height, false, RESOLVE_OWNER
+        resolveTarget = CombatantRenderSystem.resources().frameTransient(
+                TransientTargetDescriptor.frame(
+                        "ui-msaa-clip-resolve-" + width + "x" + height,
+                        width, height, false, RESOLVE_OWNER
+                )
         );
     }
 

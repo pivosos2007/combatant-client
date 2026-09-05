@@ -111,10 +111,21 @@ public enum VulkanMsaaResolveBridge {
     }
 
     public static void beginColorSnapshot(GpuTextureView source, GpuTextureView destination) {
-        beginSnapshot(source, destination, Aspect.COLOR);
+        beginSnapshot(source, destination, Aspect.COLOR, false);
+    }
+
+    public static void beginTransientColorSnapshot(GpuTextureView source, GpuTextureView destination) {
+        beginSnapshot(source, destination, Aspect.COLOR, true);
     }
 
     private static void beginSnapshot(GpuTextureView source, GpuTextureView destination, Aspect aspect) {
+        beginSnapshot(source, destination, aspect, false);
+    }
+
+    private static void beginSnapshot(GpuTextureView source,
+                                      GpuTextureView destination,
+                                      Aspect aspect,
+                                      boolean discardSource) {
         if (source == null || source.texture() == null) {
             throw new IllegalArgumentException("MSAA " + aspect + " snapshot source is null");
         }
@@ -125,7 +136,7 @@ public enum VulkanMsaaResolveBridge {
         ResolveTarget previous = TARGETS.remove(texture);
         SNAPSHOT_PREVIOUS.put(texture, previous);
         try {
-            register(texture, destination, aspect, true);
+            register(texture, destination, aspect, true, discardSource);
             validate(source, destination);
         } catch (Throwable t) {
             restoreSnapshotTarget(texture);
@@ -192,6 +203,9 @@ public enum VulkanMsaaResolveBridge {
                         .resolveMode(VK_RESOLVE_MODE_AVERAGE_BIT)
                         .resolveImageView(target.vulkanView().vkImageView())
                         .resolveImageLayout(VK_IMAGE_LAYOUT_GENERAL);
+                if (target.discardSource) {
+                    vkColors.get(i).storeOp(VK_ATTACHMENT_STORE_OP_DONT_CARE);
+                }
                 PENDING.add(target);
             }
         }
@@ -216,10 +230,21 @@ public enum VulkanMsaaResolveBridge {
                 .resolveMode(VulkanRenderStateBridge.depthResolveMode())
                 .resolveImageView(target.vulkanView().vkImageView())
                 .resolveImageLayout(VK_IMAGE_LAYOUT_GENERAL);
+        if (target.discardSource) {
+            vkDepth.storeOp(VK_ATTACHMENT_STORE_OP_DONT_CARE);
+        }
         PENDING.add(target);
     }
 
     private static void register(GpuTexture source, GpuTextureView destination, Aspect aspect, boolean snapshot) {
+        register(source, destination, aspect, snapshot, false);
+    }
+
+    private static void register(GpuTexture source,
+                                 GpuTextureView destination,
+                                 Aspect aspect,
+                                 boolean snapshot,
+                                 boolean discardSource) {
         if (source == null || destination == null) {
             throw new IllegalStateException("Missing " + aspect + " resolve attachment");
         }
@@ -227,7 +252,7 @@ public enum VulkanMsaaResolveBridge {
             throw new IllegalStateException("Resolve source is not multisampled: " + source.getLabel());
         }
         validateTexturePair(source, destination);
-        TARGETS.put(source, new ResolveTarget(destination, aspect, snapshot));
+        TARGETS.put(source, new ResolveTarget(destination, aspect, snapshot, discardSource));
     }
 
     private static void validate(GpuTextureView source, GpuTextureView destination) {
@@ -292,12 +317,14 @@ public enum VulkanMsaaResolveBridge {
         private final GpuTextureView view;
         private final Aspect aspect;
         private final boolean snapshot;
+        private final boolean discardSource;
         private boolean resolved;
 
-        private ResolveTarget(GpuTextureView view, Aspect aspect, boolean snapshot) {
+        private ResolveTarget(GpuTextureView view, Aspect aspect, boolean snapshot, boolean discardSource) {
             this.view = view;
             this.aspect = aspect;
             this.snapshot = snapshot;
+            this.discardSource = discardSource;
         }
 
         private VulkanGpuTextureView vulkanView() {

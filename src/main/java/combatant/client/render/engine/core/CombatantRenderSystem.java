@@ -327,6 +327,7 @@ public enum CombatantRenderSystem {
             RhiStatsSnapshot rhiSnapshot = rhi().stats().snapshot(TracyProfiler.isEnabled());
             TracyProfiler.plotUiPipeline(UiPipelineTelemetry.snapshot());
             TracyProfiler.plotRhiPipeline(rhiSnapshot);
+            TracyProfiler.plotRenderResources(resourceStatsSnapshot());
             RenderFrameProfiler.endFrame(rhiSnapshot, uniformStatsSnapshot());
             lifecycle = FrameLifecycle.PRESENTED;
         } finally {

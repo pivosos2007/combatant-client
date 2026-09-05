@@ -44,6 +44,11 @@ public interface MsaaControl {
 
     boolean resolve(RenderTarget src, RenderTarget dst, boolean color, boolean depth);
 
+    /** Resolve whose multisampled source is dead immediately afterwards. */
+    default boolean resolveTransient(RenderTarget src, RenderTarget dst, boolean color, boolean depth) {
+        return resolve(src, dst, color, depth);
+    }
+
     default void prepareTarget(RenderTarget src, RenderTarget dst) {
     }
 

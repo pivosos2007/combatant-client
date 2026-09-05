@@ -31,6 +31,7 @@ public enum UiPipelineTelemetry {
     private static int msaaResolves;
     private static int msaaResolveFailures;
     private static int msaaComposites;
+    private static int msaaDiscards;
     private static int msaaTargetAllocations;
     private static int msaaTargetResizes;
     private static long msaaPixelSamples;
@@ -60,6 +61,7 @@ public enum UiPipelineTelemetry {
         msaaResolves = 0;
         msaaResolveFailures = 0;
         msaaComposites = 0;
+        msaaDiscards = 0;
         msaaTargetAllocations = 0;
         msaaTargetResizes = 0;
         msaaPixelSamples = 0L;
@@ -125,6 +127,10 @@ public enum UiPipelineTelemetry {
         msaaComposites++;
     }
 
+    public static void recordMsaaDiscard() {
+        msaaDiscards++;
+    }
+
     public static void recordMsaaTargetAllocation() {
         msaaTargetAllocations++;
     }
@@ -185,6 +191,7 @@ public enum UiPipelineTelemetry {
                 msaaResolves,
                 msaaResolveFailures,
                 msaaComposites,
+                msaaDiscards,
                 msaaTargetAllocations,
                 msaaTargetResizes,
                 msaaPixelSamples,

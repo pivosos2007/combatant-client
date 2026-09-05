@@ -8,6 +8,7 @@
 package combatant.client.render.engine.profiler;
 
 import combatant.client.render.engine.rhi.RhiStatsSnapshot;
+import combatant.client.render.engine.rhi.resource.RenderResourceStatsSnapshot;
 
 public enum TracyProfiler {
     ;
@@ -81,6 +82,16 @@ public enum TracyProfiler {
                 "TracyProfiler",
                 "plotRhiPipeline",
                 new Class<?>[]{RhiStatsSnapshot.class},
+                snapshot
+        );
+    }
+
+    public static void plotRenderResources(RenderResourceStatsSnapshot snapshot) {
+        if (!DEV || snapshot == null) return;
+        DevProfilerBridge.invoke(
+                "TracyProfiler",
+                "plotRenderResources",
+                new Class<?>[]{RenderResourceStatsSnapshot.class},
                 snapshot
         );
     }

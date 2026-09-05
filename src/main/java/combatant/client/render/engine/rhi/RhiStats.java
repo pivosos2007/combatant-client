@@ -38,6 +38,7 @@ public final class RhiStats {
     private long fullscreenPasses;
     private long textureFastCopies;
     private long textureShaderCopies;
+    private long textureGlCopyImages;
     private long meshUploads;
     private long uploadedVertexBytes;
     private long uploadedIndexBytes;
@@ -77,7 +78,7 @@ public final class RhiStats {
 
     public void beginFrame(long frameId) {
         this.frameId = frameId;
-        drawCalls = multiDrawCalls = multiDrawLogicalDraws = renderPasses = renderPassAttachmentSwitches = fullscreenPasses = textureFastCopies = textureShaderCopies = 0L;
+        drawCalls = multiDrawCalls = multiDrawLogicalDraws = renderPasses = renderPassAttachmentSwitches = fullscreenPasses = textureFastCopies = textureShaderCopies = textureGlCopyImages = 0L;
         pipelineBinds = pipelineBindSkips = pipelineSwitches = uniformBinds = samplerBinds = 0L;
         estimatedShaderAluOps = estimatedShaderTranscendentalOps = estimatedShaderTextureOps = 0L;
         estimatedShaderBranchOps = estimatedShaderLoopOps = 0L;
@@ -197,6 +198,10 @@ public final class RhiStats {
 
     public void textureShaderCopy() {
         textureShaderCopies++;
+    }
+
+    public void textureGlCopyImage() {
+        textureGlCopyImages++;
     }
 
     public void meshUpload(long vertexBytes, long indexBytes) {
@@ -362,6 +367,10 @@ public final class RhiStats {
         return textureShaderCopies;
     }
 
+    public long textureGlCopyImages() {
+        return textureGlCopyImages;
+    }
+
     public long meshUploads() {
         return meshUploads;
     }
@@ -409,7 +418,7 @@ public final class RhiStats {
                 pipelineBinds, pipelineBindSkips, pipelineSwitches, framePipelines.size(), uniformBinds, samplerBinds,
                 estimatedShaderAluOps, estimatedShaderTranscendentalOps, estimatedShaderTextureOps,
                 estimatedShaderBranchOps, estimatedShaderLoopOps,
-                fullscreenPasses, textureFastCopies, textureShaderCopies,
+                fullscreenPasses, textureFastCopies, textureShaderCopies, textureGlCopyImages,
                 meshUploads, uploadedVertexBytes, uploadedIndexBytes, ringWraps, ringStalls,
                 immediateFallbackUploads, temporaryOwnedMeshes,
                 dynamicArenaAllocations, dynamicPersistentArenaAllocations, dynamicSpillArenaAllocations,

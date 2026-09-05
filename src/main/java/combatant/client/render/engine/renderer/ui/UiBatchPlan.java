@@ -10,6 +10,7 @@ package combatant.client.render.engine.renderer.ui;
 import combatant.client.render.engine.core.RenderFrameContext;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
+import combatant.client.render.engine.rhi.resource.TransientTargetDescriptor;
 
 import java.util.List;
 
@@ -27,15 +28,29 @@ public final class UiBatchPlan {
         void execute(RenderFrameContext context, CombatantRhi rhi);
     }
 
-    public record Pass(String label, int orderedBatchCount, List<RhiDrawCommand> drawCommands, Work work) {
+    public record Pass(String label,
+                       int orderedBatchCount,
+                       List<RhiDrawCommand> drawCommands,
+                       List<TransientTargetDescriptor> transientTargets,
+                       Work work) {
         public Pass(String label, int orderedBatchCount, Work work) {
-            this(label, orderedBatchCount, List.of(), work);
+            this(label, orderedBatchCount, List.of(), List.of(), work);
+        }
+
+        public Pass(String label,
+                    int orderedBatchCount,
+                    List<RhiDrawCommand> drawCommands,
+                    Work work) {
+            this(label, orderedBatchCount, drawCommands, List.of(), work);
         }
 
         public Pass {
             label = label != null && !label.isBlank() ? label : "ui";
             orderedBatchCount = Math.max(0, orderedBatchCount);
             drawCommands = drawCommands == null || drawCommands.isEmpty() ? List.of() : List.copyOf(drawCommands);
+            transientTargets = transientTargets == null || transientTargets.isEmpty()
+                    ? List.of()
+                    : List.copyOf(transientTargets);
             if (work == null) throw new IllegalArgumentException("work");
         }
 

@@ -32,6 +32,10 @@ public final class UiPassExecutor {
         try {
             for (UiBatchPlan.Pass pass : compiled.passes()) {
                 if (pass == null) continue;
+                for (combatant.client.render.engine.rhi.resource.TransientTargetDescriptor target
+                        : pass.transientTargets()) {
+                    rhi.resources().frameTransient(target);
+                }
                 if (!pass.drawCommands().isEmpty()) {
                     rhi.drawMeshes(pass.drawCommands());
                 }

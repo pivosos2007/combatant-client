@@ -43,8 +43,17 @@ public final class RenderResourceManager implements AutoCloseable {
         framebufferPool.releaseTemporary(framebuffer, owner);
     }
 
+    public TextureTarget frameTransient(TransientTargetDescriptor descriptor) {
+        return framebufferPool.acquireFrameTransient(descriptor);
+    }
+
+    public void beginFrame() {
+        framebufferPool.beginFrame();
+    }
+
     public void onFramePresented() {
         frameId++;
+        framebufferPool.releaseFrameTransients();
         // Budgeted cleanup: do not turn flipFrame into a blocking resource purge.
         retirementQueue.drain(16);
         texturePool.drain(8);
@@ -99,7 +108,14 @@ public final class RenderResourceManager implements AutoCloseable {
                 retirementQueue.queued(),
                 retirementQueue.closed(),
                 retirementQueue.backlog(),
-                leakTracker.liveCount()
+                leakTracker.liveCount(),
+                framebufferPool.activeFrameTransientCount(),
+                framebufferPool.transientAcquires(),
+                framebufferPool.transientReuses(),
+                framebufferPool.transientReleases(),
+                framebufferPool.peakFrameTransients(),
+                framebufferPool.transientEvictions(),
+                framebufferPool.idleTransientBytes()
         );
     }
 

@@ -100,6 +100,38 @@ public final class VulkanMsaaControl implements MsaaControl {
     }
 
     @Override
+    public boolean resolveTransient(RenderTarget src, RenderTarget dst, boolean color, boolean depth) {
+        if (src == null || dst == null) return false;
+        if (depth) {
+            // Depth may still be consumed by a following scene pass. Keep the conservative path
+            // until the pass compiler proves depth dead independently from color.
+            return resolve(src, dst, color, true);
+        }
+        if (!color || !validSnapshotPair(src.getColorTextureView(), dst.getColorTextureView())) return false;
+        try {
+            VulkanMsaaResolveBridge.beginTransientColorSnapshot(
+                    src.getColorTextureView(), dst.getColorTextureView()
+            );
+            RenderPassDescriptor descriptor = RenderPassDescriptor.create(() -> "Combatant transient MSAA color resolve")
+                    .withColorAttachment(src.getColorTextureView())
+                    .withRenderArea(new RenderPass.RenderArea(0, 0, src.width, src.height));
+            try (RenderPass ignored = RenderSystem.getDevice().createCommandEncoder().createRenderPass(descriptor)) {
+                // Dynamic-rendering resolve; source storeOp is DONT_CARE.
+            }
+            boolean resolved = VulkanMsaaResolveBridge.completeColorSnapshot(
+                    src.getColorTextureView(), dst.getColorTextureView()
+            );
+            if (resolved) combatant.client.render.engine.profiler.UiPipelineTelemetry.recordMsaaDiscard();
+            return resolved;
+        } catch (Throwable t) {
+            VulkanMsaaResolveBridge.abortColorSnapshot(src.getColorTextureView());
+            return false;
+        } finally {
+            VulkanMsaaResolveBridge.abandon(src);
+        }
+    }
+
+    @Override
     public void prepareTarget(RenderTarget src, RenderTarget dst) {
         prepareTarget(src, dst, true, true);
     }

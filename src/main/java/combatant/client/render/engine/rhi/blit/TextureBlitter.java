@@ -10,8 +10,13 @@ package combatant.client.render.engine.rhi.blit;
 import com.mojang.blaze3d.textures.GpuTextureView;
 
 public interface TextureBlitter {
+    /** Attempts the selected non-shader path and reports whether it was submitted. */
+    boolean copy(RhiCopyRequest request);
+
     /**
      * Returns true if the copy was handled by a backend texture-copy command.
      */
-    boolean copyFast(GpuTextureView src, GpuTextureView dst);
+    default boolean copyFast(GpuTextureView src, GpuTextureView dst) {
+        return copy(RhiCopyRequest.exact(src, dst));
+    }
 }

@@ -25,6 +25,7 @@ public record UiPipelineStatsSnapshot(
         int msaaResolves,
         int msaaResolveFailures,
         int msaaComposites,
+        int msaaDiscards,
         int msaaTargetAllocations,
         int msaaTargetResizes,
         long msaaPixelSamples,

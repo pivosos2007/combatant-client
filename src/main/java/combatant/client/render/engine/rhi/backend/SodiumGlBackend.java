@@ -27,7 +27,7 @@ import combatant.client.render.engine.profiler.RenderCostProfiler;
 import combatant.client.render.engine.rhi.*;
 import combatant.client.render.engine.rhi.backend.gl.clip.GlStencilShapeClipBackend;
 import combatant.client.render.engine.rhi.backend.gl.state.SodiumGlPipelineStateBackend;
-import combatant.client.render.engine.rhi.blit.Blaze3dTextureBlitter;
+import combatant.client.render.engine.rhi.blit.GlTextureBlitter;
 import combatant.client.render.engine.rhi.blit.TextureBlitter;
 import combatant.client.render.engine.rhi.clip.ShapeClipBackend;
 import combatant.client.render.engine.rhi.fullscreen.FullscreenBackend;
@@ -62,7 +62,7 @@ public final class SodiumGlBackend implements CombatantRhi {
     private boolean multiDrawRuntimeDisabled;
     private final Blaze3dDynamicMeshBackend dynamicMeshes = new Blaze3dDynamicMeshBackend(stats);
     private final Blaze3dFullscreenBackend fullscreen = new Blaze3dFullscreenBackend();
-    private final Blaze3dTextureBlitter blitter = new Blaze3dTextureBlitter(stats);
+    private final GlTextureBlitter blitter = new GlTextureBlitter(stats);
     private final SodiumGlMsaaControl msaa = new SodiumGlMsaaControl();
     private final GlStencilShapeClipBackend shapeClip = new GlStencilShapeClipBackend();
     private final SodiumGlPipelineStateBackend pipelineState = new SodiumGlPipelineStateBackend(msaa, shapeClip);
@@ -160,6 +160,7 @@ public final class SodiumGlBackend implements CombatantRhi {
     @Override
     public void beginFrame(long frameId) {
         stats.beginFrame(frameId);
+        resources.beginFrame();
         dynamicMeshes.beginFrame(frameId);
     }
 

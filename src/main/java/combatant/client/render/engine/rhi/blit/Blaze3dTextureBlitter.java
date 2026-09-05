@@ -20,12 +20,20 @@ public final class Blaze3dTextureBlitter implements TextureBlitter {
     }
 
     @Override
-    public boolean copyFast(GpuTextureView src, GpuTextureView dst) {
+    public boolean copy(RhiCopyRequest request) {
+        if (request == null) return false;
+        GpuTextureView src = request.source();
+        GpuTextureView dst = request.destination();
         if (src == null || dst == null || src == dst) return true;
         GpuTexture srcTexture = src.texture();
         GpuTexture dstTexture = dst.texture();
         if (srcTexture == null || dstTexture == null || srcTexture == dstTexture) return true;
-        if (src.getWidth(0) != dst.getWidth(0) || src.getHeight(0) != dst.getHeight(0)) return false;
+        RhiCopyPath path = RhiCopyPlanner.plan(request, null);
+        if (path == RhiCopyPath.NO_OP) return true;
+        if (path != RhiCopyPath.BACKEND_COPY) return false;
+        RhiCopyRequest.Region sourceRegion = request.sourceRegion();
+        RhiCopyRequest.Region destinationRegion = request.destinationRegion();
+        if (sourceRegion == null || destinationRegion == null || request.scales()) return false;
         if (srcTexture.getFormat() != dstTexture.getFormat()) return false;
         if ((srcTexture.usage() & GpuTexture.USAGE_COPY_SRC) == 0) return false;
         if ((dstTexture.usage() & GpuTexture.USAGE_COPY_DST) == 0) return false;
@@ -34,12 +42,12 @@ public final class Blaze3dTextureBlitter implements TextureBlitter {
                 srcTexture,
                 dstTexture,
                 src.baseMipLevel(),
-                0,
-                0,
-                0,
-                0,
-                src.getWidth(0),
-                src.getHeight(0)
+                sourceRegion.x(),
+                sourceRegion.y(),
+                destinationRegion.x(),
+                destinationRegion.y(),
+                sourceRegion.width(),
+                sourceRegion.height()
         );
         stats.textureFastCopy();
         return true;

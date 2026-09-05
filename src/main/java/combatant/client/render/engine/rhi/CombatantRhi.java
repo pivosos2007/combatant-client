@@ -14,6 +14,7 @@ import combatant.client.render.engine.rhi.msaa.MsaaControl;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
 import combatant.client.render.engine.rhi.resource.RenderResourceManager;
 import combatant.client.render.engine.rhi.state.PipelineStateBackend;
+import combatant.client.render.engine.rhi.shader.AdvancedShaderBackend;
 import combatant.client.render.engine.rhi.upload.DynamicMeshBackend;
 
 import java.util.List;
@@ -30,6 +31,10 @@ public interface CombatantRhi extends AutoCloseable {
     ShapeClipBackend shapeClip();
 
     PipelineStateBackend pipelineState();
+
+    default AdvancedShaderBackend advancedShaders() {
+        return AdvancedShaderBackend.UNSUPPORTED;
+    }
 
     RhiStats stats();
 
