@@ -78,11 +78,7 @@ public final class BetterTooltips extends AbstractHudElement {
     private final BooleanValue itemTooltipEnabled = bool("item_tooltip", true);
     private final BooleanValue shulkerPreviewEnabled = bool("shulker_preview", true);
     private final BooleanValue itemInfoColorize = bool("item_info_colorize", true);
-    /*
-     * New ids intentionally do not reuse the experimental tooltip-panel settings from 27/28.
-     * Their saved defaults described the incorrect replacement visual. 255/0 here means the
-     * exact old ItemVisualPreviewProvider palette, with theme gradient mixing opt-in.
-     */
+    /* Dedicated ids prevent obsolete tooltip-panel values from altering this palette. */
     private final NumberValue<Integer> tooltipBgAlpha =
             num("tooltip_surface_alpha", "tooltip_bg_alpha", 255, 0, 255);
     private final NumberValue<Integer> tooltipGradientStrength =
@@ -188,8 +184,7 @@ public final class BetterTooltips extends AbstractHudElement {
         }
         if (lines.isEmpty()) return false;
 
-        // Item tooltips already have Combatant-owned preview handling (including shulkers). Vanilla
-        // visual components must not resurrect the old vanilla frame behind it. For non-item custom
+        // Combatant item previews, including shulkers, suppress vanilla visual components. For non-item custom
         // component tooltips, keep vanilla as a safety fallback until a semantic adapter exists.
         if (hasNonText && !item) return false;
 

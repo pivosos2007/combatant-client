@@ -262,11 +262,7 @@ public enum HudRenderUtil {
         );
     }
 
-    /**
-     * Selector/health accent gradient. This keeps the historical lighter fallback
-     * endpoint while using the same transition-safe gradient semantics as other HUD
-     * theme colors.
-     */
+    /** Selector/health accent gradient with the lighter fallback endpoint. */
     public static ThemeGradient themeSelectionGradient(int alpha) {
         int a = Math.max(0, Math.min(255, alpha));
         Themes.GradientSpec gradient = Themes.hudSelectionGradient();

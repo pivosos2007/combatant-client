@@ -450,7 +450,6 @@ public class Scaffold extends Module {
     private static void debugLog(String pattern, Object... args) {
         if (!DEBUG_LOGS) {
         }
-        // DebugLog.info("[ScaffoldDebug] " + pattern, args);
     }
 
     private static String describeTarget(ScaffoldPlacementTarget target) {

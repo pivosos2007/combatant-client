@@ -82,16 +82,8 @@ final class Blaze3dMeshArena implements AutoCloseable {
     }
 
     /**
-     * Aligns to an arbitrary positive byte alignment.
-     * <p>
-     * The previous implementation used the common bit-mask form:
-     * (value + alignment - 1) & -alignment
-     * which is only valid when {@code alignment} is a power of two. UI vertex
-     * formats often have non-power-of-two strides (for example 20/44/60 bytes).
-     * Using bit-mask alignment with those strides produced vertex offsets that
-     * were not divisible by the active vertex stride, so drawIndexed(baseVertex, ...)
-     * read vertices from the wrong location. That showed up as 2D flicker, missing
-     * text/buttons and huge random triangles/polygons in HUD/menu rendering.
+     * Aligns to an arbitrary positive byte boundary. Bit-mask alignment is invalid for
+     * non-power-of-two vertex strides such as 20, 44, or 60 bytes.
      */
     private static int align(int value, int alignment) {
         if (alignment <= 1) return value;

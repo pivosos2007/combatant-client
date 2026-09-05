@@ -23,7 +23,7 @@ import java.util.Map;
 /**
  * Per-render-target S8 attachments for Vulkan dynamic rendering.
  *
- * <p>Mojang's Vulkan RenderPassDescriptor has no stencil slot. We attach one in the Vulkan command
+ * <p>Mojang's Vulkan RenderPassDescriptor has no stencil slot. The Vulkan command
  * encoder mixin and keep it keyed by the primary color/depth texture identity.</p>
  */
 public final class VulkanStencilAttachmentManager implements AutoCloseable {
@@ -99,10 +99,7 @@ public final class VulkanStencilAttachmentManager implements AutoCloseable {
         return attachment.view;
     }
 
-    /**
-     * Resizable render targets replace their color texture identity. Retaining the old identity here
-     * also retained its private S8 image until backend shutdown, turning size jitter into a GPU leak.
-     */
+    /** Releases stencil attachments when the associated resizable color texture identity changes. */
     private void pruneClosedAttachments() {
         Iterator<Map.Entry<GpuTexture, Attachment>> iterator = attachments.entrySet().iterator();
         while (iterator.hasNext()) {

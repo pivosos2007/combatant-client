@@ -67,7 +67,6 @@ public enum SettingsTabRuntime {
                                     int fbh,
                                     float mx,
                                     float my) {
-        // Visual-only iteration: settings/editor window is intentionally not connected yet.
     }
 
     public static void handleEditorMouseButton(float mx, float my, int button, boolean pressed) {

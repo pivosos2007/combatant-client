@@ -47,16 +47,12 @@ public class CooldownManager {
         return Util.getMillis() - lastPvpExitMs <= graceMs;
     }
 
-    /**
-     * Legacy prediction hook retained as a no-op. Use prediction must never block interaction anymore.
-     */
+    /** No-op compatibility hook. */
     public void beginPredictedUse(Item item) {
         // no-op
     }
 
-    /**
-     * Legacy confirmation hook retained for old call sites; it now records only configured item-use rules.
-     */
+    /** Records a confirmed self-use against configured item cooldown rules. */
     public void commitConfirmedUse(Item item, long startedAtMs) {
         ItemUseCooldowns.recordSelfUse(item);
     }

@@ -854,8 +854,6 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             Renderer2D.COLOR.render();
         }
         UiClipDebugScene.renderAfterGui();
-        // Debug 2D probe intentionally disabled after projection validation.
-        // RenderThread2DDebugRenderer.renderImmediateAfterGui(tickCounter);
     }
 
 @Inject(method = "bobHurt", at = @At("HEAD"), cancellable = true)

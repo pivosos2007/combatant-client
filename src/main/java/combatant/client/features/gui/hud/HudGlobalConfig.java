@@ -43,7 +43,7 @@ public final class HudGlobalConfig implements JsonConfigObject, ConfigNameProvid
         try {
             Files.deleteIfExists(ConfigPaths.root().resolve("hud").resolve("global.json"));
         } catch (IOException ignored) {
-            // Best-effort cleanup only. Global HUD settings now live as code defaults.
+            // Best-effort cleanup of obsolete global HUD config.
         }
     }
 

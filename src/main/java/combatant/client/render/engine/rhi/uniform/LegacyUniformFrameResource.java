@@ -8,7 +8,7 @@
 package combatant.client.render.engine.rhi.uniform;
 
 /**
- * Adapter for old DynamicUniformStorage owners while they are migrated into CombatantUniformAllocator.
+ * Adapter from DynamicUniformStorage ownership to CombatantUniformAllocator.
  */
 public final class LegacyUniformFrameResource implements FrameResource {
     private final String name;

@@ -479,8 +479,7 @@ public class Combatant implements ClientModInitializer {
         CommandManager.init();
         MediaSessionService.get().init();
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
-            // Drop process-wide native hardening first so the rest of shutdown is not constrained
-            // by Combatant's process DACL / dumpability changes.
+            // Restore process-level security state before subsystem shutdown.
             NativeMemoryGuard.shutdown();
             MediaSessionService.get().shutdown();
             JavetRuntimeBootstrap.shutdown();
@@ -492,11 +491,9 @@ public class Combatant implements ClientModInitializer {
         AddonManager.prepareModuleLoading();
         ModuleAutoLoader.load("combatant.client.features.module.modules");
         AddonManager.init();
-        // Initialize modules' enabled state and settings from new config system
         ModuleManager.loadAllModuleConfigs();
         AddonManager.notifyClientReady();
-        // Key binds are restored via Module config (KeyBindSetting) in ModuleManager.loadAllModuleConfigs()
-        HudElements.init(); // init HUD config + widgets
+        HudElements.init();
         StaticHudElementBootstrap.init(); // init vanilla HUD elements config
         Events.BUS.register(I18nPreflightContributors.INSTANCE);
         Events.BUS.register(RenderPrewarmContributors.INSTANCE);

@@ -238,11 +238,8 @@ public abstract class ClientPacketListenerMixin {
         int slot = packet.getSlot();
         ItemStack stack = packet.getStack();
 
-        //System.out.println("[Combatant][DEBUG] Packet slot update: syncId=" + syncId + " slot=" + slot + " item=" + stack.getItem() + " x" + stack.getCount());
-
         var pending = CooldownsState.PENDING.consumeIfConfirmed(slot, stack.getCount());
         if (pending != null) {
-            //System.out.println("[Combatant][DEBUG] Confirmed use of " + pending.item() + " (count decreased from " + pending.count() + " to " + stack.getCount() + ")");
             CooldownsState.MANAGER.commitConfirmedUse(pending.item(), pending.startedAtMs());
         }
         */
@@ -255,15 +252,12 @@ public abstract class ClientPacketListenerMixin {
         int syncId = packet.syncId();
         List<ItemStack> contents = packet.contents();
 
-        //System.out.println("[Combatant][DEBUG] Full inventory syncId=" + syncId + ", size=" + contents.size());
-
         for (int i = 0; i < contents.size(); i++) {
             ItemStack stack = contents.get(i);
             if (stack.isEmpty()) continue;
 
             var pending = CooldownsState.PENDING.consumeIfConfirmed(i, stack.getCount());
             if (pending != null) {
-                //System.out.println("[Combatant][DEBUG] Confirmed (FULL INV) " + pending.item() + " slot=" + i + " count=" + stack.getCount());
                 CooldownsState.MANAGER.commitConfirmedUse(pending.item(), pending.startedAtMs());
             }
         }

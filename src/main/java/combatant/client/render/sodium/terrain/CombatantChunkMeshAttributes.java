@@ -7,12 +7,7 @@
 
 package combatant.client.render.sodium.terrain;
 
-/**
- * Sodium 26.2 uses Mojang VertexFormat/GpuFormat attributes instead of the old
- * net.caffeinemc.mods.sodium.client.gl.attribute layer. Keep the Combatant
- * terrain attribute name centralized because Vulkan reflection matches shader
- * inputs by attribute name.
- */
+/** Centralized Combatant terrain attribute names used by Vulkan shader reflection. */
 public enum CombatantChunkMeshAttributes {
     ;
     public static final String SURFACE_FLAGS = "a_CombatantSurfaceFlags";

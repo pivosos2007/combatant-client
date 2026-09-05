@@ -202,9 +202,7 @@ public class PvpCooldowns extends Module {
         return renderSlots.get();
     }
 
-    /**
-     * Legacy API kept for callers compiled against it. The old hard-coded use blocker is gone.
-     */
+    /** Compatibility API for callers compiled against the previous signature. */
     public boolean shouldBlockUsage() {
         return false;
     }

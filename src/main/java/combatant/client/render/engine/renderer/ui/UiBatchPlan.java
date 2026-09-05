@@ -162,7 +162,7 @@ public final class UiBatchPlan {
         return orderedBatchCount;
     }
 
-    /** Compatibility accessor; unlike the old implementation this is a real ordered-batch count. */
+    /** Returns the ordered batch count. */
     public int batchCount() {
         return orderedBatchCount;
     }

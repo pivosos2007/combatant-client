@@ -110,7 +110,7 @@ void main() {
     if (inside <= 0.001) discard;
 
     // The honeycomb does not need the full generic liquid-glass stack.
-    // We only keep a small edge refraction, dense blur and a thin cursor-lit rim.
+    // Use small edge refraction, dense blur and a thin cursor-lit rim.
     float normalStep = max(logicalPixel, 0.75);
     float dx = pointyHexDistance(local + vec2(normalStep, 0.0), radius)
              - pointyHexDistance(local - vec2(normalStep, 0.0), radius);

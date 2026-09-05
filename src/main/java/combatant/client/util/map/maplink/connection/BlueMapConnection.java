@@ -1,14 +1,11 @@
 /*
  * This file is part of the Combatant Client distribution.
- *
- * This file contains code adapted from Map Link.
- * Original Map Link code:
- * Copyright (C) 2024 - 2025 Leander Knüttel and contributors.
- * Licensed under the GNU General Public License, version 3 or
- * (at your option) any later version.
- *
- * Combatant modifications:
  * Copyright (c) 2026 pivosos2007.
+ *
+ * Adapted from Map Link.
+ * Original copyright (C) 2024-2025 Leander Knüttel and contributors.
+ * Original license: GNU General Public License v3.0 or later.
+ *
  * Licensed under the GNU General Public License v3.0.
  */
 package combatant.client.util.map.maplink.connection;
@@ -65,8 +62,7 @@ public final class BlueMapConnection extends AbstractMapLinkConnection {
                 if (update.players == null) continue;
                 for (Player player : update.players) {
                     if (player == null || player.name == null || player.name.isBlank() || player.position == null) continue;
-                    // BlueMap exposes players of other maps as foreign. Keep only the authoritative copy,
-                    // so multi-map polling preserves real provider-world identity instead of "thisWorld/foreign".
+                    // Ignore foreign-map duplicates; each player is emitted from its authoritative map.
                     if (player.foreign) continue;
                     UUID uuid = parseUuid(player.uuid);
                     String key = (uuid != null ? uuid.toString() : player.name.toLowerCase()) + "@" + world.id;

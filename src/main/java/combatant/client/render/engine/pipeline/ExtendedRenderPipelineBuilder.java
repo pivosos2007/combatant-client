@@ -17,7 +17,6 @@ import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.*;
 import com.mojang.blaze3d.shaders.UniformType;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.platform.BlendFactor;
 import combatant.client.mixininterface.IRenderPipeline;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
 import combatant.client.render.engine.rhi.pipeline.DepthPolicy;
@@ -34,7 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Small delegating builder so we can tag RenderPipeline with additional features.
+ * Delegating builder that tags RenderPipeline with additional features.
  */
 public class ExtendedRenderPipelineBuilder {
     private static final Map<RenderPipeline.Snippet, SnippetContract> SNIPPET_CONTRACTS =
@@ -125,23 +124,8 @@ public class ExtendedRenderPipelineBuilder {
     }
 
     public ExtendedRenderPipelineBuilder withBlend(BlendFunction blend) {
-        delegate.withColorTargetState(new ColorTargetState(Optional.ofNullable(blend), GpuFormat.RGBA8_UNORM, ColorTargetState.WRITE_ALL));
+        delegate.withColorTargetState(new ColorTargetState(Optional.of(blend), GpuFormat.RGBA8_UNORM, ColorTargetState.WRITE_ALL));
         return this;
-    }
-
-    public ExtendedRenderPipelineBuilder withBlend(BlendFactor source, BlendFactor destination) {
-        return withBlend(BlendFunctions.of(source, destination));
-    }
-
-    public ExtendedRenderPipelineBuilder withBlendSeparate(BlendFactor sourceColor,
-                                                            BlendFactor destinationColor,
-                                                            BlendFactor sourceAlpha,
-                                                            BlendFactor destinationAlpha) {
-        return withBlend(BlendFunctions.separate(sourceColor, destinationColor, sourceAlpha, destinationAlpha));
-    }
-
-    public ExtendedRenderPipelineBuilder withoutBlend() {
-        return withBlend((BlendFunction) null);
     }
 
     public ExtendedRenderPipelineBuilder withCull(boolean cull) {

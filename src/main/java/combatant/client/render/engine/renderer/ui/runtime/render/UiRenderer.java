@@ -51,14 +51,7 @@ public final class UiRenderer {
     public void render(UiNode root, UiRenderContext context) {
         if (root == null || context == null || context.renderer() == null) return;
 
-        /*
-         * JS/UI runtime must not fall back to one auto-flushed Renderer2D batch per node.
-         * Keep a single active Renderer2D batch across the whole runtime tree and flush only
-         * at state boundaries such as scissor/clip changes. This is the first production
-         * UI batch compiler layer: Renderer2D primitive methods still generate the actual
-         * meshes, but they now compile into phase-sized batches instead of tiny immediate
-         * submissions.
-         */
+        /* Keep one Renderer2D batch across the runtime tree; flush only at render-state boundaries. */
         boolean ownBatch = !Renderer2D.isBatching();
         try (RenderCostProfiler.Scope ignored = RenderCostProfiler.uiRuntime("ui-batch-tree")) {
             if (ownBatch) context.renderer().begin();

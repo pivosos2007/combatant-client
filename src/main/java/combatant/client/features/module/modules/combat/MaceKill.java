@@ -77,7 +77,7 @@ public final class MaceKill extends Module {
 
         // Teleport to the calculated height
         sendPosition(mc.player.getX(), mc.player.getY() + height, mc.player.getZ(), false);
-        // Make sure we get back to the ground
+        // Ensure the player returns to ground state.
         sendPosition(mc.player.getX(), mc.player.getY(), mc.player.getZ(), false);
     }
 

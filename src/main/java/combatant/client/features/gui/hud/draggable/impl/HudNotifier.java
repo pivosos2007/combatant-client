@@ -347,7 +347,6 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         float margin = BASE_MARGIN * scale;
         float width = 170f * scale;
         float height = BASE_BOX_HEIGHT * scale;
-        // Position side is intentionally automatic now; the draggable position itself defines slide direction.
         this.x = Math.max(margin, screenW - margin - width);
         this.y = Math.max(margin, screenH - margin - BASE_BOTTOM_OFFSET * scale - height);
     }

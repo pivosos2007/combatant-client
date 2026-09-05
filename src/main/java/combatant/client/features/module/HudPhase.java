@@ -39,10 +39,7 @@ public enum HudPhase {
      */
     BEFORE_HOTBAR,
 
-    /**
-     * Legacy name. In 26.2 this phase is anchored after vanilla SLEEP, so widgets here
-     * are above sleep fade and earlier misc overlays but still below demo/debug/chat/title.
-     */
+    /** Anchored after vanilla SLEEP and before demo/debug/chat/title overlays. */
     AFTER_BOSS_BAR,
 
     /**

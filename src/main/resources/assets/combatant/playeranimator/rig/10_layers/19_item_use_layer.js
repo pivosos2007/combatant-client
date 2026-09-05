@@ -137,7 +137,7 @@
         this.rig.setRotation(useArm+'_wrist',0,0,0);
 
         // Aim the visible hand a little behind/below the actual mouth. The item gets its own solved
-        // mouth socket below, so we do not abuse wrist twist to make the food reach the face.
+        // mouth socket below; wrist twist is not used to compensate for reach.
         const handX=-sign*(drinkMode?1.05:1.20)/16;
         const handY=(drinkMode?-1.25:-1.55)/16;
         const handZ=(drinkMode?-2.55:-2.75)/16;

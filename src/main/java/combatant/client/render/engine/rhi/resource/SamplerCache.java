@@ -13,9 +13,7 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 
-/**
- * RHI-facing sampler/texture utility surface. Mojang still owns actual sampler cache for now.
- */
+/** RHI adapter over Mojang's sampler cache. */
 public final class SamplerCache {
     public GpuSampler get(AddressMode u, AddressMode v, FilterMode min, FilterMode mag, boolean mipmap) {
         return RenderSystem.getSamplerCache().getSampler(u, v, min, mag, mipmap);

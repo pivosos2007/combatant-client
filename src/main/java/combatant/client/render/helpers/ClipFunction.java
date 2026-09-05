@@ -18,12 +18,7 @@ import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.render.engine.rhi.clip.ShapeClipBackend;
 import combatant.client.util.logging.DebugLog;
 
-/**
- * Compatibility facade over the renderer-owned shape clipping stack.
- *
- * <p>This state is deliberately independent from {@link ScissorFunction}. The current RHI backend
- * still lowers masks through stencil while analytic pipeline variants are introduced.</p>
- */
+/** Renderer-owned shape clipping stack, independent from {@link ScissorFunction}. */
 public enum ClipFunction {
     ;
     private static final int MAX_SHAPE_DEPTH = 250;

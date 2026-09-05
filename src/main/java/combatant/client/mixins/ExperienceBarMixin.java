@@ -31,7 +31,7 @@ public abstract class ExperienceBarMixin {
         if (bar == null) return;
         if (!bar.isHudBarEnabled() || !bar.isHotbarXpBarEnabled()) return;
 
-        // We render XP/Locator ourselves from GuiMixin to avoid vanilla bar state.
+        // XP/Locator rendering is owned by GuiMixin; suppress vanilla bar state.
         ci.cancel();
     }
 

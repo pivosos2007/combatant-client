@@ -64,12 +64,10 @@ public class BossHealthOverlayMixin {
         // === только тут меняем состояние PvP ===
 
         if (pvpActive && !CooldownsState.MANAGER.isInPvp()) {
-            //System.out.println("[PvPDetector] → ENTER PVP");
             CooldownsState.MANAGER.enterPvp();
         }
 
         if (!pvpActive && CooldownsState.MANAGER.isInPvp()) {
-            //System.out.println("[PvPDetector] → EXIT PVP");
             CooldownsState.MANAGER.exitPvp();
         }
         */

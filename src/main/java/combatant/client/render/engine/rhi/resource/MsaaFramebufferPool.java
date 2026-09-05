@@ -62,8 +62,7 @@ public final class MsaaFramebufferPool implements AutoCloseable {
             throw new IllegalArgumentException("MSAA pool requires samples > 1: "
                     + descriptor.logicalName() + " samples=" + descriptor.samples());
         }
-        // MsaaFramebuffer currently owns RGBA8 color allocation. Keep the descriptor honest until
-        // the backend-native image pool grows format-generic multisample storage.
+        // MsaaFramebuffer supports RGBA8 multisample color storage only.
         if (descriptor.colorFormat() != GpuFormat.RGBA8_UNORM) {
             throw new IllegalArgumentException("Unsupported transient MSAA color format: "
                     + descriptor.colorFormat());

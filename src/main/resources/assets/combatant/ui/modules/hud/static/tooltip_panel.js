@@ -74,11 +74,7 @@ function angleLerp(from, to, t) {
 }
 
 function palette(p, alpha) {
-  /*
-   * Base palette is intentionally a literal port of the old ItemVisualPreviewProvider.
-   * With themeGradientStrength=0 and all layer-alpha controls at 255, the colors and
-   * alpha values below are exactly the old Java formulas.
-   */
+  /* Base palette matches ItemVisualPreviewProvider when theme mixing is disabled. */
   const panelLeft = c(p.panelBgLeft, "#AF121314");
   const panelRight = c(p.panelBgRight, "#AF000205");
   const moduleTop = c(p.moduleCardTop, "#91171819");
@@ -143,7 +139,6 @@ function metrics(p) {
     padX: 9.0 * scale,
     padY: 7.0 * scale,
     rowGap: 1.5 * scale,
-    wrapGap: 0.75 * scale,
     groupGap: 3.0 * scale,
     headerGap: 6.0 * scale,
     previewGap: 3.0 * scale,
@@ -158,29 +153,21 @@ function maxContentWidth(p, m) {
   return Math.max(m.minContentW, n(p.maxContentWidth, m.defaultMaxContentW));
 }
 
-function lineGroup(entry, fallback) {
-  return n(prop(entry, "group", fallback), fallback);
-}
-
 function hasExplicitBreakAfterFirst(p) {
   const source = arr(p.lines);
-  let firstGroup = null;
+  let firstSeen = false;
   let gapAfterFirst = false;
 
-  for (let i = 0; i < source.length; i++) {
-    const entry = source[i];
-    const raw = c(prop(entry, "text", ""), "");
-    if (!raw.trim()) {
-      if (firstGroup !== null) gapAfterFirst = true;
+  for (const entry of source) {
+    const raw = c(prop(entry, "text", ""), "").trim();
+    if (!raw) {
+      if (firstSeen) gapAfterFirst = true;
       continue;
     }
-
-    const group = lineGroup(entry, i);
-    if (firstGroup === null) {
-      firstGroup = group;
+    if (!firstSeen) {
+      firstSeen = true;
       continue;
     }
-    if (group === firstGroup) continue;
     return gapAfterFirst;
   }
   return false;
@@ -191,17 +178,8 @@ function shouldDrawHeader(p) {
   return hasExplicitBreakAfterFirst(p);
 }
 
-function shouldDrawDivider(p, lines, header) {
-  if (!header || lines.length <= 1) return false;
-  const firstGroup = lines[0].group;
-  let hasSecondLogicalLine = false;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].group !== firstGroup) {
-      hasSecondLogicalLine = true;
-      break;
-    }
-  }
-  if (!hasSecondLogicalLine) return false;
+function shouldDrawDivider(p, visibleLineCount, header) {
+  if (!header || visibleLineCount <= 1) return false;
   if (c(p.context, "generic").toLowerCase() === "item") return true;
   return hasExplicitBreakAfterFirst(p);
 }
@@ -210,65 +188,45 @@ function normalizeLines(p, m, colors, header) {
   const source = arr(p.lines);
   const lines = [];
   let pendingGroupGap = false;
-  let previousGroup = null;
-  let firstGroup = null;
 
   for (let i = 0; i < source.length; i++) {
     const entry = source[i];
-    const raw = c(prop(entry, "text", ""), "");
-    if (!raw.trim()) {
-      if (lines.length > 0) pendingGroupGap = true;
+    const raw = c(prop(entry, "text", ""), "").trim();
+    if (!raw) {
+      pendingGroupGap = true;
       continue;
     }
 
-    const group = lineGroup(entry, i);
-    if (firstGroup === null) firstGroup = group;
-    const sameLogicalLine = previousGroup !== null && group === previousGroup;
-
     let gapBefore = 0;
     if (lines.length > 0) {
-      gapBefore += sameLogicalLine ? m.wrapGap : m.rowGap;
-      // Header spacing starts only after the complete first logical line. Wrapped
-      // continuations remain inside the title/header instead of becoming fake rows.
-      if (header && !sameLogicalLine && previousGroup === firstGroup) gapBefore += m.headerGap;
-      if (!sameLogicalLine && pendingGroupGap) gapBefore += m.groupGap;
+      gapBefore += m.rowGap;
+      // A title/header gap only exists when the panel actually has a header. Generic
+      // compact tooltips are one continuous surface and use ordinary row spacing.
+      if (header && lines.length === 1) gapBefore += m.headerGap;
+      if (pendingGroupGap) gapBefore += m.groupGap;
     }
     pendingGroupGap = false;
-
     lines.push({
       key: `line:${lines.length}`,
       text: raw,
       color: c(prop(entry, "color", ""), colors.text),
       gapBefore,
-      group,
-      continuation: !!prop(entry, "continuation", false),
     });
-    previousGroup = group;
   }
 
   if (lines.length === 0) {
-    lines.push({ key: "line:0", text: " ", color: colors.text, gapBefore: 0, group: 0, continuation: false });
-    firstGroup = 0;
+    lines.push({ key: "line:0", text: " ", color: colors.text, gapBefore: 0 });
   }
-  return { lines, firstGroup };
+  return lines;
 }
 
 function structure(p, m, colors) {
   const header = shouldDrawHeader(p);
-  const normalized = normalizeLines(p, m, colors, header);
-  const lines = normalized.lines;
-  let headerLineCount = 0;
-  if (header && lines.length > 0) {
-    const firstGroup = normalized.firstGroup;
-    while (headerLineCount < lines.length && lines[headerLineCount].group === firstGroup) {
-      headerLineCount++;
-    }
-  }
+  const lines = normalizeLines(p, m, colors, header);
   return {
     lines,
     header,
-    headerLineCount,
-    divider: shouldDrawDivider(p, lines, header),
+    divider: shouldDrawDivider(p, lines.length, header),
   };
 }
 
@@ -276,6 +234,7 @@ function fontClass(m, maxWidth, shadow) {
   return cls(
     `font-Iosevka-Regular-${fmt3(m.fontScale)}`,
     `text-max-${fmt3(maxWidth)}`,
+    "ellipsis",
     shadow ? "shadow-text" : ""
   );
 }
@@ -308,16 +267,15 @@ function measureTree(p, m, colors) {
     }));
   }
 
-  const contentFloor = Math.max(0, Math.min(widthLimit, n(p.contentWidthFloor, 0)));
-  const minCardWidth = Math.max(m.minCardW, contentFloor + m.padX * 2.0);
   return ui.column({
     key: "measure-content",
-    class: cls(`px-${fmt3(m.padX)}`, `py-${fmt3(m.padY)}`, `min-w-${fmt3(minCardWidth)}`),
+    class: cls(`px-${fmt3(m.padX)}`, `py-${fmt3(m.padY)}`, `min-w-${fmt3(m.minCardW)}`),
     children: nodes,
   });
 }
 
 function renderContent(p, m, colors, width, lineHeight, layout) {
+  const widthLimit = maxContentWidth(p, m);
   const contentW = Math.max(1, width - m.padX * 2);
   const nodes = [];
   let cursorY = m.padY;
@@ -330,7 +288,7 @@ function renderContent(p, m, colors, width, lineHeight, layout) {
       color: line.color,
       class: cls(
         ui.abs(m.padX, cursorY, contentW, lineHeight),
-        fontClass(m, contentW, true),
+        fontClass(m, widthLimit, true),
         `text-${line.color}`
       ),
     }));
@@ -357,11 +315,7 @@ function renderTree(p, m, colors) {
   const height = Math.max(1, n(p.height, 20 * m.scale));
   const lineHeight = Math.max(1, n(p.lineHeight, 14.5 * m.scale));
   const layout = structure(p, m, colors);
-  let headerContentH = m.padY;
-  for (let i = 0; i < layout.headerLineCount; i++) {
-    headerContentH += layout.lines[i].gapBefore + lineHeight;
-  }
-  const headerH = Math.min(height, headerContentH + m.headerGap * 0.55);
+  const headerH = Math.min(height, m.padY + lineHeight + m.headerGap * 0.55);
   const innerRadius = Math.max(0, m.radius - m.scale);
   // Stroke/divider are raster-detail thicknesses, not layout geometry. They must not
   // inflate with the vanilla SCALED projection used by BetterTooltips. ItemPreview
@@ -414,7 +368,7 @@ function renderTree(p, m, colors) {
       bottomLeftColor: colors.headerB,
     }));
 
-    // Exact old glint for full-header tooltips: height 42% and 0x12/0x08 top alpha.
+    // Full-header glint: 42% height, 0x12/0x08 top alpha.
     children.push(ui.shape({
       key: "header-glint",
       shape: "rounded-corners",
@@ -448,7 +402,7 @@ function renderTree(p, m, colors) {
     angle: colors.gradientAngle,
   }));
 
-  // Unlike the old preview, the divider is contextual. The primitive/colors are still exact.
+  // Divider visibility is contextual.
   if (layout.divider && clamp(n(p.dividerAlpha, 255), 0, 255) > 0) {
     children.push(ui.shape({
       key: "divider",

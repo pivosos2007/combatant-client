@@ -506,11 +506,9 @@ public enum ModuleManager {
 
     public static void notifyListeners(String name, boolean enabled) {
         if (suppressToggleNotifications) {
-            // DebugLog.config("[ModuleManager] notifyListeners suppressed: %s -> %s (listeners=%d)", name, enabled, listeners.size());
             return;
         }
         ModuleStateListener[] snapshot = listenerSnapshot;
-        //DebugLog.config("[ModuleManager] notifyListeners: %s -> %s (listeners=%d)", name, enabled, snapshot.length);
         for (int i = 0; i < snapshot.length; i++) {
             snapshot[i].onModuleStateChanged(name, enabled);
         }

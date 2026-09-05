@@ -408,8 +408,6 @@ public enum BetterChatRenderer {
         if (windowNs >= 1_000_000_000L && debugPerfAccumFrames > 0 && chatOpen) {
             double layoutMs = (debugPerfAccumLayoutNs / (double) debugPerfAccumFrames) / 1_000_000.0;
             double buildMs = (debugPerfAccumBuildNs / (double) debugPerfAccumFrames) / 1_000_000.0;
-            /*DebugLog.info("[BetterChat][Perf] layout=%.2f ms build=%.2f ms lines=%d msgs=%d scroll=%d/%d vis=%d",
-                    layoutMs, buildMs, allLines.size(), messages.size(), scrollOffsetLines, maxScrollLines, visibleLimit);*/
             debugPerfWindowStartNs = perfT2;
             debugPerfAccumLayoutNs = 0L;
             debugPerfAccumBuildNs = 0L;
@@ -490,9 +488,7 @@ public enum BetterChatRenderer {
         PickResult hover = frame.pick(mouseX, mouseY);
         boolean overSuggestWindow = isInsideSuggestWindow(mouse.fx(), mouse.fy(), mouse.rawX(), mouse.rawY());
         if (overSuggestWindow && lastHoverWasOutsideSuggest) {
-            /*DebugLog.info("[BetterChat][Suggest] hover enter mx=%.1f my=%.1f raw=(%.1f,%.1f) box=(%.1f,%.1f,%.1f,%.1f)",
-                    mouse.fx(), mouse.fy(), mouse.rawX(), mouse.rawY(), suggestX, suggestY, suggestW, suggestH)*/
-            lastHoverWasOutsideSuggest = false;
+lastHoverWasOutsideSuggest = false;
         } else if (!overSuggestWindow && !lastHoverWasOutsideSuggest) {
             lastHoverWasOutsideSuggest = true;
         }
@@ -618,9 +614,7 @@ public enum BetterChatRenderer {
         float configuredAlpha = settings != null ? settings.liquidGlassAlphaFactor() : (230f / 255f);
         float blurStrength = configuredAlpha * drawAlpha;
         float glassScale = MESSAGE_RADIUS <= 0.0f ? 1.0f : radius / MESSAGE_RADIUS;
-        // Use the same theme tint family as the input field, but keep message material weaker.
-        // The previous extra accent fill + bright stroke stacked on top of the glass shader and
-        // made bubbles visibly more saturated than the input.
+        // Use the input-field tint family with weaker message material.
         HudRenderUtil.drawLiquidGlassCorners(
                 x, y, w, h,
                 radius, radius, radius, radius,
@@ -734,9 +728,7 @@ public enum BetterChatRenderer {
             float reveal = newMessageReveal(line.message());
             float xOffset = -(1f - reveal) * NEW_MESSAGE_SLIDE_PX;
             boolean commandLine = CommandOutput.isCombatantMessage(line.message().text());
-            // New-message animation is translation-only. Do not create a nested rectangular
-            // clip here: every arrival used to push/pop GPU scissor state for ~340 ms, forcing
-            // batch flushes and briefly invalidating lower HUD phases.
+            // Translation-only reveal avoids per-message scissor state and batch flushes.
             List<GlyphBox> glyphs = line.glyphs();
             for (int gi = 0; gi < glyphs.size(); gi++) {
                 GlyphBox g = glyphs.get(gi);
@@ -1487,8 +1479,7 @@ public enum BetterChatRenderer {
 
         String current = fieldText == null ? "" : fieldText;
         if (!current.equals(passwordInputSnapshot)) {
-            // Editing a credential re-masks it immediately. Do not animate from a previously
-            // revealed state, otherwise the new character could flash on screen.
+            // Editing a credential re-masks it immediately to prevent character disclosure.
             passwordReveal = false;
             passwordRevealProgress = 0f;
             passwordInputSnapshot = current;
@@ -1646,7 +1637,6 @@ public enum BetterChatRenderer {
             int scrollable = Math.max(0, suggestTotal - suggestVisible);
             suggestCurrentStart = Mth.clamp(suggestCurrentStart + step, 0, scrollable);
             applySuggestionWindowState(suggestCurrentStart, suggestCurrentSelection);
-            //DebugLog.info("[BetterChat][Suggest] scroll handled start=%d total=%d visible=%d mx=%.1f my=%.1f box=(%.1f,%.1f,%.1f,%.1f)", suggestStart, suggestTotal, suggestVisible, mx, my, suggestX, suggestY, suggestW, suggestH);
             return true;
         }
         int step = delta > 0 ? 3 : -3;
@@ -1708,7 +1698,6 @@ public enum BetterChatRenderer {
                 row = Mth.clamp(row, 0, Math.max(0, suggestVisible - 1));
                 int idx = Mth.clamp(suggestStart + row, 0, Math.max(0, suggestTotal - 1));
                 applySuggestion(idx);
-                //DebugLog.info("[BetterChat][Suggest] click row=%d idx=%d mx=%.1f my=%.1f raw=(%.1f,%.1f) box=(%.1f,%.1f,%.1f,%.1f)", row, idx, fx, fy, mouse.rawX(), mouse.rawY(), suggestX, suggestY, suggestW, suggestH);
                 return true;
             }
             // block other clicks while over suggest box
@@ -2190,7 +2179,6 @@ public enum BetterChatRenderer {
                 return false;
             }
         } catch (Exception e) {
-            //DebugLog.error("[BetterChat] click action failed", e);
             return false;
         }
     }
@@ -2954,7 +2942,6 @@ public enum BetterChatRenderer {
             suggestCurrentSelection = idx;
             applySuggestionWindowState(suggestCurrentStart, suggestCurrentSelection);
         } catch (Exception e) {
-            //DebugLog.error("[BetterChat][Suggest] apply failed", e);
         }
     }
 
@@ -3067,14 +3054,7 @@ public enum BetterChatRenderer {
         boolean snapshotChanged = hash != lastSuggestionHash;
         if (snapshotChanged) {
             lastSuggestionHash = hash;
-            /*DebugLog.info(
-                    "[BetterChat][Suggest] snapshot texts=%d sel=%d start=%d vis=%d",
-                    snap.texts().size(),
-                    snap.selection(),
-                    snap.startIndex(),
-                    snap.visibleCount()
-            );*/
-        }
+}
         suggestEntries = snap.suggestions();
 
         int total = snap.texts().size();
@@ -3221,7 +3201,6 @@ public enum BetterChatRenderer {
         suggestTrackH = trackH;
         suggestThumbH = thumbH;
         if (!hasScrollbar) suggestDraggingScrollbar = false;
-        //DebugLog.info("[BetterChat][Suggest] box x=%.1f y=%.1f w=%.1f h=%.1f start=%d vis=%d total=%d", x, y, w, h, suggestStart, suggestVisible, suggestTotal);
         storedScreen = null;
     }
 

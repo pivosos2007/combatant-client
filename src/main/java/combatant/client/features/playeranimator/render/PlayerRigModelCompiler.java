@@ -139,9 +139,8 @@ public final class PlayerRigModelCompiler {
     }
 
     /**
-     * Pelvis -> thigh -> shin -> foot. A narrow pelvis/thigh blend at the very top keeps the butt
-     * seam attached while the hip rotates; the old fully-thigh-rigid top produced a visible break.
-     * Knees/ankles remain narrow bands so the Minecraft limb still reads as articulated, not rubber.
+     * Pelvis -> thigh -> shin -> foot. A narrow pelvis/thigh blend keeps the butt seam attached
+     * during hip rotation; narrow knee/ankle bands preserve articulated limb motion.
      */
     private static RigSkinBinding leftLeg() {
         return RigSkinBinding.banded(

@@ -631,7 +631,7 @@ public final class MeshBuilder implements AutoCloseable {
     }
 
     public com.mojang.blaze3d.IndexType getIndexType() {
-        // we write ints in indices()
+        // indices() stores 32-bit values.
         return com.mojang.blaze3d.IndexType.INT;
     }
 

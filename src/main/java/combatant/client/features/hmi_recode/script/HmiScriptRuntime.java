@@ -215,8 +215,6 @@ public final class HmiScriptRuntime implements AutoCloseable {
             globalThis.string = { find:(value,needle)=>String(value).includes(String(needle)) };
             globalThis.KeyBindManager = { isKeyPressed:key=>Number(key)===74 && !!globalThis.__hmi_inspect_pressed };
             globalThis.S = { playSound:(id,volume)=>__hmi_sound_events.push([String(id),Number(volume)||1]) };
-            // These outputs currently have no Java consumer. Keep the compatibility API callable
-            // without allocating command payloads that would immediately be discarded.
             globalThis.debugger = { out:()=>{} };
             globalThis.particleManager = { addParticle:()=>{} };
             globalThis.animator = {

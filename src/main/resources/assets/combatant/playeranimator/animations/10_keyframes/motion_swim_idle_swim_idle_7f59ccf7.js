@@ -1,4 +1,3 @@
-// motion:swim_idle/swim_idle - procedural; retained under the historical animation id for API compatibility.
 (() => {
   const L=globalThis.RigAnimationLibrary;
   L.registerProcedural(new L.ProceduralAnimation('motion:swim_idle/swim_idle',(c,r,t,w)=>{

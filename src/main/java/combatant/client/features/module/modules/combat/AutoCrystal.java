@@ -325,7 +325,6 @@ public class AutoCrystal extends Module {
         // if (!DebugLog.isEnabled()) {
         //     return;
         // }
-        // DebugLog.info("[AutoCrystalDebug] " + pattern, args);
     }
 
     @Override
@@ -1222,17 +1221,6 @@ public class AutoCrystal extends Module {
     }
 
     private void debugState() {
-        // long now = System.currentTimeMillis();
-        // if (!DebugLog.isEnabled() || now - lastDebugStateLogMs < DEBUG_LOG_INTERVAL_MS) {
-        //     return;
-        // }
-        // lastDebugStateLogMs = now;
-        //
-        // String targetName = target != null ? target.getName().getString() : "null";
-        // String placePos = bestCandidate != null ? String.valueOf(bestCandidate.pos()) : "null";
-        // String breakId = bestCrystal != null && bestCrystal.crystal() != null ? String.valueOf(bestCrystal.crystal().getId()) : "null";
-        // debugLog("state target=%s place=%s break=%s renderPos=%s",
-        //         targetName, placePos, breakId, renderPos);
     }
 
     private boolean isSpawnNearPendingPlace(ClientboundAddEntityPacket spawn, BlockPos pos) {

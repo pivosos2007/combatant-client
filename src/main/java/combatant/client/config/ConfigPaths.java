@@ -28,10 +28,7 @@ public enum ConfigPaths {
         return root().resolve("subsystems");
     }
 
-    /**
-     * Resolves a subsystem-relative path below config/combatant/subsystems.
-     * Slash-separated paths are allowed so future subsystems can form their own namespace.
-     */
+    /** Resolves a slash-separated subsystem path below config/combatant/subsystems. */
     public static Path subsystem(String relativePath) {
         Path out = subsystemsRoot();
         if (relativePath == null || relativePath.isBlank()) return out.resolve("config");

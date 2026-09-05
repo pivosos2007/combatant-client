@@ -27,21 +27,13 @@ import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.vertex.CombatantVertexFormats;
 
-/**
- * Compatibility facade for fullscreen rendering.
- * <p>
- * Production fullscreen passes must submit through the RHI persistent fullscreen backend. The legacy CPU
- * MeshBuilder is retained only so old call sites can be detected/migrated, not as the intended draw path.
- */
+/** Fullscreen rendering facade backed by the persistent RHI fullscreen path. */
 public enum FullScreenRenderer {
     ;
     public static GpuBuffer vbo;
     public static GpuBuffer ibo;
 
-    /**
-     * Legacy CPU mesh kept only for detection of old code paths. Production code must use FullScreenRenderer.begin()
-     * or CombatantRHI.fullscreen() directly.
-     */
+    /** @deprecated Use {@link #begin()} or {@code CombatantRHI.fullscreen()}. */
     @Deprecated(forRemoval = false)
     public static MeshBuilder mesh;
 

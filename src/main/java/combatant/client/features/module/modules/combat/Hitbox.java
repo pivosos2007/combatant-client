@@ -265,7 +265,6 @@ public class Hitbox extends Module {
 
     @Override
     public void onRenderWorld(PoseStack matrices, net.minecraft.client.renderer.SubmitNodeCollector consumers, float tickDelta) {
-        // Legacy renderer path intentionally left empty.
     }
 
     @Override

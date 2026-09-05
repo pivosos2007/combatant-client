@@ -59,9 +59,7 @@
           this.rig.rotate(upper(arm),(-58-48*strike)*envelope,-sign*(10+18*strike)*envelope,-sign*6*envelope);
           flexElbow(this.rig,arm,(34-24*strike)*envelope);
         } else if (sword) {
-          // One-handed sword slash stays outside the head volume. The old path lifted the arm past
-          // overhead while sweeping yaw through the center line, so one variant intersected the skull.
-          // Torso rotation now carries the cross-body motion while the arm remains on its own side.
+          // Keep the sword arc outside the head volume; torso rotation supplies the cross-body motion.
           const wind=1-strike;
           const variant=(c.swingIndex&1)!==0?1:-1;
           const armX=-58-40*strike;

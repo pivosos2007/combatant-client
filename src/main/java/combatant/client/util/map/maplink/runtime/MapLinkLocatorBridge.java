@@ -15,7 +15,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
 
-/** Temporary read-only adapter for the existing locator filter. */
+/** Read-only locator adapter over {@link MapLinkRuntime}. */
 public enum MapLinkLocatorBridge {
     ;
 

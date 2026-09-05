@@ -31,7 +31,7 @@ public abstract class LocatorBarMixin {
         if (bar == null) return;
         if (!bar.isHudBarEnabled() || !bar.isHotbarXpBarEnabled()) return;
 
-        // Always mute vanilla locator rendering; we draw everything ourselves.
+        // Suppress vanilla locator rendering; Combatant owns the locator pass.
         ci.cancel();
     }
 

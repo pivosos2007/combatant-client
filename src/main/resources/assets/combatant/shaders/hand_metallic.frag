@@ -152,7 +152,7 @@ void main() {
         float brushed = 0.5 + 0.5 * sin((p.y * resolution.y * 0.20 + p.x * 18.0 + fine * 7.0) * (0.34 + brushedLines * 0.32));
         brushed = mix(1.0, mix(0.78, 1.14, brushed), clamp(brushedLines, 0.0, 1.0));
 
-        // Smooth procedural sparkle. No floor(cell) blocks: the old variant made visible square garbage on edges.
+        // Continuous procedural sparkle avoids cell-edge artifacts.
         float sparkleNoise = handMetalFbm(p * resolution.y * 0.11 + vec2(time * 0.06, time * 0.035));
         float sparkle = smoothstep(0.76, 0.98, sparkleNoise) * flakes;
         sparkle *= 0.55 + 0.45 * sin(time * 2.2 + sparkleNoise * 17.0);

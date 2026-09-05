@@ -289,7 +289,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
             Vec2 base = cir.getReturnValue();
 
             // 0.0 -> vanilla (no change), 1.0 -> normal walking speed.
-            // In vanilla, most item-use slowdowns are ~0.2x, so we approximate by lerping 1..5.
+            // Vanilla item-use slowdown is typically ~0.2x; lerp 1..5 approximates reciprocal compensation.
             float t = ns.getEatSpeed01();
             float mult = 1.0f + t * 4.0f;
 
@@ -432,8 +432,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
 
     @Unique
     private Input combatant$transformDirection(Input input) {
-        // Free correction now runs at KeyboardInput.tick(), matching the input pipeline.
-        // Keep this post-input hook inert to avoid double-transforming movement input.
+        // Post-input hook remains inert to avoid double-transforming movement input.
         return input;
     }
 
@@ -736,7 +735,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
 
         if (!pendingSpoof) return;
         LocalPlayer p = (LocalPlayer) (Object) this;
-        // Avoid spoof when we only bonk a ceiling (causes freezes while looking up).
+        // Avoid spoof on ceiling-only collision; it can freeze upward movement.
         if (p.verticalCollision && !p.horizontalCollision) {
             pendingSpoof = false;
             return;

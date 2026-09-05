@@ -613,8 +613,7 @@ public final class CombatantAltManagerScreen extends Screen {
                 .rounding(rounding)
                 .build();
 
-        // Same depth hierarchy as the main-menu hexes: a quiet dark socket, coloured side faces,
-        // then a dense glass top. The old version tinted every layer with the accent and flattened it.
+        // Match the main-menu hex depth hierarchy: dark socket, coloured sides, dense glass top.
         int wellTop = withAlpha(HudRenderUtil.mixColor(0xFF05080D, accent, 0.08f), Math.round(alpha * 154f));
         int wellBottom = withAlpha(HudRenderUtil.mixColor(0xFF020408, accent, 0.22f), Math.round(alpha * 112f));
         Renderer2D.COLOR.primitive(well, UiPaint.linear(wellTop, wellBottom, 90f, 0f));

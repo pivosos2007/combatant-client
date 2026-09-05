@@ -11,9 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Combatant-owned provider profile. Deliberately contains no GUI or Xaero objects.
- */
+/** Persisted web-map provider profile. */
 public final class MapLinkProfile {
     private String id;
     private String displayName;

@@ -64,10 +64,8 @@ float roundedBoxSDF(vec2 p, vec2 halfSize, vec4 r, float smoothness) {
 }
 
 float decodeDistort(float packedValue, out float cornerSmoothness, out float blurAlpha, out bool squircle) {
-    // Payload from Renderer2D.packLiquidGlassPayload(): rounded boxes retain the
-    // legacy smoothness*10000 layout; whole-box squircles use a 200,000 marker
-    // and preserve exponent hundredths in the following bucket.
-    // Keep the old small-value path so stale meshes or external callers fail soft.
+    // Packed payload: rounded boxes use smoothness*10000; squircles use the 200000 marker
+    // with exponent hundredths in the following bucket. Small values remain valid for compatibility.
     squircle = packedValue >= 200000.0;
     if (squircle) {
         packedValue -= 200000.0;

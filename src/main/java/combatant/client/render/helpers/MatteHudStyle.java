@@ -52,11 +52,7 @@ public enum MatteHudStyle {
         drawPlate(renderer, textX - 3.0, textY - 1.5, textWidth + 6.0, textHeight + 3.0, 3.5f, alpha);
     }
 
-    /**
-     * Exact matte label treatment used by DropESP: a single translucent black rounded
-     * surface with no soft shadow, gradient, glow or stroke. Keep shared ESP/prediction
-     * badges on this path so they do not silently drift back to the old telemetry card.
-     */
+    /** Matte label: translucent black rounded surface without shadow, gradient, glow, or stroke. */
     public static void drawEspMattePlate(Renderer2D renderer,
                                          double x,
                                          double y,
@@ -72,10 +68,7 @@ public enum MatteHudStyle {
     }
 
     /**
-     * Compact world/HUD label plate. Unlike {@link #drawPlate}, this deliberately avoids
-     * a vertical surface gradient and uses a much smaller shadow/stroke footprint. It is
-     * intended for dense ESP/name/drop labels where the old matte treatment looked too
-     * heavy at normal logical GUI scale.
+     * Compact world/HUD label plate with no vertical gradient and reduced shadow/stroke footprint.
      */
     public static void drawCompactPlate(Renderer2D renderer,
                                         double x,

@@ -69,7 +69,6 @@ public abstract class GuiMixin {
 
     @Inject(method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V", at = @At("TAIL"))
     private void combatant$debug2dGuiStateProbe(GuiGraphicsExtractor ctx, DeltaTracker tickCounter, CallbackInfo ci) {
-        // RenderThread2DDebugRenderer.extractGuiStateProbe(ctx);
     }
 
     @Unique
@@ -151,11 +150,9 @@ public abstract class GuiMixin {
     private void combatant$filterOverlayMessage(net.minecraft.network.chat.Component message, boolean tinted, CallbackInfo ci) {
         if (DebugLog.serverOnly()) {
             if (message == null) {
-                // DebugLog.server("HUD overlay message: tinted=%s raw=null", tinted);
             } else {
                 String raw = message.getString();
                 String json = TextJsonUtil.toJson(message);
-                // DebugLog.server("HUD overlay message: tinted=%s raw=\"%s\" json=%s", tinted, raw, json);
             }
         }
         if (Events.BUS.hasListeners(PvpOverlayEvent.class)) {

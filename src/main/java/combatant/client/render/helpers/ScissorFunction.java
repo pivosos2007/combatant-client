@@ -71,7 +71,7 @@ public enum ScissorFunction {
             if (clipped.isEmpty()) {
                 // Completely outside the parent clip. Keep the parent scissor active and let
                 // the caller render normally; the parent clip will discard the geometry.
-                // Returning false is important because callers must not pop a clip we did not push.
+                // False indicates that no clip was pushed and therefore none may be popped.
                 return false;
             }
         }

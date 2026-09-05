@@ -9,13 +9,7 @@ package combatant.client.render.engine.guard;
 
 import combatant.client.render.engine.core.CombatantRenderSystem;
 
-/**
- * Final architecture lock for the Combatant RHI migration.
- * <p>
- * This class is intentionally small and dependency-light: it is used from low-level legacy facades to make sure old
- * render paths cannot silently become production paths again. A path can only be enabled through an explicit system
- * property, and every use is counted in RHI stats.
- */
+/** Gates legacy render paths behind explicit system properties and records their use in RHI stats. */
 public enum RenderArchitectureGuard {
     ;
     public static final boolean DEBUG = Boolean.getBoolean("combatant.render.debug");

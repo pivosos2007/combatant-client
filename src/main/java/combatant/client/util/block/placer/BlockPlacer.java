@@ -384,7 +384,7 @@ public final class BlockPlacer {
         }
 
         // LB verifies normal placements against the rotation that actually got sent to the server,
-        // not the raw target rotation we initially planned.
+        // not the raw planned target rotation.
         Rotation verificationRotation = RotationManager.INSTANCE.getServerRotation();
 
         if (!canReach(player, plan.target().getInteractedBlockPos(), verificationRotation)) {

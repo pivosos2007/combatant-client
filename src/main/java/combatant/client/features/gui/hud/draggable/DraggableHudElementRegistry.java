@@ -450,13 +450,10 @@ public enum DraggableHudElementRegistry {
 
         if (!allowDragging) {
             if (dragging != null) {
-                //DebugLog.config("[HUD] Drag cancelled outside chat for %s", dragging.getId());
             }
             if (left && !prevLeft) {
-                // DebugLog.config("[HUD] Mouse down ignored (chat not open) at (%.1f, %.1f)", mx, my);
             }
             if (!left && prevLeft) {
-                // DebugLog.config("[HUD] Mouse up ignored (chat not open) at (%.1f, %.1f)", mx, my);
             }
             dragging = null;
             draggingWithLeft = false;
@@ -477,11 +474,8 @@ public enum DraggableHudElementRegistry {
         }
 
         if (left && !prevLeft) {
-            //DebugLog.config("[HUD] Mouse down in chat at (%.1f, %.1f)", mx, my);
             for (DraggableHudElement w : WIDGETS) {
-                /*DebugLog.config("[HUD] Widget %s bounds x=%.1f y=%.1f w=%.1f h=%.1f contains=%s",
-                        w.getId(), w.getX(), w.getY(), w.getWidth(), w.getHeight(), w.contains(mx, my));*/
-            }
+}
             DraggableHudElement clickTarget = null;
             long bestClickOrder = Long.MIN_VALUE;
             for (DraggableHudElement w : WIDGETS) {
@@ -579,17 +573,14 @@ public enum DraggableHudElementRegistry {
                 }
                 dragging.clearParentAnchor();
                 dragging.setAnchors(HudAnchorX.FREE, HudAnchorY.FREE, dragging.getX(), dragging.getY());
-                //DebugLog.config("[HUD] Drag start for %s at (%.1f, %.1f)", dragging.getId(), dragging.getX(), dragging.getY());
                 SystemCursor.set(SystemCursor.CursorType.MOVE);
                 hudCursorActive = true;
             }
             if (dragging == null) {
-                //DebugLog.config("[HUD] No widget found under cursor at (%.1f, %.1f); widgets=%d", mx, my, WIDGETS.size());
             }
         } else if (!middle && prevMiddle && dragging != null && !draggingWithLeft) {
             stopDragging(screenW, screenH);
         } else if (!middle && prevMiddle) {
-            //DebugLog.config("[HUD] Mouse up with no active drag at (%.1f, %.1f)", mx, my);
         }
 
         if (draggingWithLeft && !left && prevLeft && dragging != null) {
@@ -603,7 +594,6 @@ public enum DraggableHudElementRegistry {
             } else {
                 clearSnapPreview();
             }
-            //DebugLog.config("[HUD] Dragging %s -> (%.1f, %.1f)", dragging.getId(), dragging.getX(), dragging.getY());
             SystemCursor.set(SystemCursor.CursorType.MOVE);
             hudCursorActive = true;
         } else if (dragging == null) {

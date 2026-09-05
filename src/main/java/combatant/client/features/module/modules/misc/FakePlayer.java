@@ -81,7 +81,7 @@ public class FakePlayer extends Module {
     /**
      * Extracts the MAINHAND attack-damage modifier amount from an ItemStack.
      * <p>
-     * We use this as a compatibility fallback because client-side attack callbacks sometimes observe
+     * Compatibility fallback for client-side attack callbacks that sometimes observe
      * EntityAttributes.ATTACK_DAMAGE without the weapon modifiers applied.
      */
     private static float getMainHandAttackDamageBonus(ItemStack stack) {

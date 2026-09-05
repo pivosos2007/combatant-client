@@ -8,8 +8,7 @@
 package combatant.client.render.engine.rig.mesh;
 
 /**
- * CPU-side rig vertex. Primitive fields intentionally mirror the future packed rig VertexFormat and avoid
- * JOML object churn when this data is compiled into MeshBuilder.
+ * CPU-side rig vertex with primitive fields matching the packed rig VertexFormat to avoid JOML object churn.
  */
 public final class RigVertex {
     public static final int UNUSED_BONE = -1;

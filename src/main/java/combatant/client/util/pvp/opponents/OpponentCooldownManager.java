@@ -16,10 +16,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Opponent-facing facade for the generic owner-based item-use cooldown engine.
- * <p>
- * Kept for old callers and readability in opponent systems, but the state is no longer
- * separate from the local cooldown implementation.
+ * Opponent-facing facade over the owner-based item-use cooldown engine.
  */
 public enum OpponentCooldownManager {
     ;

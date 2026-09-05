@@ -22,10 +22,7 @@ public enum TickDelta {
     ;
     private static final float TICKS_PER_SECOND = 20.0f;
 
-    /**
-     * Legacy alias. Keep this as vanilla-style interpolation progress for old call sites.
-     * Prefer tickProgress(false) or tickProgress(counter, false) in new code.
-     */
+    /** @deprecated Use {@link #tickProgress(boolean)}. */
     public static float get() {
         return tickProgress(false);
     }

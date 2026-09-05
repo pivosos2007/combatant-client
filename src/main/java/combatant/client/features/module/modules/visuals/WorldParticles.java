@@ -701,10 +701,7 @@ public class WorldParticles extends Module {
         float pop = 1.0f + AnimationUtility.smoothstep(pulse) * 0.065f;
         float sphereRadius = particle.size * BUBBLE_FILL_SIZE_MULTIPLIER * pop;
 
-        // The old bubble mixed a tiny low-poly sphere with several billboard quads. Those quads
-        // looked smooth, but their depth was the depth of a flat card. The shell now owns the
-        // complete visible membrane: dense geometry gives the silhouette/depth, while the custom
-        // shader supplies Fresnel, specular and thin-film motion without any flat depth impostors.
+        // Dense shell geometry provides silhouette/depth; the shader adds Fresnel, specular and thin-film motion.
         addSphereShell(shellMesh, pos, sphereRadius, baseColor, alpha, ageSeconds, particle.visualPhase);
     }
 

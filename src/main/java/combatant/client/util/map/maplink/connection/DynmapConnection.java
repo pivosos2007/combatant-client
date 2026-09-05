@@ -1,18 +1,13 @@
 /*
  * This file is part of the Combatant Client distribution.
- *
- * This file contains code adapted from Map Link.
- * Original Map Link code:
- * Copyright (C) 2024 - 2025 Leander Knüttel and contributors.
- * Licensed under the GNU General Public License, version 3 or
- * (at your option) any later version.
- *
- * Combatant modifications:
  * Copyright (c) 2026 pivosos2007.
- * Licensed under the GNU General Public License v3.0.
  *
- * The upstream Map Link Dynmap implementation contains portions originally
- * from RemotePlayers by ewpratten; that attribution is retained here.
+ * Adapted from Map Link.
+ * Original copyright (C) 2024-2025 Leander Knüttel and contributors.
+ * Original license: GNU General Public License v3.0 or later.
+ * Dynmap upstream: RemotePlayers by ewpratten.
+ *
+ * Licensed under the GNU General Public License v3.0.
  */
 package combatant.client.util.map.maplink.connection;
 
@@ -86,7 +81,6 @@ public final class DynmapConnection extends AbstractMapLinkConnection {
                 return;
             }
 
-            // Map Link first accepts a fully specified Dynmap update endpoint.
             try {
                 URI direct = URI.create(profile.baseUrl().trim().replace(" ", "%20"));
                 PlayerUpdate probe = http.json(direct, profile, PlayerUpdate.class);

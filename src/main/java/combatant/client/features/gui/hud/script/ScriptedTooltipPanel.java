@@ -475,7 +475,7 @@ public final class ScriptedTooltipPanel {
                         int gradientAngleOffset) {
         /**
          * Exact legacy ItemVisualPreviewProvider appearance. Theme gradient is opt-in;
-         * all alpha controls are layer multipliers, where 255 preserves the old constants.
+         * all alpha controls are layer multipliers; 255 preserves the provider constants.
          */
         public static final Style DEFAULT = new Style(255, 0, 255, 255, 255, 255, 0);
 

@@ -37,12 +37,7 @@ import combatant.client.util.logging.DebugLog;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Current MSAA implementation for the GL/Sodium backend.
- * <p>
- * Keep GL ids, GL targets, framebuffer blits, and GlTexture construction contained here. Future Vulkan support should
- * replace this class with a backend-native implementation while preserving the MsaaControl contract.
- */
+/** GL/Sodium implementation of {@link MsaaControl}; owns GL-specific MSAA resources and blits. */
 @SuppressWarnings("deprecation")
 public final class SodiumGlMsaaControl implements MsaaControl {
     private static final Identifier ENTITY_SHADER_ID = Identifier.withDefaultNamespace("core/entity");

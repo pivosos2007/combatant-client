@@ -11,7 +11,7 @@ import combatant.client.util.map.maplink.model.MapLinkProviderType;
 
 import java.io.IOException;
 
-/** Provider connection boundary. Contains no Xaero/UI side effects. */
+/** Fetches player locations from a web-map provider. */
 public interface MapLinkConnection {
     MapLinkProviderType type();
 

@@ -165,10 +165,7 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
             return new ArenaSelection(arena, true);
         }
 
-        // Grow the persistent ring lazily under observed pressure. This preserves the configured
-        // maximum buffering depth while avoiding the old unconditional allocation of every arena
-        // at the first mesh upload. Oversized single meshes still go to a spill arena instead of
-        // permanently inflating the persistent pool.
+        // Grow the persistent ring on demand; oversized meshes use spill arenas.
         if (persistentArenas.size() < maxPersistentArenas()
                 && vertexBytes <= DEFAULT_VERTEX_ARENA_BYTES
                 && indexBytes <= DEFAULT_INDEX_ARENA_BYTES) {
@@ -215,8 +212,7 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
 
     @Override
     public void beginFrame(long frameId) {
-        // If a caller starts a new frame without passing through flipFrame tail, keep arena ownership safe.
-        // Normal flow retires active arenas in framePresented().
+        // Retire active arenas if framePresented() was skipped.
         if (!activeArenas.isEmpty()) {
             framePresented();
         }
@@ -228,8 +224,7 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
 
     @Override
     public void endSubmission() {
-        // Direct mapped writes are closed per allocation. No batch flush is required here.
-        // This hook remains the explicit boundary for a future command-buffered GL path.
+        // Direct mapped writes are closed per allocation; no batch flush is required.
     }
 
     @Override

@@ -22,12 +22,7 @@ import combatant.client.util.player.inventory.InventorySwapVisibility;
 import java.util.List;
 import java.util.Set;
 
-/**
- * Compatibility facade for the former monolithic global config.
- *
- * <p>The actual values are owned and persisted by independent subsystem configs.
- * This aggregate deliberately has no file of its own.</p>
- */
+/** Aggregate view over independently persisted subsystem configs. */
 public final class MainConfig implements ConfigAggregate, ConfigNameProvider, SettingOwner {
     public static final MainConfig INSTANCE = new MainConfig();
 

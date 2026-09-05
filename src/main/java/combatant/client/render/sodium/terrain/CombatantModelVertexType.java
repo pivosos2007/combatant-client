@@ -13,11 +13,8 @@ import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexE
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexType;
 
 /**
- * Sodium 26.2 terrain vertex format extension.
- * <p>
- * Sodium now feeds terrain through Mojang RenderPipeline, so the old
- * GlVertexFormat/ChunkShaderBindingPoints path is gone. Attribute names must
- * match the GLSL input names exactly for Vulkan SPIR-V reflection.
+ * Sodium 26.2 terrain vertex format extension. Attribute names must match GLSL inputs exactly
+ * for Vulkan SPIR-V reflection.
  */
 public final class CombatantModelVertexType implements ChunkVertexType {
     public static final int STRIDE = 24;

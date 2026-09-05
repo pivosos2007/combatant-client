@@ -74,8 +74,6 @@ public final class MapLinkConfig extends SubsystemConfig {
 
     @Override
     public List<SettingDef> getSettingDefs() {
-        // Intentionally backend-only in this phase. Values are persisted and editable by config file/API,
-        // but no ClickGUI surface is exposed yet.
         return List.of();
     }
 }

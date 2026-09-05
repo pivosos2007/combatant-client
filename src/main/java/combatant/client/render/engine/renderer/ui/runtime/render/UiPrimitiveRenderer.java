@@ -20,10 +20,7 @@ import java.util.Locale;
 import java.util.Map;
 
 public final class UiPrimitiveRenderer {
-    /**
-     * Connector point storage. HUD charts commonly keep 100+ samples, so the old
-     * 32-point capacity silently truncated the right-hand side of their paths.
-     */
+    /** Connector point storage sized for dense HUD chart paths. */
     private final double[] points = new double[512];
     private final int[] gradientCornersTmp = new int[4];
     private float renderAlpha = 1.0f;
@@ -39,12 +36,7 @@ public final class UiPrimitiveRenderer {
     }
 
     private static boolean isBoxShape(String shape, UiProps props) {
-        // Only the new flexible-box contract should be routed through UiBoxShape.
-        // Do not hijack legacy JS shapes such as "rounded-gradient", "chamfered",
-        // "notched" or plain "rect": those already have tuned Renderer2D paths and
-        // are heavily used by the JS HUD runtime. Routing them through the CPU
-        // flexible-box fallback changed winding/shader behavior and made old
-        // backgrounds disappear while blur still rendered.
+        // UiBoxShape is reserved for the flexible-box contract; scripted shape ids keep their dedicated paths.
         if (props.get("corners") != null || props.get("edges") != null
                 || props.get("cornerTL") != null || props.get("cornerTopLeft") != null
                 || props.get("cornerTR") != null || props.get("cornerTopRight") != null
@@ -378,9 +370,7 @@ public final class UiPrimitiveRenderer {
         float gradientOffset = props.number("offset", 0.0f);
 
         boolean primitiveShape = isPrimitiveShape(shape);
-        // The legacy blur shaders only know rect/rounded/chamfer masks. Do not
-        // draw a mismatched rectangular blur under a hexagonal primitive; the
-        // frontend material pass will consume the same primitive mask directly.
+        // Blur only shapes supported by the blur mask family.
         if (!primitiveShape) renderShapeBlur(renderer, props, style, shape, x, y, w, h, cut);
 
         if (primitiveShape) {

@@ -37,10 +37,10 @@ public class Timer extends Module {
     //
     // TimerA uses a 50-sample sliding FIFO window (EvictingQueue).
     // Each add() evicts the OLDEST entry. The oldest entries are the SLOW packets
-    // from BEFORE the boost, not the fast packets we just added. This is the key:
+    // from before the boost, not the newly added fast packets:
     //
     //   After N fast packets, window = [S×(50-N), F×N]  (old slow | new fast)
-    //   When we send slow: evict oldest (OLD SLOW), not the fast ones.
+    //   Slow send: evict the oldest slow entry, not a fast entry.
     //   Fast packets only leave after (50-N) slow packets flush the old slow first.
     //   REAL tail = 50 slow packets (not N or 14 as the broken counter model said).
     //
@@ -54,7 +54,6 @@ public class Timer extends Module {
     // Energy bar = 1 - fastCount/kMax.  Full = all window slots slow. Empty = at kMax.
     private static final int VULCAN_WINDOW_SIZE = 50;
     private static final boolean[] vulcanWindow = new boolean[VULCAN_WINDOW_SIZE]; // true=fast
-    // legacy fields kept so onDisable compiles without changing other code paths
     @SuppressWarnings("unused")
     private static final float timerABuffer = 0f;
     @SuppressWarnings("unused")
@@ -206,8 +205,8 @@ public class Timer extends Module {
                 //   S=2.64 → kMax=3, avgDelay at k=2: 48.76ms, speed=1.025 < 1.05 ✓
                 //   S=2.0  → kMax=4, avgDelay at k=3: 48.5ms,  speed=1.031 < 1.05 ✓
                 //
-                // We boost when fastCount < kMax (strictly). After boost, fastCount rises
-                // to kMax and we stop. Fast entries leave the window only after (50-kMax)
+                // Boost while fastCount < kMax. After boosting, fastCount rises
+                // to kMax and boosting stops. Fast entries leave only after (50-kMax)
                 // subsequent slow packets flush the initial slow buffer out.
 
                 boolean held = isBoostHeld();

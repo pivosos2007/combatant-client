@@ -13,11 +13,7 @@ import xaero.map.mods.SupportXaeroMinimap;
 
 import java.util.List;
 
-/**
- * Kept as a no-op compatibility bridge for older mixin code paths.
- * @xwp markers are now inserted into Xaero's real waypoint sets by {@link XaeroWaypointRuntime},
- * otherwise World Map/minimap hover, open and delete logic cannot see them.
- */
+/** Compatibility entrypoint for command waypoint mixins. */
 public enum XaeroCommandWaypointCompat {
     ;
 

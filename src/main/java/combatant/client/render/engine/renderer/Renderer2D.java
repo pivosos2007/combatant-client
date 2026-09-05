@@ -75,18 +75,12 @@ public final class Renderer2D {
      */
     public static final FrameBlurCacheEntry FRAME_BLUR_CACHE = UiBlurResources.frameCache();
 
-    /**
-     * Compatibility mirror for older renderer integrations. New code should use
-     * {@link #isWorldGlassSourceReady()} instead of mutating this field.
-     */
+    /** @deprecated Use {@link #isWorldGlassSourceReady()}. */
     @Deprecated
     public static boolean uiGlassWorldSourceReady;
 
     public enum Deferred2DLayer {
-        /**
-         * Legacy safety bucket for 2D extracted outside a concrete HUD slot.
-         * Drained before vanilla GuiRenderer.render().
-         */
+        /** 2D work without a concrete HUD slot; drained before vanilla GuiRenderer.render(). */
         BEFORE_VANILLA_GUI,
 
         HUD_FIRST,
@@ -4439,7 +4433,7 @@ public final class Renderer2D {
         endAutoBatch(auto);
     }
 
-    // ---- Engine integration and compatibility bridge --------------------------
+    // ---- Engine integration -------------------------------------------------------
 
     public static boolean isBatching() {
         return UI_BATCHER.isActive();

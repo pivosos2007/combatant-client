@@ -188,7 +188,7 @@ public final class SodiumGlBackend implements CombatantRhi {
         if (commands == null || commands.isEmpty()) return;
         try {
             // One Blaze3D encoder owns the whole ordered RHI sequence. Individual render passes still
-            // end only on attachment/clear barriers, but we avoid recreating an encoder wrapper for
+            // end only on attachment/clear barriers without recreating an encoder wrapper for
             // every continuation segment and keep the backend submission shape compact.
             CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
             int cursor = 0;
@@ -469,12 +469,7 @@ public final class SodiumGlBackend implements CombatantRhi {
         try (RenderCostProfiler.Scope ignoredCost = RenderCostProfiler.rhiDraw(command.label)) {
             fullscreen.ensureInitialized();
 
-            /*
-             * Fullscreen pipelines still use the shared MeshData uniform block through their vertex shader
-             * (for example damage_tint.vert). The old MeshRenderer path always wrote
-             * this UBO before drawing. The RHI fullscreen path must do the same; otherwise the shader reads
-             * a stale/undefined projection and the NDC quad can be transformed into a tiny corner viewport.
-             */
+            /* Fullscreen vertex shaders using MeshData require a fresh projection UBO before draw. */
             MeshUniforms.update(
                     MeshRenderer.copyProjection(projectionScratch),
                     fullscreenModelView(),

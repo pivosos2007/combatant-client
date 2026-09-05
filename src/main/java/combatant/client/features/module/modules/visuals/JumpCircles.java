@@ -103,7 +103,7 @@ public class JumpCircles extends Module {
             // floor(Y) snaps slabs, stairs, snow layers, etc. to an integer
             // block height. On the first airborne tick the player Y has already
             // moved upward, so the last grounded bounding-box minY is the stable
-            // takeoff surface height we want for the circle.
+            // takeoff surface height used by the circle.
             if (nowGround) {
                 groundedFeetY.put(id, pl.getBoundingBox().minY);
             }

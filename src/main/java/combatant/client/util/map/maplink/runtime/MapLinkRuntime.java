@@ -39,10 +39,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Backend-only MapLink scheduler/provider owner.
- * Minecraft state is captured on the caller thread; worker code receives immutable values only.
- */
+/** Owns MapLink provider scheduling and immutable snapshot publication. */
 public final class MapLinkRuntime {
     private static final MapLinkRuntime INSTANCE = new MapLinkRuntime();
 
@@ -81,10 +78,7 @@ public final class MapLinkRuntime {
         resetForNoServer();
     }
 
-    /**
-     * Touches the runtime from an existing client call site. A legacy profile is used only when
-     * no persisted MapLink profile matches the current server.
-     */
+    /** Uses the fallback profile only when no persisted profile matches the current server. */
     public MapLinkSnapshot touch(Minecraft mc, MapLinkProfile legacyFallback) {
         Capture capture = capture(mc);
         if (capture == null || !config.enabled()) {
@@ -157,8 +151,7 @@ public final class MapLinkRuntime {
             long cadence = profile.refreshIntervalMs() > 0 ? profile.refreshIntervalMs() : result.suggestedPollIntervalMs();
 
             synchronized (lock) {
-                // A server/profile switch may happen while HTTP is in flight. Never publish a stale result
-                // into a newly reconciled runtime that happens to reuse the same profile id.
+                // Reject responses captured under a different server/profile generation.
                 if (!isCurrentLocked(runtime, profile)) {
                     runtime.inFlight = false;
                     return;

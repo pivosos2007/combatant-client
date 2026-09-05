@@ -47,7 +47,7 @@ public class RGBColorValue extends ConfigValue<String> implements ColorValue {
         if (s.startsWith("0x") || s.startsWith("0X")) s = s.substring(2);
         if (s.startsWith("#")) s = s.substring(1);
 
-        // s is now hex without prefix; allow 6 or 8 digits, drop alpha if present
+        // Prefix-free hex: accept 6 or 8 digits and discard alpha.
         if (s.length() == 8) {
             s = s.substring(2); // drop AA
         }

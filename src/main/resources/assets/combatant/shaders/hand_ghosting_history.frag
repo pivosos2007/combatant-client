@@ -86,9 +86,7 @@ void main() {
     float ny = fbm(p * 1.18 + vec2(7.3 - slowTime, 3.1 + slowTime * 0.37), octaves);
     vec2 flow = vec2(nx - 0.5, ny - 0.5);
 
-    // Only the already-created ghost trail is advected. The live hand silhouette is kept in G
-    // and never fed into the flow field directly. This prevents a stationary hand from seeding a
-    // new cloud every frame and fixes the old history slowly crawling across the screen forever.
+    // Advect trail history only; the live hand mask must not seed the flow field.
     float frameScale = min(dt * 60.0, 3.0);
     vec2 advectedUv = v_TexCoord - flow * historyTexel * swirl * (0.90 + quality * 0.32) * frameScale;
     float previousTrail = historyAt(advectedUv).r;
@@ -104,8 +102,7 @@ void main() {
     float decayedTrail = previousTrail * decay * turbulenceDecay;
     decayedTrail = max(decayedTrail - (1.0 - decay) * 0.025, 0.0);
 
-    // Create history only where last frame's hand existed and the current frame no longer does.
-    // This is the actual motion edge; a static hand produces zero new trail.
+    // History is generated only on the disappearing edge of the hand mask.
     float newlyExposed = max(previousCurrent - current, 0.0);
     newlyExposed = smoothstep(0.015, 0.20, newlyExposed);
 

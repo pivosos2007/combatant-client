@@ -23,9 +23,7 @@ import java.util.RandomAccess;
  * own submit redirect and extended mesh path. HMI consumes the metadata later, when vanilla
  * {@code ItemFeatureRenderer} emits each baked quad.</p>
  *
- * <p>Quad lookup and transformed poses are cached. The old implementation linearly searched the
- * entire quad list and rebuilt a temporary {@link PoseStack} on every main/outline/foil lookup,
- * which turned model animation into an avoidable O(n^2) hot path.</p>
+ * <p>Quad indices and transformed poses are cached for O(1) lookup during main/outline/foil rendering.</p>
  */
 public final class HmiModelQuadList extends AbstractList<BakedQuad> implements RandomAccess {
     private final List<BakedQuad> delegate;
@@ -41,8 +39,7 @@ public final class HmiModelQuadList extends AbstractList<BakedQuad> implements R
         this.sourcePoses = new PoseStack.Pose[delegate.size()];
         this.transformedPoses = new PoseStack.Pose[delegate.size()];
 
-        // Match the previous reference lookup semantics: if an identical quad object occurs more
-        // than once, the first index wins.
+        // Identical quad references resolve to their first index.
         for (int i = 0; i < delegate.size(); i++) {
             indices.putIfAbsent(delegate.get(i), i);
         }

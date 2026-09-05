@@ -172,7 +172,6 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
                 const __rig_unpack_context = packed => {
                   const useTicks = __rig_number(packed?.[32]);
                   return {
-                    // Compatibility bridge retained for existing resource-pack addons.
                     playerId: String(packed?.[0] ?? ''),
                     age: __rig_number(packed?.[1]), tickDelta: __rig_number(packed?.[2]), deltaSeconds: __rig_number(packed?.[3]),
                     yaw: __rig_number(packed?.[4]), pitch: __rig_number(packed?.[5]), swing: __rig_number(packed?.[6]),

@@ -101,10 +101,7 @@ public enum DebugLog {
         log(LogLevel.ERROR, "[ERROR] ", message, args);
     }
 
-    /**
-     * Compatibility overload for old call sites that pass the exception before
-     * printf-style formatting arguments.
-     */
+    /** Throwable-first formatting overload. */
     public static void error(String message, Throwable throwable, Object... args) {
         Object[] withThrowable = appendThrowable(args, throwable);
         log(LogLevel.ERROR, "[ERROR] ", message, withThrowable);

@@ -68,7 +68,7 @@ public enum StatusEffectHeuristics {
         boolean priority = isPriority(nearest.idx); // e.g. strength/resistance
         boolean ambiguous = nearest.secondDiff - nearest.diff < AMBIGUITY_DELTA;
 
-        // Prefer fire resistance when it's one of the ambiguous pair so we don't mislabel it as strength.
+        // Prefer fire resistance in the ambiguous pair to avoid misclassification as strength.
         int chosenIdx = nearest.idx;
         int chosenDiff = nearest.diff;
         // Strength vs fire-resistance: both share orange/red; bias using channel dominance.
@@ -143,7 +143,7 @@ public enum StatusEffectHeuristics {
         if (!StatusEffectInference.isParticleNearPlayer(target, pos)) return;
 
         long now = System.currentTimeMillis();
-        // Always refresh last seen so we don't drop while particles keep coming.
+        // Refresh last-seen time while matching particles continue.
         markSeen(target.getId(), guessed, now);
         boolean has = StatusEffectTracker.has(target.getId(), guessed);
         boolean hideCurrent = StatusEffectTracker.shouldHideDuration(target.getId(), guessed);
@@ -209,7 +209,7 @@ public enum StatusEffectHeuristics {
     }
 
     /**
-     * Called from tracker tick to drop heuristic effects if we stopped seeing particles.
+     * Drops heuristic effects after their particle evidence expires.
      */
     public static void pruneStale(long nowMs) {
         if (LAST_SEEN.isEmpty()) return;

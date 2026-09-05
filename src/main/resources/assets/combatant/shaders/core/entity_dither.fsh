@@ -77,8 +77,7 @@ void main() {
         shadeColor.g = float(shadeGByte & 254) / 255.0;
         shadeColor.b = float(shadeBByte & 254) / 255.0;
 
-        // Prefer real fragment alpha. The old coverage discard made entities look like
-        // punctured meshes instead of a smooth whole-model texture-alpha fade.
+        // Use fragment alpha for a continuous whole-model fade.
         shadeColor.a = fadeAlpha;
     }
 

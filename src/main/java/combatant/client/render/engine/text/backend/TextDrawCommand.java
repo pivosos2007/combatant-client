@@ -43,9 +43,7 @@ public record TextDrawCommand(TextRenderer renderer,
         return new Builder(text);
     }
 
-    /**
-     * Compatibility accessor for old code. Placement is the source of truth.
-     */
+    /** @deprecated Use placement; it is the authoritative render domain. */
     @Deprecated
     public TextRenderDomain domain() {
         return placement != null ? placement.legacyDomain() : TextRenderDomain.UI;

@@ -11,7 +11,7 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Owner for temporal/history resources used by motion blur and future temporal effects.
+ * Owner for temporal/history resources used by post-process effects.
  */
 public final class HistoryBufferManager {
     private @Nullable GpuTextureView previousColor;

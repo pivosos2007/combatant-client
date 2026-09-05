@@ -357,10 +357,7 @@ void main() {
     mouseGlint *= mouseGlint;
     material.rgb += hi * mouseGlint * 0.075 * material.a;
 
-    // Cheap row-rim lighting. The previous version reconstructed a rounded-box
-    // normal with four extra SDF evaluations for every hover pixel. For this
-    // shallow module-row surface, a vertical light bias is visually equivalent
-    // and substantially cheaper.
+    // Vertical light bias approximates row-rim lighting without extra SDF evaluations.
     float topLight = 1.0 - uv.y;
     float insideDistance = max(-shapeDistance, 0.0);
     float edgeGradient = 1.0 - saturate(insideDistance / max(radius * 0.92, 2.5));

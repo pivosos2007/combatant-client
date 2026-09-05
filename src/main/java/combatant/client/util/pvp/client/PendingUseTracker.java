@@ -28,7 +28,6 @@ public class PendingUseTracker {
             slot += 36;
         }
         pending.put(slot, new Pending(item, slot, count, now));
-        //System.out.println("[Combatant][DEBUG]   Pending started for " + item + " (server slot=" + slot + ")");
     }
 
     /**
@@ -40,13 +39,11 @@ public class PendingUseTracker {
 
         if (newCount <= p.count) {
             pending.remove(slot);
-            //System.out.println("[Combatant][DEBUG] Confirmed use (slot=" + slot +", old=" + p.count + ", new=" + newCount + ")");
             return p;
         }
 
         //  сервер восстановил стак (откат)
         if (newCount > p.count) {
-            //System.out.println("[Combatant][DEBUG] Rejected (slot=" + slot +", old=" + p.count + ", new=" + newCount + ")");
             pending.remove(slot);
         }
 
