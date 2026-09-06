@@ -14,7 +14,8 @@ public record MapGridSpec(int chunkBlockSpan,
                           int chunkLineArgb,
                           int regionLineArgb,
                           int coordinateLabelArgb,
-                          int maxLines) {
+                          int maxLines,
+                          boolean enabled) {
     public static final MapGridSpec DEFAULT = new MapGridSpec(
             16,
             32,
@@ -22,8 +23,23 @@ public record MapGridSpec(int chunkBlockSpan,
             0x264A4A55,
             0x705F6070,
             0xB8E6E6EC,
-            4096
+            4096,
+            true
     );
+    public static final MapGridSpec DISABLED = new MapGridSpec(
+            16, 32, 5.0, 0, 0, 0, 1, false
+    );
+
+    public MapGridSpec(int chunkBlockSpan,
+                       int regionChunkSpan,
+                       double minimumChunkSpacingPixels,
+                       int chunkLineArgb,
+                       int regionLineArgb,
+                       int coordinateLabelArgb,
+                       int maxLines) {
+        this(chunkBlockSpan, regionChunkSpan, minimumChunkSpacingPixels,
+                chunkLineArgb, regionLineArgb, coordinateLabelArgb, maxLines, true);
+    }
 
     public MapGridSpec {
         if (chunkBlockSpan <= 0 || regionChunkSpan <= 0 || maxLines <= 0) {

@@ -33,30 +33,43 @@ public final class MapTileUploadQueue {
                                           long revision,
                                           MapTileSlot slot,
                                           MapTilePixels pixels) {
-        if (key == null || slot == null || pixels == null) throw new NullPointerException();
-        if (pixels.byteSize() > maxPendingBytes) {
+        if (pixels == null) throw new NullPointerException("pixels");
+        return offer(new Upload(key, revision, slot, pixels, null));
+    }
+
+    public synchronized OfferResult offer(MapTileResidencyKey key,
+                                          long revision,
+                                          MapTileSlot slot,
+                                          MapTileGpuCopy gpuCopy) {
+        if (gpuCopy == null) throw new NullPointerException("gpuCopy");
+        return offer(new Upload(key, revision, slot, null, gpuCopy));
+    }
+
+    private OfferResult offer(Upload upload) {
+        if (upload.key() == null || upload.slot() == null) throw new NullPointerException();
+        if (upload.byteSize() > maxPendingBytes) {
             dropped++;
             return OfferResult.REJECTED_TOO_LARGE;
         }
-        Upload previous = pending.get(key);
-        if (previous != null && previous.revision() > revision) {
+        Upload previous = pending.get(upload.key());
+        if (previous != null && previous.revision() > upload.revision()) {
             return OfferResult.IGNORED_STALE;
         }
         if (previous != null) {
-            pending.remove(key);
-            pendingBytes -= previous.pixels().byteSize();
+            pending.remove(upload.key());
+            pendingBytes -= previous.byteSize();
         }
 
         while (!pending.isEmpty()
-                && (pending.size() >= maxPendingUploads || pendingBytes + pixels.byteSize() > maxPendingBytes)) {
+                && (pending.size() >= maxPendingUploads || pendingBytes + upload.byteSize() > maxPendingBytes)) {
             Iterator<Map.Entry<MapTileResidencyKey, Upload>> iterator = pending.entrySet().iterator();
             Upload removed = iterator.next().getValue();
             iterator.remove();
-            pendingBytes -= removed.pixels().byteSize();
+            pendingBytes -= removed.byteSize();
             dropped++;
         }
-        pending.put(key, new Upload(key, revision, slot, pixels));
-        pendingBytes += pixels.byteSize();
+        pending.put(upload.key(), upload);
+        pendingBytes += upload.byteSize();
         return previous == null ? OfferResult.ACCEPTED : OfferResult.COALESCED;
     }
 
@@ -67,11 +80,11 @@ public final class MapTileUploadQueue {
         long bytes = 0L;
         while (iterator.hasNext() && result.size() < maxUploads) {
             Upload upload = iterator.next().getValue();
-            if (!result.isEmpty() && bytes + upload.pixels().byteSize() > maxBytes) break;
-            if (upload.pixels().byteSize() > maxBytes) break;
+            if (!result.isEmpty() && bytes + upload.byteSize() > maxBytes) break;
+            if (upload.byteSize() > maxBytes) break;
             result.add(upload);
-            bytes += upload.pixels().byteSize();
-            pendingBytes -= upload.pixels().byteSize();
+            bytes += upload.byteSize();
+            pendingBytes -= upload.byteSize();
             iterator.remove();
         }
         return List.copyOf(result);
@@ -91,7 +104,18 @@ public final class MapTileUploadQueue {
     public record Upload(MapTileResidencyKey key,
                          long revision,
                          MapTileSlot slot,
-                         MapTilePixels pixels) {
+                         MapTilePixels pixels,
+                         MapTileGpuCopy gpuCopy) {
+        public Upload {
+            if (key == null || slot == null) throw new NullPointerException();
+            if ((pixels == null) == (gpuCopy == null)) {
+                throw new IllegalArgumentException("Exactly one tile upload payload is required.");
+            }
+        }
+
+        public int byteSize() {
+            return pixels != null ? pixels.byteSize() : gpuCopy.byteSize();
+        }
     }
 
     public record Stats(int pendingUploads, long pendingBytes, long dropped) {

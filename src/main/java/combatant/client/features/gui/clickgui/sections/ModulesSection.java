@@ -9,6 +9,7 @@ package combatant.client.features.gui.clickgui.sections;
 
 import combatant.client.features.gui.clickgui.layout.screen.modules.ModulesMenuScreen;
 
+@ClickGuiSectionInfo(id = "combatant:modules", label = "Modules", order = 0)
 public final class ModulesSection implements ClickGuiSection {
     private final ModulesMenuScreen screen = new ModulesMenuScreen();
 
@@ -67,4 +68,3 @@ public final class ModulesSection implements ClickGuiSection {
         return screen.isVisible();
     }
 }
-

@@ -32,13 +32,27 @@ public final class UiDirectTexturedRenderer {
             String samplerName,
             GpuTextureView samplerView,
             GpuSampler sampler) {
+        submit(mesh, CombatantRenderPipelines.UI_TEXTURED, samplerName, samplerView, sampler);
+    }
+
+    public static void submit(
+            MeshBuilder mesh,
+            RenderPipeline pipeline,
+            String samplerName,
+            GpuTextureView samplerView,
+            GpuSampler sampler) {
         try {
-            if (mesh == null || samplerView == null || sampler == null) return;
+            if (mesh == null || pipeline == null || samplerView == null || sampler == null) return;
             if (mesh.isBuilding()) mesh.end();
             if (mesh.getIndicesCount() <= 0) return;
 
             if (UiDeferredScheduler.shouldDefer()) {
-                MeshBuilder copy = copyMesh(mesh, CombatantRenderPipelines.UI_TEXTURED);
+                OrderedUiBatcher batcher = Renderer2D.UI_BATCHER;
+                if (batcher.isActive() && (batcher.hasPendingWork() || UiRenderDispatcher.hasPendingCommands())) {
+                    Renderer2D.BATCH_STATS.noteFlushReason(Renderer2D.FlushReason.TEXTURED_DIRECT);
+                    batcher.flush(false);
+                }
+                MeshBuilder copy = copyMesh(mesh, pipeline);
                 if (copy != null) {
                     UiDeferredScheduler.enqueue(new DeferredTexturedSubmit(
                             UiDeferredScheduler.layerForCurrentPhase(false),
@@ -48,6 +62,7 @@ public final class UiDirectTexturedRenderer {
                             samplerName,
                             samplerView,
                             sampler,
+                            pipeline,
                             copy
                     ));
                 }
@@ -67,7 +82,7 @@ public final class UiDirectTexturedRenderer {
             UiRenderDispatcher.submitImmediate(
                     "Renderer2D.TEXTURE",
                     1,
-                    (context, rhi) -> draw(mesh, resolvedSamplerName, samplerView, sampler, clip)
+                    (context, rhi) -> draw(mesh, pipeline, resolvedSamplerName, samplerView, sampler, clip)
             );
         } finally {
             UiRenderDispatcher.flushLayer();
@@ -75,6 +90,7 @@ public final class UiDirectTexturedRenderer {
     }
 
     private static void draw(MeshBuilder mesh,
+                             RenderPipeline requestedPipeline,
                              String samplerName,
                              GpuTextureView samplerView,
                              GpuSampler sampler,
@@ -84,8 +100,9 @@ public final class UiDirectTexturedRenderer {
         RenderTarget framebuffer = minecraft.gameRenderer.mainRenderTarget();
         if (framebuffer == null) return;
 
-        RenderPipeline pipeline = CombatantRenderPipelines.UI_TEXTURED;
-        if (clip.usesAnalyticPipeline()) {
+        RenderPipeline pipeline = requestedPipeline;
+        boolean analyticClip = pipeline == CombatantRenderPipelines.UI_TEXTURED && clip.usesAnalyticPipeline();
+        if (analyticClip) {
             pipeline = CombatantRenderPipelines.analyticClipTexturedPipeline(pipeline);
         }
         MeshRenderer draw = MeshRenderer.begin()
@@ -93,7 +110,7 @@ public final class UiDirectTexturedRenderer {
                 .pipeline(pipeline)
                 .mesh(mesh)
                 .sampler(samplerName, samplerView, sampler);
-        if (clip.usesAnalyticPipeline()) {
+        if (analyticClip) {
             draw.uniform("UIClip", UiClipUniforms.write(clip));
         }
         draw.end();

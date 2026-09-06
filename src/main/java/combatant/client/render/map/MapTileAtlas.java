@@ -81,6 +81,44 @@ public final class MapTileAtlas implements AutoCloseable {
         }
     }
 
+    /** Copies a provider tile into Combatant-owned atlas memory, including duplicated edge gutters. */
+    public synchronized void copy(MapTileSlot slot, MapTileGpuCopy copy) {
+        validateSlot(slot);
+        if (copy.width() != tileSize || copy.height() != tileSize) {
+            throw new IllegalArgumentException("GPU tile payload does not match atlas tile size.");
+        }
+        Page page = page(slot.page());
+        if (copy.source().getFormat() != page.texture.getFormat()) {
+            throw new IllegalArgumentException("GPU tile format does not match atlas format.");
+        }
+        int column = slot.slot() % columns;
+        int row = slot.slot() / columns;
+        int targetX = column * stride + GUTTER;
+        int targetY = row * stride + GUTTER;
+        var encoder = RenderSystem.getDevice().createCommandEncoder();
+
+        copyRegion(encoder, copy.source(), page.texture,
+                copy.sourceX(), copy.sourceY(), targetX, targetY, tileSize, tileSize);
+        copyRegion(encoder, copy.source(), page.texture,
+                copy.sourceX(), copy.sourceY(), targetX, targetY - 1, tileSize, 1);
+        copyRegion(encoder, copy.source(), page.texture,
+                copy.sourceX(), copy.sourceY() + tileSize - 1, targetX, targetY + tileSize, tileSize, 1);
+        copyRegion(encoder, copy.source(), page.texture,
+                copy.sourceX(), copy.sourceY(), targetX - 1, targetY, 1, tileSize);
+        copyRegion(encoder, copy.source(), page.texture,
+                copy.sourceX() + tileSize - 1, copy.sourceY(), targetX + tileSize, targetY, 1, tileSize);
+        copyRegion(encoder, copy.source(), page.texture,
+                copy.sourceX(), copy.sourceY(), targetX - 1, targetY - 1, 1, 1);
+        copyRegion(encoder, copy.source(), page.texture,
+                copy.sourceX() + tileSize - 1, copy.sourceY(), targetX + tileSize, targetY - 1, 1, 1);
+        copyRegion(encoder, copy.source(), page.texture,
+                copy.sourceX(), copy.sourceY() + tileSize - 1, targetX - 1, targetY + tileSize, 1, 1);
+        copyRegion(encoder, copy.source(), page.texture,
+                copy.sourceX() + tileSize - 1, copy.sourceY() + tileSize - 1,
+                targetX + tileSize, targetY + tileSize, 1, 1);
+        uploadedGenerations[slot.page()][slot.slot()] = slot.generation();
+    }
+
     public synchronized boolean isUploaded(MapTileSlot slot) {
         validateSlot(slot);
         return uploadedGenerations[slot.page()][slot.slot()] == slot.generation();
@@ -132,7 +170,7 @@ public final class MapTileAtlas implements AutoCloseable {
                 AddressMode.CLAMP_TO_EDGE,
                 AddressMode.CLAMP_TO_EDGE,
                 FilterMode.LINEAR,
-                FilterMode.LINEAR,
+                FilterMode.NEAREST,
                 false
         );
         Page created = new Page(texture, view, sampler);
@@ -145,6 +183,18 @@ public final class MapTileAtlas implements AutoCloseable {
         if (slot.page() >= pages.length || slot.slot() >= pageCapacity()) {
             throw new IllegalArgumentException("Slot does not belong to this atlas: " + slot);
         }
+    }
+
+    private static void copyRegion(com.mojang.blaze3d.systems.CommandEncoder encoder,
+                                   GpuTexture source,
+                                   GpuTexture target,
+                                   int sourceX,
+                                   int sourceY,
+                                   int targetX,
+                                   int targetY,
+                                   int width,
+                                   int height) {
+        encoder.copyTextureToTexture(source, target, 0, targetX, targetY, sourceX, sourceY, width, height);
     }
 
     private byte[] padWithDuplicatedEdges(byte[] source) {

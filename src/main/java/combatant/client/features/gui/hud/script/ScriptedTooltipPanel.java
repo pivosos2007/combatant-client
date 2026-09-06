@@ -361,7 +361,9 @@ public final class ScriptedTooltipPanel {
 
     private static float textWidth(TextRenderer renderer, String text) {
         if (renderer == null || text == null || text.isEmpty()) return 0.0f;
-        return (float) renderer.getWidth(text, false);
+        // Tooltip rows are rendered with text shadow. Use the same metric for intrinsic
+        // width and wrapping so the prepared width cannot be smaller than the drawn run.
+        return (float) renderer.getWidth(text, true);
     }
 
     /**

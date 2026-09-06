@@ -7,6 +7,7 @@
 
 package combatant.client.render.engine.renderer.ui;
 
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
@@ -24,7 +25,8 @@ import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 
 public record DeferredTexturedSubmit(Deferred2DLayer layer, ViewportContext viewport,
                                     UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot, String samplerName,
-                                    GpuTextureView samplerView, GpuSampler sampler, MeshBuilder mesh) implements Deferred2DSubmit {
+                                    GpuTextureView samplerView, GpuSampler sampler, RenderPipeline pipeline,
+                                    MeshBuilder mesh) implements Deferred2DSubmit {
     @Override
     public void submit() {
         if (mesh == null || samplerView == null || sampler == null) return;
@@ -33,12 +35,13 @@ public record DeferredTexturedSubmit(Deferred2DLayer layer, ViewportContext view
         UiRenderDispatcher.submitImmediate(
                 "Renderer2D.TEXTURE.deferred",
                 1,
-                (context, rhi) -> draw(mesh, resolvedSamplerName, samplerView, sampler, clip)
+                (context, rhi) -> draw(mesh, pipeline, resolvedSamplerName, samplerView, sampler, clip)
         );
         Renderer2D.flushUiLayer();
     }
 
     private static void draw(MeshBuilder mesh,
+                             RenderPipeline requestedPipeline,
                              String samplerName,
                              GpuTextureView samplerView,
                              GpuSampler sampler,
@@ -48,16 +51,19 @@ public record DeferredTexturedSubmit(Deferred2DLayer layer, ViewportContext view
         RenderTarget fb = mc.gameRenderer.mainRenderTarget();
         if (fb == null) return;
 
-        com.mojang.blaze3d.pipeline.RenderPipeline pipeline = CombatantRenderPipelines.UI_TEXTURED;
-        if (clip.usesAnalyticPipeline()) {
-            pipeline = CombatantRenderPipelines.analyticClipTexturedPipeline(pipeline);
+        RenderPipeline resolvedPipeline = requestedPipeline != null
+                ? requestedPipeline
+                : CombatantRenderPipelines.UI_TEXTURED;
+        boolean analyticClip = resolvedPipeline == CombatantRenderPipelines.UI_TEXTURED && clip.usesAnalyticPipeline();
+        if (analyticClip) {
+            resolvedPipeline = CombatantRenderPipelines.analyticClipTexturedPipeline(resolvedPipeline);
         }
         MeshRenderer draw = MeshRenderer.begin()
                 .attachments(UiMsaaClipLayer.currentColorAttachment(fb.getColorTextureView()), null)
-                .pipeline(pipeline)
+                .pipeline(resolvedPipeline)
                 .mesh(mesh)
                 .sampler(samplerName, samplerView, sampler);
-        if (clip.usesAnalyticPipeline()) {
+        if (analyticClip) {
             draw.uniform("UIClip", UiClipUniforms.write(clip));
         }
         draw.end();

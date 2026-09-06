@@ -13,6 +13,7 @@ import combatant.client.features.gui.clickgui.sections.settings.SettingsTabRunti
 import java.nio.file.Path;
 import java.util.List;
 
+@ClickGuiSectionInfo(id = "combatant:settings", label = "Settings", order = 100)
 public final class SettingsSection implements ClickGuiSection {
     private float x;
     private float y;

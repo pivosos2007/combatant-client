@@ -92,6 +92,8 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_RIG_ENTITY_TRANSLUCENT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/rig_entity_translucent.frag");
     public static final Identifier SHADER_GUI_TEXTURE_LOOKUP_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/gui_texture_lookup.frag");
     public static final Identifier SHADER_POS_TEX_COLOR_TINT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_tint.frag");
+    public static final Identifier SHADER_MAP_TILE_LIGHT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/map_tile_light.frag");
+    public static final Identifier SHADER_MAP_TILE_OPAQUE_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/map_tile_opaque.frag");
     public static final Identifier SHADER_POS_TEX_COLOR_SKY_FOG_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_sky_fog.vert");
     public static final Identifier SHADER_POS_TEX_COLOR_SKY_FOG_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_sky_fog.frag");
     public static final Identifier SHADER_POS_TEX_COLOR_SKY_FOG_ADDITIVE_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_sky_fog_additive.frag");
@@ -812,6 +814,30 @@ public enum CombatantRenderPipelines {
             .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
             .withVertexShader(SHADER_POS_TEX_COLOR_VERT)
             .withFragmentShader(SHADER_POS_TEX_COLOR_FRAG)
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
+    public static final RenderPipeline UI_MAP_TILE_LIGHT = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_map_tile_light"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_POS_TEX_COLOR_VERT)
+            .withFragmentShader(SHADER_MAP_TILE_LIGHT_FRAG)
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build()
+    );
+    public static final RenderPipeline UI_MAP_TILE_OPAQUE = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_map_tile_opaque"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_POS_TEX_COLOR_VERT)
+            .withFragmentShader(SHADER_MAP_TILE_OPAQUE_FRAG)
             .withSampler("u_Texture")
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)

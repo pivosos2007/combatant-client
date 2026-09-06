@@ -43,3 +43,7 @@ export_cache/
 /src/main/resources/javet/natives/libjavet-v8-windows-x86_64.v.5.0.9.dll
 /RELEASE_CHECKLIST.md
 /.claude/
+/gradle/.idea/.gitignore
+/gradle/.idea/gradle.xml
+/gradle/.idea/misc.xml
+/gradle/.idea/vcs.xml

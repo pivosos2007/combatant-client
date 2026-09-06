@@ -25,7 +25,7 @@ public final class MapOverlayProjector {
         List<MapOverlayDrawList.Text> labels = new ArrayList<>();
         List<MapHitIndex.Entry> hits = new ArrayList<>();
 
-        appendGrid(viewport, grid, lines, labels);
+        if (grid.enabled()) appendGrid(viewport, grid, lines, labels);
         for (MapUncertainty uncertainty : data.uncertainties()) {
             MapScreenPoint center = viewport.project(uncertainty.centerX(), uncertainty.centerZ());
             double radiusX = uncertainty.radiusX() * viewport.pixelsPerBlock();

@@ -1,11 +1,3 @@
-// -----------------------------------------------------------------------------
-// Release distributions / Phase 10
-// -----------------------------------------------------------------------------
-// `remapJar` remains the canonical bytecode artifact. Release variants are
-// deterministic post-remap distributions: the full artifact keeps the universal
-// resource set, while slim artifacts remove foreign-platform natives/backends and
-// optional font coverage before embedding a capability manifest.
-
 def combatantReleaseDir = layout.buildDirectory.dir("release")
 def combatantReleaseReportDir = layout.buildDirectory.dir("reports/combatant-release")
 def combatantReleaseFontProfile = providers.gradleProperty("combatantReleaseFontProfile")
@@ -45,16 +37,7 @@ def combatantJavetModuleByTarget = [
         "macos-arm64"   : "javet-v8-macos-arm64"
 ]
 
-def combatantFontPruneCandidates = new LinkedHashSet<String>([
-        "mainmenuicons.ttf",
-        "guiicons.ttf",
-        "richicons.ttf",
-        "iconsnur.ttf",
-        "icons.ttf",
-        "weather_icons.ttf",
-        "mediaplayer.ttf",
-        "vanilla_symbols.ttf"
-])
+def combatantBuiltinFontRoot = "assets/combatant/font/"
 
 def combatantBaseFontOptionalPrefixes = [
         "assets/combatant/font/coverage/cjk/",
@@ -197,7 +180,7 @@ def combatantValidateAtlas = { java.util.zip.ZipFile zip, String fontFile ->
             requiredGlyphsSha256: requiredGlyphsSha256,
             metadataSha256   : combatantSha256(jsonBytes),
             textureSha256    : combatantSha256(pngBytes),
-            validatorVersion : 1
+            validatorVersion : 2
     ]
 }
 
@@ -205,10 +188,10 @@ def combatantFontSnapshotFile = layout.buildDirectory.file("generated/release/fo
 def combatantPrepareFontSnapshot = tasks.register('prepareReleaseFontSnapshot') {
     group = 'release'
     description = 'Validates releasable MSDF font atlases and writes a content-addressed pruning snapshot.'
-    dependsOn tasks.named('remapJar')
-    inputs.file(tasks.named('remapJar').flatMap { it.archiveFile })
-    inputs.property('validatorVersion', 1)
-    inputs.property('generatorContract', 'combatant-msdf-v1')
+    dependsOn tasks.named('jar')
+    inputs.file(tasks.named('jar').flatMap { it.archiveFile })
+    inputs.property('validatorVersion', 2)
+    inputs.property('generatorContract', 'combatant-msdf-v2')
     def generatorScript = rootProject.file('tools/msdf/GenerateFontMsdf.ps1')
     if (generatorScript.exists()) {
         inputs.file(generatorScript)
@@ -217,7 +200,7 @@ def combatantPrepareFontSnapshot = tasks.register('prepareReleaseFontSnapshot') 
     outputs.cacheIf { true }
 
     doLast {
-        File inputJar = tasks.named('remapJar').get().archiveFile.get().asFile
+        File inputJar = tasks.named('jar').get().archiveFile.get().asFile
         File outputFile = combatantFontSnapshotFile.get().asFile
         outputFile.parentFile.mkdirs()
 
@@ -228,9 +211,14 @@ def combatantPrepareFontSnapshot = tasks.register('prepareReleaseFontSnapshot') 
             inputZip.entries().each { entry ->
                 if (!entry.isDirectory()) entryNames.add(entry.name)
             }
-            combatantFontPruneCandidates.each { fontFile ->
-                String sourceName = "assets/combatant/font/${fontFile}"
-                if (!entryNames.contains(sourceName)) return
+            entryNames.findAll { name ->
+                if (!name.startsWith(combatantBuiltinFontRoot)) return false
+                String relative = name.substring(combatantBuiltinFontRoot.length())
+                if (relative.contains('/')) return false
+                String lower = relative.toLowerCase(java.util.Locale.ROOT)
+                return lower.endsWith('.ttf') || lower.endsWith('.otf')
+            }.sort().each { sourceName ->
+                String fontFile = sourceName.substring(combatantBuiltinFontRoot.length())
                 def atlasSnapshot = combatantValidateAtlas(inputZip, fontFile)
                 if (atlasSnapshot != null) {
                     atlasSnapshot.sourceSha256 = combatantSha256(combatantZipBytes(inputZip, sourceName))
@@ -241,8 +229,8 @@ def combatantPrepareFontSnapshot = tasks.register('prepareReleaseFontSnapshot') 
         }
 
         def snapshot = new LinkedHashMap<String, Object>()
-        snapshot.validatorVersion = 1
-        snapshot.generatorContract = 'combatant-msdf-v1'
+        snapshot.validatorVersion = 2
+        snapshot.generatorContract = 'combatant-msdf-v2'
         snapshot.generatorProfile = 'icons-symbols-default'
         snapshot.generatorScriptSha256 = generatorScript.isFile() ? combatantFileSha256(generatorScript) : ''
         snapshot.inputJarSha256 = combatantFileSha256(inputJar)
@@ -328,8 +316,8 @@ def registerCombatantReleaseProfile = { String taskName, Map spec ->
     def taskProvider = tasks.register(taskName) {
         group = 'release'
         description = "Builds Combatant release distribution '${spec.profile}' (${spec.target}, fonts=${spec.fontProfile})."
-        dependsOn tasks.named('remapJar'), combatantPrepareFontSnapshot
-        inputs.file(tasks.named('remapJar').flatMap { it.archiveFile })
+        dependsOn tasks.named('jar'), combatantPrepareFontSnapshot
+        inputs.file(tasks.named('jar').flatMap { it.archiveFile })
         inputs.file(combatantFontSnapshotFile)
         inputs.files(configurations.javetNativeBundle)
         inputs.files(configurations.linuxBundledLibrary)
@@ -357,7 +345,7 @@ def registerCombatantReleaseProfile = { String taskName, Map spec ->
                 throw new GradleException("Unsupported Combatant release target '${spec.target}'")
             }
 
-            File inputJar = tasks.named('remapJar').get().archiveFile.get().asFile
+            File inputJar = tasks.named('jar').get().archiveFile.get().asFile
             File outputDir = combatantReleaseDir.get().asFile
             File reportDir = combatantReleaseReportDir.get().asFile
             outputDir.mkdirs()
@@ -533,9 +521,9 @@ def registerCombatantReleaseProfile = { String taskName, Map spec ->
                                 && combatantBaseFontOptionalPrefixes.any { name.startsWith(it) }) {
                             drop = true
                         }
-                        if (!drop && name.startsWith('assets/combatant/font/')) {
-                            String leaf = name.tokenize('/').last()
-                            if (prunedSourceFonts.contains(leaf)) drop = true
+                        if (!drop && name.startsWith(combatantBuiltinFontRoot)) {
+                            String relative = name.substring(combatantBuiltinFontRoot.length())
+                            if (!relative.contains('/') && prunedSourceFonts.contains(relative)) drop = true
                         }
 
                         if (drop) {

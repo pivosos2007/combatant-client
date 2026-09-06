@@ -22,8 +22,6 @@ import combatant.client.features.gui.clickgui.editor.ClickGuiTextEditorState;
 import combatant.client.features.gui.clickgui.picker.ClickGuiPickerState;
 import combatant.client.features.gui.clickgui.protocol.CombatProtocolHeuristicsEditorState;
 import combatant.client.features.gui.clickgui.sections.ClickGuiSection;
-import combatant.client.features.gui.clickgui.sections.ModulesSection;
-import combatant.client.features.gui.clickgui.sections.SettingsSection;
 import combatant.client.features.gui.clickgui.sections.settings.SettingsTabRuntime;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.gui.hud.nondraggable.impl.DynamicIsland;
@@ -59,8 +57,6 @@ public enum ClickGuiRenderer {
     ;
 
     private static final Minecraft MC = Minecraft.getInstance();
-    private static final ModulesSection MODULES_SECTION = new ModulesSection();
-    private static final SettingsSection SETTINGS_SECTION = new SettingsSection();
     private static final String MODULES_TAB_ID = "combatant:modules";
     private static final String SETTINGS_TAB_ID = "combatant:settings";
     private static final float TAB_HEIGHT = 34f;
@@ -647,16 +643,15 @@ public enum ClickGuiRenderer {
                     return;
                 }
 
-                try (ProfilerPhase.Scope tabsScope = ProfilerPhase.scope("2d:clickgui:tabs");
-                     RenderProfiler2D.Section ignoredTabs = RenderProfiler2D.section("tabs");
-                     TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("2d:clickgui:tabs")) {
-                    drawTabs();
-                }
-
                 try (ProfilerPhase.Scope sectionScope = ProfilerPhase.scope("2d:clickgui:section");
                      RenderProfiler2D.Section ignoredSection = RenderProfiler2D.section("section");
                      TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("2d:clickgui:section")) {
                     getActiveSection().render(mouseX, mouseY);
+                }
+                try (ProfilerPhase.Scope tabsScope = ProfilerPhase.scope("2d:clickgui:tabs");
+                     RenderProfiler2D.Section ignoredTabs = RenderProfiler2D.section("tabs");
+                     TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("2d:clickgui:tabs")) {
+                    drawTabs();
                 }
                 try (ProfilerPhase.Scope textEditorScope = ProfilerPhase.scope("2d:clickgui:text_editor");
                      RenderProfiler2D.Section ignoredTextEditor = RenderProfiler2D.section("text_editor");
@@ -728,15 +723,17 @@ public enum ClickGuiRenderer {
     public static void renderModulesPreview(float x, float y, float w, float h) {
         if (renderer == null) return;
         init();
+        ClickGuiSection modulesSection = sectionById(MODULES_TAB_ID);
+        if (modulesSection == null) return;
         float pad = 8f;
         float areaX = x + pad;
         float areaY = y + pad;
         float areaW = Math.max(1f, w - pad * 2f);
         float areaH = Math.max(1f, h - pad * 2f);
-        MODULES_SECTION.layout(areaX, areaY, areaW, areaH);
+        modulesSection.layout(areaX, areaY, areaW, areaH);
         float mx = -10_000f;
         float my = -10_000f;
-        MODULES_SECTION.render(mx, my);
+        modulesSection.render(mx, my);
     }
 
     private static void layout(int fbw, int fbh) {
@@ -750,7 +747,11 @@ public enum ClickGuiRenderer {
         modulesAreaW = Math.max(1f, fbw - contentMarginX * 2f);
         modulesAreaH = Math.max(1f, fbh - contentTop - contentBottom);
         for (ClickGuiTabEntry tab : tabs) {
-            tab.section().layout(modulesAreaX, modulesAreaY, modulesAreaW, modulesAreaH);
+            if (tab.section().usesFullViewport()) {
+                tab.section().layout(0.0f, 0.0f, fbw, fbh);
+            } else {
+                tab.section().layout(modulesAreaX, modulesAreaY, modulesAreaW, modulesAreaH);
+            }
         }
 
         tabBarH = TAB_HEIGHT;
@@ -954,8 +955,7 @@ public enum ClickGuiRenderer {
                 return tab.section();
             }
         }
-        activeTabId = MODULES_TAB_ID;
-        return MODULES_SECTION;
+        return tabs.isEmpty() ? null : tabs.get(0).section();
     }
 
     private static boolean isSettingsTabActive() {
@@ -963,14 +963,21 @@ public enum ClickGuiRenderer {
     }
 
     private static List<ClickGuiTabEntry> currentTabs() {
-        List<ClickGuiSectionManager.Entry> addonSections = ClickGuiSectionManager.sections();
-        ArrayList<ClickGuiTabEntry> out = new ArrayList<>(2 + addonSections.size());
-        out.add(new ClickGuiTabEntry(MODULES_TAB_ID, "Modules", MODULES_SECTION));
-        out.add(new ClickGuiTabEntry(SETTINGS_TAB_ID, "Settings", SETTINGS_SECTION));
-        for (ClickGuiSectionManager.Entry entry : addonSections) {
+        List<ClickGuiSectionManager.Entry> sections = ClickGuiSectionManager.sections();
+        ArrayList<ClickGuiTabEntry> out = new ArrayList<>(sections.size());
+        for (ClickGuiSectionManager.Entry entry : sections) {
             out.add(new ClickGuiTabEntry(entry.id(), entry.label(), entry.section()));
         }
         return out;
+    }
+
+    private static ClickGuiSection sectionById(String id) {
+        for (ClickGuiTabEntry tab : currentTabs()) {
+            if (tab.id().equals(id)) {
+                return tab.section();
+            }
+        }
+        return null;
     }
 
     private static void ensureActiveTab(List<ClickGuiTabEntry> tabs) {

@@ -563,15 +563,13 @@ public final class ClickGuiPickerState {
             LayoutRender2D.roundedStroke(cardX, cardY, CARD_W, CARD_H, 5f * SCALE, strokeW, stroke);
 
             float lineY = cardY + CARD_H - 12f * SCALE;
-            LayoutRender2D.rectQuad(
+            LayoutRender2D.horizontalHairline(
                     cardX + 5f * SCALE,
                     lineY,
                     CARD_W - 10f * SCALE,
                     0.28f * SCALE,
                     palette.moduleDividerStart(),
-                    palette.moduleDividerEnd(),
-                    palette.moduleDividerEnd(),
-                    palette.moduleDividerStart()
+                    palette.moduleDividerEnd()
             );
 
             ItemStack stack = entry.stack();

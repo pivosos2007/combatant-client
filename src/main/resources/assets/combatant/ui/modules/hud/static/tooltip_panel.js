@@ -241,6 +241,8 @@ function fontClass(m, maxWidth, shadow) {
 
 function measureTree(p, m, colors) {
   const widthLimit = maxContentWidth(p, m);
+  const contentWidthFloor = Math.max(0, Math.min(widthLimit, n(p.contentWidthFloor, 0)));
+  const panelMinWidth = Math.max(m.minCardW, contentWidthFloor + m.padX * 2.0);
   const nodes = [];
   const layout = structure(p, m, colors);
   for (const line of layout.lines) {
@@ -250,7 +252,9 @@ function measureTree(p, m, colors) {
       color: line.color,
       class: cls(
         line.gapBefore > 0 ? `mt-${fmt3(line.gapBefore)}` : "",
-        fontClass(m, widthLimit, false),
+        // Measure the same shadowed text that the render phase actually draws.
+        // Otherwise the panel can be a few pixels narrower than the final glyph run.
+        fontClass(m, widthLimit, true),
         `text-${line.color}`
       ),
     }));
@@ -269,7 +273,11 @@ function measureTree(p, m, colors) {
 
   return ui.column({
     key: "measure-content",
-    class: cls(`px-${fmt3(m.padX)}`, `py-${fmt3(m.padY)}`, `min-w-${fmt3(m.minCardW)}`),
+    class: cls(
+      `px-${fmt3(m.padX)}`,
+      `py-${fmt3(m.padY)}`,
+      `min-w-${fmt3(panelMinWidth)}`
+    ),
     children: nodes,
   });
 }
@@ -277,6 +285,7 @@ function measureTree(p, m, colors) {
 function renderContent(p, m, colors, width, lineHeight, layout) {
   const widthLimit = maxContentWidth(p, m);
   const contentW = Math.max(1, width - m.padX * 2);
+  const textWidthLimit = Math.max(1, Math.min(widthLimit, contentW));
   const nodes = [];
   let cursorY = m.padY;
 
@@ -288,7 +297,10 @@ function renderContent(p, m, colors, width, lineHeight, layout) {
       color: line.color,
       class: cls(
         ui.abs(m.padX, cursorY, contentW, lineHeight),
-        fontClass(m, widthLimit, true),
+        // Never let a render-phase text node use a wider ellipsis budget than its
+        // actual panel content box. Prepared rows normally fit without truncation;
+        // this is the hard safety boundary for rounding/font-metric drift.
+        fontClass(m, textWidthLimit, true),
         `text-${line.color}`
       ),
     }));

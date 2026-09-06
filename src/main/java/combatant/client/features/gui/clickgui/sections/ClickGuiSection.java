@@ -15,25 +15,45 @@ public interface ClickGuiSection {
 
     void render(float mouseX, float mouseY);
 
-    void renderGlassPass(float alphaFactor);
+    default void renderGlassPass(float alphaFactor) {
+    }
 
-    boolean mousePressed(float mouseX, float mouseY, int button);
+    default boolean mousePressed(float mouseX, float mouseY, int button) {
+        return false;
+    }
 
-    void mouseReleased(float mouseX, float mouseY, int button);
+    default void mouseReleased(float mouseX, float mouseY, int button) {
+    }
 
-    boolean mouseScrolled(float mouseX, float mouseY, double amount);
+    default boolean mouseScrolled(float mouseX, float mouseY, double amount) {
+        return false;
+    }
 
-    boolean keyPressed(int keyCode, int scanCode, int modifiers);
+    default boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        return false;
+    }
 
-    boolean charTyped(char chr, int modifiers);
+    default boolean charTyped(char chr, int modifiers) {
+        return false;
+    }
 
     default boolean onFilesDrop(List<Path> paths) {
         return false;
     }
 
-    void onSelected();
+    default void onSelected() {
+    }
 
-    void onDeselected();
+    default void onDeselected() {
+    }
+
+    default boolean isAvailable() {
+        return true;
+    }
+
+    default boolean usesFullViewport() {
+        return false;
+    }
 
     default boolean isVisible() {
         return true;

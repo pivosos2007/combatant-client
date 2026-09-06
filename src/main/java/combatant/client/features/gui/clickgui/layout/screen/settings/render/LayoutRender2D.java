@@ -8,6 +8,7 @@
 package combatant.client.features.gui.clickgui.layout.screen.settings.render;
 
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.Renderer2D;
 
 public enum LayoutRender2D {
@@ -45,6 +46,61 @@ public enum LayoutRender2D {
                 && ((br >>> 24) & 0xFF) <= 0
                 && ((bl >>> 24) & 0xFF) <= 0) return;
         Renderer2D.COLOR.quad(x, y, w, h, tl, tr, br, bl);
+    }
+
+    /**
+     * Draw a horizontally-oriented subpixel divider with deterministic framebuffer coverage.
+     * <p>
+     * A regular quad thinner than one framebuffer pixel is sampled as ordinary geometry and
+     * can therefore alternate between fully visible and fully missed while its Y coordinate
+     * moves through fractional pixels (for example during smooth scrolling). This helper
+     * resolves the requested logical interval into framebuffer-aligned one-pixel rows and
+     * scales each row alpha by its exact vertical coverage. The result keeps the authored
+     * optical weight while moving smoothly instead of popping/collapsing.
+     */
+    public static void horizontalHairline(float x,
+                                          float y,
+                                          float w,
+                                          float thickness,
+                                          int leftColor,
+                                          int rightColor) {
+        if (Renderer2D.COLOR == null || w <= 0f || thickness <= 0f) return;
+
+        float deviceScaleY = currentDeviceScaleY();
+        double topPx = y * (double) deviceScaleY;
+        double bottomPx = (y + thickness) * (double) deviceScaleY;
+        if (!(bottomPx > topPx)) return;
+
+        int firstRow = (int) Math.floor(topPx);
+        int lastRow = (int) Math.ceil(bottomPx) - 1;
+
+        // Hairlines are expected to touch only a handful of rows. Avoid exploding geometry
+        // if this API is accidentally used for a large filled region.
+        if (lastRow - firstRow > 8) {
+            rectQuad(x, y, w, thickness, leftColor, rightColor, rightColor, leftColor);
+            return;
+        }
+
+        float logicalPixelH = 1f / deviceScaleY;
+        for (int row = firstRow; row <= lastRow; row++) {
+            double overlapPx = Math.min(bottomPx, row + 1.0) - Math.max(topPx, row);
+            if (overlapPx <= 1.0e-6) continue;
+
+            float coverage = (float) Math.max(0.0, Math.min(1.0, overlapPx));
+            float rowY = row * logicalPixelH;
+            int left = alpha(leftColor, coverage);
+            int right = alpha(rightColor, coverage);
+            rectQuad(x, rowY, w, logicalPixelH, left, right, right, left);
+        }
+    }
+
+    private static float currentDeviceScaleY() {
+        ViewportContext viewport = ViewportContext.current();
+        if (viewport == null || viewport.framebufferHeight() <= 0 || viewport.height() <= 0f) {
+            return 1f;
+        }
+        float scale = viewport.framebufferHeight() / viewport.height();
+        return Float.isFinite(scale) && scale > 1.0e-4f ? scale : 1f;
     }
 
     public static void rounded(float x, float y, float w, float h, float radius, int color) {
