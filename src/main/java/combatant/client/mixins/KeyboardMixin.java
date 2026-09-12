@@ -94,6 +94,11 @@ public class KeyboardMixin {
         // characters into the hidden ClickGui section while this separate screen is active.
         if (ClientScreen.current() instanceof VisualPreviewScreen) return;
         if (!RuntimeGate.canRunClientLogic() || !ModuleManager.isEnabled("clickgui")) return;
+        Screen activeScreen = ClientScreen.current();
+        if (!(activeScreen instanceof ClickGuiScreen
+                || activeScreen instanceof ClickGuiPickerScreen
+                || activeScreen instanceof ClickGuiEditorScreen
+                || activeScreen instanceof VisualPreviewScreen)) return;
 
         char c = (char) input.codepoint();
 
@@ -219,6 +224,11 @@ public class KeyboardMixin {
             }
         }
         if (!RuntimeGate.canRunClientLogic() || !ModuleManager.isEnabled("clickgui")) return;
+        Screen activeScreen = ClientScreen.current();
+        if (!(activeScreen instanceof ClickGuiScreen
+                || activeScreen instanceof ClickGuiPickerScreen
+                || activeScreen instanceof ClickGuiEditorScreen
+                || activeScreen instanceof VisualPreviewScreen)) return;
 
         int key = input.key();
         int scancode = input.scancode();

@@ -432,7 +432,7 @@ final class XaeroMapElements {
                    int priority,
                    Object handle) {
         String plainName() {
-            return name == null ? "" : name.getString();
+            return name == null ? "" : LegacyTextUtil.stripLegacy(name.getString());
         }
     }
 

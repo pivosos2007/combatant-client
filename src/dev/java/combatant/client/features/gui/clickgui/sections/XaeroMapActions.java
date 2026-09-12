@@ -7,8 +7,12 @@
 
 package combatant.client.features.gui.clickgui.sections;
 
+import combatant.client.features.gui.clickgui.ClickGuiEditorScreen;
+import combatant.client.features.gui.clickgui.ClickGuiPickerScreen;
+import combatant.client.features.gui.clickgui.ClickGuiScreen;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.screen.ClientScreen;
+import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
@@ -100,7 +104,7 @@ final class XaeroMapActions {
 
     static void teleportWaypoint(MinimapWorld world, Waypoint wrapper) {
         MinimapSession session = session();
-        Screen screen = ClientScreen.current();
+        Screen screen = externalScreenParent();
         if (session == null || screen == null || world == null || wrapper == null
                 || !(wrapper.getOriginal() instanceof xaero.common.minimap.waypoints.Waypoint waypoint)) return;
         session.getWaypointSession().getTeleport().teleportToWaypoint(waypoint, world, screen);
@@ -108,7 +112,7 @@ final class XaeroMapActions {
 
     static void shareWaypoint(MinimapWorld world, Waypoint wrapper) {
         MinimapSession session = session();
-        Screen screen = ClientScreen.current();
+        Screen screen = externalScreenParent();
         if (session == null || screen == null || world == null || wrapper == null
                 || !(wrapper.getOriginal() instanceof xaero.common.minimap.waypoints.Waypoint waypoint)) return;
         session.getWaypointSession().getSharing().shareWaypoint(screen, waypoint, world);
@@ -116,7 +120,7 @@ final class XaeroMapActions {
 
     static void shareLocation(MinimapWorld world, int x, int y, int z) {
         MinimapSession session = session();
-        Screen screen = ClientScreen.current();
+        Screen screen = externalScreenParent();
         if (session == null || screen == null || world == null) return;
         xaero.common.minimap.waypoints.Waypoint location =
                 new xaero.common.minimap.waypoints.Waypoint(
@@ -128,25 +132,35 @@ final class XaeroMapActions {
 
     static void teleportMap(MapProcessor processor, int x, int y, int z,
                             ResourceKey<Level> dimension) {
-        Screen screen = ClientScreen.current();
+        Screen screen = externalScreenParent();
         if (screen == null || processor == null || processor.getMapWorld() == null) return;
         new MapTeleporter().teleport(screen, processor.getMapWorld(), x,
                 y == Short.MAX_VALUE ? Short.MAX_VALUE : y + 1, z, dimension);
     }
 
     static void teleportPlayer(MapProcessor processor, PlayerTrackerMapElement<?> player) {
-        Screen screen = ClientScreen.current();
+        Screen screen = externalScreenParent();
         if (screen == null || processor == null || processor.getMapWorld() == null || player == null) return;
         new PlayerTeleporter().teleportToPlayer(screen, processor.getMapWorld(), player);
     }
 
     static void export(MapProcessor processor, int startChunkX, int startChunkZ,
                        int endChunkX, int endChunkZ) {
-        Screen parent = ClientScreen.current();
+        Screen parent = externalScreenParent();
         if (parent == null || processor == null) return;
         MapTileSelection selection = new MapTileSelection(startChunkX, startChunkZ);
         selection.setEnd(endChunkX, endChunkZ);
         ClientScreen.show(new ExportScreen(parent, parent, processor, selection));
+    }
+
+    private static Screen externalScreenParent() {
+        Screen current = ClientScreen.current();
+        if (current instanceof ClickGuiScreen
+                || current instanceof ClickGuiPickerScreen
+                || current instanceof ClickGuiEditorScreen) {
+            return new PauseScreen(true);
+        }
+        return current;
     }
 
     private static WaypointSet currentSet(MinimapWorld world) {

@@ -679,13 +679,13 @@ public enum ClickGuiRenderer {
         if (!(ClientScreen.current() instanceof ClickGuiScreen)) return;
 
         CombatantRenderSystem.ensureFrameContext();
-        ViewportContext.beginUnscaledLogical(ctx);
+        ViewportContext.beginCurrentStratumUnscaledLogical(ctx);
         try {
             Renderer2D.COLOR.begin();
             renderEngine(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta);
             Renderer2D.COLOR.render();
         } finally {
-            ViewportContext.end(ctx);
+            ViewportContext.endCurrentStratum(ctx);
         }
     }
 
@@ -848,10 +848,7 @@ public enum ClickGuiRenderer {
         List<ClickGuiTabEntry> tabs = currentTabs();
         ensureActiveTab(tabs);
         if (tabs.isEmpty()) return;
-        ClickGuiSection activeSection = getActiveSection();
-        boolean islandShell = DynamicIsland.shouldOwnClickGuiTabShell()
-                && activeSection != null
-                && !activeSection.usesFullViewport();
+        boolean islandShell = DynamicIsland.shouldOwnClickGuiTabShell();
 
         TextRenderer tabFont = getOnestBold();
         float y = tabBarY - (1.0f - eased) * 18.0f;

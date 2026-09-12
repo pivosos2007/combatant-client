@@ -61,10 +61,11 @@ export type SolidBrowserTokens = {
   searchWidth: number;
   searchHeight: number;
   searchRadius: number;
-  searchIconInset: number;
   searchIconSize: number;
   searchTextInsetLeft: number;
   searchTextInsetRight: number;
+  searchFontSize: number;
+  searchDividerX: number;
 
   detailHorizontalInset: number;
   detailTopInset: number;
@@ -120,9 +121,6 @@ export type SolidBrowserTokens = {
   visibilityMotionMs: number;
   hoverMotionMs: number;
   appearMotionMs: number;
-  marqueeSpeed: number;
-  marqueeHoldMs: number;
-  marqueeFadeWidth: number;
 };
 
 export type SolidBrowserPalette = {
@@ -176,6 +174,10 @@ export type SolidStyled = {
 export type SolidNavigationItemProps = SolidInteraction & SolidStyled & {
   key?: string;
   size?: number;
+  width?: number;
+  height?: number;
+  label?: string;
+  font?: string;
   selected?: boolean;
   icon?: SolidSlot;
 };
@@ -232,6 +234,7 @@ export type SolidBrowserProps = SolidStyled & {
   y?: number;
   width?: number;
   height?: number;
+  combinedNavigation?: boolean;
   blur?: boolean;
   blurQuality?: number;
   blurBrightness?: number;

@@ -30,6 +30,7 @@ import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleH
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.resources.asset.UiScriptAsset;
+import combatant.client.util.text.LegacyTextUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.language.I18n;
 import org.lwjgl.glfw.GLFW;
@@ -54,11 +55,12 @@ import java.util.function.Supplier;
 
 @UiScriptAsset("combatant:modules/clickgui/map_settings")
 final class XaeroMapSettingsPanel {
-    private static final float PREFERRED_WIDTH = 540.0f;
-    private static final float PREFERRED_HEIGHT = 350.0f;
-    private static final float MIN_WIDTH = 420.0f;
-    private static final float MIN_HEIGHT = 270.0f;
-    private static final float SCREEN_MARGIN = 24.0f;
+    private static final float DESIGN_WIDTH = 976.0f;
+    private static final float DESIGN_HEIGHT = 636.0f;
+    private static final float MIN_WIDTH = 720.0f;
+    private static final float MIN_HEIGHT = 470.0f;
+    private static final float SCREEN_INSET = 24.0f;
+    private static final float SETTING_SCALE = 2.65f;
 
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(XaeroMapSettingsPanel.class);
     private final CachedUiScriptRuntime scriptRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
@@ -102,6 +104,8 @@ final class XaeroMapSettingsPanel {
         addProfiled(manager, WorldMapProfiledConfigOptions.DISPLAY_ZOOM, Category.DISPLAY);
         addProfiled(manager, WorldMapProfiledConfigOptions.DISPLAY_HOVERED_BIOME, Category.DISPLAY);
         addProfiled(manager, WorldMapProfiledConfigOptions.ZOOM_BUTTONS, Category.DISPLAY);
+        addProfiled(manager, WorldMapProfiledConfigOptions.OPENING_ANIMATION, Category.DISPLAY);
+        addProfiled(manager, WorldMapProfiledConfigOptions.MAP_ITEM, Category.DISPLAY);
 
         addProfiled(manager, WorldMapProfiledConfigOptions.LIGHTING, Category.TERRAIN);
         addProfiled(manager, WorldMapProfiledConfigOptions.BLOCK_COLORS, Category.TERRAIN);
@@ -128,6 +132,8 @@ final class XaeroMapSettingsPanel {
         addProfiled(manager, WorldMapProfiledConfigOptions.CAVE_MODE_DEPTH, Category.CAVE);
         addProfiled(manager, WorldMapProfiledConfigOptions.LEGIBLE_CAVE_MAPS, Category.CAVE);
         addProfiled(manager, WorldMapProfiledConfigOptions.AUTO_CAVE_MODE, Category.CAVE);
+        addProfiled(manager, WorldMapProfiledConfigOptions.CAVE_MODE_TOGGLE_TIMER, Category.CAVE);
+        addProfiled(manager, WorldMapProfiledConfigOptions.DEFAULT_CAVE_MODE_TYPE, Category.CAVE);
         addProfiled(manager, WorldMapProfiledConfigOptions.DISPLAY_CAVE_MODE_START, Category.CAVE);
         addCaveStart(primary);
 
@@ -150,7 +156,10 @@ final class XaeroMapSettingsPanel {
 
         addProfiled(manager, WorldMapProfiledConfigOptions.WRITING_DISTANCE, Category.ADVANCED);
         addProfiled(manager, WorldMapProfiledConfigOptions.DETECT_AMBIGUOUS_Y, Category.ADVANCED);
+        addPrimary(primary, WorldMapPrimaryClientConfigOptions.RELOAD_VIEWED, Category.ADVANCED);
         addPrimary(primary, WorldMapPrimaryClientConfigOptions.MAX_LOADED_REGIONS, Category.ADVANCED);
+        addPrimary(primary, WorldMapPrimaryClientConfigOptions.UPDATE_NOTIFICATIONS, Category.ADVANCED);
+        addPrimary(primary, WorldMapPrimaryClientConfigOptions.DEBUG, Category.ADVANCED);
     }
 
     boolean isOpen() {
@@ -171,8 +180,8 @@ final class XaeroMapSettingsPanel {
                 float mouseX, float mouseY) {
         if (!open) return;
 
-        width = Math.min(PREFERRED_WIDTH, Math.max(MIN_WIDTH, viewportWidth - SCREEN_MARGIN * 2.0f));
-        height = Math.min(PREFERRED_HEIGHT, Math.max(MIN_HEIGHT, viewportHeight - SCREEN_MARGIN * 2.0f));
+        width = Math.min(DESIGN_WIDTH, Math.max(MIN_WIDTH, viewportWidth - SCREEN_INSET));
+        height = Math.min(DESIGN_HEIGHT, Math.max(MIN_HEIGHT, viewportHeight - SCREEN_INSET));
         x = viewportX + (viewportWidth - width) * 0.5f;
         y = viewportY + (viewportHeight - height) * 0.5f;
 
@@ -241,35 +250,44 @@ final class XaeroMapSettingsPanel {
         hits.clear();
         caveModeHits.clear();
 
-        float contentX = x + layout.detailX + 11.0f;
-        float contentY = y + layout.headerHeight + 39.0f;
-        float contentW = Math.max(120.0f, layout.detailWidth - 27.0f);
-        float contentH = Math.max(60.0f, height - (contentY - y) - 12.0f);
+        float contentX = x + layout.detailX + 22.0f;
+        float contentY = y + layout.headerHeight + 76.0f;
+        float contentW = Math.max(240.0f, layout.detailWidth - 54.0f);
+        float contentH = Math.max(120.0f, height - (contentY - y) - 24.0f);
         float cursorY = contentY + scroll;
         float total = 0.0f;
+        float columnGap = 10.0f;
+        float columnWidth = Math.max(1.0f, (contentW - columnGap) * 0.5f);
 
         boolean clipped = ScissorFunction.pushRaw(contentX, contentY, contentW, contentH);
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, 1.0f)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
             if (search.isBlank() && selectedCategory == Category.CAVE) {
-                float caveHeight = 42.0f;
+                float caveHeight = 84.0f;
                 if (cursorY + caveHeight >= contentY && cursorY <= contentY + contentH) {
                     drawCaveModeControl(contentX, cursorY, contentW, palette);
                 }
-                cursorY += caveHeight + 7.0f;
-                total += caveHeight + 7.0f;
+                cursorY += caveHeight + 14.0f;
+                total += caveHeight + 14.0f;
             }
 
-            for (Entry entry : entries) {
-                if (!matches(entry)) continue;
-                Setting setting = entry.setting;
-                float settingHeight = setting.getHeightSafely();
-                float gap = 5.0f;
-                if (cursorY + settingHeight >= contentY && cursorY <= contentY + contentH) {
-                    setting.renderSafely(contentX, cursorY, contentW, mouseX, mouseY);
-                    hits.add(new Hit(setting, contentX, cursorY, contentW, settingHeight));
+            List<Entry> visible = entries.stream().filter(this::matches).toList();
+            for (int index = 0; index < visible.size(); index += 2) {
+                Entry left = visible.get(index);
+                Entry right = index + 1 < visible.size() ? visible.get(index + 1) : null;
+                float leftHeight = left.setting.getHeightSafely();
+                float rightHeight = right == null ? 0.0f : right.setting.getHeightSafely();
+                float rowHeight = Math.max(leftHeight, rightHeight);
+                if (cursorY + rowHeight >= contentY && cursorY <= contentY + contentH) {
+                    left.setting.renderSafely(contentX, cursorY, columnWidth, mouseX, mouseY);
+                    hits.add(new Hit(left.setting, contentX, cursorY, columnWidth, leftHeight));
+                    if (right != null) {
+                        float rightX = contentX + columnWidth + columnGap;
+                        right.setting.renderSafely(rightX, cursorY, columnWidth, mouseX, mouseY);
+                        hits.add(new Hit(right.setting, rightX, cursorY, columnWidth, rightHeight));
+                    }
                 }
-                cursorY += settingHeight + gap;
-                total += settingHeight + gap;
+                cursorY += rowHeight + 14.0f;
+                total += rowHeight + 14.0f;
             }
         } finally {
             if (clipped) ScissorFunction.pop();
@@ -277,7 +295,7 @@ final class XaeroMapSettingsPanel {
 
         if (total <= 0.0f) {
             ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), "No matching settings",
-                    contentX + 3.0f, contentY + 8.0f, 10.0f, palette.panelMuted(), false);
+                    contentX + 6.0f, contentY + 16.0f, 18.0f, palette.panelMuted(), false);
         }
         maxScroll = Math.max(0.0f, total - contentH);
         scroll = clamp(scroll, -maxScroll, 0.0f);
@@ -285,7 +303,7 @@ final class XaeroMapSettingsPanel {
 
     private void drawCaveModeControl(float x, float y, float width, SettingsGuiPalette palette) {
         ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), "Cave mode type",
-                x + 2.0f, y + 2.0f, 9.5f, palette.panelText(), false);
+                x + 4.0f, y + 4.0f, 19.0f, palette.panelText(), false);
         MapDimension dimension = dimensionSupplier.get();
         int current = dimension == null ? 0 : Math.floorMod(dimension.getCaveModeType(), 3);
         String[] labels = {
@@ -293,21 +311,21 @@ final class XaeroMapSettingsPanel {
                 tr("gui.xaero_wm_cave_mode_type_layered", "Layered"),
                 tr("gui.xaero_wm_cave_mode_type_full", "Full")
         };
-        float gap = 4.0f;
-        float top = y + 17.0f;
-        float h = 18.0f;
+        float gap = 8.0f;
+        float top = y + 34.0f;
+        float h = 36.0f;
         float w = (width - gap * 2.0f) / 3.0f;
         for (int i = 0; i < labels.length; i++) {
             float bx = x + i * (w + gap);
             boolean selected = current == i;
-            Renderer2D.COLOR.roundedRect(bx, top, w, h, 5.0f,
+            Renderer2D.COLOR.roundedRect(bx, top, w, h, 10.0f,
                     selected ? palette.controlSurfaceHover() : palette.controlSurface());
             if (selected) {
-                Renderer2D.COLOR.roundedRectStroke(bx, top, w, h, 5.0f, 0.8f, Theme.theme().accent());
+                Renderer2D.COLOR.roundedRectStroke(bx, top, w, h, 10.0f, 1.6f, Theme.theme().accent());
             }
-            float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), labels[i], 8.5f);
+            float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), labels[i], 17.0f);
             ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), labels[i],
-                    bx + (w - tw) * 0.5f, top + 4.5f, 8.5f,
+                    bx + (w - tw) * 0.5f, top + 9.0f, 17.0f,
                     selected ? palette.panelText() : palette.panelMuted(), false);
             caveModeHits.add(new CaveModeHit(i, bx, top, w, h));
         }
@@ -315,24 +333,22 @@ final class XaeroMapSettingsPanel {
 
     private void updateInteractiveGeometry(Layout layout) {
         categoryHits.clear();
-        float navX = x + (layout.navWidth - 17.0f) * 0.5f;
-        float navY = y + layout.headerHeight + 9.0f;
-        float rowX = x + layout.navWidth + 4.0f;
-        float rowY = y + layout.headerHeight + 1.0f;
-        float rowW = Math.max(1.0f, layout.collectionWidth - 9.0f);
+        float rowHeight = 46.0f;
+        float navX = x + 8.0f;
+        float navY = y + layout.headerHeight + 18.0f;
+        float rowWidth = Math.max(1.0f, layout.navWidth - 16.0f);
         Category[] categories = Category.values();
         for (int i = 0; i < categories.length; i++) {
-            categoryHits.add(new CategoryHit(categories[i], navX, navY + i * 20.0f, 17.0f, 17.0f));
-            categoryHits.add(new CategoryHit(categories[i], rowX, rowY + i * 17.0f, rowW, 15.0f));
+            categoryHits.add(new CategoryHit(categories[i], navX, navY + i * 52.0f, rowWidth, rowHeight));
         }
-        searchX = x + layout.detailX + 5.0f;
-        searchY = y + (layout.headerHeight - 12.0f) * 0.5f;
-        searchW = 81.0f;
-        searchH = 12.0f;
-        closeX = x + width - 31.0f;
-        closeY = y + layout.headerHeight + 8.0f;
-        closeW = 24.0f;
-        closeH = 24.0f;
+        searchX = x + layout.detailX + 10.0f;
+        searchY = y + (layout.headerHeight - 24.0f) * 0.5f;
+        searchW = 162.0f;
+        searchH = 24.0f;
+        closeX = x + width - 54.0f;
+        closeY = y + layout.headerHeight + 21.0f;
+        closeW = 32.0f;
+        closeH = 32.0f;
     }
 
     boolean mousePressed(float mouseX, float mouseY, int button) {
@@ -363,11 +379,13 @@ final class XaeroMapSettingsPanel {
                 return true;
             }
         }
-        for (Hit hit : hits) {
-            if (inside(mouseX, mouseY, hit.x, hit.y, hit.width, hit.height)) {
-                hit.setting.mouseClickedSafely(mouseX, mouseY, button, hit.x, hit.y, hit.width);
-            } else {
-                hit.setting.mouseClickedOutsideSafely(mouseX, mouseY, button);
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
+            for (Hit hit : hits) {
+                if (inside(mouseX, mouseY, hit.x, hit.y, hit.width, hit.height)) {
+                    hit.setting.mouseClickedSafely(mouseX, mouseY, button, hit.x, hit.y, hit.width);
+                } else {
+                    hit.setting.mouseClickedOutsideSafely(mouseX, mouseY, button);
+                }
             }
         }
         return true;
@@ -375,16 +393,20 @@ final class XaeroMapSettingsPanel {
 
     void mouseReleased(float mouseX, float mouseY, int button) {
         if (!open) return;
-        for (Entry entry : entries) entry.setting.mouseReleasedSafely(mouseX, mouseY, button);
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
+            for (Entry entry : entries) entry.setting.mouseReleasedSafely(mouseX, mouseY, button);
+        }
     }
 
     boolean mouseScrolled(float mouseX, float mouseY, double amount) {
         if (!open || !inside(mouseX, mouseY, x, y, width, height)) return false;
-        for (Hit hit : hits) {
-            if (inside(mouseX, mouseY, hit.x, hit.y, hit.width, hit.height)
-                    && hit.setting.mouseScrolledSafely(mouseX, mouseY, amount)) return true;
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
+            for (Hit hit : hits) {
+                if (inside(mouseX, mouseY, hit.x, hit.y, hit.width, hit.height)
+                        && hit.setting.mouseScrolledSafely(mouseX, mouseY, amount)) return true;
+            }
         }
-        scroll = clamp(scroll + (float) amount * 22.0f, -maxScroll, 0.0f);
+        scroll = clamp(scroll + (float) amount * 44.0f, -maxScroll, 0.0f);
         return true;
     }
 
@@ -406,8 +428,10 @@ final class XaeroMapSettingsPanel {
             close();
             return true;
         }
-        for (Entry entry : entries) {
-            if (matches(entry) && entry.setting.keyPressedSafely(keyCode, scanCode, modifiers)) return true;
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
+            for (Entry entry : entries) {
+                if (matches(entry) && entry.setting.keyPressedSafely(keyCode, scanCode, modifiers)) return true;
+            }
         }
         return searchFocused;
     }
@@ -419,8 +443,10 @@ final class XaeroMapSettingsPanel {
             scroll = 0.0f;
             return true;
         }
-        for (Entry entry : entries) {
-            if (matches(entry) && entry.setting.charTypedSafely(chr, modifiers)) return true;
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
+            for (Entry entry : entries) {
+                if (matches(entry) && entry.setting.charTypedSafely(chr, modifiers)) return true;
+            }
         }
         return searchFocused;
     }
@@ -490,12 +516,14 @@ final class XaeroMapSettingsPanel {
                     && indexed.getValidValues().getFirst() instanceof Integer) {
                 List<Integer> values = indexed.getValidValues().stream().map(value -> (Integer) value).toList();
                 setting = new SliderSetting<>(name, new ExternalIntegerValue(option.getId(),
-                        () -> (Integer) getter.get(), value -> setter.accept(cast(value)), values));
+                        () -> (Integer) getter.get(), value -> setter.accept(cast(value)), values,
+                        raw(option)));
             } else if (option instanceof IndexedConfigOption<?> indexed && !indexed.getValidValues().isEmpty()
                     && indexed.getValidValues().getFirst() instanceof Double) {
                 List<Double> values = indexed.getValidValues().stream().map(value -> (Double) value).toList();
                 setting = new SliderSetting<>(name, new ExternalDoubleValue(option.getId(),
-                        () -> (Double) getter.get(), value -> setter.accept(cast(value)), values));
+                        () -> (Double) getter.get(), value -> setter.accept(cast(value)), values,
+                        raw(option)));
             } else if (option.getDefaultValue() instanceof String) {
                 setting = new TextSetting(name, new ExternalStringValue(option.getId(),
                         () -> (String) getter.get(), value -> setter.accept(cast(value))));
@@ -519,7 +547,7 @@ final class XaeroMapSettingsPanel {
     private static String resolveDisplayName(ConfigOption<?> option) {
         var component = option.getDisplayName();
         if (component != null) {
-            String displayName = component.getString();
+            String displayName = LegacyTextUtil.stripLegacy(component.getString());
             if (displayName != null && !displayName.isBlank()) return displayName.trim();
         }
         return humanizeOptionId(option.getId());
@@ -550,12 +578,19 @@ final class XaeroMapSettingsPanel {
         return mx >= x && mx <= x + w && my >= y && my <= y + h;
     }
     private static String tr(String key, String fallback) {
-        String translated = I18n.get(key);
-        return translated == null || translated.equals(key) ? fallback : translated;
+        String translated;
+        try {
+            translated = I18n.get(key, "");
+        } catch (RuntimeException ignored) {
+            translated = null;
+        }
+        if (translated == null || translated.equals(key) || translated.startsWith("Format error:")) {
+            translated = fallback;
+        }
+        return LegacyTextUtil.stripLegacy(translated).replace('\n', ' ').replace('\r', ' ').trim();
     }
 
     private static float clamp(float value, float min, float max) { return Math.max(min, Math.min(max, value)); }
-
     private enum Category {
         DISPLAY("display", "Display", "Map chrome, coordinates, arrow and footprints", "map"),
         TERRAIN("terrain", "Terrain", "Terrain colors, lighting and chunk updates", "layers"),
@@ -575,11 +610,12 @@ final class XaeroMapSettingsPanel {
         }
     }
 
-    private record Layout(float navWidth, float collectionWidth, float detailWidth, float detailX, float headerHeight) {
+    private record Layout(float navWidth, float collectionWidth, float detailWidth, float detailX,
+                          float headerHeight) {
         static Layout of(float width, float height) {
-            float nav = width * 33.0f / 488.0f;
-            float collection = width * 101.0f / 488.0f;
-            float header = height * 24.0f / 318.0f;
+            float nav = width * 268.0f / DESIGN_WIDTH;
+            float collection = 0.0f;
+            float header = height * 48.0f / DESIGN_HEIGHT;
             return new Layout(nav, collection, Math.max(0.0f, width - nav - collection), nav + collection, header);
         }
     }
@@ -601,21 +637,23 @@ final class XaeroMapSettingsPanel {
         @Override public void fromJson(Object json) { if (json instanceof Boolean value) set(value); }
     }
     private static final class ExternalIntegerValue extends NumberValue<Integer> {
-        private final Supplier<Integer> getter; private final Consumer<Integer> setter; private final List<Integer> values;
-        private ExternalIntegerValue(String name, Supplier<Integer> getter, Consumer<Integer> setter, List<Integer> values) { super(name, getter.get(), values.getFirst(), values.getLast()); this.getter = getter; this.setter = setter; this.values = values; }
+        private final Supplier<Integer> getter; private final Consumer<Integer> setter; private final List<Integer> values; private final ConfigOption<Integer> option;
+        private ExternalIntegerValue(String name, Supplier<Integer> getter, Consumer<Integer> setter, List<Integer> values, ConfigOption<Integer> option) { super(name, getter.get(), values.getFirst(), values.getLast()); this.getter = getter; this.setter = setter; this.values = values; this.option = option; }
         @Override public Integer get() { return getter.get(); }
         @Override public void set(Integer value) { setter.accept(nearest(value)); }
         @Override public Object toJson() { return get(); }
         @Override public void fromJson(Object json) { if (json instanceof Number value) set(value.intValue()); }
+        @Override public String toDisplay() { var display = option.getDisplayGetter().apply(option, get()); return display == null ? super.toDisplay() : LegacyTextUtil.stripLegacy(display.getString()); }
         private int nearest(int value) { int result = values.getFirst(); int distance = Math.abs(result - value); for (int candidate : values) { int d = Math.abs(candidate - value); if (d < distance) { result = candidate; distance = d; } } return result; }
     }
     private static final class ExternalDoubleValue extends NumberValue<Double> {
-        private final Supplier<Double> getter; private final Consumer<Double> setter; private final List<Double> values;
-        private ExternalDoubleValue(String name, Supplier<Double> getter, Consumer<Double> setter, List<Double> values) { super(name, getter.get(), values.getFirst(), values.getLast()); this.getter = getter; this.setter = setter; this.values = values; }
+        private final Supplier<Double> getter; private final Consumer<Double> setter; private final List<Double> values; private final ConfigOption<Double> option;
+        private ExternalDoubleValue(String name, Supplier<Double> getter, Consumer<Double> setter, List<Double> values, ConfigOption<Double> option) { super(name, getter.get(), values.getFirst(), values.getLast()); this.getter = getter; this.setter = setter; this.values = values; this.option = option; }
         @Override public Double get() { return getter.get(); }
         @Override public void set(Double value) { setter.accept(nearest(value)); }
         @Override public Object toJson() { return get(); }
         @Override public void fromJson(Object json) { if (json instanceof Number value) set(value.doubleValue()); }
+        @Override public String toDisplay() { var display = option.getDisplayGetter().apply(option, get()); return display == null ? super.toDisplay() : LegacyTextUtil.stripLegacy(display.getString()); }
         private double nearest(double value) { double result = values.getFirst(); double distance = Math.abs(result - value); for (double candidate : values) { double d = Math.abs(candidate - value); if (d < distance) { result = candidate; distance = d; } } return result; }
     }
     private static final class ExternalStringValue extends StringValue {

@@ -24,21 +24,20 @@ import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.effects.surface.CurrentSurfaceWaveRenderer;
+import combatant.client.render.effects.surface.SurfaceWaveDescriptor;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.helpers.Particle3D;
 import combatant.client.render.helpers.ParticleTextureMode;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.VoxelShape;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -75,10 +74,6 @@ public class HitEffect extends Module {
     private static final float WAVE_TRAIL_ALPHA = 0.055f;
     private static final int WAVE_MAX_PER_FRAME = 400;
     private static final float WAVE_MIN_ALPHA = 0.012f;
-    private static final double WAVE_OUTLINE_EPS = 0.0015;
-    private static final double WAVE_FILL_EPS = 0.0010;
-    private static final float WAVE_LINE_WIDTH_BASE = 0.72f;
-    private static final float WAVE_LINE_WIDTH_BOOST = 0.72f;
 
     private static final float HIT_PARTICLE_GRAVITY_MIN = 0.006f;
     private static final float HIT_PARTICLE_GRAVITY_MAX = 0.012f;
@@ -122,7 +117,7 @@ public class HitEffect extends Module {
     private final BooleanValue hitParticleRandomColor =
             visibleWhen(bool("hitEffectParticleRandomColor", SETTING_HIT_PARTICLE_RANDOM_COLOR, false), this::isParticleMode);
 
-    private final List<WaveEffect> waves = new ArrayList<>();
+    private final List<SurfaceWaveDescriptor> waves = new ArrayList<>();
     private final List<Particle3D> hitParticles = new ArrayList<>();
     private final List<Particle3D>[] hitParticleBuckets = createBuckets();
     private int lastHitParticleTick = Integer.MIN_VALUE;
@@ -191,71 +186,6 @@ public class HitEffect extends Module {
         mesh.quad(i1, i2, i3, i4);
     }
 
-    private static void addShapeOutline(MeshBuilder mesh, BlockPos pos, VoxelShape shape, int argb, double eps) {
-        if (mesh == null || shape == null) return;
-
-        int a = (argb >>> 24) & 0xFF;
-        int r = (argb >>> 16) & 0xFF;
-        int g = (argb >>> 8) & 0xFF;
-        int b = argb & 0xFF;
-
-        VoxelShape offset = shape.move(pos.getX(), pos.getY(), pos.getZ());
-        offset.forAllEdges((x1, y1, z1, x2, y2, z2) -> {
-            double cx = pos.getX() + 0.5;
-            double cy = pos.getY() + 0.5;
-            double cz = pos.getZ() + 0.5;
-
-            double ax1 = x1 + Math.signum(x1 - cx) * eps;
-            double ay1 = y1 + Math.signum(y1 - cy) * eps;
-            double az1 = z1 + Math.signum(z1 - cz) * eps;
-            double ax2 = x2 + Math.signum(x2 - cx) * eps;
-            double ay2 = y2 + Math.signum(y2 - cy) * eps;
-            double az2 = z2 + Math.signum(z2 - cz) * eps;
-
-            mesh.ensureLineCapacity();
-            int i1 = mesh.vec3(ax1, ay1, az1).color(r, g, b, a).next();
-            int i2 = mesh.vec3(ax2, ay2, az2).color(r, g, b, a).next();
-            mesh.line(i1, i2);
-        });
-    }
-
-    private static void addShapeFill(MeshBuilder mesh, BlockPos pos, VoxelShape shape, int argb, double eps) {
-        if (mesh == null || shape == null) return;
-        VoxelShape offset = shape.move(pos.getX(), pos.getY(), pos.getZ());
-        offset.forAllBoxes((minX, minY, minZ, maxX, maxY, maxZ) ->
-                addFilledBox(mesh,
-                        minX - eps, minY - eps, minZ - eps,
-                        maxX + eps, maxY + eps, maxZ + eps,
-                        argb));
-    }
-
-    private static void addFilledBox(MeshBuilder mesh,
-                                     double x1, double y1, double z1,
-                                     double x2, double y2, double z2,
-                                     int argb) {
-        addColorQuad(mesh, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, argb);
-        addColorQuad(mesh, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1, argb);
-        addColorQuad(mesh, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2, argb);
-        addColorQuad(mesh, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, argb);
-        addColorQuad(mesh, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, argb);
-        addColorQuad(mesh, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1, argb);
-    }
-
-    private static void addColorQuad(MeshBuilder mesh,
-                                     double x1, double y1, double z1,
-                                     double x2, double y2, double z2,
-                                     double x3, double y3, double z3,
-                                     double x4, double y4, double z4,
-                                     int argb) {
-        RenderColor color = new RenderColor(argb);
-        mesh.ensureQuadCapacity();
-        int i1 = mesh.vec3(x1, y1, z1).color(color).next();
-        int i2 = mesh.vec3(x2, y2, z2).color(color).next();
-        int i3 = mesh.vec3(x3, y3, z3).color(color).next();
-        int i4 = mesh.vec3(x4, y4, z4).color(color).next();
-        mesh.quad(i1, i2, i3, i4);
-    }
-
     @Override
     public WorldPhase getWorldPhase() {
         return WorldPhase.END_MAIN;
@@ -275,8 +205,8 @@ public class HitEffect extends Module {
         if (onlyPlayers.get() && !(target instanceof Player)) return;
 
         if (isWaveMode()) {
-            Vec3 pos = target.position();
-            addWave(BlockPos.containing(pos.x, pos.y - 0.1, pos.z));
+            Vec3 pos = target.position().add(0.0, -0.1, 0.0);
+            addWave(pos);
             return;
         }
 
@@ -314,23 +244,35 @@ public class HitEffect extends Module {
     }
 
     private void renderWaveEffect(Renderer3D renderer) {
-        if (waves.isEmpty()) return;
+        if (waves.isEmpty() || mc.level == null) return;
 
-        Iterator<WaveEffect> iterator = waves.iterator();
+        long nowMs = System.currentTimeMillis();
+        Iterator<SurfaceWaveDescriptor> iterator = waves.iterator();
         while (iterator.hasNext()) {
-            WaveEffect wave = iterator.next();
-            if (wave.isExpired()) {
+            SurfaceWaveDescriptor wave = iterator.next();
+            if (wave.isExpired(nowMs)) {
                 iterator.remove();
                 continue;
             }
-            wave.render(renderer);
+            CurrentSurfaceWaveRenderer.render(renderer, mc.level, wave, nowMs, this::getColorArgb);
         }
     }
 
-    private void addWave(BlockPos pos) {
-        if (mc.level != null) {
-            waves.add(new WaveEffect(pos, System.currentTimeMillis()));
-        }
+    private void addWave(Vec3 pos) {
+        if (mc.level == null || pos == null) return;
+        waves.add(new SurfaceWaveDescriptor(
+                pos,
+                System.currentTimeMillis(),
+                Math.max(1L, waveDurationMs.get()),
+                Math.max(1, waveRadius.get()),
+                WAVE_WIDTH,
+                WAVE_FILL_TRAIL,
+                WAVE_FILL_ALPHA,
+                WAVE_TRAIL_ALPHA,
+                WAVE_MAX_PER_FRAME,
+                WAVE_MIN_ALPHA,
+                depthTest.get()
+        ));
     }
 
     private void spawnHitParticles(LivingEntity target, Vec3 hitPoint, boolean critical) {
@@ -644,111 +586,5 @@ public class HitEffect extends Module {
     private record ParticleTexture(net.minecraft.resources.Identifier texture, int index) {
     }
 
-    private final class WaveEffect {
-        private final BlockPos centerPos;
-        private final long startTime;
 
-        private WaveEffect(BlockPos centerPos, long startTime) {
-            this.centerPos = centerPos;
-            this.startTime = startTime;
-        }
-
-        private boolean isExpired() {
-            return System.currentTimeMillis() - startTime > Math.max(1L, waveDurationMs.get());
-        }
-
-        private void render(Renderer3D renderer) {
-            if (mc.level == null || renderer == null) return;
-
-            long durationMs = Math.max(1L, waveDurationMs.get());
-            int maxRadius = Math.max(1, waveRadius.get());
-            long elapsed = System.currentTimeMillis() - startTime;
-            float progress = Mth.clamp((float) elapsed / durationMs, 0.0f, 1.0f);
-
-            float radiusProgress = smoothstep(progress);
-            float currentRadius = radiusProgress * maxRadius;
-            float globalAlpha = smoothstep(1.0f - progress);
-
-            float minRad = Math.max(0.0f, currentRadius - WAVE_FILL_TRAIL);
-            float maxRad = currentRadius + WAVE_WIDTH;
-            float minRadSq = minRad * minRad;
-            float maxRadSq = maxRad * maxRad;
-
-            boolean useDepth = depthTest.get();
-            Renderer3D.DepthMode depthMode = useDepth ? Renderer3D.DepthMode.PRE_DEPTH : Renderer3D.DepthMode.MAIN;
-            MeshBuilder fillMesh = renderer.batch(
-                    useDepth ? CombatantRenderPipelines.WORLD_COLORED_LIQUID_IGNORE
-                            : CombatantRenderPipelines.WORLD_COLORED,
-                    depthMode
-            );
-
-            float prevWidth = RenderState.lineWidth;
-            RenderState.lineWidth = Math.max(0.5f, WAVE_LINE_WIDTH_BASE + globalAlpha * WAVE_LINE_WIDTH_BOOST);
-            MeshBuilder outlineMesh;
-            try {
-                outlineMesh = renderer.batch(
-                        useDepth ? CombatantRenderPipelines.WORLD_COLORED_LINES_LIQUID_IGNORE
-                                : CombatantRenderPipelines.WORLD_COLORED_LINES,
-                        depthMode
-                );
-            } finally {
-                RenderState.lineWidth = prevWidth;
-            }
-
-            if (fillMesh == null && outlineMesh == null) return;
-
-            int rendered = 0;
-            for (int x = -maxRadius; x <= maxRadius; x++) {
-                for (int z = -maxRadius; z <= maxRadius; z++) {
-                    if (rendered >= WAVE_MAX_PER_FRAME) return;
-
-                    float distSq = x * x + z * z;
-                    if (distSq < minRadSq || distSq > maxRadSq) continue;
-
-                    BlockPos checkPos = centerPos.offset(x, 0, z);
-                    BlockPos renderPos = findSurface(checkPos);
-                    if (renderPos == null) continue;
-
-                    BlockState state = mc.level.getBlockState(renderPos);
-                    VoxelShape shape = state.getShape(mc.level, renderPos);
-                    if (shape.isEmpty()) continue;
-
-                    float distance = (float) Math.sqrt(distSq);
-                    float ring = 1.0f - Math.abs(distance - currentRadius) / WAVE_WIDTH;
-                    float ringCoverage = smoothstep(ring);
-                    float ringAlpha = ringCoverage * globalAlpha;
-
-                    float behind = currentRadius - distance;
-                    float trail = behind >= 0.0f
-                            ? 1.0f - smoothstep(behind / WAVE_FILL_TRAIL)
-                            : 0.0f;
-                    float fillAlpha = globalAlpha * (ringCoverage * WAVE_FILL_ALPHA + trail * WAVE_TRAIL_ALPHA);
-
-                    if (ringAlpha <= WAVE_MIN_ALPHA && fillAlpha <= WAVE_MIN_ALPHA) continue;
-                    rendered++;
-
-                    int colorIndex = (int) (Math.toDegrees(Math.atan2(z, x)) + 180.0);
-                    int baseColor = getColorArgb(colorIndex);
-
-                    if (fillMesh != null && fillAlpha > WAVE_MIN_ALPHA) {
-                        addShapeFill(fillMesh, renderPos, shape, applyOpacity(baseColor, fillAlpha), WAVE_FILL_EPS);
-                    }
-                    if (outlineMesh != null && ringAlpha > WAVE_MIN_ALPHA) {
-                        addShapeOutline(outlineMesh, renderPos, shape, applyOpacity(baseColor, ringAlpha), WAVE_OUTLINE_EPS);
-                    }
-                }
-            }
-        }
-
-        private BlockPos findSurface(BlockPos pos) {
-            for (int y = 2; y >= -4; y--) {
-                BlockPos p = pos.above(y);
-                BlockState state = mc.level.getBlockState(p);
-                if (!state.isAir() && mc.level.getBlockState(p.above()).isAir()) {
-                    return p;
-                }
-            }
-            return null;
-        }
-    }
 }

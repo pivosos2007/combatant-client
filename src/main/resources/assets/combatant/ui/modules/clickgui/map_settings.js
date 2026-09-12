@@ -33,29 +33,22 @@ function categoryList(value) {
 
 export function buildTemplate(ctx) {
   const p = ctx.props || {};
-  const width = Math.max(360, num(p.width, 540));
-  const height = Math.max(235, num(p.height, 350));
+  const width = Math.max(720, num(p.width, 976));
+  const height = Math.max(470, num(p.height, 636));
   const accent = str(p.accent, "#FF906BFF");
   const categories = categoryList(p.categories);
   const selected = str(p.selectedCategory, categories.length ? str(categories[0].id, "general") : "general");
   const search = str(p.search, "");
-  const layout = SolidBrowserSurface.layout(width, height);
-  const rowWidth = Math.max(1, layout.collectionWidth - 9);
+  const tokens = SolidBrowserSurface.tokens();
 
   const navigationItems = categories.map((category, index) => SolidBrowserSurface.navigationItem({
     key: `map-settings:nav:${str(category.id, index.toString())}`,
     selected: str(category.id, "") === selected,
     accent,
-    icon: svg(`map-settings:nav-icon:${index}`, category.icon),
-  }));
-
-  const collectionRows = categories.map((category, index) => SolidBrowserSurface.collectionRow({
-    key: `map-settings:category:${str(category.id, index.toString())}`,
-    width: rowWidth,
+    width: 252,
+    height: 46,
     label: str(category.label, "Map"),
-    selected: str(category.id, "") === selected,
-    active: str(category.id, "") === selected,
-    accent,
+    icon: svg(`map-settings:nav-icon:${index}`, category.icon),
   }));
 
   const selectedCategory = categories.find((category) => str(category.id, "") === selected) || categories[0] || {};
@@ -67,6 +60,7 @@ export function buildTemplate(ctx) {
     width,
     height,
     accent,
+    combinedNavigation: true,
     navigationHeader: ui.svg({
       key: "map-settings:logo",
       asset: "map",
@@ -75,21 +69,15 @@ export function buildTemplate(ctx) {
       class: ui.abs(0, 0, 11, 11),
     }),
     navigationItems,
-    navigationFooter: SolidBrowserSurface.navigationFooterItem({
-      key: "map-settings:footer",
-      accent,
-      icon: svg("map-settings:footer-icon", "settings-2"),
-    }),
-    collectionTitle: str(p.title, "World Map"),
-    collectionRows,
     toolbarLeft: SolidBrowserSurface.searchField({
       key: "map-settings:search",
       value: search,
       placeholder: "Search settings",
       accent,
     }),
-    toolbarLeftWidth: 81,
+    toolbarLeftWidth: tokens.searchWidth,
     detailActive: true,
+    detailBackdrop: false,
     detailTitle: title,
     detailDescription: description,
     detailClose: SolidBrowserSurface.closeButton({

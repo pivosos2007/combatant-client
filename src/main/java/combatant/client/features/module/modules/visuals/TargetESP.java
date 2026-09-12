@@ -34,6 +34,9 @@ import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.math.RenderMath;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.effects.particle.ParticleLayoutDescriptor;
+import combatant.client.render.effects.particle.ParticleLayoutEvaluator;
+import combatant.client.render.effects.particle.ParticleLayoutSample;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.util.target.TargetingUtil;
 
@@ -63,6 +66,10 @@ public class TargetESP extends Module {
     private static final String SETTING_ESP_AMPLITUDE = "esp_amplitude";
     private static final String SETTING_CAPTURE_SPIN_SPEED = "capture_spin_speed";
     private static final String SETTING_CRYSTAL_HIT_RED = "crystal_hit_red";
+    private static final String SETTING_LAYOUT_DENSITY = "layout_density";
+    private static final String SETTING_LAYOUT_SCALE = "layout_scale";
+    private static final String SETTING_LAYOUT_SPEED = "layout_speed";
+    private static final String SETTING_LAYOUT_RADIUS_SCALE = "layout_radius_scale";
     private static final Identifier GHOST_PARTICLE_TEXTURE = TextureStorage.FIRE_FLY;
     private static final Identifier CAPTURE_MARK_TEXTURE = TextureStorage.CAPTURE;
     private static final Identifier CRYSTAL_BLOOM = TextureStorage.BLOOM;
@@ -82,7 +89,7 @@ public class TargetESP extends Module {
             "targetEspMode",
             SETTING_MODE,
             "ghosts",
-            "ghosts", "ring", "capture_mark", "crystals"
+            "ghosts", "ring", "capture_mark", "crystals", "helix", "orbit", "runes", "lightning", "pulse"
     );
     private final RGBAColorValue colorValue = color("targetEspColor", SETTING_COLOR, "#FFFF5555");
     private final ModeValue colorMode = visibleWhen(modeSetting(
@@ -121,6 +128,14 @@ public class TargetESP extends Module {
             visibleWhen(num("targetEspCaptureSpinSpeed", SETTING_CAPTURE_SPIN_SPEED, 1.0f, 0.2f, 4.0f), this::isCaptureMarkMode);
     private final BooleanValue crystalHitRed =
             visibleWhen(bool("targetEspCrystalHitRed", SETTING_CRYSTAL_HIT_RED, true), this::isCrystalsMode);
+    private final NumberValue<Integer> layoutDensity =
+            visibleWhen(num("targetEspLayoutDensity", SETTING_LAYOUT_DENSITY, 72, 24, 192), this::isProceduralLayoutMode);
+    private final NumberValue<Float> layoutScale =
+            visibleWhen(num("targetEspLayoutScale", SETTING_LAYOUT_SCALE, 0.095f, 0.03f, 0.24f), this::isProceduralLayoutMode);
+    private final NumberValue<Float> layoutSpeed =
+            visibleWhen(num("targetEspLayoutSpeed", SETTING_LAYOUT_SPEED, 1.0f, 0.1f, 4.0f), this::isProceduralLayoutMode);
+    private final NumberValue<Float> layoutRadiusScale =
+            visibleWhen(num("targetEspLayoutRadiusScale", SETTING_LAYOUT_RADIUS_SCALE, 1.45f, 0.6f, 2.8f), this::isProceduralLayoutMode);
     private final List<CrystalInstance> crystalList = new ArrayList<>();
     private LivingEntity target;
     private LivingEntity renderTarget;
@@ -556,6 +571,8 @@ public class TargetESP extends Module {
             renderCaptureMark(renderer, renderTarget, tickDelta, palette);
         } else if ("crystals".equals(mode)) {
             renderCrystals(renderer, renderTarget, tickDelta);
+        } else if (isProceduralLayoutMode(mode)) {
+            renderProceduralLayout(renderer, renderTarget, tickDelta, palette, mode);
         }
     }
 
@@ -620,6 +637,102 @@ public class TargetESP extends Module {
                 return last.lerp(e.position(), f);
             }
             return e.position();
+        }
+    }
+
+    private void renderProceduralLayout(Renderer3D renderer,
+                                        LivingEntity target,
+                                        float tickDelta,
+                                        IntFunction<Integer> palette,
+                                        String mode) {
+        if (renderer == null || target == null || palette == null) return;
+
+        int count = Math.max(8, layoutDensity.get());
+        float baseScale = Math.max(0.01f, layoutScale.get());
+        float speed = Math.max(0.01f, layoutSpeed.get());
+        float radius = Math.max(0.42f, target.getBbWidth() * layoutRadiusScale.get());
+        float height = Math.max(0.75f, target.getBbHeight() * 0.94f);
+        float time = (target.tickCount - 1 + tickDelta) / 20.0f;
+        long seed = ((long) target.getId() * 0x9E3779B97F4A7C15L) ^ mode.hashCode();
+
+        ParticleLayoutDescriptor descriptor = switch (mode) {
+            case "helix" -> new ParticleLayoutDescriptor.Helix(
+                    radius,
+                    height,
+                    2.15f,
+                    2,
+                    speed * 2.15f,
+                    height * 0.035f
+            );
+            case "orbit" -> new ParticleLayoutDescriptor.Orbit(
+                    radius,
+                    height * 0.48f,
+                    3,
+                    0.72f,
+                    speed * 1.8f
+            );
+            case "runes" -> new ParticleLayoutDescriptor.Runes(
+                    radius * 1.06f,
+                    height,
+                    8,
+                    Math.max(0.15f, radius * 0.28f),
+                    speed * 0.52f
+            );
+            case "pulse" -> new ParticleLayoutDescriptor.Pulse(
+                    radius * 0.72f,
+                    radius * 0.31f,
+                    height * 0.45f,
+                    3,
+                    speed * 2.35f
+            );
+            default -> new ParticleLayoutDescriptor.LightningPath(
+                    radius * 0.86f,
+                    height,
+                    3,
+                    0.58f,
+                    2.1f,
+                    speed * 0.72f
+            );
+        };
+
+        if (descriptor instanceof ParticleLayoutDescriptor.Runes runes) {
+            count = Math.max(count, runes.runeCount() * 8);
+        }
+        if (descriptor instanceof ParticleLayoutDescriptor.LightningPath lightning) {
+            count = Math.max(count, lightning.branches() * 12);
+        }
+
+        Vec3 center = RenderMath.getLerpedPos(target, tickDelta).add(0.0, target.getBbHeight() * 0.5, 0.0);
+        MeshBuilder particleMesh = renderer.batchTextured(
+                CombatantRenderPipelines.WORLD_TEXTURED_ADDITIVE,
+                GHOST_PARTICLE_TEXTURE,
+                Renderer3D.DepthMode.MAIN
+        );
+        if (particleMesh == null) return;
+
+        Vec3[] previous = descriptor instanceof ParticleLayoutDescriptor.LightningPath lightning
+                ? new Vec3[lightning.branches()]
+                : null;
+        int[] previousColor = previous != null ? new int[previous.length] : null;
+
+        for (int i = 0; i < count; i++) {
+            ParticleLayoutSample sample = ParticleLayoutEvaluator.sample(descriptor, i, count, time, seed);
+            Vec3 world = center.add(sample.offset());
+            int color = applyOpacity(palette.apply(sample.colorPhase()), sample.alpha());
+            float sampleScale = baseScale * Math.max(0.25f, sample.scale());
+            addBillboardQuad(particleMesh, world.x, world.y, world.z, sampleScale, color);
+
+            if (previous != null) {
+                int branch = i % previous.length;
+                Vec3 prev = previous[branch];
+                if (prev != null) {
+                    renderer.lineGradient(prev.x, prev.y, prev.z, world.x, world.y, world.z,
+                            applyOpacity(previousColor[branch], 0.72f),
+                            applyOpacity(color, 0.72f));
+                }
+                previous[branch] = world;
+                previousColor[branch] = color;
+            }
         }
     }
 
@@ -720,6 +833,18 @@ public class TargetESP extends Module {
 
     private boolean isCrystalsMode() {
         return "crystals".equals(espMode.get());
+    }
+
+    private boolean isProceduralLayoutMode() {
+        return isProceduralLayoutMode(espMode.get());
+    }
+
+    private static boolean isProceduralLayoutMode(String mode) {
+        return "helix".equals(mode)
+                || "orbit".equals(mode)
+                || "runes".equals(mode)
+                || "lightning".equals(mode)
+                || "pulse".equals(mode);
     }
 
     private boolean usesSecondaryColor() {

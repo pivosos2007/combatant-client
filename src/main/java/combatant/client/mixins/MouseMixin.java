@@ -61,10 +61,7 @@ public class MouseMixin {
         Minecraft mc = Minecraft.getInstance();
         if (RuntimeGate.canRunClientLogic()
                 && ModuleManager.isEnabled("clickgui")
-                && !(ClientScreen.current() instanceof ClickGuiScreen
-                || ClientScreen.current() instanceof ClickGuiPickerScreen
-                || ClientScreen.current() instanceof ClickGuiEditorScreen
-                || ClientScreen.current() instanceof VisualPreviewScreen)) {
+                && ClientScreen.current() == null) {
             ClickGuiRenderer.onMouseScroll(lastX, lastY, vertical);
             ci.cancel();
             return;
@@ -125,10 +122,7 @@ public class MouseMixin {
         Minecraft mc = Minecraft.getInstance();
         if (RuntimeGate.canRunClientLogic()
                 && ModuleManager.isEnabled("clickgui")
-                && !(ClientScreen.current() instanceof ClickGuiScreen
-                || ClientScreen.current() instanceof ClickGuiPickerScreen
-                || ClientScreen.current() instanceof ClickGuiEditorScreen
-                || ClientScreen.current() instanceof VisualPreviewScreen)) {
+                && ClientScreen.current() == null) {
 
             // action == 1 — это "нажато" (см. оригинальный код: boolean bl = action == 1;)
             boolean pressed = (action == 1);
@@ -157,10 +151,7 @@ public class MouseMixin {
 
         if (RuntimeGate.canRunClientLogic()
                 && ModuleManager.isEnabled("clickgui")
-                && !(ClientScreen.current() instanceof ClickGuiScreen
-                || ClientScreen.current() instanceof ClickGuiPickerScreen
-                || ClientScreen.current() instanceof ClickGuiEditorScreen
-                || ClientScreen.current() instanceof VisualPreviewScreen)) {
+                && ClientScreen.current() == null) {
             ClickGuiRenderer.onMouseMove(x, y);
             ci.cancel();
             return;

@@ -9,6 +9,7 @@ package combatant.client.features.module.modules.visuals;
 
 import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
 import net.minecraft.world.damagesource.DamageSource;
@@ -39,6 +40,10 @@ import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.postprocess.PostProcessPass;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.effects.emitter.BoxSurfaceEmitter;
+import combatant.client.render.effects.emitter.SurfaceEmitterSample;
+import combatant.client.render.effects.particle.ParticleEmitterDescriptor;
+import combatant.client.features.playeranimator.render.PlayerRigSurfaceEmitter;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.PostProcessUniforms;
 import combatant.client.util.time.Timer;
@@ -66,6 +71,8 @@ public class KillEffect extends Module implements PostProcessPass {
     private static final float LIGHTNING_MAX_SIZE = 0.78f;
     private static final float LIGHTNING_ALPHA = 0.40f;
     private static final long KILL_BLUR_ATTACK_MS = 55L;
+    private static final int FALLING_LAVA_MIN_SAMPLES = 48;
+    private static final int FALLING_LAVA_MAX_SAMPLES = 96;
     private static final long KILL_BLUR_DURATION_MS = 520L;
     private static final long DAMAGE_CREDIT_TTL_MS = 30_000L;
     private static final double EFFECT_DETECTION_RADIUS = 192.0;
@@ -512,24 +519,44 @@ public class KillEffect extends Module implements PostProcessPass {
     }
 
     private void spawnFallingLava(LivingEntity entity) {
-        if (mc.level == null) return;
-        int height = (int) (entity.getBbHeight() * 10);
-        int width = (int) (entity.getBbWidth() * 10);
+        if (mc.level == null || entity == null) return;
 
-        for (int i = 0; i < height; i++) {
-            for (int j = 0; j < width; j++) {
-                for (int k = 0; k < width; k++) {
-                    ((ClientLevelAccessor) mc.level).invokeAddParticle(
-                            ParticleTypes.FALLING_LAVA,
-                            false,
-                            true,
-                            entity.getX() + j * 0.1,
-                            entity.getY() + i * 0.1,
-                            entity.getZ() + k * 0.1,
-                            0, 0, 0
-                    );
-                }
+        int count = Math.max(FALLING_LAVA_MIN_SAMPLES, Math.min(FALLING_LAVA_MAX_SAMPLES,
+                Math.round((entity.getBbHeight() + entity.getBbWidth() * 2.0f) * 24.0f)));
+        long seed = random.nextLong() ^ ((long) entity.getId() << 32) ^ System.nanoTime();
+        ParticleEmitterDescriptor emitter;
+        if (entity instanceof AbstractClientPlayer player) {
+            emitter = new ParticleEmitterDescriptor.RigSurface(
+                    entity.getId(), PlayerRigSurfaceEmitter.SOURCE_ID, count, seed);
+        } else {
+            var box = entity.getBoundingBox();
+            emitter = new ParticleEmitterDescriptor.AabbSurface(
+                    new Vec3(box.minX, box.minY, box.minZ),
+                    new Vec3(box.maxX, box.maxY, box.maxZ),
+                    count, seed);
+        }
+
+        for (int i = 0; i < emitter.count(); i++) {
+            SurfaceEmitterSample sample;
+            if (emitter instanceof ParticleEmitterDescriptor.RigSurface rigSurface
+                    && entity instanceof AbstractClientPlayer player) {
+                sample = PlayerRigSurfaceEmitter.sample(player, rigSurface.seed(), i);
+            } else if (emitter instanceof ParticleEmitterDescriptor.AabbSurface aabb) {
+                sample = BoxSurfaceEmitter.sample(aabb.min(), aabb.max(), aabb.seed(), i);
+            } else {
+                continue;
             }
+
+            Vec3 normal = sample.normal();
+            Vec3 position = sample.position().add(normal.scale(0.015));
+            double outward = 0.012 + random.nextDouble() * 0.018;
+            ((ClientLevelAccessor) mc.level).invokeAddParticle(
+                    ParticleTypes.FALLING_LAVA,
+                    false,
+                    true,
+                    position.x, position.y, position.z,
+                    normal.x * outward, -0.01 + normal.y * outward, normal.z * outward
+            );
         }
     }
 

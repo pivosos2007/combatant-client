@@ -9,164 +9,141 @@
 export class SolidBrowserSurface {
   static tokens(overrides = {}) {
     return {
-      designWidth: 488,
-      designHeight: 318,
-      minWidth: 360,
-      minHeight: 235,
-      screenInset: 12,
+      designWidth: 976,
+      designHeight: 636,
+      minWidth: 720,
+      minHeight: 470,
+      screenInset: 24,
 
-      navDesignWidth: 33,
-      collectionDesignWidth: 101,
-      headerDesignHeight: 24,
+      navDesignWidth: 66,
+      collectionDesignWidth: 202,
+      headerDesignHeight: 48,
 
-      rootRadius: 12,
+      rootRadius: 24,
       rootCornerSmoothness: 2,
-      rootStrokeWidth: 0.5,
+      rootStrokeWidth: 1,
       rootBlurQuality: 45,
       rootBlurBrightness: 1,
       rootBlurAlpha: 1,
 
-      separatorWidth: 1,
-      separatorInset: 1,
+      separatorWidth: 2,
+      separatorInset: 2,
 
-      navLogoSize: 11,
-      navLogoY: 11,
-      navStackGap: 3,
-      navHeaderToStackGap: 9,
-      navFooterBottomInset: 8,
-      navItemSize: 17,
-      navItemPadding: 4,
-      navIconSize: 9,
-      navItemRadius: 4,
+      navLogoSize: 22,
+      navLogoY: 22,
+      navStackGap: 6,
+      navHeaderToStackGap: 18,
+      navFooterBottomInset: 16,
+      navItemSize: 34,
+      navItemPadding: 8,
+      navIconSize: 18,
+      navItemRadius: 8,
 
-      collectionHeaderTop: 5,
-      collectionHeaderRight: 8,
-      collectionHeaderBottom: 1,
-      collectionHeaderLeft: 8,
-      collectionTitleFontSize: 9,
-      collectionTopInset: 1,
-      collectionRightInset: 5,
-      collectionBottomInset: 5,
-      collectionLeftInset: 4,
-      collectionRowHeight: 15,
-      collectionRowGap: 2,
-      collectionRowHorizontalInset: 5,
-      collectionRowRadius: 3,
-      collectionRowFontSize: 7,
+      collectionHeaderTop: 10,
+      collectionHeaderRight: 16,
+      collectionHeaderBottom: 2,
+      collectionHeaderLeft: 16,
+      collectionTitleFontSize: 0.96,
+      collectionTopInset: 2,
+      collectionRightInset: 10,
+      collectionBottomInset: 10,
+      collectionLeftInset: 8,
+      collectionRowHeight: 30,
+      collectionRowGap: 4,
+      collectionRowHorizontalInset: 10,
+      collectionRowRadius: 6,
+      collectionRowFontSize: 0.84,
 
-      toolbarLeftInset: 5,
-      toolbarRightInset: 7,
-      toolbarProfileWidth: 87,
-      searchWidth: 81,
-      searchHeight: 12,
-      searchRadius: 3,
-      searchIconInset: 3.5,
-      searchIconSize: 5,
-      searchTextInsetLeft: 8.5,
-      searchTextInsetRight: 2,
+      toolbarLeftInset: 10,
+      toolbarRightInset: 14,
+      toolbarProfileWidth: 174,
+      searchWidth: 160,
+      searchHeight: 24,
+      searchRadius: 6,
+      searchTextInsetLeft: 8,
+      searchTextInsetRight: 31,
+      searchFontSize: 1.34,
+      searchDividerX: 131,
+      searchIconSize: 0.90,
 
-      detailHorizontalInset: 11,
-      detailTopInset: 10.5,
-      detailBottomInset: 2,
-      detailHeaderHeight: 22,
-      detailHeaderGap: 1,
-      detailTitleHeight: 12,
-      detailTitleFontSize: 12,
-      detailDescriptionFontSize: 7,
-      detailContentTopInset: 27.5,
-      detailContentRightInset: 5,
-      detailColumnGap: 5,
-      detailGroupGap: 5,
-      detailMinViewportHeight: 80,
-      detailCloseSize: 16,
-      detailClosePadding: 3.5,
-      detailCloseIconSize: 9,
-      detailCloseRadius: 4,
-      detailBackdropRadius: 1.5,
-      detailBackdropOffset: 0.5,
+      detailHorizontalInset: 22,
+      detailTopInset: 21,
+      detailBottomInset: 4,
+      detailHeaderHeight: 44,
+      detailHeaderGap: 2,
+      detailTitleHeight: 24,
+      detailTitleFontSize: 1.36,
+      detailDescriptionFontSize: 0.84,
+      detailContentTopInset: 55,
+      detailContentRightInset: 10,
+      detailColumnGap: 10,
+      detailGroupGap: 10,
+      detailMinViewportHeight: 160,
+      detailCloseSize: 32,
+      detailClosePadding: 7,
+      detailCloseIconSize: 18,
+      detailCloseRadius: 8,
+      detailBackdropRadius: 3,
+      detailBackdropOffset: 1,
       detailBackdropBrightness: 1,
-      detailBackdropClipInset: 16,
-      detailBackdropExtraBottom: 22,
+      detailBackdropClipInset: 32,
+      detailBackdropExtraBottom: 44,
 
-      cardInset: 4,
-      cardRadius: 7,
-      shortcutWidth: 90,
-      shortcutHeight: 17,
-      shortcutLeftInset: 5,
-      shortcutRightInset: 6,
-      shortcutRadius: 4,
-      shortcutIconSize: 7,
-      shortcutFontSize: 7,
-      shortcutGap: 5,
-      emptyFontSize: 9,
+      cardInset: 8,
+      cardRadius: 14,
+      shortcutWidth: 180,
+      shortcutHeight: 34,
+      shortcutLeftInset: 10,
+      shortcutRightInset: 12,
+      shortcutRadius: 8,
+      shortcutIconSize: 14,
+      shortcutFontSize: 0.84,
+      shortcutGap: 10,
+      emptyFontSize: 0.96,
 
-      scrollbarWidth: 2,
-      scrollbarMinThumb: 18,
-      scrollbarLeadingInset: 2,
-      scrollbarTrailingInset: 2,
-      scrollbarOffset: -3,
-      detailScrollbarOffset: -9,
-      detailScrollbarTrailingInset: 5,
+      scrollbarWidth: 4,
+      scrollbarMinThumb: 36,
+      scrollbarLeadingInset: 4,
+      scrollbarTrailingInset: 4,
+      scrollbarOffset: -6,
+      detailScrollbarOffset: -18,
+      detailScrollbarTrailingInset: 10,
       scrollbarVisibilityMs: 1100,
       scrollbarBaseAlpha: 0.28,
       scrollbarHoverAlpha: 0.24,
       scrollbarDragAlpha: 0.28,
-      wheelStep: 22,
+      wheelStep: 44,
       scrollSmoothingRate: 0.02,
-      scrollSnapEpsilon: 0.05,
+      scrollSnapEpsilon: 0.1,
 
       stateMotionMs: 160,
       visibilityMotionMs: 220,
       hoverMotionMs: 300,
       appearMotionMs: 240,
-      marqueeSpeed: 35,
-      marqueeHoldMs: 600,
-      marqueeFadeWidth: 8,
-
       ...overrides,
     };
   }
 
   static palette(accent = "#FF906BFF", overrides = {}) {
-    const baseline = SolidBrowserSurface._parseColor("#FF906BFF");
-    const target = SolidBrowserSurface._parseColor(accent) || baseline;
-    const baseHsv = SolidBrowserSurface._rgbToHsv(baseline.r, baseline.g, baseline.b);
-    const targetHsv = SolidBrowserSurface._rgbToHsv(target.r, target.g, target.b);
-    const hueDelta = targetHsv.h - baseHsv.h;
-    const saturationRatio = baseHsv.s <= 0.000001 ? 1 : targetHsv.s / baseHsv.s;
-
-    const transform = (hex) => {
-      const src = SolidBrowserSurface._parseColor(hex);
-      if (!src) return hex;
-      const hsv = SolidBrowserSurface._rgbToHsv(src.r, src.g, src.b);
-      if (hsv.s <= 0.000001) return SolidBrowserSurface._colorHex(src.a, src.r, src.g, src.b);
-      const rgb = SolidBrowserSurface._hsvToRgb(
-        SolidBrowserSurface._wrap01(hsv.h + hueDelta),
-        SolidBrowserSurface._clamp01(hsv.s * saturationRatio),
-        hsv.v
-      );
-      return SolidBrowserSurface._colorHex(src.a, rgb.r, rgb.g, rgb.b);
-    };
-
     const p = {
-      accent: SolidBrowserSurface._colorHex(255, target.r, target.g, target.b),
-      surface: transform("#E618151D"),       // palette index 1: 24,21,29,229.5
-      surfaceWeak: transform("#6618151D"),   // palette index 2: 24,21,29,102
-      separator: transform("#403D3647"),     // palette index 3: 61,54,71,63.75
-      accentDeep: transform("#FF4D00FF"),
+      accent: ui.str(accent, "#FF906BFF"),
+      surface: "#E618151D",
+      surfaceWeak: "#6618151D",
+      separator: "#403D3647",
+      accentDeep: "#FF4D00FF",
       foreground: "#FFFFFFFF",
-      card: transform("#FF1A171F"),          // palette index 6
-      deep: transform("#FF050407"),          // palette index 7
+      card: "#FF1A171F",
+      deep: "#FF050407",
     };
-    p.cardWeak = SolidBrowserSurface._withAlpha(p.card, 0.4);
+    p.cardWeak = ui.color.alpha(p.card, 0.4);
     p.scrollbar = p.foreground;
     return { ...p, ...overrides };
   }
 
   static frame(availableWidth, availableHeight, tokenOverrides = {}) {
     const t = SolidBrowserSurface.tokens(tokenOverrides);
-    const aw = Math.max(0, SolidBrowserSurface._num(availableWidth, t.designWidth));
-    const ah = Math.max(0, SolidBrowserSurface._num(availableHeight, t.designHeight));
+    const aw = Math.max(0, ui.num(availableWidth, t.designWidth));
+    const ah = Math.max(0, ui.num(availableHeight, t.designHeight));
     const width = Math.min(t.designWidth, Math.max(t.minWidth, aw - t.screenInset));
     const height = Math.min(t.designHeight, Math.max(t.minHeight, ah - t.screenInset));
     return {
@@ -180,8 +157,8 @@ export class SolidBrowserSurface {
 
   static layout(width, height, tokenOverrides = {}) {
     const t = tokenOverrides && tokenOverrides.designWidth ? tokenOverrides : SolidBrowserSurface.tokens(tokenOverrides);
-    const w = Math.max(1, SolidBrowserSurface._num(width, t.designWidth));
-    const h = Math.max(1, SolidBrowserSurface._num(height, t.designHeight));
+    const w = Math.max(1, ui.num(width, t.designWidth));
+    const h = Math.max(1, ui.num(height, t.designHeight));
     const navWidth = w * t.navDesignWidth / t.designWidth;
     const collectionWidth = w * t.collectionDesignWidth / t.designWidth;
     const detailWidth = Math.max(0, w - navWidth - collectionWidth);
@@ -203,14 +180,17 @@ export class SolidBrowserSurface {
   }
 
   static surface(props = {}) {
-    const t = SolidBrowserSurface.tokens(props.tokens || {});
+    const tokenInput = props.tokens || {};
+    const t = SolidBrowserSurface.tokens(props.combinedNavigation
+      ? { ...tokenInput, navDesignWidth: 268, collectionDesignWidth: 0 }
+      : tokenInput);
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
-    const width = Math.max(1, SolidBrowserSurface._num(props.width, t.designWidth));
-    const height = Math.max(1, SolidBrowserSurface._num(props.height, t.designHeight));
+    const width = Math.max(1, ui.num(props.width, t.designWidth));
+    const height = Math.max(1, ui.num(props.height, t.designHeight));
     const l = SolidBrowserSurface.layout(width, height, t);
-    const key = SolidBrowserSurface._str(props.key, "solid-browser");
-    const x = SolidBrowserSurface._num(props.x, 0);
-    const y = SolidBrowserSurface._num(props.y, 0);
+    const key = ui.str(props.key, "solid-browser");
+    const x = ui.num(props.x, 0);
+    const y = ui.num(props.y, 0);
 
     const children = [
       ui.roundedRect({
@@ -219,9 +199,9 @@ export class SolidBrowserSurface {
         radius: t.rootRadius,
         fill: p.surface,
         blur: props.blur !== false,
-        blurQuality: SolidBrowserSurface._num(props.blurQuality, t.rootBlurQuality),
-        blurBrightness: SolidBrowserSurface._num(props.blurBrightness, t.rootBlurBrightness),
-        blurAlpha: SolidBrowserSurface._clamp01(props.blurAlpha === undefined ? t.rootBlurAlpha : props.blurAlpha),
+        blurQuality: ui.num(props.blurQuality, t.rootBlurQuality),
+        blurBrightness: ui.num(props.blurBrightness, t.rootBlurBrightness),
+        blurAlpha: ui.clamp(props.blurAlpha === undefined ? t.rootBlurAlpha : props.blurAlpha),
         interactive: false,
       }),
       ui.roundedRect({
@@ -235,7 +215,7 @@ export class SolidBrowserSurface {
       }),
       ...SolidBrowserSurface._separators(key, l, t, p),
       SolidBrowserSurface._navigationPane(key, l, t, p, props),
-      SolidBrowserSurface._collectionPane(key, l, t, p, props),
+      ...(props.combinedNavigation ? [] : [SolidBrowserSurface._collectionPane(key, l, t, p, props)]),
       SolidBrowserSurface._detailPane(key, l, t, p, props),
     ];
 
@@ -249,21 +229,24 @@ export class SolidBrowserSurface {
   static navigationItem(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
-    const key = SolidBrowserSurface._str(props.key, "solid-nav-item");
-    const size = SolidBrowserSurface._num(props.size, t.navItemSize);
+    const key = ui.str(props.key, "solid-nav-item");
+    const size = ui.num(props.size, t.navItemSize);
+    const width = Math.max(size, ui.num(props.width, size));
+    const height = Math.max(size, ui.num(props.height, size));
+    const label = ui.str(props.label, "");
     const icon = SolidBrowserSurface._slotNode(props.icon);
     const stateValues = { selected: !!props.selected };
     const stateMotions = SolidBrowserSurface._motions(t, ["selected"]);
 
     return ui.button({
       key,
-      class: ui.abs(0, 0, size, size, "cursor-pointer"),
+      class: ui.abs(0, 0, width, height, "cursor-pointer"),
       stateValues,
       stateMotions,
       events: SolidBrowserSurface._events(props),
       children: [
         ui.roundedRect({
-          key: `${key}:bg`, x: 0, y: 0, w: size, h: size, radius: t.navItemRadius,
+          key: `${key}:bg`, x: 0, y: 0, w: width, h: height, radius: t.navItemRadius,
           fill: p.surfaceWeak,
           fillReactive: {
             base: p.surfaceWeak,
@@ -273,7 +256,7 @@ export class SolidBrowserSurface {
           stateSource: "parent",
           interactive: false,
         }),
-        ...(icon ? [SolidBrowserSurface._placeVisual(icon, t.navItemPadding, t.navItemPadding, t.navIconSize, t.navIconSize, {
+        ...(icon ? [SolidBrowserSurface._placeVisual(icon, t.navItemPadding, (height - t.navIconSize) * 0.5, t.navIconSize, t.navIconSize, {
           tintReactive: {
             base: p.foreground,
             mix: p.accent,
@@ -284,6 +267,17 @@ export class SolidBrowserSurface {
           stateSource: "parent",
           interactive: false,
         })] : []),
+        ...(label ? [ui.text({
+          key: `${key}:label`, text: label, color: p.foreground,
+          colorReactive: {
+            base: p.foreground, mix: p.accent, mixTerms: { selected: 0.72, hover: 0.16 },
+            alphaBase: 0.66, alphaTerms: { selected: 0.34, hover: 0.16 },
+          },
+          stateSource: "parent", interactive: false,
+          class: ui.abs(t.navItemPadding + t.navIconSize + 12, 0,
+            Math.max(0, width - t.navItemPadding * 2 - t.navIconSize - 12), height,
+            `font-${ui.str(props.font, "OnestMedium")}-1.00 text-align-left`),
+        })] : []),
       ],
     });
   }
@@ -291,7 +285,7 @@ export class SolidBrowserSurface {
   static navigationFooterItem(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
-    const key = SolidBrowserSurface._str(props.key, "solid-nav-footer");
+    const key = ui.str(props.key, "solid-nav-footer");
     const icon = SolidBrowserSurface._slotNode(props.icon);
     return ui.button({
       key,
@@ -316,10 +310,10 @@ export class SolidBrowserSurface {
   static collectionRow(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
-    const key = SolidBrowserSurface._str(props.key, "solid-row");
-    const width = Math.max(1, SolidBrowserSurface._num(props.width, 92));
-    const label = SolidBrowserSurface._str(props.label, "");
-    const font = SolidBrowserSurface._str(props.font, "OnestMedium");
+    const key = ui.str(props.key, "solid-row");
+    const width = Math.max(1, ui.num(props.width, 92));
+    const label = ui.str(props.label, "");
+    const font = ui.str(props.font, "OnestMedium");
     const custom = SolidBrowserSurface._nodes(props.content);
 
     const children = [
@@ -354,15 +348,11 @@ export class SolidBrowserSurface {
           alphaTerms: { active: 0.30, selected: 0.10 },
         },
         stateSource: "parent",
-        runtimeMarquee: props.marquee !== false,
-        marqueeSpeed: t.marqueeSpeed,
-        marqueeHoldMs: t.marqueeHoldMs,
-        marqueeFadeWidth: t.marqueeFadeWidth,
         interactive: false,
         class: ui.abs(
           t.collectionRowHorizontalInset, 0,
           Math.max(0, width - t.collectionRowHorizontalInset * 2), t.collectionRowHeight,
-          `font-${font}-${SolidBrowserSurface._fmt(t.collectionRowFontSize)} text-align-left`
+          `font-${font}-${ui.fmt(t.collectionRowFontSize)} text-align-left`
         ),
       }));
     }
@@ -379,41 +369,55 @@ export class SolidBrowserSurface {
 
   static searchField(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
-    const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
-    const key = SolidBrowserSurface._str(props.key, "solid-search");
-    const icon = SolidBrowserSurface._slotNode(props.icon);
-    const text = SolidBrowserSurface._str(props.value, SolidBrowserSurface._str(props.placeholder, ""));
-    const textAlpha = props.value ? 0.72 : 0.52;
+    const key = ui.str(props.key, "solid-search");
+    const text = ui.str(props.value, ui.str(props.placeholder, ""));
+    const textColor = props.value ? "#FFFFFFFF" : "#FF878894";
     return ui.inputText({
       key,
       class: ui.abs(0, 0, t.searchWidth, t.searchHeight, "cursor-text"),
       stateMotions: SolidBrowserSurface._motions(t),
       events: SolidBrowserSurface._events(props),
       children: [
+        ui.blurSurface({
+          key: `${key}:blur`, x: 0, y: 0, w: t.searchWidth, h: t.searchHeight,
+          radius: t.searchRadius, alpha: 135 / 255, brightness: 1, blurQuality: 27,
+          interactive: false,
+        }),
+        ui.shape({
+          key: `${key}:surface`, shape: "quad-gradient",
+          class: ui.abs(0, 0, t.searchWidth, t.searchHeight),
+          startColor: "#6C121314", endColor: "#6C050607", angle: 90,
+          interactive: false,
+        }),
         ui.roundedRect({
-          key: `${key}:bg`, x: 0, y: 0, w: t.searchWidth, h: t.searchHeight, radius: t.searchRadius,
-          fill: SolidBrowserSurface._withAlpha(p.surface, 173.4 / 255),
-          fillReactive: {
-            base: SolidBrowserSurface._withAlpha(p.surface, 173.4 / 255),
-            mix: p.foreground,
-            mixBase: 0.035,
-            mixTerms: { hover: 0.035 },
-          },
+          key: `${key}:stroke`, x: 0.5, y: 0.5,
+          w: t.searchWidth - 1, h: t.searchHeight - 1, radius: t.searchRadius,
+          fill: "#00000000", stroke: "#96121314", strokeWidth: 1,
           stateSource: "parent", interactive: false,
         }),
-        ...(icon ? [SolidBrowserSurface._placeVisual(icon, t.searchIconInset, t.searchIconInset, t.searchIconSize, t.searchIconSize, {
-          tintReactive: { base: p.foreground, alphaBase: 0.48 },
-          stateSource: "parent", interactive: false,
-        })] : []),
+        ui.shape({
+          key: `${key}:divider`, shape: "rect",
+          class: ui.abs(t.searchDividerX, 8, 1, t.searchHeight - 16),
+          fill: "#269B9B9B", interactive: false,
+        }),
         ui.text({
           key: `${key}:text`, text,
-          color: SolidBrowserSurface._withAlpha(p.foreground, textAlpha),
+          color: textColor,
+          colorReactive: { base: textColor, mix: "#FFFFFFFF", mixTerms: { focus: 1 } },
+          stateSource: "parent",
           interactive: false,
           class: ui.abs(
             t.searchTextInsetLeft, 0,
             Math.max(0, t.searchWidth - t.searchTextInsetLeft - t.searchTextInsetRight), t.searchHeight,
-            `font-${SolidBrowserSurface._str(props.font, "OnestMedium")}-6.00 text-align-left`
+            `font-${ui.str(props.font, "Onest")}-${ui.fmt(t.searchFontSize)} text-align-left`
           ),
+        }),
+        ui.text({
+          key: `${key}:icon`, text: "s", color: "#FF878894",
+          colorReactive: { base: "#FF878894", mix: "#FFF5F5FF", mixTerms: { focus: 1, hover: 0.35 } },
+          stateSource: "parent", interactive: false,
+          class: ui.abs(t.searchDividerX + 1, 0, t.searchWidth - t.searchDividerX - 1, t.searchHeight,
+            `font-Icons-${ui.fmt(t.searchIconSize)} text-align-center`),
         }),
       ],
     });
@@ -422,7 +426,7 @@ export class SolidBrowserSurface {
   static closeButton(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
-    const key = SolidBrowserSurface._str(props.key, "solid-close");
+    const key = ui.str(props.key, "solid-close");
     const icon = SolidBrowserSurface._slotNode(props.icon);
     return ui.button({
       key,
@@ -442,9 +446,9 @@ export class SolidBrowserSurface {
   static card(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
-    const key = SolidBrowserSurface._str(props.key, "solid-card");
-    const width = Math.max(1, SolidBrowserSurface._num(props.width, 90));
-    const height = Math.max(1, SolidBrowserSurface._num(props.height, 32));
+    const key = ui.str(props.key, "solid-card");
+    const width = Math.max(1, ui.num(props.width, 90));
+    const height = Math.max(1, ui.num(props.height, 32));
     return ui.stack({
       key,
       class: ui.abs(0, 0, width, height),
@@ -458,7 +462,7 @@ export class SolidBrowserSurface {
   }
 
   static section(props = {}) {
-    const key = SolidBrowserSurface._str(props.key, "solid-section");
+    const key = ui.str(props.key, "solid-section");
     return ui.column({
       key,
       class: props.class || "",
@@ -469,9 +473,9 @@ export class SolidBrowserSurface {
   static shortcut(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
-    const key = SolidBrowserSurface._str(props.key, "solid-shortcut");
+    const key = ui.str(props.key, "solid-shortcut");
     const icon = SolidBrowserSurface._slotNode(props.icon);
-    const label = SolidBrowserSurface._str(props.label, "");
+    const label = ui.str(props.label, "");
     return ui.button({
       key,
       class: ui.abs(0, 0, t.shortcutWidth, t.shortcutHeight, "cursor-pointer"),
@@ -491,13 +495,12 @@ export class SolidBrowserSurface {
         ui.text({
           key: `${key}:label`, text: label,
           colorReactive: { base: p.foreground, alphaBase: 0.72, alphaTerms: { hover: 0.28 } },
-          stateSource: "parent", runtimeMarquee: true,
-          marqueeSpeed: t.marqueeSpeed, marqueeHoldMs: t.marqueeHoldMs,
+          stateSource: "parent",
           interactive: false,
           class: ui.abs(
             t.shortcutLeftInset + t.shortcutIconSize + 4, 0,
             Math.max(0, t.shortcutWidth - (t.shortcutLeftInset + t.shortcutIconSize + 4) - t.shortcutRightInset), t.shortcutHeight,
-            `font-${SolidBrowserSurface._str(props.font, "OnestMedium")}-${SolidBrowserSurface._fmt(t.shortcutFontSize)} text-align-left`
+            `font-${ui.str(props.font, "OnestMedium")}-${ui.fmt(t.shortcutFontSize)} text-align-left`
           ),
         }),
       ],
@@ -508,13 +511,13 @@ export class SolidBrowserSurface {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
     return ui.text({
-      key: SolidBrowserSurface._str(props.key, "solid-empty"),
-      text: SolidBrowserSurface._str(props.text, ""),
-      color: SolidBrowserSurface._withAlpha(p.foreground, 0.55),
+      key: ui.str(props.key, "solid-empty"),
+      text: ui.str(props.text, ""),
+      color: ui.color.alpha(p.foreground, 0.55),
       interactive: false,
       class: ui.cls(
         props.class || "",
-        `font-${SolidBrowserSurface._str(props.font, "OnestMedium")}-${SolidBrowserSurface._fmt(t.emptyFontSize)} text-align-center`
+        `font-${ui.str(props.font, "OnestMedium")}-${ui.fmt(t.emptyFontSize)} text-align-center`
       ),
     });
   }
@@ -534,11 +537,15 @@ export class SolidBrowserSurface {
     }
 
     const nav = SolidBrowserSurface._nodes(props.navigationItems);
-    const navX = (l.navWidth - t.navItemSize) * 0.5;
+    const combined = !!props.combinedNavigation;
+    const navX = combined ? 8 : (l.navWidth - t.navItemSize) * 0.5;
+    const navW = combined ? Math.max(1, l.navWidth - 16) : t.navItemSize;
+    const navH = combined ? 46 : t.navItemSize;
+    const navGap = combined ? 6 : t.navStackGap;
     let navY = l.headerHeight + t.navHeaderToStackGap;
     for (let i = 0; i < nav.length; i++) {
-      out.push(SolidBrowserSurface._placeVisual(nav[i], navX, navY, t.navItemSize, t.navItemSize));
-      navY += t.navItemSize + t.navStackGap;
+      out.push(SolidBrowserSurface._placeVisual(nav[i], navX, navY, navW, navH));
+      navY += navH + navGap;
     }
 
     const footer = SolidBrowserSurface._slotNode(props.navigationFooter);
@@ -556,7 +563,7 @@ export class SolidBrowserSurface {
   }
 
   static _collectionPane(key, l, t, p, props) {
-    const title = SolidBrowserSurface._str(props.collectionTitle, "");
+    const title = ui.str(props.collectionTitle, "");
     const rows = SolidBrowserSurface._nodes(props.collectionRows);
     const contentWidth = Math.max(0, l.collectionWidth - t.collectionLeftInset - t.collectionRightInset);
     const headerChildren = title ? [ui.text({
@@ -565,14 +572,21 @@ export class SolidBrowserSurface {
         t.collectionHeaderLeft, t.collectionHeaderTop,
         Math.max(0, l.collectionWidth - t.collectionHeaderLeft - t.collectionHeaderRight),
         Math.max(0, l.headerHeight - t.collectionHeaderTop - t.collectionHeaderBottom),
-        `font-${SolidBrowserSurface._str(props.collectionTitleFont, "OnestMedium")}-${SolidBrowserSurface._fmt(t.collectionTitleFontSize)} text-align-left`
+        `font-${ui.str(props.collectionTitleFont, "OnestMedium")}-${ui.fmt(t.collectionTitleFontSize)} text-align-left`
       ),
     })] : [];
 
-    const column = ui.column({
+    let rowY = 0;
+    const placedRows = rows.map((row) => {
+      const placed = SolidBrowserSurface._placeVisual(row, 0, rowY, contentWidth, t.collectionRowHeight);
+      rowY += t.collectionRowHeight + t.collectionRowGap;
+      return placed;
+    });
+    const contentHeight = Math.max(0, rowY - (placedRows.length ? t.collectionRowGap : 0));
+    const content = ui.stack({
       key: `${key}:collection-content`,
-      class: `absolute x-${SolidBrowserSurface._fmt(t.collectionLeftInset)} y-${SolidBrowserSurface._fmt(t.collectionTopInset)} w-${SolidBrowserSurface._fmt(contentWidth)} gap-${SolidBrowserSurface._fmt(t.collectionRowGap)}`,
-      children: rows,
+      class: ui.abs(t.collectionLeftInset, t.collectionTopInset, contentWidth, contentHeight),
+      children: placedRows,
     });
 
     const scroll = ui.scroll({
@@ -593,7 +607,7 @@ export class SolidBrowserSurface {
       scrollbarBaseAlpha: t.scrollbarBaseAlpha,
       scrollbarHoverAlpha: t.scrollbarHoverAlpha,
       scrollbarDragAlpha: t.scrollbarDragAlpha,
-      children: [column],
+      children: [content],
     });
 
     return ui.stack({
@@ -607,8 +621,8 @@ export class SolidBrowserSurface {
     const out = [];
     const left = SolidBrowserSurface._slotNode(props.toolbarLeft);
     const right = SolidBrowserSurface._slotNode(props.toolbarRight);
-    const leftW = Math.max(0, SolidBrowserSurface._num(props.toolbarLeftWidth, t.searchWidth));
-    const rightW = Math.max(0, SolidBrowserSurface._num(props.toolbarRightWidth, t.toolbarProfileWidth));
+    const leftW = Math.max(0, ui.num(props.toolbarLeftWidth, t.searchWidth));
+    const rightW = Math.max(0, ui.num(props.toolbarRightWidth, t.toolbarProfileWidth));
     if (left) out.push(SolidBrowserSurface._placeVisual(left, t.toolbarLeftInset, (l.headerHeight - t.searchHeight) * 0.5, leftW, t.searchHeight));
     if (right) out.push(SolidBrowserSurface._placeVisual(right, Math.max(0, l.detailWidth - t.toolbarRightInset - rightW), 0, rightW, l.headerHeight));
 
@@ -628,7 +642,7 @@ export class SolidBrowserSurface {
         blur: true,
         blurQuality: t.detailBackdropRadius,
         blurBrightness: t.detailBackdropBrightness,
-        blurAlpha: SolidBrowserSurface._clamp01(props.detailBackdropAlpha === undefined ? 1 : props.detailBackdropAlpha),
+        blurAlpha: ui.clamp(props.detailBackdropAlpha === undefined ? 1 : props.detailBackdropAlpha),
         interactive: false,
       }));
     }
@@ -638,7 +652,7 @@ export class SolidBrowserSurface {
     const detailNodes = SolidBrowserSurface._nodes(props.detailContent);
     const contentColumn = ui.column({
       key: `${key}:detail-content`,
-      class: `absolute x-0.00 y-${SolidBrowserSurface._fmt(t.detailContentTopInset)} w-${SolidBrowserSurface._fmt(Math.max(0, viewportW - t.detailContentRightInset))} gap-${SolidBrowserSurface._fmt(t.detailGroupGap)}`,
+      class: `absolute x-0.00 y-${ui.fmt(t.detailContentTopInset)} w-${ui.fmt(Math.max(0, viewportW - t.detailContentRightInset))} gap-${ui.fmt(t.detailGroupGap)}`,
       children: detailNodes,
     });
 
@@ -667,30 +681,29 @@ export class SolidBrowserSurface {
       const headerW = viewportW;
       const close = SolidBrowserSurface._slotNode(props.detailClose);
       const titleActions = SolidBrowserSurface._nodes(props.detailTitleActions);
-      const titleRightReserve = (close ? t.detailCloseSize + t.detailGroupGap : 0) + Math.max(0, SolidBrowserSurface._num(props.detailTitleActionsWidth, 0));
+      const titleRightReserve = (close ? t.detailCloseSize + t.detailGroupGap : 0) + Math.max(0, ui.num(props.detailTitleActionsWidth, 0));
       const textW = Math.max(0, headerW - titleRightReserve);
-      const title = SolidBrowserSurface._str(props.detailTitle, "");
-      const description = SolidBrowserSurface._str(props.detailDescription, "");
+      const title = ui.str(props.detailTitle, "");
+      const description = ui.str(props.detailDescription, "");
       const headerChildren = [];
       if (title) {
         headerChildren.push(ui.text({
           key: `${key}:detail-title`, text: title, color: p.foreground, interactive: false,
           class: ui.abs(0, 0, textW, t.detailTitleHeight,
-            `font-${SolidBrowserSurface._str(props.detailTitleFont, "OnestMedium")}-${SolidBrowserSurface._fmt(t.detailTitleFontSize)} text-align-left`),
+            `font-${ui.str(props.detailTitleFont, "OnestMedium")}-${ui.fmt(t.detailTitleFontSize)} text-align-left`),
         }));
       }
       if (description) {
         headerChildren.push(ui.text({
           key: `${key}:detail-description`, text: description,
-          color: SolidBrowserSurface._withAlpha(p.foreground, 0.58), interactive: false,
-          runtimeMarquee: true, marqueeSpeed: t.marqueeSpeed, marqueeHoldMs: t.marqueeHoldMs,
+          color: ui.color.alpha(p.foreground, 0.58), interactive: false,
           class: ui.abs(0, t.detailTitleHeight + t.detailHeaderGap, textW,
             Math.max(0, t.detailHeaderHeight - t.detailTitleHeight - t.detailHeaderGap),
-            `font-${SolidBrowserSurface._str(props.detailDescriptionFont, "OnestMedium")}-${SolidBrowserSurface._fmt(t.detailDescriptionFontSize)} text-align-left`),
+            `font-${ui.str(props.detailDescriptionFont, "OnestMedium")}-${ui.fmt(t.detailDescriptionFontSize)} text-align-left`),
         }));
       }
       if (titleActions.length) {
-        const actionsW = Math.max(0, SolidBrowserSurface._num(props.detailTitleActionsWidth, 0));
+        const actionsW = Math.max(0, ui.num(props.detailTitleActionsWidth, 0));
         for (const node of titleActions) {
           headerChildren.push(SolidBrowserSurface._placeVisual(node, Math.max(0, headerW - titleRightReserve), 0, actionsW, t.detailTitleHeight));
         }
@@ -724,11 +737,12 @@ export class SolidBrowserSurface {
   static _separators(key, l, t, p) {
     const x1 = l.navWidth - t.separatorWidth;
     const x2 = l.navWidth + l.collectionWidth - t.separatorWidth;
-    return [
-      ui.shape({ key: `${key}:sep-nav`, shape: "rect", class: ui.abs(x1, t.separatorInset, 1, l.height - t.separatorInset * 2), fill: p.separator, interactive: false }),
-      ui.shape({ key: `${key}:sep-collection`, shape: "rect", class: ui.abs(x2, t.separatorInset, 1, l.height - t.separatorInset * 2), fill: p.separator, interactive: false }),
-      ui.shape({ key: `${key}:sep-header`, shape: "rect", class: ui.abs(x2 + 1, l.headerHeight - 1, l.width - l.navWidth - l.collectionWidth - 1, 1), fill: p.separator, interactive: false }),
-    ];
+    const out = [ui.shape({ key: `${key}:sep-nav`, shape: "rect", class: ui.abs(x1, t.separatorInset, 1, l.height - t.separatorInset * 2), fill: p.separator, interactive: false })];
+    if (l.collectionWidth > 0.5) {
+      out.push(ui.shape({ key: `${key}:sep-collection`, shape: "rect", class: ui.abs(x2, t.separatorInset, 1, l.height - t.separatorInset * 2), fill: p.separator, interactive: false }));
+    }
+    out.push(ui.shape({ key: `${key}:sep-header`, shape: "rect", class: ui.abs(x2 + 1, l.headerHeight - 1, l.width - l.navWidth - l.collectionWidth - 1, 1), fill: p.separator, interactive: false }));
+    return out;
   }
 
   static _motions(t, custom = []) {
@@ -772,73 +786,4 @@ export class SolidBrowserSurface {
     };
   }
 
-  static _num(value, fallback) {
-    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  }
-
-  static _str(value, fallback = "") {
-    return typeof value === "string" && value.length ? value : fallback;
-  }
-
-  static _fmt(value) {
-    return SolidBrowserSurface._num(value, 0).toFixed(2);
-  }
-
-  static _clamp01(value) {
-    return Math.max(0, Math.min(1, SolidBrowserSurface._num(value, 0)));
-  }
-
-  static _withAlpha(hex, alpha) {
-    const c = SolidBrowserSurface._parseColor(hex);
-    if (!c) return hex;
-    return SolidBrowserSurface._colorHex(Math.round(255 * SolidBrowserSurface._clamp01(alpha)), c.r, c.g, c.b);
-  }
-
-  static _parseColor(hex) {
-    if (typeof hex !== "string" || !/^#[0-9a-fA-F]{8}$/.test(hex.trim())) return null;
-    const raw = Number.parseInt(hex.trim().slice(1), 16) >>> 0;
-    return { a: (raw >>> 24) & 255, r: (raw >>> 16) & 255, g: (raw >>> 8) & 255, b: raw & 255 };
-  }
-
-  static _colorHex(a, r, g, b) {
-    const aa = Math.max(0, Math.min(255, Math.round(a)));
-    const rr = Math.max(0, Math.min(255, Math.round(r)));
-    const gg = Math.max(0, Math.min(255, Math.round(g)));
-    const bb = Math.max(0, Math.min(255, Math.round(b)));
-    return `#${((((aa << 24) | (rr << 16) | (gg << 8) | bb) >>> 0).toString(16).padStart(8, "0")).toUpperCase()}`;
-  }
-
-  static _wrap01(value) {
-    const v = value - Math.floor(value);
-    return v < 0 ? v + 1 : v;
-  }
-
-  static _rgbToHsv(r, g, b) {
-    const rr = r / 255, gg = g / 255, bb = b / 255;
-    const max = Math.max(rr, gg, bb), min = Math.min(rr, gg, bb), d = max - min;
-    let h = 0;
-    if (d > 0.000001) {
-      if (max === rr) h = ((gg - bb) / d) % 6;
-      else if (max === gg) h = (bb - rr) / d + 2;
-      else h = (rr - gg) / d + 4;
-      h /= 6;
-      if (h < 0) h += 1;
-    }
-    return { h, s: max <= 0 ? 0 : d / max, v: max };
-  }
-
-  static _hsvToRgb(h, s, v) {
-    const hh = SolidBrowserSurface._wrap01(h) * 6;
-    const c = v * s;
-    const x = c * (1 - Math.abs((hh % 2) - 1));
-    const m = v - c;
-    let rr = 0, gg = 0, bb = 0;
-    if (hh < 1) { rr = c; gg = x; }
-    else if (hh < 2) { rr = x; gg = c; }
-    else if (hh < 3) { gg = c; bb = x; }
-    else if (hh < 4) { gg = x; bb = c; }
-    else if (hh < 5) { rr = x; bb = c; }
-    else { rr = c; bb = x; }
-    return { r: Math.round((rr + m) * 255), g: Math.round((gg + m) * 255), b: Math.round((bb + m) * 255) };
-  }
 }

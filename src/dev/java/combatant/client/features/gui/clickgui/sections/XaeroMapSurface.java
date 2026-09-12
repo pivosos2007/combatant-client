@@ -9,6 +9,7 @@ package combatant.client.features.gui.clickgui.sections;
 
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
+import combatant.client.features.theme.Theme;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.map.MapGridSpec;
@@ -28,12 +29,14 @@ import combatant.client.render.map.MapTileUvRect;
 import combatant.client.render.map.MapViewport;
 import combatant.client.render.map.MapVisibleTileSelector;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.util.text.LegacyTextUtil;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.language.I18n;
 import org.lwjgl.glfw.GLFW;
 import xaero.lib.client.graphics.GpuTextureAndView;
 import xaero.lib.client.config.ClientConfigManager;
+import xaero.lib.common.config.Config;
 import xaero.lib.common.config.option.ConfigOption;
 import xaero.lib.common.config.single.SingleConfigManager;
 import xaero.hud.minimap.common.config.MinimapConfigConstants;
@@ -140,6 +143,10 @@ final class XaeroMapSurface {
     private boolean deleteArmed;
     private Drawer drawer = Drawer.NONE;
     private boolean controlsOpen;
+    private boolean caveControlsOpen;
+    private boolean caveSliderDragging;
+    private boolean caveHeightFocused;
+    private String caveHeightText = "auto";
     private WaypointDraft waypointDraft;
 
     Frame render(float x, float y, float width, float height, float mouseX, float mouseY) {
@@ -220,6 +227,7 @@ final class XaeroMapSurface {
         if (waypointDraft != null && waypointDraft.mousePressed(mouseX, mouseY, button)) return true;
         if (settings != null && settings.mousePressed(mouseX, mouseY, button)) return true;
         if (contextOpen && clickContext(mouseX, mouseY, button)) return true;
+        if (caveControlsOpen && clickCaveControls(mouseX, mouseY, button)) return true;
         if (clickUiButton(mouseX, mouseY, button)) return true;
         if (clickDrawer(mouseX, mouseY, button)) return true;
         if (!contains(mouseX, mouseY)) return false;
@@ -247,6 +255,7 @@ final class XaeroMapSurface {
         if (settings != null) settings.mouseReleased(mouseX, mouseY, button);
         if (waypointDraft != null) waypointDraft.mouseReleased(mouseX, mouseY, button);
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) dragging = false;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) caveSliderDragging = false;
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && rightSelecting) {
             rightSelecting = false;
             contextX = clamp(mouseX, areaX + 8.0f, areaX + areaWidth - 246.0f);
@@ -258,6 +267,15 @@ final class XaeroMapSurface {
 
     boolean mouseScrolled(float mouseX, float mouseY, double amount) {
         if (settings != null && settings.mouseScrolled(mouseX, mouseY, amount)) return true;
+        if (caveControlsOpen && inside(mouseX, mouseY, cavePanelX(), cavePanelY(), cavePanelWidth(), cavePanelHeight())) {
+            int current = caveStart();
+            int next = current == Integer.MAX_VALUE
+                    ? (amount > 0.0 ? -64 : 319)
+                    : Math.max(-64, Math.min(319, current + (amount > 0.0 ? 1 : -1)));
+            setCaveStart(next);
+            caveHeightText = Integer.toString(next);
+            return true;
+        }
         if (!contains(mouseX, mouseY) || amount == 0.0) return false;
         changeZoom(amount, mouseX, mouseY, amount > 0.0);
         return true;
@@ -266,6 +284,23 @@ final class XaeroMapSurface {
     boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (waypointDraft != null && waypointDraft.keyPressed(keyCode, modifiers)) return true;
         if (settings != null && settings.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if (caveHeightFocused) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                caveHeightFocused = false;
+                syncCaveHeightText();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                commitCaveHeightText();
+                caveHeightFocused = false;
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !caveHeightText.isEmpty()) {
+                caveHeightText = caveHeightText.substring(0, caveHeightText.length() - 1);
+                return true;
+            }
+            return true;
+        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             if (contextOpen || drawer != Drawer.NONE || controlsOpen) {
                 contextOpen = false;
@@ -327,6 +362,12 @@ final class XaeroMapSurface {
 
     boolean charTyped(char chr, int modifiers) {
         if (waypointDraft != null && waypointDraft.charTyped(chr)) return true;
+        if (caveHeightFocused) {
+            if ((Character.isDigit(chr) || chr == '-' || Character.isLetter(chr)) && caveHeightText.length() < 8) {
+                caveHeightText += chr;
+            }
+            return true;
+        }
         return settings != null && settings.charTyped(chr, modifiers);
     }
 
@@ -343,6 +384,8 @@ final class XaeroMapSurface {
         dragging = false;
         rightSelecting = false;
         contextOpen = false;
+        caveSliderDragging = false;
+        caveHeightFocused = false;
     }
 
     private List<MapTerrainTile> collectTerrain(MapProcessor processor,
@@ -724,7 +767,7 @@ final class XaeroMapSurface {
     private void drawMapUi(MapProcessor processor, MapDimension dimension, float mouseX, float mouseY) {
         uiButtons.clear();
         SettingsGuiPalette palette = SettingsGuiPalette.current();
-        float scale = (float) Math.max(0.9, chromeScale());
+        float scale = (float) chromeScale();
         float size = 30.0f * scale;
         float gap = 7.0f * scale;
         float inset = 14.0f * scale;
@@ -783,6 +826,7 @@ final class XaeroMapSurface {
         drawZoom(palette, scale);
         drawDrawer(mouseX, mouseY, palette, scale);
         if (controlsOpen) drawControls(palette, scale);
+        if (caveControlsOpen) drawCaveControls(mouseX, mouseY, palette, scale);
         if (contextOpen) drawContext(mouseX, mouseY, palette, scale);
         if (waypointDraft != null) waypointDraft.render(mouseX, mouseY, palette, scale);
         drawTooltip(mouseX, mouseY, palette, scale);
@@ -827,7 +871,7 @@ final class XaeroMapSurface {
     }
 
     private void drawTooltip(float mouseX, float mouseY, SettingsGuiPalette palette, float scale) {
-        if ((settings != null && settings.isOpen()) || contextOpen || waypointDraft != null) return;
+        if ((settings != null && settings.isOpen()) || caveControlsOpen || contextOpen || waypointDraft != null) return;
         UiButton hovered = null;
         for (UiButton button : uiButtons) {
             if (button.contains(mouseX, mouseY)) {
@@ -1080,7 +1124,7 @@ final class XaeroMapSurface {
         switch (action) {
             case SETTINGS -> toggleSettings();
             case RECENTER -> recenter();
-            case CAVE -> cycleCaveMode();
+            case CAVE -> toggleCaveControls();
             case DIMENSION -> toggleDimension();
             case WAYPOINTS -> drawer = drawer == Drawer.WAYPOINTS ? Drawer.NONE : Drawer.WAYPOINTS;
             case PLAYERS -> drawer = drawer == Drawer.PLAYERS ? Drawer.NONE : Drawer.PLAYERS;
@@ -1220,9 +1264,22 @@ final class XaeroMapSurface {
         XaeroMapActions.export(activeProcessor, startX, startZ, endX, endZ);
     }
 
-    private void cycleCaveMode() {
+    private void toggleCaveControls() {
+        if (!WorldMapClientConfigUtils.getEffectiveCaveModeAllowed()) return;
+        caveControlsOpen = !caveControlsOpen;
+        caveSliderDragging = false;
+        caveHeightFocused = false;
+        contextOpen = false;
+        drawer = Drawer.NONE;
+        if (caveControlsOpen) syncCaveHeightText();
+    }
+
+    private void setCaveMode(int target) {
         if (activeDimension == null || !WorldMapClientConfigUtils.getEffectiveCaveModeAllowed()) return;
-        activeDimension.toggleCaveModeType(true);
+        int normalized = Math.floorMod(target, 3);
+        for (int i = 0; i < 3 && Math.floorMod(activeDimension.getCaveModeType(), 3) != normalized; i++) {
+            activeDimension.toggleCaveModeType(true);
+        }
         if (activeProcessor != null) {
             synchronized (activeProcessor.uiSync) {
                 activeDimension.saveConfigUnsynced();
@@ -1230,7 +1287,184 @@ final class XaeroMapSurface {
             activeProcessor.updateCaveStart();
         }
         centered = false;
-        contextOpen = false;
+    }
+
+    private void drawCaveControls(float mouseX, float mouseY, SettingsGuiPalette palette, float scale) {
+        if (caveSliderDragging) updateCaveSlider(mouseX);
+        float x = cavePanelX();
+        float y = cavePanelY();
+        float width = cavePanelWidth();
+        float height = cavePanelHeight();
+        Renderer2D renderer = Renderer2D.COLOR;
+        renderer.roundedRectSoftShadow(x, y, width, height, 10.0f * scale, 12.0f,
+                0.06f, palette.panelShadow());
+        renderer.roundedRectGradient(x, y, width, height, 10.0f * scale,
+                palette.panelBgLeft(), palette.panelBgRight(), 0.0f);
+        renderer.roundedRectStroke(x, y, width, height, 10.0f * scale,
+                0.8f, palette.panelStroke());
+
+        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(),
+                tr("gui.xaero_box_cave_mode", "Cave mode"),
+                x + 14.0f * scale, y + 12.0f * scale, 13.0f * scale, palette.panelText(), false);
+
+        String[] modes = {
+                tr("gui.xaero_off", "Off"),
+                tr("gui.xaero_wm_cave_mode_type_layered", "Layered"),
+                tr("gui.xaero_wm_cave_mode_type_full", "Full")
+        };
+        int currentMode = activeDimension == null ? 0 : Math.floorMod(activeDimension.getCaveModeType(), 3);
+        float modeGap = 5.0f * scale;
+        float modeX = x + 14.0f * scale;
+        float modeY = y + 36.0f * scale;
+        float modeW = (width - 28.0f * scale - modeGap * 2.0f) / 3.0f;
+        float modeH = 25.0f * scale;
+        for (int i = 0; i < modes.length; i++) {
+            float bx = modeX + i * (modeW + modeGap);
+            boolean selected = i == currentMode;
+            boolean hovered = inside(mouseX, mouseY, bx, modeY, modeW, modeH);
+            renderer.roundedRect(bx, modeY, modeW, modeH, 6.0f * scale,
+                    selected ? palette.panelPillActive()
+                            : hovered ? palette.controlSurfaceHover() : palette.controlSurface());
+            if (selected) renderer.roundedRectStroke(bx, modeY, modeW, modeH,
+                    6.0f * scale, 0.8f, Theme.theme().accent());
+            float textW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), modes[i], 10.5f * scale);
+            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), modes[i],
+                    bx + (modeW - textW) * 0.5f, modeY + 7.0f * scale,
+                    10.5f * scale, selected ? palette.panelText() : palette.panelMuted(), false);
+        }
+
+        String topLabel = tr("gui.xaero_wm_cave_mode_start", "Cave mode top Y");
+        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), topLabel,
+                x + 14.0f * scale, y + 75.0f * scale, 10.0f * scale, palette.panelMuted(), false);
+        float sliderX = x + 14.0f * scale;
+        float sliderY = y + 101.0f * scale;
+        float fieldW = 62.0f * scale;
+        float sliderW = width - 42.0f * scale - fieldW;
+        float trackY = sliderY + 7.0f * scale;
+        renderer.roundedRect(sliderX, trackY, sliderW, 4.0f * scale, 2.0f * scale, palette.controlSurface());
+        float progress = caveStartProgress();
+        renderer.roundedRect(sliderX, trackY, sliderW * progress, 4.0f * scale,
+                2.0f * scale, Theme.theme().accent());
+        float knobX = sliderX + sliderW * progress;
+        renderer.circle(knobX, trackY + 2.0f * scale, 6.0f * scale, palette.panelText());
+
+        float fieldX = x + width - 14.0f * scale - fieldW;
+        float fieldY = y + 94.0f * scale;
+        renderer.roundedRect(fieldX, fieldY, fieldW, 25.0f * scale, 6.0f * scale,
+                caveHeightFocused ? palette.controlSurfaceHover() : palette.controlSurface());
+        renderer.roundedRectStroke(fieldX, fieldY, fieldW, 25.0f * scale, 6.0f * scale,
+                0.7f, caveHeightFocused ? Theme.theme().accent() : palette.panelStroke());
+        String displayed = caveHeightFocused ? caveHeightText : caveStart() == Integer.MAX_VALUE
+                ? tr("gui.xaero_wm_cave_mode_start_auto", "auto") : Integer.toString(caveStart());
+        float valueW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), displayed, 10.5f * scale);
+        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), displayed,
+                fieldX + (fieldW - valueW) * 0.5f, fieldY + 7.0f * scale,
+                10.5f * scale, palette.panelText(), false);
+    }
+
+    private boolean clickCaveControls(float mouseX, float mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return inside(mouseX, mouseY,
+                cavePanelX(), cavePanelY(), cavePanelWidth(), cavePanelHeight());
+        float scale = (float) chromeScale();
+        float x = cavePanelX();
+        float y = cavePanelY();
+        float width = cavePanelWidth();
+        if (!inside(mouseX, mouseY, x, y, width, cavePanelHeight())) {
+            caveControlsOpen = false;
+            caveHeightFocused = false;
+            caveSliderDragging = false;
+            return false;
+        }
+        float gap = 5.0f * scale;
+        float modeX = x + 14.0f * scale;
+        float modeY = y + 36.0f * scale;
+        float modeW = (width - 28.0f * scale - gap * 2.0f) / 3.0f;
+        float modeH = 25.0f * scale;
+        for (int i = 0; i < 3; i++) {
+            if (inside(mouseX, mouseY, modeX + i * (modeW + gap), modeY, modeW, modeH)) {
+                setCaveMode(i);
+                return true;
+            }
+        }
+        float fieldW = 62.0f * scale;
+        float fieldX = x + width - 14.0f * scale - fieldW;
+        float fieldY = y + 94.0f * scale;
+        if (inside(mouseX, mouseY, fieldX, fieldY, fieldW, 25.0f * scale)) {
+            caveHeightFocused = true;
+            syncCaveHeightText();
+            return true;
+        }
+        float sliderX = x + 14.0f * scale;
+        float sliderW = width - 42.0f * scale - fieldW;
+        if (inside(mouseX, mouseY, sliderX - 7.0f * scale, y + 92.0f * scale,
+                sliderW + 14.0f * scale, 29.0f * scale)) {
+            caveHeightFocused = false;
+            caveSliderDragging = true;
+            updateCaveSlider(mouseX);
+            return true;
+        }
+        caveHeightFocused = false;
+        return true;
+    }
+
+    private void updateCaveSlider(float mouseX) {
+        float scale = (float) chromeScale();
+        float sliderX = cavePanelX() + 14.0f * scale;
+        float sliderW = cavePanelWidth() - 42.0f * scale - 62.0f * scale;
+        float progress = clamp((mouseX - sliderX) / sliderW, 0.0f, 1.0f);
+        int indexed = Math.round(progress * 384.0f) - 65;
+        int value = indexed <= -65 ? Integer.MAX_VALUE : Math.max(-64, Math.min(319, indexed));
+        setCaveStart(value);
+        syncCaveHeightText();
+    }
+
+    private float caveStartProgress() {
+        int value = caveStart();
+        int indexed = value == Integer.MAX_VALUE ? -65 : Math.max(-64, Math.min(319, value));
+        return (indexed + 65.0f) / 384.0f;
+    }
+
+    private int caveStart() {
+        Config primary = WorldMap.INSTANCE.getConfigs().getClientConfigManager().getPrimaryConfigManager().getConfig();
+        Integer value = primary.get(WorldMapPrimaryClientConfigOptions.CAVE_MODE_START);
+        return value == null ? Integer.MAX_VALUE : value;
+    }
+
+    private void setCaveStart(int value) {
+        Config primary = WorldMap.INSTANCE.getConfigs().getClientConfigManager().getPrimaryConfigManager().getConfig();
+        int resolved = value == Integer.MAX_VALUE ? Integer.MAX_VALUE : Math.max(-64, Math.min(319, value));
+        Integer current = primary.get(WorldMapPrimaryClientConfigOptions.CAVE_MODE_START);
+        if (current != null && current == resolved) return;
+        primary.set(WorldMapPrimaryClientConfigOptions.CAVE_MODE_START, resolved);
+        WorldMap.INSTANCE.getConfigs().getPrimaryClientConfigManagerIO().save();
+        if (activeProcessor != null) activeProcessor.updateCaveStart();
+    }
+
+    private void syncCaveHeightText() {
+        int value = caveStart();
+        caveHeightText = value == Integer.MAX_VALUE ? "auto" : Integer.toString(value);
+    }
+
+    private void commitCaveHeightText() {
+        String value = caveHeightText == null ? "" : caveHeightText.trim();
+        if (value.isEmpty() || value.equalsIgnoreCase("auto")) {
+            setCaveStart(Integer.MAX_VALUE);
+        } else {
+            try {
+                setCaveStart(Integer.parseInt(value));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        syncCaveHeightText();
+    }
+
+    private float cavePanelWidth() { return 318.0f * (float) chromeScale(); }
+    private float cavePanelHeight() { return 134.0f * (float) chromeScale(); }
+    private float cavePanelX() { return areaX + 14.0f * (float) chromeScale(); }
+    private float cavePanelY() {
+        float scale = (float) chromeScale();
+        float caveButtonY = areaY + areaHeight - 14.0f * scale - 30.0f * scale;
+        return caveButtonY - 7.0f * scale - cavePanelHeight();
     }
 
     private void toggleDimension() {
@@ -1260,8 +1494,16 @@ final class XaeroMapSurface {
     }
 
     private static String tr(String key, String fallback) {
-        String translated = I18n.get(key);
-        return translated.equals(key) ? fallback : translated;
+        String translated;
+        try {
+            translated = I18n.get(key, "");
+        } catch (RuntimeException ignored) {
+            translated = null;
+        }
+        if (translated == null || translated.equals(key) || translated.startsWith("Format error:")) {
+            translated = fallback;
+        }
+        return LegacyTextUtil.stripLegacy(translated).replace('\n', ' ').replace('\r', ' ').trim();
     }
 
     private final class WaypointDraft {
@@ -1600,7 +1842,7 @@ final class XaeroMapSurface {
     }
 
     private static double chromeScale() {
-        return 1.0;
+        return 1.3;
     }
 
     private String sourceId(MapProcessor processor, MapDimension dimension) {

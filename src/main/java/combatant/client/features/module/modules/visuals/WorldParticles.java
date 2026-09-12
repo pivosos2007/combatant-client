@@ -33,6 +33,7 @@ import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.TextureTintUniforms;
+import combatant.client.render.effects.particle.ParticleSimulationProfile;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,7 +81,8 @@ public class WorldParticles extends Module {
     private static final float FUNNEL_FLASH_ALPHA_MULTIPLIER = 0.34f;
     private static final float FUNNEL_LEAK_ALPHA_MULTIPLIER = 0.32f;
     private static final float MOTION_SCALE = 0.04f;
-    private static final float DRAG = 0.98f;
+    private static final ParticleSimulationProfile PARTICLE_SIMULATION =
+            ParticleSimulationProfile.drag(0.98f, 0.98f);
     private static final long ALPHA_ANIM_MS = 1000L;
     private static final int[][] CUBE_EDGES = {
             {0, 1}, {1, 2}, {2, 3}, {3, 0},
@@ -918,8 +920,8 @@ public class WorldParticles extends Module {
             prevRotation = rotation;
             pos = pos.add(motion);
             rotation = rotation.add(rotationMotion);
-            motion = motion.scale(DRAG);
-            rotationMotion = rotationMotion.scale(DRAG);
+            motion = motion.scale(PARTICLE_SIMULATION.linearDrag());
+            rotationMotion = rotationMotion.scale(PARTICLE_SIMULATION.angularDrag());
         }
 
         private float alpha() {

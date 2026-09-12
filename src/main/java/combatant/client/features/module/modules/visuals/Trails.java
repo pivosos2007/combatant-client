@@ -30,6 +30,7 @@ import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.render.effects.particle.ParticleSimulationProfile;
 import combatant.client.render.helpers.Particle3D;
 import combatant.client.render.helpers.ParticleTextureMode;
 import combatant.client.render.helpers.TrailPoint;
@@ -71,8 +72,8 @@ public class Trails extends Module {
     private static final String SETTING_PARTICLE_PROJECTILE_COUNT = "particle_projectile_count";
     private static final String SETTING_CONNECTED_PATH = "connected_path";
     private static final String SETTING_CONNECT_STEP = "connected_step";
-    private static final float PARTICLE_GRAVITY = 0.01f;
-    private static final float PARTICLE_DRAG = 0.96f;
+    private static final ParticleSimulationProfile PARTICLE_SIMULATION =
+            ParticleSimulationProfile.dragGravity(0.96f, 0.96f, 0.01f);
     private static final int PARTICLE_MAX = 600;
     private static final int PROJECTILE_SCAN_RADIUS = 48;
     private static final int PROJECTILE_MAX_SPAWN = 140;
@@ -539,8 +540,8 @@ public class Trails extends Module {
                 color,
                 tex.texture(),
                 tex.index(),
-                PARTICLE_DRAG,
-                PARTICLE_GRAVITY,
+                PARTICLE_SIMULATION.linearDrag(),
+                PARTICLE_SIMULATION.gravity(),
                 (random.nextFloat() - 0.5f) * 8f
         ));
     }
