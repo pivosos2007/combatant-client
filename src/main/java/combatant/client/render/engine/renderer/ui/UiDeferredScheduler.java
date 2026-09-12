@@ -50,7 +50,8 @@ public final class UiDeferredScheduler {
 
     static {
         for (Renderer2D.Deferred2DLayer layer : Renderer2D.Deferred2DLayer.values()) {
-            int capacity = layer == Renderer2D.Deferred2DLayer.AFTER_VANILLA_GUI ? 64 : 32;
+            int capacity = (layer == Renderer2D.Deferred2DLayer.AFTER_VANILLA_GUI
+                    || layer == Renderer2D.Deferred2DLayer.SCREEN_ABSOLUTE_TOP) ? 64 : 32;
             if (layer == Renderer2D.Deferred2DLayer.BEFORE_VANILLA_GUI) capacity = 256;
             READY_BY_LAYER.put(layer, new ObjectArrayList<>(capacity));
         }
@@ -133,9 +134,11 @@ public final class UiDeferredScheduler {
             pushedModelView = true;
             modelView.identity();
 
-            String layerLabel = layer == Renderer2D.Deferred2DLayer.AFTER_VANILLA_GUI
-                    ? "after_vanilla_gui"
-                    : "before_vanilla_gui";
+            String layerLabel = switch (layer) {
+                case AFTER_VANILLA_GUI -> "after_vanilla_gui";
+                case SCREEN_ABSOLUTE_TOP -> "screen_absolute_top";
+                default -> "before_vanilla_gui";
+            };
             try (ProfilerPhase.Scope ignoredCpu = ProfilerPhase.scope("ui:deferred_drain:" + layerLabel);
                  TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("2d:deferred_" + layerLabel)) {
                 for (int i = 0, size = DRAINING.size(); i < size; ) {

@@ -7,17 +7,19 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#moj_import <combatant:shader_esp_palette.glsl>
+
 out vec4 color;
 
 uniform sampler2D u_Texture;
 
 layout (std140) uniform ShaderEspSmoke {
-    vec4 u_Rect;    // xy = location, zw = resolution
-    vec4 u_Params0; // x = time, y = scale, z = speed, w = alpha
-    vec4 u_Params1; // x = octaves, y = contrast, z = override color, w = intensity
-    vec4 u_Color0;  // bright smoke color when override is enabled
-    vec4 u_Color1;  // mid smoke color when override is enabled
-    vec4 u_Color2;  // dark smoke color when override is enabled
+    vec4 u_Rect;           // xy = location, zw = resolution
+    vec4 u_Params0;        // x = time, y = smoke scale, z = smoke speed, w = pass alpha
+    vec4 u_Params1;        // x = octaves, y = contrast, z = custom override flag, w = intensity
+    vec4 u_PrimaryColor;   // custom palette primary
+    vec4 u_SecondaryColor; // custom palette secondary
+    vec4 u_ColorParams;    // x = mode, y = animated base phase deg, z = spatial spread deg, w = gradient angle deg
 };
 
 in vec2 v_TexCoord;
@@ -75,6 +77,18 @@ void main() {
     float overrideColor = step(0.5, u_Params1.z);
     float intensity = clamp(u_Params1.w, 0.0, 4.0);
 
+    vec2 coords = (gl_FragCoord.xy - u_Rect.xy) / resolution;
+    int colorMode = int(floor(u_ColorParams.x + 0.5));
+    vec3 paletteColor = shaderEspResolveColor(
+        coords,
+        colorMode,
+        u_ColorParams.y,
+        u_ColorParams.z,
+        u_ColorParams.w,
+        u_PrimaryColor.rgb,
+        u_SecondaryColor.rgb
+    );
+
     vec2 uv = gl_FragCoord.xy / resolution;
     vec2 aspectUv = vec2(uv.x * resolution.x / max(resolution.y, 1.0), uv.y);
     vec2 domain = aspectUv * scale;
@@ -92,9 +106,10 @@ void main() {
     float soft = clamp(f * f * f + 0.60 * f * f + 0.50 * f, 0.0, 1.35);
 
     vec3 entityBase = max(mask.rgb, vec3(0.001));
-    vec3 c0 = mix(deriveBright(entityBase), u_Color0.rgb, overrideColor);
-    vec3 c1 = mix(entityBase, u_Color1.rgb, overrideColor);
-    vec3 c2 = mix(deriveDark(entityBase), u_Color2.rgb, overrideColor);
+    vec3 localBase = mix(entityBase, paletteColor, overrideColor);
+    vec3 c0 = deriveBright(localBase);
+    vec3 c1 = localBase;
+    vec3 c2 = deriveDark(localBase);
 
     vec3 smoke = mix(c2, c1, clamp(length(q), 0.0, 1.0));
     smoke = mix(smoke, c0, clamp(length(r) * 0.72 + filament * 0.22, 0.0, 1.0));

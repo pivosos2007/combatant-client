@@ -42,7 +42,8 @@ public final class UiImageRendererBridge {
         );
         UiStyle style = node.style();
         String explicitTint = node.props().string("tint", "");
-        int tint = UiColor.parse(explicitTint, style.textColor() != null ? style.textColor() : 0xFFFFFFFF);
+        int tint = UiReactiveVisual.color(node, "tint", style.textColor() != null ? style.textColor() : 0xFFFFFFFF);
+        boolean reactiveTint = node.props().get("tintReactive") instanceof java.util.Map<?, ?>;
         boolean gradientEnabled = node.props().bool("gradientEnabled", false);
         int gradientStart = UiColor.parse(node.props().string("gradientStartColor", ""), tint);
         int gradientEnd = UiColor.parse(node.props().string("gradientEndColor", ""), tint);
@@ -54,7 +55,7 @@ public final class UiImageRendererBridge {
             if (svgId == null) return;
             SvgRenderOptions options = gradientEnabled
                     ? SvgRenderOptions.linearGradient(gradientStart, gradientEnd, gradientAngle)
-                    : (explicitTint == null || explicitTint.isBlank()
+                    : ((explicitTint == null || explicitTint.isBlank()) && !reactiveTint
                     ? SvgRenderOptions.DEFAULT
                     : SvgRenderOptions.overrideColor(tint));
             context.renderer().svg(svgId, bounds.x(), bounds.y(), bounds.width(), bounds.height(), options);

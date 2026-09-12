@@ -45,7 +45,7 @@ public final class MenuScreen {
     private static final float S = 2f;
     private static final float MENU_W = 400f;
     private static final float MENU_H = 250f;
-    private static final float CATEGORY_TRANSITION_DURATION_MS = 900f;
+    private static final float CATEGORY_TRANSITION_DURATION_MS = 180f;
     private final BackgroundComponent backgroundComponent = new BackgroundComponent();
     private final CategoryContainerComponent categoryContainer = new CategoryContainerComponent();
     private final SearchComponent searchComponent = new SearchComponent();
@@ -135,9 +135,9 @@ public final class MenuScreen {
         SettingsGuiPalette palette = SettingsGuiPalette.current();
         float dt = AnimationUtility.deltaTime();
         if (openTarget && prismProgress < 1f) {
-            prismProgress = Math.min(1f, prismProgress + dt / 0.85f);
+            prismProgress = Math.min(1f, prismProgress + dt / 0.28f);
         }
-        screenAnim = AnimationUtility.approach(screenAnim, openTarget ? 1.0f : 0.0f, dt, openTarget ? 8.5f : 7.2f);
+        screenAnim = AnimationUtility.approach(screenAnim, openTarget ? 1.0f : 0.0f, dt, openTarget ? 16.0f : 20.0f);
         screenAnim = AnimationUtility.snap(screenAnim, openTarget ? 1.0f : 0.0f, 0.002f);
         if (screenAnim <= 0.001f && !openTarget) return;
 
@@ -473,19 +473,10 @@ public final class MenuScreen {
     }
 
     private RenderWarpStack.Scope pushLifecycleWarp(float progress) {
-        if (progress >= 0.999f) return Renderer2D.pushWarp(null);
-        return Renderer2D.pushPerspectiveWarp(
-                shellX,
-                shellY,
-                shellW,
-                shellH,
-                0.0f,
-                0.0f,
-                0.0f,
-                3.6f,
-                0.80f,
-                0.90f + 0.10f * progress
-        );
+        // Opening/closing is alpha-only now. Perspective scale during the lifecycle
+        // made text and clip boundaries drift for a few frames and added more motion
+        // than the Settings surface needs.
+        return Renderer2D.pushWarp(null);
     }
 
     private void renderShellChrome(SettingsGuiPalette palette) {

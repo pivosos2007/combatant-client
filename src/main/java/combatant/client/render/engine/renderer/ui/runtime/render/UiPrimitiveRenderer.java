@@ -351,8 +351,8 @@ public final class UiPrimitiveRenderer {
         UiStyle style = node.style();
         Renderer2D renderer = context.renderer();
         String shape = props.string("shape", "chamfered").toLowerCase(Locale.ROOT);
-        int fill = color(props.get("fill"), style.backgroundColor() != null ? style.backgroundColor() : 0x00000000);
-        int stroke = color(props.get("stroke"), style.strokeColor() != null ? style.strokeColor() : 0x00000000);
+        int fill = applyRenderAlpha(UiReactiveVisual.color(node, "fill", style.backgroundColor() != null ? style.backgroundColor() : 0x00000000));
+        int stroke = applyRenderAlpha(UiReactiveVisual.color(node, "stroke", style.strokeColor() != null ? style.strokeColor() : 0x00000000));
         float strokeWidth = props.number("strokeWidth", style.strokeWidth());
         double x = bounds.x();
         double y = bounds.y();
@@ -1154,6 +1154,10 @@ public final class UiPrimitiveRenderer {
             }
         }
         return count;
+    }
+
+    private int applyRenderAlpha(int resolved) {
+        return renderAlpha >= 0.999f ? resolved : UiColor.multiplyAlpha(resolved, renderAlpha);
     }
 
     private int color(Object value, int fallback) {

@@ -29,31 +29,26 @@ public enum ShaderEspGradientUniforms {
     private static final int EXPECTED_WRITES_PER_FRAME = 64;
 
     public static void update(float x, float y, float width, float height,
-                              int color1, int color2, int color3, int color4) {
-        float darkMultiplier = (((color2 >>> 16) & 0xFF) + ((color2 >>> 8) & 0xFF) + (color2 & 0xFF)) / (255.0f * 3.0f);
-        update(x, y, width, height, color1, darkMultiplier, 0.0f, 1.0f);
-    }
-
-    public static void update(float x, float y, float width, float height,
-                              int passColor, float darkMultiplier, float overrideColor, float intensity) {
+                              int primaryColor, int secondaryColor,
+                              int colorMode, float baseAngleDeg, float spatialSpreadDeg, float gradientAngleDeg,
+                              float darkMultiplier, float overrideColor, float intensity, float passAlpha) {
         DATA.rect[0] = x;
         DATA.rect[1] = y;
         DATA.rect[2] = Math.max(1.0f, width);
         DATA.rect[3] = Math.max(1.0f, height);
 
-        putColor(DATA.color1, passColor);
-        DATA.color2[0] = Math.max(0.0f, Math.min(2.0f, darkMultiplier));
-        DATA.color2[1] = 0.0f;
-        DATA.color2[2] = 0.0f;
-        DATA.color2[3] = 0.0f;
-        DATA.color3[0] = Math.max(0.0f, Math.min(1.0f, overrideColor));
-        DATA.color3[1] = Math.max(0.0f, Math.min(4.0f, intensity));
-        DATA.color3[2] = 0.0f;
-        DATA.color3[3] = 0.0f;
-        DATA.color4[0] = 0.0f;
-        DATA.color4[1] = 0.0f;
-        DATA.color4[2] = 0.0f;
-        DATA.color4[3] = 0.0f;
+        putColor(DATA.primaryColor, primaryColor);
+        putColor(DATA.secondaryColor, secondaryColor);
+
+        DATA.colorParams[0] = colorMode;
+        DATA.colorParams[1] = baseAngleDeg;
+        DATA.colorParams[2] = spatialSpreadDeg;
+        DATA.colorParams[3] = gradientAngleDeg;
+
+        DATA.passParams[0] = Math.max(0.0f, Math.min(2.0f, darkMultiplier));
+        DATA.passParams[1] = Math.max(0.0f, Math.min(1.0f, overrideColor));
+        DATA.passParams[2] = Math.max(0.0f, Math.min(4.0f, intensity));
+        DATA.passParams[3] = Math.max(0.0f, Math.min(1.0f, passAlpha));
 
         CombatantRenderSystem.uniforms().write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
     }
@@ -71,19 +66,19 @@ public enum ShaderEspGradientUniforms {
 
     private static final class Data implements CombatantUniformAllocator.UniformWriter {
         private final float[] rect = new float[4];
-        private final float[] color1 = new float[4];
-        private final float[] color2 = new float[4];
-        private final float[] color3 = new float[4];
-        private final float[] color4 = new float[4];
+        private final float[] primaryColor = new float[4];
+        private final float[] secondaryColor = new float[4];
+        private final float[] colorParams = new float[4];
+        private final float[] passParams = new float[4];
 
         @Override
         public void write(java.nio.ByteBuffer buffer) {
             Std140Builder.intoBuffer(buffer)
                     .putFloat(rect[0]).putFloat(rect[1]).putFloat(rect[2]).putFloat(rect[3])
-                    .putFloat(color1[0]).putFloat(color1[1]).putFloat(color1[2]).putFloat(color1[3])
-                    .putFloat(color2[0]).putFloat(color2[1]).putFloat(color2[2]).putFloat(color2[3])
-                    .putFloat(color3[0]).putFloat(color3[1]).putFloat(color3[2]).putFloat(color3[3])
-                    .putFloat(color4[0]).putFloat(color4[1]).putFloat(color4[2]).putFloat(color4[3]);
+                    .putFloat(primaryColor[0]).putFloat(primaryColor[1]).putFloat(primaryColor[2]).putFloat(primaryColor[3])
+                    .putFloat(secondaryColor[0]).putFloat(secondaryColor[1]).putFloat(secondaryColor[2]).putFloat(secondaryColor[3])
+                    .putFloat(colorParams[0]).putFloat(colorParams[1]).putFloat(colorParams[2]).putFloat(colorParams[3])
+                    .putFloat(passParams[0]).putFloat(passParams[1]).putFloat(passParams[2]).putFloat(passParams[3]);
         }
 
         @Override
@@ -91,5 +86,4 @@ public enum ShaderEspGradientUniforms {
             return false;
         }
     }
-
 }

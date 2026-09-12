@@ -5,14 +5,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-/**
- * Domain-free reusable port of Rockstar's Modern/Solid browser surface.
- *
- * The component is deliberately not a ClickGUI screen. It only describes
- * geometry, material, state-reactive visuals and slots. Runtime interpolation,
- * scroll, scrollbar and marquee are retained by the Java UI runtime so cached
- * JS trees remain interactive and animated.
- */
+/** Reusable browser surface for JS-runtime UI consumers. */
 export class SolidBrowserSurface {
   static tokens(overrides = {}) {
     return {
@@ -134,7 +127,6 @@ export class SolidBrowserSurface {
     };
   }
 
-  /** Exact baseline palette entries from the Modern source, accent-shifted by hue/saturation. */
   static palette(accent = "#FF906BFF", overrides = {}) {
     const baseline = SolidBrowserSurface._parseColor("#FF906BFF");
     const target = SolidBrowserSurface._parseColor(accent) || baseline;
@@ -210,7 +202,6 @@ export class SolidBrowserSurface {
     };
   }
 
-  /** Build the reusable browser shell. No consumer is registered here. */
   static surface(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
@@ -222,7 +213,6 @@ export class SolidBrowserSurface {
     const y = SolidBrowserSurface._num(props.y, 0);
 
     const children = [
-      // Source calls this a squircle, but CornerSmoothness=2 with radius=12 is the ordinary L2 rounded-box SDF.
       ui.roundedRect({
         key: `${key}:surface`,
         x: 0, y: 0, w: l.width, h: l.height,
@@ -234,7 +224,6 @@ export class SolidBrowserSurface {
         blurAlpha: SolidBrowserSurface._clamp01(props.blurAlpha === undefined ? t.rootBlurAlpha : props.blurAlpha),
         interactive: false,
       }),
-      // Source explicitly draws a rounded 0.5 border after drawClientRect.
       ui.roundedRect({
         key: `${key}:border`,
         x: 0, y: 0, w: l.width, h: l.height,
@@ -257,7 +246,6 @@ export class SolidBrowserSurface {
     });
   }
 
-  /** Source-faithful 17x17 navigation entry with a caller-owned 9x9 icon. */
   static navigationItem(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
@@ -300,7 +288,6 @@ export class SolidBrowserSurface {
     });
   }
 
-  /** Bottom rail action from the same source, with hover-only icon emphasis. */
   static navigationFooterItem(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
@@ -326,7 +313,6 @@ export class SolidBrowserSurface {
     });
   }
 
-  /** Generic source-metric collection row. selected and active are semantic, not module-specific. */
   static collectionRow(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
@@ -391,7 +377,6 @@ export class SolidBrowserSurface {
     });
   }
 
-  /** Visual search primitive. Input ownership remains with the eventual consumer/host. */
   static searchField(props = {}) {
     const t = SolidBrowserSurface.tokens(props.tokens || {});
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
@@ -632,8 +617,6 @@ export class SolidBrowserSurface {
       : !!(props.detailTitle || SolidBrowserSurface._nodes(props.detailContent).length);
 
     if (detailActive && props.detailBackdrop !== false) {
-      // i_method_f5052edf: x extends 11px around inner header, y extends 10.5 up,
-      // height adds 10.5 + 22, zero corner radius, blur radius/offset 1.5/0.5.
       out.push(ui.roundedRect({
         key: `${key}:detail-backdrop`,
         x: 0,

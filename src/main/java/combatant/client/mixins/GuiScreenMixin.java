@@ -29,6 +29,7 @@ import combatant.client.features.gui.preview.VisualPreviewRuntime;
 import combatant.client.features.gui.preview.VisualPreviewScreen;
 import combatant.client.features.gui.hud.nondraggable.impl.CustomBar;
 import combatant.client.features.gui.hud.nondraggable.impl.DynamicIsland;
+import combatant.client.features.gui.hud.nondraggable.impl.DebugHudReplacement;
 import combatant.client.features.module.modules.misc.ClickGui;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.RenderPhase;
@@ -111,6 +112,7 @@ public abstract class GuiScreenMixin {
         if (!VisualPreviewRuntime.isActive()) {
             ClickGuiRenderer.renderTopLayer(drawContext, tickCounter.getGameTimeDeltaTicks());
         }
+        DebugHudReplacement.renderTopLayer(drawContext);
     }
 
 }

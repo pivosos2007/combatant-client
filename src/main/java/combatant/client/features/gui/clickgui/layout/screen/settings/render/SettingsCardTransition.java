@@ -14,7 +14,11 @@ import combatant.client.render.engine.renderer.Renderer2D;
 
 /**
  * Card-local transition used when switching Settings sections.
- * The shell/backplate never participates: only explicit card/panel bounds opt into the effect.
+ *
+ * Keep this deliberately restrained. The previous blur/bloom arrival made every
+ * card briefly read as a separate floating layer and exaggerated viewport clip
+ * boundaries. Cards now keep most of their opacity and only settle the final
+ * alpha during a short section transition.
  */
 public enum SettingsCardTransition {
     ;
@@ -34,94 +38,18 @@ public enum SettingsCardTransition {
                                       float radius,
                                       float scale,
                                       SettingsGuiPalette palette) {
-        float p = progress;
-        if (p < 0.999f) {
-            drawSoftArrival(x, y, w, h, radius, scale, palette, p);
-        }
-
-        float sharp = sharpAlpha(p);
+        float alpha = arrivalAlpha(progress);
         double previousRendererAlpha = Renderer2D.COLOR.getAlpha();
         float previousGuiAlpha = ClickGuiRenderer.getRenderAlphaMultiplier();
-        Renderer2D.COLOR.setAlpha(previousRendererAlpha * sharp);
-        ClickGuiRenderer.setRenderAlphaMultiplier(previousGuiAlpha * sharp);
+        Renderer2D.COLOR.setAlpha(previousRendererAlpha * alpha);
+        ClickGuiRenderer.setRenderAlphaMultiplier(previousGuiAlpha * alpha);
         return new CardScope(previousRendererAlpha, previousGuiAlpha);
     }
 
-    private static void drawSoftArrival(float x,
-                                        float y,
-                                        float w,
-                                        float h,
-                                        float radius,
-                                        float scale,
-                                        SettingsGuiPalette palette,
-                                        float p) {
-        float blurAlpha = blurAlpha(p);
-        float bloomAlpha = bloomAlpha(p);
-        if (blurAlpha <= 0.002f && bloomAlpha <= 0.002f) return;
-
-        if (blurAlpha > 0.002f) {
-            // Backdrop blur is strictly limited to the card rectangle. The extra soft form is
-            // a blurred silhouette of the card itself, not a glow on the Settings backplate.
-            ClickGuiRenderer.drawBlur(
-                    x,
-                    y,
-                    w,
-                    h,
-                    radius,
-                    0xFF000000,
-                    0.42f * blurAlpha
-            );
-
-            float formBlur = (5.0f + 8.5f * blurAlpha) * scale;
-            int top = LayoutRender2D.alpha(palette.moduleCardTopStrong(), 0.18f * blurAlpha);
-            int bottom = LayoutRender2D.alpha(palette.moduleCardBottomStrong(), 0.15f * blurAlpha);
-            Renderer2D.COLOR.roundedRectSoftShadowGradient(
-                    x,
-                    y,
-                    w,
-                    h,
-                    radius,
-                    formBlur,
-                    0.26f,
-                    top,
-                    bottom,
-                    90f
-            );
-        }
-
-        if (bloomAlpha > 0.002f) {
-            int bloomColor = SettingsGuiPalette.mix(
-                    palette.moduleCardTopStrong(),
-                    palette.menuCategorySelectedRight(),
-                    0.24f
-            );
-            ClickGuiRenderer.drawRoundedRectGlow(
-                    x,
-                    y,
-                    w,
-                    h,
-                    radius,
-                    2.6f * scale,
-                    LayoutRender2D.alpha(bloomColor, 0.052f * bloomAlpha)
-            );
-        }
-    }
-
-    private static float sharpAlpha(float p) {
-        float delayed = AnimationUtility.clamp((p - 0.10f) / 0.90f, 0f, 1f);
-        return AnimationUtility.easeOutCubic(delayed);
-    }
-
-    private static float blurAlpha(float p) {
-        float rise = AnimationUtility.easeOutCubic(AnimationUtility.clamp(p / 0.24f, 0f, 1f));
-        float fall = 1f - AnimationUtility.smoothstep(AnimationUtility.clamp((p - 0.20f) / 0.68f, 0f, 1f));
-        return AnimationUtility.clamp01(rise * fall);
-    }
-
-    private static float bloomAlpha(float p) {
-        float rise = AnimationUtility.easeOutCubic(AnimationUtility.clamp(p / 0.20f, 0f, 1f));
-        float fall = 1f - AnimationUtility.smoothstep(AnimationUtility.clamp((p - 0.12f) / 0.42f, 0f, 1f));
-        return AnimationUtility.clamp01(rise * fall);
+    private static float arrivalAlpha(float p) {
+        // Never make a section materialize from zero. A very shallow 92 -> 100%
+        // settle is enough to register a category change without dimming the cards.
+        return 0.92f + 0.08f * AnimationUtility.easeOutCubic(AnimationUtility.clamp01(p));
     }
 
     public static final class SectionScope implements AutoCloseable {

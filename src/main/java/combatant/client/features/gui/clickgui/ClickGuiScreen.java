@@ -24,8 +24,8 @@ public final class ClickGuiScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        // Render is intentionally deferred to GameRendererMixin after GuiRenderer.render(...).
-        // Vanilla HUD/screen elements are queued into GuiRenderState and otherwise flush above immediate ClickGui rendering.
+        ClickGuiRenderer.onMouseMoveScaled(mouseX, mouseY);
+        ClickGuiRenderer.renderScreen(context, delta);
     }
 
     @Override

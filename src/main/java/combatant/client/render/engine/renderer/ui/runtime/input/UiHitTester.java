@@ -42,6 +42,7 @@ public final class UiHitTester {
             if (childHit != null) return childHit;
         }
         if (!containsVisualShape(node, bounds, x, y)) return null;
+        if (!node.props().bool("interactive", true) || "none".equalsIgnoreCase(node.props().string("pointerEvents", "auto"))) return null;
         return node;
     }
 

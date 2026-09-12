@@ -8,6 +8,7 @@
 package combatant.client.features.module.modules.visuals;
 
 import net.minecraft.client.Camera;
+import net.minecraft.client.particle.Particle;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -19,10 +20,12 @@ import net.minecraft.world.phys.Vec3;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
+import combatant.client.config.values.SetValue;
 import combatant.client.compat.sodiumextra.SodiumExtraNoRenderCompat;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
+import combatant.client.features.gui.clickgui.settings.TextListSetting;
 
 import java.util.Optional;
 
@@ -38,6 +41,7 @@ public class NoRender extends Module {
     private static final String SETTING_WORLD_TOGGLES = "world_toggles";
     private static final String SETTING_ENTITY_TOGGLES = "entity_toggles";
     private static final String SETTING_PARTICLE_TOGGLES = "particle_toggles";
+    private static final String SETTING_PARTICLE_CLASSES = "particle_classes";
     private static final String SETTING_VIEW_OBSTRUCTION_FADE_LIVING_ENTITIES = "view_obstruction_fade_living_entities";
     private static final String SETTING_VIEW_OBSTRUCTION_FADE_STRENGTH = "view_obstruction_fade_strength";
     private static final String SETTING_FIRE_ONLY_IF_RESISTANT = "fire_only_if_resistant";
@@ -103,6 +107,11 @@ public class NoRender extends Module {
                 put("block_breaking_particles", false);
             }}
     );
+    private final SetValue particleClasses = textList(
+            "norender_particle_classes",
+            SETTING_PARTICLE_CLASSES,
+            TextListSetting.PickerMode.PARTICLES
+    );
 
     private final BooleanValue viewObstructionFadeLivingEntities =
             visibleWhen(bool("norender_view_obstruction_fade_living_entities", SETTING_VIEW_OBSTRUCTION_FADE_LIVING_ENTITIES, true),
@@ -145,6 +154,22 @@ public class NoRender extends Module {
 
     public boolean offParticle(String key) {
         return isEnabled() && particleToggles.get(key);
+    }
+
+    public boolean shouldHideParticle(Particle particle) {
+        if (!isEnabled() || particle == null) return false;
+        if (particleToggles.get("all_particles")) return true;
+
+        java.util.Set<String> selected = particleClasses.get();
+        if (selected == null || selected.isEmpty()) return false;
+
+        Class<?> current = particle.getClass();
+        while (current != null && Particle.class.isAssignableFrom(current)) {
+            if (selected.contains(current.getName())) return true;
+            if (current == Particle.class) break;
+            current = current.getSuperclass();
+        }
+        return false;
     }
 
     private void syncSodiumExtraNoRenderOwnership() {

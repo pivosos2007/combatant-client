@@ -8,7 +8,6 @@
 package combatant.client.features.module.modules.visuals;
 
 
-import combatant.client.features.theme.Theme;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.ProjectionType;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
@@ -47,6 +46,7 @@ import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.module.modules.combat.Hitbox;
 import combatant.client.features.relations.CategoryService;
+import combatant.client.features.relations.CategoryType;
 import combatant.client.mixins.accessors.EntityRenderManagerAccessor;
 import combatant.client.mixins.accessors.EntityRendererAccessor;
 import combatant.client.mixins.accessors.LevelRendererAccessor;
@@ -54,6 +54,7 @@ import combatant.client.render.ShaderEspRenderContext;
 import combatant.client.render.compat.EntityCullingCompat;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.animation.AnimationUtility;
+import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.msaa.MsaaFramebuffer;
@@ -88,9 +89,8 @@ public class ESP extends Module {
     private static final String MODE_SHADER = "Шейдер";
     private static final String SHADER_FILL_SOLID = "Solid";
     private static final String SHADER_FILL_SMOKE = "Smoke";
-    private static final String SHADER_COLOR_ENTITY = "Entity";
-    private static final String SHADER_COLOR_THEME = "Theme";
-    private static final String SHADER_COLOR_CUSTOM = "Custom";
+    private static final String COLOR_SOURCE_RELATIONS = "Relations";
+    private static final String COLOR_SOURCE_CUSTOM = "Custom";
     private static final int OUTLINE_ALPHA = 145;
     private static final int COLOR_ALPHA = 210;
     private static final int HEALTH_ALPHA = 220;
@@ -121,6 +121,37 @@ public class ESP extends Module {
             bool("espRenderSelf", "render_self", false);
     private final ModeValue boxMode =
             modeCommon("espBoxMode", "box_mode", CommonSettingSchemas.ESP_BOX_MODE, MODE_FULL, MODE_FULL, MODE_CORNERS, MODE_3D, MODE_SHADER);
+    private final ModeValue frameColorSource =
+            visibleWhen(modeSetting("espFrameColorSource", "frame_color_source", COLOR_SOURCE_RELATIONS,
+                    COLOR_SOURCE_RELATIONS, COLOR_SOURCE_CUSTOM), () -> !is3DBox());
+    private final EnumValue<AnimatedRenderColors.Mode> frameColorMode =
+            visibleWhen(enumCommon("espFrameColorMode", "frame_color_mode",
+                    CommonSettingSchemas.RENDER_COLOR_MODE, AnimatedRenderColors.Mode.STATIC,
+                    AnimatedRenderColors.Mode.STATIC,
+                    AnimatedRenderColors.Mode.RAINBOW,
+                    AnimatedRenderColors.Mode.LIGHT_RAINBOW,
+                    AnimatedRenderColors.Mode.SKY,
+                    AnimatedRenderColors.Mode.FADE,
+                    AnimatedRenderColors.Mode.DOUBLE_COLOR,
+                    AnimatedRenderColors.Mode.ANALOGOUS,
+                    AnimatedRenderColors.Mode.THEME), this::usesCustomFrameColors);
+    private final RGBColorValue framePrimaryColor =
+            visibleWhen(common(colorNoAlpha("espFramePrimaryColor", "frame_primary_color", "#78C8FF"),
+                    CommonSettingSchemas.RENDER_PRIMARY_COLOR.commonI18nKey()), this::usesPrimaryFrameColor);
+    private final RGBColorValue frameSecondaryColor =
+            visibleWhen(common(colorNoAlpha("espFrameSecondaryColor", "frame_secondary_color", "#B064FF"),
+                    CommonSettingSchemas.RENDER_SECONDARY_COLOR.commonI18nKey()), this::usesSecondaryFrameColor);
+    private final NumberValue<Integer> frameColorSpeed =
+            visibleWhen(numCommon("espFrameColorSpeed", "frame_color_speed", CommonSettingSchemas.RENDER_COLOR_SPEED,
+                    18, 2, 54), this::usesAnimatedFrameColors);
+    private final NumberValue<Integer> frameColorPhase =
+            visibleWhen(num("espFrameColorPhase", "frame_color_phase", 0, -360, 360), this::usesAnimatedFrameColors);
+    private final NumberValue<Integer> frameColorSpread =
+            visibleWhen(num("espFrameColorSpread", "frame_color_spread", 180, -720, 720), this::usesAnimatedFrameColors);
+    private final NumberValue<Float> frameGradientAngle =
+            visibleWhen(num("espFrameGradientAngle", "frame_gradient_angle", 90.0f, -180.0f, 180.0f), this::usesAnimatedFrameColors);
+    private final NumberValue<Float> frameGradientStrength =
+            visibleWhen(num("espFrameGradientStrength", "frame_gradient_strength", 1.0f, 0.0f, 2.0f), this::usesAnimatedFrameColors);
     private final SetValue shaderChamsEntities =
             visibleWhen(textList("espShaderChamsEntities", "shader_chams_entities",
                     TextListSetting.PickerMode.ENTITIES, Set.of("minecraft:end_crystal")), this::isShaderBox);
@@ -128,10 +159,22 @@ public class ESP extends Module {
             visibleWhen(colorNoAlpha("espShaderChamsEntityColor", "shader_chams_entity_color", "#B064FF"), this::isShaderBox);
     private final BooleanValue healthBar =
             visibleWhen(boolCommon("espHealthBar", "health_bar_left", CommonSettingSchemas.ESP_HEALTH_BAR, true), () -> !is3DBox() && !isShaderBox());
+    private final BooleanMapValue healthBarTargets =
+            visibleWhen(group("espHealthBarTargets", "health_bar_targets", new LinkedHashMap<>() {{
+                put("players", true);
+                put("friends", true);
+                put("enemies", true);
+                put("staff", true);
+                put("entities", false);
+            }}), () -> healthBar.get() && !is3DBox() && !isShaderBox());
     private final BooleanValue healthBarGradient =
             visibleWhen(boolCommon("espHealthBarGradient", "health_bar_gradient", CommonSettingSchemas.ESP_HEALTH_BAR_GRADIENT, true), () -> healthBar.get() && !is3DBox() && !isShaderBox());
+    private final BooleanValue healthBarLimitDistance =
+            visibleWhen(bool("espHealthBarLimitDistance", "health_bar_limit_distance", false),
+                    () -> healthBar.get() && !is3DBox() && !isShaderBox());
     private final NumberValue<Integer> healthBarDistance =
-            visibleWhen(numCommon("espHealthBarDistance", "health_bar_distance", CommonSettingSchemas.ESP_HEALTH_BAR_DISTANCE, 80, 5, 256), () -> healthBar.get() && !is3DBox() && !isShaderBox());
+            visibleWhen(numCommon("espHealthBarDistance", "health_bar_distance", CommonSettingSchemas.ESP_HEALTH_BAR_DISTANCE, 80, 5, 256),
+                    () -> healthBar.get() && healthBarLimitDistance.get() && !is3DBox() && !isShaderBox());
     private final NumberValue<Float> box3dLineWidth =
             visibleWhen(numCommon("esp3dLineWidth", "line_width", CommonSettingSchemas.ESP_LINE_WIDTH, 1.5f, 0.5f, 6.0f), this::is3DBox);
     private final NumberValue<Float> box3dGradientStrength =
@@ -148,13 +191,6 @@ public class ESP extends Module {
             visibleWhen(num("espShaderGlowAlpha", "shader_glow_alpha", 0.72f, 0.0f, 1.0f), () -> isShaderBox() && shaderGlow.get());
     private final NumberValue<Float> shaderGlowIntensity =
             visibleWhen(num("espShaderGlowIntensity", "shader_glow_intensity", 1.25f, 0.10f, 4.0f), () -> isShaderBox() && shaderGlow.get());
-    private final ModeValue shaderGlowColorMode =
-            visibleWhen(mode("espShaderGlowColorMode", "shader_glow_color_mode", SHADER_COLOR_ENTITY,
-                            SHADER_COLOR_ENTITY, SHADER_COLOR_THEME, SHADER_COLOR_CUSTOM),
-                    () -> isShaderBox() && shaderGlow.get());
-    private final RGBColorValue shaderGlowColor =
-            visibleWhen(colorNoAlpha("espShaderGlowColor", "shader_glow_color", "#78C8FF"),
-                    () -> isShaderBox() && shaderGlow.get() && isCustomShaderColor(shaderGlowColorMode));
     private final BooleanValue shaderOutline =
             visibleWhen(bool("espShaderOutlineEnabled", "shader_outline_enabled", true), this::isShaderBox);
     private final NumberValue<Float> shaderOutlineWidth =
@@ -163,17 +199,10 @@ public class ESP extends Module {
             visibleWhen(num("espShaderOutlineAlpha", "shader_outline_alpha", 0.92f, 0.0f, 1.0f), () -> isShaderBox() && shaderOutline.get());
     private final NumberValue<Float> shaderOutlineIntensity =
             visibleWhen(num("espShaderOutlineIntensity", "shader_outline_intensity", 1.15f, 0.10f, 4.0f), () -> isShaderBox() && shaderOutline.get());
-    private final ModeValue shaderShadowColorMode =
-            visibleWhen(mode("espShaderShadowColorMode", "shader_shadow_color_mode", SHADER_COLOR_ENTITY,
-                            SHADER_COLOR_ENTITY, SHADER_COLOR_THEME, SHADER_COLOR_CUSTOM),
-                    () -> isShaderBox() && shaderOutline.get());
-    private final RGBColorValue shaderShadowColor =
-            visibleWhen(colorNoAlpha("espShaderShadowColor", "shader_shadow_color", "#78C8FF"),
-                    () -> isShaderBox() && shaderOutline.get() && isCustomShaderColor(shaderShadowColorMode));
     private final BooleanValue shaderFill =
             visibleWhen(bool("espShaderFillEnabled", "shader_fill_enabled", true), this::isShaderBox);
     private final ModeValue shaderFillStyle =
-            visibleWhen(mode("espShaderFillStyle", "shader_fill_style", SHADER_FILL_SOLID, SHADER_FILL_SOLID, SHADER_FILL_SMOKE),
+            visibleWhen(modeSetting("espShaderFillStyle", "shader_fill_style", SHADER_FILL_SOLID, SHADER_FILL_SOLID, SHADER_FILL_SMOKE),
                     () -> isShaderBox() && shaderFill.get());
     private final NumberValue<Float> shaderSmokeScale =
             visibleWhen(num("espShaderSmokeScale", "shader_smoke_scale", 2.60f, 0.35f, 8.0f),
@@ -190,13 +219,6 @@ public class ESP extends Module {
     private final NumberValue<Float> shaderFillAlpha =
             visibleWhen(num("espShaderFillAlpha", "shader_fill_alpha", 0.41f, 0.0f, 1.0f),
                     () -> isShaderBox() && shaderFill.get());
-    private final ModeValue shaderFillColorMode =
-            visibleWhen(mode("espShaderFillColorMode", "shader_fill_color_mode", SHADER_COLOR_ENTITY,
-                            SHADER_COLOR_ENTITY, SHADER_COLOR_THEME, SHADER_COLOR_CUSTOM),
-                    () -> isShaderBox() && shaderFill.get());
-    private final RGBColorValue shaderFillColor =
-            visibleWhen(colorNoAlpha("espShaderFillColor", "shader_fill_color", "#78C8FF"),
-                    () -> isShaderBox() && shaderFill.get() && isCustomShaderColor(shaderFillColorMode));
     private final NumberValue<Float> shaderDarkMultiplier =
             visibleWhen(num("espShaderDarkMultiplier", "shader_dark_multiplier", 0.55f, 0.0f, 1.5f), this::isShaderBox);
     private final PostProcessPass shaderEspPass = new ShaderEspPass();
@@ -393,27 +415,80 @@ public class ESP extends Module {
         return value / length;
     }
 
-    private static boolean isCustomShaderColor(ModeValue mode) {
-        return mode != null && SHADER_COLOR_CUSTOM.equalsIgnoreCase(mode.get());
+    private boolean usesCustomFrameColors() {
+        return !is3DBox() && COLOR_SOURCE_CUSTOM.equalsIgnoreCase(frameColorSource.get());
     }
 
-    private static boolean usesShaderOverrideColor(ModeValue mode) {
-        if (mode == null) return false;
-        String value = mode.get();
-        return SHADER_COLOR_THEME.equalsIgnoreCase(value) || SHADER_COLOR_CUSTOM.equalsIgnoreCase(value);
+    private boolean usesAnimatedFrameColors() {
+        return usesCustomFrameColors() && AnimatedRenderColors.animated(frameColorMode.get());
+    }
+
+    private boolean usesPrimaryFrameColor() {
+        if (!usesCustomFrameColors()) return false;
+        return switch (frameColorMode.get()) {
+            case STATIC, FADE, DOUBLE_COLOR, ANALOGOUS -> true;
+            case RAINBOW, LIGHT_RAINBOW, SKY, THEME -> false;
+        };
+    }
+
+    private boolean usesSecondaryFrameColor() {
+        return usesCustomFrameColors() && AnimatedRenderColors.usesSecondary(frameColorMode.get());
     }
 
     private static float shaderSmokeTime() {
         return (System.currentTimeMillis() % 600_000L) / 1000.0f;
     }
 
-    private static int deriveSmokeColor(int rgb, int layer) {
-        int base = rgb & 0x00FFFFFF;
-        return switch (layer) {
-            case 0 -> mixRgb(base, 0xFFFFFF, 0.18f);
-            case 1 -> base;
-            default -> mixRgb(base, 0x05070C, 0.48f);
-        };
+    private int customPaletteColor(double tx, double ty, int alpha) {
+        float progress = gradientProgress(tx, ty, frameGradientAngle.get());
+        float spread = frameColorSpread.get() * frameGradientStrength.get();
+        int phase = frameColorPhase.get() + Math.round(progress * spread);
+        int primary = withAlpha(framePrimaryColor.getArgb(), alpha);
+        int secondary = withAlpha(frameSecondaryColor.getArgb(), alpha);
+        return AnimatedRenderColors.withAlpha(AnimatedRenderColors.resolve(
+                frameColorMode.get(),
+                frameColorSpeed.get(),
+                phase,
+                primary,
+                secondary,
+                true
+        ), alpha);
+    }
+
+    private int shaderPalettePrimary() {
+        int primary = withAlpha(framePrimaryColor.getArgb(), 255);
+        return AnimatedRenderColors.angularPrimaryColor(frameColorMode.get(), primary);
+    }
+
+    private int shaderPaletteSecondary() {
+        int primary = withAlpha(framePrimaryColor.getArgb(), 255);
+        int secondary = withAlpha(frameSecondaryColor.getArgb(), 255);
+        return AnimatedRenderColors.angularSecondaryColor(frameColorMode.get(), primary, secondary);
+    }
+
+    private float shaderPaletteBaseAngle() {
+        if (!usesAnimatedFrameColors()) return frameColorPhase.get();
+        int speed = Math.max(1, frameColorSpeed.get());
+        long timeAngle = (System.currentTimeMillis() / speed) % 360L;
+        return (float) timeAngle + frameColorPhase.get();
+    }
+
+    private float shaderPaletteSpread() {
+        return frameColorSpread.get() * frameGradientStrength.get();
+    }
+
+    private static float gradientProgress(double tx, double ty, float angleDeg) {
+        double x = Math.max(0.0, Math.min(1.0, tx));
+        double y = Math.max(0.0, Math.min(1.0, ty));
+        double radians = Math.toRadians(angleDeg);
+        double dx = Math.cos(radians);
+        double dy = Math.sin(radians);
+        double projection = x * dx + y * dy;
+        double min = Math.min(0.0, dx) + Math.min(0.0, dy);
+        double max = Math.max(0.0, dx) + Math.max(0.0, dy);
+        double range = max - min;
+        if (range <= 1.0e-6) return 0.5f;
+        return clamp01((float) ((projection - min) / range));
     }
 
     private static int withAlpha(int rgb, int alpha) {
@@ -720,8 +795,6 @@ public class ESP extends Module {
             drawShaderGradient(shaderEffectBuffer, dst, width, height,
                     alpha255(shaderGlowAlpha.get()),
                     darkMultiplier,
-                    shaderGlowColorMode,
-                    shaderGlowColor,
                     shaderGlowIntensity.get());
             rendered = true;
         }
@@ -733,8 +806,6 @@ public class ESP extends Module {
                 drawShaderGradient(shaderMask, dst, width, height,
                         alpha255(shaderFillAlpha.get()),
                         darkMultiplier,
-                        shaderFillColorMode,
-                        shaderFillColor,
                         1.0f);
             }
             rendered = true;
@@ -746,8 +817,6 @@ public class ESP extends Module {
             drawShaderGradient(shaderEffectBuffer, dst, width, height,
                     alpha255(shaderOutlineAlpha.get()),
                     darkMultiplier,
-                    shaderShadowColorMode,
-                    shaderShadowColor,
                     shaderOutlineIntensity.get());
             rendered = true;
         }
@@ -779,20 +848,23 @@ public class ESP extends Module {
     }
 
     private void drawShaderGradient(RenderTarget input, GpuTextureView dst, int width, int height, int alpha,
-                                    float darkMultiplier, ModeValue colorMode, RGBColorValue customColor,
-                                    float intensity) {
-        int rgb = resolveShaderColor(colorMode, customColor);
-        boolean overrideColor = usesShaderOverrideColor(colorMode);
-        int passColor = withAlpha(rgb, alpha);
+                                    float darkMultiplier, float intensity) {
+        boolean overrideColor = usesCustomFrameColors();
         ShaderEspGradientUniforms.update(
                 0.0f,
                 0.0f,
                 width,
                 height,
-                passColor,
+                shaderPalettePrimary(),
+                shaderPaletteSecondary(),
+                AnimatedRenderColors.shaderMode(frameColorMode.get()),
+                shaderPaletteBaseAngle(),
+                shaderPaletteSpread(),
+                frameGradientAngle.get(),
                 darkMultiplier,
                 overrideColor ? 1.0f : 0.0f,
-                Math.max(0.0f, Math.min(4.0f, intensity))
+                Math.max(0.0f, Math.min(4.0f, intensity)),
+                alpha / 255.0f
         );
         FullScreenRenderer.begin("Combatant Fullscreen Pass")
                 .attachment(dst)
@@ -803,8 +875,7 @@ public class ESP extends Module {
     }
 
     private void drawShaderSmoke(RenderTarget input, GpuTextureView dst, int width, int height) {
-        int rgb = resolveShaderColor(shaderFillColorMode, shaderFillColor);
-        boolean overrideColor = usesShaderOverrideColor(shaderFillColorMode);
+        boolean overrideColor = usesCustomFrameColors();
         ShaderEspSmokeUniforms.update(
                 0.0f,
                 0.0f,
@@ -818,9 +889,12 @@ public class ESP extends Module {
                 shaderSmokeContrast.get(),
                 overrideColor ? 1.0f : 0.0f,
                 1.0f,
-                deriveSmokeColor(rgb, 0),
-                deriveSmokeColor(rgb, 1),
-                deriveSmokeColor(rgb, 2)
+                shaderPalettePrimary(),
+                shaderPaletteSecondary(),
+                AnimatedRenderColors.shaderMode(frameColorMode.get()),
+                shaderPaletteBaseAngle(),
+                shaderPaletteSpread(),
+                frameGradientAngle.get()
         );
         FullScreenRenderer.begin("Combatant Fullscreen Pass")
                 .attachment(dst)
@@ -1064,7 +1138,7 @@ public class ESP extends Module {
             if (rect == null) continue;
 
             ScreenSpaceOverlay2D.LabelEntry label = createSearchEntityLabel(labelRenderer, entity, entry.color(), rect);
-            labels.add(new SearchLabelEntry(entry.distSq(), rect, entry.color(), label));
+            labels.add(new SearchLabelEntry(entry.entity(), entry.distSq(), rect, entry.color(), label));
         }
 
         if (measureStarted) {
@@ -1084,6 +1158,9 @@ public class ESP extends Module {
         ScreenSpaceOverlay2D.ScreenRect rect = entry.rect();
         ScreenSpaceOverlay2D.LabelEntry label = entry.label();
         MatteHudStyle.drawFrame(renderer, rect.minX(), rect.minY(), rect.width(), rect.height(), entry.color(), 1.0f);
+        if (shouldRenderHealthBar(entry.entity()) && healthBarInRange(entry.distSq())) {
+            drawHealthBar(renderer, rect.minX(), rect.minY(), rect.maxX(), rect.maxY(), entry.entity());
+        }
         MatteHudStyle.drawLabelPlate(renderer, label.x(), label.y(), label.totalWidth(), label.height(), 1.0f);
 
         boolean renderStarted = false;
@@ -1130,11 +1207,8 @@ public class ESP extends Module {
         if (screen == null) return;
 
         drawBoxESP(renderer, screen.minX(), screen.minY(), screen.maxX(), screen.maxY(), baseColor);
-        if (healthBar.get()) {
-            double maxDist = healthBarDistance.get();
-            if (distSq <= maxDist * maxDist) {
-                drawHealthBar(renderer, screen.minX(), screen.minY(), screen.maxX(), screen.maxY(), entity);
-            }
+        if (shouldRenderHealthBar(entity) && healthBarInRange(distSq)) {
+            drawHealthBar(renderer, screen.minX(), screen.minY(), screen.maxX(), screen.maxY(), entity);
         }
     }
 
@@ -1194,15 +1268,20 @@ public class ESP extends Module {
     }
 
     private void drawBoxESP(Renderer2D renderer, double minX, double minY, double maxX, double maxY, int baseColor) {
-        int baseRgb = baseColor & 0x00FFFFFF;
-        int darkRgb = mixRgb(baseRgb, 0x000000, GRAD_DARKEN);
-        int lightRgb = mixRgb(baseRgb, 0xFFFFFF, GRAD_LIGHTEN);
-        Gradient gradient = new Gradient(
-                withAlpha(lightRgb, COLOR_ALPHA),
-                withAlpha(baseRgb, COLOR_ALPHA),
-                withAlpha(lightRgb, COLOR_ALPHA),
-                withAlpha(darkRgb, COLOR_ALPHA)
-        );
+        ColorResolver gradient;
+        if (usesCustomFrameColors()) {
+            gradient = new AnimatedFrameGradient(COLOR_ALPHA);
+        } else {
+            int baseRgb = baseColor & 0x00FFFFFF;
+            int darkRgb = mixRgb(baseRgb, 0x000000, GRAD_DARKEN);
+            int lightRgb = mixRgb(baseRgb, 0xFFFFFF, GRAD_LIGHTEN);
+            gradient = new Gradient(
+                    withAlpha(lightRgb, COLOR_ALPHA),
+                    withAlpha(baseRgb, COLOR_ALPHA),
+                    withAlpha(lightRgb, COLOR_ALPHA),
+                    withAlpha(darkRgb, COLOR_ALPHA)
+            );
+        }
         int outline = withAlpha(0x000000, OUTLINE_ALPHA);
         drawOutline(renderer,
                 minX - OUTLINE_EXPAND, minY - OUTLINE_EXPAND,
@@ -1215,6 +1294,31 @@ public class ESP extends Module {
                 minX + innerInset, minY + innerInset,
                 maxX - innerInset, maxY - innerInset,
                 OUTLINE_THICKNESS, SolidColor.of(outline));
+    }
+
+    private boolean shouldRenderHealthBar(Entity entity) {
+        if (!healthBar.get() || is3DBox() || isShaderBox() || !(entity instanceof LivingEntity)) {
+            return false;
+        }
+        if (!(entity instanceof Player player)) {
+            return healthBarTargets.get("entities");
+        }
+
+        CategoryType type = CategoryService.get(player);
+        return switch (type) {
+            case STAFF -> healthBarTargets.get("staff");
+            case FRIEND, BEDWARS_SELF -> healthBarTargets.get("friends");
+            case ENEMY, BEDWARS_ENEMY -> healthBarTargets.get("enemies");
+            case DEFAULT -> healthBarTargets.get("players");
+        };
+    }
+
+    private boolean healthBarInRange(double distSq) {
+        if (!healthBarLimitDistance.get()) {
+            return true;
+        }
+        double maxDist = Math.max(0.0, healthBarDistance.get());
+        return distSq <= maxDist * maxDist;
     }
 
     private void drawHealthBar(Renderer2D renderer, double x1, double y1, double x2, double y2, Entity entity) {
@@ -1322,6 +1426,41 @@ public class ESP extends Module {
                                   double sx1, double sy1, double sx2, double sy2,
                                   double boxX1, double boxY1, double boxX2, double boxY2,
                                   ColorResolver colors) {
+        double width = sx2 - sx1;
+        double height = sy2 - sy1;
+        if (width <= 0.0 || height <= 0.0) return;
+
+        if (colors instanceof AnimatedFrameGradient && usesAnimatedFrameColors()) {
+            double major = Math.max(width, height);
+            int steps = Math.max(1, Math.min(24, (int) Math.ceil(major / 6.0)));
+            if (steps > 1) {
+                if (width >= height) {
+                    for (int i = 0; i < steps; i++) {
+                        double ax1 = sx1 + width * (i / (double) steps);
+                        double ax2 = sx1 + width * ((i + 1.0) / steps);
+                        drawGradientQuadSingle(renderer, ax1, sy1, ax2, sy2,
+                                boxX1, boxY1, boxX2, boxY2, colors);
+                    }
+                } else {
+                    for (int i = 0; i < steps; i++) {
+                        double ay1 = sy1 + height * (i / (double) steps);
+                        double ay2 = sy1 + height * ((i + 1.0) / steps);
+                        drawGradientQuadSingle(renderer, sx1, ay1, sx2, ay2,
+                                boxX1, boxY1, boxX2, boxY2, colors);
+                    }
+                }
+                return;
+            }
+        }
+
+        drawGradientQuadSingle(renderer, sx1, sy1, sx2, sy2,
+                boxX1, boxY1, boxX2, boxY2, colors);
+    }
+
+    private static void drawGradientQuadSingle(Renderer2D renderer,
+                                               double sx1, double sy1, double sx2, double sy2,
+                                               double boxX1, double boxY1, double boxX2, double boxY2,
+                                               ColorResolver colors) {
         renderer.quad(
                 sx1, sy1, sx2 - sx1, sy2 - sy1,
                 colors.colorAt(sx1, sy1, boxX1, boxY1, boxX2, boxY2),
@@ -1385,19 +1524,6 @@ public class ESP extends Module {
         return SHADER_FILL_SMOKE.equalsIgnoreCase(shaderFillStyle.get());
     }
 
-    private int resolveShaderColor(ModeValue mode, RGBColorValue customColor) {
-        if (mode != null) {
-            String value = mode.get();
-            if (SHADER_COLOR_THEME.equalsIgnoreCase(value)) {
-                return Theme.theme().accent() & 0x00FFFFFF;
-            }
-            if (SHADER_COLOR_CUSTOM.equalsIgnoreCase(value) && customColor != null) {
-                return customColor.getArgb() & 0x00FFFFFF;
-            }
-        }
-        return 0xFFFFFF;
-    }
-
     private boolean isCornerBox() {
         return MODE_CORNERS.equalsIgnoreCase(boxMode.get());
     }
@@ -1418,7 +1544,7 @@ public class ESP extends Module {
     private record RenderEntry(Entity entity, int color, double distSq) {
     }
 
-    private record SearchLabelEntry(double distSq, ScreenSpaceOverlay2D.ScreenRect rect, int color,
+    private record SearchLabelEntry(Entity entity, double distSq, ScreenSpaceOverlay2D.ScreenRect rect, int color,
                                     ScreenSpaceOverlay2D.LabelEntry label) {
     }
 
@@ -1433,6 +1559,23 @@ public class ESP extends Module {
         @Override
         public int colorAt(double x, double y, double boxX1, double boxY1, double boxX2, double boxY2) {
             return color;
+        }
+    }
+
+    private final class AnimatedFrameGradient implements ColorResolver {
+        private final int alpha;
+
+        private AnimatedFrameGradient(int alpha) {
+            this.alpha = alpha;
+        }
+
+        @Override
+        public int colorAt(double x, double y, double boxX1, double boxY1, double boxX2, double boxY2) {
+            double width = Math.max(1.0e-6, boxX2 - boxX1);
+            double height = Math.max(1.0e-6, boxY2 - boxY1);
+            double tx = (x - boxX1) / width;
+            double ty = (y - boxY1) / height;
+            return customPaletteColor(tx, ty, alpha);
         }
     }
 

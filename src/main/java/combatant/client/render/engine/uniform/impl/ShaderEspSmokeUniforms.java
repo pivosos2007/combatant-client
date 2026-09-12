@@ -32,7 +32,8 @@ public enum ShaderEspSmokeUniforms {
     public static void update(float x, float y, float width, float height,
                               float time, float scale, float speed, float alpha,
                               int octaves, float contrast, float overrideColor, float intensity,
-                              int firstColor, int secondColor, int thirdColor) {
+                              int primaryColor, int secondaryColor,
+                              int colorMode, float baseAngleDeg, float spatialSpreadDeg, float gradientAngleDeg) {
         DATA.rect[0] = x;
         DATA.rect[1] = y;
         DATA.rect[2] = Math.max(1.0f, width);
@@ -48,9 +49,13 @@ public enum ShaderEspSmokeUniforms {
         DATA.params1[2] = Math.max(0.0f, Math.min(1.0f, overrideColor));
         DATA.params1[3] = Math.max(0.0f, Math.min(4.0f, intensity));
 
-        putColor(DATA.color0, firstColor);
-        putColor(DATA.color1, secondColor);
-        putColor(DATA.color2, thirdColor);
+        putColor(DATA.primaryColor, primaryColor);
+        putColor(DATA.secondaryColor, secondaryColor);
+
+        DATA.colorParams[0] = colorMode;
+        DATA.colorParams[1] = baseAngleDeg;
+        DATA.colorParams[2] = spatialSpreadDeg;
+        DATA.colorParams[3] = gradientAngleDeg;
 
         CombatantRenderSystem.uniforms().write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
     }
@@ -59,20 +64,20 @@ public enum ShaderEspSmokeUniforms {
         return CombatantRenderSystem.uniforms().current(UNIFORM_NAME);
     }
 
-    private static void putColor(float[] dst, int rgb) {
-        dst[0] = ((rgb >>> 16) & 0xFF) / 255.0f;
-        dst[1] = ((rgb >>> 8) & 0xFF) / 255.0f;
-        dst[2] = (rgb & 0xFF) / 255.0f;
-        dst[3] = 1.0f;
+    private static void putColor(float[] dst, int argb) {
+        dst[0] = ((argb >>> 16) & 0xFF) / 255.0f;
+        dst[1] = ((argb >>> 8) & 0xFF) / 255.0f;
+        dst[2] = (argb & 0xFF) / 255.0f;
+        dst[3] = ((argb >>> 24) & 0xFF) / 255.0f;
     }
 
     private static final class Data implements CombatantUniformAllocator.UniformWriter {
         private final float[] rect = new float[4];
         private final float[] params0 = new float[4];
         private final float[] params1 = new float[4];
-        private final float[] color0 = new float[4];
-        private final float[] color1 = new float[4];
-        private final float[] color2 = new float[4];
+        private final float[] primaryColor = new float[4];
+        private final float[] secondaryColor = new float[4];
+        private final float[] colorParams = new float[4];
 
         @Override
         public void write(java.nio.ByteBuffer buffer) {
@@ -80,9 +85,9 @@ public enum ShaderEspSmokeUniforms {
                     .putFloat(rect[0]).putFloat(rect[1]).putFloat(rect[2]).putFloat(rect[3])
                     .putFloat(params0[0]).putFloat(params0[1]).putFloat(params0[2]).putFloat(params0[3])
                     .putFloat(params1[0]).putFloat(params1[1]).putFloat(params1[2]).putFloat(params1[3])
-                    .putFloat(color0[0]).putFloat(color0[1]).putFloat(color0[2]).putFloat(color0[3])
-                    .putFloat(color1[0]).putFloat(color1[1]).putFloat(color1[2]).putFloat(color1[3])
-                    .putFloat(color2[0]).putFloat(color2[1]).putFloat(color2[2]).putFloat(color2[3]);
+                    .putFloat(primaryColor[0]).putFloat(primaryColor[1]).putFloat(primaryColor[2]).putFloat(primaryColor[3])
+                    .putFloat(secondaryColor[0]).putFloat(secondaryColor[1]).putFloat(secondaryColor[2]).putFloat(secondaryColor[3])
+                    .putFloat(colorParams[0]).putFloat(colorParams[1]).putFloat(colorParams[2]).putFloat(colorParams[3]);
         }
 
         @Override
@@ -90,5 +95,4 @@ public enum ShaderEspSmokeUniforms {
             return false;
         }
     }
-
 }

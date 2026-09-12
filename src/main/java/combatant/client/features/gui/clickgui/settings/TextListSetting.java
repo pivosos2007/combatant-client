@@ -133,7 +133,8 @@ public class TextListSetting extends Setting implements TextEditorOwner {
         ALL,
         SOUNDS,
         LIVING_ENTITIES,
-        ENTITIES
+        ENTITIES,
+        PARTICLES
     }
 
     static final class UiState {

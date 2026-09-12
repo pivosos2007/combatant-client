@@ -15,6 +15,7 @@ import combatant.client.render.engine.renderer.ui.runtime.debug.UiRuntimeDiagnos
 import combatant.client.render.engine.renderer.ui.runtime.error.UiErrorPolicy;
 import combatant.client.render.engine.renderer.ui.runtime.input.UiInputDispatcher;
 import combatant.client.render.engine.renderer.ui.runtime.layout.UiLayoutEngine;
+import combatant.client.render.engine.renderer.ui.runtime.layout.UiScrollRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.reconcile.UiDiffStats;
 import combatant.client.render.engine.renderer.ui.runtime.reconcile.UiReconciler;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
@@ -49,6 +50,12 @@ public final class UiRuntime {
     private UiNode lastSuccessfulRoot;
     private UiDocument document;
     private UiNode root;
+    private TextRenderer lastLayoutTextRenderer;
+    private float lastLayoutX;
+    private float lastLayoutY;
+    private float lastLayoutWidth;
+    private float lastLayoutHeight;
+    private boolean hasLayout;
 
     public UiRuntime() {
         this.textRenderer = new UiTextRenderer();
@@ -173,6 +180,12 @@ public final class UiRuntime {
     public void layout(TextRenderer fallbackTextRenderer, float x, float y, float width, float height) {
         long start = System.nanoTime();
         layoutEngine.layout(root, fallbackTextRenderer, x, y, width, height);
+        lastLayoutTextRenderer = fallbackTextRenderer;
+        lastLayoutX = x;
+        lastLayoutY = y;
+        lastLayoutWidth = width;
+        lastLayoutHeight = height;
+        hasLayout = true;
         diagnostics.counters().setLayoutNanos(System.nanoTime() - start);
     }
 
@@ -269,6 +282,9 @@ public final class UiRuntime {
      */
     public void render(UiRenderContext context) {
         long start = System.nanoTime();
+        if (hasLayout && UiScrollRuntime.tick(root, System.nanoTime())) {
+            layoutEngine.layout(root, lastLayoutTextRenderer, lastLayoutX, lastLayoutY, lastLayoutWidth, lastLayoutHeight);
+        }
         renderer.render(root, context);
         diagnostics.counters().setRenderNanos(System.nanoTime() - start);
     }

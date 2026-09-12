@@ -168,7 +168,7 @@ final class OnlineRelationPlayerPickerComponent {
 
     void render(float x, float y, float w, float h, float mx, float my, float scale, SettingsGuiPalette palette) {
         float dt = AnimationUtility.deltaTime();
-        openAnim = AnimationUtility.approach(openAnim, openTarget ? 1.0f : 0.0f, dt, openTarget ? 13.0f : 18.0f);
+        openAnim = AnimationUtility.approach(openAnim, openTarget ? 1.0f : 0.0f, dt, openTarget ? 16.0f : 19.0f);
         openAnim = AnimationUtility.snap(openAnim, openTarget ? 1.0f : 0.0f, 0.003f);
         searchAnim = AnimationUtility.approach(searchAnim, searchFocused ? 1.0f : 0.0f, dt, 12.0f);
         searchAnim = AnimationUtility.snap(searchAnim, searchFocused ? 1.0f : 0.0f, 0.004f);
@@ -177,39 +177,35 @@ final class OnlineRelationPlayerPickerComponent {
         rowHits.clear();
         refreshIfNeeded();
 
-        float enter = AnimationUtility.easeOutBack(openAnim, 0.42f);
-        float exit = AnimationUtility.easeInOutCubic(openAnim);
-        float visual = openTarget ? enter : exit;
-        float opacity = openTarget ? AnimationUtility.clamp01(openAnim * 1.16f) : AnimationUtility.smoothstep(openAnim);
-        float radius = 7.5f * scale;
-        float lift = openTarget ? (1.0f - visual) * 4.0f * scale : 0.0f;
-        float panelY = y + lift;
-        float panelH = openTarget ? h : Math.max(1.0f, h * (0.74f + 0.26f * visual));
+        float opacity = AnimationUtility.easeOutCubic(openAnim);
+        float radius = 6.0f * scale;
+        float panelY = y;
+        float panelH = h;
         float panelBottom = panelY + panelH;
-        ClickGuiRenderer.drawBlur(x, panelY, w, panelH, radius, palette.panelBlurTint(), (170f / 255f) * opacity);
-        LayoutRender2D.roundedSoftShadow(x, panelY + 2f * scale, w, panelH, radius, 15f * scale, 0.18f * opacity, fade(SettingsGuiPalette.withAlpha(0xFF000000, 140), opacity));
+
+        // Embedded management surface: no bounce/height morph and no large accent glow.
+        // The picker should read as a mode of Relations, not as another floating dialog.
+        LayoutRender2D.roundedSoftShadow(
+                x,
+                panelY + 1.2f * scale,
+                w,
+                panelH,
+                radius,
+                7.5f * scale,
+                0.0f,
+                fade(SettingsGuiPalette.withAlpha(0xFF000000, 72), opacity)
+        );
+        ClickGuiRenderer.drawBlur(x, panelY, w, panelH, radius, palette.panelBlurTint(), (145f / 255f) * opacity);
         LayoutRender2D.roundedQuad(
                 x,
                 panelY,
                 w,
                 panelH,
                 radius,
-                fade(SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.panelBgLeft(), palette.menuCategorySelectedLeft(), 0.18f), 216), opacity),
-                fade(SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.panelBgRight(), palette.menuCategorySelectedRight(), 0.16f), 208), opacity),
-                fade(SettingsGuiPalette.withAlpha(SettingsGuiPalette.darken(palette.panelBgRight(), 0.12f), 214), opacity),
-                fade(SettingsGuiPalette.withAlpha(SettingsGuiPalette.darken(palette.panelBgLeft(), 0.10f), 220), opacity)
-        );
-        Renderer2D.COLOR.radialGlowMasked(
-                x,
-                panelY,
-                w,
-                panelH,
-                radius,
-                0.0f,
-                92f * scale,
-                x + 42f * scale,
-                panelY + 30f * scale,
-                LayoutRender2D.alpha(modeColor(), 0.20f * opacity)
+                fade(SettingsGuiPalette.withAlpha(palette.panelBgLeft(), 184), opacity),
+                fade(SettingsGuiPalette.withAlpha(palette.panelBgRight(), 174), opacity),
+                fade(SettingsGuiPalette.withAlpha(SettingsGuiPalette.darken(palette.panelBgRight(), 0.07f), 178), opacity),
+                fade(SettingsGuiPalette.withAlpha(SettingsGuiPalette.darken(palette.panelBgLeft(), 0.05f), 188), opacity)
         );
         LayoutRender2D.roundedStrokeQuad(
                 x,
@@ -217,11 +213,11 @@ final class OnlineRelationPlayerPickerComponent {
                 w,
                 panelH,
                 radius,
-                0.65f * scale,
-                LayoutRender2D.alpha(modeColor(), 0.42f * opacity),
-                LayoutRender2D.alpha(palette.menuWindowStroke(), 0.78f * opacity),
-                LayoutRender2D.alpha(palette.menuWindowStroke(), 0.50f * opacity),
-                LayoutRender2D.alpha(modeColor(), 0.26f * opacity)
+                0.55f * scale,
+                LayoutRender2D.alpha(palette.glassEdgeStrong(), 0.46f * opacity),
+                LayoutRender2D.alpha(palette.glassEdgeSoft(), 0.40f * opacity),
+                LayoutRender2D.alpha(palette.glassEdgeSoft(), 0.34f * opacity),
+                LayoutRender2D.alpha(palette.glassEdgeStrong(), 0.42f * opacity)
         );
 
         float pad = 8f * scale;
@@ -245,11 +241,11 @@ final class OnlineRelationPlayerPickerComponent {
         ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), title, x, y + 1.5f * scale, titleSize, fade(palette.panelText(), opacity), false);
         ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), subtitle, x, y + 13.0f * scale, 6.15f * scale, fade(palette.panelMuted(), opacity), false);
 
-        float btn = 17f * scale;
-        closeButton = new Rect(x + w - btn, y, btn, btn);
+        // The global Relations toolbar owns search/clear/close actions. Keep the
+        // embedded picker header informational instead of duplicating controls.
+        closeButton = Rect.ZERO;
         searchButton = Rect.ZERO;
         searchField = Rect.ZERO;
-        drawSmallIconButton(closeButton, "x", false, closeButton.contains(mx, my), scale, palette, opacity);
     }
 
     private void renderRows(float x, float y, float w, float h, float mx, float my, float scale, SettingsGuiPalette palette, float opacity) {
@@ -263,8 +259,8 @@ final class OnlineRelationPlayerPickerComponent {
 
         float reservedScrollbarW = 9f * scale;
         int rowsPerColumn = filtered.size();
-        float gap = 5f * scale;
-        float rowH = 31f * scale;
+        float gap = 3.5f * scale;
+        float rowH = 27f * scale;
         float stepY = rowH + gap;
         float contentH = rowsPerColumn * stepY - gap;
         float maxScroll = Math.max(0f, contentH - h);
@@ -284,35 +280,32 @@ final class OnlineRelationPlayerPickerComponent {
             float rowY = y + row * stepY + smoothedScroll;
             if (rowY + rowH < y || rowY > y + h) continue;
             PlayerRow player = filtered.get(i);
-            renderRow(player, rowX, rowY, colW, rowH, mx, my, scale, palette, i, opacity);
+            renderRow(player, rowX, rowY, colW, rowH, mx, my, scale, palette, opacity);
         }
         if (clipped) ScissorFunction.pop();
         renderScrollbar(x, y, w, h, maxScroll, scale, palette, opacity);
     }
 
-    private void renderRow(PlayerRow player, float x, float y, float w, float h, float mx, float my, float scale, SettingsGuiPalette palette, int index, float opacity) {
-        float rowBase = openTarget ? AnimationUtility.easeOutCubic(openAnim) : 1.0f;
-        float rowAnim = AnimationUtility.clamp((rowBase - index * 0.018f) / 0.72f, 0f, 1f);
-        float rowEase = openTarget ? AnimationUtility.easeOutCubic(rowAnim) : 1.0f;
-        y += (1f - rowEase) * 7f * scale;
+    private void renderRow(PlayerRow player, float x, float y, float w, float h, float mx, float my, float scale, SettingsGuiPalette palette, float opacity) {
+        // Rows no longer cascade in from below; the panel-level fade is enough.
         boolean hover = openTarget && ClickGuiMath.insideRect(mx, my, x, y, w, h);
         boolean selected = DefineTarget.isPlayerInRelationMode(mode, player.name());
         int relationColor = player.relationColor() != 0 ? player.relationColor() : modeColor();
-        int top = hover ? SettingsGuiPalette.mix(palette.moduleCardTop(), modeColor(), 0.10f) : palette.moduleCardTop();
-        int topStrong = hover || selected ? SettingsGuiPalette.mix(palette.moduleCardTopStrong(), relationColor, selected ? 0.18f : 0.10f) : palette.moduleCardTopStrong();
-        int bottom = hover ? SettingsGuiPalette.mix(palette.moduleCardBottom(), modeColor(), 0.12f) : palette.moduleCardBottom();
-        int bottomStrong = selected ? SettingsGuiPalette.mix(palette.moduleCardBottomStrong(), relationColor, 0.20f) : palette.moduleCardBottomStrong();
+        float radius = 4.5f * scale;
+        int rowA = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(palette.controlSurface(), relationColor, selected ? 0.12f : (hover ? 0.035f : 0.0f)),
+                selected ? 162 : (hover ? 134 : 98));
+        int rowB = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(palette.controlSurfaceHover(), relationColor, selected ? 0.18f : (hover ? 0.08f : 0.015f)),
+                selected ? 170 : (hover ? 142 : 102));
+        LayoutRender2D.roundedQuad(x, y, w, h, radius, fade(rowA, opacity), fade(rowB, opacity), fade(rowB, opacity), fade(rowA, opacity));
+        LayoutRender2D.roundedStroke(
+                x, y, w, h, radius, 0.5f * scale,
+                fade(selected
+                        ? SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.panelStroke(), relationColor, 0.55f), 198)
+                        : SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), hover ? 108 : 68), opacity));
 
-        LayoutRender2D.roundedSoftShadow(x, y + 1f * scale, w, h, 5.5f * scale, 8f * scale, 0.08f, fade(SettingsGuiPalette.withAlpha(0xFF000000, hover ? 96 : 58), opacity));
-        LayoutRender2D.roundedQuad(x, y, w, h, 5.5f * scale, fade(top, opacity), fade(topStrong, opacity), fade(bottomStrong, opacity), fade(bottom, opacity));
-        Renderer2D.COLOR.radialGlowMasked(x, y, w, h, 5.5f * scale, 0f, 42f * scale, x + 15f * scale, y + h * 0.50f, LayoutRender2D.alpha(relationColor, (selected ? 0.28f : 0.14f) * opacity));
-        LayoutRender2D.roundedStrokeQuad(x, y, w, h, 5.5f * scale, 0.55f * scale,
-                LayoutRender2D.alpha(relationColor, (selected ? 0.70f : 0.34f) * opacity),
-                LayoutRender2D.alpha(palette.menuWindowStroke(), 0.72f * opacity),
-                LayoutRender2D.alpha(palette.menuWindowStroke(), 0.44f * opacity),
-                LayoutRender2D.alpha(relationColor, (selected ? 0.46f : 0.20f) * opacity));
-
-        float head = 18.5f * scale;
+        float head = 17.0f * scale;
         float headX = x + 6f * scale;
         float headY = y + (h - head) * 0.5f;
         renderHead(resolveSkin(player), headX, headY, head, scale, palette, opacity);
@@ -320,24 +313,22 @@ final class OnlineRelationPlayerPickerComponent {
         float dot = 5.3f * scale;
         float dotX = headX + head - dot * 0.72f;
         float dotY = headY + head - dot * 0.72f;
-        Renderer2D.COLOR.radialGlowMasked(dotX - 4f * scale, dotY - 4f * scale, dot + 8f * scale, dot + 8f * scale,
-                (dot + 8f * scale) * 0.5f, 0f, 11f * scale, dotX + dot * 0.5f, dotY + dot * 0.5f, LayoutRender2D.alpha(relationColor, 0.48f * opacity));
         Renderer2D.COLOR.roundedRect(dotX, dotY, dot, dot, dot * 0.5f, 0.7f, fade(relationColor | 0xFF000000, opacity));
         Renderer2D.COLOR.roundedRectStroke(dotX, dotY, dot, dot, dot * 0.5f, 0.7f, 0.55f * scale, LayoutRender2D.alpha(0xFFFFFFFF, 0.42f * opacity));
 
         float textX = headX + head + 7f * scale;
-        float rightPad = selected ? 56f * scale : 44f * scale;
+        float rightPad = 12f * scale;
         float pingW = Math.max(38f * scale, ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), pingText(player.latency()), 6.2f * scale) + 26f * scale);
         float nameW = Math.max(20f * scale, w - (textX - x) - rightPad - pingW);
         int nameColor = player.spectator() ? palette.panelMuted() : palette.panelText();
-        ClickGuiRichTextRenderer.draw(player.displayName(), textX, y + 6.0f * scale, nameW, 8.0f * scale, nameColor, opacity, false);
+        ClickGuiRichTextRenderer.draw(player.displayName(), textX, y + 4.4f * scale, nameW, 7.7f * scale, nameColor, opacity, false);
 
         String relation = relationLabel(player.relation());
-        String relationText = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), relation, 5.5f * scale, nameW);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), relationText, textX, y + 18.6f * scale, 5.5f * scale,
+        String relationText = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), relation, 5.3f * scale, nameW);
+        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), relationText, textX, y + 15.8f * scale, 5.3f * scale,
                 fade(SettingsGuiPalette.mix(palette.panelMuted(), relationColor | 0xFF000000, 0.45f), opacity), false);
 
-        float pingChipH = 13f * scale;
+        float pingChipH = 12f * scale;
         float pingChipX = x + w - 6f * scale - pingW;
         float pingChipY = y + (h - pingChipH) * 0.5f;
         drawPingChip(player.latency(), pingChipX, pingChipY, pingW, pingChipH, scale, palette, opacity);

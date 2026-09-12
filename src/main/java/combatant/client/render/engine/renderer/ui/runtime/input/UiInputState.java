@@ -14,6 +14,7 @@ public final class UiInputState {
     private UiNode pressedNode;
     private UiNode focusedNode;
     private UiNode scrollOwner;
+    private UiNode scrollbarHoverNode;
 
     public UiNode hoveredNode() {
         return hoveredNode;
@@ -31,6 +32,8 @@ public final class UiInputState {
         return scrollOwner;
     }
 
+    public UiNode scrollbarHoverNode() { return scrollbarHoverNode; }
+
     public void setHoveredNode(UiNode hoveredNode) {
         this.hoveredNode = hoveredNode;
     }
@@ -46,4 +49,6 @@ public final class UiInputState {
     public void setScrollOwner(UiNode scrollOwner) {
         this.scrollOwner = scrollOwner;
     }
+
+    public void setScrollbarHoverNode(UiNode node) { this.scrollbarHoverNode = node; }
 }

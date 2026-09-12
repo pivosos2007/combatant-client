@@ -13,6 +13,7 @@ import net.minecraft.core.particles.ParticleOptions;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.util.player.effect.StatusEffectHeuristics;
 import combatant.client.features.module.Modules;
@@ -37,6 +38,14 @@ public class ParticleManagerMixin {
         NoRender noRender = Modules.get(NoRender.class);
         if (noRender != null && noRender.offParticle("all_particles")) {
             cir.setReturnValue(null);
+        }
+    }
+
+    @Inject(method = "add", at = @At("HEAD"), cancellable = true)
+    private void combatant$particleAdd(Particle particle, CallbackInfo ci) {
+        NoRender noRender = Modules.get(NoRender.class);
+        if (noRender != null && noRender.shouldHideParticle(particle)) {
+            ci.cancel();
         }
     }
 }

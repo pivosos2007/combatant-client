@@ -781,11 +781,18 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     @Inject(method = "render(Lnet/minecraft/client/DeltaTracker;Z)V", at = @At("TAIL"))
     private void combatant$flushQueuedButtons(DeltaTracker tickCounter, boolean tick, CallbackInfo ci) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || ClientScreen.current() == null) return;
-        if (BetterButtons.hasPending()) {
-            BetterButtons.flush();
+        if (mc != null && ClientScreen.current() != null) {
+            if (BetterButtons.hasPending()) {
+                BetterButtons.flush();
+            }
+            BetterTooltips.renderTooltipWithContext(BetterButtons.getLastContext());
         }
-        BetterTooltips.renderTooltipWithContext(BetterButtons.getLastContext());
+
+        // This is the actual final Combatant 2D drain for the frame. BetterButtons and
+        // BetterTooltips intentionally render from this TAIL hook, so draining SCREEN_ABSOLUTE_TOP
+        // any earlier (for example immediately after GuiRenderer.render()) still allowed those
+        // screen-owned surfaces to cover the debug HUD.
+        Renderer2D.drainDeferred2D(Renderer2D.Deferred2DLayer.SCREEN_ABSOLUTE_TOP);
     }
 
     @Inject(

@@ -171,7 +171,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
     public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my, float scale) {
         float dt = AnimationUtility.deltaTime(AnimationUtility.Mode.MILLIS);
         float openTargetValue = openTarget ? 1f : 0f;
-        openAnim = AnimationUtility.approach(openAnim, openTargetValue, dt, openTarget ? 12f : 13f);
+        openAnim = AnimationUtility.approach(openAnim, openTargetValue, dt, openTarget ? 16f : 18f);
         openAnim = AnimationUtility.snap(openAnim, openTargetValue, 0.01f);
         float pillTarget = hudPreviewMode == HudPreviewMode.ALL_ENABLED ? 0f : 1f;
         pillActiveAnim = AnimationUtility.approach(pillActiveAnim, pillTarget, dt, 14f);
@@ -207,8 +207,8 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         panelHeight = AnimationUtility.approach(panelHeight, targetH, dt, 14f);
         panelHeight = AnimationUtility.snap(panelHeight, targetH, 0.25f);
 
-        float distanceProgress = AnimationUtility.easeInOutCubic(openAnim);
-        float fadeProgress = AnimationUtility.easeInOutCubic(openAnim);
+        float distanceProgress = AnimationUtility.easeOutCubic(openAnim);
+        float fadeProgress = AnimationUtility.easeOutCubic(openAnim);
         if (dragging) {
             manualPos = true;
             manualX = mx + dragOffsetX;
@@ -793,21 +793,9 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
     }
 
     private RenderWarpStack.Scope pushLifecycleWarp(float progress) {
-        if (progress >= 0.999f || dragging) {
-            return Renderer2D.pushWarp(null);
-        }
-        return Renderer2D.pushPerspectiveWarp(
-                panelX,
-                panelY,
-                panelW,
-                panelH,
-                0.0f,
-                0.0f,
-                0.0f,
-                3.6f,
-                0.80f,
-                0.92f + 0.08f * progress
-        );
+        // Keep the editor panel spatially stable while it fades. Scaling a dense
+        // settings list is visually noisy and also makes rounded clip edges swim.
+        return Renderer2D.pushWarp(null);
     }
 
     private enum HudPreviewMode {

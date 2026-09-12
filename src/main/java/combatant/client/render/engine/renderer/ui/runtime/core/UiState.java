@@ -16,7 +16,7 @@ import java.util.Map;
 
 public final class UiState {
     private final Map<String, UiAnimationState> animations = new Object2ObjectOpenHashMap<>();
-    private final Map<String, UiMotionSignal> motions = new Object2ObjectOpenHashMap<>();
+    private final Map<String, UiMotionSignal> motionSignals = new Object2ObjectOpenHashMap<>();
     private boolean hovered;
     private boolean active;
     private boolean focused;
@@ -26,7 +26,16 @@ public final class UiState {
     private float scrollY;
     private float targetScrollX;
     private float targetScrollY;
+    private long lastScrollInteractionNanos;
     private long lastScrollTickNanos;
+    private boolean scrollbarHovered;
+    private boolean scrollbarDragging;
+    private float scrollbarDragGrab;
+
+    private float marqueeOffset;
+    private boolean marqueeForward = true;
+    private long marqueeHoldUntilNanos;
+    private long marqueeLastNanos;
     private float contentWidth;
     private float contentHeight;
 
@@ -58,18 +67,6 @@ public final class UiState {
         return scrollY;
     }
 
-    public float targetScrollX() {
-        return targetScrollX;
-    }
-
-    public float targetScrollY() {
-        return targetScrollY;
-    }
-
-    public long lastScrollTickNanos() {
-        return lastScrollTickNanos;
-    }
-
     public float contentWidth() {
         return contentWidth;
     }
@@ -81,6 +78,25 @@ public final class UiState {
     public Map<String, UiAnimationState> animations() {
         return animations;
     }
+
+    public float motion(String name, float target, long durationMs, UiEasing easing, long nowNanos) {
+        if (name == null || name.isBlank()) return target;
+        UiMotionSignal signal = motionSignals.computeIfAbsent(name, ignored -> new UiMotionSignal());
+        return signal.sample(target, durationMs, easing, nowNanos);
+    }
+
+    public float targetScrollX() { return targetScrollX; }
+    public float targetScrollY() { return targetScrollY; }
+    public long lastScrollInteractionNanos() { return lastScrollInteractionNanos; }
+    public long lastScrollTickNanos() { return lastScrollTickNanos; }
+    public boolean scrollbarHovered() { return scrollbarHovered; }
+    public boolean scrollbarDragging() { return scrollbarDragging; }
+    public float scrollbarDragGrab() { return scrollbarDragGrab; }
+
+    public float marqueeOffset() { return marqueeOffset; }
+    public boolean marqueeForward() { return marqueeForward; }
+    public long marqueeHoldUntilNanos() { return marqueeHoldUntilNanos; }
+    public long marqueeLastNanos() { return marqueeLastNanos; }
 
     public void setHovered(boolean hovered) {
         this.hovered = hovered;
@@ -102,9 +118,12 @@ public final class UiState {
         this.visible = visible;
     }
 
+    /** Immediate scroll assignment used by layout/runtime correction paths. */
     public void setScroll(float scrollX, float scrollY) {
-        setCurrentScroll(scrollX, scrollY);
-        setTargetScroll(scrollX, scrollY);
+        this.scrollX = scrollX;
+        this.scrollY = scrollY;
+        this.targetScrollX = scrollX;
+        this.targetScrollY = scrollY;
     }
 
     public void setCurrentScroll(float scrollX, float scrollY) {
@@ -117,15 +136,20 @@ public final class UiState {
         this.targetScrollY = scrollY;
     }
 
-    public void setLastScrollTickNanos(long lastScrollTickNanos) {
-        this.lastScrollTickNanos = lastScrollTickNanos;
+    public void markScrollInteraction(long nowNanos) {
+        this.lastScrollInteractionNanos = nowNanos;
     }
 
-    public float motion(String name, float target, long durationMs, UiEasing easing, long nowNanos) {
-        String key = name != null ? name : "";
-        return motions.computeIfAbsent(key, ignored -> new UiMotionSignal())
-                .sample(target, durationMs, easing, nowNanos);
-    }
+    public void setLastScrollTickNanos(long value) { this.lastScrollTickNanos = value; }
+
+    public void setScrollbarHovered(boolean value) { this.scrollbarHovered = value; }
+    public void setScrollbarDragging(boolean value) { this.scrollbarDragging = value; }
+    public void setScrollbarDragGrab(float value) { this.scrollbarDragGrab = value; }
+
+    public void setMarqueeOffset(float value) { this.marqueeOffset = Math.max(0.0f, value); }
+    public void setMarqueeForward(boolean value) { this.marqueeForward = value; }
+    public void setMarqueeHoldUntilNanos(long value) { this.marqueeHoldUntilNanos = value; }
+    public void setMarqueeLastNanos(long value) { this.marqueeLastNanos = value; }
 
     public void setContentSize(float contentWidth, float contentHeight) {
         this.contentWidth = Math.max(0.0f, contentWidth);

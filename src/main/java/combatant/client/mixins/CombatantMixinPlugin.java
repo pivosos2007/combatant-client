@@ -50,7 +50,8 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
             "combatant.client.mixins.sodium.SodiumShaderChunkRendererMixin"
     );
     private static final Set<String> OPTIONAL_XAERO_MINIMAP_MIXINS = Set.of(
-            "combatant.client.mixins.xaero.minimap.AbstractWaypointRenderProviderMixin"
+            "combatant.client.mixins.xaero.minimap.AbstractWaypointRenderProviderMixin",
+            "combatant.client.mixins.xaero.minimap.WaypointWorldRendererMixin"
     );
     private static final Set<String> OPTIONAL_XAERO_WORLDMAP_MIXINS = Set.of(
             "combatant.client.mixins.xaero.worldmap.WorldMapWaypointAccessor",

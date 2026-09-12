@@ -95,7 +95,13 @@ public final class Renderer2D {
         /**
          * Explicit top screen bucket. This is intentionally not used by normal HudPhase slots.
          */
-        AFTER_VANILLA_GUI
+        AFTER_VANILLA_GUI,
+
+        /**
+         * Absolute client UI top layer. Reserved for overlays that must remain above screen-top
+         * owners, addon callbacks and other AFTER_VANILLA_GUI work.
+         */
+        SCREEN_ABSOLUTE_TOP
     }
 
     public enum BlurQuality {

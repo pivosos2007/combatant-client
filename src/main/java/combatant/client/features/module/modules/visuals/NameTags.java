@@ -158,6 +158,7 @@ public class NameTags extends Module {
     }
     private static final String SETTING_TOGGLES = "toggles";
     private static final String SETTING_DURABILITY_START = "durability_start_percent";
+    private static final String SETTING_LIMIT_DISTANCE = "limit_distance";
     private static final String SETTING_DISTANCE_TOGGLES = "distance_toggles";
     private static final String SETTING_NAMEPLATE_CUTOFF = "nameplate_cutoff";
     private static final String SETTING_SLOTS_CUTOFF = "slots_cutoff";
@@ -230,21 +231,26 @@ public class NameTags extends Module {
     private final NumberValue<Integer> durabilityStartPercent =
             visibleWhen(num("nameTagsDurabilityStartPercent", SETTING_DURABILITY_START, 99, 0, 100),
                     () -> toggles.get("Item durability bar"));
+    private final BooleanValue limitDistance =
+            visibleWhen(bool("nameTagsLimitDistance", SETTING_LIMIT_DISTANCE, false),
+                    () -> toggles.get("Show nameplate") || toggles.get("Show main hand")
+                            || toggles.get("Show armor row") || toggles.get("Show effects"));
     private final BooleanMapValue distanceToggles =
             visibleWhen(group("nameTagsDistanceToggles", SETTING_DISTANCE_TOGGLES, Map.of(
                     "nameplate", true,
                     "slots", true,
                     "effects", true
-            )), () -> toggles.get("Show nameplate") || toggles.get("Show armor row") || toggles.get("Show effects"));
+            )), () -> limitDistance.get() && (toggles.get("Show nameplate") || toggles.get("Show main hand")
+                    || toggles.get("Show armor row") || toggles.get("Show effects")));
     private final NumberValue<Integer> plateDistance =
             visibleWhen(num("nameTagsPlateDistance", SETTING_NAMEPLATE_CUTOFF, 80, 5, 256),
-                    () -> toggles.get("Show nameplate"));
+                    () -> usesDistanceCutoff("nameplate") && (toggles.get("Show nameplate") || toggles.get("Show main hand")));
     private final NumberValue<Integer> slotsDistance =
             visibleWhen(num("nameTagsSlotsDistance", SETTING_SLOTS_CUTOFF, 70, 5, 256),
-                    () -> toggles.get("Show armor row"));
+                    () -> usesDistanceCutoff("slots") && toggles.get("Show armor row"));
     private final NumberValue<Integer> effectsDistance =
             visibleWhen(num("nameTagsEffectsDistance", SETTING_EFFECTS_CUTOFF, 90, 5, 256),
-                    () -> toggles.get("Show effects"));
+                    () -> usesDistanceCutoff("effects") && toggles.get("Show effects"));
     private final NumberValue<Integer> nameplateAlpha =
             visibleWhen(num("nameTagsNameplateAlpha", SETTING_NAMEPLATE_ALPHA, REFERENCE_BACKDROP_ALPHA, 0, 255),
                     () -> toggles.get("Show nameplate"));
@@ -560,14 +566,14 @@ public class NameTags extends Module {
             if (alpha <= 0.001f) continue;
 
             boolean renderNameplate = toggles.get("Show nameplate")
-                    && (!distanceToggles.get("nameplate") || dist <= plateDistance.get());
+                    && (!usesDistanceCutoff("nameplate") || dist <= plateDistance.get());
             boolean renderMainHand = toggles.get("Show main hand")
-                    && (!distanceToggles.get("nameplate") || dist <= plateDistance.get())
+                    && (!usesDistanceCutoff("nameplate") || dist <= plateDistance.get())
                     && !player.getMainHandItem().isEmpty();
             boolean renderSlots = toggles.get("Show armor row")
-                    && (!distanceToggles.get("slots") || dist <= slotsDistance.get());
+                    && (!usesDistanceCutoff("slots") || dist <= slotsDistance.get());
             boolean renderEffects = toggles.get("Show effects")
-                    && (!distanceToggles.get("effects") || dist <= effectsDistance.get());
+                    && (!usesDistanceCutoff("effects") || dist <= effectsDistance.get());
             if (!renderNameplate && !renderMainHand && !renderSlots && !renderEffects) continue;
 
             double adaptiveScale = presentation.worldUnitsPerPixel();
@@ -662,21 +668,21 @@ public class NameTags extends Module {
         boolean hasUnlimited = false;
         double maxCutoff = 0.0;
         if (wantNameplate || wantMainHand) {
-            if (distanceToggles.get("nameplate")) {
+            if (usesDistanceCutoff("nameplate")) {
                 maxCutoff = Math.max(maxCutoff, plateDistance.get());
             } else {
                 hasUnlimited = true;
             }
         }
         if (wantSlots) {
-            if (distanceToggles.get("slots")) {
+            if (usesDistanceCutoff("slots")) {
                 maxCutoff = Math.max(maxCutoff, slotsDistance.get());
             } else {
                 hasUnlimited = true;
             }
         }
         if (wantEffects) {
-            if (distanceToggles.get("effects")) {
+            if (usesDistanceCutoff("effects")) {
                 maxCutoff = Math.max(maxCutoff, effectsDistance.get());
             } else {
                 hasUnlimited = true;
@@ -740,14 +746,14 @@ public class NameTags extends Module {
             int nameY = computeNameY(rect, anchorY);
 
             boolean renderSlots = wantSlots;
-            if (renderSlots && distanceToggles.get("slots") && dist > slotsDistance.get()) renderSlots = false;
+            if (renderSlots && usesDistanceCutoff("slots") && dist > slotsDistance.get()) renderSlots = false;
 
             boolean renderNameplate = wantNameplate;
-            if (renderNameplate && distanceToggles.get("nameplate") && dist > plateDistance.get())
+            if (renderNameplate && usesDistanceCutoff("nameplate") && dist > plateDistance.get())
                 renderNameplate = false;
 
             boolean renderEffects = wantEffects;
-            if (renderEffects && distanceToggles.get("effects") && dist > effectsDistance.get()) renderEffects = false;
+            if (renderEffects && usesDistanceCutoff("effects") && dist > effectsDistance.get()) renderEffects = false;
 
             TotemPopSnapshot totemPopSnapshot = TotemPopCounter.snapshot(player.getUUID());
             float totemPopAnimation = advanceTotemAnimationHere
@@ -762,7 +768,7 @@ public class NameTags extends Module {
             NameplateLayout nameplateLayout = null;
             MainHandLayout mainHandLayout = null;
             boolean renderMainHand = wantMainHand
-                    && (!distanceToggles.get("nameplate") || dist <= plateDistance.get())
+                    && (!usesDistanceCutoff("nameplate") || dist <= plateDistance.get())
                     && !player.getMainHandItem().isEmpty();
             ItemStack mainHand = renderMainHand ? player.getMainHandItem().copy() : ItemStack.EMPTY;
             if (renderNameplate && labelInfo != null) {
@@ -807,6 +813,10 @@ public class NameTags extends Module {
         for (RenderEntry entry : renderQueue) {
             renderNameTagForeground(renderer, ctx, textRenderer, entry);
         }
+    }
+
+    private boolean usesDistanceCutoff(String section) {
+        return limitDistance.get() && distanceToggles.get(section);
     }
 
     private boolean shouldRender(Player player) {

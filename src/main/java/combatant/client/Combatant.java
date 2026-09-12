@@ -8,9 +8,11 @@
 package combatant.client;
 
 import combatant.client.events.UsedImplicitly;
+import combatant.client.compat.xaero.XaeroWaypointHudOverlay;
 import combatant.client.events.impl.GameTickEvent;
 import combatant.client.runtime.*;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 import combatant.client.runtime.annotation.ClientBound;
 import combatant.client.runtime.annotation.ClientBoundLevel;
 import combatant.client.runtime.annotation.RuntimeAssertion;
@@ -247,14 +249,17 @@ public class Combatant implements ClientModInitializer {
                 || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_RAW);
         boolean scaledMain = hasHudMainPassWork(phase, HudRenderSpace.SCALED)
                 || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_SCALED);
+        boolean xaeroWaypointHudWork = hasXaeroWaypointHudWork(phase);
         boolean logicalMain = hasHudMainPassWork(phase, HudRenderSpace.UNSCALED_LOGICAL)
-                || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_LOGICAL);
+                || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_LOGICAL)
+                || xaeroWaypointHudWork;
         boolean rawForeground = hasHudForegroundPassWork(phase, HudRenderSpace.UNSCALED)
                 || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_RAW_FOREGROUND);
         boolean scaledForeground = hasHudForegroundPassWork(phase, HudRenderSpace.SCALED)
                 || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_SCALED_FOREGROUND);
         boolean logicalForeground = hasHudForegroundPassWork(phase, HudRenderSpace.UNSCALED_LOGICAL)
-                || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_LOGICAL_FOREGROUND);
+                || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_LOGICAL_FOREGROUND)
+                || xaeroWaypointHudWork;
         boolean moduleRawMain = ModuleManager.hasHudEngineWork(phase, HudRenderSpace.UNSCALED);
         boolean moduleScaledMain = ModuleManager.hasHudEngineWork(phase, HudRenderSpace.SCALED);
         boolean moduleLogicalMain = ModuleManager.hasHudEngineWork(phase, HudRenderSpace.UNSCALED_LOGICAL);
@@ -319,6 +324,9 @@ public class Combatant implements ClientModInitializer {
                     Renderer2D.COLOR.begin();
                     StaticHudElementRegistry.renderAllEngine(phase, HudRenderSpace.UNSCALED_LOGICAL, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     DraggableHudElementRegistry.renderAllEngine(phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
+                    if (xaeroWaypointHudWork) {
+                        XaeroWaypointHudOverlay.renderBackground(Renderer2D.COLOR, textRenderer, tickProgress);
+                    }
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_LOGICAL, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     Renderer2D.COLOR.render();
                 }
@@ -370,6 +378,9 @@ public class Combatant implements ClientModInitializer {
                     DraggableHudElementRegistry.renderAllEngineForeground(phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_LOGICAL_FOREGROUND, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     Renderer2D.COLOR.render();
+                    if (xaeroWaypointHudWork) {
+                        XaeroWaypointHudOverlay.renderForeground(textRenderer);
+                    }
                 }
             } finally {
                 SystemCursor.endFrame();
@@ -451,6 +462,13 @@ public class Combatant implements ClientModInitializer {
             case AFTER_SUBTITLES -> Renderer2D.Deferred2DLayer.HUD_AFTER_SUBTITLES;
             case LAST -> Renderer2D.Deferred2DLayer.HUD_LAST;
         };
+    }
+
+
+    private static boolean hasXaeroWaypointHudWork(HudPhase phase) {
+        if (phase != HudPhase.AFTER_MISC_OVERLAYS) return false;
+        if (!FabricLoader.getInstance().isModLoaded("xaerominimap")) return false;
+        return XaeroWaypointHudOverlay.hasHudWork();
     }
 
     private static boolean hasHudMainPassWork(HudPhase phase, HudRenderSpace space) {

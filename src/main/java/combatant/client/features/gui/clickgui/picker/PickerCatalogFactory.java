@@ -22,6 +22,7 @@ import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.util.item.EnchantMeta;
 import combatant.client.util.item.EnchantRegistry;
 import combatant.client.util.screen.ScreenCatalog;
+import combatant.client.util.particle.ParticleClassCatalog;
 
 import java.util.*;
 
@@ -43,6 +44,7 @@ public enum PickerCatalogFactory {
             case SOUNDS -> owner -> soundEntries();
             case LIVING_ENTITIES -> owner -> livingEntityEntries();
             case ENTITIES -> owner -> entityEntries();
+            case PARTICLES -> PickerCatalogFactory::particleEntries;
             case TEXT -> owner -> List.of();
         };
     }
@@ -146,6 +148,16 @@ public enum PickerCatalogFactory {
             if (id == null) continue;
             String label = I18n.get(type.getDescriptionId());
             out.add(new PickerEntryData(id.toString(), label, ItemStack.EMPTY));
+        }
+        out.sort(ENTRY_ORDER);
+        return out;
+    }
+
+    private static List<PickerEntryData> particleEntries(TextListSetting owner) {
+        Set<String> selected = owner == null ? Set.of() : owner.getValueSet();
+        List<PickerEntryData> out = new ArrayList<>();
+        for (ParticleClassCatalog.Entry entry : ParticleClassCatalog.entries(selected)) {
+            out.add(new PickerEntryData(entry.id(), entry.label(), ItemStack.EMPTY));
         }
         out.sort(ENTRY_ORDER);
         return out;

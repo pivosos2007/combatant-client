@@ -671,10 +671,22 @@ public enum ClickGuiRenderer {
     }
 
     public static boolean shouldRenderAsTopLayer() {
-        return MC != null && (isLifecycleActive()
-                || ClientScreen.current() instanceof ClickGuiScreen
-                || ClientScreen.current() instanceof ClickGuiPickerScreen
+        return MC != null && (ClientScreen.current() instanceof ClickGuiPickerScreen
                 || ClientScreen.current() instanceof ClickGuiEditorScreen);
+    }
+
+    public static void renderScreen(GuiGraphicsExtractor ctx, float tickDelta) {
+        if (!(ClientScreen.current() instanceof ClickGuiScreen)) return;
+
+        CombatantRenderSystem.ensureFrameContext();
+        ViewportContext.beginUnscaledLogical(ctx);
+        try {
+            Renderer2D.COLOR.begin();
+            renderEngine(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta);
+            Renderer2D.COLOR.render();
+        } finally {
+            ViewportContext.end(ctx);
+        }
     }
 
     public static void renderTopLayer(GuiGraphicsExtractor ctx, float tickDelta) {
@@ -836,9 +848,12 @@ public enum ClickGuiRenderer {
         List<ClickGuiTabEntry> tabs = currentTabs();
         ensureActiveTab(tabs);
         if (tabs.isEmpty()) return;
-        boolean islandShell = DynamicIsland.shouldOwnClickGuiTabShell();
+        ClickGuiSection activeSection = getActiveSection();
+        boolean islandShell = DynamicIsland.shouldOwnClickGuiTabShell()
+                && activeSection != null
+                && !activeSection.usesFullViewport();
 
-        TextRenderer tabFont = getSfProDisplaySemibold();
+        TextRenderer tabFont = getOnestBold();
         float y = tabBarY - (1.0f - eased) * 18.0f;
         float outerRadius = tabBarH * 0.5f;
         float outerPad = 4.0f;
@@ -1054,11 +1069,19 @@ public enum ClickGuiRenderer {
         return onestMedium;
     }
 
+    public static TextRenderer getOnestMedium() {
+        return getSfMedium();
+    }
+
     public static TextRenderer getSfProDisplaySemibold() {
         if (onestBold == null) {
             onestBold = Fonts.renderer("OnestBold", FontInfo.Type.Regular, getInterMedium());
         }
         return onestBold;
+    }
+
+    public static TextRenderer getOnestBold() {
+        return getSfProDisplaySemibold();
     }
 
     public static TextRenderer getMonsterratRegular() {
