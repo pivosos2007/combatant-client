@@ -27,14 +27,14 @@ public final class JavetRuntimeBootstrap {
     }
 
     public static synchronized void installNativeLoader() {
-        if (shuttingDown || !DistributionCapabilities.isJavetAvailable()) return;
+        if (shuttingDown || !isJavetRuntimeAvailable()) return;
         JavetNativeResourceLoader.install();
     }
 
     public static synchronized V8Runtime createRuntime(AutoCloseable owner) throws JavetException {
         if (owner == null) throw new IllegalArgumentException("Javet runtime owner must not be null");
         if (shuttingDown) throw new IllegalStateException("Javet runtime is shutting down");
-        if (!DistributionCapabilities.isJavetAvailable()) {
+        if (!isJavetRuntimeAvailable()) {
             throw new IllegalStateException(DistributionCapabilities.javetUnavailableReason());
         }
 
@@ -51,6 +51,14 @@ public final class JavetRuntimeBootstrap {
         nativeUsed = true;
         RUNTIMES.put(owner, runtime);
         return runtime;
+    }
+
+    private static boolean isJavetRuntimeAvailable() {
+        // The actual bundled native is authoritative. Release metadata is useful for
+        // diagnostics and intentional omissions, but it must never veto a native
+        // resource that is physically present in the running artifact.
+        return JavetNativeResourceLoader.hasBundledNativeForCurrentRuntime()
+                || DistributionCapabilities.isJavetAvailable();
     }
 
     public static void closeRuntime(AutoCloseable owner, V8Runtime runtime) {

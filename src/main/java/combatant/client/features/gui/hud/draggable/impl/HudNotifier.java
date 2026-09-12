@@ -961,6 +961,9 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
     private void playSound(boolean enabled) {
         if (ModuleManager.isToggleSoundSuppressed()) return;
         if (!soundEnabled.get()) return;
+        // Module config/lifecycle notifications may run before Minecraft opens OpenAL.
+        // Early one-shot sounds are discarded; never initialize native audio from the GUI.
+        if (!combatant.client.util.sound.SoundSystem.get().isReady()) return;
         NotificationSound snd = NotificationSound.resolve(enabled, soundMode.get());
         if (snd == null) return;
         double vol = Math.min(1.0, getSoundVolume());

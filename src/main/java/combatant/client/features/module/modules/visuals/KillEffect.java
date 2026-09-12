@@ -99,7 +99,51 @@ public class KillEffect extends Module implements PostProcessPass {
     private final List<Ember> embers = new ArrayList<>();
     private final List<FlashRing> flashes = new ArrayList<>();
     private final List<LightningStrike> lightningStrikes = new ArrayList<>();
-    private long killBlurStartedMs;
+    private volatile long killBlurStartedMs;
+    private ClientLevel stateLevel;
+    private volatile long stateGeneration;
+    // Published frames contain values, never mutable simulation objects or live collections.
+    private volatile EffectFrame publishedFrame = EffectFrame.EMPTY;
+
+    private record EmberFrame(Vec3 previous, Vec3 current, float size, float life) {
+        Vec3 interpolate(float delta) { return previous.lerp(current, delta); }
+    }
+    private record FlashFrame(Vec3 pos, float progress) { }
+    private record LightningFrame(List<Vec3> points, int colorArgb, float alpha) { }
+    private record EffectFrame(List<OrthodoxMark> marks, List<EmberFrame> embers,
+                               List<FlashFrame> flashes, List<LightningFrame> lightning) {
+        private static final EffectFrame EMPTY = new EffectFrame(List.of(), List.of(), List.of(), List.of());
+    }
+
+    private void resetState(ClientLevel nextLevel) {
+        stateGeneration++;
+        stateLevel = nextLevel;
+        handled.clear();
+        damageCredits.clear();
+        orthodoxMarks.clear();
+        embers.clear();
+        flashes.clear();
+        lightningStrikes.clear();
+        killBlurStartedMs = 0L;
+        publishedFrame = EffectFrame.EMPTY;
+    }
+
+    private void publishFrame() {
+        List<EmberFrame> emberFrames = new ArrayList<>(embers.size());
+        for (Ember e : embers) {
+            emberFrames.add(new EmberFrame(e.prevPos, e.pos, e.size, e.getLifeProgress()));
+        }
+        List<FlashFrame> flashFrames = new ArrayList<>(flashes.size());
+        for (FlashRing ring : flashes) {
+            flashFrames.add(new FlashFrame(ring.pos, Math.min(1f, ring.timer.getPassedTimeMs() / (float) ring.lifeMs)));
+        }
+        List<LightningFrame> lightningFrames = new ArrayList<>(lightningStrikes.size());
+        for (LightningStrike strike : lightningStrikes) {
+            lightningFrames.add(new LightningFrame(List.copyOf(strike.points), strike.colorArgb, strike.getAlpha()));
+        }
+        publishedFrame = new EffectFrame(List.copyOf(orthodoxMarks), List.copyOf(emberFrames),
+                List.copyOf(flashFrames), List.copyOf(lightningFrames));
+    }
 
     {
         PostProcessManager.register(this);
@@ -201,14 +245,31 @@ public class KillEffect extends Module implements PostProcessPass {
     }
 
     @Override
+    public void onEnable() {
+        if (mc.isSameThread()) resetState(mc.level);
+        else mc.execute(() -> { if (isEnabled()) resetState(mc.level); });
+    }
+
+    @Override
     public void onTick() {
-        if (!isEnabled() || mc.level == null || mc.player == null) return;
+        if (!mc.isSameThread()) {
+            mc.execute(this::onTick);
+            return;
+        }
+        if (!isEnabled()) return;
+        if (mc.level == null || mc.player == null) {
+            if (stateLevel != null) resetState(null);
+            return;
+        }
+        if (stateLevel != mc.level) resetState(mc.level);
 
         long now = System.currentTimeMillis();
         handled.entrySet().removeIf(e -> now - e.getValue() > 6000);
         damageCredits.entrySet().removeIf(e -> now - e.getValue().recordedAtMs() > DAMAGE_CREDIT_TTL_MS);
 
-        for (LivingEntity entity : mc.level.getEntitiesOfClass(LivingEntity.class, mc.player.getBoundingBox().inflate(EFFECT_DETECTION_RADIUS), e -> true)) {
+        List<LivingEntity> candidates = new ArrayList<>(mc.level.getEntitiesOfClass(
+                LivingEntity.class, mc.player.getBoundingBox().inflate(EFFECT_DETECTION_RADIUS), e -> true));
+        for (LivingEntity entity : candidates) {
             if (entity == mc.player) continue;
             if (!mobs.get() && !(entity instanceof Player)) continue;
             if (entity.isAlive() || entity.getHealth() > 0) continue;
@@ -255,6 +316,7 @@ public class KillEffect extends Module implements PostProcessPass {
         if (!orthodoxMarks.isEmpty()) {
             orthodoxMarks.removeIf(m -> now - m.createdAtMs > 3000);
         }
+        publishFrame();
     }
 
     @SoundCatalog(namespace = "combatant", root = "sounds/misc", idPrefix = "kill_effect")
@@ -271,15 +333,33 @@ public class KillEffect extends Module implements PostProcessPass {
 
     @EventHandler
     private void onDamagePacket(PacketEvent.Receive event) {
-        if (!isEnabled() || event == null || mc.level == null || mc.player == null) return;
+        if (!isEnabled() || event == null) return;
         if (!(event.getPacket() instanceof ClientboundDamageEventPacket packet)) return;
+        ClientLevel level = mc.level;
+        if (level == null) return;
+        long generation = stateGeneration;
+        long receivedAt = System.currentTimeMillis();
+        // Packet callbacks are not guaranteed to originate on the client thread.
+        // Never resolve world entities or mutate simulation maps from a network callback.
+        if (!mc.isSameThread()) {
+            mc.execute(() -> {
+                if (isEnabled() && mc.level == level && stateGeneration == generation)
+                    recordDamage(level, packet, receivedAt);
+            });
+        } else {
+            recordDamage(level, packet, receivedAt);
+        }
+    }
 
-        Entity damaged = mc.level.getEntity(packet.entityId());
+    private void recordDamage(ClientLevel level, ClientboundDamageEventPacket packet, long receivedAt) {
+        if (!isEnabled() || mc.level != level || mc.player == null) return;
+        if (stateLevel != level) return;
+        Entity damaged = level.getEntity(packet.entityId());
         if (!(damaged instanceof LivingEntity living) || living == mc.player) return;
 
         Entity sourceEntity = null;
         try {
-            DamageSource source = packet.getSource(mc.level);
+            DamageSource source = packet.getSource(level);
             if (source != null) {
                 sourceEntity = source.getEntity();
                 if (sourceEntity == null) sourceEntity = source.getDirectEntity();
@@ -287,37 +367,31 @@ public class KillEffect extends Module implements PostProcessPass {
         } catch (RuntimeException ignored) {
             // A missing/late source reference cannot safely be attributed to the local player.
         }
-
-        damageCredits.put(living.getId(),
-                new DamageCredit(sourceEntity == mc.player, System.currentTimeMillis()));
+        damageCredits.put(living.getId(), new DamageCredit(sourceEntity == mc.player, receivedAt));
     }
 
     @Override
     public void onDisable() {
-        handled.clear();
-        damageCredits.clear();
-        orthodoxMarks.clear();
-        embers.clear();
-        flashes.clear();
-        lightningStrikes.clear();
-        killBlurStartedMs = 0L;
+        if (mc.isSameThread()) resetState(null);
+        else mc.execute(() -> { if (!isEnabled()) resetState(null); });
     }
 
     @Override
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
         if (!isEnabled() || mc.level == null || mc.player == null) return;
 
+        EffectFrame frame = publishedFrame;
         if ("Orthodox".equals(mode.get())) {
-            renderOrthodox(renderer);
+            renderOrthodox(renderer, frame.marks());
         } else if ("Lightning".equals(mode.get())) {
-            renderLightning(renderer);
+            renderLightning(renderer, frame.lightning());
         } else if ("EmbersArc".equals(mode.get())) {
-            renderEmbers(renderer, tickDelta);
-            renderFlashRings(renderer);
+            renderEmbers(renderer, tickDelta, frame.embers());
+            renderFlashRings(renderer, frame.flashes());
         }
     }
 
-    private void renderOrthodox(Renderer3D renderer) {
+    private void renderOrthodox(Renderer3D renderer, List<OrthodoxMark> marks) {
         int argb = color.getArgb();
         int r = (argb >> 16) & 255;
         int g = (argb >> 8) & 255;
@@ -326,7 +400,7 @@ public class KillEffect extends Module implements PostProcessPass {
 
         double offset = ySpeed.get() / 100.0;
 
-        for (OrthodoxMark mark : orthodoxMarks) {
+        for (OrthodoxMark mark : marks) {
             Vec3 pos = mark.pos;
             renderer.line(pos.x, pos.y + offset, pos.z,
                     pos.x, pos.y + 3.0 + offset, pos.z, r, g, b, a);
@@ -337,8 +411,8 @@ public class KillEffect extends Module implements PostProcessPass {
         }
     }
 
-    private void renderEmbers(Renderer3D renderer, float tickDelta) {
-        if (embers.isEmpty()) return;
+    private void renderEmbers(Renderer3D renderer, float tickDelta, List<EmberFrame> emberFrames) {
+        if (emberFrames.isEmpty()) return;
 
         MeshBuilder mesh = renderer.batchTextured(
                 CombatantRenderPipelines.WORLD_TEXTURED_ADDITIVE,
@@ -349,11 +423,9 @@ public class KillEffect extends Module implements PostProcessPass {
 
         Quaternionf camRot = RenderState.cameraRotation;
 
-        for (int i = 0; i < embers.size(); i++) {
-            Ember e = embers.get(i);
+        for (EmberFrame e : emberFrames) {
             Vec3 pos = e.interpolate(tickDelta);
-
-            float lifeT = e.getLifeProgress();
+            float lifeT = e.life();
             Color base = new Color(255, 20, 0, 255);
             Color hot = new Color(255, 220, 80, 255);
             Color col = ColorUtils.interpolateColorC(base, hot, 1f - lifeT);
@@ -361,7 +433,7 @@ public class KillEffect extends Module implements PostProcessPass {
             int alpha = (int) (255f * (1f - lifeT));
             int argb = withAlpha(col.getRGB(), alpha);
 
-            float size = e.size * (1f - lifeT);
+            float size = e.size() * (1f - lifeT);
             if (size <= 0.01f) continue;
 
             addBillboardQuad(mesh, pos.x, pos.y, pos.z, size, camRot, argb);
@@ -369,8 +441,8 @@ public class KillEffect extends Module implements PostProcessPass {
 
     }
 
-    private void renderFlashRings(Renderer3D renderer) {
-        if (flashes.isEmpty()) return;
+    private void renderFlashRings(Renderer3D renderer, List<FlashFrame> flashFrames) {
+        if (flashFrames.isEmpty()) return;
 
         MeshBuilder mesh = renderer.batchTextured(
                 CombatantRenderPipelines.WORLD_TEXTURED_ADDITIVE,
@@ -379,8 +451,8 @@ public class KillEffect extends Module implements PostProcessPass {
         );
         if (mesh == null) return;
 
-        for (FlashRing ring : flashes) {
-            float t = Math.min(1f, ring.timer.getPassedTimeMs() / (float) ring.lifeMs);
+        for (FlashFrame ring : flashFrames) {
+            float t = ring.progress();
             float size = 0.4f + t * 1.8f;
             float alpha = (float) Math.pow(1f - t, 1.6);
 
@@ -395,8 +467,8 @@ public class KillEffect extends Module implements PostProcessPass {
 
     }
 
-    private void renderLightning(Renderer3D renderer) {
-        if (lightningStrikes.isEmpty()) return;
+    private void renderLightning(Renderer3D renderer, List<LightningFrame> lightningFrames) {
+        if (lightningFrames.isEmpty()) return;
 
         MeshBuilder mesh = renderer.batchTextured(
                 CombatantRenderPipelines.WORLD_TEXTURED_ADDITIVE,
@@ -407,8 +479,8 @@ public class KillEffect extends Module implements PostProcessPass {
 
         Quaternionf camRot = RenderState.cameraRotation;
 
-        for (LightningStrike strike : lightningStrikes) {
-            float alpha = strike.getAlpha();
+        for (LightningFrame strike : lightningFrames) {
+            float alpha = strike.alpha();
             if (alpha <= 0.01f) continue;
 
             int colorArgb = withAlpha(strike.colorArgb, (int) (255f * alpha * LIGHTNING_ALPHA));
@@ -550,13 +622,14 @@ public class KillEffect extends Module implements PostProcessPass {
     }
 
     private class LightningStrike {
-        private final List<Vec3> points = new ArrayList<>(LIGHTNING_POINTS);
+        private final List<Vec3> points;
         private final int colorArgb;
         private final long createdAtMs;
 
         private LightningStrike(Vec3 startPos, int colorArgb, long createdAtMs) {
             this.colorArgb = colorArgb;
             this.createdAtMs = createdAtMs;
+            List<Vec3> points = new ArrayList<>(LIGHTNING_POINTS);
 
             Vec3 current = startPos;
             for (int i = 0; i < LIGHTNING_POINTS; i++) {
@@ -567,6 +640,7 @@ public class KillEffect extends Module implements PostProcessPass {
                 );
                 points.add(current);
             }
+            this.points = List.copyOf(points);
         }
 
         private boolean isExpired() {

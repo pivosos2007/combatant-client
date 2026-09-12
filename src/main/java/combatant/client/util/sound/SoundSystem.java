@@ -20,6 +20,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 import org.lwjgl.BufferUtils;
+import org.lwjgl.openal.AL;
 import org.lwjgl.openal.ALC10;
 import org.lwjgl.openal.AL10;
 import org.lwjgl.openal.AL11;
@@ -27,13 +28,17 @@ import org.lwjgl.openal.EXTEfx;
 
 import java.io.FileNotFoundException;
 import java.io.InputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.io.UncheckedIOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Format-independent OpenAL sound system sharing Minecraft's current audio context.
@@ -43,12 +48,15 @@ public final class SoundSystem {
     private static final int MAX_SOURCES = 32;
     private static final SoundSystem INSTANCE = new SoundSystem();
 
+    private final SoundThreadBridge audio = new SoundThreadBridge();
+    private final AtomicBoolean reapQueued = new AtomicBoolean();
+    private volatile float masterGain = 1.0f;
+
     private final Map<BufferKey, Integer> buffers = new HashMap<>();
     private final Map<Long, ActiveSound> active = new LinkedHashMap<>();
     private final ArrayDeque<Integer> freeSources = new ArrayDeque<>();
     private int sourceCount;
     private long nextPlaybackId = 1L;
-    private float masterGain = 1.0f;
     private Boolean efxSupported;
     private boolean efxWarningLogged;
 
@@ -78,13 +86,16 @@ public final class SoundSystem {
         return play(SoundDefinition.direct(resource), options);
     }
 
-    public synchronized SoundInstance play(SoundDefinition definition, SoundOptions options) {
-        if (definition == null) return SoundInstance.REJECTED;
+    public SoundInstance play(SoundDefinition definition, SoundOptions options) {
+        if (definition == null || !audio.isReady()) return SoundInstance.REJECTED;
         SoundRequest request = SoundRequest.create(definition, options);
         SoundPlayEvent playEvent = Events.BUS.post(new SoundPlayEvent(request));
         if (playEvent != null && playEvent.isCancelled()) return SoundInstance.REJECTED;
         if (request.gain() <= 0.0f) return SoundInstance.REJECTED;
+        return audio.call(() -> playOnAudio(definition, request), SoundInstance.REJECTED);
+    }
 
+    private SoundInstance playOnAudio(SoundDefinition definition, SoundRequest request) {
         int acquiredSource = 0;
         try {
             reapFinished();
@@ -100,9 +111,9 @@ public final class SoundSystem {
                     request.gain(), request.looping(), request.spatial(), efx);
             active.put(playbackId, sound);
             AL10.alSourcePlay(acquiredSource);
-            Events.BUS.post(new SoundStartedEvent(definition, instance));
+            postEvent(new SoundStartedEvent(definition, instance));
             return instance;
-        } catch (Throwable error) {
+        } catch (RuntimeException error) {
             boolean tracked = false;
             for (ActiveSound sound : active.values()) {
                 if (sound.source == acquiredSource) {
@@ -115,7 +126,8 @@ public final class SoundSystem {
                     AL10.alSourceStop(acquiredSource);
                     AL10.alSourcei(acquiredSource, AL10.AL_BUFFER, 0);
                     freeSources.offerLast(acquiredSource);
-                } catch (Throwable ignored) {
+                } catch (RuntimeException cleanupError) {
+                    error.addSuppressed(cleanupError);
                 }
             }
             report(SoundErrorEvent.Operation.PLAY, definition, error);
@@ -123,84 +135,132 @@ public final class SoundSystem {
         }
     }
 
-    public synchronized void setMasterGain(double gain) {
+    /** Bound by SoundEngine's constructor before Library.init is ever called. */
+    public void attachExecutor(Executor executor) {
+        audio.attach(executor);
+    }
+
+    /** Called at Library.init RETURN, after vanilla has installed its capabilities. */
+    public void onLibraryReady() {
+        // getCapabilities is safe here: unlike a raw AL10 call it does not initialize
+        // LWJGL's write-once function-pointer holder with an absent context.
+        AL.getCapabilities();
+        audio.opened();
+        discardCaches();
+    }
+
+    /** Called at Library.cleanup HEAD, while the old context still exists. */
+    public void onLibraryClosing() {
+        if (!audio.isReady()) return;
+        audio.close(this::resetNative);
+    }
+
+    public boolean isReady() { return audio.isReady(); }
+
+    public void setMasterGain(double gain) {
         masterGain = Math.max(0.0f, (float) gain);
-        for (ActiveSound sound : active.values()) {
+        audio.execute(() -> {
+            for (ActiveSound sound : active.values())
+                AL10.alSourcef(sound.source, AL10.AL_GAIN, masterGain * sound.gain);
+        }, e -> report(SoundErrorEvent.Operation.CONTROL, null, e));
+    }
+
+    public float getMasterGain() { return masterGain; }
+
+    public void tick() {
+        if (!audio.isReady() || !reapQueued.compareAndSet(false, true)) return;
+        audio.execute(() -> {
+            try { reapFinished(); }
+            finally { reapQueued.set(false); }
+        }, e -> {
+            reapQueued.set(false);
+            report(SoundErrorEvent.Operation.CONTROL, null, e);
+        });
+    }
+
+    boolean isPlaying(long id) {
+        return audio.call(() -> {
+            ActiveSound sound = active.get(id);
+            if (sound == null) return false;
+            int state = AL10.alGetSourcei(sound.source, AL10.AL_SOURCE_STATE);
+            return state == AL10.AL_PLAYING || state == AL10.AL_PAUSED;
+        }, false);
+    }
+
+    boolean stop(long id) {
+        return audio.call(() -> {
+            ActiveSound sound = active.get(id);
+            if (sound == null) return false;
+            AL10.alSourceStop(sound.source);
+            retire(sound, SoundStoppedEvent.Reason.STOPPED);
+            return true;
+        }, false);
+    }
+
+    boolean pause(long id) {
+        return audio.call(() -> {
+            ActiveSound sound = active.get(id);
+            if (sound == null || AL10.alGetSourcei(sound.source, AL10.AL_SOURCE_STATE) != AL10.AL_PLAYING) return false;
+            AL10.alSourcePause(sound.source);
+            return true;
+        }, false);
+    }
+
+    boolean resume(long id) {
+        return audio.call(() -> {
+            ActiveSound sound = active.get(id);
+            if (sound == null || AL10.alGetSourcei(sound.source, AL10.AL_SOURCE_STATE) != AL10.AL_PAUSED) return false;
+            AL10.alSourcePlay(sound.source);
+            return true;
+        }, false);
+    }
+
+    boolean setGain(long id, double gain) {
+        return audio.call(() -> {
+            ActiveSound sound = active.get(id);
+            if (sound == null) return false;
+            sound.gain = Math.max(0.0f, (float) gain);
             AL10.alSourcef(sound.source, AL10.AL_GAIN, masterGain * sound.gain);
-        }
+            return true;
+        }, false);
     }
 
-    public synchronized float getMasterGain() {
-        return masterGain;
+    boolean setPitch(long id, double pitch) {
+        return audio.call(() -> {
+            ActiveSound sound = active.get(id);
+            if (sound == null) return false;
+            AL10.alSourcef(sound.source, AL10.AL_PITCH, Math.max(0.01f, (float) pitch));
+            return true;
+        }, false);
     }
 
-    public synchronized void tick() {
-        try {
-            reapFinished();
-        } catch (Throwable error) {
-            report(SoundErrorEvent.Operation.CONTROL, null, error);
-        }
-    }
-
-    synchronized boolean isPlaying(long id) {
-        ActiveSound sound = active.get(id);
-        if (sound == null) return false;
-        int state = AL10.alGetSourcei(sound.source, AL10.AL_SOURCE_STATE);
-        return state == AL10.AL_PLAYING || state == AL10.AL_PAUSED;
-    }
-
-    synchronized boolean stop(long id) {
-        ActiveSound sound = active.get(id);
-        if (sound == null) return false;
-        AL10.alSourceStop(sound.source);
-        retire(sound, SoundStoppedEvent.Reason.STOPPED);
-        return true;
-    }
-
-    synchronized boolean pause(long id) {
-        ActiveSound sound = active.get(id);
-        if (sound == null || AL10.alGetSourcei(sound.source, AL10.AL_SOURCE_STATE) != AL10.AL_PLAYING) return false;
-        AL10.alSourcePause(sound.source);
-        return true;
-    }
-
-    synchronized boolean resume(long id) {
-        ActiveSound sound = active.get(id);
-        if (sound == null || AL10.alGetSourcei(sound.source, AL10.AL_SOURCE_STATE) != AL10.AL_PAUSED) return false;
-        AL10.alSourcePlay(sound.source);
-        return true;
-    }
-
-    synchronized boolean setGain(long id, double gain) {
-        ActiveSound sound = active.get(id);
-        if (sound == null) return false;
-        sound.gain = Math.max(0.0f, (float) gain);
-        AL10.alSourcef(sound.source, AL10.AL_GAIN, masterGain * sound.gain);
-        return true;
-    }
-
-    synchronized boolean setPitch(long id, double pitch) {
-        ActiveSound sound = active.get(id);
-        if (sound == null) return false;
-        AL10.alSourcef(sound.source, AL10.AL_PITCH, Math.max(0.01f, (float) pitch));
-        return true;
-    }
-
-    synchronized boolean setPosition(long id, Vec3 position) {
-        ActiveSound sound = active.get(id);
-        if (sound == null || !sound.spatial || position == null) return false;
-        AL10.alSource3f(sound.source, AL10.AL_POSITION,
-                (float) position.x, (float) position.y, (float) position.z);
-        return true;
+    boolean setPosition(long id, Vec3 position) {
+        if (position == null) return false;
+        return audio.call(() -> {
+            ActiveSound sound = active.get(id);
+            if (sound == null || !sound.spatial) return false;
+            AL10.alSource3f(sound.source, AL10.AL_POSITION,
+                    (float) position.x, (float) position.y, (float) position.z);
+            return true;
+        }, false);
     }
 
     @AssetLoad(order = 400)
-    public static void reloadAssets() {
-        get().reset();
+    public static void reloadAssets() { get().reset(); }
+
+    /** Resource reloads invalidate cached native objects only on Minecraft's audio executor. */
+    public void reset() {
+        try {
+            audio.call(() -> {
+                resetNative();
+                return true;
+            }, false);
+        } catch (RuntimeException e) {
+            report(SoundErrorEvent.Operation.RESET, null, e);
+        }
     }
 
-    /** Called by the Minecraft audio-library lifecycle mixin. */
-    public synchronized void reset() {
+    private void resetNative() {
         try {
             List<ActiveSound> sounds = new ArrayList<>(active.values());
             for (ActiveSound sound : sounds) {
@@ -208,20 +268,26 @@ public final class SoundSystem {
                 retire(sound, SoundStoppedEvent.Reason.RESET);
             }
             for (int source : freeSources) AL10.alDeleteSources(source);
-            SoundDebugStats.onSourcesCleared(sourceCount);
-            freeSources.clear();
-            sourceCount = 0;
-
             for (int buffer : buffers.values()) AL10.alDeleteBuffers(buffer);
-            SoundDebugStats.onBuffersCleared(buffers.size());
-            buffers.clear();
-            efxSupported = null;
-        } catch (Throwable error) {
-            report(SoundErrorEvent.Operation.RESET, null, error);
+        } finally {
+            discardCaches();
         }
     }
 
-    private int ensureBuffer(Identifier resource, boolean spatial) throws Exception {
+    /** Java-only invalidation; never delete IDs belonging to a previous context. */
+    private void discardCaches() {
+        SoundDebugStats.onSourcesCleared(sourceCount);
+        SoundDebugStats.onBuffersCleared(buffers.size());
+        active.clear();
+        freeSources.clear();
+        buffers.clear();
+        sourceCount = 0;
+        efxSupported = null;
+        efxWarningLogged = false;
+        reapQueued.set(false);
+    }
+
+    private int ensureBuffer(Identifier resource, boolean spatial) {
         BufferKey key = new BufferKey(resource, spatial);
         Integer cached = buffers.get(key);
         if (cached != null && AL10.alIsBuffer(cached)) return cached;
@@ -230,19 +296,24 @@ public final class SoundSystem {
         try (InputStream stream = resourceStream(resource)) {
             if (stream == null) throw new FileNotFoundException("Sound resource not found: " + resource);
             decoded = AudioDecoders.decode(resource, stream);
-        } catch (Throwable error) {
-            Events.BUS.post(new SoundErrorEvent(SoundErrorEvent.Operation.LOAD, SoundDefinition.direct(resource), error));
-            throw error;
+        } catch (IOException error) {
+            postEvent(new SoundErrorEvent(SoundErrorEvent.Operation.LOAD, SoundDefinition.direct(resource), error));
+            throw new UncheckedIOException(error);
         }
         if (spatial) decoded = decoded.toMono();
 
         ByteBuffer data = BufferUtils.createByteBuffer(decoded.data().length);
         data.put(decoded.data()).flip();
         int buffer = AL10.alGenBuffers();
-        AL10.alBufferData(buffer, decoded.openAlFormat(), data, decoded.sampleRate());
+        try {
+            AL10.alBufferData(buffer, decoded.openAlFormat(), data, decoded.sampleRate());
+        } catch (RuntimeException e) {
+            AL10.alDeleteBuffers(buffer);
+            throw e;
+        }
         buffers.put(key, buffer);
         SoundDebugStats.onBufferCreated(decoded.data().length);
-        Events.BUS.post(new SoundLoadedEvent(resource, decoded.channels(), decoded.sampleRate(), decoded.data().length, spatial));
+        postEvent(new SoundLoadedEvent(resource, decoded.channels(), decoded.sampleRate(), decoded.data().length, spatial));
         return buffer;
     }
 
@@ -323,9 +394,7 @@ public final class SoundSystem {
         int slot = 0;
         int dryFilter = 0;
         try {
-            while (AL10.alGetError() != AL10.AL_NO_ERROR) {
-                // Discard stale OpenAL errors before checking this optional chain.
-            }
+            AL10.alGetError(); // Clear the previous error once, without an unbounded loop.
             effect = EXTEfx.alGenEffects();
             if (effect == 0) throw new IllegalStateException("OpenAL could not allocate an EFX effect");
             EXTEfx.alEffecti(effect, EXTEfx.AL_EFFECT_TYPE, EXTEfx.AL_EFFECT_EQUALIZER);
@@ -359,7 +428,7 @@ public final class SoundSystem {
                         + Integer.toHexString(error) + ")");
             }
             return new EfxBinding(effect, slot, dryFilter);
-        } catch (Throwable error) {
+        } catch (RuntimeException error) {
             if (dryFilter != 0) EXTEfx.alDeleteFilters(dryFilter);
             if (slot != 0) EXTEfx.alDeleteAuxiliaryEffectSlots(slot);
             if (effect != 0) EXTEfx.alDeleteEffects(effect);
@@ -395,7 +464,7 @@ public final class SoundSystem {
         releaseEfx(sound.source, sound.efx);
         AL10.alSourcei(sound.source, AL10.AL_BUFFER, 0);
         if (recycleSource) freeSources.offerLast(sound.source);
-        Events.BUS.post(new SoundStoppedEvent(sound.definition, sound.instance, reason));
+        postEvent(new SoundStoppedEvent(sound.definition, sound.instance, reason));
     }
 
     private void releaseEfx(int source, EfxBinding binding) {
@@ -408,10 +477,18 @@ public final class SoundSystem {
         EXTEfx.alDeleteEffects(binding.effect);
     }
 
+    private static void postEvent(combatant.client.events.Event event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) return;
+        // Do not run game/module listeners on Minecraft's native audio thread.
+        if (mc.isSameThread()) Events.BUS.post(event);
+        else mc.execute(() -> Events.BUS.post(event));
+    }
+
     private void report(SoundErrorEvent.Operation operation, SoundDefinition definition, Throwable error) {
         DebugLog.error("Custom sound %s failed for %s", error, operation,
                 definition == null ? "<engine>" : definition.resource());
-        Events.BUS.post(new SoundErrorEvent(operation, definition, error));
+        postEvent(new SoundErrorEvent(operation, definition, error));
     }
 
     private record BufferKey(Identifier resource, boolean spatial) {

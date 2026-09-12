@@ -7,11 +7,13 @@
 
 package combatant.client.render.engine.postprocess.graph;
 
+
 import com.mojang.blaze3d.textures.GpuTextureView;
 import combatant.client.render.engine.core.RenderFrameContext;
 import combatant.client.render.engine.postprocess.PostProcessContext;
 import combatant.client.render.engine.postprocess.PostProcessPass;
 import combatant.client.render.engine.rhi.CombatantRhi;
+import combatant.client.features.module.Module;
 
 import java.util.Set;
 
@@ -69,6 +71,9 @@ public final class LegacyPostProcessGraphPass implements PostProcessGraphPass {
         GpuTextureView dst = resources.currentDestination();
         PostProcessContext legacyContext = resources.legacyContext();
         if (src == null || dst == null || legacyContext == null) return false;
+        if (delegate instanceof Module module && !module.isEnabled()) return false;
+        // Shared graph resources are not locally recoverable. Do not quarantine/cleanup a
+        // module while the graph may contain partially written GPU resources.
         return delegate.render(legacyContext, src, dst);
     }
 }

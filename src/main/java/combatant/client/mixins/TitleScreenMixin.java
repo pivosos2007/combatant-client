@@ -23,7 +23,7 @@ public abstract class TitleScreenMixin {
 
     @Inject(method = "init", at = @At("HEAD"), cancellable = true)
     private void combatant$replaceTitleScreen(CallbackInfo ci) {
-        if (RuntimeGate.isPanic()) return;
+        if (!RuntimeGate.canRunRender()) return;
         if (!MainConfig.get().isCombatantMainMenuEnabled()) return;
         if (CombatantMainMenuScreen.shouldUseVanillaTitleScreen()) return;
         Minecraft mc = Minecraft.getInstance();

@@ -476,6 +476,7 @@ public class Combatant implements ClientModInitializer {
         MainConfig.get(); // Load global settings (debug flag)
         AccountConfig.get();
         ProxyBackend.init();
+        combatant.client.features.gui.chat.diagnostics.FailureDiagnostics.initialize();
         CommandManager.init();
         MediaSessionService.get().init();
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {

@@ -9,9 +9,6 @@ package combatant.client.features.gui.chat;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import combatant.client.mixins.accessors.SuggestionWindowAccessor;
-import combatant.client.render.engine.text.VanillaTextRenderer;
-import combatant.client.util.item.IllegalItemUtil;
-import combatant.client.util.item.TopEnchantUtil;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -31,6 +28,8 @@ import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 import combatant.client.features.command.CommandManager;
 import combatant.client.features.command.CommandOutput;
+import combatant.client.features.gui.chat.actions.ChatMessageActions;
+import combatant.client.features.gui.chat.actions.MessageActionRegistry;
 import combatant.client.features.gui.chat.ChatHoverUtil.HoverTip;
 import combatant.client.features.gui.chat.rich.BetterChatMessage;
 import combatant.client.features.gui.chat.rich.ItemNode;
@@ -58,6 +57,14 @@ import combatant.client.util.text.ChatNameUtil;
 import combatant.client.util.text.ClipboardUtil;
 import combatant.client.util.text.TextSelection;
 import combatant.client.util.chat.ChatPasswordHeuristics;
+import combatant.client.features.gui.chat.BetterChatMessageLayout.LayoutResult;
+import combatant.client.features.gui.chat.BetterChatMessageLayout.VisualLine;
+import combatant.client.features.gui.chat.BetterChatInputLayout.InputLine;
+import combatant.client.features.gui.chat.BetterChatFrameLayout.FrameLine;
+import combatant.client.features.gui.chat.BetterChatFrameLayout.GlyphBox;
+import combatant.client.features.gui.chat.BetterChatFrameLayout.MessageBubble;
+import combatant.client.features.gui.chat.BetterChatFrameLayout.MessageClipBounds;
+import combatant.client.features.gui.chat.BetterChatFrameLayout.PickResult;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -96,9 +103,6 @@ public enum BetterChatRenderer {
     private static final float CHAT_TOOLTIP_OFFSET_X = 6f;
     private static final float CHAT_TOOLTIP_OFFSET_Y = 12f;
     private static final RenderColor TMP_COLOR = new RenderColor(0xFFFFFFFF);
-    private static final java.util.IdentityHashMap<ChatLine, CachedMessageLayout> MESSAGE_LAYOUT_CACHE = new java.util.IdentityHashMap<>();
-    private static final java.util.IdentityHashMap<ChatLine, List<Segment>> SEGMENT_CACHE = new java.util.IdentityHashMap<>();
-    private static final java.util.IdentityHashMap<CommandOutput.MessageLine, ChatLine> COMMAND_LINE_CACHE = new java.util.IdentityHashMap<>();
     private static final TextSelection selection = new TextSelection();
     private static final double DRAG_SELECT_THRESHOLD = 4.0; // px
     private static Renderer2D renderer;
@@ -152,7 +156,7 @@ public enum BetterChatRenderer {
     private static long debugPerfAccumLayoutNs = 0L;
     private static long debugPerfAccumBuildNs = 0L;
     private static int debugPerfAccumFrames = 0;
-    private static FrameLayout frame = FrameLayout.empty();
+    private static BetterChatFrameLayout frame = BetterChatFrameLayout.empty();
     private static ContextMenu contextMenu = ContextMenu.closed();
     private static float contextMenuAppearProgress = 0f;
     private static boolean selecting = false;
@@ -174,6 +178,12 @@ public enum BetterChatRenderer {
     private static String passwordInputSnapshot = "";
 
     public static void markLayoutDirty() {
+        BetterChatMessageLayout.invalidateLayouts();
+    }
+
+    static void clearMessageCaches() {
+        BetterChatMessageLayout.clear();
+        BetterChatRuntimeMessages.clear();
     }
 
     public static void renderEngine(Renderer2D rendererIn,
@@ -297,7 +307,8 @@ public enum BetterChatRenderer {
                     ? Math.max(visibleLimit + scrollOffsetLines + 80, visibleLimit)
                     : Math.max(visibleLimit + 8, visibleLimit);
             int needed = Math.min(MAX_HISTORY, Math.min(totalMessages, tailBudget));
-            messages = mergeCommandOutput(store.tail(Math.min(store.size(), needed)), commandOutputMessages, needed);
+            messages = BetterChatRuntimeMessages.merge(
+                    store.tail(Math.min(store.size(), needed)), commandOutputMessages, needed);
         }
         lastMessages = messages;
         int[] messageGroups = BetterChatMessageGrouping.groupIds(messages);
@@ -307,14 +318,15 @@ public enum BetterChatRenderer {
         float tsWidth = 0f;
         if (showTs) {
             String sampleTs = tsSeconds ? "00:00:00" : "00:00";
-            tsWidth = textWidth(getInterRegular(), sampleTs, Math.max(9f, fontSize * 0.72f)) + MESSAGE_TS_GAP;
+            tsWidth = BetterChatTextSupport.width(BetterChatTextSupport.interRegular(), sampleTs, Math.max(9f, fontSize * 0.72f)) + MESSAGE_TS_GAP;
         }
         float contentWidth = Math.max(32f, width - PADDING * 2f - MESSAGE_PAD_X * 2f - tsWidth);
         lastFontSizeForUi = fontSize;
 
         int lineTarget = visibleLimit + scrollOffsetLines + Math.max(10, visibleLimit / 2) + 2;
         long perfT0 = System.nanoTime();
-        LayoutResult layoutResult = layoutLinesTailCached(messages, messageGroups, fontSize, contentWidth, lineTarget);
+        LayoutResult layoutResult = BetterChatMessageLayout.tail(
+                messages, messageGroups, fontSize, contentWidth, lineTarget);
         long perfT1 = System.nanoTime();
         List<VisualLine> allLines = layoutResult.lines();
         float lineHeight = fontSize + LINE_SPACING;
@@ -398,7 +410,10 @@ public enum BetterChatRenderer {
         lastRenderHeight = totalHeight;
 
         long perfT2Start = System.nanoTime();
-        frame = FrameLayout.build(visible, baseX, frameY, width, boxHeight, fontSize, lineHeight, lineYOffset, showTs ? tsWidth : 0f);
+        frame = BetterChatFrameLayout.build(
+                visible, baseX, frameY, width, boxHeight, fontSize, lineHeight, lineYOffset,
+                showTs ? tsWidth : 0f,
+                PADDING, MESSAGE_PAD_X, MESSAGE_PAD_Y, MESSAGE_GAP, LINE_SPACING);
         long perfT2 = System.nanoTime();
         debugPerfAccumLayoutNs += (perfT1 - perfT0);
         debugPerfAccumBuildNs += (perfT2 - perfT2Start);
@@ -429,18 +444,18 @@ public enum BetterChatRenderer {
         HoverTip hoverTip = null;
         hoverEntityUuid = null;
 
-        TextRenderer tsRenderer = showTs ? getInterRegular() : null;
+        TextRenderer tsRenderer = showTs ? BetterChatTextSupport.interRegular() : null;
         float tsFontSize = Math.max(9f, fontSize * 0.72f);
         float tsTextHeight = 0f;
         if (showTs && tsRenderer != null) {
-            float tsScale = scaleForSize(tsFontSize);
+            float tsScale = BetterChatTextSupport.scale(tsFontSize);
             tsRenderer.begin(tsScale, false, false);
             tsTextHeight = (float) tsRenderer.getHeight(false);
             tsRenderer.end();
         }
 
         boolean chatClip = false;
-        MessageClipBounds clipBounds = frame.messageClipBounds();
+        MessageClipBounds clipBounds = frame.messageClipBounds(PADDING);
         if (clipBounds != null) {
             if (!frame.bubbles().isEmpty()) {
                 Renderer2D.requestLiquidGlassBlurBeforeNextShapeClip();
@@ -639,7 +654,7 @@ lastHoverWasOutsideSuggest = false;
                                                    HoverTip currentHover) {
         if (bubbles == null || bubbles.isEmpty()) return currentHover;
         HoverTip hover = currentHover;
-        float tsScale = scaleForSize(tsFontSize);
+        float tsScale = BetterChatTextSupport.scale(tsFontSize);
         float shadowOffset = Math.max(0.75f, tsFontSize * 0.07f);
         float timestampShadowAlpha = 0.46f;
         tsRenderer.begin(tsScale, false, false);
@@ -716,7 +731,7 @@ lastHoverWasOutsideSuggest = false;
 
     private static void renderGlyphs(List<FrameLine> lines, float fontSize, float lineHeight, boolean activeChatSurface) {
         if (lines == null || lines.isEmpty()) return;
-        float scale = scaleForSize(fontSize);
+        float scale = BetterChatTextSupport.scale(fontSize);
         TextRenderer current = null;
         float currentHeight = 0f;
         float shadowOffset = Math.max(1f, fontSize * 0.08f);
@@ -788,7 +803,7 @@ lastHoverWasOutsideSuggest = false;
                     }
                     continue;
                 }
-                TextRenderer tr = fontRenderer(g.font());
+                TextRenderer tr = BetterChatTextSupport.renderer(g.font());
                 if (tr != current) {
                     if (current != null) {
                         current.end();
@@ -828,7 +843,7 @@ lastHoverWasOutsideSuggest = false;
         if (from < 0 || to <= from || to > glyphs.size()) return;
         GlyphBox first = glyphs.get(from);
         GlyphBox last = glyphs.get(to - 1);
-        TextRenderer tr = fontRenderer(first.font());
+        TextRenderer tr = BetterChatTextSupport.renderer(first.font());
         if (tr == null) return;
 
         StringBuilder text = new StringBuilder();
@@ -871,36 +886,7 @@ lastHoverWasOutsideSuggest = false;
         }
     }
 
-    private static List<ChatLine> mergeCommandOutput(List<ChatLine> storeLines,
-                                                     List<CommandOutput.MessageLine> commandLines,
-                                                     int needed) {
-        if (commandLines == null || commandLines.isEmpty()) {
-            return storeLines;
-        }
-        List<ChatLine> out = new ArrayList<>(storeLines.size() + commandLines.size());
-        out.addAll(storeLines);
-        for (CommandOutput.MessageLine line : commandLines) {
-            if (line == null || line.text() == null) continue;
-            out.add(COMMAND_LINE_CACHE.computeIfAbsent(line, key -> new ChatLine(key.text(), key.timestampMs())));
-        }
-        out.sort(java.util.Comparator.comparingLong(ChatLine::timestampMs));
-        trimCommandLineCache(commandLines);
-        if (needed > 0 && out.size() > needed) {
-            return new ArrayList<>(out.subList(out.size() - needed, out.size()));
-        }
-        return out;
-    }
-
-    private static void trimCommandLineCache(List<CommandOutput.MessageLine> liveLines) {
-        if (COMMAND_LINE_CACHE.size() <= 160) return;
-        java.util.IdentityHashMap<CommandOutput.MessageLine, Boolean> live = new java.util.IdentityHashMap<>();
-        for (CommandOutput.MessageLine line : liveLines) {
-            live.put(line, Boolean.TRUE);
-        }
-        COMMAND_LINE_CACHE.keySet().removeIf(line -> !live.containsKey(line));
-    }
-
-    private static float newMessageReveal(ChatLine message) {
+     private static float newMessageReveal(ChatLine message) {
         if (message == null) return 1f;
         float age = message.ageSeconds();
         if (age <= 0f) return 0f;
@@ -948,283 +934,7 @@ lastHoverWasOutsideSuggest = false;
         return out;
     }
 
-    private static LayoutResult layoutLinesTailCached(List<ChatLine> messages, int[] messageGroups, float fontSize, float maxWidth, int maxLines) {
-        if (messages.isEmpty()) return new LayoutResult(Collections.emptyList(), 0);
-        List<VisualLine> lines = new ArrayList<>();
-        int seenMessages = 0;
-        for (int mi = messages.size() - 1; mi >= 0; mi--) {
-            ChatLine msg = messages.get(mi);
-            int messageGroup = messageGroups != null && mi >= 0 && mi < messageGroups.length ? messageGroups[mi] : mi;
-            List<CachedLine> cached = cachedMessageLines(msg, fontSize, maxWidth);
-            for (int j = cached.size() - 1; j >= 0; j--) {
-                CachedLine cl = cached.get(j);
-                lines.addFirst(new VisualLine(msg, mi, messageGroup, cl.startChar(), cl.endChar(), cl.glyphs()));
-            }
-            seenMessages++;
-            if (lines.size() >= maxLines) break;
-        }
-        return new LayoutResult(lines, seenMessages);
-    }
-
-    private static List<CachedLine> cachedMessageLines(ChatLine msg, float fontSize, float maxWidth) {
-        CachedMessageLayout cached = MESSAGE_LAYOUT_CACHE.get(msg);
-        if (cached != null && Math.abs(cached.fontSize() - fontSize) < 0.01f && Math.abs(cached.maxWidth() - maxWidth) < 0.5f) {
-            return cached.lines();
-        }
-
-        List<Segment> segments = SEGMENT_CACHE.computeIfAbsent(msg, m -> flatten(m.message()));
-        List<CachedLine> rebuilt = new ArrayList<>();
-        TextRenderer activeRenderer = null;
-        String activeFont = null;
-        float scale = scaleForSize(fontSize);
-
-        int charIndex = 0;
-        float lineX = 0f;
-        List<Glyph> glyphs = new ArrayList<>();
-        int lineStartIndex = 0;
-        int breakGlyphIdx = -1;
-        int breakCharIdx = -1;
-
-        for (Segment seg : segments) {
-            Style style = seg.style();
-            String font = fontForStyle(style);
-            int color = style.getColor() != null ? (0xFF << 24) | style.getColor().getValue() : theme().textPrimary();
-            HoverEvent hover = style.getHoverEvent();
-
-            if (seg.item() != null && !seg.item().isEmpty()) {
-                if (activeRenderer != null) {
-                    activeRenderer.end();
-                    activeRenderer = null;
-                }
-                float itemSize = Math.max(12.0f, fontSize);
-                if (lineX + itemSize > maxWidth && lineX > 0f) {
-                    rebuilt.add(new CachedLine(lineStartIndex, Math.max(lineStartIndex, charIndex - 1), glyphs));
-                    glyphs = new ArrayList<>();
-                    lineX = 0f;
-                    lineStartIndex = charIndex;
-                    breakGlyphIdx = -1;
-                    breakCharIdx = -1;
-                }
-                String accessible = seg.text();
-                int logicalLength = Math.max(0, seg.logicalLength());
-                glyphs.add(new Glyph(
-                        lineX,
-                        lineX + itemSize,
-                        charIndex,
-                        charIndex + logicalLength,
-                        theme().textPrimary(),
-                        hover,
-                        "",
-                        accessible,
-                        style,
-                        seg.item().copy()
-                ));
-                lineX += itemSize;
-                charIndex += logicalLength;
-                continue;
-            }
-
-            if (hover instanceof HoverEvent.ShowItem(net.minecraft.world.item.ItemStackTemplate itemTemplate)) {
-                ItemStack stack = resolveCachedItem(itemTemplate.create());
-
-                if (IllegalItemUtil.isIllegal(stack)) {
-                    color = IllegalItemUtil.illegalColor();
-                } else if (TopEnchantUtil.hasTopEnchant(stack)) {
-                    color = TopEnchantUtil.topColor();
-                }
-            }
-
-            if (color == theme().textPrimary()) {
-                if (!(hover instanceof HoverEvent.ShowItem)) {
-                    BetterChatHoverCache cache = BetterChatStoreManager.getActiveCache();
-                    if (cache != null) {
-                        String cleaned = seg.text().replaceAll("[\\[\\]<>‚]", "").trim();
-                        if (!cleaned.isEmpty()) {
-                            cache.findItemByDisplayNameWithMeta(cleaned);
-                        }
-                    }
-                }
-            }
-
-            String txt = seg.text();
-
-            for (int c = 0; c < txt.length(); ) {
-                int cp = txt.codePointAt(c);
-                int clusterEnd = nextTextClusterEnd(txt, c);
-                int cpLen = clusterEnd - c;
-
-                if (cp == '\n') {
-                    rebuilt.add(new CachedLine(lineStartIndex, Math.max(lineStartIndex, charIndex - 1), glyphs));
-                    glyphs = new ArrayList<>();
-                    lineX = 0f;
-                    lineStartIndex = charIndex;
-                    breakGlyphIdx = -1;
-                    breakCharIdx = -1;
-                    charIndex += 1;
-                    c += 1;
-                    continue;
-                }
-
-                String glyphText = txt.substring(c, clusterEnd);
-
-                String resolvedFont = fontForCluster(font, glyphText);
-                boolean svgGlyph = TextGlyphFallback.isSvgFontKey(resolvedFont);
-                TextRenderer tr = svgGlyph ? null : fontRenderer(resolvedFont);
-
-                if (svgGlyph) {
-                    if (activeRenderer != null) {
-                        activeRenderer.end();
-                        activeRenderer = null;
-                    }
-                    activeFont = resolvedFont;
-                } else if (tr != activeRenderer) {
-                    if (activeRenderer != null) {
-                        activeRenderer.end();
-                    }
-                    activeRenderer = tr;
-                    activeFont = resolvedFont;
-                    if (activeRenderer != null) {
-                        activeRenderer.begin(scale, true, false);
-                    }
-                }
-                float cw = svgGlyph
-                        ? svgGlyphSize(fontRenderer(font), fontSize, false)
-                        : activeRenderer != null ? (float) activeRenderer.getWidth(glyphText, false) : 0f;
-                int glyphCharIndex = charIndex;
-
-                if (lineX + cw > maxWidth && lineX > 0f) {
-                    if (breakGlyphIdx >= 0) {
-                        List<Glyph> before = new ArrayList<>(glyphs.subList(0, breakGlyphIdx));
-                        int endChar = Math.max(lineStartIndex, breakCharIdx - 1);
-                        rebuilt.add(new CachedLine(lineStartIndex, endChar, before));
-
-                        List<Glyph> remaining = glyphs.subList(breakGlyphIdx + 1, glyphs.size());
-                        glyphs = new ArrayList<>(remaining.size());
-                        float nx = 0f;
-                        for (Glyph g : remaining) {
-                            float gw = g.x1() - g.x0();
-                            glyphs.add(new Glyph(
-                                    nx,
-                                    nx + gw,
-                                    g.charIndex(),
-                                    g.charEndExclusive(),
-                                    g.color(),
-                                    g.hover(),
-                                    g.font(),
-                                    g.text(),
-                                    g.style(),
-                                    g.item()
-                            ));
-                            nx += gw;
-                        }
-                        lineX = nx;
-                        lineStartIndex = breakCharIdx + 1;
-                        breakGlyphIdx = -1;
-                        breakCharIdx = -1;
-                    } else {
-                        rebuilt.add(new CachedLine(lineStartIndex, Math.max(lineStartIndex, charIndex - 1), glyphs));
-                        glyphs = new ArrayList<>();
-                        lineX = 0f;
-                        lineStartIndex = charIndex;
-                    }
-                }
-
-                glyphs.add(new Glyph(
-                        lineX,
-                        lineX + cw,
-                        glyphCharIndex,
-                        glyphCharIndex + cpLen,
-                        color,
-                        hover,
-                        activeFont != null ? activeFont : resolvedFont,
-                        glyphText,
-                        style,
-                        null
-                ));
-                lineX += cw;
-
-                charIndex += cpLen;
-
-                if (cp == ' ') {
-                    breakGlyphIdx = glyphs.size() - 1;
-                    breakCharIdx = glyphCharIndex;
-                }
-
-                c += cpLen;
-            }
-        }
-
-        if (!glyphs.isEmpty()) {
-            rebuilt.add(new CachedLine(lineStartIndex, charIndex - 1, glyphs));
-        } else if (charIndex == 0) {
-            rebuilt.add(new CachedLine(0, 0, List.of(new Glyph(
-                    0f,
-                    2f,
-                    0,
-                    1,
-                    theme().textPrimary(),
-                    null,
-                    "iosevka_medium",
-                    " ",
-                    Style.EMPTY,
-                    null
-            ))));
-        }
-
-        if (activeRenderer != null) {
-            activeRenderer.end();
-        }
-        MESSAGE_LAYOUT_CACHE.put(msg, new CachedMessageLayout(fontSize, maxWidth, rebuilt));
-        return rebuilt;
-    }
-
-    private static List<Segment> flatten(BetterChatMessage message) {
-        List<Segment> segments = new ArrayList<>();
-        BetterChatMessage safe = message == null ? BetterChatMessage.empty() : message;
-        for (var node : safe.nodes()) {
-            if (node instanceof TextNode text) {
-                String[] previousItemKey = {null};
-                text.component().visit((style, string) -> {
-                    if (string != null && !string.isEmpty()) {
-                        Style safeStyle = style == null ? Style.EMPTY : style;
-                        ItemStack hoveredItem = resolveItemFromStyle(safeStyle);
-                        if (!hoveredItem.isEmpty()) {
-                            String itemKey = BetterChatStoreManager.hoverItemKey(hoveredItem);
-                            if (!itemKey.equals(previousItemKey[0])) {
-                                int iconOffset = showItemIconOffset(string);
-                                if (iconOffset > 0) {
-                                    segments.add(Segment.text(string.substring(0, iconOffset), safeStyle));
-                                }
-                                segments.add(Segment.decorativeItem(hoveredItem, safeStyle));
-                                if (iconOffset < string.length()) {
-                                    segments.add(Segment.text(string.substring(iconOffset), safeStyle));
-                                }
-                            } else {
-                                segments.add(Segment.text(string, safeStyle));
-                            }
-                            previousItemKey[0] = itemKey;
-                        } else {
-                            previousItemKey[0] = null;
-                            segments.add(Segment.text(string, safeStyle));
-                        }
-                    }
-                    return Optional.empty();
-                }, Style.EMPTY);
-            } else if (node instanceof ItemNode item) {
-                ItemStack stack = item.stack();
-                if (!stack.isEmpty()) segments.add(Segment.richItem(item.plainText(), stack));
-            }
-        }
-        return segments;
-    }
-
-    /** Keep the vanilla item brackets and place the real icon just inside the opening bracket. */
-    private static int showItemIconOffset(String text) {
-        if (text == null || text.isEmpty()) return 0;
-        return text.codePointAt(0) == '[' ? Character.charCount(text.codePointAt(0)) : 0;
-    }
-
-    static ItemStack resolveItemFromStyle(Style style) {
+     static ItemStack resolveItemFromStyle(Style style) {
         if (style == null) return ItemStack.EMPTY;
         HoverEvent hover = style.getHoverEvent();
         if (!(hover instanceof HoverEvent.ShowItem(net.minecraft.world.item.ItemStackTemplate template))) {
@@ -1364,7 +1074,7 @@ lastHoverWasOutsideSuggest = false;
         int remaining = searchMode ? Integer.MAX_VALUE : MAX_MESSAGE_CHARS - text.length();
 
         float maxLineWidth = Math.max(32f, boxW - padX * 2f - searchBoxW - iconGap - rightReserve);
-        List<InputLine> lines = wrapInput(text, fontSize, maxLineWidth);
+        List<InputLine> lines = BetterChatInputLayout.wrap(text, fontSize, maxLineWidth);
         if (lines.isEmpty()) {
             lines = List.of(new InputLine(0, 0, 0f));
         }
@@ -1400,8 +1110,8 @@ lastHoverWasOutsideSuggest = false;
         inputLinesSnapshot = List.copyOf(lines);
         inputSearchSnapshot = searchMode;
 
-        TextRenderer tr = getIosevkaRegular();
-        float textScale = scaleForSize(fontSize);
+        TextRenderer tr = BetterChatTextSupport.iosevkaRegular();
+        float textScale = BetterChatTextSupport.scale(fontSize);
         boolean clipped = ScissorFunction.pushRaw(textX, inputY, textClipW, h);
         if (tr != null) {
             tr.begin(textScale, false, false);
@@ -1429,16 +1139,16 @@ lastHoverWasOutsideSuggest = false;
                 int selA = Math.max(min, lineStart);
                 int selB = Math.min(max, lineEnd);
                 if (selB > selA) {
-                    float selX = textX + textWidth(getIosevkaRegular(), safeSub(text, lineStart, selA), fontSize);
-                    float selW = textWidth(getIosevkaRegular(), safeSub(text, selA, selB), fontSize);
+                    float selX = textX + BetterChatTextSupport.width(BetterChatTextSupport.iosevkaRegular(), safeSub(text, lineStart, selA), fontSize);
+                    float selW = BetterChatTextSupport.width(BetterChatTextSupport.iosevkaRegular(), safeSub(text, selA, selB), fontSize);
                     float sy = inputY + padY + i * lineHeight;
                     drawRoundedRect(selX, sy, selW, lineHeight, 3.5f, withAlpha(theme().accent(), 0x4A));
                 }
             }
         }
 
-        int caretLine = visualLineForCursor(lines, cursor);
-        float caretX = textX + widthTo(text, lines, cursor, fontSize);
+        int caretLine = BetterChatInputLayout.visualLineForCursor(lines, cursor);
+        float caretX = textX + BetterChatInputLayout.widthTo(text, lines, cursor, fontSize);
         float caretY = inputY + padY + caretLine * lineHeight;
         boolean blink = (System.currentTimeMillis() / 500L) % 2 == 0;
         if (blink) {
@@ -1449,13 +1159,13 @@ lastHoverWasOutsideSuggest = false;
         if (BetterChatSearch.isActive() || BetterChatSearch.hasQuery()) {
             String q = BetterChatSearch.isActive() ? "Search" : BetterChatSearch.getText();
             float chipFont = Math.max(10f, fontSize * 0.72f);
-            String chipText = fitText(getInterRegular(), q, chipFont, Math.max(36f, boxW * 0.28f));
-            float chipW = textWidth(getInterRegular(), chipText, chipFont) + 14f;
+            String chipText = fitText(BetterChatTextSupport.interRegular(), q, chipFont, Math.max(36f, boxW * 0.28f));
+            float chipW = BetterChatTextSupport.width(BetterChatTextSupport.interRegular(), chipText, chipFont) + 14f;
             float chipH = Math.min(22f, h - 8f);
             float chipX = x + boxW - padX - chipW - counterReserve;
             float chipY = inputY + (h - chipH) * 0.5f;
             drawRoundedRect(chipX, chipY, chipW, chipH, chipH * 0.5f, withAlpha(theme().accentSoft(), BetterChatSearch.isActive() ? 0x66 : 0x40));
-            drawText(getInterRegular(), chipText, chipX + 7f, chipY + (chipH - textHeight(getInterRegular(), chipFont)) * 0.5f, chipFont,
+            drawText(BetterChatTextSupport.interRegular(), chipText, chipX + 7f, chipY + (chipH - BetterChatTextSupport.height(BetterChatTextSupport.interRegular(), chipFont)) * 0.5f, chipFont,
                     BetterChatSearch.hasQuery() ? theme().textPrimary() : theme().textMuted(), false);
         }
 
@@ -1463,7 +1173,7 @@ lastHoverWasOutsideSuggest = false;
             String remStr = String.valueOf(Math.max(0, remaining));
             float remSize = fontSize * 0.74f;
             int remColor = remaining <= 5 ? withAlpha(theme().accent(), 0xFF) : withAlpha(theme().textMuted(), 0xCC);
-            drawText(getIosevkaRegular(), remStr, searchX + 2.0f,
+            drawText(BetterChatTextSupport.iosevkaRegular(), remStr, searchX + 2.0f,
                     inputY + h + 3.0f,
                     remSize, remColor, false);
         }
@@ -1521,10 +1231,10 @@ lastHoverWasOutsideSuggest = false;
         float cursorX = textX;
         if (!before.isEmpty()) {
             drawText(tr, before, cursorX, lineY, fontSize, theme().textPrimary(), true);
-            cursorX += textWidth(tr, before, fontSize);
+            cursorX += BetterChatTextSupport.width(tr, before, fontSize);
         }
 
-        float secretW = Math.max(1f, textWidth(tr, secret, fontSize));
+        float secretW = Math.max(1f, BetterChatTextSupport.width(tr, secret, fontSize));
         float easedReveal = AnimationUtility.smoothstep(passwordRevealProgress);
         if (easedReveal > 0.01f && !secret.isEmpty()) {
             int textAlpha = Math.round(255f * easedReveal);
@@ -1577,52 +1287,7 @@ lastHoverWasOutsideSuggest = false;
         if (clipped) ScissorFunction.pop();
     }
 
-    private static List<InputLine> wrapInput(String text, float fontSize, float maxWidth) {
-        List<InputLine> lines = new ArrayList<>();
-        int start = 0;
-        float width = 0f;
-
-        for (int i = 0; i < text.length(); ) {
-            int cp = text.codePointAt(i);
-            int cpLen = Character.charCount(cp);
-
-            String glyphText = new String(Character.toChars(cp));
-            float cw = textWidth(getIosevkaRegular(), glyphText, fontSize);
-
-            if (width + cw > maxWidth && width > 0f) {
-                lines.add(new InputLine(start, i, width));
-                start = i;
-                width = 0f;
-            }
-
-            width += cw;
-            i += cpLen;
-        }
-
-        lines.add(new InputLine(start, text.length(), width));
-        return lines;
-    }
-
-    private static float widthTo(String text, List<InputLine> lines, int cursorIndex, float fontSize) {
-        if (lines.isEmpty()) return 0f;
-        int lineIndex = visualLineForCursor(lines, cursorIndex);
-        InputLine line = lines.get(Mth.clamp(lineIndex, 0, lines.size() - 1));
-        return textWidth(getIosevkaRegular(), safeSub(text, line.start(), cursorIndex), fontSize);
-    }
-
-    private static int visualLineForCursor(List<InputLine> lines, int cursorIndex) {
-        if (lines == null || lines.isEmpty()) return 0;
-        for (int i = 0; i < lines.size(); i++) {
-            InputLine line = lines.get(i);
-            boolean last = i == lines.size() - 1;
-            if (cursorIndex >= line.start() && (cursorIndex < line.end() || (last && cursorIndex <= line.end()))) {
-                return i;
-            }
-        }
-        return lines.size() - 1;
-    }
-
-    public static boolean onScroll(double delta) {
+     public static boolean onScroll(double delta) {
         Minecraft mc = Minecraft.getInstance();
         if (!BetterChat.isActive()) return false;
         if (!(ClientScreen.current() instanceof ChatScreen)) return false;
@@ -1933,6 +1598,16 @@ lastHoverWasOutsideSuggest = false;
         }
 
         appendResolvedClickActions(entries, resolved.clickEvents());
+        String actionToken = msg.rawMessage().actionToken();
+        if (actionToken != null) {
+            for (MessageActionRegistry.OfferedAction offered : ChatMessageActions.actions(actionToken)) {
+                String actionId = offered.qualifiedId();
+                MessageActionRegistry.Action action = offered.action();
+                if (action.enabled()) {
+                    entries.add(new ContextMenu.MenuEntry(action.label(), () -> ChatMessageActions.invoke(actionToken, actionId)));
+                }
+            }
+        }
 
         if (tsEnabled) {
             entries.add(new ContextMenu.MenuEntry(I18n.get("better_chat.context.copy_time"), () -> ClipboardUtil.copy(formatTimestamp(ts, settings.timestampSeconds()))));
@@ -1988,6 +1663,7 @@ lastHoverWasOutsideSuggest = false;
     private static void appendResolvedClickActions(List<ContextMenu.MenuEntry> entries, List<ClickEvent> events) {
         if (events == null || events.isEmpty()) return;
         for (ClickEvent evt : events) {
+            if (evt instanceof ClickEvent.RunCommand run && ChatMessageActions.isLocalActionCommand(run.command())) continue;
             switch (evt) {
                 case ClickEvent.OpenUrl openUrl -> {
                     String value = openUrl.uri().toString();
@@ -2168,6 +1844,8 @@ lastHoverWasOutsideSuggest = false;
             } else if (evt instanceof ClickEvent.CopyToClipboard) {
                 ClipboardUtil.copy(val);
                 return true;
+            } else if (evt instanceof ClickEvent.RunCommand && ChatMessageActions.isLocalActionCommand(val)) {
+                return CommandManager.handle(val);
             } else if (evt instanceof ClickEvent.RunCommand && val.startsWith("@")) {
                 return CommandManager.handle(val);
             } else if (evt instanceof ClickEvent.SuggestCommand || evt instanceof ClickEvent.RunCommand) {
@@ -2280,11 +1958,11 @@ lastHoverWasOutsideSuggest = false;
         drawRoundedRect(x + 1f, y + 1f, w - 2f, h - 2f, Math.max(0f, radius - 1f), tint);
         drawRoundedRectStrokeGradient(x, y, w, h, radius, 0.7f, strokeA, strokeB);
 
-        TextRenderer icons = Fonts.renderer("Icons", FontInfo.Type.Regular, getInterRegular());
+        TextRenderer icons = Fonts.renderer("Icons", FontInfo.Type.Regular, BetterChatTextSupport.interRegular());
         String icon = "s";
         float iconSize = h * 0.50f;
-        float iconW = textWidth(icons, icon, iconSize);
-        float iconH = textHeight(icons, iconSize);
+        float iconW = BetterChatTextSupport.width(icons, icon, iconSize);
+        float iconH = BetterChatTextSupport.height(icons, iconSize);
         int iconColor = active || hasQuery ? theme().textPrimary() : withAlpha(theme().textPrimary(), hover ? 0xD8 : 0xB8);
         drawText(icons, icon, x + (w - iconW) * 0.5f, y + (h - iconH) * 0.5f - h * 0.015f, iconSize, iconColor, false);
     }
@@ -2385,163 +2063,22 @@ lastHoverWasOutsideSuggest = false;
 
     private static String fitText(TextRenderer font, String text, float size, float maxWidth) {
         if (text == null) return "";
-        if (textWidth(font, text, size) <= maxWidth) return text;
+        if (BetterChatTextSupport.width(font, text, size) <= maxWidth) return text;
         String suffix = "...";
-        float suffixW = textWidth(font, suffix, size);
+        float suffixW = BetterChatTextSupport.width(font, suffix, size);
         int end = text.length();
-        while (end > 0 && textWidth(font, text.substring(0, end), size) + suffixW > maxWidth) {
+        while (end > 0 && BetterChatTextSupport.width(font, text.substring(0, end), size) + suffixW > maxWidth) {
             end--;
         }
         return end <= 0 ? suffix : text.substring(0, end) + suffix;
     }
 
-    private static TextRenderer getInterRegular() {
-        return Fonts.renderer("Inter", FontInfo.Type.Regular, TextRenderer.get());
-    }
-
-    private static TextRenderer getIosevkaRegular() {
-        return Fonts.renderer("Iosevka", FontInfo.Type.Regular, TextRenderer.get());
-    }
-
-    private static TextRenderer getIosevkaItalic() {
-        return Fonts.renderer("Iosevka", FontInfo.Type.Italic, getIosevkaRegular());
-    }
-
-    private static TextRenderer getIosevkaBold() {
-        return Fonts.renderer("Iosevka", FontInfo.Type.Bold, getIosevkaRegular());
-    }
-
-    private static TextRenderer getIosevkaBoldItalic() {
-        return Fonts.renderer("Iosevka", FontInfo.Type.BoldItalic, getIosevkaBold());
-    }
-
-    private static TextRenderer fontRenderer(String key) {
-        if (key == null) return getIosevkaRegular();
-        return switch (key) {
-            case "iosevka_bold" -> getIosevkaBold();
-            case "iosevka_bold_italic" -> getIosevkaBoldItalic();
-            case "iosevka_medium_italic" -> getIosevkaItalic();
-            case "vanilla_symbols" -> TextGlyphFallback.vanillaSymbols(getIosevkaRegular());
-            case "vanilla" -> VanillaTextRenderer.INSTANCE;
-            default -> getIosevkaRegular();
-        };
-    }
-
-    private static String fontForGlyph(String baseFont, int codePoint) {
-        TextRenderer preferred = fontRenderer(baseFont);
-        return TextGlyphFallback.fontKeyForGlyph(baseFont, preferred, codePoint, "iosevka_medium");
-    }
-
-    private static String fontForCluster(String baseFont, String cluster) {
-        if (cluster == null || cluster.isEmpty()) return baseFont;
-        int first = cluster.codePointAt(0);
-        if (Character.charCount(first) == cluster.length()) {
-            return fontForGlyph(baseFont, first);
-        }
-
-        TextRenderer preferred = fontRenderer(baseFont);
-        if (preferred != null) {
-            boolean complete = true;
-            for (int offset = 0; offset < cluster.length(); ) {
-                int codePoint = cluster.codePointAt(offset);
-                if (!preferred.hasGlyph(codePoint)) {
-                    complete = false;
-                    break;
-                }
-                offset += Character.charCount(codePoint);
-            }
-            if (complete) return baseFont != null ? baseFont : "iosevka_medium";
-        }
-        return TextGlyphFallback.VANILLA_KEY;
-    }
-
-    private static int nextTextClusterEnd(String text, int start) {
-        int offset = start + Character.charCount(text.codePointAt(start));
-        boolean afterJoiner = false;
-        while (offset < text.length()) {
-            int codePoint = text.codePointAt(offset);
-            if (afterJoiner) {
-                offset += Character.charCount(codePoint);
-                afterJoiner = false;
-                continue;
-            }
-            if (codePoint == 0x200D) {
-                offset += Character.charCount(codePoint);
-                afterJoiner = true;
-                continue;
-            }
-            int type = Character.getType(codePoint);
-            boolean combining = type == Character.NON_SPACING_MARK
-                    || type == Character.COMBINING_SPACING_MARK
-                    || type == Character.ENCLOSING_MARK;
-            boolean variationSelector = codePoint >= 0xFE00 && codePoint <= 0xFE0F
-                    || codePoint >= 0xE0100 && codePoint <= 0xE01EF;
-            boolean emojiModifier = codePoint >= 0x1F3FB && codePoint <= 0x1F3FF;
-            if (!combining && !variationSelector && !emojiModifier) break;
-            offset += Character.charCount(codePoint);
-        }
-        return offset;
-    }
-
-    private static TextRenderer rendererForGlyph(TextRenderer preferred, int codePoint) {
-        return TextGlyphFallback.rendererForGlyph(preferred, codePoint);
-    }
-
-    private static float scaleForSize(float size) {
-        return size / 18.0f;
-    }
-
-    private static float textWidth(TextRenderer tr, String text, float size) {
-        if (tr == null || text == null || text.isEmpty()) return 0f;
-        float scale = scaleForSize(size);
-        float svgAdvance = svgGlyphSize(tr, size, false);
-        TextRenderer current = null;
-        float width = 0f;
-        try {
-            for (int i = 0; i < text.length(); ) {
-                int cp = text.codePointAt(i);
-                if (TextGlyphFallback.shouldUseVanillaSvg(tr, cp)) {
-                    if (current != null) {
-                        current.end();
-                        current = null;
-                    }
-                    width += svgAdvance;
-                    i += Character.charCount(cp);
-                    continue;
-                }
-                String glyph = new String(Character.toChars(cp));
-                TextRenderer next = rendererForGlyph(tr, cp);
-                if (next != current) {
-                    if (current != null) current.end();
-                    current = next;
-                    current.begin(scale, true, false);
-                }
-                width += (float) current.getWidth(glyph, false);
-                i += Character.charCount(cp);
-            }
-            return width;
-        } finally {
-            if (current != null) current.end();
-        }
-    }
-
-    private static float textHeight(TextRenderer tr, float size) {
-        if (tr == null) return 0f;
-        float scale = scaleForSize(size);
-        tr.begin(scale, true, false);
-        try {
-            return (float) tr.getHeight(false);
-        } finally {
-            tr.end();
-        }
-    }
-
-    private static void drawText(TextRenderer tr, String text, float x, float y, float size, int argb, boolean shadow) {
+     private static void drawText(TextRenderer tr, String text, float x, float y, float size, int argb, boolean shadow) {
         if (tr == null || text == null || text.isEmpty()) return;
         if (((argb >>> 24) & 0xFF) <= 0) return;
-        float scale = scaleForSize(size);
-        float svgSize = svgGlyphSize(tr, size, shadow);
-        float svgY = y + (textHeight(tr, size) - svgSize) * 0.5f;
+        float scale = BetterChatTextSupport.scale(size);
+        float svgSize = BetterChatTextSupport.svgGlyphSize(tr, size, shadow);
+        float svgY = y + (BetterChatTextSupport.height(tr, size) - svgSize) * 0.5f;
         applyColor(argb);
         TextRenderer current = null;
         float cursorX = x;
@@ -2563,7 +2100,7 @@ lastHoverWasOutsideSuggest = false;
                     continue;
                 }
                 String glyph = new String(Character.toChars(cp));
-                TextRenderer next = rendererForGlyph(tr, cp);
+                TextRenderer next = BetterChatTextSupport.rendererForGlyph(tr, cp);
                 if (next != current) {
                     if (current != null) current.end();
                     current = next;
@@ -2575,10 +2112,6 @@ lastHoverWasOutsideSuggest = false;
         } finally {
             if (current != null) current.end();
         }
-    }
-
-    private static float svgGlyphSize(TextRenderer tr, float size, boolean shadow) {
-        return Math.max(1.0f, textHeight(tr, size)) * 0.92f;
     }
 
     private static void drawRoundedRect(float x, float y, float w, float h, float radius, int argb) {
@@ -2618,15 +2151,6 @@ lastHoverWasOutsideSuggest = false;
         BetterChatRenderer.TMP_COLOR.b = argb & 0xFF;
     }
 
-    private static String fontForStyle(Style style) {
-        boolean bold = style.isBold();
-        boolean italic = style.isItalic();
-        if (bold && italic) return "iosevka_bold_italic";
-        if (bold) return "iosevka_bold";
-        if (italic) return "iosevka_medium_italic";
-        return "iosevka_medium";
-    }
-
     private static String safeSub(String s, int start, int end) {
         if (s == null) return "";
         int len = s.length();
@@ -2664,7 +2188,7 @@ lastHoverWasOutsideSuggest = false;
         float advance = 0f;
         int index = Mth.clamp(line.start(), 0, text.length());
         int lineEnd = Mth.clamp(line.end(), index, text.length());
-        TextRenderer tr = getIosevkaRegular();
+        TextRenderer tr = BetterChatTextSupport.iosevkaRegular();
 
         while (index < lineEnd) {
             int cp = text.codePointAt(index);
@@ -2672,7 +2196,7 @@ lastHoverWasOutsideSuggest = false;
             if (index + cpLen > lineEnd) break;
 
             String glyph = new String(Character.toChars(cp));
-            float glyphW = textWidth(tr, glyph, inputFontSize);
+            float glyphW = BetterChatTextSupport.width(tr, glyph, inputFontSize);
             if (localX < advance + glyphW * 0.5f) {
                 return index;
             }
@@ -3152,10 +2676,10 @@ lastHoverWasOutsideSuggest = false;
             if (hoverRow) {
                 drawLiquidHoverPill(rowX, top + 0.6f, rowW, itemH - 1.2f, 4.5f, 0.46f * rowEase);
             }
-            float textH = textHeight(getIosevkaRegular(), baseFont);
+            float textH = BetterChatTextSupport.height(BetterChatTextSupport.iosevkaRegular(), baseFont);
             float textY = top + (itemH - textH) * 0.5f;
             drawText(
-                    getIosevkaRegular(),
+                    BetterChatTextSupport.iosevkaRegular(),
                     snap.texts().get(idx),
                     rowX + 4f + (1f - rowEase) * 5f,
                     textY,
@@ -3209,7 +2733,7 @@ lastHoverWasOutsideSuggest = false;
         for (int i = 0; i < count; i++) {
             int idx = start + i;
             if (idx < 0 || idx >= list.size()) break;
-            max = Math.max(max, textWidth(getIosevkaRegular(), list.get(idx), fontSize));
+            max = Math.max(max, BetterChatTextSupport.width(BetterChatTextSupport.iosevkaRegular(), list.get(idx), fontSize));
         }
         return max;
     }
@@ -3244,236 +2768,7 @@ lastHoverWasOutsideSuggest = false;
     private record MousePos(double rawX, double rawY, double fx, double fy) {
     }
 
-    private record InputLine(int start, int end, float width) {
-    }
-
-    private record Segment(String text, Style style, ItemStack item, int logicalLength) {
-        static Segment text(String text, Style style) {
-            String safe = text == null ? "" : text;
-            return new Segment(safe, style == null ? Style.EMPTY : style, null, safe.length());
-        }
-
-        static Segment richItem(String accessibleText, ItemStack item) {
-            String safe = accessibleText == null ? "" : accessibleText;
-            return new Segment(safe, Style.EMPTY, item == null ? ItemStack.EMPTY : item.copy(), safe.length());
-        }
-
-        static Segment decorativeItem(ItemStack item, Style style) {
-            return new Segment("", style == null ? Style.EMPTY : style,
-                    item == null ? ItemStack.EMPTY : item.copy(), 0);
-        }
-    }
-
-    private record VisualLine(ChatLine message, int messageIndex, int messageGroup, int startChar, int endChar, List<Glyph> glyphs) {
-    }
-
-    private record Glyph(
-            float x0,
-            float x1,
-            int charIndex,
-            int charEndExclusive,
-            int color,
-            HoverEvent hover,
-            String font,
-            String text,
-            Style style,
-            ItemStack item
-    ) {
-    }
-
-    private record GlyphBox(
-            float x0,
-            float y0,
-            float x1,
-            float y1,
-            int charIndex,
-            int charEndExclusive,
-            int color,
-            String font,
-            HoverEvent hover,
-            String text,
-            Style style,
-            ItemStack item
-    ) {
-    }
-
-    private record CachedLine(int startChar, int endChar, List<Glyph> glyphs) {
-    }
-
-    private record CachedMessageLayout(float fontSize, float maxWidth, List<CachedLine> lines) {
-    }
-
-    private record FrameLine(ChatLine message, int messageIndex, int messageGroup, float y0, float y1, List<GlyphBox> glyphs) {
-    }
-
-    private record MessageBubble(ChatLine message, int messageGroup, float x, float y, float w, float h, FrameLine firstLine, FrameLine lastLine) {
-    }
-
-    private record MessageClipBounds(float x, float y, float w, float h) {
-    }
-
-    private record FrameLayout(float x, float y, float w, float h, List<FrameLine> lines, List<MessageBubble> bubbles) {
-        static FrameLayout empty() {
-            return new FrameLayout(0, 0, 0, 0, Collections.emptyList(), Collections.emptyList());
-        }
-
-        static FrameLayout build(List<VisualLine> lines, float x, float y, float w, float h, float fontSize, float lineHeight, float yOffset, float timestampReserve) {
-            List<FrameLine> list = new ArrayList<>(lines.size());
-            float cursorY = y + BetterChatRenderer.MESSAGE_PAD_Y + yOffset;
-            int lastMessageGroup = Integer.MIN_VALUE;
-            for (int i = 0; i < lines.size(); i++) {
-                VisualLine vl = lines.get(i);
-                if (i > 0 && vl.messageGroup() != lastMessageGroup) {
-                    cursorY += BetterChatRenderer.MESSAGE_GAP;
-                }
-                lastMessageGroup = vl.messageGroup();
-                float y0 = cursorY;
-                float y1 = y0 + fontSize;
-                List<GlyphBox> boxes = new ArrayList<>(vl.glyphs().size());
-                for (Glyph g : vl.glyphs()) {
-                    boxes.add(new GlyphBox(
-                            x + BetterChatRenderer.PADDING + BetterChatRenderer.MESSAGE_PAD_X + g.x0(),
-                            y0,
-                            x + BetterChatRenderer.PADDING + BetterChatRenderer.MESSAGE_PAD_X + g.x1(),
-                            y1,
-                            g.charIndex(),
-                            g.charEndExclusive(),
-                            g.color(),
-                            g.font(),
-                            g.hover(),
-                            g.text(),
-                            g.style(),
-                            g.item()
-                    ));
-                }
-                list.add(new FrameLine(vl.message(), vl.messageIndex(), vl.messageGroup(), y0, y1, boxes));
-                cursorY += lineHeight;
-            }
-            return new FrameLayout(x, y, w, h, list, buildBubbles(list, x, w, timestampReserve));
-        }
-
-        private static List<MessageBubble> buildBubbles(List<FrameLine> lines, float x, float w, float timestampReserve) {
-            if (lines.isEmpty()) return Collections.emptyList();
-            List<MessageBubble> bubbles = new ArrayList<>();
-            int start = 0;
-            while (start < lines.size()) {
-                FrameLine first = lines.get(start);
-                int end = start;
-                float maxRight = x + BetterChatRenderer.PADDING + BetterChatRenderer.MESSAGE_PAD_X;
-                while (end + 1 < lines.size() && lines.get(end + 1).messageGroup() == first.messageGroup()) {
-                    end++;
-                }
-                for (int i = start; i <= end; i++) {
-                    FrameLine line = lines.get(i);
-                    if (!line.glyphs().isEmpty()) {
-                        maxRight = Math.max(maxRight, line.glyphs().getLast().x1());
-                    }
-                }
-                FrameLine last = lines.get(end);
-                float bubbleX = x + BetterChatRenderer.PADDING;
-                float bubbleY = first.y0() - BetterChatRenderer.MESSAGE_PAD_Y;
-                float maxBubbleW = Math.max(32f, w - BetterChatRenderer.PADDING * 2f);
-                float desiredW = maxRight - bubbleX + BetterChatRenderer.MESSAGE_PAD_X + Math.max(0f, timestampReserve);
-                float bubbleW = Mth.clamp(desiredW, 76f, maxBubbleW);
-                float bubbleH = last.y1() - first.y0() + BetterChatRenderer.MESSAGE_PAD_Y * 2f;
-                bubbles.add(new MessageBubble(last.message(), first.messageGroup(), bubbleX, bubbleY, bubbleW, bubbleH, first, last));
-                start = end + 1;
-            }
-            return bubbles;
-        }
-
-        MessageClipBounds messageClipBounds() {
-            if (lines.isEmpty() || h <= 0f) return null;
-            /*
-             * Match the mask horizontally to the message bubbles, not to the outer draggable HUD
-             * bounds. Bubbles begin at x + PADDING; using the outer x left almost the whole top-left
-             * radius in empty padding, so the remaining visible cut looked rectangular even though
-             * the stencil polygon itself was rounded.
-             *
-             * The Y/H stay viewport-fixed: overscan/group expansion may move bubbles through this
-             * shape, but must never expand the clipping shape with them.
-             */
-            float clipX = x + BetterChatRenderer.PADDING;
-            float clipW = Math.max(1f, w - BetterChatRenderer.PADDING * 2f);
-            return new MessageClipBounds(clipX, y, clipW, h);
-        }
-
-        boolean contains(double mx, double my) {
-            return mx >= x && mx <= x + w && my >= y && my <= y + h;
-        }
-
-        PickResult pick(double mx, double my) {
-            if (!contains(mx, my)) return null;
-            for (FrameLine line : lines) {
-                if (my < line.y0() || my > line.y1() + LINE_SPACING) continue;
-                if (line.glyphs().isEmpty()) continue;
-                float minX = line.glyphs().getFirst().x0();
-                float maxX = line.glyphs().getLast().x1();
-                float margin = 2f;
-                if (mx < minX - margin || mx > maxX + margin) continue;
-                GlyphBox closest = null;
-                for (GlyphBox g : line.glyphs()) {
-                    if (mx >= g.x0() && mx <= g.x1()) {
-                        return new PickResult(line, g);
-                    }
-                    if (closest == null || Math.abs(mx - g.x1()) < Math.abs(mx - closest.x1())) {
-                        closest = g;
-                    }
-                }
-                if (closest != null) {
-                    return new PickResult(line, closest);
-                }
-            }
-            return null;
-        }
-
-
-        PickResult pickContext(double mx, double my) {
-            PickResult direct = pick(mx, my);
-            if (direct != null) return direct;
-            if (!contains(mx, my)) return null;
-
-            for (MessageBubble bubble : bubbles) {
-                if (mx < bubble.x() || mx > bubble.x() + bubble.w()
-                        || my < bubble.y() || my > bubble.y() + bubble.h()) {
-                    continue;
-                }
-
-                FrameLine closestLine = null;
-                float bestLineDistance = Float.MAX_VALUE;
-                for (FrameLine line : lines) {
-                    if (line.messageGroup() != bubble.messageGroup() || line.glyphs().isEmpty()) continue;
-                    float dy = my < line.y0()
-                            ? (float) (line.y0() - my)
-                            : my > line.y1() ? (float) (my - line.y1()) : 0.0f;
-                    if (dy < bestLineDistance) {
-                        bestLineDistance = dy;
-                        closestLine = line;
-                    }
-                }
-                if (closestLine == null) return null;
-
-                GlyphBox closestGlyph = null;
-                float bestGlyphDistance = Float.MAX_VALUE;
-                for (GlyphBox glyph : closestLine.glyphs()) {
-                    float dx = mx < glyph.x0()
-                            ? (float) (glyph.x0() - mx)
-                            : mx > glyph.x1() ? (float) (mx - glyph.x1()) : 0.0f;
-                    if (dx < bestGlyphDistance) {
-                        bestGlyphDistance = dx;
-                        closestGlyph = glyph;
-                    }
-                }
-                return closestGlyph == null ? null : new PickResult(closestLine, closestGlyph);
-            }
-            return null;
-        }
-    }
-
-    private record PickResult(FrameLine line, GlyphBox glyph) {
-    }
-
-    private record ContextActionResolution(String targetNick, String entityUuid, List<ClickEvent> clickEvents) {
+      private record ContextActionResolution(String targetNick, String entityUuid, List<ClickEvent> clickEvents) {
         static ContextActionResolution empty() {
             return new ContextActionResolution(null, null, List.of());
         }
@@ -3594,10 +2889,10 @@ lastHoverWasOutsideSuggest = false;
                         mulAlpha(dotColor, rowEase * menuEase)
                 );
 
-                float textY = top + (itemH - textHeight(getIosevkaRegular(), fs)) * 0.5f;
+                float textY = top + (itemH - BetterChatTextSupport.height(BetterChatTextSupport.iosevkaRegular(), fs)) * 0.5f;
                 int textColor = hover ? theme().textPrimary() : withAlpha(theme().textPrimary(), 0xE4);
                 drawText(
-                        getIosevkaRegular(),
+                        BetterChatTextSupport.iosevkaRegular(),
                         entry.label(),
                         x + 24f + (1f - rowEase) * 5f,
                         textY,
@@ -3612,7 +2907,7 @@ lastHoverWasOutsideSuggest = false;
         private float width(float fontSize) {
             float maxText = 0f;
             for (MenuEntry e : entries) {
-                maxText = Math.max(maxText, textWidth(getIosevkaRegular(), e.label(), fontSize));
+                maxText = Math.max(maxText, BetterChatTextSupport.width(BetterChatTextSupport.iosevkaRegular(), e.label(), fontSize));
             }
             return Math.max(168f, maxText + MENU_PAD_X * 2f + 34f);
         }
@@ -3628,6 +2923,4 @@ lastHoverWasOutsideSuggest = false;
     public record Layout(float x, float y) {
     }
 
-    private record LayoutResult(List<VisualLine> lines, int messagesSeen) {
-    }
 }

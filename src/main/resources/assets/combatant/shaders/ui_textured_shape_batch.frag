@@ -15,6 +15,7 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
+#moj_import <combatant:ui_aa.glsl>
 #moj_import <combatant:ui_geometry.glsl>
 #ifdef COMBATANT_ANALYTIC_CLIP
 #moj_import <combatant:ui_clip.glsl>
@@ -31,9 +32,7 @@ void main() {
     vec2 frag = warpedLocal(v_Local);
     vec2 halfSize = v_Rect.zw * 0.5;
     float d = roundedBoxSdf(frag - (v_Rect.xy + halfSize), halfSize, v_Params.x);
-    float aa = max(max(logicalScale.x, logicalScale.y), max(fwidth(d) * 0.75, 0.0001))
-            + max(v_Params.y, 0.0);
-    float shapeAlpha = clamp(0.5 - d / max(aa, 0.0001), 0.0, 1.0);
+    float shapeAlpha = coverage(d, analyticAa(d, logicalScale, max(v_Params.y, 0.0)));
     float invW = abs(v_Local.z) > 0.000001 ? v_Local.z : 1.0;
     vec2 projectiveUv = v_TexCoord / invW;
     vec4 texel = texture(u_Texture, projectiveUv);

@@ -1,5 +1,8 @@
 #version 330 core
 
+#moj_import <combatant:ui_aa.glsl>
+#moj_import <combatant:ui_stroke.glsl>
+
 /*
  * This file is part of the Combatant Client distribution.
  * Copyright (c) 2026 pivosos2007.
@@ -24,18 +27,6 @@ float circleSDF(vec2 p, float r) {
     return length(p) - r;
 }
 
-float pixelAa(vec2 logicalScale) {
-    return max(max(logicalScale.x, logicalScale.y), 0.0001);
-}
-
-float analyticAa(float d, vec2 logicalScale) {
-    return max(pixelAa(logicalScale), max(fwidth(d) * 0.75, 0.0001));
-}
-
-float crispCoverage(float d, float aa) {
-    return clamp(0.5 - d / max(aa, 0.0001), 0.0, 1.0);
-}
-
 vec2 warpedLocal(vec4 local) {
     float invW = abs(local.z) > 0.000001 ? local.z : 1.0;
     return local.xy / invW;
@@ -51,10 +42,9 @@ void main() {
     float softness = max(v_Params.y, 0.0);
     float thickness = v_Params.z;
     float d = circleSDF(frag - center, radius);
-    if (thickness > 0.0) {
-        d = abs(d) - thickness * 0.5;
-    }
-    float a = crispCoverage(d, analyticAa(d, logicalScale) + softness);
+    float a = thickness > 0.0
+            ? centeredStrokeCoverage(d, thickness, logicalScale, softness)
+            : coverage(d, analyticAa(d, logicalScale, softness));
 
     fragColor = vec4(v_Color.rgb, v_Color.a * a);
 }

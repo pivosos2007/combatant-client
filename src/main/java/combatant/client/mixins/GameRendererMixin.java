@@ -797,6 +797,10 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             )
     )
     private void combatant$captureWorldForHudGlass(DeltaTracker tickCounter, boolean tick, CallbackInfo ci) {
+        if (!combatant.client.runtime.RuntimeGate.canRunRender()) {
+            MenuBackgroundRenderer.clearDeferred();
+            return;
+        }
         MenuBackgroundRenderer.drainDeferred(minecraft);
         Renderer2D.prepareDeferredUiItems();
         Renderer2D.captureWorldGlassSource();

@@ -17,6 +17,9 @@ import combatant.client.features.gui.clickgui.material.PrismaticGlassTransition;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.ModuleComponent;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
 import combatant.client.features.gui.clickgui.settings.Setting;
+import combatant.client.features.gui.clickgui.settings.SettingErrorView;
+import combatant.client.runtime.error.ErrorHandler;
+import combatant.client.features.module.Module;
 import combatant.client.features.gui.clickgui.settings.SettingRenderContext;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
 import combatant.client.features.gui.clickgui.util.ClickGuiHintOverlay;
@@ -581,7 +584,9 @@ public final class ModulesMenuScreen {
         float moduleListX = x + rowW - checkReserve - moduleListW - 3.0f * scale;
         float moduleListY = y + middle(textHeight(semibold, moduleListTextSize), h) - 0.5f * scale;
 
-        int nameColor = mix(withAlpha(ModulesMenuStyle.textMuted(), alpha), withAlpha(ModulesMenuStyle.text(), alpha), 0.25f + 0.75f * enabled + 0.20f * hoverAnim);
+        Module faultModule = ModulesMenuResolver.moduleById(entry.getId());
+        boolean failed = entry.failed() || SettingErrorView.hasFailure(faultModule);
+        int nameColor = failed ? withAlpha(0xFFFF7777,alpha) : mix(withAlpha(ModulesMenuStyle.textMuted(), alpha), withAlpha(ModulesMenuStyle.text(), alpha), 0.25f + 0.75f * enabled + 0.20f * hoverAnim);
 
         float nameX = x + (TEXT_LEFT_PADDING + 2.0f * enabled) * scale;
         float nameY = y + middle(textHeight(regular, 8.0f * scale), h) - 0.5f * scale;
@@ -590,6 +595,9 @@ public final class ModulesMenuScreen {
                 : Math.max(12.0f * scale, rowW - (nameX - x) - 18.0f * scale);
         String visibleLabel = ClickGuiRenderer.fitText(regular, label, 8.0f * scale, nameMaxW);
 
+        if (failed) {
+            SettingErrorView.warning(x+rowW-15f*scale,y+5f*scale,9f*scale,alpha);
+        }
         ClickGuiRenderer.drawText(regular, visibleLabel, nameX, nameY, 8.0f * scale, nameColor, false);
 
         if (moduleListEdit) {
@@ -610,6 +618,7 @@ public final class ModulesMenuScreen {
                                       float rowW,
                                       float alpha) {
         float enabled = panel.enabledAnimValue(entry.getId());
+        if (SettingErrorView.hasFailure(ModulesMenuResolver.moduleById(entry.getId()))) return;
         if (enabled <= 0.001f) return;
 
         float check = 6.0f * scale;
@@ -708,8 +717,10 @@ public final class ModulesMenuScreen {
         float backRowY = panel.y + 28.0f * scale;
         float backRowH = 20.0f * scale;
         boolean pageClip = ScissorFunction.pushRaw(panel.x, panel.y, panel.w, panel.h);
+        try {
 
         boolean headerClip = ScissorFunction.pushRaw(panel.x, panel.y, panel.w, panel.h);
+        try {
 
         if (inside(mouseX, mouseY, pageX, backRowY, panel.w, backRowH)) {
             int hoverBg = withAlpha(ModulesMenuStyle.rowHover(), alpha);
@@ -739,12 +750,13 @@ public final class ModulesMenuScreen {
                 false
         );
 
-        if (headerClip) ScissorFunction.pop();
+        } finally { if (headerClip) ScissorFunction.pop(); }
 
         float clipY = settingsTop + HEADER_H * scale;
         float clipH = panel.h - HEADER_H * 2.0f * scale - SEPARATOR_H * scale - 0.5f * scale - 5.0f * scale;
 
         boolean clipped = ScissorFunction.pushRaw(settingsX, clipY, settingsW, clipH);
+        try {
 
         float y = clipY - panel.settingsSmoothScroll;
         float total = 0.0f;
@@ -787,12 +799,20 @@ public final class ModulesMenuScreen {
             total += actionH + actionGap;
         }
 
+        Module selectedModule = ModulesMenuResolver.moduleById(panel.selected);
+        if (selectedModule != null) {
+            List<Setting> desired = SettingErrorView.withDiagnostics(selectedModule, selectedModule.getSettings());
+            if (!panel.selectedSettings.equals(desired)) {
+                panel.selectedSettings.clear();
+                panel.selectedSettings.addAll(desired);
+            }
+        }
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, scale)) {
             for (Setting setting : panel.selectedSettings) {
-                float vis = setting.updateVisibilityAnim();
-                if (!setting.isVisibilityTargetVisible() && vis <= 0.01f) continue;
+                float vis = setting.updateVisibilitySafely();
+                if (!setting.isVisibilityTargetVisibleSafely() && vis <= 0.01f) continue;
 
-                float baseH = setting.getHeight();
+                float baseH = setting.getHeightSafely();
                 float h = baseH * vis;
 
                 if (h > 0.5f) {
@@ -803,9 +823,11 @@ public final class ModulesMenuScreen {
 
                         boolean settingClipped = ScissorFunction.pushRaw(settingsX, y, settingsW, h);
 
-                        setting.render(settingsX, y + slide, settingsW, mouseX, mouseY);
-
-                        if (settingClipped) ScissorFunction.pop();
+                        try {
+                            setting.renderSafely(settingsX, y + slide, settingsW, mouseX, mouseY);
+                        } finally {
+                            if (settingClipped) ScissorFunction.pop();
+                        }
                     }
                 }
 
@@ -819,10 +841,10 @@ public final class ModulesMenuScreen {
         panel.settingsSmoothScroll = AnimationUtility.approach(panel.settingsSmoothScroll, panel.settingsScroll, 0.20f);
         panel.settingsSmoothScroll = AnimationUtility.snap(panel.settingsSmoothScroll, panel.settingsScroll, 0.05f);
 
-        if (clipped) ScissorFunction.pop();
+        } finally { if (clipped) ScissorFunction.pop(); }
 
         renderScrollbar(panel, panel.settingsSmoothScroll, panel.maxSettingsScroll, clipY, clipH, alpha, mouseX, mouseY);
-        if (pageClip) ScissorFunction.pop();
+        } finally { if (pageClip) ScissorFunction.pop(); }
     }
 
     private void renderSearch(float mouseX, float mouseY) {

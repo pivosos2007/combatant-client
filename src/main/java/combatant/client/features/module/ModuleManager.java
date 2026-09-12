@@ -7,6 +7,11 @@
 
 package combatant.client.features.module;
 
+import combatant.client.runtime.error.FailureBoundary;
+
+import combatant.client.runtime.error.FailureIsolation;
+import combatant.client.features.gui.chat.diagnostics.FailureDiagnostics;
+
 import combatant.client.features.gui.hud.HudRenderSpace;
 
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -26,6 +31,7 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.renderer.ui.ItemBatchRenderer;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
+import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.runtime.RuntimeShutdownContext;
 import combatant.client.util.input.KeyManager;
 import combatant.client.util.logging.DebugLog;
@@ -46,7 +52,6 @@ public enum ModuleManager {
     private static final List<ModuleStateListener> listeners = new ArrayList<>();
     private static Module[] modulesSnapshot = new Module[0];
     private static ModuleStateListener[] listenerSnapshot = new ModuleStateListener[0];
-    @Setter
     private static boolean suppressToggleSound = false;
     @Setter
     private static boolean suppressToggleNotifications = false;
@@ -178,84 +183,87 @@ public enum ModuleManager {
         if (m != null) m.setEnabled(!m.isEnabled(), source);
     }
 
-    public static void tickAll() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-        if (!RuntimeGate.canRunModules()) return;
+    private static void runModule(Module module, String phase, Runnable action) {
+        if (!module.isEnabled()) return;
+        try {
+            action.run();
+        } catch (RuntimeException e) {
+            FailureIsolation.reportModule(module, phase, e);
+        }
+    }
 
-        Module[] snapshot = modulesSnapshot;
+    public static void tickAll() {
+        FailureIsolation.drain();
+        FailureDiagnostics.drain();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || !RuntimeGate.canRunModules()) return;
         if (!ProfilerPhase.isActive()) {
-            for (Module m : snapshot) {
-                if (m.isEnabled() && ModuleExtensionManager.beforeTick(m)) {
+            for (Module m : modulesSnapshot) runModule(m, "tick", () -> {
+                if (ModuleExtensionManager.beforeTick(m)) {
                     m.onTick();
                     ModuleExtensionManager.afterTick(m);
                 }
-            }
+            });
             return;
         }
-
-        try (ProfilerPhase.Scope modulesScope = ProfilerPhase.scope("modules:tick")) {
-            for (Module m : snapshot) {
+        try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("modules:tick")) {
+            for (Module m : modulesSnapshot) {
                 if (!m.isEnabled()) continue;
-                try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:tick:" + m.name())) {
-                    if (ModuleExtensionManager.beforeTick(m)) {
-                        m.onTick();
-                        ModuleExtensionManager.afterTick(m);
-                    }
+                try (ProfilerPhase.Scope scope = ProfilerPhase.scope("module:tick:" + m.name())) {
+                    runModule(m, "tick", () -> {
+                        if (ModuleExtensionManager.beforeTick(m)) {
+                            m.onTick();
+                            ModuleExtensionManager.afterTick(m);
+                        }
+                    });
                 }
             }
         }
     }
 
     public static void frameAll(float frameDeltaTicks) {
+        FailureIsolation.drain();
+        FailureDiagnostics.drain();
         if (!RuntimeGate.canRunModules()) return;
-        Module[] snapshot = modulesSnapshot;
         if (!ProfilerPhase.isActive()) {
-            for (Module m : snapshot) {
-                if (m.isEnabled() && ModuleExtensionManager.beforeFrame(m, frameDeltaTicks)) {
+            for (Module m : modulesSnapshot) runModule(m, "frame", () -> {
+                if (ModuleExtensionManager.beforeFrame(m, frameDeltaTicks)) {
                     m.onFrame(frameDeltaTicks);
                     ModuleExtensionManager.afterFrame(m, frameDeltaTicks);
                 }
-            }
+            });
             return;
         }
-
-        try (ProfilerPhase.Scope modulesScope = ProfilerPhase.scope("modules:frame")) {
-            for (Module m : snapshot) {
+        try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("modules:frame")) {
+            for (Module m : modulesSnapshot) {
                 if (!m.isEnabled()) continue;
-                try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:frame:" + m.name())) {
-                    if (ModuleExtensionManager.beforeFrame(m, frameDeltaTicks)) {
-                        m.onFrame(frameDeltaTicks);
-                        ModuleExtensionManager.afterFrame(m, frameDeltaTicks);
-                    }
+                try (ProfilerPhase.Scope scope = ProfilerPhase.scope("module:frame:" + m.name())) {
+                    runModule(m, "frame", () -> {
+                        if (ModuleExtensionManager.beforeFrame(m, frameDeltaTicks)) {
+                            m.onFrame(frameDeltaTicks);
+                            ModuleExtensionManager.afterFrame(m, frameDeltaTicks);
+                        }
+                    });
                 }
             }
         }
     }
 
-    public static void renderHud(HudPhase phase,
-                                 GuiGraphicsExtractor ctx,
-                                 float tickDelta) {
-
+    public static void renderHud(HudPhase phase, GuiGraphicsExtractor ctx, float tickDelta) {
         if (!RuntimeGate.canRunHud()) return;
-
         Module[] phaseModules = HUD_PHASE_SNAPSHOTS.get(phase);
         if (phaseModules == null) return;
-
         if (!ProfilerPhase.isActive()) {
             for (Module m : phaseModules) {
-                if (m.isEnabled()) {
-                    m.onRender2D(ctx, tickDelta);
-                }
+                runModule(m, "hud", () -> m.onRender2D(ctx, tickDelta));
             }
             return;
         }
-
-        try (ProfilerPhase.Scope modulesScope = ProfilerPhase.scope("modules:hud_legacy:" + phase.name().toLowerCase(Locale.ROOT))) {
+        try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("modules:hud_legacy:" + phase.name().toLowerCase(Locale.ROOT))) {
             for (Module m : phaseModules) {
                 if (!m.isEnabled()) continue;
                 try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:hud_legacy:" + m.name())) {
-                    m.onRender2D(ctx, tickDelta);
+                    runModule(m, "hud", () -> m.onRender2D(ctx, tickDelta));
                 }
             }
         }
@@ -263,18 +271,18 @@ public enum ModuleManager {
 
     public static void renderHudEngine(HudPhase phase, HudRenderSpace space, Renderer2D renderer, TextRenderer textRenderer, GuiGraphicsExtractor ctx, float tickDelta) {
         if (!RuntimeGate.canRunHud()) return;
-
         Module[] phaseModules = HUD_PHASE_SNAPSHOTS.get(phase);
         if (phaseModules == null) return;
-
         for (Module m : phaseModules) {
             if (m.isEnabled() && m.getHudRenderSpace() == space) {
-                try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:hud:" + m.name());
+                try (ProfilerPhase.Scope scope = ProfilerPhase.scope("module:hud:" + m.name());
                      RenderProfiler2D.Section ignored = RenderProfiler2D.section("module:" + m.name())) {
-                    if (ModuleExtensionManager.beforeHudRender(m, renderer, textRenderer, ctx, tickDelta)) {
-                        m.onRenderHudEngine(renderer, textRenderer, ctx, tickDelta);
-                        ModuleExtensionManager.afterHudRender(m, renderer, textRenderer, ctx, tickDelta);
-                    }
+                    runModule(m, "hud engine", () -> {
+                        if (ModuleExtensionManager.beforeHudRender(m, renderer, textRenderer, ctx, tickDelta)) {
+                            m.onRenderHudEngine(renderer, textRenderer, ctx, tickDelta);
+                            ModuleExtensionManager.afterHudRender(m, renderer, textRenderer, ctx, tickDelta);
+                        }
+                    });
                 }
             }
         }
@@ -286,15 +294,13 @@ public enum ModuleManager {
 
     public static void renderHudEngineForeground(HudPhase phase, HudRenderSpace space, Renderer2D renderer, TextRenderer textRenderer, GuiGraphicsExtractor ctx, float tickDelta) {
         if (!RuntimeGate.canRunHud()) return;
-
         Module[] phaseModules = HUD_PHASE_SNAPSHOTS.get(phase);
         if (phaseModules == null) return;
-
         for (Module m : phaseModules) {
             if (m.isEnabled() && m.getHudRenderSpace() == space) {
-                try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("module:hud_fg:" + m.name());
+                try (ProfilerPhase.Scope scope = ProfilerPhase.scope("module:hud_fg:" + m.name());
                      RenderProfiler2D.Section ignored = RenderProfiler2D.section("module_fg:" + m.name())) {
-                    m.onRenderHudEngineForeground(renderer, textRenderer, ctx, tickDelta);
+                    runModule(m, "hud foreground", () -> m.onRenderHudEngineForeground(renderer, textRenderer, ctx, tickDelta));
                 }
             }
         }
@@ -320,26 +326,20 @@ public enum ModuleManager {
     // ---------------------------
 
     public static void renderWorld(WorldPhase phase, PoseStack matrices, SubmitNodeCollector consumers, float tickDelta) {
-
         if (!RuntimeGate.canRunRender()) return;
-
         Module[] phaseModules = WORLD_PHASE_SNAPSHOTS.get(phase);
         if (phaseModules == null) return;
-
         if (!ProfilerPhase.isActive()) {
             for (Module m : phaseModules) {
-                if (m.isEnabled()) {
-                    m.onRenderWorld(matrices, consumers, tickDelta);
-                }
+                runModule(m, "world legacy", () -> m.onRenderWorld(matrices, consumers, tickDelta));
             }
             return;
         }
-
-        try (ProfilerPhase.Scope modulesScope = ProfilerPhase.scope("modules:world_legacy:" + phase.name().toLowerCase(Locale.ROOT))) {
+        try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("modules:world_legacy:" + phase.name().toLowerCase(Locale.ROOT))) {
             for (Module m : phaseModules) {
                 if (!m.isEnabled()) continue;
                 try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:world_legacy:" + m.name())) {
-                    m.onRenderWorld(matrices, consumers, tickDelta);
+                    runModule(m, "world legacy", () -> m.onRenderWorld(matrices, consumers, tickDelta));
                 }
             }
         }
@@ -347,20 +347,19 @@ public enum ModuleManager {
 
     public static void renderWorldEngine(WorldPhase phase, Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
         if (!RuntimeGate.canRunRender()) return;
-
         Module[] phaseModules = WORLD_PHASE_SNAPSHOTS.get(phase);
         if (phaseModules == null) return;
-
         try {
             for (Module m : phaseModules) {
-                if (m.isEnabled()) {
-                    try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("module:world:" + m.name());
-                         RenderProfiler3D.Section ignored = RenderProfiler3D.section("module:" + m.name())) {
+                if (!m.isEnabled()) continue;
+                try (ProfilerPhase.Scope scope = ProfilerPhase.scope("module:world:" + m.name());
+                     RenderProfiler3D.Section ignored = RenderProfiler3D.section("module:" + m.name())) {
+                    runModule(m, "world engine", () -> {
                         if (ModuleExtensionManager.beforeWorldRender(m, renderer, depthRenderer, tickDelta)) {
                             m.onRenderWorldEngine(renderer, depthRenderer, tickDelta);
                             ModuleExtensionManager.afterWorldRender(m, renderer, depthRenderer, tickDelta);
                         }
-                    }
+                    });
                 }
             }
         } finally {
@@ -374,24 +373,30 @@ public enum ModuleManager {
 
     public static void handleModuleKeybinds() {
         if (!RuntimeGate.canRunModules()) return;
-        boolean soundSuppressedThisPass = false;
-        Module[] snapshot = modulesSnapshot;
-        for (Module m : snapshot) {
-            if (m instanceof RuntimeControlModule) continue;
-            if (KeyManager.wasPressed(m.name())) {
-                setSuppressToggleSound(soundSuppressedThisPass);
-                m.toggleFromKeybind();
-                soundSuppressedThisPass = true;
+        boolean previousSuppression = suppressToggleSound;
+        boolean soundSuppressedThisPass = previousSuppression;
+        try {
+            Module[] snapshot = modulesSnapshot;
+            for (Module m : snapshot) {
+                if (m instanceof RuntimeControlModule) continue;
+                if (KeyManager.wasPressed(m.name())) {
+                    setSuppressToggleSound(soundSuppressedThisPass);
+                    try { m.toggleFromKeybind(); }
+                    catch (RuntimeException e) { FailureIsolation.reportModule(m, "keybind", e); }
+                    soundSuppressedThisPass = true;
+                }
             }
+        } finally {
+            setSuppressToggleSound(previousSuppression);
         }
-        setSuppressToggleSound(false);
     }
 
     public static void tickRuntimeControllers() {
         Module[] snapshot = modulesSnapshot;
         for (Module module : snapshot) {
             if (module instanceof RuntimeControlModule controller) {
-                controller.onRuntimeControlTick();
+                try { controller.onRuntimeControlTick(); }
+                catch (RuntimeException e) { FailureIsolation.reportModule(module, "runtime control", e); }
             }
         }
     }
@@ -510,7 +515,12 @@ public enum ModuleManager {
         }
         ModuleStateListener[] snapshot = listenerSnapshot;
         for (int i = 0; i < snapshot.length; i++) {
-            snapshot[i].onModuleStateChanged(name, enabled);
+            try {
+                snapshot[i].onModuleStateChanged(name, enabled);
+            } catch (RuntimeException e) {
+                FailureBoundary.requireRecoverable(e);
+                DebugLog.error("Module state listener failed: {}", e, name);
+            }
         }
     }
 
@@ -519,6 +529,10 @@ public enum ModuleManager {
     // ====================================
     public static boolean isToggleSoundSuppressed() {
         return suppressToggleSound;
+    }
+
+    private static void setSuppressToggleSound(boolean suppressed) {
+        suppressToggleSound = suppressed;
     }
 
     public static boolean isToggleNotificationSuppressed() {
@@ -557,8 +571,8 @@ public enum ModuleManager {
             try {
                 DebugLog.config("Loading module config -> %s", m.name());
                 m.loadAndApplyConfig();
-            } catch (Throwable ignored) {
-                DebugLog.error("Failed to load config for module %s", ignored, m.name());
+            } catch (RuntimeException e) {
+                FailureIsolation.reportModule(m, "config load", e);
             }
         }
     }
@@ -635,6 +649,11 @@ public enum ModuleManager {
 
     private static void releaseRuntimeReferences(RuntimeShutdownContext context) {
         runtimeReleased = true;
+        FailureIsolation.drain();
+        FailureDiagnostics.drain();
+        FailureDiagnostics.shutdown();
+        FailureIsolation.clearSession();
+        combatant.client.features.gui.clickgui.settings.SettingErrorView.clearSession();
         int moduleCount = modules.size();
         Events.BUS.clear();
         modules.clear();

@@ -137,8 +137,12 @@ public final class CombatantMainMenuScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        if (RuntimeGate.isPanic()) {
-            if (minecraft != null) ClientScreen.show(minecraft, null);
+        if (!RuntimeGate.canRunRender()) {
+            // Keep the vanilla title screen available during boot, reload and panic.
+            // Never replace a failed menu with null (an empty black screen).
+            Minecraft mc = minecraft != null ? minecraft : Minecraft.getInstance();
+            if (mc != null && !(ClientScreen.current() instanceof TitleScreen))
+                ClientScreen.show(mc, new TitleScreen(false));
             return;
         }
         if (shouldUseVanillaTitleScreen()) {
@@ -182,13 +186,13 @@ public final class CombatantMainMenuScreen extends Screen {
                 renderFooter(opacity);
             }
             Renderer2D.COLOR.render();
-        } catch (Throwable throwable) {
+        } catch (RuntimeException throwable) {
             switchToVanillaTitleScreen(throwable);
         } finally {
             try {
                 ViewportContext.end(context);
-            } catch (Throwable throwable) {
-                DebugLog.errorOnce("main_menu_viewport_end", "Main menu viewport end failed", throwable);
+            } catch (RuntimeException throwable) {
+                switchToVanillaTitleScreen(throwable);
             }
         }
     }
@@ -220,6 +224,11 @@ public final class CombatantMainMenuScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent input) {
+        // Emergency escape from a custom menu whose graphics are not usable.
+        if (input.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_F8) {
+            switchToVanillaTitleScreen(null);
+            return true;
+        }
         return input.key() == 256 || super.keyPressed(input);
     }
 

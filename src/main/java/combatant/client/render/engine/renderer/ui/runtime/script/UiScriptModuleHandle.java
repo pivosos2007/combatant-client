@@ -104,7 +104,6 @@ public final class UiScriptModuleHandle {
         if (manager == null) {
             lastError = "ResourceManager is null.";
             lastErrorCause = null;
-            DebugLog.error("[UI Scripts] load error id=%s initial=%s reason=%s", null, id, initial, lastError);
             return ReloadResult.ERROR;
         }
         try {
@@ -136,7 +135,6 @@ public final class UiScriptModuleHandle {
         } catch (Exception e) {
             lastError = e.getMessage();
             lastErrorCause = e;
-            DebugLog.error("[UI Scripts] load error id=%s initial=%s reason=%s", e, id, initial, lastError);
             return ReloadResult.ERROR;
         }
     }

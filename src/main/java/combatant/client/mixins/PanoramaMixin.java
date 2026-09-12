@@ -8,6 +8,7 @@
 package combatant.client.mixins;
 
 import combatant.client.config.MainConfig;
+import combatant.client.features.gui.mainmenu.CombatantMainMenuScreen;
 import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.runtime.RuntimeGate;
 import net.minecraft.client.Minecraft;
@@ -31,7 +32,8 @@ public abstract class PanoramaMixin {
                                                    int width,
                                                    int height,
                                                    CallbackInfo ci) {
-        if (RuntimeGate.isPanic()) return;
+        if (!RuntimeGate.canRunRender()) return;
+        if (CombatantMainMenuScreen.shouldUseVanillaTitleScreen()) return;
         if (!MainConfig.get().isCombatantMainMenuEnabled()) return;
 
         Minecraft mc = Minecraft.getInstance();

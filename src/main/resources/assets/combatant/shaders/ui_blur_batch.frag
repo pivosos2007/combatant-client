@@ -21,6 +21,8 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
+#moj_import <combatant:ui_aa.glsl>
+
 #ifdef COMBATANT_ANALYTIC_CLIP
 #moj_import <combatant:ui_clip.glsl>
 #endif
@@ -51,18 +53,6 @@ float squircleSDF(vec2 p, vec2 halfSize, float exponent) {
     return length(gradient) > 0.00001 ? implicit / length(gradient) : radial;
 }
 
-float pixelAa(vec2 logicalScale) {
-    return max(max(logicalScale.x, logicalScale.y), 0.0001);
-}
-
-float analyticAa(float d, vec2 logicalScale) {
-    return max(pixelAa(logicalScale), max(fwidth(d) * 0.75, 0.0001));
-}
-
-float crispCoverage(float d, float aa) {
-    return clamp(0.5 - d / max(aa, 0.0001), 0.0, 1.0);
-}
-
 vec4 blur(vec2 uv) {
     vec4 color = texture(u_Texture, uv);
     return vec4(color.rgb * v_Params.z, 1.0);
@@ -86,7 +76,7 @@ void main() {
                 ? chamferedBoxSDF(frag - (v_Rect.xy + halfSize), halfSize, shapeSize)
                 : roundedBoxSDF(frag - v_Rect.xy - halfSize, halfSize, shapeSize));
     float aa = analyticAa(d, logicalScale);
-    float smoothedAlpha = crispCoverage(d, aa);
+    float smoothedAlpha = coverage(d, aa);
 #ifdef COMBATANT_ANALYTIC_CLIP
     smoothedAlpha *= combatantClipCoverage(
         combatantClipDistance(combatantLogicalFragCoord()), logicalScale

@@ -7,6 +7,9 @@
 
 package combatant.client.features.module;
 
+import combatant.client.features.gui.diagnostics.FailureText;
+import combatant.client.runtime.error.FailureIsolation;
+
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.config.*;
 import combatant.client.events.impl.RenderPrewarmCollectEvent;
@@ -26,9 +29,11 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
+import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.util.input.KeyManager;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.client.Minecraft;
 
 import java.util.*;
 import java.util.function.Supplier;
@@ -51,7 +56,9 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     private final Map<ConfigValue<?>, SettingDef> declaredSettingDefsByValue = new IdentityHashMap<>();
     private final KeyBindSetting keyBindSetting;
     private final Map<String, FunctionBindSetting> actions = new LinkedHashMap<>();
-    private boolean enabled;
+    private volatile boolean enabled;
+    private boolean failureCleanupAttempted;
+    private boolean failureCleanupInProgress;
     private ModuleActivationSource activationSource = ModuleActivationSource.NONE;
 
     protected Module() {
@@ -842,7 +849,7 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     }
 
     public boolean isEnabled() {
-        return enabled;
+        return enabled && ErrorHandler.canRun(this);
     }
 
     protected String getUnavailableReason() {
@@ -850,15 +857,17 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     }
 
     public final boolean isAvailable() {
-        return getAvailabilityReason().isEmpty();
+        return getAvailabilityReason().isEmpty() && ErrorHandler.canRun(this);
     }
 
     public final String getAvailabilityReason() {
+        if (ErrorHandler.blocked(this)) return FailureText.tr("module.blocked");
         try {
             String reason = getUnavailableReason();
             return reason == null ? "" : reason.trim();
-        } catch (Exception ignored) {
-            return "";
+        } catch (RuntimeException e) {
+            FailureIsolation.reportModule(this, "availability", e);
+            return "Module failed.";
         }
     }
 
@@ -880,7 +889,7 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     }
 
     public boolean isEnabledFromKeybind() {
-        return enabled && activationSource == ModuleActivationSource.KEYBIND;
+        return isEnabled() && activationSource == ModuleActivationSource.KEYBIND;
     }
 
     public final void setEnabledFromKeybind(boolean state) {
@@ -932,54 +941,93 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     }
 
     public final void setEnabled(boolean state, ModuleActivationSource source) {
-        if (state && !RuntimeGate.canRunModules() && !(this instanceof RuntimeControlModule)) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && !mc.isSameThread()) {
+            mc.execute(() -> setEnabled(state, source));
             return;
         }
-        ModuleActivationSource normalizedSource = normalizeActivationSource(state, source);
+        if (state && !ErrorHandler.canRun(this)) return;
+        if (state && !RuntimeGate.canRunModules() && !(this instanceof RuntimeControlModule)) return;
+        ModuleActivationSource normalized = normalizeActivationSource(state, source);
         if (enabled == state) {
-            if (activationSource == normalizedSource
+            if (activationSource == normalized
                     && enabledValue.get() == enabled
                     && activationSourceValue.get() == activationSource) {
                 return;
             }
-            activationSource = normalizedSource;
+            activationSource = normalized;
             enabledValue.set(enabled);
             activationSourceValue.set(activationSource);
-            try {
-                ConfigSerializer.requestSave(this);
-            } catch (Throwable ignored) {
-            }
+            saveConfig();
             return;
         }
-
-        activationSource = normalizedSource;
+        ModuleActivationSource previousSource = activationSource;
         enabled = state;
-        if (enabled) {
-            if (!ModuleExtensionManager.beforeEnable(this)) {
-                enabled = false;
-                activationSource = ModuleActivationSource.NONE;
-                return;
+        activationSource = normalized;
+        try {
+            if (state) {
+                if (!ModuleExtensionManager.beforeEnable(this)) {
+                    enabled = false;
+                    activationSource = ModuleActivationSource.NONE;
+                    enabledValue.set(false);
+                    activationSourceValue.set(activationSource);
+                    return;
+                }
+                failureCleanupAttempted = false;
+                onEnable();
+                if (!ErrorHandler.canRun(this)) return;
+                ModuleExtensionManager.afterEnable(this);
+            } else {
+                if (!ModuleExtensionManager.beforeDisable(this)) {
+                    enabled = true;
+                    activationSource = previousSource;
+                    return;
+                }
+                failureCleanupAttempted = true;
+                onDisable();
+                ModuleExtensionManager.afterDisable(this);
             }
-            onEnable();
-            ModuleExtensionManager.afterEnable(this);
-        } else {
-            if (!ModuleExtensionManager.beforeDisable(this)) {
-                enabled = true;
-                activationSource = normalizedSource;
-                return;
-            }
-            onDisable();
-            ModuleExtensionManager.afterDisable(this);
+        } catch (RuntimeException e) {
+            FailureIsolation.reportModule(this, state ? "enable" : "disable", e, !state);
+            return;
         }
+        if (!ErrorHandler.canRun(this)) return;
         ModuleManager.notifyListeners(name, enabled);
-
-        // Persist change
         enabledValue.set(enabled);
         activationSourceValue.set(activationSource);
-        try {
-            ConfigSerializer.requestSave(this);
-        } catch (Throwable ignored) {
+        saveConfig();
+    }
+
+    /** Internal lifecycle state, not the public error-gated enabled state. */
+    public final boolean isLifecycleEnabled() { return enabled; }
+
+    /** Fault cleanup bypasses extension vetoes and never persists an involuntary disable. */
+    public final void quarantineAfterFailure() {
+        if (failureCleanupInProgress) return;
+        boolean wasEnabled = enabled;
+        enabled = false;
+        activationSource = ModuleActivationSource.NONE;
+        if (!wasEnabled || failureCleanupAttempted) {
+            if (wasEnabled) ModuleManager.notifyListeners(name, false);
+            return;
         }
+        failureCleanupAttempted = true;
+        failureCleanupInProgress = true;
+        try {
+            onDisable();
+            ModuleExtensionManager.afterDisable(this);
+        } finally {
+            failureCleanupInProgress = false;
+            ModuleManager.notifyListeners(name, false);
+        }
+    }
+
+    /** Called only by ErrorHandler during an explicit, client-thread recovery transaction. */
+    public final boolean recoverAfterFailure() {
+        if (!ErrorHandler.isRecovering(this)) return false;
+        if (enabled) return true;
+        setRuntimeEnabledTransient(true);
+        return enabled && ErrorHandler.canRun(this);
     }
 
     public final void setEnabledFromConfig(boolean state) {
@@ -995,22 +1043,37 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     }
 
     final void setRuntimeEnabledTransient(boolean state) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && !mc.isSameThread()) {
+            mc.execute(() -> setRuntimeEnabledTransient(state));
+            return;
+        }
+        if (state && !ErrorHandler.canRun(this)) return;
         if (enabled == state) return;
         enabled = state;
-        if (enabled) {
-            if (ModuleExtensionManager.beforeEnable(this)) {
+        try {
+            if (state) {
+                if (!ModuleExtensionManager.beforeEnable(this)) {
+                    enabled = false;
+                    return;
+                }
+                failureCleanupAttempted = false;
                 onEnable();
+                if (!ErrorHandler.canRun(this)) return;
                 ModuleExtensionManager.afterEnable(this);
+            } else if (ModuleExtensionManager.beforeDisable(this)) {
+                failureCleanupAttempted = true;
+                onDisable();
+                ModuleExtensionManager.afterDisable(this);
             } else {
-                enabled = false;
+                enabled = true;
+                return;
             }
-        } else if (ModuleExtensionManager.beforeDisable(this)) {
-            onDisable();
-            ModuleExtensionManager.afterDisable(this);
-        } else {
-            enabled = true;
+        } catch (RuntimeException e) {
+            FailureIsolation.reportModule(this, state ? "enable" : "disable", e, !state);
+            return;
         }
-        ModuleManager.notifyListeners(name, enabled);
+        if (ErrorHandler.canRun(this)) ModuleManager.notifyListeners(name, enabled);
     }
 
     public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
@@ -1149,7 +1212,7 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
         for (Setting s : settings) {
             ConfigValue<?> v = s.getConfigValue();
             if (v != null) {
-                s.load(v.toJson());
+                FailureIsolation.runSetting(s, "config load", () -> s.load(v.toJson()));
             }
         }
     }
@@ -1163,23 +1226,17 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
         try {
             DebugLog.config("Module config load -> %s", name());
             ConfigSerializer.load(this);
-        } catch (Throwable ignored) {
-            DebugLog.error("Module config load failed for %s", ignored, name());
+        } catch (RuntimeException e) {
+            FailureIsolation.reportModule(this, "config load", e);
+            return;
         }
-        enabled = enabledValue.get();
-        activationSource = normalizeActivationSource(enabled, activationSourceValue.get());
-        activationSourceValue.set(activationSource);
-        if (enabled) {
-            if (ModuleExtensionManager.beforeEnable(this)) {
-                onEnable();
-                ModuleExtensionManager.afterEnable(this);
-            } else {
-                enabled = false;
-                activationSource = ModuleActivationSource.NONE;
-                enabledValue.set(false);
-                activationSourceValue.set(activationSource);
-            }
-        }
+        if (!ErrorHandler.canRun(this)) return;
+        boolean configuredEnabled = enabledValue.get();
+        ModuleActivationSource configuredSource = activationSourceValue.get();
+        enabled = false;
+        activationSource = ModuleActivationSource.NONE;
+        setRuntimeEnabledTransient(configuredEnabled);
+        if (enabled) activationSource = normalizeActivationSource(true, configuredSource);
     }
 
     public void saveConfig() {

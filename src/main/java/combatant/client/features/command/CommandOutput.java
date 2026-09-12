@@ -9,6 +9,8 @@ package combatant.client.features.command;
 
 
 import combatant.client.features.theme.Theme;
+import combatant.client.features.gui.chat.actions.ChatMessageActions;
+import combatant.client.features.gui.chat.actions.MessageActionRegistry;
 import combatant.client.features.theme.Themes;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -67,12 +69,17 @@ public enum CommandOutput {
     }
 
     public static void send(Component text, Tone tone) {
+        send(text, tone, null);
+    }
+
+    public static void send(Component text, Tone tone, MessageActionRegistry.Context context) {
         if (text == null) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.gui == null || mc.gui.hud == null) return;
 
         Tone resolvedTone = tone == null ? Tone.INFO : tone;
         Component formatted = mark(format(text, resolvedTone), resolvedTone);
+        if (context != null) ChatMessageActions.bind(formatted, context.token());
         remember(formatted, resolvedTone);
         mc.gui.hud.getChat().addClientSystemMessage(formatted);
     }

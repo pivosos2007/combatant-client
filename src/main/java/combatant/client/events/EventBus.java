@@ -7,9 +7,14 @@
 
 package combatant.client.events;
 
+import combatant.client.runtime.error.FailureBoundary;
+
+import combatant.client.runtime.error.FailureIsolation;
+
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import combatant.client.features.module.Module;
 import combatant.client.runtime.RuntimeGate;
+import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.util.logging.DebugLog;
 
@@ -143,7 +148,7 @@ public final class EventBus {
                 try (ProfilerPhase.Scope handlerScope = ProfilerPhase.scope(sub.profileLabel)) {
                     sub.invoker.invoke(event);
                 } catch (Throwable t) {
-                    DebugLog.error("Event handler failed: %s", t, sub.describe());
+                    handleFailure(sub, t);
                 }
             }
         }
@@ -160,8 +165,21 @@ public final class EventBus {
             try {
                 sub.invoker.invoke(event);
             } catch (Throwable t) {
-                DebugLog.error("Event handler failed: %s", t, sub.describe());
+                handleFailure(sub, t);
             }
+        }
+    }
+
+    private static void handleFailure(Subscriber sub, Throwable cause) {
+        FailureBoundary.requireRecoverable(cause);
+        if (sub.gateModule != null) {
+            FailureIsolation.reportModule(sub.gateModule, "event " + sub.describe(), cause);
+        } else {
+            // Non-module listeners may not have reversible state. Do not quarantine
+            // an entire shared service or claim that its state has been recovered.
+            DebugLog.error("Event handler failed: %s", cause, sub.describe());
+            if (cause instanceof RuntimeException runtime) throw runtime;
+            throw new IllegalStateException("Unisolated event handler failed: " + sub.describe(), cause);
         }
     }
 

@@ -7,9 +7,13 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.modules;
 
+import combatant.client.features.gui.chat.diagnostics.FailureDiagnostics;
+
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.ModuleComponent;
 import combatant.client.features.gui.clickgui.settings.Setting;
+import combatant.client.features.gui.clickgui.settings.SettingErrorView;
+import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.features.gui.preview.VisualPreviewRegistry;
@@ -34,11 +38,12 @@ enum ModulesMenuResolver {
             out.add(new ModuleComponent.CardEntry(
                     module.name(),
                     module.getDisplayName(),
-                    "",
+                    SettingErrorView.description(module),
                     bind == null ? "" : bind,
-                    !module.getSettings().isEmpty() || VisualPreviewRegistry.supports(module),
+                    !module.getSettings().isEmpty() || VisualPreviewRegistry.supports(module) || SettingErrorView.hasFailure(module),
                     module.isEnabled(),
-                    true,
+                    !ErrorHandler.blocked(module),
+                    SettingErrorView.hasFailure(module),
                     module.isShownInModuleList(),
                     module.getAliases()
             ));
@@ -51,6 +56,7 @@ enum ModulesMenuResolver {
     static void toggleEntry(String id) {
         Module module = moduleById(id);
         if (module == null) return;
+        if (ErrorHandler.blocked(module)) { FailureDiagnostics.showSummaryFor(module); return; }
         module.toggle();
     }
 
@@ -69,7 +75,7 @@ enum ModulesMenuResolver {
     static ResolvedSettings resolveSettings(String id) {
         Module module = moduleById(id);
         if (module == null) return null;
-        List<Setting> settings = module.getSettings();
+        List<Setting> settings = SettingErrorView.withDiagnostics(module, module.getSettings());
         if ((settings == null || settings.isEmpty()) && !VisualPreviewRegistry.supports(module)) return null;
         if (settings == null) settings = List.of();
         for (Setting setting : settings) {

@@ -18,6 +18,7 @@ import combatant.client.features.gui.clickgui.layout.screen.settings.subsystem.M
 import combatant.client.features.gui.clickgui.layout.screen.settings.subsystem.MainSettingsRegistry;
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.gui.clickgui.settings.SettingFactory;
+import combatant.client.features.gui.clickgui.settings.SettingErrorView;
 import combatant.client.features.gui.clickgui.settings.SettingRenderContext;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
@@ -27,6 +28,8 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
+import combatant.client.runtime.error.ErrorHandler;
+import combatant.client.runtime.error.FailureIsolation;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -145,7 +148,7 @@ public final class MainSettingsComponent {
             try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, lastSettingScale)) {
                 for (SettingHit hit : settingHits) {
                     if (!ClickGuiMath.insideRect(mx, my, hit.x(), hit.y(), hit.w(), hit.h())) continue;
-                    hit.setting().mouseClicked(mx, my, button);
+                    hit.setting().mouseClickedSafely(mx, my, button, hit.x(), hit.y(), hit.w());
                     return true;
                 }
             }
@@ -160,7 +163,7 @@ public final class MainSettingsComponent {
         if (settings == null) return;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, lastSettingScale)) {
             for (Setting setting : settings) {
-                setting.mouseReleased(mx, my, button);
+                setting.mouseReleasedSafely(mx, my, button);
             }
         }
     }
@@ -189,6 +192,7 @@ public final class MainSettingsComponent {
             Section section = sections.get(i);
             String sectionId = section.id();
             boolean active = sectionId.equals(selectedId);
+            boolean failed = sectionFailed(section);
             boolean hover = ClickGuiMath.insideRect(mx, my, x + pad, rowY, w - pad * 2f, rowH);
             float hoverAnim = AnimationUtility.approach(categoryHoverAnim.getOrDefault(sectionId, 0f), hover ? 1f : 0f, 0.20f);
             categoryHoverAnim.put(sectionId, hoverAnim);
@@ -207,7 +211,9 @@ public final class MainSettingsComponent {
                 renderCategorySeparator(x, rowY + rowH + 2f * scale, w, scale, palette);
             }
 
-            int text = active ? palette.menuHeaderText() : LayoutRender2D.alpha(palette.panelMuted(), 0.72f + 0.20f * hoverAnim);
+            int text = failed
+                    ? LayoutRender2D.alpha(0xFFFF7777, 0.82f + 0.18f * hoverAnim)
+                    : active ? palette.menuHeaderText() : LayoutRender2D.alpha(palette.panelMuted(), 0.72f + 0.20f * hoverAnim);
             float iconSize = 9f * scale;
             float iconX = x + 13f * scale;
             float iconY = rowY + (rowH - iconSize) * 0.5f;
@@ -228,6 +234,9 @@ public final class MainSettingsComponent {
                     text,
                     false
             );
+            if (failed) {
+                SettingErrorView.warning(x + w - 20f * scale, rowY + 5.5f * scale, 9f * scale, 1f);
+            }
             categoryHits.add(new CategoryHit(sectionId, x + pad, rowY, w - pad * 2f, rowH));
             rowY += 24f * scale;
         }
@@ -288,6 +297,7 @@ public final class MainSettingsComponent {
 
         settingHits.clear();
         boolean clipped = ScissorFunction.pushRaw(contentX, contentY, contentW, contentH);
+        try {
         float y = contentY + smoothedScroll;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, lastSettingScale)) {
             for (SettingRow row : rows) {
@@ -295,13 +305,15 @@ public final class MainSettingsComponent {
                 if (h > 0.5f) {
                     settingHits.add(new SettingHit(row.setting(), contentX, y, contentW, h));
                     if (y + h >= contentY - 1f * scale && y <= contentY + contentH + 1f * scale) {
-                        row.setting().render(contentX, y, contentW, mx, my);
+                        row.setting().renderSafely(contentX, y, contentW, mx, my);
                     }
                 }
                 y += h + row.gap();
             }
         }
-        if (clipped) ScissorFunction.pop();
+        } finally {
+            if (clipped) ScissorFunction.pop();
+        }
 
         renderScrollbar(scale, palette);
     }
@@ -313,10 +325,10 @@ public final class MainSettingsComponent {
         if (settings == null) return;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, lastSettingScale)) {
             for (Setting setting : settings) {
-                float anim = setting.updateVisibilityAnim();
-                boolean targetVisible = setting.isVisibilityTargetVisible();
+                float anim = setting.updateVisibilitySafely();
+                boolean targetVisible = setting.isVisibilityTargetVisibleSafely();
                 if (!targetVisible && anim <= 0.01f) continue;
-                rows.add(new SettingRow(setting, anim, setting.getHeight() * anim, 6f * anim));
+                rows.add(new SettingRow(setting, anim, setting.getHeightSafely() * anim, 6f * anim));
             }
         }
     }
@@ -405,21 +417,32 @@ public final class MainSettingsComponent {
         String previousSelection = selectedId;
         sectionsById.clear();
         for (MainSettingsContributor contributor : registry.snapshot()) {
+            String id = contributor.id() == null
+                    ? ""
+                    : contributor.id().trim().toLowerCase(Locale.ROOT);
+            if (id.isEmpty()) continue;
+            String title = ClickGuiI18n.tr(contributor.titleKey(), contributor.fallbackTitle());
             try {
                 SettingOwner owner = contributor.owner();
                 List<SettingDef> defs = contributor.settingDefs();
-                String id = contributor.id() == null
-                        ? ""
-                        : contributor.id().trim().toLowerCase(Locale.ROOT);
-                if (id.isEmpty() || owner == null || defs == null) continue;
+                if (owner == null || defs == null) continue;
+                if (ErrorHandler.failure(contributor) != null) ErrorHandler.unregister(contributor);
                 sectionsById.put(id, new Section(
                         id,
                         contributor,
-                        ClickGuiI18n.tr(contributor.titleKey(), contributor.fallbackTitle()),
-                        buildSettings(defs, owner)
+                        title,
+                        buildSettings(defs, owner),
+                        contributor
                 ));
-            } catch (RuntimeException ignored) {
-                // One optional subsystem cannot make the rest of Settings unavailable.
+            } catch (RuntimeException failure) {
+                FailureIsolation.reportComponent(contributor, title, "settings", failure);
+                sectionsById.put(id, new Section(
+                        id,
+                        contributor,
+                        title,
+                        SettingErrorView.withDiagnostics(contributor, List.of()),
+                        contributor
+                ));
             }
         }
         selectedId = sectionsById.containsKey(previousSelection)
@@ -434,6 +457,15 @@ public final class MainSettingsComponent {
         return sectionsById.get(selectedId);
     }
 
+    private static boolean sectionFailed(Section section) {
+        if (section == null) return false;
+        if (ErrorHandler.failure(section.failureOwner()) != null) return true;
+        for (Setting setting : section.settings()) {
+            if (setting != null && ErrorHandler.failure(setting) != null) return true;
+        }
+        return false;
+    }
+
     private record SettingRow(Setting setting, float anim, float height, float gap) {
     }
 
@@ -443,6 +475,7 @@ public final class MainSettingsComponent {
     private record CategoryHit(String sectionId, float x, float y, float w, float h) {
     }
 
-    private record Section(String id, MainSettingsContributor contributor, String title, List<Setting> settings) {
+    private record Section(String id, MainSettingsContributor contributor, String title,
+                           List<Setting> settings, Object failureOwner) {
     }
 }

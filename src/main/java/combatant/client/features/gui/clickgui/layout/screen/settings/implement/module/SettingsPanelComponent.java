@@ -25,6 +25,9 @@ import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.settings.Setting;
+import combatant.client.features.gui.clickgui.settings.SettingErrorView;
+import combatant.client.features.module.Module;
+import combatant.client.features.module.ModuleManager;
 import combatant.client.features.gui.clickgui.settings.SettingRenderContext;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
 import combatant.client.features.gui.clickgui.util.ClickGuiHintOverlay;
@@ -265,6 +268,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
             float activeFadeDepth = Math.min(baseFadeDepth, remainingScroll);
             float fadeStart = fadeBottom - activeFadeDepth;
 
+            try {
             try (ClickGuiRenderer.VerticalAlphaFadeScope ignoredFade =
                          ClickGuiRenderer.pushBottomAlphaFade(fadeStart, fadeBottom)) {
                 float y = contentY + smoothedScroll;
@@ -276,12 +280,13 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
                         if (y + sh >= contentY - 1.0f * panelScale && y <= contentY + contentH + 1.0f * panelScale) {
                             float slide = (1f - row.anim()) * 6f * panelScale;
                             boolean itemClip = ScissorFunction.pushRaw(contentX, y, contentW, sh);
-                            try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, row.scale())) {
-                                row.setting().render(contentX, y + slide, contentW, mx, my);
-                            }
-                            ClickGuiRenderer.flushRenderer();
-                            if (itemClip) {
-                                ScissorFunction.pop();
+                            try {
+                                try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, row.scale())) {
+                                    row.setting().renderSafely(contentX, y + slide, contentW, mx, my);
+                                }
+                                ClickGuiRenderer.flushRenderer();
+                            } finally {
+                                if (itemClip) ScissorFunction.pop();
                             }
                         }
                     }
@@ -290,8 +295,8 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
             }
 
             ClickGuiRenderer.flushRenderer();
-            if (clipped) {
-                ScissorFunction.pop();
+            } finally {
+                if (clipped) ScissorFunction.pop();
             }
 
         }
@@ -340,19 +345,19 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
             try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, target == null ? settingScale(panelScale) : target.scale())) {
                 for (Setting setting : settings) {
                     if (target != null && target.setting() == setting) continue;
-                    setting.mouseClickedOutside(mx, my, button);
+                    setting.mouseClickedOutsideSafely(mx, my, button);
                 }
                 if (target != null) {
-                    if (!target.setting().isAvailable()) {
+                    if (!target.setting().isAvailable() && !combatant.client.runtime.error.ErrorHandler.blocked(target.setting())) {
                         return true;
                     }
-                    target.setting().mouseClicked(mx, my, button);
+                    target.setting().mouseClickedSafely(mx, my, button, target.x(), target.y(), target.w());
                     return true;
                 }
             }
         } else {
             try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, settingScale(panelScale))) {
-                for (Setting setting : settings) setting.mouseClickedOutside(mx, my, button);
+                for (Setting setting : settings) setting.mouseClickedOutsideSafely(mx, my, button);
             }
         }
         return true;
@@ -364,7 +369,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, lastSettingScale)) {
             for (Setting setting : settings) {
                 if (!setting.isAvailable()) continue;
-                setting.mouseReleased(mx, my, button);
+                setting.mouseReleasedSafely(mx, my, button);
             }
         }
         return inside(mx, my, panelX, panelY, panelW, panelH);
@@ -382,7 +387,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
             if (!inside(mx, my, hit.x(), hit.y(), hit.w(), hit.h())) continue;
             if (!hit.setting().isAvailable()) return true;
             try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, hit.scale())) {
-                if (hit.setting().mouseScrolled(mx, my, amount)) return true;
+                if (hit.setting().mouseScrolledSafely(mx, my, amount)) return true;
             }
             break;
         }
@@ -405,7 +410,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, lastSettingScale)) {
             for (Setting setting : settings) {
                 if (!setting.isAvailable()) continue;
-                if (setting.keyPressed(keyCode, scanCode, modifiers)) return true;
+                if (setting.keyPressedSafely(keyCode, scanCode, modifiers)) return true;
             }
         }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
@@ -420,7 +425,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, lastSettingScale)) {
             for (Setting setting : settings) {
                 if (!setting.isAvailable()) continue;
-                if (setting.charTyped(chr, modifiers)) return true;
+                if (setting.charTypedSafely(chr, modifiers)) return true;
             }
         }
         return false;
@@ -719,14 +724,19 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
     }
 
     private void buildRows(float menuScale) {
+        Module owner = ModuleManager.get(targetId);
+        if (owner != null) {
+            List<Setting> desired = SettingErrorView.withDiagnostics(owner, owner.getSettings());
+            if (!settings.equals(desired)) { settings.clear(); settings.addAll(desired); }
+        }
         rows.clear();
         for (Setting setting : settings) {
             float rowScale = settingScale(setting, menuScale);
             try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, rowScale)) {
-                float anim = setting.updateVisibilityAnim();
-                boolean targetVisible = setting.isVisibilityTargetVisible();
+                float anim = setting.updateVisibilitySafely();
+                boolean targetVisible = setting.isVisibilityTargetVisibleSafely();
                 if (!targetVisible && anim <= 0.01f) continue;
-                float h = setting.getHeight() * anim;
+                float h = setting.getHeightSafely() * anim;
                 float gap = 0f;
                 rows.add(new SettingRow(setting, anim, h, gap, rowScale));
             }

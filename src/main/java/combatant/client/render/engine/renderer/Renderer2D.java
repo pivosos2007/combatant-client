@@ -4262,14 +4262,20 @@ public final class Renderer2D {
             for (int column = 0; column <= columns; column++) {
                 double u = column / (double) columns;
                 double px = x + width * u;
-                int argb = bilerpArgb(cTopLeft, cTopRight, cBottomRight, cBottomLeft, u, v);
+                // Match the two-triangle interpolation used by the ordinary quad path.
+                // Bilinear interpolation changes the authored gradient as soon as the
+                // same shape enters a warp scope (most visible on Settings cards).
+                int argb = quadTriangleArgb(cTopLeft, cTopRight, cBottomRight, cBottomLeft, u, v);
                 int a = (argb >>> 24) & 0xFF;
                 int r = (argb >>> 16) & 0xFF;
                 int g = (argb >>> 8) & 0xFF;
                 int b = argb & 0xFF;
                 warpedShapeVertexTmp[row * stride + column] = mesh
                         .vec2(px, py)
-                        .rawLocal2(px, py)
+                        // Preserve source-space interpolation under perspective. Geometry
+                        // tessellation is only an approximation detail and must not turn
+                        // the material into a screen-space gradient.
+                        .local2(px, py)
                         .color(r, g, b, a)
                         .vec4(sdfBounds.x(), sdfBounds.y(), sdfBounds.width(), sdfBounds.height())
                         .vec4(param0, param1, param2, param3)
@@ -4294,20 +4300,34 @@ public final class Renderer2D {
         return Math.max(4, Math.min(8, (int) Math.ceil(Math.abs(extent) / 18.0)));
     }
 
-    private static int bilerpArgb(int topLeft, int topRight, int bottomRight, int bottomLeft,
-                                  double u, double v) {
-        int top = lerpArgb(topLeft, topRight, u);
-        int bottom = lerpArgb(bottomLeft, bottomRight, u);
-        return lerpArgb(top, bottom, v);
+    private static int quadTriangleArgb(int topLeft, int topRight, int bottomRight, int bottomLeft,
+                                        double u, double v) {
+        double clampedU = Math.max(0.0, Math.min(1.0, u));
+        double clampedV = Math.max(0.0, Math.min(1.0, v));
+        if (clampedU <= clampedV) {
+            return mixArgb(topLeft, bottomLeft, bottomRight,
+                    1.0 - clampedV, clampedV - clampedU, clampedU);
+        }
+        return mixArgb(topLeft, topRight, bottomRight,
+                1.0 - clampedU, clampedU - clampedV, clampedV);
     }
 
-    private static int lerpArgb(int from, int to, double t) {
-        double clamped = Math.max(0.0, Math.min(1.0, t));
-        int a = (int) Math.round(((from >>> 24) & 0xFF) + (((to >>> 24) & 0xFF) - ((from >>> 24) & 0xFF)) * clamped);
-        int r = (int) Math.round(((from >>> 16) & 0xFF) + (((to >>> 16) & 0xFF) - ((from >>> 16) & 0xFF)) * clamped);
-        int g = (int) Math.round(((from >>> 8) & 0xFF) + (((to >>> 8) & 0xFF) - ((from >>> 8) & 0xFF)) * clamped);
-        int b = (int) Math.round((from & 0xFF) + ((to & 0xFF) - (from & 0xFF)) * clamped);
+    private static int mixArgb(int first, int second, int third,
+                               double firstWeight, double secondWeight, double thirdWeight) {
+        int a = weightedChannel(first, second, third, 24, firstWeight, secondWeight, thirdWeight);
+        int r = weightedChannel(first, second, third, 16, firstWeight, secondWeight, thirdWeight);
+        int g = weightedChannel(first, second, third, 8, firstWeight, secondWeight, thirdWeight);
+        int b = weightedChannel(first, second, third, 0, firstWeight, secondWeight, thirdWeight);
         return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private static int weightedChannel(int first, int second, int third, int shift,
+                                       double firstWeight, double secondWeight, double thirdWeight) {
+        return (int) Math.round(
+                ((first >>> shift) & 0xFF) * firstWeight
+                        + ((second >>> shift) & 0xFF) * secondWeight
+                        + ((third >>> shift) & 0xFF) * thirdWeight
+        );
     }
 
     public void polygon(double[] points, int pointCount, int argb) {

@@ -7,6 +7,9 @@
 
 package combatant.client.features.gui.clickgui.settings;
 
+import combatant.client.features.gui.diagnostics.FailureText;
+import combatant.client.runtime.error.FailureIsolation;
+
 import net.minecraft.client.resources.language.I18n;
 import combatant.client.config.ConfigLang;
 import combatant.client.config.SettingOwner;
@@ -17,6 +20,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import java.util.function.BooleanSupplier;
+import combatant.client.runtime.error.ErrorHandler;
+import combatant.client.runtime.error.FailureRegistry.Failure;
 
 public abstract class Setting {
 
@@ -347,16 +353,73 @@ public abstract class Setting {
     }
 
     public boolean isAvailable() {
-        return getUnavailableReason().isEmpty();
+        return !ErrorHandler.blocked(this) && getUnavailableReason().isEmpty();
     }
 
     public String getUnavailableReason() {
+        if (ErrorHandler.blocked(this)) return FailureText.tr("setting.blocked");
         try {
             String reason = unavailableReason.get();
             return reason == null ? "" : reason.trim();
-        } catch (Exception ignored) {
-            return "";
+        } catch (RuntimeException e) {
+            FailureIsolation.reportSetting(this, "availability", e);
+            return FailureText.tr("setting.failed");
         }
+    }
+
+    /** Isolated setting boundary. Renderer/native failures are deliberately propagated. */
+    public final void renderSafely(float x,float y,float width,float mouseX,float mouseY) {
+        if (ErrorHandler.blocked(this)) {
+            SettingErrorView.render(this,ErrorHandler.failure(this),x,y,width,mouseX,mouseY);
+            return;
+        }
+        try { render(x,y,width,mouseX,mouseY); }
+        catch (RuntimeException e) {
+            FailureIsolation.reportSetting(this,"render",e);
+            SettingErrorView.render(this,ErrorHandler.failure(this),x,y,width,mouseX,mouseY);
+        }
+    }
+
+    public final float getHeightSafely() {
+        if (ErrorHandler.blocked(this)) return SettingErrorView.height();
+        float height=FailureIsolation.callSetting(this,"layout",this::getHeight,SettingErrorView.height());
+        if (!Float.isFinite(height) || height<0f) {
+            FailureIsolation.reportSetting(this,"layout",new IllegalStateException("Invalid setting height: "+height));
+            return SettingErrorView.height();
+        }
+        return height;
+    }
+
+    public final float updateVisibilitySafely() {
+        if (ErrorHandler.blocked(this)) return 1f;
+        return FailureIsolation.callSetting(this,"visibility",this::updateVisibilityAnim,1f);
+    }
+
+    public final boolean isVisibilityTargetVisibleSafely() {
+        return ErrorHandler.blocked(this) || FailureIsolation.callSetting(this,"visibility",this::isVisibilityTargetVisible,true);
+    }
+
+    public final void mouseClickedSafely(double mx,double my,int button,float x,float y,float width) {
+        if (ErrorHandler.blocked(this)) {
+            SettingErrorView.click(this,ErrorHandler.failure(this),x,y,width,mx,my,button);
+            return;
+        }
+        FailureIsolation.runSetting(this,"mouse click",()->mouseClicked(mx,my,button));
+    }
+    public final void mouseClickedOutsideSafely(double mx,double my,int button) {
+        FailureIsolation.runSetting(this,"mouse outside",()->mouseClickedOutside(mx,my,button));
+    }
+    public final void mouseReleasedSafely(double mx,double my,int button) {
+        FailureIsolation.runSetting(this,"mouse release",()->mouseReleased(mx,my,button));
+    }
+    public final boolean mouseScrolledSafely(double mx,double my,double amount) {
+        return FailureIsolation.callSetting(this,"mouse scroll",()->mouseScrolled(mx,my,amount),false);
+    }
+    public final boolean keyPressedSafely(int key,int scan,int modifiers) {
+        return FailureIsolation.callSetting(this,"key input",()->keyPressed(key,scan,modifiers),false);
+    }
+    public final boolean charTypedSafely(char chr,int modifiers) {
+        return FailureIsolation.callSetting(this,"char input",()->charTyped(chr,modifiers),false);
     }
 
     public abstract void render(float x, float y, float width, float mouseX, float mouseY);
@@ -432,9 +495,11 @@ public abstract class Setting {
     }
 
     public boolean isVisible() {
+        if (ErrorHandler.blocked(this)) return true;
         try {
             return visibility.get();
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
+            FailureIsolation.reportSetting(this, "visibility", e);
             return true;
         }
     }

@@ -9,11 +9,14 @@ package combatant.client.render.engine.renderer.ui.runtime.core;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import combatant.client.render.engine.renderer.ui.runtime.animation.UiAnimationState;
+import combatant.client.render.engine.renderer.ui.runtime.animation.UiEasing;
+import combatant.client.render.engine.renderer.ui.runtime.animation.UiMotionSignal;
 
 import java.util.Map;
 
 public final class UiState {
     private final Map<String, UiAnimationState> animations = new Object2ObjectOpenHashMap<>();
+    private final Map<String, UiMotionSignal> motions = new Object2ObjectOpenHashMap<>();
     private boolean hovered;
     private boolean active;
     private boolean focused;
@@ -21,6 +24,9 @@ public final class UiState {
     private boolean visible = true;
     private float scrollX;
     private float scrollY;
+    private float targetScrollX;
+    private float targetScrollY;
+    private long lastScrollTickNanos;
     private float contentWidth;
     private float contentHeight;
 
@@ -50,6 +56,18 @@ public final class UiState {
 
     public float scrollY() {
         return scrollY;
+    }
+
+    public float targetScrollX() {
+        return targetScrollX;
+    }
+
+    public float targetScrollY() {
+        return targetScrollY;
+    }
+
+    public long lastScrollTickNanos() {
+        return lastScrollTickNanos;
     }
 
     public float contentWidth() {
@@ -85,8 +103,28 @@ public final class UiState {
     }
 
     public void setScroll(float scrollX, float scrollY) {
+        setCurrentScroll(scrollX, scrollY);
+        setTargetScroll(scrollX, scrollY);
+    }
+
+    public void setCurrentScroll(float scrollX, float scrollY) {
         this.scrollX = scrollX;
         this.scrollY = scrollY;
+    }
+
+    public void setTargetScroll(float scrollX, float scrollY) {
+        this.targetScrollX = scrollX;
+        this.targetScrollY = scrollY;
+    }
+
+    public void setLastScrollTickNanos(long lastScrollTickNanos) {
+        this.lastScrollTickNanos = lastScrollTickNanos;
+    }
+
+    public float motion(String name, float target, long durationMs, UiEasing easing, long nowNanos) {
+        String key = name != null ? name : "";
+        return motions.computeIfAbsent(key, ignored -> new UiMotionSignal())
+                .sample(target, durationMs, easing, nowNanos);
     }
 
     public void setContentSize(float contentWidth, float contentHeight) {

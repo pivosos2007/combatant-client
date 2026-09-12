@@ -124,6 +124,23 @@ public enum LayoutRender2D {
         roundedStrokeQuad(x, y, w, h, radius, thickness, color, color, color, color);
     }
 
+    public static void roundedStrokeAngular(float x,
+                                            float y,
+                                            float w,
+                                            float h,
+                                            float radius,
+                                            float thickness,
+                                            int startColor,
+                                            int endColor,
+                                            float offset) {
+        if (Renderer2D.COLOR == null) return;
+        int start = applyGuiAlpha(startColor);
+        int end = applyGuiAlpha(endColor);
+        if (((start >>> 24) & 0xFF) <= 0 && ((end >>> 24) & 0xFF) <= 0) return;
+        Renderer2D.COLOR.roundedRectStrokeAngularGradient(
+                x, y, w, h, radius, SOFTNESS, thickness, start, end, offset);
+    }
+
     public static void roundedStrokeQuad(float x,
                                          float y,
                                          float w,

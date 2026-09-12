@@ -9,6 +9,10 @@ package combatant.client.features.gui.clickgui.layout.screen.settings.implement.
 
 import combatant.client.render.engine.renderer.RenderWarpStack;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.features.gui.clickgui.settings.SettingErrorView;
+import combatant.client.features.module.Module;
+import combatant.client.features.module.ModuleManager;
+import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.other.StatusRender;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
@@ -198,6 +202,9 @@ public final class ModuleComponent {
     }
 
     private CardHit drawCard(CardEntry entry, float x, float y, float w, float h, float scale, SettingsGuiPalette palette) {
+        Module faultModule = ModuleManager.get(entry.getId());
+        boolean failed = entry.failed() || SettingErrorView.hasFailure(faultModule);
+        boolean quarantined = ErrorHandler.blocked(faultModule);
         float enabledAnim = stateAnimById.compute(entry.getId(), (k, v) -> AnimationUtility.approach(v == null ? 0f : v, entry.enabled() ? 1f : 0f, 0.16f));
         boolean hovered = ClickGuiMath.insideRect(ClickGuiRenderer.getMouseX(), ClickGuiRenderer.getMouseY(), x, y, w, h);
         float hoverAnim = hoverAnimById.compute(entry.getId(), (k, v) -> AnimationUtility.approach(v == null ? 0f : v, hovered ? 1f : 0f, 0.18f));
@@ -255,13 +262,16 @@ public final class ModuleComponent {
                     LayoutRender2D.alpha(palette.moduleCardTopStrong(), 0.12f + 0.10f * hoverAnim)
             );
 
+            if (failed) {
+                SettingErrorView.warning(x+w-18f*scale,y+6f*scale,10f*scale,1f);
+            }
             ClickGuiRenderer.drawText(
                     ClickGuiRenderer.getInterRegular(),
                     "• " + entry.title(),
                     x + 8.8f * scale,
                     y + 5.4f * scale,
                     13f * scale,
-                    SettingsGuiPalette.withAlpha(palette.moduleTitleText(), alphaOffset),
+                    SettingsGuiPalette.withAlpha(failed ? 0xFFFF7777 : palette.moduleTitleText(), alphaOffset),
                     false
             );
 
@@ -270,7 +280,7 @@ public final class ModuleComponent {
                 drawNoSettingsHint(x, y, descHeight, scale, palette);
             }
             bindRect = drawBind(entry, x, y, w, descHeight, scale, palette);
-            if (entry.toggleable()) {
+            if (entry.toggleable() && !quarantined) {
                 StatusRender status = statusRenderById.computeIfAbsent(entry.getId(), k -> new StatusRender());
                 status.render(statusX, statusY, enabledAnim, scale);
             }
@@ -535,6 +545,7 @@ public final class ModuleComponent {
                             boolean hasSettings,
                             boolean enabled,
                             boolean toggleable,
+                            boolean failed,
                             boolean shownInModuleList,
                             List<String> searchAliases) {
         public CardEntry {
@@ -548,8 +559,9 @@ public final class ModuleComponent {
                          boolean hasSettings,
                          boolean enabled,
                          boolean toggleable,
+                         boolean failed,
                          boolean shownInModuleList) {
-            this(id, title, description, bindLabel, hasSettings, enabled, toggleable, shownInModuleList, List.of());
+            this(id, title, description, bindLabel, hasSettings, enabled, toggleable, failed, shownInModuleList, List.of());
         }
 
         public CardEntry(String id,
@@ -559,7 +571,7 @@ public final class ModuleComponent {
                          boolean hasSettings,
                          boolean enabled,
                          boolean toggleable) {
-            this(id, title, description, bindLabel, hasSettings, enabled, toggleable, true, List.of());
+            this(id, title, description, bindLabel, hasSettings, enabled, toggleable, false, true, List.of());
         }
 
         public String getId() {

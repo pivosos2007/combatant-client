@@ -72,7 +72,7 @@ public enum MenuBackgroundRenderer {
 
     /** Renders the background selected in MainConfig: png, aurora or waves. */
     public static void renderConfigured(Minecraft mc) {
-        if (RuntimeGate.isPanic() || mc == null) return;
+        if (!RuntimeGate.canRunRender() || mc == null) return;
         switch (configuredMode()) {
             case AURORA -> renderShader(mc, CombatantRenderPipelines.MAIN_MENU_AURORA_BACKGROUND);
             case WAVES -> renderShader(mc, CombatantRenderPipelines.MAIN_MENU_WAVES_BACKGROUND);
@@ -82,7 +82,7 @@ public enum MenuBackgroundRenderer {
 
     /** Renders the system-time PNG background and crossfades whenever the active time band changes. */
     public static void renderDefaultTexture(Minecraft mc) {
-        if (RuntimeGate.isPanic() || mc == null) return;
+        if (!RuntimeGate.canRunRender() || mc == null) return;
         updateTimedTexture();
         Identifier previous = previousTimedTexture != null ? previousTimedTexture : DEFAULT_TEXTURE;
         Identifier current = currentTimedTexture != null ? currentTimedTexture : DEFAULT_TEXTURE;
@@ -92,7 +92,7 @@ public enum MenuBackgroundRenderer {
 
     /** Queues one explicit cover-fit image before the GUI glass source is captured. */
     public static void renderTexture(Minecraft mc, Identifier texture) {
-        if (RuntimeGate.isPanic() || mc == null || texture == null) return;
+        if (!RuntimeGate.canRunRender() || mc == null || texture == null) return;
         renderTexturePair(mc, texture, texture, 1.0f);
     }
 
@@ -177,6 +177,10 @@ public enum MenuBackgroundRenderer {
     }
 
     public static void drainDeferred(Minecraft mc) {
+        if (!RuntimeGate.canRunRender()) {
+            clearDeferred();
+            return;
+        }
         if (!deferredPending) return;
 
         RenderPipeline shaderPipeline = deferredShaderPipeline;
@@ -197,8 +201,17 @@ public enum MenuBackgroundRenderer {
         }
     }
 
+    /** Discard stale extraction commands without touching GPU state. */
+    public static void clearDeferred() {
+        deferredPending = false;
+        deferredShaderPipeline = null;
+        deferredPreviousTexture = null;
+        deferredTexture = null;
+        deferredBlend = 1.0f;
+    }
+
     private static void renderTextureNow(Minecraft mc, Identifier previousId, Identifier currentId, float blend) {
-        if (RuntimeGate.isPanic() || mc == null || previousId == null || currentId == null) return;
+        if (!RuntimeGate.canRunRender() || mc == null || previousId == null || currentId == null) return;
         RenderTarget framebuffer = mc.gameRenderer.mainRenderTarget();
         if (framebuffer == null) return;
         int width = mc.getWindow().getWidth();
@@ -248,7 +261,7 @@ public enum MenuBackgroundRenderer {
     }
 
     private static void renderShaderNow(Minecraft mc, RenderPipeline pipeline) {
-        if (RuntimeGate.isPanic() || mc == null || pipeline == null) return;
+        if (!RuntimeGate.canRunRender() || mc == null || pipeline == null) return;
         RenderTarget framebuffer = mc.gameRenderer.mainRenderTarget();
         if (framebuffer == null) return;
         int width = mc.getWindow().getWidth();

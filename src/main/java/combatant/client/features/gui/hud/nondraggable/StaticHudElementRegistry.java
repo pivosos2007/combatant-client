@@ -17,6 +17,7 @@ import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
+import combatant.client.runtime.error.ErrorHandler;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -68,7 +69,7 @@ public enum StaticHudElementRegistry {
         if (!RuntimeGate.canRunHud()) return;
         if (!ProfilerPhase.isActive()) {
             for (AbstractHudElement e : ELEMENTS) {
-                e.onTick();
+                e.tickSafely();
             }
             return;
         }
@@ -76,7 +77,7 @@ public enum StaticHudElementRegistry {
         try (ProfilerPhase.Scope elementsScope = ProfilerPhase.scope("hud_static:tick")) {
             for (AbstractHudElement e : ELEMENTS) {
                 try (ProfilerPhase.Scope elementScope = ProfilerPhase.scope("hud_static:tick:" + e.getId())) {
-                    e.onTick();
+                    e.tickSafely();
                 }
             }
         }
@@ -104,6 +105,7 @@ public enum StaticHudElementRegistry {
         if (!RuntimeGate.canRunHud()) return false;
         for (AbstractHudElement element : ELEMENTS) {
             if (element == null || !element.isEnabled()) continue;
+            if (!ErrorHandler.canRun(element)) continue;
             if (!element.usesEngineRenderer()) continue;
             if (element.getHudPhase() != phase) continue;
             if (element.getRenderSpace() != space) continue;
@@ -144,8 +146,8 @@ public enum StaticHudElementRegistry {
                 case UNSCALED_LOGICAL -> HudScale.toVirtual(rawY, logicalScale);
                 case SCALED -> scaledFactor > 0f ? rawY / scaledFactor : rawY;
             };
-            if (!element.isMouseOverInteractive(mx, my)) continue;
-            if (element.onMouseClicked(mx, my, button)) {
+            if (!element.isMouseOverInteractiveSafely(mx, my)) continue;
+            if (element.mouseClickedSafely(mx, my, button)) {
                 return true;
             }
         }
@@ -180,9 +182,9 @@ public enum StaticHudElementRegistry {
         if (!ProfilerPhase.isActive()) {
             for (AbstractHudElement element : renderList) {
                 if (foreground) {
-                    element.renderEngineForeground(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+                    element.renderEngineForegroundSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
                 } else {
-                    element.renderEngine(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+                    element.renderEngineSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
                 }
             }
             return;
@@ -192,9 +194,9 @@ public enum StaticHudElementRegistry {
         for (AbstractHudElement element : renderList) {
             try (ProfilerPhase.Scope elementScope = ProfilerPhase.scope(lane + element.getId())) {
                 if (foreground) {
-                    element.renderEngineForeground(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+                    element.renderEngineForegroundSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
                 } else {
-                    element.renderEngine(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+                    element.renderEngineSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
                 }
             }
         }

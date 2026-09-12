@@ -19,6 +19,7 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.world.item.ItemStack;
 import combatant.client.features.gui.chat.rich.BetterChatMessage;
+import combatant.client.features.gui.chat.actions.ChatMessageActions;
 import combatant.client.features.gui.chat.rich.BetterChatMessageJson;
 import combatant.client.features.gui.chat.rich.ItemNode;
 import combatant.client.features.gui.chat.rich.TextNode;
@@ -49,8 +50,6 @@ public enum BetterChatStoreManager {
     private static final Map<String, CompletableFuture<?>> CACHE_SAVE_JOBS = new HashMap<>();
     private static final Map<String, Long> LAST_SAVED_REVISIONS = new HashMap<>();
     private static final Map<String, Long> REQUESTED_SAVE_REVISIONS = new HashMap<>();
-    private static final Map<ChatLine, String> SERIALIZED_LINE_CACHE =
-            Collections.synchronizedMap(new WeakHashMap<>());
     private static String currentKey = null;
     private static BetterChatStore active = null;
     private static BetterChatHoverCache activeCache = null;
@@ -72,7 +71,9 @@ public enum BetterChatStoreManager {
      * @return false only when BetterChat anti-spam deliberately suppresses the message.
      */
     public static boolean addMessage(Component text) {
-        return addMessage(BetterChatMessage.text(LegacyTextUtil.convertLegacyCodes(text)));
+        Component converted = LegacyTextUtil.convertLegacyCodes(text);
+        ChatMessageActions.copyBinding(text, converted);
+        return addMessage(BetterChatMessage.text(converted));
     }
 
     public static boolean addMessage(BetterChatMessage message) {
@@ -104,6 +105,8 @@ public enum BetterChatStoreManager {
     public static void clearActive() {
         if (active != null) {
             active.clear();
+            BetterChatRenderer.clearMessageCaches();
+            BetterChatSerializedLineCache.clear();
             scheduleSave(currentKey, active);
         }
     }
@@ -119,6 +122,8 @@ public enum BetterChatStoreManager {
 
     private static void switchStore(String key) {
         BetterChatRenderer.resetScroll();
+        BetterChatRenderer.clearMessageCaches();
+        BetterChatSerializedLineCache.clear();
         currentKey = key;
         BetterChatHoverCache cache = cacheFor(key);
         activeCache = cache;
@@ -214,7 +219,7 @@ public enum BetterChatStoreManager {
             JsonArray arr = new JsonArray();
             for (ChatLine line : payload.lines()) {
                 JsonObject obj = new JsonObject();
-                String json = serializedText(line);
+                String json = BetterChatSerializedLineCache.text(line);
                 obj.addProperty("text", json);
                 if (!line.rawMessage().isTextOnly()) {
                     obj.add("nodes", BetterChatMessageJson.encode(line.rawMessage()));
@@ -263,16 +268,6 @@ public enum BetterChatStoreManager {
         synchronized (store) {
             return new SavePayload(store.revision(), store.snapshot());
         }
-    }
-
-    private static String serializedText(ChatLine line) {
-        String cached = SERIALIZED_LINE_CACHE.get(line);
-        if (cached != null) {
-            return cached;
-        }
-        String created = TextJsonUtil.toJson(line.rawText());
-        SERIALIZED_LINE_CACHE.put(line, created);
-        return created;
     }
 
     private static File fileFor(String key) {

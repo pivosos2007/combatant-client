@@ -25,6 +25,7 @@ public enum ResourceReloadHooks {
     public static void onReload(ResourceManager manager) {
         if (manager == null) return;
 
+        boolean shaderResourcesPublished = false;
         try {
             // Static resource-backed systems are discovered through @AssetLoad.
             AssetAutoLoader.reload(manager);
@@ -43,20 +44,26 @@ public enum ResourceReloadHooks {
 
             try {
                 IrisRuntime.registerCombatantPipelines();
-            } catch (Throwable t) {
+            } catch (RuntimeException t) {
                 DebugLog.error("[Combatant] Iris pipeline registration failed after resource reload", t);
             }
 
             // Shader compilation is a discovered post-reload asset hook.
             AssetAutoLoader.postReload(manager);
+            shaderResourcesPublished = true;
 
             try {
                 RenderPrewarmManager.prewarm("shader reload complete");
-            } catch (Throwable t) {
+            } catch (RuntimeException t) {
                 DebugLog.error("[Combatant] Render prewarm failed after resource reload", t);
             }
+        } catch (RuntimeException e) {
+            DebugLog.error("Combatant resource reload failed before render resources were published", e);
+            throw e;
         } finally {
-            RenderResourceReadiness.markReady("shader reload complete");
+            // A failed reload must not authorize custom UI/pipeline compilation.
+            // Optional prewarm failures do not invalidate already published shaders.
+            if (shaderResourcesPublished) RenderResourceReadiness.markReady("shader reload complete");
         }
     }
 }

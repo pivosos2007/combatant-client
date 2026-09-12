@@ -22,22 +22,11 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
+#moj_import <combatant:ui_aa.glsl>
 #moj_import <combatant:ui_geometry.glsl>
 #ifdef COMBATANT_ANALYTIC_CLIP
 #moj_import <combatant:ui_clip.glsl>
 #endif
-
-float pixelAa(vec2 logicalScale) {
-    return max(max(logicalScale.x, logicalScale.y), 0.0001);
-}
-
-float analyticAa(float d, vec2 logicalScale) {
-    return max(pixelAa(logicalScale), max(fwidth(d) * 0.75, 0.0001));
-}
-
-float crispCoverage(float d, float aa) {
-    return clamp(0.5 - d / max(aa, 0.0001), 0.0, 1.0);
-}
 
 vec4 blur(vec2 uv, float brightness) {
     vec4 color = texture(u_Texture, uv);
@@ -60,7 +49,7 @@ void main() {
     vec4 radii = normalizeRadii(v_Params, size);
     float distance = roundedCornersSdf(pos, boxHalf, radii);
     float aa = analyticAa(distance, logicalScale);
-    float alpha = crispCoverage(distance, aa);
+    float alpha = coverage(distance, aa);
 #ifdef COMBATANT_ANALYTIC_CLIP
     alpha *= combatantClipCoverage(
         combatantClipDistance(combatantLogicalFragCoord()), logicalScale

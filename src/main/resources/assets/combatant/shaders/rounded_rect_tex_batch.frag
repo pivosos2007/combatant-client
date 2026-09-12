@@ -1,5 +1,8 @@
 #version 330 core
 
+#moj_import <combatant:ui_aa.glsl>
+#moj_import <combatant:ui_geometry.glsl>
+
 /*
  * This file is part of the Combatant Client distribution.
  * Copyright (c) 2026 pivosos2007.
@@ -23,24 +26,6 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
-float roundedBoxSDF(vec2 p, vec2 halfSize, float r) {
-    vec2 q = abs(p) - halfSize + r;
-    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
-}
-
-float pixelAa(vec2 logicalScale) {
-    return max(max(logicalScale.x, logicalScale.y), 0.0001);
-}
-
-float analyticAa(float d, vec2 logicalScale) {
-    return max(pixelAa(logicalScale), max(fwidth(d) * 0.75, 0.0001));
-}
-
-float crispCoverage(float d, float aa) {
-    return clamp(0.5 - d / max(aa, 0.0001), 0.0, 1.0);
-}
-
-
 vec2 warpedLocal(vec4 local) {
     float invW = abs(local.z) > 0.000001 ? local.z : 1.0;
     return local.xy / invW;
@@ -55,8 +40,8 @@ void main() {
     float radius = clamp(v_Params.x, 0.0, min(halfSize.x, halfSize.y));
     float softness = max(v_Params.y, 0.0);
 
-    float d = roundedBoxSDF(frag - center, halfSize, radius);
-    float a = crispCoverage(d, analyticAa(d, logicalScale) + softness);
+    float d = roundedBoxSdf(frag - center, halfSize, radius);
+    float a = coverage(d, analyticAa(d, logicalScale, softness));
 
     vec4 tex = texture(u_Texture, v_TexCoord);
     fragColor = vec4(tex.rgb * v_Color.rgb, tex.a * v_Color.a * a);

@@ -7,6 +7,7 @@
 
 package combatant.client.mixins;
 
+import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
@@ -112,7 +113,10 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public List<String> getMixins() {
-        return null;
+        // Source-only hotfix: register the audio lifecycle hook without replacing
+        // the consumer's potentially newer combatant.mixins.json resource.
+        return FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT
+                ? List.of("SoundEngineLifecycleMixin") : List.of();
     }
 
     @Override

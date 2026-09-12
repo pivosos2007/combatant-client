@@ -26,6 +26,7 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
+import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.input.KeyManager;
 import combatant.client.util.logging.DebugLog;
@@ -123,7 +124,7 @@ public enum DraggableHudElementRegistry {
     public static void tickAll() {
         if (!ProfilerPhase.isActive()) {
             for (DraggableHudElement w : WIDGETS) {
-                w.onTick();
+                w.tickSafely();
             }
             return;
         }
@@ -131,7 +132,7 @@ public enum DraggableHudElementRegistry {
         try (ProfilerPhase.Scope widgetsScope = ProfilerPhase.scope("hud_widgets:tick")) {
             for (DraggableHudElement w : WIDGETS) {
                 try (ProfilerPhase.Scope widgetScope = ProfilerPhase.scope("hud_widget:tick:" + w.getId())) {
-                    w.onTick();
+                    w.tickSafely();
                 }
             }
         }
@@ -234,7 +235,7 @@ public enum DraggableHudElementRegistry {
             try (ProfilerPhase.Scope widgetScope =
                          ProfilerPhase.scope("2d:widget:" + w.getId());
                  RenderProfiler2D.Section ignored = RenderProfiler2D.section("widget:" + w.getId())) {
-                w.renderEngine(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+                w.renderEngineSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
             }
         }
     }
@@ -282,7 +283,7 @@ public enum DraggableHudElementRegistry {
             try (ProfilerPhase.Scope widgetScope =
                          ProfilerPhase.scope("2d:widget_fg:" + w.getId());
                  RenderProfiler2D.Section ignored = RenderProfiler2D.section("widget_fg:" + w.getId())) {
-                w.renderEngineForeground(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+                w.renderEngineForegroundSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
             }
         }
 
@@ -309,7 +310,7 @@ public enum DraggableHudElementRegistry {
             if (w.getHudPhase() != phase || w.getRenderSpace() != HudRenderSpace.UNSCALED_LOGICAL) {
                 continue;
             }
-            w.renderNativeHudOverlay(ctx, screenW, screenH);
+            w.renderNativeHudOverlaySafely(ctx, screenW, screenH);
         }
     }
 
@@ -366,12 +367,12 @@ public enum DraggableHudElementRegistry {
         try (ProfilerPhase.Scope widgetScope =
                      ProfilerPhase.scope("2d:widget:" + w.getId());
              RenderProfiler2D.Section ignored = RenderProfiler2D.section("widget:" + w.getId())) {
-            w.renderEngine(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+            w.renderEngineSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
         }
         try (ProfilerPhase.Scope widgetScope =
                      ProfilerPhase.scope("2d:widget_fg:" + w.getId());
              RenderProfiler2D.Section ignored = RenderProfiler2D.section("widget_fg:" + w.getId())) {
-            w.renderEngineForeground(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+            w.renderEngineForegroundSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
         }
     }
 
@@ -481,7 +482,7 @@ public enum DraggableHudElementRegistry {
             for (DraggableHudElement w : WIDGETS) {
                 if (!isWidgetVisibleForEditor(w)) continue;
                 if (!w.contains(mx, my)) continue;
-                if (!w.isMouseOverInteractive(mx, my)) continue;
+                if (!w.isMouseOverInteractiveSafely(mx, my)) continue;
                 long order = w.getRuntimeRenderOrder();
                 if (order > bestClickOrder) {
                     bestClickOrder = order;
@@ -489,7 +490,7 @@ public enum DraggableHudElementRegistry {
                 }
             }
             if (clickTarget != null) {
-                if (clickTarget.onMouseClicked(mx, my, GLFW.GLFW_MOUSE_BUTTON_1)) {
+                if (clickTarget.mouseClickedSafely(mx, my, GLFW.GLFW_MOUSE_BUTTON_1)) {
                     dragging = null;
                     draggingWithLeft = false;
                     clearSnapPreview();
@@ -660,7 +661,7 @@ public enum DraggableHudElementRegistry {
             if (!w.contains(mx, my)) continue;
 
             if (interactiveOnly) {
-                if (!w.isMouseOverInteractive(mx, my)) continue;
+                if (!w.isMouseOverInteractiveSafely(mx, my)) continue;
             } else if (!w.isDraggable()) {
                 continue;
             }
@@ -679,7 +680,7 @@ public enum DraggableHudElementRegistry {
             if (!w.contains(mx, my)) continue;
 
             if (interactiveOnly) {
-                if (!w.isMouseOverInteractive(mx, my)) continue;
+                if (!w.isMouseOverInteractiveSafely(mx, my)) continue;
             } else if (!w.isDraggable()) {
                 continue;
             }
@@ -710,6 +711,7 @@ public enum DraggableHudElementRegistry {
 
     private static boolean isRenderableCandidate(DraggableHudElement w, HudPhase phase) {
         if (w == null) return false;
+        if (!ErrorHandler.canRun(w)) return false;
 
         boolean singleEditorPreview = editorWidgetId != null;
         if (singleEditorPreview && (editorWidgetId.isEmpty() || !editorWidgetId.equals(w.getId()))) {
@@ -728,6 +730,7 @@ public enum DraggableHudElementRegistry {
 
     private static boolean isWidgetVisibleForLinkOverlay(DraggableHudElement w) {
         if (w == null) return false;
+        if (!ErrorHandler.canRun(w)) return false;
 
         boolean singleEditorPreview = editorWidgetId != null;
         if (singleEditorPreview && (editorWidgetId.isEmpty() || !editorWidgetId.equals(w.getId()))) {

@@ -10,6 +10,8 @@ package combatant.client.features.gui.clickgui.layout.screen.modules;
 import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.settings.Setting;
+import combatant.client.features.gui.clickgui.settings.SettingErrorView;
+import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.features.gui.clickgui.settings.SettingRenderContext;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
 import combatant.client.render.engine.animation.AnimationUtility;
@@ -134,10 +136,10 @@ final class ModulesMenuPanel {
                 }
                 for (Setting setting : selectedSettings) {
                     if (target != null && target.setting == setting) continue;
-                    setting.mouseClickedOutside(mx, my, button);
+                    setting.mouseClickedOutsideSafely(mx, my, button);
                 }
                 if (target != null) {
-                    target.setting.mouseClicked(mx, my, button);
+                    target.setting.mouseClickedSafely(mx, my, button, target.x, target.y, target.w);
                     return true;
                 }
             }
@@ -206,7 +208,7 @@ final class ModulesMenuPanel {
         }
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, ModulesMenuScreen.computePortScale())) {
             for (Setting setting : selectedSettings) {
-                setting.mouseReleased(mx, my, button);
+                setting.mouseReleasedSafely(mx, my, button);
             }
         }
     }
@@ -218,7 +220,7 @@ final class ModulesMenuPanel {
             try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, ModulesMenuScreen.computePortScale())) {
                 for (SettingHit hit : settingHits) {
                     if (!ModulesMenuScreen.inside(mx, my, hit.x, hit.y, hit.w, hit.h)) continue;
-                    if (hit.setting.mouseScrolled(mx, my, amount)) return;
+                    if (hit.setting.mouseScrolledSafely(mx, my, amount)) return;
                     break;
                 }
             }
@@ -249,7 +251,7 @@ final class ModulesMenuPanel {
 
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, ModulesMenuScreen.computePortScale())) {
             for (Setting setting : selectedSettings) {
-                if (setting.keyPressed(keyCode, scanCode, modifiers)) return true;
+                if (setting.keyPressedSafely(keyCode, scanCode, modifiers)) return true;
             }
         }
 
@@ -275,7 +277,7 @@ final class ModulesMenuPanel {
         if (selected == null) return false;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, ModulesMenuScreen.computePortScale())) {
             for (Setting setting : selectedSettings) {
-                if (setting.charTyped(chr, modifiers)) return true;
+                if (setting.charTypedSafely(chr, modifiers)) return true;
             }
         }
         return false;

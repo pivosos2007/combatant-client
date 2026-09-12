@@ -21,6 +21,7 @@ import net.minecraft.resources.RegistryOps;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import combatant.client.util.text.TextJsonUtil;
+import combatant.client.features.gui.chat.actions.ChatMessageActions;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,7 +40,7 @@ public enum BetterChatMessageJson {
             JsonObject encoded = new JsonObject();
             if (node instanceof TextNode text) {
                 encoded.addProperty("type", "text");
-                encoded.addProperty("component", TextJsonUtil.toJson(text.component()));
+                encoded.addProperty("component", TextJsonUtil.toJson(ChatMessageActions.persistentCopy(text.component())));
             } else if (node instanceof ItemNode item) {
                 encoded.addProperty("type", "item");
                 ItemStack stack = item.stack();

@@ -36,4 +36,8 @@ public final class CombatantBuild {
         String suffix = DistributionCapabilities.displaySuffix();
         return suffix.isBlank() ? version() : version() + " " + suffix;
     }
+
+    public static boolean isDevelopmentBuild() {
+        return !DistributionCapabilities.isReleaseArtifact();
+    }
 }

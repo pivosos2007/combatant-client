@@ -7,7 +7,12 @@
 
 package combatant.client.features.module;
 
+import combatant.client.runtime.error.FailureBoundary;
+
+import combatant.client.runtime.error.FailureIsolation;
+
 import combatant.client.util.logging.DebugLog;
+import combatant.client.runtime.error.ErrorHandler;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ClassInfo;
 import io.github.classgraph.ScanResult;
@@ -138,7 +143,8 @@ public enum ModuleAutoLoader {
 
             DebugLog.config("Loaded module: %s", cls.getName());
         } catch (Throwable t) {
-            DebugLog.error("Failed to load module: %s", t, className);
+            FailureBoundary.requireRecoverable(t);
+            FailureIsolation.reportComponent(className, className, "module discovery", t);
         }
     }
 

@@ -9,6 +9,7 @@ package combatant.client.features.gui.hud.script;
 
 import combatant.client.features.hmi_recode.HoldMyItems;
 import combatant.client.features.playeranimator.PlayerAnimator;
+import combatant.client.features.command.CommandOutput;
 import combatant.client.util.resources.asset.AssetAutoLoader;
 import combatant.client.util.resources.asset.AssetLoad;
 import combatant.client.util.resources.asset.AssetLoadPhase;
@@ -17,17 +18,29 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.server.packs.resources.ResourceManager;
 import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.hud.draggable.impl.HudNotifier;
+import combatant.client.features.gui.hud.BaseHudElement;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.script.*;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.runtime.error.ErrorHandler;
+import combatant.client.runtime.error.FailureIsolation;
+import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 
 public enum HudScriptLayouts {
     ;
     private static final UiScriptModuleRegistry REGISTRY = new UiScriptModuleRegistry();
     private static final LinkedHashMap<String, String> LAST_RENDER_LOG = new LinkedHashMap<>();
+    private static final LinkedHashSet<String> REPORTED_FAILURES = new LinkedHashSet<>();
+    private static final Set<BaseHudElement> FAILED_SCRIPT_OWNERS =
+            Collections.newSetFromMap(new IdentityHashMap<>());
+    private static final ThreadLocal<BaseHudElement> ACTIVE_OWNER = new ThreadLocal<>();
     private static final CachedUiScriptRuntime.Reporter RUNTIME_REPORTER = new CachedUiScriptRuntime.Reporter() {
         @Override
         public void reportRuntimeError(UiScriptModuleHandle handle, UiScriptRuntimeError error) {
@@ -73,10 +86,21 @@ public enum HudScriptLayouts {
     public static void reloadRegisteredAssets(ResourceManager manager) {
         UiScriptModuleRegistry.ReloadStats stats = REGISTRY.reloadChanged(manager);
         logUiReloadFailures("resource reload", stats);
+        if (stats.errors() == 0 && stats.changed() > 0) clearScriptOwnerFailures();
     }
 
     public static CachedUiScriptRuntime.Reporter runtimeReporter() {
         return RUNTIME_REPORTER;
+    }
+
+    public static OwnerScope ownerScope(BaseHudElement owner) {
+        BaseHudElement previous = ACTIVE_OWNER.get();
+        if (owner == null) ACTIVE_OWNER.remove();
+        else ACTIVE_OWNER.set(owner);
+        return () -> {
+            if (previous == null) ACTIVE_OWNER.remove();
+            else ACTIVE_OWNER.set(previous);
+        };
     }
 
     public static UiScriptModuleRegistry.ReloadStats prewarmRegistered(ResourceManager manager) {
@@ -84,23 +108,22 @@ public enum HudScriptLayouts {
             return new UiScriptModuleRegistry.ReloadStats(0, 0, 0, "", null);
         }
         UiScriptModuleRegistry.ReloadStats stats = REGISTRY.ensureLoaded(manager);
-        if (stats.errors() > 0) {
-            DebugLog.error("[UI Scripts] prewarm failed: " + stats.firstError(), stats.firstCause());
-        }
         return stats;
     }
 
     public static void reportLoadError(UiScriptModuleHandle handle) {
         if (handle == null) return;
-        if (!handle.recordLoadError(handle.lastError(), handle.lastErrorCause())) return;
-        report(handle.getId().toString(), handle.lastError(), handle.lastErrorCause(), "");
+        boolean first = handle.recordLoadError(handle.lastError(), handle.lastErrorCause());
+        if (reportToActiveOwner(handle.lastError(), handle.lastErrorCause(), "")) return;
+        if (first) report(handle.getId().toString(), handle.lastError(), handle.lastErrorCause(), "");
     }
 
     public static void reportRuntimeError(UiScriptModuleHandle handle, UiScriptRuntimeError error) {
         if (handle == null) return;
-        if (!handle.recordRuntimeError(error)) return;
+        boolean first = handle.recordRuntimeError(error);
         String stack = error != null ? error.stackTrace() : "";
-        report(handle.getId().toString(), handle.lastError(), handle.lastErrorCause(), stack);
+        if (reportToActiveOwner(handle.lastError(), handle.lastErrorCause(), stack)) return;
+        if (first) report(handle.getId().toString(), handle.lastError(), handle.lastErrorCause(), stack);
     }
 
     public static void reportRenderState(UiScriptModuleHandle handle, UiRuntime runtime, float width, float height) {
@@ -158,19 +181,22 @@ public enum HudScriptLayouts {
                 String message = failure.message() == null || failure.message().isBlank()
                         ? "unknown error"
                         : failure.message();
-                DebugLog.error("[Scripts] " + failure.runtime() + " reload failed: " + message, failure.cause());
+                if (markFailure(message, failure.cause())) {
+                    DebugLog.error("[Scripts] " + failure.runtime() + " reload failed: " + message, failure.cause());
+                }
             }
             ReloadFailure first = failures.getFirst();
             String firstMessage = first.message() == null || first.message().isBlank()
                     ? "unknown error"
                     : first.message();
             DebugLog.error("[Scripts] reload completed with " + failures.size() + " error(s)");
-            HudNotifier.pushMessage(
-                    "Scripts reload errors (" + failures.size() + "): " + first.runtime() + ": " + firstMessage,
-                    HudNotifier.NotifyType.NO
-            );
+            CommandOutput.error("Scripts reload errors (" + failures.size() + "): "
+                    + first.runtime() + ": " + firstMessage);
             return;
         }
+
+        if (uiStats.changed() > 0) clearScriptOwnerFailures();
+        synchronized (REPORTED_FAILURES) { REPORTED_FAILURES.clear(); }
 
         if (uiStats.changed() > 0) {
             HudNotifier.pushMessage(
@@ -199,10 +225,12 @@ public enum HudScriptLayouts {
             String message = failure.message() == null || failure.message().isBlank()
                     ? "unknown error"
                     : failure.message();
-            DebugLog.error(
-                    "[UI Scripts] " + reason + " failed for " + failure.moduleId() + ": " + message,
-                    failure.cause()
-            );
+            if (markFailure(message, failure.cause())) {
+                DebugLog.error(
+                        "[UI Scripts] " + reason + " failed for " + failure.moduleId() + ": " + message,
+                        failure.cause()
+                );
+            }
         }
     }
 
@@ -211,11 +239,81 @@ public enum HudScriptLayouts {
 
     private static void report(String id, String message, Throwable cause, String stack) {
         String line = message != null && !message.isBlank() ? message : "unknown error";
+        if (!markFailure(line, cause)) return;
         if (stack != null && !stack.isBlank()) {
             DebugLog.error("[UI Scripts] " + id + " failed: " + line + "\n" + stack);
         } else {
             DebugLog.error("[UI Scripts] " + id + " failed: " + line, cause);
         }
-        HudNotifier.pushMessage("UI script error " + id + ": " + line, HudNotifier.NotifyType.NO);
+        CommandOutput.error("UI script error " + id + ": " + line);
+    }
+
+    private static boolean reportToActiveOwner(String message, Throwable cause, String stack) {
+        BaseHudElement owner = ACTIVE_OWNER.get();
+        if (owner == null) return false;
+        if (ErrorHandler.failure(owner) == null) {
+            FailureIsolation.reportComponent(owner, owner.getTitle(), "script",
+                    new HudScriptFailure(message, stack, cause));
+            synchronized (FAILED_SCRIPT_OWNERS) { FAILED_SCRIPT_OWNERS.add(owner); }
+        }
+        return true;
+    }
+
+    private static void clearScriptOwnerFailures() {
+        synchronized (FAILED_SCRIPT_OWNERS) {
+            for (BaseHudElement owner : FAILED_SCRIPT_OWNERS) {
+                ErrorHandler.unregister(owner);
+            }
+            FAILED_SCRIPT_OWNERS.clear();
+        }
+    }
+
+    private static String failureSignature(String message, Throwable cause) {
+        Throwable root = cause;
+        while (root != null && root.getCause() != null) root = root.getCause();
+        String type = root == null ? "" : root.getClass().getName();
+        String detail = root == null || root.getMessage() == null ? message : root.getMessage();
+        return type + '|' + (detail == null ? "" : detail.trim());
+    }
+
+    private static boolean markFailure(String message, Throwable cause) {
+        String signature = failureSignature(message, cause);
+        synchronized (REPORTED_FAILURES) {
+            if (!REPORTED_FAILURES.add(signature)) return false;
+            while (REPORTED_FAILURES.size() > 256) REPORTED_FAILURES.removeFirst();
+            return true;
+        }
+    }
+
+    private static final class HudScriptFailure extends RuntimeException {
+        private final String originalStack;
+
+        private HudScriptFailure(String message, String originalStack, Throwable cause) {
+            super(message == null || message.isBlank() ? "UI script failed" : message);
+            this.originalStack = originalStack == null || originalStack.isBlank()
+                    ? cause == null ? "" : stackTrace(cause)
+                    : originalStack;
+        }
+
+        @Override
+        public void printStackTrace(PrintWriter writer) {
+            super.printStackTrace(writer);
+            if (!originalStack.isBlank()) {
+                writer.println("Original script failure:");
+                writer.print(originalStack);
+            }
+        }
+
+        private static String stackTrace(Throwable cause) {
+            java.io.StringWriter out = new java.io.StringWriter(2048);
+            cause.printStackTrace(new PrintWriter(out));
+            return out.toString();
+        }
+    }
+
+    @FunctionalInterface
+    public interface OwnerScope extends AutoCloseable {
+        @Override
+        void close();
     }
 }

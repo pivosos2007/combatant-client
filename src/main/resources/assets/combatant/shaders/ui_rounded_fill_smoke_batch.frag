@@ -23,6 +23,9 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
+#moj_import <combatant:ui_aa.glsl>
+#moj_import <combatant:ui_geometry.glsl>
+
 float random(vec2 st) {
     return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453123);
 }
@@ -50,23 +53,6 @@ float fbm(vec2 st, int octaves) {
         a *= 0.5;
     }
     return v;
-}
-
-float roundedBoxSDF(vec2 p, vec2 halfSize, float r) {
-    vec2 q = abs(p) - halfSize + r;
-    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
-}
-
-float pixelAa(vec2 logicalScale) {
-    return max(max(logicalScale.x, logicalScale.y), 0.0001);
-}
-
-float analyticAa(float d, vec2 logicalScale) {
-    return max(pixelAa(logicalScale), max(fwidth(d) * 0.75, 0.0001));
-}
-
-float crispCoverage(float d, float aa) {
-    return clamp(0.5 - d / max(aa, 0.0001), 0.0, 1.0);
 }
 
 vec2 warpedLocal(vec4 local) {
@@ -106,16 +92,16 @@ void main() {
 
     if (fillRatio <= 0.0001) discard;
 
-    float d = roundedBoxSDF(frag - center, halfSize, radius);
-    float edge = analyticAa(d, logicalScale) + softness;
-    float shapeAlpha = crispCoverage(d, edge);
+    float d = roundedBoxSdf(frag - center, halfSize, radius);
+    float edge = analyticAa(d, logicalScale, softness);
+    float shapeAlpha = coverage(d, edge);
 
     float clipX = fromRight
         ? v_Rect.x + v_Rect.z * (1.0 - fillRatio)
         : v_Rect.x + v_Rect.z * fillRatio;
     float progressAlpha = fromRight
-        ? crispCoverage(clipX - frag.x, edge)
-        : crispCoverage(frag.x - clipX, edge);
+        ? coverage(clipX - frag.x, edge)
+        : coverage(frag.x - clipX, edge);
 
     float mask = shapeAlpha * progressAlpha;
     if (mask <= 0.001) discard;

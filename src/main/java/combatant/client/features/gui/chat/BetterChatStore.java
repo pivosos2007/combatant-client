@@ -53,9 +53,10 @@ public final class BetterChatStore {
             int lastIndex = lines.size() - 1;
             ChatLine previous = lines.get(lastIndex);
             long delta = Math.max(0L, timestampMs - previous.timestampMs());
-            boolean same = previous.rawMessage().isTextOnly() && safeMessage.isTextOnly()
+            boolean same = previous.rawMessage().actionToken() == null && safeMessage.actionToken() == null
+                    && (previous.rawMessage().isTextOnly() && safeMessage.isTextOnly()
                     ? ChatSpamHeuristics.sameMessage(previous.rawText(), safeMessage.accessibleComponent())
-                    : previous.rawMessage().semanticallyEquals(safeMessage);
+                    : previous.rawMessage().semanticallyEquals(safeMessage));
             if (delta <= STACK_WINDOW_MS && same) {
                 lines.set(lastIndex, previous.repeated(timestampMs));
                 revision++;

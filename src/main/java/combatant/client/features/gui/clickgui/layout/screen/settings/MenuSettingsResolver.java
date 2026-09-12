@@ -13,6 +13,7 @@ import combatant.client.config.SettingOwner;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.ModuleComponent;
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.gui.clickgui.settings.SettingFactory;
+import combatant.client.features.gui.clickgui.settings.SettingErrorView;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
@@ -21,13 +22,16 @@ import combatant.client.features.gui.hud.nondraggable.StaticHudElementRegistry;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.DropESP;
 import combatant.client.features.module.modules.visuals.NameTags;
+import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.features.relations.PlayerRelations;
 import combatant.client.util.item.IllegalItemUtil;
 import combatant.client.util.item.RarityColorConfig;
 import combatant.client.util.item.TopEnchantUtil;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public enum MenuSettingsResolver {
     ;
@@ -63,23 +67,34 @@ public enum MenuSettingsResolver {
             case HUD -> {
                 for (DraggableHudElement widget : DraggableHudElementRegistry.getWidgets()) {
                     if (widget == null) continue;
+                    boolean failed = ErrorHandler.failure(widget) != null;
                     out.add(new ModuleComponent.CardEntry(
                             widget.getId(),
                             widget.getTitle(),
                             "",
                             "",
-                            !widget.getSettingDefs().isEmpty(),
+                            !widget.getSettingDefs().isEmpty() || failed,
                             widget.isEnabled(),
+                            !failed,
+                            failed,
                             true
                     ));
                 }
             }
             case UI -> {
+                Set<String> included = new HashSet<>();
                 for (StaticHudCard card : STATIC_UI_CARDS) {
                     ModuleComponent.CardEntry entry = uiStaticCard(card);
                     if (entry != null) {
                         out.add(entry);
+                        included.add(entry.id());
                     }
+                }
+                for (AbstractHudElement element : StaticHudElementRegistry.getAll()) {
+                    if (element == null || included.contains(element.getId())) continue;
+                    ModuleComponent.CardEntry entry = uiStaticCard(
+                            new StaticHudCard(element.getId(), element.getTitle()));
+                    if (entry != null) out.add(entry);
                 }
                 out.add(uiReadOnlyCard(UI_RELATIONS_COLOR, "Relations Color"));
                 out.add(uiReadOnlyCard(UI_ITEMS_COLOR, "Items Color"));
@@ -124,12 +139,14 @@ public enum MenuSettingsResolver {
 
         DraggableHudElement draggable = DraggableHudElementRegistry.getById(id);
         if (draggable != null) {
-            return new ResolvedSettings(id, draggable.getTitle(), buildSettingsFromDefs(draggable), true);
+            return new ResolvedSettings(id, draggable.getTitle(),
+                    SettingErrorView.withDiagnostics(draggable, buildSettingsFromDefs(draggable)), true);
         }
 
         AbstractHudElement staticHud = StaticHudElementRegistry.getById(id);
         if (staticHud != null) {
-            return new ResolvedSettings(id, staticHud.getTitle(), buildSettingsFromDefs(staticHud), true);
+            return new ResolvedSettings(id, staticHud.getTitle(),
+                    SettingErrorView.withDiagnostics(staticHud, buildSettingsFromDefs(staticHud)), true);
         }
 
         return null;
@@ -143,14 +160,17 @@ public enum MenuSettingsResolver {
         String title = staticHud.getTitle() == null || staticHud.getTitle().isBlank()
                 ? card.fallbackTitle()
                 : staticHud.getTitle();
+        boolean failed = ErrorHandler.failure(staticHud) != null;
 
         return new ModuleComponent.CardEntry(
                 staticHud.getId(),
                 title,
                 "",
                 "",
-                !staticHud.getSettingDefs().isEmpty(),
+                !staticHud.getSettingDefs().isEmpty() || failed,
                 staticHud.isEnabled(),
+                !failed,
+                failed,
                 true
         );
     }

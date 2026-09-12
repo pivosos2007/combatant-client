@@ -17,19 +17,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.util.sound.SoundSystem;
 
 /**
- * Hooks into Minecraft SoundEngine lifecycle to reset custom audio caches
- * when audio is (re)initialized or closed.
+ * Publishes the real OpenAL lifecycle to the custom sound system.
+ * Cleanup is performed before Minecraft destroys the current context.
  */
 @Mixin(Library.class)
 public class LibraryMixin {
     @Inject(method = "init", at = @At("RETURN"))
     private void combatant$resetOnInit(@Nullable String deviceSpecifier, DeviceList deviceList, boolean directionalAudio, CallbackInfo ci) {
-        SoundSystem.get().reset();
+        SoundSystem.get().onLibraryReady();
     }
 
     @Inject(method = "cleanup", at = @At("HEAD"))
     private void combatant$resetOnClose(CallbackInfo ci) {
-        SoundSystem.get().reset();
+        SoundSystem.get().onLibraryClosing();
     }
 }
 

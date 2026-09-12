@@ -157,7 +157,7 @@ public enum CombatantRenderSystem {
         try {
             RhiCapabilities caps = RhiCapabilities.current();
             if (backendKind == BackendKind.GL) {
-                LOGGER.info("[CombatantRHI] GL supplemental capabilities: vendor='{}', renderer='{}', "
+                DebugLog.info("[CombatantRHI] GL supplemental capabilities: vendor='{}', renderer='{}', "
                                 + "compute={}, ssbo={}, tessellation={}, geometry={}, multiBind={}, "
                                 + "copyImage={} (auto={}), invalidate={}, nativeDSA={}",
                         caps.glVendor(), caps.glRenderer(),
@@ -166,7 +166,7 @@ public enum CombatantRenderSystem {
                         caps.copyImage(), caps.copyImageAutoSafe(),
                         caps.attachmentInvalidation(), caps.nativeDirectStateAccess());
             } else if (backendKind == BackendKind.VULKAN) {
-                LOGGER.info("[CombatantRHI] Vulkan supplemental capabilities: compute={}, ssbo={}, "
+                DebugLog.info("[CombatantRHI] Vulkan supplemental capabilities: compute={}, ssbo={}, "
                                 + "tessellation={}, geometry={}",
                         caps.computeShaders(), caps.shaderStorageBuffers(),
                         caps.tessellationShaders(), caps.geometryShaders());

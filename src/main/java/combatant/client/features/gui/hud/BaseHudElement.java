@@ -14,11 +14,14 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import combatant.client.config.*;
 import combatant.client.config.values.*;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
+import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.features.module.HudPhase;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.TextRenderer;
 import net.minecraft.client.resources.language.I18n;
+import combatant.client.runtime.error.ErrorHandler;
+import combatant.client.runtime.error.FailureIsolation;
 
 import java.util.*;
 import java.util.function.Supplier;
@@ -300,6 +303,15 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
     public void onTick() {
     }
 
+    public final void tickSafely() {
+        if (!ErrorHandler.canRun(this)) return;
+        try (HudScriptLayouts.OwnerScope ignored = HudScriptLayouts.ownerScope(this)) {
+            onTick();
+        } catch (RuntimeException failure) {
+            FailureIsolation.reportComponent(this, getTitle(), "tick", failure);
+        }
+    }
+
     public void renderEngine(Renderer2D renderer,
                              TextRenderer textRenderer,
                              GuiGraphicsExtractor ctx,
@@ -308,12 +320,40 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
                              int screenH) {
     }
 
+    public final void renderEngineSafely(Renderer2D renderer,
+                                         TextRenderer textRenderer,
+                                         GuiGraphicsExtractor ctx,
+                                         float tickDelta,
+                                         int screenW,
+                                         int screenH) {
+        if (!ErrorHandler.canRun(this)) return;
+        try (HudScriptLayouts.OwnerScope ignored = HudScriptLayouts.ownerScope(this)) {
+            renderEngine(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+        } catch (RuntimeException failure) {
+            FailureIsolation.reportComponent(this, getTitle(), "render", failure);
+        }
+    }
+
     public void renderEngineForeground(Renderer2D renderer,
                                        TextRenderer textRenderer,
                                        GuiGraphicsExtractor ctx,
                                        float tickDelta,
                                        int screenW,
                                        int screenH) {
+    }
+
+    public final void renderEngineForegroundSafely(Renderer2D renderer,
+                                                   TextRenderer textRenderer,
+                                                   GuiGraphicsExtractor ctx,
+                                                   float tickDelta,
+                                                   int screenW,
+                                                   int screenH) {
+        if (!ErrorHandler.canRun(this)) return;
+        try (HudScriptLayouts.OwnerScope ignored = HudScriptLayouts.ownerScope(this)) {
+            renderEngineForeground(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+        } catch (RuntimeException failure) {
+            FailureIsolation.reportComponent(this, getTitle(), "render foreground", failure);
+        }
     }
 
     /**
@@ -327,6 +367,15 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
                                        int screenH) {
     }
 
+    public final void renderNativeHudOverlaySafely(GuiGraphicsExtractor ctx, int screenW, int screenH) {
+        if (!ErrorHandler.canRun(this)) return;
+        try (HudScriptLayouts.OwnerScope ignored = HudScriptLayouts.ownerScope(this)) {
+            renderNativeHudOverlay(ctx, screenW, screenH);
+        } catch (RuntimeException failure) {
+            FailureIsolation.reportComponent(this, getTitle(), "native overlay", failure);
+        }
+    }
+
     public boolean usesEngineRenderer() {
         return false;
     }
@@ -335,8 +384,28 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
         return false;
     }
 
+    public final boolean isMouseOverInteractiveSafely(float mx, float my) {
+        if (!ErrorHandler.canRun(this)) return false;
+        try (HudScriptLayouts.OwnerScope ignored = HudScriptLayouts.ownerScope(this)) {
+            return isMouseOverInteractive(mx, my);
+        } catch (RuntimeException failure) {
+            FailureIsolation.reportComponent(this, getTitle(), "hit test", failure);
+            return false;
+        }
+    }
+
     public boolean onMouseClicked(float mx, float my, int button) {
         return false;
+    }
+
+    public final boolean mouseClickedSafely(float mx, float my, int button) {
+        if (!ErrorHandler.canRun(this)) return false;
+        try (HudScriptLayouts.OwnerScope ignored = HudScriptLayouts.ownerScope(this)) {
+            return onMouseClicked(mx, my, button);
+        } catch (RuntimeException failure) {
+            FailureIsolation.reportComponent(this, getTitle(), "mouse click", failure);
+            return false;
+        }
     }
 
     public HudPhase getHudPhase() {
