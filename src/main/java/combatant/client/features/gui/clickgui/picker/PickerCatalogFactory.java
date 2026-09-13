@@ -15,6 +15,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.world.level.block.Block;
@@ -54,14 +55,25 @@ public enum PickerCatalogFactory {
         thread.setDaemon(true);
         return thread;
     });
+    /**
+     * Completed only after 26.2 has bound item component holders. Futures requested earlier stay
+     * pending instead of executing an unsafe registry walk and permanently caching a failure.
+     */
+    private static final CompletableFuture<Void> RUNTIME_READY = new CompletableFuture<>();
 
 
     public static boolean supportsAsync(TextListSetting.PickerMode mode) {
         return mode != null && ASYNC_MODES.contains(mode);
     }
 
-    /** Starts registry-backed catalog construction while normal client initialization continues. */
-    public static void prewarmAsync() {
+    /**
+     * Starts registry-backed catalog construction while normal client initialization continues.
+     * Returns false while 26.2's item component holders are not bound yet; callers should retry
+     * from a later client tick instead of poisoning the cache with an early startup failure.
+     */
+    public static boolean prewarmAsync() {
+        if (!markRuntimeReadyIfPossible()) return false;
+
         // Highest first-open value first; executor ordering intentionally prioritizes item-backed pickers.
         requestEntriesAsync(TextListSetting.PickerMode.ITEMS);
         requestEntriesAsync(TextListSetting.PickerMode.BLOCKS);
@@ -72,6 +84,29 @@ public enum PickerCatalogFactory {
         requestEntriesAsync(TextListSetting.PickerMode.SOUNDS);
         requestEntriesAsync(TextListSetting.PickerMode.ENCHANTMENTS);
         requestEntriesAsync(TextListSetting.PickerMode.PARTICLES);
+        return true;
+    }
+
+    /** Cheap readiness probe for Holder.Reference component binding used by ItemStack construction. */
+    public static boolean runtimeReadyForCatalogBuild() {
+        if (RUNTIME_READY.isDone()) return true;
+        try {
+            ItemStack probe = Items.STONE.getDefaultInstance();
+            return probe != null && !probe.isEmpty();
+        } catch (RuntimeException notBoundYet) {
+            return false;
+        }
+    }
+
+    /**
+     * Marks the catalog worker barrier ready only after a successful ItemStack construction probe.
+     * Safe to call repeatedly from the render thread while startup/reload is still settling.
+     */
+    public static boolean markRuntimeReadyIfPossible() {
+        if (RUNTIME_READY.isDone()) return true;
+        if (!runtimeReadyForCatalogBuild()) return false;
+        RUNTIME_READY.complete(null);
+        return true;
     }
 
     /**
@@ -82,17 +117,37 @@ public enum PickerCatalogFactory {
         if (!supportsAsync(mode)) {
             return CompletableFuture.completedFuture(List.of());
         }
-        return ASYNC_CACHE.computeIfAbsent(mode, key -> CompletableFuture
-                .supplyAsync(() -> List.copyOf(buildAsyncEntries(key)), CATALOG_EXECUTOR)
-                .exceptionally(error -> {
+
+        // A picker can technically be constructed before the startup prewarm pump reaches its
+        // resource barrier. Probe here too, but never execute the worker until the barrier opens.
+        markRuntimeReadyIfPossible();
+
+        CompletableFuture<List<PickerEntryData>> raw = ASYNC_CACHE.get(mode);
+        if (raw == null) {
+            CompletableFuture<List<PickerEntryData>> created = RUNTIME_READY
+                    .thenApplyAsync(ignored -> List.copyOf(buildAsyncEntries(mode)), CATALOG_EXECUTOR);
+            CompletableFuture<List<PickerEntryData>> raced = ASYNC_CACHE.putIfAbsent(mode, created);
+            raw = raced != null ? raced : created;
+
+            if (raced == null) {
+                CompletableFuture<List<PickerEntryData>> tracked = created;
+                created.whenComplete((entries, error) -> {
+                    if (error == null) return;
+                    // A transient startup/reload failure must not become a permanent empty cache.
+                    ASYNC_CACHE.remove(mode, tracked);
                     DebugLog.warnOnce(
-                            "picker-catalog-async:" + key.name().toLowerCase(Locale.ROOT),
+                            "picker-catalog-async:" + mode.name().toLowerCase(Locale.ROOT),
                             "Failed to build async picker catalog: %s",
-                            key,
+                            mode,
                             error
                     );
-                    return List.of();
-                }));
+                });
+            }
+        }
+
+        // Picker UI remains non-blocking even if a transient worker failure occurs. The raw failed
+        // future is evicted above so a subsequent picker/prewarm request can retry normally.
+        return raw.exceptionally(error -> List.of());
     }
 
     /** Owner-aware async view for catalogs that preserve configured values missing from discovery. */
@@ -108,7 +163,7 @@ public enum PickerCatalogFactory {
     /** Returns the completed shared result without blocking, or {@code null} while it is pending. */
     public static List<PickerEntryData> completedEntries(TextListSetting.PickerMode mode) {
         CompletableFuture<List<PickerEntryData>> future = ASYNC_CACHE.get(mode);
-        if (future == null || !future.isDone()) return null;
+        if (future == null || !future.isDone() || future.isCompletedExceptionally()) return null;
         return future.getNow(List.of());
     }
 

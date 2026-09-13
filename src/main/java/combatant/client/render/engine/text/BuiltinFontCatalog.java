@@ -42,20 +42,20 @@ public enum BuiltinFontCatalog {
     MONSTERRAT,
     @FontAsset(value = "profont.ttf", family = "ProFont", order = 90)
     PROFONT,
-    @FontAsset(value = "mainmenuicons.ttf", family = "MainMenuIcons", atlasOnly = true, prewarm = true, order = 100)
+    @FontAsset(value = "mainmenuicons.ttf", family = "MainMenuIcons", prewarm = true, order = 100)
     MAIN_MENU_ICONS,
-    @FontAsset(value = "guiicons.ttf", family = "GuiIcons", atlasOnly = true, prewarm = true, order = 110)
+    @FontAsset(value = "guiicons.ttf", family = "GuiIcons", prewarm = true, order = 110)
     GUI_ICONS,
-    @FontAsset(value = "richicons.ttf", family = "RichIcons", atlasOnly = true, prewarm = true, order = 120)
+    @FontAsset(value = "richicons.ttf", family = "RichIcons", prewarm = true, order = 120)
     RICH_ICONS,
     @FontAsset(value = "iconsnur.ttf", family = "IconsNur", prewarm = true, order = 130)
     ICONS_NUR,
     @FontAsset(value = "icons.ttf", family = "Icons", prewarm = true, order = 140)
     ICONS,
-    @FontAsset(value = "weather_icons.ttf", family = "WeatherIcons", order = 150)
+    @FontAsset(value = "weather_icons.ttf", family = "WeatherIcons", prewarm = true, order = 150)
     WEATHER_ICONS,
-    @FontAsset(value = "mediaplayer.ttf", family = "MediaPlayer", order = 160)
+    @FontAsset(value = "mediaplayer.ttf", family = "MediaPlayer", prewarm = true, order = 160)
     MEDIA_PLAYER,
-    @FontAsset(value = "vanilla_symbols.ttf", family = "VanillaSymbols", order = 170)
+    @FontAsset(value = "vanilla_symbols.ttf", family = "VanillaSymbols", prewarm = true, order = 170)
     VANILLA_SYMBOLS
 }

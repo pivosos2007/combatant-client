@@ -98,6 +98,7 @@ public enum ClickGuiRenderer {
     private static TextRenderer onestMedium;
     private static TextRenderer onestBold;
     private static TextRenderer monsterratRegular;
+    private static long boundFontGeneration = Long.MIN_VALUE;
     private static String activeTabId = MODULES_TAB_ID;
     private static float tabBarX, tabBarY, tabBarW, tabBarH;
     private static float tabTargetX, tabTargetW;
@@ -1080,6 +1081,7 @@ public enum ClickGuiRenderer {
     }
 
     public static TextRenderer getInterRegular() {
+        ensureFontBindingsCurrent();
         if (interRegular == null) {
             interRegular = Fonts.renderer("Inter", FontInfo.Type.Regular, TextRenderer.get());
         }
@@ -1091,6 +1093,7 @@ public enum ClickGuiRenderer {
     }
 
     public static TextRenderer getInterMedium() {
+        ensureFontBindingsCurrent();
         if (interMedium == null) {
             interMedium = Fonts.renderer("InterMedium", FontInfo.Type.Regular, getInterRegular());
         }
@@ -1102,6 +1105,7 @@ public enum ClickGuiRenderer {
     }
 
     public static TextRenderer getSfMedium() {
+        ensureFontBindingsCurrent();
         if (onestMedium == null) {
             onestMedium = Fonts.renderer("OnestMedium", FontInfo.Type.Regular, TextRenderer.get());
         }
@@ -1113,6 +1117,7 @@ public enum ClickGuiRenderer {
     }
 
     public static TextRenderer getSfProDisplaySemibold() {
+        ensureFontBindingsCurrent();
         if (onestBold == null) {
             onestBold = Fonts.renderer("OnestBold", FontInfo.Type.Regular, getInterMedium());
         }
@@ -1124,10 +1129,30 @@ public enum ClickGuiRenderer {
     }
 
     public static TextRenderer getMonsterratRegular() {
+        ensureFontBindingsCurrent();
         if (monsterratRegular == null) {
             monsterratRegular = Fonts.renderer("Monsterrat", FontInfo.Type.Regular, TextRenderer.get());
         }
         return monsterratRegular;
+    }
+
+    private static void ensureFontBindingsCurrent() {
+        long generation = Fonts.generation();
+        if (boundFontGeneration == generation) return;
+        invalidateFontBindings();
+        boundFontGeneration = generation;
+    }
+
+    /** Drop cached renderer identities after a font/resource generation is replaced. */
+    public static void invalidateFontBindings() {
+        interRegular = null;
+        interMedium = null;
+        onestMedium = null;
+        onestBold = null;
+        monsterratRegular = null;
+        boundFontGeneration = Long.MIN_VALUE;
+        TEXT_WIDTH_CACHE.clear();
+        TEXT_HEIGHT_CACHE.clear();
     }
 
     public static int framebufferWidth() {
@@ -1927,6 +1952,7 @@ public enum ClickGuiRenderer {
      * the first user-triggered open. Section discovery itself is owned by ClickGuiSectionManager.
      */
     public static void prewarmUiObjects() {
+        ensureFontBindingsCurrent();
         if (mainScreen == null) mainScreen = new ClickGuiScreen();
         if (pickerScreen == null) pickerScreen = new ClickGuiPickerScreen();
         getInterRegular();

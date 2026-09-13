@@ -22,13 +22,13 @@ import combatant.client.render.engine.svg.SvgMsdfRegistry;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.util.resources.RenderResourceReadiness;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 public enum RenderPrewarmManager {
     ;
@@ -70,15 +70,10 @@ public enum RenderPrewarmManager {
         ClickGuiSectionManager.prewarm();
         UiScriptStats uiScripts = prewarmUiScripts();
 
-        boolean deferDynamicWarmup = reason != null
-                && reason.toLowerCase(Locale.ROOT).contains("reload");
-
-        // CPU-only registry snapshots build in parallel. On a resource reload, start them from the
-        // next client tick so language/model listeners have fully published their new state.
-        pickerCatalogPending = deferDynamicWarmup;
-        if (!deferDynamicWarmup) {
-            PickerCatalogFactory.prewarmAsync();
-        }
+        // Registry-backed picker catalogs are not safe during Fabric's client entrypoint: 26.2
+        // binds Holder component sets later in startup. Keep them pending until BOTH the client
+        // lifecycle and the initial resource publication barrier are complete.
+        pickerCatalogPending = true;
 
         resetDeferredItemAtlasWarmup();
         requestGpuPrewarm(reason);
@@ -99,7 +94,16 @@ public enum RenderPrewarmManager {
             gpuPrewarmPending = true;
             pendingGpuReason = "client started";
         }
-        runPendingGpuPrewarm();
+        runReadyWarmup();
+    }
+
+    /**
+     * Called immediately after the shader/resource reload publishes its final resource generation.
+     * Startup ordering differs between loaders/mixins, so this forms the second half of a two-way
+     * barrier with {@link #onClientStarted()}: whichever side becomes ready last starts warmup.
+     */
+    public static void onRenderResourcesReady() {
+        runReadyWarmup();
     }
 
     private static void requestGpuPrewarm(String reason) {
@@ -108,12 +112,30 @@ public enum RenderPrewarmManager {
             pendingGpuReason = reason;
         }
         if (gpuLifecycleReady) {
-            runPendingGpuPrewarm();
+            runReadyWarmup();
         }
     }
 
+    private static boolean warmupBarrierReady() {
+        return gpuLifecycleReady
+                && RenderResourceReadiness.isReady()
+                && RenderSystem.isOnRenderThread();
+    }
+
+    private static void runReadyWarmup() {
+        if (!warmupBarrierReady()) return;
+
+        if (pickerCatalogPending) {
+            if (PickerCatalogFactory.prewarmAsync()) {
+                pickerCatalogPending = false;
+            }
+        }
+
+        runPendingGpuPrewarm();
+    }
+
     private static void runPendingGpuPrewarm() {
-        if (!gpuLifecycleReady || !gpuPrewarmPending || !RenderSystem.isOnRenderThread()) return;
+        if (!warmupBarrierReady() || !gpuPrewarmPending) return;
 
         String reason = pendingGpuReason;
         gpuPrewarmPending = false;
@@ -166,13 +188,8 @@ public enum RenderPrewarmManager {
     public static void pumpDeferred() {
         if (!RuntimeGate.canRunClientLogic() || !RenderSystem.isOnRenderThread()) return;
 
-        if (pickerCatalogPending) {
-            PickerCatalogFactory.prewarmAsync();
-            pickerCatalogPending = false;
-        }
-
-        if (!gpuLifecycleReady) return;
-        runPendingGpuPrewarm();
+        runReadyWarmup();
+        if (!warmupBarrierReady()) return;
 
         if (gpuAtlasPending) {
             try {
@@ -231,6 +248,7 @@ public enum RenderPrewarmManager {
     public static void invalidateDeferred() {
         PickerCatalogFactory.invalidateAsyncCaches();
         pickerCatalogPending = true;
+        ClickGuiRenderer.invalidateFontBindings();
         if (gpuLifecycleReady && RenderSystem.isOnRenderThread()) {
             ItemBatchRenderer.onResourceReload();
         }

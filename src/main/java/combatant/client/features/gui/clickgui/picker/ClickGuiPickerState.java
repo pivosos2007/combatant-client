@@ -94,6 +94,7 @@ public final class ClickGuiPickerState {
     private float detailH;
     private String focusedId;
     private TextRenderer interBold;
+    private long interBoldGeneration = Long.MIN_VALUE;
     private String hoveredCardId;
     private long hoveredCardStartMs;
     private float allFilterHoverAnim;
@@ -916,6 +917,11 @@ public final class ClickGuiPickerState {
     }
 
     private TextRenderer interBold() {
+        long generation = Fonts.generation();
+        if (interBoldGeneration != generation) {
+            interBold = null;
+            interBoldGeneration = generation;
+        }
         if (interBold != null) return interBold;
         FontFamily family = Fonts.getFamily("Inter");
         if (family == null) {

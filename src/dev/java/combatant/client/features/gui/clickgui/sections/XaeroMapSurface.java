@@ -11,12 +11,7 @@ import combatant.client.config.subsystem.MapUiConfig;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.theme.Theme;
-import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.renderer.Renderer2D;
-import combatant.client.render.engine.renderer.ui.draw.UiBoxShape;
-import combatant.client.render.engine.renderer.ui.draw.UiPaint;
-import combatant.client.render.engine.renderer.ui.draw.UiStroke;
-import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.map.MapGridSpec;
 import combatant.client.render.map.MapOverlaySnapshot;
 import combatant.client.render.map.MapPoint;
@@ -83,12 +78,6 @@ final class XaeroMapSurface {
     private static final double MIN_SCALE = 1.0 / 16.0;
     private static final double MAX_SCALE = 50.0;
     private static final long ZOOM_ANIMATION_NS = 100_000_000L;
-    private static final float MAP_INFO_FONT_SIZE = 18.0f;
-    private static final float MAP_INFO_PAD_X = 14.0f;
-    private static final float MAP_INFO_PAD_Y = 8.0f;
-    private static final float MAP_INFO_RADIUS = 10.0f;
-    private static final float MAP_INFO_EDGE_INSET = 18.0f;
-    private static final float MAP_INFO_TOP_GAP = 10.0f;
     private static double destinationScale = 3.0;
 
     private final MapVisibleTileSelector visibleTileSelector = new MapVisibleTileSelector(TILE_RESOLUTION, 16384);
@@ -154,7 +143,7 @@ final class XaeroMapSurface {
     private boolean contextOpen;
     private boolean deleteArmed;
     private Drawer drawer = Drawer.NONE;
-    private WaypointDraft waypointDraft;
+    private XaeroMapWaypointEditor waypointEditor;
 
     Frame render(float x, float y, float width, float height, float mouseX, float mouseY) {
         areaX = x;
@@ -227,12 +216,13 @@ final class XaeroMapSurface {
         elements.setTabDown(tabDown);
         elementSnapshot = elements.collect(processor, dimension, userScale);
         boolean elementPointerActive = (settings == null || !settings.isOpen())
-                && !contextOpen && waypointDraft == null && drawer == Drawer.NONE
+                && !contextOpen && waypointEditor == null && drawer == Drawer.NONE
                 && contains(mouseX, mouseY);
         hoveredElement = elements.render(elementSnapshot, viewport,
                 elementPointerActive ? mouseX : Float.NaN,
                 elementPointerActive ? mouseY : Float.NaN);
         drawPlayerArrow(processor, dimension, viewport);
+        elements.renderHover(viewport);
         drawMapUi(processor, dimension, mouseX, mouseY);
         return result.terrainTilesDrawn() == 0
                 ? Frame.waiting("Preparing World Map...")
@@ -240,7 +230,11 @@ final class XaeroMapSurface {
     }
 
     boolean mousePressed(float mouseX, float mouseY, int button) {
-        if (waypointDraft != null && waypointDraft.mousePressed(mouseX, mouseY, button)) return true;
+        if (waypointEditor != null) {
+            boolean consumed = waypointEditor.mousePressed(mouseX, mouseY, button);
+            if (waypointEditor.isClosed()) waypointEditor = null;
+            if (consumed) return true;
+        }
         if (settings != null && settings.mousePressed(mouseX, mouseY, button)) return true;
         if (contextOpen && clickContext(mouseX, mouseY, button)) return true;
         if (clickUiButton(mouseX, mouseY, button)) return true;
@@ -268,7 +262,10 @@ final class XaeroMapSurface {
 
     void mouseReleased(float mouseX, float mouseY, int button) {
         if (settings != null) settings.mouseReleased(mouseX, mouseY, button);
-        if (waypointDraft != null) waypointDraft.mouseReleased(mouseX, mouseY, button);
+        if (waypointEditor != null) {
+            waypointEditor.mouseReleased(mouseX, mouseY, button);
+            if (waypointEditor.isClosed()) waypointEditor = null;
+        }
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) dragging = false;
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && rightSelecting) {
             rightSelecting = false;
@@ -287,7 +284,11 @@ final class XaeroMapSurface {
     }
 
     boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (waypointDraft != null && waypointDraft.keyPressed(keyCode, modifiers)) return true;
+        if (waypointEditor != null) {
+            boolean consumed = waypointEditor.keyPressed(keyCode, modifiers);
+            if (waypointEditor.isClosed()) waypointEditor = null;
+            if (consumed) return true;
+        }
         if (settings != null && settings.keyPressed(keyCode, scanCode, modifiers)) return true;
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             if (contextOpen || drawer != Drawer.NONE) {
@@ -348,7 +349,11 @@ final class XaeroMapSurface {
     }
 
     boolean charTyped(char chr, int modifiers) {
-        if (waypointDraft != null && waypointDraft.charTyped(chr)) return true;
+        if (waypointEditor != null) {
+            boolean consumed = waypointEditor.charTyped(chr);
+            if (waypointEditor.isClosed()) waypointEditor = null;
+            if (consumed) return true;
+        }
         return settings != null && settings.charTyped(chr, modifiers);
     }
 
@@ -808,156 +813,62 @@ final class XaeroMapSurface {
     }
 
     private void drawMapUi(MapProcessor processor, MapDimension dimension, float mouseX, float mouseY) {
-        uiButtons.clear();
         SettingsGuiPalette palette = SettingsGuiPalette.current();
-        float size = 42.0f;
-        float gap = 9.0f;
-        float inset = 18.0f;
-
-        addUiButton(Action.SETTINGS, "settings-2", areaX + inset, areaY + inset, size,
-                tr("gui.xaero_box_open_settings", "Settings"), settings != null && settings.isOpen());
-        addUiButton(Action.RECENTER, "locate-fixed", areaX + inset + size + gap, areaY + inset, size,
-                "Recenter", false);
-
-        float leftBottom = areaY + areaHeight - inset - size;
-        addUiButton(Action.CAVE, "layers", areaX + inset, leftBottom, size,
-                tr("gui.xaero_box_cave_mode", "Cave mode"), dimension.getCaveModeType() != 0);
-        addUiButton(Action.DIMENSION, "route", areaX + inset, leftBottom - size - gap, size,
-                tr("gui.xaero_dimension_toggle_button", "Switch dimension"),
-                processor.getMapWorld().isUsingCustomDimension());
-
-        float right = areaX + areaWidth - inset - size;
-        float cursor = areaY + areaHeight - inset - size;
-        if (SupportMods.minimap() && effective(WorldMapProfiledConfigOptions.WAYPOINTS)) {
-            addUiButton(Action.WAYPOINTS, "map-pinned", right, cursor, size,
-                    tr("gui.xaero_box_open_waypoints", "Waypoints"), drawer == Drawer.WAYPOINTS);
-            cursor -= size + gap;
-        }
-        addUiButton(Action.PLAYERS, "users-round", right, cursor, size,
-                tr("gui.xaero_box_open_players", "Players"), drawer == Drawer.PLAYERS);
-        cursor -= size + gap;
-        if (SupportMods.minimap()) {
-            addUiButton(Action.RADAR, "radar", right, cursor, size,
-                    tr("gui.xaero_box_minimap_radar", "Minimap radar"),
-                    effective(WorldMapProfiledConfigOptions.MINIMAP_RADAR));
-            cursor -= size + gap;
-        }
-        if (SupportMods.pac()) {
-            addUiButton(Action.CLAIMS, "land-plot", right, cursor, size,
-                    tr("gui.xaero_box_pac_displaying_claims", "Claims"),
-                    effective(WorldMapProfiledConfigOptions.OPAC_CLAIMS));
-            cursor -= size + gap;
-        }
-        addUiButton(Action.EXPORT, "map", right, cursor, size,
-                tr("gui.xaero_box_export", "Export"), false);
-        cursor -= size + gap;
-        addUiButton(Action.CONTROLS, "circle-question-mark", right, cursor, size,
-                tr("gui.xaero_box_controls", "Controls"), false);
-        cursor -= size + gap;
-        if (effective(WorldMapProfiledConfigOptions.ZOOM_BUTTONS)) {
-            addUiButton(Action.ZOOM_OUT, "zoom-out", right, cursor, size,
-                    tr("gui.xaero_box_zoom_out", "Zoom out"), false);
-            cursor -= size + gap;
-            addUiButton(Action.ZOOM_IN, "zoom-in", right, cursor, size,
-                    tr("gui.xaero_box_zoom_in", "Zoom in"), false);
-        }
-
-        for (UiButton button : uiButtons) drawUiButton(button, mouseX, mouseY, palette);
-        drawCompass(palette);
-        drawCoordinates(palette, dimension);
-        drawZoom(palette);
-        drawDrawer(mouseX, mouseY, palette);
-        if (contextOpen) drawContext(mouseX, mouseY, palette);
-        if (waypointDraft != null) waypointDraft.render(mouseX, mouseY, palette);
-        drawTooltip(mouseX, mouseY, palette);
-        if (settings != null) settings.render(areaX, areaY, areaWidth, areaHeight, mouseX, mouseY);
-    }
-
-    private void drawZoom(SettingsGuiPalette palette) {
-        String zoom = Math.round(destinationScale * 1000.0) / 1000.0 + "x";
-        float textWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), zoom, MAP_INFO_FONT_SIZE);
-        float cardWidth = textWidth + MAP_INFO_PAD_X * 2.0f;
-        float cardHeight = MAP_INFO_FONT_SIZE + MAP_INFO_PAD_Y * 2.0f;
-        float cardX = areaX + (areaWidth - cardWidth) * 0.5f;
-        float cardY = areaY + areaHeight - MAP_INFO_EDGE_INSET - cardHeight;
-        Renderer2D.COLOR.roundedRect(cardX, cardY, cardWidth, cardHeight, MAP_INFO_RADIUS, palette.panelBgLeft());
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getOnestMedium(), zoom,
-                cardX + MAP_INFO_PAD_X, cardY + MAP_INFO_PAD_Y,
-                MAP_INFO_FONT_SIZE, palette.panelText(), false);
-    }
-
-    private void addUiButton(Action action, String icon, float x, float y, float size,
-                             String tooltip, boolean active) {
-        uiButtons.add(new UiButton(action, icon, x, y, size, tooltip, active));
-    }
-
-    private static void drawUiButton(UiButton button, float mouseX, float mouseY,
-                                     SettingsGuiPalette palette) {
-        boolean hover = button.contains(mouseX, mouseY);
-        int background = button.active()
-                ? palette.panelPillActive()
-                : hover ? palette.controlSurfaceHover() : palette.controlSurface();
-        Renderer2D renderer = Renderer2D.COLOR;
-        UiBoxShape shape = UiBoxShape.squircle(
-                button.x(), button.y(), button.size(), button.size(), 4.0f);
-        renderer.box(shape, UiPaint.solid(SettingsGuiPalette.withAlpha(background, 255)));
-        Themes.GradientSpec stroke = Themes.hudAccentGradient();
-        renderer.boxStroke(shape, UiPaint.linear(stroke.start(), stroke.end(), stroke.angleDeg(), 0.0f),
-                UiStroke.of(1.25f));
-        float iconSize = button.size() * 0.52f;
-        renderer.svg(button.icon(), button.x() + (button.size() - iconSize) * 0.5f,
-                button.y() + (button.size() - iconSize) * 0.5f, iconSize, iconSize,
-                SvgRenderOptions.overrideColor(button.active() || hover
-                        ? palette.panelText() : palette.panelMuted()));
-    }
-
-    private void drawTooltip(float mouseX, float mouseY, SettingsGuiPalette palette) {
-        if ((settings != null && settings.isOpen()) || contextOpen || waypointDraft != null) return;
-        float chrome = 1.0f;
-        UiButton hovered = null;
+        XaeroMapUiRenderer.layoutButtons(uiButtons, areaX, areaY, areaWidth, areaHeight,
+                new XaeroMapUiRenderer.ChromeState(
+                        settings != null && settings.isOpen(),
+                        dimension.getCaveModeType() != 0,
+                        processor.getMapWorld().isUsingCustomDimension(),
+                        SupportMods.minimap() && effective(WorldMapProfiledConfigOptions.WAYPOINTS),
+                        SupportMods.minimap(),
+                        SupportMods.minimap() && effective(WorldMapProfiledConfigOptions.MINIMAP_RADAR),
+                        SupportMods.pac(),
+                        SupportMods.pac() && effective(WorldMapProfiledConfigOptions.OPAC_CLAIMS),
+                        effective(WorldMapProfiledConfigOptions.ZOOM_BUTTONS),
+                        drawer,
+                        tr("gui.xaero_box_open_settings", "Settings"),
+                        "Recenter",
+                        tr("gui.xaero_box_cave_mode", "Cave mode"),
+                        tr("gui.xaero_dimension_toggle_button", "Switch dimension"),
+                        tr("gui.xaero_box_open_waypoints", "Waypoints"),
+                        tr("gui.xaero_box_open_players", "Players"),
+                        tr("gui.xaero_box_minimap_radar", "Minimap radar"),
+                        tr("gui.xaero_box_pac_displaying_claims", "Claims"),
+                        tr("gui.xaero_box_export", "Export"),
+                        tr("gui.xaero_box_controls", "Controls"),
+                        tr("gui.xaero_box_zoom_out", "Zoom out"),
+                        tr("gui.xaero_box_zoom_in", "Zoom in")
+                ));
         for (UiButton button : uiButtons) {
-            if (button.contains(mouseX, mouseY)) {
-                hovered = button;
-                break;
-            }
+            XaeroMapUiRenderer.drawUiButton(button, mouseX, mouseY, palette);
         }
-        if (hovered == null) return;
-        float fontSize = 16.0f * chrome;
-        float width = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), hovered.tooltip(), fontSize);
-        float x = clamp(mouseX + 16.0f * chrome, areaX + 6.0f * chrome, areaX + areaWidth - width - 26.0f * chrome);
-        float y = clamp(mouseY + 19.0f * chrome, areaY + 6.0f * chrome, areaY + areaHeight - 42.0f * chrome);
-        Renderer2D.COLOR.roundedRect(x, y, width + 20.0f * chrome, 32.0f * chrome, 8.0f * chrome, palette.panelBgRight());
-        Renderer2D.COLOR.roundedRectStroke(x, y, width + 20.0f * chrome, 32.0f * chrome,
-                8.0f * chrome, 1.1f * chrome, palette.panelStroke());
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), hovered.tooltip(),
-                x + 10.0f * chrome, y + 8.0f * chrome, fontSize, palette.panelText(), false);
-    }
-
-    private void drawCompass(SettingsGuiPalette palette) {
-        float chrome = 1.0f;
-        String north = tr("gui.xaero_compass_north", "N");
-        String east = tr("gui.xaero_compass_east", "E");
-        String south = tr("gui.xaero_compass_south", "S");
-        String west = tr("gui.xaero_compass_west", "W");
-        float centerX = areaX + areaWidth * 0.5f;
-        float centerY = areaY + areaHeight * 0.5f;
-        float edgeInset = 102.0f * chrome;
-        drawCardinal(north, centerX, areaY + edgeInset, palette, chrome);
-        drawCardinal(south, centerX, areaY + areaHeight - edgeInset, palette, chrome);
-        drawCardinal(west, areaX + edgeInset, centerY, palette, chrome);
-        drawCardinal(east, areaX + areaWidth - edgeInset, centerY, palette, chrome);
-    }
-
-    private static void drawCardinal(String text, float centerX, float centerY,
-                                     SettingsGuiPalette palette, float chrome) {
-        float size = 16.0f * chrome;
-        float width = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestBold(), text, size);
-        Renderer2D.COLOR.roundedRect(centerX - width * 0.5f - 8.0f * chrome,
-                centerY - 5.0f * chrome, width + 16.0f * chrome, size + 10.0f * chrome,
-                8.0f * chrome, palette.panelBgLeft());
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(), text,
-                centerX - width * 0.5f, centerY, size, palette.panelText(), false);
+        XaeroMapUiRenderer.drawCompass(areaX, areaY, areaWidth, areaHeight,
+                tr("gui.xaero_compass_north", "N"),
+                tr("gui.xaero_compass_east", "E"),
+                tr("gui.xaero_compass_south", "S"),
+                tr("gui.xaero_compass_west", "W"), palette);
+        drawCoordinates(palette, dimension);
+        XaeroMapUiRenderer.drawZoom(areaX, areaY, areaWidth, areaHeight, destinationScale, palette);
+        XaeroMapUiRenderer.drawDrawer(areaX, areaY, areaWidth, mouseX, mouseY,
+                drawer, elementSnapshot, drawerHits,
+                tr("gui.xaero_box_open_waypoints", "Waypoints"), palette);
+        if (contextOpen) {
+            rebuildContextEntries();
+            XaeroMapUiRenderer.ContextBounds bounds = XaeroMapUiRenderer.drawContext(
+                    areaX, areaY, areaWidth, areaHeight,
+                    contextX, contextY, mouseX, mouseY, contextEntries, palette);
+            contextX = bounds.x();
+            contextY = bounds.y();
+        }
+        if (waypointEditor != null) {
+            waypointEditor.render(areaX, areaY, areaWidth, areaHeight, mouseX, mouseY, palette);
+            if (waypointEditor.isClosed()) waypointEditor = null;
+        }
+        XaeroMapUiRenderer.drawTooltip(areaX, areaY, areaWidth, areaHeight,
+                mouseX, mouseY, uiButtons,
+                (settings != null && settings.isOpen()) || contextOpen || waypointEditor != null,
+                palette);
+        if (settings != null) settings.render(areaX, areaY, areaWidth, areaHeight, mouseX, mouseY);
     }
 
     private void drawCoordinates(SettingsGuiPalette palette, MapDimension dimension) {
@@ -969,18 +880,8 @@ final class XaeroMapSurface {
         String dimensionName = activeProcessor == null ? "" : activeProcessor.getDimensionName(dimension.getDimId());
         if (dimensionName != null && !dimensionName.isBlank()) coordinates += "  ·  " + dimensionName;
 
-        float textWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), coordinates, MAP_INFO_FONT_SIZE);
-        float cardWidth = textWidth + MAP_INFO_PAD_X * 2.0f;
-        float cardHeight = MAP_INFO_FONT_SIZE + MAP_INFO_PAD_Y * 2.0f;
-        float cardX = areaX + (areaWidth - cardWidth) * 0.5f;
-        float cardY = Math.max(
-                areaY + MAP_INFO_EDGE_INSET,
-                clickGuiChromeBottom() + MAP_INFO_TOP_GAP
-        );
-        Renderer2D.COLOR.roundedRect(cardX, cardY, cardWidth, cardHeight, MAP_INFO_RADIUS, palette.panelBgLeft());
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), coordinates,
-                cardX + MAP_INFO_PAD_X, cardY + MAP_INFO_PAD_Y,
-                MAP_INFO_FONT_SIZE, palette.panelText(), false);
+        XaeroMapUiRenderer.drawCoordinates(areaX, areaY, areaWidth,
+                coordinates, clickGuiChromeBottom(), palette);
     }
 
     private float clickGuiChromeBottom() {
@@ -991,93 +892,6 @@ final class XaeroMapSurface {
         float eased = 1.0f - inv * inv * inv;
         float shellY = state.tabBarY() - (1.0f - eased) * 18.0f;
         return shellY + state.tabBarH();
-    }
-
-    private void drawDrawer(float mouseX, float mouseY, SettingsGuiPalette palette) {
-        drawerHits.clear();
-        if (drawer == Drawer.NONE) return;
-        float width = 360.0f;
-        float x = areaX + areaWidth - width - 82.0f;
-        float y = areaY + 72.0f;
-        float rowHeight = 46.0f;
-        List<XaeroMapElements.Element> rows = elementSnapshot.elements().stream()
-                .filter(element -> drawer == Drawer.WAYPOINTS
-                        ? element.kind() == XaeroMapElements.Kind.WAYPOINT
-                        : element.kind() != XaeroMapElements.Kind.WAYPOINT)
-                .limit(14)
-                .toList();
-        float height = 56.0f + Math.max(1, rows.size()) * rowHeight + 12.0f;
-        Renderer2D renderer = Renderer2D.COLOR;
-        renderer.roundedRectSoftShadow(x, y, width, height, 14.0f, 10.0f,
-                0.05f, palette.panelShadow());
-        renderer.roundedRectGradient(x, y, width, height, 14.0f,
-                palette.panelBgLeft(), palette.panelBgRight(), 0.0f);
-        renderer.roundedRectStroke(x, y, width, height, 14.0f, 1.2f, palette.panelStroke());
-        String title = drawer == Drawer.WAYPOINTS
-                ? tr("gui.xaero_box_open_waypoints", "Waypoints")
-                : "Players & Radar";
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(), title,
-                x + 18.0f, y + 18.0f, 17.0f, palette.panelText(), false);
-        renderer.quad(x + 16.0f, y + 52.0f, width - 32.0f,
-                1.0f, palette.panelDivider());
-        float rowY = y + 58.0f;
-        if (rows.isEmpty()) {
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), "Nothing to display",
-                    x + 18.0f, rowY + 10.0f, 15.0f, palette.panelMuted(), false);
-        }
-        for (XaeroMapElements.Element element : rows) {
-            boolean hover = inside(mouseX, mouseY, x + 10.0f, rowY, width - 20.0f, 42.0f);
-            if (hover) renderer.roundedRect(x + 10.0f, rowY, width - 20.0f, 42.0f,
-                    8.0f, palette.controlSurfaceHover());
-            String icon = switch (element.kind()) {
-                case WAYPOINT -> "map-pin";
-                case PLAYER -> "users-round";
-                case ENTITY -> "radar";
-            };
-            renderer.svg(icon, x + 18.0f, rowY + 11.0f,
-                    20.0f, 20.0f, SvgRenderOptions.overrideColor(element.color()));
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), element.plainName(),
-                    x + 48.0f, rowY + 9.0f, 15.0f,
-                    element.disabled() ? palette.panelMuted() : palette.panelText(), false);
-            String location = (int) element.worldX() + ", " + (int) element.worldZ();
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), location,
-                    x + 48.0f, rowY + 27.0f, 12.0f,
-                    palette.panelMuted(), false);
-            drawerHits.add(new ElementHit(element, x + 10.0f, rowY, width - 20.0f, 42.0f));
-            rowY += rowHeight;
-        }
-    }
-
-    private void drawContext(float mouseX, float mouseY, SettingsGuiPalette palette) {
-        rebuildContextEntries();
-        float width = 340.0f;
-        float rowHeight = 42.0f;
-        float height = 16.0f + contextEntries.size() * rowHeight;
-        float x = clamp(contextX, areaX + 8.0f, areaX + areaWidth - width - 8.0f);
-        float y = clamp(contextY, areaY + 8.0f, areaY + areaHeight - height - 8.0f);
-        contextX = x;
-        contextY = y;
-        Renderer2D renderer = Renderer2D.COLOR;
-        renderer.roundedRectSoftShadow(x, y, width, height, 13.0f, 10.0f,
-                0.05f, palette.panelShadow());
-        renderer.roundedRectGradient(x, y, width, height, 13.0f,
-                palette.panelBgLeft(), palette.panelBgRight(), 0.0f);
-        renderer.roundedRectStroke(x, y, width, height, 13.0f, 1.2f, palette.panelStroke());
-        float rowY = y + 8.0f;
-        for (MenuEntry entry : contextEntries) {
-            boolean hover = entry.enabled() && inside(mouseX, mouseY, x + 8.0f, rowY,
-                    width - 16.0f, rowHeight - 3.0f);
-            if (hover) renderer.roundedRect(x + 8.0f, rowY,
-                    width - 16.0f, rowHeight - 3.0f, 8.0f, palette.controlSurfaceHover());
-            if (entry.icon() != null) {
-                renderer.svg(entry.icon(), x + 16.0f, rowY + 11.0f, 20.0f, 20.0f,
-                        SvgRenderOptions.overrideColor(entry.enabled() ? palette.panelText() : palette.panelMuted()));
-            }
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), entry.label(),
-                    x + 46.0f, rowY + 11.0f, 15.0f,
-                    entry.enabled() ? palette.panelText() : palette.panelMuted(), false);
-            rowY += rowHeight;
-        }
     }
 
     private void rebuildContextEntries() {
@@ -1270,7 +1084,16 @@ final class XaeroMapSurface {
             contextBlockY = pointerBlockY;
             contextBlockZ = pointerBlockZ;
         }
-        waypointDraft = new WaypointDraft(waypoint);
+        waypointEditor = new XaeroMapWaypointEditor(waypoint, (edited, name, symbol, colorIndex) -> {
+            if (edited == null) {
+                XaeroMapActions.createWaypoint(elementSnapshot.waypointWorld(), contextBlockX,
+                        contextBlockY == Short.MAX_VALUE ? Short.MAX_VALUE : contextBlockY + 1,
+                        contextBlockZ, name, symbol, colorIndex);
+            } else {
+                XaeroMapActions.editWaypoint(elementSnapshot.waypointWorld(), edited,
+                        name, symbol, colorIndex);
+            }
+        });
         contextOpen = false;
     }
 
@@ -1334,177 +1157,6 @@ final class XaeroMapSurface {
             translated = fallback;
         }
         return LegacyTextUtil.stripLegacy(translated).replace('\n', ' ').replace('\r', ' ').trim();
-    }
-
-    private final class WaypointDraft {
-        private final Waypoint edited;
-        private String name;
-        private String symbol;
-        private int colorIndex;
-        private int focusedField;
-        private float x;
-        private float y;
-        private float width;
-        private float height;
-
-        private WaypointDraft(Waypoint edited) {
-            this.edited = edited;
-            this.name = edited == null ? "Waypoint" : edited.getName();
-            this.symbol = edited == null ? "W" : edited.getSymbol();
-            if (edited != null && edited.getOriginal() instanceof xaero.common.minimap.waypoints.Waypoint source) {
-                this.colorIndex = source.getColor();
-            } else {
-                this.colorIndex = 6;
-            }
-        }
-
-        private void render(float mouseX, float mouseY, SettingsGuiPalette palette) {
-            width = 420.0f;
-            height = 330.0f;
-            x = areaX + (areaWidth - width) * 0.5f;
-            y = areaY + (areaHeight - height) * 0.5f;
-            Renderer2D renderer = Renderer2D.COLOR;
-            renderer.roundedRectSoftShadow(x, y, width, height, 16.0f, 14.0f,
-                    0.06f, palette.panelShadow());
-            renderer.roundedRectGradient(x, y, width, height, 16.0f,
-                    palette.panelBgLeft(), palette.panelBgRight(), 0.0f);
-            renderer.roundedRectStroke(x, y, width, height, 16.0f, 1.3f, palette.panelStroke());
-            String title = edited == null ? "Create waypoint" : "Edit waypoint";
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(), title,
-                    x + 22.0f, y + 22.0f, 18.0f, palette.panelText(), false);
-            renderer.svg("map-pin", x + width - 46.0f, y + 18.0f, 24.0f, 24.0f,
-                    SvgRenderOptions.overrideColor(xaero.hud.minimap.waypoint.WaypointColor
-                            .fromIndex(Math.floorMod(colorIndex, 16)).getHex() | 0xFF000000));
-            drawDraftField("Name", name, 0, y + 72.0f, palette);
-            drawDraftField("Symbol", symbol, 1, y + 140.0f, palette);
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), "Color",
-                    x + 22.0f, y + 204.0f, 14.0f, palette.panelMuted(), false);
-            float chipX = x + 22.0f;
-            float chipY = y + 228.0f;
-            for (int i = 0; i < 16; i++) {
-                int color = xaero.hud.minimap.waypoint.WaypointColor.fromIndex(i).getHex() | 0xFF000000;
-                float chip = 18.0f;
-                renderer.roundedRect(chipX, chipY, chip, chip, chip * 0.38f, color);
-                if (i == colorIndex) renderer.roundedRectStroke(chipX - 2.0f,
-                        chipY - 2.0f, chip + 4.0f, chip + 4.0f,
-                        chip * 0.48f, 1.5f, palette.panelText());
-                chipX += 24.0f;
-            }
-            drawDraftButton("Cancel", x + width - 198.0f, y + height - 54.0f,
-                    82.0f, mouseX, mouseY, palette, false);
-            drawDraftButton(edited == null ? "Create" : "Save", x + width - 102.0f,
-                    y + height - 54.0f, 80.0f, mouseX, mouseY, palette, true);
-        }
-
-        private void drawDraftField(String label, String value, int index, float fieldY,
-                                    SettingsGuiPalette palette) {
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), label,
-                    x + 22.0f, fieldY, 14.0f, palette.panelMuted(), false);
-            float y0 = fieldY + 20.0f;
-            Renderer2D.COLOR.roundedRect(x + 22.0f, y0, width - 44.0f,
-                    40.0f, 9.0f,
-                    focusedField == index + 1 ? palette.controlSurfaceHover() : palette.controlSurface());
-            Renderer2D.COLOR.roundedRectStroke(x + 22.0f, y0, width - 44.0f,
-                    40.0f, 9.0f, 1.1f, palette.panelStroke());
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), value,
-                    x + 34.0f, y0 + 11.0f, 16.0f, palette.panelText(), false);
-        }
-
-        private void drawDraftButton(String label, float bx, float by, float bw,
-                                     float mouseX, float mouseY, SettingsGuiPalette palette,
-                                     boolean primary) {
-            boolean hover = inside(mouseX, mouseY, bx, by, bw, 36.0f);
-            Renderer2D.COLOR.roundedRect(bx, by, bw, 36.0f, 9.0f,
-                    primary ? palette.panelPillActive()
-                            : hover ? palette.controlSurfaceHover() : palette.controlSurface());
-            float textWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), label, 15.0f);
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), label,
-                    bx + (bw - textWidth) * 0.5f, by + 10.0f,
-                    15.0f, palette.panelText(), false);
-        }
-
-        private boolean mousePressed(float mouseX, float mouseY, int button) {
-            if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
-            if (!inside(mouseX, mouseY, x, y, width, height)) {
-                waypointDraft = null;
-                return true;
-            }
-            if (inside(mouseX, mouseY, x + 22.0f, y + 92.0f, width - 44.0f, 40.0f)) {
-                focusedField = 1;
-                return true;
-            }
-            if (inside(mouseX, mouseY, x + 22.0f, y + 160.0f, width - 44.0f, 40.0f)) {
-                focusedField = 2;
-                return true;
-            }
-            float chipX = x + 22.0f;
-            for (int i = 0; i < 16; i++) {
-                if (inside(mouseX, mouseY, chipX, y + 228.0f, 18.0f, 18.0f)) {
-                    colorIndex = i;
-                    return true;
-                }
-                chipX += 24.0f;
-            }
-            if (inside(mouseX, mouseY, x + width - 198.0f,
-                    y + height - 54.0f, 82.0f, 36.0f)) {
-                waypointDraft = null;
-                return true;
-            }
-            if (inside(mouseX, mouseY, x + width - 102.0f,
-                    y + height - 54.0f, 80.0f, 36.0f)) {
-                save();
-                return true;
-            }
-            return true;
-        }
-
-        private void mouseReleased(float mouseX, float mouseY, int button) {
-        }
-
-        private boolean keyPressed(int keyCode, int modifiers) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                waypointDraft = null;
-                return true;
-            }
-            if (keyCode == GLFW.GLFW_KEY_TAB) {
-                focusedField = focusedField == 1 ? 2 : 1;
-                return true;
-            }
-            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-                save();
-                return true;
-            }
-            if (keyCode == GLFW.GLFW_KEY_BACKSPACE && focusedField != 0) {
-                if (focusedField == 1 && !name.isEmpty()) name = name.substring(0, name.length() - 1);
-                if (focusedField == 2 && !symbol.isEmpty()) symbol = symbol.substring(0, symbol.length() - 1);
-                return true;
-            }
-            return focusedField != 0;
-        }
-
-        private boolean charTyped(char chr) {
-            if (focusedField == 1 && !Character.isISOControl(chr) && name.length() < 48) {
-                name += chr;
-                return true;
-            }
-            if (focusedField == 2 && !Character.isISOControl(chr) && symbol.length() < 2) {
-                symbol += chr;
-                return true;
-            }
-            return focusedField != 0;
-        }
-
-        private void save() {
-            if (edited == null) {
-                XaeroMapActions.createWaypoint(elementSnapshot.waypointWorld(), contextBlockX,
-                        contextBlockY == Short.MAX_VALUE ? Short.MAX_VALUE : contextBlockY + 1,
-                        contextBlockZ, name, symbol, colorIndex);
-            } else {
-                XaeroMapActions.editWaypoint(elementSnapshot.waypointWorld(), edited,
-                        name, symbol, colorIndex);
-            }
-            waypointDraft = null;
-        }
     }
 
     private static void drawXaeroMapObject(AbstractTexture texture,
@@ -1697,7 +1349,7 @@ final class XaeroMapSurface {
         return Math.max(min, Math.min(max, value));
     }
 
-    private enum Action {
+    enum Action {
         SETTINGS,
         RECENTER,
         CAVE,
@@ -1712,7 +1364,7 @@ final class XaeroMapSurface {
         ZOOM_OUT
     }
 
-    private enum ContextAction {
+    enum ContextAction {
         NONE,
         EDIT,
         TELEPORT_ELEMENT,
@@ -1729,25 +1381,25 @@ final class XaeroMapSurface {
         SETTINGS
     }
 
-    private enum Drawer {
+    enum Drawer {
         NONE,
         WAYPOINTS,
         PLAYERS
     }
 
-    private record UiButton(Action action, String icon, float x, float y, float size,
+    record UiButton(Action action, String icon, float x, float y, float size,
                             String tooltip, boolean active) {
-        private boolean contains(float mouseX, float mouseY) {
+        boolean contains(float mouseX, float mouseY) {
             return inside(mouseX, mouseY, x, y, size, size);
         }
     }
 
-    private record MenuEntry(String label, String icon, boolean enabled, ContextAction action) {
+    record MenuEntry(String label, String icon, boolean enabled, ContextAction action) {
     }
 
-    private record ElementHit(XaeroMapElements.Element element, float x, float y,
+    record ElementHit(XaeroMapElements.Element element, float x, float y,
                               float width, float height) {
-        private boolean contains(float mouseX, float mouseY) {
+        boolean contains(float mouseX, float mouseY) {
             return inside(mouseX, mouseY, x, y, width, height);
         }
     }

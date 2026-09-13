@@ -64,7 +64,10 @@ public enum ResourceReloadHooks {
         } finally {
             // A failed reload must not authorize custom UI/pipeline compilation.
             // Optional prewarm failures do not invalidate already published shaders.
-            if (shaderResourcesPublished) RenderResourceReadiness.markReady("shader reload complete");
+            if (shaderResourcesPublished) {
+                RenderResourceReadiness.markReady("shader reload complete");
+                RenderPrewarmManager.onRenderResourcesReady();
+            }
         }
     }
 }

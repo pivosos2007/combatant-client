@@ -71,6 +71,7 @@ public final class ModulesMenuScreen {
     private TextRenderer regular;
     private TextRenderer medium;
     private TextRenderer semibold;
+    private long fontGeneration = Long.MIN_VALUE;
 
     public ModulesMenuScreen() {
         ModulesMenuCategory[] values = ModulesMenuCategory.values();
@@ -1015,6 +1016,13 @@ public final class ModulesMenuScreen {
     }
 
     private void ensureFonts() {
+        long generation = Fonts.generation();
+        if (fontGeneration != generation) {
+            regular = null;
+            medium = null;
+            semibold = null;
+            fontGeneration = generation;
+        }
         if (regular == null)
             regular = Fonts.renderer("Onest", FontInfo.Type.Regular, ClickGuiRenderer.getInterRegular());
         if (medium == null) medium = Fonts.renderer("OnestMedium", FontInfo.Type.Regular, regular);

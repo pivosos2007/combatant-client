@@ -84,7 +84,10 @@ public class CustomTextRenderer implements TextRenderer {
             }
             FontDebugStats.noteMsdfFallback(fontFace.info, MsdfFont.getLastError());
             if (fontFace.isAtlasOnly()) {
-                return createEmptyFonts();
+                throw new IllegalStateException(
+                        "Atlas-only font has no usable MSDF atlas: " + fontFace.info
+                                + " (" + MsdfFont.getLastError() + ")"
+                );
             }
         }
 
@@ -101,15 +104,6 @@ public class CustomTextRenderer implements TextRenderer {
         } finally {
             MemoryUtil.memFree(buffer);
         }
-    }
-
-    private GlyphFont[] createEmptyFonts() {
-        GlyphFont[] result = new GlyphFont[5];
-        for (int i = 0; i < result.length; i++) {
-            int height = (int) Math.round(27 * ((i * 0.5) + 1));
-            result[i] = new EmptyGlyphFont(height);
-        }
-        return result;
     }
 
     private boolean rebuildFonts() {

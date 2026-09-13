@@ -14,6 +14,7 @@
 package combatant.client.render.engine.text;
 
 import combatant.client.util.resources.asset.AssetLoad;
+import combatant.client.util.logging.DebugLog;
 
 import java.io.File;
 import java.util.*;
@@ -30,6 +31,7 @@ public enum Fonts {
     public static FontFace DEFAULT_FONT;
     public static CustomTextRenderer RENDERER;
     private static TextRenderer DEFAULT_RENDERER;
+    private static volatile long GENERATION;
 
     @AssetLoad(order = 100)
     public static void refresh() {
@@ -67,6 +69,12 @@ public enum Fonts {
         }
 
         load(DEFAULT_FONT);
+        GENERATION++;
+    }
+
+    /** Monotonic font resource generation; cached UI bindings must refresh when this changes. */
+    public static long generation() {
+        return GENERATION;
     }
 
     public static void load(FontFace fontFace) {
@@ -84,6 +92,12 @@ public enum Fonts {
             if (fontFace.equals(DEFAULT_FONT)) {
                 throw new RuntimeException("Failed to load default font: " + fontFace, e);
             }
+            DebugLog.warnOnce(
+                    "font-load:" + fontFace.info,
+                    "Failed to load font %s; falling back to default",
+                    fontFace,
+                    e
+            );
             load(DEFAULT_FONT);
         }
     }
@@ -91,16 +105,37 @@ public enum Fonts {
     public static int prewarmRenderers(Collection<FontInfo> fontInfos) {
         if (fontInfos == null || fontInfos.isEmpty()) return 0;
         int warmed = 0;
-        TextRenderer fallback = TextRenderer.get();
         for (FontInfo info : fontInfos) {
+            if (info == null) continue;
+            FontFace face = resolveFace(info.family(), info.type());
+            if (face == null) {
+                DebugLog.warnOnce(
+                        "font-prewarm-missing:" + info,
+                        "Font prewarm skipped: unresolved font %s",
+                        info
+                );
+                continue;
+            }
             try {
-                TextRenderer renderer = renderer(info, fallback);
-                if (renderer != null) {
-                    CustomTextRenderer custom = LanguageFallbackTextRenderer.customPrimary(renderer);
-                    if (custom != null) custom.prewarmBuffers();
-                    warmed++;
+                TextRenderer renderer = rendererExact(face);
+                CustomTextRenderer custom = LanguageFallbackTextRenderer.customPrimary(renderer);
+                if (custom == null) {
+                    DebugLog.warnOnce(
+                            "font-prewarm-noncustom:" + info,
+                            "Font prewarm did not materialize a custom renderer: %s",
+                            info
+                    );
+                    continue;
                 }
-            } catch (Throwable ignored) {
+                custom.prewarmBuffers();
+                warmed++;
+            } catch (RuntimeException failure) {
+                DebugLog.warnOnce(
+                        "font-prewarm-failed:" + info,
+                        "Failed to prewarm font %s",
+                        info,
+                        failure
+                );
             }
         }
         return warmed;
@@ -144,18 +179,29 @@ public enum Fonts {
 
     public static TextRenderer renderer(FontFace face, TextRenderer fallback) {
         if (face == null) return fallback != null ? fallback : TextRenderer.get();
+        try {
+            return rendererExact(face);
+        } catch (RuntimeException failure) {
+            DebugLog.warnOnce(
+                    "font-renderer-create:" + face.info,
+                    "Failed to create renderer for font %s; using fallback",
+                    face.info,
+                    failure
+            );
+            return fallback != null ? fallback : TextRenderer.get();
+        }
+    }
+
+    private static TextRenderer rendererExact(FontFace face) {
+        if (face == null) throw new IllegalArgumentException("Font face cannot be null");
         if (RENDERER != null && RENDERER.fontFace != null && RENDERER.fontFace.info.equals(face.info)) {
             return defaultRenderer();
         }
         TextRenderer cached = RENDERER_CACHE.get(face.info);
         if (cached != null) return cached;
-        try {
-            TextRenderer created = new LanguageFallbackTextRenderer(new CustomTextRenderer(face));
-            RENDERER_CACHE.put(face.info, created);
-            return created;
-        } catch (Exception e) {
-            return fallback != null ? fallback : TextRenderer.get();
-        }
+        TextRenderer created = new LanguageFallbackTextRenderer(new CustomTextRenderer(face));
+        RENDERER_CACHE.put(face.info, created);
+        return created;
     }
 
     static TextRenderer defaultRenderer() {

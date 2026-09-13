@@ -15,7 +15,6 @@ import combatant.client.features.gui.clickgui.layout.screen.settings.render.Layo
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
-import combatant.client.features.module.modules.misc.DefineTarget;
 import combatant.client.features.relations.PlayerRelations;
 import combatant.client.features.relations.StaffHeuristicsConfig;
 import combatant.client.render.engine.animation.AnimationUtility;
@@ -33,18 +32,13 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Relations management workspace.
- *
- * The screen is deliberately split into a dense browser and a stable inspector:
- * list rows stay compact, destructive actions live in one predictable place, and
- * the inspector has room for relation metadata/rules without growing every list row.
+ * Minimal Relations editor: tabs, one list, direct add/remove and staff heuristics.
  */
 public final class RelationsComponent {
     private static final long STATUS_DURATION_MS = 2200L;
     private static final String I18N = "clickgui.settings.relations.";
 
     private final RelationPlayerCardComponent cardComponent = new RelationPlayerCardComponent();
-    private final OnlineRelationPlayerPickerComponent onlinePicker;
     private final List<CardEntryHit> cardHits = new ArrayList<>();
     private final List<ChipHit> chipHits = new ArrayList<>();
 
@@ -63,9 +57,6 @@ public final class RelationsComponent {
     private Rect staffPill = Rect.ZERO;
     private Rect playerInputRect = Rect.ZERO;
     private Rect addTypedButton = Rect.ZERO;
-    private Rect reservedPickerButton = Rect.ZERO;
-    private Rect copyButton = Rect.ZERO;
-    private Rect removeButton = Rect.ZERO;
     private Rect enabledToggle = Rect.ZERO;
     private Rect prefixInputRect = Rect.ZERO;
     private Rect suffixInputRect = Rect.ZERO;
@@ -96,23 +87,14 @@ public final class RelationsComponent {
     private float enemiesHoverAnim;
     private float staffHoverAnim;
     private float addHoverAnim;
-    private float pickerHoverAnim;
-    private float copyHoverAnim;
-    private float removeHoverAnim;
 
     private static boolean movementInputBlocked;
-
-    public RelationsComponent() {
-        this.onlinePicker = new OnlineRelationPlayerPickerComponent(this::setStatus);
-    }
 
     public void resetScroll() {
         scroll = 0f;
         smoothedScroll = 0f;
         draggingScrollbar = false;
         activeField = ActiveField.NONE;
-        onlinePicker.close();
-        onlinePicker.resetScroll();
         movementInputBlocked = false;
     }
 
@@ -125,7 +107,7 @@ public final class RelationsComponent {
         chipHits.clear();
         resetTransientRects();
         SettingsGuiPalette palette = SettingsGuiPalette.current();
-        movementInputBlocked = activeField != ActiveField.NONE || onlinePicker.blocksMovementInput();
+        movementInputBlocked = activeField != ActiveField.NONE;
 
         float areaX = menuX + 31f * scale;
         float areaY = menuY + 33f * scale;
@@ -133,35 +115,17 @@ public final class RelationsComponent {
         float areaH = menuH - 39f * scale;
 
         List<String> entries = filteredEntries(tab.entries());
-        ensureSelection(entries);
+        validateSelection(entries);
 
-        float toolbarH = 16f * scale;
-        renderToolbar(areaX, areaY, areaW, toolbarH, entries.size(), mx, my, scale, palette);
+        float toolbarH = 18f * scale;
+        renderToolbar(areaX, areaY, areaW, toolbarH, mx, my, scale, palette);
 
         float workspaceY = areaY + toolbarH + 7f * scale;
         float workspaceH = Math.max(1f, areaY + areaH - workspaceY);
-
-        if (onlinePicker.isVisible()) {
-            listX = areaX;
-            listY = workspaceY;
-            listW = areaW;
-            listH = workspaceH;
-            onlinePicker.render(areaX, workspaceY, areaW, workspaceH, mx, my, scale, palette);
-            return;
-        }
-
-        float gap = 7f * scale;
-        float browserW = Math.min(areaW * 0.58f, 196f * scale);
-        browserW = Math.max(136f * scale, browserW);
-        float inspectorX = areaX + browserW + gap;
-        float inspectorW = Math.max(1f, areaW - browserW - gap);
-
-        renderBrowserPanel(areaX, workspaceY, browserW, workspaceH, entries, mx, my, scale, palette);
-        renderInspectorPanel(inspectorX, workspaceY, inspectorW, workspaceH, mx, my, scale, palette);
+        renderMainPanel(areaX, workspaceY, areaW, workspaceH, entries, mx, my, scale, palette);
     }
 
     public boolean mousePressedScrollbar(float mx, float my, int button) {
-        if (onlinePicker.isVisible()) return onlinePicker.mousePressedScrollbar(mx, my, button);
         if (button != 0 || !isScrollbarHovered(mx, my)) return false;
         draggingScrollbar = true;
         scrollbarDragOffset = ClickGuiMath.insideRect(mx, my, scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH)
@@ -172,17 +136,12 @@ public final class RelationsComponent {
     }
 
     public void mouseReleased(int button) {
-        onlinePicker.mouseReleased(button);
         if (button == 0) draggingScrollbar = false;
     }
 
     public void scroll(float mx, float my, double amount) {
-        if (onlinePicker.isVisible()) {
-            onlinePicker.scroll(mx, my, amount);
-            return;
-        }
         if (!ClickGuiMath.insideRect(mx, my, listX, listY, listW, listH)) return;
-        scroll += (float) (amount * 20f);
+        scroll += (float) (amount * 22f);
     }
 
     public boolean click(float mx, float my, int button) {
@@ -192,57 +151,9 @@ public final class RelationsComponent {
         if (enemiesPill.contains(mx, my)) return switchTab(RelationTab.ENEMIES);
         if (staffPill.contains(mx, my)) return switchTab(RelationTab.STAFF);
 
-        if (playerInputRect.contains(mx, my)) {
-            if (onlinePicker.isOpen()) {
-                activeField = ActiveField.NONE;
-                onlinePicker.focusSearch();
-            } else {
-                activeField = ActiveField.PLAYER;
-            }
-            movementInputBlocked = activeField != ActiveField.NONE || onlinePicker.blocksMovementInput();
-            clearStatus();
-            return true;
-        }
-
+        if (playerInputRect.contains(mx, my)) return focusField(ActiveField.PLAYER);
         if (addTypedButton.contains(mx, my)) {
-            if (onlinePicker.isOpen()) {
-                onlinePicker.clearSearch();
-                onlinePicker.focusSearch();
-                movementInputBlocked = onlinePicker.blocksMovementInput();
-                return true;
-            }
             commitPlayerInput();
-            return true;
-        }
-
-        if (reservedPickerButton.contains(mx, my)) {
-            activeField = ActiveField.NONE;
-            onlinePicker.toggle(tab.pickerMode());
-            movementInputBlocked = onlinePicker.blocksMovementInput();
-            clearStatus();
-            return true;
-        }
-
-        if (onlinePicker.isVisible()) {
-            if (onlinePicker.click(mx, my, button)) {
-                movementInputBlocked = onlinePicker.blocksMovementInput();
-                return true;
-            }
-            return false;
-        }
-
-        if (copyButton.contains(mx, my) && selectedName != null) {
-            ClipboardUtil.copy(selectedName);
-            setStatus(tr("status.copied", "Copied: %s", selectedName));
-            return true;
-        }
-
-        if (removeButton.contains(mx, my) && selectedName != null) {
-            String removed = selectedName;
-            if (tab.remove(removed)) {
-                selectedName = null;
-                setStatus(tr("status.removed", "Removed: %s", removed));
-            }
             return true;
         }
 
@@ -268,11 +179,20 @@ public final class RelationsComponent {
 
         for (CardEntryHit entryHit : cardHits) {
             CardHit hit = entryHit.hit();
-            if (!ClickGuiMath.insideRect(mx, my, hit.x(), hit.y(), hit.w(), hit.h())) continue;
-            selectedName = entryHit.name();
-            activeField = ActiveField.NONE;
-            movementInputBlocked = false;
-            return true;
+            if (hit.containsDelete(mx, my)) {
+                String removed = entryHit.name();
+                if (tab.remove(removed)) {
+                    if (equalsIgnoreCase(selectedName, removed)) selectedName = null;
+                    setStatus(tr("status.removed", "Removed: %s", removed));
+                }
+                return true;
+            }
+            if (hit.contains(mx, my)) {
+                selectedName = equalsIgnoreCase(selectedName, entryHit.name()) ? null : entryHit.name();
+                activeField = ActiveField.NONE;
+                movementInputBlocked = false;
+                return true;
+            }
         }
 
         activeField = ActiveField.NONE;
@@ -281,10 +201,6 @@ public final class RelationsComponent {
     }
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (onlinePicker.keyPressed(keyCode, scanCode, modifiers)) {
-            movementInputBlocked = activeField != ActiveField.NONE || onlinePicker.blocksMovementInput();
-            return true;
-        }
         if (activeField == ActiveField.NONE) return false;
 
         boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
@@ -310,14 +226,8 @@ public final class RelationsComponent {
     }
 
     public boolean charTyped(char chr, int modifiers) {
-        if (onlinePicker.charTyped(chr, modifiers)) {
-            movementInputBlocked = activeField != ActiveField.NONE || onlinePicker.blocksMovementInput();
-            return true;
-        }
         if (activeField == ActiveField.NONE) return false;
-        if (chr >= 32 && chr != 127) {
-            appendToField(activeField, String.valueOf(chr));
-        }
+        if (chr >= 32 && chr != 127) appendToField(activeField, String.valueOf(chr));
         return true;
     }
 
@@ -325,13 +235,12 @@ public final class RelationsComponent {
                                float y,
                                float w,
                                float h,
-                               int visibleCount,
                                float mx,
                                float my,
                                float scale,
                                SettingsGuiPalette palette) {
         float dt = AnimationUtility.deltaTime();
-        float segmentW = 44f * scale;
+        float segmentW = 50f * scale;
         float modeW = segmentW * 3f;
         float targetMode = tab.ordinal();
         modeAnim = AnimationUtility.approach(modeAnim, targetMode, dt, 15f);
@@ -344,290 +253,96 @@ public final class RelationsComponent {
         enemiesHoverAnim = updateHover(enemiesHoverAnim, enemiesPill.contains(mx, my), dt);
         staffHoverAnim = updateHover(staffHoverAnim, staffPill.contains(mx, my), dt);
 
-        int toolbarA = SettingsGuiPalette.withAlpha(palette.controlSurface(), 118);
-        int toolbarB = SettingsGuiPalette.withAlpha(palette.controlSurfaceHover(), 102);
-        LayoutRender2D.roundedQuad(x, y, modeW, h, 4.5f * scale, toolbarA, toolbarB, toolbarB, toolbarA);
+        int toolbarA = SettingsGuiPalette.withAlpha(palette.controlSurface(), 112);
+        int toolbarB = SettingsGuiPalette.withAlpha(palette.controlSurfaceHover(), 96);
+        LayoutRender2D.roundedQuad(x, y, modeW, h, 5f * scale, toolbarA, toolbarB, toolbarB, toolbarA);
         LayoutRender2D.roundedStroke(
-                x, y, modeW, h, 4.5f * scale, 0.5f * scale,
-                SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), 106)
+                x, y, modeW, h, 5f * scale, 0.5f * scale,
+                SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), 92)
         );
 
-        float inset = 1.25f * scale;
+        float inset = 1.4f * scale;
         float activeX = x + inset + segmentW * modeAnim;
         float activeW = segmentW - inset * 2f;
         int activeA = SettingsGuiPalette.withAlpha(
-                SettingsGuiPalette.mix(palette.panelPillActive(), tab.color(), 0.10f), 190);
+                SettingsGuiPalette.mix(palette.panelPillActive(), tab.color(), 0.10f), 188);
         int activeB = SettingsGuiPalette.withAlpha(
-                SettingsGuiPalette.mix(palette.controlSurfaceHover(), tab.color(), 0.15f), 178);
+                SettingsGuiPalette.mix(palette.controlSurfaceHover(), tab.color(), 0.15f), 176);
         LayoutRender2D.roundedQuad(
-                activeX,
-                y + inset,
-                activeW,
-                h - inset * 2f,
-                3.7f * scale,
-                activeA,
-                activeB,
-                activeB,
-                activeA
+                activeX, y + inset, activeW, h - inset * 2f, 4f * scale,
+                activeA, activeB, activeB, activeA
         );
 
         drawSegment(friendsPill, tr("tab.friends", "Friends"), tab == RelationTab.FRIENDS, friendsHoverAnim, scale, palette);
         drawSegment(enemiesPill, tr("tab.enemies", "Enemies"), tab == RelationTab.ENEMIES, enemiesHoverAnim, scale, palette);
         drawSegment(staffPill, tr("tab.staff", "Staff"), tab == RelationTab.STAFF, staffHoverAnim, scale, palette);
 
-        String count = tr("count", "%s entries", visibleCount);
-        float countSize = 5.8f * scale;
-        float countX = x + modeW + 7f * scale;
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterRegular(),
-                count,
-                countX,
-                y + (h - ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), countSize)) * 0.5f,
-                countSize,
-                palette.panelMuted(),
-                false
-        );
-
         float action = h;
-        float gap = 3f * scale;
-        float inputRight = x + w - action * 2f - gap * 2f;
-        float fieldX = Math.max(countX + 43f * scale, x + w - 118f * scale);
-        float fieldW = Math.max(46f * scale, inputRight - fieldX);
-
+        float fieldW = Math.min(122f * scale, Math.max(72f * scale, w - modeW - action - 18f * scale));
+        float fieldX = x + w - action - 4f * scale - fieldW;
         playerInputRect = new Rect(fieldX, y, fieldW, h);
-        addTypedButton = new Rect(inputRight + gap, y, action, h);
-        reservedPickerButton = new Rect(x + w - action, y, action, h);
+        addTypedButton = new Rect(x + w - action, y, action, h);
 
-        boolean onlineMode = onlinePicker.isOpen();
-        if (onlineMode) {
-            String query = onlinePicker.searchText();
-            drawInput(
-                    playerInputRect,
-                    query,
-                    tr("placeholder.search_online", "Search online"),
-                    onlinePicker.isSearchFocused(),
-                    mx,
-                    my,
-                    scale,
-                    palette
-            );
-            addHoverAnim = updateHover(addHoverAnim, addTypedButton.contains(mx, my), dt);
-            drawIconButton(addTypedButton, "rotate-ccw", addHoverAnim, query == null || query.isBlank(), scale, palette);
-        } else {
-            drawInput(
-                    playerInputRect,
-                    playerInput,
-                    tr("placeholder.nick", "Nick"),
-                    activeField == ActiveField.PLAYER,
-                    mx,
-                    my,
-                    scale,
-                    palette
-            );
-            addHoverAnim = updateHover(addHoverAnim, addTypedButton.contains(mx, my), dt);
-            drawIconButton(addTypedButton, "check", addHoverAnim, false, scale, palette);
-        }
+        drawInput(
+                playerInputRect,
+                playerInput,
+                tr("placeholder.nick", "Nick"),
+                activeField == ActiveField.PLAYER,
+                mx,
+                my,
+                scale,
+                palette
+        );
+        addHoverAnim = updateHover(addHoverAnim, addTypedButton.contains(mx, my), dt);
+        drawAddButton(addTypedButton, addHoverAnim, scale, palette);
 
-        pickerHoverAnim = updateHover(pickerHoverAnim, reservedPickerButton.contains(mx, my) || onlinePicker.isVisible(), dt);
-        drawIconButton(reservedPickerButton, onlineMode ? "panel-right-close" : "user-plus", pickerHoverAnim, false, scale, palette);
+        float statusX = x + modeW + 8f * scale;
+        float statusW = Math.max(0f, fieldX - statusX - 7f * scale);
+        renderStatus(statusX, y, statusW, h, scale, palette);
     }
 
-    private void renderBrowserPanel(float x,
-                                    float y,
-                                    float w,
-                                    float h,
-                                    List<String> entries,
-                                    float mx,
-                                    float my,
-                                    float scale,
-                                    SettingsGuiPalette palette) {
-        try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 6f * scale, scale, palette)) {
+    private void renderMainPanel(float x,
+                                 float y,
+                                 float w,
+                                 float h,
+                                 List<String> entries,
+                                 float mx,
+                                 float my,
+                                 float scale,
+                                 SettingsGuiPalette palette) {
+        try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 6.5f * scale, scale, palette)) {
             renderWorkspaceSurface(x, y, w, h, scale, palette);
 
-            float pad = 6f * scale;
-            float titleSize = 7.2f * scale;
-            String title = tr("browser.title", "Players");
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getInterMedium(),
-                    title,
-                    x + pad,
-                    y + 5.5f * scale,
-                    titleSize,
-                    palette.panelText(),
-                    false
-            );
-
-            String summary = tr("browser.summary", "%s in %s", entries.size(), tab.label());
-            float summarySize = 5.5f * scale;
-            String fittedSummary = ClickGuiRenderer.fitText(
-                    ClickGuiRenderer.getInterRegular(),
-                    summary,
-                    summarySize,
-                    w - pad * 2f
-            );
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getInterRegular(),
-                    fittedSummary,
-                    x + pad,
-                    y + 16f * scale,
-                    summarySize,
-                    palette.panelMuted(),
-                    false
-            );
-
-            float dividerY = y + 26f * scale;
-            LayoutRender2D.rectQuad(
-                    x + pad,
-                    dividerY,
-                    w - pad * 2f,
-                    0.5f * scale,
-                    LayoutRender2D.alpha(palette.menuLineLow(), 0.30f),
-                    LayoutRender2D.alpha(palette.menuLineStrong(), 0.48f),
-                    LayoutRender2D.alpha(palette.menuLineStrong(), 0.48f),
-                    LayoutRender2D.alpha(palette.menuLineLow(), 0.30f)
-            );
-
-            listX = x + pad;
-            listY = dividerY + 5f * scale;
-            listW = w - pad * 2f;
-            listH = Math.max(1f, y + h - pad - listY);
-            renderCards(listX, listY, listW, listH, entries, mx, my, scale, palette);
-        }
-    }
-
-    private void renderInspectorPanel(float x,
-                                      float y,
-                                      float w,
-                                      float h,
-                                      float mx,
-                                      float my,
-                                      float scale,
-                                      SettingsGuiPalette palette) {
-        try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 6f * scale, scale, palette)) {
-            renderWorkspaceSurface(x, y, w, h, scale, palette);
-
-            float pad = 7f * scale;
+            float pad = 8f * scale;
             float innerX = x + pad;
+            float innerY = y + pad;
             float innerW = Math.max(1f, w - pad * 2f);
-            float cursorY = y + 5.5f * scale;
+            float innerH = Math.max(1f, h - pad * 2f);
 
-            String title = tr("details.title", "Inspector");
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getInterMedium(),
-                    title,
-                    innerX,
-                    cursorY,
-                    7.1f * scale,
-                    palette.panelText(),
-                    false
-            );
-
-            renderStatus(
-                    innerX + 48f * scale,
-                    cursorY - 0.5f * scale,
-                    Math.max(1f, innerW - 48f * scale),
-                    scale,
-                    palette
-            );
-
-            cursorY += 15f * scale;
-            float dividerY = cursorY;
-            LayoutRender2D.rectQuad(
-                    innerX,
-                    dividerY,
-                    innerW,
-                    0.5f * scale,
-                    LayoutRender2D.alpha(palette.menuLineLow(), 0.30f),
-                    LayoutRender2D.alpha(palette.menuLineStrong(), 0.48f),
-                    LayoutRender2D.alpha(palette.menuLineStrong(), 0.48f),
-                    LayoutRender2D.alpha(palette.menuLineLow(), 0.30f)
-            );
-            cursorY += 5f * scale;
-
-            if (selectedName == null) {
-                String empty = ClickGuiSearch.hasQuery()
-                        ? tr("empty.no_matches", "No matching players.")
-                        : tr("details.empty", "Select a player to inspect.");
-                ClickGuiRenderer.drawText(
-                        ClickGuiRenderer.getInterRegular(),
-                        ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), empty, 6.7f * scale, innerW),
-                        innerX,
-                        cursorY + 3f * scale,
-                        6.7f * scale,
-                        palette.panelMuted(),
-                        false
-                );
-                if (tab == RelationTab.STAFF) {
-                    cursorY += 24f * scale;
-                    renderHeuristicsPanel(innerX, cursorY, innerW, y + h - pad - cursorY, mx, my, scale, palette);
-                }
+            if (tab != RelationTab.STAFF) {
+                listX = innerX;
+                listY = innerY;
+                listW = innerW;
+                listH = innerH;
+                renderCards(listX, listY, listW, listH, entries, mx, my, scale, palette);
                 return;
             }
 
-            float profileH = 37f * scale;
-            float action = 15f * scale;
-            float actionGap = 3f * scale;
-            float actionsW = action * 2f + actionGap;
-            cardComponent.renderProfile(
-                    selectedName,
-                    tab.label(),
-                    tab.color(),
-                    innerX,
-                    cursorY,
-                    Math.max(1f, innerW - actionsW - 6f * scale),
-                    profileH,
-                    scale,
-                    palette
-            );
-
-            copyButton = new Rect(innerX + innerW - actionsW, cursorY + 3f * scale, action, action);
-            removeButton = new Rect(copyButton.x() + action + actionGap, copyButton.y(), action, action);
-            float dt = AnimationUtility.deltaTime();
-            copyHoverAnim = updateHover(copyHoverAnim, copyButton.contains(mx, my), dt);
-            removeHoverAnim = updateHover(removeHoverAnim, removeButton.contains(mx, my), dt);
-            drawIconButton(copyButton, "copy", copyHoverAnim, false, scale, palette);
-            drawDangerIconButton(removeButton, "trash-2", removeHoverAnim, scale, palette);
-
-            cursorY += profileH + 5f * scale;
-            renderInfoRow(
-                    innerX,
-                    cursorY,
-                    innerW,
-                    tr("details.relation", "Relation"),
-                    tab.label(),
-                    tab.color(),
-                    scale,
-                    palette
-            );
-            cursorY += 13f * scale;
-            if (tab == RelationTab.STAFF) {
-                // Staff rules are the useful secondary data on this tab; keep the
-                // inspector dense enough that all three rule families remain visible.
-                cursorY += 3f * scale;
-                renderHeuristicsPanel(innerX, cursorY, innerW, y + h - pad - cursorY, mx, my, scale, palette);
-            } else {
-                renderInfoRow(
-                        innerX,
-                        cursorY,
-                        innerW,
-                        tr("details.storage", "Storage"),
-                        tr("details.persistent", "Persistent"),
-                        palette.panelMuted(),
-                        scale,
-                        palette
-                );
-                cursorY += 13f * scale;
-                renderInfoRow(
-                        innerX,
-                        cursorY,
-                        innerW,
-                        tr("details.match", "Match"),
-                        tr("details.exact_nick", "Exact nickname"),
-                        palette.panelMuted(),
-                        scale,
-                        palette
-                );
+            float gap = 8f * scale;
+            float heuristicsH = Math.min(101f * scale, innerH * 0.56f);
+            heuristicsH = Math.max(88f * scale, heuristicsH);
+            float staffListH = innerH - heuristicsH - gap;
+            if (staffListH < 52f * scale) {
+                staffListH = Math.max(36f * scale, innerH * 0.38f);
+                heuristicsH = Math.max(1f, innerH - staffListH - gap);
             }
+
+            listX = innerX;
+            listY = innerY;
+            listW = innerW;
+            listH = Math.max(1f, staffListH);
+            renderCards(listX, listY, listW, listH, entries, mx, my, scale, palette);
+            renderHeuristicsPanel(innerX, innerY + staffListH + gap, innerW, heuristicsH, mx, my, scale, palette);
         }
     }
 
@@ -637,40 +352,25 @@ public final class RelationsComponent {
                                         float h,
                                         float scale,
                                         SettingsGuiPalette palette) {
-        float radius = 6f * scale;
+        float radius = 6.5f * scale;
         LayoutRender2D.roundedSoftShadow(
-                x,
-                y + 1.2f * scale,
-                w,
-                h,
-                radius,
-                7.5f * scale,
-                0.0f,
+                x, y + 1.2f * scale, w, h, radius, 7.5f * scale, 0f,
                 LayoutRender2D.alpha(0xFF000000, 0.13f)
         );
-        ClickGuiRenderer.drawBlur(x, y, w, h, radius, palette.panelBlurTint(), 150f / 255f);
+        ClickGuiRenderer.drawBlur(x, y, w, h, radius, palette.panelBlurTint(), 145f / 255f);
         LayoutRender2D.roundedQuad(
-                x,
-                y,
-                w,
-                h,
-                radius,
-                SettingsGuiPalette.withAlpha(palette.panelBgLeft(), 178),
-                SettingsGuiPalette.withAlpha(palette.panelBgRight(), 166),
-                SettingsGuiPalette.withAlpha(SettingsGuiPalette.darken(palette.panelBgRight(), 0.07f), 172),
-                SettingsGuiPalette.withAlpha(SettingsGuiPalette.darken(palette.panelBgLeft(), 0.05f), 182)
+                x, y, w, h, radius,
+                SettingsGuiPalette.withAlpha(palette.panelBgLeft(), 176),
+                SettingsGuiPalette.withAlpha(palette.panelBgRight(), 164),
+                SettingsGuiPalette.withAlpha(SettingsGuiPalette.darken(palette.panelBgRight(), 0.07f), 170),
+                SettingsGuiPalette.withAlpha(SettingsGuiPalette.darken(palette.panelBgLeft(), 0.05f), 180)
         );
         LayoutRender2D.roundedStrokeQuad(
-                x,
-                y,
-                w,
-                h,
-                radius,
-                0.55f * scale,
-                SettingsGuiPalette.withAlpha(palette.glassEdgeStrong(), 102),
-                SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), 84),
-                SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), 72),
-                SettingsGuiPalette.withAlpha(palette.glassEdgeStrong(), 92)
+                x, y, w, h, radius, 0.55f * scale,
+                SettingsGuiPalette.withAlpha(palette.glassEdgeStrong(), 94),
+                SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), 76),
+                SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), 68),
+                SettingsGuiPalette.withAlpha(palette.glassEdgeStrong(), 86)
         );
     }
 
@@ -682,45 +382,59 @@ public final class RelationsComponent {
                                        float my,
                                        float scale,
                                        SettingsGuiPalette palette) {
-        if (h <= 12f * scale) return;
+        if (h <= 40f * scale) return;
 
-        StaffHeuristicsConfig cfg = StaffHeuristicsConfig.get();
+        int bgA = SettingsGuiPalette.withAlpha(palette.controlSurface(), 70);
+        int bgB = SettingsGuiPalette.withAlpha(palette.controlSurfaceHover(), 62);
+        LayoutRender2D.roundedQuad(x, y, w, h, 5.5f * scale, bgA, bgB, bgB, bgA);
+        LayoutRender2D.roundedStroke(
+                x, y, w, h, 5.5f * scale, 0.45f * scale,
+                SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), 58)
+        );
+
+        float pad = 7f * scale;
+        float titleSize = 8.0f * scale;
         String title = tr("heuristics.title", "Staff heuristics");
         ClickGuiRenderer.drawText(
                 ClickGuiRenderer.getInterMedium(),
                 title,
-                x,
-                y,
-                6.7f * scale,
+                x + pad,
+                y + 5.0f * scale,
+                titleSize,
                 palette.panelText(),
                 false
         );
 
-        enabledToggle = new Rect(x + w - 47f * scale, y - 1f * scale, 47f * scale, 12f * scale);
+        StaffHeuristicsConfig cfg = StaffHeuristicsConfig.get();
+        float toggleW = 28f * scale;
+        float toggleH = 14f * scale;
+        enabledToggle = new Rect(x + w - pad - toggleW, y + 4f * scale, toggleW, toggleH);
         drawToggle(enabledToggle, cfg.enabled(), mx, my, scale, palette);
 
-        float rowY = y + 15f * scale;
-        float remaining = Math.max(1f, h - 15f * scale);
-        float rowH = Math.max(20f * scale, Math.min(25f * scale, remaining / 3f));
+        float rowsY = y + 23f * scale;
+        float available = Math.max(1f, y + h - pad - rowsY);
+        float rowGap = 3f * scale;
+        float rowH = Math.max(18f * scale, (available - rowGap * 2f) / 3f);
+
         renderHeuristicRow(
                 ActiveField.PREFIX,
                 tr("heuristics.prefixes", "Prefixes"),
                 cfg.prefixes(),
-                x, rowY, w, rowH, mx, my, scale, palette
+                x + pad, rowsY, w - pad * 2f, rowH, mx, my, scale, palette
         );
-        rowY += rowH;
+        rowsY += rowH + rowGap;
         renderHeuristicRow(
                 ActiveField.SUFFIX,
                 tr("heuristics.suffixes", "Suffixes"),
                 cfg.suffixes(),
-                x, rowY, w, rowH, mx, my, scale, palette
+                x + pad, rowsY, w - pad * 2f, rowH, mx, my, scale, palette
         );
-        rowY += rowH;
+        rowsY += rowH + rowGap;
         renderHeuristicRow(
                 ActiveField.CONTAINS,
                 tr("heuristics.contains", "Contains"),
                 cfg.contains(),
-                x, rowY, w, rowH, mx, my, scale, palette
+                x + pad, rowsY, w - pad * 2f, rowH, mx, my, scale, palette
         );
     }
 
@@ -735,77 +449,78 @@ public final class RelationsComponent {
                                     float my,
                                     float scale,
                                     SettingsGuiPalette palette) {
-        float labelW = 43f * scale;
+        float labelW = 51f * scale;
+        float fieldH = Math.min(16f * scale, h);
+        float addW = fieldH;
+        float inputW = Math.min(120f * scale, Math.max(70f * scale, w * 0.34f));
+        float fieldX = x + labelW;
+        float addX = fieldX + inputW + 3f * scale;
+        float chipsX = addX + addW + 7f * scale;
+        float chipsW = Math.max(0f, x + w - chipsX);
+
+        float labelSize = 6.5f * scale;
         ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterRegular(),
-                ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), title, 5.7f * scale, labelW - 3f * scale),
+                ClickGuiRenderer.getInterMedium(),
+                ClickGuiRenderer.fitText(ClickGuiRenderer.getInterMedium(), title, labelSize, labelW - 5f * scale),
                 x,
-                y + 4.2f * scale,
-                5.7f * scale,
+                y + (fieldH - ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterMedium(), labelSize)) * 0.5f,
+                labelSize,
                 palette.panelMuted(),
                 false
         );
 
-        float fieldH = 12.5f * scale;
-        float buttonW = fieldH;
-        float fieldX = x + labelW;
-        float fieldW = Math.max(38f * scale, w - labelW - buttonW - 3f * scale);
-        Rect field = new Rect(fieldX, y, fieldW, fieldH);
-        Rect add = new Rect(fieldX + fieldW + 3f * scale, y, buttonW, fieldH);
+        Rect field = new Rect(fieldX, y, inputW, fieldH);
+        Rect add = new Rect(addX, y, addW, fieldH);
         setHeuristicRects(kind, field, add);
-
         drawInput(field, fieldText(kind), tr("placeholder.rule", "Rule"), activeField == kind, mx, my, scale, palette);
-        drawIconButton(add, "check", add.contains(mx, my) ? 1f : 0f, false, scale, palette);
+        drawSmallAddButton(add, add.contains(mx, my), scale, palette);
 
-        float chipY = y + fieldH + 2.5f * scale;
-        if (chipY + 8f * scale > y + h) return;
+        if (chipsW < 14f * scale) return;
+        float chipX = chipsX;
+        float chipH = Math.min(11.5f * scale, fieldH - 1f * scale);
+        float chipY = y + (fieldH - chipH) * 0.5f;
+        float maxX = chipsX + chipsW;
 
-        float chipX = fieldX;
-        float maxX = x + w;
         for (String entry : sorted(entries)) {
-            float textSize = 5.0f * scale;
-            float available = Math.max(16f * scale, maxX - chipX);
+            float textSize = 5.7f * scale;
+            float available = maxX - chipX;
+            if (available < 18f * scale) break;
             String fitted = ClickGuiRenderer.fitText(
                     ClickGuiRenderer.getInterRegular(),
                     entry,
                     textSize,
-                    Math.max(8f * scale, available - 12f * scale)
+                    Math.max(6f * scale, available - 15f * scale)
             );
             float chipW = Math.min(
                     available,
-                    ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), fitted, textSize) + 13f * scale
+                    ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), fitted, textSize) + 15f * scale
             );
-            if (chipW < 15f * scale || chipX + chipW > maxX + 0.1f) break;
+            if (chipW < 18f * scale) break;
 
-            Rect chip = new Rect(chipX, chipY, chipW, 8.5f * scale);
-            Rect del = new Rect(chipX + chipW - 8.5f * scale, chipY, 8.5f * scale, 8.5f * scale);
-            LayoutRender2D.roundedQuad(
-                    chip.x(), chip.y(), chip.w(), chip.h(), 2.8f * scale,
-                    LayoutRender2D.alpha(palette.panelPillBase(), 0.90f),
-                    LayoutRender2D.alpha(palette.panelPillBase(), 0.80f),
-                    LayoutRender2D.alpha(palette.panelPillBase(), 0.80f),
-                    LayoutRender2D.alpha(palette.panelPillBase(), 0.90f)
-            );
+            Rect chip = new Rect(chipX, chipY, chipW, chipH);
+            Rect del = new Rect(chipX + chipW - chipH, chipY, chipH, chipH);
+            int chipBg = SettingsGuiPalette.withAlpha(palette.panelPillBase(), 132);
+            LayoutRender2D.roundedQuad(chip.x(), chip.y(), chip.w(), chip.h(), 3.2f * scale,
+                    chipBg, chipBg, chipBg, chipBg);
             ClickGuiRenderer.drawText(
                     ClickGuiRenderer.getInterRegular(),
                     fitted,
-                    chip.x() + 3f * scale,
-                    chip.y() + 1.9f * scale,
+                    chip.x() + 4f * scale,
+                    chip.y() + (chip.h() - ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), textSize)) * 0.5f,
                     textSize,
                     palette.panelText(),
                     false
             );
             Renderer2D.COLOR.svg(
                     "x",
-                    del.x() + 1.8f * scale,
-                    del.y() + 1.8f * scale,
-                    4.8f * scale,
-                    4.8f * scale,
+                    del.x() + 2.5f * scale,
+                    del.y() + 2.5f * scale,
+                    del.w() - 5f * scale,
+                    del.h() - 5f * scale,
                     SvgRenderOptions.overrideColor(palette.panelMuted())
             );
             chipHits.add(new ChipHit(kind, entry, del));
-            chipX += chipW + 2.5f * scale;
-            if (chipX >= maxX - 15f * scale) break;
+            chipX += chipW + 3f * scale;
         }
     }
 
@@ -818,8 +533,8 @@ public final class RelationsComponent {
                              float my,
                              float scale,
                              SettingsGuiPalette palette) {
-        float rowH = 21.5f * scale;
-        float gap = 3.0f * scale;
+        float rowH = 27f * scale;
+        float gap = 4f * scale;
         float reservedScrollbarW = 7f * scale;
         float rowW = Math.max(1f, w - reservedScrollbarW);
         float contentH = entries.isEmpty() ? 0f : entries.size() * (rowH + gap) - gap;
@@ -836,12 +551,13 @@ public final class RelationsComponent {
             String empty = ClickGuiSearch.hasQuery()
                     ? tr("empty.no_matches", "No matching players.")
                     : tr("empty.none_added", "No players added.");
+            float size = 7.0f * scale;
             ClickGuiRenderer.drawText(
                     ClickGuiRenderer.getInterRegular(),
                     empty,
-                    x + 2f * scale,
-                    y + 2f * scale,
-                    6.3f * scale,
+                    x + 3f * scale,
+                    y + 4f * scale,
+                    size,
                     palette.panelMuted(),
                     false
             );
@@ -857,7 +573,6 @@ public final class RelationsComponent {
                 String name = entries.get(i);
                 CardHit hit = cardComponent.renderRow(
                         name,
-                        tab.label(),
                         tab.color(),
                         equalsIgnoreCase(selectedName, name),
                         x,
@@ -877,41 +592,6 @@ public final class RelationsComponent {
         renderScrollbar(x, y, w, h, maxScroll, scale, palette);
     }
 
-    private void renderInfoRow(float x,
-                               float y,
-                               float w,
-                               String label,
-                               String value,
-                               int valueColor,
-                               float scale,
-                               SettingsGuiPalette palette) {
-        float h = 10.5f * scale;
-        int bg = SettingsGuiPalette.withAlpha(palette.controlSurface(), 72);
-        LayoutRender2D.roundedQuad(x, y, w, h, 3f * scale, bg, bg, bg, bg);
-
-        float labelSize = 5.4f * scale;
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterRegular(),
-                ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), label, labelSize, w * 0.42f),
-                x + 4f * scale,
-                y + 2.6f * scale,
-                labelSize,
-                palette.panelMuted(),
-                false
-        );
-
-        float valueX = x + w * 0.43f;
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterMedium(),
-                ClickGuiRenderer.fitText(ClickGuiRenderer.getInterMedium(), value, labelSize, w * 0.53f),
-                valueX,
-                y + 2.6f * scale,
-                labelSize,
-                SettingsGuiPalette.mix(palette.panelText(), valueColor, 0.26f),
-                false
-        );
-    }
-
     private void drawSegment(Rect rect,
                              String label,
                              boolean active,
@@ -921,7 +601,7 @@ public final class RelationsComponent {
         if (rect.contains(ClickGuiRenderer.getMouseX(), ClickGuiRenderer.getMouseY())) {
             SystemCursor.set(SystemCursor.CursorType.HAND);
         }
-        float size = 6.2f * scale;
+        float size = 6.7f * scale;
         float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), label, size);
         float th = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterMedium(), size);
         int color = active
@@ -957,25 +637,20 @@ public final class RelationsComponent {
                 SettingsGuiPalette.mix(palette.controlSurface(), tab.color(), active ? 0.10f : 0.02f),
                 hover || active ? 142 : 100
         );
-        float radius = 3.6f * scale;
+        float radius = 4f * scale;
         LayoutRender2D.roundedQuad(rect.x(), rect.y(), rect.w(), rect.h(), radius, bgA, bgB, bgB, bgA);
         LayoutRender2D.roundedStroke(
-                rect.x(),
-                rect.y(),
-                rect.w(),
-                rect.h(),
-                radius,
-                0.45f * scale,
+                rect.x(), rect.y(), rect.w(), rect.h(), radius, 0.45f * scale,
                 active
                         ? SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.panelStroke(), tab.color(), 0.44f), 188)
-                        : SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), hover ? 108 : 74)
+                        : SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), hover ? 108 : 70)
         );
 
         boolean empty = value == null || value.isEmpty();
         String raw = empty ? (active ? "" : placeholder) : value;
         int color = empty && !active ? palette.panelMuted() : palette.panelText();
-        float size = 5.8f * scale;
-        String text = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), raw, size, rect.w() - 7f * scale);
+        float size = 6.3f * scale;
+        String text = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), raw, size, rect.w() - 9f * scale);
         float textY = rect.y() + (rect.h() - ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), size)) * 0.5f;
 
         boolean clipped = ScissorFunction.pushRaw(rect.x(), rect.y(), rect.w(), rect.h());
@@ -984,7 +659,7 @@ public final class RelationsComponent {
                 ClickGuiRenderer.drawText(
                         ClickGuiRenderer.getInterRegular(),
                         text,
-                        rect.x() + 3.5f * scale,
+                        rect.x() + 4f * scale,
                         textY,
                         size,
                         color,
@@ -994,10 +669,10 @@ public final class RelationsComponent {
             if (active && ((System.currentTimeMillis() / 500L) & 1L) == 0L) {
                 float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), text, size);
                 LayoutRender2D.rect(
-                        rect.x() + Math.min(tw + 4.5f * scale, rect.w() - 2.5f * scale),
-                        rect.y() + 2.8f * scale,
-                        0.55f * scale,
-                        rect.h() - 5.6f * scale,
+                        rect.x() + Math.min(tw + 5f * scale, rect.w() - 2.5f * scale),
+                        rect.y() + 3f * scale,
+                        0.6f * scale,
+                        rect.h() - 6f * scale,
                         palette.panelText()
                 );
             }
@@ -1006,80 +681,71 @@ public final class RelationsComponent {
         }
     }
 
-    private void drawIconButton(Rect rect,
-                                String icon,
-                                float hover,
-                                boolean disabled,
-                                float scale,
-                                SettingsGuiPalette palette) {
-        if (!disabled && rect.contains(ClickGuiRenderer.getMouseX(), ClickGuiRenderer.getMouseY())) {
-            SystemCursor.set(SystemCursor.CursorType.HAND);
-        }
-
-        int bgA = disabled
-                ? LayoutRender2D.alpha(palette.controlSurface(), 0.36f)
-                : SettingsGuiPalette.withAlpha(
-                        SettingsGuiPalette.mix(palette.controlSurface(), palette.controlSurfaceHover(), 0.18f + hover * 0.42f),
-                        118 + Math.round(28f * hover)
-                );
-        int bgB = disabled
-                ? LayoutRender2D.alpha(palette.controlSurface(), 0.30f)
-                : SettingsGuiPalette.withAlpha(
-                        SettingsGuiPalette.mix(palette.controlSurface(), tab.color(), 0.04f + hover * 0.12f),
-                        112 + Math.round(30f * hover)
-                );
-
-        float radius = 3.6f * scale;
-        LayoutRender2D.roundedQuad(rect.x(), rect.y(), rect.w(), rect.h(), radius, bgA, bgB, bgB, bgA);
-        LayoutRender2D.roundedStroke(
-                rect.x(), rect.y(), rect.w(), rect.h(), radius, 0.45f * scale,
-                SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), disabled ? 48 : 92)
-        );
-
-        int iconColor = disabled ? LayoutRender2D.alpha(palette.panelMuted(), 0.50f) : palette.menuCategoryText();
-        float iconSize = Math.min(rect.w(), rect.h()) - 6f * scale;
-        Renderer2D.COLOR.svg(
-                icon,
-                rect.x() + (rect.w() - iconSize) * 0.5f,
-                rect.y() + (rect.h() - iconSize) * 0.5f,
-                iconSize,
-                iconSize,
-                SvgRenderOptions.overrideColor(iconColor)
-        );
-    }
-
-    private void drawDangerIconButton(Rect rect,
-                                      String icon,
-                                      float hover,
-                                      float scale,
-                                      SettingsGuiPalette palette) {
+    private void drawAddButton(Rect rect,
+                               float hover,
+                               float scale,
+                               SettingsGuiPalette palette) {
         if (rect.contains(ClickGuiRenderer.getMouseX(), ClickGuiRenderer.getMouseY())) {
             SystemCursor.set(SystemCursor.CursorType.HAND);
         }
-        int danger = 0xFFFF6B6B;
         int bgA = SettingsGuiPalette.withAlpha(
-                SettingsGuiPalette.mix(palette.controlSurface(), danger, 0.05f + 0.13f * hover),
-                112 + Math.round(24f * hover)
+                SettingsGuiPalette.mix(palette.controlSurface(), palette.controlSurfaceHover(), 0.20f + hover * 0.42f),
+                116 + Math.round(28f * hover)
         );
         int bgB = SettingsGuiPalette.withAlpha(
-                SettingsGuiPalette.mix(palette.controlSurfaceHover(), danger, 0.06f + 0.15f * hover),
-                108 + Math.round(26f * hover)
+                SettingsGuiPalette.mix(palette.controlSurface(), tab.color(), 0.05f + hover * 0.13f),
+                112 + Math.round(30f * hover)
         );
-        float radius = 3.6f * scale;
+        float radius = 4f * scale;
         LayoutRender2D.roundedQuad(rect.x(), rect.y(), rect.w(), rect.h(), radius, bgA, bgB, bgB, bgA);
         LayoutRender2D.roundedStroke(
                 rect.x(), rect.y(), rect.w(), rect.h(), radius, 0.45f * scale,
-                SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.glassEdgeSoft(), danger, 0.32f), 108)
+                SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), 90)
         );
 
-        float iconSize = Math.min(rect.w(), rect.h()) - 6f * scale;
-        Renderer2D.COLOR.svg(
-                icon,
-                rect.x() + (rect.w() - iconSize) * 0.5f,
-                rect.y() + (rect.h() - iconSize) * 0.5f,
-                iconSize,
-                iconSize,
-                SvgRenderOptions.overrideColor(SettingsGuiPalette.mix(palette.menuCategoryText(), danger, 0.28f + 0.30f * hover))
+        float fontSize = 11f * scale;
+        String plus = "+";
+        float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), plus, fontSize);
+        float th = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterMedium(), fontSize);
+        ClickGuiRenderer.drawText(
+                ClickGuiRenderer.getInterMedium(),
+                plus,
+                rect.x() + (rect.w() - tw) * 0.5f,
+                rect.y() + (rect.h() - th) * 0.5f - 0.5f * scale,
+                fontSize,
+                palette.menuCategoryText(),
+                false
+        );
+    }
+
+    private void drawSmallAddButton(Rect rect,
+                                    boolean hover,
+                                    float scale,
+                                    SettingsGuiPalette palette) {
+        float anim = hover ? 1f : 0f;
+        int bg = SettingsGuiPalette.withAlpha(
+                SettingsGuiPalette.mix(palette.controlSurface(), tab.color(), 0.05f + anim * 0.14f),
+                hover ? 142 : 110
+        );
+        LayoutRender2D.roundedQuad(rect.x(), rect.y(), rect.w(), rect.h(), 4f * scale, bg, bg, bg, bg);
+        LayoutRender2D.roundedStroke(
+                rect.x(), rect.y(), rect.w(), rect.h(), 4f * scale, 0.45f * scale,
+                SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), 82)
+        );
+        if (hover) SystemCursor.set(SystemCursor.CursorType.HAND);
+
+        float fontSize = 9.3f * scale;
+        String plus = "+";
+        float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), plus, fontSize);
+        float th = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterMedium(), fontSize);
+        ClickGuiRenderer.drawText(
+                ClickGuiRenderer.getInterMedium(),
+                plus,
+                rect.x() + (rect.w() - tw) * 0.5f,
+                rect.y() + (rect.h() - th) * 0.5f - 0.3f * scale,
+                fontSize,
+                palette.menuCategoryText(),
+                false
         );
     }
 
@@ -1093,21 +759,25 @@ public final class RelationsComponent {
         if (hover) SystemCursor.set(SystemCursor.CursorType.HAND);
 
         int bg = enabled
-                ? SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.panelPillActive(), tab.color(), hover ? 0.18f : 0.10f), 176)
-                : SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.controlSurface(), palette.controlSurfaceHover(), hover ? 0.28f : 0.08f), 118);
-        LayoutRender2D.roundedQuad(rect.x(), rect.y(), rect.w(), rect.h(), 3.5f * scale, bg, bg, bg, bg);
+                ? SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.panelPillActive(), tab.color(), hover ? 0.22f : 0.14f), 188)
+                : SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.controlSurface(), palette.controlSurfaceHover(), hover ? 0.34f : 0.10f), 132);
+        LayoutRender2D.roundedQuad(rect.x(), rect.y(), rect.w(), rect.h(), rect.h() * 0.5f, bg, bg, bg, bg);
+        LayoutRender2D.roundedStroke(
+                rect.x(), rect.y(), rect.w(), rect.h(), rect.h() * 0.5f, 0.45f * scale,
+                SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), enabled ? 100 : 70)
+        );
 
-        String label = enabled ? tr("heuristics.enabled", "Enabled") : tr("heuristics.disabled", "Disabled");
-        float size = 5.2f * scale;
-        float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), label, size);
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterMedium(),
-                label,
-                rect.x() + (rect.w() - tw) * 0.5f,
-                rect.y() + 3.0f * scale,
-                size,
-                enabled ? palette.panelText() : palette.panelMuted(),
-                false
+        float knob = rect.h() - 4f * scale;
+        float knobX = enabled ? rect.x() + rect.w() - knob - 2f * scale : rect.x() + 2f * scale;
+        int knobColor = enabled ? palette.panelText() : palette.panelMuted();
+        Renderer2D.COLOR.roundedRect(
+                knobX,
+                rect.y() + 2f * scale,
+                knob,
+                knob,
+                knob * 0.5f,
+                1f,
+                SettingsGuiPalette.withAlpha(knobColor, enabled ? 232 : 190)
         );
     }
 
@@ -1145,11 +815,9 @@ public final class RelationsComponent {
             scroll = 0f;
             smoothedScroll = 0f;
             draggingScrollbar = false;
-            if (onlinePicker.isVisible()) {
-                onlinePicker.open(tab.pickerMode());
-            }
             clearStatus();
         }
+        movementInputBlocked = false;
         return true;
     }
 
@@ -1227,20 +895,15 @@ public final class RelationsComponent {
         return out;
     }
 
-    private void ensureSelection(List<String> entries) {
-        if (entries == null || entries.isEmpty()) {
-            selectedName = null;
-            return;
-        }
-        if (selectedName != null) {
-            for (String entry : entries) {
-                if (equalsIgnoreCase(selectedName, entry)) {
-                    selectedName = entry;
-                    return;
-                }
+    private void validateSelection(List<String> entries) {
+        if (selectedName == null) return;
+        for (String entry : entries) {
+            if (equalsIgnoreCase(selectedName, entry)) {
+                selectedName = entry;
+                return;
             }
         }
-        selectedName = entries.get(0);
+        selectedName = null;
     }
 
     private static boolean equalsIgnoreCase(String a, String b) {
@@ -1291,23 +954,28 @@ public final class RelationsComponent {
         );
     }
 
-    private void renderStatus(float x, float y, float w, float scale, SettingsGuiPalette palette) {
-        if (statusMessage == null || statusMessage.isBlank()) return;
+    private void renderStatus(float x,
+                              float y,
+                              float w,
+                              float h,
+                              float scale,
+                              SettingsGuiPalette palette) {
+        if (w <= 8f * scale || statusMessage == null || statusMessage.isBlank()) return;
         if (System.currentTimeMillis() > statusUntilMs) {
             clearStatus();
             return;
         }
 
-        float size = 5.3f * scale;
+        float size = 5.8f * scale;
         String text = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), statusMessage, size, w);
-        float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), text, size);
+        float th = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), size);
         ClickGuiRenderer.drawText(
                 ClickGuiRenderer.getInterRegular(),
                 text,
-                x + Math.max(0f, w - tw),
-                y + 1.0f * scale,
+                x,
+                y + (h - th) * 0.5f,
                 size,
-                SettingsGuiPalette.mix(palette.panelMuted(), tab.color(), 0.18f),
+                SettingsGuiPalette.mix(palette.panelMuted(), tab.color(), 0.20f),
                 false
         );
     }
@@ -1341,26 +1009,14 @@ public final class RelationsComponent {
         if (isScrollbarHovered(mx, my) || draggingScrollbar) SystemCursor.set(SystemCursor.CursorType.SCROLL);
 
         LayoutRender2D.roundedQuad(
-                scrollbarX,
-                scrollbarY,
-                scrollbarW,
-                scrollbarH,
-                1.5f * scale,
-                palette.moduleScrollTrackA(),
-                palette.moduleScrollTrackB(),
-                palette.moduleScrollTrackB(),
-                palette.moduleScrollTrackA()
+                scrollbarX, scrollbarY, scrollbarW, scrollbarH, 1.5f * scale,
+                palette.moduleScrollTrackA(), palette.moduleScrollTrackB(),
+                palette.moduleScrollTrackB(), palette.moduleScrollTrackA()
         );
         LayoutRender2D.roundedQuad(
-                scrollbarX,
-                scrollbarThumbY,
-                scrollbarW,
-                scrollbarThumbH,
-                1.5f * scale,
-                palette.moduleScrollHandleA(),
-                palette.moduleScrollHandleB(),
-                palette.moduleScrollHandleB(),
-                palette.moduleScrollHandleA()
+                scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH, 1.5f * scale,
+                palette.moduleScrollHandleA(), palette.moduleScrollHandleB(),
+                palette.moduleScrollHandleB(), palette.moduleScrollHandleA()
         );
     }
 
@@ -1378,7 +1034,7 @@ public final class RelationsComponent {
             return;
         }
 
-        scrollbarW = 2.2f * scale;
+        scrollbarW = 2.4f * scale;
         scrollbarX = x + w - scrollbarW - 1.2f * scale;
         scrollbarY = y + 2f * scale;
         scrollbarH = Math.max(1f, h - 4f * scale);
@@ -1391,12 +1047,9 @@ public final class RelationsComponent {
         if (!scrollbarVisible) return false;
         float pad = 4f;
         return ClickGuiMath.insideRect(
-                mx,
-                my,
-                scrollbarX - pad,
-                scrollbarY - pad,
-                scrollbarW + pad * 2f,
-                scrollbarH + pad * 2f
+                mx, my,
+                scrollbarX - pad, scrollbarY - pad,
+                scrollbarW + pad * 2f, scrollbarH + pad * 2f
         );
     }
 
@@ -1411,8 +1064,6 @@ public final class RelationsComponent {
     }
 
     private void resetTransientRects() {
-        copyButton = Rect.ZERO;
-        removeButton = Rect.ZERO;
         enabledToggle = Rect.ZERO;
         prefixInputRect = Rect.ZERO;
         suffixInputRect = Rect.ZERO;
@@ -1464,22 +1115,6 @@ public final class RelationsComponent {
             };
             if (changed) rel.save();
             return changed;
-        }
-
-        private DefineTarget.RelationTargetMode pickerMode() {
-            return switch (this) {
-                case FRIENDS -> DefineTarget.RelationTargetMode.FRIEND;
-                case ENEMIES -> DefineTarget.RelationTargetMode.ENEMY;
-                case STAFF -> DefineTarget.RelationTargetMode.STAFF;
-            };
-        }
-
-        private String label() {
-            return switch (this) {
-                case FRIENDS -> tr("tab.friends", "Friends");
-                case ENEMIES -> tr("tab.enemies", "Enemies");
-                case STAFF -> tr("tab.staff", "Staff");
-            };
         }
 
         private int color() {

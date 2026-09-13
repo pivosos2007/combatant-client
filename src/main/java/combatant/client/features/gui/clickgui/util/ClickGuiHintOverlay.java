@@ -17,6 +17,7 @@ public enum ClickGuiHintOverlay {
     ;
 
     private static TextRenderer comfortaa;
+    private static long fontGeneration = Long.MIN_VALUE;
 
     public static void renderBottomLeft(float areaX, float areaY, float areaW, float areaH, float scale, float alpha, String... lines) {
         if (lines == null || lines.length == 0 || areaW <= 0.5f || areaH <= 0.5f) return;
@@ -56,6 +57,11 @@ public enum ClickGuiHintOverlay {
     }
 
     private static TextRenderer comfortaa() {
+        long generation = Fonts.generation();
+        if (fontGeneration != generation) {
+            comfortaa = null;
+            fontGeneration = generation;
+        }
         if (comfortaa == null) {
             comfortaa = Fonts.renderer("Comfortaa", FontInfo.Type.Regular, ClickGuiRenderer.getInterRegular());
         }
