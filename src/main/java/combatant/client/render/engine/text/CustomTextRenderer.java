@@ -407,6 +407,11 @@ public class CustomTextRenderer implements TextRenderer {
         scale = 1;
     }
 
+    /** Preallocates the text mesh so the first glyph draw does not allocate native buffers. */
+    public void prewarmBuffers() {
+        mesh.prewarmDefaultCapacity();
+    }
+
     private void ensureMeshStarted() {
         if (meshStarted) {
             return;

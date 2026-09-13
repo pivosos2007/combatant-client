@@ -469,8 +469,15 @@ public enum ClickGuiRenderer {
         init();
         closingForExit = false;
         finishingClose = false;
+        lifecycleAnim = 0.0f;
+        tabAnimInit = false;
         lastLifecycleAnimNs = System.nanoTime();
-        getActiveSection().onSelected();
+
+        ClickGuiSection active = getActiveSection();
+        if (active != null && (MODULES_TAB_ID.equals(activeTabId) || SETTINGS_TAB_ID.equals(activeTabId))) {
+            active.onDeselected();
+        }
+        if (active != null) active.onSelected();
     }
 
     public static void beginCloseAnimation() {
@@ -683,6 +690,14 @@ public enum ClickGuiRenderer {
         try {
             Renderer2D.COLOR.begin();
             renderEngine(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta);
+            DynamicIsland.renderClickGuiShell(
+                    Renderer2D.COLOR,
+                    TextRenderer.get(),
+                    ctx,
+                    tickDelta,
+                    fbWidth,
+                    fbHeight
+            );
             Renderer2D.COLOR.render();
         } finally {
             ViewportContext.endCurrentStratum(ctx);
@@ -849,6 +864,7 @@ public enum ClickGuiRenderer {
         ensureActiveTab(tabs);
         if (tabs.isEmpty()) return;
         boolean islandShell = DynamicIsland.shouldOwnClickGuiTabShell();
+        if (islandShell) return;
 
         TextRenderer tabFont = getOnestBold();
         float y = tabBarY - (1.0f - eased) * 18.0f;
@@ -1011,6 +1027,31 @@ public enum ClickGuiRenderer {
                 break;
             }
         }
+        boolean geometryReady = tabX.length >= tabs.size() && tabW.length >= tabs.size();
+        if (!geometryReady) {
+            return new ClickGuiIslandState(
+                    tabBarX, tabBarY, tabBarW, tabBarH,
+                    tabAnimX, tabAnimW, lifecycleAnim,
+                    activeLabel, 0,
+                    picker != null || protocolHeuristicsEditor != null,
+                    List.of()
+            );
+        }
+        ArrayList<ClickGuiIslandTab> islandTabs = new ArrayList<>(tabs.size());
+        for (int i = 0; i < tabs.size(); i++) {
+            ClickGuiTabEntry tab = tabs.get(i);
+            boolean active = tab.id().equals(activeTabId);
+            boolean hovered = !closingForExit
+                    && mouseX >= tabX[i] && mouseX <= tabX[i] + tabW[i]
+                    && mouseY >= tabBarY && mouseY <= tabBarY + tabBarH;
+            islandTabs.add(new ClickGuiIslandTab(
+                    tab.label(),
+                    tabX[i] - tabBarX,
+                    tabW[i],
+                    active,
+                    hovered
+            ));
+        }
         return new ClickGuiIslandState(
                 tabBarX,
                 tabBarY,
@@ -1021,7 +1062,8 @@ public enum ClickGuiRenderer {
                 lifecycleAnim,
                 activeLabel,
                 tabs.size(),
-                picker != null || protocolHeuristicsEditor != null
+                picker != null || protocolHeuristicsEditor != null,
+                List.copyOf(islandTabs)
         );
     }
 
@@ -1880,6 +1922,19 @@ public enum ClickGuiRenderer {
         return pickerIconScissorActive && pickerIconScissorW > 0f && pickerIconScissorH > 0f;
     }
 
+    /**
+     * Materialize cheap ClickGUI screen wrappers and bind already-prewarmed font renderers before
+     * the first user-triggered open. Section discovery itself is owned by ClickGuiSectionManager.
+     */
+    public static void prewarmUiObjects() {
+        if (mainScreen == null) mainScreen = new ClickGuiScreen();
+        if (pickerScreen == null) pickerScreen = new ClickGuiPickerScreen();
+        getInterRegular();
+        getInterMedium();
+        getSfMedium();
+        getOnestBold();
+        getMonsterratRegular();
+    }
     public static void openClickGuiScreen() {
         if (MC == null) return;
         if (ClientScreen.current() != null) return;
@@ -2003,7 +2058,15 @@ public enum ClickGuiRenderer {
                                       float lifecycle,
                                       String activeLabel,
                                       int tabCount,
-                                      boolean pickerActive) {
+                                      boolean pickerActive,
+                                      List<ClickGuiIslandTab> tabs) {
+    }
+
+    public record ClickGuiIslandTab(String label,
+                                    float relativeX,
+                                    float width,
+                                    boolean active,
+                                    boolean hovered) {
     }
 
     public static final class VerticalAlphaFadeScope implements AutoCloseable {

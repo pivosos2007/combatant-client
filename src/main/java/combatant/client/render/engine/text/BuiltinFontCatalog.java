@@ -42,7 +42,7 @@ public enum BuiltinFontCatalog {
     MONSTERRAT,
     @FontAsset(value = "profont.ttf", family = "ProFont", order = 90)
     PROFONT,
-    @FontAsset(value = "mainmenuicons.ttf", family = "MainMenuIcons", atlasOnly = true, order = 100)
+    @FontAsset(value = "mainmenuicons.ttf", family = "MainMenuIcons", atlasOnly = true, prewarm = true, order = 100)
     MAIN_MENU_ICONS,
     @FontAsset(value = "guiicons.ttf", family = "GuiIcons", atlasOnly = true, prewarm = true, order = 110)
     GUI_ICONS,

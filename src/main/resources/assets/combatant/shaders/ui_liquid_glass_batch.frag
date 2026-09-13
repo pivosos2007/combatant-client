@@ -19,6 +19,7 @@ in vec4 v_Params3;
 in vec4 v_Params4;
 in vec4 v_Params5;
 in vec4 v_Params6;
+in vec4 v_Params7;
 
 out vec4 fragColor;
 
@@ -129,6 +130,49 @@ float smoothMaximum(float a, float b, float radius) {
     return mix(b, a, h) + radius * h * (1.0 - h);
 }
 
+float smoothMinimum(float a, float b, float radius) {
+    if (radius <= 0.0001) return min(a, b);
+    float h = clamp(0.5 + 0.5 * (b - a) / radius, 0.0, 1.0);
+    return mix(b, a, h) - radius * h * (1.0 - h);
+}
+
+vec4 compoundSource(int index) {
+    if (index == 0) return v_Params;
+    if (index == 1) return v_Params3;
+    if (index == 2) return v_Params4;
+    return v_Params5;
+}
+
+float compoundCircleSdf(vec2 p, vec3 source) {
+    return length(p - source.xy) - max(source.z, 0.0);
+}
+
+float compoundRoundedRectSdf(vec2 p, vec4 rect, float radius) {
+    vec2 center = rect.xy + rect.zw * 0.5;
+    vec2 halfSize = max(rect.zw * 0.5, vec2(0.0001));
+    float r = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
+    vec2 q = abs(p - center) - halfSize + r;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
+float islandBlobSDF(vec2 localPos) {
+    int count = int(clamp(floor(v_Params6.x + 0.5), 1.0, 4.0));
+    float smoothing = max(v_Params6.y, 0.0);
+    float d = compoundCircleSdf(localPos, compoundSource(0).xyz);
+    for (int i = 1; i < 4; i++) {
+        if (i >= count) break;
+        d = smoothMinimum(d, compoundCircleSdf(localPos, compoundSource(i).xyz), smoothing);
+    }
+    return d;
+}
+
+float smoothBoxUnionSDF(vec2 localPos) {
+    float smoothing = max(v_Params6.y, 0.0);
+    float first = compoundRoundedRectSdf(localPos, v_Params, max(v_Params4.x, 0.0));
+    float second = compoundRoundedRectSdf(localPos, v_Params3, max(v_Params4.y, 0.0));
+    return smoothMinimum(first, second, smoothing);
+}
+
 float primitiveSDF(vec2 localPos) {
     int count = int(clamp(floor(v_Params6.x + 0.5), 3.0, 8.0));
     float rounding = max(0.0, v_Params6.y);
@@ -148,7 +192,11 @@ float primitiveSDF(vec2 localPos) {
 }
 
 float glassShapeSDF(vec2 p, vec2 halfSize, vec4 radius, float exponent, bool squircle) {
-    if (v_Params6.w > 0.5) return primitiveSDF(p + v_Rect.zw * 0.5);
+    int shapeMode = int(floor(v_Params6.w + 0.5));
+    vec2 localPos = p + v_Rect.zw * 0.5;
+    if (shapeMode == 1) return primitiveSDF(localPos);
+    if (shapeMode == 2) return islandBlobSDF(localPos);
+    if (shapeMode == 3) return smoothBoxUnionSDF(localPos);
     return squircle ? squircleSDF(p, halfSize, exponent) : roundedBoxSDF(p, halfSize, radius, exponent);
 }
 
@@ -206,6 +254,15 @@ float prismHash(vec2 p) {
     return fract((p3.x + p3.y) * p3.z);
 }
 
+vec3 decodePackedRgb(float packedValue) {
+    float packed = clamp(floor(packedValue + 0.5), 0.0, 16777215.0);
+    float r = floor(packed / 65536.0);
+    packed -= r * 65536.0;
+    float g = floor(packed / 256.0);
+    float b = packed - g * 256.0;
+    return vec3(r, g, b) / 255.0;
+}
+
 vec3 lookupGlassColor(vec3 scene, vec3 tint) {
     float sourceLuma = max(luminance(scene), 0.0001);
     float peak = max(scene.r, max(scene.g, scene.b));
@@ -250,8 +307,8 @@ void main() {
     float blurAlpha;
     bool squircle;
     float distortStrength = decodeDistort(max(v_TexCoord.y, 0.0), cornerSmoothness, blurAlpha, squircle);
-    bool primitive = v_Params6.w > 0.5;
-    vec2 halfSize = size * 0.5 - ((squircle || primitive) ? 0.0 : 1.0);
+    bool customShape = v_Params6.w > 0.5;
+    vec2 halfSize = size * 0.5 - ((squircle || customShape) ? 0.0 : 1.0);
 
     float selfDistance = glassShapeSDF(pos, halfSize, radius, cornerSmoothness, squircle);
 #ifdef COMBATANT_ANALYTIC_CLIP
@@ -371,6 +428,17 @@ void main() {
     edgeRefraction *= edgeRefraction;
     vec2 centerUv = clamp(uv + uvNormal * (centerDistortPx / fbSize) * edgeRefraction, vec2(0.001), vec2(0.999));
 
+    // Optional frosted modifier. The hash is anchored in logical surface space, so the
+    // grain follows the glass surface instead of sparkling with framebuffer resizes.
+    float frostedJitterPx = clamp(v_Params7.x, 0.0, 4.0);
+    if (frostedJitterPx > 0.001) {
+        vec2 frostCell = floor((frag - v_Rect.xy) * 0.75);
+        float frostX = prismHash(frostCell + surfaceKey * 3.17 + vec2(17.0, 41.0)) - 0.5;
+        float frostY = prismHash(frostCell.yx + surfaceKey * 5.03 + vec2(59.0, 11.0)) - 0.5;
+        vec2 frostOffset = vec2(frostX, frostY) * (2.0 * frostedJitterPx) / fbSize;
+        centerUv = clamp(centerUv + frostOffset, vec2(0.001), vec2(0.999));
+    }
+
     // Rim: sample clean scene outside the SDF boundary. This is the only part that
     // should read as mirror/detail; center remains the existing blur material.
     float mirrorPx = thickness * (1.90 + 2.50 * fresnel) + centerDistortPx * 0.55;
@@ -481,6 +549,18 @@ void main() {
     finalColor = mix(finalColor, crestColor, crestMix);
     finalColor = mix(finalColor, coolCaustic, prismEcho * (0.05 + 0.035 * wideRim));
     finalColor = mix(finalColor, vec3(0.98, 1.0, 1.0), prismCrest * (0.025 + 0.035 * wideRim));
+
+    // Explicit inner-glow modifier. It is evaluated from the final visible SDF edge, so
+    // rounded boxes, squircles, convex primitives and analytic clips share one behavior.
+    float innerGlowStrength = clamp(v_Params7.y, 0.0, 1.0);
+    float innerGlowSizePx = max(v_Params7.z, 0.0);
+    if (innerGlowStrength > 0.001 && innerGlowSizePx > 0.001) {
+        float insideDistance = max(-d, 0.0);
+        float innerGlowMask = (1.0 - smoothstep(0.0, innerGlowSizePx, insideDistance)) * step(d, 0.0);
+        vec3 innerGlowColor = decodePackedRgb(v_Params7.w);
+        float glowMix = clamp(innerGlowMask * innerGlowStrength * (0.34 + 0.18 * topLight), 0.0, 0.52);
+        finalColor = mix(finalColor, innerGlowColor, glowMix);
+    }
 
     float fresnelAlpha = clamp(v_Params2.z, 0.0, 1.0);
     float baseAlpha = clamp(v_Params2.w, 0.0, 1.0);

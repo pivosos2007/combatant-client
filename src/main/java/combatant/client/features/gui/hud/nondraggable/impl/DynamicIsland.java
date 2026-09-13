@@ -62,6 +62,8 @@ import combatant.client.util.media.RepeatMode;
 import combatant.client.util.pvp.PvpState;
 
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -196,9 +198,21 @@ private static final float TOP_Y = 18f;
         INSTANCE.renderScreenOverlayInternal(ctx, tickDelta);
     }
 
+    /** Renders the complete ClickGUI tab shell in the same stratum and batch as its section. */
+    public static void renderClickGuiShell(Renderer2D renderer,
+                                           TextRenderer textRenderer,
+                                           GuiGraphicsExtractor ctx,
+                                           float tickDelta,
+                                           int screenW,
+                                           int screenH) {
+        if (INSTANCE == null || !INSTANCE.isEnabled() || !INSTANCE.clickGuiEnabled()) return;
+        if (!(ClientScreen.current() instanceof ClickGuiScreen)) return;
+        INSTANCE.renderEngineInternal(renderer, textRenderer, ctx, tickDelta, screenW, screenH, true);
+    }
+
     public static boolean shouldOwnClickGuiTabShell() {
-        if (INSTANCE == null || !INSTANCE.isEnabled()) return false;
-        return INSTANCE.clickGuiShellVisible;
+        if (INSTANCE == null || !INSTANCE.isEnabled() || !INSTANCE.clickGuiEnabled()) return false;
+        return ClientScreen.current() instanceof ClickGuiScreen;
     }
 
     private static void putControlBounds(UiBoundsPatchSet patches,
@@ -326,6 +340,32 @@ private static final float TOP_Y = 18f;
 
     private static boolean boolProp(UiScriptProps props, String key, boolean fallback) {
         return props.bool(key, fallback);
+    }
+
+    private static float mapNumber(Map<?, ?> map, String key, float fallback) {
+        if (map == null || key == null) return fallback;
+        Object value = map.get(key);
+        return value instanceof Number number ? number.floatValue() : fallback;
+    }
+
+    private static List<LinkedHashMap<String, Object>> islandPillSources(float width,
+                                                                        float height,
+                                                                        float inset) {
+        float innerWidth = Math.max(1.0f, width - inset * 2.0f);
+        float innerHeight = Math.max(1.0f, height - inset * 2.0f);
+        float radius = innerHeight * 0.5f;
+        float firstX = Math.min(radius, innerWidth * 0.5f);
+        float lastX = Math.max(firstX, innerWidth - radius);
+        ArrayList<LinkedHashMap<String, Object>> sources = new ArrayList<>(4);
+        for (int i = 0; i < 4; i++) {
+            float progress = i / 3.0f;
+            LinkedHashMap<String, Object> source = new LinkedHashMap<>();
+            source.put("x", inset + firstX + (lastX - firstX) * progress);
+            source.put("y", inset + innerHeight * 0.5f);
+            source.put("radius", radius);
+            sources.add(source);
+        }
+        return sources;
     }
 
     private static float clamp01(float value) {
@@ -525,6 +565,9 @@ private static final float TOP_Y = 18f;
         if (!RuntimeGate.canRunHud()) return;
         if (mc == null || mc.getWindow() == null || ctx == null) return;
         Screen currentScreen = ClientScreen.current();
+        // ClickGUI owns a single screen-stratum render path. Its shell is emitted from
+        // ClickGuiRenderer after the active section, never as a later top overlay.
+        if (currentScreen instanceof ClickGuiScreen) return;
         boolean clickGuiOverlay = isEnabled() && clickGuiEnabled();
         if (!clickGuiOverlay && !isScreenOverlayAllowed(currentScreen)) return;
 
@@ -625,8 +668,17 @@ private static final float TOP_Y = 18f;
         float targetLeftContextWidth = TIME_CONTEXT_WIDTH * contextPresence;
         float targetRightContextWidth = PvpState.isActive() ? PVP_CONTEXT_WIDTH * contextPresence : 0.0f;
 
-        mainWidthAnim = mainWidthAnim < 0f ? targetMainWidth : AnimationUtility.approach(mainWidthAnim, targetMainWidth, dt, 12f);
-        heightAnim = heightAnim < 0f ? targetHeight : AnimationUtility.approach(heightAnim, targetHeight, dt, 12f);
+        if (currentMode == IslandMode.CLICKGUI) {
+            // Tab geometry is authoritative and must remain 1:1. The blob owns the
+            // shell transition, but never rescales or reflows the ClickGUI model.
+            mainWidthAnim = targetMainWidth;
+            heightAnim = targetHeight;
+        } else {
+            mainWidthAnim = mainWidthAnim < 0f ? targetMainWidth
+                    : AnimationUtility.approach(mainWidthAnim, targetMainWidth, dt, 12f);
+            heightAnim = heightAnim < 0f ? targetHeight
+                    : AnimationUtility.approach(heightAnim, targetHeight, dt, 12f);
+        }
         leftContextWidthAnim = AnimationUtility.approach(leftContextWidthAnim, targetLeftContextWidth, dt, 13f);
         rightContextWidthAnim = AnimationUtility.approach(rightContextWidthAnim, targetRightContextWidth, dt, 13f);
         mainWidthAnim = AnimationUtility.snap(mainWidthAnim, targetMainWidth, 0.05f);
@@ -737,6 +789,14 @@ private static final float TOP_Y = 18f;
         h = CachedUiScriptRuntime.mix(h, "music".equals(stringProp(props, "mode", "")));
         h = CachedUiScriptRuntime.mix(h, boolProp(props, "showShuffle", false));
         h = CachedUiScriptRuntime.mix(h, boolProp(props, "showRepeat", false));
+        Object clickGuiTabs = props.get("clickGuiTabs");
+        if (clickGuiTabs instanceof Iterable<?> tabs) {
+            for (Object item : tabs) {
+                if (!(item instanceof Map<?, ?> tab)) continue;
+                Object label = tab.get("label");
+                h = CachedUiScriptRuntime.mix(h, label == null ? "" : String.valueOf(label));
+            }
+        }
         return h;
     }
 
@@ -794,6 +854,33 @@ private static final float TOP_Y = 18f;
             patchShape(patches, "context:pvp:blur", "blurAlpha", numberProp(props, "blurAlpha", 0.0f) * pvpContextAlpha, "radius", 10.0f);
             patchShape(patches, "context:pvp:box", "fill", scaleHexAlpha(stringProp(props, "pvpFill", "#00000000"), pvpContextAlpha), "stroke", scaleHexAlpha(stringProp(props, "pvpStroke", "#00000000"), pvpContextAlpha));
             patchText(patches, "context:pvp", stringProp(props, "pvpTimer", ""), scaleHexAlpha(primary, pvpContextAlpha));
+        }
+
+        if (clickGuiMode) {
+            patchShape(patches, "clickgui:selection",
+                    "sources", props.get("clickGuiSelectionSources"),
+                    "startColor", scaleHexAlpha(accentSoft, numberProp(props, "alpha", 0.0f)),
+                    "endColor", scaleHexAlpha(accent, numberProp(props, "alpha", 0.0f) * 0.82f),
+                    "stroke", scaleHexAlpha(accent, numberProp(props, "alpha", 0.0f) * 0.92f));
+            Object tabsValue = props.get("clickGuiTabs");
+            if (tabsValue instanceof Iterable<?> tabs) {
+                int index = 0;
+                for (Object item : tabs) {
+                    if (!(item instanceof Map<?, ?> tab)) continue;
+                    String label = String.valueOf(tab.get("label"));
+                    boolean active = Boolean.TRUE.equals(tab.get("active"));
+                    boolean hovered = Boolean.TRUE.equals(tab.get("hovered"));
+                    float textAlpha = active ? 1.0f : (hovered ? 0.92f : 0.72f);
+                    patchText(patches, "clickgui:tab:" + index, label,
+                            scaleHexAlpha(active ? primary : muted, numberProp(props, "alpha", 0.0f) * textAlpha));
+                    if (index > 0) {
+                        patchShape(patches, "clickgui:separator:" + index,
+                                "fill", scaleHexAlpha(stringProp(props, "stroke", "#00FFFFFF"),
+                                        numberProp(props, "alpha", 0.0f) * 0.72f));
+                    }
+                    index++;
+                }
+            }
         }
 
         if (musicMode) {
@@ -874,6 +961,32 @@ private static final float TOP_Y = 18f;
             putBounds(patches, "shell:tint", rootX + mainX, rootY, mainWidth, height);
             putBounds(patches, "shell:stroke", rootX + mainX, rootY, mainWidth, height);
             putBounds(patches, "shell:interaction", rootX + mainX, rootY, mainWidth, height);
+        }
+
+        if (clickGuiMode) {
+            float activeX = numberProp(props, "clickGuiActiveX", 0.0f);
+            float activeW = numberProp(props, "clickGuiActiveW", 1.0f);
+            putBounds(patches, "clickgui:selection",
+                    rootX + mainX + activeX + 4.0f, rootY + 4.0f,
+                    Math.max(1.0f, activeW - 8.0f), Math.max(1.0f, height - 8.0f));
+            Object tabsValue = props.get("clickGuiTabs");
+            if (tabsValue instanceof Iterable<?> tabs) {
+                int index = 0;
+                for (Object item : tabs) {
+                    if (!(item instanceof Map<?, ?> tab)) continue;
+                    float relativeX = mapNumber(tab, "x", 0.0f);
+                    float tabWidth = mapNumber(tab, "width", 1.0f);
+                    if (index > 0) {
+                        putBounds(patches, "clickgui:separator:" + index,
+                                rootX + mainX + relativeX - 0.5f, rootY + 9.0f,
+                                1.0f, Math.max(1.0f, height - 18.0f));
+                    }
+                    putBounds(patches, "clickgui:tab:" + index,
+                            rootX + mainX + relativeX, rootY + (height - 16.0f) * 0.5f,
+                            Math.max(1.0f, tabWidth), 16.0f);
+                    index++;
+                }
+            }
         }
 
         if (musicMode || clickGuiMode) {
@@ -1017,6 +1130,21 @@ private static final float TOP_Y = 18f;
         props.put("clickGuiLabel", clickGuiState.activeLabel());
         props.put("clickGuiTabCount", clickGuiState.tabCount());
         props.put("clickGuiPicker", clickGuiState.pickerActive());
+        props.put("clickGuiActiveX", clickGuiState.activeX() - clickGuiState.tabBarX());
+        props.put("clickGuiActiveW", clickGuiState.activeW());
+        props.put("clickGuiSelectionSources", islandPillSources(clickGuiState.activeW() - 8.0f,
+                clickGuiState.tabBarH() - 8.0f, 0.0f));
+        ArrayList<LinkedHashMap<String, Object>> clickGuiTabs = new ArrayList<>(clickGuiState.tabs().size());
+        for (ClickGuiRenderer.ClickGuiIslandTab tab : clickGuiState.tabs()) {
+            LinkedHashMap<String, Object> item = new LinkedHashMap<>();
+            item.put("label", tab.label());
+            item.put("x", tab.relativeX());
+            item.put("width", tab.width());
+            item.put("active", tab.active());
+            item.put("hovered", tab.hovered());
+            clickGuiTabs.add(item);
+        }
+        props.put("clickGuiTabs", clickGuiTabs);
         props.put("title", title);
         props.put("artist", artist);
         props.put("titleWidthCompact", measureWidth(titleRenderer, title, 0.82f));
@@ -1043,7 +1171,11 @@ private static final float TOP_Y = 18f;
         props.put("fillBottom", hex(HudRenderUtil.scaleAlpha(uiFillBottom, 0.88f * alpha)));
         props.put("tintTop", hex(HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.10f), 0.16f * alpha)));
         props.put("tintBottom", hex(HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(accent, 0xFF000000, 0.25f), 0.112f * alpha)));
-        props.put("shadow", hex(HudRenderUtil.scaleAlpha(BASE_SHADOW, 0.28f * alpha)));
+        Screen propsScreen = ClientScreen.current();
+        boolean suppressPauseShadow = propsScreen != null && propsScreen.isPauseScreen();
+        props.put("shadow", suppressPauseShadow
+                ? "#00000000"
+                : hex(HudRenderUtil.scaleAlpha(BASE_SHADOW, 0.28f * alpha)));
         props.put("stroke", hex(HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(syncTheme.get() ? theme().windowStroke() : BASE_STROKE, accent, 0.18f), 0.18f * alpha)));
         props.put("highlight", hex(HudRenderUtil.scaleAlpha(0xFFFFFFFF, 0.08f * alpha)));
         props.put("contextFill", hex(HudRenderUtil.scaleAlpha(0xFF000000, 0.36f * alpha)));
@@ -1223,12 +1355,36 @@ private static final float TOP_Y = 18f;
                               float radius,
                               float alpha,
                               int accent) {
-        renderer.roundedRectShadow(drawX, drawY, drawWidth, drawHeight, radius, 8f, 14f,
-                HudRenderUtil.scaleAlpha(BASE_SHADOW, 0.28f * alpha));
+        Screen fallbackScreen = ClientScreen.current();
+        if (fallbackScreen == null || !fallbackScreen.isPauseScreen()) {
+            renderer.roundedRectShadow(drawX, drawY, drawWidth, drawHeight, radius, 8f, 14f,
+                    HudRenderUtil.scaleAlpha(BASE_SHADOW, 0.28f * alpha));
+        }
         renderer.roundedRect(drawX, drawY, drawWidth, drawHeight, radius, 1.1f,
                 HudRenderUtil.scaleAlpha(uiFillTop, 0.88f * alpha));
         renderer.roundedRectStroke(drawX, drawY, drawWidth, drawHeight, radius, 1.1f, 1f,
                 HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(BASE_STROKE, accent, 0.18f), 0.18f * alpha));
+        if (currentMode == IslandMode.CLICKGUI) {
+            ClickGuiRenderer.ClickGuiIslandState state = ClickGuiRenderer.islandState();
+            float activeX = drawX + state.activeX() - state.tabBarX();
+            float activeW = state.activeW();
+            renderer.roundedRect(activeX + 4.0f, drawY + 4.0f,
+                    Math.max(1.0f, activeW - 8.0f), Math.max(1.0f, drawHeight - 8.0f),
+                    Math.max(1.0f, (drawHeight - 8.0f) * 0.5f),
+                    HudRenderUtil.scaleAlpha(uiAccentSoft, alpha));
+            TextRenderer tabFont = ClickGuiRenderer.getOnestBold();
+            for (ClickGuiRenderer.ClickGuiIslandTab tab : state.tabs()) {
+                float tabX = drawX + tab.relativeX();
+                float tabW = tab.width();
+                float textSize = 12.0f;
+                float textWidth = ClickGuiRenderer.textWidth(tabFont, tab.label(), textSize);
+                int color = tab.active() ? uiTextPrimary : uiTextMuted;
+                ClickGuiRenderer.drawText(tabFont, tab.label(),
+                        tabX + (tabW - textWidth) * 0.5f,
+                        drawY + (drawHeight - textSize) * 0.5f,
+                        textSize, HudRenderUtil.scaleAlpha(color, alpha), false);
+            }
+        }
     }
 
     private void updateInteractionAnimation(boolean interactive, float dt) {

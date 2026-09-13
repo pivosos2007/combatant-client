@@ -25,6 +25,7 @@ import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public final class ClickGuiPickerState {
     private static final float SCALE = 2f;
@@ -54,6 +55,7 @@ public final class ClickGuiPickerState {
     private final TextListSetting owner;
     private final TextListSetting.PickerMode mode;
     private final PickerCatalog catalog;
+    private final CompletableFuture<List<PickerEntryData>> catalogFuture;
     private final String title;
     private final StringBuilder search = new StringBuilder();
     private final List<PickerEntryData> allEntries = new ArrayList<>();
@@ -97,14 +99,31 @@ public final class ClickGuiPickerState {
     private float allFilterHoverAnim;
     private float selectedFilterHoverAnim;
     private float openAnim;
+    private boolean catalogLoading;
 
     public ClickGuiPickerState(TextListSetting owner, String title, TextListSetting.PickerMode mode) {
         this.owner = owner;
         this.mode = mode == null ? TextListSetting.PickerMode.TEXT : mode;
         this.catalog = PickerCatalogFactory.forMode(this.mode);
         this.title = title == null || title.isBlank() ? "Select" : title;
-        reloadEntries();
-        refreshFiltered(true);
+
+        if (PickerCatalogFactory.supportsAsync(this.mode)) {
+            this.catalogFuture = PickerCatalogFactory.requestEntriesAsync(this.mode, owner);
+            List<PickerEntryData> ready = this.catalogFuture.isDone()
+                    ? this.catalogFuture.getNow(List.of())
+                    : null;
+            if (ready != null) {
+                replaceEntries(ready);
+                refreshFiltered(true);
+            } else {
+                catalogLoading = true;
+                refreshFiltered(true);
+            }
+        } else {
+            this.catalogFuture = null;
+            reloadEntries();
+            refreshFiltered(true);
+        }
     }
 
     private static boolean inside(float mx, float my, float x, float y, float w, float h) {
@@ -228,6 +247,7 @@ public final class ClickGuiPickerState {
     }
 
     public void render(int fbw, int fbh) {
+        pollCatalog();
         layout(fbw, fbh);
         clampScroll();
 
@@ -631,7 +651,9 @@ public final class ClickGuiPickerState {
         if (visible.isEmpty()) {
             ClickGuiRenderer.drawText(
                     ClickGuiRenderer.getInterRegular(),
-                    showAll
+                    catalogLoading && showAll
+                            ? ClickGuiI18n.tr("clickgui.picker.loading", "Loading...")
+                            : showAll
                             ? ClickGuiI18n.tr("clickgui.picker.empty", "No entries")
                             : ClickGuiI18n.tr("clickgui.picker.empty_selected", "Nothing selected"),
                     clipX + 2f * SCALE,
@@ -760,8 +782,21 @@ public final class ClickGuiPickerState {
     }
 
     private void reloadEntries() {
+        replaceEntries(catalog.entries(owner));
+    }
+
+    private void pollCatalog() {
+        if (!catalogLoading || catalogFuture == null || !catalogFuture.isDone()) return;
+        replaceEntries(catalogFuture.getNow(List.of()));
+        catalogLoading = false;
+        refreshFiltered(true);
+    }
+
+    private void replaceEntries(Collection<PickerEntryData> entries) {
         allEntries.clear();
-        allEntries.addAll(catalog.entries(owner));
+        if (entries != null && !entries.isEmpty()) {
+            allEntries.addAll(entries);
+        }
     }
 
     private void refreshFiltered(boolean resetScroll) {

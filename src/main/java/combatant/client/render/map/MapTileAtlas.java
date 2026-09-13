@@ -14,6 +14,9 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import combatant.client.render.engine.core.CombatantRenderSystem;
+import combatant.client.render.engine.rhi.blit.RhiCopyRequest;
+import com.mojang.blaze3d.textures.GpuTextureView;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
@@ -88,32 +91,30 @@ public final class MapTileAtlas implements AutoCloseable {
             throw new IllegalArgumentException("GPU tile payload does not match atlas tile size.");
         }
         Page page = page(slot.page());
-        if (copy.source().getFormat() != page.texture.getFormat()) {
+        if (copy.source().texture().getFormat() != page.texture.getFormat()) {
             throw new IllegalArgumentException("GPU tile format does not match atlas format.");
         }
         int column = slot.slot() % columns;
         int row = slot.slot() / columns;
         int targetX = column * stride + GUTTER;
         int targetY = row * stride + GUTTER;
-        var encoder = RenderSystem.getDevice().createCommandEncoder();
-
-        copyRegion(encoder, copy.source(), page.texture,
+        copyRegion(copy.source(), page.view,
                 copy.sourceX(), copy.sourceY(), targetX, targetY, tileSize, tileSize);
-        copyRegion(encoder, copy.source(), page.texture,
+        copyRegion(copy.source(), page.view,
                 copy.sourceX(), copy.sourceY(), targetX, targetY - 1, tileSize, 1);
-        copyRegion(encoder, copy.source(), page.texture,
+        copyRegion(copy.source(), page.view,
                 copy.sourceX(), copy.sourceY() + tileSize - 1, targetX, targetY + tileSize, tileSize, 1);
-        copyRegion(encoder, copy.source(), page.texture,
+        copyRegion(copy.source(), page.view,
                 copy.sourceX(), copy.sourceY(), targetX - 1, targetY, 1, tileSize);
-        copyRegion(encoder, copy.source(), page.texture,
+        copyRegion(copy.source(), page.view,
                 copy.sourceX() + tileSize - 1, copy.sourceY(), targetX + tileSize, targetY, 1, tileSize);
-        copyRegion(encoder, copy.source(), page.texture,
+        copyRegion(copy.source(), page.view,
                 copy.sourceX(), copy.sourceY(), targetX - 1, targetY - 1, 1, 1);
-        copyRegion(encoder, copy.source(), page.texture,
+        copyRegion(copy.source(), page.view,
                 copy.sourceX() + tileSize - 1, copy.sourceY(), targetX + tileSize, targetY - 1, 1, 1);
-        copyRegion(encoder, copy.source(), page.texture,
+        copyRegion(copy.source(), page.view,
                 copy.sourceX(), copy.sourceY() + tileSize - 1, targetX - 1, targetY + tileSize, 1, 1);
-        copyRegion(encoder, copy.source(), page.texture,
+        copyRegion(copy.source(), page.view,
                 copy.sourceX() + tileSize - 1, copy.sourceY() + tileSize - 1,
                 targetX + tileSize, targetY + tileSize, 1, 1);
         uploadedGenerations[slot.page()][slot.slot()] = slot.generation();
@@ -185,16 +186,27 @@ public final class MapTileAtlas implements AutoCloseable {
         }
     }
 
-    private static void copyRegion(com.mojang.blaze3d.systems.CommandEncoder encoder,
-                                   GpuTexture source,
-                                   GpuTexture target,
+    private static void copyRegion(GpuTextureView source,
+                                   GpuTextureView target,
                                    int sourceX,
                                    int sourceY,
                                    int targetX,
                                    int targetY,
                                    int width,
                                    int height) {
-        encoder.copyTextureToTexture(source, target, 0, targetX, targetY, sourceX, sourceY, width, height);
+        RhiCopyRequest request = new RhiCopyRequest(
+                source,
+                target,
+                new RhiCopyRequest.Region(sourceX, sourceY, width, height),
+                new RhiCopyRequest.Region(targetX, targetY, width, height),
+                1,
+                1,
+                RhiCopyRequest.Filter.NEAREST,
+                false
+        );
+        if (!CombatantRenderSystem.rhi().textureBlitter().copy(request)) {
+            throw new IllegalStateException("Map atlas exact GPU copy was not supported by the active RHI backend.");
+        }
     }
 
     private byte[] padWithDuplicatedEdges(byte[] source) {

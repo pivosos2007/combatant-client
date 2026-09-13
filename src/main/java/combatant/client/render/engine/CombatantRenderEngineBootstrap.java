@@ -7,6 +7,7 @@
 
 package combatant.client.render.engine;
 
+import combatant.client.addon.ClickGuiSectionManager;
 import combatant.client.util.resources.asset.AssetAutoLoader;
 import combatant.client.render.engine.guard.RenderBoundaryAudit;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -19,6 +20,8 @@ public enum CombatantRenderEngineBootstrap {
 
     public static void init() {
         RenderBoundaryAudit.runOnce();
+        // Overlap the expensive ClickGUI ClassGraph scan with the rest of client bootstrap.
+        ClickGuiSectionManager.beginDiscoveryAsync();
         // RHI backend selection must be lazy: onInitializeClient can run before RenderSystem has
         // created the final GpuDevice, which would permanently select the wrong backend on Vulkan.
         Renderer2D.init();

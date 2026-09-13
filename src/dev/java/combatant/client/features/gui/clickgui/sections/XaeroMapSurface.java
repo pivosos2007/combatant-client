@@ -7,10 +7,15 @@
 
 package combatant.client.features.gui.clickgui.sections;
 
+import combatant.client.config.subsystem.MapUiConfig;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.theme.Theme;
+import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.draw.UiBoxShape;
+import combatant.client.render.engine.renderer.ui.draw.UiPaint;
+import combatant.client.render.engine.renderer.ui.draw.UiStroke;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.map.MapGridSpec;
 import combatant.client.render.map.MapOverlaySnapshot;
@@ -29,17 +34,18 @@ import combatant.client.render.map.MapTileUvRect;
 import combatant.client.render.map.MapViewport;
 import combatant.client.render.map.MapVisibleTileSelector;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.util.screen.ClientScreen;
 import combatant.client.util.text.LegacyTextUtil;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.options.controls.KeyBindsScreen;
+import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.resources.language.I18n;
 import org.lwjgl.glfw.GLFW;
 import xaero.lib.client.graphics.GpuTextureAndView;
 import xaero.lib.client.config.ClientConfigManager;
-import xaero.lib.common.config.Config;
 import xaero.lib.common.config.option.ConfigOption;
 import xaero.lib.common.config.single.SingleConfigManager;
-import xaero.hud.minimap.common.config.MinimapConfigConstants;
 import xaero.map.MapProcessor;
 import xaero.map.WorldMap;
 import xaero.map.WorldMapSession;
@@ -77,6 +83,12 @@ final class XaeroMapSurface {
     private static final double MIN_SCALE = 1.0 / 16.0;
     private static final double MAX_SCALE = 50.0;
     private static final long ZOOM_ANIMATION_NS = 100_000_000L;
+    private static final float MAP_INFO_FONT_SIZE = 18.0f;
+    private static final float MAP_INFO_PAD_X = 14.0f;
+    private static final float MAP_INFO_PAD_Y = 8.0f;
+    private static final float MAP_INFO_RADIUS = 10.0f;
+    private static final float MAP_INFO_EDGE_INSET = 18.0f;
+    private static final float MAP_INFO_TOP_GAP = 10.0f;
     private static double destinationScale = 3.0;
 
     private final MapVisibleTileSelector visibleTileSelector = new MapVisibleTileSelector(TILE_RESOLUTION, 16384);
@@ -117,7 +129,7 @@ final class XaeroMapSurface {
     private long loadingAnimationStart = System.currentTimeMillis();
     private String viewedDimension;
     private boolean prevWaitingForBranchCache;
-    private boolean prevLoadingLeaves;
+    private boolean prevLoadingLeaves = true;
     private boolean lastFrameRenderedRootTextures;
     private boolean loadingLeaves;
     private MapViewport viewport;
@@ -142,11 +154,6 @@ final class XaeroMapSurface {
     private boolean contextOpen;
     private boolean deleteArmed;
     private Drawer drawer = Drawer.NONE;
-    private boolean controlsOpen;
-    private boolean caveControlsOpen;
-    private boolean caveSliderDragging;
-    private boolean caveHeightFocused;
-    private String caveHeightText = "auto";
     private WaypointDraft waypointDraft;
 
     Frame render(float x, float y, float width, float height, float mouseX, float mouseY) {
@@ -154,14 +161,14 @@ final class XaeroMapSurface {
         areaY = y;
         areaWidth = width;
         areaHeight = height;
+        hoveredElement = null;
 
         WorldMapSession session = WorldMapSession.getCurrentSession();
         if (session == null || !session.isUsable()) return Frame.waiting("Preparing World Map...");
         MapProcessor processor = session.getMapProcessor();
         if (processor == null || !processor.isMapWorldUsable()) return Frame.waiting("Preparing World Map...");
         MapWorld world = processor.getMapWorld();
-        MapDimension dimension = world == null ? null : world.getFutureDimension();
-        if (dimension == null && world != null) dimension = world.getCurrentDimension();
+        MapDimension dimension = world == null ? null : world.getCurrentDimension();
         if (dimension == null) return Frame.waiting("Preparing World Map...");
         activeProcessor = processor;
         activeDimension = dimension;
@@ -214,8 +221,17 @@ final class XaeroMapSurface {
         drawLoading(viewport);
         drawSelection(viewport);
         drawFootprints(processor, dimension, viewport);
+        Minecraft minecraft = Minecraft.getInstance();
+        boolean tabDown = minecraft != null && minecraft.getWindow() != null
+                && InputConstants.isKeyDown(minecraft.getWindow(), GLFW.GLFW_KEY_TAB);
+        elements.setTabDown(tabDown);
         elementSnapshot = elements.collect(processor, dimension, userScale);
-        hoveredElement = elements.render(elementSnapshot, viewport, mouseX, mouseY);
+        boolean elementPointerActive = (settings == null || !settings.isOpen())
+                && !contextOpen && waypointDraft == null && drawer == Drawer.NONE
+                && contains(mouseX, mouseY);
+        hoveredElement = elements.render(elementSnapshot, viewport,
+                elementPointerActive ? mouseX : Float.NaN,
+                elementPointerActive ? mouseY : Float.NaN);
         drawPlayerArrow(processor, dimension, viewport);
         drawMapUi(processor, dimension, mouseX, mouseY);
         return result.terrainTilesDrawn() == 0
@@ -227,7 +243,6 @@ final class XaeroMapSurface {
         if (waypointDraft != null && waypointDraft.mousePressed(mouseX, mouseY, button)) return true;
         if (settings != null && settings.mousePressed(mouseX, mouseY, button)) return true;
         if (contextOpen && clickContext(mouseX, mouseY, button)) return true;
-        if (caveControlsOpen && clickCaveControls(mouseX, mouseY, button)) return true;
         if (clickUiButton(mouseX, mouseY, button)) return true;
         if (clickDrawer(mouseX, mouseY, button)) return true;
         if (!contains(mouseX, mouseY)) return false;
@@ -255,7 +270,6 @@ final class XaeroMapSurface {
         if (settings != null) settings.mouseReleased(mouseX, mouseY, button);
         if (waypointDraft != null) waypointDraft.mouseReleased(mouseX, mouseY, button);
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) dragging = false;
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) caveSliderDragging = false;
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && rightSelecting) {
             rightSelecting = false;
             contextX = clamp(mouseX, areaX + 8.0f, areaX + areaWidth - 246.0f);
@@ -267,15 +281,6 @@ final class XaeroMapSurface {
 
     boolean mouseScrolled(float mouseX, float mouseY, double amount) {
         if (settings != null && settings.mouseScrolled(mouseX, mouseY, amount)) return true;
-        if (caveControlsOpen && inside(mouseX, mouseY, cavePanelX(), cavePanelY(), cavePanelWidth(), cavePanelHeight())) {
-            int current = caveStart();
-            int next = current == Integer.MAX_VALUE
-                    ? (amount > 0.0 ? -64 : 319)
-                    : Math.max(-64, Math.min(319, current + (amount > 0.0 ? 1 : -1)));
-            setCaveStart(next);
-            caveHeightText = Integer.toString(next);
-            return true;
-        }
         if (!contains(mouseX, mouseY) || amount == 0.0) return false;
         changeZoom(amount, mouseX, mouseY, amount > 0.0);
         return true;
@@ -284,28 +289,10 @@ final class XaeroMapSurface {
     boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (waypointDraft != null && waypointDraft.keyPressed(keyCode, modifiers)) return true;
         if (settings != null && settings.keyPressed(keyCode, scanCode, modifiers)) return true;
-        if (caveHeightFocused) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                caveHeightFocused = false;
-                syncCaveHeightText();
-                return true;
-            }
-            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-                commitCaveHeightText();
-                caveHeightFocused = false;
-                return true;
-            }
-            if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !caveHeightText.isEmpty()) {
-                caveHeightText = caveHeightText.substring(0, caveHeightText.length() - 1);
-                return true;
-            }
-            return true;
-        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-            if (contextOpen || drawer != Drawer.NONE || controlsOpen) {
+            if (contextOpen || drawer != Drawer.NONE) {
                 contextOpen = false;
                 drawer = Drawer.NONE;
-                controlsOpen = false;
                 return true;
             }
             return false;
@@ -362,12 +349,6 @@ final class XaeroMapSurface {
 
     boolean charTyped(char chr, int modifiers) {
         if (waypointDraft != null && waypointDraft.charTyped(chr)) return true;
-        if (caveHeightFocused) {
-            if ((Character.isDigit(chr) || chr == '-' || Character.isLetter(chr)) && caveHeightText.length() < 8) {
-                caveHeightText += chr;
-            }
-            return true;
-        }
         return settings != null && settings.charTyped(chr, modifiers);
     }
 
@@ -384,8 +365,8 @@ final class XaeroMapSurface {
         dragging = false;
         rightSelecting = false;
         contextOpen = false;
-        caveSliderDragging = false;
-        caveHeightFocused = false;
+        hoveredElement = null;
+        elements.clearHover();
     }
 
     private List<MapTerrainTile> collectTerrain(MapProcessor processor,
@@ -403,10 +384,21 @@ final class XaeroMapSurface {
         int tint = brightness << 24 | 0x00FFFFFF;
         String sourceId = sourceId(processor, dimension);
         List<MapTerrainTile> terrain = new ArrayList<>();
+        int leveledRegionShift = 9 + requestedLod;
+        LeveledRegion.setComparison(
+                pointerBlockX >> leveledRegionShift,
+                pointerBlockZ >> leveledRegionShift,
+                requestedLod,
+                pointerBlockX >> 9,
+                pointerBlockZ >> 9
+        );
+        VisibleLeaves visibleLeaves = prepareVisibleLeaves(processor, viewport, requestedLod);
 
         for (MapTileCoordinate requested : visibleTileSelector.select(viewport, requestedLod, 0)) {
-            ResolvedTile tile = resolveTile(processor, requested);
-            if (tile == null) continue;
+            ResolvedTile tile = resolveTile(processor, requested, visibleLeaves);
+            if (tile == null) {
+                continue;
+            }
             dimension.getLayeredMapRegions().bumpLoadedRegion(tile.region());
             if (tile.sourceRegion() != tile.region()) {
                 dimension.getLayeredMapRegions().bumpLoadedRegion(tile.sourceRegion());
@@ -421,7 +413,7 @@ final class XaeroMapSurface {
                     key,
                     tile.texture().getTextureVersion(),
                     requested.worldBounds(TILE_RESOLUTION),
-                    new MapTileGpuCopy(gpu.texture, 0, 0, TILE_RESOLUTION, TILE_RESOLUTION),
+                    new MapTileGpuCopy(gpu.view, 0, 0, TILE_RESOLUTION, TILE_RESOLUTION),
                     material,
                     tile.textureUv(),
                     tint
@@ -435,20 +427,65 @@ final class XaeroMapSurface {
         return List.copyOf(terrain);
     }
 
-    private ResolvedTile resolveTile(MapProcessor processor, MapTileCoordinate requested) {
+    /**
+     * Mirrors GuiMap's leaf-region walk. A leaf is considered once per frame, independently of
+     * how many 64x64 textures from its leveled region are visible.
+     */
+    private VisibleLeaves prepareVisibleLeaves(MapProcessor processor, MapViewport viewport, int lod) {
+        MapRect world = viewport.visibleWorldBounds();
+        int textureShift = 6 + lod;
+        int minTextureX = (int) Math.floor(world.x()) >> textureShift;
+        int maxTextureX = (int) Math.floor(world.maxX()) >> textureShift;
+        int minTextureZ = (int) Math.floor(world.y()) >> textureShift;
+        int maxTextureZ = (int) Math.floor(world.maxY()) >> textureShift;
+        int minLeafX = minTextureX << textureShift >> 9;
+        int maxLeafX = ((maxTextureX + 1 << textureShift) - 1) >> 9;
+        int minLeafZ = minTextureZ << textureShift >> 9;
+        int maxLeafZ = ((maxTextureZ + 1 << textureShift) - 1) >> 9;
+        int leveledSide = 1 << lod;
+        int caveLayer = processor.getCurrentCaveLayer();
+        Set<Long> regions = new LinkedHashSet<>();
+
+        for (int leafX = minLeafX; leafX <= maxLeafX; leafX++) {
+            for (int leafZ = minLeafZ; leafZ <= maxLeafZ; leafZ++) {
+                MapRegion leaf = processor.getLeafMapRegion(caveLayer, leafX, leafZ, false);
+                if (leaf == null && processor.regionExists(caveLayer, leafX, leafZ)) {
+                    leaf = processor.getLeafMapRegion(caveLayer, leafX, leafZ, true);
+                }
+                if (leaf == null) continue;
+                queueLeafIfNeeded(processor, leaf, lod);
+                regions.add(regionKey(Math.floorDiv(leafX, leveledSide), Math.floorDiv(leafZ, leveledSide)));
+            }
+        }
+        return new VisibleLeaves(regions, minLeafX, minLeafZ, maxLeafX, maxLeafZ);
+    }
+
+    private ResolvedTile resolveTile(MapProcessor processor,
+                                     MapTileCoordinate requested,
+                                     VisibleLeaves visibleLeaves) {
         int lod = requested.lod();
         int regionX = Math.floorDiv(requested.x(), TILES_PER_REGION_SIDE);
         int regionZ = Math.floorDiv(requested.z(), TILES_PER_REGION_SIDE);
-        MapRegion leaf = findExistingLeaf(processor, requested);
-        if (leaf == null) return null;
-        queueLeafIfNeeded(processor, leaf, lod);
+        if (!visibleLeaves.regions().contains(regionKey(regionX, regionZ))) return null;
 
         LeveledRegion<?> region = processor.getLeveledRegion(
                 processor.getCurrentCaveLayer(), regionX, regionZ, lod);
         if (region == null) return null;
         if (region.loadingAnimation()) addLoadingRegion(requested);
 
-        updateBranch(processor, region, lod, regionX, regionZ);
+        LeveledRegion<?> root = region.getRootRegion();
+        if (root == region) root = null;
+        if (root != null && !root.isLoaded()) {
+            if (root instanceof BranchLeveledRegion rootBranch
+                    && !rootBranch.recacheHasBeenRequested()
+                    && !rootBranch.reloadHasBeenRequested()) {
+                queueBranch(rootBranch);
+            }
+            waitingForBranchCache[0] = true;
+            root = null;
+        }
+
+        updateBranch(processor, region, root, lod, visibleLeaves);
         int localX = Math.floorMod(requested.x(), TILES_PER_REGION_SIDE);
         int localZ = Math.floorMod(requested.z(), TILES_PER_REGION_SIDE);
         RegionTexture<?> exact = region.hasTextures() ? region.getTexture(localX, localZ) : null;
@@ -456,93 +493,80 @@ final class XaeroMapSurface {
             return new ResolvedTile(requested, region, region, exact, MapTileUvRect.FULL);
         }
 
-        LeveledRegion<?> root = region.getRootRegion();
-        if (root == null || root == region) return null;
-        if (root instanceof BranchLeveledRegion branch && !branch.isLoaded()) {
-            queueBranch(branch);
-            waitingForBranchCache[0] = true;
+        // GuiMap's exact root fallback (lines 971-1004 in Xaero 26.2): one root texel
+        // rectangle covers the missing texture at the requested level.
+        if (root == null || !root.hasTextures()) {
             return null;
         }
-        if (!root.hasTextures()) return null;
-
-        int subdivisions = 1 << (MAX_LOD - lod);
-        int rootTileX = Math.floorDiv(requested.x(), subdivisions);
-        int rootTileZ = Math.floorDiv(requested.z(), subdivisions);
-        RegionTexture<?> fallback = root.getTexture(
-                Math.floorMod(rootTileX, TILES_PER_REGION_SIDE),
-                Math.floorMod(rootTileZ, TILES_PER_REGION_SIDE)
+        int levelDiff = MAX_LOD - lod;
+        int rootSize = 1 << levelDiff;
+        int maxInsideCoord = rootSize - 1;
+        int firstTextureX = regionX << 3;
+        int firstTextureZ = regionZ << 3;
+        int insideX = (firstTextureX & maxInsideCoord) + localX;
+        int insideZ = (firstTextureZ & maxInsideCoord) + localZ;
+        int rootTextureX = (firstTextureX >> levelDiff & 7) + (insideX >> levelDiff);
+        int rootTextureZ = (firstTextureZ >> levelDiff & 7) + (insideZ >> levelDiff);
+        RegionTexture<?> fallback = root.getTexture(rootTextureX, rootTextureZ);
+        if (!usable(fallback)) {
+            return null;
+        }
+        int insideTextureX = insideX & maxInsideCoord;
+        int insideTextureZ = insideZ & maxInsideCoord;
+        MapTileUvRect uv = new MapTileUvRect(
+                insideTextureX / (double) rootSize,
+                insideTextureZ / (double) rootSize,
+                (insideTextureX + 1.0) / rootSize,
+                (insideTextureZ + 1.0) / rootSize
         );
-        if (!usable(fallback)) return null;
-        int insideX = Math.floorMod(requested.x(), subdivisions);
-        int insideZ = Math.floorMod(requested.z(), subdivisions);
-        double unit = 1.0 / subdivisions;
-        return new ResolvedTile(
-                new MapTileCoordinate(rootTileX, rootTileZ, MAX_LOD),
-                region,
-                root,
-                fallback,
-                new MapTileUvRect(
-                        insideX * unit,
-                        insideZ * unit,
-                        (insideX + 1) * unit,
-                        (insideZ + 1) * unit
-                )
+        MapTileCoordinate source = new MapTileCoordinate(
+                root.getRegionX() * TILES_PER_REGION_SIDE + rootTextureX,
+                root.getRegionZ() * TILES_PER_REGION_SIDE + rootTextureZ,
+                MAX_LOD
         );
+        return new ResolvedTile(source, region, root, fallback, uv);
     }
 
     private void updateBranch(MapProcessor processor,
                               LeveledRegion<?> region,
+                              LeveledRegion<?> root,
                               int lod,
-                              int regionX,
-                              int regionZ) {
-        if (!(region instanceof BranchLeveledRegion branch)
-                || processor.isUploadingPaused()
-                || !updatedRegions.add(region)) return;
-        int side = 1 << lod;
-        int minLeafX = regionX * side;
-        int minLeafZ = regionZ * side;
-        branch.checkForUpdates(
-                processor,
-                prevWaitingForBranchCache,
-                waitingForBranchCache,
-                branchRequests,
-                lod,
-                minLeafX,
-                minLeafZ,
-                minLeafX + side - 1,
-                minLeafZ + side - 1
-        );
+                              VisibleLeaves visibleLeaves) {
+        if (processor.isUploadingPaused() || WorldMap.pauseRequests) return;
+        if (region instanceof BranchLeveledRegion branch && updatedRegions.add(region)) {
+            branch.checkForUpdates(
+                    processor,
+                    prevWaitingForBranchCache,
+                    waitingForBranchCache,
+                    branchRequests,
+                    lod,
+                    visibleLeaves.minX(),
+                    visibleLeaves.minZ(),
+                    visibleLeaves.maxX(),
+                    visibleLeaves.maxZ()
+            );
+        }
 
         if ((lod != 0 && !prevWaitingForBranchCache || lod == 0 && !prevLoadingLeaves)
                 && lastFrameRenderedRootTextures) {
-            LeveledRegion<?> root = region.getRootRegion();
-            if (root instanceof BranchLeveledRegion rootBranch && rootBranch != branch && updatedRegions.add(root)) {
+            if (root instanceof BranchLeveledRegion rootBranch && rootBranch != region && updatedRegions.add(root)) {
                 rootBranch.checkForUpdates(
                         processor,
                         prevWaitingForBranchCache,
                         waitingForBranchCache,
                         branchRequests,
                         lod,
-                        minLeafX,
-                        minLeafZ,
-                        minLeafX + side - 1,
-                        minLeafZ + side - 1
+                        visibleLeaves.minX(),
+                        visibleLeaves.minZ(),
+                        visibleLeaves.maxX(),
+                        visibleLeaves.maxZ()
                 );
             }
         }
     }
 
-    private MapRegion findExistingLeaf(MapProcessor processor, MapTileCoordinate requested) {
-        long worldX = (long) requested.x() * requested.blockSpan(TILE_RESOLUTION);
-        long worldZ = (long) requested.z() * requested.blockSpan(TILE_RESOLUTION);
-        int leafRegionX = (int) Math.floorDiv(worldX, REGION_BLOCKS);
-        int leafRegionZ = (int) Math.floorDiv(worldZ, REGION_BLOCKS);
-        int caveLayer = processor.getCurrentCaveLayer();
-        MapRegion leaf = processor.getLeafMapRegion(caveLayer, leafRegionX, leafRegionZ, false);
-        if (leaf == null && processor.regionExists(caveLayer, leafRegionX, leafRegionZ)) {
-            leaf = processor.getLeafMapRegion(caveLayer, leafRegionX, leafRegionZ, true);
-        }
-        return leaf;
+    private static long regionKey(int x, int z) {
+        return (long) x << 32 ^ z & 0xFFFFFFFFL;
     }
 
     @SuppressWarnings("unchecked")
@@ -677,15 +701,38 @@ final class XaeroMapSurface {
                 minecraft.player.getX() / divisor,
                 minecraft.player.getZ() / divisor
         );
-        double px = clamp(point.x(), areaX + 18.0, areaX + areaWidth - 18.0);
-        double py = clamp(point.y(), areaY + 18.0, areaY + areaHeight - 18.0);
-        float yaw = minecraft.player.getYRot();
-        if (px != point.x() || py != point.y()) {
-            yaw = (float) Math.toDegrees(Math.atan2(point.y() - py, point.x() - px)) - 90.0f;
-        }
+        float uiScale = 1.0f;
+        double edgeX = 27.0 * uiScale;
+        double edgeY = 14.0 * uiScale;
+        boolean left = point.x() < areaX + edgeX;
+        boolean right = point.x() > areaX + areaWidth - edgeX;
+        boolean up = point.y() < areaY + edgeY;
+        boolean down = point.y() > areaY + areaHeight - edgeY;
+        double px = clamp(point.x(), areaX + edgeX, areaX + areaWidth - edgeX);
+        double py = clamp(point.y(), areaY + edgeY, areaY + areaHeight - edgeY);
         int color = arrowColor();
-        drawPlayerMarker(px, py + 1.2, 14.0, 6.0, yaw, 0xD9000000);
-        drawPlayerMarker(px, py, 13.0, 5.0, yaw, color);
+        AbstractTexture texture = minecraft.getTextureManager().getTexture(WorldMap.guiTextures);
+        if (texture == null || texture.getTextureView() == null) return;
+        if (left || right || up || down) {
+            float direction = left
+                    ? (up ? 1.5f : down ? 0.5f : 1.0f)
+                    : right ? (up ? 2.5f : down ? 3.5f : 3.0f)
+                    : up ? 2.0f : 0.0f;
+            drawXaeroMapObject(texture, px, py + 1.5 * uiScale,
+                    54.0 * uiScale, 13.0 * uiScale, 27.0 * uiScale, 13.0 * uiScale,
+                    direction * 90.0f, 26.0, 0.0, 54.0, 13.0, 0xD9000000);
+            drawXaeroMapObject(texture, px, py,
+                    54.0 * uiScale, 13.0 * uiScale, 27.0 * uiScale, 13.0 * uiScale,
+                    direction * 90.0f, 26.0, 0.0, 54.0, 13.0, color);
+        } else {
+            float yaw = minecraft.player.getYRot();
+            drawXaeroMapObject(texture, px, py + 1.5 * uiScale,
+                    26.0 * uiScale, 28.0 * uiScale, 13.0 * uiScale, 5.0 * uiScale,
+                    yaw, 0.0, 0.0, 26.0, 28.0, 0xD9000000);
+            drawXaeroMapObject(texture, px, py,
+                    26.0 * uiScale, 28.0 * uiScale, 13.0 * uiScale, 5.0 * uiScale,
+                    yaw, 0.0, 0.0, 26.0, 28.0, color);
+        }
     }
 
     private void drawFootprints(MapProcessor processor, MapDimension dimension, MapViewport viewport) {
@@ -693,6 +740,7 @@ final class XaeroMapSurface {
         ArrayList<Double[]> footprints = processor.getFootprints();
         if (footprints == null || footprints.isEmpty()) return;
         double divisor = playerDimensionDivisor(processor, dimension);
+        float uiScale = 1.0f;
         synchronized (footprints) {
             int start = Math.max(0, footprints.size() - 1024);
             for (int i = start; i < footprints.size(); i++) {
@@ -700,7 +748,8 @@ final class XaeroMapSurface {
                 if (coordinates == null || coordinates.length < 2) continue;
                 MapScreenPoint point = viewport.project(coordinates[0] / divisor, coordinates[1] / divisor);
                 if (viewport.screenBounds().contains(point.x(), point.y())) {
-                    Renderer2D.COLOR.circle(point.x(), point.y(), 1.25, 0xFFFF1A1A);
+                    Renderer2D.COLOR.circle(point.x(), point.y(), 2.4 * uiScale, 0xC9000000);
+                    Renderer2D.COLOR.circle(point.x(), point.y() - 0.5 * uiScale, 1.65 * uiScale, 0xFFFF3B45);
                 }
             }
         }
@@ -717,30 +766,14 @@ final class XaeroMapSurface {
     }
 
     private static int arrowColor() {
-        int option = effectiveValue(WorldMapProfiledConfigOptions.ARROW_COLOR);
-        if (option == -2 && SupportMods.minimap()) {
-            float[] color = SupportMods.xaeroMinimap.getArrowColor();
-            if (color != null && color.length >= 3) {
-                return 0xFF000000
-                        | Math.round(color[0] * 255.0f) << 16
-                        | Math.round(color[1] * 255.0f) << 8
-                        | Math.round(color[2] * 255.0f);
-            }
-        }
-        if (option >= 0 && option < MinimapConfigConstants.ARROW_COLORS.length) {
-            float[] color = MinimapConfigConstants.ARROW_COLORS[option];
-            return 0xFF000000
-                    | Math.round(color[0] * 255.0f) << 16
-                    | Math.round(color[1] * 255.0f) << 8
-                    | Math.round(color[2] * 255.0f);
-        }
-        return 0xFFF5F8FC;
+        MapUiConfig config = MapUiConfig.get();
+        return config.isCustomArrowColor() ? config.customArrowColorArgb() : Theme.theme().accent();
     }
 
-    private void toggleSettings() {
+    private XaeroMapSettingsPanel ensureSettings() {
         if (settings == null) {
             long now = System.nanoTime();
-            if (now < settingsRetryAfterNanos) return;
+            if (now < settingsRetryAfterNanos) return null;
             try {
                 settings = new XaeroMapSettingsPanel(() -> activeProcessor, () -> activeDimension);
             } catch (RuntimeException error) {
@@ -750,7 +783,7 @@ final class XaeroMapSurface {
                         "Xaero World Map settings panel is temporarily unavailable; the map surface will remain active",
                         error
                 );
-                return;
+                return null;
             } catch (LinkageError error) {
                 settingsRetryAfterNanos = Long.MAX_VALUE;
                 DebugLog.warnOnce(
@@ -758,19 +791,28 @@ final class XaeroMapSurface {
                         "Xaero World Map settings panel is incompatible; the map surface will remain active",
                         error
                 );
-                return;
+                return null;
             }
         }
-        settings.toggle();
+        return settings;
+    }
+
+    private void toggleSettings() {
+        XaeroMapSettingsPanel panel = ensureSettings();
+        if (panel != null) panel.toggle();
+    }
+
+    private void openCaveSettings() {
+        XaeroMapSettingsPanel panel = ensureSettings();
+        if (panel != null) panel.openCave();
     }
 
     private void drawMapUi(MapProcessor processor, MapDimension dimension, float mouseX, float mouseY) {
         uiButtons.clear();
         SettingsGuiPalette palette = SettingsGuiPalette.current();
-        float scale = (float) chromeScale();
-        float size = 30.0f * scale;
-        float gap = 7.0f * scale;
-        float inset = 14.0f * scale;
+        float size = 42.0f;
+        float gap = 9.0f;
+        float inset = 18.0f;
 
         addUiButton(Action.SETTINGS, "settings-2", areaX + inset, areaY + inset, size,
                 tr("gui.xaero_box_open_settings", "Settings"), settings != null && settings.isOpen());
@@ -810,7 +852,7 @@ final class XaeroMapSurface {
                 tr("gui.xaero_box_export", "Export"), false);
         cursor -= size + gap;
         addUiButton(Action.CONTROLS, "circle-question-mark", right, cursor, size,
-                tr("gui.xaero_box_controls", "Controls"), controlsOpen);
+                tr("gui.xaero_box_controls", "Controls"), false);
         cursor -= size + gap;
         if (effective(WorldMapProfiledConfigOptions.ZOOM_BUTTONS)) {
             addUiButton(Action.ZOOM_OUT, "zoom-out", right, cursor, size,
@@ -821,28 +863,28 @@ final class XaeroMapSurface {
         }
 
         for (UiButton button : uiButtons) drawUiButton(button, mouseX, mouseY, palette);
-        drawCompass(palette, scale);
-        drawCoordinates(palette, dimension, scale);
-        drawZoom(palette, scale);
-        drawDrawer(mouseX, mouseY, palette, scale);
-        if (controlsOpen) drawControls(palette, scale);
-        if (caveControlsOpen) drawCaveControls(mouseX, mouseY, palette, scale);
-        if (contextOpen) drawContext(mouseX, mouseY, palette, scale);
-        if (waypointDraft != null) waypointDraft.render(mouseX, mouseY, palette, scale);
-        drawTooltip(mouseX, mouseY, palette, scale);
+        drawCompass(palette);
+        drawCoordinates(palette, dimension);
+        drawZoom(palette);
+        drawDrawer(mouseX, mouseY, palette);
+        if (contextOpen) drawContext(mouseX, mouseY, palette);
+        if (waypointDraft != null) waypointDraft.render(mouseX, mouseY, palette);
+        drawTooltip(mouseX, mouseY, palette);
         if (settings != null) settings.render(areaX, areaY, areaWidth, areaHeight, mouseX, mouseY);
     }
 
-    private void drawZoom(SettingsGuiPalette palette, float scale) {
+    private void drawZoom(SettingsGuiPalette palette) {
         String zoom = Math.round(destinationScale * 1000.0) / 1000.0 + "x";
-        float fontSize = 10.0f * scale;
-        float textWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), zoom, fontSize);
-        float textX = areaX + (areaWidth - textWidth) * 0.5f;
-        float textY = areaY + areaHeight - 20.0f * scale;
-        Renderer2D.COLOR.roundedRect(textX - 6.0f * scale, textY - 3.0f * scale,
-                textWidth + 12.0f * scale, fontSize + 6.0f * scale, 5.0f * scale, palette.panelBgLeft());
+        float textWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), zoom, MAP_INFO_FONT_SIZE);
+        float cardWidth = textWidth + MAP_INFO_PAD_X * 2.0f;
+        float cardHeight = MAP_INFO_FONT_SIZE + MAP_INFO_PAD_Y * 2.0f;
+        float cardX = areaX + (areaWidth - cardWidth) * 0.5f;
+        float cardY = areaY + areaHeight - MAP_INFO_EDGE_INSET - cardHeight;
+        Renderer2D.COLOR.roundedRect(cardX, cardY, cardWidth, cardHeight, MAP_INFO_RADIUS, palette.panelBgLeft());
         ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getOnestMedium(), zoom, textX, textY, fontSize, palette.panelText(), false);
+                ClickGuiRenderer.getOnestMedium(), zoom,
+                cardX + MAP_INFO_PAD_X, cardY + MAP_INFO_PAD_Y,
+                MAP_INFO_FONT_SIZE, palette.panelText(), false);
     }
 
     private void addUiButton(Action action, String icon, float x, float y, float size,
@@ -857,12 +899,12 @@ final class XaeroMapSurface {
                 ? palette.panelPillActive()
                 : hover ? palette.controlSurfaceHover() : palette.controlSurface();
         Renderer2D renderer = Renderer2D.COLOR;
-        renderer.roundedRectSoftShadow(button.x(), button.y(), button.size(), button.size(),
-                button.size() * 0.25f, 7.0f, 0.05f, palette.panelShadow());
-        renderer.roundedRect(button.x(), button.y(), button.size(), button.size(),
-                button.size() * 0.25f, background);
-        renderer.roundedRectStroke(button.x(), button.y(), button.size(), button.size(),
-                button.size() * 0.25f, 0.7f, palette.panelStroke());
+        UiBoxShape shape = UiBoxShape.squircle(
+                button.x(), button.y(), button.size(), button.size(), 4.0f);
+        renderer.box(shape, UiPaint.solid(SettingsGuiPalette.withAlpha(background, 255)));
+        Themes.GradientSpec stroke = Themes.hudAccentGradient();
+        renderer.boxStroke(shape, UiPaint.linear(stroke.start(), stroke.end(), stroke.angleDeg(), 0.0f),
+                UiStroke.of(1.25f));
         float iconSize = button.size() * 0.52f;
         renderer.svg(button.icon(), button.x() + (button.size() - iconSize) * 0.5f,
                 button.y() + (button.size() - iconSize) * 0.5f, iconSize, iconSize,
@@ -870,8 +912,9 @@ final class XaeroMapSurface {
                         ? palette.panelText() : palette.panelMuted()));
     }
 
-    private void drawTooltip(float mouseX, float mouseY, SettingsGuiPalette palette, float scale) {
-        if ((settings != null && settings.isOpen()) || caveControlsOpen || contextOpen || waypointDraft != null) return;
+    private void drawTooltip(float mouseX, float mouseY, SettingsGuiPalette palette) {
+        if ((settings != null && settings.isOpen()) || contextOpen || waypointDraft != null) return;
+        float chrome = 1.0f;
         UiButton hovered = null;
         for (UiButton button : uiButtons) {
             if (button.contains(mouseX, mouseY)) {
@@ -880,43 +923,44 @@ final class XaeroMapSurface {
             }
         }
         if (hovered == null) return;
-        float fontSize = 10.0f * scale;
+        float fontSize = 16.0f * chrome;
         float width = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), hovered.tooltip(), fontSize);
-        float x = clamp(mouseX + 10.0f * scale, areaX + 6.0f, areaX + areaWidth - width - 16.0f * scale);
-        float y = clamp(mouseY + 12.0f * scale, areaY + 6.0f, areaY + areaHeight - 26.0f * scale);
-        Renderer2D.COLOR.roundedRect(x, y, width + 12.0f * scale, 20.0f * scale,
-                5.0f * scale, palette.panelBgRight());
-        Renderer2D.COLOR.roundedRectStroke(x, y, width + 12.0f * scale, 20.0f * scale,
-                5.0f * scale, 0.6f, palette.panelStroke());
+        float x = clamp(mouseX + 16.0f * chrome, areaX + 6.0f * chrome, areaX + areaWidth - width - 26.0f * chrome);
+        float y = clamp(mouseY + 19.0f * chrome, areaY + 6.0f * chrome, areaY + areaHeight - 42.0f * chrome);
+        Renderer2D.COLOR.roundedRect(x, y, width + 20.0f * chrome, 32.0f * chrome, 8.0f * chrome, palette.panelBgRight());
+        Renderer2D.COLOR.roundedRectStroke(x, y, width + 20.0f * chrome, 32.0f * chrome,
+                8.0f * chrome, 1.1f * chrome, palette.panelStroke());
         ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), hovered.tooltip(),
-                x + 6.0f * scale, y + 5.0f * scale, fontSize, palette.panelText(), false);
+                x + 10.0f * chrome, y + 8.0f * chrome, fontSize, palette.panelText(), false);
     }
 
-    private void drawCompass(SettingsGuiPalette palette, float scale) {
+    private void drawCompass(SettingsGuiPalette palette) {
+        float chrome = 1.0f;
         String north = tr("gui.xaero_compass_north", "N");
         String east = tr("gui.xaero_compass_east", "E");
         String south = tr("gui.xaero_compass_south", "S");
         String west = tr("gui.xaero_compass_west", "W");
         float centerX = areaX + areaWidth * 0.5f;
         float centerY = areaY + areaHeight * 0.5f;
-        drawCardinal(north, centerX, areaY + 52.0f * scale, palette, scale);
-        drawCardinal(south, centerX, areaY + areaHeight - 40.0f * scale, palette, scale);
-        drawCardinal(west, areaX + 44.0f * scale, centerY, palette, scale);
-        drawCardinal(east, areaX + areaWidth - 44.0f * scale, centerY, palette, scale);
+        float edgeInset = 102.0f * chrome;
+        drawCardinal(north, centerX, areaY + edgeInset, palette, chrome);
+        drawCardinal(south, centerX, areaY + areaHeight - edgeInset, palette, chrome);
+        drawCardinal(west, areaX + edgeInset, centerY, palette, chrome);
+        drawCardinal(east, areaX + areaWidth - edgeInset, centerY, palette, chrome);
     }
 
     private static void drawCardinal(String text, float centerX, float centerY,
-                                     SettingsGuiPalette palette, float scale) {
-        float size = 10.0f * scale;
+                                     SettingsGuiPalette palette, float chrome) {
+        float size = 16.0f * chrome;
         float width = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestBold(), text, size);
-        Renderer2D.COLOR.roundedRect(centerX - width * 0.5f - 5.0f * scale,
-                centerY - 3.0f * scale, width + 10.0f * scale, size + 6.0f * scale,
-                5.0f * scale, palette.panelBgLeft());
+        Renderer2D.COLOR.roundedRect(centerX - width * 0.5f - 8.0f * chrome,
+                centerY - 5.0f * chrome, width + 16.0f * chrome, size + 10.0f * chrome,
+                8.0f * chrome, palette.panelBgLeft());
         ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(), text,
                 centerX - width * 0.5f, centerY, size, palette.panelText(), false);
     }
 
-    private void drawCoordinates(SettingsGuiPalette palette, MapDimension dimension, float scale) {
+    private void drawCoordinates(SettingsGuiPalette palette, MapDimension dimension) {
         if (!effective(WorldMapProfiledConfigOptions.COORDINATES)) return;
         if (SupportMods.minimap() && SupportMods.xaeroMinimap.hidingWaypointCoordinates()) return;
         String coordinates = pointerBlockY == Short.MAX_VALUE
@@ -924,128 +968,113 @@ final class XaeroMapSurface {
                 : "X: " + pointerBlockX + "  Y: " + pointerBlockY + "  Z: " + pointerBlockZ;
         String dimensionName = activeProcessor == null ? "" : activeProcessor.getDimensionName(dimension.getDimId());
         if (dimensionName != null && !dimensionName.isBlank()) coordinates += "  ·  " + dimensionName;
-        float size = 10.0f * scale;
-        float width = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), coordinates, size);
-        float x = areaX + (areaWidth - width) * 0.5f;
-        float y = areaY + 15.0f * scale;
-        Renderer2D.COLOR.roundedRect(x - 7.0f * scale, y - 4.0f * scale,
-                width + 14.0f * scale, size + 8.0f * scale, 6.0f * scale, palette.panelBgLeft());
+
+        float textWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), coordinates, MAP_INFO_FONT_SIZE);
+        float cardWidth = textWidth + MAP_INFO_PAD_X * 2.0f;
+        float cardHeight = MAP_INFO_FONT_SIZE + MAP_INFO_PAD_Y * 2.0f;
+        float cardX = areaX + (areaWidth - cardWidth) * 0.5f;
+        float cardY = Math.max(
+                areaY + MAP_INFO_EDGE_INSET,
+                clickGuiChromeBottom() + MAP_INFO_TOP_GAP
+        );
+        Renderer2D.COLOR.roundedRect(cardX, cardY, cardWidth, cardHeight, MAP_INFO_RADIUS, palette.panelBgLeft());
         ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), coordinates,
-                x, y, size, palette.panelText(), false);
+                cardX + MAP_INFO_PAD_X, cardY + MAP_INFO_PAD_Y,
+                MAP_INFO_FONT_SIZE, palette.panelText(), false);
     }
 
-    private void drawDrawer(float mouseX, float mouseY, SettingsGuiPalette palette, float scale) {
+    private float clickGuiChromeBottom() {
+        ClickGuiRenderer.ClickGuiIslandState state = ClickGuiRenderer.islandState();
+        if (state.tabCount() <= 0 || state.tabBarH() <= 0.0f) return areaY;
+        float lifecycle = clamp((float) state.lifecycle(), 0.0f, 1.0f);
+        float inv = 1.0f - lifecycle;
+        float eased = 1.0f - inv * inv * inv;
+        float shellY = state.tabBarY() - (1.0f - eased) * 18.0f;
+        return shellY + state.tabBarH();
+    }
+
+    private void drawDrawer(float mouseX, float mouseY, SettingsGuiPalette palette) {
         drawerHits.clear();
         if (drawer == Drawer.NONE) return;
-        float width = 250.0f * scale;
-        float x = areaX + areaWidth - width - 58.0f * scale;
-        float y = areaY + 54.0f * scale;
-        float rowHeight = 34.0f * scale;
+        float width = 360.0f;
+        float x = areaX + areaWidth - width - 82.0f;
+        float y = areaY + 72.0f;
+        float rowHeight = 46.0f;
         List<XaeroMapElements.Element> rows = elementSnapshot.elements().stream()
                 .filter(element -> drawer == Drawer.WAYPOINTS
                         ? element.kind() == XaeroMapElements.Kind.WAYPOINT
                         : element.kind() != XaeroMapElements.Kind.WAYPOINT)
                 .limit(14)
                 .toList();
-        float height = 42.0f * scale + Math.max(1, rows.size()) * rowHeight + 8.0f * scale;
+        float height = 56.0f + Math.max(1, rows.size()) * rowHeight + 12.0f;
         Renderer2D renderer = Renderer2D.COLOR;
-        renderer.roundedRectSoftShadow(x, y, width, height, 9.0f * scale, 10.0f,
+        renderer.roundedRectSoftShadow(x, y, width, height, 14.0f, 10.0f,
                 0.05f, palette.panelShadow());
-        renderer.roundedRectGradient(x, y, width, height, 9.0f * scale,
+        renderer.roundedRectGradient(x, y, width, height, 14.0f,
                 palette.panelBgLeft(), palette.panelBgRight(), 0.0f);
-        renderer.roundedRectStroke(x, y, width, height, 9.0f * scale, 0.7f, palette.panelStroke());
+        renderer.roundedRectStroke(x, y, width, height, 14.0f, 1.2f, palette.panelStroke());
         String title = drawer == Drawer.WAYPOINTS
                 ? tr("gui.xaero_box_open_waypoints", "Waypoints")
                 : "Players & Radar";
         ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(), title,
-                x + 12.0f * scale, y + 13.0f * scale, 12.0f * scale, palette.panelText(), false);
-        renderer.quad(x + 10.0f * scale, y + 38.0f * scale, width - 20.0f * scale,
+                x + 18.0f, y + 18.0f, 17.0f, palette.panelText(), false);
+        renderer.quad(x + 16.0f, y + 52.0f, width - 32.0f,
                 1.0f, palette.panelDivider());
-        float rowY = y + 43.0f * scale;
+        float rowY = y + 58.0f;
         if (rows.isEmpty()) {
             ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), "Nothing to display",
-                    x + 12.0f * scale, rowY + 7.0f * scale, 10.0f * scale, palette.panelMuted(), false);
+                    x + 18.0f, rowY + 10.0f, 15.0f, palette.panelMuted(), false);
         }
         for (XaeroMapElements.Element element : rows) {
-            boolean hover = inside(mouseX, mouseY, x + 6.0f * scale, rowY,
-                    width - 12.0f * scale, rowHeight - 3.0f * scale);
-            if (hover) renderer.roundedRect(x + 6.0f * scale, rowY,
-                    width - 12.0f * scale, rowHeight - 3.0f * scale,
-                    5.0f * scale, palette.controlSurfaceHover());
+            boolean hover = inside(mouseX, mouseY, x + 10.0f, rowY, width - 20.0f, 42.0f);
+            if (hover) renderer.roundedRect(x + 10.0f, rowY, width - 20.0f, 42.0f,
+                    8.0f, palette.controlSurfaceHover());
             String icon = switch (element.kind()) {
                 case WAYPOINT -> "map-pin";
                 case PLAYER -> "users-round";
                 case ENTITY -> "radar";
             };
-            renderer.svg(icon, x + 12.0f * scale, rowY + 8.0f * scale,
-                    15.0f * scale, 15.0f * scale, SvgRenderOptions.overrideColor(element.color()));
+            renderer.svg(icon, x + 18.0f, rowY + 11.0f,
+                    20.0f, 20.0f, SvgRenderOptions.overrideColor(element.color()));
             ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), element.plainName(),
-                    x + 36.0f * scale, rowY + 7.0f * scale, 10.0f * scale,
+                    x + 48.0f, rowY + 9.0f, 15.0f,
                     element.disabled() ? palette.panelMuted() : palette.panelText(), false);
             String location = (int) element.worldX() + ", " + (int) element.worldZ();
             ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), location,
-                    x + 36.0f * scale, rowY + 19.0f * scale, 8.0f * scale,
+                    x + 48.0f, rowY + 27.0f, 12.0f,
                     palette.panelMuted(), false);
-            drawerHits.add(new ElementHit(element, x + 6.0f * scale, rowY,
-                    width - 12.0f * scale, rowHeight - 3.0f * scale));
+            drawerHits.add(new ElementHit(element, x + 10.0f, rowY, width - 20.0f, 42.0f));
             rowY += rowHeight;
         }
     }
 
-    private void drawControls(SettingsGuiPalette palette, float scale) {
-        String[] lines = {
-                "Drag — pan", "Wheel — zoom", "Right click — select/actions",
-                "R — recenter", "E — edit hovered waypoint", "T — teleport to hovered element",
-                "Esc — close active map surface"
-        };
-        float width = 276.0f * scale;
-        float height = (44.0f + lines.length * 20.0f) * scale;
-        float x = areaX + areaWidth - width - 58.0f * scale;
-        float y = Math.max(areaY + 54.0f * scale, areaY + areaHeight - height - 54.0f * scale);
-        Renderer2D.COLOR.roundedRectGradient(x, y, width, height, 9.0f * scale,
-                palette.panelBgLeft(), palette.panelBgRight(), 0.0f);
-        Renderer2D.COLOR.roundedRectStroke(x, y, width, height, 9.0f * scale,
-                0.7f, palette.panelStroke());
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(),
-                tr("gui.xaero_box_controls", "Controls"), x + 12.0f * scale,
-                y + 13.0f * scale, 12.0f * scale, palette.panelText(), false);
-        float lineY = y + 40.0f * scale;
-        for (String line : lines) {
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), line,
-                    x + 12.0f * scale, lineY, 9.5f * scale, palette.panelMuted(), false);
-            lineY += 20.0f * scale;
-        }
-    }
-
-    private void drawContext(float mouseX, float mouseY, SettingsGuiPalette palette, float scale) {
+    private void drawContext(float mouseX, float mouseY, SettingsGuiPalette palette) {
         rebuildContextEntries();
-        float width = 238.0f * scale;
-        float rowHeight = 28.0f * scale;
-        float height = 12.0f * scale + contextEntries.size() * rowHeight;
+        float width = 340.0f;
+        float rowHeight = 42.0f;
+        float height = 16.0f + contextEntries.size() * rowHeight;
         float x = clamp(contextX, areaX + 8.0f, areaX + areaWidth - width - 8.0f);
         float y = clamp(contextY, areaY + 8.0f, areaY + areaHeight - height - 8.0f);
         contextX = x;
         contextY = y;
         Renderer2D renderer = Renderer2D.COLOR;
-        renderer.roundedRectSoftShadow(x, y, width, height, 8.0f * scale, 10.0f,
+        renderer.roundedRectSoftShadow(x, y, width, height, 13.0f, 10.0f,
                 0.05f, palette.panelShadow());
-        renderer.roundedRectGradient(x, y, width, height, 8.0f * scale,
+        renderer.roundedRectGradient(x, y, width, height, 13.0f,
                 palette.panelBgLeft(), palette.panelBgRight(), 0.0f);
-        renderer.roundedRectStroke(x, y, width, height, 8.0f * scale, 0.7f, palette.panelStroke());
-        float rowY = y + 6.0f * scale;
+        renderer.roundedRectStroke(x, y, width, height, 13.0f, 1.2f, palette.panelStroke());
+        float rowY = y + 8.0f;
         for (MenuEntry entry : contextEntries) {
-            boolean hover = entry.enabled() && inside(mouseX, mouseY, x + 5.0f * scale, rowY,
-                    width - 10.0f * scale, rowHeight - 2.0f * scale);
-            if (hover) renderer.roundedRect(x + 5.0f * scale, rowY,
-                    width - 10.0f * scale, rowHeight - 2.0f * scale,
-                    5.0f * scale, palette.controlSurfaceHover());
+            boolean hover = entry.enabled() && inside(mouseX, mouseY, x + 8.0f, rowY,
+                    width - 16.0f, rowHeight - 3.0f);
+            if (hover) renderer.roundedRect(x + 8.0f, rowY,
+                    width - 16.0f, rowHeight - 3.0f, 8.0f, palette.controlSurfaceHover());
             if (entry.icon() != null) {
-                renderer.svg(entry.icon(), x + 11.0f * scale, rowY + 6.0f * scale,
-                        14.0f * scale, 14.0f * scale,
+                renderer.svg(entry.icon(), x + 16.0f, rowY + 11.0f, 20.0f, 20.0f,
                         SvgRenderOptions.overrideColor(entry.enabled() ? palette.panelText() : palette.panelMuted()));
             }
             ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), entry.label(),
-                    x + 34.0f * scale, rowY + 7.0f * scale, 9.5f * scale,
+                    x + 46.0f, rowY + 11.0f, 15.0f,
                     entry.enabled() ? palette.panelText() : palette.panelMuted(), false);
             rowY += rowHeight;
         }
@@ -1124,19 +1153,25 @@ final class XaeroMapSurface {
         switch (action) {
             case SETTINGS -> toggleSettings();
             case RECENTER -> recenter();
-            case CAVE -> toggleCaveControls();
+            case CAVE -> openCaveSettings();
             case DIMENSION -> toggleDimension();
             case WAYPOINTS -> drawer = drawer == Drawer.WAYPOINTS ? Drawer.NONE : Drawer.WAYPOINTS;
             case PLAYERS -> drawer = drawer == Drawer.PLAYERS ? Drawer.NONE : Drawer.PLAYERS;
             case RADAR -> toggle(WorldMapProfiledConfigOptions.MINIMAP_RADAR);
             case CLAIMS -> toggle(WorldMapProfiledConfigOptions.OPAC_CLAIMS);
             case EXPORT -> exportSelection();
-            case CONTROLS -> controlsOpen = !controlsOpen;
+            case CONTROLS -> openKeyBindings();
             case ZOOM_IN -> changeZoom(1.0, areaX + areaWidth * 0.5f,
                     areaY + areaHeight * 0.5f, false);
             case ZOOM_OUT -> changeZoom(-1.0, areaX + areaWidth * 0.5f,
                     areaY + areaHeight * 0.5f, false);
         }
+    }
+
+    private static void openKeyBindings() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.gui == null) return;
+        minecraft.gui.setScreen(new KeyBindsScreen(ClientScreen.current(minecraft), minecraft.options));
     }
 
     private boolean clickDrawer(float mouseX, float mouseY, int button) {
@@ -1161,16 +1196,15 @@ final class XaeroMapSurface {
 
     private boolean clickContext(float mouseX, float mouseY, int button) {
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
-        float scale = (float) Math.max(0.9, chromeScale());
-        float width = 238.0f * scale;
-        float rowHeight = 28.0f * scale;
-        float height = 12.0f * scale + contextEntries.size() * rowHeight;
+        float width = 340.0f;
+        float rowHeight = 42.0f;
+        float height = 16.0f + contextEntries.size() * rowHeight;
         if (!inside(mouseX, mouseY, contextX, contextY, width, height)) {
             contextOpen = false;
             deleteArmed = false;
             return false;
         }
-        int row = (int) ((mouseY - contextY - 6.0f * scale) / rowHeight);
+        int row = (int) ((mouseY - contextY - 8.0f) / rowHeight);
         if (row >= 0 && row < contextEntries.size()) {
             MenuEntry entry = contextEntries.get(row);
             if (entry.enabled()) runContextAction(entry.action());
@@ -1263,210 +1297,6 @@ final class XaeroMapSurface {
         int endZ = rightSelecting || contextOpen ? selectionEndZ : startZ;
         XaeroMapActions.export(activeProcessor, startX, startZ, endX, endZ);
     }
-
-    private void toggleCaveControls() {
-        if (!WorldMapClientConfigUtils.getEffectiveCaveModeAllowed()) return;
-        caveControlsOpen = !caveControlsOpen;
-        caveSliderDragging = false;
-        caveHeightFocused = false;
-        contextOpen = false;
-        drawer = Drawer.NONE;
-        if (caveControlsOpen) syncCaveHeightText();
-    }
-
-    private void setCaveMode(int target) {
-        if (activeDimension == null || !WorldMapClientConfigUtils.getEffectiveCaveModeAllowed()) return;
-        int normalized = Math.floorMod(target, 3);
-        for (int i = 0; i < 3 && Math.floorMod(activeDimension.getCaveModeType(), 3) != normalized; i++) {
-            activeDimension.toggleCaveModeType(true);
-        }
-        if (activeProcessor != null) {
-            synchronized (activeProcessor.uiSync) {
-                activeDimension.saveConfigUnsynced();
-            }
-            activeProcessor.updateCaveStart();
-        }
-        centered = false;
-    }
-
-    private void drawCaveControls(float mouseX, float mouseY, SettingsGuiPalette palette, float scale) {
-        if (caveSliderDragging) updateCaveSlider(mouseX);
-        float x = cavePanelX();
-        float y = cavePanelY();
-        float width = cavePanelWidth();
-        float height = cavePanelHeight();
-        Renderer2D renderer = Renderer2D.COLOR;
-        renderer.roundedRectSoftShadow(x, y, width, height, 10.0f * scale, 12.0f,
-                0.06f, palette.panelShadow());
-        renderer.roundedRectGradient(x, y, width, height, 10.0f * scale,
-                palette.panelBgLeft(), palette.panelBgRight(), 0.0f);
-        renderer.roundedRectStroke(x, y, width, height, 10.0f * scale,
-                0.8f, palette.panelStroke());
-
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(),
-                tr("gui.xaero_box_cave_mode", "Cave mode"),
-                x + 14.0f * scale, y + 12.0f * scale, 13.0f * scale, palette.panelText(), false);
-
-        String[] modes = {
-                tr("gui.xaero_off", "Off"),
-                tr("gui.xaero_wm_cave_mode_type_layered", "Layered"),
-                tr("gui.xaero_wm_cave_mode_type_full", "Full")
-        };
-        int currentMode = activeDimension == null ? 0 : Math.floorMod(activeDimension.getCaveModeType(), 3);
-        float modeGap = 5.0f * scale;
-        float modeX = x + 14.0f * scale;
-        float modeY = y + 36.0f * scale;
-        float modeW = (width - 28.0f * scale - modeGap * 2.0f) / 3.0f;
-        float modeH = 25.0f * scale;
-        for (int i = 0; i < modes.length; i++) {
-            float bx = modeX + i * (modeW + modeGap);
-            boolean selected = i == currentMode;
-            boolean hovered = inside(mouseX, mouseY, bx, modeY, modeW, modeH);
-            renderer.roundedRect(bx, modeY, modeW, modeH, 6.0f * scale,
-                    selected ? palette.panelPillActive()
-                            : hovered ? palette.controlSurfaceHover() : palette.controlSurface());
-            if (selected) renderer.roundedRectStroke(bx, modeY, modeW, modeH,
-                    6.0f * scale, 0.8f, Theme.theme().accent());
-            float textW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), modes[i], 10.5f * scale);
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), modes[i],
-                    bx + (modeW - textW) * 0.5f, modeY + 7.0f * scale,
-                    10.5f * scale, selected ? palette.panelText() : palette.panelMuted(), false);
-        }
-
-        String topLabel = tr("gui.xaero_wm_cave_mode_start", "Cave mode top Y");
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), topLabel,
-                x + 14.0f * scale, y + 75.0f * scale, 10.0f * scale, palette.panelMuted(), false);
-        float sliderX = x + 14.0f * scale;
-        float sliderY = y + 101.0f * scale;
-        float fieldW = 62.0f * scale;
-        float sliderW = width - 42.0f * scale - fieldW;
-        float trackY = sliderY + 7.0f * scale;
-        renderer.roundedRect(sliderX, trackY, sliderW, 4.0f * scale, 2.0f * scale, palette.controlSurface());
-        float progress = caveStartProgress();
-        renderer.roundedRect(sliderX, trackY, sliderW * progress, 4.0f * scale,
-                2.0f * scale, Theme.theme().accent());
-        float knobX = sliderX + sliderW * progress;
-        renderer.circle(knobX, trackY + 2.0f * scale, 6.0f * scale, palette.panelText());
-
-        float fieldX = x + width - 14.0f * scale - fieldW;
-        float fieldY = y + 94.0f * scale;
-        renderer.roundedRect(fieldX, fieldY, fieldW, 25.0f * scale, 6.0f * scale,
-                caveHeightFocused ? palette.controlSurfaceHover() : palette.controlSurface());
-        renderer.roundedRectStroke(fieldX, fieldY, fieldW, 25.0f * scale, 6.0f * scale,
-                0.7f, caveHeightFocused ? Theme.theme().accent() : palette.panelStroke());
-        String displayed = caveHeightFocused ? caveHeightText : caveStart() == Integer.MAX_VALUE
-                ? tr("gui.xaero_wm_cave_mode_start_auto", "auto") : Integer.toString(caveStart());
-        float valueW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), displayed, 10.5f * scale);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), displayed,
-                fieldX + (fieldW - valueW) * 0.5f, fieldY + 7.0f * scale,
-                10.5f * scale, palette.panelText(), false);
-    }
-
-    private boolean clickCaveControls(float mouseX, float mouseY, int button) {
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return inside(mouseX, mouseY,
-                cavePanelX(), cavePanelY(), cavePanelWidth(), cavePanelHeight());
-        float scale = (float) chromeScale();
-        float x = cavePanelX();
-        float y = cavePanelY();
-        float width = cavePanelWidth();
-        if (!inside(mouseX, mouseY, x, y, width, cavePanelHeight())) {
-            caveControlsOpen = false;
-            caveHeightFocused = false;
-            caveSliderDragging = false;
-            return false;
-        }
-        float gap = 5.0f * scale;
-        float modeX = x + 14.0f * scale;
-        float modeY = y + 36.0f * scale;
-        float modeW = (width - 28.0f * scale - gap * 2.0f) / 3.0f;
-        float modeH = 25.0f * scale;
-        for (int i = 0; i < 3; i++) {
-            if (inside(mouseX, mouseY, modeX + i * (modeW + gap), modeY, modeW, modeH)) {
-                setCaveMode(i);
-                return true;
-            }
-        }
-        float fieldW = 62.0f * scale;
-        float fieldX = x + width - 14.0f * scale - fieldW;
-        float fieldY = y + 94.0f * scale;
-        if (inside(mouseX, mouseY, fieldX, fieldY, fieldW, 25.0f * scale)) {
-            caveHeightFocused = true;
-            syncCaveHeightText();
-            return true;
-        }
-        float sliderX = x + 14.0f * scale;
-        float sliderW = width - 42.0f * scale - fieldW;
-        if (inside(mouseX, mouseY, sliderX - 7.0f * scale, y + 92.0f * scale,
-                sliderW + 14.0f * scale, 29.0f * scale)) {
-            caveHeightFocused = false;
-            caveSliderDragging = true;
-            updateCaveSlider(mouseX);
-            return true;
-        }
-        caveHeightFocused = false;
-        return true;
-    }
-
-    private void updateCaveSlider(float mouseX) {
-        float scale = (float) chromeScale();
-        float sliderX = cavePanelX() + 14.0f * scale;
-        float sliderW = cavePanelWidth() - 42.0f * scale - 62.0f * scale;
-        float progress = clamp((mouseX - sliderX) / sliderW, 0.0f, 1.0f);
-        int indexed = Math.round(progress * 384.0f) - 65;
-        int value = indexed <= -65 ? Integer.MAX_VALUE : Math.max(-64, Math.min(319, indexed));
-        setCaveStart(value);
-        syncCaveHeightText();
-    }
-
-    private float caveStartProgress() {
-        int value = caveStart();
-        int indexed = value == Integer.MAX_VALUE ? -65 : Math.max(-64, Math.min(319, value));
-        return (indexed + 65.0f) / 384.0f;
-    }
-
-    private int caveStart() {
-        Config primary = WorldMap.INSTANCE.getConfigs().getClientConfigManager().getPrimaryConfigManager().getConfig();
-        Integer value = primary.get(WorldMapPrimaryClientConfigOptions.CAVE_MODE_START);
-        return value == null ? Integer.MAX_VALUE : value;
-    }
-
-    private void setCaveStart(int value) {
-        Config primary = WorldMap.INSTANCE.getConfigs().getClientConfigManager().getPrimaryConfigManager().getConfig();
-        int resolved = value == Integer.MAX_VALUE ? Integer.MAX_VALUE : Math.max(-64, Math.min(319, value));
-        Integer current = primary.get(WorldMapPrimaryClientConfigOptions.CAVE_MODE_START);
-        if (current != null && current == resolved) return;
-        primary.set(WorldMapPrimaryClientConfigOptions.CAVE_MODE_START, resolved);
-        WorldMap.INSTANCE.getConfigs().getPrimaryClientConfigManagerIO().save();
-        if (activeProcessor != null) activeProcessor.updateCaveStart();
-    }
-
-    private void syncCaveHeightText() {
-        int value = caveStart();
-        caveHeightText = value == Integer.MAX_VALUE ? "auto" : Integer.toString(value);
-    }
-
-    private void commitCaveHeightText() {
-        String value = caveHeightText == null ? "" : caveHeightText.trim();
-        if (value.isEmpty() || value.equalsIgnoreCase("auto")) {
-            setCaveStart(Integer.MAX_VALUE);
-        } else {
-            try {
-                setCaveStart(Integer.parseInt(value));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        syncCaveHeightText();
-    }
-
-    private float cavePanelWidth() { return 318.0f * (float) chromeScale(); }
-    private float cavePanelHeight() { return 134.0f * (float) chromeScale(); }
-    private float cavePanelX() { return areaX + 14.0f * (float) chromeScale(); }
-    private float cavePanelY() {
-        float scale = (float) chromeScale();
-        float caveButtonY = areaY + areaHeight - 14.0f * scale - 30.0f * scale;
-        return caveButtonY - 7.0f * scale - cavePanelHeight();
-    }
-
     private void toggleDimension() {
         if (activeProcessor == null || activeProcessor.getMapWorld() == null) return;
         Minecraft minecraft = Minecraft.getInstance();
@@ -1528,106 +1358,100 @@ final class XaeroMapSurface {
             }
         }
 
-        private void render(float mouseX, float mouseY, SettingsGuiPalette palette, float scale) {
-            width = 304.0f * scale;
-            height = 224.0f * scale;
+        private void render(float mouseX, float mouseY, SettingsGuiPalette palette) {
+            width = 420.0f;
+            height = 330.0f;
             x = areaX + (areaWidth - width) * 0.5f;
             y = areaY + (areaHeight - height) * 0.5f;
             Renderer2D renderer = Renderer2D.COLOR;
-            renderer.roundedRectSoftShadow(x, y, width, height, 11.0f * scale, 14.0f,
+            renderer.roundedRectSoftShadow(x, y, width, height, 16.0f, 14.0f,
                     0.06f, palette.panelShadow());
-            renderer.roundedRectGradient(x, y, width, height, 11.0f * scale,
+            renderer.roundedRectGradient(x, y, width, height, 16.0f,
                     palette.panelBgLeft(), palette.panelBgRight(), 0.0f);
-            renderer.roundedRectStroke(x, y, width, height, 11.0f * scale,
-                    0.8f, palette.panelStroke());
+            renderer.roundedRectStroke(x, y, width, height, 16.0f, 1.3f, palette.panelStroke());
             String title = edited == null ? "Create waypoint" : "Edit waypoint";
             ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(), title,
-                    x + 16.0f * scale, y + 15.0f * scale, 13.0f * scale, palette.panelText(), false);
-            renderer.svg("map-pin", x + width - 32.0f * scale, y + 13.0f * scale,
-                    16.0f * scale, 16.0f * scale,
+                    x + 22.0f, y + 22.0f, 18.0f, palette.panelText(), false);
+            renderer.svg("map-pin", x + width - 46.0f, y + 18.0f, 24.0f, 24.0f,
                     SvgRenderOptions.overrideColor(xaero.hud.minimap.waypoint.WaypointColor
                             .fromIndex(Math.floorMod(colorIndex, 16)).getHex() | 0xFF000000));
-            drawDraftField("Name", name, 0, y + 49.0f * scale, palette, scale);
-            drawDraftField("Symbol", symbol, 1, y + 96.0f * scale, palette, scale);
+            drawDraftField("Name", name, 0, y + 72.0f, palette);
+            drawDraftField("Symbol", symbol, 1, y + 140.0f, palette);
             ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), "Color",
-                    x + 16.0f * scale, y + 139.0f * scale, 9.0f * scale, palette.panelMuted(), false);
-            float chipX = x + 16.0f * scale;
-            float chipY = y + 155.0f * scale;
+                    x + 22.0f, y + 204.0f, 14.0f, palette.panelMuted(), false);
+            float chipX = x + 22.0f;
+            float chipY = y + 228.0f;
             for (int i = 0; i < 16; i++) {
                 int color = xaero.hud.minimap.waypoint.WaypointColor.fromIndex(i).getHex() | 0xFF000000;
-                float chip = 13.0f * scale;
+                float chip = 18.0f;
                 renderer.roundedRect(chipX, chipY, chip, chip, chip * 0.38f, color);
-                if (i == colorIndex) renderer.roundedRectStroke(chipX - 2.0f * scale,
-                        chipY - 2.0f * scale, chip + 4.0f * scale, chip + 4.0f * scale,
-                        chip * 0.48f, 1.2f, palette.panelText());
-                chipX += 17.0f * scale;
+                if (i == colorIndex) renderer.roundedRectStroke(chipX - 2.0f,
+                        chipY - 2.0f, chip + 4.0f, chip + 4.0f,
+                        chip * 0.48f, 1.5f, palette.panelText());
+                chipX += 24.0f;
             }
-            drawDraftButton("Cancel", x + width - 144.0f * scale, y + height - 38.0f * scale,
-                    58.0f * scale, mouseX, mouseY, palette, scale, false);
-            drawDraftButton(edited == null ? "Create" : "Save", x + width - 78.0f * scale,
-                    y + height - 38.0f * scale, 62.0f * scale, mouseX, mouseY, palette, scale, true);
+            drawDraftButton("Cancel", x + width - 198.0f, y + height - 54.0f,
+                    82.0f, mouseX, mouseY, palette, false);
+            drawDraftButton(edited == null ? "Create" : "Save", x + width - 102.0f,
+                    y + height - 54.0f, 80.0f, mouseX, mouseY, palette, true);
         }
 
         private void drawDraftField(String label, String value, int index, float fieldY,
-                                    SettingsGuiPalette palette, float scale) {
+                                    SettingsGuiPalette palette) {
             ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), label,
-                    x + 16.0f * scale, fieldY, 9.0f * scale, palette.panelMuted(), false);
-            float y0 = fieldY + 14.0f * scale;
-            Renderer2D.COLOR.roundedRect(x + 16.0f * scale, y0, width - 32.0f * scale,
-                    27.0f * scale, 6.0f * scale,
+                    x + 22.0f, fieldY, 14.0f, palette.panelMuted(), false);
+            float y0 = fieldY + 20.0f;
+            Renderer2D.COLOR.roundedRect(x + 22.0f, y0, width - 44.0f,
+                    40.0f, 9.0f,
                     focusedField == index + 1 ? palette.controlSurfaceHover() : palette.controlSurface());
-            Renderer2D.COLOR.roundedRectStroke(x + 16.0f * scale, y0, width - 32.0f * scale,
-                    27.0f * scale, 6.0f * scale, 0.6f, palette.panelStroke());
+            Renderer2D.COLOR.roundedRectStroke(x + 22.0f, y0, width - 44.0f,
+                    40.0f, 9.0f, 1.1f, palette.panelStroke());
             ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), value,
-                    x + 24.0f * scale, y0 + 7.0f * scale, 10.0f * scale, palette.panelText(), false);
+                    x + 34.0f, y0 + 11.0f, 16.0f, palette.panelText(), false);
         }
 
         private void drawDraftButton(String label, float bx, float by, float bw,
                                      float mouseX, float mouseY, SettingsGuiPalette palette,
-                                     float scale, boolean primary) {
-            boolean hover = inside(mouseX, mouseY, bx, by, bw, 25.0f * scale);
-            Renderer2D.COLOR.roundedRect(bx, by, bw, 25.0f * scale, 6.0f * scale,
+                                     boolean primary) {
+            boolean hover = inside(mouseX, mouseY, bx, by, bw, 36.0f);
+            Renderer2D.COLOR.roundedRect(bx, by, bw, 36.0f, 9.0f,
                     primary ? palette.panelPillActive()
                             : hover ? palette.controlSurfaceHover() : palette.controlSurface());
-            float textWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), label, 9.5f * scale);
+            float textWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), label, 15.0f);
             ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), label,
-                    bx + (bw - textWidth) * 0.5f, by + 7.0f * scale,
-                    9.5f * scale, palette.panelText(), false);
+                    bx + (bw - textWidth) * 0.5f, by + 10.0f,
+                    15.0f, palette.panelText(), false);
         }
 
         private boolean mousePressed(float mouseX, float mouseY, int button) {
             if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
-            float scale = (float) Math.max(0.9, chromeScale());
             if (!inside(mouseX, mouseY, x, y, width, height)) {
                 waypointDraft = null;
                 return true;
             }
-            if (inside(mouseX, mouseY, x + 16.0f * scale, y + 63.0f * scale,
-                    width - 32.0f * scale, 27.0f * scale)) {
+            if (inside(mouseX, mouseY, x + 22.0f, y + 92.0f, width - 44.0f, 40.0f)) {
                 focusedField = 1;
                 return true;
             }
-            if (inside(mouseX, mouseY, x + 16.0f * scale, y + 110.0f * scale,
-                    width - 32.0f * scale, 27.0f * scale)) {
+            if (inside(mouseX, mouseY, x + 22.0f, y + 160.0f, width - 44.0f, 40.0f)) {
                 focusedField = 2;
                 return true;
             }
-            float chipX = x + 16.0f * scale;
+            float chipX = x + 22.0f;
             for (int i = 0; i < 16; i++) {
-                if (inside(mouseX, mouseY, chipX, y + 155.0f * scale,
-                        13.0f * scale, 13.0f * scale)) {
+                if (inside(mouseX, mouseY, chipX, y + 228.0f, 18.0f, 18.0f)) {
                     colorIndex = i;
                     return true;
                 }
-                chipX += 17.0f * scale;
+                chipX += 24.0f;
             }
-            if (inside(mouseX, mouseY, x + width - 144.0f * scale,
-                    y + height - 38.0f * scale, 58.0f * scale, 25.0f * scale)) {
+            if (inside(mouseX, mouseY, x + width - 198.0f,
+                    y + height - 54.0f, 82.0f, 36.0f)) {
                 waypointDraft = null;
                 return true;
             }
-            if (inside(mouseX, mouseY, x + width - 78.0f * scale,
-                    y + height - 38.0f * scale, 62.0f * scale, 25.0f * scale)) {
+            if (inside(mouseX, mouseY, x + width - 102.0f,
+                    y + height - 54.0f, 80.0f, 36.0f)) {
                 save();
                 return true;
             }
@@ -1683,27 +1507,21 @@ final class XaeroMapSurface {
         }
     }
 
-    private static void drawPlayerMarker(double centerX, double centerY, double width, double height,
-                                         float yaw, int color) {
-        double halfW = width * 0.5;
-        double halfH = height * 0.5;
-        double[] local = {
-                0.0, -halfH,
-                halfW, halfH * 0.82,
-                0.0, halfH * 0.28,
-                -halfW, halfH * 0.82
-        };
-        double[] points = new double[local.length];
-        double radians = Math.toRadians(yaw);
-        double cos = Math.cos(radians);
-        double sin = Math.sin(radians);
-        for (int i = 0; i < local.length; i += 2) {
-            double px = local[i];
-            double py = local[i + 1];
-            points[i] = centerX + px * cos - py * sin;
-            points[i + 1] = centerY + px * sin + py * cos;
-        }
-        Renderer2D.COLOR.polygon(points, points.length / 2, color);
+    private static void drawXaeroMapObject(AbstractTexture texture,
+                                           double centerX, double centerY,
+                                           double width, double height,
+                                           double pivotX, double pivotY,
+                                           float angle,
+                                           double textureX, double textureY,
+                                           double textureWidth, double textureHeight,
+                                           int color) {
+        Renderer2D.COLOR.textureQuadRotated(
+                texture.getTextureView(), combatant.client.render.engine.postprocess.PostProcessManager.getSampler(),
+                centerX, centerY, width, height, pivotX, pivotY, angle,
+                textureX / 256.0, textureY / 256.0,
+                (textureX + textureWidth) / 256.0, (textureY + textureHeight) / 256.0,
+                color
+        );
     }
 
 
@@ -1808,7 +1626,7 @@ final class XaeroMapSurface {
         float height = (float) Math.abs(b.y() - a.y());
         Renderer2D renderer = Renderer2D.COLOR;
         renderer.quad(x, y, width, height, 0x284FD6BE);
-        float stroke = Math.max(1.0f, (float) chromeScale());
+        float stroke = 1.5f;
         renderer.quad(x, y, width, stroke, 0xC855D6BE);
         renderer.quad(x, y + height - stroke, width, stroke, 0xC855D6BE);
         renderer.quad(x, y, stroke, height, 0xC855D6BE);
@@ -1839,10 +1657,6 @@ final class XaeroMapSurface {
 
     private double logicalPixelsPerBlock(double scale) {
         return scale;
-    }
-
-    private static double chromeScale() {
-        return 1.3;
     }
 
     private String sourceId(MapProcessor processor, MapDimension dimension) {
@@ -1952,5 +1766,8 @@ final class XaeroMapSurface {
     }
 
     private record LoadingRegion(double centerX, double centerZ, int lod) {
+    }
+
+    private record VisibleLeaves(Set<Long> regions, int minX, int minZ, int maxX, int maxZ) {
     }
 }

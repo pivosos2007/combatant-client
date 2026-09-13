@@ -1,5 +1,8 @@
 #version 330 core
 
+#moj_import <combatant:ui_aa.glsl>
+#moj_import <combatant:ui_stroke.glsl>
+
 /*
  * This file is part of the Combatant Client distribution.
  * Copyright (c) 2026 pivosos2007.
@@ -129,8 +132,8 @@ void main() {
 
     float dist = length(local);
     float radialD = abs(dist - radius) - thickness * 0.5;
-    float radialAa = max(max(max(logicalScale.x, logicalScale.y), fwidth(radialD)), 0.0001) + softness;
-    float stroke = 1.0 - smoothstep(0.0, radialAa, radialD);
+    float radialAa = strokeAnalyticAa(dist - radius, logicalScale, softness);
+    float stroke = centeredStrokeCoverage(dist - radius, thickness, logicalScale, softness);
 
     float glowFalloff = 0.0;
     if (glowRadius > 0.001) {

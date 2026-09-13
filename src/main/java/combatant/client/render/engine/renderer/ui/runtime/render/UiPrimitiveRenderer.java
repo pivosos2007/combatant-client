@@ -35,6 +35,26 @@ public final class UiPrimitiveRenderer {
         };
     }
 
+    private static boolean isCompoundShape(String shape) {
+        return switch (shape) {
+            case "island-blob", "island_blob", "metaball", "metaballs",
+                 "smooth-box-union", "smooth_box_union", "compound-sdf", "compound_sdf" -> true;
+            default -> false;
+        };
+    }
+
+    private static Renderer2D.LiquidGlassPreset glassPreset(UiProps props) {
+        String value = props != null ? props.string("glassPreset", "balanced") : "balanced";
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "light" -> Renderer2D.LiquidGlassPreset.LIGHT;
+            case "heavy" -> Renderer2D.LiquidGlassPreset.HEAVY;
+            case "hud-small", "hud_small" -> Renderer2D.LiquidGlassPreset.HUD_SMALL;
+            case "hud-large", "hud_large" -> Renderer2D.LiquidGlassPreset.HUD_LARGE;
+            case "health", "health-bar", "health_bar" -> Renderer2D.LiquidGlassPreset.HEALTH_BAR;
+            default -> Renderer2D.LiquidGlassPreset.BALANCED;
+        };
+    }
+
     private static boolean isBoxShape(String shape, UiProps props) {
         // UiBoxShape is reserved for the flexible-box contract; scripted shape ids keep their dedicated paths.
         if (props.get("corners") != null || props.get("edges") != null
@@ -370,28 +390,43 @@ public final class UiPrimitiveRenderer {
         float gradientOffset = props.number("offset", 0.0f);
 
         boolean primitiveShape = isPrimitiveShape(shape);
+        boolean compoundShape = isCompoundShape(shape);
         // Blur only shapes supported by the blur mask family.
-        if (!primitiveShape) renderShapeBlur(renderer, props, style, shape, x, y, w, h, cut);
+        if (!primitiveShape && !compoundShape) renderShapeBlur(renderer, props, style, shape, x, y, w, h, cut);
+
+        if (compoundShape) {
+            UiCompoundSdf compound = buildCompoundSdf(props, shape, x, y, w, h);
+            if (props.bool("liquidGlass", style.liquidGlass())) {
+                UiBackdropRuntime.drawLiquidGlass(renderer, props, () ->
+                        renderer.liquidGlassCompound(
+                                compound,
+                                color(props.get("glassTint"), 0xFFFFFFFF),
+                                props.number("glassAlpha", 1.0f),
+                                props.number("blurAlpha", style.blurAlpha()) * renderAlpha,
+                                glassPreset(props)
+                        ));
+            }
+            UiPaint fillPaint = buildPaint(props, fill, linearGradient, gradientStart, gradientEnd, gradientAngle, gradientOffset);
+            if ((fillPaint.solidColor() >>> 24) > 0 || linearGradient || hasFillCornerColors(props)) {
+                renderer.compoundSdf(compound, fillPaint);
+            }
+            if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
+                renderer.compoundSdfStroke(compound, buildStrokePaint(props, stroke, gradientAngle, gradientOffset),
+                        UiStroke.of(strokeWidth));
+            }
+            return;
+        }
 
         if (primitiveShape) {
             UiPrimitive primitive = buildPrimitive(props, style, shape, x, y, w, h);
             if (props.bool("liquidGlass", style.liquidGlass())) {
-                Renderer2D.LiquidGlassPreset glassPreset = switch (props.string("glassPreset", "balanced")
-                        .trim().toLowerCase(Locale.ROOT)) {
-                    case "light" -> Renderer2D.LiquidGlassPreset.LIGHT;
-                    case "heavy" -> Renderer2D.LiquidGlassPreset.HEAVY;
-                    case "hud-small", "hud_small" -> Renderer2D.LiquidGlassPreset.HUD_SMALL;
-                    case "hud-large", "hud_large" -> Renderer2D.LiquidGlassPreset.HUD_LARGE;
-                    case "health", "health-bar", "health_bar" -> Renderer2D.LiquidGlassPreset.HEALTH_BAR;
-                    default -> Renderer2D.LiquidGlassPreset.BALANCED;
-                };
                 UiBackdropRuntime.drawLiquidGlass(renderer, props, () ->
                         renderer.liquidGlassPrimitive(
                                 primitive,
                                 color(props.get("glassTint"), 0xFFFFFFFF),
                                 props.number("glassAlpha", 1.0f),
                                 props.number("blurAlpha", style.blurAlpha()) * renderAlpha,
-                                glassPreset
+                                glassPreset(props)
                         ));
             }
             UiPaint fillPaint = buildPaint(props, fill, linearGradient, gradientStart, gradientEnd, gradientAngle, gradientOffset);
@@ -866,6 +901,64 @@ public final class UiPrimitiveRenderer {
             left = edgeFromObject(first(props, "edgeLeft", "leftEdge"), h, false);
 
         return builder.edges(top, right, bottom, left).build();
+    }
+
+    private UiCompoundSdf buildCompoundSdf(UiProps props, String shape,
+                                             double x, double y, double w, double h) {
+        float smoothing = Math.max(0.0f, props.number("smoothing", props.number("smoothness", 10.0f)));
+        if (shape.equals("smooth-box-union") || shape.equals("smooth_box_union")
+                || shape.equals("compound-sdf") || shape.equals("compound_sdf")) {
+            UiRect first = compoundRect(props.get("first"), x, y,
+                    UiRect.of(x, y + h * 0.16, w * 0.62, h * 0.68));
+            UiRect second = compoundRect(props.get("second"), x, y,
+                    UiRect.of(x + w * 0.38, y + h * 0.16, w * 0.62, h * 0.68));
+            float defaultRadius = props.number("radius", Math.min((float) w, (float) h) * 0.24f);
+            return UiCompoundSdf.smoothBoxUnion(
+                    first, props.number("firstRadius", defaultRadius),
+                    second, props.number("secondRadius", defaultRadius),
+                    smoothing
+            );
+        }
+
+        UiCompoundSdf.Circle[] circles = readCompoundCircles(props.get("sources"), x, y);
+        if (circles.length == 0) {
+            float defaultRadius = props.number("radius", Math.min((float) w, (float) h) * 0.34f);
+            float separation = props.number("separation", Math.max(2.0f, defaultRadius * 0.72f));
+            double cx = x + props.number("cx", (float) (w * 0.5));
+            double cy = y + props.number("cy", (float) (h * 0.5));
+            circles = new UiCompoundSdf.Circle[]{
+                    UiCompoundSdf.circle(cx - separation * 0.5, cy, defaultRadius),
+                    UiCompoundSdf.circle(cx + separation * 0.5, cy, defaultRadius)
+            };
+        }
+        return UiCompoundSdf.islandBlob(smoothing, circles);
+    }
+
+    private static UiCompoundSdf.Circle[] readCompoundCircles(Object value, double offsetX, double offsetY) {
+        if (!(value instanceof Iterable<?> iterable)) return new UiCompoundSdf.Circle[0];
+        UiCompoundSdf.Circle[] out = new UiCompoundSdf.Circle[UiCompoundSdf.MAX_CIRCLES];
+        int count = 0;
+        for (Object item : iterable) {
+            if (count >= out.length) break;
+            if (!(item instanceof Map<?, ?> map)) continue;
+            double cx = offsetX + number(map.get("x"), 0.0f);
+            double cy = offsetY + number(map.get("y"), 0.0f);
+            double radius = Math.max(0.0, number(map.containsKey("radius") ? map.get("radius") : map.get("r"), 0.0f));
+            if (radius <= 0.0) continue;
+            out[count++] = UiCompoundSdf.circle(cx, cy, radius);
+        }
+        UiCompoundSdf.Circle[] result = new UiCompoundSdf.Circle[count];
+        System.arraycopy(out, 0, result, 0, count);
+        return result;
+    }
+
+    private static UiRect compoundRect(Object value, double offsetX, double offsetY, UiRect fallback) {
+        if (!(value instanceof Map<?, ?> map)) return fallback;
+        double x = offsetX + number(map.get("x"), (float) (fallback.x() - offsetX));
+        double y = offsetY + number(map.get("y"), (float) (fallback.y() - offsetY));
+        double w = Math.max(0.0, number(map.containsKey("width") ? map.get("width") : map.get("w"), fallback.width()));
+        double h = Math.max(0.0, number(map.containsKey("height") ? map.get("height") : map.get("h"), fallback.height()));
+        return UiRect.of(x, y, w, h);
     }
 
     private UiPrimitive buildPrimitive(UiProps props, UiStyle style, String shape,

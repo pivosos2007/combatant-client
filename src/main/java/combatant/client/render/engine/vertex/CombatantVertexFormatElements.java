@@ -22,6 +22,7 @@ public enum CombatantVertexFormatElements {
     public static final GpuFormat PARAMS4 = GpuFormat.RGBA32_FLOAT;
     public static final GpuFormat PARAMS5 = GpuFormat.RGBA32_FLOAT;
     public static final GpuFormat PARAMS6 = GpuFormat.RGBA32_FLOAT;
+    public static final GpuFormat PARAMS7 = GpuFormat.RGBA32_FLOAT;
     public static final GpuFormat LOCAL = GpuFormat.RGBA32_FLOAT;
 
     // Rigged 3D geometry. The resulting player-oriented layout stays exactly 64 bytes/vertex.

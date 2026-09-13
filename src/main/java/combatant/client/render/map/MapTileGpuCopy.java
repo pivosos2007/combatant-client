@@ -7,10 +7,10 @@
 
 package combatant.client.render.map;
 
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.blaze3d.textures.GpuTextureView;
 
 /** Provider-neutral GPU tile payload copied into Combatant-owned atlas storage. */
-public record MapTileGpuCopy(GpuTexture source,
+public record MapTileGpuCopy(GpuTextureView source,
                              int sourceX,
                              int sourceY,
                              int width,

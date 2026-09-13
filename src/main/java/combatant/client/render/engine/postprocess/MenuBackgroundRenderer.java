@@ -53,6 +53,9 @@ public enum MenuBackgroundRenderer {
             "combatant", "textures/mainmenu/mountains-dusk.png");
     public static final Identifier NIGHT_TEXTURE = Identifier.fromNamespaceAndPath(
             "combatant", "textures/mainmenu/night-mountains.png");
+    private static final Identifier[] PREWARM_TEXTURES = {
+            MORNING_TEXTURE, DEFAULT_TEXTURE, DUSK_TEXTURE, NIGHT_TEXTURE
+    };
 
     private static final float TRANSITION_SECONDS = 2.20f;
     private static final long SHADER_TIME_ORIGIN_NANOS = System.nanoTime();
@@ -69,6 +72,28 @@ public enum MenuBackgroundRenderer {
     private static Identifier deferredTexture;
     private static float deferredBlend = 1.0f;
     private static RenderPipeline deferredShaderPipeline;
+
+    /**
+     * Forces the lazy 26.2 TextureManager PNG load/upload while startup is still in progress.
+     * Once registered, vanilla resource reloads refresh these textures through their normal
+     * asynchronous prepare/apply path, so later menu opens stay cache-only.
+     */
+    public static int prewarm(Minecraft mc) {
+        if (mc == null || !RenderSystem.isOnRenderThread()) return 0;
+        FullScreenRenderer.ensureInit();
+        if (projection == null) projection = new ProjectionMatrixBuffer("combatant-menu-bg-projection");
+
+        int warmed = 0;
+        for (Identifier id : PREWARM_TEXTURES) {
+            try {
+                AbstractTexture texture = mc.getTextureManager().getTexture(id);
+                if (texture != null && texture.getTextureView() != null && texture.getSampler() != null) warmed++;
+            } catch (RuntimeException ignored) {
+                // Keep prewarm optional; the ordinary render path still reports/falls back on failure.
+            }
+        }
+        return warmed;
+    }
 
     /** Renders the background selected in MainConfig: png, aurora or waves. */
     public static void renderConfigured(Minecraft mc) {

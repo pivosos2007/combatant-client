@@ -144,6 +144,7 @@ public final class Renderer2D {
     private UiBlurQuality liquidGlassUiBlurQuality = UiBlurQuality.LOW;
     private float liquidGlassUiBlurOffsetPx = 0.85f;
     private float liquidGlassUiMix = 1.0f;
+    private UiLiquidGlassMaterial liquidGlassMaterial = UiLiquidGlassMaterial.DEFAULT;
 
     public Renderer2D(boolean textured) {
         this.textured = textured;
@@ -153,6 +154,8 @@ public final class Renderer2D {
     public static void init() {
         COLOR = new Renderer2D(false);
         TEXTURE = new Renderer2D(true);
+        if (TEXTURE.texturedTriangles != null) TEXTURE.texturedTriangles.prewarmDefaultCapacity();
+        UI_BATCHER.prewarmMeshPools();
         ItemBatchRenderer.init();
     }
 
@@ -185,6 +188,17 @@ public final class Renderer2D {
      * Overrides the phase default for liquid-glass calls made by {@code draw}. NONE is useful for
      * analytically isolated surfaces; PASS_THROUGH adds no blur passes; BLUR uses its own profile.
      */
+    public void withLiquidGlassMaterial(UiLiquidGlassMaterial material, Runnable draw) {
+        if (draw == null) return;
+        UiLiquidGlassMaterial previous = liquidGlassMaterial;
+        liquidGlassMaterial = material != null ? material : UiLiquidGlassMaterial.DEFAULT;
+        try {
+            draw.run();
+        } finally {
+            liquidGlassMaterial = previous;
+        }
+    }
+
     public void withLiquidGlassUiUnderlay(UiBackdropRequest.UiUnderlayMode mode,
                                           UiBlurQuality blurQuality,
                                           float blurOffsetPx,
@@ -260,6 +274,22 @@ public final class Renderer2D {
         } else {
             renderPrimitiveFallback(primitive, paint, safeStroke, fill);
         }
+    }
+
+    /** Draws a bounded implicit/compound SDF through the existing UI primitive batch. */
+    public void compoundSdf(UiCompoundSdf compound, UiPaint paint) {
+        compoundSdf(compound, paint, UiStroke.NONE, true);
+    }
+
+    public void compoundSdfStroke(UiCompoundSdf compound, UiPaint paint, UiStroke stroke) {
+        compoundSdf(compound, paint, stroke, false);
+    }
+
+    public void compoundSdf(UiCompoundSdf compound, UiPaint paint, UiStroke stroke, boolean fill) {
+        if (compound == null || paint == null) return;
+        UiStroke safeStroke = stroke != null ? stroke : UiStroke.NONE;
+        if (!fill && !safeStroke.enabled()) return;
+        renderCompoundSdf(compound, paint, safeStroke, fill);
     }
 
     public void shape(UiShape shape, UiPaint paint, UiStroke stroke, boolean fill) {
@@ -628,6 +658,100 @@ public final class Renderer2D {
         int i4 = mesh.vec2(x + w, y).raw2(1.0, 0.0).color(r, g, b, a).next();
         mesh.quad(i1, i2, i3, i4);
 
+        endAutoBatch(auto);
+    }
+
+    public void textureQuad(GpuTextureView samplerView,
+                            GpuSampler sampler,
+                            double x,
+                            double y,
+                            double w,
+                            double h,
+                            double u0,
+                            double v0,
+                            double u1,
+                            double v1,
+                            int argb) {
+        if (textured) {
+            throw new IllegalStateException("Batched texture quad drawing is supported only on Renderer2D.COLOR.");
+        }
+        if (samplerView == null || sampler == null) return;
+        if (w == 0.0 || h == 0.0) return;
+
+        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.rect(x, y, w, h), UiPaint.solid(argb),
+                (float) u0, (float) v0, (float) u1, (float) v1, false));
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED, samplerView, sampler);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+
+        int a = (argb >>> 24) & 0xFF;
+        int r = (argb >>> 16) & 0xFF;
+        int g = (argb >>> 8) & 0xFF;
+        int b = argb & 0xFF;
+        int i1 = mesh.vec2(x, y).raw2(u0, v0).color(r, g, b, a).next();
+        int i2 = mesh.vec2(x, y + h).raw2(u0, v1).color(r, g, b, a).next();
+        int i3 = mesh.vec2(x + w, y + h).raw2(u1, v1).color(r, g, b, a).next();
+        int i4 = mesh.vec2(x + w, y).raw2(u1, v0).color(r, g, b, a).next();
+        mesh.quad(i1, i2, i3, i4);
+        endAutoBatch(auto);
+    }
+
+    /** Draws an atlas sub-rect rotated around an explicit pivot inside the quad. */
+    public void textureQuadRotated(GpuTextureView samplerView,
+                                   GpuSampler sampler,
+                                   double pivotScreenX,
+                                   double pivotScreenY,
+                                   double width,
+                                   double height,
+                                   double pivotX,
+                                   double pivotY,
+                                   double degrees,
+                                   double u0,
+                                   double v0,
+                                   double u1,
+                                   double v1,
+                                   int argb) {
+        if (textured) {
+            throw new IllegalStateException("Batched texture quad drawing is supported only on Renderer2D.COLOR.");
+        }
+        if (samplerView == null || sampler == null || width == 0.0 || height == 0.0) return;
+
+        double radians = Math.toRadians(degrees);
+        double cos = Math.cos(radians);
+        double sin = Math.sin(radians);
+        double[] localX = {-pivotX, -pivotX, width - pivotX, width - pivotX};
+        double[] localY = {-pivotY, height - pivotY, height - pivotY, -pivotY};
+        double[] px = new double[4];
+        double[] py = new double[4];
+        for (int i = 0; i < 4; i++) {
+            px[i] = pivotScreenX + localX[i] * cos - localY[i] * sin;
+            py[i] = pivotScreenY + localX[i] * sin + localY[i] * cos;
+        }
+
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED, samplerView, sampler);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+        int a = (argb >>> 24) & 0xFF;
+        int r = (argb >>> 16) & 0xFF;
+        int g = (argb >>> 8) & 0xFF;
+        int b = argb & 0xFF;
+        int i1 = mesh.vec2(px[0], py[0]).raw2(u0, v0).color(r, g, b, a).next();
+        int i2 = mesh.vec2(px[1], py[1]).raw2(u0, v1).color(r, g, b, a).next();
+        int i3 = mesh.vec2(px[2], py[2]).raw2(u1, v1).color(r, g, b, a).next();
+        int i4 = mesh.vec2(px[3], py[3]).raw2(u1, v0).color(r, g, b, a).next();
+        mesh.quad(i1, i2, i3, i4);
         endAutoBatch(auto);
     }
 
@@ -3014,6 +3138,140 @@ public final class Renderer2D {
         texturedTriangles.quad(i1, i2, i3, i4);
     }
 
+    /** Liquid glass over the same bounded implicit field used by {@link #compoundSdf}. */
+    public void liquidGlassCompound(UiCompoundSdf compound,
+                                    int tintArgb,
+                                    float glassAlpha,
+                                    float blurAlpha,
+                                    LiquidGlassPreset preset) {
+        if (compound == null) return;
+        LiquidGlassPreset safe = preset != null ? preset : LiquidGlassPreset.BALANCED;
+        UiRect bounds = compound.bounds();
+        double x = bounds.x();
+        double y = bounds.y();
+        double w = bounds.width();
+        double h = bounds.height();
+        if (w <= 0.0 || h <= 0.0) return;
+
+        UiBackdropRequest backdrop = liquidGlassBackdrop(
+                bounds, UiBlurQuality.HIGH, LIQUID_GLASS_KAWASE_OFFSET_PX);
+        // The effect command needs the capture bounds; the exact implicit mask is evaluated by the
+        // liquid-glass batch itself and intentionally stays backend-local.
+        effect(UiEffectSpec.liquidGlass(
+                UiShape.rect(x, y, w, h), compound.smoothing(), safe.thicknessPx, safe.distortPx, tintArgb, backdrop));
+
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) return;
+        RenderTarget fb = mc.gameRenderer.mainRenderTarget();
+        if (fb == null) return;
+        GpuTextureView src = fb.getColorTextureView();
+        if (src == null) return;
+        GpuSampler sampler = PostProcessManager.getSampler();
+        if (sampler == null) return;
+
+        float[] payload = new float[16];
+        int shapeMode;
+        int sourceCount;
+        if (compound.mode() == UiCompoundSdf.Mode.ISLAND_BLOB) {
+            shapeMode = 2;
+            sourceCount = compound.circleCount();
+            for (int i = 0; i < sourceCount; i++) {
+                UiCompoundSdf.Circle circle = compound.circle(i);
+                int o = i * 4;
+                payload[o] = (float) (circle.centerX() - x);
+                payload[o + 1] = (float) (circle.centerY() - y);
+                payload[o + 2] = (float) circle.radius();
+            }
+        } else {
+            shapeMode = 3;
+            sourceCount = 2;
+            UiRect first = compound.firstBox();
+            UiRect second = compound.secondBox();
+            payload[0] = first.x() - bounds.x();
+            payload[1] = first.y() - bounds.y();
+            payload[2] = first.width();
+            payload[3] = first.height();
+            payload[4] = second.x() - bounds.x();
+            payload[5] = second.y() - bounds.y();
+            payload[6] = second.width();
+            payload[7] = second.height();
+            payload[8] = compound.firstRadius();
+            payload[9] = compound.secondRadius();
+        }
+
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
+                DEFAULT_LIQUID_GLASS_BLUR_QUALITY, LIQUID_GLASS_KAWASE_OFFSET_PX, backdrop);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+
+        int a = (tintArgb >>> 24) & 0xFF;
+        int r = (tintArgb >>> 16) & 0xFF;
+        int g = (tintArgb >>> 8) & 0xFF;
+        int b = tintArgb & 0xFF;
+        int finalA = (int) (a * clamp01(glassAlpha));
+        float mix = packLiquidGlassFresnel(safe.fresnelMix, 0.0f, 0.0f);
+        float packedDistort = packLiquidGlassPayload(safe.distortPx * clamp01(glassAlpha), 2.0f, clamp01(blurAlpha), false);
+
+        int i1 = appendLiquidGlassCompoundVertex(mesh, x, y, mix, packedDistort, r, g, b, finalA, bounds,
+                payload, sourceCount, compound.smoothing(), shapeMode, safe, liquidGlassMaterial);
+        int i2 = appendLiquidGlassCompoundVertex(mesh, x, y + h, mix, packedDistort, r, g, b, finalA, bounds,
+                payload, sourceCount, compound.smoothing(), shapeMode, safe, liquidGlassMaterial);
+        int i3 = appendLiquidGlassCompoundVertex(mesh, x + w, y + h, mix, packedDistort, r, g, b, finalA, bounds,
+                payload, sourceCount, compound.smoothing(), shapeMode, safe, liquidGlassMaterial);
+        int i4 = appendLiquidGlassCompoundVertex(mesh, x + w, y, mix, packedDistort, r, g, b, finalA, bounds,
+                payload, sourceCount, compound.smoothing(), shapeMode, safe, liquidGlassMaterial);
+        mesh.quad(i1, i2, i3, i4);
+        endAutoBatch(auto);
+    }
+
+    private static int appendLiquidGlassCompoundVertex(MeshBuilder mesh,
+                                                       double x,
+                                                       double y,
+                                                       float fresnelMix,
+                                                       float packedDistort,
+                                                       int r,
+                                                       int g,
+                                                       int b,
+                                                       int a,
+                                                       UiRect bounds,
+                                                       float[] payload,
+                                                       int sourceCount,
+                                                       float smoothing,
+                                                       int shapeMode,
+                                                       LiquidGlassPreset preset,
+                                                       UiLiquidGlassMaterial material) {
+        float p0x = payload[0], p0y = payload[1], p0z = payload[2], p0w = payload[3];
+        float p3x, p3y, p3z, p3w;
+        float p4x, p4y, p4z, p4w;
+        float p5x, p5y, p5z, p5w;
+        if (shapeMode == 2) {
+            p3x = payload[4]; p3y = payload[5]; p3z = payload[6]; p3w = payload[7];
+            p4x = payload[8]; p4y = payload[9]; p4z = payload[10]; p4w = payload[11];
+            p5x = payload[12]; p5y = payload[13]; p5z = payload[14]; p5w = payload[15];
+        } else {
+            p3x = payload[4]; p3y = payload[5]; p3z = payload[6]; p3w = payload[7];
+            p4x = payload[8]; p4y = payload[9]; p4z = 0.0f; p4w = 0.0f;
+            p5x = p5y = p5z = p5w = 0.0f;
+        }
+        return mesh.vec2(x, y).raw2(fresnelMix, packedDistort).local2(x, y).color(r, g, b, a)
+                .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
+                .vec4(p0x, p0y, p0z, p0w)
+                .vec4(preset.thicknessPx, preset.fresnelPower, clamp01(preset.fresnelAlpha), clamp01(preset.baseAlpha))
+                .vec4(p3x, p3y, p3z, p3w)
+                .vec4(p4x, p4y, p4z, p4w)
+                .vec4(p5x, p5y, p5z, p5w)
+                .vec4(sourceCount, smoothing, 0.0f, shapeMode)
+                .vec4(materialFrostedJitter(material), materialInnerGlowStrength(material),
+                        materialInnerGlowSize(material), packLiquidGlassRgb(materialInnerGlowArgb(material)))
+                .next();
+    }
+
     public void liquidGlassCircle(double cx, double cy, double radius,
                                   float softness,
                                   int tintArgb,
@@ -3167,13 +3425,13 @@ public final class Renderer2D {
         float rounding = Math.min(primitive.rounding(), (float) Math.min(w, h) * 0.45f);
 
         int i1 = appendLiquidGlassPrimitiveVertex(mesh, x, y, mix, packedDistort, r, g, b, finalA,
-                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba);
+                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba, liquidGlassMaterial);
         int i2 = appendLiquidGlassPrimitiveVertex(mesh, x, y + h, mix, packedDistort, r, g, b, finalA,
-                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba);
+                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba, liquidGlassMaterial);
         int i3 = appendLiquidGlassPrimitiveVertex(mesh, x + w, y + h, mix, packedDistort, r, g, b, finalA,
-                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba);
+                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba, liquidGlassMaterial);
         int i4 = appendLiquidGlassPrimitiveVertex(mesh, x + w, y, mix, packedDistort, r, g, b, finalA,
-                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba);
+                bounds, primitivePointsTmp, primitive.pointCount(), rounding, thickness, fresnelPower, fa, ba, liquidGlassMaterial);
         mesh.quad(i1, i2, i3, i4);
         endAutoBatch(auto);
     }
@@ -3194,7 +3452,8 @@ public final class Renderer2D {
                                                         float thickness,
                                                         float fresnelPower,
                                                         float fresnelAlpha,
-                                                        float baseAlpha) {
+                                                        float baseAlpha,
+                                                        UiLiquidGlassMaterial material) {
         return mesh.vec2(x, y).raw2(fresnelMix, packedDistort).local2(x, y).color(r, g, b, a)
                 .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
                 .vec4(points[0], points[1], points[2], points[3])
@@ -3203,6 +3462,8 @@ public final class Renderer2D {
                 .vec4(points[8], points[9], points[10], points[11])
                 .vec4(points[12], points[13], points[14], points[15])
                 .vec4(pointCount, rounding, 0.0f, 1.0f)
+                .vec4(materialFrostedJitter(material), materialInnerGlowStrength(material),
+                        materialInnerGlowSize(material), packLiquidGlassRgb(materialInnerGlowArgb(material)))
                 .next();
     }
 
@@ -3666,6 +3927,8 @@ public final class Renderer2D {
                 .vec4(thickness, fresnelPower, fa, ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(materialFrostedJitter(liquidGlassMaterial), materialInnerGlowStrength(liquidGlassMaterial),
+                        materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
                 .next();
         int i2 = mesh.vec2(x, y + h).raw2(mix, packedDistort).local2(x, y + h).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
@@ -3673,6 +3936,8 @@ public final class Renderer2D {
                 .vec4(thickness, fresnelPower, fa, ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(materialFrostedJitter(liquidGlassMaterial), materialInnerGlowStrength(liquidGlassMaterial),
+                        materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
                 .next();
         int i3 = mesh.vec2(x + w, y + h).raw2(mix, packedDistort).local2(x + w, y + h).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
@@ -3680,6 +3945,8 @@ public final class Renderer2D {
                 .vec4(thickness, fresnelPower, fa, ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(materialFrostedJitter(liquidGlassMaterial), materialInnerGlowStrength(liquidGlassMaterial),
+                        materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
                 .next();
         int i4 = mesh.vec2(x + w, y).raw2(mix, packedDistort).local2(x + w, y).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
@@ -3687,11 +3954,36 @@ public final class Renderer2D {
                 .vec4(thickness, fresnelPower, fa, ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(materialFrostedJitter(liquidGlassMaterial), materialInnerGlowStrength(liquidGlassMaterial),
+                        materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
                 .next();
 
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
+    }
+
+    private static float materialFrostedJitter(UiLiquidGlassMaterial material) {
+        return material != null ? material.frostedJitterPx() : 0.0f;
+    }
+
+    private static float materialInnerGlowStrength(UiLiquidGlassMaterial material) {
+        if (material == null) return 0.0f;
+        float alpha = ((material.innerGlowArgb() >>> 24) & 0xFF) / 255.0f;
+        return material.innerGlowStrength() * alpha;
+    }
+
+    private static float materialInnerGlowSize(UiLiquidGlassMaterial material) {
+        return material != null ? material.innerGlowSizePx() : 0.0f;
+    }
+
+    private static int materialInnerGlowArgb(UiLiquidGlassMaterial material) {
+        return material != null ? material.innerGlowArgb() : 0x00FFFFFF;
+    }
+
+    private static float packLiquidGlassRgb(int argb) {
+        int rgb = argb & 0x00FFFFFF;
+        return (float) rgb;
     }
 
     private static float packLiquidGlassFresnel(float fresnelMix, float prismStrength, float prismPhase) {
@@ -4021,6 +4313,109 @@ public final class Renderer2D {
                         stroke.join() == UiPathJoin.ROUND || stroke.cap() == UiPathCap.ROUND);
             }
         }
+    }
+
+    private void renderCompoundSdf(UiCompoundSdf compound, UiPaint paint, UiStroke stroke, boolean fill) {
+        if (textured || compound == null || paint == null) return;
+        UiRect bounds = compound.bounds();
+        double x = bounds.x();
+        double y = bounds.y();
+        double w = bounds.width();
+        double h = bounds.height();
+        if (w <= 0.0 || h <= 0.0) return;
+
+        int cTL = paint.topLeft();
+        int cTR = paint.topRight();
+        int cBR = paint.bottomRight();
+        int cBL = paint.bottomLeft();
+        if (paint.kind() == UiPaintKind.LINEAR_GRADIENT) {
+            computeLinearGradientColors((float) w, (float) h,
+                    paint.topLeft(), paint.topRight(), paint.angleDeg(), paint.offsetPx(), gradientTmp);
+            cTL = gradientTmp[0];
+            cTR = gradientTmp[1];
+            cBR = gradientTmp[2];
+            cBL = gradientTmp[3];
+        }
+
+        float[] payload = new float[16];
+        int mode;
+        int sourceCount;
+        if (compound.mode() == UiCompoundSdf.Mode.ISLAND_BLOB) {
+            mode = 1;
+            sourceCount = compound.circleCount();
+            for (int i = 0; i < sourceCount; i++) {
+                UiCompoundSdf.Circle circle = compound.circle(i);
+                int o = i * 4;
+                payload[o] = (float) (circle.centerX() - x);
+                payload[o + 1] = (float) (circle.centerY() - y);
+                payload[o + 2] = (float) circle.radius();
+                payload[o + 3] = 0.0f;
+            }
+        } else {
+            mode = 2;
+            sourceCount = 2;
+            UiRect first = compound.firstBox();
+            UiRect second = compound.secondBox();
+            payload[0] = (float) (first.x() - x);
+            payload[1] = (float) (first.y() - y);
+            payload[2] = first.width();
+            payload[3] = first.height();
+            payload[4] = (float) (second.x() - x);
+            payload[5] = (float) (second.y() - y);
+            payload[6] = second.width();
+            payload[7] = second.height();
+            payload[8] = compound.firstRadius();
+            payload[9] = compound.secondRadius();
+        }
+
+        float strokeWidth = !fill && stroke != null ? stroke.thickness() : 0.0f;
+        float flags = fill ? 1.0f : 2.0f;
+        float packedFlags = mode * 16.0f + flags;
+        double outset = !fill ? strokeWidth * 0.5 : 0.0;
+
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.PRIMITIVE, null, null);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+        int i1 = appendCompoundSdfVertex(mesh, x - outset, y - outset, cTL, bounds, payload,
+                sourceCount, compound.smoothing(), strokeWidth, packedFlags);
+        int i2 = appendCompoundSdfVertex(mesh, x - outset, y + h + outset, cBL, bounds, payload,
+                sourceCount, compound.smoothing(), strokeWidth, packedFlags);
+        int i3 = appendCompoundSdfVertex(mesh, x + w + outset, y + h + outset, cBR, bounds, payload,
+                sourceCount, compound.smoothing(), strokeWidth, packedFlags);
+        int i4 = appendCompoundSdfVertex(mesh, x + w + outset, y - outset, cTR, bounds, payload,
+                sourceCount, compound.smoothing(), strokeWidth, packedFlags);
+        mesh.quad(i1, i2, i3, i4);
+        endAutoBatch(auto);
+    }
+
+    private static int appendCompoundSdfVertex(MeshBuilder mesh,
+                                               double x,
+                                               double y,
+                                               int argb,
+                                               UiRect bounds,
+                                               float[] payload,
+                                               int sourceCount,
+                                               float smoothing,
+                                               float strokeWidth,
+                                               float packedFlags) {
+        int a = (argb >>> 24) & 0xFF;
+        int r = (argb >>> 16) & 0xFF;
+        int g = (argb >>> 8) & 0xFF;
+        int b = argb & 0xFF;
+        return mesh.vec2(x, y).local2(x, y).color(r, g, b, a)
+                .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
+                .vec4(payload[0], payload[1], payload[2], payload[3])
+                .vec4(payload[4], payload[5], payload[6], payload[7])
+                .vec4(payload[8], payload[9], payload[10], payload[11])
+                .vec4(payload[12], payload[13], payload[14], payload[15])
+                .vec4(sourceCount, smoothing, strokeWidth, packedFlags)
+                .next();
     }
 
     private void renderPrimitiveSdf(UiPrimitive primitive, UiPaint paint, UiStroke stroke, boolean fill) {

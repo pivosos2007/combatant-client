@@ -13,27 +13,37 @@ import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.text.TextRenderer;
-import combatant.client.render.helpers.MatteHudStyle;
 import combatant.client.render.map.MapScreenPoint;
 import combatant.client.render.map.MapViewport;
 import combatant.client.util.text.LegacyTextUtil;
 import combatant.client.util.text.TextRenderUtil;
+import combatant.client.util.logging.DebugLog;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.AddressMode;
+import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.dimension.DimensionType;
 import xaero.common.HudMod;
 import xaero.hud.minimap.BuiltInHudModules;
+import xaero.hud.minimap.Minimap;
 import xaero.hud.minimap.common.config.option.MinimapProfiledConfigOptions;
+import xaero.hud.minimap.element.render.MinimapElementGraphics;
+import xaero.hud.minimap.element.render.MinimapElementRendererHandler;
 import xaero.hud.minimap.module.MinimapSession;
 import xaero.hud.minimap.radar.RadarSession;
+import xaero.hud.minimap.radar.category.setting.EntityRadarCategorySettings;
+import xaero.hud.minimap.radar.icon.RadarIconManager;
+import xaero.hud.minimap.radar.render.element.RadarRenderer;
 import xaero.hud.minimap.radar.state.RadarList;
 import xaero.hud.minimap.waypoint.set.WaypointSet;
 import xaero.hud.minimap.world.MinimapDimensionHelper;
@@ -43,6 +53,9 @@ import xaero.lib.client.config.ClientConfigManager;
 import xaero.lib.common.config.option.ConfigOption;
 import xaero.map.MapProcessor;
 import xaero.map.WorldMap;
+import xaero.map.element.MapElementGraphics;
+import xaero.map.icon.XaeroIcon;
+import xaero.map.icon.XaeroIconAtlas;
 import xaero.map.common.config.option.WorldMapProfiledConfigOptions;
 import xaero.map.config.primary.option.WorldMapPrimaryClientConfigOptions;
 import xaero.map.mods.SupportMods;
@@ -55,23 +68,52 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.lang.reflect.Field;
 
 final class XaeroMapElements {
     private final List<Element> visible = new ArrayList<>();
+    private final MapElementGraphics xaeroGraphics = new MapElementGraphics(new PoseStack());
     private Element hovered;
+    private boolean tabDown;
+    private double playerMapX = Double.NaN;
+    private double playerMapZ = Double.NaN;
     private MinimapWorld waypointWorld;
     private double waypointDimensionDivision = 1.0;
+    private MinimapSession radarIconSession;
+    private RadarIconAccess radarIconAccess;
 
     Snapshot collect(MapProcessor processor, MapDimension dimension, double userScale) {
         visible.clear();
         waypointWorld = null;
         waypointDimensionDivision = 1.0;
+        updatePlayerMapPosition(processor, dimension);
         collectXaeroWaypoints(processor, dimension, userScale);
         collectCombatantWaypoints(dimension);
         collectRadarEntities(processor, dimension);
         collectTrackedPlayers(processor, dimension);
         visible.sort(Comparator.comparingInt(Element::priority));
         return new Snapshot(List.copyOf(visible), waypointWorld, waypointDimensionDivision);
+    }
+
+    void setTabDown(boolean tabDown) {
+        this.tabDown = tabDown;
+    }
+
+    void clearHover() {
+        hovered = null;
+    }
+
+    private void updatePlayerMapPosition(MapProcessor processor, MapDimension dimension) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.player == null || processor.getWorldDimensionTypeRegistry() == null) {
+            playerMapX = playerMapZ = Double.NaN;
+            return;
+        }
+        double divisor = dimension.calculateDimDiv(
+                processor.getWorldDimensionTypeRegistry(), minecraft.player.level().dimensionType());
+        if (!Double.isFinite(divisor) || divisor == 0.0) divisor = 1.0;
+        playerMapX = minecraft.player.getX() / divisor;
+        playerMapZ = minecraft.player.getZ() / divisor;
     }
 
     Element render(Snapshot snapshot, MapViewport viewport, float mouseX, float mouseY) {
@@ -83,7 +125,7 @@ final class XaeroMapElements {
             double dx = mouseX - point.x();
             double dy = mouseY - point.y();
             double distance = dx * dx + dy * dy;
-            double hitRadius = element.kind() == Kind.WAYPOINT ? 14.0 : (element.kind() == Kind.ENTITY ? 12.0 : 16.0);
+            double hitRadius = element.kind() == Kind.WAYPOINT ? 15.0 : (element.kind() == Kind.ENTITY ? 14.0 : 16.0);
             if (element.interactive() && distance <= hitRadius * hitRadius && distance < bestDistance) {
                 hovered = element;
                 bestDistance = distance;
@@ -164,6 +206,10 @@ final class XaeroMapElements {
                         0xFF000000 | rgb,
                         waypoint.isDisabled(),
                         true,
+                        false,
+                        false,
+                        5.0f,
+                        1.0f,
                         100,
                         waypoint
                 ));
@@ -176,21 +222,41 @@ final class XaeroMapElements {
         for (XaeroWaypointSnapshot waypoint : XaeroIntegration.snapshots(XaeroIntegration.RenderTarget.WORLD_MAP)) {
             double dimensionScale = waypoint.coordinateSpace() == XaeroWaypointSnapshot.CoordinateSpace.OVERWORLD
                     && dimension.getDimId().equals(Level.NETHER) ? 0.125 : 1.0;
+            double worldX = waypoint.x() * dimensionScale;
+            double worldZ = waypoint.z() * dimensionScale;
+            if (containsWaypointAt(worldX, worldZ, waypoint.name(), waypoint.symbol())) continue;
             int color = waypoint.color() == XaeroWaypointSnapshot.Color.GOLD ? 0xFFFFB82E : 0xFFFF4D57;
             visible.add(new Element(
                     Kind.WAYPOINT,
                     waypoint.id(),
-                    waypoint.x() * dimensionScale,
-                    waypoint.z() * dimensionScale,
+                    worldX,
+                    worldZ,
                     styled(Component.literal(waypoint.name())),
                     waypoint.symbol(),
                     color,
                     false,
                     false,
+                    false,
+                    false,
+                    5.0f,
+                    1.0f,
                     110,
                     waypoint
             ));
         }
+    }
+
+    private boolean containsWaypointAt(double worldX, double worldZ, String name, String symbol) {
+        String expectedName = LegacyTextUtil.stripLegacy(name == null ? "" : name);
+        String expectedSymbol = symbol == null ? "" : symbol;
+        for (Element element : visible) {
+            if (element.kind() != Kind.WAYPOINT) continue;
+            if (Math.abs(element.worldX() - worldX) > 0.5 || Math.abs(element.worldZ() - worldZ) > 0.5) continue;
+            boolean sameName = expectedName.isBlank() || expectedName.equalsIgnoreCase(element.plainName());
+            boolean sameSymbol = expectedSymbol.isBlank() || expectedSymbol.equalsIgnoreCase(element.symbol());
+            if (sameName && sameSymbol) return true;
+        }
+        return false;
     }
 
     @SuppressWarnings("unchecked")
@@ -203,6 +269,7 @@ final class XaeroMapElements {
         if (!dimension.getDimId().equals(minecraft.level.dimension())) return;
         Object currentSession = BuiltInHudModules.MINIMAP.getCurrentSession();
         if (!(currentSession instanceof MinimapSession session)) return;
+        resolveRadarIcons(session);
         RadarSession radar = session.getRadarSession();
         if (radar == null) return;
         Entity camera = minecraft.getCameraEntity();
@@ -214,13 +281,17 @@ final class XaeroMapElements {
         if (!Double.isFinite(divisor) || divisor == 0.0) divisor = 1.0;
         for (RadarList list : radar.getState().getRadarLists()) {
             if (list == null) continue;
+            if (!Boolean.TRUE.equals(list.getEffective(EntityRadarCategorySettings.DISPLAYED))) continue;
+            int iconMode = ((Double) list.getEffective(EntityRadarCategorySettings.ICONS)).intValue();
+            int nameMode = ((Double) list.getEffective(EntityRadarCategorySettings.NAMES)).intValue();
+            boolean iconRequested = iconMode == 2 || (iconMode == 1 && tabDown);
+            boolean namesVisible = nameMode == 2 || (nameMode == 1 && tabDown)
+                    || Boolean.TRUE.equals(list.getEffective(EntityRadarCategorySettings.ALWAYS_NAMETAGS));
+            float dotSize = ((Double) list.getEffective(EntityRadarCategorySettings.DOT_SIZE)).floatValue();
+            float iconScale = ((Double) list.getEffective(EntityRadarCategorySettings.ICON_SCALE)).floatValue();
+            int listColor = 0xFF000000 | radar.getColorHelper().getFallbackColor(list).getHex();
             for (Entity entity : list.getEntities()) {
                 if (entity == null || entity == minecraft.player || entity.isRemoved()) continue;
-                int color = entity instanceof Player ? 0xFF55D6BE
-                        : entity instanceof Monster ? 0xFFFF6575
-                        : entity instanceof ItemEntity ? 0xFFFFC65C
-                        : entity instanceof LivingEntity ? 0xFF8FE388
-                        : 0xFFB8C1CC;
                 visible.add(new Element(
                         Kind.ENTITY,
                         "entity:" + entity.getUUID(),
@@ -228,9 +299,13 @@ final class XaeroMapElements {
                         entity.getZ() / divisor,
                         styled(entity.getDisplayName()),
                         "",
-                        color,
+                        listColor,
                         false,
                         true,
+                        namesVisible,
+                        iconRequested,
+                        Math.max(1.0f, dotSize),
+                        iconScale,
                         entity instanceof Player ? 185 : 150,
                         entity
                 ));
@@ -271,6 +346,10 @@ final class XaeroMapElements {
                     0xFF55D6BE,
                     false,
                     true,
+                    false,
+                    false,
+                    5.0f,
+                    1.0f,
                     200,
                     player
             ));
@@ -311,70 +390,173 @@ final class XaeroMapElements {
         return mapScale / waypointScale;
     }
 
-    private static void drawWaypoint(MapScreenPoint point, Element element, boolean highlighted) {
-        Renderer2D renderer = Renderer2D.COLOR;
-        TextRenderer medium = ClickGuiRenderer.getOnestMedium();
-        TextRenderer bold = ClickGuiRenderer.getOnestBold();
-        float iconSize = highlighted ? 18.0f : 16.0f;
-        float iconX = (float) point.x() - iconSize * 0.5f;
-        float iconY = (float) point.y() - iconSize;
-        int color = element.disabled() ? 0xFF7B8491 : element.color();
+    @SuppressWarnings("unchecked")
+    private void drawWaypoint(MapScreenPoint point, Element element, boolean highlighted) {
+        ClientConfigManager config = WorldMap.INSTANCE.getConfigs().getClientConfigManager();
+        double configuredScale = (Double) config.getEffective(
+                (ConfigOption<Double>) WorldMapProfiledConfigOptions.WAYPOINT_SCALE);
+        float scale = (float) Math.max(0.85, Math.min(1.8, configuredScale));
+        float size = 22.0f * scale + (highlighted ? 2.0f : 0.0f);
+        float x = (float) point.x() - size * 0.5f;
+        float y = (float) point.y() - size * 0.88f;
+        float alpha = element.disabled() ? 0.35f : 1.0f;
+        int color = withAlpha(element.color(), alpha);
 
-        MatteHudStyle.drawCompactPlate(renderer, iconX - 2.5f, iconY - 2.5f,
-                iconSize + 5.0f, iconSize + 5.0f, 5.0f, highlighted ? 1.0f : 0.88f);
-        renderer.svg("map-pin", iconX, iconY, iconSize, iconSize,
-                SvgRenderOptions.overrideColor(color));
+        Renderer2D renderer = Renderer2D.COLOR;
+        renderer.svg("waypoint-map", x, y, size, size, SvgRenderOptions.overrideColor(color));
+
         if (element.symbol() != null && !element.symbol().isBlank()) {
             String symbol = element.symbol().substring(0, Math.min(2, element.symbol().length()));
-            float symbolSize = symbol.length() > 1 ? 5.2f : 6.2f;
-            float symbolWidth = ClickGuiRenderer.textWidth(bold, symbol, symbolSize);
-            ClickGuiRenderer.drawText(bold, symbol,
+            float symbolSize = symbol.length() > 1 ? 6.5f * scale : 7.5f * scale;
+            float symbolWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestBold(), symbol, symbolSize);
+            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(), symbol,
                     (float) point.x() - symbolWidth * 0.5f,
-                    iconY + 4.1f,
-                    symbolSize,
-                    0xFFF7FAFC,
-                    false);
+                    (float) point.y() - size * 0.56f,
+                    symbolSize, withAlpha(0xFFF7FAFC, alpha), false);
         }
-        if (highlighted) drawLabel(element.name(), (float) point.x(), iconY - 5.0f, color);
+        if (highlighted) drawLabel(hoverLabel(element), (float) point.x(), y - 4.0f, element.color());
     }
 
-    private static void drawPlayer(MapScreenPoint point, Element element, boolean highlighted) {
-        Renderer2D renderer = Renderer2D.COLOR;
-        float size = highlighted ? 18.0f : 16.0f;
-        float x = (float) point.x() - size * 0.5f;
-        float y = (float) point.y() - size * 0.5f;
-        MatteHudStyle.drawCompactPlate(renderer, x - 2.5f, y - 2.5f, size + 5.0f, size + 5.0f,
-                6.0f, highlighted ? 1.0f : 0.9f);
-        renderer.svg("users-round", x, y, size, size, SvgRenderOptions.overrideColor(element.color()));
-        if (highlighted) drawLabel(element.name(), (float) point.x(), y - 5.0f, element.color());
+    private void drawPlayer(MapScreenPoint point, Element element, boolean highlighted) {
+        if (!(element.handle() instanceof PlayerTrackerMapElement<?> tracked)) return;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.getConnection() == null || minecraft.level == null) return;
+        PlayerInfo info = minecraft.getConnection().getPlayerInfo(tracked.getPlayerId());
+        if (info == null || WorldMap.trackedPlayerRenderer.getTrackedPlayerIconManager() == null) return;
+        Player localPlayer = minecraft.level.getPlayerByUUID(tracked.getPlayerId());
+        XaeroIcon icon = WorldMap.trackedPlayerRenderer.getTrackedPlayerIconManager()
+                .getIcon(xaeroGraphics, localPlayer, info, tracked);
+        if (icon == null || icon.getTextureAtlas() == null) return;
+        XaeroIconAtlas atlas = icon.getTextureAtlas();
+        float size = highlighted ? 36.0f : 32.0f;
+        float x = Math.round((float) point.x() - size * 0.5f);
+        float y = Math.round((float) point.y() - size * 0.5f);
+        Renderer2D.COLOR.textureQuad(atlas.getTextureView(), mapIconSampler(),
+                x, y, size, size,
+                (icon.getOffsetX() + 1.0) / atlas.getWidth(),
+                (icon.getOffsetY() + 1.0) / atlas.getWidth(),
+                (icon.getOffsetX() + 31.0) / atlas.getWidth(),
+                (icon.getOffsetY() + 31.0) / atlas.getWidth(),
+                0xFFFFFFFF);
+        if (highlighted) drawLabel(hoverLabel(element), (float) point.x(), y - 5.0f, element.color());
     }
 
-    private static void drawEntity(MapScreenPoint point, Element element, boolean highlighted) {
-        Renderer2D renderer = Renderer2D.COLOR;
-        float size = highlighted ? 12.5f : 10.5f;
-        float x = (float) point.x() - size * 0.5f;
-        float y = (float) point.y() - size * 0.5f;
-        String icon = element.handle() instanceof Player ? "users-round"
-                : element.handle() instanceof Monster ? "crosshair"
-                : element.handle() instanceof ItemEntity ? "package"
-                : "radar";
-        if (highlighted) {
-            MatteHudStyle.drawCompactPlate(renderer, x - 2.0f, y - 2.0f, size + 4.0f, size + 4.0f,
-                    5.0f, 0.92f);
+    private void drawEntity(MapScreenPoint point, Element element, boolean highlighted) {
+        float size = drawRadarIcon(point, element, highlighted);
+        if (size <= 0.0f) size = drawRadarDot(point, element, highlighted);
+        if (highlighted || element.namesVisible()) {
+            drawLabel(highlighted ? hoverLabel(element) : element.name(),
+                    (float) point.x(), (float) point.y() - size * 0.5f - 5.0f, element.color());
         }
-        renderer.svg(icon, x, y, size, size, SvgRenderOptions.overrideColor(element.color()));
-        if (highlighted) drawLabel(element.name(), (float) point.x(), y - 4.0f, element.color());
+    }
+
+    private float drawRadarIcon(MapScreenPoint point, Element element, boolean highlighted) {
+        if (!element.iconRequested() || !(element.handle() instanceof Entity entity)) return 0.0f;
+        RadarIconAccess access = radarIconAccess;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (access == null || minecraft == null || minecraft.gameRenderer == null
+                || minecraft.gameRenderer.mainRenderTarget() == null) return 0.0f;
+        try {
+            access.manager().allowPrerender();
+            xaero.common.icon.XaeroIcon icon = access.manager().get(
+                    entity, element.iconScale(), false, false,
+                    access.graphics(), minecraft.gameRenderer.mainRenderTarget());
+            if (icon == null || icon == RadarIconManager.DOT || icon == RadarIconManager.FAILED
+                    || icon.getTextureAtlas() == null) return 0.0f;
+            xaero.common.icon.XaeroIconAtlas atlas = icon.getTextureAtlas();
+            float configured = Math.max(0.5f, Math.min(4.0f, element.iconScale()));
+            float size = Math.round(Math.max(28.0f, Math.min(44.0f, 26.0f * configured)));
+            if (highlighted) size += 3.0f;
+            float x = Math.round((float) point.x() - size * 0.5f);
+            float y = Math.round((float) point.y() - size * 0.5f);
+            Renderer2D.COLOR.textureQuad(atlas.getTextureView(), mapIconSampler(),
+                    x, y, size, size,
+                    (icon.getOffsetX() + 1.0) / atlas.getWidth(),
+                    (icon.getOffsetY() + 63.0) / atlas.getWidth(),
+                    (icon.getOffsetX() + 63.0) / atlas.getWidth(),
+                    (icon.getOffsetY() + 1.0) / atlas.getWidth(),
+                    0xFFFFFFFF);
+            return size;
+        } catch (RuntimeException error) {
+            DebugLog.warnOnce("clickgui-map-radar-icon-render",
+                    "Xaero radar icon rendering failed; using its dot presentation", error);
+            return 0.0f;
+        }
+    }
+
+    private float drawRadarDot(MapScreenPoint point, Element element, boolean highlighted) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) return 0.0f;
+        AbstractTexture texture = minecraft.getTextureManager().getTexture(WorldMap.guiTextures);
+        if (texture == null || texture.getTextureView() == null || texture.getSampler() == null) return 0.0f;
+        float size = Math.round(Math.max(9.0f, element.dotSize() * 1.75f)
+                + (highlighted ? 2.0f : 0.0f));
+        float x = Math.round((float) point.x() - size * 0.5f);
+        float y = Math.round((float) point.y() - size * 0.5f);
+        Renderer2D.COLOR.textureQuad(texture.getTextureView(), mapIconSampler(),
+                x, y, size, size,
+                0.0, 69.0 / 256.0, 5.0 / 256.0, 74.0 / 256.0, element.color());
+        return size;
+    }
+
+    private static GpuSampler mapIconSampler() {
+        return RenderSystem.getSamplerCache().getSampler(
+                AddressMode.CLAMP_TO_EDGE, AddressMode.CLAMP_TO_EDGE,
+                FilterMode.NEAREST, FilterMode.NEAREST, false);
+    }
+
+    private void resolveRadarIcons(MinimapSession session) {
+        if (radarIconSession == session) return;
+        radarIconSession = session;
+        radarIconAccess = null;
+        try {
+            Field minimapField = MinimapSession.class.getDeclaredField("minimap");
+            minimapField.setAccessible(true);
+            Minimap minimap = (Minimap) minimapField.get(session);
+            if (minimap == null || minimap.getOverMapRendererHandler() == null) return;
+            MinimapElementRendererHandler handler = minimap.getOverMapRendererHandler();
+            Field renderersField = MinimapElementRendererHandler.class.getDeclaredField("renderers");
+            renderersField.setAccessible(true);
+            Object renderersValue = renderersField.get(handler);
+            if (!(renderersValue instanceof List<?> renderers)) return;
+            Field managerField = RadarRenderer.class.getDeclaredField("radarIconManager");
+            managerField.setAccessible(true);
+            for (Object renderer : renderers) {
+                if (!(renderer instanceof RadarRenderer)) continue;
+                RadarIconManager manager = (RadarIconManager) managerField.get(renderer);
+                if (manager != null) radarIconAccess = new RadarIconAccess(manager, handler.getGuiGraphics());
+                return;
+            }
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            DebugLog.warnOnce("clickgui-map-radar-icons",
+                    "Xaero radar icon manager is unavailable; using its dot presentation", error);
+        }
+    }
+
+    private Component hoverLabel(Element element) {
+        Component name = element.name() == null ? Component.empty() : element.name().copy();
+        if (!Double.isFinite(playerMapX) || !Double.isFinite(playerMapZ)) return name;
+        double distance = Math.hypot(element.worldX() - playerMapX, element.worldZ() - playerMapZ);
+        String formatted = distance >= 1000.0
+                ? String.format(java.util.Locale.ROOT, " · %.1f km", distance / 1000.0)
+                : " · " + Math.round(distance) + " m";
+        return name.copy().append(Component.literal(formatted).withStyle(ChatFormatting.GRAY));
+    }
+
+    private static int withAlpha(int argb, float alpha) {
+        return (Math.max(0, Math.min(255, Math.round(alpha * 255.0f))) << 24) | (argb & 0x00FFFFFF);
     }
 
     private static void drawLabel(Component value, float centerX, float bottomY, int accent) {
         if (value == null || value.getString().isBlank()) return;
-        float size = 10.0f;
+        float uiScale = 1.0f;
+        float size = 11.0f;
         List<TextRenderUtil.Part> parts = TextRenderUtil.flattenStyled(styled(value), 0xFFF5F8FC);
         float textWidth = styledWidth(parts, size);
         float x = centerX - textWidth * 0.5f;
         float y = bottomY - size;
-        MatteHudStyle.drawTelemetryPlate(Renderer2D.COLOR, x - 4.0f, y - 2.0f,
-                textWidth + 8.0f, size + 4.0f, 4.0f, 1.0f, accent);
+        Renderer2D.COLOR.roundedRect(x - 5.0f * uiScale, y - 3.0f * uiScale,
+                textWidth + 10.0f * uiScale, size + 6.0f * uiScale, 5.0f * uiScale, 0xB0000000);
         drawStyled(parts, x, y, size);
     }
 
@@ -429,6 +611,10 @@ final class XaeroMapElements {
                    int color,
                    boolean disabled,
                    boolean interactive,
+                   boolean namesVisible,
+                   boolean iconRequested,
+                   float dotSize,
+                   float iconScale,
                    int priority,
                    Object handle) {
         String plainName() {
@@ -436,4 +622,6 @@ final class XaeroMapElements {
         }
     }
 
+    private record RadarIconAccess(RadarIconManager manager, MinimapElementGraphics graphics) {
+    }
 }

@@ -8,11 +8,16 @@
 package combatant.client.features.gui.clickgui.sections;
 
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.StringValue;
+import combatant.client.config.subsystem.MapUiConfig;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
+import combatant.client.features.gui.clickgui.layout.screen.settings.implement.other.SearchComponent;
 import combatant.client.features.gui.clickgui.settings.BooleanSetting;
+import combatant.client.features.gui.clickgui.settings.ColorSetting;
+import combatant.client.features.gui.clickgui.settings.ModeSetting;
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.gui.clickgui.settings.SettingRenderContext;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
@@ -20,6 +25,7 @@ import combatant.client.features.gui.clickgui.settings.SliderSetting;
 import combatant.client.features.gui.clickgui.settings.TextSetting;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.features.theme.Theme;
+import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
@@ -39,6 +45,8 @@ import xaero.lib.common.config.Config;
 import xaero.lib.common.config.option.BooleanConfigOption;
 import xaero.lib.common.config.option.ConfigOption;
 import xaero.lib.common.config.option.IndexedConfigOption;
+import xaero.lib.common.config.option.RangeConfigOption;
+import xaero.lib.common.config.option.SteppedConfigOption;
 import xaero.map.MapProcessor;
 import xaero.map.WorldMap;
 import xaero.map.common.config.option.WorldMapProfiledConfigOptions;
@@ -50,6 +58,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -60,7 +69,11 @@ final class XaeroMapSettingsPanel {
     private static final float MIN_WIDTH = 720.0f;
     private static final float MIN_HEIGHT = 470.0f;
     private static final float SCREEN_INSET = 24.0f;
-    private static final float SETTING_SCALE = 2.65f;
+    private static final float BASE_INSET = 16.0f;
+    private static final float HEADER_HEIGHT = 56.0f;
+    private static final float SEARCH_WIDTH = 160.0f;
+    private static final float SEARCH_HEIGHT = 30.0f;
+    private static final float CLOSE_SIZE = 32.0f;
 
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(XaeroMapSettingsPanel.class);
     private final CachedUiScriptRuntime scriptRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
@@ -69,7 +82,7 @@ final class XaeroMapSettingsPanel {
     private final List<Entry> entries = new ArrayList<>();
     private final List<Hit> hits = new ArrayList<>();
     private final List<CategoryHit> categoryHits = new ArrayList<>();
-    private final List<CaveModeHit> caveModeHits = new ArrayList<>();
+    private final SearchComponent searchComponent = new SearchComponent();
 
     private Category selectedCategory = Category.DISPLAY;
     private boolean open;
@@ -89,6 +102,12 @@ final class XaeroMapSettingsPanel {
     private float closeY;
     private float closeW;
     private float closeH;
+    private final SearchComponent.Model searchModel = new SearchComponent.Model() {
+        @Override public boolean focused() { return searchFocused; }
+        @Override public String text() { return search; }
+        @Override public String placeholder() { return "Search"; }
+        @Override public void setFocused(boolean focused) { searchFocused = focused; }
+    };
 
     XaeroMapSettingsPanel(Supplier<MapProcessor> processorSupplier, Supplier<MapDimension> dimensionSupplier) {
         this.processorSupplier = processorSupplier != null ? processorSupplier : () -> null;
@@ -97,10 +116,11 @@ final class XaeroMapSettingsPanel {
         ClientConfigManager manager = WorldMap.INSTANCE.getConfigs().getClientConfigManager();
         Config primary = manager.getPrimaryConfigManager().getConfig();
 
+        addCombatantArrowSettings();
+
         addProfiled(manager, WorldMapProfiledConfigOptions.COORDINATES, Category.DISPLAY);
         addProfiled(manager, WorldMapProfiledConfigOptions.FOOTSTEPS, Category.DISPLAY);
         addProfiled(manager, WorldMapProfiledConfigOptions.ARROW, Category.DISPLAY);
-        addProfiled(manager, WorldMapProfiledConfigOptions.ARROW_COLOR, Category.DISPLAY);
         addProfiled(manager, WorldMapProfiledConfigOptions.DISPLAY_ZOOM, Category.DISPLAY);
         addProfiled(manager, WorldMapProfiledConfigOptions.DISPLAY_HOVERED_BIOME, Category.DISPLAY);
         addProfiled(manager, WorldMapProfiledConfigOptions.ZOOM_BUTTONS, Category.DISPLAY);
@@ -129,6 +149,7 @@ final class XaeroMapSettingsPanel {
         addPrimary(primary, WorldMapPrimaryClientConfigOptions.ONLY_CURRENT_MAP_WAYPOINTS, Category.WAYPOINTS);
 
         addProfiled(manager, WorldMapProfiledConfigOptions.CAVE_MODE_ALLOWED, Category.CAVE);
+        addCurrentCaveMode();
         addProfiled(manager, WorldMapProfiledConfigOptions.CAVE_MODE_DEPTH, Category.CAVE);
         addProfiled(manager, WorldMapProfiledConfigOptions.LEGIBLE_CAVE_MAPS, Category.CAVE);
         addProfiled(manager, WorldMapProfiledConfigOptions.AUTO_CAVE_MODE, Category.CAVE);
@@ -171,6 +192,13 @@ final class XaeroMapSettingsPanel {
         if (!open) searchFocused = false;
     }
 
+    void openCave() {
+        selectedCategory = Category.CAVE;
+        scroll = 0.0f;
+        open = true;
+        searchFocused = false;
+    }
+
     void close() {
         open = false;
         searchFocused = false;
@@ -185,13 +213,14 @@ final class XaeroMapSettingsPanel {
         x = viewportX + (viewportWidth - width) * 0.5f;
         y = viewportY + (viewportHeight - height) * 0.5f;
 
-        Layout layout = Layout.of(width, height);
+        SolidBrowserLayout layout = SolidBrowserLayout.of(width, height);
         updateInteractiveGeometry(layout);
         renderBrowserSurface(layout);
+        searchComponent.render(searchX, searchY, searchW, searchH, searchModel);
         renderSettingsContent(layout, mouseX, mouseY);
     }
 
-    private void renderBrowserSurface(Layout layout) {
+    private void renderBrowserSurface(SolidBrowserLayout layout) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getResourceManager() == null) return;
         HudScriptLayouts.pollReloadCombo(mc);
@@ -208,8 +237,12 @@ final class XaeroMapSettingsPanel {
         props.put("height", height);
         props.put("title", "World Map");
         props.put("selectedCategory", selectedCategory.id);
-        props.put("search", search);
         props.put("accent", hex(Theme.theme().accent()));
+        Themes.GradientSpec categoryStroke = Themes.hudAccentGradient();
+        props.put("categoryStrokeStart", hex(categoryStroke.start()));
+        props.put("categoryStrokeEnd", hex(categoryStroke.end()));
+        props.put("categoryStrokeAngle", categoryStroke.angleDeg());
+        props.put("layout", layout.toProps());
         List<LinkedHashMap<String, Object>> categories = new ArrayList<>();
         for (Category category : Category.values()) {
             LinkedHashMap<String, Object> item = new LinkedHashMap<>();
@@ -245,49 +278,46 @@ final class XaeroMapSettingsPanel {
         }
     }
 
-    private void renderSettingsContent(Layout layout, float mouseX, float mouseY) {
+    private void renderSettingsContent(SolidBrowserLayout layout, float mouseX, float mouseY) {
         SettingsGuiPalette palette = SettingsGuiPalette.current();
         hits.clear();
-        caveModeHits.clear();
 
-        float contentX = x + layout.detailX + 22.0f;
-        float contentY = y + layout.headerHeight + 76.0f;
-        float contentW = Math.max(240.0f, layout.detailWidth - 54.0f);
-        float contentH = Math.max(120.0f, height - (contentY - y) - 24.0f);
+        float contentX = x + layout.detailX + layout.contentX;
+        float contentY = y + layout.contentY;
+        float contentW = layout.contentWidth;
+        float contentH = layout.contentHeight;
         float cursorY = contentY + scroll;
         float total = 0.0f;
-        float columnGap = 10.0f;
+        float columnGap = 12.0f;
         float columnWidth = Math.max(1.0f, (contentW - columnGap) * 0.5f);
+        float rowGap = 10.0f;
 
         boolean clipped = ScissorFunction.pushRaw(contentX, contentY, contentW, contentH);
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
-            if (search.isBlank() && selectedCategory == Category.CAVE) {
-                float caveHeight = 84.0f;
-                if (cursorY + caveHeight >= contentY && cursorY <= contentY + contentH) {
-                    drawCaveModeControl(contentX, cursorY, contentW, palette);
-                }
-                cursorY += caveHeight + 14.0f;
-                total += caveHeight + 14.0f;
-            }
-
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, 1.0f)) {
             List<Entry> visible = entries.stream().filter(this::matches).toList();
-            for (int index = 0; index < visible.size(); index += 2) {
+            for (int index = 0; index < visible.size();) {
                 Entry left = visible.get(index);
-                Entry right = index + 1 < visible.size() ? visible.get(index + 1) : null;
+                Entry right = isCompact(left.setting)
+                        && index + 1 < visible.size()
+                        && isCompact(visible.get(index + 1).setting)
+                        ? visible.get(index + 1)
+                        : null;
                 float leftHeight = left.setting.getHeightSafely();
                 float rightHeight = right == null ? 0.0f : right.setting.getHeightSafely();
                 float rowHeight = Math.max(leftHeight, rightHeight);
                 if (cursorY + rowHeight >= contentY && cursorY <= contentY + contentH) {
-                    left.setting.renderSafely(contentX, cursorY, columnWidth, mouseX, mouseY);
-                    hits.add(new Hit(left.setting, contentX, cursorY, columnWidth, leftHeight));
+                    float leftWidth = right == null ? contentW : columnWidth;
+                    left.setting.renderSafely(contentX, cursorY, leftWidth, mouseX, mouseY);
+                    hits.add(new Hit(left.setting, contentX, cursorY, leftWidth, leftHeight));
                     if (right != null) {
                         float rightX = contentX + columnWidth + columnGap;
                         right.setting.renderSafely(rightX, cursorY, columnWidth, mouseX, mouseY);
                         hits.add(new Hit(right.setting, rightX, cursorY, columnWidth, rightHeight));
                     }
                 }
-                cursorY += rowHeight + 14.0f;
-                total += rowHeight + 14.0f;
+                cursorY += rowHeight + rowGap;
+                total += rowHeight + rowGap;
+                index += right == null ? 1 : 2;
             }
         } finally {
             if (clipped) ScissorFunction.pop();
@@ -301,54 +331,24 @@ final class XaeroMapSettingsPanel {
         scroll = clamp(scroll, -maxScroll, 0.0f);
     }
 
-    private void drawCaveModeControl(float x, float y, float width, SettingsGuiPalette palette) {
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), "Cave mode type",
-                x + 4.0f, y + 4.0f, 19.0f, palette.panelText(), false);
-        MapDimension dimension = dimensionSupplier.get();
-        int current = dimension == null ? 0 : Math.floorMod(dimension.getCaveModeType(), 3);
-        String[] labels = {
-                tr("gui.xaero_off", "Off"),
-                tr("gui.xaero_wm_cave_mode_type_layered", "Layered"),
-                tr("gui.xaero_wm_cave_mode_type_full", "Full")
-        };
-        float gap = 8.0f;
-        float top = y + 34.0f;
-        float h = 36.0f;
-        float w = (width - gap * 2.0f) / 3.0f;
-        for (int i = 0; i < labels.length; i++) {
-            float bx = x + i * (w + gap);
-            boolean selected = current == i;
-            Renderer2D.COLOR.roundedRect(bx, top, w, h, 10.0f,
-                    selected ? palette.controlSurfaceHover() : palette.controlSurface());
-            if (selected) {
-                Renderer2D.COLOR.roundedRectStroke(bx, top, w, h, 10.0f, 1.6f, Theme.theme().accent());
-            }
-            float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), labels[i], 17.0f);
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), labels[i],
-                    bx + (w - tw) * 0.5f, top + 9.0f, 17.0f,
-                    selected ? palette.panelText() : palette.panelMuted(), false);
-            caveModeHits.add(new CaveModeHit(i, bx, top, w, h));
-        }
-    }
-
-    private void updateInteractiveGeometry(Layout layout) {
+    private void updateInteractiveGeometry(SolidBrowserLayout layout) {
         categoryHits.clear();
-        float rowHeight = 46.0f;
-        float navX = x + 8.0f;
-        float navY = y + layout.headerHeight + 18.0f;
-        float rowWidth = Math.max(1.0f, layout.navWidth - 16.0f);
+        float navX = x + layout.navX;
+        float navY = y + layout.navStartY;
         Category[] categories = Category.values();
         for (int i = 0; i < categories.length; i++) {
-            categoryHits.add(new CategoryHit(categories[i], navX, navY + i * 52.0f, rowWidth, rowHeight));
+            categoryHits.add(new CategoryHit(categories[i], navX,
+                    navY + i * (layout.navRowHeight + layout.navRowGap),
+                    layout.navRowWidth, layout.navRowHeight));
         }
-        searchX = x + layout.detailX + 10.0f;
-        searchY = y + (layout.headerHeight - 24.0f) * 0.5f;
-        searchW = 162.0f;
-        searchH = 24.0f;
-        closeX = x + width - 54.0f;
-        closeY = y + layout.headerHeight + 21.0f;
-        closeW = 32.0f;
-        closeH = 32.0f;
+        searchX = x + layout.detailX + layout.toolbarLeftX;
+        searchY = y + layout.toolbarY;
+        searchW = layout.searchWidth;
+        searchH = layout.searchHeight;
+        closeX = x + layout.detailX + layout.closeX;
+        closeY = y + layout.closeY;
+        closeW = layout.closeWidth;
+        closeH = layout.closeHeight;
     }
 
     boolean mousePressed(float mouseX, float mouseY, int button) {
@@ -361,11 +361,9 @@ final class XaeroMapSettingsPanel {
             close();
             return true;
         }
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && inside(mouseX, mouseY, searchX, searchY, searchW, searchH)) {
-            searchFocused = true;
+        if (searchComponent.click(searchX, searchY, searchW, searchH, mouseX, mouseY, button, searchModel)) {
             return true;
         }
-        searchFocused = false;
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             for (CategoryHit hit : categoryHits) {
                 if (!hit.contains(mouseX, mouseY)) continue;
@@ -373,13 +371,8 @@ final class XaeroMapSettingsPanel {
                 scroll = 0.0f;
                 return true;
             }
-            for (CaveModeHit hit : caveModeHits) {
-                if (!hit.contains(mouseX, mouseY)) continue;
-                setCaveMode(hit.type);
-                return true;
-            }
         }
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, 1.0f)) {
             for (Hit hit : hits) {
                 if (inside(mouseX, mouseY, hit.x, hit.y, hit.width, hit.height)) {
                     hit.setting.mouseClickedSafely(mouseX, mouseY, button, hit.x, hit.y, hit.width);
@@ -393,14 +386,14 @@ final class XaeroMapSettingsPanel {
 
     void mouseReleased(float mouseX, float mouseY, int button) {
         if (!open) return;
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, 1.0f)) {
             for (Entry entry : entries) entry.setting.mouseReleasedSafely(mouseX, mouseY, button);
         }
     }
 
     boolean mouseScrolled(float mouseX, float mouseY, double amount) {
         if (!open || !inside(mouseX, mouseY, x, y, width, height)) return false;
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, 1.0f)) {
             for (Hit hit : hits) {
                 if (inside(mouseX, mouseY, hit.x, hit.y, hit.width, hit.height)
                         && hit.setting.mouseScrolledSafely(mouseX, mouseY, amount)) return true;
@@ -428,7 +421,7 @@ final class XaeroMapSettingsPanel {
             close();
             return true;
         }
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, 1.0f)) {
             for (Entry entry : entries) {
                 if (matches(entry) && entry.setting.keyPressedSafely(keyCode, scanCode, modifiers)) return true;
             }
@@ -443,7 +436,7 @@ final class XaeroMapSettingsPanel {
             scroll = 0.0f;
             return true;
         }
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, SETTING_SCALE)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.SETTINGS, 1.0f)) {
             for (Entry entry : entries) {
                 if (matches(entry) && entry.setting.charTypedSafely(chr, modifiers)) return true;
             }
@@ -452,9 +445,47 @@ final class XaeroMapSettingsPanel {
     }
 
     private boolean matches(Entry entry) {
+        if (!entry.setting.isVisible()) return false;
         if (search.isBlank()) return entry.category == selectedCategory;
         String needle = search.toLowerCase(Locale.ROOT).trim();
         return entry.searchText.contains(needle);
+    }
+
+    private static boolean isCompact(Setting setting) {
+        return setting instanceof BooleanSetting || setting instanceof ModeSetting;
+    }
+
+    private void addCombatantArrowSettings() {
+        MapUiConfig config = MapUiConfig.get();
+        ModeSetting mode = new ModeSetting("Player arrow color", config.arrowColorModeValue());
+        mode.setI18nEnabled(false, false);
+        entries.add(new Entry(mode, Category.DISPLAY, "player arrow color theme custom"));
+
+        ColorSetting color = new ColorSetting("Custom arrow color", config.arrowCustomColorValue());
+        color.setI18nEnabled(false, false);
+        color.visibleWhen(config::isCustomArrowColor);
+        entries.add(new Entry(color, Category.DISPLAY, "custom player arrow color tint"));
+    }
+
+    private void addCurrentCaveMode() {
+        List<Integer> modes = List.of(0, 1, 2);
+        List<String> labels = List.of(
+                tr("gui.xaero_off", "Off"),
+                tr("gui.xaero_wm_cave_mode_type_layered", "Layered"),
+                tr("gui.xaero_wm_cave_mode_type_full", "Full")
+        );
+        ModeSetting setting = new ModeSetting("Current cave mode", new ExternalModeValue<>(
+                "currentCaveMode",
+                () -> {
+                    MapDimension dimension = dimensionSupplier.get();
+                    return dimension == null ? 0 : Math.floorMod(dimension.getCaveModeType(), 3);
+                },
+                this::setCaveMode,
+                modes,
+                labels
+        ));
+        setting.setI18nEnabled(false, false);
+        entries.add(new Entry(setting, Category.CAVE, "current cave mode off layered full"));
     }
 
     private void setCaveMode(int target) {
@@ -512,18 +543,22 @@ final class XaeroMapSettingsPanel {
             if (option instanceof BooleanConfigOption) {
                 setting = new BooleanSetting(name, new ExternalBooleanValue(option.getId(),
                         () -> (Boolean) getter.get(), value -> setter.accept(cast(value))));
-            } else if (option instanceof IndexedConfigOption<?> indexed && !indexed.getValidValues().isEmpty()
-                    && indexed.getValidValues().getFirst() instanceof Integer) {
+            } else if (isExplicitModeOption(option) && option instanceof IndexedConfigOption<?> indexed) {
+                setting = modeSetting(name, option, indexed, getter, setter);
+            } else if (option instanceof RangeConfigOption && option instanceof IndexedConfigOption<?> indexed
+                    && !indexed.getValidValues().isEmpty()) {
                 List<Integer> values = indexed.getValidValues().stream().map(value -> (Integer) value).toList();
                 setting = new SliderSetting<>(name, new ExternalIntegerValue(option.getId(),
                         () -> (Integer) getter.get(), value -> setter.accept(cast(value)), values,
                         raw(option)));
-            } else if (option instanceof IndexedConfigOption<?> indexed && !indexed.getValidValues().isEmpty()
-                    && indexed.getValidValues().getFirst() instanceof Double) {
+            } else if (option instanceof SteppedConfigOption && option instanceof IndexedConfigOption<?> indexed
+                    && !indexed.getValidValues().isEmpty()) {
                 List<Double> values = indexed.getValidValues().stream().map(value -> (Double) value).toList();
                 setting = new SliderSetting<>(name, new ExternalDoubleValue(option.getId(),
                         () -> (Double) getter.get(), value -> setter.accept(cast(value)), values,
                         raw(option)));
+            } else if (option instanceof IndexedConfigOption<?> indexed && !indexed.getValidValues().isEmpty()) {
+                setting = modeSetting(name, option, indexed, getter, setter);
             } else if (option.getDefaultValue() instanceof String) {
                 setting = new TextSetting(name, new ExternalStringValue(option.getId(),
                         () -> (String) getter.get(), value -> setter.accept(cast(value))));
@@ -537,6 +572,29 @@ final class XaeroMapSettingsPanel {
             DebugLog.warnOnce("clickgui-map-setting-" + id,
                     "Skipping unavailable Xaero World Map setting: " + id, error);
         }
+    }
+
+    private static boolean isExplicitModeOption(ConfigOption<?> option) {
+        return option == WorldMapProfiledConfigOptions.BLOCK_COLORS
+                || option == WorldMapProfiledConfigOptions.TERRAIN_SLOPES
+                || option == WorldMapProfiledConfigOptions.AUTO_CAVE_MODE
+                || option == WorldMapProfiledConfigOptions.ARROW_COLOR
+                || option == WorldMapProfiledConfigOptions.DEFAULT_CAVE_MODE_TYPE;
+    }
+
+    private static <T> Setting modeSetting(String name, ConfigOption<T> option,
+                                           IndexedConfigOption<?> indexed,
+                                           Supplier<T> getter, Consumer<T> setter) {
+        List<T> values = indexed.getValidValues().stream().map(XaeroMapSettingsPanel::<T>cast).toList();
+        List<String> labels = new ArrayList<>(values.size());
+        for (T value : values) {
+            var display = option.getDisplayGetter().apply(option, value);
+            String label = display == null ? String.valueOf(value) : LegacyTextUtil.stripLegacy(display.getString());
+            label = label == null || label.isBlank() ? String.valueOf(value) : label.trim();
+            if (labels.contains(label)) label = label + " (" + value + ')';
+            labels.add(label);
+        }
+        return new ModeSetting(name, new ExternalModeValue<>(option.getId(), getter, setter, values, labels));
     }
 
     private static String searchText(ConfigOption<?> option, String name) {
@@ -610,13 +668,98 @@ final class XaeroMapSettingsPanel {
         }
     }
 
-    private record Layout(float navWidth, float collectionWidth, float detailWidth, float detailX,
-                          float headerHeight) {
-        static Layout of(float width, float height) {
+    private record SolidBrowserLayout(float width, float height,
+                                      float navWidth, float collectionWidth,
+                                      float detailWidth, float detailX,
+                                      float headerHeight, float bodyHeight,
+                                      float detailViewportWidth, float detailViewportHeight,
+                                      float navX, float navStartY, float navRowWidth,
+                                      float navRowHeight, float navRowGap,
+                                      float toolbarLeftX, float toolbarY,
+                                      float searchWidth, float searchHeight,
+                                      float closeX, float closeY, float closeWidth, float closeHeight,
+                                      float detailHeaderX, float detailHeaderY,
+                                      float detailHeaderWidth, float detailHeaderHeight,
+                                      float contentX, float contentY, float contentWidth, float contentHeight,
+                                      float navSeparatorX, float navSeparatorY, float navSeparatorHeight,
+                                      float headerSeparatorX, float headerSeparatorY, float headerSeparatorWidth) {
+        static SolidBrowserLayout of(float width, float height) {
             float nav = width * 268.0f / DESIGN_WIDTH;
             float collection = 0.0f;
-            float header = height * 48.0f / DESIGN_HEIGHT;
-            return new Layout(nav, collection, Math.max(0.0f, width - nav - collection), nav + collection, header);
+            float header = HEADER_HEIGHT;
+            float detail = Math.max(0.0f, width - nav - collection);
+            float body = Math.max(0.0f, height - header);
+            float navGap = 6.0f;
+            float navRowHeight = Math.max(32.0f, Math.min(46.0f,
+                    (body - BASE_INSET * 2.0f - navGap * (Category.values().length - 1))
+                            / Category.values().length));
+            float navStackHeight = Category.values().length * navRowHeight
+                    + (Category.values().length - 1) * navGap;
+            float navStartY = header + Math.max(BASE_INSET, (body - navStackHeight) * 0.5f);
+            float detailViewportWidth = Math.max(240.0f, detail - BASE_INSET * 2.0f);
+            float detailHeaderY = header + BASE_INSET;
+            float detailHeaderHeight = 44.0f;
+            float contentY = detailHeaderY + detailHeaderHeight + 11.0f;
+            return new SolidBrowserLayout(
+                    width, height, nav, collection, detail, nav + collection, header, body,
+                    detailViewportWidth,
+                    Math.max(160.0f, body - BASE_INSET * 2.0f),
+                    BASE_INSET, navStartY, Math.max(1.0f, nav - BASE_INSET * 2.0f),
+                    navRowHeight, navGap,
+                    BASE_INSET, (header - SEARCH_HEIGHT) * 0.5f,
+                    SEARCH_WIDTH, SEARCH_HEIGHT,
+                    Math.max(0.0f, detail - BASE_INSET - CLOSE_SIZE),
+                    (header - CLOSE_SIZE) * 0.5f, CLOSE_SIZE, CLOSE_SIZE,
+                    BASE_INSET, detailHeaderY, detailViewportWidth, detailHeaderHeight,
+                    BASE_INSET, contentY, detailViewportWidth,
+                    Math.max(120.0f, height - contentY - BASE_INSET),
+                    nav - 1.0f, BASE_INSET, Math.max(0.0f, height - BASE_INSET * 2.0f),
+                    nav + collection + BASE_INSET, header - 1.0f,
+                    Math.max(0.0f, detail - BASE_INSET * 2.0f)
+            );
+        }
+
+        LinkedHashMap<String, Object> toProps() {
+            LinkedHashMap<String, Object> props = new LinkedHashMap<>();
+            props.put("width", width);
+            props.put("height", height);
+            props.put("navWidth", navWidth);
+            props.put("collectionWidth", collectionWidth);
+            props.put("detailWidth", detailWidth);
+            props.put("headerHeight", headerHeight);
+            props.put("collectionX", navWidth);
+            props.put("detailX", detailX);
+            props.put("bodyHeight", bodyHeight);
+            props.put("detailViewportWidth", detailViewportWidth);
+            props.put("detailViewportHeight", detailViewportHeight);
+            props.put("navStartY", navStartY);
+            props.put("navX", navX);
+            props.put("navRowWidth", navRowWidth);
+            props.put("navRowHeight", navRowHeight);
+            props.put("navRowGap", navRowGap);
+            props.put("toolbarLeftX", toolbarLeftX);
+            props.put("toolbarY", toolbarY);
+            props.put("searchWidth", searchWidth);
+            props.put("searchHeight", searchHeight);
+            props.put("closeX", closeX);
+            props.put("closeY", closeY);
+            props.put("closeWidth", closeWidth);
+            props.put("closeHeight", closeHeight);
+            props.put("detailHeaderX", detailHeaderX);
+            props.put("detailHeaderY", detailHeaderY);
+            props.put("detailHeaderWidth", detailHeaderWidth);
+            props.put("detailHeaderHeight", detailHeaderHeight);
+            props.put("contentX", contentX);
+            props.put("contentY", contentY);
+            props.put("contentWidth", contentWidth);
+            props.put("contentHeight", contentHeight);
+            props.put("navSeparatorX", navSeparatorX);
+            props.put("navSeparatorY", navSeparatorY);
+            props.put("navSeparatorHeight", navSeparatorHeight);
+            props.put("headerSeparatorX", headerSeparatorX);
+            props.put("headerSeparatorY", headerSeparatorY);
+            props.put("headerSeparatorWidth", headerSeparatorWidth);
+            return props;
         }
     }
     private record Entry(Setting setting, Category category, String searchText) {}
@@ -624,10 +767,6 @@ final class XaeroMapSettingsPanel {
     private record CategoryHit(Category category, float x, float y, float width, float height) {
         boolean contains(float mx, float my) { return inside(mx, my, x, y, width, height); }
     }
-    private record CaveModeHit(int type, float x, float y, float width, float height) {
-        boolean contains(float mx, float my) { return inside(mx, my, x, y, width, height); }
-    }
-
     private static final class ExternalBooleanValue extends BooleanValue {
         private final Supplier<Boolean> getter; private final Consumer<Boolean> setter;
         private ExternalBooleanValue(String name, Supplier<Boolean> getter, Consumer<Boolean> setter) { super(name, getter.get()); this.getter = getter; this.setter = setter; }
@@ -663,5 +802,44 @@ final class XaeroMapSettingsPanel {
         @Override public void set(String value) { setter.accept(value); }
         @Override public Object toJson() { return get(); }
         @Override public void fromJson(Object json) { if (json instanceof String value) set(value); }
+    }
+    private static final class ExternalModeValue<T> extends ModeValue {
+        private final Supplier<T> getter;
+        private final Consumer<T> setter;
+        private final List<T> values;
+        private final List<String> labels;
+
+        private ExternalModeValue(String name, Supplier<T> getter, Consumer<T> setter,
+                                  List<T> values, List<String> labels) {
+            super(name, currentLabel(getter, values, labels), labels.toArray(String[]::new));
+            this.getter = getter;
+            this.setter = setter;
+            this.values = List.copyOf(values);
+            this.labels = List.copyOf(labels);
+        }
+
+        @Override public String get() {
+            T current = getter.get();
+            for (int i = 0; i < values.size(); i++) {
+                if (Objects.equals(values.get(i), current)) return labels.get(i);
+            }
+            return labels.getFirst();
+        }
+
+        @Override public void set(String label) {
+            int index = labels.indexOf(label);
+            if (index >= 0) setter.accept(values.get(index));
+        }
+
+        @Override public Object toJson() { return get(); }
+        @Override public void fromJson(Object json) { if (json instanceof String label) set(label); }
+
+        private static <T> String currentLabel(Supplier<T> getter, List<T> values, List<String> labels) {
+            T current = getter.get();
+            for (int i = 0; i < values.size(); i++) {
+                if (Objects.equals(values.get(i), current)) return labels.get(i);
+            }
+            return labels.getFirst();
+        }
     }
 }

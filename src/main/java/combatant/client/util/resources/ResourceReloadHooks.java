@@ -53,6 +53,7 @@ public enum ResourceReloadHooks {
             shaderResourcesPublished = true;
 
             try {
+                RenderPrewarmManager.invalidateDeferred();
                 RenderPrewarmManager.prewarm("shader reload complete");
             } catch (RuntimeException t) {
                 DebugLog.error("[Combatant] Render prewarm failed after resource reload", t);

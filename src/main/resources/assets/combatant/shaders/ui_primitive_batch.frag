@@ -52,6 +52,46 @@ float smoothMaximum(float a, float b, float radius) {
     return mix(b, a, h) + radius * h * (1.0 - h);
 }
 
+float smoothMinimum(float a, float b, float radius) {
+    if (radius <= 0.0001) return min(a, b);
+    float h = clamp(0.5 + 0.5 * (b - a) / radius, 0.0, 1.0);
+    return mix(b, a, h) - radius * h * (1.0 - h);
+}
+
+vec4 compoundSource(int index) {
+    if (index == 0) return v_Params;
+    if (index == 1) return v_Params2;
+    if (index == 2) return v_Params3;
+    return v_Params4;
+}
+
+float circleSdf(vec2 p, vec3 source) {
+    return length(p - source.xy) - max(source.z, 0.0);
+}
+
+float roundedRectSdfLocal(vec2 p, vec4 rect, float radius) {
+    vec2 center = rect.xy + rect.zw * 0.5;
+    vec2 halfSize = max(rect.zw * 0.5, vec2(0.0001));
+    float r = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
+    vec2 q = abs(p - center) - halfSize + r;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
+float islandBlobSdf(vec2 p, int count, float smoothing) {
+    float d = circleSdf(p, compoundSource(0).xyz);
+    for (int i = 1; i < 4; i++) {
+        if (i >= count) break;
+        d = smoothMinimum(d, circleSdf(p, compoundSource(i).xyz), smoothing);
+    }
+    return d;
+}
+
+float smoothBoxUnionSdf(vec2 p, float smoothing) {
+    float first = roundedRectSdfLocal(p, v_Params, max(v_Params3.x, 0.0));
+    float second = roundedRectSdfLocal(p, v_Params2, max(v_Params3.y, 0.0));
+    return smoothMinimum(first, second, smoothing);
+}
+
 float convexPrimitiveSdf(vec2 p, int count, float rounding) {
     float d = -1.0e20;
     for (int i = 0; i < 8; i++) {
@@ -71,16 +111,27 @@ float convexPrimitiveSdf(vec2 p, int count, float rounding) {
 }
 
 void main() {
-    int count = int(clamp(floor(v_Params5.x + 0.5), 3.0, 8.0));
+    int packedFlags = int(floor(v_Params5.w + 0.5));
+    int mode = packedFlags / 16;
+    int flags = packedFlags - mode * 16;
+    int count = mode == 0
+            ? int(clamp(floor(v_Params5.x + 0.5), 3.0, 8.0))
+            : int(clamp(floor(v_Params5.x + 0.5), 1.0, 4.0));
     float rounding = max(0.0, v_Params5.y);
     float strokeWidth = max(0.0, v_Params5.z);
-    int flags = int(floor(v_Params5.w + 0.5));
     bool fill = (flags & 1) != 0;
     bool innerStroke = (flags & 2) != 0;
 
     vec2 logicalScale = uScreen.zw / max(uScreen.xy, vec2(1.0));
     vec2 local = warpedLocal(v_Local) - v_Rect.xy;
-    float d = convexPrimitiveSdf(local, count, rounding);
+    float d;
+    if (mode == 1) {
+        d = islandBlobSdf(local, count, rounding);
+    } else if (mode == 2) {
+        d = smoothBoxUnionSdf(local, rounding);
+    } else {
+        d = convexPrimitiveSdf(local, count, rounding);
+    }
 
     float alpha;
     if (!fill && strokeWidth > 0.0) {

@@ -103,6 +103,7 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_local_color_rect_params.vert");
     public static final Identifier SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS2_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_local_color_rect_params2.vert");
     public static final Identifier SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS6_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_local_color_rect_params6.vert");
+    public static final Identifier SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS7_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_local_color_rect_params7.vert");
     public static final Identifier SHADER_POS_TEX_COLOR_RECT_PARAMS2_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_rect_params2.vert");
     public static final Identifier SHADER_TEXT_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/text.vert");
     public static final Identifier SHADER_TEXT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/text.frag");
@@ -326,7 +327,7 @@ public enum CombatantRenderPipelines {
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)
-            .withCull(false)
+            .withCull(true)
             .build()
     );
     /**
@@ -341,7 +342,7 @@ public enum CombatantRenderPipelines {
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA)
-            .withCull(false)
+            .withCull(true)
             .build()
     );
     /**
@@ -1812,8 +1813,8 @@ public enum CombatantRenderPipelines {
     );
     public static final RenderPipeline UI_LIQUID_GLASS_BATCH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_liquid_glass_batch"))
-            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS6, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS6_VERT)
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS7, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS7_VERT)
             .withFragmentShader(SHADER_UI_LIQUID_GLASS_BATCH_FRAG)
             .withSampler("u_Texture")
             .withSampler("u_BlurTexture")
@@ -1825,8 +1826,8 @@ public enum CombatantRenderPipelines {
     );
     public static final RenderPipeline UI_LIQUID_GLASS_BATCH_ANALYTIC_CLIP = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_liquid_glass_batch"))
-            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS6, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS6_VERT)
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS7, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS7_VERT)
             .withFragmentShader(SHADER_UI_LIQUID_GLASS_BATCH_ANALYTIC_CLIP_FRAG)
             .withSampler("u_Texture")
             .withSampler("u_BlurTexture")
@@ -1838,8 +1839,8 @@ public enum CombatantRenderPipelines {
     );
     public static final RenderPipeline UI_LIQUID_GLASS_BATCH_UI_UNDERLAY = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS, UI_BACKDROP_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_liquid_glass_batch_ui_underlay"))
-            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS6, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS6_VERT)
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS7, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS7_VERT)
             .withFragmentShader(SHADER_UI_LIQUID_GLASS_BATCH_UI_UNDERLAY_FRAG)
             .withSampler("u_Texture")
             .withSampler("u_BlurTexture")
@@ -1852,8 +1853,8 @@ public enum CombatantRenderPipelines {
     );
     public static final RenderPipeline UI_LIQUID_GLASS_BATCH_UI_UNDERLAY_ANALYTIC_CLIP = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS, UI_BACKDROP_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_liquid_glass_batch_ui_underlay"))
-            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS6, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS6_VERT)
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS7, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS7_VERT)
             .withFragmentShader(SHADER_UI_LIQUID_GLASS_BATCH_UI_UNDERLAY_ANALYTIC_CLIP_FRAG)
             .withSampler("u_Texture")
             .withSampler("u_BlurTexture")

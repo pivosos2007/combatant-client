@@ -10,6 +10,7 @@ package combatant.client.render.engine.rhi.backend;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.blaze3d.systems.RenderPassDescriptor;
 import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.rhi.*;
@@ -217,8 +218,8 @@ public final class SodiumGlBackend implements CombatantRhi {
 
     private void drawPass(CommandEncoder encoder, List<RhiDrawCommand> commands, int start, int end) {
         RhiDrawCommand first = commands.get(start);
-        stats.renderPass(first.colorAttachment, first.depthAttachment);
-        try (RenderPass pass = createPass(encoder, first.label, first.colorAttachment, first.clearColor, first.depthAttachment, first.clearDepth)) {
+        stats.renderPass(first.colorAttachments, first.depthAttachment);
+        try (RenderPass pass = createPass(encoder, first.label, first.colorAttachments, first.depthAttachment, first.clearDepth)) {
             PassBindingCache bindings = new PassBindingCache();
             com.mojang.blaze3d.pipeline.RenderPipeline activePipeline = null;
             boolean multiDrawAvailable = !multiDrawRuntimeDisabled && capabilities().multiDrawDirectSeparate();
@@ -450,9 +451,9 @@ public final class SodiumGlBackend implements CombatantRhi {
     private static boolean sharesRenderPass(RhiDrawCommand first, RhiDrawCommand next) {
         if (!drawable(next)) return false;
         return RenderPassCompatibility.canContinue(
-                first.colorAttachment, first.depthAttachment,
-                next.colorAttachment, next.depthAttachment,
-                next.clearColor.isPresent(), next.clearDepth.isPresent()
+                first.colorAttachments, first.depthAttachment,
+                next.colorAttachments, next.depthAttachment,
+                next.clearDepth.isPresent()
         );
     }
 
@@ -507,14 +508,52 @@ public final class SodiumGlBackend implements CombatantRhi {
 
     private RenderPass createPass(CommandEncoder encoder,
                                   String label,
-                                  com.mojang.blaze3d.textures.GpuTextureView color,
-                                  OptionalInt clearColor,
+                                  List<RhiColorAttachment> colors,
                                   com.mojang.blaze3d.textures.GpuTextureView depth,
                                   OptionalDouble clearDepth) {
-        if (depth != null) {
-            return encoder.createRenderPass(() -> label, color, clearColor(clearColor), depth, clearDepth);
+        RenderPassDescriptor descriptor = RenderPassDescriptor.create(() -> label);
+        int width = -1;
+        int height = -1;
+        for (RhiColorAttachment color : colors) {
+            if (color.isUnused()) {
+                descriptor.withUnusedColorAttachment();
+                continue;
+            }
+
+            int attachmentWidth = color.view().getWidth(0);
+            int attachmentHeight = color.view().getHeight(0);
+            if (width < 0) {
+                width = attachmentWidth;
+                height = attachmentHeight;
+            } else if (attachmentWidth != width || attachmentHeight != height) {
+                throw new IllegalArgumentException(
+                        "Render pass color attachment dimensions differ: expected=" + width + "x" + height
+                                + " actual=" + attachmentWidth + "x" + attachmentHeight
+                );
+            }
+            descriptor.withColorAttachment(color.view(), clearColor(color.clearColor()));
         }
-        return encoder.createRenderPass(() -> label, color, clearColor(clearColor));
+
+        if (depth != null) {
+            int depthWidth = depth.getWidth(0);
+            int depthHeight = depth.getHeight(0);
+            if (width < 0) {
+                width = depthWidth;
+                height = depthHeight;
+            } else if (depthWidth != width || depthHeight != height) {
+                throw new IllegalArgumentException(
+                        "Render pass depth attachment dimensions differ: expected=" + width + "x" + height
+                                + " actual=" + depthWidth + "x" + depthHeight
+                );
+            }
+            descriptor.withDepthAttachment(depth, clearDepth);
+        }
+
+        if (width <= 0 || height <= 0) {
+            throw new IllegalArgumentException("Render pass requires at least one non-empty attachment: " + label);
+        }
+        descriptor.withRenderArea(new RenderPass.RenderArea(0, 0, width, height));
+        return encoder.createRenderPass(descriptor);
     }
 
     @Override

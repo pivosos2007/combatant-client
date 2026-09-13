@@ -14,13 +14,14 @@ import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
-import combatant.client.render.helpers.MatteHudStyle;
 import combatant.client.render.helpers.ScreenProjection;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.text.LegacyTextUtil;
 import combatant.client.util.text.TextRenderUtil;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
 import xaero.common.HudMod;
@@ -86,14 +87,10 @@ public enum XaeroWaypointHudOverlay {
         try {
             frameEntries = captureFrame(fallback, tickDelta);
             for (FrameEntry entry : frameEntries) {
-                MatteHudStyle.drawCompactPlate(
-                        renderer,
-                        entry.plateX(),
-                        entry.plateY(),
-                        entry.plateWidth(),
-                        entry.plateHeight(),
-                        Math.min(5.0f, entry.plateHeight() * 0.28f),
-                        entry.opacity()
+                renderer.roundedRect(
+                        entry.plateX(), entry.plateY(), entry.plateWidth(), entry.plateHeight(),
+                        Math.min(5.0f, entry.plateHeight() * 0.28f), 0.0f,
+                        withAlpha(0x000000, Math.round(148.0f * entry.opacity()))
                 );
                 renderer.svg(
                         "map-pin",
@@ -194,6 +191,10 @@ public enum XaeroWaypointHudOverlay {
         boolean temporaryWaypointsGlobal = effectiveBoolean(config, MinimapProfiledConfigOptions.TEMPORARY_WAYPOINTS_GLOBAL);
         boolean keepNames = effectiveBoolean(config, MinimapProfiledConfigOptions.WAYPOINT_NAME_IN_WORLD);
         int distanceMode = effectiveInt(config, MinimapProfiledConfigOptions.WAYPOINT_DISTANCE_IN_WORLD);
+        int horizontalPointingAngle = Mth.clamp(
+                effectiveInt(config, MinimapProfiledConfigOptions.WAYPOINT_HORIZONTAL_POINTING_ANGLE), 0, 180);
+        int verticalPointingAngle = Mth.clamp(
+                effectiveInt(config, MinimapProfiledConfigOptions.WAYPOINT_VERTICAL_POINTING_ANGLE), 0, 180);
         boolean displayShortDistance = effectiveBoolean(config, MinimapProfiledConfigOptions.WAYPOINT_SHORT_DISTANCE_IN_WORLD);
         int kmThreshold = effectiveInt(config, MinimapProfiledConfigOptions.WAYPOINT_CONVERT_DISTANCE_TO_KM_AT);
         int precision = Math.max(0, effectiveInt(config, MinimapProfiledConfigOptions.WAYPOINT_DISTANCE_PRECISION));
@@ -251,9 +252,9 @@ public enum XaeroWaypointHudOverlay {
             double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
             boolean shortDistanceSuppressed = distance <= 20.0 && !displayShortDistance;
             List<TextRenderUtil.Part> nameParts = keepNames ? safeNameParts(waypoint) : List.of();
-            String distanceText = distanceMode != 0 && !shortDistanceSuppressed
-                    ? formatDistance(distance, kmThreshold, precision)
-                    : "";
+            boolean distanceVisible = !shortDistanceSuppressed && shouldShowDistance(
+                    minecraft, anchor, distanceMode, horizontalPointingAngle, verticalPointingAngle);
+            String distanceText = distanceVisible ? formatDistance(distance, kmThreshold, precision) : "";
 
             float nameWidth = nameParts.isEmpty() ? 0.0f : measureStyledWidth(nameFont, nameParts, nameSize);
             float distanceWidth = distanceText.isEmpty() ? 0.0f : measureWidth(distanceFont, distanceText, distanceSize);
@@ -359,7 +360,34 @@ public enum XaeroWaypointHudOverlay {
         float xaeroScale = autoMultiplier == 1.0
                 ? MinimapConfigClientUtils.getUIScale(config, option)
                 : MinimapConfigClientUtils.getUIScale(config, option, autoMultiplier);
-        return clamp(xaeroScale / 2.0f, 0.85f, 2.0f);
+        return clamp(xaeroScale, 1.0f, 4.0f);
+    }
+
+    private static boolean shouldShowDistance(Minecraft minecraft,
+                                              Vec3 anchor,
+                                              int distanceMode,
+                                              int horizontalAngle,
+                                              int verticalAngle) {
+        if (distanceMode <= 0) return false;
+        if (distanceMode >= 2) return true;
+        if (horizontalAngle <= 0 || verticalAngle <= 0) return false;
+        if (minecraft == null || minecraft.gameRenderer == null) return false;
+        Camera camera = minecraft.gameRenderer.mainCamera();
+        if (camera == null) return false;
+
+        Vec3 cameraPos = camera.position();
+        double dx = anchor.x - cameraPos.x;
+        double dy = anchor.y - cameraPos.y;
+        double dz = anchor.z - cameraPos.z;
+        double horizontal = Math.hypot(dx, dz);
+        if (horizontal < 1.0E-6 && Math.abs(dy) < 1.0E-6) return true;
+
+        float targetYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        float targetPitch = (float) -Math.toDegrees(Math.atan2(dy, Math.max(1.0E-6, horizontal)));
+        float yawDelta = Math.abs(Mth.wrapDegrees(targetYaw - camera.yRot()));
+        float pitchDelta = Math.abs(Mth.wrapDegrees(targetPitch - camera.xRot()));
+        return (horizontalAngle >= 90 || yawDelta <= horizontalAngle)
+                && (verticalAngle >= 90 || pitchDelta <= verticalAngle);
     }
 
     private static float measureWidth(TextRenderer renderer, String text, float size) {

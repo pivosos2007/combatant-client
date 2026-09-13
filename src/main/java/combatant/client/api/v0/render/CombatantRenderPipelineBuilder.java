@@ -7,6 +7,7 @@
 
 package combatant.client.api.v0.render;
 
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -65,6 +66,24 @@ public final class CombatantRenderPipelineBuilder {
 
     public CombatantRenderPipelineBuilder depthWrite(boolean write) {
         delegate.withDepthWrite(write);
+        return this;
+    }
+
+    public CombatantRenderPipelineBuilder colorTarget(int index,
+                                                       GpuFormat format,
+                                                       BlendFunction blend,
+                                                       int writeMask) {
+        delegate.withColorTarget(index, format, blend, writeMask);
+        return this;
+    }
+
+    public CombatantRenderPipelineBuilder colorTarget(int index, GpuFormat format) {
+        delegate.withColorTarget(index, format);
+        return this;
+    }
+
+    public CombatantRenderPipelineBuilder unusedColorTarget(int index) {
+        delegate.withUnusedColorTarget(index);
         return this;
     }
 

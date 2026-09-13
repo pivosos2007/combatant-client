@@ -137,7 +137,7 @@ public final class MenuScreen {
         if (openTarget && prismProgress < 1f) {
             prismProgress = Math.min(1f, prismProgress + dt / 0.28f);
         }
-        screenAnim = AnimationUtility.approach(screenAnim, openTarget ? 1.0f : 0.0f, dt, openTarget ? 16.0f : 20.0f);
+        screenAnim = AnimationUtility.approach(screenAnim, openTarget ? 1.0f : 0.0f, dt, openTarget ? 8.5f : 7.2f);
         screenAnim = AnimationUtility.snap(screenAnim, openTarget ? 1.0f : 0.0f, 0.002f);
         if (screenAnim <= 0.001f && !openTarget) return;
 

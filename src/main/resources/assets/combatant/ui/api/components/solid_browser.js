@@ -14,10 +14,11 @@ export class SolidBrowserSurface {
       minWidth: 720,
       minHeight: 470,
       screenInset: 24,
+      baseInset: 16,
 
       navDesignWidth: 66,
       collectionDesignWidth: 202,
-      headerDesignHeight: 48,
+      headerDesignHeight: 56,
 
       rootRadius: 24,
       rootCornerSmoothness: 2,
@@ -27,12 +28,12 @@ export class SolidBrowserSurface {
       rootBlurAlpha: 1,
 
       separatorWidth: 2,
-      separatorInset: 2,
+      separatorInset: 16,
 
       navLogoSize: 22,
-      navLogoY: 22,
+      navLogoY: 17,
       navStackGap: 6,
-      navHeaderToStackGap: 18,
+      navHeaderToStackGap: 16,
       navFooterBottomInset: 16,
       navItemSize: 34,
       navItemPadding: 8,
@@ -54,11 +55,11 @@ export class SolidBrowserSurface {
       collectionRowRadius: 6,
       collectionRowFontSize: 0.84,
 
-      toolbarLeftInset: 10,
-      toolbarRightInset: 14,
+      toolbarLeftInset: 16,
+      toolbarRightInset: 16,
       toolbarProfileWidth: 174,
       searchWidth: 160,
-      searchHeight: 24,
+      searchHeight: 30,
       searchRadius: 6,
       searchTextInsetLeft: 8,
       searchTextInsetRight: 31,
@@ -66,16 +67,16 @@ export class SolidBrowserSurface {
       searchDividerX: 131,
       searchIconSize: 0.90,
 
-      detailHorizontalInset: 22,
-      detailTopInset: 21,
-      detailBottomInset: 4,
+      detailHorizontalInset: 16,
+      detailTopInset: 16,
+      detailBottomInset: 16,
       detailHeaderHeight: 44,
       detailHeaderGap: 2,
       detailTitleHeight: 24,
       detailTitleFontSize: 1.36,
       detailDescriptionFontSize: 0.84,
       detailContentTopInset: 55,
-      detailContentRightInset: 10,
+      detailContentRightInset: 0,
       detailColumnGap: 10,
       detailGroupGap: 10,
       detailMinViewportHeight: 160,
@@ -162,8 +163,11 @@ export class SolidBrowserSurface {
     const navWidth = w * t.navDesignWidth / t.designWidth;
     const collectionWidth = w * t.collectionDesignWidth / t.designWidth;
     const detailWidth = Math.max(0, w - navWidth - collectionWidth);
-    const headerHeight = h * t.headerDesignHeight / t.designHeight;
+    const headerHeight = Math.min(h, t.headerDesignHeight);
     const bodyHeight = Math.max(0, h - headerHeight);
+    const detailViewportWidth = Math.max(0, detailWidth - t.baseInset * 2);
+    const detailHeaderY = headerHeight + t.detailTopInset;
+    const contentY = detailHeaderY + t.detailContentTopInset;
     return {
       width: w,
       height: h,
@@ -174,8 +178,35 @@ export class SolidBrowserSurface {
       collectionX: navWidth,
       detailX: navWidth + collectionWidth,
       bodyHeight,
-      detailViewportWidth: Math.max(0, detailWidth - 22),
+      detailViewportWidth,
       detailViewportHeight: Math.max(t.detailMinViewportHeight, bodyHeight - t.detailTopInset - t.detailBottomInset),
+      navX: t.baseInset,
+      navStartY: headerHeight + t.navHeaderToStackGap,
+      navRowWidth: Math.max(1, navWidth - t.baseInset * 2),
+      navRowHeight: 46,
+      navRowGap: 6,
+      toolbarLeftX: t.toolbarLeftInset,
+      toolbarY: (headerHeight - t.searchHeight) * 0.5,
+      searchWidth: t.searchWidth,
+      searchHeight: t.searchHeight,
+      closeX: Math.max(0, detailWidth - t.toolbarRightInset - t.detailCloseSize),
+      closeY: Math.max(0, (headerHeight - t.detailCloseSize) * 0.5),
+      closeWidth: t.detailCloseSize,
+      closeHeight: t.detailCloseSize,
+      detailHeaderX: t.detailHorizontalInset,
+      detailHeaderY,
+      detailHeaderWidth: detailViewportWidth,
+      detailHeaderHeight: t.detailHeaderHeight,
+      contentX: t.detailHorizontalInset,
+      contentY,
+      contentWidth: Math.max(0, detailViewportWidth - t.detailContentRightInset),
+      contentHeight: Math.max(0, h - contentY - t.detailBottomInset),
+      navSeparatorX: navWidth - 1,
+      navSeparatorY: t.separatorInset,
+      navSeparatorHeight: Math.max(0, h - t.separatorInset * 2),
+      headerSeparatorX: navWidth + collectionWidth + t.baseInset,
+      headerSeparatorY: headerHeight - 1,
+      headerSeparatorWidth: Math.max(0, detailWidth - t.baseInset * 2),
     };
   }
 
@@ -187,7 +218,48 @@ export class SolidBrowserSurface {
     const p = SolidBrowserSurface.palette(props.accent || "#FF906BFF", props.palette || {});
     const width = Math.max(1, ui.num(props.width, t.designWidth));
     const height = Math.max(1, ui.num(props.height, t.designHeight));
-    const l = SolidBrowserSurface.layout(width, height, t);
+    const calculatedLayout = SolidBrowserSurface.layout(width, height, t);
+    const suppliedLayout = props.layout && typeof props.layout === "object" ? props.layout : null;
+    const l = suppliedLayout ? {
+      width: ui.num(suppliedLayout.width, calculatedLayout.width),
+      height: ui.num(suppliedLayout.height, calculatedLayout.height),
+      navWidth: ui.num(suppliedLayout.navWidth, calculatedLayout.navWidth),
+      collectionWidth: ui.num(suppliedLayout.collectionWidth, calculatedLayout.collectionWidth),
+      detailWidth: ui.num(suppliedLayout.detailWidth, calculatedLayout.detailWidth),
+      headerHeight: ui.num(suppliedLayout.headerHeight, calculatedLayout.headerHeight),
+      collectionX: ui.num(suppliedLayout.collectionX, calculatedLayout.collectionX),
+      detailX: ui.num(suppliedLayout.detailX, calculatedLayout.detailX),
+      bodyHeight: ui.num(suppliedLayout.bodyHeight, calculatedLayout.bodyHeight),
+      detailViewportWidth: ui.num(suppliedLayout.detailViewportWidth, calculatedLayout.detailViewportWidth),
+      detailViewportHeight: ui.num(suppliedLayout.detailViewportHeight, calculatedLayout.detailViewportHeight),
+      navStartY: ui.num(suppliedLayout.navStartY, calculatedLayout.headerHeight + t.navHeaderToStackGap),
+      navX: ui.num(suppliedLayout.navX, calculatedLayout.navX),
+      navRowWidth: ui.num(suppliedLayout.navRowWidth, calculatedLayout.navRowWidth),
+      navRowHeight: ui.num(suppliedLayout.navRowHeight, 46),
+      navRowGap: ui.num(suppliedLayout.navRowGap, 6),
+      toolbarLeftX: ui.num(suppliedLayout.toolbarLeftX, calculatedLayout.toolbarLeftX),
+      toolbarY: ui.num(suppliedLayout.toolbarY, calculatedLayout.toolbarY),
+      searchWidth: ui.num(suppliedLayout.searchWidth, calculatedLayout.searchWidth),
+      searchHeight: ui.num(suppliedLayout.searchHeight, calculatedLayout.searchHeight),
+      closeX: ui.num(suppliedLayout.closeX, calculatedLayout.closeX),
+      closeY: ui.num(suppliedLayout.closeY, calculatedLayout.closeY),
+      closeWidth: ui.num(suppliedLayout.closeWidth, calculatedLayout.closeWidth),
+      closeHeight: ui.num(suppliedLayout.closeHeight, calculatedLayout.closeHeight),
+      detailHeaderX: ui.num(suppliedLayout.detailHeaderX, calculatedLayout.detailHeaderX),
+      detailHeaderY: ui.num(suppliedLayout.detailHeaderY, calculatedLayout.detailHeaderY),
+      detailHeaderWidth: ui.num(suppliedLayout.detailHeaderWidth, calculatedLayout.detailHeaderWidth),
+      detailHeaderHeight: ui.num(suppliedLayout.detailHeaderHeight, calculatedLayout.detailHeaderHeight),
+      contentX: ui.num(suppliedLayout.contentX, calculatedLayout.contentX),
+      contentY: ui.num(suppliedLayout.contentY, calculatedLayout.contentY),
+      contentWidth: ui.num(suppliedLayout.contentWidth, calculatedLayout.contentWidth),
+      contentHeight: ui.num(suppliedLayout.contentHeight, calculatedLayout.contentHeight),
+      navSeparatorX: ui.num(suppliedLayout.navSeparatorX, calculatedLayout.navSeparatorX),
+      navSeparatorY: ui.num(suppliedLayout.navSeparatorY, calculatedLayout.navSeparatorY),
+      navSeparatorHeight: ui.num(suppliedLayout.navSeparatorHeight, calculatedLayout.navSeparatorHeight),
+      headerSeparatorX: ui.num(suppliedLayout.headerSeparatorX, calculatedLayout.headerSeparatorX),
+      headerSeparatorY: ui.num(suppliedLayout.headerSeparatorY, calculatedLayout.headerSeparatorY),
+      headerSeparatorWidth: ui.num(suppliedLayout.headerSeparatorWidth, calculatedLayout.headerSeparatorWidth),
+    } : calculatedLayout;
     const key = ui.str(props.key, "solid-browser");
     const x = ui.num(props.x, 0);
     const y = ui.num(props.y, 0);
@@ -235,6 +307,7 @@ export class SolidBrowserSurface {
     const height = Math.max(size, ui.num(props.height, size));
     const label = ui.str(props.label, "");
     const icon = SolidBrowserSurface._slotNode(props.icon);
+    const settingsCategory = props.appearance === "settings-category";
     const stateValues = { selected: !!props.selected };
     const stateMotions = SolidBrowserSurface._motions(t, ["selected"]);
 
@@ -246,12 +319,13 @@ export class SolidBrowserSurface {
       events: SolidBrowserSurface._events(props),
       children: [
         ui.roundedRect({
-          key: `${key}:bg`, x: 0, y: 0, w: width, h: height, radius: t.navItemRadius,
-          fill: p.surfaceWeak,
+          key: `${key}:bg`, x: 0, y: 0, w: width, h: height,
+          radius: t.navItemRadius,
+          fill: settingsCategory ? p.surface : p.surfaceWeak,
           fillReactive: {
-            base: p.surfaceWeak,
+            base: settingsCategory ? p.surface : p.surfaceWeak,
             mix: p.foreground,
-            mixTerms: { hover: 0.025 },
+            mixTerms: { hover: settingsCategory ? 0.045 : 0.025, selected: settingsCategory ? 0.035 : 0 },
           },
           stateSource: "parent",
           interactive: false,
@@ -274,8 +348,8 @@ export class SolidBrowserSurface {
             alphaBase: 0.66, alphaTerms: { selected: 0.34, hover: 0.16 },
           },
           stateSource: "parent", interactive: false,
-          class: ui.abs(t.navItemPadding + t.navIconSize + 12, 0,
-            Math.max(0, width - t.navItemPadding * 2 - t.navIconSize - 12), height,
+          class: ui.abs(t.navItemPadding + t.navIconSize + 12, (height - 16) * 0.5,
+            Math.max(0, width - t.navItemPadding * 2 - t.navIconSize - 12), 16,
             `font-${ui.str(props.font, "OnestMedium")}-1.00 text-align-left`),
         })] : []),
       ],
@@ -433,13 +507,21 @@ export class SolidBrowserSurface {
       class: ui.abs(0, 0, t.detailCloseSize, t.detailCloseSize, "cursor-pointer"),
       stateMotions: SolidBrowserSurface._motions(t),
       events: SolidBrowserSurface._events(props),
-      children: icon ? [SolidBrowserSurface._placeVisual(
-        icon, t.detailClosePadding, t.detailClosePadding, t.detailCloseIconSize, t.detailCloseIconSize,
-        {
-          tintReactive: { base: p.foreground, alphaBase: 0.8, alphaTerms: { hover: 0.2 } },
+      children: [
+        ui.roundedRect({
+          key: `${key}:bg`, x: 0, y: 0, w: t.detailCloseSize, h: t.detailCloseSize,
+          radius: t.detailCloseRadius, fill: p.surfaceWeak,
+          fillReactive: { base: p.surfaceWeak, mix: p.foreground, mixTerms: { hover: 0.07 } },
           stateSource: "parent", interactive: false,
-        }
-      )] : [],
+        }),
+        ...(icon ? [SolidBrowserSurface._placeVisual(
+          icon, t.detailClosePadding, t.detailClosePadding, t.detailCloseIconSize, t.detailCloseIconSize,
+          {
+            tintReactive: { base: p.foreground, alphaBase: 0.68, alphaTerms: { hover: 0.32 } },
+            stateSource: "parent", interactive: false,
+          }
+        )] : []),
+      ],
     });
   }
 
@@ -529,7 +611,7 @@ export class SolidBrowserSurface {
       out.push(SolidBrowserSurface._placeVisual(
         logo,
         (l.navWidth - t.navLogoSize) * 0.5,
-        t.navLogoY,
+        (l.headerHeight - t.navLogoSize) * 0.5,
         t.navLogoSize,
         t.navLogoSize,
         { interactive: false }
@@ -538,11 +620,12 @@ export class SolidBrowserSurface {
 
     const nav = SolidBrowserSurface._nodes(props.navigationItems);
     const combined = !!props.combinedNavigation;
-    const navX = combined ? 8 : (l.navWidth - t.navItemSize) * 0.5;
-    const navW = combined ? Math.max(1, l.navWidth - 16) : t.navItemSize;
-    const navH = combined ? 46 : t.navItemSize;
-    const navGap = combined ? 6 : t.navStackGap;
-    let navY = l.headerHeight + t.navHeaderToStackGap;
+    const navX = combined ? l.navX : (l.navWidth - t.navItemSize) * 0.5;
+    const navW = combined ? l.navRowWidth : t.navItemSize;
+    const navH = combined ? ui.num(l.navRowHeight, 46) : t.navItemSize;
+    const navGap = combined ? ui.num(l.navRowGap, 6) : t.navStackGap;
+    let navY = combined ? ui.num(l.navStartY, l.headerHeight + t.navHeaderToStackGap)
+      : l.headerHeight + t.navHeaderToStackGap;
     for (let i = 0; i < nav.length; i++) {
       out.push(SolidBrowserSurface._placeVisual(nav[i], navX, navY, navW, navH));
       navY += navH + navGap;
@@ -621,10 +704,18 @@ export class SolidBrowserSurface {
     const out = [];
     const left = SolidBrowserSurface._slotNode(props.toolbarLeft);
     const right = SolidBrowserSurface._slotNode(props.toolbarRight);
-    const leftW = Math.max(0, ui.num(props.toolbarLeftWidth, t.searchWidth));
+    const close = SolidBrowserSurface._slotNode(props.detailClose);
+    const leftW = Math.max(0, ui.num(props.toolbarLeftWidth, l.searchWidth));
     const rightW = Math.max(0, ui.num(props.toolbarRightWidth, t.toolbarProfileWidth));
-    if (left) out.push(SolidBrowserSurface._placeVisual(left, t.toolbarLeftInset, (l.headerHeight - t.searchHeight) * 0.5, leftW, t.searchHeight));
+    if (left) out.push(SolidBrowserSurface._placeVisual(left, l.toolbarLeftX, l.toolbarY, leftW, l.searchHeight));
     if (right) out.push(SolidBrowserSurface._placeVisual(right, Math.max(0, l.detailWidth - t.toolbarRightInset - rightW), 0, rightW, l.headerHeight));
+    if (close) out.push(SolidBrowserSurface._placeVisual(
+      close,
+      l.closeX,
+      l.closeY,
+      l.closeWidth,
+      l.closeHeight
+    ));
 
     const detailActive = props.detailActive !== undefined
       ? !!props.detailActive
@@ -647,18 +738,18 @@ export class SolidBrowserSurface {
       }));
     }
 
-    const viewportW = Math.max(0, l.detailWidth - 22);
-    const viewportH = Math.max(t.detailMinViewportHeight, l.bodyHeight - t.detailTopInset - t.detailBottomInset);
+    const viewportW = l.detailViewportWidth;
+    const viewportH = l.detailViewportHeight;
     const detailNodes = SolidBrowserSurface._nodes(props.detailContent);
     const contentColumn = ui.column({
       key: `${key}:detail-content`,
-      class: `absolute x-0.00 y-${ui.fmt(t.detailContentTopInset)} w-${ui.fmt(Math.max(0, viewportW - t.detailContentRightInset))} gap-${ui.fmt(t.detailGroupGap)}`,
+      class: `absolute x-${ui.fmt(l.contentX - l.detailHeaderX)} y-${ui.fmt(l.contentY - l.detailHeaderY)} w-${ui.fmt(l.contentWidth)} gap-${ui.fmt(t.detailGroupGap)}`,
       children: detailNodes,
     });
 
     out.push(ui.scroll({
       key: `${key}:detail-scroll`,
-      class: ui.abs(t.detailHorizontalInset, l.headerHeight + t.detailTopInset, viewportW, viewportH, "clip overflow-hidden"),
+      class: ui.abs(l.detailHeaderX, l.detailHeaderY, viewportW, viewportH, "clip overflow-hidden"),
       smoothScroll: true,
       scrollSmoothingRate: t.scrollSmoothingRate,
       scrollSnapEpsilon: t.scrollSnapEpsilon,
@@ -678,10 +769,9 @@ export class SolidBrowserSurface {
     }));
 
     if (detailActive) {
-      const headerW = viewportW;
-      const close = SolidBrowserSurface._slotNode(props.detailClose);
+      const headerW = l.detailHeaderWidth;
       const titleActions = SolidBrowserSurface._nodes(props.detailTitleActions);
-      const titleRightReserve = (close ? t.detailCloseSize + t.detailGroupGap : 0) + Math.max(0, ui.num(props.detailTitleActionsWidth, 0));
+      const titleRightReserve = Math.max(0, ui.num(props.detailTitleActionsWidth, 0));
       const textW = Math.max(0, headerW - titleRightReserve);
       const title = ui.str(props.detailTitle, "");
       const description = ui.str(props.detailDescription, "");
@@ -698,7 +788,7 @@ export class SolidBrowserSurface {
           key: `${key}:detail-description`, text: description,
           color: ui.color.alpha(p.foreground, 0.58), interactive: false,
           class: ui.abs(0, t.detailTitleHeight + t.detailHeaderGap, textW,
-            Math.max(0, t.detailHeaderHeight - t.detailTitleHeight - t.detailHeaderGap),
+            Math.max(0, l.detailHeaderHeight - t.detailTitleHeight - t.detailHeaderGap),
             `font-${ui.str(props.detailDescriptionFont, "OnestMedium")}-${ui.fmt(t.detailDescriptionFontSize)} text-align-left`),
         }));
       }
@@ -708,19 +798,16 @@ export class SolidBrowserSurface {
           headerChildren.push(SolidBrowserSurface._placeVisual(node, Math.max(0, headerW - titleRightReserve), 0, actionsW, t.detailTitleHeight));
         }
       }
-      if (close) {
-        headerChildren.push(SolidBrowserSurface._placeVisual(close, Math.max(0, headerW - t.detailCloseSize), 0, t.detailCloseSize, t.detailCloseSize));
-      }
       out.push(ui.stack({
         key: `${key}:detail-header`,
-        class: ui.abs(t.detailHorizontalInset, l.headerHeight + t.detailTopInset, headerW, t.detailHeaderHeight),
+        class: ui.abs(l.detailHeaderX, l.detailHeaderY, headerW, l.detailHeaderHeight),
         children: headerChildren,
       }));
     } else {
       out.push(...SolidBrowserSurface._nodes(props.detailEmpty).map((node) => SolidBrowserSurface._placeVisual(
         node,
-        t.detailHorizontalInset,
-        l.headerHeight + t.detailTopInset,
+        l.detailHeaderX,
+        l.detailHeaderY,
         viewportW,
         viewportH
       )));
@@ -735,13 +822,12 @@ export class SolidBrowserSurface {
   }
 
   static _separators(key, l, t, p) {
-    const x1 = l.navWidth - t.separatorWidth;
-    const x2 = l.navWidth + l.collectionWidth - t.separatorWidth;
-    const out = [ui.shape({ key: `${key}:sep-nav`, shape: "rect", class: ui.abs(x1, t.separatorInset, 1, l.height - t.separatorInset * 2), fill: p.separator, interactive: false })];
+    const x2 = l.navWidth + l.collectionWidth - 1;
+    const out = [ui.shape({ key: `${key}:sep-nav`, shape: "rect", class: ui.abs(l.navSeparatorX, l.navSeparatorY, 1, l.navSeparatorHeight), fill: p.separator, interactive: false })];
     if (l.collectionWidth > 0.5) {
       out.push(ui.shape({ key: `${key}:sep-collection`, shape: "rect", class: ui.abs(x2, t.separatorInset, 1, l.height - t.separatorInset * 2), fill: p.separator, interactive: false }));
     }
-    out.push(ui.shape({ key: `${key}:sep-header`, shape: "rect", class: ui.abs(x2 + 1, l.headerHeight - 1, l.width - l.navWidth - l.collectionWidth - 1, 1), fill: p.separator, interactive: false }));
+    out.push(ui.shape({ key: `${key}:sep-header`, shape: "rect", class: ui.abs(l.headerSeparatorX, l.headerSeparatorY, l.headerSeparatorWidth, 1), fill: p.separator, interactive: false }));
     return out;
   }
 

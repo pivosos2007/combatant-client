@@ -124,6 +124,35 @@ public class ExtendedRenderPipelineBuilder {
         return this;
     }
 
+    /**
+     * Declares one ordinary graphics color target. This is the MRT path used by the world G-buffer;
+     * it lowers through Mojang 26.2 RenderPipeline on both OpenGL and Vulkan.
+     */
+    public ExtendedRenderPipelineBuilder withColorTarget(int index,
+                                                         GpuFormat format,
+                                                         BlendFunction blend,
+                                                         int writeMask) {
+        if (index < 0 || index >= ColorTargetState.MAX_COLOR_TARGETS) {
+            throw new IllegalArgumentException("color target index out of range: " + index);
+        }
+        if (format == null) throw new IllegalArgumentException("format");
+        delegate.withColorTargetState(index, new ColorTargetState(
+                Optional.ofNullable(blend), format, writeMask));
+        return this;
+    }
+
+    public ExtendedRenderPipelineBuilder withColorTarget(int index, GpuFormat format) {
+        return withColorTarget(index, format, null, ColorTargetState.WRITE_ALL);
+    }
+
+    public ExtendedRenderPipelineBuilder withUnusedColorTarget(int index) {
+        if (index < 0 || index >= ColorTargetState.MAX_COLOR_TARGETS) {
+            throw new IllegalArgumentException("color target index out of range: " + index);
+        }
+        delegate.withUnusedColorTargetState(index);
+        return this;
+    }
+
     public ExtendedRenderPipelineBuilder withBlend(BlendFunction blend) {
         delegate.withColorTargetState(new ColorTargetState(Optional.of(blend), GpuFormat.RGBA8_UNORM, ColorTargetState.WRITE_ALL));
         return this;
@@ -309,6 +338,7 @@ public class ExtendedRenderPipelineBuilder {
             case "shaders/ui_pos_local_color_rect_params_fast.vert" -> CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS;
             case "shaders/ui_primitive_fast.vert" -> CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS5;
             case "shaders/pos_tex_local_color_rect_params6.vert" -> CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS6;
+            case "shaders/pos_tex_local_color_rect_params7.vert" -> CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS7;
             case "shaders/rig_textured.vert" -> CombatantVertexFormats.RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM;
             default -> null;
         };

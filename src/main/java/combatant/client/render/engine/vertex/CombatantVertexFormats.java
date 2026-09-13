@@ -143,6 +143,22 @@ public enum CombatantVertexFormats {
             .addAttribute("Params6", CombatantVertexFormatElements.PARAMS6)
             .build();
 
+    /** Liquid-glass payload with one additional material-modifier vector. */
+    public static final VertexFormat POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS7 = VertexFormat.builder(0)
+            .addAttribute("Position", CombatantVertexFormatElements.POS2)
+            .addAttribute("UV0", CombatantVertexFormatElements.TEXTURE)
+            .addAttribute("Local", CombatantVertexFormatElements.LOCAL)
+            .addAttribute("Color", CombatantVertexFormatElements.COLOR)
+            .addAttribute("Rect", CombatantVertexFormatElements.RECT)
+            .addAttribute("Params", CombatantVertexFormatElements.PARAMS)
+            .addAttribute("Params2", CombatantVertexFormatElements.PARAMS2)
+            .addAttribute("Params3", CombatantVertexFormatElements.PARAMS3)
+            .addAttribute("Params4", CombatantVertexFormatElements.PARAMS4)
+            .addAttribute("Params5", CombatantVertexFormatElements.PARAMS5)
+            .addAttribute("Params6", CombatantVertexFormatElements.PARAMS6)
+            .addAttribute("Params7", CombatantVertexFormatElements.PARAMS7)
+            .build();
+
     public static final VertexFormat POS2_TEXTURE_COLOR_RECT_PARAMS2 = VertexFormat.builder(0)
             .addAttribute("Position", CombatantVertexFormatElements.POS2)
             .addAttribute("UV0", CombatantVertexFormatElements.TEXTURE)

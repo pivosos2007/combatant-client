@@ -36,17 +36,24 @@ export function buildTemplate(ctx) {
   const width = Math.max(720, num(p.width, 976));
   const height = Math.max(470, num(p.height, 636));
   const accent = str(p.accent, "#FF906BFF");
+  const categoryStrokeStart = str(p.categoryStrokeStart, accent);
+  const categoryStrokeEnd = str(p.categoryStrokeEnd, accent);
   const categories = categoryList(p.categories);
   const selected = str(p.selectedCategory, categories.length ? str(categories[0].id, "general") : "general");
-  const search = str(p.search, "");
-  const tokens = SolidBrowserSurface.tokens();
+  const layout = p.layout && typeof p.layout === "object" ? p.layout : {};
+  const navRowWidth = Math.max(34, num(layout.navRowWidth, num(layout.navWidth, 268) - 32));
+  const navRowHeight = Math.max(32, num(layout.navRowHeight, 46));
 
   const navigationItems = categories.map((category, index) => SolidBrowserSurface.navigationItem({
     key: `map-settings:nav:${str(category.id, index.toString())}`,
     selected: str(category.id, "") === selected,
     accent,
-    width: 252,
-    height: 46,
+    appearance: "settings-category",
+    strokeStart: categoryStrokeStart,
+    strokeEnd: categoryStrokeEnd,
+    strokeAngle: num(p.categoryStrokeAngle, 90),
+    width: navRowWidth,
+    height: navRowHeight,
     label: str(category.label, "Map"),
     icon: svg(`map-settings:nav-icon:${index}`, category.icon),
   }));
@@ -59,6 +66,7 @@ export function buildTemplate(ctx) {
     key: "map-settings",
     width,
     height,
+    layout,
     accent,
     combinedNavigation: true,
     navigationHeader: ui.svg({
@@ -69,13 +77,6 @@ export function buildTemplate(ctx) {
       class: ui.abs(0, 0, 11, 11),
     }),
     navigationItems,
-    toolbarLeft: SolidBrowserSurface.searchField({
-      key: "map-settings:search",
-      value: search,
-      placeholder: "Search settings",
-      accent,
-    }),
-    toolbarLeftWidth: tokens.searchWidth,
     detailActive: true,
     detailBackdrop: false,
     detailTitle: title,

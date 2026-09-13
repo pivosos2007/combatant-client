@@ -327,6 +327,87 @@ public final class ItemBatchRenderer {
         return (float) Mth.clamp(radius, 0.0f, (float) Math.min(w, h) * 0.5f);
     }
 
+    /**
+     * Materializes the dedicated UI FeatureRenderDispatcher and GuiItemAtlas texture while the
+     * client is already in a normal startup/reload phase. This removes the large GPU allocation
+     * from the first screen that happens to render an item.
+     */
+    public static boolean prewarmUiItemAtlas() {
+        if (!RenderSystem.isOnRenderThread()) return false;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gameRenderer == null || mc.getWindow() == null || uiItemFrameOpen) return false;
+
+        ensureItemAtlas(mc, getItemFeatureDispatcher(mc), new ObjectOpenHashSet<>());
+        return itemAtlas != null;
+    }
+
+    /**
+     * Incrementally renders a small slice of item models into the persistent UI atlas. The caller
+     * deliberately controls slice size, so expensive model/feature preparation is spread over
+     * ordinary client ticks instead of one first-open frame.
+     */
+    public static int prewarmUiItems(List<ItemStack> stacks, int startIndex, int maxItems) {
+        if (!RenderSystem.isOnRenderThread() || stacks == null || stacks.isEmpty() || maxItems <= 0) return 0;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gameRenderer == null || mc.getWindow() == null || uiItemFrameOpen) return 0;
+
+        int start = Math.max(0, startIndex);
+        if (start >= stacks.size()) return 0;
+        int end = Math.min(stacks.size(), start + maxItems);
+        ObjectArrayList<TrackingItemStackRenderState> states = new ObjectArrayList<>(end - start);
+        ObjectOpenHashSet<Object> identities = new ObjectOpenHashSet<>();
+
+        for (int i = start; i < end; i++) {
+            ItemStack stack = stacks.get(i);
+            if (stack == null || stack.isEmpty()) continue;
+
+            TrackingItemStackRenderState state = new TrackingItemStackRenderState();
+            mc.getItemModelResolver().updateForTopItem(
+                    state,
+                    stack,
+                    ItemDisplayContext.GUI,
+                    mc.level,
+                    mc.player,
+                    i
+            );
+            if (state.isEmpty()) continue;
+            states.add(state);
+            identities.add(state.getModelIdentity());
+        }
+        if (states.isEmpty() || identities.isEmpty()) return end - start;
+
+        GuiItemAtlas atlas = null;
+        GuiAtlasRenderState atlasState = GuiAtlasRenderState.capture();
+        boolean frameTouched = false;
+        try {
+            atlas = ensureItemAtlas(mc, getItemFeatureDispatcher(mc), identities);
+            atlasState.enterGuiPass();
+            for (int i = 0; i < states.size(); i++) {
+                atlas.getOrUpdate(states.get(i));
+                frameTouched = true;
+            }
+        } catch (RuntimeException failure) {
+            frameTouched = false;
+            atlas = null;
+            resetUiItemRenderer();
+            throw failure;
+        } finally {
+            atlasState.restore();
+            if (frameTouched && atlas != null) {
+                atlas.endFrame();
+                if (uiItemRenderBuffers != null) uiItemRenderBuffers.endFrame();
+            }
+        }
+        return end - start;
+    }
+
+    /** Drop model/atlas objects that may reference resources replaced by a reload. */
+    public static void onResourceReload() {
+        if (!RenderSystem.isOnRenderThread()) return;
+        resetUiItemRenderer();
+        resetWorldItemRenderer();
+    }
+
     public static void init() {
         itemBlitMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_TEXTURED_PREMULTIPLIED_ALPHA, 1);
         itemDurabilityGlowMesh = createItemOverlayMesh(CombatantRenderPipelines.UI_ROUNDED_GLOW_BATCH, 1);

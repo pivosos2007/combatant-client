@@ -104,6 +104,11 @@ public final class MeshBuilder implements AutoCloseable {
         return FRAME_STATS.snapshot();
     }
 
+    /** Allocates the normal first-use CPU buffers without starting a mesh build. */
+    public void prewarmDefaultCapacity() {
+        reserve(DEFAULT_VERTEX_CAPACITY, DEFAULT_INDEX_CAPACITY);
+    }
+
     public void begin() {
         if (RenderState.rendering3D) {
             beginWorld(resolveRenderCameraPos());

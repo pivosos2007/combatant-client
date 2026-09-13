@@ -59,8 +59,7 @@ float arcCoverage(vec2 frag, vec2 center, vec2 logicalScale) {
     float endDeg = normalizeAngle(v_Params2.y);
     bool caps = v_Params2.z > 0.5;
     vec2 local = frag - center;
-    float radialD = abs(length(local) - radius) - thickness * 0.5;
-    float radialAlpha = coverage(radialD, analyticAa(radialD, logicalScale, softness));
+    float radialAlpha = centeredStrokeCoverage(length(local) - radius, thickness, logicalScale, softness);
 
     if (v_Params3.x > 0.5) {
         float hashTime = max(v_Params3.y, 0.0);

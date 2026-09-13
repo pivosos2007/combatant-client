@@ -42,10 +42,10 @@ public final class Blaze3dTextureBlitter implements TextureBlitter {
                 srcTexture,
                 dstTexture,
                 src.baseMipLevel(),
-                sourceRegion.x(),
-                sourceRegion.y(),
                 destinationRegion.x(),
                 destinationRegion.y(),
+                sourceRegion.x(),
+                sourceRegion.y(),
                 sourceRegion.width(),
                 sourceRegion.height()
         );

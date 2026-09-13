@@ -8,6 +8,7 @@
 package combatant.client.render.engine.rhi;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
@@ -26,8 +27,11 @@ public final class RhiDrawCommand {
     public final String label;
     public final RenderPipeline pipeline;
     public final RenderPipelineSpec pipelineSpec;
+    public final List<RhiColorAttachment> colorAttachments;
+    /** Compatibility alias for color slot zero. */
     public final GpuTextureView colorAttachment;
     public final @Nullable GpuTextureView depthAttachment;
+    /** Compatibility alias for the clear value of color slot zero. */
     public final OptionalInt clearColor;
     public final OptionalDouble clearDepth;
     public final GpuMeshHandle mesh;
@@ -38,13 +42,14 @@ public final class RhiDrawCommand {
     public final List<RhiSamplerBinding> samplers;
     public final boolean uiUnderlayReplay;
 
-    private RhiDrawCommand(Builder b) {
+    private RhiDrawCommand(Builder b, List<RhiColorAttachment> colors) {
         this.label = b.label;
         this.pipeline = b.pipeline;
         this.pipelineSpec = b.pipelineSpec;
-        this.colorAttachment = b.colorAttachment;
+        this.colorAttachments = colors;
+        this.colorAttachment = colors.getFirst().view();
         this.depthAttachment = b.depthAttachment;
-        this.clearColor = b.clearColor;
+        this.clearColor = colors.getFirst().clearColor();
         this.clearDepth = b.clearDepth;
         this.mesh = b.mesh;
         this.transform = b.transform;
@@ -67,9 +72,16 @@ public final class RhiDrawCommand {
         return false;
     }
 
+    public boolean clearsAnyColorAttachment() {
+        for (RhiColorAttachment attachment : colorAttachments) {
+            if (attachment.clearColor().isPresent()) return true;
+        }
+        return false;
+    }
+
     /**
-     * Replays the same uploaded geometry and bindings into another color attachment. The mesh
-     * handle remains owned by the combined command stream and is closed once all replays finish.
+     * Replays the same uploaded geometry and bindings into one color attachment. The mesh handle
+     * remains owned by the combined command stream and is closed once all replays finish.
      */
     public RhiDrawCommand retargetColor(String labelSuffix, GpuTextureView colorAttachment) {
         Builder copy = builder(label + (labelSuffix != null ? labelSuffix : ""))
@@ -82,12 +94,8 @@ public final class RhiDrawCommand {
                 .applyWorldCameraY(applyWorldCameraY)
                 .lineWidth(lineWidth)
                 .uiUnderlayReplay(true);
-        for (RhiUniformBinding uniform : uniforms) {
-            copy.uniform(uniform.name(), uniform.slice());
-        }
-        for (RhiSamplerBinding sampler : samplers) {
-            copy.sampler(sampler.name(), sampler.view(), sampler.sampler());
-        }
+        for (RhiUniformBinding uniform : uniforms) copy.uniform(uniform.name(), uniform.slice());
+        for (RhiSamplerBinding sampler : samplers) copy.sampler(sampler.name(), sampler.view(), sampler.sampler());
         return copy.build();
     }
 
@@ -97,9 +105,9 @@ public final class RhiDrawCommand {
         private List<RhiSamplerBinding> samplers;
         private RenderPipeline pipeline;
         private RenderPipelineSpec pipelineSpec;
-        private GpuTextureView colorAttachment;
+        private final List<@Nullable GpuTextureView> colorViews = new ArrayList<>(1);
+        private final List<OptionalInt> colorClears = new ArrayList<>(1);
         private @Nullable GpuTextureView depthAttachment;
-        private OptionalInt clearColor = OptionalInt.empty();
         private OptionalDouble clearDepth = OptionalDouble.empty();
         private GpuMeshHandle mesh;
         private @Nullable Matrix4f transform;
@@ -108,7 +116,7 @@ public final class RhiDrawCommand {
         private boolean uiUnderlayReplay;
 
         private Builder(String label) {
-            this.label = label;
+            this.label = label == null || label.isBlank() ? "combatant-draw" : label;
         }
 
         public Builder pipeline(RenderPipeline pipeline) {
@@ -122,7 +130,22 @@ public final class RhiDrawCommand {
         }
 
         public Builder colorAttachment(GpuTextureView colorAttachment) {
-            this.colorAttachment = colorAttachment;
+            return colorAttachment(0, colorAttachment);
+        }
+
+        public Builder colorAttachment(int index, GpuTextureView colorAttachment) {
+            validateColorAttachmentIndex(index);
+            if (colorAttachment == null) throw new IllegalArgumentException("colorAttachment");
+            ensureColorSlot(index);
+            colorViews.set(index, colorAttachment);
+            return this;
+        }
+
+        public Builder unusedColorAttachment(int index) {
+            validateColorAttachmentIndex(index);
+            ensureColorSlot(index);
+            colorViews.set(index, null);
+            colorClears.set(index, OptionalInt.empty());
             return this;
         }
 
@@ -132,12 +155,18 @@ public final class RhiDrawCommand {
         }
 
         public Builder clearColor(@Nullable Integer argb) {
-            this.clearColor = argb != null ? OptionalInt.of(argb) : OptionalInt.empty();
+            return clearColor(0, argb);
+        }
+
+        public Builder clearColor(int index, @Nullable Integer argb) {
+            validateColorAttachmentIndex(index);
+            ensureColorSlot(index);
+            colorClears.set(index, argb != null ? OptionalInt.of(argb) : OptionalInt.empty());
             return this;
         }
 
         public Builder clearDepth(OptionalDouble clearDepth) {
-            this.clearDepth = clearDepth;
+            this.clearDepth = clearDepth == null ? OptionalDouble.empty() : clearDepth;
             return this;
         }
 
@@ -188,27 +217,68 @@ public final class RhiDrawCommand {
             if (transform != null && !pipelineSpec.metadata().transformPolicy().supportsObjectTransform()) {
                 throw new IllegalStateException("Matrix transform is not supported by pipeline metadata: " + pipeline.getLocation());
             }
-            if (pipelineSpec.metadata().domain() != PipelineDomain.UNKNOWN) {
-                if (uniforms != null) {
-                    for (RhiUniformBinding uniform : uniforms) {
-                        if (!pipelineSpec.uniformLayout().hasUniform(uniform.name())) {
-                            throw new IllegalStateException("Uniform '" + uniform.name()
-                                    + "' is not declared by pipeline metadata: " + pipeline.getLocation());
-                        }
-                    }
-                }
-                if (samplers != null) {
-                    for (RhiSamplerBinding sampler : samplers) {
-                        if (!pipelineSpec.uniformLayout().hasSampler(sampler.name())) {
-                            throw new IllegalStateException("Sampler '" + sampler.name()
-                                    + "' is not declared by pipeline metadata: " + pipeline.getLocation());
-                        }
+            validateBindings();
+            List<RhiColorAttachment> colors = buildColorAttachments();
+            if (mesh == null) throw new IllegalStateException("RHI draw command without mesh");
+            return new RhiDrawCommand(this, colors);
+        }
+
+        private void validateBindings() {
+            if (pipelineSpec.metadata().domain() == PipelineDomain.UNKNOWN) return;
+            if (uniforms != null) {
+                for (RhiUniformBinding uniform : uniforms) {
+                    if (!pipelineSpec.uniformLayout().hasUniform(uniform.name())) {
+                        throw new IllegalStateException("Uniform '" + uniform.name()
+                                + "' is not declared by pipeline metadata: " + pipeline.getLocation());
                     }
                 }
             }
-            if (colorAttachment == null) throw new IllegalStateException("RHI draw command without color attachment");
-            if (mesh == null) throw new IllegalStateException("RHI draw command without mesh");
-            return new RhiDrawCommand(this);
+            if (samplers != null) {
+                for (RhiSamplerBinding sampler : samplers) {
+                    if (!pipelineSpec.uniformLayout().hasSampler(sampler.name())) {
+                        throw new IllegalStateException("Sampler '" + sampler.name()
+                                + "' is not declared by pipeline metadata: " + pipeline.getLocation());
+                    }
+                }
+            }
+        }
+
+        private List<RhiColorAttachment> buildColorAttachments() {
+            if (colorViews.isEmpty() || colorViews.getFirst() == null) {
+                throw new IllegalStateException("RHI draw command requires color attachment zero");
+            }
+            ArrayList<RhiColorAttachment> colors = new ArrayList<>(colorViews.size());
+            int width = colorViews.getFirst().getWidth(0);
+            int height = colorViews.getFirst().getHeight(0);
+            for (int i = 0; i < colorViews.size(); i++) {
+                GpuTextureView view = colorViews.get(i);
+                OptionalInt clear = colorClears.get(i);
+                if (view == null) {
+                    if (clear.isPresent()) throw new IllegalStateException("Unused color attachment " + i + " cannot be cleared");
+                    colors.add(RhiColorAttachment.unused());
+                    continue;
+                }
+                if (view.getWidth(0) != width || view.getHeight(0) != height) {
+                    throw new IllegalStateException("MRT attachment dimensions differ at slot " + i
+                            + ": expected=" + width + "x" + height
+                            + " actual=" + view.getWidth(0) + "x" + view.getHeight(0));
+                }
+                colors.add(new RhiColorAttachment(view, clear));
+            }
+            return List.copyOf(colors);
+        }
+
+        private static void validateColorAttachmentIndex(int index) {
+            if (index < 0 || index >= ColorTargetState.MAX_COLOR_TARGETS) {
+                throw new IllegalArgumentException("color attachment index out of range: " + index);
+            }
+        }
+
+        private void ensureColorSlot(int index) {
+            while (colorViews.size() <= index) {
+                colorViews.add(null);
+                colorClears.add(OptionalInt.empty());
+            }
         }
     }
 }

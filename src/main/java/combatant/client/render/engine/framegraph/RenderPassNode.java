@@ -13,26 +13,34 @@ import combatant.client.render.engine.core.RenderPhase;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-/**
- * A named frame-graph node bound to a Combatant render phase.
- */
+/** A named frame-graph node with an explicit resource contract. */
 public final class RenderPassNode {
-    private final RenderPhase phase;
-    private final String label;
+    private final FrameGraphPassContract contract;
     private final Consumer<RenderFrameContext> renderer;
 
     public RenderPassNode(RenderPhase phase, String label, Consumer<RenderFrameContext> renderer) {
-        this.phase = phase == null ? RenderPhase.NONE : phase;
-        this.label = label == null || label.isBlank() ? this.phase.name().toLowerCase() : label;
+        this(FrameGraphPassContract.sideEffect(
+                phase,
+                label == null || label.isBlank()
+                        ? (phase == null ? RenderPhase.NONE : phase).name().toLowerCase()
+                        : label), renderer);
+    }
+
+    public RenderPassNode(FrameGraphPassContract contract, Consumer<RenderFrameContext> renderer) {
+        this.contract = Objects.requireNonNull(contract, "contract");
         this.renderer = Objects.requireNonNull(renderer, "renderer");
     }
 
     public RenderPhase phase() {
-        return phase;
+        return contract.phase();
     }
 
     public String label() {
-        return label;
+        return contract.label();
+    }
+
+    public FrameGraphPassContract contract() {
+        return contract;
     }
 
     public void execute(RenderFrameContext context) {

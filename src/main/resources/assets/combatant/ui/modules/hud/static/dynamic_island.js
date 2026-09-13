@@ -96,7 +96,64 @@ function contextChips(p) {
 }
 
 function clickGuiMode(p) {
-  return [];
+  const mainX = num(p.mainX, 0);
+  const height = num(p.height, 34);
+  const activeX = num(p.clickGuiActiveX, 0);
+  const activeW = Math.max(1, num(p.clickGuiActiveW, 1));
+  const alpha = num(p.alpha, 1);
+  const tabs = (() => {
+    try { return Array.from(p.clickGuiTabs || []); } catch (_) { return []; }
+  })();
+  const innerX = mainX + activeX + 4;
+  const innerY = 4;
+  const innerW = Math.max(1, activeW - 8);
+  const innerH = Math.max(1, height - 8);
+  const nodes = [
+    ui.shape({
+      key: "clickgui:selection",
+      shape: "island-blob",
+      class: abs(innerX, innerY, innerW, innerH),
+      sources: p.clickGuiSelectionSources || [],
+      smoothing: 7,
+      startColor: colorAlpha(p.accentSoft, alpha),
+      endColor: colorAlpha(p.accent, 0.82 * alpha),
+      angle: 0,
+      stroke: colorAlpha(p.accent, 0.92 * alpha),
+      strokeWidth: 1,
+      interactive: false,
+    }),
+  ];
+
+  tabs.forEach((tab, index) => {
+    const active = tab && tab.active === true;
+    const hovered = tab && tab.hovered === true;
+    const textColor = active
+      ? colorAlpha(p.textPrimary, alpha)
+      : colorAlpha(p.textMuted, (hovered ? 0.92 : 0.72) * alpha);
+    if (index > 0) {
+      nodes.push(ui.roundedRect({
+        key: `clickgui:separator:${index}`,
+        x: mainX + num(tab && tab.x, 0) - 0.5,
+        y: 9,
+        w: 1,
+        h: Math.max(1, height - 18),
+        radius: 0.5,
+        fill: colorAlpha(p.stroke, 0.72 * alpha),
+        interactive: false,
+      }));
+    }
+    nodes.push(ui.text({
+      key: `clickgui:tab:${index}`,
+      text: tab && tab.label ? String(tab.label) : "",
+      color: textColor,
+      interactive: false,
+      class: cls(
+        abs(mainX + num(tab && tab.x, 0), (height - 16) * 0.5, Math.max(1, num(tab && tab.width, 1)), 16),
+        "font-OnestBold-1.00 text-align-center"
+      ),
+    }));
+  });
+  return nodes;
 }
 
 function timeMode(p) {

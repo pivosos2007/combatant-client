@@ -30,7 +30,7 @@ public enum RenderPrewarmContributors {
      */
     private static final List<String> CORE_GUI_SVG_USAGE_HINTS = List.of(
             "arrow", "check", "save", "x", "palette", "brush", "paintbrush", "copy",
-            "trash", "folder-cog", "user-pen", "columns-3-cog"
+            "trash", "folder-cog", "folder-pen", "copyleft", "user-pen", "columns-3-cog"
     );
 
     @EventHandler(priority = 1000)

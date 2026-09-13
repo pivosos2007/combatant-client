@@ -179,6 +179,7 @@
     "sodium.SodiumShaderChunkRendererMixin",
     "sodium.SodiumVertexConsumerTrackerMixin",
     "sodium.SodiumWorldRendererFreecamMixin",
+    "sodium.SodiumWorldRendererTerrainMixin",
     "SpriteIconButtonCenteredIconMixin",
     "SpriteIconButtonTextAndIconMixin",
     "TitleScreenMixin",
@@ -192,7 +193,6 @@
     "WaterFogEnvironmentMixin",
     "WeatherEffectRendererMixin",
     "xaero.minimap.AbstractWaypointRenderProviderMixin",
-    "xaero.minimap.WaypointWorldRendererMixin",
     "xaero.worldmap.WaypointRenderProviderMixin",
     "xaero.worldmap.WorldMapWaypointAccessor"
   ],

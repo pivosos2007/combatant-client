@@ -195,7 +195,26 @@ export type UiEdgeMap = {
   left?: UiEdgeSpec;
 };
 
-/** Code-drawn rectangle primitive. */
+export type UiCompoundCircleSource = {
+  /** Local center x inside the shape node. */
+  x: number;
+  /** Local center y inside the shape node. */
+  y: number;
+  radius?: number;
+  r?: number;
+};
+
+export type UiCompoundBoxSource = {
+  /** Local box origin inside the shape node. */
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  w?: number;
+  h?: number;
+};
+
+/** Code-drawn rectangle/implicit primitive. */
 export type UiShapeNode = UiNode & {
   type: "shape";
   shape?:
@@ -232,6 +251,15 @@ export type UiShapeNode = UiNode & {
     | "mixed"
     | "flex"
     | "flex-box"
+    | "primitive"
+    | "island-blob"
+    | "island_blob"
+    | "metaball"
+    | "metaballs"
+    | "smooth-box-union"
+    | "smooth_box_union"
+    | "compound-sdf"
+    | "compound_sdf"
     | "chamfered";
   /** Local center x for circle and arc shapes. Defaults to half node width. */
   cx?: number;
@@ -309,6 +337,34 @@ export type UiShapeNode = UiNode & {
   glowRadius?: number;
   blur?: number;
   innerAlpha?: number;
+  /** Smooth-min radius used by IslandBlob and smooth-box-union. */
+  smoothing?: number;
+  smoothness?: number;
+  /** Up to four circle sources for IslandBlob/metaball shapes. Coordinates are local to the node. */
+  sources?: UiCompoundCircleSource[];
+  /** First/second local rounded boxes for smooth-box-union. */
+  first?: UiCompoundBoxSource;
+  second?: UiCompoundBoxSource;
+  firstRadius?: number;
+  secondRadius?: number;
+  /** Default two-circle IslandBlob separation when sources are omitted. */
+  separation?: number;
+  /** Enables the existing liquid-glass material on compatible analytic primitives. */
+  liquidGlass?: boolean;
+  glassPreset?: "light" | "balanced" | "heavy" | "hud-small" | "hud-large" | "health" | string;
+  glassTint?: string | number;
+  glassAlpha?: number;
+  blurAlpha?: number;
+  /** Enables a stable per-surface frosted refraction jitter. */
+  glassFrosted?: boolean;
+  /** Frosted jitter amplitude in logical pixels, clamped to 0..4. */
+  glassFrostedJitter?: number;
+  /** Inner-glow strength, clamped to 0..1. */
+  glassInnerGlow?: number;
+  /** Inner-glow falloff distance in logical pixels. */
+  glassInnerGlowSize?: number;
+  /** Inner-glow ARGB or #RRGGBB/#AARRGGBB color. */
+  glassInnerGlowColor?: string | number;
   color?: string | number;
   highlight?: string | number;
   shadow?: string | number;

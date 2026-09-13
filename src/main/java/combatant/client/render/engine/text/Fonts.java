@@ -96,6 +96,8 @@ public enum Fonts {
             try {
                 TextRenderer renderer = renderer(info, fallback);
                 if (renderer != null) {
+                    CustomTextRenderer custom = LanguageFallbackTextRenderer.customPrimary(renderer);
+                    if (custom != null) custom.prewarmBuffers();
                     warmed++;
                 }
             } catch (Throwable ignored) {

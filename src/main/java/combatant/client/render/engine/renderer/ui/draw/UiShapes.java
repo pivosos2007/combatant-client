@@ -38,6 +38,16 @@ public enum UiShapes {
                 .build();
     }
 
+    public static UiCompoundSdf islandBlob(double smoothing, UiCompoundSdf.Circle... circles) {
+        return UiCompoundSdf.islandBlob(smoothing, circles);
+    }
+
+    public static UiCompoundSdf smoothBoxUnion(UiRect first, double firstRadius,
+                                                UiRect second, double secondRadius,
+                                                double smoothing) {
+        return UiCompoundSdf.smoothBoxUnion(first, firstRadius, second, secondRadius, smoothing);
+    }
+
     public static UiShape rounded(double x, double y, double width, double height, double radius) {
         return UiShape.box(UiBoxShape.rounded(x, y, width, height, radius));
     }

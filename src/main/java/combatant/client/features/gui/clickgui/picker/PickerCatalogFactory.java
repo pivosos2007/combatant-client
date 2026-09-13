@@ -23,14 +23,114 @@ import combatant.client.util.item.EnchantMeta;
 import combatant.client.util.item.EnchantRegistry;
 import combatant.client.util.screen.ScreenCatalog;
 import combatant.client.util.particle.ParticleClassCatalog;
+import combatant.client.util.logging.DebugLog;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public enum PickerCatalogFactory {
     ;
     private static final Comparator<PickerEntryData> ENTRY_ORDER = Comparator
             .comparing(PickerEntryData::label, String.CASE_INSENSITIVE_ORDER)
             .thenComparing(PickerEntryData::id, String.CASE_INSENSITIVE_ORDER);
+    private static final EnumSet<TextListSetting.PickerMode> ASYNC_MODES = EnumSet.of(
+            TextListSetting.PickerMode.BLOCKS,
+            TextListSetting.PickerMode.ITEMS,
+            TextListSetting.PickerMode.EQUIPPABLE_ARMOR,
+            TextListSetting.PickerMode.ENCHANTMENTS,
+            TextListSetting.PickerMode.ALL,
+            TextListSetting.PickerMode.SOUNDS,
+            TextListSetting.PickerMode.LIVING_ENTITIES,
+            TextListSetting.PickerMode.ENTITIES,
+            TextListSetting.PickerMode.PARTICLES
+    );
+    private static final Map<TextListSetting.PickerMode, CompletableFuture<List<PickerEntryData>>> ASYNC_CACHE =
+            new ConcurrentHashMap<>();
+    private static final ExecutorService CATALOG_EXECUTOR = Executors.newFixedThreadPool(2, runnable -> {
+        Thread thread = new Thread(runnable, "Combatant-PickerCatalog");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+
+    public static boolean supportsAsync(TextListSetting.PickerMode mode) {
+        return mode != null && ASYNC_MODES.contains(mode);
+    }
+
+    /** Starts registry-backed catalog construction while normal client initialization continues. */
+    public static void prewarmAsync() {
+        // Highest first-open value first; executor ordering intentionally prioritizes item-backed pickers.
+        requestEntriesAsync(TextListSetting.PickerMode.ITEMS);
+        requestEntriesAsync(TextListSetting.PickerMode.BLOCKS);
+        requestEntriesAsync(TextListSetting.PickerMode.ALL);
+        requestEntriesAsync(TextListSetting.PickerMode.EQUIPPABLE_ARMOR);
+        requestEntriesAsync(TextListSetting.PickerMode.ENTITIES);
+        requestEntriesAsync(TextListSetting.PickerMode.LIVING_ENTITIES);
+        requestEntriesAsync(TextListSetting.PickerMode.SOUNDS);
+        requestEntriesAsync(TextListSetting.PickerMode.ENCHANTMENTS);
+        requestEntriesAsync(TextListSetting.PickerMode.PARTICLES);
+    }
+
+    /**
+     * Returns one shared immutable catalog future. No registry traversal is performed by the UI
+     * thread when the result is still being built.
+     */
+    public static CompletableFuture<List<PickerEntryData>> requestEntriesAsync(TextListSetting.PickerMode mode) {
+        if (!supportsAsync(mode)) {
+            return CompletableFuture.completedFuture(List.of());
+        }
+        return ASYNC_CACHE.computeIfAbsent(mode, key -> CompletableFuture
+                .supplyAsync(() -> List.copyOf(buildAsyncEntries(key)), CATALOG_EXECUTOR)
+                .exceptionally(error -> {
+                    DebugLog.warnOnce(
+                            "picker-catalog-async:" + key.name().toLowerCase(Locale.ROOT),
+                            "Failed to build async picker catalog: %s",
+                            key,
+                            error
+                    );
+                    return List.of();
+                }));
+    }
+
+    /** Owner-aware async view for catalogs that preserve configured values missing from discovery. */
+    public static CompletableFuture<List<PickerEntryData>> requestEntriesAsync(
+            TextListSetting.PickerMode mode, TextListSetting owner) {
+        CompletableFuture<List<PickerEntryData>> base = requestEntriesAsync(mode);
+        if (mode != TextListSetting.PickerMode.PARTICLES || owner == null) return base;
+        Set<String> selected = Set.copyOf(owner.getValueSet());
+        if (selected.isEmpty()) return base;
+        return base.thenApply(entries -> mergeParticleSelections(entries, selected));
+    }
+
+    /** Returns the completed shared result without blocking, or {@code null} while it is pending. */
+    public static List<PickerEntryData> completedEntries(TextListSetting.PickerMode mode) {
+        CompletableFuture<List<PickerEntryData>> future = ASYNC_CACHE.get(mode);
+        if (future == null || !future.isDone()) return null;
+        return future.getNow(List.of());
+    }
+
+    /** Language/resource reload changes labels, so future picker instances need fresh snapshots. */
+    public static void invalidateAsyncCaches() {
+        ASYNC_CACHE.clear();
+    }
+
+    private static List<PickerEntryData> buildAsyncEntries(TextListSetting.PickerMode mode) {
+        return switch (mode) {
+            case BLOCKS -> blockEntries();
+            case ITEMS -> itemEntries();
+            case EQUIPPABLE_ARMOR -> equippableArmorEntries();
+            case ENCHANTMENTS -> enchantmentEntries();
+            case ALL -> allEntries();
+            case SOUNDS -> soundEntries();
+            case LIVING_ENTITIES -> livingEntityEntries();
+            case ENTITIES -> entityEntries();
+            case PARTICLES -> particleEntries(null);
+            default -> List.of();
+        };
+    }
 
     public static PickerCatalog forMode(TextListSetting.PickerMode mode) {
         if (mode == null) return owner -> List.of();
@@ -151,6 +251,26 @@ public enum PickerCatalogFactory {
         }
         out.sort(ENTRY_ORDER);
         return out;
+    }
+
+    private static List<PickerEntryData> mergeParticleSelections(
+            List<PickerEntryData> entries, Set<String> selectedIds) {
+        LinkedHashMap<String, PickerEntryData> merged = new LinkedHashMap<>();
+        if (entries != null) {
+            for (PickerEntryData entry : entries) {
+                if (entry != null) merged.putIfAbsent(entry.id(), entry);
+            }
+        }
+        if (selectedIds != null) {
+            for (String id : selectedIds) {
+                if (id == null || id.isBlank()) continue;
+                merged.putIfAbsent(id, new PickerEntryData(
+                        id, ParticleClassCatalog.labelForClassName(id), ItemStack.EMPTY));
+            }
+        }
+        ArrayList<PickerEntryData> out = new ArrayList<>(merged.values());
+        out.sort(ENTRY_ORDER);
+        return List.copyOf(out);
     }
 
     private static List<PickerEntryData> particleEntries(TextListSetting owner) {

@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 public enum ClickGuiSectionManager {
     ;
@@ -34,6 +35,7 @@ public enum ClickGuiSectionManager {
     private static final Map<String, OrderedEntry> BUILTIN_SECTIONS = new LinkedHashMap<>();
     private static final Map<String, Entry> ADDON_SECTIONS = new LinkedHashMap<>();
     private static boolean discoveryComplete;
+    private static CompletableFuture<List<String>> discoveryFuture;
 
     public static synchronized boolean register(String addonId,
                                                 String sectionId,
@@ -88,12 +90,41 @@ public enum ClickGuiSectionManager {
         return List.copyOf(sections);
     }
 
+    /**
+     * Starts the expensive ClassGraph pass as early as possible without touching section classes.
+     * Only class names are collected off-thread; class loading/constructors stay on the client
+     * thread when {@link #prewarm()} (or the first real consumer) commits the result.
+     */
+    public static synchronized void beginDiscoveryAsync() {
+        if (discoveryComplete || discoveryFuture != null) return;
+        discoveryFuture = CompletableFuture.supplyAsync(ClickGuiSectionManager::scanBuiltinClassNames);
+    }
+
+    /** Materializes builtin sections during client warmup instead of the first ClickGUI open. */
+    public static synchronized void prewarm() {
+        ensureBuiltinsDiscovered();
+    }
+
     private static void ensureBuiltinsDiscovered() {
         if (discoveryComplete) {
             return;
         }
-        discoveryComplete = true;
 
+        try {
+            CompletableFuture<List<String>> future = discoveryFuture;
+            List<String> candidates = future != null ? future.join() : scanBuiltinClassNames();
+            for (String className : candidates) {
+                registerBuiltin(className);
+            }
+        } catch (Throwable t) {
+            DebugLog.warnOnce("clickgui-section-discovery", "Failed to discover ClickGUI sections", t);
+        } finally {
+            discoveryFuture = null;
+            discoveryComplete = true;
+        }
+    }
+
+    private static List<String> scanBuiltinClassNames() {
         try (ScanResult scan = new ClassGraph()
                 .enableClassInfo()
                 .enableAnnotationInfo()
@@ -103,11 +134,11 @@ public enum ClickGuiSectionManager {
                     scan.getClassesWithAnnotation(ClickGuiSectionInfo.class.getName())
             );
             candidates.sort(Comparator.comparing(ClassInfo::getName));
+            ArrayList<String> classNames = new ArrayList<>(candidates.size());
             for (ClassInfo candidate : candidates) {
-                registerBuiltin(candidate.getName());
+                classNames.add(candidate.getName());
             }
-        } catch (Throwable t) {
-            DebugLog.warnOnce("clickgui-section-discovery", "Failed to discover ClickGUI sections", t);
+            return List.copyOf(classNames);
         }
     }
 

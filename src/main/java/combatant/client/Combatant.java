@@ -497,6 +497,7 @@ public class Combatant implements ClientModInitializer {
         combatant.client.features.gui.chat.diagnostics.FailureDiagnostics.initialize();
         CommandManager.init();
         MediaSessionService.get().init();
+        ClientLifecycleEvents.CLIENT_STARTED.register(client -> RenderPrewarmManager.onClientStarted());
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             // Stop all Combatant callbacks before native-backed subsystems begin one-way shutdown.
             // Minecraft can still extract one final GUI frame while disconnecting.
@@ -552,6 +553,9 @@ public class Combatant implements ClientModInitializer {
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Keep startup/reload warmup moving even on title/menu screens where no player exists.
+            RenderPrewarmManager.pumpDeferred();
+
             if (!ProfilerPhase.isActive()) {
                 ModuleManager.tickRuntimeControllers();
                 if (!RuntimeGate.canRunClientLogic()) return;

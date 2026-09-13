@@ -53,6 +53,14 @@ import java.util.List;
 
 public final class OrderedUiBatcher {
     private static final OrderedUiBatcher LIQUID_GLASS_PREWARMER = new OrderedUiBatcher();
+    private static final int PREWARM_BATCHES_PER_TYPE = Math.max(1,
+            Integer.getInteger("combatant.render.prewarm.uiBatchesPerType", 4));
+    private static final int PREWARM_TEXT_BATCHES = Math.max(1,
+            Integer.getInteger("combatant.render.prewarm.textBatches", 8));
+    private static final int PREWARM_SMALL_VERTICES = Math.max(64,
+            Integer.getInteger("combatant.render.prewarm.smallBatchVertices", 256));
+    private static final int PREWARM_SMALL_INDICES = Math.max(96,
+            Integer.getInteger("combatant.render.prewarm.smallBatchIndices", 512));
     final ObjectArrayList<Object> order = new ObjectArrayList<>(128);
     @SuppressWarnings("unchecked")
     final ObjectArrayList<DrawBatch>[] pools = new ObjectArrayList[UiBatchType.values().length];
@@ -101,6 +109,38 @@ public final class OrderedUiBatcher {
                 Renderer2D.LIQUID_GLASS_KAWASE_OFFSET_PX
         );
         LIQUID_GLASS_PREWARMER.resetSharedBlur();
+    }
+
+    /**
+     * Materializes one mesh per UI batch type and allocates its normal first-use native buffers.
+     * This is CPU-side only and prevents the first surface of each material from paying memAlloc.
+     */
+    public int prewarmMeshPools() {
+        int warmed = 0;
+        for (UiBatchType type : UiBatchType.values()) {
+            ObjectArrayList<DrawBatch> pool = pools[type.ordinal()];
+            while (pool.size() < PREWARM_BATCHES_PER_TYPE) {
+                pool.add(new DrawBatch(type));
+            }
+            for (int i = 0; i < PREWARM_BATCHES_PER_TYPE; i++) {
+                MeshBuilder mesh = pool.get(i).mesh;
+                if (i == 0) mesh.prewarmDefaultCapacity();
+                else mesh.reserve(PREWARM_SMALL_VERTICES, PREWARM_SMALL_INDICES);
+                warmed++;
+            }
+        }
+
+        while (textPool.size() < PREWARM_TEXT_BATCHES) {
+            TextBatch batch = new TextBatch();
+            batch.mesh = new MeshBuilder(CombatantRenderPipelines.UI_TEXT_MSDF_FAST);
+            batch.mesh.reserve(512, 768);
+            textPool.add(batch);
+            warmed++;
+        }
+        while (itemPool.size() < PREWARM_TEXT_BATCHES) {
+            itemPool.add(new ItemBatch());
+        }
+        return warmed;
     }
 
     public void begin() {

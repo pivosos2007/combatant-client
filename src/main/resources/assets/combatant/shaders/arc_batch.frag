@@ -1,5 +1,8 @@
 #version 330 core
 
+#moj_import <combatant:ui_aa.glsl>
+#moj_import <combatant:ui_stroke.glsl>
+
 /*
  * This file is part of the Combatant Client distribution.
  * Copyright (c) 2026 pivosos2007.
@@ -57,9 +60,7 @@ void main() {
 
     vec2 local = frag - center;
     float dist = length(local);
-    float radialD = abs(dist - radius) - thickness * 0.5;
-    float radialAa = max(max(softness, fwidth(radialD)), 0.0001);
-    float radialAlpha = 1.0 - smoothstep(0.0, radialAa, radialD);
+    float radialAlpha = centeredStrokeCoverage(dist - radius, thickness, logicalScale, softness);
 
     float sweep = endDeg - startDeg;
     if (sweep <= 0.0) {

@@ -18,8 +18,13 @@ import combatant.client.render.helpers.ScissorFunction;
 
 public final class SearchComponent {
     public void render(float x, float y, float w, float h) {
-        boolean typing = ClickGuiSearch.isActive();
-        String text = ClickGuiSearch.getText();
+        render(x, y, w, h, CLICK_GUI_MODEL);
+    }
+
+    public void render(float x, float y, float w, float h, Model model) {
+        Model state = model != null ? model : CLICK_GUI_MODEL;
+        boolean typing = state.focused();
+        String text = state.text() == null ? "" : state.text();
         float scale = w / 80f;
 
         ClickGuiRenderer.drawBlur(x, y, w, h, 3f * scale, 0xFF000000, 135f / 255f);
@@ -35,7 +40,7 @@ public final class SearchComponent {
         float dividerX = x + 65.5f * scale;
         LayoutRender2D.rect(dividerX, y + 4f * scale, 0.5f * scale, h - 8f * scale, LayoutRender2D.argb(38, 155, 155, 155));
 
-        String display = text.isEmpty() && !typing ? "Search" : text;
+        String display = text.isEmpty() && !typing ? state.placeholder() : text;
         float tx = x + 4f * scale;
         float ts = 12f * scale;
         float th = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), ts);
@@ -69,13 +74,35 @@ public final class SearchComponent {
     }
 
     public boolean click(float x, float y, float w, float h, float mx, float my, int button) {
+        return click(x, y, w, h, mx, my, button, CLICK_GUI_MODEL);
+    }
+
+    public boolean click(float x, float y, float w, float h,
+                         float mx, float my, int button, Model model) {
         if (button != 0) return false;
+        Model state = model != null ? model : CLICK_GUI_MODEL;
         boolean inside = ClickGuiMath.insideRect(mx, my, x, y, w, h);
         if (inside) {
-            ClickGuiSearch.setActive(true);
+            state.setFocused(true);
             return true;
         }
-        ClickGuiSearch.unfocus();
+        state.setFocused(false);
         return false;
     }
+
+    public interface Model {
+        boolean focused();
+        String text();
+        default String placeholder() { return "Search"; }
+        void setFocused(boolean focused);
+    }
+
+    private static final Model CLICK_GUI_MODEL = new Model() {
+        @Override public boolean focused() { return ClickGuiSearch.isActive(); }
+        @Override public String text() { return ClickGuiSearch.getText(); }
+        @Override public void setFocused(boolean focused) {
+            if (focused) ClickGuiSearch.setActive(true);
+            else ClickGuiSearch.unfocus();
+        }
+    };
 }
