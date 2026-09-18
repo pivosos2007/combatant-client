@@ -15,6 +15,7 @@ layout(binding = 2) uniform sampler2D u_GbufferGeometry;
 layout(binding = 3) uniform sampler2D u_GbufferDepth;
 layout(binding = 4, r8) writeonly uniform image2D u_ShadowVisibility;
 layout(binding = 7, r8) writeonly uniform image2D u_ShadowHardVisibility;
+layout(binding = 8, r8) writeonly uniform image2D u_ShadowCascadeIndex;
 
 struct ShadowCascade {
     mat4 viewProjection;
@@ -40,6 +41,11 @@ layout(std430, binding = 6) readonly buffer ShadowResolveCamera {
     // x: blocker-search radius (texels), y: PCSS penumbra scale (texels / normalized depth),
     // z: maximum penumbra radius (texels).
     vec4 shadowParams1;
+    // xyz: receiver-to-light direction, w: valid.
+    vec4 directionalLight;
+    // x: receiver slope-bias scale (texels), y: maximum total receiver bias (texels),
+    // z: minimum N.L used by the slope estimate.
+    vec4 shadowBiasParams;
 } u_Camera;
 
 struct ShadowProjection {
@@ -115,9 +121,22 @@ float filteredCascadeVisibility(ShadowCascade cascade,
     hardVisibility = 1.0;
     if (!valid) return 1.0;
 
-    // Normalization path: bias is expressed in shadow texels and converted by the producer into
-    // normalized shadow depth. It therefore does not depend on the material/shading normal map.
-    float bias = max(cascade.shadowTexel.w, 0.0) * max(u_Camera.shadowParams0.z, 0.0);
+    // Receiver bias is expressed in shadow texels. A constant bias alone creates severe
+    // quantized self-shadow stripes when the celestial light is grazing a surface. Add a bounded
+    // slope term from N.L while keeping the total bias small enough to avoid visible detachment.
+    float baseBiasTexels = max(u_Camera.shadowParams0.z, 0.0);
+    float biasTexels = baseBiasTexels;
+    if (u_Camera.directionalLight.w > 0.5 && u_Camera.shadowBiasParams.x > 0.0) {
+        vec3 lightDirection = normalize(u_Camera.directionalLight.xyz);
+        float ndotl = clamp(dot(normalWorld, lightDirection), 0.0, 1.0);
+        float minNdotL = clamp(u_Camera.shadowBiasParams.z, 0.05, 1.0);
+        float sine = sqrt(max(0.0, 1.0 - ndotl * ndotl));
+        float slope = sine / max(ndotl, minNdotL);
+        biasTexels += u_Camera.shadowBiasParams.x * slope;
+    }
+    float maxBiasTexels = max(baseBiasTexels, u_Camera.shadowBiasParams.y);
+    biasTexels = min(biasTexels, maxBiasTexels);
+    float bias = max(cascade.shadowTexel.w, 0.0) * biasTexels;
     float centerDepth = textureLod(u_ShadowDepth, projected.atlasUv, 0.0).r;
     hardVisibility = blockerAt(centerDepth, projected.depth, bias) ? 0.0 : 1.0;
 
@@ -140,9 +159,10 @@ float filteredCascadeVisibility(ShadowCascade cascade,
     return visible * (1.0 / 9.0);
 }
 
-void storeVisibility(ivec2 pixel, float filtered, float hard) {
+void storeVisibility(ivec2 pixel, float filtered, float hard, float cascadeIndexEncoded) {
     imageStore(u_ShadowVisibility, pixel, vec4(clamp(filtered, 0.0, 1.0)));
     imageStore(u_ShadowHardVisibility, pixel, vec4(clamp(hard, 0.0, 1.0)));
+    imageStore(u_ShadowCascadeIndex, pixel, vec4(clamp(cascadeIndexEncoded, 0.0, 1.0)));
 }
 
 void main() {
@@ -155,13 +175,13 @@ void main() {
     float gbufferDepth = textureLod(u_GbufferDepth, uv, 0.0).r;
     float depthTolerance = max(1.0e-6, abs(gbufferDepth) * 1.0e-5);
     if (depth <= 0.0 || gbufferDepth <= 0.0 || abs(depth - gbufferDepth) > depthTolerance) {
-        storeVisibility(pixel, 1.0, 1.0);
+        storeVisibility(pixel, 1.0, 1.0, 0.0);
         return;
     }
 
     int cascadeCount = max(0, int(u_Shadow.cascades[0].splitRange.w + 0.5));
     if (cascadeCount <= 0) {
-        storeVisibility(pixel, 1.0, 1.0);
+        storeVisibility(pixel, 1.0, 1.0, 0.0);
         return;
     }
 
@@ -175,9 +195,10 @@ void main() {
         }
     }
     if (cascadeIndex < 0) {
-        storeVisibility(pixel, 1.0, 1.0);
+        storeVisibility(pixel, 1.0, 1.0, 0.0);
         return;
     }
+    float cascadeIndexEncoded = float(cascadeIndex + 1) / float(cascadeCount + 1);
 
     vec3 worldRelative = reconstructCameraRelativeWorld(uv, depth);
     vec3 normalView = decodeOctahedral(textureLod(u_GbufferGeometry, uv, 0.0).rg);
@@ -211,5 +232,5 @@ void main() {
         }
     }
 
-    storeVisibility(pixel, visibility, hardVisibility);
+    storeVisibility(pixel, visibility, hardVisibility, cascadeIndexEncoded);
 }

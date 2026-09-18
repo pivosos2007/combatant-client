@@ -132,7 +132,7 @@ public final class UiLayoutEngine {
                 contentW = textRenderer.measureWidth(fallbackTextRenderer, text, style);
                 contentH = textRenderer.measureHeight(fallbackTextRenderer, style);
             }
-            case IMAGE, SVG, SHAPE, CONNECTOR, ITEM, SPACER, DIVIDER, INPUT, INPUT_TEXT, CHECKBOX, SLIDER -> {
+            case IMAGE, SVG, SHAPE, CONNECTOR, PATH, ITEM, SPACER, DIVIDER, INPUT, INPUT_TEXT, CHECKBOX, SLIDER -> {
                 contentW = intrinsic(node, "intrinsicWidth", style.width() != null ? style.width() : 16.0f);
                 contentH = intrinsic(node, "intrinsicHeight", style.height() != null ? style.height() : 16.0f);
             }

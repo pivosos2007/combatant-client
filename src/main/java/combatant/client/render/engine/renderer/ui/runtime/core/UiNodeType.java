@@ -54,9 +54,13 @@ public enum UiNodeType {
      */
     SHAPE,
     /**
-     * Code-drawn connector, wire, cable, or spline primitive.
+     * Code-drawn connector, wire, or cable primitive.
      */
     CONNECTOR,
+    /**
+     * Generic vector path/series primitive. Line, spline, area and glow layers share one geometry.
+     */
+    PATH,
     /**
      * Minecraft ItemStack bridge.
      */

@@ -15,6 +15,7 @@ import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.platform.CompareOp;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.sodium.SodiumSecondaryTerrainContext;
@@ -55,10 +56,24 @@ public abstract class SodiumShaderChunkRendererMixin {
 
     @Unique
     private static long combatant$deferredPipelineGeneration = Long.MIN_VALUE;
+    /**
+     * Reversed-Z shadow-map raster bias. The shadow atlas clears to 0 and tests GEQUAL, so a
+     * negative polygon offset moves caster depth away from the light. Applying the slope term at
+     * rasterization removes the quantized self-shadow stripes that a constant receiver bias cannot
+     * solve at grazing celestial angles.
+     */
+    @Unique
+    private static final DepthStencilState combatant$shadowDepthState = new DepthStencilState(
+            CompareOp.GREATER_THAN_OR_EQUAL, true, -1.0f, -1.0f
+    );
     @Unique
     private RenderPipeline combatant$shadowSolidPipeline;
     @Unique
     private RenderPipeline combatant$shadowCutoutPipeline;
+    @Unique
+    private RenderPipeline combatant$localShadowSolidPipeline;
+    @Unique
+    private RenderPipeline combatant$localShadowCutoutPipeline;
     @Unique
     private RenderPipeline combatant$reflectionSolidPipeline;
     @Unique
@@ -73,7 +88,8 @@ public abstract class SodiumShaderChunkRendererMixin {
         SodiumSecondaryTerrainContext.State secondary = SodiumSecondaryTerrainContext.current();
         if (secondary != null) {
             cir.setReturnValue(switch (secondary.purpose()) {
-                case SHADOW_DEPTH, LOCAL_LIGHT_SHADOW -> combatant$shadowPipeline(pass);
+                case SHADOW_DEPTH -> combatant$shadowPipeline(pass, true);
+                case LOCAL_LIGHT_SHADOW -> combatant$shadowPipeline(pass, false);
                 case REFLECTION_CAPTURE -> combatant$reflectionPipeline(pass);
             });
             return;
@@ -86,18 +102,34 @@ public abstract class SodiumShaderChunkRendererMixin {
     }
 
     @Unique
-    private RenderPipeline combatant$shadowPipeline(TerrainRenderPass pass) {
+    private RenderPipeline combatant$shadowPipeline(TerrainRenderPass pass, boolean directionalBias) {
         if (pass == DefaultTerrainRenderPasses.SOLID) {
-            if (combatant$shadowSolidPipeline == null) {
-                combatant$shadowSolidPipeline = combatant$createSecondaryPipeline(pass, "shadow_solid", true);
+            if (directionalBias) {
+                if (combatant$shadowSolidPipeline == null) {
+                    combatant$shadowSolidPipeline = combatant$createSecondaryPipeline(
+                            pass, "shadow_solid", true, combatant$shadowDepthState);
+                }
+                return combatant$shadowSolidPipeline;
             }
-            return combatant$shadowSolidPipeline;
+            if (combatant$localShadowSolidPipeline == null) {
+                combatant$localShadowSolidPipeline = combatant$createSecondaryPipeline(
+                        pass, "local_shadow_solid", true, DepthStencilState.DEFAULT);
+            }
+            return combatant$localShadowSolidPipeline;
         }
         if (pass == DefaultTerrainRenderPasses.CUTOUT) {
-            if (combatant$shadowCutoutPipeline == null) {
-                combatant$shadowCutoutPipeline = combatant$createSecondaryPipeline(pass, "shadow_cutout", true);
+            if (directionalBias) {
+                if (combatant$shadowCutoutPipeline == null) {
+                    combatant$shadowCutoutPipeline = combatant$createSecondaryPipeline(
+                            pass, "shadow_cutout", true, combatant$shadowDepthState);
+                }
+                return combatant$shadowCutoutPipeline;
             }
-            return combatant$shadowCutoutPipeline;
+            if (combatant$localShadowCutoutPipeline == null) {
+                combatant$localShadowCutoutPipeline = combatant$createSecondaryPipeline(
+                        pass, "local_shadow_cutout", true, DepthStencilState.DEFAULT);
+            }
+            return combatant$localShadowCutoutPipeline;
         }
         throw new IllegalArgumentException("Unsupported shadow terrain pass: " + pass);
     }
@@ -106,13 +138,13 @@ public abstract class SodiumShaderChunkRendererMixin {
     private RenderPipeline combatant$reflectionPipeline(TerrainRenderPass pass) {
         if (pass == DefaultTerrainRenderPasses.SOLID) {
             if (combatant$reflectionSolidPipeline == null) {
-                combatant$reflectionSolidPipeline = combatant$createSecondaryPipeline(pass, "reflection_solid", false);
+                combatant$reflectionSolidPipeline = combatant$createSecondaryPipeline(pass, "reflection_solid", false, DepthStencilState.DEFAULT);
             }
             return combatant$reflectionSolidPipeline;
         }
         if (pass == DefaultTerrainRenderPasses.CUTOUT) {
             if (combatant$reflectionCutoutPipeline == null) {
-                combatant$reflectionCutoutPipeline = combatant$createSecondaryPipeline(pass, "reflection_cutout", false);
+                combatant$reflectionCutoutPipeline = combatant$createSecondaryPipeline(pass, "reflection_cutout", false, DepthStencilState.DEFAULT);
             }
             return combatant$reflectionCutoutPipeline;
         }
@@ -122,7 +154,8 @@ public abstract class SodiumShaderChunkRendererMixin {
     @Unique
     private RenderPipeline combatant$createSecondaryPipeline(TerrainRenderPass pass,
                                                               String suffix,
-                                                              boolean shadowDepth) {
+                                                              boolean shadowDepth,
+                                                              DepthStencilState depthStencilState) {
         Identifier sodiumShader = Identifier.fromNamespaceAndPath("sodium", "blocks/block_layer_opaque");
         Identifier shader = CombatantRenderSystem.sodium().shaderWorkarounds().overrideShaderIdentifier(sodiumShader);
         RenderPipeline.Builder builder = RenderPipeline.builder()
@@ -131,7 +164,7 @@ public abstract class SodiumShaderChunkRendererMixin {
                 .withCull(true)
                 .withVertexShader(shader)
                 .withFragmentShader(shader)
-                .withDepthStencilState(DepthStencilState.DEFAULT)
+                .withDepthStencilState(depthStencilState)
                 .withPrimitiveTopology(PrimitiveTopology.QUADS)
                 .withVertexBinding(0, vertexFormat)
                 .withColorTargetState(shadowDepth

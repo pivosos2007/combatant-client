@@ -41,6 +41,7 @@ import combatant.client.render.engine.text.GlyphFont;
 import combatant.client.render.engine.text.backend.TextPlacementMode;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
+import java.awt.Color;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Consumer;
@@ -129,7 +130,7 @@ public final class Renderer2D {
     private final double[] rectShapeTmp = new double[256];
     private final double[] connectorTmp = new double[64];
     private final double[] connectorAnchorTmp = new double[4];
-    private final UiPathRenderer pathRenderer = new UiPathRenderer();
+    private final UiPathDrawApi pathDrawApi = new UiPathDrawApi();
     private final int[] polygonIndexTmp = new int[64];
     private final int[] polygonVertexTmp = new int[64];
     private final int[] warpedShapeVertexTmp = new int[81];
@@ -312,6 +313,39 @@ public final class Renderer2D {
     public void path(UiShape path, UiPaint paint, UiStroke stroke, boolean fill) {
         if (path == null || paint == null) return;
         recordUi(new UiPathCommand(path, paint, stroke == null ? UiStroke.NONE : stroke, fill));
+    }
+
+    /**
+     * Draws one logical vector path with optional area, glow and primary stroke layers. All layers
+     * share one resolved geometry in {@link UiPathDrawApi}; this is the preferred path for charts
+     * and other multi-layer vector UI.
+     */
+    public void path(double[] points,
+                     int pointCount,
+                     UiPathCurve curve,
+                     boolean closed,
+                     @Nullable UiPathAreaFill area,
+                     @Nullable UiPathStrokeLayer glow,
+                     @Nullable UiPathStrokeLayer stroke) {
+        if (textured) throw new IllegalStateException("Path drawing is supported only on Renderer2D.COLOR.");
+        if (points == null || pointCount < 2) return;
+        UiPathCurve safeCurve = curve != null ? curve : UiPathCurve.LINEAR;
+        UiShape semantic = safeCurve == UiPathCurve.SPLINE
+                ? UiShape.spline(points, pointCount, closed)
+                : UiShape.polyline(points, pointCount, closed);
+        if (area != null && area.enabled() && !closed) {
+            path(semantic, UiPaint.corners(area.topStartArgb(), area.topEndArgb(),
+                    area.bottomEndArgb(), area.bottomStartArgb()), UiStroke.NONE, true);
+        }
+        if (glow != null && glow.enabled()) {
+            path(semantic, UiPaint.corners(glow.startArgb(), glow.endArgb(), glow.endArgb(), glow.startArgb()),
+                    new UiStroke((float) glow.width(), glow.cap(), glow.join()), false);
+        }
+        if (stroke != null && stroke.enabled()) {
+            path(semantic, UiPaint.corners(stroke.startArgb(), stroke.endArgb(), stroke.endArgb(), stroke.startArgb()),
+                    new UiStroke((float) stroke.width(), stroke.cap(), stroke.join()), false);
+        }
+        pathDrawApi.draw(UI_BATCHER, alpha, points, pointCount, safeCurve, closed, area, glow, stroke);
     }
 
     public void effect(UiEffectSpec effect) {
@@ -814,7 +848,10 @@ public final class Renderer2D {
         path(UiShape.polyline(p, 2, false), UiPaint.solid(argb), UiStroke.of(1.0), false);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.LINES, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -830,12 +867,19 @@ public final class Renderer2D {
         endAutoBatch(auto);
     }
 
+    public void line(double x1, double y1, double x2, double y2, Color color) {
+        line(x1, y1, x2, y2, color != null ? color.getRGB() : 0);
+    }
+
     public void line(double x1, double y1, double x2, double y2, RenderColor color) {
         double[] p = {x1, y1, x2, y2};
         path(UiShape.polyline(p, 2, false), UiPaint.solid(color.argb()), UiStroke.of(1.0), false);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.LINES, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -851,7 +895,10 @@ public final class Renderer2D {
         shapeStroke(UiShape.rect(x, y, width, height), UiPaint.solid(argb), UiStroke.of(1.0));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.LINES, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -878,11 +925,18 @@ public final class Renderer2D {
         quad(x, y, width, height, argb, argb, argb, argb);
     }
 
+    public void quad(double x, double y, double width, double height, Color color) {
+        quad(x, y, width, height, color != null ? color.getRGB() : 0);
+    }
+
     public void quad(double x, double y, double width, double height, int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
         shape(UiShape.rect(x, y, width, height), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -902,15 +956,26 @@ public final class Renderer2D {
         roundedRect(x, y, w, h, radius, 0.0f, argb);
     }
 
+    public void roundedRect(double x, double y, double w, double h, float radius, Color color) {
+        roundedRect(x, y, w, h, radius, color != null ? color.getRGB() : 0);
+    }
+
     public void circle(double cx, double cy, double radius, int argb) {
         circle(cx, cy, radius, 1.1f, argb);
+    }
+
+    public void circle(double cx, double cy, double radius, Color color) {
+        circle(cx, cy, radius, color != null ? color.getRGB() : 0);
     }
 
     public void circle(double cx, double cy, double radius, float softness, int argb) {
         shape(UiShape.circle(cx, cy, radius), UiPaint.solid(argb));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -958,7 +1023,10 @@ public final class Renderer2D {
         shapeStroke(UiShape.circle(cx, cy, radius), UiPaint.solid(argb), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -1104,7 +1172,10 @@ public final class Renderer2D {
         shapeStroke(UiShape.arc(cx, cy, radius, start, end), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -1272,7 +1343,10 @@ public final class Renderer2D {
         shapeStroke(UiShape.roundedRect(x, y, w, h, radius), UiPaint.solid(startArgb), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_STROKE_ANGULAR, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -1305,7 +1379,10 @@ public final class Renderer2D {
         shapeStroke(UiShape.roundedRect(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL), UiPaint.solid(argb), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -1364,7 +1441,10 @@ public final class Renderer2D {
         shape(UiShape.roundedRect(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL), UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -1495,7 +1575,10 @@ public final class Renderer2D {
 
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.ROUNDED_FILL_SMOKE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -1889,7 +1972,10 @@ public final class Renderer2D {
                                 float radius, float softness, float glow, int argb) {
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.GLOW, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -1921,7 +2007,10 @@ public final class Renderer2D {
                                   float radius, float softness, float spread, int argb) {
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -1958,7 +2047,10 @@ public final class Renderer2D {
                                       float radius, float blur, float innerAlpha, int argb) {
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -2100,7 +2192,10 @@ public final class Renderer2D {
                                  int argb) {
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.GLOW, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -2142,7 +2237,10 @@ public final class Renderer2D {
         boolean auto = beginAutoBatch();
         boolean warped = RenderWarpStack.active();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -2179,7 +2277,10 @@ public final class Renderer2D {
         boolean auto = beginAutoBatch();
         boolean warped = RenderWarpStack.active();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -2230,7 +2331,10 @@ public final class Renderer2D {
                 (float) texX1, (float) texY1, (float) texX2, (float) texY2, false));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -2263,7 +2367,10 @@ public final class Renderer2D {
                 (float) texX1, (float) texY1, (float) texX2, (float) texY2, true));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -2298,7 +2405,10 @@ public final class Renderer2D {
                 (float) texX1, (float) texY1, (float) texX2, (float) texY2, true));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
         mesh.ensureQuadCapacity();
@@ -2547,7 +2657,10 @@ public final class Renderer2D {
                 UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -2613,7 +2726,10 @@ public final class Renderer2D {
                 UiPaint.corners(cTopLeft, cTopRight, cBottomRight, cBottomLeft), UiStroke.of(thickness));
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.SHAPE, null, null);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -2748,6 +2864,10 @@ public final class Renderer2D {
         chamferedRectStrokeGradient(x, y, width, height, bevel, thickness, startArgb, endArgb, angleDeg, offsetPx);
     }
 
+
+    public void connector(double x1, double y1, double x2, double y2, double thickness, Color color) {
+        connector(x1, y1, x2, y2, thickness, color != null ? color.getRGB() : 0);
+    }
 
     public void connector(double x1, double y1, double x2, double y2, double thickness, int argb) {
         connectorTmp[0] = x1;
@@ -2906,8 +3026,8 @@ public final class Renderer2D {
         connectorTmp[4] = cx2; connectorTmp[5] = cy2;
         connectorTmp[6] = x2; connectorTmp[7] = y2;
         path(UiShape.bezier(connectorTmp, 4), UiPaint.solid(argb), UiStroke.of(t).withRoundCapsAndJoins(), false);
-        int count = pathRenderer.resolveBezier(x1, y1, cx1, cy1, cx2, cy2, x2, y2);
-        appendResolvedPathStroke(count, false, t, UiPathCap.ROUND, UiPathJoin.ROUND, argb, argb);
+        pathDrawApi.drawBezier(UI_BATCHER, alpha, x1, y1, cx1, cy1, cx2, cy2, x2, y2,
+                UiPathStrokeLayer.solid(t, argb));
     }
 
     public void bezierConnectorGradient(double x1, double y1,
@@ -2937,8 +3057,8 @@ public final class Renderer2D {
         connectorTmp[6] = x2; connectorTmp[7] = y2;
         path(UiShape.bezier(connectorTmp, 4), UiPaint.corners(startArgb, endArgb, endArgb, startArgb),
                 UiStroke.of(t).withRoundCapsAndJoins(), false);
-        int count = pathRenderer.resolveBezier(x1, y1, cx1, cy1, cx2, cy2, x2, y2);
-        appendResolvedPathStroke(count, false, t, UiPathCap.ROUND, UiPathJoin.ROUND, startArgb, endArgb);
+        pathDrawApi.drawBezier(UI_BATCHER, alpha, x1, y1, cx1, cy1, cx2, cy2, x2, y2,
+                UiPathStrokeLayer.gradient(t, startArgb, endArgb));
     }
 
     public void nodeGraphEdge(double x1, double y1, double x2, double y2, double thickness, int argb) {
@@ -2954,14 +3074,18 @@ public final class Renderer2D {
         bezierConnectorGradient(x1, y1, x1 + c, y1, x2 - c, y2, x2, y2, thickness, startArgb, endArgb);
     }
 
+    public void spline(double[] points, int pointCount, double thickness, boolean closed, Color color) {
+        spline(points, pointCount, thickness, closed, color != null ? color.getRGB() : 0);
+    }
+
     public void spline(double[] points, int pointCount, double thickness, boolean closed, int argb) {
         if (textured) throw new IllegalStateException("Spline drawing is supported only on Renderer2D.COLOR.");
         if (points == null || pointCount < 2) return;
         double t = Math.max(0.0, thickness);
         if (t <= 0.0) return;
         path(UiShape.spline(points, pointCount, closed), UiPaint.solid(argb), UiStroke.of(t).withRoundCapsAndJoins(), false);
-        int count = pathRenderer.resolveSpline(points, pointCount, closed);
-        appendResolvedPathStroke(count, closed, t, UiPathCap.ROUND, UiPathJoin.ROUND, argb, argb);
+        pathDrawApi.draw(UI_BATCHER, alpha, points, pointCount, UiPathCurve.SPLINE, closed,
+                null, null, UiPathStrokeLayer.solid(t, argb));
     }
 
     public void splineGradient(double[] points, int pointCount, double thickness, boolean closed,
@@ -2972,8 +3096,8 @@ public final class Renderer2D {
         if (t <= 0.0) return;
         path(UiShape.spline(points, pointCount, closed), UiPaint.corners(startArgb, endArgb, endArgb, startArgb),
                 UiStroke.of(t).withRoundCapsAndJoins(), false);
-        int count = pathRenderer.resolveSpline(points, pointCount, closed);
-        appendResolvedPathStroke(count, closed, t, UiPathCap.ROUND, UiPathJoin.ROUND, startArgb, endArgb);
+        pathDrawApi.draw(UI_BATCHER, alpha, points, pointCount, UiPathCurve.SPLINE, closed,
+                null, null, UiPathStrokeLayer.gradient(t, startArgb, endArgb));
     }
 
     /**
@@ -2987,18 +3111,9 @@ public final class Renderer2D {
         if (points == null || pointCount < 2) return;
         path(UiShape.spline(points, pointCount, false), UiPaint.corners(topStartArgb, topEndArgb, bottomEndArgb, bottomStartArgb),
                 UiStroke.NONE, true);
-        int count = pathRenderer.resolveSpline(points, pointCount, false);
-        if (count < 2) return;
-        boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.PATH, null, null);
-        if (batch == null) {
-            endAutoBatch(auto);
-            return;
-        }
-        MeshBuilder mesh = batch.mesh;
-        mesh.alpha = alpha;
-        pathRenderer.appendAreaToBaseline(mesh, count, baseline, topStartArgb, topEndArgb, bottomStartArgb, bottomEndArgb);
-        endAutoBatch(auto);
+        pathDrawApi.draw(UI_BATCHER, alpha, points, pointCount, UiPathCurve.SPLINE, false,
+                new UiPathAreaFill(baseline, topStartArgb, topEndArgb, bottomStartArgb, bottomEndArgb),
+                null, null);
     }
 
     public void texQuad(double x, double y, double width, double height,
@@ -3796,7 +3911,10 @@ public final class Renderer2D {
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
                 DEFAULT_LIQUID_GLASS_BLUR_QUALITY, LIQUID_GLASS_KAWASE_OFFSET_PX, backdrop);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
 
@@ -4076,7 +4194,10 @@ public final class Renderer2D {
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.BLUR_CORNERS, source.view, source.sampler,
                 DEFAULT_BLUR_QUALITY, DEFAULT_KAWASE_OFFSET_PX, backdrop);
-        if (batch == null) return;
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
 
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = 1.0;
@@ -4625,8 +4746,8 @@ public final class Renderer2D {
 
         UiStroke stroke = roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t);
         path(UiShape.polyline(points, pointCount, closed), UiPaint.solid(argb), stroke, false);
-        int count = pathRenderer.resolvePolyline(points, pointCount, closed);
-        appendResolvedPathStroke(count, closed, t, stroke.cap(), stroke.join(), argb, argb);
+        pathDrawApi.draw(UI_BATCHER, alpha, points, pointCount, UiPathCurve.LINEAR, closed,
+                null, null, new UiPathStrokeLayer(t, argb, argb, stroke.cap(), stroke.join()));
     }
 
     private void polylineGradient(double[] points, int pointCount, double thickness, boolean closed,
@@ -4640,8 +4761,8 @@ public final class Renderer2D {
 
         UiStroke stroke = roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t);
         path(UiShape.polyline(points, pointCount, closed), UiPaint.corners(startArgb, endArgb, endArgb, startArgb), stroke, false);
-        int count = pathRenderer.resolvePolyline(points, pointCount, closed);
-        appendResolvedPathStroke(count, closed, t, stroke.cap(), stroke.join(), startArgb, endArgb);
+        pathDrawApi.draw(UI_BATCHER, alpha, points, pointCount, UiPathCurve.LINEAR, closed,
+                null, null, new UiPathStrokeLayer(t, startArgb, endArgb, stroke.cap(), stroke.join()));
     }
 
     private void polylineLinearGradient(double[] points, int pointCount, double thickness, boolean closed,
@@ -4657,35 +4778,11 @@ public final class Renderer2D {
 
         UiStroke stroke = roundCapsAndJoins ? UiStroke.of(t).withRoundCapsAndJoins() : UiStroke.of(t);
         path(UiShape.polyline(points, pointCount, closed), UiPaint.linear(startArgb, endArgb, angleDeg, offsetPx), stroke, false);
-        int count = pathRenderer.resolvePolyline(points, pointCount, closed);
-        if (count < 2) return;
-        boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.PATH, null, null);
-        if (batch == null) {
-            endAutoBatch(auto);
-            return;
-        }
-        MeshBuilder mesh = batch.mesh;
-        mesh.alpha = alpha;
-        pathRenderer.appendStrokeLinearGradient(mesh, count, closed, t, stroke.cap(), stroke.join(),
-                x, y, width, height, startArgb, endArgb, angleDeg, offsetPx);
-        endAutoBatch(auto);
+        pathDrawApi.drawLinearGradientStroke(UI_BATCHER, alpha, points, pointCount, closed, t,
+                stroke.cap(), stroke.join(), x, y, width, height,
+                startArgb, endArgb, angleDeg, offsetPx);
     }
 
-    private void appendResolvedPathStroke(int pointCount, boolean closed, double thickness,
-                                          UiPathCap cap, UiPathJoin join, int startArgb, int endArgb) {
-        if (pointCount < 2 || thickness <= 0.0) return;
-        boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.PATH, null, null);
-        if (batch == null) {
-            endAutoBatch(auto);
-            return;
-        }
-        MeshBuilder mesh = batch.mesh;
-        mesh.alpha = alpha;
-        pathRenderer.appendStroke(mesh, pointCount, closed, thickness, cap, join, startArgb, endArgb);
-        endAutoBatch(auto);
-    }
 
     // ---- Engine integration -------------------------------------------------------
 

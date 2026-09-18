@@ -28,9 +28,23 @@ export const ui = {
   },
   shape(init = {}) { return normalize("shape", init); },
   box(init = {}) { return normalize("shape", { shape: "box", ...init }); },
+  rect(init = {}) { return normalize("shape", { shape: "rect", ...init }); },
+  circle(init = {}) { return normalize("shape", { shape: "circle", ...init }); },
   rounded(init = {}) { return normalize("shape", { shape: "box", corners: ui.corner.all(ui.corner.rounded(init.radius ?? init.r ?? 0)), ...init }); },
   chamfered(init = {}) { return normalize("shape", { shape: "box", corners: ui.corner.all(ui.corner.chamfered(init.cut ?? init.chamfer ?? 0)), ...init }); },
   connector(init = {}) { return normalize("connector", init); },
+  path(init = {}) { return normalize("path", init); },
+  line(init = {}) {
+    const points = init.points ?? (
+      Number.isFinite(init.x1) && Number.isFinite(init.y1) && Number.isFinite(init.x2) && Number.isFinite(init.y2)
+        ? [init.x1, init.y1, init.x2, init.y2]
+        : undefined
+    );
+    return normalize("path", { ...init, points, curve: "linear", strokeWidth: init.strokeWidth ?? 1 });
+  },
+  polyline(init = {}) { return normalize("path", { ...init, curve: "linear", strokeWidth: init.strokeWidth ?? 1 }); },
+  spline(init = {}) { return normalize("path", { ...init, curve: "spline", strokeWidth: init.strokeWidth ?? 1 }); },
+  area(init = {}) { return normalize("path", { ...init, curve: init.curve ?? "linear", area: init.area ?? true, strokeWidth: init.strokeWidth ?? 1 }); },
   item(init = {}) { return normalize("item", init); },
   button(init = {}) { return normalize("button", init); },
   scroll(init = {}) { return normalize("scroll", init); },

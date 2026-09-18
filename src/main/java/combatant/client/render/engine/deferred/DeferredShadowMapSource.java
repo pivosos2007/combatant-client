@@ -138,6 +138,7 @@ final class DeferredShadowMapSource implements AutoCloseable {
         int count = Math.min(views.size(), DeferredShadowCascadeSource.MAX_CASCADE_COUNT);
         StringBuilder footprint = DebugLog.isEnabled()
                 ? new StringBuilder(160).append("count=").append(count)
+                .append(" mode=").append(DeferredShadowBringupConfig.nearOnly() ? "near-only" : "csm")
                 .append(" atlas=").append(width).append('x').append(height)
                 : null;
         for (int i = 0; i < count; i++) {

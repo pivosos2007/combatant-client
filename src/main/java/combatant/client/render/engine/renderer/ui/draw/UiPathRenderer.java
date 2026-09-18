@@ -280,12 +280,12 @@ public final class UiPathRenderer {
         int count = Math.min(pointCount, resolvedCount);
         if (count < 2) return;
 
-        // A graph that lies entirely on its baseline has zero fill area. Emitting a top strip and
-        // AA fringe for it only creates degenerate triangles; keep the stroke path independent.
+        // A graph that lies entirely on its baseline has zero fill area. Keep positive and
+        // negative lobes: data-space area charts may legitimately cross the baseline.
         boolean hasArea = false;
         for (int i = 0; i < count; i++) {
             double y = resolved[i * 2 + 1];
-            if (Double.isFinite(y) && y < baseline - EPSILON) {
+            if (Double.isFinite(y) && Math.abs(y - baseline) > EPSILON) {
                 hasArea = true;
                 break;
             }
@@ -298,7 +298,7 @@ public final class UiPathRenderer {
 
         for (int i = 0; i < count; i++) {
             double x = resolved[i * 2];
-            double y = Math.min(baseline, resolved[i * 2 + 1]);
+            double y = resolved[i * 2 + 1];
             double u = cumulative[i] / total;
             int topColor = mixArgb(topStart, topEnd, u);
             int bottomColor = mixArgb(bottomStart, bottomEnd, u);
@@ -307,18 +307,19 @@ public final class UiPathRenderer {
             double tx = resolved[next * 2] - resolved[prev * 2];
             double ty = resolved[next * 2 + 1] - resolved[prev * 2 + 1];
             double tangentLength = Math.max(EPSILON, Math.hypot(tx, ty));
-            // Screen Y grows downward; (ty, -tx) is the outward/upward normal for the
-            // x-monotonic graph top boundary. This keeps the AA fringe width stable on slopes.
-            double outwardX = ty / tangentLength;
-            double outwardY = -tx / tangentLength;
+            // Screen Y grows downward. Flip the path-edge fringe when the series is below the
+            // baseline so anti-aliasing always expands away from the filled area.
+            double outwardSign = y <= baseline ? 1.0 : -1.0;
+            double outwardX = (ty / tangentLength) * outwardSign;
+            double outwardY = (-tx / tangentLength) * outwardSign;
             areaTop[i] = appendPathVertex(mesh, x, y, topColor, 0.0, EDGE_FRINGE, u);
             areaBottom[i] = appendPathVertex(mesh, x, baseline, bottomColor, -EDGE_FRINGE, EDGE_FRINGE, u);
             areaFringe[i] = appendPathVertex(mesh, x + outwardX * EDGE_FRINGE, y + outwardY * EDGE_FRINGE,
                     topColor, EDGE_FRINGE, EDGE_FRINGE, u);
         }
         for (int i = 0; i < count - 1; i++) {
-            // Main area strip and a narrow top AA fringe. The exact same top vertices are later used
-            // by the glow/main stroke because resolveSpline() returns the cached flattened curve.
+            // Main area strip and a narrow path-edge AA fringe. The exact same path vertices are
+            // later used by glow/main stroke because all layers share this resolved geometry.
             mesh.quad(areaTop[i], areaBottom[i], areaBottom[i + 1], areaTop[i + 1]);
             mesh.quad(areaFringe[i], areaTop[i], areaTop[i + 1], areaFringe[i + 1]);
         }

@@ -48,6 +48,7 @@ public enum DeferredDebugView {
 
     SHADOW_DEPTH_ATLAS(DeferredResource.SHADOW_DEPTH, SourceKind.TEXTURE, DeferredDebugDecodeMode.DEPTH, 0, DeferredFeature.SHADOWS),
     DIRECTIONAL_SHADOW_HARD_VISIBILITY(DeferredResource.SHADOW_HARD_VISIBILITY, SourceKind.TEXTURE, DeferredDebugDecodeMode.SCALAR, 0, DeferredFeature.SHADOWS),
+    SHADOW_CASCADE_INDEX(DeferredResource.SHADOW_CASCADE_INDEX, SourceKind.TEXTURE, DeferredDebugDecodeMode.SCALAR, 0, DeferredFeature.SHADOWS),
     DIRECTIONAL_SHADOW_VISIBILITY(DeferredResource.SHADOW_CASCADE_VISIBILITY, SourceKind.TEXTURE, DeferredDebugDecodeMode.SCALAR, 0, DeferredFeature.SHADOWS),
     CONTACT_SHADOW(DeferredResource.CONTACT_SHADOW, SourceKind.TEXTURE, DeferredDebugDecodeMode.SCALAR, 0, DeferredFeature.CONTACT_SHADOWS),
     AO(DeferredResource.AMBIENT_OCCLUSION, SourceKind.TEXTURE, DeferredDebugDecodeMode.SCALAR, 0, DeferredFeature.GTAO),

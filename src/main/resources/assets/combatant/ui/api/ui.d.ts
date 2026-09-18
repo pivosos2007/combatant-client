@@ -17,6 +17,7 @@ export type UiNodeType =
   | "svg"
   | "shape"
   | "connector"
+  | "path"
   | "item"
   | "button"
   | "scroll"
@@ -441,6 +442,7 @@ export type UiShapeNode = UiNode & {
   bevel?: number;
   notchWidth?: number;
   notchDepth?: number;
+  /** Primary shape fill color. */
   fill?: string | number;
   stroke?: string | number;
   strokeWidth?: number;
@@ -559,6 +561,54 @@ export type UiConnectorNode = UiNode & {
   closed?: boolean;
 };
 
+/** Generic vector path/series primitive. Coordinates are local to node bounds. */
+export type UiPathNode = UiNode & {
+  type: "path";
+  /** Explicit local points. Flat [x,y,...] and object point arrays are both accepted. */
+  points?: Array<{ x: number; y: number }> | number[];
+  /** Numeric series mapped across this node's bounds. Useful for charts/sparklines. */
+  values?: Array<number | { x?: number; value?: number; y?: number }>;
+  /** Data-space alias for values. Points with x use a proportional x-axis instead of equal slots. */
+  data?: Array<number | { x?: number; value?: number; y?: number }>;
+  /** Treat explicit points as normalized 0..1 coordinates inside node bounds. */
+  normalized?: boolean;
+  curve?: "linear" | "spline" | "smooth";
+  closed?: boolean;
+  /** Backward-compatible y-domain aliases. Omitted bounds are inferred from observed data. */
+  domainMin?: number;
+  domainMax?: number;
+  /** Explicit data-space domains for irregular line/area charts. */
+  xDomainMin?: number;
+  xDomainMax?: number;
+  yDomainMin?: number;
+  yDomainMax?: number;
+  /** Virtual x slots. If larger than values.length, the series is right-aligned. */
+  historySlots?: number;
+  clampValues?: boolean;
+  /** Enables area-to-baseline fill. */
+  area?: boolean;
+  /** Local-pixel baseline override. */
+  baseline?: number;
+  /** Data-space baseline; defaults to zero and clamps to the visible y-domain when clampValues is enabled. */
+  baselineValue?: number;
+  fill?: string | number;
+  fillStartColor?: string | number;
+  fillEndColor?: string | number;
+  fillBottomColor?: string | number;
+  fillBottomStartColor?: string | number;
+  fillBottomEndColor?: string | number;
+  stroke?: string | number;
+  strokeStartColor?: string | number;
+  strokeEndColor?: string | number;
+  strokeWidth?: number;
+  glow?: string | number;
+  glowStartColor?: string | number;
+  glowEndColor?: string | number;
+  glowWidth?: number;
+  strokeLinecap?: "butt" | "round" | "square";
+  strokeLinejoin?: "miter" | "round" | "bevel";
+};
+
 /** Authoring-side child input. normalize() flattens nested iterables and drops booleans/null/undefined. */
 export type UiChildInput = UiNode | readonly UiChildInput[] | Iterable<UiChildInput> | boolean | null | undefined;
 
@@ -566,6 +616,8 @@ export type NodeInit = Omit<UiNode, "type" | "children"> & { children?: UiChildI
 export type TextInit = (Omit<UiTextNode, "type" | "children"> & { children?: UiChildInput }) | string;
 export type ImageInit = (Omit<UiImageNode, "type" | "children"> & { children?: UiChildInput }) | string;
 export type ShapeInit = Omit<UiShapeNode, "type" | "children"> & { children?: UiChildInput };
+export type PathInit = Omit<UiPathNode, "type" | "children"> & { children?: UiChildInput };
+export type LineInit = PathInit & { x1?: number; y1?: number; x2?: number; y2?: number };
 
 /** Host snapshot used by compact HUD stat widgets before Java rendering is replaced. */
 export type CompactHudStatProps = {
@@ -649,6 +701,8 @@ export interface UiFactory {
   svg(init: ImageInit): UiImageNode;
   shape(init?: ShapeInit): UiShapeNode;
   box(init?: ShapeInit): UiShapeNode;
+  rect(init?: ShapeInit): UiShapeNode;
+  circle(init?: ShapeInit): UiShapeNode;
   rounded(init?: ShapeInit & { radius?: number; r?: number }): UiShapeNode;
   chamfered(init?: ShapeInit & { cut?: number; chamfer?: number }): UiShapeNode;
   squircle(init?: ShapeInit & { x?: number; y?: number; w?: number; h?: number; profile?: "soft" | "standard" | "tight"; power?: number; exponent?: number }): UiShapeNode;
@@ -685,6 +739,11 @@ export interface UiFactory {
     opacity(hex: string, fallback?: number): number;
   };
   connector(init?: Omit<UiConnectorNode, "type">): UiConnectorNode;
+  path(init?: PathInit): UiPathNode;
+  line(init?: LineInit): UiPathNode;
+  polyline(init?: PathInit): UiPathNode;
+  spline(init?: PathInit): UiPathNode;
+  area(init?: PathInit): UiPathNode;
   item(init?: NodeInit & { /** Multiplies Renderer2D item alpha for this node. */ alpha?: number }): UiNode;
   button(init?: NodeInit): UiNode;
   scroll(init?: NodeInit): UiNode;

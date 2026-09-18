@@ -51,6 +51,8 @@ final class DeferredShadowResolveSource implements AutoCloseable {
             .member("viewportAndFar", Std430Type.VEC4)
             .member("shadowParams0", Std430Type.VEC4)
             .member("shadowParams1", Std430Type.VEC4)
+            .member("directionalLight", Std430Type.VEC4)
+            .member("shadowBiasParams", Std430Type.VEC4)
             .build();
 
     private static final ShaderResourceLayout CASCADE_LAYOUT = new ShaderResourceLayout(List.of(
@@ -61,7 +63,8 @@ final class DeferredShadowResolveSource implements AutoCloseable {
             new ShaderResourceSlot(4, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY),
             new ShaderResourceSlot(5, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(6, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(7, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY)
+            new ShaderResourceSlot(7, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY),
+            new ShaderResourceSlot(8, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY)
     ));
     private static final ShaderResourceLayout COMBINE_LAYOUT = new ShaderResourceLayout(List.of(
             new ShaderResourceSlot(0, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
@@ -80,7 +83,8 @@ final class DeferredShadowResolveSource implements AutoCloseable {
                 .read(DeferredResource.RESOLVED_DEPTH, DeferredResource.GBUFFER_DEPTH,
                         DeferredResource.GBUFFER_GEOMETRY, DeferredResource.SHADOW_DEPTH,
                         DeferredResource.SHADOW_CASCADE_DATA)
-                .write(DeferredResource.SHADOW_CASCADE_VISIBILITY, DeferredResource.SHADOW_HARD_VISIBILITY)
+                .write(DeferredResource.SHADOW_CASCADE_VISIBILITY, DeferredResource.SHADOW_HARD_VISIBILITY,
+                        DeferredResource.SHADOW_CASCADE_INDEX)
                 .requires(RhiShaderStage.COMPUTE)
                 .when(context -> context.featureEnabled(DeferredFeature.SHADOWS)
                         && context.isValid(DeferredResource.RESOLVED_DEPTH)
@@ -125,10 +129,12 @@ final class DeferredShadowResolveSource implements AutoCloseable {
         GpuTextureView shadowDepth = requireTexture(context, DeferredResource.SHADOW_DEPTH);
         RhiStorageImage output = requireImage(context, DeferredResource.SHADOW_CASCADE_VISIBILITY);
         RhiStorageImage hardOutput = requireImage(context, DeferredResource.SHADOW_HARD_VISIBILITY);
+        RhiStorageImage cascadeIndexOutput = requireImage(context, DeferredResource.SHADOW_CASCADE_INDEX);
         RhiStorageBuffer cascades = context.resources().buffer(DeferredResource.SHADOW_CASCADE_DATA);
         if (cascades == null) throw new IllegalStateException("Shadow cascade metadata is not bound");
 
         DeferredRuntimeConfig.Snapshot settings = context.settings();
+        boolean nearOnly = DeferredShadowBringupConfig.nearOnly();
         boolean zeroToOne = zeroToOneDepth(context);
         Std430Writer camera = new Std430Writer(CAMERA_LAYOUT, 1)
                 .putMat4(0, "inverseProjection", current.inverseProjection())
@@ -141,14 +147,24 @@ final class DeferredShadowResolveSource implements AutoCloseable {
                 .putVec4(0, "viewportAndFar",
                         resolvedDepth.getWidth(0), resolvedDepth.getHeight(0), current.farPlane(), 0.0f)
                 .putVec4(0, "shadowParams0",
-                        settings.shadowCascadeBlendFraction(),
-                        settings.shadowNormalOffsetTexels(),
-                        settings.shadowReceiverBiasTexels(),
-                        settings.shadowFilterRadiusTexels())
+                        nearOnly ? 0.0f : settings.shadowCascadeBlendFraction(),
+                        nearOnly ? 0.0f : settings.shadowNormalOffsetTexels(),
+                        nearOnly ? DeferredShadowBringupConfig.nearBiasTexels() : settings.shadowReceiverBiasTexels(),
+                        nearOnly ? 0.0f : settings.shadowFilterRadiusTexels())
                 .putVec4(0, "shadowParams1",
                         settings.shadowBlockerSearchRadiusTexels(),
                         settings.shadowPenumbraScaleTexels(),
                         settings.shadowMaxPenumbraTexels(),
+                        0.0f)
+                .putVec4(0, "directionalLight",
+                        context.worldState().directionalLight().directionX(),
+                        context.worldState().directionalLight().directionY(),
+                        context.worldState().directionalLight().directionZ(),
+                        context.worldState().directionalLight().valid() ? 1.0f : 0.0f)
+                .putVec4(0, "shadowBiasParams",
+                        nearOnly ? DeferredShadowBringupConfig.nearSlopeBiasTexels() : 0.0f,
+                        nearOnly ? DeferredShadowBringupConfig.nearMaxBiasTexels() : settings.shadowReceiverBiasTexels(),
+                        0.20f,
                         0.0f);
         RhiStorageBuffer cameraBuffer = cameraBuffer();
         cameraBuffer.upload(camera.buffer(), 0L);
@@ -172,7 +188,8 @@ final class DeferredShadowResolveSource implements AutoCloseable {
                 ),
                 List.of(
                         new StorageImageBinding(4, output, StorageAccess.WRITE_ONLY),
-                        new StorageImageBinding(7, hardOutput, StorageAccess.WRITE_ONLY)
+                        new StorageImageBinding(7, hardOutput, StorageAccess.WRITE_ONLY),
+                        new StorageImageBinding(8, cascadeIndexOutput, StorageAccess.WRITE_ONLY)
                 )
         ));
     }

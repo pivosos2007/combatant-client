@@ -133,7 +133,8 @@ final class ScriptedStatisticsHudPanel {
                  boolean shadowControlled,
                  ScriptedListHudPanel.Palette palette,
                  List<LinkedHashMap<String, Object>> rows,
-                 List<LinkedHashMap<String, Object>> graphPoints) {
+                 float graphDomainMax,
+                 List<Float> graphValues) {
 
         Panel {
             playTime = playTime != null ? playTime : "00:00";
@@ -141,7 +142,8 @@ final class ScriptedStatisticsHudPanel {
             layout = layout != null ? layout : HudPanelLayoutModes.SPLIT_HEADER;
             strokeAlpha = Math.max(0.0f, Math.min(1.0f, strokeAlpha));
             rows = rows != null ? rows : List.of();
-            graphPoints = graphPoints != null ? graphPoints : List.of();
+            graphDomainMax = Float.isFinite(graphDomainMax) && graphDomainMax > 0.0f ? graphDomainMax : 1.0f;
+            graphValues = graphValues != null ? graphValues : List.of();
         }
 
         LinkedHashMap<String, Object> toProps() {
@@ -184,7 +186,8 @@ final class ScriptedStatisticsHudPanel {
             out.put("shadowControlled", shadowControlled);
             out.put("palette", palette.toProps());
             out.put("rows", rows.toArray());
-            out.put("graphPoints", graphPoints.toArray());
+            out.put("graphDomainMax", graphDomainMax);
+            out.put("graphValues", graphValues.toArray());
 
             LinkedHashMap<String, Object> variant = new LinkedHashMap<>();
             variant.put("headerDividerX", 18.0f);
@@ -222,6 +225,7 @@ final class ScriptedStatisticsHudPanel {
             h = CachedUiScriptRuntime.mix(h, headerIconGradient);
             h = CachedUiScriptRuntime.mix(h, headerIconGradientAngle);
             h = CachedUiScriptRuntime.mix(h, shadowControlled);
+            h = CachedUiScriptRuntime.mix(h, graphDomainMax);
             h = CachedUiScriptRuntime.mix(h, rows.size());
             for (Map<String, Object> row : rows) {
                 h = CachedUiScriptRuntime.mix(h, string(row.get("key")));
@@ -248,9 +252,7 @@ final class ScriptedStatisticsHudPanel {
             putPatch(patches, "header:icon", "gradientEndColor", hex(headerIconGradientEnd));
             if (showGraph) {
                 putPatch(patches, "graph:average", "text", "Average: " + averageSpeed);
-                putPatch(patches, "graph:area", "points", graphPoints);
-                putPatch(patches, "graph:glow", "points", graphPoints);
-                putPatch(patches, "graph:spline", "points", graphPoints);
+                putPatch(patches, "graph:series", "values", graphValues);
             }
             return patches;
         }

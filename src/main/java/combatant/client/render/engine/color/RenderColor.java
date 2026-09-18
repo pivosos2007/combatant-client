@@ -27,6 +27,15 @@ public class RenderColor {
         this.b = argb & 0xFF;
     }
 
+    /** Standard Java color bridge; useful in authored UI code because IDEs understand Color literals. */
+    public RenderColor(java.awt.Color color) {
+        this(color != null ? color.getRGB() : 0);
+    }
+
+    public java.awt.Color awt() {
+        return new java.awt.Color(r, g, b, a);
+    }
+
     private static int clamp(int v) {
         if (v < 0) return 0;
         if (v > 255) return 255;

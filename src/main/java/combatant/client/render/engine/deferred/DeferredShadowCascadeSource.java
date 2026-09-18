@@ -28,6 +28,8 @@ final class DeferredShadowCascadeSource {
     private static final float BOUNDS_PADDING = 2.0f;
     private static final float RADIUS_QUANTIZATION = 16.0f;
     private static final float BASIS_EPSILON_SQUARED = 1.0e-6f;
+    private static final float SNAP_RESET_DIRECTION_DOT = 0.9659258f; // cos(15 degrees)
+    private static final float SNAP_RESET_RADIUS_FRACTION = 0.10f;
 
     /**
      * Parallel-transported light up vector. A hard Y/Z helper-axis threshold makes the whole CSM
@@ -36,6 +38,7 @@ final class DeferredShadowCascadeSource {
      */
     private final Vector3f previousLightDirection = new Vector3f();
     private final Vector3f previousLightUp = new Vector3f();
+    private final SnapAnchor[] snapAnchors = new SnapAnchor[MAX_CASCADE_COUNT];
     private boolean lightBasisValid;
 
     void prepare(DeferredPassContext context) {
@@ -43,13 +46,20 @@ final class DeferredShadowCascadeSource {
         DirectionalLightDescriptor directional = context.worldState().directionalLight();
         if (primary == null || !directional.shadowValid()) return;
 
-        int cascadeCount = context.settings().shadowCascadeCount();
+        boolean nearOnly = DeferredShadowBringupConfig.nearOnly();
+        int cascadeCount = nearOnly ? 1 : context.settings().shadowCascadeCount();
         float farDistance = primary.farPlane();
         if (!(farDistance > DEFAULT_NEAR_DISTANCE)) {
             Minecraft minecraft = Minecraft.getInstance();
             farDistance = minecraft != null && minecraft.options != null
                     ? Math.max(16.0f, minecraft.options.getEffectiveRenderDistance() * 16.0f)
                     : 128.0f;
+        }
+        if (nearOnly) {
+            // Diagnostic isolation must keep useful near-field texel density. The old one-cascade
+            // bring-up accidentally covered the complete far plane and therefore enlarged one
+            // shadow texel to multiple world blocks.
+            farDistance = Math.min(farDistance, DeferredShadowBringupConfig.nearDistance());
         }
         float nearDistance = Math.min(DEFAULT_NEAR_DISTANCE, farDistance * 0.25f);
         float lambda = context.settings().shadowSplitLambda();
@@ -104,7 +114,7 @@ final class DeferredShadowCascadeSource {
         }
     }
 
-    private static DeferredSecondaryView buildCascade(int index,
+    private DeferredSecondaryView buildCascade(int index,
                                                        float nearDistance,
                                                        float farDistance,
                                                        float coverageNearDistance,
@@ -146,25 +156,27 @@ final class DeferredShadowCascadeSource {
             maxZ = Math.max(maxZ, transformed.z);
         }
 
-        // The renderer is camera-relative, so snapping a camera-relative center is a no-op under
-        // camera translation. Anchor the square projection to the ABSOLUTE world-space light grid,
-        // then express the small snapped offset back in this camera-relative light view.
+        // Stabilize camera translation without quantizing celestial rotation. Snapping the absolute
+        // world origin in a light basis that rotates every tick makes the snap phase jump forward
+        // and backward as the sun/moon moves. Instead keep a persistent world-space receiver
+        // anchor and move that anchor only in whole shadow texels when the desired frustum center
+        // actually translates far enough. A changing light basis then rotates continuously around
+        // the same world anchor instead of re-snapping to a different global grid phase.
         float extent = Math.max(0.001f, radius * 2.0f);
         float worldTexel = extent / (float) Math.max(1, resolution);
-        Vector3f absoluteCenter = new Vector3f(
-                (float) (cameraOrigin.x + center.x),
-                (float) (cameraOrigin.y + center.y),
-                (float) (cameraOrigin.z + center.z)
+        SnapAnchor anchor = stabilizeSnapAnchor(
+                index, cameraOrigin, center, lightView, lightDirection, radius, worldTexel
         );
-        Vector3f absoluteCenterLight = transformDirection(lightView, absoluteCenter, new Vector3f());
-        float snappedWorldX = Math.round(absoluteCenterLight.x / worldTexel) * worldTexel;
-        float snappedWorldY = Math.round(absoluteCenterLight.y / worldTexel) * worldTexel;
-        float deltaX = absoluteCenterLight.x - snappedWorldX;
-        float deltaY = absoluteCenterLight.y - snappedWorldY;
-        float minX = -radius - deltaX;
-        float maxX = radius - deltaX;
-        float minY = -radius - deltaY;
-        float maxY = radius - deltaY;
+        Vector3f anchorRelative = new Vector3f(
+                (float) (anchor.worldX - cameraOrigin.x),
+                (float) (anchor.worldY - cameraOrigin.y),
+                (float) (anchor.worldZ - cameraOrigin.z)
+        );
+        Vector3f anchorLight = transformPosition(lightView, anchorRelative, new Vector3f());
+        float minX = -radius + anchorLight.x;
+        float maxX = radius + anchorLight.x;
+        float minY = -radius + anchorLight.y;
+        float maxY = radius + anchorLight.y;
 
         // Keep an explicit caster band on the light-facing side of the receiver frustum.
         // Extending only the far plane would include geometry behind the receivers while clipping
@@ -193,6 +205,91 @@ final class DeferredShadowCascadeSource {
                 nearDistance,
                 farDistance
         );
+    }
+
+    private SnapAnchor stabilizeSnapAnchor(int index,
+                                           Vec3 cameraOrigin,
+                                           Vector3f desiredCenterRelative,
+                                           Matrix4fc lightView,
+                                           Vector3f lightDirection,
+                                           float radius,
+                                           float worldTexel) {
+        int slot = Math.max(0, Math.min(MAX_CASCADE_COUNT - 1, index));
+        SnapAnchor anchor = snapAnchors[slot];
+        if (anchor == null) {
+            anchor = new SnapAnchor();
+            snapAnchors[slot] = anchor;
+        }
+
+        double desiredX = cameraOrigin.x + desiredCenterRelative.x;
+        double desiredY = cameraOrigin.y + desiredCenterRelative.y;
+        double desiredZ = cameraOrigin.z + desiredCenterRelative.z;
+        float directionDot = anchor.valid
+                ? anchor.lightDirection.dot(new Vector3f(lightDirection).normalize())
+                : -1.0f;
+        float radiusDelta = anchor.valid && anchor.radius > 1.0e-4f
+                ? Math.abs(radius - anchor.radius) / anchor.radius
+                : Float.POSITIVE_INFINITY;
+        double distanceSquared = anchor.valid
+                ? squaredDistance(anchor.worldX, anchor.worldY, anchor.worldZ, desiredX, desiredY, desiredZ)
+                : Double.POSITIVE_INFINITY;
+        double teleportLimit = Math.max(16.0, radius);
+
+        if (!anchor.valid
+                || directionDot < SNAP_RESET_DIRECTION_DOT
+                || radiusDelta > SNAP_RESET_RADIUS_FRACTION
+                || distanceSquared > teleportLimit * teleportLimit) {
+            anchor.set(desiredX, desiredY, desiredZ, radius, lightDirection);
+            return anchor;
+        }
+
+        Vector3f deltaWorld = new Vector3f(
+                (float) (desiredX - anchor.worldX),
+                (float) (desiredY - anchor.worldY),
+                (float) (desiredZ - anchor.worldZ)
+        );
+        Vector3f deltaLight = transformDirection(lightView, deltaWorld, new Vector3f());
+        int stepX = Math.round(deltaLight.x / Math.max(worldTexel, 1.0e-6f));
+        int stepY = Math.round(deltaLight.y / Math.max(worldTexel, 1.0e-6f));
+        if (stepX != 0 || stepY != 0) {
+            // transformDirection uses the light-view rows as the world-space light axes.
+            Vector3f rightWorld = new Vector3f(lightView.m00(), lightView.m10(), lightView.m20());
+            Vector3f upWorld = new Vector3f(lightView.m01(), lightView.m11(), lightView.m21());
+            float moveX = stepX * worldTexel;
+            float moveY = stepY * worldTexel;
+            anchor.worldX += rightWorld.x * moveX + upWorld.x * moveY;
+            anchor.worldY += rightWorld.y * moveX + upWorld.y * moveY;
+            anchor.worldZ += rightWorld.z * moveX + upWorld.z * moveY;
+        }
+        anchor.radius = radius;
+        anchor.lightDirection.set(lightDirection).normalize();
+        return anchor;
+    }
+
+    private static double squaredDistance(double ax, double ay, double az,
+                                          double bx, double by, double bz) {
+        double dx = bx - ax;
+        double dy = by - ay;
+        double dz = bz - az;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static final class SnapAnchor {
+        double worldX;
+        double worldY;
+        double worldZ;
+        float radius;
+        final Vector3f lightDirection = new Vector3f();
+        boolean valid;
+
+        void set(double x, double y, double z, float newRadius, Vector3f direction) {
+            worldX = x;
+            worldY = y;
+            worldZ = z;
+            radius = newRadius;
+            lightDirection.set(direction).normalize();
+            valid = true;
+        }
     }
 
     private Vector3f stableLightUp(Vector3f lightDirection) {

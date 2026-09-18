@@ -24,6 +24,7 @@ public final class UiRenderer {
     private final UiItemRendererBridge itemRenderer = new UiItemRendererBridge();
     private final UiShapeRenderer shapeRenderer = new UiShapeRenderer();
     private final UiConnectorRenderer connectorRenderer = new UiConnectorRenderer();
+    private final UiPathNodeRenderer pathNodeRenderer = new UiPathNodeRenderer();
     private final UiBoxRenderer boxRenderer = new UiBoxRenderer();
     private final UiTextNodeRenderer textNodeRenderer;
     private final UiScrollbarRenderer scrollbarRenderer = new UiScrollbarRenderer();
@@ -85,6 +86,7 @@ public final class UiRenderer {
                     }
                     case SHAPE -> shapeRenderer.render(node, nodeContext);
                     case CONNECTOR -> connectorRenderer.render(node, nodeContext);
+                    case PATH -> pathNodeRenderer.render(node, nodeContext);
                     case ITEM -> itemRenderer.render(node, nodeContext);
                     default -> {
                     }

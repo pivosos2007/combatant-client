@@ -229,9 +229,8 @@ class StatisticsPanelLayout extends HudPanelLayout {
     }));
     for (let i = 1; i <= 2; i++) {
       const gy = plotY + (plotH * i) / 3;
-      nodes.push(ui.connector({
+      nodes.push(ui.line({
         key: `graph:grid:${i}`,
-        connector: "line",
         class: abs(plotX + 2 * bs, gy, Math.max(1, plotW - 4 * bs), 1),
         x1: 0,
         y1: 0.5,
@@ -244,38 +243,26 @@ class StatisticsPanelLayout extends HudPanelLayout {
     const graphClass = abs(plotX + 2 * bs, plotY + 2 * bs, Math.max(1, plotW - 4 * bs), Math.max(1, plotH - 4 * bs));
     const accentStart = c(this.p.accentStartColor, color(this.pal, "counter", "#FFFFFFFF"));
     const accentEnd = c(this.p.accentEndColor, color(this.pal, "text", "#FFFFFFFF"));
-    const graphPoints = arr(this.p.graphPoints);
-    if (graphPoints.length < 2) return nodes;
+    const graphValues = arr(this.p.graphValues);
+    if (graphValues.length < 2) return nodes;
 
     const lineWidth = Math.max(1.5, Math.round(1.4 * bs * 2) / 2);
     const glowWidth = Math.max(3, Math.round(lineWidth * 2.25 * 2) / 2);
-    nodes.push(ui.connector({
-      key: "graph:area",
-      connector: "spline-area",
+    nodes.push(ui.area({
+      key: "graph:series",
       class: graphClass,
-      points: graphPoints,
+      curve: "spline",
+      values: graphValues,
+      domainMin: 0,
+      domainMax: n(this.p.graphDomainMax, 24),
+      historySlots: 100,
       fillStartColor: alpha(accentStart, 0.34),
       fillEndColor: alpha(accentEnd, 0.28),
       fillBottomStartColor: alpha(accentStart, 0.015),
       fillBottomEndColor: alpha(accentEnd, 0.01),
-    }));
-    nodes.push(ui.connector({
-      key: "graph:glow",
-      connector: "spline",
-      class: graphClass,
-      points: graphPoints,
-      stroke: alpha(accentStart, 0.16),
-      strokeStartColor: alpha(accentStart, 0.18),
-      strokeEndColor: alpha(accentEnd, 0.14),
-      strokeWidth: glowWidth,
-      closed: false,
-    }));
-    nodes.push(ui.connector({
-      key: "graph:spline",
-      connector: "spline",
-      class: graphClass,
-      points: graphPoints,
-      stroke: accentStart,
+      glowStartColor: alpha(accentStart, 0.18),
+      glowEndColor: alpha(accentEnd, 0.14),
+      glowWidth,
       strokeStartColor: accentStart,
       strokeEndColor: accentEnd,
       strokeWidth: lineWidth,

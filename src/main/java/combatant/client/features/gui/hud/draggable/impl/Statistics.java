@@ -374,10 +374,7 @@ public final class Statistics extends DraggableHudElement {
         // Completed hours become virtual color strata in the same arc draw. The shader keeps a
         // fixed rolling hash window, so historic hours never allocate additional arc geometry.
         float arcHashTime = elapsedMs / 3_600_000.0f;
-        List<LinkedHashMap<String, Object>> graphPoints = buildGraphPoints(
-                drawWidth,
-                drawGraphHeight,
-                drawBaseScale,
+        List<Float> graphValues = buildGraphValues(
                 snapshot.speedSamples(),
                 forceVisible && snapshot.speedSamples().size() < 2
         );
@@ -435,7 +432,8 @@ public final class Statistics extends DraggableHudElement {
                                 uiOutline, uiText, uiMuted, uiCounter, uiTitleText, uiDivider, uiBlurTint
                         ),
                         infoRows,
-                        graphPoints
+                        GRAPH_CEILING_BPS,
+                        graphValues
                 )
         );
     }
@@ -696,29 +694,17 @@ public final class Statistics extends DraggableHudElement {
         return label.length() <= 22 ? label : label.substring(0, 21) + "…";
     }
 
-    private List<LinkedHashMap<String, Object>> buildGraphPoints(float drawWidth,
-                                                                 float drawGraphHeight,
-                                                                 float drawBaseScale,
-                                                                 List<Float> samples,
-                                                                 boolean preview) {
-        if (drawGraphHeight <= 0.0f) return List.of();
-
-        float plotWidth = Math.max(1.0f, drawWidth - 14.0f * drawBaseScale);
-        float plotHeight = Math.max(1.0f, drawGraphHeight - 25.0f * drawBaseScale);
-
+    private List<Float> buildGraphValues(List<Float> samples, boolean preview) {
         if (preview) {
-            int count = 48;
-            List<LinkedHashMap<String, Object>> points = new ArrayList<>(count);
-            for (int i = 0; i < count; i++) {
-                addGraphPoint(points, i, count, previewGraphValue(i), plotWidth, plotHeight, GRAPH_CEILING_BPS);
+            List<Float> values = new ArrayList<>(GRAPH_HISTORY_POINTS);
+            for (int i = 0; i < GRAPH_HISTORY_POINTS; i++) {
+                values.add(previewGraphValue(i));
             }
-            return points;
+            return values;
         }
 
         int sampleCount = samples != null ? Math.min(samples.size(), GRAPH_HISTORY_POINTS) : 0;
-        if (sampleCount < 2) {
-            return baselineGraphPoints(plotWidth, plotHeight);
-        }
+        if (sampleCount < 2) return baselineGraphValues();
 
         int sourceStart = samples.size() - sampleCount;
         boolean hasMotion = false;
@@ -728,24 +714,18 @@ public final class Statistics extends DraggableHudElement {
                 break;
             }
         }
-        if (!hasMotion) {
-            return baselineGraphPoints(plotWidth, plotHeight);
-        }
+        if (!hasMotion) return baselineGraphValues();
 
-        // Keep the graph stateless. A tiny local 1-2-1 average removes tick-to-tick speed noise,
-        // while the fixed Y range prevents the entire visible curve from breathing when a new
-        // local peak enters or leaves history. Missing history is not represented by fake zeroes.
-        List<LinkedHashMap<String, Object>> points = new ArrayList<>(sampleCount);
-        int firstSlot = GRAPH_HISTORY_POINTS - sampleCount;
+        // Keep only semantic samples here. Bounds/domain -> path geometry now belongs to the UI path
+        // primitive, so Java HUD code no longer manufactures renderer-space x/y maps.
+        List<Float> values = new ArrayList<>(sampleCount);
         for (int i = 0; i < sampleCount; i++) {
             float previous = graphSample(samples.get(sourceStart + Math.max(0, i - 1)));
             float current = graphSample(samples.get(sourceStart + i));
             float next = graphSample(samples.get(sourceStart + Math.min(sampleCount - 1, i + 1)));
-            float value = (previous + current * 2.0f + next) * 0.25f;
-            addGraphPoint(points, firstSlot + i, GRAPH_HISTORY_POINTS, value,
-                    plotWidth, plotHeight, GRAPH_CEILING_BPS);
+            values.add((previous + current * 2.0f + next) * 0.25f);
         }
-        return points;
+        return values;
     }
 
     private static float graphSample(Float value) {
@@ -757,33 +737,10 @@ public final class Statistics extends DraggableHudElement {
                 + (float) Math.sin(index * 0.09f) * 0.8f);
     }
 
-    private static List<LinkedHashMap<String, Object>> baselineGraphPoints(float plotWidth, float plotHeight) {
-        List<LinkedHashMap<String, Object>> points = new ArrayList<>(2);
-        LinkedHashMap<String, Object> left = new LinkedHashMap<>();
-        left.put("x", 0.0f);
-        left.put("y", plotHeight);
-        points.add(left);
-
-        LinkedHashMap<String, Object> right = new LinkedHashMap<>();
-        right.put("x", plotWidth);
-        right.put("y", plotHeight);
-        points.add(right);
-        return points;
-    }
-
-    private static void addGraphPoint(List<LinkedHashMap<String, Object>> points,
-                                      int index,
-                                      int count,
-                                      float value,
-                                      float plotWidth,
-                                      float plotHeight,
-                                      float ceiling) {
-        float px = plotWidth * index / Math.max(1.0f, count - 1.0f);
-        float py = plotHeight - Math.min(1.0f, value / Math.max(0.001f, ceiling)) * plotHeight;
-        LinkedHashMap<String, Object> point = new LinkedHashMap<>();
-        point.put("x", px);
-        point.put("y", py);
-        points.add(point);
+    private static List<Float> baselineGraphValues() {
+        List<Float> values = new ArrayList<>(GRAPH_HISTORY_POINTS);
+        for (int i = 0; i < GRAPH_HISTORY_POINTS; i++) values.add(0.0f);
+        return values;
     }
 
     private static String formatPlayTime(long elapsedMs) {

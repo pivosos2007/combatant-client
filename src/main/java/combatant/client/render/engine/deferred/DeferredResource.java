@@ -81,6 +81,9 @@ public enum DeferredResource {
     /** Center-tap hard compare before spatial filtering; normalization/debug only. */
     SHADOW_HARD_VISIBILITY(FrameGraphResourceKey.transientTexture("world.shadow.hard_visibility"),
             DeferredTextureSpec.compute(GpuFormat.R8_UNORM, DeferredTextureSpec.ResolutionClass.SHADOW_OUTPUT, false)),
+    /** Selected directional cascade encoded as (index + 1) / (count + 1); zero means no cascade. */
+    SHADOW_CASCADE_INDEX(FrameGraphResourceKey.transientTexture("world.shadow.cascade_index"),
+            DeferredTextureSpec.compute(GpuFormat.R8_UNORM, DeferredTextureSpec.ResolutionClass.SHADOW_OUTPUT, false)),
     CONTACT_SHADOW(FrameGraphResourceKey.transientTexture("world.shadow.contact"),
             DeferredTextureSpec.compute(GpuFormat.R8_UNORM, DeferredTextureSpec.ResolutionClass.CONTACT_SHADOW_TRACE, false)),
     SHADOW_COLOR(FrameGraphResourceKey.transientTexture("world.shadow.color"),
