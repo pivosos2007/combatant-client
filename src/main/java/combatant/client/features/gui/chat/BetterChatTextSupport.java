@@ -8,6 +8,7 @@ package combatant.client.features.gui.chat;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.render.engine.text.TextGlyphFallback;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.VanillaTextRenderer;
 import net.minecraft.network.chat.Style;
 
@@ -114,7 +115,7 @@ final class BetterChatTextSupport {
     }
 
     static float scale(float size) {
-        return size / 18.0f;
+        return TextSizing.scaleForSize(size);
     }
 
     static float width(TextRenderer renderer, String text, float size) {

@@ -21,6 +21,10 @@ public enum GuiSound implements SoundKey {
     BUTTON,
     @SoundAsset(value = "buttonyes.wav", id = "buttonyes")
     BUTTON_YES,
+    @SoundAsset(value = "popenable.wav", id = "boolean_on")
+    BOOLEAN_ON(35),
+    @SoundAsset(value = "popdisable.wav", id = "boolean_off")
+    BOOLEAN_OFF(35),
     @SoundAsset(value = "guibinding.wav", id = "guibinding")
     BINDING,
     @SoundAsset(value = "guibindingnull.wav", id = "guibindingnull")
@@ -52,9 +56,7 @@ public enum GuiSound implements SoundKey {
     @SoundAsset(value = "guiscroll.wav", id = "guiscroll")
     SCROLL(40),
     @SoundAsset(value = "guislidermove.wav", id = "guislidermove")
-    SLIDER_MOVE(35),
-    @SoundAsset(value = "toggle.wav", id = "toggle")
-    TOGGLE(35);
+    SLIDER_MOVE(35);
 
     private final long cooldownNs;
     private long lastPlayNs;
@@ -69,6 +71,10 @@ public enum GuiSound implements SoundKey {
 
     public void feedback() {
         feedback(1.0);
+    }
+
+    public static void booleanFeedback(boolean enabled) {
+        (enabled ? BOOLEAN_ON : BOOLEAN_OFF).feedback(0.75);
     }
 
     public void feedback(double gain) {

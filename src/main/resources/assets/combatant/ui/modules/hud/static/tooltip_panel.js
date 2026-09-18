@@ -135,7 +135,7 @@ function metrics(p) {
   const scale = Math.max(0.05, n(p.scale, 1));
   return {
     scale,
-    fontScale: (14.5 / 18.0) * scale,
+    fontSize: 14.5 * scale,
     padX: 9.0 * scale,
     padY: 7.0 * scale,
     rowGap: 1.5 * scale,
@@ -232,7 +232,8 @@ function structure(p, m, colors) {
 
 function fontClass(m, maxWidth, shadow) {
   return cls(
-    `font-Iosevka-Regular-${fmt3(m.fontScale)}`,
+    "font-Iosevka-Regular",
+    `font-size-${fmt3(m.fontSize)}`,
     `text-max-${fmt3(maxWidth)}`,
     "ellipsis",
     shadow ? "shadow-text" : ""

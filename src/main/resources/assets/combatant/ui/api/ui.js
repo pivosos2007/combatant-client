@@ -361,6 +361,11 @@ function normalize(type, init) {
     align,
     justify,
     overflow,
+    fontSize,
+    lineHeight,
+    fontFamily,
+    fontWeight,
+    fontStyle,
     textAlign,
     maxTextWidth,
     ellipsis,
@@ -397,6 +402,11 @@ function normalize(type, init) {
   }
   if (justify !== undefined) layoutStyle.justifyContent = justify;
   if (overflow !== undefined) layoutStyle.overflow = overflow;
+  if (fontSize !== undefined) layoutStyle.fontSize = fontSize;
+  if (lineHeight !== undefined) layoutStyle.lineHeight = lineHeight;
+  if (fontFamily !== undefined) layoutStyle.fontFamily = fontFamily;
+  if (fontWeight !== undefined) layoutStyle.fontWeight = fontWeight;
+  if (fontStyle !== undefined) layoutStyle.fontStyle = fontStyle;
   if (textAlign !== undefined) layoutStyle.textAlign = textAlign;
   if (maxTextWidth !== undefined) layoutStyle.maxTextWidth = maxTextWidth;
   if (ellipsis !== undefined) layoutStyle.ellipsis = ellipsis;

@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
 import net.minecraft.client.Minecraft;
@@ -161,7 +163,7 @@ public final class Ping extends DraggableHudElement implements ScriptableHudStat
         TextRenderer metaRenderer = BuiltinFontCatalog.ONEST_MEDIUM.renderer(valueRenderer);
 
         float drawScale = HudScale.scale(screenW, screenH)
-                * (hud.getFontSize() / 18f)
+                * TextSizing.scaleForSize(hud.getFontSize())
                 * SCALE_MULT
                 * scale.get().floatValue();
 

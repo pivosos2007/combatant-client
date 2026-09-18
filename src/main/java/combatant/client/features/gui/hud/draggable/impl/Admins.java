@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
 import combatant.client.util.screen.ClientScreen;
@@ -236,7 +238,7 @@ public final class Admins extends DraggableHudElement {
 
         float baseScale = HudScale.scale(screenW, screenH) * 1.1f * HudPanelLayoutModes.effectiveScale(scaleValue);
         float rowStep = ROW_STEP * baseScale;
-        float fontScale = 0.98f * (hud.getFontSize() / 18.0f);
+        float fontScale = 0.98f * TextSizing.scaleForSize(hud.getFontSize());
 
         headerIconRenderer.begin(fontScale, true, false);
         float headerIconH = (float) headerIconRenderer.getHeight(false);

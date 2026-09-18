@@ -24,7 +24,9 @@ final class UiTextNodeRenderer {
     void render(UiNode node, UiBounds bounds, UiStyle style, UiRenderContext context) {
         String text = node.props().string("text", "");
         float textX = textX(node, context, text, bounds, style);
-        float textY = bounds.y() + style.paddingTop() + node.props().number("textOffsetY", 0.0f);
+        float textY = bounds.y() + style.paddingTop()
+                + textRenderer.lineOffsetY(context.textRenderer(), style)
+                + node.props().number("textOffsetY", 0.0f);
         float textOffsetX = node.props().number("textOffsetX", 0.0f);
         boolean runtimeMarquee = node.props().bool("runtimeMarquee", false);
         float runtimeMarqueeOffset = runtimeMarquee

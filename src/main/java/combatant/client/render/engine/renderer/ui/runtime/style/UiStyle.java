@@ -56,7 +56,8 @@ public final class UiStyle {
     private final Integer textColor;
     private final String fontFamily;
     private final FontInfo.Type fontType;
-    private final float textScale;
+    private final float fontSize;
+    private final Float lineHeight;
     private final boolean textShadow;
     private final String textEffect;
     private final int textEffectSpeed;
@@ -112,7 +113,8 @@ public final class UiStyle {
         this.textColor = builder.textColor;
         this.fontFamily = builder.fontFamily;
         this.fontType = builder.fontType;
-        this.textScale = builder.textScale;
+        this.fontSize = builder.fontSize;
+        this.lineHeight = builder.lineHeight;
         this.textShadow = builder.textShadow;
         this.textEffect = builder.textEffect;
         this.textEffectSpeed = builder.textEffectSpeed;
@@ -331,8 +333,22 @@ public final class UiStyle {
         return fontType;
     }
 
+    /** Authored font size in logical UI units, matching width/height/padding units. */
+    public float fontSize() {
+        return fontSize;
+    }
+
+    /**
+     * @deprecated Backend compatibility only. UI code should author {@link #fontSize()} instead.
+     */
+    @Deprecated(forRemoval = false)
     public float textScale() {
-        return textScale;
+        return UiUnits.fontScale(fontSize);
+    }
+
+    /** Optional authored line-box height in logical UI units. */
+    public Float lineHeight() {
+        return lineHeight;
     }
 
     public boolean textShadow() {
@@ -427,7 +443,8 @@ public final class UiStyle {
         private Integer textColor = 0xFFFFFFFF;
         private String fontFamily;
         private FontInfo.Type fontType = FontInfo.Type.Regular;
-        private float textScale = 1.0f;
+        private float fontSize = UiUnits.FONT_REFERENCE_SIZE;
+        private Float lineHeight;
         private boolean textShadow;
         private String textEffect = "";
         private int textEffectSpeed = 18;
@@ -486,7 +503,8 @@ public final class UiStyle {
             this.textColor = base.textColor;
             this.fontFamily = base.fontFamily;
             this.fontType = base.fontType;
-            this.textScale = base.textScale;
+            this.fontSize = base.fontSize;
+            this.lineHeight = base.lineHeight;
             this.textShadow = base.textShadow;
             this.textEffect = base.textEffect;
             this.textEffectSpeed = base.textEffectSpeed;
@@ -734,8 +752,24 @@ public final class UiStyle {
             return this;
         }
 
+        /** Sets the preferred script-facing text size in logical UI units. */
+        public Builder fontSize(float fontSize) {
+            this.fontSize = Float.isFinite(fontSize)
+                    ? Math.max(UiUnits.MIN_FONT_SIZE, fontSize)
+                    : UiUnits.FONT_REFERENCE_SIZE;
+            return this;
+        }
+
+        /**
+         * @deprecated Backend-scale authoring retained only for compatibility. Prefer {@link #fontSize(float)}.
+         */
+        @Deprecated(forRemoval = false)
         public Builder textScale(float textScale) {
-            this.textScale = textScale;
+            return fontSize(UiUnits.fontSize(textScale));
+        }
+
+        public Builder lineHeight(float lineHeight) {
+            this.lineHeight = Float.isFinite(lineHeight) ? Math.max(0.0f, lineHeight) : null;
             return this;
         }
 

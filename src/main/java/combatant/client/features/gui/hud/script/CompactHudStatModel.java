@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.script;
 
+import combatant.client.render.engine.text.TextSizing;
 import java.util.LinkedHashMap;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
 
@@ -642,7 +643,7 @@ public final class CompactHudStatModel {
         private float y;
         private float width;
         private float height;
-        private float scale;
+        private float fontSize;
         private int color;
 
         public Icon texture(String id, float x, float y, float width, float height, int color) {
@@ -677,7 +678,7 @@ public final class CompactHudStatModel {
             this.y = y;
             this.width = width;
             this.height = height;
-            this.scale = scale;
+            this.fontSize = TextSizing.sizeForScale(scale);
             this.color = color;
             return this;
         }
@@ -692,7 +693,7 @@ public final class CompactHudStatModel {
             props.put("iconY", y);
             props.put("iconW", width);
             props.put("iconH", height);
-            props.put("iconScale", scale);
+            props.put("iconFontSize", fontSize);
             props.put("iconColor", color(color));
         }
 
@@ -702,8 +703,8 @@ public final class CompactHudStatModel {
             h = CompactHudStatModel.mix(h, id);
             h = CompactHudStatModel.mix(h, glyph);
             h = CompactHudStatModel.mix(h, font);
-            // Glyph font scale is encoded in the generated class and cannot be fixed by a bounds patch.
-            h = CompactHudStatModel.mix(h, scale);
+            // Glyph font size is structural because it changes authored text geometry.
+            h = CompactHudStatModel.mix(h, fontSize);
             return h;
         }
 
@@ -747,7 +748,7 @@ public final class CompactHudStatModel {
         private boolean visible;
         private String text = "";
         private String font = "";
-        private float scale;
+        private float fontSize;
         private float x;
         private float y;
         private float width;
@@ -757,7 +758,7 @@ public final class CompactHudStatModel {
             this.visible = text != null && !text.isEmpty();
             this.text = text != null ? text : "";
             this.font = font != null ? font : "";
-            this.scale = scale;
+            this.fontSize = TextSizing.sizeForScale(scale);
             this.x = x;
             this.y = y;
             this.width = width;
@@ -769,7 +770,7 @@ public final class CompactHudStatModel {
             this.visible = false;
             this.text = "";
             this.font = "";
-            this.scale = 1.0f;
+            this.fontSize = TextSizing.REFERENCE_SIZE;
             this.x = 0.0f;
             this.y = 0.0f;
             this.width = 0.0f;
@@ -781,7 +782,7 @@ public final class CompactHudStatModel {
             props.put(prefix + "Visible", visible);
             props.put(prefix + "Text", text);
             props.put(prefix + "Font", font);
-            props.put(prefix + "Scale", scale);
+            props.put(prefix + "FontSize", fontSize);
             props.put(prefix + "X", x);
             props.put(prefix + "Y", y);
             props.put(prefix + "W", width);
@@ -791,7 +792,7 @@ public final class CompactHudStatModel {
         private long mixStructure(long h) {
             h = CompactHudStatModel.mix(h, visible);
             h = CompactHudStatModel.mix(h, font);
-            h = CompactHudStatModel.mix(h, scale);
+            h = CompactHudStatModel.mix(h, fontSize);
             return h;
         }
 

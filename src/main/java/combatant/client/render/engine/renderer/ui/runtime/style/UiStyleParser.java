@@ -244,6 +244,14 @@ public final class UiStyleParser {
             builder.strokeColor(resolveColor(token.value(), 0x665A5A5A));
             return true;
         }
+        if (raw.startsWith("font-size-")) {
+            builder.fontSize(number(raw.substring("font-size-".length()), UiUnits.FONT_REFERENCE_SIZE));
+            return true;
+        }
+        if (raw.startsWith("line-height-")) {
+            builder.lineHeight(number(raw.substring("line-height-".length()), UiUnits.FONT_REFERENCE_SIZE));
+            return true;
+        }
         if (raw.startsWith("font-")) {
             applyFont(builder, token.value());
             return true;
@@ -325,12 +333,12 @@ public final class UiStyleParser {
         String[] parts = value.split("-");
         if (parts.length == 0) return;
         int end = parts.length;
-        float scale = 1.0f;
+        float legacyScale = Float.NaN;
         FontInfo.Type type = FontInfo.Type.Regular;
 
         float tailScale = number(parts[end - 1], Float.NaN);
         if (!Float.isNaN(tailScale)) {
-            scale = tailScale;
+            legacyScale = tailScale;
             end--;
         }
 
@@ -359,7 +367,10 @@ public final class UiStyleParser {
         for (int i = 1; i < end; i++) {
             family.append('-').append(parts[i]);
         }
-        builder.font(family.toString(), type).textScale(scale);
+        builder.font(family.toString(), type);
+        if (!Float.isNaN(legacyScale)) {
+            builder.fontSize(UiUnits.fontSize(legacyScale));
+        }
     }
 
     public record ParsedStyle(List<UiStyleToken> tokens, UiStyle style) {

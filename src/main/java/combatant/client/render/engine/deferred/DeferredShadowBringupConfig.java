@@ -9,10 +9,9 @@ package combatant.client.render.engine.deferred;
 /**
  * Temporary normalization controls for directional-shadow bring-up.
  *
- * <p>The default deliberately isolates one useful near cascade instead of stretching one cascade
- * across the complete camera far plane. This is a diagnostic/correctness mode, not final quality
- * policy. It can be disabled at launch with {@code -Dcombatant.render.deferred.shadowNearOnly=false}
- * once the hard-shadow geometry is known-good.</p>
+ * <p>Near-only is retained as an explicit diagnostic mode, but production defaults to the full
+ * cascade set now that near-field geometry, acne and camera/celestial stabilization have passed
+ * bring-up. Enable isolation explicitly with {@code -Dcombatant.render.deferred.shadowNearOnly=true}.</p>
  */
 final class DeferredShadowBringupConfig {
     private static final String NEAR_ONLY_PROPERTY = "combatant.render.deferred.shadowNearOnly";
@@ -20,12 +19,14 @@ final class DeferredShadowBringupConfig {
     private static final String NEAR_BIAS_PROPERTY = "combatant.render.deferred.shadowNearBiasTexels";
     private static final String NEAR_SLOPE_BIAS_PROPERTY = "combatant.render.deferred.shadowNearSlopeBiasTexels";
     private static final String NEAR_MAX_BIAS_PROPERTY = "combatant.render.deferred.shadowNearMaxBiasTexels";
+    private static final String FAR_FADE_FRACTION_PROPERTY = "combatant.render.deferred.shadowFarFadeFraction";
+    private static final String MAX_ADAPTIVE_FILTER_RADIUS_PROPERTY = "combatant.render.deferred.shadowMaxAdaptiveFilterRadiusTexels";
 
     private DeferredShadowBringupConfig() {
     }
 
     static boolean nearOnly() {
-        return Boolean.parseBoolean(System.getProperty(NEAR_ONLY_PROPERTY, "true"));
+        return Boolean.parseBoolean(System.getProperty(NEAR_ONLY_PROPERTY, "false"));
     }
 
     static float nearDistance() {
@@ -42,6 +43,14 @@ final class DeferredShadowBringupConfig {
 
     static float nearMaxBiasTexels() {
         return floatProperty(NEAR_MAX_BIAS_PROPERTY, 1.25f, 0.0f, 8.0f);
+    }
+
+    static float farFadeFraction() {
+        return floatProperty(FAR_FADE_FRACTION_PROPERTY, 0.12f, 0.0f, 0.40f);
+    }
+
+    static float maxAdaptiveFilterRadiusTexels() {
+        return floatProperty(MAX_ADAPTIVE_FILTER_RADIUS_PROPERTY, 2.5f, 0.0f, 6.0f);
     }
 
     private static float floatProperty(String key, float fallback, float min, float max) {

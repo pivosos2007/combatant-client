@@ -91,7 +91,7 @@ class HudListPanelLayout extends HudPanelLayout {
         key: `row:${prop(row, "key", "")}:name:${i}`,
         text,
         color: partColor,
-        class: cls(abs(x + px, y, Math.max(10, text.length * 8 * fs), rowTextH + 4 * bs), font("OnestMedium", fs), `text-${partColor}`),
+        class: cls(abs(x + px, y, Math.max(10, text.length * 8 * fs), rowTextH + 4 * bs), font("OnestMedium", this.fontSize()), `text-${partColor}`),
       }));
     }
     return nodes;
@@ -177,7 +177,7 @@ class HudListPanelLayout extends HudPanelLayout {
       key: `row:${key}:time-text`,
       text: rightText,
       color: rightColor,
-      class: cls(abs(textX, rowCenterY - rowTextH * 0.5, textBoxW, rowTextH + 4 * bs), font("OnestMedium", fs), `text-${rightColor}`, "text-align-center"),
+      class: cls(abs(textX, rowCenterY - rowTextH * 0.5, textBoxW, rowTextH + 4 * bs), font("OnestMedium", this.fontSize()), `text-${rightColor}`, "text-align-center"),
     })];
     return { decorations, text };
   }
@@ -223,7 +223,7 @@ class HudListPanelLayout extends HudPanelLayout {
         key: `row:${key}:right`,
         text: rightText,
         color: rightColor,
-        class: cls(abs(rightX, rowCenterY - rowTextH * 0.5, rightW, rowTextH + 4 * bs), font("OnestMedium", fs), `text-${rightColor}`, "text-align-right"),
+        class: cls(abs(rightX, rowCenterY - rowTextH * 0.5, rightW, rowTextH + 4 * bs), font("OnestMedium", this.fontSize()), `text-${rightColor}`, "text-align-right"),
       }));
     }
     return { decorations, icons, text };

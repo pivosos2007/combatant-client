@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 
 import combatant.client.features.theme.Theme;
@@ -339,7 +341,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         HudGlobalConfig hud = HudGlobalConfig.get();
         float scale = HudScale.scale(screenW, screenH);
         if (hud != null) {
-            scale *= hud.getFontSize() / 18f;
+            scale *= TextSizing.scaleForSize(hud.getFontSize());
         }
         scale *= getScale();
 
@@ -404,7 +406,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         int screenW = Math.max(1, Math.round(HudScale.virtualWidth(fbw, fbh)));
         int screenH = Math.max(1, Math.round(HudScale.virtualHeight(fbw, fbh)));
 
-        float baseScale = HudScale.scale(screenW, screenH) * (hud.getFontSize() / 18f) * getScale();
+        float baseScale = HudScale.scale(screenW, screenH) * TextSizing.scaleForSize(hud.getFontSize()) * getScale();
         float gap = BASE_GAP * baseScale;
 
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
@@ -560,7 +562,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         int screenW = Math.max(1, Math.round(width));
         int screenH = Math.max(1, Math.round(height));
 
-        float baseScale = HudScale.scale(screenW, screenH) * (hud.getFontSize() / 18f) * getScale();
+        float baseScale = HudScale.scale(screenW, screenH) * TextSizing.scaleForSize(hud.getFontSize()) * getScale();
         float margin = BASE_MARGIN * baseScale;
         float gap = BASE_GAP * baseScale;
 

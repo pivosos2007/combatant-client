@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.util.Mth;
@@ -101,7 +103,7 @@ public final class TimerIndicator extends DraggableHudElement {
                                int screenW,
                                int screenH,
                                float charge) {
-        float baseScale = HudScale.scale(screenW, screenH) * (hud.getFontSize() / 18f);
+        float baseScale = HudScale.scale(screenW, screenH) * TextSizing.scaleForSize(hud.getFontSize());
         float drawScale = baseScale * scale.get().floatValue();
 
         float boxW = TH_BASE_W * drawScale;

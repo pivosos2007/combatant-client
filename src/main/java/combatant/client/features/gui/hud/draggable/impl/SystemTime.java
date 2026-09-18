@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
 import net.minecraft.client.Minecraft;
@@ -187,7 +189,7 @@ public final class SystemTime extends DraggableHudElement implements ScriptableH
         TextRenderer valueRenderer = BuiltinFontCatalog.ONEST_REGULAR.renderer(fallback);
 
         float drawScale = HudScale.scale(screenW, screenH)
-                * (hud.getFontSize() / 18f)
+                * TextSizing.scaleForSize(hud.getFontSize())
                 * SCALE_MULT
                 * scale.get().floatValue();
 

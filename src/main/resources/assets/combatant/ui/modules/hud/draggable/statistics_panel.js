@@ -39,7 +39,8 @@ class StatisticsPanelLayout extends HudPanelLayout {
         key: "header:title",
         text: c(this.p.title, "Statistics"),
         color: color(this.pal, "titleText", "#FFFFFFFF"),
-        class: cls(abs(22 * bs, y, Math.max(20 * bs, w - 28 * bs), titleH + 4 * bs), font("Inter", fs, "bold"), `text-${color(this.pal, "titleText", "#FFFFFFFF")}`),
+        class: cls(abs(22 * bs, y, Math.max(20 * bs, w - 28 * bs), titleH + 4 * bs), `text-${color(this.pal, "titleText", "#FFFFFFFF")}`),
+        style: { fontFamily: "Inter", fontWeight: "bold", fontSize: this.fontSize() },
       }),
     ];
   }
@@ -69,13 +70,15 @@ class StatisticsPanelLayout extends HudPanelLayout {
         key: `stat:${key}:label`,
         text: label,
         color: alpha(color(this.pal, "muted", "#FFA5A5A5"), progress),
-        class: cls(abs(13 * bs + slideX, y, Math.max(10 * bs, valueX - 16 * bs), rowH + 4 * bs), font("OnestMedium", fs * 0.92), `text-${alpha(color(this.pal, "muted", "#FFA5A5A5"), progress)}`),
+        class: cls(abs(13 * bs + slideX, y, Math.max(10 * bs, valueX - 16 * bs), rowH + 4 * bs), `text-${alpha(color(this.pal, "muted", "#FFA5A5A5"), progress)}`),
+        style: { fontFamily: "OnestMedium", fontSize: this.fontSize(0.92) },
       }),
       ui.text({
         key: `stat:${key}:value`,
         text: value,
         color: alpha(valueColor, progress),
-        class: cls(abs(valueX - slideX, y, valueW, rowH + 4 * bs), font("OnestMedium", fs * 0.94), `text-${alpha(valueColor, progress)}`, "text-align-right"),
+        class: cls(abs(valueX - slideX, y, valueW, rowH + 4 * bs), `text-${alpha(valueColor, progress)}`, "text-align-right"),
+        style: { fontFamily: "OnestMedium", fontSize: this.fontSize(0.94) },
       }),
     ];
   }
@@ -131,13 +134,15 @@ class StatisticsPanelLayout extends HudPanelLayout {
       key: "playtime:value",
       text: c(this.p.playTime, "00:00"),
       color: color(this.pal, "text", "#FFFFFFFF"),
-      class: cls(abs(ringCx - 17 * bs, ringCy - 4.8 * bs, 34 * bs, 9 * bs), font("OnestMedium", fs * 0.80), `text-${color(this.pal, "text", "#FFFFFFFF")}`, "text-align-center"),
+      class: cls(abs(ringCx - 17 * bs, ringCy - 4.8 * bs, 34 * bs, 9 * bs), `text-${color(this.pal, "text", "#FFFFFFFF")}`, "text-align-center"),
+      style: { fontFamily: "OnestMedium", fontSize: this.fontSize(0.80) },
     }));
     nodes.push(ui.text({
       key: "playtime:label",
       text: "Play Time",
       color: color(this.pal, "muted", "#FFA5A5A5"),
-      class: cls(abs(ringCx - 18 * bs, ringCy + 5 * bs, 36 * bs, 8 * bs), font("OnestMedium", fs * 0.66), `text-${color(this.pal, "muted", "#FFA5A5A5")}`, "text-align-center"),
+      class: cls(abs(ringCx - 18 * bs, ringCy + 5 * bs, 36 * bs, 8 * bs), `text-${color(this.pal, "muted", "#FFA5A5A5")}`, "text-align-center"),
+      style: { fontFamily: "OnestMedium", fontSize: this.fontSize(0.66) },
     }));
     return nodes;
   }
@@ -205,13 +210,15 @@ class StatisticsPanelLayout extends HudPanelLayout {
       key: "graph:title",
       text: "Speed",
       color: color(this.pal, "titleText", "#FFFFFFFF"),
-      class: cls(abs(6 * bs, headerY, 36 * bs, 9 * bs), font("Inter", fs * 0.86, "bold"), `text-${color(this.pal, "titleText", "#FFFFFFFF")}`),
+      class: cls(abs(6 * bs, headerY, 36 * bs, 9 * bs), `text-${color(this.pal, "titleText", "#FFFFFFFF")}`),
+      style: { fontFamily: "Inter", fontWeight: "bold", fontSize: this.fontSize(0.86) },
     }));
     nodes.push(ui.text({
       key: "graph:average",
       text: `Average: ${c(this.p.averageSpeed, "0.00 BPS")}`,
       color: color(this.pal, "muted", "#FFA5A5A5"),
-      class: cls(abs(w - 78 * bs, headerY + 0.2 * bs, 72 * bs, 9 * bs), font("OnestMedium", fs * 0.73), `text-${color(this.pal, "muted", "#FFA5A5A5")}`, "text-align-right"),
+      class: cls(abs(w - 78 * bs, headerY + 0.2 * bs, 72 * bs, 9 * bs), `text-${color(this.pal, "muted", "#FFA5A5A5")}`, "text-align-right"),
+      style: { fontFamily: "OnestMedium", fontSize: this.fontSize(0.73) },
     }));
 
     const plotX = 5 * bs;

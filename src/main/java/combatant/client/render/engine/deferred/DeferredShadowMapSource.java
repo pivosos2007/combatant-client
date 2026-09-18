@@ -137,8 +137,9 @@ final class DeferredShadowMapSource implements AutoCloseable {
         Std430Writer writer = new Std430Writer(CASCADE_LAYOUT, DeferredShadowCascadeSource.MAX_CASCADE_COUNT);
         int count = Math.min(views.size(), DeferredShadowCascadeSource.MAX_CASCADE_COUNT);
         StringBuilder footprint = DebugLog.isEnabled()
-                ? new StringBuilder(160).append("count=").append(count)
+                ? new StringBuilder(192).append("count=").append(count)
                 .append(" mode=").append(DeferredShadowBringupConfig.nearOnly() ? "near-only" : "csm")
+                .append(" stabilizer=camera-delta-texel")
                 .append(" atlas=").append(width).append('x').append(height)
                 : null;
         for (int i = 0; i < count; i++) {

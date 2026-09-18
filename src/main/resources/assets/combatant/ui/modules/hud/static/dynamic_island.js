@@ -151,7 +151,7 @@ function telemetryMode(p, isPvp) {
     phosphorText(p, {
       key: isPvp ? "pvp:timer" : "time",
       text: value,
-      class: cls(abs(x + 7, 7.5, Math.max(1, w - 14), 20), "font-MatrixSansPrint-0.94 text-align-center"),
+      class: cls(abs(x + 7, 7.5, Math.max(1, w - 14), 20), "font-MatrixSansPrint font-size-16.92 text-align-center"),
     }, 1, isPvp ? 0.30 : 0.24, 2.0),
   ];
 }
@@ -195,7 +195,7 @@ function clickGuiTabs(p) {
       textGlowWidth: active || hovered ? 1.7 : 0,
       textGlowStrength: active ? 0.24 : (hovered ? 0.14 : 0),
       interactive: false,
-      class: cls(abs(tabX, (height - 17) * 0.5 - 1, tabW, 17), "font-OnestMedium-0.80 text-align-center"),
+      class: cls(abs(tabX, (height - 17) * 0.5 - 1, tabW, 17), "font-OnestMedium font-size-14.4 text-align-center"),
     }));
     nodes.push(ui.shape({
       key: `clickgui:underline:${index}`,
@@ -220,7 +220,7 @@ function musicCompact(ctx, p) {
     phosphorText(p, {
       key: "music:clock:compact",
       text: p.time || "00:00",
-      class: cls(abs(x + 9, 10.3, 40, 14), "font-MatrixSansPrint-0.72 text-align-center"),
+      class: cls(abs(x + 9, 10.3, 40, 14), "font-MatrixSansPrint font-size-12.96 text-align-center"),
     }, alpha, 0.20, 1.7),
     ui.shape({ key: "music:divider", shape: "rect", class: abs(x + 52, 8, 0.75, 19), fill: colorAlpha(p.displayEdge, alpha) }),
     artwork(p, "artwork:compact", x + 58, 8.5, 18, alpha),
@@ -231,7 +231,7 @@ function musicCompact(ctx, p) {
       y: 8.7,
       w: titleW,
       h: 18,
-      textClass: cls("font-OnestMedium-0.82", `text-${colorAlpha(p.textPrimary, alpha)}`),
+      textClass: cls("font-OnestMedium font-size-14.76", `text-${colorAlpha(p.textPrimary, alpha)}`),
       measuredWidth: p.titleWidthCompact,
       scrollTime: p.titleScrollTime,
       fade: true,
@@ -243,7 +243,7 @@ function musicCompact(ctx, p) {
     nodes.push(phosphorText(p, {
       key: "music:pvp:compact",
       text: p.pvpTelemetry || "PVP 00",
-      class: cls(abs(x + w - 55, 10.5, 48, 14), "font-MatrixSansPrint-0.62 text-align-right"),
+      class: cls(abs(x + w - 55, 10.5, 48, 14), "font-MatrixSansPrint font-size-11.16 text-align-right"),
     }, alpha, 0.28, 1.8));
   } else {
     nodes.push(...waveBars(ctx, p, x + w - 19, 17.5, alpha));
@@ -273,7 +273,7 @@ function control(p, key, icon, x, y, hover, tint, active) {
       textGlowColor: colorAlpha(p.phosphor, alpha),
       textGlowWidth: 1.5 + glow * 0.7,
       textGlowStrength: (0.12 + glow * 0.24) * alpha,
-      class: cls(abs(x, y + 4, size, size - 4), "font-mediaplayer-1.22 text-align-center"),
+      class: cls(abs(x, y + 4, size, size - 4), "font-mediaplayer font-size-21.96 text-align-center"),
     }),
     ui.shape({
       key: `${key}:active`,
@@ -350,12 +350,12 @@ function musicExpanded(p) {
     phosphorText(p, {
       key: "music:label:expanded",
       text: "NOW PLAYING",
-      class: cls(abs(x + 13, 7, 90, 12), "font-MatrixSansPrint-0.54"),
+      class: cls(abs(x + 13, 7, 90, 12), "font-MatrixSansPrint font-size-9.72"),
     }, alpha, 0.14, 1.5),
     phosphorText(p, {
       key: "music:elapsed:header",
       text: p.elapsed || "0:00",
-      class: cls(abs(x + w - 61, 7, 48, 12), "font-MatrixSansPrint-0.62 text-align-right"),
+      class: cls(abs(x + w - 61, 7, 48, 12), "font-MatrixSansPrint font-size-11.16 text-align-right"),
     }, alpha, 0.20, 1.7),
     ui.shape({
       key: "artwork:expanded:frame", shape: "box", class: abs(x + 12, 23, 30, 30),
@@ -366,14 +366,14 @@ function musicExpanded(p) {
     ui.clippedText({
       key: "music:title:expanded", text: p.title || "", x: x + 50, y: 22.5,
       w: Math.max(0, w - 63), h: 16,
-      textClass: cls("font-OnestMedium-0.86", `text-${colorAlpha(p.textPrimary, alpha)}`),
+      textClass: cls("font-OnestMedium font-size-15.48", `text-${colorAlpha(p.textPrimary, alpha)}`),
       measuredWidth: p.titleWidthExpanded, scrollTime: p.titleScrollTime, fade: true,
       color: colorAlpha(p.textPrimary, alpha),
     }),
     ui.clippedText({
       key: "music:artist:expanded", text: p.artist || "", x: x + 50, y: 38,
       w: Math.max(0, w - 63), h: 14,
-      textClass: cls("font-Onest-0.70", `text-${colorAlpha(p.textSecondary, alpha)}`),
+      textClass: cls("font-Onest font-size-12.6", `text-${colorAlpha(p.textSecondary, alpha)}`),
       measuredWidth: p.artistWidthExpanded, scrollTime: p.titleScrollTime,
       scrollDelay: 1.4, scrollSpeed: 14, fade: true,
       color: colorAlpha(p.textSecondary, alpha),
@@ -381,11 +381,11 @@ function musicExpanded(p) {
     ...progressDots(p, x, w, alpha),
     phosphorText(p, {
       key: "music:elapsed:expanded", text: p.elapsed || "0:00",
-      class: cls(abs(x + 13, 63, 44, 12), "font-MatrixSansPrint-0.58"),
+      class: cls(abs(x + 13, 63, 44, 12), "font-MatrixSansPrint font-size-10.44"),
     }, alpha, 0.14, 1.5),
     phosphorText(p, {
       key: "music:total:expanded", text: p.total || "0:00",
-      class: cls(abs(x + w - 57, 63, 44, 12), "font-MatrixSansPrint-0.58 text-align-right"),
+      class: cls(abs(x + w - 57, 63, 44, 12), "font-MatrixSansPrint font-size-10.44 text-align-right"),
     }, alpha, 0.14, 1.5),
     ...control(p, "music:prev", p.iconPrev, p.prevX, p.prevY, num(p.prevHover, 0), p.textPrimary, false),
     ...control(p, "music:play", p.iconPlay, p.playX, p.playY, num(p.playHover, 0), p.phosphor, true),

@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.script;
 
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.theme.Themes;
@@ -40,7 +41,6 @@ import java.util.Map;
 public final class ScriptedTooltipPanel {
     private static final float MEASURE_EXTRA_WIDTH = 512.0f;
     private static final float MEASURE_HEIGHT = 4096.0f;
-    private static final float TOOLTIP_FONT_SCALE_RATIO = 14.5f / 18.0f;
 
     private final String runtimeKey;
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedTooltipPanel.class);
@@ -288,10 +288,10 @@ public final class ScriptedTooltipPanel {
             return new PreparedLines(List.of(), 0.0f);
         }
 
-        float textScale = TOOLTIP_FONT_SCALE_RATIO * Math.max(0.05f, scale);
+        float fontSize = 14.5f * Math.max(0.05f, scale);
         float widthLimit = Math.max(1.0f, maxContentWidth);
         boolean started = renderer != null && !renderer.isBuilding();
-        if (started) renderer.begin(textScale, true, false);
+        if (started) renderer.beginSize(fontSize, true, false);
         try {
             float longest = 0.0f;
             for (Line line : lines) {

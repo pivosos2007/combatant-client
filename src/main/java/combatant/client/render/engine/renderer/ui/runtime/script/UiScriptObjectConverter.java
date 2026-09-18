@@ -24,7 +24,8 @@ public final class UiScriptObjectConverter {
     private static final List<String> RESERVED_NODE_KEYS = List.of(
             "type", "key", "class", "className", "style", "props", "events", "meta", "children",
             "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "grow", "display", "flexDirection", "absolute",
-            "x", "y", "align", "justify", "overflow", "textAlign", "maxTextWidth", "ellipsis", "marquee",
+            "x", "y", "align", "justify", "overflow", "fontSize", "lineHeight", "fontFamily", "fontWeight", "fontStyle",
+            "textAlign", "maxTextWidth", "ellipsis", "marquee",
             "onClick", "onChange", "onInput", "onScroll"
     );
 
@@ -166,6 +167,11 @@ public final class UiScriptObjectConverter {
         promote(node, style, "y", "y");
         promote(node, style, "justify", "justify");
         promote(node, style, "overflow", "overflow");
+        promote(node, style, "fontSize", "fontSize");
+        promote(node, style, "lineHeight", "lineHeight");
+        promote(node, style, "fontFamily", "fontFamily");
+        promote(node, style, "fontWeight", "fontWeight");
+        promote(node, style, "fontStyle", "fontStyle");
         promote(node, style, "textAlign", "textAlign");
         promote(node, style, "maxTextWidth", "maxTextWidth");
         promote(node, style, "ellipsis", "ellipsis");

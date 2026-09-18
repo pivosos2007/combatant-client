@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
 import net.minecraft.client.Minecraft;
@@ -156,7 +158,7 @@ public final class Radar extends DraggableHudElement {
 
     private void renderRectMode(Renderer2D renderer, float tickDelta, int screenW, int screenH) {
         float scale = HudScale.scale(screenW, screenH)
-                * (hud.getFontSize() / 18f);
+                * TextSizing.scaleForSize(hud.getFontSize());
         float size = this.size.get().floatValue() * scale;
         float baseX = x;
         float baseY = y;
@@ -236,7 +238,7 @@ public final class Radar extends DraggableHudElement {
         TextRenderer renderer = BuiltinFontCatalog.IOSEVKA_REGULAR.renderer(fallback);
 
         float scale = HudScale.scale(screenW, screenH)
-                * (hud.getFontSize() / 18f)
+                * TextSizing.scaleForSize(hud.getFontSize())
                 * TEXT_SCALE_MULT;
 
         renderer.begin(scale, false, false);

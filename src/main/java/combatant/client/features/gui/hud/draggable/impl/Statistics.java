@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.SettingDef;
 import combatant.client.config.values.BooleanMapValue;
@@ -239,7 +241,7 @@ public final class Statistics extends DraggableHudElement {
         if (rowTextRenderer == null) rowTextRenderer = fallback;
 
         float baseScale = HudScale.scale(screenW, screenH) * 1.1f * HudPanelLayoutModes.effectiveScale(scaleValue);
-        float fontScale = 0.98f * (hud.getFontSize() / 18.0f);
+        float fontScale = 0.98f * TextSizing.scaleForSize(hud.getFontSize());
 
         headerTextRenderer.begin(fontScale, false, false);
         float headerTextH = (float) headerTextRenderer.getHeight(false);

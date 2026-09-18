@@ -40,7 +40,7 @@ public final class UiInlineStyle {
             "background", "backgroundcolor", "bordercolor", "strokecolor", "borderwidth", "strokewidth",
             "shadow", "boxshadow", "shadowcolor", "shadowblur", "shadowinneralpha",
             "blur", "blurquality", "blurbrightness", "bluralpha", "liquidglass", "clip", "marquee",
-            "color", "textcolor", "fontfamily", "fontweight", "fontstyle", "fontscale", "textscale",
+            "color", "textcolor", "fontfamily", "fontweight", "fontstyle", "fontsize", "lineheight", "fontscale", "textscale",
             "textshadow", "texteffect", "texteffectspeed", "textbackend", "maxtextwidth", "ellipsis",
             "textalign", "cursor", "blend", "opacity"
     );
@@ -178,8 +178,13 @@ public final class UiInlineStyle {
         Integer textColor = firstColor("color", "textcolor");
         if (textColor != null) builder.textColor(textColor);
         applyFont(builder, resolvedBase);
+        // Legacy multiplicative scale is accepted, but authored fontSize wins when both are present.
         Float textScale = firstNumber("fontscale", "textscale");
         if (textScale != null) builder.textScale(textScale);
+        Float fontSize = number("fontsize");
+        if (fontSize != null) builder.fontSize(fontSize);
+        Float lineHeight = number("lineheight");
+        if (lineHeight != null) builder.lineHeight(lineHeight);
         Boolean textShadow = bool("textshadow");
         if (textShadow != null) builder.textShadow(textShadow);
         String textEffect = text("texteffect");

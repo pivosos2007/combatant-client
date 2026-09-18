@@ -39,12 +39,12 @@ layout(std430, binding = 6) readonly buffer ShadowResolveCamera {
     // w: minimum PCF filter radius (texels).
     vec4 shadowParams0;
     // x: blocker-search radius (texels), y: PCSS penumbra scale (texels / normalized depth),
-    // z: maximum penumbra radius (texels).
+    // z: maximum penumbra radius (texels), w: final-cascade distance fade fraction.
     vec4 shadowParams1;
     // xyz: receiver-to-light direction, w: valid.
     vec4 directionalLight;
     // x: receiver slope-bias scale (texels), y: maximum total receiver bias (texels),
-    // z: minimum N.L used by the slope estimate.
+    // z: minimum N.L used by the slope estimate, w: maximum adaptive PCF radius (texels).
     vec4 shadowBiasParams;
 } u_Camera;
 
@@ -97,6 +97,27 @@ ShadowProjection projectShadow(ShadowCascade cascade, vec3 worldRelative) {
     return result;
 }
 
+
+float shadowScreenFootprintTexels(ShadowCascade cascade, vec2 uv, float depth, vec3 worldRelative) {
+    ShadowProjection center = projectShadow(cascade, worldRelative);
+    if (!center.valid) return 1.0;
+
+    vec2 viewport = max(u_Camera.viewportAndFar.xy, vec2(1.0));
+    vec2 pixelUv = 1.0 / viewport;
+    vec2 uvX = min(uv + vec2(pixelUv.x, 0.0), vec2(1.0) - pixelUv * 0.5);
+    vec2 uvY = min(uv + vec2(0.0, pixelUv.y), vec2(1.0) - pixelUv * 0.5);
+    vec3 worldX = reconstructCameraRelativeWorld(uvX, depth);
+    vec3 worldY = reconstructCameraRelativeWorld(uvY, depth);
+    ShadowProjection projectedX = projectShadow(cascade, worldX);
+    ShadowProjection projectedY = projectShadow(cascade, worldY);
+    if (!projectedX.valid || !projectedY.valid) return 1.0;
+
+    vec2 atlasTexel = max(cascade.shadowTexel.xy, vec2(1e-7));
+    float footprintX = length((projectedX.atlasUv - center.atlasUv) / atlasTexel);
+    float footprintY = length((projectedY.atlasUv - center.atlasUv) / atlasTexel);
+    return max(1.0, max(footprintX, footprintY));
+}
+
 vec2 clampAtlasUv(ShadowCascade cascade, vec2 atlasUv) {
     vec2 halfTexel = cascade.shadowTexel.xy * 0.5;
     vec2 minimum = cascade.atlasScaleBias.zw + halfTexel;
@@ -112,6 +133,7 @@ bool blockerAt(float storedDepth, float receiverDepth, float bias) {
 float filteredCascadeVisibility(ShadowCascade cascade,
                                 vec3 worldRelative,
                                 vec3 normalWorld,
+                                float screenFootprintTexels,
                                 out float hardVisibility,
                                 out bool valid) {
     float worldTexel = max(cascade.shadowTexel.z, 1e-6);
@@ -142,7 +164,13 @@ float filteredCascadeVisibility(ShadowCascade cascade,
 
     // PCSS is deliberately excluded from the normalization path. Use a deterministic square PCF
     // kernel so a stationary world receiver always samples the same shadow texels.
-    float filterRadius = max(u_Camera.shadowParams0.w, 0.0);
+    float baseFilterRadius = max(u_Camera.shadowParams0.w, 0.0);
+    float maxAdaptiveRadius = max(u_Camera.shadowBiasParams.w, baseFilterRadius);
+    // A fixed one-texel PCF footprint aliases under minification: one output pixel may cover
+    // multiple shadow texels at distance, producing the characteristic screen-space dirt/crawl.
+    // Spread the deterministic 3x3 taps over the projected receiver footprint instead.
+    float adaptiveRadius = 0.75 * max(screenFootprintTexels - 1.0, 0.0);
+    float filterRadius = min(max(baseFilterRadius, adaptiveRadius), maxAdaptiveRadius);
     if (filterRadius <= 1e-4) {
         return hardVisibility;
     }
@@ -206,8 +234,11 @@ void main() {
 
     bool primaryValid = false;
     float hardVisibility = 1.0;
+    float primaryFootprint = shadowScreenFootprintTexels(
+            u_Shadow.cascades[cascadeIndex], uv, depth, worldRelative);
     float visibility = filteredCascadeVisibility(
-            u_Shadow.cascades[cascadeIndex], worldRelative, normalWorld, hardVisibility, primaryValid);
+            u_Shadow.cascades[cascadeIndex], worldRelative, normalWorld,
+            primaryFootprint, hardVisibility, primaryValid);
     if (!primaryValid) {
         visibility = 1.0;
         hardVisibility = 1.0;
@@ -222,14 +253,28 @@ void main() {
         if (blend > 0.0) {
             bool nextValid = false;
             float nextHardVisibility = 1.0;
+            float nextFootprint = shadowScreenFootprintTexels(
+                    u_Shadow.cascades[cascadeIndex + 1], uv, depth, worldRelative);
             float nextVisibility = filteredCascadeVisibility(
                     u_Shadow.cascades[cascadeIndex + 1], worldRelative, normalWorld,
-                    nextHardVisibility, nextValid);
+                    nextFootprint, nextHardVisibility, nextValid);
             if (nextValid) {
                 visibility = mix(visibility, nextVisibility, blend);
                 hardVisibility = mix(hardVisibility, nextHardVisibility, blend);
             }
         }
+    }
+
+
+    // The last cascade is a finite-resolution representation, not an entitlement to preserve
+    // binary high-frequency shadow detail all the way to the receiver cutoff. Fade only the
+    // filtered lighting contribution near the final range edge; hardVisibility stays raw for debug.
+    float farFadeFraction = clamp(u_Camera.shadowParams1.w, 0.0, 0.40);
+    if (farFadeFraction > 0.0 && cascadeIndex == cascadeCount - 1) {
+        vec2 split = u_Shadow.cascades[cascadeIndex].splitRange.xy;
+        float fadeWidth = max((split.y - split.x) * farFadeFraction, 1e-4);
+        float farFade = smoothstep(split.y - fadeWidth, split.y, distanceValue);
+        visibility = mix(visibility, 1.0, farFade);
     }
 
     storeVisibility(pixel, visibility, hardVisibility, cascadeIndexEncoded);

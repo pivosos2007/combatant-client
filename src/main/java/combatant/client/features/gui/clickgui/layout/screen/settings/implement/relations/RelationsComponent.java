@@ -216,7 +216,7 @@ public final class RelationsComponent {
             if (enabledToggle.contains(mx, my)) {
                 StaffHeuristicsConfig cfg = StaffHeuristicsConfig.get();
                 cfg.setEnabled(!cfg.enabled());
-                GuiSound.TOGGLE.feedback();
+                GuiSound.booleanFeedback(cfg.enabled());
                 return true;
             }
             if (prefixInputRect.contains(mx, my)) return focusField(ActiveField.PREFIX);

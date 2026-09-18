@@ -12,6 +12,7 @@ import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.util.text.TextRenderUtil;
 
 import java.util.ArrayList;
@@ -151,7 +152,7 @@ public enum WorldMarkerHudRenderer {
                     );
                 }
                 if (!marker.meta().isBlank()) {
-                    metaFont.begin(marker.metaSize() / 18.0f, false, false);
+                    metaFont.begin(TextSizing.scaleForSize(marker.metaSize()), false, false);
                     try {
                         metaFont.render(
                                 marker.meta(),
@@ -192,7 +193,7 @@ public enum WorldMarkerHudRenderer {
         for (TextRenderUtil.Part part : parts) {
             if (part.text() == null || part.text().isEmpty()) continue;
             TextRenderer font = part.bold() ? bold : regular;
-            font.begin(size / 18.0f, false, false);
+            font.begin(TextSizing.scaleForSize(size), false, false);
             float width;
             try {
                 font.render(
@@ -230,7 +231,7 @@ public enum WorldMarkerHudRenderer {
 
     private static float measureWidth(TextRenderer renderer, String text, float size) {
         if (text == null || text.isEmpty()) return 0.0f;
-        renderer.begin(size / 18.0f, true, false);
+        renderer.begin(TextSizing.scaleForSize(size), true, false);
         try {
             return (float) renderer.getWidth(text, false);
         } finally {
@@ -239,7 +240,7 @@ public enum WorldMarkerHudRenderer {
     }
 
     private static float measureHeight(TextRenderer renderer, float size) {
-        renderer.begin(size / 18.0f, true, false);
+        renderer.begin(TextSizing.scaleForSize(size), true, false);
         try {
             return (float) renderer.getHeight(false);
         } finally {

@@ -14,9 +14,9 @@ const arr = ui.arr;
 const color = ui.color.get;
 const alpha = ui.color.alpha;
 
-function font(family, scale, type) {
+function font(family, size, type) {
   const suffix = type ? `-${type}` : "";
-  return `font-${family}${suffix}-${s(scale)}`;
+  return cls(`font-${family}${suffix}`, `font-size-${s(size)}`);
 }
 
 function entryPos(p, index) {
@@ -32,7 +32,8 @@ function entryPos(p, index) {
 function compactText(p, pal, pos, entry, index) {
   if (c(p.mode, "icons") !== "compact") return null;
   const bs = n(p.baseScale, 1);
-  const fs = 0.78 * n(p.drawScale, 1);
+  const fontSize = 18 * 0.78 * n(p.drawScale, 1);
+  const widthScale = fontSize / 18;
   const text = c(prop(entry, "label", ""), "");
   const a = Math.max(0, Math.min(1, n(prop(entry, "alpha", 1), 1)));
   const accent = c(prop(entry, "accent", color(pal, "accent", "#FFFFFFFF")), color(pal, "accent", "#FFFFFFFF"));
@@ -43,9 +44,9 @@ function compactText(p, pal, pos, entry, index) {
     y: 6.0 * bs,
     w: Math.max(1, pos.w - 29 * bs),
     h: Math.max(8, pos.h - 8 * bs),
-    textClass: cls(font("Inter", fs, "bold"), `text-${alpha(color(pal, "text", "#FFFFFFFF"), a)}`),
+    textClass: cls(font("Inter", fontSize, "bold"), `text-${alpha(color(pal, "text", "#FFFFFFFF"), a)}`),
     color: alpha(color(pal, "text", "#FFFFFFFF"), a),
-    measuredWidth: Math.max(1, text.length * 6.4 * fs),
+    measuredWidth: Math.max(1, text.length * 6.4 * widthScale),
     fadeWidth: 7 * bs,
     fade: true,
     centerWhenFits: false,

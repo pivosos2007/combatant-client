@@ -62,18 +62,18 @@ function withAlpha(hex, amount) {
 
 const alpha01 = ui.color.opacity;
 
-function font(family, scale) {
+function font(family, size) {
   const name = c(family, "OnestMedium");
   const mapped = name === "OnestMedium" ? "OnestMedium" : name;
-  return `font-${mapped}-${s(n(scale, 1))}`;
+  return cls(`font-${mapped}`, `font-size-${s(n(size, 18))}`);
 }
 
-function textNode(key, text, x, y, w, h, family, scale, color, extra, props = {}) {
+function textNode(key, text, x, y, w, h, family, fontSize, color, extra, props = {}) {
   return ui.text({
     key,
     text: text || "",
     color: c(color, "#FFFFFFFF"),
-    class: cls(abs(x, y, w, h), font(family, scale), `text-${c(color, "#FFFFFFFF")}`, extra),
+    class: cls(abs(x, y, w, h), font(family, fontSize), `text-${c(color, "#FFFFFFFF")}`, extra),
     ...props,
   });
 }
@@ -189,7 +189,7 @@ function icon(p) {
   const y = Math.max(0, (n(p.height, 20) - h) * 0.5);
   const color = c(p.iconColor, "#FFFFFFFF");
   if (p.iconKind === "glyph") {
-    return textNode("icon:glyph", p.iconGlyph || "", x, y, w, h, p.iconFont || "WeatherIcons", n(p.iconScale, 1), color, "text-align-center");
+    return textNode("icon:glyph", p.iconGlyph || "", x, y, w, h, p.iconFont || "WeatherIcons", n(p.iconFontSize, 18), color, "text-align-center");
   }
   return ui.image({
     key: "icon:texture",
@@ -229,13 +229,13 @@ function compactTextRow(p) {
   const unitW = Math.max(1, slot(layout.unitSlots, p.id || "", n(p.unitW, 10) / Math.max(0.001, scale), layout.unitSlots.default) * scale);
   const extraX = unitX + unitW + Math.max(2, 4 * scale);
   if (p.valueVisible === true) {
-    children.push(textNode("value", p.valueText || "", valueX, valueY, valueW, Math.max(8, n(p.height, 20)), p.valueFont, n(p.valueScale, 1), c(p.valueColor, "#FFFFFFFF")));
+    children.push(textNode("value", p.valueText || "", valueX, valueY, valueW, Math.max(8, n(p.height, 20)), p.valueFont, n(p.valueFontSize, 18), c(p.valueColor, "#FFFFFFFF")));
   }
   if (p.unitVisible === true) {
-    children.push(textNode("unit", p.unitText || "", unitX, valueY, unitW, Math.max(8, n(p.height, 20)), p.unitFont, n(p.unitScale, n(p.valueScale, 1)), c(p.unitColor, "#99FFFFFF")));
+    children.push(textNode("unit", p.unitText || "", unitX, valueY, unitW, Math.max(8, n(p.height, 20)), p.unitFont, n(p.unitFontSize, n(p.valueFontSize, 18)), c(p.unitColor, "#99FFFFFF")));
   }
   if (p.extraVisible === true) {
-    children.push(textNode("extra", p.extraText || "", extraX, valueY, Math.max(1, n(p.extraW, 10)), Math.max(8, n(p.height, 20)), p.extraFont, n(p.extraScale, n(p.valueScale, 1)), c(p.extraColor, "#77FFFFFF")));
+    children.push(textNode("extra", p.extraText || "", extraX, valueY, Math.max(1, n(p.extraW, 10)), Math.max(8, n(p.height, 20)), p.extraFont, n(p.extraFontSize, n(p.valueFontSize, 18)), c(p.extraColor, "#77FFFFFF")));
   }
   return ui.stack({
     key: "text:layer",
@@ -248,25 +248,25 @@ function coordinatesRow(p) {
   const x = layoutValue(layout.textXById, p.id || "", layout.textX) * n(p.scale, 1);
   const y = n(p.valueY, 4);
   const h = Math.max(8, n(p.height, 20) - y);
-  const scale = n(p.valueScale, n(p.scale, 1));
+  const fontSize = n(p.valueFontSize, 18 * n(p.scale, 1));
   const gap = Math.max(2, n(p.scale, 1) * 3.2);
   const pairGap = Math.max(1, n(p.scale, 1) * 1.6);
   const labelColor = c(p.labelColor, c(p.unitColor, "#99FFFFFF"));
   const valueColor = c(p.valueColor, "#FFFFFFFF");
   const children = [
-    ui.text({ key: "x:l", text: "x", color: labelColor, class: cls(font("OnestMedium", scale), `text-${labelColor}`) }),
-    ui.text({ key: "x:v", text: p.xText || "0", color: valueColor, class: cls(`ml-${s(pairGap)}`, font("Onest", scale), `text-${valueColor}`) }),
-    ui.text({ key: "y:l", text: "y", color: labelColor, class: cls(`ml-${s(gap)}`, font("OnestMedium", scale), `text-${labelColor}`) }),
-    ui.text({ key: "y:v", text: p.yText || "0", color: valueColor, class: cls(`ml-${s(pairGap)}`, font("Onest", scale), `text-${valueColor}`) }),
-    ui.text({ key: "z:l", text: "z", color: labelColor, class: cls(`ml-${s(gap)}`, font("OnestMedium", scale), `text-${labelColor}`) }),
-    ui.text({ key: "z:v", text: p.zText || "0", color: valueColor, class: cls(`ml-${s(pairGap)}`, font("Onest", scale), `text-${valueColor}`) }),
+    ui.text({ key: "x:l", text: "x", color: labelColor, class: cls(font("OnestMedium", fontSize), `text-${labelColor}`) }),
+    ui.text({ key: "x:v", text: p.xText || "0", color: valueColor, class: cls(`ml-${s(pairGap)}`, font("Onest", fontSize), `text-${valueColor}`) }),
+    ui.text({ key: "y:l", text: "y", color: labelColor, class: cls(`ml-${s(gap)}`, font("OnestMedium", fontSize), `text-${labelColor}`) }),
+    ui.text({ key: "y:v", text: p.yText || "0", color: valueColor, class: cls(`ml-${s(pairGap)}`, font("Onest", fontSize), `text-${valueColor}`) }),
+    ui.text({ key: "z:l", text: "z", color: labelColor, class: cls(`ml-${s(gap)}`, font("OnestMedium", fontSize), `text-${labelColor}`) }),
+    ui.text({ key: "z:v", text: p.zText || "0", color: valueColor, class: cls(`ml-${s(pairGap)}`, font("Onest", fontSize), `text-${valueColor}`) }),
   ];
   if (p.showNether === true && p.netherText) {
     children.push(ui.text({
       key: "nether",
       text: p.netherText,
       color: c(p.extraColor, "#77FFFFFF"),
-      class: cls(`ml-${s(gap)}`, font("Onest", scale), `text-${c(p.extraColor, "#77FFFFFF")}`),
+      class: cls(`ml-${s(gap)}`, font("Onest", fontSize), `text-${c(p.extraColor, "#77FFFFFF")}`),
     }));
   }
   return ui.row({
@@ -292,16 +292,16 @@ function digitLayer(p) {
       key: "digit:clip",
       class: abs(valueX, valueY - 2, valueW, Math.max(8, n(p.height, 20)), "clip overflow-hidden"),
       children: [
-        textNode("digit:prev", p.previousValue || "", 0, 0, valueW, Math.max(8, n(p.height, 20)), p.valueFont, n(p.valueScale, 1), alpha(c(p.valueColor, "#FFFFFFFF"), 1 - progress), "", { textOffsetY: previousY }),
-        textNode("digit:current", p.valueText || "", 0, 0, valueW, Math.max(8, n(p.height, 20)), p.valueFont, n(p.valueScale, 1), alpha(c(p.valueColor, "#FFFFFFFF"), progress), "", { textOffsetY: currentY }),
+        textNode("digit:prev", p.previousValue || "", 0, 0, valueW, Math.max(8, n(p.height, 20)), p.valueFont, n(p.valueFontSize, 18), alpha(c(p.valueColor, "#FFFFFFFF"), 1 - progress), "", { textOffsetY: previousY }),
+        textNode("digit:current", p.valueText || "", 0, 0, valueW, Math.max(8, n(p.height, 20)), p.valueFont, n(p.valueFontSize, 18), alpha(c(p.valueColor, "#FFFFFFFF"), progress), "", { textOffsetY: currentY }),
       ],
     }),
   ];
   if (p.unitVisible === true) {
-    children.push(textNode("unit", p.unitText || "", unitX, valueY, Math.max(1, slot(layout.unitSlots, p.id || "", n(p.unitW, 10) / Math.max(0.001, scale), layout.unitSlots.default) * scale), Math.max(8, n(p.height, 20)), p.unitFont, n(p.unitScale, n(p.valueScale, 1)), c(p.unitColor, "#99FFFFFF")));
+    children.push(textNode("unit", p.unitText || "", unitX, valueY, Math.max(1, slot(layout.unitSlots, p.id || "", n(p.unitW, 10) / Math.max(0.001, scale), layout.unitSlots.default) * scale), Math.max(8, n(p.height, 20)), p.unitFont, n(p.unitFontSize, n(p.valueFontSize, 18)), c(p.unitColor, "#99FFFFFF")));
   }
   if (p.extraVisible === true) {
-    children.push(textNode("extra", p.extraText || "", n(p.extraX, 0), n(p.extraY, valueY), Math.max(1, n(p.extraW, 10)), Math.max(8, n(p.height, 20)), p.extraFont, n(p.extraScale, n(p.valueScale, 1)), c(p.extraColor, "#77FFFFFF")));
+    children.push(textNode("extra", p.extraText || "", n(p.extraX, 0), n(p.extraY, valueY), Math.max(1, n(p.extraW, 10)), Math.max(8, n(p.height, 20)), p.extraFont, n(p.extraFontSize, n(p.valueFontSize, 18)), c(p.extraColor, "#77FFFFFF")));
   }
   return ui.stack({
     key: "digit:layer",

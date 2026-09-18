@@ -21,6 +21,7 @@ import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptR
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.text.TextSizing;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -402,7 +403,7 @@ final class ScriptedListHudPanel {
             out.put("height", height);
             out.put("drawScale", drawScale);
             out.put("baseScale", baseScale);
-            out.put("fontScale", fontScale);
+            out.put("fontSize", TextSizing.sizeForScale(fontScale));
             out.put("headerIconHeight", headerIconHeight);
             out.put("headerTextHeight", headerTextHeight);
             out.put("rowTextHeight", rowTextHeight);

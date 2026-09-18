@@ -149,23 +149,23 @@ final class DeferredShadowResolveSource implements AutoCloseable {
                 .putVec4(0, "shadowParams0",
                         nearOnly ? 0.0f : settings.shadowCascadeBlendFraction(),
                         nearOnly ? 0.0f : settings.shadowNormalOffsetTexels(),
-                        nearOnly ? DeferredShadowBringupConfig.nearBiasTexels() : settings.shadowReceiverBiasTexels(),
+                        DeferredShadowBringupConfig.nearBiasTexels(),
                         nearOnly ? 0.0f : settings.shadowFilterRadiusTexels())
                 .putVec4(0, "shadowParams1",
                         settings.shadowBlockerSearchRadiusTexels(),
                         settings.shadowPenumbraScaleTexels(),
                         settings.shadowMaxPenumbraTexels(),
-                        0.0f)
+                        nearOnly ? 0.0f : DeferredShadowBringupConfig.farFadeFraction())
                 .putVec4(0, "directionalLight",
                         context.worldState().directionalLight().directionX(),
                         context.worldState().directionalLight().directionY(),
                         context.worldState().directionalLight().directionZ(),
                         context.worldState().directionalLight().valid() ? 1.0f : 0.0f)
                 .putVec4(0, "shadowBiasParams",
-                        nearOnly ? DeferredShadowBringupConfig.nearSlopeBiasTexels() : 0.0f,
-                        nearOnly ? DeferredShadowBringupConfig.nearMaxBiasTexels() : settings.shadowReceiverBiasTexels(),
+                        DeferredShadowBringupConfig.nearSlopeBiasTexels(),
+                        DeferredShadowBringupConfig.nearMaxBiasTexels(),
                         0.20f,
-                        0.0f);
+                        DeferredShadowBringupConfig.maxAdaptiveFilterRadiusTexels());
         RhiStorageBuffer cameraBuffer = cameraBuffer();
         cameraBuffer.upload(camera.buffer(), 0L);
 

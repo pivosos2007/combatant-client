@@ -13,6 +13,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.text.TextGlyphFallback;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.helpers.ScissorFunction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
@@ -251,7 +252,7 @@ final class TabRichTextRenderer {
         Float cached = WIDTH_CACHE.get(key);
         if (cached != null) return cached;
 
-        float scale = size / 18f;
+        float scale = TextSizing.scaleForSize(size);
         float svgAdvance = svgGlyphSize(font, size);
         float width = 0f;
         TextRenderer runFont = null;
@@ -302,7 +303,7 @@ final class TabRichTextRenderer {
         Float cached = HEIGHT_CACHE.get(key);
         if (cached != null) return cached;
 
-        float scale = size / 18f;
+        float scale = TextSizing.scaleForSize(size);
         font.begin(scale, true, false);
         float out;
         try {
@@ -316,7 +317,7 @@ final class TabRichTextRenderer {
 
     private static void drawString(Renderer2D renderer, TextRenderer font, String text, float x, float y, float size, int argb, boolean shadow) {
         if (font == null || text == null || text.isEmpty() || ((argb >>> 24) & 0xFF) <= 0) return;
-        float scale = size / 18f;
+        float scale = TextSizing.scaleForSize(size);
         float svgSize = svgGlyphSize(font, size);
         float svgY = y + (height(font, size) - svgSize) * 0.5f;
         TMP.a = (argb >>> 24) & 0xFF;
@@ -371,7 +372,7 @@ final class TabRichTextRenderer {
                                               float clipRight,
                                               float fade) {
         if (font == null || text == null || text.isEmpty() || ((argb >>> 24) & 0xFF) <= 0) return;
-        float scale = size / 18f;
+        float scale = TextSizing.scaleForSize(size);
         float svgSize = svgGlyphSize(font, size);
         float svgY = y + (height(font, size) - svgSize) * 0.5f;
         TMP.a = (argb >>> 24) & 0xFF;

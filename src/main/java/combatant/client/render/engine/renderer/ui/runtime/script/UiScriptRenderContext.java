@@ -9,6 +9,10 @@ package combatant.client.render.engine.renderer.ui.runtime.script;
 
 import combatant.client.render.engine.renderer.ui.runtime.core.UiProps;
 
+/**
+ * Per-render script inputs. width/height are logical UI units in the same coordinate space used by
+ * node width/height/padding/fontSize; they are not raw framebuffer pixels.
+ */
 public record UiScriptRenderContext(
         long frame,
         double time,

@@ -21,6 +21,7 @@ import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.UiBlurResources;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.renderer.ui.draw.UiShape;
 import combatant.client.render.helpers.ClipFunction;
@@ -242,7 +243,7 @@ public enum UiClipDebugScene {
         TextRenderer fallback = TextRenderer.get();
         TextRenderer text = BuiltinFontCatalog.INTER_REGULAR.renderer(fallback);
         if (text == null) return;
-        text.begin(Math.max(0.1f, size / 18.0f), false, false);
+        text.begin(Math.max(0.1f, TextSizing.scaleForSize(size)), false, false);
         try {
             text.render(value, x, y, new RenderColor(argb), false);
         } finally {

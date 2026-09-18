@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
 import combatant.client.util.screen.ClientScreen;
@@ -270,7 +272,7 @@ public final class MediaPlayer extends DraggableHudElement {
 
         float mediaScale = scale.get().floatValue();
         float baseScale = HudScale.scale(screenW, screenH) * mediaScale;
-        float fontScale = (hud.getFontSize() / 18f) * mediaScale;
+        float fontScale = TextSizing.scaleForSize(hud.getFontSize()) * mediaScale;
         float padding = BASE_PADDING * baseScale;
         float gap = BASE_GAP * baseScale;
         float artBase = BASE_ART_SIZE * baseScale;

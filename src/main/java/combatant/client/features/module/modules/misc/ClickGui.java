@@ -48,6 +48,8 @@ public class ClickGui extends Module {
         Map<String, Boolean> out = new LinkedHashMap<>();
         out.put("button", true);
         out.put("buttonyes", true);
+        out.put("boolean_on", true);
+        out.put("boolean_off", true);
         out.put("guibinding", true);
         out.put("guibindingnull", true);
         out.put("guibindingstart", true);
@@ -64,7 +66,6 @@ public class ClickGui extends Module {
         out.put("moduleonclose", true);
         out.put("guiscroll", true);
         out.put("guislidermove", true);
-        out.put("toggle", true);
         return out;
     }
 

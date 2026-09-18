@@ -65,6 +65,19 @@ public interface TextRenderer {
         begin(scale, false, false);
     }
 
+    /**
+     * Begins text rendering at an authored font size expressed in logical UI units.
+     * Prefer this at UI boundaries; {@link #begin(double, boolean, boolean)} is the low-level
+     * multiplicative backend-scale API.
+     */
+    default void beginSize(double fontSize, boolean scaleOnly, boolean big) {
+        begin(TextSizing.scaleForSize(fontSize), scaleOnly, big);
+    }
+
+    default void beginSize(double fontSize) {
+        beginSize(fontSize, false, false);
+    }
+
     default void begin() {
         begin(1, false, false);
     }

@@ -63,13 +63,13 @@ class TriangulatorLayout extends HudPanelLayout {
         key: "header:count-label",
         text: countLabel,
         color: color(this.pal, "text", "#FFFFFFFF"),
-        class: cls(abs(countLabelX, countY, countLabelW, rowTextH + 4 * bs), font("OnestMedium", fs * 0.92), `text-${color(this.pal, "text", "#FFFFFFFF")}`),
+        class: cls(abs(countLabelX, countY, countLabelW, rowTextH + 4 * bs), font("OnestMedium", this.fontSize(0.92)), `text-${color(this.pal, "text", "#FFFFFFFF")}`),
       }),
       ui.text({
         key: "header:count-value",
         text: count,
         color: color(this.pal, "counter", "#FFFFFFFF"),
-        class: cls(abs(countValueX, countY, countValueW, rowTextH + 4 * bs), font("OnestMedium", fs * 0.92), `text-${color(this.pal, "counter", "#FFFFFFFF")}`),
+        class: cls(abs(countValueX, countY, countValueW, rowTextH + 4 * bs), font("OnestMedium", this.fontSize(0.92)), `text-${color(this.pal, "counter", "#FFFFFFFF")}`),
       }),
       ui.image({
         key: "header:icon",
@@ -88,7 +88,7 @@ class TriangulatorLayout extends HudPanelLayout {
         key: "header:title",
         text: c(this.p.title, "Triangulator"),
         color: color(this.pal, "titleText", "#FFFFFFFF"),
-        class: cls(abs(titleX, titleY, titleW, titleH + 4 * bs), font("Inter", fs, "bold"), `text-${color(this.pal, "titleText", "#FFFFFFFF")}`),
+        class: cls(abs(titleX, titleY, titleW, titleH + 4 * bs), font("Inter", this.fontSize(), "bold"), `text-${color(this.pal, "titleText", "#FFFFFFFF")}`),
       }),
     ];
     const buttonY = (headerH - buttonSize) * 0.5;
@@ -142,19 +142,19 @@ class TriangulatorLayout extends HudPanelLayout {
         key: "summary:status",
         text: statusText,
         color: statusColor,
-        class: cls(abs(8.0 * bs, y, Math.max(30 * bs, statusText.length * 7.4 * fs), rowTextH + 4 * bs), font("OnestMedium", fs), `text-${statusColor}`),
+        class: cls(abs(8.0 * bs, y, Math.max(30 * bs, statusText.length * 7.4 * fs), rowTextH + 4 * bs), font("OnestMedium", this.fontSize()), `text-${statusColor}`),
       }),
       ui.text({
         key: "summary:primary",
         text: c(this.p.primaryLine, ""),
         color: color(this.pal, "text", "#FFFFFFFF"),
-        class: cls(abs(8.0 * bs, y + 11.0 * bs, Math.max(40 * bs, w - 16 * bs), rowTextH + 4 * bs), font("OnestMedium", fs), `text-${color(this.pal, "text", "#FFFFFFFF")}`),
+        class: cls(abs(8.0 * bs, y + 11.0 * bs, Math.max(40 * bs, w - 16 * bs), rowTextH + 4 * bs), font("OnestMedium", this.fontSize()), `text-${color(this.pal, "text", "#FFFFFFFF")}`),
       }),
       ui.text({
         key: "summary:secondary",
         text: c(this.p.secondaryLine, ""),
         color: color(this.pal, "muted", "#FFFFFFFF"),
-        class: cls(abs(8.0 * bs, y + 20.5 * bs, Math.max(40 * bs, w - 16 * bs), rowTextH + 4 * bs), font("OnestMedium", fs * 0.92), `text-${color(this.pal, "muted", "#FFFFFFFF")}`),
+        class: cls(abs(8.0 * bs, y + 20.5 * bs, Math.max(40 * bs, w - 16 * bs), rowTextH + 4 * bs), font("OnestMedium", this.fontSize(0.92)), `text-${color(this.pal, "muted", "#FFFFFFFF")}`),
       }),
     ];
     if (confidence) {
@@ -162,7 +162,7 @@ class TriangulatorLayout extends HudPanelLayout {
         key: "summary:confidence",
         text: confidence,
         color: statusColor,
-        class: cls(abs(w - confidenceW - 8.0 * bs, y, confidenceW, rowTextH + 4 * bs), font("OnestMedium", fs), `text-${statusColor}`, "text-align-right"),
+        class: cls(abs(w - confidenceW - 8.0 * bs, y, confidenceW, rowTextH + 4 * bs), font("OnestMedium", this.fontSize()), `text-${statusColor}`, "text-align-right"),
       }));
     }
     return nodes;
@@ -203,13 +203,13 @@ class TriangulatorLayout extends HudPanelLayout {
         key: `row:${key}:label`,
         text: label,
         color: labelColor,
-        class: cls(abs(19.0 * bs, textY, Math.max(28 * bs, label.length * 7.6 * fs), rowTextH + 4 * bs), font("OnestMedium", fs), `text-${labelColor}`),
+        class: cls(abs(19.0 * bs, textY, Math.max(28 * bs, label.length * 7.6 * fs), rowTextH + 4 * bs), font("OnestMedium", this.fontSize()), `text-${labelColor}`),
       }),
       ui.text({
         key: `row:${key}:value`,
         text: value,
         color: valueColor,
-        class: cls(abs(w - valueW - 8.0 * bs, textY, valueW, rowTextH + 4 * bs), font("OnestMedium", fs), `text-${valueColor}`, "text-align-right"),
+        class: cls(abs(w - valueW - 8.0 * bs, textY, valueW, rowTextH + 4 * bs), font("OnestMedium", this.fontSize()), `text-${valueColor}`, "text-align-right"),
       }),
     ];
   }

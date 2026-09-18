@@ -139,7 +139,13 @@ export type UiInlineStyle = {
   fontFamily?: string;
   fontWeight?: number | "normal" | "bold" | "semibold" | string;
   fontStyle?: "normal" | "italic";
+  /** Preferred authored font size in logical UI units. 18 equals backend scale 1.0. */
+  fontSize?: number;
+  /** Optional line-box height in logical UI units. */
+  lineHeight?: number;
+  /** @deprecated Legacy multiplicative backend scale. Prefer fontSize. */
   fontScale?: number;
+  /** @deprecated Legacy multiplicative backend scale. Prefer fontSize. */
   textScale?: number;
   textShadow?: boolean;
   textEffect?: string;
@@ -156,9 +162,9 @@ export type UiInlineStyle = {
 
 /** Layout fields that can be placed inline on node init objects. */
 export type UiLayoutProps = {
-  /** Explicit width in UI pixels. */
+  /** Explicit width in logical UI units. */
   width?: number;
-  /** Explicit height in UI pixels. */
+  /** Explicit height in logical UI units. */
   height?: number;
   /** Minimum resolved width. */
   minWidth?: number;
@@ -233,7 +239,17 @@ export type UiTextNode = Omit<UiNode, "align"> & {
   type: "text";
   /** Text content. */
   text?: string;
-  /** Maximum rendered text width in UI pixels. Layout maxWidth remains available through style/maxWidth. */
+  /** Convenience alias promoted into style.fontSize. Uses logical UI units. */
+  fontSize?: number;
+  /** Convenience alias promoted into style.lineHeight. */
+  lineHeight?: number;
+  /** Convenience alias promoted into style.fontFamily. */
+  fontFamily?: string;
+  /** Convenience alias promoted into style.fontWeight. */
+  fontWeight?: UiInlineStyle["fontWeight"];
+  /** Convenience alias promoted into style.fontStyle. */
+  fontStyle?: UiInlineStyle["fontStyle"];
+  /** Maximum rendered text width in logical UI units. Layout maxWidth remains available through style/maxWidth. */
   maxTextWidth?: number;
   /** Legacy text-alignment alias accepted by normalize(). */
   align?: "left" | "center" | "right" | "end";
@@ -647,7 +663,7 @@ export type CompactHudStatProps = {
   iconY: number;
   iconW: number;
   iconH: number;
-  iconScale: number;
+  iconFontSize: number;
   iconColor: string;
   dividerVisible: boolean;
   dividerX: number;
@@ -658,7 +674,7 @@ export type CompactHudStatProps = {
   valueVisible: boolean;
   valueText: string;
   valueFont: string;
-  valueScale: number;
+  valueFontSize: number;
   valueX: number;
   valueY: number;
   valueW: number;
@@ -666,7 +682,7 @@ export type CompactHudStatProps = {
   unitVisible: boolean;
   unitText: string;
   unitFont: string;
-  unitScale: number;
+  unitFontSize: number;
   unitX: number;
   unitY: number;
   unitW: number;
@@ -674,7 +690,7 @@ export type CompactHudStatProps = {
   extraVisible: boolean;
   extraText: string;
   extraFont: string;
-  extraScale: number;
+  extraFontSize: number;
   extraX: number;
   extraY: number;
   extraW: number;
@@ -778,9 +794,9 @@ export type UiRenderContext = {
   time: number;
   /** Delta time in seconds. */
   delta: number;
-  /** Host surface width in UI pixels. */
+  /** Host surface width in logical UI units. */
   width: number;
-  /** Host surface height in UI pixels. */
+  /** Host surface height in logical UI units. */
   height: number;
   /** Host-provided snapshot props. */
   props: Record<string, unknown>;

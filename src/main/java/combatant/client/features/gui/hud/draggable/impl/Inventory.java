@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
 import combatant.client.util.screen.ClientScreen;
@@ -274,7 +276,7 @@ public final class Inventory extends DraggableHudElement {
         if (countRenderer == null) countRenderer = textRenderer;
 
         float baseScale = HudScale.scale(screenW, screenH) * 1.1f * HudPanelLayoutModes.effectiveScale(scaleValue);
-        float fontScale = 0.98f * (hud.getFontSize() / 18.0f);
+        float fontScale = 0.98f * TextSizing.scaleForSize(hud.getFontSize());
         long itemCount = 0L;
         for (ItemStack stack : stacks) {
             if (stack != null && !stack.isEmpty()) {

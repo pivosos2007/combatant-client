@@ -56,14 +56,14 @@ public final class UiTextRenderer {
         text = RuntimeTextLayout.singleLine(text);
         if (text.isEmpty()) return 0.0f;
         TextRenderer renderer = resolve(fallback, style);
-        float scale = Math.max(0.01f, style.textScale());
+        float fontSize = style.fontSize();
         boolean shadow = style.textShadow();
         float maxWidth = style.maxTextWidth();
-        WidthKey key = new WidthKey(System.identityHashCode(renderer), text, scale, shadow, maxWidth);
+        WidthKey key = new WidthKey(System.identityHashCode(renderer), text, fontSize, shadow, maxWidth);
         Float cached = widthCache.get(key);
         if (cached != null) return cached;
 
-        renderer.begin(scale, true, false);
+        renderer.beginSize(fontSize, true, false);
         try {
             float width = (float) renderer.getWidth(text, shadow);
             if (maxWidth > 0.0f) {
@@ -77,14 +77,27 @@ public final class UiTextRenderer {
     }
 
     public float measureHeight(TextRenderer fallback, UiStyle style) {
+        float glyphHeight = measureGlyphHeight(fallback, style);
+        Float lineHeight = style.lineHeight();
+        return lineHeight != null ? lineHeight : glyphHeight;
+    }
+
+    /** Leading offset for an explicitly authored CSS-like line-height. */
+    public float lineOffsetY(TextRenderer fallback, UiStyle style) {
+        Float lineHeight = style.lineHeight();
+        if (lineHeight == null) return 0.0f;
+        return (lineHeight - measureGlyphHeight(fallback, style)) * 0.5f;
+    }
+
+    private float measureGlyphHeight(TextRenderer fallback, UiStyle style) {
         TextRenderer renderer = resolve(fallback, style);
-        float scale = Math.max(0.01f, style.textScale());
+        float fontSize = style.fontSize();
         boolean shadow = style.textShadow();
-        HeightKey key = new HeightKey(System.identityHashCode(renderer), scale, shadow);
+        HeightKey key = new HeightKey(System.identityHashCode(renderer), fontSize, shadow);
         Float cached = heightCache.get(key);
         if (cached != null) return cached;
 
-        renderer.begin(scale, true, false);
+        renderer.beginSize(fontSize, true, false);
         try {
             float height = (float) renderer.getHeight(shadow);
             heightCache.put(key, height);
@@ -116,8 +129,8 @@ public final class UiTextRenderer {
         if (text.isEmpty()) return;
         if ((color >>> 24) == 0) return;
         TextRenderer renderer = resolve(fallback, style, backend);
-        float scale = Math.max(0.01f, style.textScale());
-        renderer.begin(scale, false, false);
+        float fontSize = style.fontSize();
+        renderer.beginSize(fontSize, false, false);
         try {
             String renderText = style.ellipsis() && style.maxTextWidth() > 0.0f
                     ? ellipsize(renderer, text, style.maxTextWidth(), style.textShadow())
@@ -159,9 +172,9 @@ public final class UiTextRenderer {
         if (text.isEmpty() || spread <= 0.01f || power <= 0.001f || (color >>> 24) == 0) return;
 
         TextRenderer renderer = resolve(fallback, style, backend);
-        float scale = Math.max(0.01f, style.textScale());
+        float fontSize = style.fontSize();
         String renderText;
-        renderer.begin(scale, false, false);
+        renderer.beginSize(fontSize, false, false);
         try {
             renderText = style.ellipsis() && style.maxTextWidth() > 0.0f
                     ? ellipsize(renderer, text, style.maxTextWidth(), false)
@@ -210,8 +223,8 @@ public final class UiTextRenderer {
         if (text.isEmpty()) return;
         if (((startColor | endColor) >>> 24) == 0) return;
         TextRenderer renderer = resolve(fallback, style, backend);
-        float scale = Math.max(0.01f, style.textScale());
-        renderer.begin(scale, false, false);
+        float fontSize = style.fontSize();
+        renderer.beginSize(fontSize, false, false);
         try {
             String renderText = style.ellipsis() && style.maxTextWidth() > 0.0f
                     ? ellipsize(renderer, text, style.maxTextWidth(), style.textShadow())
@@ -296,9 +309,9 @@ public final class UiTextRenderer {
         if (text.isEmpty()) return;
         if ((color >>> 24) == 0) return;
         TextRenderer renderer = resolve(fallback, style);
-        float scale = Math.max(0.01f, style.textScale());
+        float fontSize = style.fontSize();
         RenderColor renderColor = new RenderColor(color);
-        renderer.begin(scale, false, false);
+        renderer.beginSize(fontSize, false, false);
         try {
             renderer.renderHorizontalFadeClipped(text, x, y, renderColor, clipLeft, clipRight, fadeLeft, fadeRight, style.textShadow());
         } finally {
@@ -321,9 +334,9 @@ public final class UiTextRenderer {
         return Fonts.renderer(style.fontFamily(), style.fontType(), base);
     }
 
-    private record WidthKey(int rendererId, String text, float scale, boolean shadow, float maxWidth) {
+    private record WidthKey(int rendererId, String text, float fontSize, boolean shadow, float maxWidth) {
     }
 
-    private record HeightKey(int rendererId, float scale, boolean shadow) {
+    private record HeightKey(int rendererId, float fontSize, boolean shadow) {
     }
 }

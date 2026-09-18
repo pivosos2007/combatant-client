@@ -25,9 +25,9 @@ function withAlpha(hex, amount) {
 
 const alpha01 = ui.color.opacity;
 
-function font(family, scale, type) {
+function font(family, size, type) {
   const suffix = type ? `-${type}` : "";
-  return `font-${family}${suffix}-${s(scale)}`;
+  return cls(`font-${family}${suffix}`, `font-size-${s(size)}`);
 }
 
 export class HudPanelLayout {
@@ -57,8 +57,13 @@ export class HudPanelLayout {
     return n(this.p.baseScale, 1);
   }
 
+  fontSize(multiplier = 1) {
+    return Math.max(0.18, n(this.p.fontSize, 18) * n(multiplier, 1));
+  }
+
+  // Legacy ratio used only by old width heuristics/classes. New text styles should use fontSize().
   fs() {
-    return n(this.p.fontScale, 1);
+    return this.fontSize() / 18;
   }
 
   w() {
@@ -378,13 +383,13 @@ export class HudPanelLayout {
         key: "header:count-label",
         text: counterLabelText,
         color: color(this.pal, "text", "#FFFFFFFF"),
-        class: cls(abs(countLabelX, countY, countLabelW, rowTextH + 4 * bs), font("OnestMedium", fs * 0.92), `text-${color(this.pal, "text", "#FFFFFFFF")}`),
+        class: cls(abs(countLabelX, countY, countLabelW, rowTextH + 4 * bs), font("OnestMedium", this.fontSize(0.92)), `text-${color(this.pal, "text", "#FFFFFFFF")}`),
       }),
       ui.text({
         key: "header:count-value",
         text: count,
         color: color(this.pal, "counter", "#FFFFFFFF"),
-        class: cls(abs(countValueX, countY, countValueW, rowTextH + 4 * bs), font("OnestMedium", fs * 0.92), `text-${color(this.pal, "counter", "#FFFFFFFF")}`),
+        class: cls(abs(countValueX, countY, countValueW, rowTextH + 4 * bs), font("OnestMedium", this.fontSize(0.92)), `text-${color(this.pal, "counter", "#FFFFFFFF")}`),
       }),
       ui.text({
         key: "header:icon",
@@ -394,13 +399,13 @@ export class HudPanelLayout {
         gradientStartColor: c(this.p.headerIconGradientStart, c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))),
         gradientEndColor: c(this.p.headerIconGradientEnd, c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))),
         gradientAngle: n(this.p.headerIconGradientAngle, 45),
-        class: cls(abs(horizontal.left, iconY, horizontal.iconSlotW, iconH + 4 * bs), font(c(prop(this.v, "headerIconFont", "IconsNur"), "IconsNur"), fs * iconScale), `text-${c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))}`, "text-align-center"),
+        class: cls(abs(horizontal.left, iconY, horizontal.iconSlotW, iconH + 4 * bs), font(c(prop(this.v, "headerIconFont", "IconsNur"), "IconsNur"), this.fontSize(iconScale)), `text-${c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))}`, "text-align-center"),
       }),
       ui.text({
         key: "header:title",
         text: c(this.p.title, ""),
         color: color(this.pal, "titleText", "#FFFFFFFF"),
-        class: cls(abs(titleX, titleY, titleW, titleH + 4 * bs), font("Inter", fs, "bold"), `text-${color(this.pal, "titleText", "#FFFFFFFF")}`),
+        class: cls(abs(titleX, titleY, titleW, titleH + 4 * bs), font("Inter", this.fontSize(), "bold"), `text-${color(this.pal, "titleText", "#FFFFFFFF")}`),
       }),
     ];
   }

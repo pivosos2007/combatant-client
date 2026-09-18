@@ -41,6 +41,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiMeshGeometry;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.input.KeyUtil;
@@ -1264,7 +1265,7 @@ public enum ClickGuiRenderer {
     }
 
     public static float scaleForSize(float size) {
-        return size / 18.0f;
+        return TextSizing.scaleForSize(size);
     }
 
     public static float textWidth(TextRenderer tr, String text, float size) {

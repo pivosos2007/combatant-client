@@ -12,13 +12,15 @@ const s = ui.fmt;
 const cls = ui.cls;
 const abs = ui.abs;
 
-function font(name, scale, weight) {
+function font(name, size, weight) {
+  let family = name;
+  let suffix = weight && weight !== "regular" ? `-${weight}` : "";
   if (name === "Onest") {
-    if (weight === "semibold") return `font-OnestBold-${s(scale)}`;
-    if (weight === "medium") return `font-OnestMedium-${s(scale)}`;
-    if (weight === "light") return `font-OnestLight-${s(scale)}`;
+    if (weight === "semibold") { family = "OnestBold"; suffix = ""; }
+    if (weight === "medium") { family = "OnestMedium"; suffix = ""; }
+    if (weight === "light") { family = "OnestLight"; suffix = ""; }
   }
-  return `font-${name}${weight && weight !== "regular" ? "-" + weight : ""}-${s(scale)}`;
+  return cls(`font-${family}${suffix}`, `font-size-${s(size)}`);
 }
 
 function alpha(hex, mul) {
@@ -55,12 +57,12 @@ function gradientShape(key, x, y, w, h, radius, startColor, endColor, angle, ext
   }, extra || {}));
 }
 
-function text(key, value, x, y, w, h, color, scale, weight, extra) {
+function text(key, value, x, y, w, h, color, fontSize, weight, extra) {
   return ui.text({
     key,
     text: value,
     color,
-    class: cls(abs(x, y, w, h), font("Onest", scale, weight), extra),
+    class: cls(abs(x, y, w, h), font("Onest", fontSize, weight), extra),
   });
 }
 
@@ -111,15 +113,15 @@ export function buildTemplate(ctx) {
     }),
     gradientShape("theme-preview:header-glass", 1.4 * unit, 1.2 * unit, Math.max(1, w - 2.8 * unit), 36 * unit, Math.max(0, rootR - 1.2 * unit), alpha("#2DFFFFFF", a), alpha("#04FFFFFF", a), 90),
 
-    text("theme-preview:title", c(p.entryName, "Custom Theme"), 14 * unit, 14 * unit, 180 * unit, 11 * unit, textPrimary, 0.74 * unit, "semibold", "text-effect-Flow"),
-    text("theme-preview:caption", "Theme specimen", w - 112 * unit, 15.8 * unit, 98 * unit, 9 * unit, textMuted, 0.52 * unit, "medium", "text-align-right"),
+    text("theme-preview:title", c(p.entryName, "Custom Theme"), 14 * unit, 14 * unit, 180 * unit, 11 * unit, textPrimary, 13.32 * unit, "semibold", "text-effect-Flow"),
+    text("theme-preview:caption", "Theme specimen", w - 112 * unit, 15.8 * unit, 98 * unit, 9 * unit, textMuted, 9.36 * unit, "medium", "text-align-right"),
     rect("theme-preview:header-line", 14 * unit, 34 * unit, w - 28 * unit, Math.max(0.45, 0.5 * unit), alpha(c(p.strokeSoft, "#33FFFFFF"), 0.42 * a)),
 
     gradientShape("theme-preview:surface-card", 14 * unit, 44 * unit, 164 * unit, 132 * unit, 10 * unit, surfaceG.a, surfaceG.b, surfaceG.angle, {
       stroke: strokeSoft,
-      strokeWidth: Math.max(0.35, 0.45 * unit),
+      strokeWidth: Math.max(0.35, 8.1 * unit),
     }),
-    text("theme-preview:surface-label", "Surface stack", 26 * unit, 55 * unit, 120 * unit, 8 * unit, textMuted, 0.50 * unit, "semibold"),
+    text("theme-preview:surface-label", "Surface stack", 26 * unit, 55 * unit, 120 * unit, 8 * unit, textMuted, 9.0 * unit, "semibold"),
     gradientShape("theme-preview:inner-surface", 28 * unit, 75 * unit, 136 * unit, 74 * unit, 10 * unit, surfaceG.b, surfaceG.a, surfaceG.angle + 20, {
       stroke: alpha(c(p.strokeSoft, "#33FFFFFF"), 0.72 * a),
       strokeWidth: Math.max(0.35, 0.42 * unit),
@@ -128,8 +130,8 @@ export function buildTemplate(ctx) {
       stroke: alpha(c(p.strokeSoft, "#33FFFFFF"), 0.66 * a),
       strokeWidth: Math.max(0.32, 0.40 * unit),
     }),
-    text("theme-preview:primary-title", "Primary layer", 50 * unit, 101 * unit, 72 * unit, 9 * unit, textPrimary, 0.56 * unit, "semibold"),
-    text("theme-preview:primary-subtitle", "contrast / radius / stroke", 50 * unit, 113 * unit, 86 * unit, 8 * unit, textMuted, 0.43 * unit, "regular"),
+    text("theme-preview:primary-title", "Primary layer", 50 * unit, 101 * unit, 72 * unit, 9 * unit, textPrimary, 10.08 * unit, "semibold"),
+    text("theme-preview:primary-subtitle", "contrast / radius / stroke", 50 * unit, 113 * unit, 86 * unit, 8 * unit, textMuted, 7.74 * unit, "regular"),
     rounded("theme-preview:progress-bg", 50 * unit, 123 * unit, 82 * unit, 2.4 * unit, 1.2 * unit, alpha(c(p.cardDisabled, "#55212831"), 0.74 * a)),
     gradientShape("theme-preview:progress-fill", 50 * unit, 123 * unit, 56 * unit, 2.4 * unit, 1.2 * unit, accent, accentSoft, 0),
     gradientShape("theme-preview:orb", 125 * unit, 87 * unit, 28 * unit, 28 * unit, 14 * unit, accent, accentSoft, 135, {
@@ -137,9 +139,9 @@ export function buildTemplate(ctx) {
       strokeWidth: Math.max(0.32, 0.42 * unit),
     }),
     rounded("theme-preview:chip-accent", 28 * unit, 154 * unit, 52 * unit, 14 * unit, 7 * unit, alpha(c(p.accent, "#FFFFFFFF"), 0.20 * a), alpha(c(p.accentSoft, "#99FFFFFF"), 0.72 * a), Math.max(0.32, 0.42 * unit)),
-    text("theme-preview:chip-accent-text", "ACCENT", 28 * unit, 157.8 * unit, 52 * unit, 7 * unit, accent, 0.45 * unit, "semibold", "text-align-center"),
+    text("theme-preview:chip-accent-text", "ACCENT", 28 * unit, 157.8 * unit, 52 * unit, 7 * unit, accent, 8.1 * unit, "semibold", "text-align-center"),
     rounded("theme-preview:chip-muted", 87 * unit, 154 * unit, 48 * unit, 14 * unit, 7 * unit, alpha(c(p.cardDisabled, "#55212831"), 0.48 * a), alpha(c(p.strokeSoft, "#33FFFFFF"), 0.42 * a), Math.max(0.32, 0.38 * unit)),
-    text("theme-preview:chip-muted-text", "MUTED", 87 * unit, 157.8 * unit, 48 * unit, 7 * unit, textMuted, 0.45 * unit, "semibold", "text-align-center"),
+    text("theme-preview:chip-muted-text", "MUTED", 87 * unit, 157.8 * unit, 48 * unit, 7 * unit, textMuted, 8.1 * unit, "semibold", "text-align-center"),
   ];
 
   children.push(
@@ -147,7 +149,7 @@ export function buildTemplate(ctx) {
       stroke: alpha(c(p.strokeSoft, "#33FFFFFF"), 0.66 * a),
       strokeWidth: Math.max(0.32, 0.40 * unit),
     }),
-    text("theme-preview:palette-title", "Palette", 199 * unit, 54 * unit, 72 * unit, 8 * unit, textMuted, 0.50 * unit, "semibold")
+    text("theme-preview:palette-title", "Palette", 199 * unit, 54 * unit, 72 * unit, 8 * unit, textMuted, 9.0 * unit, "semibold")
   );
 
   const colors = swatches(p);
@@ -164,19 +166,19 @@ export function buildTemplate(ctx) {
       stroke: alpha(c(p.strokeSoft, "#33FFFFFF"), 0.62 * a),
       strokeWidth: Math.max(0.32, 0.40 * unit),
     }),
-    text("theme-preview:controls-title", "Controls", 199 * unit, 106 * unit, 72 * unit, 8 * unit, textMuted, 0.50 * unit, "semibold"),
-    text("theme-preview:slider-label", "Slider", 199 * unit, 119 * unit, 34 * unit, 7 * unit, textPrimary, 0.43 * unit, "medium"),
+    text("theme-preview:controls-title", "Controls", 199 * unit, 106 * unit, 72 * unit, 8 * unit, textMuted, 9.0 * unit, "semibold"),
+    text("theme-preview:slider-label", "Slider", 199 * unit, 119 * unit, 34 * unit, 7 * unit, textPrimary, 7.74 * unit, "medium"),
     rounded("theme-preview:slider-track", 238 * unit, 121 * unit, 52 * unit, 2.2 * unit, 1.1 * unit, alpha(c(p.cardDisabled, "#55212831"), 0.72 * a)),
     gradientShape("theme-preview:slider-fill", 238 * unit, 121 * unit, 34 * unit, 2.2 * unit, 1.1 * unit, accent, accentSoft, 0),
     rounded("theme-preview:slider-knob", 269 * unit, 118.8 * unit, 6.5 * unit, 6.5 * unit, 3.25 * unit, accent, alpha(c(p.windowStroke, "#66FFFFFF"), 0.8 * a), Math.max(0.25, 0.32 * unit)),
-    text("theme-preview:input-label", "Input", 199 * unit, 129 * unit, 34 * unit, 7 * unit, textPrimary, 0.43 * unit, "medium"),
+    text("theme-preview:input-label", "Input", 199 * unit, 129 * unit, 34 * unit, 7 * unit, textPrimary, 7.74 * unit, "medium"),
     rounded("theme-preview:input-box", 238 * unit, 128 * unit, 52 * unit, 8 * unit, 4 * unit, alpha(c(p.surface, "#55242A34"), 0.54 * a), strokeSoft, Math.max(0.25, 0.32 * unit)),
 
     gradientShape("theme-preview:gradient-card", 188 * unit, 142 * unit, 118 * unit, 34 * unit, 9 * unit, alpha(c(p.cardEnabled, "#66333A46"), 0.70 * a), alpha(c(p.cardDisabled, "#55212831"), 0.50 * a), 100, {
       stroke: alpha(c(p.strokeSoft, "#33FFFFFF"), 0.62 * a),
       strokeWidth: Math.max(0.32, 0.40 * unit),
     }),
-    text("theme-preview:gradient-title", "Gradients", 199 * unit, 151 * unit, 72 * unit, 8 * unit, textMuted, 0.50 * unit, "semibold"),
+    text("theme-preview:gradient-title", "Gradients", 199 * unit, 151 * unit, 72 * unit, 8 * unit, textMuted, 9.0 * unit, "semibold"),
     gradientShape("theme-preview:gradient-strip-a", 199 * unit, 164 * unit, 44 * unit, 4.5 * unit, 2.25 * unit, rootG.a, rootG.b, rootG.angle),
     gradientShape("theme-preview:gradient-strip-b", 249 * unit, 164 * unit, 44 * unit, 4.5 * unit, 2.25 * unit, surfaceG.a, surfaceG.b, surfaceG.angle)
   );
