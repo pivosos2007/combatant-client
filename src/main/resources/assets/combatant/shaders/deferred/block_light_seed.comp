@@ -30,12 +30,32 @@ ivec2 atlasPixel(ivec3 voxel) {
                  sliceRow * volumeSize().y + voxel.y);
 }
 
+bool boundaryVoxel(ivec3 voxel, ivec3 size) {
+    return voxel.x == 0 || voxel.y == 0 || voxel.z == 0
+        || voxel.x == size.x - 1 || voxel.y == size.y - 1 || voxel.z == size.z - 1;
+}
+
 void main() {
     ivec3 voxel = ivec3(gl_GlobalInvocationID.xyz);
     ivec3 size = volumeSize();
     if (any(greaterThanEqual(voxel, size))) return;
 
-    ivec2 pixel = atlasPixel(voxel);
-    vec3 emission = max(texelFetch(u_Seed, pixel, 0).rgb, vec3(0.0));
-    imageStore(u_Radiance, pixel, vec4(emission, 1.0));
+    vec4 seed = texelFetch(u_Seed, atlasPixel(voxel), 0);
+    float lightLevel = clamp(seed.a, 0.0, 1.0);
+    vec3 emitterColor = max(seed.rgb, vec3(0.0));
+    float emitterMaximum = max(emitterColor.r, max(emitterColor.g, emitterColor.b));
+
+    vec3 color = vec3(0.0);
+    float valid = 0.0;
+    if (lightLevel > 0.0 && emitterMaximum > 1.0 / 255.0) {
+        color = emitterColor / emitterMaximum;
+        valid = 1.0;
+    } else if (lightLevel > 0.0 && boundaryVoxel(voxel, size)) {
+        // Light entering the bounded volume from an emitter outside it has unknown chroma.
+        // Seed it neutrally so interior ownership stays complete and deterministic.
+        color = vec3(1.0);
+        valid = 1.0;
+    }
+
+    imageStore(u_Radiance, atlasPixel(voxel), vec4(color * color * valid, valid));
 }

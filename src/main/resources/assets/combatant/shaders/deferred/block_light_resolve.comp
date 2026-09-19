@@ -21,7 +21,6 @@ layout(std430, binding = 5) readonly buffer BlockLightResolveData {
     vec4 volumeSizeAndColumns;
     vec4 atlasSizeAndRows;
     vec4 originAndSurfaceOffset;
-    // x=edge fade start, y=edge fade end. z keeps the CPU volume-bias policy visible to captures.
     vec4 edgeFade;
 } u_Block;
 
@@ -40,6 +39,15 @@ vec3 reconstructView(vec2 uv, float depth) {
     return h.xyz / h.w;
 }
 
+float decodeMinecraftLightLevel(float encodedUv) {
+    return clamp((encodedUv * 256.0 - 8.0) / 240.0, 0.0, 1.0);
+}
+
+float minecraftBrightnessCurve(float lightLevel) {
+    float level = clamp(lightLevel, 0.0, 1.0);
+    return level / max(4.0 - 3.0 * level, 1.0e-4);
+}
+
 ivec3 volumeSize() {
     return ivec3(u_Block.volumeSizeAndColumns.xyz + vec3(0.5));
 }
@@ -52,44 +60,53 @@ ivec2 atlasPixel(ivec3 voxel) {
                  sliceRow * volumeSize().y + voxel.y);
 }
 
-vec3 voxelRadiance(ivec3 voxel) {
+vec4 voxelColor(ivec3 voxel) {
     ivec3 size = volumeSize();
-    if (any(lessThan(voxel, ivec3(0))) || any(greaterThanEqual(voxel, size))) return vec3(0.0);
-    return max(texelFetch(u_BlockLightVolume, atlasPixel(voxel), 0).rgb, vec3(0.0));
+    if (any(lessThan(voxel, ivec3(0))) || any(greaterThanEqual(voxel, size))) return vec4(0.0);
+    vec4 value = texelFetch(u_BlockLightVolume, atlasPixel(voxel), 0);
+    return vec4(max(value.rgb, vec3(0.0)), clamp(value.a, 0.0, 1.0));
 }
 
-vec4 sampleVolume(vec3 cameraRelativePosition) {
+vec4 sampleVolume(vec3 cameraRelativePosition, float blockBrightness) {
     vec3 originRelativeToCamera = u_Block.originAndSurfaceOffset.xyz;
-    // Samples live at block centers. Keep the entire lookup camera-relative so large Minecraft
-    // world coordinates never lose sub-block precision in 32-bit shader arithmetic.
     vec3 coordinate = cameraRelativePosition - originRelativeToCamera - vec3(0.5);
     vec3 size = vec3(volumeSize());
 
-    // Bounded-volume edge handoff: the colored volume owns the inner region, then fades back to the
-    // neutral Minecraft block-light contract before it runs out of geometric information.
     vec3 centered = (coordinate + vec3(0.5) - size * 0.5) / max(size * 0.5, vec3(1.0));
     float edgeDistance = max(abs(centered.x), max(abs(centered.y), abs(centered.z)));
     float coverage = 1.0 - smoothstep(u_Block.edgeFade.x, u_Block.edgeFade.y, edgeDistance);
-    if (coverage <= 0.0) return vec4(0.0);
+    if (coverage <= 0.0 || blockBrightness <= 0.0) return vec4(0.0);
 
     ivec3 base = ivec3(floor(coordinate));
     vec3 fraction = fract(coordinate);
 
-    vec3 c000 = voxelRadiance(base + ivec3(0, 0, 0));
-    vec3 c100 = voxelRadiance(base + ivec3(1, 0, 0));
-    vec3 c010 = voxelRadiance(base + ivec3(0, 1, 0));
-    vec3 c110 = voxelRadiance(base + ivec3(1, 1, 0));
-    vec3 c001 = voxelRadiance(base + ivec3(0, 0, 1));
-    vec3 c101 = voxelRadiance(base + ivec3(1, 0, 1));
-    vec3 c011 = voxelRadiance(base + ivec3(0, 1, 1));
-    vec3 c111 = voxelRadiance(base + ivec3(1, 1, 1));
+    vec4 c000 = voxelColor(base + ivec3(0, 0, 0));
+    vec4 c100 = voxelColor(base + ivec3(1, 0, 0));
+    vec4 c010 = voxelColor(base + ivec3(0, 1, 0));
+    vec4 c110 = voxelColor(base + ivec3(1, 1, 0));
+    vec4 c001 = voxelColor(base + ivec3(0, 0, 1));
+    vec4 c101 = voxelColor(base + ivec3(1, 0, 1));
+    vec4 c011 = voxelColor(base + ivec3(0, 1, 1));
+    vec4 c111 = voxelColor(base + ivec3(1, 1, 1));
 
-    vec3 c00 = mix(c000, c100, fraction.x);
-    vec3 c10 = mix(c010, c110, fraction.x);
-    vec3 c01 = mix(c001, c101, fraction.x);
-    vec3 c11 = mix(c011, c111, fraction.x);
-    vec3 radiance = mix(mix(c00, c10, fraction.y), mix(c01, c11, fraction.y), fraction.z);
-    return vec4(max(radiance, vec3(0.0)), clamp(coverage, 0.0, 1.0));
+    vec4 c00 = mix(c000, c100, fraction.x);
+    vec4 c10 = mix(c010, c110, fraction.x);
+    vec4 c01 = mix(c001, c101, fraction.x);
+    vec4 c11 = mix(c011, c111, fraction.x);
+    vec4 field = mix(mix(c00, c10, fraction.y), mix(c01, c11, fraction.y), fraction.z);
+
+    vec3 sourceColor = vec3(1.0);
+    if (field.a > 1.0e-4) {
+        vec3 colorSquared = max(field.rgb / field.a, vec3(0.0));
+        sourceColor = sqrt(colorSquared);
+        float maximum = max(sourceColor.r, max(sourceColor.g, sourceColor.b));
+        if (maximum > 1.0e-5) sourceColor /= maximum;
+        else sourceColor = vec3(1.0);
+    }
+
+    // Coverage describes only the bounded-volume edge. Interior pixels always replace neutral
+    // block light; missing chroma falls back to neutral without creating per-cell light islands.
+    return vec4(sourceColor * blockBrightness, coverage);
 }
 
 void main() {
@@ -107,13 +124,19 @@ void main() {
         return;
     }
 
+    vec4 geometry = textureLod(u_GbufferGeometry, uv, 0.0);
+    float blockLevel = decodeMinecraftLightLevel(geometry.b);
+    float blockBrightness = minecraftBrightnessCurve(blockLevel);
+    if (blockBrightness <= 0.0) {
+        imageStore(u_BlockLightIrradiance, pixel, vec4(0.0));
+        return;
+    }
+
     vec3 viewPosition = reconstructView(uv, depth);
     vec3 cameraRelativePosition = (u_Block.inverseView * vec4(viewPosition, 0.0)).xyz;
-
-    vec3 viewNormal = decodeOctahedral(textureLod(u_GbufferGeometry, uv, 0.0).rg);
+    vec3 viewNormal = decodeOctahedral(geometry.rg);
     vec3 worldNormal = normalize((u_Block.inverseView * vec4(viewNormal, 0.0)).xyz);
     cameraRelativePosition += worldNormal * u_Block.originAndSurfaceOffset.w;
 
-    vec4 irradiance = sampleVolume(cameraRelativePosition);
-    imageStore(u_BlockLightIrradiance, pixel, irradiance);
+    imageStore(u_BlockLightIrradiance, pixel, sampleVolume(cameraRelativePosition, blockBrightness));
 }

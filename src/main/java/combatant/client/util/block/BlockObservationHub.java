@@ -14,6 +14,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.BedwarsESP;
 import combatant.client.features.module.modules.visuals.BlockESP;
+import combatant.client.render.engine.light.BlockLightChangeTracker;
 import combatant.client.util.block.bed.BedBlockUtil;
 
 public enum BlockObservationHub {
@@ -77,6 +78,8 @@ public enum BlockObservationHub {
         if (pos == null || state == null) {
             return;
         }
+
+        BlockLightChangeTracker.markChanged();
 
         BlockESP blockEsp = Modules.get(BlockESP.class);
         if (blockEsp != null && blockEsp.isEnabled()) {

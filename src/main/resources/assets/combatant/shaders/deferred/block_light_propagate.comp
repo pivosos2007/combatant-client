@@ -16,12 +16,16 @@ layout(std430, binding = 3) readonly buffer BlockLightVolumeData {
     vec4 volumeSizeAndColumns;
     vec4 atlasSizeAndRows;
     vec4 originAndAttenuation;
-    // xyz = absolute block origin represented by u_PreviousRadiance, w = history valid.
     vec4 previousOriginAndHistory;
 } u_Volume;
 
 ivec3 volumeSize() {
     return ivec3(u_Volume.volumeSizeAndColumns.xyz + vec3(0.5));
+}
+
+bool insideVolume(ivec3 voxel) {
+    ivec3 size = volumeSize();
+    return all(greaterThanEqual(voxel, ivec3(0))) && all(lessThan(voxel, size));
 }
 
 ivec2 atlasPixel(ivec3 voxel) {
@@ -32,44 +36,91 @@ ivec2 atlasPixel(ivec3 voxel) {
                  sliceRow * volumeSize().y + voxel.y);
 }
 
-bool insideVolume(ivec3 voxel) {
-    ivec3 size = volumeSize();
-    return all(greaterThanEqual(voxel, ivec3(0))) && all(lessThan(voxel, size));
+float scalarLight(ivec3 voxel) {
+    if (!insideVolume(voxel)) return 0.0;
+    return clamp(texelFetch(u_Seed, atlasPixel(voxel), 0).a, 0.0, 1.0);
 }
 
-ivec3 previousVoxel(ivec3 currentVoxel) {
-    // The same world cell has a different integer index after the camera-centered volume moves.
-    // Reprojection is exact because both origins are block-aligned integers.
-    ivec3 currentOrigin = ivec3(round(u_Volume.originAndAttenuation.xyz));
-    ivec3 previousOrigin = ivec3(round(u_Volume.previousOriginAndHistory.xyz));
-    return currentVoxel + currentOrigin - previousOrigin;
+vec4 previousColor(ivec3 voxel) {
+    if (!insideVolume(voxel)) return vec4(0.0);
+    vec4 value = texelFetch(u_PreviousRadiance, atlasPixel(voxel), 0);
+    return vec4(max(value.rgb, vec3(0.0)), clamp(value.a, 0.0, 1.0));
 }
 
-vec3 previousRadiance(ivec3 currentVoxel) {
-    if (u_Volume.previousOriginAndHistory.w < 0.5) return vec3(0.0);
-    ivec3 previous = previousVoxel(currentVoxel);
-    if (!insideVolume(previous)) return vec3(0.0);
-    return max(texelFetch(u_PreviousRadiance, atlasPixel(previous), 0).rgb, vec3(0.0));
+bool boundaryVoxel(ivec3 voxel, ivec3 size) {
+    return voxel.x == 0 || voxel.y == 0 || voxel.z == 0
+        || voxel.x == size.x - 1 || voxel.y == size.y - 1 || voxel.z == size.z - 1;
+}
+
+void accumulateNeighbor(
+        ivec3 neighbor,
+        float currentLevel,
+        inout vec3 colorSum,
+        inout float weightSum) {
+    float neighborLevel = scalarLight(neighbor);
+    const float halfStep = 0.5 / 15.0;
+    float delta = neighborLevel - currentLevel;
+    if (delta < -halfStep) return;
+
+    vec4 upstream = previousColor(neighbor);
+    if (upstream.a <= 1.0e-5) return;
+
+    // Follow Minecraft's scalar light gradient as the primary ownership path.
+    float weight = 0.0;
+    if (delta > halfStep) {
+        weight = max(delta, 1.0 / 15.0);
+    } else if (abs(delta) <= halfStep) {
+        // Cheap chroma-only diffusion along an equal-light contour. This softens boundaries
+        // between overlapping emitters without changing scalar light intensity or adding a pass.
+        weight = (1.0 / 15.0) * clamp(u_Volume.originAndAttenuation.w, 0.0, 0.5);
+    }
+
+    if (weight <= 0.0) return;
+    weight *= upstream.a;
+    colorSum += upstream.rgb * weight;
+    weightSum += weight;
 }
 
 void main() {
     ivec3 voxel = ivec3(gl_GlobalInvocationID.xyz);
+    ivec3 size = volumeSize();
     if (!insideVolume(voxel)) return;
 
     ivec2 pixel = atlasPixel(voxel);
     vec4 seed = texelFetch(u_Seed, pixel, 0);
-    vec3 result = max(seed.rgb, vec3(0.0));
+    float currentLevel = clamp(seed.a, 0.0, 1.0);
+    if (currentLevel <= 0.0) {
+        imageStore(u_NextRadiance, pixel, vec4(0.0));
+        return;
+    }
 
-    // Minecraft block-light semantics: every cell crossing loses one light level and the exact
-    // target block dampening supplied by the CPU can only increase that loss. This gives the LPV
-    // real wall occlusion without turning it into scene-radiance GI.
-    float attenuation = max(max(seed.a, 0.0), max(u_Volume.originAndAttenuation.w, 0.0));
-    result = max(result, previousRadiance(voxel + ivec3( 1, 0, 0)) - vec3(attenuation));
-    result = max(result, previousRadiance(voxel + ivec3(-1, 0, 0)) - vec3(attenuation));
-    result = max(result, previousRadiance(voxel + ivec3(0,  1, 0)) - vec3(attenuation));
-    result = max(result, previousRadiance(voxel + ivec3(0, -1, 0)) - vec3(attenuation));
-    result = max(result, previousRadiance(voxel + ivec3(0, 0,  1)) - vec3(attenuation));
-    result = max(result, previousRadiance(voxel + ivec3(0, 0, -1)) - vec3(attenuation));
+    vec3 emitterColor = max(seed.rgb, vec3(0.0));
+    float emitterMaximum = max(emitterColor.r, max(emitterColor.g, emitterColor.b));
+    if (emitterMaximum > 1.0 / 255.0) {
+        vec3 normalizedColor = emitterColor / emitterMaximum;
+        imageStore(u_NextRadiance, pixel, vec4(normalizedColor * normalizedColor, 1.0));
+        return;
+    }
 
-    imageStore(u_NextRadiance, pixel, vec4(max(result, vec3(0.0)), 1.0));
+    if (boundaryVoxel(voxel, size)) {
+        imageStore(u_NextRadiance, pixel, vec4(1.0));
+        return;
+    }
+
+    vec3 colorSum = vec3(0.0);
+    float weightSum = 0.0;
+    accumulateNeighbor(voxel + ivec3( 1, 0, 0), currentLevel, colorSum, weightSum);
+    accumulateNeighbor(voxel + ivec3(-1, 0, 0), currentLevel, colorSum, weightSum);
+    accumulateNeighbor(voxel + ivec3(0,  1, 0), currentLevel, colorSum, weightSum);
+    accumulateNeighbor(voxel + ivec3(0, -1, 0), currentLevel, colorSum, weightSum);
+    accumulateNeighbor(voxel + ivec3(0, 0,  1), currentLevel, colorSum, weightSum);
+    accumulateNeighbor(voxel + ivec3(0, 0, -1), currentLevel, colorSum, weightSum);
+
+    if (weightSum <= 1.0e-6) {
+        imageStore(u_NextRadiance, pixel, vec4(0.0));
+        return;
+    }
+
+    vec3 colorSquared = colorSum / weightSum;
+    imageStore(u_NextRadiance, pixel, vec4(max(colorSquared, vec3(0.0)), 1.0));
 }

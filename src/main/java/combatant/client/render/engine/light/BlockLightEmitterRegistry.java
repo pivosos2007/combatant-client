@@ -72,6 +72,7 @@ public final class BlockLightEmitterRegistry {
             }
         }
         emitters = Map.copyOf(next);
+        BlockLightChangeTracker.markChanged();
         DebugLog.renderThread("[BlockLight] emitter registry reload: explicit=%d", next.size());
     }
 

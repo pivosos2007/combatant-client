@@ -11,7 +11,6 @@ import combatant.client.mixins.sodium.SodiumRenderSectionManagerAccessor;
 import combatant.client.mixins.sodium.SodiumSortedRenderListsInvoker;
 import combatant.client.render.engine.deferred.DeferredSecondaryView;
 import combatant.client.render.engine.deferred.DeferredViewFamily;
-import combatant.client.util.logging.DebugLog;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
@@ -84,16 +83,6 @@ public final class SodiumSecondaryTerrainSource {
             // Never block the render thread on async visibility. The fallback reads only immutable
             // snapshot data and is therefore deterministic and independent from Sodium mutation.
             result = cull(snapshot, view, CULL_EPOCH.get());
-        }
-
-        if (view.family() == DeferredViewFamily.SHADOW_CASCADE && result != null && !result.cancelled()) {
-            String state = view.index() + ":" + result.visibleSections().length;
-            DebugLog.infoOnChange(
-                    "combatant.deferred.shadow-cull." + view.index(),
-                    state,
-                    "[Deferred][ShadowCull] cascade=%d sections=%d range=%.2f..%.2f",
-                    view.index(), result.visibleSections().length, view.nearPlane(), view.farPlane()
-            );
         }
 
         return buildLists(result, snapshot);

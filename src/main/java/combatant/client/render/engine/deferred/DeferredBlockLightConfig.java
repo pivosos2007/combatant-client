@@ -15,25 +15,26 @@ record DeferredBlockLightConfig(
         int sizeZ,
         int originAlignment,
         int seedRefreshIntervalFrames,
-        int propagationIterationsPerFrame,
+        int propagationIterationsOnRebuild,
+        float chromaContourBlend,
         float surfaceSampleOffset,
         float edgeFadeStart,
         float edgeFadeEnd
 ) {
     /*
-     * The block-light field is a persistent, camera-position-centered world-space volume. Camera
-     * rotation never changes its coverage; only block-aligned camera translation scrolls the field.
-     * Propagation advances a small bounded amount every frame instead of rebuilding many full-volume
-     * flood-fill passes whenever the camera crosses a cell boundary.
+     * The block-light field is camera-position-centered and section aligned. The expensive color
+     * propagation is rebuilt only when the covered section set or Minecraft light data changes;
+     * unchanged frames only resolve the already converged volume.
      */
     private static final DeferredBlockLightConfig DEFAULT = new DeferredBlockLightConfig(
             true,
-            64, 48, 64,
-            4,
-            4,
-            1,
+            128, 64, 128,
+            16,
+            600,
+            15,
+            0.18f,
             0.5f,
-            0.75f,
+            0.90f,
             1.0f
     );
 
@@ -42,8 +43,9 @@ record DeferredBlockLightConfig(
         sizeY = clamp(sizeY, 8, 128);
         sizeZ = clamp(sizeZ, 8, 128);
         originAlignment = clamp(originAlignment, 1, 16);
-        seedRefreshIntervalFrames = clamp(seedRefreshIntervalFrames, 1, 120);
-        propagationIterationsPerFrame = clamp(propagationIterationsPerFrame, 1, 4);
+        seedRefreshIntervalFrames = clamp(seedRefreshIntervalFrames, 1, 3600);
+        propagationIterationsOnRebuild = clamp(propagationIterationsOnRebuild, 1, 15);
+        chromaContourBlend = finiteClamp(chromaContourBlend, 0.0f, 0.5f, 0.18f);
         surfaceSampleOffset = finiteClamp(surfaceSampleOffset, 0.0f, 1.0f, 0.5f);
         edgeFadeStart = finiteClamp(edgeFadeStart, 0.0f, 1.0f, 0.75f);
         edgeFadeEnd = finiteClamp(edgeFadeEnd, edgeFadeStart + 0.01f, 1.25f, 1.0f);

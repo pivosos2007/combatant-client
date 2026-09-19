@@ -13,8 +13,10 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ItemParticleOption;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -22,6 +24,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.NoRender;
 import combatant.client.util.block.BlockObservationHub;
+import combatant.client.render.engine.light.BlockLightChangeTracker;
 
 @Mixin(ClientLevel.class)
 public abstract class ClientLevelMixin {
@@ -29,6 +32,16 @@ public abstract class ClientLevelMixin {
     @Inject(method = "setServerVerifiedBlockState", at = @At("TAIL"))
     private void combatant$recordBlockUpdate(BlockPos pos, BlockState state, @Block.UpdateFlags int flags, CallbackInfo ci) {
         BlockObservationHub.observeWorldUpdate(pos, state);
+    }
+
+    @Inject(method = "onChunkLoaded", at = @At("TAIL"))
+    private void combatant$invalidateBlockLightOnChunkLoad(ChunkPos pos, CallbackInfo ci) {
+        BlockLightChangeTracker.markChanged();
+    }
+
+    @Inject(method = "unload", at = @At("TAIL"))
+    private void combatant$invalidateBlockLightOnChunkUnload(LevelChunk chunk, CallbackInfo ci) {
+        BlockLightChangeTracker.markChanged();
     }
 
     @Inject(

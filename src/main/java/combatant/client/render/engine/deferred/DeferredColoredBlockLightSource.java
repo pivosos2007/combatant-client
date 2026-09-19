@@ -12,6 +12,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import combatant.client.render.engine.light.BlockLightChangeTracker;
 import combatant.client.render.engine.light.BlockLightEmitterRegistry;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.shader.ComputeDispatchCommand;
@@ -35,12 +36,15 @@ import combatant.client.render.engine.rhi.shader.StorageImageBinding;
 import combatant.client.render.engine.rhi.shader.StorageImageDescriptor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.core.SectionPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.DataLayer;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.lighting.LayerLightEventListener;
 import net.minecraft.world.phys.Vec3;
 import org.lwjgl.system.MemoryUtil;
 
@@ -48,13 +52,13 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
- * Renderer-owned Minecraft block-light propagation.
+ * Renderer-owned colored block-light field.
  *
- * <p>The CPU injects facts it already knows exactly: block emission and block light dampening.
- * Compute performs the spatial propagation in a camera-centered volume. This is not
- * scene-radiance GI and does not infer emitters from rendered color/material pixels.</p>
+ * <p>Minecraft remains authoritative for scalar block-light visibility/intensity. This subsystem
+ * propagates only explicit emitter chroma along that already-computed light field.</p>
  */
 final class DeferredColoredBlockLightSource implements AutoCloseable {
     private static final int VOLUME_LOCAL_SIZE = 4;
@@ -62,6 +66,7 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
     private static final Identifier SEED_SHADER = id("deferred/block_light_seed");
     private static final Identifier PROPAGATE_SHADER = id("deferred/block_light_propagate");
     private static final Identifier RESOLVE_SHADER = id("deferred/block_light_resolve");
+    private static final Predicate<BlockState> EMITS_BLOCK_LIGHT = state -> state != null && state.getLightEmission() > 0;
 
     private static final Std430StructLayout VOLUME_DATA_LAYOUT = Std430StructLayout.builder()
             .member("volumeSizeAndColumns", Std430Type.VEC4)
@@ -118,9 +123,7 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
     private int originX = Integer.MIN_VALUE;
     private int originY = Integer.MIN_VALUE;
     private int originZ = Integer.MIN_VALUE;
-    private int radianceOriginX = Integer.MIN_VALUE;
-    private int radianceOriginY = Integer.MIN_VALUE;
-    private int radianceOriginZ = Integer.MIN_VALUE;
+    private long observedLightGeneration = Long.MIN_VALUE;
 
     void install(ArrayList<DeferredPassSpec> passes) {
         passes.add(DeferredPassSpec.builder("world.block-light.volume", DeferredStage.PRE_LIGHTING)
@@ -179,25 +182,27 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
         }
 
         int[] nextOrigin = selectVolumeOrigin(view);
-        int nextOriginX = nextOrigin[0];
-        int nextOriginY = nextOrigin[1];
-        int nextOriginZ = nextOrigin[2];
-        boolean moved = nextOriginX != originX || nextOriginY != originY || nextOriginZ != originZ;
+        boolean moved = nextOrigin[0] != originX || nextOrigin[1] != originY || nextOrigin[2] != originZ;
+        long lightGeneration = BlockLightChangeTracker.generation();
+        boolean lightChanged = observedLightGeneration != lightGeneration;
         boolean periodicRefresh = lastSeedRefreshFrame == Long.MIN_VALUE
                 || context.frame().frameId() - lastSeedRefreshFrame >= config.seedRefreshIntervalFrames();
+        boolean needsRebuild = finalRadiance == null || moved || lightChanged || periodicRefresh;
 
-        if (moved || periodicRefresh) {
-            originX = nextOriginX;
-            originY = nextOriginY;
-            originZ = nextOriginZ;
-            uploadSeed(level);
-            lastSeedRefreshFrame = context.frame().frameId();
+        if (needsRebuild) {
+            // A block update can arrive before the client light engine has propagated its new DataLayer.
+            // Keep the previous converged volume for that frame and retry until the authoritative field settles.
+            boolean lightEngineBusy = level.getLightEngine().hasLightWork();
+            if (finalRadiance == null || moved || !lightEngineBusy) {
+                originX = nextOrigin[0];
+                originY = nextOrigin[1];
+                originZ = nextOrigin[2];
+                uploadSeed(level);
+                rebuildPropagation(context);
+                lastSeedRefreshFrame = context.frame().frameId();
+                observedLightGeneration = lightGeneration;
+            }
         }
-
-        // Persistent flood fill: keep the previous volume alive and advance only a
-        // bounded number of iterations each frame. When the camera-centered volume moves, the
-        // shader reprojects previous voxels by the exact integer origin delta instead of resetting.
-        advancePropagation(context);
 
         if (finalRadiance != null) {
             context.resources().bindStorageImage(DeferredResource.BLOCK_LIGHT_VOLUME_SEED, seedVolume);
@@ -207,65 +212,65 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
 
     private void uploadSeed(ClientLevel level) {
         ByteBuffer upload = seedUpload();
-        int atlasWidth = config.atlasWidth();
-        int atlasHeight = config.atlasHeight();
-        int pixelCount = Math.multiplyExact(atlasWidth, atlasHeight);
+        MemoryUtil.memSet(MemoryUtil.memAddress(upload), 0, upload.capacity());
 
-        // Unused atlas texels and unavailable chunks behave as fully blocking, zero-emission cells.
-        for (int pixel = 0; pixel < pixelCount; pixel++) {
-            int offset = pixel * 16;
-            upload.putFloat(offset, 0.0f);
-            upload.putFloat(offset + 4, 0.0f);
-            upload.putFloat(offset + 8, 0.0f);
-            upload.putFloat(offset + 12, 1.0f);
-        }
-
+        LayerLightEventListener blockLight = level.getLightEngine().getLayerListener(LightLayer.BLOCK);
         BlockLightEmitterRegistry emitters = BlockLightEmitterRegistry.global();
-        int columns = config.atlasColumns();
-        for (int z = 0; z < config.sizeZ(); z++) {
-            int worldZ = originZ + z;
-            int chunkZ = worldZ >> 4;
-            int localZ = worldZ & 15;
-            int sliceColumn = z % columns;
-            int sliceRow = z / columns;
-            int cachedChunkX = Integer.MIN_VALUE;
-            ChunkAccess chunk = null;
-            for (int x = 0; x < config.sizeX(); x++) {
-                int worldX = originX + x;
-                int chunkX = worldX >> 4;
-                int localX = worldX & 15;
-                if (chunkX != cachedChunkX) {
-                    cachedChunkX = chunkX;
-                    chunk = level.getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
-                }
+
+        int minSectionX = SectionPos.blockToSectionCoord(originX);
+        int maxSectionX = SectionPos.blockToSectionCoord(originX + config.sizeX() - 1);
+        int minSectionY = SectionPos.blockToSectionCoord(originY);
+        int maxSectionY = SectionPos.blockToSectionCoord(originY + config.sizeY() - 1);
+        int minSectionZ = SectionPos.blockToSectionCoord(originZ);
+        int maxSectionZ = SectionPos.blockToSectionCoord(originZ + config.sizeZ() - 1);
+
+        for (int sectionZ = minSectionZ; sectionZ <= maxSectionZ; sectionZ++) {
+            for (int sectionX = minSectionX; sectionX <= maxSectionX; sectionX++) {
+                ChunkAccess chunk = level.getChunk(sectionX, sectionZ, ChunkStatus.FULL, false);
                 if (chunk == null) continue;
-
                 LevelChunkSection[] sections = chunk.getSections();
-                int cachedSectionY = Integer.MIN_VALUE;
-                LevelChunkSection section = null;
-                for (int y = 0; y < config.sizeY(); y++) {
-                    int worldY = originY + y;
-                    int atlasX = sliceColumn * config.sizeX() + x;
-                    int atlasY = sliceRow * config.sizeY() + y;
-                    int offset = (atlasY * atlasWidth + atlasX) * 16;
-                    if (level.isOutsideBuildHeight(worldY)) continue;
 
-                    int sectionY = SectionPos.blockToSectionCoord(worldY);
-                    if (sectionY != cachedSectionY) {
-                        cachedSectionY = sectionY;
-                        int sectionIndex = level.getSectionIndexFromSectionY(sectionY);
-                        section = sectionIndex >= 0 && sectionIndex < sections.length
-                                ? sections[sectionIndex] : null;
-                    }
+                for (int sectionY = minSectionY; sectionY <= maxSectionY; sectionY++) {
+                    int sectionIndex = level.getSectionIndexFromSectionY(sectionY);
+                    if (sectionIndex < 0 || sectionIndex >= sections.length) continue;
+                    LevelChunkSection section = sections[sectionIndex];
                     if (section == null) continue;
 
-                    BlockState state = section.getBlockState(localX, worldY & 15, localZ);
-                    BlockLightEmitterRegistry.ResolvedEmitter emitter = emitters.resolve(state);
-                    float dampening = Math.max(0.0f, Math.min(1.0f, state.getLightDampening() / 15.0f));
-                    upload.putFloat(offset, emitter.red());
-                    upload.putFloat(offset + 4, emitter.green());
-                    upload.putFloat(offset + 8, emitter.blue());
-                    upload.putFloat(offset + 12, dampening);
+                    SectionPos sectionPos = SectionPos.of(sectionX, sectionY, sectionZ);
+                    DataLayer lightData = blockLight.getDataLayerData(sectionPos);
+                    boolean scanEmitters = !section.hasOnlyAir() && section.maybeHas(EMITS_BLOCK_LIGHT);
+
+                    int baseX = SectionPos.sectionToBlockCoord(sectionX);
+                    int baseY = SectionPos.sectionToBlockCoord(sectionY);
+                    int baseZ = SectionPos.sectionToBlockCoord(sectionZ);
+                    int localMinX = Math.max(0, originX - baseX);
+                    int localMaxX = Math.min(15, originX + config.sizeX() - 1 - baseX);
+                    int localMinY = Math.max(0, originY - baseY);
+                    int localMaxY = Math.min(15, originY + config.sizeY() - 1 - baseY);
+                    int localMinZ = Math.max(0, originZ - baseZ);
+                    int localMaxZ = Math.min(15, originZ + config.sizeZ() - 1 - baseZ);
+                    if (localMinX > localMaxX || localMinY > localMaxY || localMinZ > localMaxZ) continue;
+
+                    for (int localZ = localMinZ; localZ <= localMaxZ; localZ++) {
+                        int volumeZ = baseZ + localZ - originZ;
+                        for (int localY = localMinY; localY <= localMaxY; localY++) {
+                            int volumeY = baseY + localY - originY;
+                            for (int localX = localMinX; localX <= localMaxX; localX++) {
+                                int volumeX = baseX + localX - originX;
+                                int offset = seedByteOffset(volumeX, volumeY, volumeZ);
+                                int lightLevel = lightData != null ? lightData.get(localX, localY, localZ) : 0;
+                                upload.put(offset + 3, (byte) (Math.max(0, Math.min(15, lightLevel)) * 17));
+
+                                if (!scanEmitters) continue;
+                                BlockState state = section.getBlockState(localX, localY, localZ);
+                                if (state.getLightEmission() <= 0) continue;
+                                BlockLightEmitterRegistry.ResolvedEmitter emitter = emitters.resolve(state);
+                                writeEmitterColor(upload, offset, emitter);
+                                int sourceLevel = Math.max(lightLevel, emitter.vanillaLevel());
+                                upload.put(offset + 3, (byte) (Math.max(0, Math.min(15, sourceLevel)) * 17));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -273,57 +278,42 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
         ByteBuffer source = upload.duplicate().order(ByteOrder.nativeOrder());
         source.position(0).limit(upload.capacity());
         RenderSystem.getDevice().createCommandEncoder().writeToTexture(
-                seedVolume.view().texture(), source, 0, 0, 0, 0, atlasWidth, atlasHeight
+                seedVolume.view().texture(), source, 0, 0, 0, 0, config.atlasWidth(), config.atlasHeight()
         );
     }
 
-    private void advancePropagation(DeferredPassContext context) {
+    private void rebuildPropagation(DeferredPassContext context) {
         RhiStorageBuffer parameters = volumeData();
         GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
         int groupsX = groups(config.sizeX(), VOLUME_LOCAL_SIZE);
         int groupsY = groups(config.sizeY(), VOLUME_LOCAL_SIZE);
         int groupsZ = groups(config.sizeZ(), VOLUME_LOCAL_SIZE);
 
-        // CPU transfer may have refreshed the occupancy/emission seed. Make it visible before any
-        // compute consumer. This barrier is intentionally cheap compared to rebuilding 15 complete
-        // flood-fill passes on every refresh.
         context.advancedShaders().barrier(new RhiResourceBarrier(
                 RhiResourceBarrier.Stage.ALL, RhiResourceBarrier.Access.WRITE,
                 RhiResourceBarrier.Stage.ALL, RhiResourceBarrier.Access.READ,
                 List.of(), List.of(seedVolume)
         ));
 
-        if (finalRadiance == null) {
-            Std430Writer initialize = volumeWriter(originX, originY, originZ, false);
-            parameters.upload(initialize.buffer(), 0L);
-            context.advancedShaders().dispatch(new ComputeDispatchCommand(
-                    "Combatant block-light initialize",
-                    seedPipeline(), groupsX, groupsY, groupsZ,
-                    List.of(new StorageBinding(2, parameters, 0L, initialize.byteSize(), StorageAccess.READ_ONLY)),
-                    List.of(new SampledTextureBinding(0, seedVolume.view(), nearest)),
-                    List.of(new StorageImageBinding(1, radianceA, StorageAccess.WRITE_ONLY))
-            ));
-            finalRadiance = radianceA;
-            radianceOriginX = originX;
-            radianceOriginY = originY;
-            radianceOriginZ = originZ;
-        }
+        Std430Writer initialize = volumeWriter();
+        parameters.upload(initialize.buffer(), 0L);
+        context.advancedShaders().dispatch(new ComputeDispatchCommand(
+                "Combatant block-light initialize",
+                seedPipeline(), groupsX, groupsY, groupsZ,
+                List.of(new StorageBinding(2, parameters, 0L, initialize.byteSize(), StorageAccess.READ_ONLY)),
+                List.of(new SampledTextureBinding(0, seedVolume.view(), nearest)),
+                List.of(new StorageImageBinding(1, radianceA, StorageAccess.WRITE_ONLY))
+        ));
+        finalRadiance = radianceA;
 
-        for (int iteration = 0; iteration < config.propagationIterationsPerFrame(); iteration++) {
+        for (int iteration = 0; iteration < config.propagationIterationsOnRebuild(); iteration++) {
             RhiStorageImage previous = finalRadiance;
             RhiStorageImage next = previous == radianceA ? radianceB : radianceA;
-            boolean historyValid = radianceOriginX != Integer.MIN_VALUE;
-            int previousOriginX = historyValid ? radianceOriginX : originX;
-            int previousOriginY = historyValid ? radianceOriginY : originY;
-            int previousOriginZ = historyValid ? radianceOriginZ : originZ;
-
-            Std430Writer writer = volumeWriter(previousOriginX, previousOriginY, previousOriginZ, historyValid);
-            parameters.upload(writer.buffer(), 0L);
             computeReadBarrier(context, previous);
             context.advancedShaders().dispatch(new ComputeDispatchCommand(
                     "Combatant block-light propagation " + iteration,
                     propagatePipeline(), groupsX, groupsY, groupsZ,
-                    List.of(new StorageBinding(3, parameters, 0L, writer.byteSize(), StorageAccess.READ_ONLY)),
+                    List.of(new StorageBinding(3, parameters, 0L, initialize.byteSize(), StorageAccess.READ_ONLY)),
                     List.of(
                             new SampledTextureBinding(0, seedVolume.view(), nearest),
                             new SampledTextureBinding(1, previous.view(), nearest)
@@ -331,9 +321,6 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
                     List.of(new StorageImageBinding(2, next, StorageAccess.WRITE_ONLY))
             ));
             finalRadiance = next;
-            radianceOriginX = originX;
-            radianceOriginY = originY;
-            radianceOriginZ = originZ;
         }
     }
 
@@ -385,20 +372,38 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
         ));
     }
 
-    private Std430Writer volumeWriter(int previousOriginX,
-                                      int previousOriginY,
-                                      int previousOriginZ,
-                                      boolean historyValid) {
+    private Std430Writer volumeWriter() {
         return new Std430Writer(VOLUME_DATA_LAYOUT, 1)
                 .putVec4(0, "volumeSizeAndColumns",
                         config.sizeX(), config.sizeY(), config.sizeZ(), config.atlasColumns())
                 .putVec4(0, "atlasSizeAndRows",
                         config.atlasWidth(), config.atlasHeight(), config.atlasRows(),
-                        config.propagationIterationsPerFrame())
-                .putVec4(0, "originAndAttenuation",
-                        originX, originY, originZ, 1.0f / 15.0f)
-                .putVec4(0, "previousOriginAndHistory",
-                        previousOriginX, previousOriginY, previousOriginZ, historyValid ? 1.0f : 0.0f);
+                        config.propagationIterationsOnRebuild())
+                .putVec4(0, "originAndAttenuation", 0.0f, 0.0f, 0.0f, config.chromaContourBlend())
+                .putVec4(0, "previousOriginAndHistory", 0.0f, 0.0f, 0.0f, 0.0f);
+    }
+
+    private int seedByteOffset(int x, int y, int z) {
+        int sliceColumn = z % config.atlasColumns();
+        int sliceRow = z / config.atlasColumns();
+        int atlasX = sliceColumn * config.sizeX() + x;
+        int atlasY = sliceRow * config.sizeY() + y;
+        return (atlasY * config.atlasWidth() + atlasX) * 4;
+    }
+
+    private static void writeEmitterColor(ByteBuffer target,
+                                          int offset,
+                                          BlockLightEmitterRegistry.ResolvedEmitter emitter) {
+        float maximum = Math.max(emitter.red(), Math.max(emitter.green(), emitter.blue()));
+        if (!(maximum > 1.0e-6f)) return;
+        target.put(offset, encodeUnorm8(emitter.red() / maximum));
+        target.put(offset + 1, encodeUnorm8(emitter.green() / maximum));
+        target.put(offset + 2, encodeUnorm8(emitter.blue() / maximum));
+    }
+
+    private static byte encodeUnorm8(float value) {
+        int encoded = Math.round(Math.max(0.0f, Math.min(1.0f, value)) * 255.0f);
+        return (byte) encoded;
     }
 
     private void ensureOwner(CombatantRhi rhi) {
@@ -413,7 +418,7 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
         int width = config.atlasWidth();
         int height = config.atlasHeight();
         seedVolume = owner.advancedShaders().createStorageImage(new StorageImageDescriptor(
-                "combatant-block-light-seed", width, height, GpuFormat.RGBA32_FLOAT,
+                "combatant-block-light-seed", width, height, GpuFormat.RGBA8_UNORM,
                 StorageAccess.READ_WRITE, true, false
         ));
         radianceA = owner.advancedShaders().createStorageImage(new StorageImageDescriptor(
@@ -424,7 +429,7 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
                 "combatant-block-light-radiance-b", width, height, GpuFormat.RGBA16_FLOAT,
                 StorageAccess.READ_WRITE, true, false
         ));
-        seedUpload = MemoryUtil.memAlloc(Math.multiplyExact(Math.multiplyExact(width, height), 16))
+        seedUpload = MemoryUtil.memAlloc(Math.multiplyExact(Math.multiplyExact(width, height), 4))
                 .order(ByteOrder.nativeOrder());
     }
 
@@ -524,7 +529,7 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
     private void resetVolumeState() {
         lastSeedRefreshFrame = Long.MIN_VALUE;
         originX = originY = originZ = Integer.MIN_VALUE;
-        radianceOriginX = radianceOriginY = radianceOriginZ = Integer.MIN_VALUE;
+        observedLightGeneration = Long.MIN_VALUE;
         finalRadiance = null;
     }
 

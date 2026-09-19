@@ -68,24 +68,9 @@ void main() {
     // EnvironmentAttributes.AMBIENT_LIGHT_COLOR is already the renderer-facing ambient term.
     vec3 baselineAmbient = max(u_Baseline.ambientColor.rgb, vec3(0.0));
 
-    // Minecraft's block-light level remains the authoritative intensity/visibility contract.
-    // The bounded colored-light volume supplies chroma only. Volume coverage is not producer
-    // validity: a persistent LPV can still be converging or temporarily have no colored sample.
-    // Never replace valid Minecraft block light with zero/stale LPV data merely because the pixel
-    // happens to lie inside the volume.
-    float advancedStrength = max(advancedBlock.r, max(advancedBlock.g, advancedBlock.b));
-    vec3 advancedTint = advancedStrength > 1.0e-5
-            ? advancedBlock / advancedStrength
-            : vec3(1.0);
-
-    // One propagated light level is 1/15 in the volume. Once at least that much signal is present,
-    // the LPV has enough evidence to own the block-light hue. Below it, blend continuously back to
-    // the renderer-owned Minecraft baseline instead of producing temporal islands.
-    float colorConfidence = advancedBlockCoverage
-            * smoothstep(0.0, 1.0 / 15.0, advancedStrength)
-            * step(1.0e-5, blockBrightness);
-    vec3 coloredBlock = advancedTint * blockBrightness;
-    vec3 resolvedBlock = mix(baselineBlock, coloredBlock, colorConfidence);
+    // Inside the converged volume, colored block light replaces the neutral block-light term.
+    // Coverage fades only at the bounded volume edge; it is never a per-cell propagation-validity mask.
+    vec3 resolvedBlock = mix(baselineBlock, advancedBlock, advancedBlockCoverage);
 
     vec3 irradiance = advancedSky + baselineSky + resolvedBlock + baselineAmbient;
     imageStore(u_EnvironmentIrradiance, pixel, vec4(max(irradiance, vec3(0.0)), 1.0));
