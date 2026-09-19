@@ -37,13 +37,6 @@ float hgPhase(float cosTheta, float g) {
     return (1.0 - g2) / (4.0 * PI * denominator * sqrt(denominator));
 }
 
-int cubeFace(vec3 direction) {
-    vec3 a = abs(direction);
-    if (a.x >= a.y && a.x >= a.z) return direction.x >= 0.0 ? 0 : 1;
-    if (a.y >= a.x && a.y >= a.z) return direction.y >= 0.0 ? 2 : 3;
-    return direction.z >= 0.0 ? 4 : 5;
-}
-
 vec2 clampAtlasUv(LocalShadowView shadowView, vec2 uv) {
     vec2 halfTexel = shadowView.rangeTexel.yz * 0.5;
     vec2 minimum = shadowView.atlasScaleBias.zw + halfTexel;
@@ -57,24 +50,35 @@ float localShadowVisibility(LocalLight light, vec3 viewPosition) {
     if (baseView < 0 || viewCount <= 0 || light.shadowInfo.z <= 0.5 || u_Shadow.views.length() == 0) return 1.0;
 
     vec3 worldRelative = (u_Cull.inverseView * vec4(viewPosition, 0.0)).xyz;
-    int shadowIndex = baseView;
-    if (viewCount >= 6) {
-        if (baseView >= u_Shadow.views.length()) return 1.0;
-        vec3 fromLightWorld = worldRelative - u_Shadow.views[baseView].originNear.xyz;
-        shadowIndex += cubeFace(fromLightWorld);
+    int shadowIndex = -1;
+    vec2 localUv = vec2(0.0);
+    float receiverDepth = 0.0;
+    float bestMargin = -1.0;
+    int candidateCount = viewCount >= 6 ? min(viewCount, 6) : 1;
+    for (int face = 0; face < 6; ++face) {
+        if (face >= candidateCount) break;
+        int candidateIndex = baseView + face;
+        if (candidateIndex < 0 || candidateIndex >= u_Shadow.views.length()) continue;
+        LocalShadowView candidateView = u_Shadow.views[candidateIndex];
+        vec3 candidateRelative = worldRelative - candidateView.originNear.xyz;
+        vec4 clip = candidateView.viewProjection * vec4(candidateRelative, 1.0);
+        if (clip.w <= 1e-7) continue;
+        vec3 ndc = clip.xyz / clip.w;
+        vec2 candidateUv = ndc.xy * 0.5 + 0.5;
+        float candidateDepth = u_Cull.tileGrid.w > 0.5 ? ndc.z : ndc.z * 0.5 + 0.5;
+        if (any(lessThan(candidateUv, vec2(0.0))) || any(greaterThan(candidateUv, vec2(1.0)))
+                || candidateDepth < 0.0 || candidateDepth > 1.0) continue;
+        vec2 edge = min(candidateUv, vec2(1.0) - candidateUv);
+        float margin = min(edge.x, edge.y);
+        if (margin > bestMargin) {
+            bestMargin = margin;
+            shadowIndex = candidateIndex;
+            localUv = candidateUv;
+            receiverDepth = candidateDepth;
+        }
     }
-    if (shadowIndex < 0 || shadowIndex >= u_Shadow.views.length()) return 1.0;
-
+    if (shadowIndex < 0) return 1.0;
     LocalShadowView shadowView = u_Shadow.views[shadowIndex];
-    vec3 lightRelative = worldRelative - shadowView.originNear.xyz;
-    vec4 clip = shadowView.viewProjection * vec4(lightRelative, 1.0);
-    if (clip.w <= 1e-7) return 1.0;
-
-    vec3 ndc = clip.xyz / clip.w;
-    vec2 localUv = ndc.xy * 0.5 + 0.5;
-    float receiverDepth = u_Cull.tileGrid.w > 0.5 ? ndc.z : ndc.z * 0.5 + 0.5;
-    if (any(lessThan(localUv, vec2(0.0))) || any(greaterThan(localUv, vec2(1.0)))
-            || receiverDepth < 0.0 || receiverDepth > 1.0) return 1.0;
 
     vec2 atlasUv = localUv * shadowView.atlasScaleBias.xy + shadowView.atlasScaleBias.zw;
     vec2 atlasTexel = max(shadowView.rangeTexel.yz, vec2(1e-7));

@@ -36,6 +36,8 @@ layout(std430, binding = 11) readonly buffer WaterFrame {
     vec4 u_ReflectionMeta;
 };
 
+#moj_import <combatant:deferred_water_surface_model.glsl>
+
 layout(location = 0) out vec2 te_Uv;
 layout(location = 1) out vec2 te_LocalSurface;
 layout(location = 2) out vec4 te_Color;
@@ -53,6 +55,7 @@ layout(location = 13) flat out uint te_FeatureMask;
 layout(location = 14) flat out uint te_SurfaceFlags;
 layout(location = 15) flat out uint te_Surface;
 layout(location = 16) out vec3 te_PreviousViewPosition;
+layout(location = 17) out float te_SkyLight;
 
 vec3 bilerp3(vec3 a, vec3 b, vec3 c, vec3 d, vec2 uv) {
     return mix(mix(a, b, uv.x), mix(d, c, uv.x), uv.y);
@@ -75,46 +78,7 @@ vec3 baseNormal(vec2 uv) {
     vec3 explicitNormal = normalize(vec3(tc_Params2[0].w, tc_Optical[0].z, tc_Optical[0].w));
     if (dot(crossNormal, crossNormal) <= 1.0e-10) return explicitNormal;
     vec3 n = normalize(crossNormal);
-    return n.y < 0.0 ? -n : n;
-}
-
-vec3 deformation(vec3 world, vec2 flow, float flowStrength, float scale, float time, out vec2 gradient) {
-    gradient = vec2(0.0);
-    float amplitude = max(scale, 0.0) * max(u_Deformation0.x, 0.0);
-    float spatial = max(u_Deformation0.y, 1.0e-4);
-    float temporal = u_Deformation0.z;
-    float flowCoupling = max(u_Deformation0.w, 0.0);
-    float height = 0.0;
-
-    if (flowStrength > 1.0e-5 && amplitude > 0.0) {
-        vec2 direction = flow / flowStrength;
-        float phase = dot(world.xz, direction) * spatial
-                    - time * temporal * (1.0 + flowStrength * flowCoupling);
-        float response = sin(phase) * amplitude;
-        height += response;
-        gradient += direction * cos(phase) * amplitude * spatial;
-    }
-
-    vec2 wind = u_Deformation1.xy;
-    float windLength = length(wind);
-    float windCoupling = max(u_Deformation1.z, 0.0);
-    if (windLength > 1.0e-5 && windCoupling > 0.0 && amplitude > 0.0) {
-        vec2 direction = wind / windLength;
-        float phase = dot(world.xz, direction) * spatial - time * temporal * windLength;
-        float windAmplitude = amplitude * windCoupling;
-        height += sin(phase) * windAmplitude;
-        gradient += direction * cos(phase) * windAmplitude * spatial;
-    }
-
-    // Rain is a separate input term. Foundation profile keeps it at zero until a weather profile owns it.
-    float rain = max(u_OpticalScattering.w, 0.0) * max(u_Deformation1.w, 0.0);
-    if (rain > 0.0 && amplitude > 0.0) {
-        float phase = (world.x + world.z) * spatial * 1.7 - time * temporal * 2.0;
-        float rainAmplitude = amplitude * rain;
-        height += sin(phase) * rainAmplitude;
-        gradient += vec2(1.0) * cos(phase) * rainAmplitude * spatial * 1.7;
-    }
-    return vec3(0.0, height, 0.0);
+    return dot(n, explicitNormal) < 0.0 ? -n : n;
 }
 
 void main() {
@@ -127,14 +91,14 @@ void main() {
     vec4 params = bilerp4(tc_Params[0], tc_Params[1], tc_Params[2], tc_Params[3], patchUv);
     vec4 color = bilerp4(tc_Color[0], tc_Color[1], tc_Color[2], tc_Color[3], patchUv);
     vec4 optical = bilerp4(tc_Optical[0], tc_Optical[1], tc_Optical[2], tc_Optical[3], patchUv);
-    float flowStrength = max(tc_Params2[0].z, 0.0);
-
-    vec2 currentGradient;
-    vec2 previousGradient;
-    vec3 currentWorld = baseWorld + deformation(baseWorld, params.xy, flowStrength, tc_Tess[0].x,
-                                                 u_CurrentCameraTime.w, currentGradient);
-    vec3 previousWorld = baseWorld + deformation(baseWorld, params.xy, flowStrength, tc_Tess[0].x,
-                                                  u_PreviousCameraTime.w, previousGradient);
+    float skyLight = clamp(tc_Params2[0].y, 0.0, 1.0);
+    bool topSurface = (tc_SurfaceFlags[0] & COMBATANT_WATER_FLAG_TOP_SURFACE) != 0u;
+    float currentDisplacement = topSurface
+            ? combatantWaterDisplacement(baseWorld, skyLight, u_CurrentCameraTime.w) : 0.0;
+    float previousDisplacement = topSurface
+            ? combatantWaterDisplacement(baseWorld, skyLight, u_PreviousCameraTime.w) : 0.0;
+    vec3 currentWorld = baseWorld + vec3(0.0, currentDisplacement, 0.0);
+    vec3 previousWorld = baseWorld + vec3(0.0, previousDisplacement, 0.0);
 
     vec3 currentRelative = currentWorld - u_CurrentCameraTime.xyz;
     vec3 previousRelative = previousWorld - u_PreviousCameraTime.xyz;
@@ -144,7 +108,6 @@ void main() {
     vec4 previousClip = u_PreviousProjection * previousView;
 
     vec3 normalWorld = baseNormal(patchUv);
-    normalWorld = normalize(normalWorld + vec3(-currentGradient.x, 0.0, -currentGradient.y));
 
     gl_Position = currentClip;
     te_Uv = uv;
@@ -164,4 +127,5 @@ void main() {
     te_SurfaceFlags = tc_SurfaceFlags[0];
     te_Surface = tc_Surface[0];
     te_PreviousViewPosition = previousView.xyz;
+    te_SkyLight = skyLight;
 }

@@ -344,8 +344,9 @@ final class DeferredDynamicLightSource implements AutoCloseable {
             fov = (float) Math.toRadians(pointFaceFovDegrees);
         }
 
-        float nearPlane = Math.min(configuredNearPlane, Math.max(0.0025f, light.radius() * 0.005f));
-        float farPlane = Math.max(nearPlane + 0.01f, light.radius());
+        float nearPlane = Math.min(configuredNearPlane, Math.max(0.001f, light.radius() * 0.001f));
+        float farPadding = Math.max(0.25f, light.radius() * 0.05f);
+        float farPlane = Math.max(nearPlane + 0.01f, light.radius() + farPadding);
         Matrix4f view = new Matrix4f().lookAt(new Vector3f(), new Vector3f(direction), up);
         // World rendering is reversed-Z; swapping geometric near/far keeps the shadow target in the
         // same GREATER/GEQUAL convention as the primary/deferred depth resources.
@@ -765,7 +766,7 @@ final class DeferredDynamicLightSource implements AutoCloseable {
 
     private static Vector3f cubeUp(int face) {
         return switch (face) {
-            case 2 -> new Vector3f(0.0f, 0.0f, -1.0f);
+            case 2 -> new Vector3f(0.0f, 0.0f, 1.0f);
             case 3 -> new Vector3f(0.0f, 0.0f, -1.0f);
             default -> new Vector3f(0.0f, -1.0f, 0.0f);
         };

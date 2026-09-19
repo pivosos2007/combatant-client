@@ -40,6 +40,8 @@ layout(std140) uniform WaterFrame {
     vec4 u_ReflectionMeta;
 };
 
+#moj_import <combatant:deferred_water_surface_model.glsl>
+
 out vec2 v_Uv;
 out vec2 v_LocalSurface;
 out vec4 v_Color;
@@ -51,6 +53,7 @@ out vec3 v_ViewNormal;
 out vec4 v_CurrentClip;
 out vec4 v_PreviousClip;
 out vec3 v_PreviousViewPosition;
+out float v_SkyLight;
 flat out uint v_MaterialId;
 flat out uint v_FluidTypeId;
 flat out uint v_MapMask;
@@ -58,49 +61,16 @@ flat out uint v_FeatureMask;
 flat out uint v_SurfaceFlags;
 flat out uint v_Surface;
 
-vec3 deformation(vec3 world, vec2 flow, float flowStrength, float scale, float time, out vec2 gradient) {
-    gradient = vec2(0.0);
-    float amplitude = max(scale, 0.0) * max(u_Deformation0.x, 0.0);
-    float spatial = max(u_Deformation0.y, 1.0e-4);
-    float temporal = u_Deformation0.z;
-    float flowCoupling = max(u_Deformation0.w, 0.0);
-    float height = 0.0;
-    if (flowStrength > 1.0e-5 && amplitude > 0.0) {
-        vec2 direction = flow / flowStrength;
-        float phase = dot(world.xz, direction) * spatial
-                    - time * temporal * (1.0 + flowStrength * flowCoupling);
-        height += sin(phase) * amplitude;
-        gradient += direction * cos(phase) * amplitude * spatial;
-    }
-    vec2 wind = u_Deformation1.xy;
-    float windLength = length(wind);
-    float windCoupling = max(u_Deformation1.z, 0.0);
-    if (windLength > 1.0e-5 && windCoupling > 0.0 && amplitude > 0.0) {
-        vec2 direction = wind / windLength;
-        float phase = dot(world.xz, direction) * spatial - time * temporal * windLength;
-        float windAmplitude = amplitude * windCoupling;
-        height += sin(phase) * windAmplitude;
-        gradient += direction * cos(phase) * windAmplitude * spatial;
-    }
-    float rain = max(u_OpticalScattering.w, 0.0) * max(u_Deformation1.w, 0.0);
-    if (rain > 0.0 && amplitude > 0.0) {
-        float phase = (world.x + world.z) * spatial * 1.7 - time * temporal * 2.0;
-        float rainAmplitude = amplitude * rain;
-        height += sin(phase) * rainAmplitude;
-        gradient += vec2(1.0) * cos(phase) * rainAmplitude * spatial * 1.7;
-    }
-    return vec3(0.0, height, 0.0);
-}
-
 void main() {
     vec3 baseWorld = Position + u_CurrentCameraTime.xyz;
-    float flowStrength = max(Params2.z, 0.0);
-    vec2 currentGradient;
-    vec2 previousGradient;
-    vec3 currentWorld = baseWorld + deformation(baseWorld, Params.xy, flowStrength, Tess.x,
-                                                 u_CurrentCameraTime.w, currentGradient);
-    vec3 previousWorld = baseWorld + deformation(baseWorld, Params.xy, flowStrength, Tess.x,
-                                                  u_PreviousCameraTime.w, previousGradient);
+    float skyLight = clamp(Params2.y, 0.0, 1.0);
+    bool topSurface = (SurfaceFlags & COMBATANT_WATER_FLAG_TOP_SURFACE) != 0u;
+    float currentDisplacement = topSurface
+            ? combatantWaterDisplacement(baseWorld, skyLight, u_CurrentCameraTime.w) : 0.0;
+    float previousDisplacement = topSurface
+            ? combatantWaterDisplacement(baseWorld, skyLight, u_PreviousCameraTime.w) : 0.0;
+    vec3 currentWorld = baseWorld + vec3(0.0, currentDisplacement, 0.0);
+    vec3 previousWorld = baseWorld + vec3(0.0, previousDisplacement, 0.0);
     vec3 currentRelative = currentWorld - u_CurrentCameraTime.xyz;
     vec3 previousRelative = previousWorld - u_PreviousCameraTime.xyz;
     vec4 currentView = u_CurrentView * vec4(currentRelative, 1.0);
@@ -108,22 +78,21 @@ void main() {
     vec4 currentClip = u_CurrentProjection * currentView;
     vec4 previousClip = u_PreviousProjection * previousView;
 
-    vec3 baseNormal = normalize(vec3(Params2.w, Optical.z, Optical.w));
-    if (baseNormal.y < 0.0) baseNormal = -baseNormal;
-    vec3 normalWorld = normalize(baseNormal + vec3(-currentGradient.x, 0.0, -currentGradient.y));
+    vec3 normalWorld = normalize(vec3(Params2.w, Optical.z, Optical.w));
 
     gl_Position = currentClip;
     v_Uv = UV0;
     v_LocalSurface = LocalSurface;
     v_Color = Color;
     v_Params = Params;
-    v_Optical = vec4(Optical.xy, 0.0, 0.0);
+    v_Optical = Optical;
     v_ViewPosition = currentView.xyz;
     v_WorldPosition = currentWorld;
     v_ViewNormal = normalize(mat3(u_CurrentView) * normalWorld);
     v_CurrentClip = currentClip;
     v_PreviousClip = previousClip;
     v_PreviousViewPosition = previousView.xyz;
+    v_SkyLight = skyLight;
     v_MaterialId = MaterialId;
     v_FluidTypeId = FluidTypeId;
     v_MapMask = MaterialMapMask;

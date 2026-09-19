@@ -2,6 +2,8 @@
 
 layout(vertices = 4) out;
 
+const uint COMBATANT_WATER_FLAG_TOP_SURFACE = 1u;
+
 layout(location = 0) in vec2 v_Uv[];
 layout(location = 1) in vec2 v_LocalSurface[];
 layout(location = 2) in vec4 v_Color[];
@@ -55,8 +57,10 @@ void main() {
         float maxFactor = max(minFactor, v_Tess[0].z);
         float fadeStart = max(0.0, v_Tess[0].w);
         float fadeEnd = max(fadeStart + 0.001, v_Params2[0].x);
-        float factor = clamp(mix(maxFactor, minFactor, smoothstep(fadeStart, fadeEnd, distanceToCamera)),
-                             minFactor, maxFactor);
+        float factor = (v_SurfaceFlags[0] & COMBATANT_WATER_FLAG_TOP_SURFACE) != 0u
+                ? clamp(mix(maxFactor, minFactor, smoothstep(fadeStart, fadeEnd, distanceToCamera)),
+                        minFactor, maxFactor)
+                : 1.0;
         gl_TessLevelOuter[0] = factor;
         gl_TessLevelOuter[1] = factor;
         gl_TessLevelOuter[2] = factor;

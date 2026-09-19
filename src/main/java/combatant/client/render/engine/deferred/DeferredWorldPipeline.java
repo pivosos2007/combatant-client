@@ -638,6 +638,10 @@ public final class DeferredWorldPipeline {
     private void beginDeferredFrameState() {
         Object currentWorld = Minecraft.getInstance().level;
         if (worldOwner != currentWorld) {
+            // A world transition cannot inherit water replacement ownership. Sodium remains
+            // authoritative until this world's extracted water passes replacement preflight.
+            combatant.client.render.sodium.fluid.WaterSurfacePatchRouting.setReplacementActive(false);
+            combatant.client.render.sodium.fluid.WaterSurfaceExtractor.beginWorld(currentWorld);
             CombatantRenderSystem.deferredGraph().releasePhysicalResources(CombatantRenderSystem.rhi());
             resourceBindings.detachFrameGraph();
             objectMotion.reset();

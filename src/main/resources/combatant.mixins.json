@@ -187,6 +187,7 @@
     "sodium.SodiumChunkVertexMixin",
     "sodium.SodiumDefaultFluidRendererMixin",
     "sodium.SodiumRenderSectionSurfaceMixin",
+    "sodium.SodiumRenderRegionWaterSurfaceMixin",
     "sodium.SodiumDefaultChunkRendererMixin",
     "sodium.SodiumQueuedSectionStorageMixin",
     "sodium.SodiumRenderSectionManagerAccessor",

@@ -6,8 +6,8 @@
 package combatant.client.render.engine.water;
 
 /**
- * Neutral technological profile for the forward-water contract. Values are deliberately generic;
- * artistic wave/color/foam/caustic policy belongs to later dimension/material profiles.
+ * Temporary full-replacement water profile. This keeps the current reference-style surface
+ * parameters centralized while the later dimension/material water policy remains free to replace it.
  */
 public record WaterForwardProfile(
         float displacementAmplitudeFactor,
@@ -27,11 +27,11 @@ public record WaterForwardProfile(
         float refractionProbeDistance
 ) {
     public static final WaterForwardProfile FOUNDATION = new WaterForwardProfile(
-            0.08f, 1.0f, 1.0f,
-            0.0f, 1.0f, 0.0f,
+            0.025f, 0.30f, 0.37f,
+            0.0f, 0.0f, 0.0f,
             0.0f, 0.0f,
-            0.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, 0.0f,
-            1.0f
+            0.39f, 0.14f, 0.07f,
+            0.01f, 0.01f, 0.01f,
+            8.0f
     );
 }

@@ -11,7 +11,6 @@ import combatant.client.render.engine.material.MaterialSurfaceDescriptor;
 import combatant.client.render.sodium.fluid.FluidSurfaceContext;
 import combatant.client.render.sodium.fluid.FluidSurfaceData;
 import combatant.client.render.sodium.fluid.WaterSurfaceExtractor;
-import combatant.client.render.sodium.fluid.WaterSurfacePatchRouting;
 import combatant.client.render.sodium.terrain.CombatantChunkVertexExtension;
 import net.caffeinemc.mods.sodium.client.model.color.ColorProvider;
 import net.caffeinemc.mods.sodium.client.model.quad.ModelQuadView;
@@ -109,9 +108,10 @@ public abstract class SodiumDefaultFluidRendererMixin {
                 quad, facing, reversed, descriptor, vertices, mapMask, featureMask, packedSurface
         );
         WaterSurfaceExtractor.capture(surface);
-        if (surface != null && surface.isTopSurface()
-                && surface.domain() == combatant.client.render.engine.material.MaterialDomain.WATER
-                && WaterSurfacePatchRouting.replacementActive()) {
+        if (WaterSurfaceExtractor.replacementEligible(surface)
+                && WaterSurfaceExtractor.currentBuildOwnsWaterReplacement()) {
+            // Replacement ownership is captured once at section-build start, so every water quad
+            // from this build is routed to exactly one renderer even if the global toggle changes.
             ci.cancel();
         }
     }

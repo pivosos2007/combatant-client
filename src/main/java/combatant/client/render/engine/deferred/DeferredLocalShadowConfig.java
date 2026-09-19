@@ -20,18 +20,18 @@ record DeferredLocalShadowConfig(
         float pointFaceFovDegrees
 ) {
     private static final DeferredLocalShadowConfig DEFAULT = new DeferredLocalShadowConfig(
-            true, 6, 384, 0.01f, 1.35f, 1.0f, 1.0f, 1.0f, 92.0f
+            true, 6, 384, 0.0025f, 1.35f, 1.0f, 1.0f, 1.0f, 96.0f
     );
 
     DeferredLocalShadowConfig {
         atlasViewBudget = clamp(atlasViewBudget, 1, 64);
         faceResolution = clamp(faceResolution, 64, 2048);
-        nearPlane = finiteClamp(nearPlane, 0.005f, 1.0f, 0.05f);
+        nearPlane = finiteClamp(nearPlane, 0.001f, 1.0f, 0.01f);
         retentionBoost = finiteClamp(retentionBoost, 1.0f, 4.0f, 1.20f);
         normalOffsetTexels = finiteClamp(normalOffsetTexels, 0.0f, 8.0f, 1.0f);
         receiverBiasTexels = finiteClamp(receiverBiasTexels, 0.0f, 8.0f, 1.0f);
         filterRadiusTexels = finiteClamp(filterRadiusTexels, 0.0f, 8.0f, 1.25f);
-        pointFaceFovDegrees = finiteClamp(pointFaceFovDegrees, 90.0f, 110.0f, 92.0f);
+        pointFaceFovDegrees = finiteClamp(pointFaceFovDegrees, 90.0f, 110.0f, 96.0f);
     }
 
     static DeferredLocalShadowConfig current() {

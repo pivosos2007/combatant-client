@@ -46,7 +46,7 @@ public abstract class SodiumChunkBuilderMeshingTaskMixin {
     private void combatant$finishSurfaceExtraction(ChunkBuildContext context,
                                                     CancellationToken cancellationToken,
                                                     CallbackInfoReturnable<ChunkBuildOutput> cir) {
-        WaterSurfaceExtractor.finishSection(cir.getReturnValue() != null);
+        WaterSurfaceExtractor.finishSection(cir.getReturnValue());
     }
 
     @ModifyVariable(

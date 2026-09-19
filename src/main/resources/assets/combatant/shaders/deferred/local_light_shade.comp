@@ -124,13 +124,6 @@ vec2 rotateOffset(vec2 value, float angle) {
     return vec2(c * value.x - s * value.y, s * value.x + c * value.y);
 }
 
-int cubeFace(vec3 direction) {
-    vec3 a = abs(direction);
-    if (a.x >= a.y && a.x >= a.z) return direction.x >= 0.0 ? 0 : 1;
-    if (a.y >= a.x && a.y >= a.z) return direction.y >= 0.0 ? 2 : 3;
-    return direction.z >= 0.0 ? 4 : 5;
-}
-
 ShadowProjection projectShadow(LocalShadowView shadowView, vec3 cameraRelativeWorld) {
     ShadowProjection result;
     vec3 lightRelative = cameraRelativeWorld - shadowView.originNear.xyz;
@@ -149,6 +142,31 @@ ShadowProjection projectShadow(LocalShadowView shadowView, vec3 cameraRelativeWo
             && result.depth >= 0.0 && result.depth <= 1.0;
     result.atlasUv = result.localUv * shadowView.atlasScaleBias.xy + shadowView.atlasScaleBias.zw;
     return result;
+}
+
+bool selectPointShadowProjection(int baseView,
+                                 int viewCount,
+                                 vec3 receiverWorld,
+                                 out int selectedIndex,
+                                 out ShadowProjection selectedProjection) {
+    selectedIndex = -1;
+    selectedProjection.valid = false;
+    float bestMargin = -1.0;
+    int count = min(viewCount, 6);
+    for (int face = 0; face < 6; ++face) {
+        if (face >= count) break;
+        int candidateIndex = baseView + face;
+        ShadowProjection candidate = projectShadow(u_Shadow.views[candidateIndex], receiverWorld);
+        if (!candidate.valid) continue;
+        vec2 edge = min(candidate.localUv, vec2(1.0) - candidate.localUv);
+        float margin = min(edge.x, edge.y);
+        if (margin > bestMargin) {
+            bestMargin = margin;
+            selectedIndex = candidateIndex;
+            selectedProjection = candidate;
+        }
+    }
+    return selectedIndex >= 0;
 }
 
 vec2 clampAtlasUv(LocalShadowView shadowView, vec2 uv) {
@@ -189,20 +207,23 @@ float localShadowVisibility(LocalLight light,
 
     vec3 worldRelative = (u_Cull.inverseView * vec4(viewPosition, 0.0)).xyz;
     vec3 normalWorld = normalize(mat3(u_Cull.inverseView) * normalView);
+
+    LocalShadowView baseShadowView = u_Shadow.views[baseView];
+    vec3 lightRelative = worldRelative - baseShadowView.originNear.xyz;
+    float distanceValue = max(length(lightRelative), baseShadowView.originNear.w);
+    float faceResolution = max(u_Cull.shadowParams.w, 1.0);
+    float worldTexel = max(2.0 * distanceValue * max(baseShadowView.rangeTexel.w, 1e-4) / faceResolution, 1e-5);
+    vec3 receiverWorld = worldRelative + normalWorld * worldTexel * max(u_Cull.shadowParams.x, 0.0);
+
     int shadowIndex = baseView;
+    ShadowProjection projected;
     if (viewCount >= 6) {
-        vec3 fromLightWorld = worldRelative - u_Shadow.views[baseView].originNear.xyz;
-        shadowIndex += cubeFace(fromLightWorld);
+        if (!selectPointShadowProjection(baseView, viewCount, receiverWorld, shadowIndex, projected)) return 1.0;
+    } else {
+        projected = projectShadow(baseShadowView, receiverWorld);
+        if (!projected.valid) return 1.0;
     }
     LocalShadowView shadowView = u_Shadow.views[shadowIndex];
-
-    vec3 lightRelative = worldRelative - shadowView.originNear.xyz;
-    float distanceValue = max(length(lightRelative), shadowView.originNear.w);
-    float faceResolution = max(u_Cull.shadowParams.w, 1.0);
-    float worldTexel = max(2.0 * distanceValue * max(shadowView.rangeTexel.w, 1e-4) / faceResolution, 1e-5);
-    vec3 receiverWorld = worldRelative + normalWorld * worldTexel * max(u_Cull.shadowParams.x, 0.0);
-    ShadowProjection projected = projectShadow(shadowView, receiverWorld);
-    if (!projected.valid) return 1.0;
 
     float bias = receiverPlaneBias(shadowView, receiverWorld, normalWorld, worldTexel, projected.depth);
     float filterRadius = max(u_Cull.shadowParams.z, 0.0);

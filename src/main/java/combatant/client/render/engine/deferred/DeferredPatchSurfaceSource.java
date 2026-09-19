@@ -8,8 +8,6 @@ package combatant.client.render.engine.deferred;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
 import combatant.client.render.engine.pipeline.DepthTestFunction;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.shaders.UniformType;
@@ -18,6 +16,7 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import combatant.client.mixininterface.IMsaaTexture;
+import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.material.MaterialAtlasManager;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.pipeline.ExtendedRenderPipelineBuilder;
@@ -43,7 +42,10 @@ import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.TextureAtlas;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -52,7 +54,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /** Native patch consumer for explicit height-displacement terrain and extracted water surfaces. */
 final class DeferredPatchSurfaceSource implements AutoCloseable {
@@ -114,11 +115,6 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
     ));
 
     private static final ShaderResourceLayout WATER_LAYOUT = new ShaderResourceLayout(List.of(
-            new ShaderResourceSlot(0, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(1, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(2, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(3, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(4, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(5, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(6, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(7, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
@@ -133,11 +129,6 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
     ));
 
     private static final ShaderResourceLayout WATER_REFLECTION_LAYOUT = new ShaderResourceLayout(List.of(
-            new ShaderResourceSlot(0, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(1, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(2, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(3, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(4, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(5, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(6, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(7, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
@@ -169,11 +160,11 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
     private RenderPipeline waterReflectionFallbackPipeline;
     private WaterReflectionPipelineKey waterReflectionFallbackKey;
     private long heightActivationGeneration = Long.MIN_VALUE;
-    private long waterActivationGeneration = Long.MIN_VALUE;
     private boolean heightNativeFailed;
     private boolean waterNativeFailed;
     private boolean waterBoundaryNativeFailed;
     private boolean waterReflectionNativeFailed;
+    private boolean waterFallbackFailed;
     private final MeshBuilder heightMesh = new MeshBuilder(CombatantVertexFormats.WATER_PATCH, PrimitiveTopology.QUADS);
     private final MeshBuilder waterMesh = new MeshBuilder(CombatantVertexFormats.WATER_FORWARD_PATCH, PrimitiveTopology.QUADS);
     private final MeshBuilder waterFallbackMesh = new MeshBuilder(CombatantVertexFormats.WATER_FORWARD_PATCH, PrimitiveTopology.TRIANGLES);
@@ -223,8 +214,8 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                         DeferredResource.GBUFFER_DEPTH,
                         DeferredResource.DEPTH_PYRAMID,
                         DeferredResource.GBUFFER_GEOMETRY,
-                        DeferredResource.REFLECTION_TRACE_DATA,
-                        DeferredResource.REFLECTION_CASCADE_COLOR,
+                        DeferredResource.REFLECTION_TRACE_DATA)
+                .optionalRead(DeferredResource.REFLECTION_CASCADE_COLOR,
                         DeferredResource.REFLECTION_CASCADE_DEPTH,
                         DeferredResource.REFLECTION_CASCADE_DATA)
                 .write(DeferredResource.WATER_REFLECTION_TRACE_COLOR,
@@ -240,13 +231,11 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                 .build());
 
         passes.add(DeferredPassSpec.builder("world.water-surface", DeferredStage.WATER_SURFACE)
-                .feature(DeferredFeature.WATER)
-                .read(DeferredResource.MAIN_DEPTH,
-                        DeferredResource.RESOLVED_DEPTH,
-                        DeferredResource.SKY_SPECULAR_RADIANCE,
-                        DeferredResource.SCENE_RADIANCE)
-                .optionalRead(DeferredResource.WATER_REFLECTION_COLOR,
+                .read(DeferredResource.RESOLVED_DEPTH, DeferredResource.SCENE_RADIANCE)
+                .optionalRead(DeferredResource.SKY_SPECULAR_RADIANCE,
+                        DeferredResource.WATER_REFLECTION_COLOR,
                         DeferredResource.WATER_REFLECTION_CONFIDENCE)
+                .readWrite(DeferredResource.MAIN_DEPTH)
                 .write(DeferredResource.SCENE_COLOR,
                         DeferredResource.RASTER_MOTION_VELOCITY,
                         DeferredResource.RASTER_MOTION_VALIDITY,
@@ -264,6 +253,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         waterNativeFailed = false;
         waterBoundaryNativeFailed = false;
         waterReflectionNativeFailed = false;
+        waterFallbackFailed = false;
     }
 
     void release(CombatantRhi currentOwner) {
@@ -286,7 +276,6 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
 
     private boolean waterReflectionAvailable(DeferredPassContext context) {
         return context.featureEnabled(DeferredFeature.REFLECTIONS)
-                && WaterSurfacePatchRouting.replacementActive()
                 && context.primaryView().current() != null
                 && context.isValid(DeferredResource.SCENE_RADIANCE)
                 && context.isValid(DeferredResource.RESOLVED_DEPTH)
@@ -294,20 +283,18 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                 && context.isValid(DeferredResource.DEPTH_PYRAMID)
                 && context.isValid(DeferredResource.GBUFFER_GEOMETRY)
                 && context.isValid(DeferredResource.REFLECTION_TRACE_DATA)
-                && MaterialAtlasManager.global().ready()
-                && blockAtlasTexture() != null
-                && WaterSurfaceExtractor.hasWaterPatches();
+                && WaterSurfaceExtractor.hasReplacementOwnedWaterPatches();
     }
 
     private boolean waterAvailable(DeferredPassContext context) {
+        boolean wantsReplacement = context.featureEnabled(DeferredFeature.WATER);
+        boolean ownsCompatibilityGap = WaterSurfaceExtractor.hasReplacementOwnedWaterPatches();
         return context.primaryView().current() != null
                 && context.resources().texture(DeferredResource.SCENE_COLOR) != null
                 && context.resources().texture(DeferredResource.MAIN_DEPTH) != null
                 && context.resources().texture(DeferredResource.RESOLVED_DEPTH) != null
                 && context.resources().texture(DeferredResource.SCENE_RADIANCE) != null
-                && MaterialAtlasManager.global().ready()
-                && blockAtlasTexture() != null
-                && WaterSurfaceExtractor.hasWaterPatches();
+                && (ownsCompatibilityGap || (wantsReplacement && WaterSurfaceExtractor.hasWaterPatches()));
     }
 
     private boolean baseAvailable(DeferredPassContext context) {
@@ -377,7 +364,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         RenderSystem.getDevice().createCommandEncoder().clearColorTexture(
                 boundary.texture(), new Vector4f(0.0f, 0.0f, 0.0f, 0.0f));
 
-        List<WaterSurfaceExtractor.WaterPatch> patches = collectAllWaterPatches();
+        List<WaterSurfaceExtractor.WaterPatch> patches = collectReplacementOwnedWaterPatches();
         if (patches.isEmpty()) return;
 
         WaterFrameUniforms.Frame waterFrame = buildWaterFrame(context, camera, boundary, false);
@@ -439,7 +426,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         encoder.clearColorTexture(cascadeReflection.texture(), clear);
         encoder.clearColorTexture(cascadeConfidence.texture(), clear);
 
-        List<WaterSurfaceExtractor.WaterPatch> patches = collectWaterPatches(waterActivationGeneration);
+        List<WaterSurfaceExtractor.WaterPatch> patches = collectReplacementOwnedWaterPatches();
         if (patches.isEmpty()) return;
 
         WaterFrameUniforms.Frame waterFrame = buildWaterFrame(context, camera, reflection, false);
@@ -506,14 +493,10 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         DeferredPrimaryViewSource.FrameView camera = context.primaryView().current();
         if (camera == null) return;
 
-        if (!WaterSurfacePatchRouting.replacementActive()) {
-            waterActivationGeneration = WaterSurfaceExtractor.generation();
-            WaterSurfacePatchRouting.setReplacementActive(true);
-            return;
+        boolean waterEnabled = context.featureEnabled(DeferredFeature.WATER);
+        if (!waterEnabled && WaterSurfacePatchRouting.replacementActive()) {
+            WaterSurfacePatchRouting.setReplacementActive(false);
         }
-
-        List<WaterSurfaceExtractor.WaterPatch> patches = collectWaterPatches(waterActivationGeneration);
-        if (patches.isEmpty()) return;
 
         GpuTextureView scene = requireTexture(context, DeferredResource.SCENE_COLOR);
         GpuTextureView depth = requireTexture(context, DeferredResource.MAIN_DEPTH);
@@ -539,6 +522,29 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                 && samples(reactiveMask) == samples(scene);
         List<GpuTextureView> colors = motionMrt
                 ? List.of(scene, velocity, motionValidity, temporalCoverage, reactiveMask) : List.of(scene);
+
+        if (waterEnabled && !WaterSurfacePatchRouting.replacementActive()) {
+            if (waterFallbackFailed) {
+                if (WaterSurfaceExtractor.hasReplacementOwnedWaterPatches()) {
+                    publishWaterDiagnostics("FAILED_RESTORING_SODIUM", "SODIUM_RESTORE",
+                            "triangle_fallback_failed", 0L, motionMrt, context);
+                    return;
+                }
+                // Recovery is safe only after no published section is still missing Sodium water.
+                waterFallbackFailed = false;
+            }
+            armWaterReplacement(context, camera, scene, depth, colors, motionMrt);
+            return;
+        }
+
+        List<WaterSurfaceExtractor.WaterPatch> patches = collectReplacementOwnedWaterPatches();
+        if (patches.isEmpty()) {
+            publishWaterDiagnostics(
+                    waterEnabled ? "WAITING_SECTION_REBUILD" : "COMPATIBILITY",
+                    waterEnabled ? "READY" : "SODIUM", "", 0L, motionMrt, context);
+            return;
+        }
+
         WaterFrameUniforms.Frame waterFrame = buildWaterFrame(context, camera, scene, motionMrt);
         uploadWaterFrame(waterFrame);
 
@@ -553,7 +559,9 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                                 WATER_FRAME_LAYOUT.arrayStride(), StorageAccess.READ_ONLY)),
                         waterTextures(context), List.of()
                 ));
-                WaterSurfacePatchRouting.setReplacementActive(true);
+                publishWaterDiagnostics(
+                        waterEnabled ? "ACTIVE" : "RESTORING_SODIUM",
+                        "NATIVE_TESSELLATION", "", patches.size(), motionMrt, context);
                 return;
             } catch (Throwable error) {
                 nativeFailure = error;
@@ -587,16 +595,80 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
             }
             bindWaterFallbackTextures(draw, context);
             context.rhi().drawMesh(draw.build());
-            WaterSurfacePatchRouting.setReplacementActive(true);
+            String fallbackReason = nativeFailure == null ? "" : "native_tessellation_failed";
+            publishWaterDiagnostics(
+                    waterEnabled ? "ACTIVE" : "RESTORING_SODIUM",
+                    "TRIANGLE_FALLBACK", fallbackReason, patches.size(), motionMrt, context);
         } catch (Throwable error) {
-            waterActivationGeneration = Long.MIN_VALUE;
+            waterFallbackFailed = true;
             WaterSurfacePatchRouting.setReplacementActive(false);
             String nativeSuffix = nativeFailure == null ? "" : " (tessellation had already failed)";
+            String reason = error.getClass().getSimpleName() + ": " + String.valueOf(error.getMessage());
+            publishWaterDiagnostics("FAILED", "SODIUM_RESTORE", reason, 0L, false, context);
             DebugLog.warnOnChange(
                     "deferred.water-surface.fallback.failed",
                     error.getClass().getSimpleName() + "|" + error.getMessage(),
                     "[Deferred] water graphics fallback failed%s; Sodium fallback restored: %s: %s",
                     nativeSuffix, error.getClass().getSimpleName(), error.getMessage());
+        }
+    }
+
+    /**
+     * Two-phase replacement activation. The triangle path is created and a real extracted mesh is
+     * uploaded while Sodium still owns every currently-published section. Only after that succeeds
+     * do new section builds snapshot Combatant ownership and suppress their Sodium water quads.
+     */
+    private void armWaterReplacement(DeferredPassContext context,
+                                     DeferredPrimaryViewSource.FrameView camera,
+                                     GpuTextureView scene,
+                                     GpuTextureView depth,
+                                     List<GpuTextureView> colors,
+                                     boolean motionMrt) {
+        List<WaterSurfaceExtractor.WaterPatch> patches = collectAllWaterPatches();
+        if (patches.isEmpty()) {
+            publishWaterDiagnostics("WAITING_EXTRACTION", "SODIUM", "no_extracted_water", 0L, motionMrt, context);
+            return;
+        }
+
+        GpuTextureView velocity = motionMrt ? context.resources().texture(DeferredResource.RASTER_MOTION_VELOCITY) : null;
+        GpuTextureView motionValidity = motionMrt ? context.resources().texture(DeferredResource.RASTER_MOTION_VALIDITY) : null;
+        GpuTextureView temporalCoverage = motionMrt ? context.resources().texture(DeferredResource.RASTER_TEMPORAL_COVERAGE) : null;
+        GpuTextureView reactiveMask = motionMrt ? context.resources().texture(DeferredResource.RASTER_REACTIVE_MASK) : null;
+        try {
+            // The fallback is mandatory. Do not suppress Sodium until this path and its mesh upload exist.
+            waterFallbackPipeline(scene, velocity, motionValidity, temporalCoverage, reactiveMask, depth);
+            buildWaterFallbackMesh(patches, camera.cameraPosition());
+            WaterFrameUniforms.write(buildWaterFrame(context, camera, scene, motionMrt));
+
+            String readyPath = "TRIANGLE_FALLBACK_READY";
+            if (context.rhi().capabilities().nativeTessellationSubmission() && !waterNativeFailed) {
+                try {
+                    waterPipeline(colors, depth);
+                    buildWaterMesh(patches, camera.cameraPosition());
+                    readyPath = "NATIVE_TESSELLATION_READY";
+                } catch (Throwable nativeError) {
+                    waterNativeFailed = true;
+                    closeWaterPipeline();
+                    DebugLog.warnOnChange(
+                            "deferred.water-surface.preflight.tessellation.failed",
+                            nativeError.getClass().getSimpleName() + "|" + nativeError.getMessage(),
+                            "[Deferred] water tessellation preflight failed; replacement will use triangle fallback: %s: %s",
+                            nativeError.getClass().getSimpleName(), nativeError.getMessage());
+                }
+            }
+
+            WaterSurfacePatchRouting.setReplacementActive(true);
+            publishWaterDiagnostics("WAITING_SECTION_REBUILD", readyPath, "", 0L, motionMrt, context);
+        } catch (Throwable error) {
+            waterFallbackFailed = true;
+            WaterSurfacePatchRouting.setReplacementActive(false);
+            String reason = error.getClass().getSimpleName() + ": " + String.valueOf(error.getMessage());
+            publishWaterDiagnostics("FAILED", "SODIUM", reason, 0L, false, context);
+            DebugLog.warnOnChange(
+                    "deferred.water-surface.preflight.failed",
+                    error.getClass().getSimpleName() + "|" + error.getMessage(),
+                    "[Deferred] water replacement preflight failed; Sodium water remains authoritative: %s: %s",
+                    error.getClass().getSimpleName(), error.getMessage());
         }
     }
 
@@ -624,7 +696,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         waterPipeline = owner.advancedShaders().createPatchPipeline(new PatchPipelineDescriptor(
                 "combatant-water-surface", WATER_PATCH_VERTEX, WATER_PATCH_TESS_CONTROL, WATER_TESS_EVALUATION,
                 null, WATER_FRAGMENT, WATER_LAYOUT_SPEC, 4, WATER_LAYOUT,
-                AdvancedBlendMode.ALPHA, AdvancedDepthMode.READ_ONLY_GREATER_EQUAL, AdvancedCullMode.NONE,
+                AdvancedBlendMode.OPAQUE, AdvancedDepthMode.READ_WRITE_GREATER_EQUAL, AdvancedCullMode.NONE,
                 key.colorFormats(), key.depthFormat(), key.samples()
         ));
         return waterPipeline;
@@ -716,11 +788,6 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                 .withColorTarget(4, key.depthsFormat())
                 .withColorTarget(5, key.cascadeColorFormat())
                 .withColorTarget(6, key.cascadeConfidenceFormat())
-                .withSampler("u_BlockAtlas")
-                .withSampler("u_AlbedoAtlas")
-                .withSampler("u_NormalHeightAtlas")
-                .withSampler("u_SurfaceAtlas")
-                .withSampler("u_SpecularAtlas")
                 .withSampler("u_SceneRadiance")
                 .withSampler("u_ResolvedDepth")
                 .withSampler("u_GbufferDepth")
@@ -758,14 +825,9 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                 .withVertexShader(WATER_FALLBACK_VERTEX)
                 .withFragmentShader(WATER_FALLBACK_FRAGMENT)
                 .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
-                .withDepthWrite(false)
+                .withDepthWrite(true)
                 .withCull(false)
-                .withColorTarget(0, key.sceneFormat(), BlendFunction.TRANSLUCENT, ColorTargetState.WRITE_ALL)
-                .withSampler("u_BlockAtlas")
-                .withSampler("u_AlbedoAtlas")
-                .withSampler("u_NormalHeightAtlas")
-                .withSampler("u_SurfaceAtlas")
-                .withSampler("u_SpecularAtlas")
+                .withColorTarget(0, key.sceneFormat())
                 .withSampler("u_WaterReflectionColor")
                 .withSampler("u_WaterReflectionConfidence")
                 .withSampler("u_SceneRadiance")
@@ -775,17 +837,16 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                 .withDomain(PipelineDomain.WORLD)
                 .withTransformPolicy(TransformPolicy.NONE);
         if (key.velocityFormat() != null) {
-            // Motion outputs use alpha=1, so the standard alpha state becomes an exact overwrite.
-            builder.withColorTarget(1, key.velocityFormat(), BlendFunction.TRANSLUCENT, ColorTargetState.WRITE_ALL);
+            builder.withColorTarget(1, key.velocityFormat());
         }
         if (key.motionValidityFormat() != null) {
-            builder.withColorTarget(2, key.motionValidityFormat(), BlendFunction.TRANSLUCENT, ColorTargetState.WRITE_ALL);
+            builder.withColorTarget(2, key.motionValidityFormat());
         }
         if (key.temporalCoverageFormat() != null) {
-            builder.withColorTarget(3, key.temporalCoverageFormat(), BlendFunction.TRANSLUCENT, ColorTargetState.WRITE_ALL);
+            builder.withColorTarget(3, key.temporalCoverageFormat());
         }
         if (key.reactiveMaskFormat() != null) {
-            builder.withColorTarget(4, key.reactiveMaskFormat(), BlendFunction.TRANSLUCENT, ColorTargetState.WRITE_ALL);
+            builder.withColorTarget(4, key.reactiveMaskFormat());
         }
         waterFallbackPipeline = CombatantRenderPipelines.registerAddonPipeline(builder.build());
         return waterFallbackPipeline;
@@ -997,9 +1058,10 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         float blockLight = Math.max(0.0f, Math.min(1.0f, (packedLight & 0xFFFF) / 240.0f));
         float skyLight = Math.max(0.0f, Math.min(1.0f, ((packedLight >>> 16) & 0xFFFF) / 240.0f));
 
-        mesh.vec3(patch.positions()[i * 3] - camera.x,
-                        patch.positions()[i * 3 + 1] - camera.y,
-                        patch.positions()[i * 3 + 2] - camera.z)
+        BlockPos blockPos = BlockPos.of(patch.blockPos());
+        mesh.vec3(blockPos.getX() + (double) patch.positions()[i * 3] - camera.x,
+                        blockPos.getY() + (double) patch.positions()[i * 3 + 1] - camera.y,
+                        blockPos.getZ() + (double) patch.positions()[i * 3 + 2] - camera.z)
                 .vec2(patch.uvs()[i * 2], patch.uvs()[i * 2 + 1])
                 .vec2(patch.localSurfaceCoordinates()[i * 2], patch.localSurfaceCoordinates()[i * 2 + 1])
                 .color(r, g, b, a)
@@ -1020,12 +1082,8 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         return materialTextures();
     }
 
-    private List<SampledTextureBinding> waterMaterialTextures() {
-        return materialTextures();
-    }
-
     private List<SampledTextureBinding> waterReflectionTextures(DeferredPassContext context, boolean hasCascade) {
-        List<SampledTextureBinding> textures = new ArrayList<>(waterMaterialTextures());
+        List<SampledTextureBinding> textures = new ArrayList<>();
         GpuSampler linear = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
         GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
         GpuTextureView radiance = requireTexture(context, DeferredResource.SCENE_RADIANCE);
@@ -1047,10 +1105,6 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
     private void bindWaterReflectionFallbackTextures(RhiDrawCommand.Builder draw,
                                                       DeferredPassContext context,
                                                       boolean hasCascade) {
-        AbstractTexture block = blockAtlasTexture();
-        if (block == null) throw new IllegalStateException("Minecraft block atlas is unavailable");
-        MaterialAtlasManager atlases = MaterialAtlasManager.global();
-        GpuSampler atlasSampler = block.getSampler();
         GpuSampler linear = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
         GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
         GpuTextureView radiance = requireTexture(context, DeferredResource.SCENE_RADIANCE);
@@ -1059,12 +1113,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                 ? requireTexture(context, DeferredResource.REFLECTION_CASCADE_COLOR) : radiance;
         GpuTextureView cascadeDepth = hasCascade
                 ? requireTexture(context, DeferredResource.REFLECTION_CASCADE_DEPTH) : resolvedDepth;
-        draw.sampler("u_BlockAtlas", block.getTextureView(), atlasSampler)
-                .sampler("u_AlbedoAtlas", requireView(atlases.albedoView(), "material albedo atlas"), atlasSampler)
-                .sampler("u_NormalHeightAtlas", requireView(atlases.normalHeightView(), "material normal-height atlas"), atlasSampler)
-                .sampler("u_SurfaceAtlas", requireView(atlases.surfaceView(), "material surface atlas"), atlasSampler)
-                .sampler("u_SpecularAtlas", requireView(atlases.specularView(), "material specular atlas"), atlasSampler)
-                .sampler("u_SceneRadiance", radiance, linear)
+        draw.sampler("u_SceneRadiance", radiance, linear)
                 .sampler("u_ResolvedDepth", resolvedDepth, nearest)
                 .sampler("u_GbufferDepth", requireTexture(context, DeferredResource.GBUFFER_DEPTH), nearest)
                 .sampler("u_DepthPyramid", requireTexture(context, DeferredResource.DEPTH_PYRAMID), nearest)
@@ -1111,7 +1160,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
     }
 
     private List<SampledTextureBinding> waterTextures(DeferredPassContext context) {
-        List<SampledTextureBinding> textures = new ArrayList<>(waterMaterialTextures());
+        List<SampledTextureBinding> textures = new ArrayList<>();
         GpuSampler linear = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
         GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
         GpuSampler skySampler = RenderSystem.getSamplerCache().getSampler(
@@ -1132,10 +1181,6 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
     }
 
     private void bindWaterFallbackTextures(RhiDrawCommand.Builder draw, DeferredPassContext context) {
-        AbstractTexture block = blockAtlasTexture();
-        if (block == null) throw new IllegalStateException("Minecraft block atlas is unavailable");
-        MaterialAtlasManager atlases = MaterialAtlasManager.global();
-        GpuSampler atlasSampler = block.getSampler();
         GpuSampler linear = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
         GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
         GpuSampler skySampler = RenderSystem.getSamplerCache().getSampler(
@@ -1147,12 +1192,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         GpuTextureView reflection = context.resources().texture(DeferredResource.WATER_REFLECTION_COLOR);
         GpuTextureView confidence = context.resources().texture(DeferredResource.WATER_REFLECTION_CONFIDENCE);
         GpuTextureView sky = context.resources().texture(DeferredResource.SKY_SPECULAR_RADIANCE);
-        draw.sampler("u_BlockAtlas", block.getTextureView(), atlasSampler)
-                .sampler("u_AlbedoAtlas", requireView(atlases.albedoView(), "material albedo atlas"), atlasSampler)
-                .sampler("u_NormalHeightAtlas", requireView(atlases.normalHeightView(), "material normal-height atlas"), atlasSampler)
-                .sampler("u_SurfaceAtlas", requireView(atlases.surfaceView(), "material surface atlas"), atlasSampler)
-                .sampler("u_SpecularAtlas", requireView(atlases.specularView(), "material specular atlas"), atlasSampler)
-                .sampler("u_WaterReflectionColor", reflection != null ? reflection : radiance, linear)
+        draw.sampler("u_WaterReflectionColor", reflection != null ? reflection : radiance, linear)
                 .sampler("u_WaterReflectionConfidence", confidence != null ? confidence : resolvedDepth, nearest)
                 .sampler("u_SceneRadiance", radiance, linear)
                 .sampler("u_ResolvedDepth", resolvedDepth, nearest)
@@ -1184,19 +1224,82 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         return view;
     }
 
+    private void publishWaterDiagnostics(String renderStatus,
+                                         String drawPath,
+                                         String fallbackReason,
+                                         long submittedPatches,
+                                         boolean motionMrt,
+                                         DeferredPassContext context) {
+        WaterSurfaceExtractor.ExtractionStats stats = WaterSurfaceExtractor.stats();
+        boolean reflectionsEnabled = context != null && context.featureEnabled(DeferredFeature.REFLECTIONS);
+        boolean reflectionReady = reflectionsEnabled
+                && context.isValid(DeferredResource.WATER_REFLECTION_COLOR)
+                && context.isValid(DeferredResource.WATER_REFLECTION_CONFIDENCE)
+                && context.resources().texture(DeferredResource.WATER_REFLECTION_COLOR) != null
+                && context.resources().texture(DeferredResource.WATER_REFLECTION_CONFIDENCE) != null;
+        String reflectionPath = !reflectionsEnabled ? "DISABLED"
+                : reflectionReady ? (hasReflectionCascade(context) ? "SSR_CASCADE" : "SSR") : "PENDING";
+        boolean skyReady = context != null
+                && context.featureEnabled(DeferredFeature.SKY)
+                && context.isValid(DeferredResource.SKY_SPECULAR_RADIANCE)
+                && context.resources().texture(DeferredResource.SKY_SPECULAR_RADIANCE) != null;
+        String environment = skyReady ? "SKY" : "NEUTRAL";
+        boolean replacement = WaterSurfacePatchRouting.replacementActive();
+        int visibleSections = visibleWaterSectionCount(false);
+        int visibleOwnedSections = visibleWaterSectionCount(true);
+        WaterSurfacePatchRouting.Diagnostics diagnostics = new WaterSurfacePatchRouting.Diagnostics(
+                renderStatus, drawPath, fallbackReason, reflectionPath, environment,
+                stats.sectionsWithWater(), stats.replacementOwnedSections(), visibleSections, visibleOwnedSections,
+                stats.waterPatches(), stats.replacementOwnedPatches(), submittedPatches, replacement, replacement, motionMrt
+        );
+        WaterSurfacePatchRouting.publishDiagnostics(diagnostics);
+        String state = renderStatus + "|" + drawPath + "|" + fallbackReason + "|" + reflectionPath + "|"
+                + environment + "|" + stats.sectionsWithWater() + "|" + stats.replacementOwnedSections() + "|"
+                + visibleSections + "|" + visibleOwnedSections + "|"
+                + stats.waterPatches() + "|" + stats.replacementOwnedPatches() + "|" + submittedPatches + "|"
+                + replacement + "|" + motionMrt;
+        DebugLog.renderThreadOnChange(
+                "deferred.water.status", state,
+                "[Deferred][Water] status=%s path=%s fallback=%s sections=%d ownedSections=%d visibleSections=%d visibleOwnedSections=%d patches=%d ownedPatches=%d submitted=%d replacementActive=%s sodiumSuppressedForNewBuilds=%s motionMrt=%s reflections=%s environment=%s",
+                renderStatus, drawPath, fallbackReason == null || fallbackReason.isBlank() ? "none" : fallbackReason,
+                stats.sectionsWithWater(), stats.replacementOwnedSections(), visibleSections, visibleOwnedSections, stats.waterPatches(),
+                stats.replacementOwnedPatches(), submittedPatches, replacement, replacement, motionMrt,
+                reflectionPath, environment);
+    }
+
     private static List<WaterSurfaceExtractor.WaterPatch> collectAllWaterPatches() {
         return WaterSurfaceExtractor.snapshot().values().stream()
+                .filter(section -> waterSectionVisible(section.sectionKey()))
                 .sorted(Comparator.comparingLong(WaterSurfaceExtractor.SectionPatchMesh::sectionKey))
                 .flatMap(section -> section.waterPatches().stream())
                 .toList();
     }
 
-    private static List<WaterSurfaceExtractor.WaterPatch> collectWaterPatches(long minGenerationExclusive) {
+    private static List<WaterSurfaceExtractor.WaterPatch> collectReplacementOwnedWaterPatches() {
         return WaterSurfaceExtractor.snapshot().values().stream()
-                .filter(section -> section.generation() > minGenerationExclusive)
+                .filter(WaterSurfaceExtractor.SectionPatchMesh::waterReplacementOwned)
+                .filter(section -> waterSectionVisible(section.sectionKey()))
                 .sorted(Comparator.comparingLong(WaterSurfaceExtractor.SectionPatchMesh::sectionKey))
                 .flatMap(section -> section.waterPatches().stream())
                 .toList();
+    }
+
+    private static int visibleWaterSectionCount(boolean replacementOwnedOnly) {
+        int visible = 0;
+        for (WaterSurfaceExtractor.SectionPatchMesh section : WaterSurfaceExtractor.snapshot().values()) {
+            if (section.waterPatches().isEmpty()) continue;
+            if (replacementOwnedOnly && !section.waterReplacementOwned()) continue;
+            if (waterSectionVisible(section.sectionKey())) visible++;
+        }
+        return visible;
+    }
+
+    private static boolean waterSectionVisible(long sectionKey) {
+        int x = SectionPos.x(sectionKey) << 4;
+        int y = SectionPos.y(sectionKey) << 4;
+        int z = SectionPos.z(sectionKey) << 4;
+        return CombatantRenderSystem.sodium().isBoxVisible(
+                new AABB(x, y, z, x + 16.0, y + 16.0, z + 16.0));
     }
 
     private static List<WaterSurfaceExtractor.HeightPatch> collectHeightPatches(long minGenerationExclusive) {
@@ -1233,19 +1336,23 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
     }
 
     private void disableWaterReplacement() {
-        waterActivationGeneration = Long.MIN_VALUE;
+        waterFallbackFailed = false;
         WaterSurfacePatchRouting.setReplacementActive(false);
+        if (!WaterSurfaceExtractor.hasReplacementOwnedWaterPatches()) {
+            WaterSurfacePatchRouting.publishDiagnostics(WaterSurfacePatchRouting.Diagnostics.compatibility("water_disabled"));
+        }
     }
 
     private void resetRoutingState() {
         heightActivationGeneration = Long.MIN_VALUE;
-        waterActivationGeneration = Long.MIN_VALUE;
         heightNativeFailed = false;
         waterNativeFailed = false;
         waterBoundaryNativeFailed = false;
         waterReflectionNativeFailed = false;
+        waterFallbackFailed = false;
         waterDeformation.reset();
         SurfacePatchRouting.reset();
+        WaterSurfacePatchRouting.publishDiagnostics(WaterSurfacePatchRouting.Diagnostics.compatibility("routing_reset"));
     }
 
     private void closeHeightPipeline() {

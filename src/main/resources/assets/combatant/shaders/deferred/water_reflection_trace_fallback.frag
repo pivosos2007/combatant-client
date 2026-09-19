@@ -1,10 +1,5 @@
 #version 330 core
 
-uniform sampler2D u_BlockAtlas;
-uniform sampler2D u_AlbedoAtlas;
-uniform sampler2D u_NormalHeightAtlas;
-uniform sampler2D u_SurfaceAtlas;
-uniform sampler2D u_SpecularAtlas;
 uniform sampler2D u_SceneRadiance;
 uniform sampler2D u_ResolvedDepth;
 uniform sampler2D u_GbufferDepth;
@@ -53,6 +48,7 @@ layout(std140) uniform WaterReflectionTrace {
 #moj_import <combatant:deferred_reflection_trace.glsl>
 #moj_import <combatant:deferred_reflection_cascade.glsl>
 #undef COMBATANT_REFLECTION_CASCADE_FACE
+#moj_import <combatant:deferred_water_surface_model.glsl>
 
 in vec2 v_Uv;
 in vec2 v_LocalSurface;
@@ -65,6 +61,7 @@ in vec3 v_ViewNormal;
 in vec4 v_CurrentClip;
 in vec4 v_PreviousClip;
 in vec3 v_PreviousViewPosition;
+in float v_SkyLight;
 flat in uint v_MaterialId;
 flat in uint v_FluidTypeId;
 flat in uint v_MapMask;
@@ -80,25 +77,6 @@ layout(location = 4) out vec4 outDepths;
 layout(location = 5) out vec4 outCascadeReflection;
 layout(location = 6) out vec4 outCascadeConfidence;
 
-float unpack8(uint packedValue, uint shift) {
-    return float((packedValue >> shift) & 255u) / 255.0;
-}
-
-vec3 resolveNormal(vec3 geometricNormal) {
-    vec3 normal = normalize(geometricNormal);
-    if ((v_MapMask & 1u) == 0u) return normal;
-    vec3 tangentNormal = normalize(texture(u_NormalHeightAtlas, v_Uv).rgb * 2.0 - 1.0);
-    vec3 dpdx = dFdx(v_ViewPosition);
-    vec3 dpdy = dFdy(v_ViewPosition);
-    vec2 duvdx = dFdx(v_Uv);
-    vec2 duvdy = dFdy(v_Uv);
-    float det = duvdx.x * duvdy.y - duvdx.y * duvdy.x;
-    if (abs(det) <= 1.0e-7) return normal;
-    vec3 tangent = normalize((dpdx * duvdy.y - dpdy * duvdx.y) / det);
-    vec3 bitangent = normalize(cross(normal, tangent));
-    return normalize(mat3(tangent, bitangent, normal) * tangentNormal);
-}
-
 CombatantReflectionTracePolicy tracePolicy() {
     CombatantReflectionTracePolicy policy;
     policy.inverseProjection = u_CurrentInverseProjection;
@@ -111,23 +89,21 @@ CombatantReflectionTracePolicy tracePolicy() {
 }
 
 void main() {
-    vec4 texel = texture(u_BlockAtlas, v_Uv);
-    if ((v_MapMask & (1u << 7u)) != 0u) texel.a *= texture(u_AlbedoAtlas, v_Uv).a;
-    if (texel.a * v_Color.a <= 1.0e-4) discard;
-
     ivec2 pixel = ivec2(gl_FragCoord.xy);
     ivec2 extent = textureSize(u_ResolvedDepth, 0);
     if (any(lessThan(pixel, ivec2(0))) || any(greaterThanEqual(pixel, extent))) discard;
     float opaqueDepth = texelFetch(u_ResolvedDepth, pixel, 0).r;
     if (opaqueDepth > 0.0 && gl_FragCoord.z + 1.0e-6 < opaqueDepth) discard;
 
-    vec3 normal = resolveNormal(v_ViewNormal);
+    vec3 baseWorldNormal = normalize(mat3(u_CurrentInverseView) * v_ViewNormal);
+    vec3 waterWorldNormal = combatantWaterSurfaceNormal(
+            v_WorldPosition, baseWorldNormal, v_Params.xy,
+            v_SkyLight, u_CurrentCameraTime.w, u_OpticalScattering.w);
+    vec3 normal = normalize(mat3(u_CurrentView) * waterWorldNormal);
     vec3 incident = normalize(v_ViewPosition);
     vec3 orientedNormal = dot(incident, normal) > 0.0 ? -normal : normal;
     vec3 rayDirection = normalize(reflect(incident, orientedNormal));
-    float roughness = unpack8(v_Surface, 0u);
-    if ((v_MapMask & (1u << 2u)) != 0u) roughness = texture(u_SurfaceAtlas, v_Uv).g;
-    roughness = clamp(roughness, 0.0, 1.0);
+    float roughness = COMBATANT_WATER_ROUGHNESS;
 
     CombatantReflectionTracePolicy policy = tracePolicy();
     CombatantReflectionTraceResult hit = combatantTraceScreenReflection(

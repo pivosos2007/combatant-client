@@ -119,14 +119,21 @@ public record FluidSurfaceData(
     /** True only for the visible upper liquid surface, excluding side/bottom/back-facing duplicate quads. */
     public boolean isTopSurface() {
         if (reversed) return false;
+        if (facing != null && facing.isAligned()) {
+            // Sodium explicitly marks planar UP/DOWN/horizontal fluid faces. Trust that producer
+            // contract instead of inferring topness from its 0.001 bottom-face epsilon.
+            return facing.getAlignedNormal().y() > 0.5f;
+        }
+
         float minY = Float.POSITIVE_INFINITY;
         float maxY = Float.NEGATIVE_INFINITY;
         for (float value : y) {
             minY = Math.min(minY, value);
             maxY = Math.max(maxY, value);
         }
-        // Side quads extend down to the epsilon/base plane; sloped top quads keep all corners above it.
-        return minY > 0.0005f && maxY <= 1.0015f;
+        // Sodium can classify a sloped top as UNASSIGNED. Its side/bottom quads touch the
+        // producer epsilon plane (0.001), while a genuine top keeps every corner above it.
+        return minY > 0.0015f && maxY <= 1.0015f;
     }
 
     public float[] cornerHeights() {

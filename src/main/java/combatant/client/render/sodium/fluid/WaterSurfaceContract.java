@@ -104,7 +104,14 @@ public final class WaterSurfaceContract {
         nx /= len;
         ny /= len;
         nz /= len;
-        if (ny < 0.0f) {
+        if (surface.facing() != null && surface.facing().isAligned()) {
+            org.joml.Vector3fc aligned = surface.facing().getAlignedNormal();
+            if (nx * aligned.x() + ny * aligned.y() + nz * aligned.z() < 0.0f) {
+                nx = -nx;
+                ny = -ny;
+                nz = -nz;
+            }
+        } else if (surface.isTopSurface() && ny < 0.0f) {
             nx = -nx;
             ny = -ny;
             nz = -nz;

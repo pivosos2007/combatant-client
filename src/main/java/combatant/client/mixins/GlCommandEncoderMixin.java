@@ -11,6 +11,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.render.engine.rhi.backend.gl.GlNativeStateTracker;
+import com.mojang.blaze3d.opengl.DirectStateAccess;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
@@ -51,5 +52,51 @@ public abstract class GlCommandEncoderMixin {
         }
 
         original.call(logger, format, pipelineId);
+    }
+
+
+    /**
+     * Blaze3D exposes copyTextureToTexture in origin + extent form, while the OpenGL blit call
+     * consumes origin + absolute end coordinates. Convert the extents at the backend boundary so
+     * offset copies (for example atlas tiles) retain their requested size.
+     */
+    @WrapOperation(
+            method = "copyTextureToTexture",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lcom/mojang/blaze3d/opengl/DirectStateAccess;blitFrameBuffers(IIIIIIIIIIII)V"
+            )
+    )
+    private void combatant$fixTextureCopyRectangles(
+            DirectStateAccess access,
+            int readFramebuffer,
+            int drawFramebuffer,
+            int sourceX,
+            int sourceY,
+            int sourceWidth,
+            int sourceHeight,
+            int targetX,
+            int targetY,
+            int targetWidth,
+            int targetHeight,
+            int mask,
+            int filter,
+            Operation<Void> original
+    ) {
+        original.call(
+                access,
+                readFramebuffer,
+                drawFramebuffer,
+                sourceX,
+                sourceY,
+                sourceX + sourceWidth,
+                sourceY + sourceHeight,
+                targetX,
+                targetY,
+                targetX + targetWidth,
+                targetY + targetHeight,
+                mask,
+                filter
+        );
     }
 }

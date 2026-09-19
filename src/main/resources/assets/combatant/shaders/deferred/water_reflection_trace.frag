@@ -1,10 +1,5 @@
 #version 450 core
 
-layout(binding = 0) uniform sampler2D u_BlockAtlas;
-layout(binding = 1) uniform sampler2D u_AlbedoAtlas;
-layout(binding = 2) uniform sampler2D u_NormalHeightAtlas;
-layout(binding = 3) uniform sampler2D u_SurfaceAtlas;
-layout(binding = 4) uniform sampler2D u_SpecularAtlas;
 layout(binding = 5) uniform sampler2D u_SceneRadiance;
 layout(binding = 6) uniform sampler2D u_ResolvedDepth;
 layout(binding = 7) uniform sampler2D u_GbufferDepth;
@@ -59,17 +54,21 @@ layout(std430, binding = 15) readonly buffer ReflectionCascadeData {
 #moj_import <combatant:deferred_reflection_trace.glsl>
 #moj_import <combatant:deferred_reflection_cascade.glsl>
 #undef COMBATANT_REFLECTION_CASCADE_FACE
+#moj_import <combatant:deferred_water_surface_model.glsl>
 
 layout(location = 0) in vec2 te_Uv;
 layout(location = 2) in vec4 te_Color;
+layout(location = 3) in vec4 te_Params;
 layout(location = 4) in vec4 te_Optical;
 layout(location = 5) in vec3 te_ViewPosition;
+layout(location = 6) in vec3 te_WorldPosition;
 layout(location = 7) in vec3 te_ViewNormal;
 layout(location = 8) in vec4 te_CurrentClip;
 layout(location = 9) in vec4 te_PreviousClip;
 layout(location = 12) flat in uint te_MapMask;
 layout(location = 15) flat in uint te_Surface;
 layout(location = 16) in vec3 te_PreviousViewPosition;
+layout(location = 17) in float te_SkyLight;
 
 layout(location = 0) out vec4 outTraceReflection;
 layout(location = 1) out vec4 outTraceConfidence;
@@ -78,25 +77,6 @@ layout(location = 3) out vec4 outGeometry;
 layout(location = 4) out vec4 outDepths;
 layout(location = 5) out vec4 outCascadeReflection;
 layout(location = 6) out vec4 outCascadeConfidence;
-
-float unpack8(uint packedValue, uint shift) {
-    return float((packedValue >> shift) & 255u) / 255.0;
-}
-
-vec3 resolveNormal(vec3 geometricNormal) {
-    vec3 normal = normalize(geometricNormal);
-    if ((te_MapMask & 1u) == 0u) return normal;
-    vec3 tangentNormal = normalize(texture(u_NormalHeightAtlas, te_Uv).rgb * 2.0 - 1.0);
-    vec3 dpdx = dFdx(te_ViewPosition);
-    vec3 dpdy = dFdy(te_ViewPosition);
-    vec2 duvdx = dFdx(te_Uv);
-    vec2 duvdy = dFdy(te_Uv);
-    float det = duvdx.x * duvdy.y - duvdx.y * duvdy.x;
-    if (abs(det) <= 1.0e-7) return normal;
-    vec3 tangent = normalize((dpdx * duvdy.y - dpdy * duvdx.y) / det);
-    vec3 bitangent = normalize(cross(normal, tangent));
-    return normalize(mat3(tangent, bitangent, normal) * tangentNormal);
-}
 
 CombatantReflectionTracePolicy tracePolicy() {
     CombatantReflectionTracePolicy policy;
@@ -110,23 +90,21 @@ CombatantReflectionTracePolicy tracePolicy() {
 }
 
 void main() {
-    vec4 texel = texture(u_BlockAtlas, te_Uv);
-    if ((te_MapMask & (1u << 7u)) != 0u) texel.a *= texture(u_AlbedoAtlas, te_Uv).a;
-    if (texel.a * te_Color.a <= 1.0e-4) discard;
-
     ivec2 pixel = ivec2(gl_FragCoord.xy);
     ivec2 extent = textureSize(u_ResolvedDepth, 0);
     if (any(lessThan(pixel, ivec2(0))) || any(greaterThanEqual(pixel, extent))) discard;
     float opaqueDepth = texelFetch(u_ResolvedDepth, pixel, 0).r;
     if (opaqueDepth > 0.0 && gl_FragCoord.z + 1.0e-6 < opaqueDepth) discard;
 
-    vec3 normal = resolveNormal(te_ViewNormal);
+    vec3 baseWorldNormal = normalize(mat3(u_CurrentInverseView) * te_ViewNormal);
+    vec3 waterWorldNormal = combatantWaterSurfaceNormal(
+            te_WorldPosition, baseWorldNormal, te_Params.xy,
+            te_SkyLight, u_CurrentCameraTime.w, u_OpticalScattering.w);
+    vec3 normal = normalize(mat3(u_CurrentView) * waterWorldNormal);
     vec3 incident = normalize(te_ViewPosition);
     vec3 orientedNormal = dot(incident, normal) > 0.0 ? -normal : normal;
     vec3 rayDirection = normalize(reflect(incident, orientedNormal));
-    float roughness = unpack8(te_Surface, 0u);
-    if ((te_MapMask & (1u << 2u)) != 0u) roughness = texture(u_SurfaceAtlas, te_Uv).g;
-    roughness = clamp(roughness, 0.0, 1.0);
+    float roughness = COMBATANT_WATER_ROUGHNESS;
 
     CombatantReflectionTracePolicy policy = tracePolicy();
     CombatantReflectionTraceResult hit = combatantTraceScreenReflection(
