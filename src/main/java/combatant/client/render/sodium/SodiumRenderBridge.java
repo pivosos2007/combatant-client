@@ -7,8 +7,11 @@
 
 package combatant.client.render.sodium;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import combatant.client.render.engine.core.policy.VisibilityQuery;
+import combatant.client.util.logging.DebugLog;
 
 /**
  * Single Combatant entry point to Sodium runtime state.
@@ -166,11 +169,41 @@ public final class SodiumRenderBridge {
             terrainInterop.recordInteropError();
             return;
         }
-        try {
-            renderer.getClass().getMethod("reload").invoke(renderer);
-            terrainInterop.recordRebuildScheduled();
-        } catch (Throwable ignored) {
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.level == null || minecraft.gameRenderer == null) {
             terrainInterop.recordInteropError();
+            return;
+        }
+
+        // This method used to invoke SodiumWorldRenderer.reload(). Surface ownership changes are
+        // discovered from the renderLayer() boundary, where destroying RenderSectionManager is
+        // re-entrant and can leave its ChunkBuilder stopped if teardown throws halfway through.
+        // Re-mesh every loaded section instead: it updates the captured material/routing flags
+        // without replacing Sodium's live manager or stopping its worker threads.
+        if (minecraft.gameRenderer.mainCamera() == null) {
+            terrainInterop.recordInteropError();
+            return;
+        }
+        BlockPos camera = minecraft.gameRenderer.mainCamera().blockPosition();
+        int centerChunkX = camera.getX() >> 4;
+        int centerChunkZ = camera.getZ() >> 4;
+        int radius = Math.max(2, minecraft.options.getEffectiveRenderDistance() + 2);
+        try {
+            renderer.getClass().getMethod(
+                            "scheduleRebuildForChunks",
+                            int.class, int.class, int.class,
+                            int.class, int.class, int.class,
+                            boolean.class)
+                    .invoke(renderer,
+                            centerChunkX - radius, minecraft.level.getMinSectionY(), centerChunkZ - radius,
+                            centerChunkX + radius, minecraft.level.getMaxSectionY() - 1, centerChunkZ + radius,
+                            true);
+            renderer.getClass().getMethod("scheduleTerrainUpdate").invoke(renderer);
+            terrainInterop.recordRebuildScheduled();
+        } catch (Throwable failure) {
+            terrainInterop.recordInteropError();
+            DebugLog.error("[SODIUM] failed to schedule loaded-section rebuild", failure);
         }
     }
 

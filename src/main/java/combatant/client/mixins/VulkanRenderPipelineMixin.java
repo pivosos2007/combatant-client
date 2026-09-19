@@ -8,6 +8,8 @@
 package combatant.client.mixins;
 
 import com.llamalad7.mixinextras.sugar.Local;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vulkan.VulkanBindGroupLayout;
 import com.mojang.blaze3d.vulkan.VulkanConst;
@@ -15,7 +17,10 @@ import com.mojang.blaze3d.vulkan.VulkanDevice;
 import com.mojang.blaze3d.vulkan.VulkanRenderPipeline;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkPipelineDepthStencilStateCreateInfo;
+import org.lwjgl.vulkan.VkGraphicsPipelineCreateInfo;
 import org.lwjgl.vulkan.VkPipelineRenderingCreateInfoKHR;
+import org.lwjgl.vulkan.VkAllocationCallbacks;
+import org.lwjgl.vulkan.VkDevice;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -24,8 +29,10 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateBridge;
+import combatant.client.util.logging.DebugLog;
 
 import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 
 import static com.mojang.blaze3d.GpuFormat.S8_UINT;
 import static org.lwjgl.vulkan.VK12.*;
@@ -62,10 +69,58 @@ public abstract class VulkanRenderPipelineMixin {
         if (!VulkanRenderStateBridge.vulkanBackendActive()) {
             return stack.ints(first, second);
         }
-        if (!VulkanRenderStateBridge.forceDisableStencil()) {
+        if (VulkanRenderStateBridge.currentPipelineUsesDynamicStencilReference()) {
             return stack.ints(first, second, VK_DYNAMIC_STATE_STENCIL_REFERENCE);
         }
         return stack.ints(first, second);
+    }
+
+    @WrapOperation(
+            method = "compile",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lorg/lwjgl/vulkan/VK12;vkCreateGraphicsPipelines(Lorg/lwjgl/vulkan/VkDevice;JLorg/lwjgl/vulkan/VkGraphicsPipelineCreateInfo$Buffer;Lorg/lwjgl/vulkan/VkAllocationCallbacks;Ljava/nio/LongBuffer;)I",
+                    ordinal = 0
+            )
+    )
+    private static int combatant$endCompileScopeOnNativeFailure(VkDevice device,
+                                                                 long pipelineCache,
+                                                                 VkGraphicsPipelineCreateInfo.Buffer createInfos,
+                                                                 VkAllocationCallbacks allocator,
+                                                                 LongBuffer pipelines,
+                                                                 Operation<Integer> original) {
+        int result = original.call(device, pipelineCache, createInfos, allocator, pipelines);
+        if (result != VK_SUCCESS) {
+            RenderPipeline pipeline = VulkanRenderStateBridge.currentCompilingPipeline();
+            if (pipeline != null) {
+                DebugLog.errorOnce(
+                        "vulkan.pipeline.native-create." + pipeline.getLocation() + "." + result,
+                        "[Vulkan/Pipeline] native creation failed: result={} pipeline={} vertex={} fragment={} "
+                                + "defines={} colorTargets={} depthStencil={} samples={} stencilAttachment={} dynamicStencil={}",
+                        result,
+                        pipeline.getLocation(),
+                        pipeline.getVertexShader(),
+                        pipeline.getFragmentShader(),
+                        pipeline.getShaderDefines(),
+                        java.util.Arrays.toString(pipeline.getColorTargetStates()),
+                        pipeline.getDepthStencilState(),
+                        VulkanRenderStateBridge.currentRenderPassSamples(),
+                        VulkanRenderStateBridge.currentRenderPassHasStencilAttachment(),
+                        VulkanRenderStateBridge.currentPipelineUsesDynamicStencilReference()
+                );
+            }
+            long partialPipeline = pipelines.get(0);
+            if (partialPipeline != VK_NULL_HANDLE) {
+                vkDestroyPipeline(device, partialPipeline, allocator);
+                pipelines.put(0, VK_NULL_HANDLE);
+            }
+            long pipelineLayout = createInfos.layout();
+            if (pipelineLayout != VK_NULL_HANDLE) {
+                vkDestroyPipelineLayout(device, pipelineLayout, allocator);
+            }
+            VulkanRenderStateBridge.endPipelineCompile();
+        }
+        return result;
     }
 
     @ModifyArg(

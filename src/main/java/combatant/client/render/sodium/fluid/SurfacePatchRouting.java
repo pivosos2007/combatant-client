@@ -32,7 +32,7 @@ public final class SurfacePatchRouting {
         return true;
     }
 
-    /** Consumed at the next safe pre-terrain boundary before Sodium submits any chunk geometry. */
+    /** Consumed before primary terrain submission to schedule non-destructive loaded-section re-meshing. */
     public static boolean consumeReloadRequested() {
         return RELOAD_REQUESTED.getAndSet(false);
     }

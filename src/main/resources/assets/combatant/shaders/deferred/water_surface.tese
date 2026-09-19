@@ -1,6 +1,6 @@
 #version 450 core
 
-layout(quads, fractional_even_spacing, ccw) in;
+layout(quads, equal_spacing, ccw) in;
 
 layout(location = 0) in vec2 tc_Uv[];
 layout(location = 1) in vec2 tc_LocalSurface[];

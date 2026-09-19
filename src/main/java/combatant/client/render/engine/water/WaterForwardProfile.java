@@ -24,14 +24,18 @@ public record WaterForwardProfile(
         float scatteringR,
         float scatteringG,
         float scatteringB,
-        float refractionProbeDistance
+        float refractionIntensity
 ) {
     public static final WaterForwardProfile FOUNDATION = new WaterForwardProfile(
-            0.025f, 0.30f, 0.37f,
+            // Small geometry displacement keeps the native tessellation path meaningful without
+            // turning every water block into a high-amplification patch.
+            0.018f, 0.30f, 0.37f,
             0.0f, 0.0f, 0.0f,
             0.0f, 0.0f,
-            0.39f, 0.14f, 0.07f,
-            0.01f, 0.01f, 0.01f,
-            8.0f
+            // Near-neutral base extinction. Biome metadata changes the spectral coefficients in
+            // the shader; it is never multiplied directly into the final scene color.
+            0.055f, 0.045f, 0.040f,
+            0.0f, 0.0f, 0.0f,
+            1.0f
     );
 }

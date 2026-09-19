@@ -396,9 +396,14 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
         SampledVolumeState sampledVolumeState = captureSampledVolumeState(command.sampledVolumes());
         List<ImageUnitState> imageUnitState = captureImageUnitState(command.storageImages(), List.of());
 
+        boolean scissorWasEnabled = GL11C.glIsEnabled(GL11C.GL_SCISSOR_TEST);
         try {
             GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, fbo);
             GlStateManager._viewport(0, 0, color0.getWidth(0), color0.getHeight(0));
+            // Native patch submission bypasses Blaze3D's ordinary render-pass setup. A stale
+            // scissor from any prior pass would otherwise clip tessellated world geometry at the
+            // framebuffer edge. Patch draws in this backend are full-target draws.
+            if (scissorWasEnabled) GlStateManager._disableScissorTest();
             applyRasterState(pipeline.descriptor);
             GlStateManager._glUseProgram(pipeline.program);
             bindStorage(command.storageBindings());
@@ -427,6 +432,7 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
             restoreSampledVolumeState(sampledVolumeState);
             restoreSampledTextureState(sampledTextureState);
             restoreImageUnitState(imageUnitState);
+            if (scissorWasEnabled) GlStateManager._enableScissorTest();
             GlNativeStateTracker.restoreBlaze3dProgram();
         }
     }

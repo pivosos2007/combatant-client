@@ -7,6 +7,7 @@
 
 package combatant.client.compat.xaero;
 
+import combatant.client.config.subsystem.MapUiConfig;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.TextRenderer;
@@ -64,12 +65,13 @@ public enum XaeroWaypointHudOverlay {
     }
 
     public static boolean shouldSuppressNativeXaeroWaypoints() {
-        // Suppression must follow the exact same availability gate as our replacement renderer.
-        // During a temporary retry window (or whenever HUD rendering is gated off) Xaero remains
-        // the fallback instead of making the waypoint disappear altogether.
+        // Once the integration is healthy Combatant owns the visibility policy for world waypoints:
+        // when our waypoint HUD is enabled they are replaced by our renderer; when the user disables
+        // them they stay hidden instead of silently falling back to Xaero's native HUD. Runtime
+        // failures still release ownership so Xaero can act as the safety fallback.
         if (failed || System.nanoTime() < retryAfterNanos || !RuntimeGate.canRunHud()) return false;
         try {
-            return overlayEnabled();
+            return xaeroSessionAvailable();
         } catch (RuntimeException error) {
             recover(error);
             return false;
@@ -84,9 +86,20 @@ public enum XaeroWaypointHudOverlay {
     }
 
     private static boolean overlayEnabled() {
+        MapUiConfig ui = MapUiConfig.get();
+        return ui.hudEnabled() && ui.hudWaypointMarkers() && xaeroWorldWaypointsEnabled();
+    }
+
+    private static boolean xaeroSessionAvailable() {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null || minecraft.player == null || minecraft.level == null) return false;
-        if (BuiltInHudModules.MINIMAP.getCurrentSession() == null) return false;
+        return minecraft != null
+                && minecraft.player != null
+                && minecraft.level != null
+                && BuiltInHudModules.MINIMAP.getCurrentSession() != null;
+    }
+
+    private static boolean xaeroWorldWaypointsEnabled() {
+        if (!xaeroSessionAvailable()) return false;
         ClientConfigManager config = HudMod.INSTANCE.getHudConfigs().getClientConfigManager();
         return effectiveBoolean(config, MinimapProfiledConfigOptions.WAYPOINTS_IN_WORLD);
     }

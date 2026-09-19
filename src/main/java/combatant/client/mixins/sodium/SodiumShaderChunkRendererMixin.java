@@ -161,7 +161,9 @@ public abstract class SodiumShaderChunkRendererMixin {
         Identifier shader = CombatantRenderSystem.sodium().shaderWorkarounds().overrideShaderIdentifier(sodiumShader);
         RenderPipeline.Builder builder = RenderPipeline.builder()
                 .withBindGroupLayout(ShaderChunkRenderer.BIND_GROUP)
-                .withLocation(Identifier.fromNamespaceAndPath("combatant", "sodium/" + suffix))
+                // Sodium's Vulkan pipeline hook identifies terrain pipelines by namespace and
+                // installs the 20-byte region/time push-constant range used by this vertex shader.
+                .withLocation(Identifier.fromNamespaceAndPath("sodium", "combatant/" + suffix))
                 .withCull(true)
                 .withVertexShader(shader)
                 .withFragmentShader(shader)

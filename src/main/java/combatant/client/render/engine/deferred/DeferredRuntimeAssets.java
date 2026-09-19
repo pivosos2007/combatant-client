@@ -64,6 +64,16 @@ public enum DeferredRuntimeAssets {
         if (resourceId == null) return true;
         if (!"combatant".equals(resourceId.getNamespace())) return true;
         String path = resourceId.getPath();
+        boolean waterGraphicsFallback = path.equals("shaders/deferred/water_surface_fallback.vert")
+                || path.equals("shaders/deferred/water_surface_fallback.frag")
+                || path.equals("shaders/deferred/water_medium_boundary_fallback.frag")
+                || path.equals("shaders/deferred/water_reflection_trace_fallback.frag");
+        if (waterGraphicsFallback) {
+            // These stages back Blaze3D RenderPipeline fallbacks created after the deferred scope
+            // becomes active. ShaderManager must already know their sources at that point.
+            return true;
+        }
+
         boolean deferredOnly = path.equals(TERRAIN_LIGHTING_FRAGMENT.getPath())
                 || path.equals(TERRAIN_PUBLISH_FRAGMENT.getPath())
                 || path.equals(OPAQUE_PUBLISH_FRAGMENT.getPath())

@@ -10,6 +10,7 @@ package combatant.client;
 import combatant.client.features.map.heuristic.HeuristicRuntime;
 import combatant.client.events.UsedImplicitly;
 import combatant.client.compat.xaero.XaeroWaypointHudOverlay;
+import combatant.client.render.map.PlayerLocationHudOverlay;
 import combatant.client.events.impl.GameTickEvent;
 import combatant.client.runtime.*;
 import net.fabricmc.api.ClientModInitializer;
@@ -265,16 +266,19 @@ public class Combatant implements ClientModInitializer {
         boolean scaledMain = hasHudMainPassWork(phase, HudRenderSpace.SCALED)
                 || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_SCALED);
         boolean xaeroWaypointHudWork = hasXaeroWaypointHudWork(phase);
+        boolean playerLocationHudWork = hasPlayerLocationHudWork(phase);
         boolean logicalMain = hasHudMainPassWork(phase, HudRenderSpace.UNSCALED_LOGICAL)
                 || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_LOGICAL)
-                || xaeroWaypointHudWork;
+                || xaeroWaypointHudWork
+                || playerLocationHudWork;
         boolean rawForeground = hasHudForegroundPassWork(phase, HudRenderSpace.UNSCALED)
                 || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_RAW_FOREGROUND);
         boolean scaledForeground = hasHudForegroundPassWork(phase, HudRenderSpace.SCALED)
                 || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_SCALED_FOREGROUND);
         boolean logicalForeground = hasHudForegroundPassWork(phase, HudRenderSpace.UNSCALED_LOGICAL)
                 || AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.HUD_LOGICAL_FOREGROUND)
-                || xaeroWaypointHudWork;
+                || xaeroWaypointHudWork
+                || playerLocationHudWork;
         boolean moduleRawMain = ModuleManager.hasHudEngineWork(phase, HudRenderSpace.UNSCALED);
         boolean moduleScaledMain = ModuleManager.hasHudEngineWork(phase, HudRenderSpace.SCALED);
         boolean moduleLogicalMain = ModuleManager.hasHudEngineWork(phase, HudRenderSpace.UNSCALED_LOGICAL);
@@ -342,6 +346,9 @@ public class Combatant implements ClientModInitializer {
                     if (xaeroWaypointHudWork) {
                         XaeroWaypointHudOverlay.renderBackground(Renderer2D.COLOR, textRenderer, tickProgress);
                     }
+                    if (playerLocationHudWork) {
+                        PlayerLocationHudOverlay.renderBackground(Renderer2D.COLOR, textRenderer, tickProgress);
+                    }
                     AddonRenderPipelineManager.render2D(CombatantRenderStage.HUD_LOGICAL, phase, Renderer2D.COLOR, textRenderer, ctx, tickProgress);
                     Renderer2D.COLOR.render();
                 }
@@ -395,6 +402,9 @@ public class Combatant implements ClientModInitializer {
                     Renderer2D.COLOR.render();
                     if (xaeroWaypointHudWork) {
                         XaeroWaypointHudOverlay.renderForeground(textRenderer);
+                    }
+                    if (playerLocationHudWork) {
+                        PlayerLocationHudOverlay.renderForeground(textRenderer);
                     }
                 }
             } finally {
@@ -480,6 +490,10 @@ public class Combatant implements ClientModInitializer {
         };
     }
 
+
+    private static boolean hasPlayerLocationHudWork(HudPhase phase) {
+        return phase == HudPhase.AFTER_BOSS_BAR && PlayerLocationHudOverlay.hasHudWork();
+    }
 
     private static boolean hasXaeroWaypointHudWork(HudPhase phase) {
         // Keep projected Xaero labels in their own deferred HUD stratum. NameTags lives in

@@ -200,6 +200,11 @@ public final class DeferredPassGraph {
                             "[Deferred] pass %s failed: %s: %s",
                             pass.id(), t.getClass().getSimpleName(), t.getMessage()
                     );
+                    DebugLog.errorOnce(
+                            "deferred.pass.failed.stack." + pass.id() + "." + t.getClass().getName()
+                                    + "." + String.valueOf(t.getMessage()),
+                            "[Deferred] first failure stack for pass {}", pass.id(), t
+                    );
                 }
             }
         }

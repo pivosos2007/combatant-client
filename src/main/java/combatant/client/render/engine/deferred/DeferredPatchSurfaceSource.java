@@ -16,7 +16,6 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import combatant.client.mixininterface.IMsaaTexture;
-import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.material.MaterialAtlasManager;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.pipeline.ExtendedRenderPipelineBuilder;
@@ -45,7 +44,6 @@ import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -115,11 +113,8 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
     ));
 
     private static final ShaderResourceLayout WATER_LAYOUT = new ShaderResourceLayout(List.of(
-            new ShaderResourceSlot(5, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(6, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(7, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(8, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(9, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(11, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY)
     ));
 
@@ -169,6 +164,14 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
     private final MeshBuilder waterMesh = new MeshBuilder(CombatantVertexFormats.WATER_FORWARD_PATCH, PrimitiveTopology.QUADS);
     private final MeshBuilder waterFallbackMesh = new MeshBuilder(CombatantVertexFormats.WATER_FORWARD_PATCH, PrimitiveTopology.TRIANGLES);
     private final WaterDeformationState waterDeformation = new WaterDeformationState();
+    // Dynamic arena handles are frame-local. Reuse them across boundary/surface passes in the same frame
+    // so the full extracted water mesh is uploaded once instead of once per water pass.
+    private long waterMeshCacheFrameId = Long.MIN_VALUE;
+    private long waterMeshCacheGeneration = Long.MIN_VALUE;
+    private int waterMeshCachePatchCount = -1;
+    private long waterMeshCacheSignature = Long.MIN_VALUE;
+    private GpuMeshHandle waterPatchMeshCache;
+    private GpuMeshHandle waterTriangleMeshCache;
 
     DeferredPatchSurfaceSource(DeferredReflectionCascadeSource reflectionCascades) {
         if (reflectionCascades == null) throw new IllegalArgumentException("reflectionCascades");
@@ -232,9 +235,6 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
 
         passes.add(DeferredPassSpec.builder("world.water-surface", DeferredStage.WATER_SURFACE)
                 .read(DeferredResource.RESOLVED_DEPTH, DeferredResource.SCENE_RADIANCE)
-                .optionalRead(DeferredResource.SKY_SPECULAR_RADIANCE,
-                        DeferredResource.WATER_REFLECTION_COLOR,
-                        DeferredResource.WATER_REFLECTION_CONFIDENCE)
                 .readWrite(DeferredResource.MAIN_DEPTH)
                 .write(DeferredResource.SCENE_COLOR,
                         DeferredResource.RASTER_MOTION_VELOCITY,
@@ -275,15 +275,8 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
     }
 
     private boolean waterReflectionAvailable(DeferredPassContext context) {
-        return context.featureEnabled(DeferredFeature.REFLECTIONS)
-                && context.primaryView().current() != null
-                && context.isValid(DeferredResource.SCENE_RADIANCE)
-                && context.isValid(DeferredResource.RESOLVED_DEPTH)
-                && context.isValid(DeferredResource.GBUFFER_DEPTH)
-                && context.isValid(DeferredResource.DEPTH_PYRAMID)
-                && context.isValid(DeferredResource.GBUFFER_GEOMETRY)
-                && context.isValid(DeferredResource.REFLECTION_TRACE_DATA)
-                && WaterSurfaceExtractor.hasReplacementOwnedWaterPatches();
+        // Reflection hierarchy is deliberately deferred until the scene/sky producers are complete.
+        return false;
     }
 
     private boolean waterAvailable(DeferredPassContext context) {
@@ -364,17 +357,17 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         RenderSystem.getDevice().createCommandEncoder().clearColorTexture(
                 boundary.texture(), new Vector4f(0.0f, 0.0f, 0.0f, 0.0f));
 
-        List<WaterSurfaceExtractor.WaterPatch> patches = collectReplacementOwnedWaterPatches();
+        List<WaterSurfaceExtractor.WaterPatch> patches = collectReplacementOwnedWaterPatches(camera);
         if (patches.isEmpty()) return;
 
         WaterFrameUniforms.Frame waterFrame = buildWaterFrame(context, camera, boundary, false);
         uploadWaterFrame(waterFrame);
         GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
 
-        if (context.rhi().capabilities().nativeTessellationSubmission() && !waterBoundaryNativeFailed) {
+        if (foundationUsesNativeWaterTessellation() && context.rhi().capabilities().nativeTessellationSubmission() && !waterBoundaryNativeFailed) {
             try {
                 RhiPatchPipeline pipeline = waterBoundaryPipeline(boundary);
-                GpuMeshHandle mesh = buildWaterMesh(patches, camera.cameraPosition());
+                GpuMeshHandle mesh = buildWaterMesh(patches, camera);
                 context.advancedShaders().drawPatches(new PatchDrawCommand(
                         "Combatant water medium boundary", pipeline, boundary, null, mesh,
                         List.of(new StorageBinding(11, waterFrameBuffer(), 0L,
@@ -393,7 +386,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
             }
         }
 
-        GpuMeshHandle mesh = buildWaterFallbackMesh(patches, camera.cameraPosition());
+        GpuMeshHandle mesh = buildWaterFallbackMesh(patches, camera);
         GpuBufferSlice frameUniform = WaterFrameUniforms.write(waterFrame);
         context.rhi().drawMesh(RhiDrawCommand.builder("Combatant water medium boundary (triangle fallback)")
                 .pipeline(waterBoundaryFallbackPipeline(boundary))
@@ -426,7 +419,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         encoder.clearColorTexture(cascadeReflection.texture(), clear);
         encoder.clearColorTexture(cascadeConfidence.texture(), clear);
 
-        List<WaterSurfaceExtractor.WaterPatch> patches = collectReplacementOwnedWaterPatches();
+        List<WaterSurfaceExtractor.WaterPatch> patches = collectReplacementOwnedWaterPatches(camera);
         if (patches.isEmpty()) return;
 
         WaterFrameUniforms.Frame waterFrame = buildWaterFrame(context, camera, reflection, false);
@@ -440,7 +433,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
             try {
                 RhiPatchPipeline pipeline = waterReflectionPipeline(
                         reflection, confidence, reprojection, geometry, depths, cascadeReflection, cascadeConfidence);
-                GpuMeshHandle mesh = buildWaterMesh(patches, camera.cameraPosition());
+                GpuMeshHandle mesh = buildWaterMesh(patches, camera);
                 context.advancedShaders().drawPatches(new PatchDrawCommand(
                         "Combatant water reflection trace", pipeline,
                         List.of(reflection, confidence, reprojection, geometry, depths, cascadeReflection, cascadeConfidence),
@@ -467,7 +460,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
             }
         }
 
-        GpuMeshHandle mesh = buildWaterFallbackMesh(patches, camera.cameraPosition());
+        GpuMeshHandle mesh = buildWaterFallbackMesh(patches, camera);
         GpuBufferSlice frameUniform = WaterFrameUniforms.write(waterFrame);
         GpuBufferSlice traceUniform = WaterReflectionTraceUniforms.write(
                 waterReflectionFallbackFrame(context, camera, hasCascade));
@@ -537,7 +530,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
             return;
         }
 
-        List<WaterSurfaceExtractor.WaterPatch> patches = collectReplacementOwnedWaterPatches();
+        List<WaterSurfaceExtractor.WaterPatch> patches = collectReplacementOwnedWaterPatches(camera);
         if (patches.isEmpty()) {
             publishWaterDiagnostics(
                     waterEnabled ? "WAITING_SECTION_REBUILD" : "COMPATIBILITY",
@@ -549,10 +542,10 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         uploadWaterFrame(waterFrame);
 
         Throwable nativeFailure = null;
-        if (context.rhi().capabilities().nativeTessellationSubmission() && !waterNativeFailed) {
+        if (foundationUsesNativeWaterTessellation() && context.rhi().capabilities().nativeTessellationSubmission() && !waterNativeFailed) {
             try {
                 RhiPatchPipeline pipeline = waterPipeline(colors, depth);
-                GpuMeshHandle mesh = buildWaterMesh(patches, camera.cameraPosition());
+                GpuMeshHandle mesh = buildWaterMesh(patches, camera);
                 context.advancedShaders().drawPatches(new PatchDrawCommand(
                         "Combatant water surfaces (tessellated)", pipeline, colors, depth, mesh,
                         List.of(new StorageBinding(11, waterFrameBuffer(), 0L,
@@ -576,7 +569,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         }
 
         try {
-            GpuMeshHandle mesh = buildWaterFallbackMesh(patches, camera.cameraPosition());
+            GpuMeshHandle mesh = buildWaterFallbackMesh(patches, camera);
             RenderPipeline pipeline = waterFallbackPipeline(scene, motionMrt ? velocity : null,
                     motionMrt ? motionValidity : null, motionMrt ? temporalCoverage : null,
                     motionMrt ? reactiveMask : null, depth);
@@ -624,7 +617,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                                      GpuTextureView depth,
                                      List<GpuTextureView> colors,
                                      boolean motionMrt) {
-        List<WaterSurfaceExtractor.WaterPatch> patches = collectAllWaterPatches();
+        List<WaterSurfaceExtractor.WaterPatch> patches = collectAllWaterPatches(camera);
         if (patches.isEmpty()) {
             publishWaterDiagnostics("WAITING_EXTRACTION", "SODIUM", "no_extracted_water", 0L, motionMrt, context);
             return;
@@ -637,14 +630,14 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         try {
             // The fallback is mandatory. Do not suppress Sodium until this path and its mesh upload exist.
             waterFallbackPipeline(scene, velocity, motionValidity, temporalCoverage, reactiveMask, depth);
-            buildWaterFallbackMesh(patches, camera.cameraPosition());
+            buildWaterFallbackMesh(patches, camera);
             WaterFrameUniforms.write(buildWaterFrame(context, camera, scene, motionMrt));
 
             String readyPath = "TRIANGLE_FALLBACK_READY";
-            if (context.rhi().capabilities().nativeTessellationSubmission() && !waterNativeFailed) {
+            if (foundationUsesNativeWaterTessellation() && context.rhi().capabilities().nativeTessellationSubmission() && !waterNativeFailed) {
                 try {
                     waterPipeline(colors, depth);
-                    buildWaterMesh(patches, camera.cameraPosition());
+                    buildWaterMesh(patches, camera);
                     readyPath = "NATIVE_TESSELLATION_READY";
                 } catch (Throwable nativeError) {
                     waterNativeFailed = true;
@@ -828,11 +821,8 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                 .withDepthWrite(true)
                 .withCull(false)
                 .withColorTarget(0, key.sceneFormat())
-                .withSampler("u_WaterReflectionColor")
-                .withSampler("u_WaterReflectionConfidence")
                 .withSampler("u_SceneRadiance")
                 .withSampler("u_ResolvedDepth")
-                .withSampler("u_SkySpecular")
                 .withUniform("WaterFrame", UniformType.UNIFORM_BUFFER)
                 .withDomain(PipelineDomain.WORLD)
                 .withTransformPolicy(TransformPolicy.NONE);
@@ -881,18 +871,11 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         WaterForwardProfile profile = WaterForwardProfile.FOUNDATION;
         CameraMediumState medium = CameraMediumState.capture();
 
-        boolean hasWaterReflection = context.featureEnabled(DeferredFeature.REFLECTIONS)
-                && context.isValid(DeferredResource.WATER_REFLECTION_COLOR)
-                && context.isValid(DeferredResource.WATER_REFLECTION_CONFIDENCE)
-                && context.resources().texture(DeferredResource.WATER_REFLECTION_COLOR) != null
-                && context.resources().texture(DeferredResource.WATER_REFLECTION_CONFIDENCE) != null;
-        boolean hasCascade = hasReflectionCascade(context);
-        boolean hasSky = context.featureEnabled(DeferredFeature.SKY)
-                && context.isValid(DeferredResource.SKY_SPECULAR_RADIANCE)
-                && context.resources().texture(DeferredResource.SKY_SPECULAR_RADIANCE) != null;
+        // Foundation water intentionally has no reflection/sky dependency yet.
+        boolean hasWaterReflection = false;
+        boolean hasCascade = false;
+        boolean hasSky = false;
         int skyMipCount = 1;
-        RhiStorageImage skyImage = context.resources().storageImage(DeferredResource.SKY_SPECULAR_RADIANCE);
-        if (hasSky && skyImage != null) skyMipCount = Math.max(1, skyImage.descriptor().mipLevels());
         boolean zeroToOne = zeroToOneDepth(context);
 
         return new WaterFrameUniforms.Frame(
@@ -912,7 +895,7 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                 new float[]{medium.boundarySurfaceY(), medium.boundarySource().gpuCode(),
                         medium.fluidTypeId(), medium.boundarySurfaceValid() ? 1.0f : 0.0f},
                 new float[]{profile.absorptionR(), profile.absorptionG(), profile.absorptionB(),
-                        profile.refractionProbeDistance()},
+                        profile.refractionIntensity()},
                 new float[]{profile.scatteringR(), profile.scatteringG(), profile.scatteringB(), rain},
                 new float[]{skyMipCount, hasCascade ? 1.0f : 0.0f, velocityMrt ? 1.0f : 0.0f,
                         deformationTimes.historyValid() ? 1.0f : 0.0f}
@@ -967,28 +950,69 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         cameraBuffer().upload(writer.buffer(), 0L);
     }
 
-    private GpuMeshHandle buildWaterMesh(List<WaterSurfaceExtractor.WaterPatch> patches, Vec3 camera) {
+    private GpuMeshHandle buildWaterMesh(List<WaterSurfaceExtractor.WaterPatch> patches,
+                                         DeferredPrimaryViewSource.FrameView camera) {
+        prepareWaterMeshCache(camera.frameId(), patches);
+        if (waterPatchMeshCache != null) return waterPatchMeshCache;
+        Vec3 cameraPosition = camera.cameraPosition();
         waterMesh.reserve(patches.size() * 4, patches.size() * 4);
         waterMesh.beginLocal();
         for (WaterSurfaceExtractor.WaterPatch patch : patches) {
             int base = waterMesh.getVertexCount();
-            for (int i = 0; i < 4; i++) writeWaterVertex(waterMesh, patch, i, camera);
+            for (int i = 0; i < 4; i++) writeWaterVertex(waterMesh, patch, i, cameraPosition);
             waterMesh.patch4(base, base + 1, base + 2, base + 3);
         }
         waterMesh.end();
-        return owner.dynamicMeshes().upload(waterMesh);
+        waterPatchMeshCache = owner.dynamicMeshes().upload(waterMesh);
+        return waterPatchMeshCache;
     }
 
-    private GpuMeshHandle buildWaterFallbackMesh(List<WaterSurfaceExtractor.WaterPatch> patches, Vec3 camera) {
+    private GpuMeshHandle buildWaterFallbackMesh(List<WaterSurfaceExtractor.WaterPatch> patches,
+                                                 DeferredPrimaryViewSource.FrameView camera) {
+        prepareWaterMeshCache(camera.frameId(), patches);
+        if (waterTriangleMeshCache != null) return waterTriangleMeshCache;
+        Vec3 cameraPosition = camera.cameraPosition();
         waterFallbackMesh.reserve(patches.size() * 4, patches.size() * 6);
         waterFallbackMesh.beginLocal();
         for (WaterSurfaceExtractor.WaterPatch patch : patches) {
             int base = waterFallbackMesh.getVertexCount();
-            for (int i = 0; i < 4; i++) writeWaterVertex(waterFallbackMesh, patch, i, camera);
+            for (int i = 0; i < 4; i++) writeWaterVertex(waterFallbackMesh, patch, i, cameraPosition);
             waterFallbackMesh.quad(base, base + 1, base + 2, base + 3);
         }
         waterFallbackMesh.end();
-        return owner.dynamicMeshes().upload(waterFallbackMesh);
+        waterTriangleMeshCache = owner.dynamicMeshes().upload(waterFallbackMesh);
+        return waterTriangleMeshCache;
+    }
+
+    private void prepareWaterMeshCache(long frameId, List<WaterSurfaceExtractor.WaterPatch> patches) {
+        long generation = WaterSurfaceExtractor.generation();
+        int patchCount = patches.size();
+        long signature = waterPatchSignature(patches);
+        if (waterMeshCacheFrameId == frameId
+                && waterMeshCacheGeneration == generation
+                && waterMeshCachePatchCount == patchCount
+                && waterMeshCacheSignature == signature) return;
+        waterMeshCacheFrameId = frameId;
+        waterMeshCacheGeneration = generation;
+        waterMeshCachePatchCount = patchCount;
+        waterMeshCacheSignature = signature;
+        waterPatchMeshCache = null;
+        waterTriangleMeshCache = null;
+    }
+
+    private static long waterPatchSignature(List<WaterSurfaceExtractor.WaterPatch> patches) {
+        long hash = 0xcbf29ce484222325L;
+        for (WaterSurfaceExtractor.WaterPatch patch : patches) {
+            hash ^= patch.blockPos();
+            hash *= 0x100000001b3L;
+            hash ^= ((long) patch.surfaceFlags() << 32) ^ Integer.toUnsignedLong(patch.packedSurface());
+            hash *= 0x100000001b3L;
+        }
+        return hash;
+    }
+
+    private static boolean foundationUsesNativeWaterTessellation() {
+        return WaterForwardProfile.FOUNDATION.displacementAmplitudeFactor() > 1.0e-6f;
     }
 
     private GpuMeshHandle buildHeightMesh(List<WaterSurfaceExtractor.HeightPatch> patches, Vec3 camera) {
@@ -1160,43 +1184,19 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
     }
 
     private List<SampledTextureBinding> waterTextures(DeferredPassContext context) {
-        List<SampledTextureBinding> textures = new ArrayList<>();
         GpuSampler linear = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
         GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
-        GpuSampler skySampler = RenderSystem.getSamplerCache().getSampler(
-                com.mojang.blaze3d.textures.AddressMode.REPEAT,
-                com.mojang.blaze3d.textures.AddressMode.CLAMP_TO_EDGE,
-                FilterMode.LINEAR, FilterMode.LINEAR, true);
-        GpuTextureView radiance = requireTexture(context, DeferredResource.SCENE_RADIANCE);
-        GpuTextureView resolvedDepth = requireTexture(context, DeferredResource.RESOLVED_DEPTH);
-        GpuTextureView reflection = context.resources().texture(DeferredResource.WATER_REFLECTION_COLOR);
-        GpuTextureView confidence = context.resources().texture(DeferredResource.WATER_REFLECTION_CONFIDENCE);
-        GpuTextureView sky = context.resources().texture(DeferredResource.SKY_SPECULAR_RADIANCE);
-        textures.add(new SampledTextureBinding(5, reflection != null ? reflection : radiance, linear));
-        textures.add(new SampledTextureBinding(6, confidence != null ? confidence : resolvedDepth, nearest));
-        textures.add(new SampledTextureBinding(7, radiance, linear));
-        textures.add(new SampledTextureBinding(8, resolvedDepth, nearest));
-        textures.add(new SampledTextureBinding(9, sky != null ? sky : radiance, sky != null ? skySampler : linear));
-        return textures;
+        return List.of(
+                new SampledTextureBinding(7, requireTexture(context, DeferredResource.SCENE_RADIANCE), linear),
+                new SampledTextureBinding(8, requireTexture(context, DeferredResource.RESOLVED_DEPTH), nearest)
+        );
     }
 
     private void bindWaterFallbackTextures(RhiDrawCommand.Builder draw, DeferredPassContext context) {
         GpuSampler linear = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
         GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
-        GpuSampler skySampler = RenderSystem.getSamplerCache().getSampler(
-                com.mojang.blaze3d.textures.AddressMode.REPEAT,
-                com.mojang.blaze3d.textures.AddressMode.CLAMP_TO_EDGE,
-                FilterMode.LINEAR, FilterMode.LINEAR, true);
-        GpuTextureView radiance = requireTexture(context, DeferredResource.SCENE_RADIANCE);
-        GpuTextureView resolvedDepth = requireTexture(context, DeferredResource.RESOLVED_DEPTH);
-        GpuTextureView reflection = context.resources().texture(DeferredResource.WATER_REFLECTION_COLOR);
-        GpuTextureView confidence = context.resources().texture(DeferredResource.WATER_REFLECTION_CONFIDENCE);
-        GpuTextureView sky = context.resources().texture(DeferredResource.SKY_SPECULAR_RADIANCE);
-        draw.sampler("u_WaterReflectionColor", reflection != null ? reflection : radiance, linear)
-                .sampler("u_WaterReflectionConfidence", confidence != null ? confidence : resolvedDepth, nearest)
-                .sampler("u_SceneRadiance", radiance, linear)
-                .sampler("u_ResolvedDepth", resolvedDepth, nearest)
-                .sampler("u_SkySpecular", sky != null ? sky : radiance, sky != null ? skySampler : linear);
+        draw.sampler("u_SceneRadiance", requireTexture(context, DeferredResource.SCENE_RADIANCE), linear)
+                .sampler("u_ResolvedDepth", requireTexture(context, DeferredResource.RESOLVED_DEPTH), nearest);
     }
 
     private List<SampledTextureBinding> materialTextures() {
@@ -1231,22 +1231,12 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                                          boolean motionMrt,
                                          DeferredPassContext context) {
         WaterSurfaceExtractor.ExtractionStats stats = WaterSurfaceExtractor.stats();
-        boolean reflectionsEnabled = context != null && context.featureEnabled(DeferredFeature.REFLECTIONS);
-        boolean reflectionReady = reflectionsEnabled
-                && context.isValid(DeferredResource.WATER_REFLECTION_COLOR)
-                && context.isValid(DeferredResource.WATER_REFLECTION_CONFIDENCE)
-                && context.resources().texture(DeferredResource.WATER_REFLECTION_COLOR) != null
-                && context.resources().texture(DeferredResource.WATER_REFLECTION_CONFIDENCE) != null;
-        String reflectionPath = !reflectionsEnabled ? "DISABLED"
-                : reflectionReady ? (hasReflectionCascade(context) ? "SSR_CASCADE" : "SSR") : "PENDING";
-        boolean skyReady = context != null
-                && context.featureEnabled(DeferredFeature.SKY)
-                && context.isValid(DeferredResource.SKY_SPECULAR_RADIANCE)
-                && context.resources().texture(DeferredResource.SKY_SPECULAR_RADIANCE) != null;
-        String environment = skyReady ? "SKY" : "NEUTRAL";
+        String reflectionPath = "DISABLED_FOUNDATION";
+        String environment = "SCENE_TRANSMISSION_ONLY";
         boolean replacement = WaterSurfacePatchRouting.replacementActive();
-        int visibleSections = visibleWaterSectionCount(false);
-        int visibleOwnedSections = visibleWaterSectionCount(true);
+        DeferredPrimaryViewSource.FrameView camera = context == null ? null : context.primaryView().current();
+        int visibleSections = visibleWaterSectionCount(false, camera);
+        int visibleOwnedSections = visibleWaterSectionCount(true, camera);
         WaterSurfacePatchRouting.Diagnostics diagnostics = new WaterSurfacePatchRouting.Diagnostics(
                 renderStatus, drawPath, fallbackReason, reflectionPath, environment,
                 stats.sectionsWithWater(), stats.replacementOwnedSections(), visibleSections, visibleOwnedSections,
@@ -1267,39 +1257,101 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
                 reflectionPath, environment);
     }
 
-    private static List<WaterSurfaceExtractor.WaterPatch> collectAllWaterPatches() {
+    private static List<WaterSurfaceExtractor.WaterPatch> collectAllWaterPatches(
+            DeferredPrimaryViewSource.FrameView camera) {
+        WaterClipCuller culler = WaterClipCuller.from(camera);
         return WaterSurfaceExtractor.snapshot().values().stream()
-                .filter(section -> waterSectionVisible(section.sectionKey()))
+                .filter(section -> culler.sectionVisible(section.sectionKey()))
                 .sorted(Comparator.comparingLong(WaterSurfaceExtractor.SectionPatchMesh::sectionKey))
                 .flatMap(section -> section.waterPatches().stream())
                 .toList();
     }
 
-    private static List<WaterSurfaceExtractor.WaterPatch> collectReplacementOwnedWaterPatches() {
+    private static List<WaterSurfaceExtractor.WaterPatch> collectReplacementOwnedWaterPatches(
+            DeferredPrimaryViewSource.FrameView camera) {
+        WaterClipCuller culler = WaterClipCuller.from(camera);
         return WaterSurfaceExtractor.snapshot().values().stream()
                 .filter(WaterSurfaceExtractor.SectionPatchMesh::waterReplacementOwned)
-                .filter(section -> waterSectionVisible(section.sectionKey()))
+                .filter(section -> culler.sectionVisible(section.sectionKey()))
                 .sorted(Comparator.comparingLong(WaterSurfaceExtractor.SectionPatchMesh::sectionKey))
                 .flatMap(section -> section.waterPatches().stream())
                 .toList();
     }
 
-    private static int visibleWaterSectionCount(boolean replacementOwnedOnly) {
+    private static int visibleWaterSectionCount(boolean replacementOwnedOnly,
+                                                DeferredPrimaryViewSource.FrameView camera) {
+        WaterClipCuller culler = WaterClipCuller.from(camera);
         int visible = 0;
         for (WaterSurfaceExtractor.SectionPatchMesh section : WaterSurfaceExtractor.snapshot().values()) {
             if (section.waterPatches().isEmpty()) continue;
             if (replacementOwnedOnly && !section.waterReplacementOwned()) continue;
-            if (waterSectionVisible(section.sectionKey())) visible++;
+            if (culler.sectionVisible(section.sectionKey())) visible++;
         }
         return visible;
     }
 
-    private static boolean waterSectionVisible(long sectionKey) {
-        int x = SectionPos.x(sectionKey) << 4;
-        int y = SectionPos.y(sectionKey) << 4;
-        int z = SectionPos.z(sectionKey) << 4;
-        return CombatantRenderSystem.sodium().isBoxVisible(
-                new AABB(x, y, z, x + 16.0, y + 16.0, z + 16.0));
+    /**
+     * Conservative water-only side-plane culler.
+     *
+     * <p>Minecraft's generic {@code Frustum} also derives near/far planes from the projection.
+     * Combatant's world projection is reversed-Z and its clip-depth convention is backend-owned;
+     * using that helper for separately-owned water produced false section rejects near the screen
+     * boundary on OpenGL. CPU culling here only rejects boxes wholly outside left/right/top/bottom.
+     * Near/far clipping stays authoritative on the GPU.</p>
+     */
+    private record WaterClipCuller(Matrix4f viewProjection, Vec3 cameraPosition, boolean valid) {
+        private static final float CLIP_MARGIN = 0.035f;
+
+        static WaterClipCuller from(DeferredPrimaryViewSource.FrameView camera) {
+            if (camera == null) return new WaterClipCuller(new Matrix4f(), Vec3.ZERO, false);
+            Matrix4f view = camera.view();
+            // Water vertices are explicitly camera-relative before this same view rotation reaches
+            // TES/fallback VS. Strip translation exactly like buildWaterFrame().
+            view.m30(0.0f).m31(0.0f).m32(0.0f);
+            Matrix4f vp = camera.unjitteredProjection().mul(view);
+            return new WaterClipCuller(vp, camera.cameraPosition(), true);
+        }
+
+        boolean sectionVisible(long sectionKey) {
+            if (!valid) return true;
+
+            double minX = (SectionPos.x(sectionKey) << 4) - 1.0;
+            double minY = (SectionPos.y(sectionKey) << 4) - 0.5;
+            double minZ = (SectionPos.z(sectionKey) << 4) - 1.0;
+            double maxX = (SectionPos.x(sectionKey) << 4) + 17.0;
+            double maxY = (SectionPos.y(sectionKey) << 4) + 16.5;
+            double maxZ = (SectionPos.z(sectionKey) << 4) + 17.0;
+
+            boolean allLeft = true;
+            boolean allRight = true;
+            boolean allBottom = true;
+            boolean allTop = true;
+            boolean anyInFront = false;
+
+            for (int corner = 0; corner < 8; corner++) {
+                double wx = (corner & 1) == 0 ? minX : maxX;
+                double wy = (corner & 2) == 0 ? minY : maxY;
+                double wz = (corner & 4) == 0 ? minZ : maxZ;
+                Vector4f clip = new Vector4f(
+                        (float) (wx - cameraPosition.x),
+                        (float) (wy - cameraPosition.y),
+                        (float) (wz - cameraPosition.z),
+                        1.0f);
+                viewProjection.transform(clip);
+
+                // Anything intersecting the camera plane fails open. GPU clipping is exact here.
+                if (clip.w > 1.0e-5f) anyInFront = true;
+                float w = Math.abs(clip.w);
+                float margin = Math.max(1.0e-4f, w * CLIP_MARGIN);
+                allLeft &= clip.x < -w - margin;
+                allRight &= clip.x > w + margin;
+                allBottom &= clip.y < -w - margin;
+                allTop &= clip.y > w + margin;
+            }
+
+            if (!anyInFront) return true;
+            return !(allLeft || allRight || allBottom || allTop);
+        }
     }
 
     private static List<WaterSurfaceExtractor.HeightPatch> collectHeightPatches(long minGenerationExclusive) {
@@ -1351,6 +1403,12 @@ final class DeferredPatchSurfaceSource implements AutoCloseable {
         waterReflectionNativeFailed = false;
         waterFallbackFailed = false;
         waterDeformation.reset();
+        waterMeshCacheFrameId = Long.MIN_VALUE;
+        waterMeshCacheGeneration = Long.MIN_VALUE;
+        waterMeshCachePatchCount = -1;
+        waterMeshCacheSignature = Long.MIN_VALUE;
+        waterPatchMeshCache = null;
+        waterTriangleMeshCache = null;
         SurfacePatchRouting.reset();
         WaterSurfacePatchRouting.publishDiagnostics(WaterSurfacePatchRouting.Diagnostics.compatibility("routing_reset"));
     }

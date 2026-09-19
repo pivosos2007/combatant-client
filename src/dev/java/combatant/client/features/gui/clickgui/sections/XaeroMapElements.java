@@ -316,7 +316,7 @@ final class XaeroMapElements {
                     waypoint.symbol(),
                     color,
                     false,
-                    false,
+                    true,
                     false,
                     false,
                     5.0f,

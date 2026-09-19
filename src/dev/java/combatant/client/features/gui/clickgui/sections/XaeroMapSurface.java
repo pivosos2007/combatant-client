@@ -310,6 +310,9 @@ final class XaeroMapSurface {
             } else if (rightClickElement != null) {
                 contextWorldX = rightClickElement.worldX();
                 contextWorldZ = rightClickElement.worldZ();
+                contextBlockX = floorBlock(contextWorldX);
+                contextBlockY = Short.MAX_VALUE;
+                contextBlockZ = floorBlock(contextWorldZ);
             } else if (viewport != null) {
                 MapPoint anchor = viewport.unproject(mouseX, mouseY);
                 contextWorldX = anchor.x();
@@ -320,7 +323,7 @@ final class XaeroMapSurface {
             }
             selectionStartX = selectionEndX = pointerBlockX >> 4;
             selectionStartZ = selectionEndZ = pointerBlockZ >> 4;
-            if (rightClickLocationMarker != null) {
+            if (rightClickLocationMarker != null || rightClickElement != null) {
                 selectionStartX = selectionEndX = contextBlockX >> 4;
                 selectionStartZ = selectionEndZ = contextBlockZ >> 4;
             }
@@ -330,6 +333,12 @@ final class XaeroMapSurface {
         if (hoveredLocationMarker != null) {
             centerX = hoveredLocationMarker.location().x();
             centerZ = hoveredLocationMarker.location().z();
+            centered = true;
+            return true;
+        }
+        if (hoveredElement != null) {
+            centerX = hoveredElement.worldX();
+            centerZ = hoveredElement.worldZ();
             centered = true;
             return true;
         }
@@ -1237,6 +1246,19 @@ final class XaeroMapSurface {
             contextEntries.add(new MenuEntry(element.plainName(), "users-round", false, ContextAction.NONE));
             contextEntries.add(new MenuEntry(tr("gui.xaero_right_click_player_teleport", "Teleport to player"),
                     "navigation", true, ContextAction.TELEPORT_ELEMENT));
+        } else if (element != null) {
+            contextEntries.add(new MenuEntry(element.plainName(),
+                    element.kind() == XaeroMapElements.Kind.WAYPOINT ? "map-pin" : "crosshair",
+                    false, ContextAction.NONE));
+            contextEntries.add(new MenuEntry(
+                    "X " + contextBlockX + "  Z " + contextBlockZ,
+                    "clipboard", true, ContextAction.COPY_COORDINATES));
+            contextEntries.add(new MenuEntry(
+                    chunkLabel(contextBlockX >> 4, contextBlockZ >> 4),
+                    "clipboard", true, ContextAction.COPY_CHUNK));
+            contextEntries.add(new MenuEntry(
+                    tr("gui.combatant.map.action.center_marker", "Center on marker"),
+                    "navigation", true, ContextAction.CENTER_ELEMENT));
         } else {
             boolean coordinates = effective(WorldMapProfiledConfigOptions.COORDINATES);
             String chunk = selectionStartX == selectionEndX && selectionStartZ == selectionEndZ
@@ -1401,6 +1423,13 @@ final class XaeroMapSurface {
                 if (locationEntry != null && locationEntry.location().hasPosition()) {
                     centerX = locationEntry.location().x();
                     centerZ = locationEntry.location().z();
+                    centered = true;
+                }
+            }
+            case CENTER_ELEMENT -> {
+                if (element != null) {
+                    centerX = element.worldX();
+                    centerZ = element.worldZ();
                     centered = true;
                 }
             }
@@ -1924,6 +1953,7 @@ final class XaeroMapSurface {
         COPY_COORDINATES,
         COPY_CHUNK,
         CENTER_LOCATION,
+        CENTER_ELEMENT,
         TOGGLE_TARGET,
         WAYPOINTS,
         SETTINGS

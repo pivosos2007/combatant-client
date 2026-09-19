@@ -197,6 +197,7 @@ final class XaeroMapSettingsPanel {
         Config primary = manager.getPrimaryConfigManager().getConfig();
 
         addCombatantArrowSettings();
+        addCombatantHudSettings();
         addCombatantPlayerSettings();
 
         addProfiled(manager, WorldMapProfiledConfigOptions.COORDINATES, Category.DISPLAY);
@@ -711,6 +712,41 @@ final class XaeroMapSettingsPanel {
         color.setI18nEnabled(false, false);
         color.visibleWhen(config::isCustomArrowColor);
         entries.add(new Entry(color, Category.DISPLAY, "custom player arrow color tint"));
+    }
+
+    private void addCombatantHudSettings() {
+        MapUiConfig config = MapUiConfig.get();
+
+        BooleanSetting enabled = new BooleanSetting(
+                tr("gui.combatant.map.hud.enabled", "World HUD"),
+                config.hudEnabledValue());
+        enabled.setI18nEnabled(false, false);
+        entries.add(new Entry(enabled, Category.DISPLAY,
+                "world hud markers overlay enable disable"));
+
+        BooleanSetting waypoints = new BooleanSetting(
+                tr("gui.combatant.map.hud.waypoints", "HUD waypoint markers"),
+                config.hudWaypointMarkersValue());
+        waypoints.setI18nEnabled(false, false);
+        waypoints.visibleWhen(config::hudEnabled);
+        entries.add(new Entry(waypoints, Category.WAYPOINTS,
+                "hud waypoint markers world labels enable disable"));
+
+        BooleanSetting players = new BooleanSetting(
+                tr("gui.combatant.map.hud.players", "HUD distant players"),
+                config.hudPlayerMarkersValue());
+        players.setI18nEnabled(false, false);
+        players.visibleWhen(config::hudEnabled);
+        entries.add(new Entry(players, Category.PLAYERS,
+                "hud distant remote players heads maplink relations"));
+
+        SliderSetting<Integer> distance = new SliderSetting<>(
+                tr("gui.combatant.map.hud.player_distance", "Player HUD distance"),
+                config.hudPlayerMaxDistanceValue());
+        distance.setI18nEnabled(false, false);
+        distance.visibleWhen(() -> config.hudEnabled() && config.hudPlayerMarkers());
+        entries.add(new Entry(distance, Category.PLAYERS,
+                "player hud distance max range meters"));
     }
 
     private void addCombatantPlayerSettings() {

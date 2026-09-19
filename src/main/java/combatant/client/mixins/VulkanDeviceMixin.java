@@ -7,6 +7,8 @@
 
 package combatant.client.mixins;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.shaders.ShaderSource;
@@ -38,8 +40,10 @@ import combatant.client.mixininterface.IVulkanBackendInfo;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 import static org.lwjgl.vulkan.VK12.*;
 
@@ -50,6 +54,8 @@ public abstract class VulkanDeviceMixin implements IVulkanBackendInfo {
 
     @Unique
     private final Map<VulkanRenderStateBridge.PipelineVariantKey, VulkanRenderPipeline> combatant$pipelineVariants = new HashMap<>();
+    @Unique
+    private final Map<RenderPipeline, RuntimeException> combatant$pipelineCompileFailures = new IdentityHashMap<>();
     @Unique private VkDevice combatant$vkDevice;
     @Unique private long combatant$vma;
     @Unique private VulkanPhysicalDevice combatant$physicalDevice;
@@ -187,6 +193,8 @@ public abstract class VulkanDeviceMixin implements IVulkanBackendInfo {
     @Inject(method = "getOrCompilePipeline", at = @At("HEAD"), cancellable = true)
     private void combatant$getOrCompilePipelineVariant(RenderPipeline pipeline,
                                                        CallbackInfoReturnable<VulkanRenderPipeline> cir) {
+        RuntimeException previousFailure = combatant$pipelineCompileFailures.get(pipeline);
+        if (previousFailure != null) throw previousFailure;
         if (!VulkanRenderStateBridge.needsPipelineVariant(pipeline)) return;
 
         VulkanRenderStateBridge.PipelineVariantKey key = VulkanRenderStateBridge.pipelineVariantKey(pipeline);
@@ -225,22 +233,76 @@ public abstract class VulkanDeviceMixin implements IVulkanBackendInfo {
         }
     }
 
+    @WrapOperation(
+            method = "getOrCompilePipeline",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Ljava/util/Map;computeIfAbsent(Ljava/lang/Object;Ljava/util/function/Function;)Ljava/lang/Object;"
+            )
+    )
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private Object combatant$rememberPipelineCompileFailure(Map cache,
+                                                             Object key,
+                                                             Function factory,
+                                                             Operation<Object> original) {
+        try {
+            return original.call(cache, key, factory);
+        } catch (RuntimeException failure) {
+            if (key instanceof RenderPipeline pipeline) {
+                combatant$pipelineCompileFailures.put(pipeline, failure);
+            }
+            VulkanRenderStateBridge.endPipelineCompile();
+            throw failure;
+        }
+    }
+
+    @WrapOperation(
+            method = "compilePipeline",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lcom/mojang/blaze3d/vulkan/VulkanRenderPipeline;compile(Lcom/mojang/blaze3d/vulkan/VulkanDevice;Lcom/mojang/blaze3d/vulkan/VulkanBindGroupLayout;Lcom/mojang/blaze3d/pipeline/RenderPipeline;JJ)Lcom/mojang/blaze3d/vulkan/VulkanRenderPipeline;"
+            )
+    )
+    private VulkanRenderPipeline combatant$releaseModulesAfterNativePipelineFailure(
+            VulkanDevice device,
+            com.mojang.blaze3d.vulkan.VulkanBindGroupLayout layout,
+            RenderPipeline pipeline,
+            long vertexModule,
+            long fragmentModule,
+            Operation<VulkanRenderPipeline> original) {
+        try {
+            return original.call(device, layout, pipeline, vertexModule, fragmentModule);
+        } catch (RuntimeException failure) {
+            if (failure.getMessage() != null && failure.getMessage().contains("Can't compile pipeline")) {
+                if (vertexModule != 0L) vkDestroyShaderModule(device.vkDevice(), vertexModule, null);
+                if (fragmentModule != 0L) vkDestroyShaderModule(device.vkDevice(), fragmentModule, null);
+                if (layout != null && layout.handle() != 0L) {
+                    vkDestroyDescriptorSetLayout(device.vkDevice(), layout.handle(), null);
+                }
+            }
+            VulkanRenderStateBridge.endPipelineCompile();
+            throw failure;
+        }
+    }
+
     @Inject(method = "clearPipelineCache", at = @At("RETURN"))
     private void combatant$clearPipelineVariants(CallbackInfo ci) {
-        if (combatant$pipelineVariants.isEmpty()) return;
-        for (VulkanRenderPipeline pipeline : combatant$pipelineVariants.values()) {
-            try {
-                pipeline.destroy();
-            } catch (Throwable t) {
-                DebugLog.warnOnChange(
-                        "vulkan.pipeline.variant.destroy.failed",
-                        t.getClass().getSimpleName() + "|" + t.getMessage(),
-                        "[Vulkan/RHI] failed to destroy pipeline variant: %s: %s",
-                        t.getClass().getSimpleName(),
-                        t.getMessage()
-                );
+        if (!combatant$pipelineVariants.isEmpty()) {
+            for (VulkanRenderPipeline pipeline : combatant$pipelineVariants.values()) {
+                try {
+                    pipeline.destroy();
+                } catch (Throwable t) {
+                    DebugLog.warnOnChange(
+                            "vulkan.pipeline.variant.destroy.failed",
+                            t.getClass().getSimpleName() + "|" + t.getMessage(),
+                            "[Vulkan/RHI] failed to destroy pipeline variant: %s: %s",
+                            t.getClass().getSimpleName(),
+                            t.getMessage()
+                    );
+                }
             }
+            combatant$pipelineVariants.clear();
         }
-        combatant$pipelineVariants.clear();
+        combatant$pipelineCompileFailures.clear();
     }
 }

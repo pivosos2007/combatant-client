@@ -1,10 +1,7 @@
 #version 330 core
 
-uniform sampler2D u_WaterReflectionColor;
-uniform sampler2D u_WaterReflectionConfidence;
 uniform sampler2D u_SceneRadiance;
 uniform sampler2D u_ResolvedDepth;
-uniform sampler2D u_SkySpecular;
 
 layout(std140) uniform WaterFrame {
     mat4 u_CurrentView;
@@ -63,34 +60,42 @@ vec3 reconstructView(vec2 uv, float depth) {
     return h.xyz / h.w;
 }
 
-bool projectUv(vec3 viewPosition, out vec2 uv) {
-    vec4 clip = u_CurrentProjection * vec4(viewPosition, 1.0);
-    if (clip.w <= 1.0e-7) { uv = vec2(0.5); return false; }
-    uv = clip.xy / clip.w * 0.5 + 0.5;
-    return all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)));
+vec2 clampViewportUv(vec2 uv) {
+    vec2 halfPixel = 0.5 * u_Viewport.zw;
+    return clamp(uv, halfPixel, vec2(1.0) - halfPixel);
 }
 
-vec2 latLongFromDirection(vec3 d) {
-    d = normalize(d);
-    return vec2(atan(d.z, d.x) / (2.0 * COMBATANT_WATER_PI) + 0.5,
-                acos(clamp(d.y, -1.0, 1.0)) / COMBATANT_WATER_PI);
+float viewportEdgeFade(vec2 uv) {
+    vec2 pixel = max(u_Viewport.zw, vec2(1.0e-7));
+    float edgePixels = min(
+        min(uv.x, 1.0 - uv.x) / pixel.x,
+        min(uv.y, 1.0 - uv.y) / pixel.y
+    );
+    return smoothstep(1.5, 8.0, edgePixels);
 }
 
-vec3 reflectionHierarchy(vec2 screenUv, vec3 normal, vec3 viewDir, float roughness, vec3 neutralEnvironment) {
-    bool hasWaterReflection = u_MediumReflection.z > 0.5;
-    bool hasSky = u_MediumReflection.w > 0.5;
-    vec3 reflectedView = normalize(reflect(-viewDir, normal));
-    vec3 reflectedWorld = normalize(mat3(u_CurrentInverseView) * reflectedView);
-    vec3 fallback = neutralEnvironment;
-    if (hasSky) {
-        float mipCount = max(u_ReflectionMeta.x, 1.0);
-        float skyLod = roughness * max(mipCount - 1.0, 0.0);
-        fallback = max(textureLod(u_SkySpecular, latLongFromDirection(reflectedWorld), skyLod).rgb, vec3(0.0));
+float measuredLayerDistance(vec2 uv, float surfaceDistance, float fallbackDistance) {
+    float opaqueDepth = textureLod(u_ResolvedDepth, uv, 0.0).r;
+    if (opaqueDepth > 0.0) {
+        vec3 opaqueView = reconstructView(uv, opaqueDepth);
+        float measured = length(opaqueView) - surfaceDistance;
+        if (measured > 1.0e-3) return min(measured, 16.0);
     }
-    if (!hasWaterReflection) return fallback;
-    vec3 traced = max(textureLod(u_WaterReflectionColor, screenUv, 0.0).rgb, vec3(0.0));
-    float confidence = clamp(textureLod(u_WaterReflectionConfidence, screenUv, 0.0).r, 0.0, 1.0);
-    return mix(fallback, traced, confidence);
+    return clamp(fallbackDistance, 0.0, 4.0);
+}
+
+vec2 waterSurfaceRefractionUv(vec2 screenUv, vec2 normalTangent,
+                             float viewDistance, float layerDistance, float intensity) {
+    vec2 offset = normalTangent
+            * (0.1 * max(intensity, 0.0))
+            * min(layerDistance, 8.0)
+            / max(viewDistance, 1.0);
+
+    // Never sample outside the actual render target. Fade only within the last few pixels so the
+    // refraction itself cannot manufacture an apparent water cutoff at the viewport boundary.
+    offset *= viewportEdgeFade(screenUv);
+    vec2 halfPixel = 0.5 * u_Viewport.zw;
+    return clamp(screenUv + offset, halfPixel, vec2(1.0) - halfPixel);
 }
 
 void main() {
@@ -99,62 +104,47 @@ void main() {
     vec3 waterWorldNormal = combatantWaterSurfaceNormal(
             v_WorldPosition, baseWorldNormal, v_Params.xy,
             v_SkyLight, u_CurrentCameraTime.w, u_OpticalScattering.w);
-    vec3 normal = normalize(mat3(u_CurrentView) * waterWorldNormal);
-    vec3 viewDir = normalize(-v_ViewPosition);
-    if (dot(normal, viewDir) < 0.0) normal = -normal;
 
-    float ndv = clamp(dot(normal, viewDir), 0.0, 1.0);
-    float fresnel = COMBATANT_WATER_F0 + (1.0 - COMBATANT_WATER_F0) * pow(1.0 - ndv, 5.0);
+    vec3 tangent;
+    vec3 bitangent;
+    combatantWaterBasis(baseWorldNormal, tangent, bitangent);
+    vec2 normalTangent = vec2(
+            dot(waterWorldNormal, tangent),
+            dot(waterWorldNormal, bitangent));
+
     bool cameraInsideWater = u_MediumReflection.y > 0.5;
-    vec2 screenUv = gl_FragCoord.xy * u_Viewport.zw;
-
-    vec3 incident = normalize(v_ViewPosition);
-    vec3 boundaryNormal = normal;
-    float eta = cameraInsideWater ? COMBATANT_WATER_IOR : 1.0 / COMBATANT_WATER_IOR;
-    vec3 refracted = refract(incident, boundaryNormal, eta);
-    bool totalInternalReflection = dot(refracted, refracted) <= 1.0e-8;
-
+    vec2 screenUv = clampViewportUv(gl_FragCoord.xy * u_Viewport.zw);
+    float surfaceDistance = length(v_ViewPosition);
     float fallbackThickness = max(v_Optical.y, 0.0);
-    float thickness = fallbackThickness;
-    float thicknessConfidence = 0.0;
-    vec2 refractedUv = screenUv;
-    bool refractedUvValid = false;
-    if (!totalInternalReflection) {
-        float probeDistance = max(u_OpticalAbsorption.w, 0.01);
-        if (fallbackThickness > 0.0) probeDistance = min(probeDistance, fallbackThickness);
-        refractedUvValid = projectUv(v_ViewPosition + normalize(refracted) * probeDistance, refractedUv);
-    }
+    float layerDistance = measuredLayerDistance(screenUv, surfaceDistance, fallbackThickness);
 
-    if (!cameraInsideWater && refractedUvValid) {
-        float opaqueDepth = textureLod(u_ResolvedDepth, refractedUv, 0.0).r;
-        if (opaqueDepth > 0.0) {
-            vec3 opaqueView = reconstructView(refractedUv, opaqueDepth);
-            float surfaceDistance = length(v_ViewPosition);
-            float opaqueDistance = length(opaqueView);
-            if (opaqueDistance > surfaceDistance + 1.0e-3) {
-                thickness = max(opaqueDistance - surfaceDistance, 0.0);
-                thicknessConfidence = 1.0;
-            } else {
-                refractedUvValid = false;
-            }
+    vec2 backgroundUv = waterSurfaceRefractionUv(
+            screenUv, normalTangent, surfaceDistance, layerDistance, u_OpticalAbsorption.w);
+
+    // Reject a displaced sample that lands on geometry in front of the water surface. This is the
+    // same ordering invariant as the reference path, expressed through reconstructed view distance
+    // so it remains valid with Combatant reversed-Z.
+    float refractedDepth = textureLod(u_ResolvedDepth, backgroundUv, 0.0).r;
+    if (refractedDepth > 0.0) {
+        vec3 refractedView = reconstructView(backgroundUv, refractedDepth);
+        float refractedDistance = length(refractedView);
+        if (refractedDistance <= surfaceDistance + 1.0e-3) {
+            backgroundUv = screenUv;
         } else {
-            refractedUvValid = false;
+            layerDistance = min(refractedDistance - surfaceDistance, 16.0);
         }
     }
 
-    vec2 backgroundUv = refractedUvValid && !totalInternalReflection ? refractedUv : screenUv;
     vec3 background = max(textureLod(u_SceneRadiance, backgroundUv, 0.0).rgb, vec3(0.0));
-    float resolvedThickness = mix(fallbackThickness, thickness, thicknessConfidence);
-    float opticalDistance = cameraInsideWater ? 0.0 : max(resolvedThickness, 0.0);
-    vec3 absorption = max(u_OpticalAbsorption.rgb, combatantWaterAbsorption(producerTint));
-    vec3 scattering = max(u_OpticalScattering.rgb, producerTint * 0.01);
-    vec3 beer = exp(-absorption * opticalDistance);
-    vec3 transmitted = background * beer + scattering * (vec3(1.0) - beer);
+    vec3 absorption = combatantWaterAbsorption(producerTint, u_OpticalAbsorption.rgb);
+    float opticalDistance = cameraInsideWater ? 0.0 : clamp(layerDistance, 0.0, 16.0);
+    vec3 transmission = exp(-absorption * opticalDistance);
 
-    vec3 reflected = reflectionHierarchy(screenUv, normal, viewDir, COMBATANT_WATER_ROUGHNESS,
-                                         combatantWaterNeutralEnvironment(producerTint));
-    float transmissionWeight = totalInternalReflection ? 0.0 : (1.0 - fresnel);
-    vec3 color = reflected * fresnel + transmitted * transmissionWeight;
+    // The reflection hierarchy is intentionally disabled in this foundation pass. Do not subtract
+    // Fresnel energy here: without a valid reflected source that would turn grazing water black and
+    // visually erase it near the viewport/horizon. Fresnel will become energy-conserving again when
+    // the real reflection source is connected.
+    vec3 color = background * transmission;
     outColor = vec4(max(color, vec3(0.0)), 1.0);
 
     vec2 velocity = vec2(0.0);

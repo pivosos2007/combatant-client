@@ -384,6 +384,16 @@ public enum VulkanRenderStateBridge {
         COMPILING_PIPELINE.remove();
     }
 
+    public static boolean currentPipelineUsesDynamicStencilReference() {
+        RenderPipeline pipeline = COMPILING_PIPELINE.get();
+        return pipeline != null && stencilTestEnabledForCurrentPipeline(pipeline);
+    }
+
+    @Nullable
+    public static RenderPipeline currentCompilingPipeline() {
+        return COMPILING_PIPELINE.get();
+    }
+
     public static boolean needsPipelineVariant(RenderPipeline pipeline) {
         if (!vulkanBackendActive) return false;
         return currentRenderPassHasStencilAttachment() || currentRenderPassSamples() != 1;

@@ -50,17 +50,28 @@ void main() {
 
     barrier();
     if (gl_InvocationID == 0) {
-        vec3 center = 0.25 * (gl_in[0].gl_Position.xyz + gl_in[1].gl_Position.xyz
-                           + gl_in[2].gl_Position.xyz + gl_in[3].gl_Position.xyz);
-        float distanceToCamera = length(center);
-        float minFactor = max(1.0, v_Tess[0].y);
-        float maxFactor = max(minFactor, v_Tess[0].z);
-        float fadeStart = max(0.0, v_Tess[0].w);
-        float fadeEnd = max(fadeStart + 0.001, v_Params2[0].x);
-        float factor = (v_SurfaceFlags[0] & COMBATANT_WATER_FLAG_TOP_SURFACE) != 0u
-                ? clamp(mix(maxFactor, minFactor, smoothstep(fadeStart, fadeEnd, distanceToCamera)),
-                        minFactor, maxFactor)
-                : 1.0;
+        bool topSurface = (v_SurfaceFlags[0] & COMBATANT_WATER_FLAG_TOP_SURFACE) != 0u;
+        float factor = 1.0;
+
+        if (topSurface) {
+            vec3 center = 0.25 * (gl_in[0].gl_Position.xyz + gl_in[1].gl_Position.xyz
+                               + gl_in[2].gl_Position.xyz + gl_in[3].gl_Position.xyz);
+            float distanceToCamera = length(center);
+
+            float configuredMin = clamp(v_Tess[0].y, 1.0, 2.0);
+            float configuredMax = clamp(v_Tess[0].z, configuredMin, 4.0);
+            float fadeStart = max(0.0, v_Tess[0].w);
+            float fadeEnd = min(max(fadeStart + 0.001, v_Params2[0].x), 56.0);
+
+            float continuousFactor = clamp(
+                    mix(configuredMax, configuredMin,
+                        smoothstep(fadeStart, fadeEnd, distanceToCamera)),
+                    configuredMin, configuredMax);
+            factor = continuousFactor >= 3.0 ? 4.0
+                    : (continuousFactor >= 1.5 ? 2.0 : 1.0);
+            factor = clamp(factor, configuredMin, configuredMax);
+        }
+
         gl_TessLevelOuter[0] = factor;
         gl_TessLevelOuter[1] = factor;
         gl_TessLevelOuter[2] = factor;

@@ -191,7 +191,7 @@ public final class MapPlayerMarkerRenderer {
         return cleanFallback;
     }
 
-    private static Identifier resolveSkin(UUID id, String name) {
+    public static Identifier resolveSkin(UUID id, String name) {
         Identifier cached = PlayerHeadRenderer.getCachedSkin(id);
         if (cached == null && !name.isBlank()) cached = PlayerHeadRenderer.getCachedSkin(name);
         Minecraft mc = Minecraft.getInstance();
