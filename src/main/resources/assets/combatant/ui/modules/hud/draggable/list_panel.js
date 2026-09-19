@@ -15,15 +15,14 @@ class HudListPanelLayout extends HudPanelLayout {
   }
 
   iconNode(row, rowCenterY) {
-    const bs = this.bs();
     const kind = c(prop(row, "iconKind", ""), "");
     const icon = c(prop(row, "icon", ""), "");
-    const size = n(prop(this.v, "rowIconSize", 8), 8) * bs;
+    const size = n(prop(this.v, "rowIconSize", 8), 8);
     const horizontal = this.horizontalLayout();
     const x = horizontal.iconCenterX - size * 0.5;
     const y = rowCenterY - size * 0.5;
     const tint = c(prop(row, "iconTint", "#FFFFFFFF"), "#FFFFFFFF");
-    const radius = Math.min(1.15 * bs, size * 0.24);
+    const radius = Math.min(1.15, size * 0.24);
     if (kind === "item") {
       return ui.item({
         key: `row:${prop(row, "key", "")}:item`,
@@ -51,7 +50,7 @@ class HudListPanelLayout extends HudPanelLayout {
         radius,
         fill: "#22FFFFFF",
         stroke: "#88FFFFFF",
-        strokeWidth: Math.max(0.45, 0.55 * bs),
+        strokeWidth: 0.55,
       });
     }
     if (kind === "texture" && icon) {
@@ -60,7 +59,7 @@ class HudListPanelLayout extends HudPanelLayout {
         assetType: "texture",
         asset: icon,
         tint,
-        class: abs(x, y, size, size, `rounded-${s(Math.min(1.15 * bs, size * 0.18))}`),
+        class: abs(x, y, size, size, `rounded-${s(Math.min(1.15, size * 0.18))}`),
       });
     }
     if (kind === "svg" && icon) {
@@ -75,7 +74,6 @@ class HudListPanelLayout extends HudPanelLayout {
   }
 
   nameParts(row, rowCenterY) {
-    const bs = this.bs();
     const fs = this.fs();
     const rowTextH = n(this.p.rowTextHeight, 8);
     const x = this.horizontalLayout().titleX;
@@ -91,33 +89,32 @@ class HudListPanelLayout extends HudPanelLayout {
         key: `row:${prop(row, "key", "")}:name:${i}`,
         text,
         color: partColor,
-        class: cls(abs(x + px, y, Math.max(10, text.length * 8 * fs), rowTextH + 4 * bs), font("OnestMedium", this.fontSize()), `text-${partColor}`),
+        class: cls(abs(x + px, y, Math.max(10, text.length * 8 * fs), rowTextH + 4), font("OnestMedium", this.fontSize()), `text-${partColor}`),
       }));
     }
     return nodes;
   }
 
   timePillParts(row, rowCenterY, key, rightText, rightColor) {
-    const bs = this.bs();
     const fs = this.fs();
     const rowTextH = n(this.p.rowTextHeight, 8);
     const w = this.w();
-    const rightPad = n(prop(this.v, "rowRightPad", 8), 8) * bs;
-    const pillH = n(prop(this.v, "timePillHeight", 8.4), 8.4) * bs;
-    const ringBox = n(prop(this.v, "timePillRingBox", 6.5), 6.5) * bs;
+    const rightPad = n(prop(this.v, "rowRightPad", 8), 8);
+    const pillH = n(prop(this.v, "timePillHeight", 8.4), 8.4);
+    const ringBox = n(prop(this.v, "timePillRingBox", 6.5), 6.5);
     // Java measures the real glyph advances with the same TextRenderer and reserves
     // the widest width for the lifetime of the row. Do not infer width from string length.
     const textW = Math.max(0, n(prop(row, "rightTextWidth", 0), 0));
-    const leftPad = n(prop(this.v, "timePillLeftPad", 2.0), 2.0) * bs;
-    const ringTextGap = n(prop(this.v, "timePillRingTextGap", 1.35), 1.35) * bs;
-    const rightInnerPad = n(prop(this.v, "timePillRightPad", 2.3), 2.3) * bs;
+    const leftPad = n(prop(this.v, "timePillLeftPad", 2.0), 2.0);
+    const ringTextGap = n(prop(this.v, "timePillRingTextGap", 1.35), 1.35);
+    const rightInnerPad = n(prop(this.v, "timePillRightPad", 2.3), 2.3);
     const pillW = leftPad + ringBox + ringTextGap + textW + rightInnerPad;
     const pillX = w - pillW - rightPad;
     const pillY = rowCenterY - pillH * 0.5;
     const ringX = pillX + leftPad;
     const ringY = rowCenterY - ringBox * 0.5;
-    const ringRadius = Math.max(1.0 * bs, ringBox * 0.5 - 0.72 * bs);
-    const ringThickness = Math.max(0.62, 0.72 * bs);
+    const ringRadius = Math.max(1.0, ringBox * 0.5 - 0.72);
+    const ringThickness = 0.72;
     const textX = ringX + ringBox + ringTextGap;
     const textBoxW = Math.max(1, textW);
 
@@ -141,7 +138,7 @@ class HudListPanelLayout extends HudPanelLayout {
         endColor: fillEnd,
         angle: 12,
         stroke: strokeStart,
-        strokeWidth: Math.max(0.45, 0.50 * bs),
+        strokeWidth: 0.50,
         strokeStartColor: strokeStart,
         strokeEndColor: strokeEnd,
         strokeAngle: 22,
@@ -177,17 +174,16 @@ class HudListPanelLayout extends HudPanelLayout {
       key: `row:${key}:time-text`,
       text: rightText,
       color: rightColor,
-      class: cls(abs(textX, rowCenterY - rowTextH * 0.5, textBoxW, rowTextH + 4 * bs), font("OnestMedium", this.fontSize()), `text-${rightColor}`, "text-align-center"),
+      class: cls(abs(textX, rowCenterY - rowTextH * 0.5, textBoxW, rowTextH + 4), font("OnestMedium", this.fontSize()), `text-${rightColor}`, "text-align-center"),
     })];
     return { decorations, text };
   }
 
   rowParts(row, index, cursorY) {
-    const bs = this.bs();
     const fs = this.fs();
     const rowTextH = n(this.p.rowTextHeight, 8);
     const w = this.w();
-    const rowCenterY = cursorY + n(prop(this.v, "rowCenterOffset", 2), 2) * bs;
+    const rowCenterY = cursorY + n(prop(this.v, "rowCenterOffset", 2), 2);
     const key = c(prop(row, "key", `row:${index}`), `row:${index}`);
     const rightText = c(prop(row, "rightText", ""), "");
     const rightColor = c(prop(row, "rightColor", color(this.pal, "counter", "#FFFFFFFF")), color(this.pal, "counter", "#FFFFFFFF"));
@@ -197,20 +193,20 @@ class HudListPanelLayout extends HudPanelLayout {
     // right-side box sizing so adding timed pills cannot perturb unrelated HUDs.
     const rightW = rightMode === "time-pill"
       ? Math.max(1, n(prop(row, "rightTextWidth", 0), 0))
-      : Math.max(14 * bs, rightText.length * 7.5 * fs);
-    const rightX = w - rightW - n(prop(this.v, "rowRightPad", 8), 8) * bs;
+      : Math.max(14, rightText.length * 7.5 * fs);
+    const rightX = w - rightW - n(prop(this.v, "rowRightPad", 8), 8);
     const decorations = [];
     const icons = [];
     const text = [];
     const icon = this.iconNode(row, rowCenterY);
     if (icon) icons.push(icon);
     const horizontal = this.horizontalLayout();
-    const dividerH = n(prop(this.v, "rowDividerH", 6), 6) * bs;
+    const dividerH = n(prop(this.v, "rowDividerH", 6), 6);
     decorations.push(ui.shape({
       key: `row:${key}:divider`,
       shape: "rounded",
       class: abs(horizontal.dividerX, rowCenterY - dividerH * 0.5, horizontal.dividerW, dividerH),
-      radius: Math.min(0.5 * bs, horizontal.dividerW * 0.5),
+      radius: Math.min(0.5, horizontal.dividerW * 0.5),
       fill: c(prop(row, "dividerColor", color(this.pal, "divider", "#66FFFFFF")), color(this.pal, "divider", "#66FFFFFF")),
     }));
     text.push(...this.nameParts(row, rowCenterY));
@@ -223,21 +219,20 @@ class HudListPanelLayout extends HudPanelLayout {
         key: `row:${key}:right`,
         text: rightText,
         color: rightColor,
-        class: cls(abs(rightX, rowCenterY - rowTextH * 0.5, rightW, rowTextH + 4 * bs), font("OnestMedium", this.fontSize()), `text-${rightColor}`, "text-align-right"),
+        class: cls(abs(rightX, rowCenterY - rowTextH * 0.5, rightW, rowTextH + 4), font("OnestMedium", this.fontSize()), `text-${rightColor}`, "text-align-right"),
       }));
     }
     return { decorations, icons, text };
   }
 
   renderContent() {
-    const bs = this.bs();
     const rows = arr(this.p.rows);
-    const bodyY = this.base.bodyY * bs;
+    const bodyY = this.base.bodyY;
     const bodyH = Math.max(0, this.h() - bodyY);
-    const rowStep = this.base.rowStep * bs;
-    const rowCenterOffset = n(prop(this.v, "rowCenterOffset", 2), 2) * bs;
+    const rowStep = this.base.rowStep;
+    const rowCenterOffset = n(prop(this.v, "rowCenterOffset", 2), 2);
     const rowStacks = [];
-    let cursorY = this.base.bodyInsetY * bs;
+    let cursorY = this.base.bodyInsetY;
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];

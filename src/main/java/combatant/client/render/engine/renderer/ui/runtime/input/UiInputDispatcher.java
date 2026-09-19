@@ -12,6 +12,7 @@ import combatant.client.render.engine.renderer.ui.runtime.action.UiActionRegistr
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNodeType;
 import combatant.client.render.engine.renderer.ui.runtime.debug.UiPerfCounters;
+import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderTransform;
 
 public final class UiInputDispatcher {
     private final UiHitTester hitTester = new UiHitTester();
@@ -20,6 +21,7 @@ public final class UiInputDispatcher {
     private final UiInputState state = new UiInputState();
     private final UiActionRegistry actions;
     private final UiPerfCounters counters;
+    private UiRenderTransform coordinateTransform = UiRenderTransform.IDENTITY;
 
     public UiInputDispatcher(UiActionRegistry actions) {
         this(actions, null);
@@ -38,7 +40,24 @@ public final class UiInputDispatcher {
         return state;
     }
 
+    /** Maps render-space pointer coordinates back into the retained tree's logical units. */
+    public void setCoordinateTransform(UiRenderTransform transform) {
+        coordinateTransform = transform != null ? transform : UiRenderTransform.IDENTITY;
+    }
+
+    private float logicalX(float renderX) {
+        return coordinateTransform.logicalX(renderX);
+    }
+
+    private float logicalY(float renderY) {
+        return coordinateTransform.logicalY(renderY);
+    }
+
     public UiHitResult updateHover(UiNode root, float x, float y) {
+        return updateHoverLogical(root, logicalX(x), logicalY(y));
+    }
+
+    private UiHitResult updateHoverLogical(UiNode root, float x, float y) {
         updateScrollbarDrag(x, y);
         updateScrollbarHover(root, x, y);
 
@@ -59,18 +78,19 @@ public final class UiInputDispatcher {
     }
 
     public boolean pointerDown(UiNode root, UiPointerEvent event) {
-        UiNode scrollbar = UiScrollSupport.scrollbarAt(root, event.x(), event.y());
-        if (scrollbar != null && event.button() == 0) {
+        UiPointerEvent logicalEvent = new UiPointerEvent(logicalX(event.x()), logicalY(event.y()), event.button());
+        UiNode scrollbar = UiScrollSupport.scrollbarAt(root, logicalEvent.x(), logicalEvent.y());
+        if (scrollbar != null && logicalEvent.button() == 0) {
             UiScrollbarMetrics metrics = UiScrollbarMetrics.resolve(scrollbar);
             if (metrics != null) {
                 long now = System.nanoTime();
                 scrollbar.state().markScrollInteraction(now);
                 state.setScrollOwner(scrollbar);
-                if (metrics.containsThumb(event.x(), event.y())) {
+                if (metrics.containsThumb(logicalEvent.x(), logicalEvent.y())) {
                     scrollbar.state().setScrollbarDragging(true);
-                    scrollbar.state().setScrollbarDragGrab(event.y() - metrics.thumbY());
+                    scrollbar.state().setScrollbarDragGrab(logicalEvent.y() - metrics.thumbY());
                 } else {
-                    float thumbY = event.y() - metrics.thumbHeight() * 0.5f;
+                    float thumbY = logicalEvent.y() - metrics.thumbHeight() * 0.5f;
                     float target = metrics.scrollForThumbY(thumbY);
                     scrollbar.state().setTargetScroll(scrollbar.state().targetScrollX(), target);
                 }
@@ -78,7 +98,7 @@ public final class UiInputDispatcher {
             }
         }
 
-        UiHitResult hit = updateHover(root, event.x(), event.y());
+        UiHitResult hit = updateHoverLogical(root, logicalEvent.x(), logicalEvent.y());
         state.setPressedNode(hit.node());
         if (hit.node() != null) {
             hit.node().state().setActive(true);
@@ -89,28 +109,29 @@ public final class UiInputDispatcher {
     }
 
     public boolean pointerUp(UiNode root, UiPointerEvent event) {
+        UiPointerEvent logicalEvent = new UiPointerEvent(logicalX(event.x()), logicalY(event.y()), event.button());
         UiNode scrollOwner = state.scrollOwner();
-        if (scrollOwner != null && scrollOwner.state().scrollbarDragging() && event.button() == 0) {
+        if (scrollOwner != null && scrollOwner.state().scrollbarDragging() && logicalEvent.button() == 0) {
             scrollOwner.state().setScrollbarDragging(false);
             scrollOwner.state().markScrollInteraction(System.nanoTime());
             state.setScrollOwner(null);
-            updateScrollbarHover(root, event.x(), event.y());
+            updateScrollbarHover(root, logicalEvent.x(), logicalEvent.y());
             return true;
         }
 
-        UiHitResult hit = updateHover(root, event.x(), event.y());
+        UiHitResult hit = updateHoverLogical(root, logicalEvent.x(), logicalEvent.y());
         UiNode pressed = state.pressedNode();
         if (pressed != null) pressed.state().setActive(false);
         state.setPressedNode(null);
         if (pressed != null && pressed == hit.node()) {
-            String eventName = switch (event.button()) {
+            String eventName = switch (logicalEvent.button()) {
                 case 1 -> "secondaryClick";
                 case 2 -> "auxiliaryClick";
                 default -> "click";
             };
             String action = pressed.events().get(eventName);
             if (action != null && !action.isBlank()) {
-                return actions.dispatch(action, new UiActionContext(pressed, null, event));
+                return actions.dispatch(action, new UiActionContext(pressed, null, logicalEvent));
             }
             return true;
         }
@@ -118,7 +139,9 @@ public final class UiInputDispatcher {
     }
 
     public boolean scroll(UiNode root, UiScrollEvent event) {
-        UiHitResult hit = updateHover(root, event.x(), event.y());
+        float x = logicalX(event.x());
+        float y = logicalY(event.y());
+        UiHitResult hit = updateHoverLogical(root, x, y);
         UiNode node = hit.node();
         while (node != null && node.type() != UiNodeType.SCROLL) node = node.parent();
         if (node == null) return false;

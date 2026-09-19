@@ -26,15 +26,14 @@ import java.util.Locale;
 final class UiPathNodeRenderer {
     private final UiPathGeometry geometry = new UiPathGeometry();
 
-    void render(UiNode node, UiRenderContext context) {
-        if (node == null || context == null || context.renderer() == null) return;
-        UiBounds bounds = node.bounds();
+    void render(UiNode node, UiBounds bounds, UiRenderContext context) {
+        if (node == null || bounds == null || context == null || context.renderer() == null) return;
         UiProps props = node.props();
         UiStyle style = node.style();
         float alpha = context.alpha();
         if (alpha <= 0.001f || bounds.width() <= 0.0f || bounds.height() <= 0.0f) return;
 
-        int count = geometry.read(props, bounds);
+        int count = geometry.read(props, bounds, context.transform(), context.vectorSpace());
         if (count < 2) return;
         double[] points = geometry.points();
 
@@ -57,14 +56,14 @@ final class UiPathNodeRenderer {
                 alpha
         );
         double defaultStrokeWidth = styleStroke ? Math.max(0.0f, style.strokeWidth()) : (authoredStroke ? 1.0 : 0.0);
-        double strokeWidth = Math.max(0.0, props.number("strokeWidth", (float) defaultStrokeWidth));
+        double strokeWidth = Math.max(0.0, context.renderLength(props.number("strokeWidth", (float) defaultStrokeWidth)));
         UiPathCap cap = pathCap(props.string("strokeLinecap", props.string("lineCap", "round")));
         UiPathJoin join = pathJoin(props.string("strokeLinejoin", props.string("lineJoin", "round")));
         UiPathStrokeLayer stroke = strokeWidth > 0.0
                 ? new UiPathStrokeLayer(strokeWidth, strokeStart, strokeEnd, cap, join)
                 : null;
 
-        double glowWidth = Math.max(0.0, props.number("glowWidth", 0.0f));
+        double glowWidth = Math.max(0.0, context.renderLength(props.number("glowWidth", 0.0f)));
         UiPathStrokeLayer glow = null;
         if (glowWidth > 0.0) {
             int defaultGlowStart = UiColor.multiplyAlpha(strokeStart, 0.18f);
@@ -88,7 +87,7 @@ final class UiPathNodeRenderer {
                 || props.get("fillBottomStartColor") != null || props.get("fillBottomEndColor") != null);
         UiPathAreaFill area = null;
         if (areaEnabled) {
-            double baseline = geometry.baseline(props, bounds);
+            double baseline = geometry.baseline(props, bounds, context.transform(), context.vectorSpace());
             Object fill = props.get("fill");
             int fillBase = fill != null ? UiRenderColors.resolve(fill, 0, alpha) : 0;
             int fillStart = props.get("fillStartColor") != null

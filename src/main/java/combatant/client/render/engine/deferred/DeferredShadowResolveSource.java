@@ -30,22 +30,25 @@ import combatant.client.render.engine.rhi.shader.StorageBinding;
 import combatant.client.render.engine.rhi.shader.StorageBufferDescriptor;
 import combatant.client.render.engine.rhi.shader.StorageImageBinding;
 import net.minecraft.resources.Identifier;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
- * Resolves directional CSM into canonical scalar visibility, then combines optional contact shadow.
- * Filtering/bias remain geometric visibility policy and never encode color or art direction.
+ * Resolves the canonical directional shadow map into scalar visibility.
+ *
+ * <p>The production path owns both near/mid geometric PCF and the terminal distant
+ * screen-space continuation near and beyond the finite map boundary.</p>
  */
 final class DeferredShadowResolveSource implements AutoCloseable {
     private static final int LOCAL_SIZE = 8;
     private static final Identifier CASCADE_RESOLVE_SHADER = id("deferred/shadow_resolve");
-    private static final Identifier COMBINE_SHADER = id("deferred/shadow_combine");
 
     private static final Std430StructLayout CAMERA_LAYOUT = Std430StructLayout.builder()
             .member("inverseProjection", Std430Type.MAT4)
+            .member("projection", Std430Type.MAT4)
             .member("inverseView", Std430Type.MAT4)
             .member("depthTransform", Std430Type.VEC4)
             .member("viewportAndFar", Std430Type.VEC4)
@@ -53,6 +56,10 @@ final class DeferredShadowResolveSource implements AutoCloseable {
             .member("shadowParams1", Std430Type.VEC4)
             .member("directionalLight", Std430Type.VEC4)
             .member("shadowBiasParams", Std430Type.VEC4)
+            .member("shadowFallbackParams", Std430Type.VEC4)
+            .member("ssrtLightDirection", Std430Type.VEC4)
+            .member("cameraWorldAndSsrt", Std430Type.VEC4)
+            .member("shadowSsrtParams", Std430Type.VEC4)
             .build();
 
     private static final ShaderResourceLayout CASCADE_LAYOUT = new ShaderResourceLayout(List.of(
@@ -64,27 +71,22 @@ final class DeferredShadowResolveSource implements AutoCloseable {
             new ShaderResourceSlot(5, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(6, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(7, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY),
-            new ShaderResourceSlot(8, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY)
-    ));
-    private static final ShaderResourceLayout COMBINE_LAYOUT = new ShaderResourceLayout(List.of(
-            new ShaderResourceSlot(0, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(1, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(2, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY)
+            new ShaderResourceSlot(8, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY),
+            new ShaderResourceSlot(9, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY)
     ));
 
     private CombatantRhi owner;
     private RhiComputePipeline cascadePipeline;
-    private RhiComputePipeline combinePipeline;
     private RhiStorageBuffer cameraBuffer;
 
     void install(ArrayList<DeferredPassSpec> passes) {
-        passes.add(DeferredPassSpec.builder("world.shadow.cascade.resolve", DeferredStage.SHADOW_CASCADE_RESOLVE)
+        passes.add(DeferredPassSpec.builder("world.shadow.directional.resolve", DeferredStage.SHADOW_CASCADE_RESOLVE)
                 .feature(DeferredFeature.SHADOWS)
                 .read(DeferredResource.RESOLVED_DEPTH, DeferredResource.GBUFFER_DEPTH,
                         DeferredResource.GBUFFER_GEOMETRY, DeferredResource.SHADOW_DEPTH,
                         DeferredResource.SHADOW_CASCADE_DATA)
                 .write(DeferredResource.SHADOW_CASCADE_VISIBILITY, DeferredResource.SHADOW_HARD_VISIBILITY,
-                        DeferredResource.SHADOW_CASCADE_INDEX)
+                        DeferredResource.SHADOW_CASCADE_INDEX, DeferredResource.SHADOW_COLOR)
                 .requires(RhiShaderStage.COMPUTE)
                 .when(context -> context.featureEnabled(DeferredFeature.SHADOWS)
                         && context.isValid(DeferredResource.RESOLVED_DEPTH)
@@ -95,20 +97,11 @@ final class DeferredShadowResolveSource implements AutoCloseable {
                         && context.primaryView().current() != null)
                 .execute(this::resolveCascade)
                 .build());
-        passes.add(DeferredPassSpec.builder("world.shadow.resolve", DeferredStage.SHADOW_RESOLVE)
-                .optionalRead(DeferredResource.SHADOW_CASCADE_VISIBILITY, DeferredResource.CONTACT_SHADOW)
-                .write(DeferredResource.SHADOW_COLOR)
-                .requires(RhiShaderStage.COMPUTE)
-                .when(context -> (context.isValid(DeferredResource.SHADOW_CASCADE_VISIBILITY)
-                        || context.isValid(DeferredResource.CONTACT_SHADOW)))
-                .execute(this::combine)
-                .build());
     }
 
     void prepare(CombatantRhi rhi) {
         ensureOwner(rhi);
         cascadePipeline();
-        combinePipeline();
         cameraBuffer();
     }
 
@@ -130,14 +123,27 @@ final class DeferredShadowResolveSource implements AutoCloseable {
         RhiStorageImage output = requireImage(context, DeferredResource.SHADOW_CASCADE_VISIBILITY);
         RhiStorageImage hardOutput = requireImage(context, DeferredResource.SHADOW_HARD_VISIBILITY);
         RhiStorageImage cascadeIndexOutput = requireImage(context, DeferredResource.SHADOW_CASCADE_INDEX);
+        RhiStorageImage productionOutput = requireImage(context, DeferredResource.SHADOW_COLOR);
         RhiStorageBuffer cascades = context.resources().buffer(DeferredResource.SHADOW_CASCADE_DATA);
         if (cascades == null) throw new IllegalStateException("Shadow cascade metadata is not bound");
 
         DeferredRuntimeConfig.Snapshot settings = context.settings();
+        Vector3f worldLight = new Vector3f(
+                context.worldState().directionalLight().directionX(),
+                context.worldState().directionalLight().directionY(),
+                context.worldState().directionalLight().directionZ());
+        Vector3f viewLight = transformDirection(current.view(), worldLight, new Vector3f());
+        if (viewLight.lengthSquared() > 1.0e-8f) viewLight.normalize();
         boolean nearOnly = DeferredShadowBringupConfig.nearOnly();
         boolean zeroToOne = zeroToOneDepth(context);
+        float distantFallbackStart = DeferredShadowBringupConfig.distantSkylightFallbackStart();
+        float distantFallbackEnd = Math.max(
+                distantFallbackStart + 1.0f / 255.0f,
+                DeferredShadowBringupConfig.distantSkylightFallbackEnd());
+
         Std430Writer camera = new Std430Writer(CAMERA_LAYOUT, 1)
                 .putMat4(0, "inverseProjection", current.inverseProjection())
+                .putMat4(0, "projection", current.projection())
                 .putMat4(0, "inverseView", current.inverseView())
                 .putVec4(0, "depthTransform",
                         zeroToOne ? 1.0f : 2.0f,
@@ -147,7 +153,7 @@ final class DeferredShadowResolveSource implements AutoCloseable {
                 .putVec4(0, "viewportAndFar",
                         resolvedDepth.getWidth(0), resolvedDepth.getHeight(0), current.farPlane(), 0.0f)
                 .putVec4(0, "shadowParams0",
-                        nearOnly ? 0.0f : settings.shadowCascadeBlendFraction(),
+                        0.0f,
                         nearOnly ? 0.0f : settings.shadowNormalOffsetTexels(),
                         DeferredShadowBringupConfig.nearBiasTexels(),
                         nearOnly ? 0.0f : settings.shadowFilterRadiusTexels())
@@ -165,13 +171,31 @@ final class DeferredShadowResolveSource implements AutoCloseable {
                         DeferredShadowBringupConfig.nearSlopeBiasTexels(),
                         DeferredShadowBringupConfig.nearMaxBiasTexels(),
                         0.20f,
-                        DeferredShadowBringupConfig.maxAdaptiveFilterRadiusTexels());
+                        DeferredShadowBringupConfig.maxAdaptiveFilterRadiusTexels())
+                .putVec4(0, "shadowFallbackParams",
+                        distantFallbackStart,
+                        Math.min(1.0f, distantFallbackEnd),
+                        context.worldState().baselineLightState().hasSkyLight() ? 1.0f : 0.0f,
+                        DeferredShadowBringupConfig.lowSkylightLeakEnd())
+                .putVec4(0, "ssrtLightDirection",
+                        viewLight.x, viewLight.y, viewLight.z,
+                        context.worldState().directionalLight().valid() ? 1.0f : 0.0f)
+                .putVec4(0, "cameraWorldAndSsrt",
+                        (float) current.cameraPosition().x,
+                        (float) current.cameraPosition().y,
+                        (float) current.cameraPosition().z,
+                        !nearOnly && DeferredShadowBringupConfig.distantSsrtEnabled() ? 1.0f : 0.0f)
+                .putVec4(0, "shadowSsrtParams",
+                        DeferredShadowBringupConfig.distantSsrtSteps(),
+                        2.0f,
+                        DeferredShadowBringupConfig.distantSsrtThickness(),
+                        0.0f);
         RhiStorageBuffer cameraBuffer = cameraBuffer();
         cameraBuffer.upload(camera.buffer(), 0L);
 
         GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
         context.advancedShaders().dispatch(new ComputeDispatchCommand(
-                "Combatant directional CSM resolve",
+                "Combatant directional shadow + distant SSRT resolve",
                 cascadePipeline(),
                 groups(output.descriptor().width()),
                 groups(output.descriptor().height()),
@@ -189,31 +213,9 @@ final class DeferredShadowResolveSource implements AutoCloseable {
                 List.of(
                         new StorageImageBinding(4, output, StorageAccess.WRITE_ONLY),
                         new StorageImageBinding(7, hardOutput, StorageAccess.WRITE_ONLY),
-                        new StorageImageBinding(8, cascadeIndexOutput, StorageAccess.WRITE_ONLY)
+                        new StorageImageBinding(8, cascadeIndexOutput, StorageAccess.WRITE_ONLY),
+                        new StorageImageBinding(9, productionOutput, StorageAccess.WRITE_ONLY)
                 )
-        ));
-    }
-
-    private void combine(DeferredPassContext context) {
-        ensureOwner(context.rhi());
-        GpuTextureView cascade = context.resources().texture(DeferredResource.SHADOW_CASCADE_VISIBILITY);
-        GpuTextureView contact = context.resources().texture(DeferredResource.CONTACT_SHADOW);
-        if (cascade == null && contact == null) return;
-        if (cascade == null) cascade = contact;
-        if (contact == null) contact = cascade;
-
-        RhiStorageImage output = requireImage(context, DeferredResource.SHADOW_COLOR);
-        GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
-        context.advancedShaders().dispatch(new ComputeDispatchCommand(
-                "Combatant shadow source combine",
-                combinePipeline(),
-                groups(output.descriptor().width()), groups(output.descriptor().height()), 1,
-                List.of(),
-                List.of(
-                        new SampledTextureBinding(0, cascade, nearest),
-                        new SampledTextureBinding(1, contact, nearest)
-                ),
-                List.of(new StorageImageBinding(2, output, StorageAccess.WRITE_ONLY))
         ));
     }
 
@@ -233,16 +235,6 @@ final class DeferredShadowResolveSource implements AutoCloseable {
         return cascadePipeline;
     }
 
-    private RhiComputePipeline combinePipeline() {
-        if (owner == null) throw new IllegalStateException("Shadow resolve has no RHI owner");
-        if (combinePipeline == null) {
-            combinePipeline = owner.advancedShaders().createComputePipeline(new ComputePipelineDescriptor(
-                    "combatant-shadow-combine", COMBINE_SHADER, COMBINE_LAYOUT
-            ));
-        }
-        return combinePipeline;
-    }
-
     private RhiStorageBuffer cameraBuffer() {
         if (owner == null) throw new IllegalStateException("Shadow resolve has no RHI owner");
         if (cameraBuffer == null) {
@@ -255,7 +247,6 @@ final class DeferredShadowResolveSource implements AutoCloseable {
 
     private void closeOwned() {
         cascadePipeline = close(cascadePipeline);
-        combinePipeline = close(combinePipeline);
         if (cameraBuffer != null) {
             try { cameraBuffer.close(); } catch (Throwable ignored) { }
             cameraBuffer = null;
@@ -272,6 +263,17 @@ final class DeferredShadowResolveSource implements AutoCloseable {
     public void close() {
         closeOwned();
         owner = null;
+    }
+
+    private static Vector3f transformDirection(Matrix4f matrix, Vector3f source, Vector3f dest) {
+        float x = source.x;
+        float y = source.y;
+        float z = source.z;
+        return dest.set(
+                matrix.m00() * x + matrix.m10() * y + matrix.m20() * z,
+                matrix.m01() * x + matrix.m11() * y + matrix.m21() * z,
+                matrix.m02() * x + matrix.m12() * y + matrix.m22() * z
+        );
     }
 
     private static GpuTextureView requireTexture(DeferredPassContext context, DeferredResource resource) {

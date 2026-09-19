@@ -204,24 +204,28 @@ private static final float BASE_ICON_CARD = 24.0f;
         if (module == null) return;
 
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
-        LinkedHashMap<String, Object> props = props(visible, drawWidth, drawHeight, drawBaseScale, drawScale);
+        float renderScale = Math.max(0.0001f, drawBaseScale);
+        float logicalWidth = drawWidth / renderScale;
+        float logicalHeight = drawHeight / renderScale;
+        LinkedHashMap<String, Object> props = props(visible, logicalWidth, logicalHeight);
         long treeSignature = signature(props);
         UiRuntime baked = runtime.bake(
                 moduleHandle,
                 module,
                 "itemizer",
                 treeSignature,
-                drawWidth,
-                drawHeight,
+                logicalWidth,
+                logicalHeight,
                 fallback,
-                drawX,
-                drawY,
-                drawWidth,
-                drawHeight,
+                0.0f,
+                0.0f,
+                logicalWidth,
+                logicalHeight,
                 () -> props
         );
         if (baked == null) return;
-        baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT));
+        baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT)
+                .at(drawX, drawY, renderScale));
         foregroundReady = true;
     }
 
@@ -343,20 +347,17 @@ private static final float BASE_ICON_CARD = 24.0f;
 
     private LinkedHashMap<String, Object> props(List<Entry> visible,
                                                 float width,
-                                                float height,
-                                                float baseScale,
-                                                float drawScale) {
+                                                float height) {
         LinkedHashMap<String, Object> out = new LinkedHashMap<>();
         out.put("id", "itemizer");
         out.put("width", width);
         out.put("height", height);
-        out.put("baseScale", baseScale);
-        out.put("drawScale", drawScale);
+        out.put("fontSize", 18.0f * 0.78f);
         out.put("mode", displayMode.get().id());
         out.put("direction", direction.get().id());
-        out.put("entryWidth", baseEntryWidth() * baseScale);
-        out.put("entryHeight", baseEntryHeight() * baseScale);
-        out.put("gap", BASE_GAP * baseScale);
+        out.put("entryWidth", baseEntryWidth());
+        out.put("entryHeight", baseEntryHeight());
+        out.put("gap", BASE_GAP);
         out.put("blur", blur.get());
         out.put("palette", paletteProps());
         List<LinkedHashMap<String, Object>> itemProps = new ArrayList<>();

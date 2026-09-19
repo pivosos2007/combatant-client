@@ -32,7 +32,14 @@ final class UiScrollbarRenderer {
         alpha = Math.max(0.0f, Math.min(1.0f, alpha * visible * context.alpha()));
         int base = UiReactiveVisual.rawColor(node.props().get("scrollbarColor"), 0xFFFFFFFF);
         int color = UiColor.withAlpha(base, alpha);
-        float radius = Math.max(0.0f, node.props().number("scrollbarRadius", 1.0f));
-        context.renderer().roundedRect(metrics.x(), metrics.thumbY(), metrics.width(), metrics.thumbHeight(), radius, color);
+        float radius = context.renderLength(Math.max(0.0f, node.props().number("scrollbarRadius", 1.0f)));
+        context.renderer().roundedRect(
+                context.renderX(metrics.x()),
+                context.renderY(metrics.thumbY()),
+                context.renderLength(metrics.width()),
+                context.renderLength(metrics.thumbHeight()),
+                radius,
+                color
+        );
     }
 }

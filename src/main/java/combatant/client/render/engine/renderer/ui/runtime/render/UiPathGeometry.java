@@ -29,21 +29,29 @@ final class UiPathGeometry {
         return points;
     }
 
-    int read(UiProps props, UiBounds bounds) {
+    int read(UiProps props, UiBounds logicalBounds, UiRenderTransform transform, UiVectorSpace vectorSpace) {
+        UiRenderTransform resolved = transform != null ? transform : UiRenderTransform.IDENTITY;
+        UiBounds bounds = resolved.bounds(logicalBounds);
+        UiVectorSpace vector = useVectorSpace(props, vectorSpace) ? vectorSpace : null;
         valueSeries = false;
         Object values = props.get("values");
         if (!(values instanceof Iterable<?>)) values = props.get("data");
         if (values instanceof Iterable<?> iterable) {
-            int count = readValues(iterable, props, bounds);
+            int count = readValues(iterable, props, bounds, vector, resolved);
             if (count > 0) return count;
         }
-        return readPoints(props.get("points"), bounds, props.bool("normalized", false));
+        return vector != null
+                ? readVectorPoints(props.get("points"), vector, resolved)
+                : readPoints(props.get("points"), bounds, props.bool("normalized", false), resolved.scale());
     }
 
     /** Returns the renderer-space area baseline for the most recently resolved geometry. */
-    double baseline(UiProps props, UiBounds bounds) {
+    double baseline(UiProps props, UiBounds logicalBounds, UiRenderTransform transform, UiVectorSpace vectorSpace) {
+        UiRenderTransform resolved = transform != null ? transform : UiRenderTransform.IDENTITY;
+        UiBounds bounds = resolved.bounds(logicalBounds);
+        UiVectorSpace vector = useVectorSpace(props, vectorSpace) ? vectorSpace : null;
         if (props.get("baseline") != null) {
-            return bounds.y() + props.number("baseline", bounds.height());
+            return bounds.y() + resolved.length(props.number("baseline", logicalBounds.height()));
         }
         if (!valueSeries) return bounds.y() + bounds.height();
 
@@ -54,10 +62,11 @@ final class UiPathGeometry {
         } else {
             value = 0.0;
         }
+        if (vector != null) return vector.renderY(value, resolved);
         return mapY(value, bounds, props.bool("clampValues", true));
     }
 
-    private int readValues(Iterable<?> iterable, UiProps props, UiBounds bounds) {
+    private int readValues(Iterable<?> iterable, UiProps props, UiBounds bounds, UiVectorSpace vector, UiRenderTransform transform) {
         int count = 0;
         boolean explicitX = false;
         double observedXMin = Double.POSITIVE_INFINITY;
@@ -121,6 +130,28 @@ final class UiPathGeometry {
         }
         if (count < 2) return count;
 
+        if (vector != null) {
+            if (explicitX) {
+                for (int i = 0; i < count; i++) {
+                    points[i * 2] = vector.renderX(seriesX[i], transform);
+                    points[i * 2 + 1] = vector.renderY(seriesY[i], transform);
+                }
+            } else {
+                int slots = Math.max(count, Math.round(props.number("historySlots", count)));
+                slots = Math.max(2, slots);
+                int firstSlot = Math.max(0, slots - count);
+                for (int i = 0; i < count; i++) {
+                    int slot = firstSlot + i;
+                    double tx = slot / (slots - 1.0);
+                    double vx = vector.minX() + vector.width() * tx;
+                    points[i * 2] = vector.renderX(vx, transform);
+                    points[i * 2 + 1] = vector.renderY(seriesY[i], transform);
+                }
+            }
+            valueSeries = true;
+            return count;
+        }
+
         yDomainMin = domain(props, "yDomainMin", "domainMin", observedYMin);
         yDomainMax = domain(props, "yDomainMax", "domainMax", observedYMax);
         if (!Double.isFinite(yDomainMin)) yDomainMin = 0.0;
@@ -158,7 +189,51 @@ final class UiPathGeometry {
         return count;
     }
 
-    private int readPoints(Object value, UiBounds bounds, boolean normalized) {
+    private int readVectorPoints(Object value, UiVectorSpace vector, UiRenderTransform transform) {
+        if (!(value instanceof Iterable<?> iterable)) return 0;
+        int count = 0;
+        double pendingX = Double.NaN;
+        for (Object item : iterable) {
+            if (count >= MAX_INPUT_POINTS) {
+                UiRuntimeValidation.warnOnce("ui-path-max-points",
+                        "UI path geometry is limited to " + MAX_INPUT_POINTS + " points; extra values are ignored.");
+                break;
+            }
+            if (item instanceof Map<?, ?> map) {
+                Double xValue = finiteNumber(map.get("x"));
+                Double yValue = finiteNumber(map.get("y"));
+                if (xValue == null || yValue == null) {
+                    if (UiRuntimeValidation.enabled()) {
+                        throw UiRuntimeValidation.invalid("UI vector path point maps require finite numeric x/y values.");
+                    }
+                    continue;
+                }
+                points[count * 2] = vector.renderX(xValue, transform);
+                points[count * 2 + 1] = vector.renderY(yValue, transform);
+                count++;
+                continue;
+            }
+            if (item instanceof Number n) {
+                if (Double.isNaN(pendingX)) {
+                    pendingX = n.doubleValue();
+                } else {
+                    points[count * 2] = vector.renderX(pendingX, transform);
+                    points[count * 2 + 1] = vector.renderY(n.doubleValue(), transform);
+                    count++;
+                    pendingX = Double.NaN;
+                }
+            }
+        }
+        return count;
+    }
+
+    private static boolean useVectorSpace(UiProps props, UiVectorSpace vectorSpace) {
+        if (vectorSpace == null || props == null) return false;
+        String coordinates = props.string("coordinateSpace", "viewBox").trim().toLowerCase();
+        return !coordinates.equals("local") && !coordinates.equals("bounds") && !props.bool("normalized", false);
+    }
+
+    private int readPoints(Object value, UiBounds bounds, boolean normalized, float renderScale) {
         if (!(value instanceof Iterable<?> iterable)) return 0;
         int count = 0;
         double pendingX = Double.NaN;
@@ -179,8 +254,8 @@ final class UiPathGeometry {
                 }
                 double x = xValue;
                 double y = yValue;
-                points[count * 2] = bounds.x() + (normalized ? x * bounds.width() : x);
-                points[count * 2 + 1] = bounds.y() + (normalized ? y * bounds.height() : y);
+                points[count * 2] = bounds.x() + (normalized ? x * bounds.width() : x * renderScale);
+                points[count * 2 + 1] = bounds.y() + (normalized ? y * bounds.height() : y * renderScale);
                 count++;
                 continue;
             }
@@ -190,8 +265,8 @@ final class UiPathGeometry {
                 } else {
                     double x = pendingX;
                     double y = n.doubleValue();
-                    points[count * 2] = bounds.x() + (normalized ? x * bounds.width() : x);
-                    points[count * 2 + 1] = bounds.y() + (normalized ? y * bounds.height() : y);
+                    points[count * 2] = bounds.x() + (normalized ? x * bounds.width() : x * renderScale);
+                    points[count * 2 + 1] = bounds.y() + (normalized ? y * bounds.height() : y * renderScale);
                     count++;
                     pendingX = Double.NaN;
                 }

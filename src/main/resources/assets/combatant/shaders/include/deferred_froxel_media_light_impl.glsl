@@ -52,11 +52,26 @@ vec3 environmentAmbientRadiance() {
 }
 
 #if COMBATANT_FROXEL_DIRECTIONAL_SHADOWS
+const float COMBATANT_FROXEL_SHADOW_DISTORTION = 0.85;
+
+float combatant_froxel_shadow_quartic_length(vec2 value) {
+    vec2 squared = value * value;
+    vec2 fourth = squared * squared;
+    return sqrt(sqrt(fourth.x + fourth.y));
+}
+
+float combatant_froxel_shadow_distortion_factor(vec2 shadowNdc) {
+    return combatant_froxel_shadow_quartic_length(shadowNdc) * COMBATANT_FROXEL_SHADOW_DISTORTION
+            + (1.0 - COMBATANT_FROXEL_SHADOW_DISTORTION);
+}
+
 float cascadeVisibility(int cascadeIndex, vec3 worldRelative) {
     ShadowCascade cascade = u_Shadow.cascades[cascadeIndex];
     vec4 clip = cascade.viewProjection * vec4(worldRelative, 1.0);
     if (abs(clip.w) < 1e-7) return 1.0;
     vec3 ndc = clip.xyz / clip.w;
+    float distortionFactor = max(combatant_froxel_shadow_distortion_factor(ndc.xy), 1.0e-4);
+    ndc.xy /= distortionFactor;
     vec2 localUv = ndc.xy * 0.5 + 0.5;
     if (any(lessThan(localUv, vec2(0.0))) || any(greaterThan(localUv, vec2(1.0)))) return 1.0;
 

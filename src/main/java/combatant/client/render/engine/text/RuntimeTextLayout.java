@@ -60,6 +60,43 @@ public enum RuntimeTextLayout {
         return out == null ? value : out.toString();
     }
 
+
+    /**
+     * Sanitizes runtime text while preserving explicit line boundaries for UI wrapping.
+     * Tabs become spaces; unsafe control/format code points are removed.
+     */
+    public static String multiLine(String value) {
+        if (value == null || value.isEmpty()) return "";
+
+        StringBuilder out = new StringBuilder(value.length());
+        for (int offset = 0; offset < value.length(); ) {
+            int codePoint = value.codePointAt(offset);
+            int count = Character.charCount(codePoint);
+            int type = Character.getType(codePoint);
+            boolean lineBreak = codePoint == '\r' || codePoint == '\n'
+                    || type == Character.LINE_SEPARATOR || type == Character.PARAGRAPH_SEPARATOR;
+            boolean tab = codePoint == '\t';
+            boolean unsafeControl = Character.isISOControl(codePoint) && !lineBreak && !tab;
+            boolean unsafeFormat = type == Character.FORMAT && codePoint != 0x200C && codePoint != 0x200D;
+
+            if (lineBreak) {
+                out.append('\n');
+                // Treat CRLF as one authored line break, but preserve repeated independent breaks.
+                if (codePoint == '\r' && offset + count < value.length()
+                        && value.codePointAt(offset + count) == '\n') {
+                    offset += Character.charCount('\n');
+                }
+            } else if (tab) {
+                // Tabs are normalized to a stable logical-space representation for predictable metrics.
+                out.append("    ");
+            } else if (!unsafeControl && !unsafeFormat) {
+                out.appendCodePoint(codePoint);
+            }
+            offset += count;
+        }
+        return out.toString();
+    }
+
     public static Component singleLine(Component value) {
         if (value == null) return Component.empty();
         MutableComponent out = Component.empty();

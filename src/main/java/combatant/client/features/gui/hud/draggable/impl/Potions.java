@@ -463,7 +463,6 @@ public final class Potions extends DraggableHudElement {
                         drawY,
                         drawWidth,
                         drawHeight,
-                        drawScale,
                         drawBaseScale,
                         drawFontScale,
                         drawHeaderIconH,

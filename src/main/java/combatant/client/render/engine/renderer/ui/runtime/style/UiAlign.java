@@ -18,6 +18,7 @@ public enum UiAlign {
     public static UiAlign parse(String raw, UiAlign fallback) {
         if (raw == null || raw.isBlank()) return fallback;
         return switch (raw.trim().replace('-', '_').toUpperCase(Locale.ROOT)) {
+            case "START", "LEFT", "TOP" -> START;
             case "CENTER", "MIDDLE" -> CENTER;
             case "END", "RIGHT", "BOTTOM" -> END;
             case "STRETCH", "FILL" -> STRETCH;

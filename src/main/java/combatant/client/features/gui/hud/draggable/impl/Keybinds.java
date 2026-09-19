@@ -461,7 +461,6 @@ public final class Keybinds extends DraggableHudElement {
                         drawY,
                         drawWidth,
                         drawHeight,
-                        drawScale,
                         drawBaseScale,
                         drawFontScale,
                         drawHeaderIconH,

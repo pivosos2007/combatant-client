@@ -16,17 +16,17 @@ import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
 
 public final class UiItemRendererBridge {
-    public void render(UiNode node, UiRenderContext context) {
-        if (node == null || context == null || context.renderer() == null) return;
+    public void render(UiNode node, UiBounds rawBounds, UiRenderContext context) {
+        if (node == null || rawBounds == null || context == null || context.renderer() == null) return;
         ItemStack stack = stack(node);
         if (stack.isEmpty()) return;
-        UiBounds rawBounds = node.bounds();
-        UiBounds bounds = new UiBounds(
+        UiBounds logicalBounds = new UiBounds(
                 node.props().number("renderX", rawBounds.x()),
                 node.props().number("renderY", rawBounds.y()),
                 Math.max(0.0f, node.props().number("renderWidth", rawBounds.width())),
                 Math.max(0.0f, node.props().number("renderHeight", rawBounds.height()))
         );
+        UiBounds bounds = context.renderBounds(logicalBounds);
         float scale = Math.max(0.01f, Math.min(bounds.width(), bounds.height()) / 16.0f);
         boolean overlay = node.props().bool("overlay", true);
         String overlayMode = node.props().string("overlayMode", "all");

@@ -31,8 +31,7 @@ function entryPos(p, index) {
 
 function compactText(p, pal, pos, entry, index) {
   if (c(p.mode, "icons") !== "compact") return null;
-  const bs = n(p.baseScale, 1);
-  const fontSize = 18 * 0.78 * n(p.drawScale, 1);
+  const fontSize = n(p.fontSize, 18 * 0.78);
   const widthScale = fontSize / 18;
   const text = c(prop(entry, "label", ""), "");
   const a = Math.max(0, Math.min(1, n(prop(entry, "alpha", 1), 1)));
@@ -40,14 +39,14 @@ function compactText(p, pal, pos, entry, index) {
   return ui.clippedText({
     key: `entry:${prop(entry, "key", index)}:label`,
     text,
-    x: 24 * bs,
-    y: 6.0 * bs,
-    w: Math.max(1, pos.w - 29 * bs),
-    h: Math.max(8, pos.h - 8 * bs),
+    x: 24,
+    y: 6.0,
+    w: Math.max(1, pos.w - 29),
+    h: Math.max(8, pos.h - 8),
     textClass: cls(font("Inter", fontSize, "bold"), `text-${alpha(color(pal, "text", "#FFFFFFFF"), a)}`),
     color: alpha(color(pal, "text", "#FFFFFFFF"), a),
     measuredWidth: Math.max(1, text.length * 6.4 * widthScale),
-    fadeWidth: 7 * bs,
+    fadeWidth: 7,
     fade: true,
     centerWhenFits: false,
   });

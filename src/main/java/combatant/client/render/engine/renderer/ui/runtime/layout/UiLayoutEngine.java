@@ -83,7 +83,7 @@ public final class UiLayoutEngine {
     private static Flow containerFlow(UiNode node) {
         if (node == null) return null;
         boolean container = switch (node.type()) {
-            case ROOT, PANEL, ROW, COLUMN, STACK, BUTTON, SCROLL, CANVAS -> true;
+            case ROOT, PANEL, ROW, COLUMN, STACK, VECTOR, BUTTON, SCROLL, CANVAS -> true;
             default -> false;
         };
         if (!container) return null;
@@ -130,7 +130,7 @@ public final class UiLayoutEngine {
             case TEXT -> {
                 String text = node.props().string("text", "");
                 contentW = textRenderer.measureWidth(fallbackTextRenderer, text, style);
-                contentH = textRenderer.measureHeight(fallbackTextRenderer, style);
+                contentH = textRenderer.measureHeight(fallbackTextRenderer, text, style);
             }
             case IMAGE, SVG, SHAPE, CONNECTOR, PATH, ITEM, SPACER, DIVIDER, INPUT, INPUT_TEXT, CHECKBOX, SLIDER -> {
                 contentW = intrinsic(node, "intrinsicWidth", style.width() != null ? style.width() : 16.0f);
@@ -156,8 +156,8 @@ public final class UiLayoutEngine {
             measure(child, fallbackTextRenderer);
             UiStyle childStyle = child.style();
             if (childStyle.absolute()) {
-                contentW = Math.max(contentW, absoluteRight(child));
-                contentH = Math.max(contentH, absoluteBottom(child));
+                // Browser-style absolute positioning is out of normal flow. An absolute child
+                // may paint outside an intrinsic container, but it must not silently resize it.
                 continue;
             }
 
@@ -213,6 +213,11 @@ public final class UiLayoutEngine {
             contentY -= node.state().scrollY();
         }
 
+        if (node.type() == UiNodeType.VECTOR) {
+            assignVector(node, fallbackTextRenderer, contentX, contentY, contentW, contentH);
+            return;
+        }
+
         Flow flow = containerFlow(node);
         if (flow == null) {
             assignStack(node, fallbackTextRenderer, contentX, contentY, contentW, contentH);
@@ -225,6 +230,23 @@ public final class UiLayoutEngine {
         }
     }
 
+    /** Vector children share the full viewport by default; authored coordinates come from viewBox props. */
+    private void assignVector(UiNode node,
+                              TextRenderer fallbackTextRenderer,
+                              float x,
+                              float y,
+                              float width,
+                              float height) {
+        for (UiNode child : node.children()) {
+            UiStyle childStyle = child.style();
+            if (childStyle.absolute()) {
+                assignAbsolute(child, fallbackTextRenderer, x, y, width, height);
+            } else {
+                assign(child, fallbackTextRenderer, x, y, width, height);
+            }
+        }
+    }
+
     private void assignRow(UiNode node,
                            TextRenderer fallbackTextRenderer,
                            float x,
@@ -234,16 +256,20 @@ public final class UiLayoutEngine {
         int flowCount = 0;
         float fixed = 0.0f;
         float grow = 0.0f;
+        float shrinkWeight = 0.0f;
         for (UiNode child : node.children()) {
             UiStyle childStyle = child.style();
             if (childStyle.absolute()) continue;
             fixed += child.measuredWidth() + childStyle.marginX();
             grow += childStyle.grow();
+            shrinkWeight += childStyle.shrink() * Math.max(1.0f, child.measuredWidth());
             flowCount++;
         }
         float baseGap = flowCount > 1 ? node.style().gap() : 0.0f;
         float totalGap = baseGap * Math.max(0, flowCount - 1);
-        float free = Math.max(0.0f, width - fixed - totalGap);
+        float occupied = fixed + totalGap;
+        float free = Math.max(0.0f, width - occupied);
+        float deficit = Math.max(0.0f, occupied - width);
         float cursor = x + justifyOffset(node.style().justify(), free, grow);
         float gap = node.style().justify() == UiJustify.BETWEEN && flowCount > 1 && grow <= 0.0f
                 ? baseGap + free / (flowCount - 1)
@@ -255,7 +281,10 @@ public final class UiLayoutEngine {
                 continue;
             }
             float childW = child.measuredWidth();
-            if (grow > 0.0f && childStyle.grow() > 0.0f) {
+            if (deficit > 0.0f && shrinkWeight > 0.0f && childStyle.shrink() > 0.0f) {
+                float weight = childStyle.shrink() * Math.max(1.0f, child.measuredWidth());
+                childW = childStyle.resolveWidth(Math.max(0.0f, childW - deficit * (weight / shrinkWeight)));
+            } else if (grow > 0.0f && childStyle.grow() > 0.0f) {
                 childW += free * (childStyle.grow() / grow);
             }
             float childH = childHeight(child, height, node.style().align());
@@ -275,16 +304,20 @@ public final class UiLayoutEngine {
         int flowCount = 0;
         float fixed = 0.0f;
         float grow = 0.0f;
+        float shrinkWeight = 0.0f;
         for (UiNode child : node.children()) {
             UiStyle childStyle = child.style();
             if (childStyle.absolute()) continue;
             fixed += child.measuredHeight() + childStyle.marginY();
             grow += childStyle.grow();
+            shrinkWeight += childStyle.shrink() * Math.max(1.0f, child.measuredHeight());
             flowCount++;
         }
         float baseGap = flowCount > 1 ? node.style().gap() : 0.0f;
         float totalGap = baseGap * Math.max(0, flowCount - 1);
-        float free = Math.max(0.0f, height - fixed - totalGap);
+        float occupied = fixed + totalGap;
+        float free = Math.max(0.0f, height - occupied);
+        float deficit = Math.max(0.0f, occupied - height);
         float cursor = y + justifyOffset(node.style().justify(), free, grow);
         float gap = node.style().justify() == UiJustify.BETWEEN && flowCount > 1 && grow <= 0.0f
                 ? baseGap + free / (flowCount - 1)
@@ -297,7 +330,10 @@ public final class UiLayoutEngine {
             }
             float childW = childWidth(child, width, node.style().align());
             float childH = child.measuredHeight();
-            if (grow > 0.0f && childStyle.grow() > 0.0f) {
+            if (deficit > 0.0f && shrinkWeight > 0.0f && childStyle.shrink() > 0.0f) {
+                float weight = childStyle.shrink() * Math.max(1.0f, child.measuredHeight());
+                childH = childStyle.resolveHeight(Math.max(0.0f, childH - deficit * (weight / shrinkWeight)));
+            } else if (grow > 0.0f && childStyle.grow() > 0.0f) {
                 childH += free * (childStyle.grow() / grow);
             }
             float childX = alignedStart(x + childStyle.marginLeft(), width - childStyle.marginX(), childW, node.style().align());

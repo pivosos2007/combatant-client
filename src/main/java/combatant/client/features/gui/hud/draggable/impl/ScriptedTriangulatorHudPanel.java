@@ -82,23 +82,26 @@ final class ScriptedTriangulatorHudPanel {
 
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
         LinkedHashMap<String, Object> props = panel.toProps();
+        float logicalWidth = panel.logical(panel.width);
+        float logicalHeight = panel.logical(panel.height);
         UiRuntime baked = runtime.bake(
                 moduleHandle,
                 module,
                 "triangulator",
                 panel.treeSignature(),
-                panel.width,
-                panel.height,
+                logicalWidth,
+                logicalHeight,
                 fallback,
-                panel.x,
-                panel.y,
-                panel.width,
-                panel.height,
+                0.0f,
+                0.0f,
+                logicalWidth,
+                logicalHeight,
                 () -> props,
                 panel::patches
         );
         if (baked == null) return false;
-        baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT));
+        baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT)
+                .at(panel.x, panel.y, panel.renderScale()));
         return true;
     }
 
@@ -169,8 +172,7 @@ final class ScriptedTriangulatorHudPanel {
                  float y,
                  float width,
                  float height,
-                 float drawScale,
-                 float baseScale,
+                 float renderScale,
                  float fontScale,
                  float headerTextHeight,
                  float rowTextHeight,
@@ -205,8 +207,7 @@ final class ScriptedTriangulatorHudPanel {
               float y,
               float width,
               float height,
-              float drawScale,
-              float baseScale,
+              float renderScale,
               float fontScale,
               float headerTextHeight,
               float rowTextHeight,
@@ -241,8 +242,7 @@ final class ScriptedTriangulatorHudPanel {
             this.y = y;
             this.width = width;
             this.height = height;
-            this.drawScale = drawScale;
-            this.baseScale = baseScale;
+            this.renderScale = Math.max(0.0001f, renderScale);
             this.fontScale = fontScale;
             this.headerTextHeight = headerTextHeight;
             this.rowTextHeight = rowTextHeight;
@@ -274,19 +274,21 @@ final class ScriptedTriangulatorHudPanel {
             this.rows = rows != null ? rows : List.of();
         }
 
+        float logical(float renderValue) {
+            return renderValue / renderScale;
+        }
+
         LinkedHashMap<String, Object> toProps() {
             LinkedHashMap<String, Object> out = new LinkedHashMap<>();
             out.put("id", "triangulator");
             out.put("title", "Triangulator");
-            out.put("width", width);
-            out.put("height", height);
-            out.put("drawScale", drawScale);
-            out.put("baseScale", baseScale);
-            out.put("fontSize", TextSizing.sizeForScale(fontScale));
-            out.put("headerTextHeight", headerTextHeight);
-            out.put("rowTextHeight", rowTextHeight);
-            out.put("countLabelWidth", countLabelWidth);
-            out.put("countValueWidth", countValueWidth);
+            out.put("width", logical(width));
+            out.put("height", logical(height));
+            out.put("fontSize", TextSizing.sizeForScale(fontScale / renderScale));
+            out.put("headerTextHeight", logical(headerTextHeight));
+            out.put("rowTextHeight", logical(rowTextHeight));
+            out.put("countLabelWidth", logical(countLabelWidth));
+            out.put("countValueWidth", logical(countValueWidth));
             out.put("activeCount", activeCount);
             out.put("blur", blur);
             out.put("blurAlpha", blurAlpha);
@@ -320,15 +322,13 @@ final class ScriptedTriangulatorHudPanel {
 
         long treeSignature() {
             long h = 0xcbf29ce484222325L;
-            h = CachedUiScriptRuntime.mix(h, width);
-            h = CachedUiScriptRuntime.mix(h, height);
-            h = CachedUiScriptRuntime.mix(h, drawScale);
-            h = CachedUiScriptRuntime.mix(h, baseScale);
-            h = CachedUiScriptRuntime.mix(h, fontScale);
-            h = CachedUiScriptRuntime.mix(h, headerTextHeight);
-            h = CachedUiScriptRuntime.mix(h, rowTextHeight);
-            h = CachedUiScriptRuntime.mix(h, countLabelWidth);
-            h = CachedUiScriptRuntime.mix(h, countValueWidth);
+            h = CachedUiScriptRuntime.mix(h, logical(width));
+            h = CachedUiScriptRuntime.mix(h, logical(height));
+            h = CachedUiScriptRuntime.mix(h, TextSizing.sizeForScale(fontScale / renderScale));
+            h = CachedUiScriptRuntime.mix(h, logical(headerTextHeight));
+            h = CachedUiScriptRuntime.mix(h, logical(rowTextHeight));
+            h = CachedUiScriptRuntime.mix(h, logical(countLabelWidth));
+            h = CachedUiScriptRuntime.mix(h, logical(countValueWidth));
             h = CachedUiScriptRuntime.mix(h, blur);
             h = CachedUiScriptRuntime.mix(h, blurAlpha);
             h = CachedUiScriptRuntime.mix(h, strokeEnabled);

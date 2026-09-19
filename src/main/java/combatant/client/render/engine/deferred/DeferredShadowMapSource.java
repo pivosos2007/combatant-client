@@ -138,8 +138,8 @@ final class DeferredShadowMapSource implements AutoCloseable {
         int count = Math.min(views.size(), DeferredShadowCascadeSource.MAX_CASCADE_COUNT);
         StringBuilder footprint = DebugLog.isEnabled()
                 ? new StringBuilder(192).append("count=").append(count)
-                .append(" mode=").append(DeferredShadowBringupConfig.nearOnly() ? "near-only" : "csm")
-                .append(" stabilizer=camera-delta-texel")
+                .append(" mode=").append(DeferredShadowBringupConfig.nearOnly() ? "near-only" : "photon-distorted-single")
+                .append(" stabilizer=camera-delta-texel distortion=0.85")
                 .append(" atlas=").append(width).append('x').append(height)
                 : null;
         for (int i = 0; i < count; i++) {
@@ -177,8 +177,10 @@ final class DeferredShadowMapSource implements AutoCloseable {
                 footprint.append(" c").append(i)
                         .append("[")
                         .append(String.format(java.util.Locale.ROOT, "%.2f..%.2f", view.nearPlane(), view.farPlane()))
-                        .append(" texel=")
+                        .append(" texelEdge=")
                         .append(String.format(java.util.Locale.ROOT, "%.5f", worldTexel))
+                        .append(" texelCenter=")
+                        .append(String.format(java.util.Locale.ROOT, "%.5f", worldTexel * 0.15f))
                         .append(" tile=").append(view.viewportWidth()).append('x').append(view.viewportHeight())
                         .append(']');
             }

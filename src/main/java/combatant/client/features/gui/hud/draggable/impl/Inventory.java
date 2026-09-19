@@ -380,7 +380,6 @@ public final class Inventory extends DraggableHudElement {
                         drawY,
                         drawWidth,
                         drawHeight,
-                        drawScale,
                         drawBaseScale,
                         drawFontScale,
                         drawHeaderIconH,

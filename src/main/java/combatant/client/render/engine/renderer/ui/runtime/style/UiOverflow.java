@@ -19,6 +19,7 @@ public enum UiOverflow {
     public static UiOverflow parse(String raw, UiOverflow fallback) {
         if (raw == null || raw.isBlank()) return fallback;
         return switch (raw.trim().replace('-', '_').toUpperCase(Locale.ROOT)) {
+            case "VISIBLE" -> VISIBLE;
             case "HIDDEN", "CLIP" -> HIDDEN;
             case "SCROLL_X", "X" -> SCROLL_X;
             case "SCROLL_Y", "Y" -> SCROLL_Y;

@@ -107,13 +107,13 @@ public abstract class SodiumShaderChunkRendererMixin {
             if (directionalBias) {
                 if (combatant$shadowSolidPipeline == null) {
                     combatant$shadowSolidPipeline = combatant$createSecondaryPipeline(
-                            pass, "shadow_solid", true, combatant$shadowDepthState);
+                            pass, "shadow_solid", true, combatant$shadowDepthState, true);
                 }
                 return combatant$shadowSolidPipeline;
             }
             if (combatant$localShadowSolidPipeline == null) {
                 combatant$localShadowSolidPipeline = combatant$createSecondaryPipeline(
-                        pass, "local_shadow_solid", true, DepthStencilState.DEFAULT);
+                        pass, "local_shadow_solid", true, DepthStencilState.DEFAULT, false);
             }
             return combatant$localShadowSolidPipeline;
         }
@@ -121,13 +121,13 @@ public abstract class SodiumShaderChunkRendererMixin {
             if (directionalBias) {
                 if (combatant$shadowCutoutPipeline == null) {
                     combatant$shadowCutoutPipeline = combatant$createSecondaryPipeline(
-                            pass, "shadow_cutout", true, combatant$shadowDepthState);
+                            pass, "shadow_cutout", true, combatant$shadowDepthState, true);
                 }
                 return combatant$shadowCutoutPipeline;
             }
             if (combatant$localShadowCutoutPipeline == null) {
                 combatant$localShadowCutoutPipeline = combatant$createSecondaryPipeline(
-                        pass, "local_shadow_cutout", true, DepthStencilState.DEFAULT);
+                        pass, "local_shadow_cutout", true, DepthStencilState.DEFAULT, false);
             }
             return combatant$localShadowCutoutPipeline;
         }
@@ -138,13 +138,13 @@ public abstract class SodiumShaderChunkRendererMixin {
     private RenderPipeline combatant$reflectionPipeline(TerrainRenderPass pass) {
         if (pass == DefaultTerrainRenderPasses.SOLID) {
             if (combatant$reflectionSolidPipeline == null) {
-                combatant$reflectionSolidPipeline = combatant$createSecondaryPipeline(pass, "reflection_solid", false, DepthStencilState.DEFAULT);
+                combatant$reflectionSolidPipeline = combatant$createSecondaryPipeline(pass, "reflection_solid", false, DepthStencilState.DEFAULT, false);
             }
             return combatant$reflectionSolidPipeline;
         }
         if (pass == DefaultTerrainRenderPasses.CUTOUT) {
             if (combatant$reflectionCutoutPipeline == null) {
-                combatant$reflectionCutoutPipeline = combatant$createSecondaryPipeline(pass, "reflection_cutout", false, DepthStencilState.DEFAULT);
+                combatant$reflectionCutoutPipeline = combatant$createSecondaryPipeline(pass, "reflection_cutout", false, DepthStencilState.DEFAULT, false);
             }
             return combatant$reflectionCutoutPipeline;
         }
@@ -155,7 +155,8 @@ public abstract class SodiumShaderChunkRendererMixin {
     private RenderPipeline combatant$createSecondaryPipeline(TerrainRenderPass pass,
                                                               String suffix,
                                                               boolean shadowDepth,
-                                                              DepthStencilState depthStencilState) {
+                                                              DepthStencilState depthStencilState,
+                                                              boolean distortedDirectionalShadow) {
         Identifier sodiumShader = Identifier.fromNamespaceAndPath("sodium", "blocks/block_layer_opaque");
         Identifier shader = CombatantRenderSystem.sodium().shaderWorkarounds().overrideShaderIdentifier(sodiumShader);
         RenderPipeline.Builder builder = RenderPipeline.builder()
@@ -174,6 +175,9 @@ public abstract class SodiumShaderChunkRendererMixin {
                 .withShaderDefine("USE_FOG");
         if (shadowDepth) {
             builder.withShaderDefine("COMBATANT_SHADOW_PASS");
+        }
+        if (distortedDirectionalShadow) {
+            builder.withShaderDefine("COMBATANT_DIRECTIONAL_SHADOW_DISTORTION");
         }
         if (pass.supportsFragmentDiscard()) {
             builder.withShaderDefine("ALPHA_CUTOUT", 0.5f);

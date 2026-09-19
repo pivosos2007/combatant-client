@@ -388,6 +388,18 @@ public final class Statistics extends DraggableHudElement {
                 ? accent.end()
                 : HudRenderUtil.mixColor(text.getArgb(), muted.getArgb(), 0.45f);
 
+        // Script layout stays in canonical logical units. HUD/user/widget scale is applied once
+        // by UiRenderTransform at paint time instead of being baked into every authored number.
+        float scriptRenderScale = Math.max(0.0001f, drawBaseScale);
+        float scriptWidth = drawWidth / scriptRenderScale;
+        float scriptHeight = drawHeight / scriptRenderScale;
+        float scriptMainHeight = drawMainHeight / scriptRenderScale;
+        float scriptGraphHeight = drawGraphHeight / scriptRenderScale;
+        float scriptGraphGap = drawGraphGap / scriptRenderScale;
+        float scriptFontSize = TextSizing.sizeForScale(drawFontScale / scriptRenderScale);
+        float scriptHeaderTextHeight = (headerTextH * drawScale) / scriptRenderScale;
+        float scriptRowTextHeight = (rowTextH * drawScale) / scriptRenderScale;
+
         scriptedPanel.render(
                 renderer,
                 fallback,
@@ -396,16 +408,15 @@ public final class Statistics extends DraggableHudElement {
                 new ScriptedStatisticsHudPanel.Panel(
                         drawX,
                         drawY,
-                        drawWidth,
-                        drawHeight,
-                        drawMainHeight,
-                        drawGraphHeight,
-                        drawGraphGap,
-                        drawScale,
-                        drawBaseScale,
-                        drawFontScale,
-                        headerTextH * drawScale,
-                        rowTextH * drawScale,
+                        scriptWidth,
+                        scriptHeight,
+                        scriptMainHeight,
+                        scriptGraphHeight,
+                        scriptGraphGap,
+                        scriptRenderScale,
+                        scriptFontSize,
+                        scriptHeaderTextHeight,
+                        scriptRowTextHeight,
                         playTime,
                         String.format(Locale.ROOT, "%.2f BPS", snapshot.averageBps()),
                         arcEndAngle,

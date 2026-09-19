@@ -15,19 +15,14 @@ import combatant.client.render.engine.text.RuntimeTextLayout;
 import combatant.client.render.engine.text.TextEffectSpec;
 import combatant.client.render.engine.text.TextRenderer;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class UiTextRenderer {
-    private static final int WIDTH_CACHE_LIMIT = 1024;
     private static final int HEIGHT_CACHE_LIMIT = 128;
 
-    private final LinkedHashMap<WidthKey, Float> widthCache = new LinkedHashMap<>(WIDTH_CACHE_LIMIT, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<WidthKey, Float> eldest) {
-            return size() > WIDTH_CACHE_LIMIT;
-        }
-    };
     private final LinkedHashMap<HeightKey, Float> heightCache = new LinkedHashMap<>(HEIGHT_CACHE_LIMIT, 0.75f, true) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<HeightKey, Float> eldest) {
@@ -53,30 +48,216 @@ public final class UiTextRenderer {
     }
 
     public float measureWidth(TextRenderer fallback, String text, UiStyle style) {
-        text = RuntimeTextLayout.singleLine(text);
-        if (text.isEmpty()) return 0.0f;
+        return layout(fallback, text, style).width();
+    }
+
+    public float measureHeight(TextRenderer fallback, String text, UiStyle style) {
+        return layout(fallback, text, style).height();
+    }
+
+    public float measureHeight(TextRenderer fallback, UiStyle style) {
+        return lineHeight(fallback, style);
+    }
+
+    public TextLayout layout(TextRenderer fallback, String text, UiStyle style) {
+        boolean preserveWhitespace = "pre-wrap".equals(style.whiteSpace());
+        String safe = preserveWhitespace
+                ? RuntimeTextLayout.multiLine(text)
+                : RuntimeTextLayout.singleLine(text);
+        if (safe.isEmpty()) return new TextLayout(List.of(), 0.0f, 0.0f, lineHeight(fallback, style));
+
         TextRenderer renderer = resolve(fallback, style);
         float fontSize = style.fontSize();
         boolean shadow = style.textShadow();
-        float maxWidth = style.maxTextWidth();
-        WidthKey key = new WidthKey(System.identityHashCode(renderer), text, fontSize, shadow, maxWidth);
-        Float cached = widthCache.get(key);
-        if (cached != null) return cached;
+        float constraint = textConstraint(style);
+        float lineHeight = lineHeight(fallback, style);
+        List<String> lines = new ArrayList<>();
 
         renderer.beginSize(fontSize, true, false);
         try {
-            float width = (float) renderer.getWidth(text, shadow);
-            if (maxWidth > 0.0f) {
-                width = Math.min(width, maxWidth);
+            if (!style.wrapsText()) {
+                String line = RuntimeTextLayout.singleLine(safe);
+                if (style.ellipsizesText() && constraint > 0.0f) {
+                    line = ellipsize(renderer, line, constraint, shadow);
+                }
+                lines.add(line);
+            } else {
+                String[] paragraphs = preserveWhitespace ? safe.split("\n", -1) : new String[]{safe};
+                for (String paragraph : paragraphs) {
+                    if (constraint <= 0.0f) {
+                        lines.add(paragraph);
+                    } else if (preserveWhitespace) {
+                        wrapPreformattedParagraph(renderer, paragraph, constraint, shadow, style, lines);
+                    } else {
+                        wrapParagraph(renderer, paragraph, constraint, shadow, style, lines);
+                    }
+                }
             }
-            widthCache.put(key, width);
-            return width;
+
+            boolean truncated = false;
+            int maxLines = style.maxLines();
+            if (maxLines > 0 && lines.size() > maxLines) {
+                truncated = true;
+                while (lines.size() > maxLines) lines.remove(lines.size() - 1);
+            }
+            if (truncated && style.ellipsizesText() && !lines.isEmpty()) {
+                int last = lines.size() - 1;
+                String value = lines.get(last);
+                lines.set(last, constraint > 0.0f
+                        ? ellipsizeWithSuffix(renderer, value, constraint, shadow)
+                        : value + "...");
+            }
+
+            float width = 0.0f;
+            for (String line : lines) width = Math.max(width, (float) renderer.getWidth(line, shadow));
+            if (constraint > 0.0f && (!style.wrapsText()
+                    || "break-word".equals(style.overflowWrap())
+                    || "anywhere".equals(style.overflowWrap()))) {
+                width = Math.min(width, constraint);
+            }
+            return new TextLayout(List.copyOf(lines), width, lineHeight * lines.size(), lineHeight);
         } finally {
             renderer.end();
         }
     }
 
-    public float measureHeight(TextRenderer fallback, UiStyle style) {
+    private void wrapParagraph(TextRenderer renderer,
+                               String paragraph,
+                               float maxWidth,
+                               boolean shadow,
+                               UiStyle style,
+                               List<String> out) {
+        int before = out.size();
+        if (paragraph.isEmpty()) {
+            out.add("");
+            return;
+        }
+        String[] words = paragraph.trim().split("\\s+");
+        StringBuilder line = new StringBuilder();
+        for (String word : words) {
+            if (word.isEmpty()) continue;
+            String candidate = line.isEmpty() ? word : line + " " + word;
+            if (renderer.getWidth(candidate, shadow) <= maxWidth || line.isEmpty()) {
+                if (line.isEmpty() && renderer.getWidth(word, shadow) > maxWidth
+                        && !"normal".equals(style.overflowWrap())) {
+                    appendBrokenWord(renderer, word, maxWidth, shadow, out, line);
+                } else {
+                    line.setLength(0);
+                    line.append(candidate);
+                }
+                continue;
+            }
+            out.add(line.toString());
+            line.setLength(0);
+            if (renderer.getWidth(word, shadow) > maxWidth && !"normal".equals(style.overflowWrap())) {
+                appendBrokenWord(renderer, word, maxWidth, shadow, out, line);
+            } else {
+                line.append(word);
+            }
+        }
+        if (!line.isEmpty()) out.add(line.toString());
+        if (out.size() == before) out.add("");
+    }
+
+    /** CSS-like pre-wrap: preserve authored whitespace/newlines, wrap at whitespace when possible. */
+    private void wrapPreformattedParagraph(TextRenderer renderer,
+                                           String paragraph,
+                                           float maxWidth,
+                                           boolean shadow,
+                                           UiStyle style,
+                                           List<String> out) {
+        if (paragraph.isEmpty()) {
+            out.add("");
+            return;
+        }
+
+        StringBuilder line = new StringBuilder();
+        int lastBreak = -1;
+        for (int offset = 0; offset < paragraph.length(); ) {
+            int cp = paragraph.codePointAt(offset);
+            int count = Character.charCount(cp);
+            line.appendCodePoint(cp);
+            if (Character.isWhitespace(cp)) lastBreak = line.length();
+
+            if (renderer.getWidth(line.toString(), shadow) > maxWidth) {
+                if (lastBreak > 0 && lastBreak < line.length()) {
+                    out.add(line.substring(0, lastBreak));
+                    String remainder = line.substring(lastBreak);
+                    line.setLength(0);
+                    line.append(remainder);
+                    lastBreak = lastWhitespaceBreak(line);
+                } else if (lastBreak == line.length()) {
+                    out.add(line.toString());
+                    line.setLength(0);
+                    lastBreak = -1;
+                } else if (!"normal".equals(style.overflowWrap()) && line.codePointCount(0, line.length()) > 1) {
+                    int cpStart = line.offsetByCodePoints(line.length(), -1);
+                    String tail = line.substring(cpStart);
+                    line.delete(cpStart, line.length());
+                    out.add(line.toString());
+                    line.setLength(0);
+                    line.append(tail);
+                    lastBreak = -1;
+                }
+            }
+            offset += count;
+        }
+        if (!line.isEmpty()) out.add(line.toString());
+    }
+
+    private static int lastWhitespaceBreak(CharSequence value) {
+        int last = -1;
+        for (int offset = 0; offset < value.length(); ) {
+            int cp = Character.codePointAt(value, offset);
+            int count = Character.charCount(cp);
+            if (Character.isWhitespace(cp)) last = offset + count;
+            offset += count;
+        }
+        return last;
+    }
+
+    private static void appendBrokenWord(TextRenderer renderer,
+                                         String word,
+                                         float maxWidth,
+                                         boolean shadow,
+                                         List<String> out,
+                                         StringBuilder remainder) {
+        StringBuilder part = new StringBuilder();
+        for (int offset = 0; offset < word.length(); ) {
+            int cp = word.codePointAt(offset);
+            String next = part.toString() + new String(Character.toChars(cp));
+            if (!part.isEmpty() && renderer.getWidth(next, shadow) > maxWidth) {
+                out.add(part.toString());
+                part.setLength(0);
+            }
+            part.appendCodePoint(cp);
+            offset += Character.charCount(cp);
+        }
+        remainder.append(part);
+    }
+
+    private static String ellipsizeWithSuffix(TextRenderer renderer, String text, float maxWidth, boolean shadow) {
+        String suffix = "...";
+        float suffixWidth = (float) renderer.getWidth(suffix, shadow);
+        if (suffixWidth >= maxWidth) return suffix;
+        int low = 0;
+        int high = text.length();
+        while (low < high) {
+            int mid = (low + high + 1) >>> 1;
+            if (renderer.getWidth(text, mid, shadow) + suffixWidth <= maxWidth) low = mid;
+            else high = mid - 1;
+        }
+        return text.substring(0, Math.max(0, low)) + suffix;
+    }
+
+    private static float textConstraint(UiStyle style) {
+        if (style.maxTextWidth() > 0.0f) return style.maxTextWidth();
+        if (style.width() != null) return Math.max(0.0f, style.width() - style.paddingX());
+        if (style.maxWidth() != null) return Math.max(0.0f, style.maxWidth() - style.paddingX());
+        return 0.0f;
+    }
+
+    private float lineHeight(TextRenderer fallback, UiStyle style) {
         float glyphHeight = measureGlyphHeight(fallback, style);
         Float lineHeight = style.lineHeight();
         return lineHeight != null ? lineHeight : glyphHeight;
@@ -125,15 +306,21 @@ public final class UiTextRenderer {
     }
 
     public void render(TextRenderer fallback, String text, float x, float y, UiStyle style, int color, TextEffectSpec effect, String backend) {
+        render(fallback, text, x, y, style, color, effect, backend, 1.0f);
+    }
+
+    public void render(TextRenderer fallback, String text, float x, float y, UiStyle style, int color,
+                       TextEffectSpec effect, String backend, float renderScale) {
         text = RuntimeTextLayout.singleLine(text);
         if (text.isEmpty()) return;
         if ((color >>> 24) == 0) return;
         TextRenderer renderer = resolve(fallback, style, backend);
-        float fontSize = style.fontSize();
+        float scale = Math.max(0.0001f, renderScale);
+        float fontSize = style.fontSize() * scale;
         renderer.beginSize(fontSize, false, false);
         try {
-            String renderText = style.ellipsis() && style.maxTextWidth() > 0.0f
-                    ? ellipsize(renderer, text, style.maxTextWidth(), style.textShadow())
+            String renderText = style.ellipsizesText() && style.maxTextWidth() > 0.0f
+                    ? ellipsize(renderer, text, style.maxTextWidth() * scale, style.textShadow())
                     : text;
             float timeSec = (System.currentTimeMillis() % 3_600_000L) / 1000.0f;
             if (!UiTextEffectRenderer.render(
@@ -166,18 +353,32 @@ public final class UiTextRenderer {
                            float width,
                            float strength,
                            String backend) {
+        renderGlow(fallback, text, x, y, style, color, width, strength, backend, 1.0f);
+    }
+
+    public void renderGlow(TextRenderer fallback,
+                           String text,
+                           float x,
+                           float y,
+                           UiStyle style,
+                           int color,
+                           float width,
+                           float strength,
+                           String backend,
+                           float renderScale) {
         text = RuntimeTextLayout.singleLine(text);
-        float spread = Math.max(0.0f, Math.min(4.0f, width));
+        float scale = Math.max(0.0001f, renderScale);
+        float spread = Math.max(0.0f, Math.min(4.0f * scale, width * scale));
         float power = Math.max(0.0f, Math.min(1.0f, strength));
         if (text.isEmpty() || spread <= 0.01f || power <= 0.001f || (color >>> 24) == 0) return;
 
         TextRenderer renderer = resolve(fallback, style, backend);
-        float fontSize = style.fontSize();
+        float fontSize = style.fontSize() * scale;
         String renderText;
         renderer.beginSize(fontSize, false, false);
         try {
-            renderText = style.ellipsis() && style.maxTextWidth() > 0.0f
-                    ? ellipsize(renderer, text, style.maxTextWidth(), false)
+            renderText = style.ellipsizesText() && style.maxTextWidth() > 0.0f
+                    ? ellipsize(renderer, text, style.maxTextWidth() * scale, false)
                     : text;
             float inner = Math.max(0.45f, spread * 0.48f);
             int outerColor = multiplyAlpha(color, power * 0.22f);
@@ -219,15 +420,29 @@ public final class UiTextRenderer {
                                      int endColor,
                                      float angleDeg,
                                      String backend) {
+        renderLinearGradient(fallback, text, x, y, style, startColor, endColor, angleDeg, backend, 1.0f);
+    }
+
+    public void renderLinearGradient(TextRenderer fallback,
+                                     String text,
+                                     float x,
+                                     float y,
+                                     UiStyle style,
+                                     int startColor,
+                                     int endColor,
+                                     float angleDeg,
+                                     String backend,
+                                     float renderScale) {
         text = RuntimeTextLayout.singleLine(text);
         if (text.isEmpty()) return;
         if (((startColor | endColor) >>> 24) == 0) return;
         TextRenderer renderer = resolve(fallback, style, backend);
-        float fontSize = style.fontSize();
+        float scale = Math.max(0.0001f, renderScale);
+        float fontSize = style.fontSize() * scale;
         renderer.beginSize(fontSize, false, false);
         try {
-            String renderText = style.ellipsis() && style.maxTextWidth() > 0.0f
-                    ? ellipsize(renderer, text, style.maxTextWidth(), style.textShadow())
+            String renderText = style.ellipsizesText() && style.maxTextWidth() > 0.0f
+                    ? ellipsize(renderer, text, style.maxTextWidth() * scale, style.textShadow())
                     : text;
             renderer.renderQuadGradient(renderText, x, y, (idx, cp, x0, y0, x1, y1, out) ->
                     linearGradientColors(x0, y0, x1, y1, startColor, endColor, angleDeg, out),
@@ -305,11 +520,26 @@ public final class UiTextRenderer {
                                             float fadeLeft,
                                             float fadeRight,
                                             int color) {
+        renderHorizontalFadeClipped(fallback, text, x, y, style, clipLeft, clipRight, fadeLeft, fadeRight, color, 1.0f);
+    }
+
+    public void renderHorizontalFadeClipped(TextRenderer fallback,
+                                            String text,
+                                            float x,
+                                            float y,
+                                            UiStyle style,
+                                            float clipLeft,
+                                            float clipRight,
+                                            float fadeLeft,
+                                            float fadeRight,
+                                            int color,
+                                            float renderScale) {
         text = RuntimeTextLayout.singleLine(text);
         if (text.isEmpty()) return;
         if ((color >>> 24) == 0) return;
         TextRenderer renderer = resolve(fallback, style);
-        float fontSize = style.fontSize();
+        float scale = Math.max(0.0001f, renderScale);
+        float fontSize = style.fontSize() * scale;
         RenderColor renderColor = new RenderColor(color);
         renderer.beginSize(fontSize, false, false);
         try {
@@ -334,7 +564,10 @@ public final class UiTextRenderer {
         return Fonts.renderer(style.fontFamily(), style.fontType(), base);
     }
 
-    private record WidthKey(int rendererId, String text, float fontSize, boolean shadow, float maxWidth) {
+    public record TextLayout(List<String> lines, float width, float height, float lineHeight) {
+        public boolean multiline() {
+            return lines.size() > 1;
+        }
     }
 
     private record HeightKey(int rendererId, float fontSize, boolean shadow) {

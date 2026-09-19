@@ -15,13 +15,14 @@ import combatant.client.render.engine.renderer.ui.runtime.style.UiStyle;
 
 /** Paints the style-owned box layer of a runtime node. Tree traversal stays in {@link UiRenderer}. */
 final class UiBoxRenderer {
-    public void render(UiNode node, UiStyle style, UiBounds bounds, UiRenderContext context) {
+    public void render(UiNode node, UiStyle style, UiBounds logicalBounds, UiRenderContext context) {
+        UiBounds bounds = context.renderBounds(logicalBounds);
         if (bounds.width() <= 0.0f || bounds.height() <= 0.0f) return;
 
         float lifecycleAlpha = context.alpha();
         if (lifecycleAlpha <= 0.001f) return;
 
-        float radius = node.props().number("renderRadius", style.radius());
+        float radius = context.renderLength(node.props().number("renderRadius", style.radius()));
         float blurAlpha = node.props().number("renderBlurAlpha", style.blurAlpha()) * lifecycleAlpha;
 
         if (style.shadowColor() != null && style.shadowBlur() > 0.0f) {
@@ -31,7 +32,7 @@ final class UiBoxRenderer {
                     bounds.width(),
                     bounds.height(),
                     radius,
-                    style.shadowBlur(),
+                    context.renderLength(style.shadowBlur()),
                     style.shadowInnerAlpha() * lifecycleAlpha,
                     UiColor.multiplyAlpha(style.shadowColor(), lifecycleAlpha)
             );
@@ -95,7 +96,7 @@ final class UiBoxRenderer {
                     bounds.width(),
                     bounds.height(),
                     radius,
-                    style.strokeWidth(),
+                    context.renderLength(style.strokeWidth()),
                     UiColor.multiplyAlpha(style.strokeColor(), lifecycleAlpha)
             );
         }

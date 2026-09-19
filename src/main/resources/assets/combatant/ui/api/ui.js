@@ -5,7 +5,28 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+const UI_FRAGMENT = Object.freeze({ __combatantUiFragment: true });
+
 export const ui = {
+  /**
+   * React-like authoring entry point. Runtime node strings use Combatant node names
+   * ("row", "column", "text", ...); function values are lightweight components.
+   */
+  h(type, init = null, ...children) {
+    return createElement(type, init, children);
+  },
+  createElement(type, init = null, ...children) {
+    return createElement(type, init, children);
+  },
+  /** Fragment can be used with ui.h/ui.createElement and may also be returned at module root. */
+  Fragment: UI_FRAGMENT,
+  fragment(...children) {
+    return normalizeChildren(children);
+  },
+  /** Convenience conditional that composes naturally inside children arrays. */
+  when(condition, child) {
+    return condition ? child : null;
+  },
   node(type, init = {}) {
     return normalize(type, init);
   },
@@ -14,9 +35,27 @@ export const ui = {
   row(init = {}) { return normalize("row", init); },
   column(init = {}) { return normalize("column", init); },
   stack(init = {}) { return normalize("stack", init); },
+  vector(init = {}) {
+    return normalize("vector", { overflow: init.overflow ?? "hidden", ...init });
+  },
+  plot(init = {}) {
+    const xDomain = Array.isArray(init.xDomain) ? init.xDomain : [0, 1];
+    const yDomain = Array.isArray(init.yDomain) ? init.yDomain : [0, 1];
+    const minX = ui.num(xDomain[0], 0);
+    const maxX = ui.num(xDomain[1], minX + 1);
+    const minY = ui.num(yDomain[0], 0);
+    const maxY = ui.num(yDomain[1], minY + 1);
+    const viewBox = init.viewBox ?? [minX, minY, Math.max(1e-9, maxX - minX), Math.max(1e-9, maxY - minY)];
+    const { xDomain: _xDomain, yDomain: _yDomain, ...rest } = init;
+    return ui.vector({ yAxis: "up", preserveAspectRatio: "none", ...rest, viewBox });
+  },
   text(init = "") {
-    if (typeof init === "string") return normalize("text", { text: init });
-    return normalize("text", init);
+    if (typeof init === "string" || typeof init === "number") return normalize("text", { text: String(init) });
+    const text = init?.text ?? primitiveText(init?.children);
+    return normalize("text", {
+      ...init,
+      ...(text !== undefined ? { text, children: [] } : {}),
+    });
   },
   image(init = {}) {
     if (typeof init === "string") return normalize("image", { asset: init });
@@ -28,9 +67,41 @@ export const ui = {
   },
   shape(init = {}) { return normalize("shape", init); },
   box(init = {}) { return normalize("shape", { shape: "box", ...init }); },
-  rect(init = {}) { return normalize("shape", { shape: "rect", ...init }); },
+  rect(init = {}) {
+    const { x, y, width, height, ...rest } = init;
+    return normalize("shape", {
+      ...rest,
+      shape: "rect",
+      vectorX: init.vectorX ?? x,
+      vectorY: init.vectorY ?? y,
+      vectorWidth: init.vectorWidth ?? width,
+      vectorHeight: init.vectorHeight ?? height,
+    });
+  },
   circle(init = {}) { return normalize("shape", { shape: "circle", ...init }); },
-  rounded(init = {}) { return normalize("shape", { shape: "box", corners: ui.corner.all(ui.corner.rounded(init.radius ?? init.r ?? 0)), ...init }); },
+  point(init = {}) {
+    const { x = init.cx ?? 0, y = init.cy ?? 0, ...rest } = init;
+    return normalize("shape", { shape: "circle", cx: x, cy: y, radius: init.radius ?? init.r ?? 2, ...rest });
+  },
+  bar(init = {}) {
+    const x = init.x ?? 0;
+    const y = init.y ?? 0;
+    const width = init.width ?? init.w ?? 0;
+    const height = init.height ?? init.h ?? 0;
+    return ui.rect({ ...init, x, y, width, height });
+  },
+  rounded(init = {}) {
+    const { x, y, width, height, ...rest } = init;
+    return normalize("shape", {
+      ...rest,
+      shape: "box",
+      vectorX: init.vectorX ?? x,
+      vectorY: init.vectorY ?? y,
+      vectorWidth: init.vectorWidth ?? width,
+      vectorHeight: init.vectorHeight ?? height,
+      corners: ui.corner.all(ui.corner.rounded(init.radius ?? init.r ?? 0)),
+    });
+  },
   chamfered(init = {}) { return normalize("shape", { shape: "box", corners: ui.corner.all(ui.corner.chamfered(init.cut ?? init.chamfer ?? 0)), ...init }); },
   connector(init = {}) { return normalize("connector", init); },
   path(init = {}) { return normalize("path", init); },
@@ -83,6 +154,10 @@ export const ui = {
   absolute(x = 0, y = 0, w = 0, h = 0, extra = {}) {
     return ui.style({ position: "absolute", left: x, top: y, width: w, height: h }, extra);
   },
+  inset({ left = 0, top = 0, right, bottom, width, height, ...extra } = {}) {
+    return ui.style({ position: "absolute", left, top, right, bottom, width, height }, extra);
+  },
+  /** @deprecated Utility-class positioning is retained for legacy scripts. Prefer style: ui.absolute(...). */
   abs(x = 0, y = 0, w = 0, h = 0, extra = "") {
     return ui.cls("absolute", `x-${ui.fmt(x)}`, `y-${ui.fmt(y)}`, `w-${ui.fmt(w)}`, `h-${ui.fmt(h)}`, extra);
   },
@@ -110,11 +185,12 @@ export const ui = {
       return [];
     }
   },
-  roundedRect({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, fill, stroke, strokeWidth = 0, class: extra = "", ...rest } = {}) {
+  roundedRect({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, fill, stroke, strokeWidth = 0, class: extra = "", style = {}, ...rest } = {}) {
     return ui.shape({
       key,
       shape: "rounded",
-      class: ui.abs(x, y, w, h, extra),
+      class: extra,
+      style: ui.absolute(x, y, w, h, style),
       radius: r ?? radius,
       fill,
       stroke,
@@ -122,11 +198,12 @@ export const ui = {
       ...rest,
     });
   },
-  squircle({ key, x = 0, y = 0, w = 0, h = 0, profile = "standard", power, exponent, fill, stroke, strokeWidth = 0, class: extra = "", ...rest } = {}) {
+  squircle({ key, x = 0, y = 0, w = 0, h = 0, profile = "standard", power, exponent, fill, stroke, strokeWidth = 0, class: extra = "", style = {}, ...rest } = {}) {
     return ui.shape({
       key,
       shape: "squircle",
-      class: ui.abs(x, y, w, h, extra),
+      class: extra,
+      style: ui.absolute(x, y, w, h, style),
       profile,
       power: power ?? exponent,
       fill,
@@ -135,11 +212,12 @@ export const ui = {
       ...rest,
     });
   },
-  roundedGradient({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, startColor, endColor, angle = 90, class: extra = "", ...rest } = {}) {
+  roundedGradient({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, startColor, endColor, angle = 90, class: extra = "", style = {}, ...rest } = {}) {
     return ui.shape({
       key,
       shape: "rounded-gradient",
-      class: ui.abs(x, y, w, h, extra),
+      class: extra,
+      style: ui.absolute(x, y, w, h, style),
       radius: r ?? radius,
       startColor,
       endColor,
@@ -147,11 +225,12 @@ export const ui = {
       ...rest,
     });
   },
-  roundedGradientQuad({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, topLeftColor, topRightColor, bottomRightColor, bottomLeftColor, class: extra = "", ...rest } = {}) {
+  roundedGradientQuad({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, topLeftColor, topRightColor, bottomRightColor, bottomLeftColor, class: extra = "", style = {}, ...rest } = {}) {
     return ui.shape({
       key,
       shape: "rounded-gradient-quad",
-      class: ui.abs(x, y, w, h, extra),
+      class: extra,
+      style: ui.absolute(x, y, w, h, style),
       radius: r ?? radius,
       topLeftColor,
       topRightColor,
@@ -160,11 +239,12 @@ export const ui = {
       ...rest,
     });
   },
-  roundedStrokeGradient({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, thickness = 1, startColor, endColor, angle = 90, class: extra = "", ...rest } = {}) {
+  roundedStrokeGradient({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, thickness = 1, startColor, endColor, angle = 90, class: extra = "", style = {}, ...rest } = {}) {
     return ui.shape({
       key,
       shape: "rounded-stroke-gradient",
-      class: ui.abs(x, y, w, h, extra),
+      class: extra,
+      style: ui.absolute(x, y, w, h, style),
       radius: r ?? radius,
       thickness,
       startColor,
@@ -173,11 +253,12 @@ export const ui = {
       ...rest,
     });
   },
-  roundedSoftShadow({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, blur = 8, innerAlpha = 0.18, color = "#00000000", class: extra = "", ...rest } = {}) {
+  roundedSoftShadow({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, blur = 8, innerAlpha = 0.18, color = "#00000000", class: extra = "", style = {}, ...rest } = {}) {
     return ui.shape({
       key,
       shape: "rounded-soft-shadow",
-      class: ui.abs(x, y, w, h, extra),
+      class: extra,
+      style: ui.absolute(x, y, w, h, style),
       radius: r ?? radius,
       blur,
       innerAlpha,
@@ -186,11 +267,12 @@ export const ui = {
       ...rest,
     });
   },
-  roundedShadow({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, softness = 8, spread = 12, color = "#00000000", class: extra = "", ...rest } = {}) {
+  roundedShadow({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, softness = 8, spread = 12, color = "#00000000", class: extra = "", style = {}, ...rest } = {}) {
     return ui.shape({
       key,
       shape: "rounded-shadow",
-      class: ui.abs(x, y, w, h, extra),
+      class: extra,
+      style: ui.absolute(x, y, w, h, style),
       radius: r ?? radius,
       softness,
       spread,
@@ -199,11 +281,12 @@ export const ui = {
       ...rest,
     });
   },
-  roundedGlow({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, softness = 0, glow = 8, color = "#00000000", class: extra = "", ...rest } = {}) {
+  roundedGlow({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, softness = 0, glow = 8, color = "#00000000", class: extra = "", style = {}, ...rest } = {}) {
     return ui.shape({
       key,
       shape: "rounded-glow",
-      class: ui.abs(x, y, w, h, extra),
+      class: extra,
+      style: ui.absolute(x, y, w, h, style),
       radius: r ?? radius,
       softness,
       glow,
@@ -212,11 +295,12 @@ export const ui = {
       ...rest,
     });
   },
-  radialGlow({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, glowRadius = 32, cx = w * 0.5, cy = h * 0.5, color = "#00000000", class: extra = "", ...rest } = {}) {
+  radialGlow({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, glowRadius = 32, cx = w * 0.5, cy = h * 0.5, color = "#00000000", class: extra = "", style = {}, ...rest } = {}) {
     return ui.shape({
       key,
       shape: "radial-glow-masked",
-      class: ui.abs(x, y, w, h, extra),
+      class: extra,
+      style: ui.absolute(x, y, w, h, style),
       radius: r ?? radius,
       glowRadius,
       cx,
@@ -226,11 +310,12 @@ export const ui = {
       ...rest,
     });
   },
-  circleSoftShadow({ key, x = 0, y = 0, size = 0, radius = size * 0.5, blur = 7, innerAlpha = 0.34, color = "#00000000", class: extra = "", ...rest } = {}) {
+  circleSoftShadow({ key, x = 0, y = 0, size = 0, radius = size * 0.5, blur = 7, innerAlpha = 0.34, color = "#00000000", class: extra = "", style = {}, ...rest } = {}) {
     return ui.shape({
       key,
       shape: "circle-soft-shadow",
-      class: ui.abs(x, y, size, size, extra),
+      class: extra,
+      style: ui.absolute(x, y, size, size, style),
       radius,
       blur,
       innerAlpha,
@@ -239,11 +324,12 @@ export const ui = {
       ...rest,
     });
   },
-  blurSurface({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, alpha = 0, brightness = 1, class: extra = "", ...rest } = {}) {
+  blurSurface({ key, x = 0, y = 0, w = 0, h = 0, radius = 0, r, alpha = 0, brightness = 1, class: extra = "", style = {}, ...rest } = {}) {
     return ui.shape({
       key,
       shape: "rounded",
-      class: ui.abs(x, y, w, h, extra),
+      class: extra,
+      style: ui.absolute(x, y, w, h, style),
       radius: r ?? radius,
       fill: "#00000000",
       blur: true,
@@ -252,10 +338,11 @@ export const ui = {
       ...rest,
     });
   },
-  clip({ key, x = 0, y = 0, w = 0, h = 0, class: extra = "", children = [], ...rest } = {}) {
+  clip({ key, x = 0, y = 0, w = 0, h = 0, class: extra = "", style = {}, children = [], ...rest } = {}) {
     return ui.stack({
       key,
-      class: ui.abs(x, y, w, h, ui.cls("clip overflow-hidden", extra)),
+      class: extra,
+      style: ui.absolute(x, y, w, h, ui.style({ overflow: "hidden" }, style)),
       children,
       ...rest,
     });
@@ -284,7 +371,7 @@ export const ui = {
     const offset = overflow
       ? Math.min(Math.max(0, measured - Math.max(0, safeW - fadeW * 0.35)), Math.max(0, ui.num(scrollTime, 0) - ui.num(scrollDelay, 1.0)) * ui.num(scrollSpeed, 18))
       : 0;
-    const align = centerWhenFits === true && !overflow ? "text-align-center" : "";
+    const centered = centerWhenFits === true && !overflow;
     return ui.clip({
       key: `${key}:clip`,
       x,
@@ -296,7 +383,8 @@ export const ui = {
           key,
           text: text || "",
           color,
-          class: ui.cls(ui.abs(0, 0, safeW, h), textClass, align),
+          class: textClass,
+          style: ui.absolute(0, 0, safeW, h, centered ? { textAlign: "center" } : {}),
           textOffsetX: -offset,
           textFade: fade === true && overflow,
           fadeLeft: offset > 0.5 ? fadeW : 0,
@@ -353,13 +441,42 @@ function normalize(type, init) {
     maxWidth,
     maxHeight,
     grow,
+    flexGrow,
+    shrink,
+    flexShrink,
     display,
     flexDirection,
+    padding,
+    paddingX,
+    paddingHorizontal,
+    paddingY,
+    paddingVertical,
+    paddingLeft,
+    paddingTop,
+    paddingRight,
+    paddingBottom,
+    margin,
+    marginX,
+    marginHorizontal,
+    marginY,
+    marginVertical,
+    marginLeft,
+    marginTop,
+    marginRight,
+    marginBottom,
+    gap,
+    position,
     absolute,
     x,
     y,
+    left,
+    top,
+    right,
+    bottom,
     align,
+    alignItems,
     justify,
+    justifyContent,
     overflow,
     fontSize,
     lineHeight,
@@ -369,6 +486,10 @@ function normalize(type, init) {
     textAlign,
     maxTextWidth,
     ellipsis,
+    whiteSpace,
+    overflowWrap,
+    maxLines,
+    textOverflow,
     marquee,
     props = {},
     events = {},
@@ -388,11 +509,38 @@ function normalize(type, init) {
   if (maxWidth !== undefined) layoutStyle.maxWidth = maxWidth;
   if (maxHeight !== undefined) layoutStyle.maxHeight = maxHeight;
   if (grow !== undefined) layoutStyle.flexGrow = grow;
+  if (flexGrow !== undefined) layoutStyle.flexGrow = flexGrow;
+  if (shrink !== undefined) layoutStyle.flexShrink = shrink;
+  if (flexShrink !== undefined) layoutStyle.flexShrink = flexShrink;
   if (display !== undefined) layoutStyle.display = display;
   if (flexDirection !== undefined) layoutStyle.flexDirection = flexDirection;
+  if (padding !== undefined) layoutStyle.padding = padding;
+  if (paddingX !== undefined) layoutStyle.paddingX = paddingX;
+  if (paddingHorizontal !== undefined) layoutStyle.paddingHorizontal = paddingHorizontal;
+  if (paddingY !== undefined) layoutStyle.paddingY = paddingY;
+  if (paddingVertical !== undefined) layoutStyle.paddingVertical = paddingVertical;
+  if (paddingLeft !== undefined) layoutStyle.paddingLeft = paddingLeft;
+  if (paddingTop !== undefined) layoutStyle.paddingTop = paddingTop;
+  if (paddingRight !== undefined) layoutStyle.paddingRight = paddingRight;
+  if (paddingBottom !== undefined) layoutStyle.paddingBottom = paddingBottom;
+  if (margin !== undefined) layoutStyle.margin = margin;
+  if (marginX !== undefined) layoutStyle.marginX = marginX;
+  if (marginHorizontal !== undefined) layoutStyle.marginHorizontal = marginHorizontal;
+  if (marginY !== undefined) layoutStyle.marginY = marginY;
+  if (marginVertical !== undefined) layoutStyle.marginVertical = marginVertical;
+  if (marginLeft !== undefined) layoutStyle.marginLeft = marginLeft;
+  if (marginTop !== undefined) layoutStyle.marginTop = marginTop;
+  if (marginRight !== undefined) layoutStyle.marginRight = marginRight;
+  if (marginBottom !== undefined) layoutStyle.marginBottom = marginBottom;
+  if (gap !== undefined) layoutStyle.gap = gap;
+  if (position !== undefined) layoutStyle.position = position;
   if (absolute !== undefined) layoutStyle.absolute = absolute;
   if (x !== undefined) layoutStyle.left = x;
   if (y !== undefined) layoutStyle.top = y;
+  if (left !== undefined) layoutStyle.left = left;
+  if (top !== undefined) layoutStyle.top = top;
+  if (right !== undefined) layoutStyle.right = right;
+  if (bottom !== undefined) layoutStyle.bottom = bottom;
   if (align !== undefined) {
     if (type === "text" && (align === "left" || align === "right" || align === "center" || align === "end")) {
       layoutStyle.textAlign = align;
@@ -400,7 +548,9 @@ function normalize(type, init) {
       layoutStyle.alignItems = align;
     }
   }
+  if (alignItems !== undefined) layoutStyle.alignItems = alignItems;
   if (justify !== undefined) layoutStyle.justifyContent = justify;
+  if (justifyContent !== undefined) layoutStyle.justifyContent = justifyContent;
   if (overflow !== undefined) layoutStyle.overflow = overflow;
   if (fontSize !== undefined) layoutStyle.fontSize = fontSize;
   if (lineHeight !== undefined) layoutStyle.lineHeight = lineHeight;
@@ -410,6 +560,10 @@ function normalize(type, init) {
   if (textAlign !== undefined) layoutStyle.textAlign = textAlign;
   if (maxTextWidth !== undefined) layoutStyle.maxTextWidth = maxTextWidth;
   if (ellipsis !== undefined) layoutStyle.ellipsis = ellipsis;
+  if (whiteSpace !== undefined) layoutStyle.whiteSpace = whiteSpace;
+  if (overflowWrap !== undefined) layoutStyle.overflowWrap = overflowWrap;
+  if (maxLines !== undefined) layoutStyle.maxLines = maxLines;
+  if (textOverflow !== undefined) layoutStyle.textOverflow = textOverflow;
   if (marquee !== undefined) layoutStyle.marquee = marquee;
 
   const normalizedEvents = { ...events };
@@ -433,6 +587,10 @@ function normalizeChildren(value) {
   const out = [];
   const append = (child) => {
     if (child === null || child === undefined || typeof child === "boolean") return;
+    if (typeof child === "string" || typeof child === "number") {
+      out.push(normalize("text", { text: String(child) }));
+      return;
+    }
     if (Array.isArray(child)) {
       for (const nested of child) append(nested);
       return;
@@ -451,4 +609,42 @@ function normalizeChildren(value) {
   };
   append(value);
   return out;
+}
+
+function primitiveText(value) {
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (!Array.isArray(value)) return undefined;
+  let text = "";
+  for (const child of value) {
+    if (child === null || child === undefined || typeof child === "boolean") continue;
+    if (typeof child !== "string" && typeof child !== "number") return undefined;
+    text += String(child);
+  }
+  return text;
+}
+
+function createElement(type, init, childArgs) {
+  const props = init && typeof init === "object" && !Array.isArray(init) ? { ...init } : {};
+  const children = childArgs && childArgs.length > 0 ? childArgs : props.children;
+
+  if (type === UI_FRAGMENT) {
+    return normalizeChildren(children);
+  }
+  if (typeof type === "function") {
+    return type({ ...props, children: normalizeChildren(children) });
+  }
+  if (typeof type !== "string" || type.length === 0) {
+    throw new TypeError("ui.createElement(type, ...) expects a UI node type string, ui.Fragment, or component function.");
+  }
+
+  if (type === "text" && props.text === undefined) {
+    const text = primitiveText(children);
+    if (text !== undefined) {
+      props.text = text;
+      props.children = [];
+      return normalize(type, props);
+    }
+  }
+  props.children = children;
+  return normalize(type, props);
 }

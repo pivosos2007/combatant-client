@@ -111,51 +111,75 @@ public final class UiShapeRenderer {
         return (aa << 24) | (rr << 16) | (gg << 8) | bb;
     }
 
+    private static UiVectorSpace vectorSpace(UiProps props, UiVectorSpace vector) {
+        if (vector == null || props == null) return null;
+        String coordinates = props.string("coordinateSpace", "viewBox").trim().toLowerCase(Locale.ROOT);
+        return coordinates.equals("local") || coordinates.equals("bounds") ? null : vector;
+    }
+
+    private static UiBounds vectorPrimitiveBounds(UiProps props, UiVectorSpace vector, UiBounds fallback) {
+        if (vector == null || props == null) return fallback;
+        Object rawX = props.get("vectorX");
+        Object rawY = props.get("vectorY");
+        Object rawW = props.get("vectorWidth");
+        Object rawH = props.get("vectorHeight");
+        if (rawX == null || rawY == null || rawW == null || rawH == null) return fallback;
+        return vector.logicalRect(
+                number(rawX, 0.0f),
+                number(rawY, 0.0f),
+                Math.max(0.0f, number(rawW, 0.0f)),
+                Math.max(0.0f, number(rawH, 0.0f))
+        );
+    }
+
     private static float clamp01(float value) {
         if (value < 0.0f) return 0.0f;
         if (value > 1.0f) return 1.0f;
         return value;
     }
 
-    public void render(UiNode node, UiRenderContext context) {
-        if (node == null || context == null || context.renderer() == null) return;
-        UiBounds bounds = node.bounds();
-        if (bounds.width() <= 0.0f || bounds.height() <= 0.0f) return;
+    public void render(UiNode node, UiBounds logicalBounds, UiRenderContext context) {
+        if (node == null || logicalBounds == null || context == null || context.renderer() == null) return;
+        if (logicalBounds.width() <= 0.0f || logicalBounds.height() <= 0.0f) return;
         float alpha = context.alpha();
         if (alpha <= 0.001f) return;
-        renderShapeInternal(node, context, bounds, alpha);
+        renderShapeInternal(node, context, logicalBounds, alpha);
     }
 
-    private void renderShapeInternal(UiNode node, UiRenderContext context, UiBounds bounds, float alpha) {
+    private void renderShapeInternal(UiNode node, UiRenderContext context, UiBounds logicalBounds, float alpha) {
         UiProps props = node.props();
         UiStyle style = node.style();
         Renderer2D renderer = context.renderer();
         String shape = props.string("shape", "chamfered").toLowerCase(Locale.ROOT);
+        UiVectorSpace vector = vectorSpace(props, context.vectorSpace());
+        UiBounds primitiveLogicalBounds = vectorPrimitiveBounds(props, vector, logicalBounds);
+        UiBounds bounds = context.renderBounds(primitiveLogicalBounds);
         int fill = UiRenderColors.applyAlpha(UiReactiveVisual.color(node, "fill", style.backgroundColor() != null ? style.backgroundColor() : 0x00000000), alpha);
         int stroke = UiRenderColors.applyAlpha(UiReactiveVisual.color(node, "stroke", style.strokeColor() != null ? style.strokeColor() : 0x00000000), alpha);
-        float strokeWidth = props.number("strokeWidth", style.strokeWidth());
+        float strokeWidth = context.renderLength(props.number("strokeWidth", style.strokeWidth()));
         double x = bounds.x();
         double y = bounds.y();
-        double w = Math.max(0.0, props.number("renderWidth", bounds.width()));
-        double h = Math.max(0.0, props.number("renderHeight", bounds.height()));
-        double cut = props.number("cut", props.number("chamfer", style.radius()));
-        double cutTL = chamferCorner(props, "TL", "TopLeft", (float) cut);
-        double cutTR = chamferCorner(props, "TR", "TopRight", (float) cut);
-        double cutBR = chamferCorner(props, "BR", "BottomRight", (float) cut);
-        double cutBL = chamferCorner(props, "BL", "BottomLeft", (float) cut);
+        double w = Math.max(0.0, context.renderLength(props.number("renderWidth", primitiveLogicalBounds.width())));
+        double h = Math.max(0.0, context.renderLength(props.number("renderHeight", primitiveLogicalBounds.height())));
+        float logicalCut = props.number("cut", props.number("chamfer", style.radius()));
+        double cut = context.renderLength(logicalCut);
+        double cutTL = context.renderLength(chamferCorner(props, "TL", "TopLeft", logicalCut));
+        double cutTR = context.renderLength(chamferCorner(props, "TR", "TopRight", logicalCut));
+        double cutBR = context.renderLength(chamferCorner(props, "BR", "BottomRight", logicalCut));
+        double cutBL = context.renderLength(chamferCorner(props, "BL", "BottomLeft", logicalCut));
         boolean linearGradient = hasLinearGradient(props);
         int gradientStart = resolveColor(props.get("startColor"), fill, alpha);
         int gradientEnd = resolveColor(props.get("endColor"), fill, alpha);
         float gradientAngle = props.number("angle", 90.0f);
-        float gradientOffset = props.number("offset", 0.0f);
+        float gradientOffset = context.renderLength(props.number("offset", 0.0f));
 
         boolean primitiveShape = UiShapeGeometry.isPrimitiveShape(shape);
         boolean compoundShape = UiShapeGeometry.isCompoundShape(shape);
         // Blur only shapes supported by the blur mask family.
-        if (!primitiveShape && !compoundShape) renderShapeBlur(renderer, props, style, shape, x, y, w, h, cut, alpha);
+        if (!primitiveShape && !compoundShape) renderShapeBlur(renderer, props, style, shape, x, y, w, h, cut, alpha, context);
 
         if (compoundShape) {
-            UiCompoundSdf compound = UiShapeGeometry.buildCompoundSdf(props, shape, x, y, w, h);
+            UiCompoundSdf compound = UiShapeGeometry.buildCompoundSdf(props, shape, x, y, w, h, context.transform().scale());
             if (props.bool("liquidGlass", style.liquidGlass())) {
                 UiBackdropRuntime.drawLiquidGlass(renderer, props, () ->
                         renderer.liquidGlassCompound(
@@ -171,14 +195,14 @@ public final class UiShapeRenderer {
                 renderer.compoundSdf(compound, fillPaint);
             }
             if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
-                renderer.compoundSdfStroke(compound, buildStrokePaint(props, stroke, gradientAngle, gradientOffset, alpha),
+                renderer.compoundSdfStroke(compound, buildStrokePaint(props, stroke, gradientAngle, gradientOffset, alpha, context),
                         UiStroke.of(strokeWidth));
             }
             return;
         }
 
         if (primitiveShape) {
-            UiPrimitive primitive = UiShapeGeometry.buildPrimitive(props, style, shape, x, y, w, h);
+            UiPrimitive primitive = UiShapeGeometry.buildPrimitive(props, style, shape, x, y, w, h, context.transform().scale());
             if (props.bool("liquidGlass", style.liquidGlass())) {
                 UiBackdropRuntime.drawLiquidGlass(renderer, props, () -> {
                     int glassTint = resolveColor(props.get("glassTint"), 0xFFFFFFFF, alpha);
@@ -191,7 +215,7 @@ public final class UiShapeRenderer {
                         // Rounded/corner-authored RECT primitives can lower to >8 polygon points.
                         // Do not let scripted UI take down the whole surface: preserve the
                         // intended rectangular glass through the dedicated analytic rect path.
-                        float radius = Math.max(0.0f, props.number("radius", style.radius()));
+                        float radius = Math.max(0.0f, context.renderLength(props.number("radius", style.radius())));
                         float rounding = Math.max(radius, primitive.rounding());
                         renderer.liquidGlassRect(x, y, w, h, rounding,
                                 glassTint, glassAlpha, blurAlpha, preset);
@@ -203,20 +227,20 @@ public final class UiShapeRenderer {
                 renderer.primitive(primitive, fillPaint);
             }
             if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
-                renderer.primitiveStroke(primitive, buildStrokePaint(props, stroke, gradientAngle, gradientOffset, alpha),
+                renderer.primitiveStroke(primitive, buildStrokePaint(props, stroke, gradientAngle, gradientOffset, alpha, context),
                         UiStroke.of(strokeWidth));
             }
             return;
         }
 
         if (UiShapeGeometry.isBoxShape(shape, props)) {
-            UiBoxShape boxShape = UiShapeGeometry.buildBoxShape(props, style, shape, x, y, w, h);
+            UiBoxShape boxShape = UiShapeGeometry.buildBoxShape(props, style, shape, x, y, w, h, context.transform().scale());
             UiPaint fillPaint = buildPaint(props, fill, linearGradient, gradientStart, gradientEnd, gradientAngle, gradientOffset, alpha);
             if ((fillPaint.solidColor() >>> 24) > 0 || linearGradient || hasFillCornerColors(props)) {
                 renderer.box(boxShape, fillPaint);
             }
             if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
-                UiPaint strokePaint = buildStrokePaint(props, stroke, gradientAngle, gradientOffset, alpha);
+                UiPaint strokePaint = buildStrokePaint(props, stroke, gradientAngle, gradientOffset, alpha, context);
                 renderer.boxStroke(boxShape, strokePaint, UiStroke.of(strokeWidth));
             }
             return;
@@ -224,8 +248,8 @@ public final class UiShapeRenderer {
 
         switch (shape) {
             case "rounded-soft-shadow", "rounded_soft_shadow", "soft-shadow", "soft_shadow" -> {
-                float radius = props.number("radius", style.radius());
-                float blur = props.number("blur", props.number("shadowBlur", 8.0f));
+                float radius = context.renderLength(props.number("radius", style.radius()));
+                float blur = context.renderLength(props.number("blur", props.number("shadowBlur", 8.0f)));
                 float innerAlpha = props.number("innerAlpha", props.number("shadowInnerAlpha", 0.18f));
                 int color = resolveColor(props.get("color"), fill, alpha);
                 if ((color >>> 24) > 0 && blur > 0.0f) {
@@ -234,9 +258,9 @@ public final class UiShapeRenderer {
                 return;
             }
             case "rounded-shadow", "rounded_shadow", "shadow" -> {
-                float radius = props.number("radius", style.radius());
-                float softness = props.number("softness", 8.0f);
-                float spread = props.number("spread", 12.0f);
+                float radius = context.renderLength(props.number("radius", style.radius()));
+                float softness = context.renderLength(props.number("softness", 8.0f));
+                float spread = context.renderLength(props.number("spread", 12.0f));
                 int color = resolveColor(props.get("color"), fill, alpha);
                 if ((color >>> 24) > 0) {
                     renderer.roundedRectShadow(x, y, w, h, radius, softness, spread, color);
@@ -244,9 +268,9 @@ public final class UiShapeRenderer {
                 return;
             }
             case "rounded-glow", "rounded_glow", "glow" -> {
-                float radius = props.number("radius", style.radius());
-                float softness = props.number("softness", 0.0f);
-                float glow = props.number("glow", props.number("spread", 8.0f));
+                float radius = context.renderLength(props.number("radius", style.radius()));
+                float softness = context.renderLength(props.number("softness", 0.0f));
+                float glow = context.renderLength(props.number("glow", props.number("spread", 8.0f)));
                 int color = resolveColor(props.get("color"), fill, alpha);
                 if ((color >>> 24) > 0 && glow > 0.0f) {
                     renderer.roundedRectGlow(x, y, w, h, radius, softness, glow, color);
@@ -254,11 +278,11 @@ public final class UiShapeRenderer {
                 return;
             }
             case "radial-glow-masked", "radial_glow_masked", "radial-glow", "radial_glow" -> {
-                float radius = props.number("radius", style.radius());
-                float softness = props.number("softness", 0.0f);
-                float glowRadius = props.number("glowRadius", props.number("glow", (float) Math.max(w, h) * 0.5f));
-                float cx = props.number("cx", (float) (w * 0.5));
-                float cy = props.number("cy", (float) (h * 0.5));
+                float radius = context.renderLength(props.number("radius", style.radius()));
+                float softness = context.renderLength(props.number("softness", 0.0f));
+                float glowRadius = context.renderLength(props.number("glowRadius", props.number("glow", Math.max(logicalBounds.width(), logicalBounds.height()) * 0.5f)));
+                float cx = context.renderLength(props.number("cx", logicalBounds.width() * 0.5f));
+                float cy = context.renderLength(props.number("cy", logicalBounds.height() * 0.5f));
                 int color = resolveColor(props.get("color"), fill, alpha);
                 if ((color >>> 24) > 0 && glowRadius > 0.0f) {
                     renderer.radialGlowMasked(x, y, w, h, radius, softness, glowRadius, (float) x + cx, (float) y + cy, color);
@@ -266,8 +290,8 @@ public final class UiShapeRenderer {
                 return;
             }
             case "rounded-gradient-quad", "rounded_gradient_quad", "rounded-quad-gradient", "rounded_quad_gradient" -> {
-                float radius = props.number("radius", style.radius());
-                float softness = props.number("softness", 0.0f);
+                float radius = context.renderLength(props.number("radius", style.radius()));
+                float softness = context.renderLength(props.number("softness", 0.0f));
                 renderer.roundedRectGradientQuad(x, y, w, h, radius, softness,
                         resolveColor(first(props, "topLeftColor", "cTopLeft"), gradientStart, alpha),
                         resolveColor(first(props, "topRightColor", "cTopRight"), gradientEnd, alpha),
@@ -276,23 +300,28 @@ public final class UiShapeRenderer {
                 return;
             }
             case "rounded-stroke-gradient", "rounded_stroke_gradient" -> {
-                float radius = props.number("radius", style.radius());
-                float softness = props.number("softness", 0.0f);
-                float thickness = props.number("thickness", Math.max(1.0f, strokeWidth));
+                float radius = context.renderLength(props.number("radius", style.radius()));
+                float softness = context.renderLength(props.number("softness", 0.0f));
+                float thickness = context.renderLength(props.number("thickness", Math.max(1.0f, style.strokeWidth())));
                 int start = resolveColor(props.get("startColor"), resolveColor(props.get("strokeStartColor"), stroke, alpha), alpha);
                 int end = resolveColor(props.get("endColor"), resolveColor(props.get("strokeEndColor"), stroke, alpha), alpha);
                 if (((start | end) >>> 24) > 0 && thickness > 0.0f) {
                     renderer.roundedRectStrokeGradient(x, y, w, h, radius, softness, thickness,
                             start, end, props.number("angle", props.number("strokeAngle", 90.0f)),
-                            props.number("offset", props.number("strokeOffset", 0.0f)));
+                            props.get("offset") != null ? context.renderLength(props.number("offset", 0.0f)) : context.renderLength(props.number("strokeOffset", 0.0f)));
                 }
                 return;
             }
             case "circle-soft-shadow", "circle_soft_shadow" -> {
-                double radius = props.number("radius", (float) (Math.min(w, h) * 0.5));
-                double cx = x + props.number("cx", (float) (w * 0.5));
-                double cy = y + props.number("cy", (float) (h * 0.5));
-                float blur = props.number("blur", props.number("shadowBlur", 7.0f));
+                double radius = context.renderLength(props.number("radius",
+                        vector != null ? 2.0f : Math.min(logicalBounds.width(), logicalBounds.height()) * 0.5f));
+                double cx = vector != null
+                        ? context.renderVectorX(props.number("cx", (float) (vector.minX() + vector.width() * 0.5)))
+                        : x + context.renderLength(props.number("cx", logicalBounds.width() * 0.5f));
+                double cy = vector != null
+                        ? context.renderVectorY(props.number("cy", (float) (vector.minY() + vector.height() * 0.5)))
+                        : y + context.renderLength(props.number("cy", logicalBounds.height() * 0.5f));
+                float blur = context.renderLength(props.number("blur", props.number("shadowBlur", 7.0f)));
                 float innerAlpha = props.number("innerAlpha", props.number("shadowInnerAlpha", 0.34f));
                 int color = resolveColor(props.get("color"), fill, alpha);
                 if ((color >>> 24) > 0 && radius > 0.0 && blur > 0.0f) {
@@ -321,7 +350,7 @@ public final class UiShapeRenderer {
                 } else if (((start | end) >>> 24) > 0) {
                     renderer.quadGradientLinear(x, y, w, h, start, end,
                             props.number("angle", 0.0f),
-                            props.number("offset", 0.0f));
+                            context.renderLength(props.number("offset", 0.0f)));
                 }
                 if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
                     if (hasStrokeCornerColors(props)) {
@@ -335,13 +364,13 @@ public final class UiShapeRenderer {
                                 resolveColor(props.get("strokeStartColor"), stroke, alpha),
                                 resolveColor(props.get("strokeEndColor"), stroke, alpha),
                                 props.number("strokeAngle", props.number("angle", 0.0f)),
-                                props.number("strokeOffset", props.number("offset", 0.0f)));
+                                props.get("strokeOffset") != null ? context.renderLength(props.number("strokeOffset", 0.0f)) : context.renderLength(props.number("offset", 0.0f)));
                     }
                 }
                 return;
             }
             case "rounded", "rounded-rect", "rounded_rect" -> {
-                float radius = props.number("radius", style.radius());
+                float radius = context.renderLength(props.number("radius", style.radius()));
                 if ((fill >>> 24) > 0) {
                     renderer.roundedRect(x, y, w, h, radius, fill);
                 }
@@ -351,7 +380,7 @@ public final class UiShapeRenderer {
                 return;
             }
             case "rounded-gradient", "rounded_gradient", "rounded-rect-gradient", "rounded_rect_gradient" -> {
-                float radius = props.number("radius", style.radius());
+                float radius = context.renderLength(props.number("radius", style.radius()));
                 int start = resolveColor(props.get("startColor"), fill, alpha);
                 int end = resolveColor(props.get("endColor"), fill, alpha);
                 if (hasFillCornerColors(props)) {
@@ -363,7 +392,7 @@ public final class UiShapeRenderer {
                 } else if (((start | end) >>> 24) > 0) {
                     renderer.roundedRectGradient(x, y, w, h, radius, start, end,
                             props.number("angle", 90.0f),
-                            props.number("offset", 0.0f));
+                            context.renderLength(props.number("offset", 0.0f)));
                 }
                 if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
                     if (hasStrokeCornerColors(props)) {
@@ -377,14 +406,14 @@ public final class UiShapeRenderer {
                                 resolveColor(props.get("strokeStartColor"), stroke, alpha),
                                 resolveColor(props.get("strokeEndColor"), stroke, alpha),
                                 props.number("strokeAngle", props.number("angle", 90.0f)),
-                                props.number("strokeOffset", props.number("offset", 0.0f)));
+                                props.get("strokeOffset") != null ? context.renderLength(props.number("strokeOffset", 0.0f)) : context.renderLength(props.number("offset", 0.0f)));
                     }
                 }
                 return;
             }
             case "rounded-progress-gradient", "rounded_progress_gradient", "progress-rounded-gradient",
                 "progress_rounded_gradient" -> {
-                float radius = props.number("radius", style.radius());
+                float radius = context.renderLength(props.number("radius", style.radius()));
                 float progress = props.number("progress", 1.0f);
                 boolean fromRight = props.bool("fromRight", false) || "right".equals(props.string("direction", ""));
                 int start = resolveColor(props.get("startColor"), fill, alpha);
@@ -394,12 +423,12 @@ public final class UiShapeRenderer {
                             start,
                             end,
                             props.number("angle", 0.0f),
-                            props.number("offset", 0.0f));
+                            context.renderLength(props.number("offset", 0.0f)));
                 }
                 return;
             }
             case "rounded-smoke-fill", "rounded_smoke_fill", "smoke-fill", "smoke_fill" -> {
-                float radius = props.number("radius", style.radius());
+                float radius = context.renderLength(props.number("radius", style.radius()));
                 float fillRatio = props.number("fillRatio", props.number("progress", 1.0f));
                 boolean fromRight = props.bool("fromRight", false) || "right".equals(props.string("direction", ""));
                 int first = resolveColor(first(props, "firstColor", "startColor"), fill, alpha);
@@ -426,11 +455,11 @@ public final class UiShapeRenderer {
                 return;
             }
             case "rounded-corners", "rounded_corners", "rounded-rect-corners", "rounded_rect_corners" -> {
-                float radius = props.number("radius", style.radius());
-                float radiusTL = props.number("radiusTL", radius);
-                float radiusTR = props.number("radiusTR", radius);
-                float radiusBR = props.number("radiusBR", radius);
-                float radiusBL = props.number("radiusBL", radius);
+                float radius = context.renderLength(props.number("radius", style.radius()));
+                float radiusTL = props.get("radiusTL") != null ? context.renderLength(props.number("radiusTL", 0.0f)) : radius;
+                float radiusTR = props.get("radiusTR") != null ? context.renderLength(props.number("radiusTR", 0.0f)) : radius;
+                float radiusBR = props.get("radiusBR") != null ? context.renderLength(props.number("radiusBR", 0.0f)) : radius;
+                float radiusBL = props.get("radiusBL") != null ? context.renderLength(props.number("radiusBL", 0.0f)) : radius;
                 if (hasFillCornerColors(props)) {
                     renderer.roundedRectCornersQuad(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL,
                             resolveColor(first(props, "topLeftColor", "cTopLeft"), gradientStart, alpha),
@@ -455,9 +484,14 @@ public final class UiShapeRenderer {
                 return;
             }
             case "circle" -> {
-                double radius = props.number("radius", (float) (Math.min(w, h) * 0.5));
-                double cx = x + props.number("cx", (float) (w * 0.5));
-                double cy = y + props.number("cy", (float) (h * 0.5));
+                double radius = context.renderLength(props.number("radius",
+                        vector != null ? 2.0f : Math.min(logicalBounds.width(), logicalBounds.height()) * 0.5f));
+                double cx = vector != null
+                        ? context.renderVectorX(props.number("cx", (float) (vector.minX() + vector.width() * 0.5)))
+                        : x + context.renderLength(props.number("cx", logicalBounds.width() * 0.5f));
+                double cy = vector != null
+                        ? context.renderVectorY(props.number("cy", (float) (vector.minY() + vector.height() * 0.5)))
+                        : y + context.renderLength(props.number("cy", logicalBounds.height() * 0.5f));
                 if ((fill >>> 24) > 0) {
                     renderer.circle(cx, cy, radius, fill);
                 }
@@ -467,10 +501,15 @@ public final class UiShapeRenderer {
                 return;
             }
             case "circle-stroke", "circle_stroke", "ring" -> {
-                double radius = props.number("radius", (float) (Math.min(w, h) * 0.5));
-                double cx = x + props.number("cx", (float) (w * 0.5));
-                double cy = y + props.number("cy", (float) (h * 0.5));
-                float thickness = props.number("thickness", Math.max(1.0f, strokeWidth));
+                double radius = context.renderLength(props.number("radius",
+                        vector != null ? 2.0f : Math.min(logicalBounds.width(), logicalBounds.height()) * 0.5f));
+                double cx = vector != null
+                        ? context.renderVectorX(props.number("cx", (float) (vector.minX() + vector.width() * 0.5)))
+                        : x + context.renderLength(props.number("cx", logicalBounds.width() * 0.5f));
+                double cy = vector != null
+                        ? context.renderVectorY(props.number("cy", (float) (vector.minY() + vector.height() * 0.5)))
+                        : y + context.renderLength(props.number("cy", logicalBounds.height() * 0.5f));
+                float thickness = context.renderLength(props.number("thickness", Math.max(1.0f, style.strokeWidth())));
                 int color = (stroke >>> 24) > 0 ? stroke : fill;
                 if ((color >>> 24) > 0 && thickness > 0.0f) {
                     renderer.circleStroke(cx, cy, radius, thickness, color);
@@ -478,10 +517,18 @@ public final class UiShapeRenderer {
                 return;
             }
             case "arc", "arc-stroke", "arc_stroke", "arc-flat", "arc_flat", "arc-gradient", "arc_gradient", "arc-hash", "arc_hash" -> {
-                float thickness = props.number("thickness", Math.max(1.0f, strokeWidth));
-                double radius = props.number("radius", (float) Math.max(0.0, Math.min(w, h) * 0.5 - thickness * 0.5));
-                double cx = x + props.number("cx", (float) (w * 0.5));
-                double cy = y + props.number("cy", (float) (h * 0.5));
+                float authoredThickness = props.number("thickness", Math.max(1.0f, style.strokeWidth()));
+                float thickness = context.renderLength(authoredThickness);
+                float defaultRadius = vector != null
+                        ? 2.0f
+                        : Math.max(0.0f, Math.min(logicalBounds.width(), logicalBounds.height()) * 0.5f - authoredThickness * 0.5f);
+                double radius = context.renderLength(props.number("radius", defaultRadius));
+                double cx = vector != null
+                        ? context.renderVectorX(props.number("cx", (float) (vector.minX() + vector.width() * 0.5)))
+                        : x + context.renderLength(props.number("cx", logicalBounds.width() * 0.5f));
+                double cy = vector != null
+                        ? context.renderVectorY(props.number("cy", (float) (vector.minY() + vector.height() * 0.5)))
+                        : y + context.renderLength(props.number("cy", logicalBounds.height() * 0.5f));
                 float startAngle = props.number("startAngle", 0.0f);
                 float endAngle = props.number("endAngle", 360.0f);
                 int color = (stroke >>> 24) > 0 ? stroke : fill;
@@ -493,13 +540,13 @@ public final class UiShapeRenderer {
                     if (((start | end) >>> 24) > 0) {
                         if (shape.equals("arc-hash") || shape.equals("arc_hash")) {
                             renderer.arcStrokeHashedGradient(cx, cy, radius, thickness, startAngle, endAngle,
-                                    props.number("softness", 0.0f),
-                                    start, end, props.number("angle", 0.0f), props.number("offset", 0.0f),
+                                    context.renderLength(props.number("softness", 0.0f)),
+                                    start, end, props.number("angle", 0.0f), context.renderLength(props.number("offset", 0.0f)),
                                     props.number("hashTime", 0.0f));
                         } else {
                             renderer.arcStrokeGradient(cx, cy, radius, thickness, startAngle, endAngle,
-                                    props.number("softness", 0.0f),
-                                    start, end, props.number("angle", 0.0f), props.number("offset", 0.0f));
+                                    context.renderLength(props.number("softness", 0.0f)),
+                                    start, end, props.number("angle", 0.0f), context.renderLength(props.number("offset", 0.0f)));
                         }
                     }
                 } else if ((color >>> 24) > 0) {
@@ -519,7 +566,7 @@ public final class UiShapeRenderer {
                     if (linearGradient) {
                         renderer.beveledRectGradient(
                                 x, y, w, h,
-                                props.number("bevel", (float) cut),
+                                props.get("bevel") != null ? context.renderLength(props.number("bevel", 0.0f)) : (float) cut,
                                 gradientStart,
                                 gradientEnd,
                                 resolveColor(props.get("highlight"), UiRenderColors.lighten(gradientStart, 0.20f), alpha),
@@ -530,7 +577,7 @@ public final class UiShapeRenderer {
                     } else {
                         renderer.beveledRect(
                                 x, y, w, h,
-                                props.number("bevel", (float) cut),
+                                props.get("bevel") != null ? context.renderLength(props.number("bevel", 0.0f)) : (float) cut,
                                 fill,
                                 resolveColor(props.get("highlight"), UiRenderColors.lighten(fill, 0.20f), alpha),
                                 resolveColor(props.get("shadow"), UiRenderColors.darken(fill, 0.24f), alpha)
@@ -538,8 +585,8 @@ public final class UiShapeRenderer {
                     }
                 }
                 case "notched", "notch" -> {
-                    double notchWidth = props.number("notchWidth", (float) Math.min(w * 0.18, 18.0));
-                    double notchDepth = props.number("notchDepth", (float) Math.min(h * 0.28, 8.0));
+                    double notchWidth = context.renderLength(props.number("notchWidth", Math.min(logicalBounds.width() * 0.18f, 18.0f)));
+                    double notchDepth = context.renderLength(props.number("notchDepth", Math.min(logicalBounds.height() * 0.28f, 8.0f)));
                     if (linearGradient) {
                         renderer.notchedRectGradient(x, y, w, h, notchWidth, notchDepth,
                                 gradientStart, gradientEnd, gradientAngle, gradientOffset);
@@ -572,20 +619,20 @@ public final class UiShapeRenderer {
             int strokeStart = resolveColor(props.get("strokeStartColor"), stroke, alpha);
             int strokeEnd = resolveColor(props.get("strokeEndColor"), stroke, alpha);
             float strokeAngle = props.number("strokeAngle", gradientAngle);
-            float strokeOffset = props.number("strokeOffset", gradientOffset);
+            float strokeOffset = props.get("strokeOffset") != null ? context.renderLength(props.number("strokeOffset", 0.0f)) : gradientOffset;
             boolean strokeGradient = hasStrokeLinearGradient(props) || linearGradient;
             switch (shape) {
                 case "beveled", "bevel" -> {
                     if (strokeGradient) {
-                        renderer.beveledRectStrokeGradient(x, y, w, h, props.number("bevel", (float) cut), strokeWidth,
+                        renderer.beveledRectStrokeGradient(x, y, w, h, props.get("bevel") != null ? context.renderLength(props.number("bevel", 0.0f)) : (float) cut, strokeWidth,
                                 strokeStart, strokeEnd, strokeAngle, strokeOffset);
                     } else {
-                        renderer.beveledRectStroke(x, y, w, h, props.number("bevel", (float) cut), strokeWidth, stroke);
+                        renderer.beveledRectStroke(x, y, w, h, props.get("bevel") != null ? context.renderLength(props.number("bevel", 0.0f)) : (float) cut, strokeWidth, stroke);
                     }
                 }
                 case "notched", "notch" -> {
-                    double notchWidth = props.number("notchWidth", (float) Math.min(w * 0.18, 18.0));
-                    double notchDepth = props.number("notchDepth", (float) Math.min(h * 0.28, 8.0));
+                    double notchWidth = context.renderLength(props.number("notchWidth", Math.min(logicalBounds.width() * 0.18f, 18.0f)));
+                    double notchDepth = context.renderLength(props.number("notchDepth", Math.min(logicalBounds.height() * 0.28f, 8.0f)));
                     if (strokeGradient) {
                         renderer.notchedRectStrokeGradient(x, y, w, h, notchWidth, notchDepth, strokeWidth,
                                 strokeStart, strokeEnd, strokeAngle, strokeOffset);
@@ -633,7 +680,7 @@ public final class UiShapeRenderer {
     }
 
     private UiPaint buildStrokePaint(UiProps props, int stroke, float gradientAngle, float gradientOffset,
-                                     float alpha) {
+                                     float alpha, UiRenderContext context) {
         if (hasStrokeCornerColors(props)) {
             return UiPaint.corners(
                     resolveColor(props.get("strokeTopLeftColor"), stroke, alpha),
@@ -647,7 +694,9 @@ public final class UiShapeRenderer {
                     resolveColor(props.get("strokeStartColor"), resolveColor(props.get("startColor"), stroke, alpha), alpha),
                     resolveColor(props.get("strokeEndColor"), resolveColor(props.get("endColor"), stroke, alpha), alpha),
                     props.number("strokeAngle", props.number("angle", gradientAngle)),
-                    props.number("strokeOffset", props.number("offset", gradientOffset))
+                    props.get("strokeOffset") != null
+                            ? context.renderLength(props.number("strokeOffset", 0.0f))
+                            : (props.get("offset") != null ? context.renderLength(props.number("offset", 0.0f)) : gradientOffset)
             );
         }
         return UiPaint.solid(stroke);
@@ -666,7 +715,8 @@ public final class UiShapeRenderer {
                                  double w,
                                  double h,
                                  double cut,
-                                 float alpha) {
+                                 float alpha,
+                                 UiRenderContext context) {
         if (!props.bool("blur", false)) return;
         float quality = props.number("blurQuality", style.blurQuality());
         float brightness = props.number("blurBrightness", style.blurBrightness());
@@ -687,18 +737,18 @@ public final class UiShapeRenderer {
             }
             case "rounded", "round" -> renderer.blurRect(
                     x, y, w, h,
-                    props.number("radius", style.radius()),
+                    context.renderLength(props.number("radius", style.radius())),
                     quality,
                     brightness,
                     blurAlpha,
                     0xFFFFFF
             );
             case "rounded-corners", "rounded_corners" -> {
-                float radius = props.number("radius", style.radius());
-                float radiusTL = props.number("radiusTL", radius);
-                float radiusTR = props.number("radiusTR", radius);
-                float radiusBR = props.number("radiusBR", radius);
-                float radiusBL = props.number("radiusBL", radius);
+                float radius = context.renderLength(props.number("radius", style.radius()));
+                float radiusTL = props.get("radiusTL") != null ? context.renderLength(props.number("radiusTL", 0.0f)) : radius;
+                float radiusTR = props.get("radiusTR") != null ? context.renderLength(props.number("radiusTR", 0.0f)) : radius;
+                float radiusBR = props.get("radiusBR") != null ? context.renderLength(props.number("radiusBR", 0.0f)) : radius;
+                float radiusBL = props.get("radiusBL") != null ? context.renderLength(props.number("radiusBL", 0.0f)) : radius;
                 renderer.blurComposite(blur -> blur.roundedRectCorners(
                         x, y, w, h,
                         radiusTL, radiusTR, radiusBR, radiusBL,

@@ -73,6 +73,17 @@ public final class UiRenderer {
             UiBounds bounds = animatedBounds(node);
             boxRenderer.render(node, style, bounds, nodeContext);
 
+            UiRenderContext childContext = nodeContext;
+            if (node.type() == UiNodeType.VECTOR) {
+                UiBounds viewport = new UiBounds(
+                        bounds.x() + style.paddingLeft(),
+                        bounds.y() + style.paddingTop(),
+                        Math.max(0.0f, bounds.width() - style.paddingX()),
+                        Math.max(0.0f, bounds.height() - style.paddingY())
+                );
+                childContext = nodeContext.withVectorSpace(UiVectorSpace.from(node.props(), viewport));
+            }
+
             boolean clipped = style.clip() || style.marquee();
             if (clipped) {
                 clipStack.push(bounds, nodeContext);
@@ -82,18 +93,18 @@ public final class UiRenderer {
                     case TEXT -> textNodeRenderer.render(node, bounds, style, nodeContext);
                     case IMAGE, SVG -> {
                         UiAssetRef asset = assetResolver.resolve(node.props());
-                        imageRenderer.render(node, asset, nodeContext);
+                        imageRenderer.render(node, asset, bounds, nodeContext);
                     }
-                    case SHAPE -> shapeRenderer.render(node, nodeContext);
-                    case CONNECTOR -> connectorRenderer.render(node, nodeContext);
-                    case PATH -> pathNodeRenderer.render(node, nodeContext);
-                    case ITEM -> itemRenderer.render(node, nodeContext);
+                    case SHAPE -> shapeRenderer.render(node, bounds, nodeContext);
+                    case CONNECTOR -> connectorRenderer.render(node, bounds, nodeContext);
+                    case PATH -> pathNodeRenderer.render(node, bounds, nodeContext);
+                    case ITEM -> itemRenderer.render(node, bounds, nodeContext);
                     default -> {
                     }
                 }
 
                 for (UiNode child : node.children()) {
-                    renderNode(child, nodeContext);
+                    renderNode(child, childContext);
                 }
                 if (node.type() == UiNodeType.SCROLL) {
                     scrollbarRenderer.render(node, nodeContext);

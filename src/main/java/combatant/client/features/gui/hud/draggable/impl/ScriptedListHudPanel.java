@@ -240,23 +240,26 @@ final class ScriptedListHudPanel {
 
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
         LinkedHashMap<String, Object> props = panel.toProps();
+        float logicalWidth = panel.logical(panel.width);
+        float logicalHeight = panel.logical(panel.height);
         UiRuntime baked = runtime.bake(
                 moduleHandle,
                 module,
                 panel.variant.id,
                 panel.treeSignature(),
-                panel.width,
-                panel.height,
+                logicalWidth,
+                logicalHeight,
                 fallback,
-                panel.x,
-                panel.y,
-                panel.width,
-                panel.height,
+                0.0f,
+                0.0f,
+                logicalWidth,
+                logicalHeight,
                 () -> props,
                 panel::patches
         );
         if (baked == null) return false;
-        baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT));
+        baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT)
+                .at(panel.x, panel.y, panel.renderScale()));
         return true;
     }
 
@@ -324,8 +327,8 @@ final class ScriptedListHudPanel {
         }
     }
 
-    record Panel(Variant variant, Palette palette, float x, float y, float width, float height, float drawScale,
-                 float baseScale, float fontScale, float headerIconHeight, float headerTextHeight, float rowTextHeight,
+    record Panel(Variant variant, Palette palette, float x, float y, float width, float height, float renderScale,
+                 float fontScale, float headerIconHeight, float headerTextHeight, float rowTextHeight,
                  float countLabelWidth, float countValueWidth,
                  int activeCount, boolean blur, float blurAlpha, int headerIconColor,
                  boolean headerIconGradient, int headerIconGradientStart, int headerIconGradientEnd, float headerIconGradientAngle,
@@ -338,8 +341,7 @@ final class ScriptedListHudPanel {
               float y,
               float width,
               float height,
-              float drawScale,
-              float baseScale,
+              float renderScale,
               float fontScale,
               float headerIconHeight,
               float headerTextHeight,
@@ -368,8 +370,7 @@ final class ScriptedListHudPanel {
             this.y = y;
             this.width = width;
             this.height = height;
-            this.drawScale = drawScale;
-            this.baseScale = baseScale;
+            this.renderScale = Math.max(0.0001f, renderScale);
             this.fontScale = fontScale;
             this.headerIconHeight = headerIconHeight;
             this.headerTextHeight = headerTextHeight;
@@ -394,21 +395,56 @@ final class ScriptedListHudPanel {
             this.rows = rows != null ? rows : List.of();
         }
 
+        float logical(float renderValue) {
+            return renderValue / renderScale;
+        }
+
+        private List<LinkedHashMap<String, Object>> logicalRows() {
+            if (rows.isEmpty()) return List.of();
+            List<LinkedHashMap<String, Object>> normalized = new ArrayList<>(rows.size());
+            for (LinkedHashMap<String, Object> row : rows) {
+                LinkedHashMap<String, Object> copy = new LinkedHashMap<>(row);
+                Object rightTextWidth = copy.get("rightTextWidth");
+                if (rightTextWidth instanceof Number number) {
+                    copy.put("rightTextWidth", logical(number.floatValue()));
+                }
+                Object partsValue = copy.get("nameParts");
+                if (partsValue instanceof Object[] parts) {
+                    Object[] normalizedParts = new Object[parts.length];
+                    for (int i = 0; i < parts.length; i++) {
+                        Object partValue = parts[i];
+                        if (partValue instanceof Map<?, ?> part) {
+                            LinkedHashMap<String, Object> partCopy = new LinkedHashMap<>();
+                            for (Map.Entry<?, ?> entry : part.entrySet()) {
+                                if (entry.getKey() != null) partCopy.put(String.valueOf(entry.getKey()), entry.getValue());
+                            }
+                            Object x = partCopy.get("x");
+                            if (x instanceof Number number) partCopy.put("x", logical(number.floatValue()));
+                            normalizedParts[i] = partCopy;
+                        } else {
+                            normalizedParts[i] = partValue;
+                        }
+                    }
+                    copy.put("nameParts", normalizedParts);
+                }
+                normalized.add(copy);
+            }
+            return normalized;
+        }
+
         LinkedHashMap<String, Object> toProps() {
             LinkedHashMap<String, Object> out = new LinkedHashMap<>();
             out.put("id", variant.id);
             out.put("title", variant.title);
             out.put("headerIcon", variant.headerIcon);
-            out.put("width", width);
-            out.put("height", height);
-            out.put("drawScale", drawScale);
-            out.put("baseScale", baseScale);
-            out.put("fontSize", TextSizing.sizeForScale(fontScale));
-            out.put("headerIconHeight", headerIconHeight);
-            out.put("headerTextHeight", headerTextHeight);
-            out.put("rowTextHeight", rowTextHeight);
-            out.put("countLabelWidth", countLabelWidth);
-            out.put("countValueWidth", countValueWidth);
+            out.put("width", logical(width));
+            out.put("height", logical(height));
+            out.put("fontSize", TextSizing.sizeForScale(fontScale / renderScale()));
+            out.put("headerIconHeight", logical(headerIconHeight));
+            out.put("headerTextHeight", logical(headerTextHeight));
+            out.put("rowTextHeight", logical(rowTextHeight));
+            out.put("countLabelWidth", logical(countLabelWidth));
+            out.put("countValueWidth", logical(countValueWidth));
             out.put("activeCount", activeCount);
             out.put("blur", blur);
             out.put("blurAlpha", blurAlpha);
@@ -425,7 +461,7 @@ final class ScriptedListHudPanel {
             out.put("strokeEndColor", hex(strokeEndColor));
             out.put("shadowControlled", shadowControlled);
             out.put("palette", palette.toProps());
-            out.put("rows", rows.toArray());
+            out.put("rows", logicalRows().toArray());
             out.put("variant", variantProps());
             return out;
         }
@@ -454,16 +490,14 @@ final class ScriptedListHudPanel {
             h = CachedUiScriptRuntime.mix(h, variant.id);
             h = mixVariant(h);
             h = mixPalette(h);
-            h = CachedUiScriptRuntime.mix(h, width);
-            h = CachedUiScriptRuntime.mix(h, height);
-            h = CachedUiScriptRuntime.mix(h, drawScale);
-            h = CachedUiScriptRuntime.mix(h, baseScale);
-            h = CachedUiScriptRuntime.mix(h, fontScale);
-            h = CachedUiScriptRuntime.mix(h, headerIconHeight);
-            h = CachedUiScriptRuntime.mix(h, headerTextHeight);
-            h = CachedUiScriptRuntime.mix(h, rowTextHeight);
-            h = CachedUiScriptRuntime.mix(h, countLabelWidth);
-            h = CachedUiScriptRuntime.mix(h, countValueWidth);
+            h = CachedUiScriptRuntime.mix(h, logical(width));
+            h = CachedUiScriptRuntime.mix(h, logical(height));
+            h = CachedUiScriptRuntime.mix(h, TextSizing.sizeForScale(fontScale / renderScale()));
+            h = CachedUiScriptRuntime.mix(h, logical(headerIconHeight));
+            h = CachedUiScriptRuntime.mix(h, logical(headerTextHeight));
+            h = CachedUiScriptRuntime.mix(h, logical(rowTextHeight));
+            h = CachedUiScriptRuntime.mix(h, logical(countLabelWidth));
+            h = CachedUiScriptRuntime.mix(h, logical(countValueWidth));
             h = CachedUiScriptRuntime.mix(h, blur);
             h = CachedUiScriptRuntime.mix(h, blurAlpha);
             h = CachedUiScriptRuntime.mix(h, headerIconGradient);
@@ -485,14 +519,14 @@ final class ScriptedListHudPanel {
                 h = CachedUiScriptRuntime.mix(h, string(row.get("rightMode")));
                 h = CachedUiScriptRuntime.mix(h, string(row.get("rightText")).length());
                 h = CachedUiScriptRuntime.mix(h, Math.round(floatValue(row.get("layoutProgress")) * 100.0f));
-                h = CachedUiScriptRuntime.mix(h, Math.round(floatValue(row.get("rightTextWidth")) * 100.0f));
+                h = CachedUiScriptRuntime.mix(h, Math.round(logical(floatValue(row.get("rightTextWidth"))) * 100.0f));
                 Object partsValue = row.get("nameParts");
                 Object[] parts = partsValue instanceof Object[] arr ? arr : new Object[0];
                 h = CachedUiScriptRuntime.mix(h, parts.length);
                 for (Object partValue : parts) {
                     if (!(partValue instanceof Map<?, ?> part)) continue;
                     h = CachedUiScriptRuntime.mix(h, string(part.get("text")).length());
-                    h = CachedUiScriptRuntime.mix(h, floatValue(part.get("x")));
+                    h = CachedUiScriptRuntime.mix(h, logical(floatValue(part.get("x"))));
                 }
             }
             return h;

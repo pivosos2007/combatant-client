@@ -12,6 +12,7 @@ export type UiNodeType =
   | "row"
   | "column"
   | "stack"
+  | "vector"
   | "text"
   | "image"
   | "svg"
@@ -92,6 +93,9 @@ export type UiInlineStyle = {
   gap?: number;
   grow?: number;
   flexGrow?: number;
+  /** Explicit main-axis shrink weight. Default 0 preserves legacy fixed-size behavior. */
+  shrink?: number;
+  flexShrink?: number;
   /** Browser-like container flow. display:flex defaults to row; block maps to vertical flow. */
   display?: "flex" | "block";
   flexDirection?: "row" | "column";
@@ -153,6 +157,14 @@ export type UiInlineStyle = {
   textBackend?: string;
   maxTextWidth?: number;
   ellipsis?: boolean;
+  /** Text wrapping mode. nowrap preserves legacy single-line behavior; pre-wrap preserves authored spaces and line breaks. */
+  whiteSpace?: "nowrap" | "normal" | "pre-wrap";
+  /** Long-token wrapping policy used when whiteSpace allows wrapping. */
+  overflowWrap?: "normal" | "break-word" | "anywhere";
+  /** Maximum rendered line count. 0/undefined means unlimited. */
+  maxLines?: number;
+  /** Overflow handling for constrained text. */
+  textOverflow?: "clip" | "ellipsis";
   textAlign?: "left" | "center" | "right" | "end" | string;
   cursor?: string;
   blend?: string;
@@ -176,19 +188,54 @@ export type UiLayoutProps = {
   maxHeight?: number;
   /** Main-axis grow weight inside row/column layout. */
   grow?: number;
+  /** CSS/React-style alias for grow. */
+  flexGrow?: number;
+  /** Explicit main-axis shrink weight. */
+  shrink?: number;
+  /** CSS/React-style alias for shrink. */
+  flexShrink?: number;
   /** Browser-style flow aliases promoted into inline style. */
   display?: "flex" | "block";
   flexDirection?: "row" | "column";
+  /** Spacing fields use canonical logical UI units and are scaled once at paint time. */
+  padding?: number;
+  paddingX?: number;
+  paddingHorizontal?: number;
+  paddingY?: number;
+  paddingVertical?: number;
+  paddingLeft?: number;
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  margin?: number;
+  marginX?: number;
+  marginHorizontal?: number;
+  marginY?: number;
+  marginVertical?: number;
+  marginLeft?: number;
+  marginTop?: number;
+  marginRight?: number;
+  marginBottom?: number;
+  gap?: number;
+  /** Browser-style position alias. Only absolute removes the node from normal flow. */
+  position?: "absolute" | "relative" | "static" | "flow";
   /** Removes the node from normal parent flow and uses x/y offsets. */
   absolute?: boolean;
-  /** Absolute x offset inside parent content area. */
+  /** @deprecated Legacy absolute x alias. Prefer left. */
   x?: number;
-  /** Absolute y offset inside parent content area. */
+  /** @deprecated Legacy absolute y alias. Prefer top. */
   y?: number;
+  /** Canonical inset aliases. left/top override x/y when both are supplied. */
+  left?: number;
+  top?: number;
+  right?: number;
+  bottom?: number;
   /** Parent-controlled cross-axis alignment. left/right/top/bottom are web-style aliases. */
   align?: UiAlign | "left" | "right" | "top" | "bottom";
+  alignItems?: UiAlign | "left" | "right" | "top" | "bottom";
   /** Parent-controlled main-axis placement. */
   justify?: UiJustify;
+  justifyContent?: UiJustify | "left" | "right" | "top" | "bottom" | "space-between";
   /** Overflow and scroll behavior. */
   overflow?: UiOverflow;
 };
@@ -234,11 +281,41 @@ export type UiNode = {
   children?: UiNode[];
 } & UiLayoutProps;
 
+
+export type UiViewBox =
+  | string
+  | readonly [number, number, number, number]
+  | { x?: number; y?: number; minX?: number; minY?: number; width: number; height: number };
+
+/** Shared SVG/data coordinate container. Child vector primitives resolve against this viewBox. */
+export type UiVectorNode = UiNode & {
+  type: "vector";
+  viewBox?: UiViewBox;
+  viewBoxX?: number;
+  viewBoxY?: number;
+  viewBoxWidth?: number;
+  viewBoxHeight?: number;
+  /** SVG-like y-down by default; "up"/"cartesian" makes positive y point upward for charts. */
+  yAxis?: "down" | "up" | "cartesian" | "math";
+  coordinateSystem?: "down" | "up" | "cartesian" | "math";
+  /** ViewBox fit mode. "meet" fits uniformly, "slice" covers uniformly, "none" stretches X/Y independently. */
+  preserveAspectRatio?: string;
+  viewBoxAlign?: string;
+};
+
 /** Text node shape. */
 export type UiTextNode = Omit<UiNode, "align"> & {
   type: "text";
   /** Text content. */
   text?: string;
+  /** ViewBox-space text position inside ui.vector/ui.plot. Explicit by design: top-level x/y remain legacy layout aliases. */
+  vectorX?: number;
+  vectorY?: number;
+  /** Horizontal anchor for vector-positioned text. */
+  textAnchor?: "start" | "middle" | "center" | "end" | "right";
+  /** Vertical anchor for vector-positioned text. */
+  verticalAnchor?: "top" | "middle" | "center" | "bottom" | "end";
+  coordinateSpace?: "viewBox" | "local" | "bounds";
   /** Convenience alias promoted into style.fontSize. Uses logical UI units. */
   fontSize?: number;
   /** Convenience alias promoted into style.lineHeight. */
@@ -257,6 +334,10 @@ export type UiTextNode = Omit<UiNode, "align"> & {
   textAlign?: "left" | "center" | "right" | "end";
   /** Enables text shortening when maxTextWidth is set. */
   ellipsis?: boolean;
+  whiteSpace?: UiInlineStyle["whiteSpace"];
+  overflowWrap?: UiInlineStyle["overflowWrap"];
+  maxLines?: number;
+  textOverflow?: UiInlineStyle["textOverflow"];
   /** Enables clipping mode for scrolling/fading text behavior. */
   marquee?: boolean;
   /** Color of the compact phosphor bloom rendered behind the sharp glyphs. */
@@ -391,9 +472,15 @@ export type UiShapeNode = UiNode & {
     | "compound-sdf"
     | "compound_sdf"
     | "chamfered";
-  /** Local center x for circle and arc shapes. Defaults to half node width. */
+  /** Optional viewBox-space rectangle geometry when this shape is inside ui.vector/ui.plot. */
+  vectorX?: number;
+  vectorY?: number;
+  vectorWidth?: number;
+  vectorHeight?: number;
+  coordinateSpace?: "viewBox" | "local" | "bounds";
+  /** Local center x for circle and arc shapes. Inside a vector container this is a viewBox coordinate. */
   cx?: number;
-  /** Local center y for circle and arc shapes. Defaults to half node height. */
+  /** Local center y for circle and arc shapes. Inside a vector container this is a viewBox coordinate. */
   cy?: number;
   /** Radius for rounded rectangles, circles, and arcs. */
   radius?: number;
@@ -577,7 +664,7 @@ export type UiConnectorNode = UiNode & {
   closed?: boolean;
 };
 
-/** Generic vector path/series primitive. Coordinates are local to node bounds. */
+/** Generic vector path/series primitive. Inside ui.vector/ui.plot, coordinates resolve in the shared viewBox. */
 export type UiPathNode = UiNode & {
   type: "path";
   /** Explicit local points. Flat [x,y,...] and object point arrays are both accepted. */
@@ -586,8 +673,10 @@ export type UiPathNode = UiNode & {
   values?: Array<number | { x?: number; value?: number; y?: number }>;
   /** Data-space alias for values. Points with x use a proportional x-axis instead of equal slots. */
   data?: Array<number | { x?: number; value?: number; y?: number }>;
-  /** Treat explicit points as normalized 0..1 coordinates inside node bounds. */
+  /** Treat explicit points as normalized 0..1 coordinates inside node bounds. This opts out of parent viewBox coordinates. */
   normalized?: boolean;
+  /** Force path coordinates back to local node bounds even inside a vector container. */
+  coordinateSpace?: "viewBox" | "local" | "bounds";
   curve?: "linear" | "spline" | "smooth";
   closed?: boolean;
   /** Backward-compatible y-domain aliases. Omitted bounds are inferred from observed data. */
@@ -625,13 +714,30 @@ export type UiPathNode = UiNode & {
   strokeLinejoin?: "miter" | "round" | "bevel";
 };
 
-/** Authoring-side child input. normalize() flattens nested iterables and drops booleans/null/undefined. */
-export type UiChildInput = UiNode | readonly UiChildInput[] | Iterable<UiChildInput> | boolean | null | undefined;
+/**
+ * Authoring-side child input. Nested iterables are flattened, booleans/null/undefined are dropped,
+ * and string/number children become ordinary text nodes.
+ */
+export type UiChildInput = UiNode | string | number | readonly UiChildInput[] | Iterable<UiChildInput> | boolean | null | undefined;
+
+/** Fragment token accepted by ui.h/ui.createElement. */
+export type UiFragment = Readonly<{ __combatantUiFragment: true }>;
+/** Lightweight function component. Components return the same declarative nodes as render(ctx). */
+export type UiComponent<P = Record<string, unknown>> = (props: P & { children?: UiNode[] }) => UiChildInput;
+export type UiElementType<P = Record<string, unknown>> = UiNodeType | UiComponent<P> | UiFragment;
+/** Root render output. A fragment/iterable is wrapped by the runtime in a transparent ROOT node. */
+export type UiRenderOutput = UiNode | readonly UiChildInput[] | (Iterable<UiChildInput> & object);
 
 export type NodeInit = Omit<UiNode, "type" | "children"> & { children?: UiChildInput };
 export type TextInit = (Omit<UiTextNode, "type" | "children"> & { children?: UiChildInput }) | string;
 export type ImageInit = (Omit<UiImageNode, "type" | "children"> & { children?: UiChildInput }) | string;
 export type ShapeInit = Omit<UiShapeNode, "type" | "children"> & { children?: UiChildInput };
+export type VectorInit = Omit<UiVectorNode, "type" | "children"> & { children?: UiChildInput };
+export type PlotInit = Omit<VectorInit, "viewBox" | "yAxis" | "coordinateSystem"> & {
+  viewBox?: UiViewBox;
+  xDomain?: readonly [number, number];
+  yDomain?: readonly [number, number];
+};
 export type PathInit = Omit<UiPathNode, "type" | "children"> & { children?: UiChildInput };
 export type LineInit = PathInit & { x1?: number; y1?: number; x2?: number; y2?: number };
 
@@ -706,22 +812,40 @@ export type CompactHudStatProps = {
 
 /** Factory available to JS/TS authors; the runtime loads this API from the canonical ui.js resource. */
 export interface UiFactory {
+  /** React-like element construction without a second runtime: everything normalizes to UiNode. */
+  h<P = Record<string, unknown>>(type: UiElementType<P>, init?: P | null, ...children: UiChildInput[]): UiChildInput;
+  createElement<P = Record<string, unknown>>(type: UiElementType<P>, init?: P | null, ...children: UiChildInput[]): UiChildInput;
+  /** Fragment token for ui.h/ui.createElement. */
+  readonly Fragment: UiFragment;
+  /** Flattens children and returns a fragment array. */
+  fragment(...children: UiChildInput[]): UiNode[];
+  /** Returns child when condition is truthy, otherwise null. */
+  when(condition: unknown, child: UiChildInput): UiChildInput;
   node(type: UiNodeType, init?: NodeInit): UiNode;
   root(init?: NodeInit): UiNode;
   panel(init?: NodeInit): UiNode;
   row(init?: NodeInit): UiNode;
   column(init?: NodeInit): UiNode;
   stack(init?: NodeInit): UiNode;
-  text(init: TextInit): UiTextNode;
+  vector(init?: VectorInit): UiVectorNode;
+  plot(init?: PlotInit): UiVectorNode;
+  text(init?: TextInit | number): UiTextNode;
   image(init: ImageInit): UiImageNode;
   svg(init: ImageInit): UiImageNode;
   shape(init?: ShapeInit): UiShapeNode;
   box(init?: ShapeInit): UiShapeNode;
+  /** ViewBox/data-space rectangle. x/y/width/height are geometry, never layout; use style.left/top for layout. */
   rect(init?: ShapeInit): UiShapeNode;
   circle(init?: ShapeInit): UiShapeNode;
+  /** Chart/scatter point. x/y are viewBox coordinates inside ui.vector/ui.plot; radius is a logical UI size. */
+  point(init?: ShapeInit & { x?: number; y?: number; r?: number; radius?: number }): UiShapeNode;
+  /** ViewBox/data-space rectangle helper for bars and ranges. */
+  bar(init?: ShapeInit & { x?: number; y?: number; w?: number; h?: number; width?: number; height?: number }): UiShapeNode;
+  /** ViewBox/data-space rounded rectangle. x/y/width/height are geometry, never layout. */
   rounded(init?: ShapeInit & { radius?: number; r?: number }): UiShapeNode;
   chamfered(init?: ShapeInit & { cut?: number; chamfer?: number }): UiShapeNode;
   squircle(init?: ShapeInit & { x?: number; y?: number; w?: number; h?: number; profile?: "soft" | "standard" | "tight"; power?: number; exponent?: number }): UiShapeNode;
+  /** Absolute-layout rounded surface helper. x/y/w/h are logical UI layout coordinates; prefer style for new reusable components. */
   roundedRect(init?: ShapeInit & { x?: number; y?: number; w?: number; h?: number; radius?: number; r?: number }): UiShapeNode;
   roundedGradient(init?: ShapeInit & { x?: number; y?: number; w?: number; h?: number; radius?: number; r?: number }): UiShapeNode;
   roundedGradientQuad(init?: ShapeInit & { x?: number; y?: number; w?: number; h?: number; radius?: number; r?: number }): UiShapeNode;
@@ -743,6 +867,9 @@ export interface UiFactory {
   style(...parts: Array<UiInlineStyle | false | null | undefined>): UiInlineStyle;
   children(...parts: UiChildInput[]): UiNode[];
   absolute(x?: number, y?: number, w?: number, h?: number, extra?: UiInlineStyle): UiInlineStyle;
+  /** Absolute inset helper using canonical left/top/right/bottom style names. */
+  inset(init?: { left?: number; top?: number; right?: number; bottom?: number; width?: number; height?: number } & UiInlineStyle): UiInlineStyle;
+  /** @deprecated Utility-class positioning is legacy-only. Prefer style: ui.absolute(...). */
   abs(x?: number, y?: number, w?: number, h?: number, extra?: string): string;
   /** Safe property lookup supporting plain objects and host map-like values. */
   prop<T = unknown>(value: unknown, key: string, fallback?: T): T | unknown;
@@ -806,6 +933,6 @@ export type UiRenderContext = {
 export type UiComponentModule = {
   /** Optional metadata for tooling. */
   meta?: Record<string, unknown>;
-  /** Produces a root UI node object. */
-  render(ctx: UiRenderContext): UiNode;
+  /** Produces one root node or a fragment/iterable of nodes. */
+  render(ctx: UiRenderContext): UiRenderOutput;
 };

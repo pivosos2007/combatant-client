@@ -10,6 +10,8 @@ package combatant.client.render.engine.renderer.ui.runtime.style;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiBlendSpec;
 import combatant.client.render.engine.text.FontInfo;
 
+import java.util.Locale;
+
 public final class UiStyle {
     public static final UiStyle DEFAULT = builder().build();
 
@@ -29,6 +31,7 @@ public final class UiStyle {
     private final float marginBottom;
     private final float gap;
     private final float grow;
+    private final float shrink;
     private final UiDisplay display;
     private final UiFlexDirection flexDirection;
     private final boolean absolute;
@@ -64,6 +67,10 @@ public final class UiStyle {
     private final String textBackend;
     private final float maxTextWidth;
     private final boolean ellipsis;
+    private final String whiteSpace;
+    private final String overflowWrap;
+    private final int maxLines;
+    private final String textOverflow;
     private final String textAlign;
     private final String cursor;
     private final UiBlendSpec blend;
@@ -86,6 +93,7 @@ public final class UiStyle {
         this.marginBottom = builder.marginBottom;
         this.gap = builder.gap;
         this.grow = builder.grow;
+        this.shrink = builder.shrink;
         this.display = builder.display;
         this.flexDirection = builder.flexDirection;
         this.absolute = builder.absolute;
@@ -121,6 +129,10 @@ public final class UiStyle {
         this.textBackend = builder.textBackend;
         this.maxTextWidth = builder.maxTextWidth;
         this.ellipsis = builder.ellipsis;
+        this.whiteSpace = builder.whiteSpace;
+        this.overflowWrap = builder.overflowWrap;
+        this.maxLines = builder.maxLines;
+        this.textOverflow = builder.textOverflow;
         this.textAlign = builder.textAlign;
         this.cursor = builder.cursor;
         this.blend = builder.blend;
@@ -221,6 +233,11 @@ public final class UiStyle {
 
     public float grow() {
         return grow;
+    }
+
+    /** Explicit main-axis shrink weight. Default 0 preserves legacy fixed-size behavior. */
+    public float shrink() {
+        return shrink;
     }
 
     /** Explicit display mode; null keeps the node type's legacy layout semantics. */
@@ -375,6 +392,30 @@ public final class UiStyle {
         return ellipsis;
     }
 
+    public String whiteSpace() {
+        return whiteSpace;
+    }
+
+    public String overflowWrap() {
+        return overflowWrap;
+    }
+
+    public int maxLines() {
+        return maxLines;
+    }
+
+    public String textOverflow() {
+        return textOverflow;
+    }
+
+    public boolean wrapsText() {
+        return "normal".equals(whiteSpace) || "pre-wrap".equals(whiteSpace);
+    }
+
+    public boolean ellipsizesText() {
+        return ellipsis || "ellipsis".equals(textOverflow);
+    }
+
     public String textAlign() {
         return textAlign;
     }
@@ -416,6 +457,7 @@ public final class UiStyle {
         private float marginBottom;
         private float gap;
         private float grow;
+        private float shrink;
         private UiDisplay display;
         private UiFlexDirection flexDirection;
         private boolean absolute;
@@ -451,6 +493,10 @@ public final class UiStyle {
         private String textBackend = "auto";
         private float maxTextWidth;
         private boolean ellipsis;
+        private String whiteSpace = "nowrap";
+        private String overflowWrap = "normal";
+        private int maxLines;
+        private String textOverflow = "clip";
         private String textAlign = "left";
         private String cursor = "";
         private UiBlendSpec blend = UiBlendSpec.TRANSLUCENT;
@@ -476,6 +522,7 @@ public final class UiStyle {
             this.marginBottom = base.marginBottom;
             this.gap = base.gap;
             this.grow = base.grow;
+            this.shrink = base.shrink;
             this.display = base.display;
             this.flexDirection = base.flexDirection;
             this.absolute = base.absolute;
@@ -511,6 +558,10 @@ public final class UiStyle {
             this.textBackend = base.textBackend;
             this.maxTextWidth = base.maxTextWidth;
             this.ellipsis = base.ellipsis;
+            this.whiteSpace = base.whiteSpace;
+            this.overflowWrap = base.overflowWrap;
+            this.maxLines = base.maxLines;
+            this.textOverflow = base.textOverflow;
             this.textAlign = base.textAlign;
             this.cursor = base.cursor;
             this.blend = base.blend;
@@ -629,6 +680,11 @@ public final class UiStyle {
             return this;
         }
 
+        public Builder shrink(float shrink) {
+            this.shrink = Math.max(0.0f, shrink);
+            return this;
+        }
+
         public Builder display(UiDisplay display) {
             this.display = display;
             return this;
@@ -676,7 +732,7 @@ public final class UiStyle {
 
         public Builder overflow(UiOverflow overflow) {
             this.overflow = overflow != null ? overflow : UiOverflow.VISIBLE;
-            if (this.overflow.clips()) this.clip = true;
+            this.clip = this.overflow.clips();
             return this;
         }
 
@@ -796,6 +852,37 @@ public final class UiStyle {
 
         public Builder ellipsis(boolean ellipsis) {
             this.ellipsis = ellipsis;
+            this.textOverflow = ellipsis ? "ellipsis" : "clip";
+            return this;
+        }
+
+        public Builder whiteSpace(String whiteSpace) {
+            String value = whiteSpace == null ? "nowrap" : whiteSpace.trim().toLowerCase(Locale.ROOT);
+            this.whiteSpace = switch (value) {
+                case "normal", "pre-wrap", "nowrap" -> value;
+                default -> "nowrap";
+            };
+            return this;
+        }
+
+        public Builder overflowWrap(String overflowWrap) {
+            String value = overflowWrap == null ? "normal" : overflowWrap.trim().toLowerCase(Locale.ROOT);
+            this.overflowWrap = switch (value) {
+                case "break-word", "anywhere", "normal" -> value;
+                default -> "normal";
+            };
+            return this;
+        }
+
+        public Builder maxLines(int maxLines) {
+            this.maxLines = Math.max(0, maxLines);
+            return this;
+        }
+
+        public Builder textOverflow(String textOverflow) {
+            String value = textOverflow == null ? "clip" : textOverflow.trim().toLowerCase(Locale.ROOT);
+            this.textOverflow = "ellipsis".equals(value) ? "ellipsis" : "clip";
+            this.ellipsis = "ellipsis".equals(this.textOverflow);
             return this;
         }
 

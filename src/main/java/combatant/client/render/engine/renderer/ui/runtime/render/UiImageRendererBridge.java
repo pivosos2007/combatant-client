@@ -31,15 +31,15 @@ public final class UiImageRendererBridge {
         }
     }
 
-    public void render(UiNode node, UiAssetRef asset, UiRenderContext context) {
-        if (node == null || asset == null || context == null) return;
-        UiBounds rawBounds = node.bounds();
-        UiBounds bounds = new UiBounds(
+    public void render(UiNode node, UiAssetRef asset, UiBounds rawBounds, UiRenderContext context) {
+        if (node == null || asset == null || rawBounds == null || context == null) return;
+        UiBounds logicalBounds = new UiBounds(
                 node.props().number("renderX", rawBounds.x()),
                 node.props().number("renderY", rawBounds.y()),
                 Math.max(0.0f, node.props().number("renderWidth", rawBounds.width())),
                 Math.max(0.0f, node.props().number("renderHeight", rawBounds.height()))
         );
+        UiBounds bounds = context.renderBounds(logicalBounds);
         UiStyle style = node.style();
         String explicitTint = node.props().string("tint", "");
         int rawTint = UiReactiveVisual.color(
@@ -81,7 +81,7 @@ public final class UiImageRendererBridge {
                     bounds.x(),
                     bounds.y(),
                     Math.min(bounds.width(), bounds.height()),
-                    style.radius(),
+                    context.renderLength(style.radius()),
                     id,
                     new RenderColor(tint),
                     node.props().bool("secondLayer", true),
@@ -99,7 +99,7 @@ public final class UiImageRendererBridge {
                         bounds.y(),
                         bounds.width(),
                         bounds.height(),
-                        style.radius(),
+                        context.renderLength(style.radius()),
                         0.0f,
                         gradientStart,
                         gradientEnd,
@@ -112,7 +112,7 @@ public final class UiImageRendererBridge {
                         bounds.y(),
                         bounds.width(),
                         bounds.height(),
-                        style.radius(),
+                        context.renderLength(style.radius()),
                         tint,
                         id
                 );
@@ -124,7 +124,7 @@ public final class UiImageRendererBridge {
                 bounds.y(),
                 bounds.width(),
                 bounds.height(),
-                style.radius(),
+                context.renderLength(style.radius()),
                 tint,
                 id
         );

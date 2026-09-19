@@ -397,7 +397,6 @@ public final class Admins extends DraggableHudElement {
                         drawY,
                         drawWidth,
                         drawHeight,
-                        drawScale,
                         drawBaseScale,
                         drawFontScale,
                         drawHeaderIconH,

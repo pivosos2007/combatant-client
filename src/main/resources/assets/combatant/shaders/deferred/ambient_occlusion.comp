@@ -10,24 +10,22 @@
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0) uniform sampler2D u_ResolvedDepth;
-layout(binding = 1) uniform sampler2D u_DepthPyramid;
-layout(binding = 2) uniform sampler2D u_GbufferGeometry;
-layout(binding = 3) uniform sampler2D u_GbufferDepth;
-layout(binding = 4, r8) writeonly uniform image2D u_AmbientVisibility;
-layout(binding = 5, rgba16f) writeonly uniform image2D u_BentNormal;
+layout(binding = 1) uniform sampler2D u_GbufferGeometry;
+layout(binding = 2) uniform sampler2D u_GbufferDepth;
+layout(binding = 3, r8) writeonly uniform image2D u_AmbientVisibility;
+layout(binding = 4, rgba16f) writeonly uniform image2D u_BentNormal;
 
-layout(std430, binding = 6) readonly buffer AmbientOcclusionData {
+layout(std430, binding = 5) readonly buffer AmbientOcclusionData {
     mat4 inverseProjection;
     mat4 projection;
     vec4 depthTransform;
-    // x: total horizon sample budget, y: view-space radius, z: view-space thickness, w: mip bias.
     vec4 params0;
-    // x: max Hi-Z mip (0 = mip 0 only), yz: full-resolution extent.
     vec4 params1;
 } u_Ao;
 
 const float PI = 3.14159265358979323846;
 const float HALF_PI = 1.57079632679489661923;
+const float FALLOFF_START = 0.75;
 
 vec3 decodeOctahedral(vec2 encoded) {
     vec2 f = encoded * 2.0 - 1.0;
@@ -44,32 +42,72 @@ vec3 reconstructView(vec2 uv, float depth) {
     return h.xyz / h.w;
 }
 
+vec3 viewToScreen(vec3 viewPosition) {
+    vec4 clip = u_Ao.projection * vec4(viewPosition, 1.0);
+    if (abs(clip.w) < 1e-7) return vec3(-2.0);
+    vec3 ndc = clip.xyz / clip.w;
+    return vec3(ndc.xy * 0.5 + 0.5,
+                ndc.z * u_Ao.depthTransform.z + u_Ao.depthTransform.w);
+}
+
 float hash12(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
     p3 += dot(p3, p3.yzx + 33.33);
     return fract((p3.x + p3.y) * p3.z);
 }
 
-float sampleHorizonCos(vec2 sampleUv,
-                       float mip,
-                       vec3 center,
-                       vec3 viewVector,
-                       float radius,
-                       float thickness,
-                       float baseline) {
-    float sampleDepth = textureLod(u_DepthPyramid, sampleUv, mip).r;
-    if (sampleDepth <= 0.0) return baseline;
+float integrateArc(vec2 horizons, float normalAngle, float cosNormal) {
+    vec2 value = cosNormal + 2.0 * horizons * sin(normalAngle)
+            - cos(2.0 * horizons - normalAngle);
+    return 0.25 * (value.x + value.y);
+}
 
-    vec3 samplePosition = reconstructView(sampleUv, sampleDepth);
-    vec3 horizonVector = samplePosition - center;
-    float distanceValue = length(horizonVector);
-    if (distanceValue <= 1e-5 || distanceValue > radius + thickness) return baseline;
+float maximumHorizonAngle(vec3 sliceDirection,
+                          vec3 viewerDirection,
+                          vec2 centerUv,
+                          vec3 centerView,
+                          float radius,
+                          float thickness,
+                          int steps,
+                          float jitter) {
+    float stepWorld = radius / float(max(steps, 1));
+    vec3 stepScreenPosition = viewToScreen(centerView + sliceDirection * stepWorld);
+    if (any(lessThan(stepScreenPosition, vec3(-1.0)))) return PI;
 
-    float horizonCos = dot(horizonVector / distanceValue, viewVector);
-    float effectiveDistance = max(0.0, distanceValue - thickness);
-    float attenuation = 1.0 - clamp(effectiveDistance / max(radius, 1e-4), 0.0, 1.0);
-    attenuation *= attenuation;
-    return mix(baseline, horizonCos, attenuation);
+    vec2 rayStep = stepScreenPosition.xy - centerUv;
+    float rayStepLength = length(rayStep);
+    if (rayStepLength <= 1e-7) return PI;
+
+    vec2 fullPixel = 1.0 / max(vec2(textureSize(u_ResolvedDepth, 0)), vec2(1.0));
+    vec2 rayUv = centerUv + rayStep * jitter
+            + rayStep * (max(fullPixel.x, fullPixel.y) / rayStepLength);
+    float maximumCosine = -1.0;
+
+    for (int i = 0; i < 8; ++i) {
+        if (i >= steps) break;
+        if (any(lessThanEqual(rayUv, vec2(0.0))) || any(greaterThanEqual(rayUv, vec2(1.0)))) break;
+
+        float sampleDepth = textureLod(u_ResolvedDepth, rayUv, 0.0).r;
+        if (sampleDepth > 0.0) {
+            vec3 sampleView = reconstructView(rayUv, sampleDepth);
+            vec3 offset = sampleView - centerView;
+            float distanceSquared = dot(offset, offset);
+            if (distanceSquared > 1e-8) {
+                float distanceValue = sqrt(distanceSquared);
+                if (distanceValue > thickness && distanceValue <= radius) {
+                    float inverseDistance = 1.0 / distanceValue;
+                    float falloff = smoothstep(FALLOFF_START * radius, radius, distanceValue);
+                    float cosine = dot(viewerDirection, offset) * inverseDistance;
+                    cosine = mix(cosine, -1.0, falloff);
+                    maximumCosine = max(maximumCosine, cosine);
+                }
+            }
+        }
+
+        rayUv += rayStep;
+    }
+
+    return acos(clamp(maximumCosine, -1.0, 1.0));
 }
 
 void main() {
@@ -88,98 +126,71 @@ void main() {
         imageStore(u_BentNormal, pixel, vec4(0.0, 0.0, 1.0, 1.0));
         return;
     }
+
     vec3 normal = decodeOctahedral(textureLod(u_GbufferGeometry, uv, 0.0).rg);
+    vec3 centerView = reconstructView(uv, centerDepth);
+    vec3 viewerDirection = normalize(-centerView);
 
-    vec3 center = reconstructView(uv, centerDepth);
-    vec3 viewVector = normalize(-center);
-    float radius = max(u_Ao.params0.y, 1e-4);
+    float configuredRadius = max(u_Ao.params0.y, 0.05);
     float thickness = max(u_Ao.params0.z, 0.0);
-    float mipBias = u_Ao.params0.w;
+    float nearScale = max(0.5, 0.25 + 0.75 * smoothstep(0.0, 81.0, dot(centerView, centerView)));
+    float radius = configuredRadius * nearScale;
+
     int sampleBudget = clamp(int(u_Ao.params0.x + 0.5), 4, 64);
-    int sliceCount = clamp((sampleBudget + 3) / 4, 2, 8);
-    int stepsPerSide = clamp(sampleBudget / max(2 * sliceCount, 1), 1, 4);
-    int availableMips = textureQueryLevels(u_DepthPyramid);
-    int maxMip = min(max(0, int(u_Ao.params1.x + 0.5)), max(0, availableMips - 1));
+    int sliceCount = clamp(int(floor(sqrt(float(sampleBudget) * 0.5) + 0.5)), 2, 4);
+    int stepsPerSide = clamp(sampleBudget / max(2 * sliceCount, 1), 2, 8);
 
-    float projectedRadiusPixels = abs(u_Ao.projection[1][1]) * radius
-            / max(0.05, -center.z) * 0.5 * float(outputSize.y);
-    projectedRadiusPixels = max(projectedRadiusPixels, 1.0);
+    vec3 referenceUp = abs(viewerDirection.y) < 0.98 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 viewerRight = normalize(cross(referenceUp, viewerDirection));
+    vec3 viewerUp = normalize(cross(viewerDirection, viewerRight));
 
-    float rotation = hash12(vec2(pixel)) * PI;
-    float visibilitySum = 0.0;
-    vec3 bentSum = normal * 1e-3;
-    float bentWeight = 1e-3;
+    float ditherAngle = hash12(vec2(pixel) + vec2(0.17, 0.73));
+    float ditherStep = hash12(vec2(pixel.yx) + vec2(41.0, 19.0));
 
-    for (int slice = 0; slice < 8; ++slice) {
+    float ao = 0.0;
+    vec3 bentSum = vec3(0.0);
+
+    for (int slice = 0; slice < 4; ++slice) {
         if (slice >= sliceCount) break;
 
-        float phi = rotation + (float(slice) + 0.5) * PI / float(sliceCount);
-        vec2 screenDirection = vec2(cos(phi), sin(phi));
-        vec3 directionVector = vec3(screenDirection, 0.0);
-        vec3 orthoDirection = directionVector - viewVector * dot(directionVector, viewVector);
-        float orthoLength = length(orthoDirection);
-        if (orthoLength <= 1e-5) continue;
-        orthoDirection /= orthoLength;
-
-        vec3 axis = normalize(cross(orthoDirection, viewVector));
+        float sliceAngle = (float(slice) + ditherAngle) * (PI / float(sliceCount));
+        vec3 sliceDirection = normalize(viewerRight * cos(sliceAngle) + viewerUp * sin(sliceAngle));
+        vec3 axis = normalize(cross(sliceDirection, viewerDirection));
         vec3 projectedNormal = normal - axis * dot(normal, axis);
-        float projectedNormalLength = length(projectedNormal);
-        if (projectedNormalLength <= 1e-5) continue;
-        projectedNormal /= projectedNormalLength;
+        float projectedLengthSquared = dot(projectedNormal, projectedNormal);
+        if (projectedLengthSquared <= 1e-8) continue;
 
-        float signNormal = dot(orthoDirection, projectedNormal) < 0.0 ? -1.0 : 1.0;
-        float cosNormal = clamp(dot(projectedNormal, viewVector), -1.0, 1.0);
-        float normalAngle = signNormal * acos(cosNormal);
+        float projectedLength = sqrt(projectedLengthSquared);
+        projectedNormal /= projectedLength;
+        float signAngle = dot(sliceDirection, projectedNormal) < 0.0 ? -1.0 : 1.0;
+        float cosNormal = clamp(dot(projectedNormal, viewerDirection), 0.0, 1.0);
+        float normalAngle = signAngle * acos(cosNormal);
 
-        float lowHorizon0 = cos(normalAngle + HALF_PI);
-        float lowHorizon1 = cos(normalAngle - HALF_PI);
-        float horizonCos0 = lowHorizon0;
-        float horizonCos1 = lowHorizon1;
+        vec2 horizonAngles;
+        horizonAngles.x = maximumHorizonAngle(
+                -sliceDirection, viewerDirection, uv, centerView, radius, thickness, stepsPerSide, ditherStep);
+        horizonAngles.y = maximumHorizonAngle(
+                sliceDirection, viewerDirection, uv, centerView, radius, thickness, stepsPerSide, ditherStep);
 
-        for (int step = 0; step < 4; ++step) {
-            if (step >= stepsPerSide) break;
-            float stepFraction = (float(step) + 0.5) / float(stepsPerSide);
-            float stepPixels = max(1.0, projectedRadiusPixels * stepFraction * stepFraction);
-            float mip = clamp(floor(log2(stepPixels)) + mipBias, 0.0, float(maxMip));
-            vec2 uvStep = screenDirection * stepPixels / vec2(outputSize);
+        horizonAngles = normalAngle + clamp(
+                vec2(-1.0, 1.0) * horizonAngles - normalAngle,
+                vec2(-HALF_PI), vec2(HALF_PI));
 
-            vec2 uv0 = uv - uvStep;
-            if (all(greaterThan(uv0, vec2(0.0))) && all(lessThan(uv0, vec2(1.0)))) {
-                horizonCos0 = max(horizonCos0, sampleHorizonCos(
-                        uv0, mip, center, viewVector, radius, thickness, lowHorizon0));
-            }
+        float sliceVisibility = integrateArc(horizonAngles, normalAngle, cosNormal) * projectedLength;
+        ao += clamp(sliceVisibility, 0.0, 1.0);
 
-            vec2 uv1 = uv + uvStep;
-            if (all(greaterThan(uv1, vec2(0.0))) && all(lessThan(uv1, vec2(1.0)))) {
-                horizonCos1 = max(horizonCos1, sampleHorizonCos(
-                        uv1, mip, center, viewVector, radius, thickness, lowHorizon1));
-            }
-        }
-
-        float horizon0 = -acos(clamp(horizonCos0, -1.0, 1.0));
-        float horizon1 = acos(clamp(horizonCos1, -1.0, 1.0));
-        horizon0 = normalAngle + max(horizon0 - normalAngle, -HALF_PI);
-        horizon1 = normalAngle + min(horizon1 - normalAngle, HALF_PI);
-
-        float sinNormal = sin(normalAngle);
-        float integral0 = (cosNormal + 2.0 * horizon0 * sinNormal
-                - cos(2.0 * horizon0 - normalAngle)) * 0.25;
-        float integral1 = (cosNormal + 2.0 * horizon1 * sinNormal
-                - cos(2.0 * horizon1 - normalAngle)) * 0.25;
-        float sliceVisibility = clamp(projectedNormalLength * (integral0 + integral1), 0.0, 1.0);
-        visibilitySum += sliceVisibility;
-
-        float bentAngle = clamp(0.5 * (horizon0 + horizon1), -HALF_PI, HALF_PI);
-        vec3 sliceBent = normalize(viewVector * cos(bentAngle) + orthoDirection * sin(bentAngle));
-        float hemisphere = max(dot(sliceBent, normal), 0.0);
-        float weight = sliceVisibility * hemisphere;
-        bentSum += sliceBent * weight;
-        bentWeight += weight;
+        float bentAngle = 0.5 * (horizonAngles.x + horizonAngles.y);
+        bentSum += viewerDirection * cos(bentAngle) + sliceDirection * sin(bentAngle);
     }
 
-    float visibility = clamp(visibilitySum / float(sliceCount), 0.0, 1.0);
-    vec3 bentNormal = bentWeight > 1e-5 ? normalize(bentSum / bentWeight) : normal;
-    if (dot(bentNormal, normal) < 0.0) bentNormal = normal;
+    float visibility = clamp(ao / float(sliceCount), 0.0, 1.0);
+    const float surroundingAlbedo = 0.2;
+    visibility /= max(surroundingAlbedo * visibility + (1.0 - surroundingAlbedo), 1e-4);
+    visibility = clamp(visibility, 0.0, 1.0);
+
+    vec3 bentNormal = dot(bentSum, bentSum) > 1e-8 ? normalize(bentSum) : normal;
+    bentNormal = normalize(bentNormal - 0.35 * viewerDirection);
+    if (dot(bentNormal, normal) <= 0.05) bentNormal = normal;
 
     imageStore(u_AmbientVisibility, pixel, vec4(visibility));
     imageStore(u_BentNormal, pixel, vec4(bentNormal, 1.0));

@@ -10,6 +10,8 @@ package combatant.client.render.sodium;
 import combatant.client.mixins.sodium.SodiumRenderSectionManagerAccessor;
 import combatant.client.mixins.sodium.SodiumSortedRenderListsInvoker;
 import combatant.client.render.engine.deferred.DeferredSecondaryView;
+import combatant.client.render.engine.deferred.DeferredViewFamily;
+import combatant.client.util.logging.DebugLog;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
@@ -82,6 +84,16 @@ public final class SodiumSecondaryTerrainSource {
             // Never block the render thread on async visibility. The fallback reads only immutable
             // snapshot data and is therefore deterministic and independent from Sodium mutation.
             result = cull(snapshot, view, CULL_EPOCH.get());
+        }
+
+        if (view.family() == DeferredViewFamily.SHADOW_CASCADE && result != null && !result.cancelled()) {
+            String state = view.index() + ":" + result.visibleSections().length;
+            DebugLog.infoOnChange(
+                    "combatant.deferred.shadow-cull." + view.index(),
+                    state,
+                    "[Deferred][ShadowCull] cascade=%d sections=%d range=%.2f..%.2f",
+                    view.index(), result.visibleSections().length, view.nearPlane(), view.farPlane()
+            );
         }
 
         return buildLists(result, snapshot);
@@ -206,7 +218,8 @@ public final class SodiumSecondaryTerrainSource {
 
     private static CullResult cull(TopologySnapshot snapshot, DeferredSecondaryView view, long epoch) {
         Matrix4f viewProjection = view.viewProjection();
-        FrustumIntersection frustum = new FrustumIntersection(viewProjection);
+        boolean directionalShadow = view.family() == DeferredViewFamily.SHADOW_CASCADE;
+        FrustumIntersection frustum = directionalShadow ? null : new FrustumIntersection(viewProjection);
         double cameraX = view.origin().x;
         double cameraY = view.origin().y;
         double cameraZ = view.origin().z;
@@ -214,21 +227,33 @@ public final class SodiumSecondaryTerrainSource {
 
         for (RegionSnapshot region : snapshot.regions()) {
             if (CULL_EPOCH.get() != epoch) return CullResult.cancelled(epoch);
-            if (!testWorldAabb(frustum, region.minX(), region.minY(), region.minZ(),
-                    region.maxX(), region.maxY(), region.maxZ(), cameraX, cameraY, cameraZ)) continue;
+            boolean regionVisible = directionalShadow
+                    ? testShadowCascadeAabbXY(viewProjection,
+                            region.minX(), region.minY(), region.minZ(),
+                            region.maxX(), region.maxY(), region.maxZ(),
+                            cameraX, cameraY, cameraZ)
+                    : testWorldAabb(frustum,
+                            region.minX(), region.minY(), region.minZ(),
+                            region.maxX(), region.maxY(), region.maxZ(),
+                            cameraX, cameraY, cameraZ);
+            if (!regionVisible) continue;
 
             for (int sectionIndex : region.sectionIndices()) {
                 SectionEntry section = snapshot.sections().get(sectionIndex);
-                if (testWorldAabb(frustum,
-                        section.originX() - CULL_PADDING,
-                        section.originY() - CULL_PADDING,
-                        section.originZ() - CULL_PADDING,
-                        section.originX() + SECTION_EXTENT + CULL_PADDING,
-                        section.originY() + SECTION_EXTENT + CULL_PADDING,
-                        section.originZ() + SECTION_EXTENT + CULL_PADDING,
-                        cameraX, cameraY, cameraZ)) {
-                    visible.add(sectionIndex);
-                }
+                double minX = section.originX() - CULL_PADDING;
+                double minY = section.originY() - CULL_PADDING;
+                double minZ = section.originZ() - CULL_PADDING;
+                double maxX = section.originX() + SECTION_EXTENT + CULL_PADDING;
+                double maxY = section.originY() + SECTION_EXTENT + CULL_PADDING;
+                double maxZ = section.originZ() + SECTION_EXTENT + CULL_PADDING;
+                boolean sectionVisible = directionalShadow
+                        ? testShadowCascadeAabbXY(viewProjection,
+                                minX, minY, minZ, maxX, maxY, maxZ,
+                                cameraX, cameraY, cameraZ)
+                        : testWorldAabb(frustum,
+                                minX, minY, minZ, maxX, maxY, maxZ,
+                                cameraX, cameraY, cameraZ);
+                if (sectionVisible) visible.add(sectionIndex);
             }
         }
         return new CullResult(epoch, visible.toArray(), false);
@@ -242,6 +267,53 @@ public final class SodiumSecondaryTerrainSource {
                 (float) (minX - cameraX), (float) (minY - cameraY), (float) (minZ - cameraZ),
                 (float) (maxX - cameraX), (float) (maxY - cameraY), (float) (maxZ - cameraZ)
         );
+    }
+
+    /**
+     * Conservative directional-shadow cull for orthographic cascades.
+     *
+     * <p>The generic JOML {@link FrustumIntersection} extractor assumes the conventional clip
+     * depth layout. Combatant shadow projections are reversed-Z and may use zero-to-one clip
+     * depth, so feeding those matrices into the generic extractor can reject valid terrain on
+     * outer cascades. For directional shadow casters the critical finite coverage is the
+     * orthographic light-plane XY rectangle; caster depth is deliberately conservative because
+     * the projection already owns a bounded caster band.</p>
+     */
+    private static boolean testShadowCascadeAabbXY(Matrix4f viewProjection,
+                                                   double minX, double minY, double minZ,
+                                                   double maxX, double maxY, double maxZ,
+                                                   double cameraX, double cameraY, double cameraZ) {
+        float centerX = (float) (((minX + maxX) * 0.5) - cameraX);
+        float centerY = (float) (((minY + maxY) * 0.5) - cameraY);
+        float centerZ = (float) (((minZ + maxZ) * 0.5) - cameraZ);
+        float extentX = (float) ((maxX - minX) * 0.5);
+        float extentY = (float) ((maxY - minY) * 0.5);
+        float extentZ = (float) ((maxZ - minZ) * 0.5);
+
+        float clipCenterX = viewProjection.m00() * centerX
+                + viewProjection.m10() * centerY
+                + viewProjection.m20() * centerZ
+                + viewProjection.m30();
+        float clipCenterY = viewProjection.m01() * centerX
+                + viewProjection.m11() * centerY
+                + viewProjection.m21() * centerZ
+                + viewProjection.m31();
+
+        float clipExtentX = Math.abs(viewProjection.m00()) * extentX
+                + Math.abs(viewProjection.m10()) * extentY
+                + Math.abs(viewProjection.m20()) * extentZ;
+        float clipExtentY = Math.abs(viewProjection.m01()) * extentX
+                + Math.abs(viewProjection.m11()) * extentY
+                + Math.abs(viewProjection.m21()) * extentZ;
+
+        // One section of normalized padding prevents section-edge churn as a snapped cascade moves
+        // by a texel. Z is intentionally not rejected here; reversed/zero-to-one depth extraction
+        // was the source of false negatives, while the loaded Sodium topology already bounds work.
+        final float ndcPadding = 0.02f;
+        return clipCenterX + clipExtentX >= -1.0f - ndcPadding
+                && clipCenterX - clipExtentX <= 1.0f + ndcPadding
+                && clipCenterY + clipExtentY >= -1.0f - ndcPadding
+                && clipCenterY - clipExtentY <= 1.0f + ndcPadding;
     }
 
     private static SortedRenderLists buildLists(CullResult result, TopologySnapshot snapshot) {

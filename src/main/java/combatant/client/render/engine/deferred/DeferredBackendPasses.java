@@ -88,7 +88,6 @@ final class DeferredBackendPasses implements AutoCloseable {
     private final DeferredShadowCascadeSource shadowCascades = new DeferredShadowCascadeSource();
     private final DeferredShadowMapSource shadowMaps = new DeferredShadowMapSource(secondaryShadowCasters);
     private final DeferredShadowResolveSource shadowResolve = new DeferredShadowResolveSource();
-    private final DeferredContactShadowSource contactShadows = new DeferredContactShadowSource();
     private final DeferredAmbientOcclusionSource ambientOcclusion = new DeferredAmbientOcclusionSource();
     private final DeferredSurfaceWeatherSource surfaceWeather = new DeferredSurfaceWeatherSource();
     private final DeferredColoredBlockLightSource coloredBlockLight = new DeferredColoredBlockLightSource();
@@ -203,7 +202,6 @@ final class DeferredBackendPasses implements AutoCloseable {
                 .execute(this::buildDepthPyramid)
                 .build());
         shadowResolve.install(passes);
-        contactShadows.install(passes);
         ambientOcclusion.install(passes);
         surfaceWeather.install(passes);
         coloredBlockLight.install(passes);
@@ -245,7 +243,6 @@ final class DeferredBackendPasses implements AutoCloseable {
         velocityCamera();
         temporalCameraBuffer();
         shadowResolve.prepare(rhi);
-        contactShadows.prepare(rhi);
         ambientOcclusion.prepare(rhi);
         surfaceWeather.prepare(rhi);
         coloredBlockLight.prepare(rhi);
@@ -286,7 +283,6 @@ final class DeferredBackendPasses implements AutoCloseable {
         secondaryShadowCasters.close();
         combatant.client.render.sodium.SodiumSecondaryTerrainSource.invalidate();
         shadowResolve.release(releaseOwner);
-        contactShadows.release(releaseOwner);
         ambientOcclusion.release(releaseOwner);
         surfaceWeather.release(releaseOwner);
         coloredBlockLight.release(releaseOwner);
@@ -464,7 +460,6 @@ final class DeferredBackendPasses implements AutoCloseable {
         if (previous != null) {
             shadowMaps.release(previous);
             shadowResolve.release(previous);
-            contactShadows.release(previous);
             ambientOcclusion.release(previous);
             surfaceWeather.release(previous);
             coloredBlockLight.release(previous);
@@ -576,7 +571,6 @@ final class DeferredBackendPasses implements AutoCloseable {
         shadowMaps.close();
         secondaryShadowCasters.close();
         shadowResolve.close();
-        contactShadows.close();
         ambientOcclusion.close();
         surfaceWeather.close();
         coloredBlockLight.close();

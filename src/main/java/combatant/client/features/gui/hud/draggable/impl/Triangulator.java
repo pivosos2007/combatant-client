@@ -632,7 +632,6 @@ public final class Triangulator extends DraggableHudElement {
                         drawY,
                         drawWidth,
                         drawHeight,
-                        drawScale,
                         drawBaseScale,
                         drawFontScale,
                         drawHeaderTextH,

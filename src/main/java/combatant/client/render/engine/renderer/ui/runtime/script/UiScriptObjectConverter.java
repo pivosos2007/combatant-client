@@ -23,17 +23,35 @@ import java.util.Map;
 public final class UiScriptObjectConverter {
     private static final List<String> RESERVED_NODE_KEYS = List.of(
             "type", "key", "class", "className", "style", "props", "events", "meta", "children",
-            "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "grow", "display", "flexDirection", "absolute",
-            "x", "y", "align", "justify", "overflow", "fontSize", "lineHeight", "fontFamily", "fontWeight", "fontStyle",
-            "textAlign", "maxTextWidth", "ellipsis", "marquee",
+            "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "grow", "flexGrow", "shrink", "flexShrink", "display", "flexDirection",
+            "padding", "paddingX", "paddingHorizontal", "paddingY", "paddingVertical", "paddingLeft", "paddingTop", "paddingRight", "paddingBottom",
+            "margin", "marginX", "marginHorizontal", "marginY", "marginVertical", "marginLeft", "marginTop", "marginRight", "marginBottom", "gap",
+            "position", "absolute", "x", "y", "left", "top", "right", "bottom", "align", "alignItems", "justify", "justifyContent", "overflow",
+            "fontSize", "lineHeight", "fontFamily", "fontWeight", "fontStyle",
+            "textAlign", "maxTextWidth", "ellipsis", "whiteSpace", "overflowWrap", "maxLines", "textOverflow", "marquee",
             "onClick", "onChange", "onInput", "onScroll"
     );
 
     public UiNodeSpec convert(Object value) {
-        if (!(value instanceof Map<?, ?> map)) {
-            throw new IllegalArgumentException("UI script render must return an object.");
+        if (value instanceof Map<?, ?> map) {
+            return node(map);
         }
-        return node(map);
+        if (value instanceof Iterable<?> iterable) {
+            List<UiNodeSpec> children = new ArrayList<>();
+            appendChildren(iterable, children, "root");
+            return new UiNodeSpec(
+                    "root",
+                    UiNodeType.ROOT,
+                    UiProps.EMPTY,
+                    UiStyle.DEFAULT,
+                    "",
+                    UiInlineStyle.EMPTY,
+                    Map.of(),
+                    Map.of(),
+                    children
+            );
+        }
+        throw new IllegalArgumentException("UI script render must return a node object or fragment/iterable of nodes.");
     }
 
     private UiNodeSpec node(Map<?, ?> map) {
@@ -83,6 +101,14 @@ public final class UiScriptObjectConverter {
         if (value == null || value instanceof Boolean) return;
         if (value instanceof Map<?, ?> childMap) {
             out.add(node(childMap));
+            return;
+        }
+        if (value instanceof String text) {
+            out.add(UiNodeSpec.text("", text, UiStyle.DEFAULT));
+            return;
+        }
+        if (value instanceof Number number) {
+            out.add(UiNodeSpec.text("", String.valueOf(number), UiStyle.DEFAULT));
             return;
         }
         if (value instanceof Iterable<?> iterable) {
@@ -160,12 +186,40 @@ public final class UiScriptObjectConverter {
         promote(node, style, "maxWidth", "maxWidth");
         promote(node, style, "maxHeight", "maxHeight");
         promote(node, style, "grow", "grow");
+        promote(node, style, "flexGrow", "flexGrow");
+        promote(node, style, "shrink", "shrink");
+        promote(node, style, "flexShrink", "flexShrink");
         promote(node, style, "display", "display");
         promote(node, style, "flexDirection", "flexDirection");
+        promote(node, style, "padding", "padding");
+        promote(node, style, "paddingX", "paddingX");
+        promote(node, style, "paddingHorizontal", "paddingHorizontal");
+        promote(node, style, "paddingY", "paddingY");
+        promote(node, style, "paddingVertical", "paddingVertical");
+        promote(node, style, "paddingLeft", "paddingLeft");
+        promote(node, style, "paddingTop", "paddingTop");
+        promote(node, style, "paddingRight", "paddingRight");
+        promote(node, style, "paddingBottom", "paddingBottom");
+        promote(node, style, "margin", "margin");
+        promote(node, style, "marginX", "marginX");
+        promote(node, style, "marginHorizontal", "marginHorizontal");
+        promote(node, style, "marginY", "marginY");
+        promote(node, style, "marginVertical", "marginVertical");
+        promote(node, style, "marginLeft", "marginLeft");
+        promote(node, style, "marginTop", "marginTop");
+        promote(node, style, "marginRight", "marginRight");
+        promote(node, style, "marginBottom", "marginBottom");
+        promote(node, style, "gap", "gap");
+        promote(node, style, "position", "position");
         promote(node, style, "absolute", "absolute");
         promote(node, style, "x", "x");
         promote(node, style, "y", "y");
+        promote(node, style, "left", "left");
+        promote(node, style, "top", "top");
+        promote(node, style, "right", "right");
+        promote(node, style, "bottom", "bottom");
         promote(node, style, "justify", "justify");
+        promote(node, style, "justifyContent", "justifyContent");
         promote(node, style, "overflow", "overflow");
         promote(node, style, "fontSize", "fontSize");
         promote(node, style, "lineHeight", "lineHeight");
@@ -175,6 +229,10 @@ public final class UiScriptObjectConverter {
         promote(node, style, "textAlign", "textAlign");
         promote(node, style, "maxTextWidth", "maxTextWidth");
         promote(node, style, "ellipsis", "ellipsis");
+        promote(node, style, "whiteSpace", "whiteSpace");
+        promote(node, style, "overflowWrap", "overflowWrap");
+        promote(node, style, "maxLines", "maxLines");
+        promote(node, style, "textOverflow", "textOverflow");
         promote(node, style, "marquee", "marquee");
 
         if (node.containsKey("align")) {
@@ -187,6 +245,7 @@ public final class UiScriptObjectConverter {
                 style.put("align", align);
             }
         }
+        promote(node, style, "alignItems", "alignItems");
 
         // Explicit style is last, matching browser/CSS precedence over convenience aliases.
         style.putAll(mapObject(node.get("style")));

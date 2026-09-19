@@ -22,10 +22,10 @@ final class UiConnectorRenderer {
     /** Reused point storage for dense HUD chart paths. */
     private final double[] points = new double[512];
 
-    void render(UiNode node, UiRenderContext context) {
-        if (node == null || context == null || context.renderer() == null) return;
+    void render(UiNode node, UiBounds logicalBounds, UiRenderContext context) {
+        if (node == null || logicalBounds == null || context == null || context.renderer() == null) return;
 
-        UiBounds bounds = node.bounds();
+        UiBounds bounds = context.renderBounds(logicalBounds);
         UiProps props = node.props();
         UiStyle style = node.style();
         Renderer2D renderer = context.renderer();
@@ -33,7 +33,7 @@ final class UiConnectorRenderer {
         if (alpha <= 0.001f) return;
 
         String type = props.string("connector", "line").toLowerCase(Locale.ROOT);
-        float thickness = props.number("strokeWidth", Math.max(1.0f, style.strokeWidth()));
+        float thickness = context.renderLength(props.number("strokeWidth", Math.max(1.0f, style.strokeWidth())));
         boolean gradient = hasLinearGradient(props) || hasStrokeLinearGradient(props);
         int rawStroke = UiRenderColors.raw(
                 props.get("stroke"), style.strokeColor() != null ? style.strokeColor() : 0xFFFFFFFF
@@ -47,23 +47,23 @@ final class UiConnectorRenderer {
                 UiRenderColors.raw(props.get("endColor"), UiRenderColors.raw(props.get("strokeEndColor"), rawStroke)),
                 alpha
         );
-        double x1 = bounds.x() + props.number("x1", 0.0f);
-        double y1 = bounds.y() + props.number("y1", bounds.height() * 0.5f);
-        double x2 = bounds.x() + props.number("x2", bounds.width());
-        double y2 = bounds.y() + props.number("y2", bounds.height() * 0.5f);
+        double x1 = bounds.x() + context.renderLength(props.number("x1", 0.0f));
+        double y1 = bounds.y() + context.renderLength(props.number("y1", logicalBounds.height() * 0.5f));
+        double x2 = bounds.x() + context.renderLength(props.number("x2", logicalBounds.width()));
+        double y2 = bounds.y() + context.renderLength(props.number("y2", logicalBounds.height() * 0.5f));
 
         switch (type) {
             case "rounded-edge", "rounded_edge", "rounded-line", "rounded_line" -> renderRoundedConnector(
-                    renderer, bounds, props, thickness, stroke, gradient, start, end, RoundedConnectorMode.LINE
+                    renderer, logicalBounds, bounds, props, context, thickness, stroke, gradient, start, end, RoundedConnectorMode.LINE
             );
             case "rounded-node-edge", "rounded_node_edge", "rounded-edge-bezier", "rounded_edge_bezier" ->
                     renderRoundedConnector(
-                            renderer, bounds, props, thickness, stroke, gradient, start, end,
+                            renderer, logicalBounds, bounds, props, context, thickness, stroke, gradient, start, end,
                             RoundedConnectorMode.NODE_EDGE
                     );
             case "rounded-orthogonal", "rounded_orthogonal", "rounded-orthogonal-connector",
                  "rounded_orthogonal_connector" -> renderRoundedConnector(
-                    renderer, bounds, props, thickness, stroke, gradient, start, end,
+                    renderer, logicalBounds, bounds, props, context, thickness, stroke, gradient, start, end,
                     RoundedConnectorMode.ORTHOGONAL
             );
             case "cable" -> {
@@ -98,10 +98,10 @@ final class UiConnectorRenderer {
                 }
             }
             case "bezier", "bezier-connector", "bezier_connector" -> {
-                double cx1 = bounds.x() + props.number("cx1", props.number("x1", 0.0f) + bounds.width() * 0.33f);
-                double cy1 = bounds.y() + props.number("cy1", props.number("y1", bounds.height() * 0.5f));
-                double cx2 = bounds.x() + props.number("cx2", props.number("x2", bounds.width()) - bounds.width() * 0.33f);
-                double cy2 = bounds.y() + props.number("cy2", props.number("y2", bounds.height() * 0.5f));
+                double cx1 = bounds.x() + context.renderLength(props.number("cx1", props.number("x1", 0.0f) + logicalBounds.width() * 0.33f));
+                double cy1 = bounds.y() + context.renderLength(props.number("cy1", props.number("y1", logicalBounds.height() * 0.5f)));
+                double cx2 = bounds.x() + context.renderLength(props.number("cx2", props.number("x2", logicalBounds.width()) - logicalBounds.width() * 0.33f));
+                double cy2 = bounds.y() + context.renderLength(props.number("cy2", props.number("y2", logicalBounds.height() * 0.5f)));
                 if (gradient) {
                     renderer.bezierConnectorGradient(x1, y1, cx1, cy1, cx2, cy2, x2, y2, thickness, start, end);
                 } else {
@@ -109,7 +109,7 @@ final class UiConnectorRenderer {
                 }
             }
             case "orthogonal", "orthogonal-connector", "orthogonal_connector" -> {
-                double midX = bounds.x() + props.number("midX", bounds.width() * 0.5f);
+                double midX = bounds.x() + context.renderLength(props.number("midX", logicalBounds.width() * 0.5f));
                 if (gradient) {
                     renderer.orthogonalConnectorGradient(x1, y1, x2, y2, midX, thickness, start, end);
                 } else {
@@ -124,7 +124,7 @@ final class UiConnectorRenderer {
                 }
             }
             case "spline" -> {
-                int count = readPoints(props.get("points"), bounds.x(), bounds.y());
+                int count = readPoints(props.get("points"), bounds.x(), bounds.y(), context.transform().scale());
                 if (count >= 2) {
                     if (gradient) {
                         renderer.splineGradient(points, count, thickness, props.bool("closed", false), start, end);
@@ -134,9 +134,9 @@ final class UiConnectorRenderer {
                 }
             }
             case "spline-area", "spline_area", "area-spline", "area_spline" -> {
-                int count = readPoints(props.get("points"), bounds.x(), bounds.y());
+                int count = readPoints(props.get("points"), bounds.x(), bounds.y(), context.transform().scale());
                 if (count >= 2) {
-                    double baseline = bounds.y() + props.number("baseline", bounds.height());
+                    double baseline = bounds.y() + context.renderLength(props.number("baseline", logicalBounds.height()));
                     int fillStart = props.get("fillStartColor") != null
                             ? UiRenderColors.resolve(props.get("fillStartColor"), 0, alpha)
                             : UiColor.multiplyAlpha(start, 0.30f);
@@ -160,24 +160,26 @@ final class UiConnectorRenderer {
     }
 
     private static void renderRoundedConnector(Renderer2D renderer,
+                                               UiBounds logicalBounds,
                                                UiBounds bounds,
                                                UiProps props,
+                                               UiRenderContext context,
                                                double thickness,
                                                int stroke,
                                                boolean gradient,
                                                int start,
                                                int end,
                                                RoundedConnectorMode mode) {
-        double sx = bounds.x() + props.number("sourceX", props.number("x1", 0.0f));
-        double sy = bounds.y() + props.number("sourceY", props.number("y1", 0.0f));
-        double sw = props.number("sourceWidth", props.number("sourceW", 1.0f));
-        double sh = props.number("sourceHeight", props.number("sourceH", 1.0f));
-        double sr = props.number("sourceRadius", 0.0f);
-        double tx = bounds.x() + props.number("targetX", props.number("x2", bounds.width()));
-        double ty = bounds.y() + props.number("targetY", props.number("y2", 0.0f));
-        double tw = props.number("targetWidth", props.number("targetW", 1.0f));
-        double th = props.number("targetHeight", props.number("targetH", 1.0f));
-        double tr = props.number("targetRadius", 0.0f);
+        double sx = bounds.x() + context.renderLength(props.number("sourceX", props.number("x1", 0.0f)));
+        double sy = bounds.y() + context.renderLength(props.number("sourceY", props.number("y1", 0.0f)));
+        double sw = context.renderLength(props.number("sourceWidth", props.number("sourceW", 1.0f)));
+        double sh = context.renderLength(props.number("sourceHeight", props.number("sourceH", 1.0f)));
+        double sr = context.renderLength(props.number("sourceRadius", 0.0f));
+        double tx = bounds.x() + context.renderLength(props.number("targetX", props.number("x2", logicalBounds.width())));
+        double ty = bounds.y() + context.renderLength(props.number("targetY", props.number("y2", 0.0f)));
+        double tw = context.renderLength(props.number("targetWidth", props.number("targetW", 1.0f)));
+        double th = context.renderLength(props.number("targetHeight", props.number("targetH", 1.0f)));
+        double tr = context.renderLength(props.number("targetRadius", 0.0f));
 
         switch (mode) {
             case NODE_EDGE -> {
@@ -186,7 +188,7 @@ final class UiConnectorRenderer {
                 else renderer.roundedRectNodeGraphEdge(sx, sy, sw, sh, sr, tx, ty, tw, th, tr, thickness, stroke);
             }
             case ORTHOGONAL -> {
-                double midX = bounds.x() + props.number("midX", bounds.width() * 0.5f);
+                double midX = bounds.x() + context.renderLength(props.number("midX", logicalBounds.width() * 0.5f));
                 if (gradient) {
                     renderer.roundedRectOrthogonalConnectorGradient(
                             sx, sy, sw, sh, sr,
@@ -214,14 +216,14 @@ final class UiConnectorRenderer {
         }
     }
 
-    private int readPoints(Object value, double offsetX, double offsetY) {
+    private int readPoints(Object value, double offsetX, double offsetY, float renderScale) {
         int count = 0;
         if (value instanceof Iterable<?> iterable) {
             for (Object item : iterable) {
                 if (count >= points.length / 2) break;
                 if (item instanceof Map<?, ?> map) {
-                    points[count * 2] = offsetX + number(map.get("x"), 0.0f);
-                    points[count * 2 + 1] = offsetY + number(map.get("y"), 0.0f);
+                    points[count * 2] = offsetX + number(map.get("x"), 0.0f) * renderScale;
+                    points[count * 2 + 1] = offsetY + number(map.get("y"), 0.0f) * renderScale;
                     count++;
                 } else if (item instanceof Number) {
                     break;
@@ -235,8 +237,8 @@ final class UiConnectorRenderer {
                         pendingX = n.doubleValue();
                     } else {
                         if (count >= points.length / 2) break;
-                        points[count * 2] = offsetX + pendingX;
-                        points[count * 2 + 1] = offsetY + n.doubleValue();
+                        points[count * 2] = offsetX + pendingX * renderScale;
+                        points[count * 2 + 1] = offsetY + n.doubleValue() * renderScale;
                         count++;
                         pendingX = Double.NaN;
                     }

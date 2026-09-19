@@ -513,8 +513,6 @@ public final class DeferredWorldPipeline {
                 executeStage(DeferredStage.VELOCITY_RESOLVE);
                 executeStage(DeferredStage.DEPTH_PYRAMID);
                 executeStage(DeferredStage.SHADOW_CASCADE_RESOLVE);
-                executeStage(DeferredStage.CONTACT_SHADOW);
-                executeStage(DeferredStage.SHADOW_RESOLVE);
                 executeStage(DeferredStage.AMBIENT_OCCLUSION);
                 executeStage(DeferredStage.PRE_LIGHTING);
                 postGeometryExecuted = true;

@@ -69,6 +69,23 @@ const uint COMBATANT_WAVE_FREE_VERTICAL_SHIFT = 24u;
 const uint COMBATANT_WAVE_SPEED_SHIFT = 28u;
 const uint COMBATANT_WAVE_SETTING_MASK = 15u;
 
+#ifdef COMBATANT_DIRECTIONAL_SHADOW_DISTORTION
+// Non-linear single-map warping concentrates texel density around the camera and decreases it
+// continuously toward the finite shadow boundary without over-expanding diagonal axes.
+const float COMBATANT_SHADOW_DISTORTION = 0.85;
+
+float combatant_shadow_quartic_length(vec2 value) {
+    vec2 squared = value * value;
+    vec2 fourth = squared * squared;
+    return sqrt(sqrt(fourth.x + fourth.y));
+}
+
+float combatant_shadow_distortion_factor(vec2 shadowNdc) {
+    return combatant_shadow_quartic_length(shadowNdc) * COMBATANT_SHADOW_DISTORTION
+            + (1.0 - COMBATANT_SHADOW_DISTORTION);
+}
+#endif
+
 float combatant_decode_wave_setting(uint flags, uint shift) {
     return float((flags >> shift) & COMBATANT_WAVE_SETTING_MASK) * (3.0 / 15.0);
 }
@@ -129,6 +146,13 @@ void main() {
 #endif
 
     gl_Position = u_ProjectionMatrix * viewPosition;
+#ifdef COMBATANT_DIRECTIONAL_SHADOW_DISTORTION
+    if (abs(gl_Position.w) > 1.0e-7) {
+        vec2 shadowNdc = gl_Position.xy / gl_Position.w;
+        float distortionFactor = max(combatant_shadow_distortion_factor(shadowNdc), 1.0e-4);
+        gl_Position.xy /= distortionFactor;
+    }
+#endif
 
 #if defined(COMBATANT_SHADOW_PASS) || defined(COMBATANT_DEFERRED_GBUFFER)
     // Deferred G-buffer stores material/base tint only. Vanilla lightmap is a lighting result and

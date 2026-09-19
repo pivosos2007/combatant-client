@@ -33,7 +33,7 @@ public final class UiInlineStyle {
             "paddingleft", "paddingtop", "paddingright", "paddingbottom",
             "margin", "marginx", "marginhorizontal", "marginy", "marginvertical",
             "marginleft", "margintop", "marginright", "marginbottom",
-            "gap", "grow", "flexgrow", "display", "flexdirection",
+            "gap", "grow", "flexgrow", "shrink", "flexshrink", "display", "flexdirection",
             "position", "absolute", "left", "top", "right", "bottom", "x", "y",
             "align", "alignitems", "justify", "justifycontent", "overflow",
             "radius", "borderradius",
@@ -42,6 +42,7 @@ public final class UiInlineStyle {
             "blur", "blurquality", "blurbrightness", "bluralpha", "liquidglass", "clip", "marquee",
             "color", "textcolor", "fontfamily", "fontweight", "fontstyle", "fontsize", "lineheight", "fontscale", "textscale",
             "textshadow", "texteffect", "texteffectspeed", "textbackend", "maxtextwidth", "ellipsis",
+            "whitespace", "overflowwrap", "maxlines", "textoverflow",
             "textalign", "cursor", "blend", "opacity"
     );
 
@@ -93,6 +94,8 @@ public final class UiInlineStyle {
         applyNumber(builder::gap, "gap");
         Float grow = firstNumber("flexgrow", "grow");
         if (grow != null) builder.grow(grow);
+        Float shrink = firstNumber("flexshrink", "shrink");
+        if (shrink != null) builder.shrink(shrink);
 
         String display = text("display");
         if (display != null) {
@@ -201,6 +204,35 @@ public final class UiInlineStyle {
         if (maxTextWidth != null) builder.maxTextWidth(maxTextWidth);
         Boolean ellipsis = bool("ellipsis");
         if (ellipsis != null) builder.ellipsis(ellipsis);
+        String whiteSpace = text("whitespace");
+        if (whiteSpace != null) {
+            String normalized = whiteSpace.trim().toLowerCase(Locale.ROOT);
+            if (normalized.equals("nowrap") || normalized.equals("normal") || normalized.equals("pre-wrap")) {
+                builder.whiteSpace(normalized);
+            } else {
+                invalid("UI inline style 'whiteSpace' must be nowrap, normal, or pre-wrap; got '" + whiteSpace + "'.");
+            }
+        }
+        String overflowWrap = text("overflowwrap");
+        if (overflowWrap != null) {
+            String normalized = overflowWrap.trim().toLowerCase(Locale.ROOT);
+            if (normalized.equals("normal") || normalized.equals("break-word") || normalized.equals("anywhere")) {
+                builder.overflowWrap(normalized);
+            } else {
+                invalid("UI inline style 'overflowWrap' must be normal, break-word, or anywhere; got '" + overflowWrap + "'.");
+            }
+        }
+        Integer maxLines = integer("maxlines");
+        if (maxLines != null) builder.maxLines(maxLines);
+        String textOverflow = text("textoverflow");
+        if (textOverflow != null) {
+            String normalized = textOverflow.trim().toLowerCase(Locale.ROOT);
+            if (normalized.equals("clip") || normalized.equals("ellipsis")) {
+                builder.textOverflow(normalized);
+            } else {
+                invalid("UI inline style 'textOverflow' must be clip or ellipsis; got '" + textOverflow + "'.");
+            }
+        }
         String textAlign = text("textalign");
         if (textAlign != null) builder.textAlign(textAlign);
         String cursor = text("cursor");

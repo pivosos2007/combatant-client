@@ -523,7 +523,7 @@ final class DeferredFroxelMediaSource implements AutoCloseable {
                         froxelGrid.maxDistanceBlocks())
                 .putVec4(0, "policy", froxelGrid.depthExponent(), zeroToOneDepth(context) ? 1.0f : 0.0f,
                         context.worldState().atmosphereState().valid() ? 1.0f : 0.0f,
-                        context.settings().shadowCascadeBlendFraction())
+                        0.0f)
                 .putVec4(0, "shadowMapDomain", shadow.mapOriginRelativeX(), shadow.mapOriginRelativeZ(),
                         shadow.spanBlocks(), shadow.referenceY())
                 .putVec4(0, "shadowSun", shadow.sunX(), shadow.sunY(), shadow.sunZ(), shadow.active() ? 1.0f : 0.0f)

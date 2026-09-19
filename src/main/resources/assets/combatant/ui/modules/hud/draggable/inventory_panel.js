@@ -28,38 +28,36 @@ class HudInventoryPanelLayout extends HudPanelLayout {
   }
 
   slotFrame(row, col) {
-    const bs = this.bs();
     const gx = prop(this.p, "gridStartX", null) == null
       ? this.contentInsetX()
-      : n(this.p.gridStartX, this.base.leftInsetX) * bs;
-    const gy = n(this.p.gridStartY, 20.0) * bs;
-    const step = n(this.p.gridStep, 13.0) * bs;
+      : n(this.p.gridStartX, this.base.leftInsetX);
+    const gy = n(this.p.gridStartY, 20.0);
+    const step = n(this.p.gridStep, 13.0);
     const itemX = gx + col * step;
     const itemY = gy + row * step;
-    const lineT = Math.max(0.5 * n(this.p.drawScale, 1), n(this.p.gridLineThickness, 0.5) * bs);
-    const lineLen = n(this.p.gridLineLength, 9.0) * bs;
+    const lineT = n(this.p.gridLineThickness, 0.5);
+    const lineLen = n(this.p.gridLineLength, 9.0);
     const nodes = [];
     if (col < n(this.p.cols, 9) - 1) {
-      nodes.push(this.gridLine(`grid:v:${row}:${col}`, itemX + n(this.p.gridLineOffsetX, 11.0) * bs, itemY + bs, lineT, lineLen));
+      nodes.push(this.gridLine(`grid:v:${row}:${col}`, itemX + n(this.p.gridLineOffsetX, 11.0), itemY + 1, lineT, lineLen));
     }
     if (row < n(this.p.rowsCount, 3) - 1) {
-      nodes.push(this.gridLine(`grid:h:${row}:${col}`, itemX + 0.5 * bs, itemY + n(this.p.gridLineOffsetY, 10.0) * bs, lineLen, lineT));
+      nodes.push(this.gridLine(`grid:h:${row}:${col}`, itemX + 0.5, itemY + n(this.p.gridLineOffsetY, 10.0), lineLen, lineT));
     }
     return nodes;
   }
 
   itemNode(cell, index) {
-    const bs = this.bs();
     const gx = prop(this.p, "gridStartX", null) == null
       ? this.contentInsetX()
-      : n(this.p.gridStartX, this.base.leftInsetX) * bs;
-    const gy = n(this.p.gridStartY, 20.0) * bs;
-    const step = n(this.p.gridStep, 13.0) * bs;
+      : n(this.p.gridStartX, this.base.leftInsetX);
+    const gy = n(this.p.gridStartY, 20.0);
+    const step = n(this.p.gridStep, 13.0);
     const slot = Math.max(0, Math.round(n(prop(cell, "slot", index), index)));
     const cols = Math.max(1, Math.round(n(this.p.cols, 9)));
     const row = Math.floor(slot / cols);
     const col = slot % cols;
-    const size = 16.0 * n(this.p.itemRenderScale, 0.5) * bs;
+    const size = 16.0 * n(this.p.itemRenderScale, 0.5);
     const x = gx + col * step;
     const y = gy + row * step;
     return ui.item({

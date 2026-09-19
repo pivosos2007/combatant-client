@@ -29,6 +29,7 @@ final class DeferredShadowCascadeSource {
     private static final float RADIUS_QUANTIZATION = 16.0f;
     private static final float BASIS_EPSILON_SQUARED = 1.0e-6f;
     private static final float GRID_RESET_TEXEL_FRACTION = 0.10f;
+    private static final float PHOTON_SHADOW_DISTORTION = 0.85f;
     private static final Vector3f OVERWORLD_CELESTIAL_PLANE_NORMAL = new Vector3f(0.0f, 0.0f, 1.0f);
 
     /**
@@ -45,65 +46,47 @@ final class DeferredShadowCascadeSource {
         if (primary == null || !directional.shadowValid()) return;
 
         boolean nearOnly = DeferredShadowBringupConfig.nearOnly();
-        int cascadeCount = nearOnly ? 1 : context.settings().shadowCascadeCount();
+        // Photon/Iris do not use cascaded shadow maps for the main directional shadow. Iris
+        // provides one camera-centred orthographic projection and Photon redistributes its XY
+        // texel density non-linearly in the shadow vertex/receiver shaders. Keep a single view in
+        // production too: this removes CSM transition seams instead of trying to hide them with
+        // ever wider cross-fades.
         float farDistance = resolveShadowReceiverDistance(primary);
         if (nearOnly) {
-            // Diagnostic isolation must keep useful near-field texel density. The old one-cascade
-            // bring-up accidentally covered the complete far plane and therefore enlarged one
-            // shadow texel to multiple world blocks.
             farDistance = Math.min(farDistance, DeferredShadowBringupConfig.nearDistance());
         }
         float nearDistance = Math.min(DEFAULT_NEAR_DISTANCE, farDistance * 0.25f);
-        float lambda = context.settings().shadowSplitLambda();
 
-        float[] splits = new float[cascadeCount + 1];
-        splits[0] = nearDistance;
-        for (int i = 1; i <= cascadeCount; i++) {
-            float p = (float) i / (float) cascadeCount;
-            float logarithmic = (float) (nearDistance * Math.pow(farDistance / nearDistance, p));
-            float uniform = nearDistance + (farDistance - nearDistance) * p;
-            splits[i] = lerp(uniform, logarithmic, lambda);
-        }
-        splits[cascadeCount] = farDistance;
+        float[] splits = new float[]{nearDistance, farDistance};
 
         Matrix4f inverseView = primary.inverseView();
-        // CSM geometry must be invariant under TAA sample jitter. The primary scene may render
-        // with the jittered projection, but cascade splits/frustum corners are a stable world-space
-        // contract and therefore derive from the authoritative unjittered camera projection.
+        // Directional shadow geometry must be invariant under TAA sample jitter. The primary scene
+        // may render with the jittered projection, but the shadow receiver/caster contract derives
+        // from the authoritative unjittered camera projection.
         Matrix4f projection = primary.unjitteredProjection();
         Vector3f lightDirection = directional.direction(new Vector3f());
         Vector3f lightUp = deterministicLightUp(lightDirection);
 
         int resolution = context.settings().shadowResolution();
-        float blendFraction = context.settings().shadowCascadeBlendFraction();
-        int columns = (int) Math.ceil(Math.sqrt(cascadeCount));
-        for (int cascade = 0; cascade < cascadeCount; cascade++) {
-            float cascadeNear = splits[cascade];
-            float cascadeFar = splits[cascade + 1];
-            float coverageNear = cascadeNear;
-            if (cascade > 0 && blendFraction > 0.0f) {
-                float previousSpan = splits[cascade] - splits[cascade - 1];
-                coverageNear = Math.max(nearDistance, cascadeNear - previousSpan * blendFraction);
-            }
-            DeferredSecondaryView view = buildCascade(
-                    cascade,
-                    cascadeNear,
-                    cascadeFar,
-                    coverageNear,
-                    cascadeFar,
-                    primary.cameraPosition(),
-                    projection,
-                    inverseView,
-                    lightDirection,
-                    lightUp,
-                    context.settings().shadowCasterDistance(),
-                    resolution,
-                    (cascade % columns) * resolution,
-                    (cascade / columns) * resolution,
-                    context.rhi().capabilities().zeroToOneDepth()
-            );
-            context.secondaryViews().register(view);
-        }
+        DeferredSecondaryView view = buildCascade(
+                0,
+                splits[0],
+                splits[1],
+                splits[0],
+                splits[1],
+                primary.cameraPosition(),
+                projection,
+                inverseView,
+                lightDirection,
+                lightUp,
+                context.settings().shadowCasterDistance(),
+                resolution,
+                0,
+                0,
+                context.rhi().capabilities().zeroToOneDepth(),
+                true
+        );
+        context.secondaryViews().register(view);
     }
 
 
@@ -119,7 +102,8 @@ final class DeferredShadowCascadeSource {
             // coverage for terrain/chunk-boundary hysteresis, but shadow only the receiver range
             // that can actually be visible.
             int chunks = Math.max(2, minecraft.options.getEffectiveRenderDistance());
-            renderedFar = (chunks + 1) * 16.0f;
+            float axialDistance = (chunks + 1) * 16.0f;
+            renderedFar = axialDistance * DeferredShadowBringupConfig.receiverDistanceScale();
         }
 
         if (projectionFar > DEFAULT_NEAR_DISTANCE && renderedFar > DEFAULT_NEAR_DISTANCE) {
@@ -144,7 +128,8 @@ final class DeferredShadowCascadeSource {
                                                        int resolution,
                                                        int viewportX,
                                                        int viewportY,
-                                                       boolean zeroToOneDepth) {
+                                                       boolean zeroToOneDepth,
+                                                       boolean distortedSingleMap) {
         Vector3f[] corners = frustumCorners(coverageNearDistance, coverageFarDistance, cameraProjection, inverseCameraView);
 
         // Stable near-field shadow coverage is camera-centered, matching the fundamental layout of
@@ -153,16 +138,31 @@ final class DeferredShadowCascadeSource {
         // makes the shadow grid crawl under camera rotation. A sphere around the camera is rotation
         // invariant and still covers every receiver in this split.
         float radius = 0.0f;
-        for (Vector3f corner : corners) {
-            radius = Math.max(radius, corner.length());
+        if (distortedSingleMap) {
+            // Photon treats shadowDistance as the orthographic half-plane length. Every receiver
+            // inside that world-space radius therefore has a representable light-space XY point;
+            // the shader-side distortion decides how the fixed resolution is distributed inside
+            // the map. Do not derive the footprint from camera FOV, otherwise yaw/FOV changes
+            // would reintroduce density breathing.
+            radius = Math.max(1.0f, coverageFarDistance);
+        } else {
+            for (Vector3f corner : corners) {
+                radius = Math.max(radius, corner.length());
+            }
+            radius = Math.max(1.0f, radius + BOUNDS_PADDING);
         }
-        radius = Math.max(1.0f, radius + BOUNDS_PADDING);
         radius = (float) Math.ceil(radius * RADIUS_QUANTIZATION) / RADIUS_QUANTIZATION;
 
         float extent = Math.max(0.001f, radius * 2.0f);
         float worldTexel = extent / (float) Math.max(1, resolution);
+        // Warping magnifies the map centre by 1/(1-D). Snap on the smallest effective world
+        // texel, not on the undistorted edge texel, otherwise one anchor step becomes a several-
+        // texel jump near the camera and reintroduces camera-motion flicker.
+        float stabilizationTexel = distortedSingleMap
+                ? worldTexel * (1.0f - PHOTON_SHADOW_DISTORTION)
+                : worldTexel;
         StableGridAnchor anchor = stabilizeCameraTranslation(
-                index, cameraOrigin, lightDirection, lightUp, radius, worldTexel
+                index, cameraOrigin, lightDirection, lightUp, radius, stabilizationTexel
         );
         Vector3f center = new Vector3f(
                 (float) (anchor.worldX - cameraOrigin.x),
@@ -170,7 +170,10 @@ final class DeferredShadowCascadeSource {
                 (float) (anchor.worldZ - cameraOrigin.z)
         );
 
-        Vector3f eye = new Vector3f(center).fma(radius + casterDistance + BOUNDS_PADDING, lightDirection);
+        float effectiveCasterDistance = resolveCasterDistance(
+                cameraOrigin, lightDirection, radius, casterDistance);
+        Vector3f eye = new Vector3f(center).fma(
+                radius + effectiveCasterDistance + BOUNDS_PADDING, lightDirection);
         Matrix4f lightView = new Matrix4f().lookAt(eye, center, lightUp);
 
         float minZ = Float.POSITIVE_INFINITY;
@@ -193,7 +196,7 @@ final class DeferredShadowCascadeSource {
         // Keep an explicit caster band on the light-facing side of the receiver frustum.
         // Extending only the far plane would include geometry behind the receivers while clipping
         // exactly the off-screen/above-camera casters this secondary visibility path exists for.
-        float lightNear = Math.max(0.01f, -maxZ - casterDistance - BOUNDS_PADDING);
+        float lightNear = Math.max(0.01f, -maxZ - effectiveCasterDistance - BOUNDS_PADDING);
         float lightFar = Math.max(lightNear + 0.01f, -minZ + BOUNDS_PADDING);
         // Combatant/Minecraft depth is reversed-Z (GREATER/GEQUAL with clear depth 0). JOML's
         // ordinary ortho maps the geometric near plane to the low depth end, so swap the z planes
@@ -217,6 +220,42 @@ final class DeferredShadowCascadeSource {
                 nearDistance,
                 farDistance
         );
+    }
+
+
+    /**
+     * The configured caster distance is a quality floor, not a safe world-coverage bound. A fixed
+     * 64-block band can clip the terrain roof above a deep cave while the receiver still projects
+     * perfectly into the CSM, which turns the missing caster into full sunlight. Extend the
+     * light-facing depth far enough to cross the dimension's vertical build span for the current
+     * light elevation. The XY shadow footprint and resolution are unchanged.
+     */
+    private static float resolveCasterDistance(Vec3 cameraOrigin,
+                                               Vector3f lightDirection,
+                                               float receiverRadius,
+                                               float configuredDistance) {
+        float configured = Math.max(0.0f, configuredDistance);
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.level == null) return configured;
+
+        float minY = minecraft.level.getMinY();
+        float maxY = minY + minecraft.level.getHeight();
+        float cameraY = (float) cameraOrigin.y;
+        float lightY = lightDirection.y;
+        float absLightY = Math.abs(lightY);
+
+        // At grazing angles the vertical distance maps to a long light ray. Clamp the denominator
+        // rather than letting a near-horizontal celestial direction explode the projection depth;
+        // the runtime shadow contract already caps caster distance at 1024 blocks.
+        float safeLightY = Math.max(absLightY, 0.25f);
+        float receiverExtremeY = lightY >= 0.0f
+                ? Math.max(minY, cameraY - receiverRadius)
+                : Math.min(maxY, cameraY + receiverRadius);
+        float verticalDistance = lightY >= 0.0f
+                ? Math.max(0.0f, maxY - receiverExtremeY)
+                : Math.max(0.0f, receiverExtremeY - minY);
+        float worldCoverageDistance = verticalDistance / safeLightY + BOUNDS_PADDING;
+        return Math.min(1024.0f, Math.max(configured, worldCoverageDistance));
     }
 
     private StableGridAnchor stabilizeCameraTranslation(int index,
@@ -392,7 +431,4 @@ final class DeferredShadowCascadeSource {
         );
     }
 
-    private static float lerp(float a, float b, float t) {
-        return a + (b - a) * t;
-    }
 }

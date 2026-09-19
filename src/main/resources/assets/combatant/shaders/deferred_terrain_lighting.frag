@@ -82,6 +82,11 @@ float combatant_burley_diffuse(float ndotv, float ndotl, float ldoth, float roug
     return lightScatter * viewScatter / PI;
 }
 
+float combatant_lift_ao(float value) {
+    float lifted = (1.5 * value) / max(1.0 + 0.5 * value, 1e-5);
+    return mix(1.0, lifted, 0.9);
+}
+
 void main() {
     if (!combatant_owns_gbuffer_pixel(v_TexCoord)) discard;
 
@@ -91,6 +96,7 @@ void main() {
 
     vec3 albedo = max(surface.rgb, vec3(0.0));
     float materialAo = clamp(surface.a, 0.0, 1.0);
+    if (u_DepthAndFlags.w > 0.5) materialAo = combatant_lift_ao(materialAo);
     float roughness = clamp(material.r, 0.045, 1.0);
     float metallic = clamp(material.g, 0.0, 1.0);
     float dielectricF0 = clamp(material.b, 0.0, 1.0);
@@ -108,7 +114,7 @@ void main() {
             : 1.0;
 
     // Incoming environment irradiance is an explicit renderer contract. Vanilla lightmap data is
-    // neither sampled nor inferred here. Material AO and GTAO remain independent visibility terms.
+    // neither sampled nor inferred here.
     vec3 ambientDiffuseWeight = (vec3(1.0) - f0) * (1.0 - metallic);
     vec3 litColor = albedo * ambientDiffuseWeight
             * environmentIrradiance * materialAo * ambientVisibility;

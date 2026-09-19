@@ -17,7 +17,6 @@ import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptR
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
 import combatant.client.render.engine.text.TextRenderer;
-import combatant.client.render.engine.text.TextSizing;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 
@@ -76,15 +75,16 @@ final class ScriptedStatisticsHudPanel {
                 panel.width,
                 panel.height,
                 fallback,
-                panel.x,
-                panel.y,
+                0.0f,
+                0.0f,
                 panel.width,
                 panel.height,
                 () -> props,
                 panel::patches
         );
         if (baked == null) return false;
-        baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT));
+        baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT)
+                .at(panel.x, panel.y, panel.renderScale));
         return true;
     }
 
@@ -104,9 +104,8 @@ final class ScriptedStatisticsHudPanel {
                  float mainHeight,
                  float graphHeight,
                  float graphGap,
-                 float drawScale,
-                 float baseScale,
-                 float fontScale,
+                 float renderScale,
+                 float fontSize,
                  float headerTextHeight,
                  float rowTextHeight,
                  String playTime,
@@ -157,9 +156,7 @@ final class ScriptedStatisticsHudPanel {
             out.put("mainHeight", mainHeight);
             out.put("graphHeight", graphHeight);
             out.put("graphGap", graphGap);
-            out.put("drawScale", drawScale);
-            out.put("baseScale", baseScale);
-            out.put("fontSize", TextSizing.sizeForScale(fontScale));
+            out.put("fontSize", fontSize);
             out.put("headerTextHeight", headerTextHeight);
             out.put("rowTextHeight", rowTextHeight);
             out.put("playTime", playTime);
@@ -205,9 +202,7 @@ final class ScriptedStatisticsHudPanel {
             h = CachedUiScriptRuntime.mix(h, mainHeight);
             h = CachedUiScriptRuntime.mix(h, graphHeight);
             h = CachedUiScriptRuntime.mix(h, graphGap);
-            h = CachedUiScriptRuntime.mix(h, drawScale);
-            h = CachedUiScriptRuntime.mix(h, baseScale);
-            h = CachedUiScriptRuntime.mix(h, fontScale);
+            h = CachedUiScriptRuntime.mix(h, fontSize);
             h = CachedUiScriptRuntime.mix(h, headerTextHeight);
             h = CachedUiScriptRuntime.mix(h, rowTextHeight);
             h = CachedUiScriptRuntime.mix(h, showPlayTime);

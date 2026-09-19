@@ -20,7 +20,21 @@ final class DeferredShadowBringupConfig {
     private static final String NEAR_SLOPE_BIAS_PROPERTY = "combatant.render.deferred.shadowNearSlopeBiasTexels";
     private static final String NEAR_MAX_BIAS_PROPERTY = "combatant.render.deferred.shadowNearMaxBiasTexels";
     private static final String FAR_FADE_FRACTION_PROPERTY = "combatant.render.deferred.shadowFarFadeFraction";
+    private static final String RECEIVER_DISTANCE_SCALE_PROPERTY =
+            "combatant.render.deferred.shadowReceiverDistanceScale";
     private static final String MAX_ADAPTIVE_FILTER_RADIUS_PROPERTY = "combatant.render.deferred.shadowMaxAdaptiveFilterRadiusTexels";
+    private static final String DISTANT_SKYLIGHT_FALLBACK_START_PROPERTY =
+            "combatant.render.deferred.shadowDistantSkylightFallbackStart";
+    private static final String DISTANT_SKYLIGHT_FALLBACK_END_PROPERTY =
+            "combatant.render.deferred.shadowDistantSkylightFallbackEnd";
+    private static final String LOW_SKYLIGHT_LEAK_END_PROPERTY =
+            "combatant.render.deferred.shadowLowSkylightLeakEnd";
+    private static final String DISTANT_SSRT_ENABLED_PROPERTY =
+            "combatant.render.deferred.shadowDistantSsrt";
+    private static final String DISTANT_SSRT_STEPS_PROPERTY =
+            "combatant.render.deferred.shadowDistantSsrtSteps";
+    private static final String DISTANT_SSRT_THICKNESS_PROPERTY =
+            "combatant.render.deferred.shadowDistantSsrtThickness";
 
     private DeferredShadowBringupConfig() {
     }
@@ -46,11 +60,67 @@ final class DeferredShadowBringupConfig {
     }
 
     static float farFadeFraction() {
-        return floatProperty(FAR_FADE_FRACTION_PROPERTY, 0.12f, 0.0f, 0.40f);
+        // Keep only a short terminal hand-off. A 12% fade on the very wide final cascade made
+        // production shadows appear to die substantially before the actual receiver limit.
+        return floatProperty(FAR_FADE_FRACTION_PROPERTY, 0.06f, 0.0f, 0.40f);
+    }
+
+    static float receiverDistanceScale() {
+        // Chunk visibility is square in X/Z, so a camera looking along a diagonal sees farther than
+        // the axial N*16 distance. The base range already includes one guard chunk, so 1.30 covers
+        // the practical 12-chunk diagonal without paying the full sqrt(2) density penalty again.
+        return floatProperty(RECEIVER_DISTANCE_SCALE_PROPERTY, 1.30f, 1.0f, 1.60f);
     }
 
     static float maxAdaptiveFilterRadiusTexels() {
-        return floatProperty(MAX_ADAPTIVE_FILTER_RADIUS_PROPERTY, 2.5f, 0.0f, 6.0f);
+        return floatProperty(MAX_ADAPTIVE_FILTER_RADIUS_PROPERTY, 3.0f, 0.0f, 6.0f);
+    }
+
+    /**
+     * Conservative distant-shadow fallback from Minecraft skylight. Only pixels very close to
+     * fully sky-exposed are allowed to become fully directionally lit outside reliable CSM
+     * coverage. This prevents long caves/tunnels from becoming sunlit merely because the shadow
+     * map ran out of receiver range.
+     */
+    static float distantSkylightFallbackStart() {
+        return floatProperty(DISTANT_SKYLIGHT_FALLBACK_START_PROPERTY, 0.90f, 0.0f, 0.99f);
+    }
+
+    static float distantSkylightFallbackEnd() {
+        return floatProperty(DISTANT_SKYLIGHT_FALLBACK_END_PROPERTY, 0.985f, 0.01f, 1.0f);
+    }
+
+    /**
+     * Photon-style low-skylight guard for distant SSRT only. Valid near-map PCF remains purely
+     * geometric so Minecraft's discrete skylight levels cannot appear as bands in the shadow.
+     */
+    static float lowSkylightLeakEnd() {
+        return floatProperty(LOW_SKYLIGHT_LEAK_END_PROPERTY, 2.0f / 15.0f, 0.0f, 0.5f);
+    }
+
+
+    static boolean distantSsrtEnabled() {
+        return Boolean.parseBoolean(System.getProperty(DISTANT_SSRT_ENABLED_PROPERTY, "true"));
+    }
+
+    static int distantSsrtSteps() {
+        return intProperty(DISTANT_SSRT_STEPS_PROPERTY, 10, 4, 24);
+    }
+
+    static float distantSsrtThickness() {
+        // Photon uses z_tolerance=10; its hit predicate accepts roughly 0..2*tolerance.
+        return floatProperty(DISTANT_SSRT_THICKNESS_PROPERTY, 10.0f, 0.25f, 32.0f);
+    }
+
+    private static int intProperty(String key, int fallback, int min, int max) {
+        String value = System.getProperty(key);
+        if (value == null || value.isBlank()) return fallback;
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return Math.max(min, Math.min(max, parsed));
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
     }
 
     private static float floatProperty(String key, float fallback, float min, float max) {

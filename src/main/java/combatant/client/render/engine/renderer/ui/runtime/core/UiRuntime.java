@@ -307,6 +307,7 @@ public final class UiRuntime {
         if (hasLayout && UiScrollRuntime.tick(root, System.nanoTime())) {
             layoutEngine.layout(root, lastLayoutTextRenderer, lastLayoutX, lastLayoutY, lastLayoutWidth, lastLayoutHeight);
         }
+        inputDispatcher.setCoordinateTransform(context != null ? context.transform() : null);
         renderer.render(root, context);
         diagnostics.counters().setRenderNanos(System.nanoTime() - start);
     }

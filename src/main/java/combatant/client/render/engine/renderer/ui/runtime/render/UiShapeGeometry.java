@@ -69,18 +69,29 @@ final class UiShapeGeometry {
     }
 
     private static UiCornerSpec corner(UiProps props, String shortName, String longName,
-                                       UiCornerSpec fallback, float radius, float cut) {
+                                       UiCornerSpec fallback, float radius, float cut, float renderScale) {
         Object corners = props.get("corners");
         Object explicit = cornerValue(corners, shortName, longName);
         if (explicit == null) explicit = first(props, "corner" + shortName, "corner" + longName);
-        if (explicit != null) return cornerFromObject(explicit, fallback, radius, cut);
+        if (explicit != null) return cornerFromObject(explicit, fallback, radius, cut, renderScale);
 
         Object mode = first(props, "cornerMode" + shortName, "cornerMode" + longName);
-        if (mode != null) return cornerFromObject(mode, fallback, radius, cut);
+        if (mode != null) return cornerFromObject(mode, fallback, radius, cut, renderScale);
 
-        float r = props.number("radius" + shortName, props.number("radius" + longName, fallback.radiusX()));
-        float c = props.number("cut" + shortName, props.number("cut" + longName,
-                props.number("chamfer" + shortName, props.number("chamfer" + longName, fallback.cutX()))));
+        float r = props.get("radius" + shortName) != null
+                ? props.number("radius" + shortName, 0.0f) * renderScale
+                : props.get("radius" + longName) != null
+                ? props.number("radius" + longName, 0.0f) * renderScale
+                : fallback.radiusX();
+        float c = props.get("cut" + shortName) != null
+                ? props.number("cut" + shortName, 0.0f) * renderScale
+                : props.get("cut" + longName) != null
+                ? props.number("cut" + longName, 0.0f) * renderScale
+                : props.get("chamfer" + shortName) != null
+                ? props.number("chamfer" + shortName, 0.0f) * renderScale
+                : props.get("chamfer" + longName) != null
+                ? props.number("chamfer" + longName, 0.0f) * renderScale
+                : fallback.cutX();
         if (r > 0.0f && (fallback.kind() == UiCornerKind.ROUNDED || fallback.kind() == UiCornerKind.SQUARE)) {
             return UiCornerSpec.rounded(r, r);
         }
@@ -90,17 +101,18 @@ final class UiShapeGeometry {
         return fallback;
     }
 
-    private static UiCornerSpec cornerFromObject(Object value, UiCornerSpec fallback, float radius, float cut) {
+    private static UiCornerSpec cornerFromObject(Object value, UiCornerSpec fallback, float radius, float cut, float renderScale) {
         if (value instanceof Map<?, ?> map) {
             Object rawKind = map.get("kind");
             if (rawKind == null) rawKind = map.get("type");
             String kind = String.valueOf(rawKind != null ? rawKind : "").toLowerCase(Locale.ROOT);
-            float r = number(map.get("radius"), radius);
-            float rx = number(map.get("radiusX"), r);
-            float ry = number(map.get("radiusY"), r);
-            float c = number(map.get("cut"), number(map.get("chamfer"), cut));
-            float cx = number(map.get("cutX"), c);
-            float cy = number(map.get("cutY"), c);
+            float r = map.get("radius") != null ? number(map.get("radius"), 0.0f) * renderScale : radius;
+            float rx = map.get("radiusX") != null ? number(map.get("radiusX"), 0.0f) * renderScale : r;
+            float ry = map.get("radiusY") != null ? number(map.get("radiusY"), 0.0f) * renderScale : r;
+            float c = map.get("cut") != null ? number(map.get("cut"), 0.0f) * renderScale
+                    : map.get("chamfer") != null ? number(map.get("chamfer"), 0.0f) * renderScale : cut;
+            float cx = map.get("cutX") != null ? number(map.get("cutX"), 0.0f) * renderScale : c;
+            float cy = map.get("cutY") != null ? number(map.get("cutY"), 0.0f) * renderScale : c;
             return switch (kind) {
                 case "round", "rounded", "radius" -> UiCornerSpec.rounded(rx, ry);
                 case "chamfer", "chamfered", "cut", "bevel", "beveled" -> UiCornerSpec.chamfered(cx, cy);
@@ -110,7 +122,7 @@ final class UiShapeGeometry {
                 default -> fallback;
             };
         }
-        if (value instanceof Number n) return UiCornerSpec.rounded(n.floatValue(), n.floatValue());
+        if (value instanceof Number n) return UiCornerSpec.rounded(n.floatValue() * renderScale, n.floatValue() * renderScale);
         if (value instanceof String s) {
             String normalized = s.trim().toLowerCase(Locale.ROOT);
             if (normalized.startsWith("round")) return UiCornerSpec.rounded(radius, radius);
@@ -141,49 +153,58 @@ final class UiShapeGeometry {
         return value;
     }
 
-    private static UiEdgeSpec edgeFromObject(Object value, double length) {
+    private static UiEdgeSpec edgeFromObject(Object value, double length, float renderScale) {
         if (value == null) return UiEdgeSpec.straight();
         if (value instanceof Map<?, ?> map) {
             Object rawKind = map.get("kind");
             if (rawKind == null) rawKind = map.get("type");
             String kind = String.valueOf(rawKind != null ? rawKind : "").toLowerCase(Locale.ROOT);
             if (kind.equals("notch") || kind.equals("notched")) {
-                float width = number(map.get("width"), number(map.get("size"), (float) Math.min(length * 0.18, 18.0)));
-                float depth = number(map.get("depth"), (float) Math.min(length * 0.10, 8.0));
+                float width = map.get("width") != null ? number(map.get("width"), 0.0f) * renderScale
+                        : map.get("size") != null ? number(map.get("size"), 0.0f) * renderScale
+                        : (float) Math.min(length * 0.18, 18.0 * renderScale);
+                float depth = map.get("depth") != null ? number(map.get("depth"), 0.0f) * renderScale
+                        : (float) Math.min(length * 0.10, 8.0 * renderScale);
                 Object offset = map.get("offset");
                 if (offset == null || "center".equals(String.valueOf(offset)))
                     return UiEdgeSpec.notchedCenter(width, depth);
-                return UiEdgeSpec.notched(number(offset, 0.0f), width, depth);
+                return UiEdgeSpec.notched(number(offset, 0.0f) * renderScale, width, depth);
             }
-            if (kind.equals("inset")) return UiEdgeSpec.inset(number(map.get("depth"), 0.0f));
+            if (kind.equals("inset")) return UiEdgeSpec.inset(number(map.get("depth"), 0.0f) * renderScale);
             if (kind.equals("cut") || kind.equals("diagonal-cut") || kind.equals("diagonal_cut")) {
-                float width = number(map.get("width"), number(map.get("size"), (float) Math.min(length * 0.18, 18.0)));
-                float depth = number(map.get("depth"), (float) Math.min(length * 0.10, 8.0));
+                float width = map.get("width") != null ? number(map.get("width"), 0.0f) * renderScale
+                        : map.get("size") != null ? number(map.get("size"), 0.0f) * renderScale
+                        : (float) Math.min(length * 0.18, 18.0 * renderScale);
+                float depth = map.get("depth") != null ? number(map.get("depth"), 0.0f) * renderScale
+                        : (float) Math.min(length * 0.10, 8.0 * renderScale);
                 Object offset = map.get("offset");
                 if (offset == null || "center".equals(String.valueOf(offset))) return UiEdgeSpec.cutCenter(width, depth);
-                return UiEdgeSpec.cut(number(offset, 0.0f), width, depth);
+                return UiEdgeSpec.cut(number(offset, 0.0f) * renderScale, width, depth);
             }
             if (kind.equals("protrusion") || kind.equals("tab")) {
-                float width = number(map.get("width"), number(map.get("size"), (float) Math.min(length * 0.18, 18.0)));
-                float depth = number(map.get("depth"), (float) Math.min(length * 0.10, 8.0));
+                float width = map.get("width") != null ? number(map.get("width"), 0.0f) * renderScale
+                        : map.get("size") != null ? number(map.get("size"), 0.0f) * renderScale
+                        : (float) Math.min(length * 0.18, 18.0 * renderScale);
+                float depth = map.get("depth") != null ? number(map.get("depth"), 0.0f) * renderScale
+                        : (float) Math.min(length * 0.10, 8.0 * renderScale);
                 Object offset = map.get("offset");
                 if (offset == null || "center".equals(String.valueOf(offset))) return UiEdgeSpec.protrusionCenter(width, depth);
-                return UiEdgeSpec.protrusion(number(offset, 0.0f), width, depth);
+                return UiEdgeSpec.protrusion(number(offset, 0.0f) * renderScale, width, depth);
             }
             return UiEdgeSpec.straight();
         }
         if (value instanceof String s) {
             String normalized = s.trim().toLowerCase(Locale.ROOT);
             if (normalized.equals("notch") || normalized.equals("notched"))
-                return UiEdgeSpec.notchedCenter(Math.min(length * 0.18, 18.0), Math.min(length * 0.10, 8.0));
+                return UiEdgeSpec.notchedCenter(Math.min(length * 0.18, 18.0 * renderScale), Math.min(length * 0.10, 8.0 * renderScale));
         }
         return UiEdgeSpec.straight();
     }
 
     static UiBoxShape buildBoxShape(UiProps props, UiStyle style, String shape,
-                                     double x, double y, double w, double h) {
-        float radius = props.number("radius", style.radius());
-        float cut = props.number("cut", props.number("chamfer", style.radius()));
+                                     double x, double y, double w, double h, float renderScale) {
+        float radius = props.number("radius", style.radius()) * renderScale;
+        float cut = props.number("cut", props.number("chamfer", style.radius())) * renderScale;
 
         UiCornerSpec defaultCorner = switch (shape) {
             case "rounded", "rounded-rect", "rounded_rect", "rounded-gradient", "rounded_gradient",
@@ -197,10 +218,10 @@ final class UiShapeGeometry {
             defaultCorner = UiCornerSpec.rounded(radius, radius);
         }
 
-        UiCornerSpec tl = corner(props, "TL", "TopLeft", defaultCorner, radius, cut);
-        UiCornerSpec tr = corner(props, "TR", "TopRight", defaultCorner, radius, cut);
-        UiCornerSpec br = corner(props, "BR", "BottomRight", defaultCorner, radius, cut);
-        UiCornerSpec bl = corner(props, "BL", "BottomLeft", defaultCorner, radius, cut);
+        UiCornerSpec tl = corner(props, "TL", "TopLeft", defaultCorner, radius, cut, renderScale);
+        UiCornerSpec tr = corner(props, "TR", "TopRight", defaultCorner, radius, cut, renderScale);
+        UiCornerSpec br = corner(props, "BR", "BottomRight", defaultCorner, radius, cut, renderScale);
+        UiCornerSpec bl = corner(props, "BL", "BottomLeft", defaultCorner, radius, cut, renderScale);
 
         UiBoxShape.Builder builder = UiBoxShape.rect(x, y, w, h)
                 .corners(tl, tr, br, bl);
@@ -216,34 +237,35 @@ final class UiShapeGeometry {
         }
 
         Object edges = props.get("edges");
-        UiEdgeSpec top = edgeFromObject(edgeValue(edges, "top"), w);
-        UiEdgeSpec right = edgeFromObject(edgeValue(edges, "right"), h);
-        UiEdgeSpec bottom = edgeFromObject(edgeValue(edges, "bottom"), w);
-        UiEdgeSpec left = edgeFromObject(edgeValue(edges, "left"), h);
+        UiEdgeSpec top = edgeFromObject(edgeValue(edges, "top"), w, renderScale);
+        UiEdgeSpec right = edgeFromObject(edgeValue(edges, "right"), h, renderScale);
+        UiEdgeSpec bottom = edgeFromObject(edgeValue(edges, "bottom"), w, renderScale);
+        UiEdgeSpec left = edgeFromObject(edgeValue(edges, "left"), h, renderScale);
 
         if (shape.equals("notched") || shape.equals("notch")) {
-            top = UiEdgeSpec.notchedCenter(props.number("notchWidth", (float) Math.min(w * 0.18, 18.0)),
-                    props.number("notchDepth", (float) Math.min(h * 0.28, 8.0)));
+            top = UiEdgeSpec.notchedCenter(
+                    props.get("notchWidth") != null ? props.number("notchWidth", 0.0f) * renderScale : (float) Math.min(w * 0.18, 18.0 * renderScale),
+                    props.get("notchDepth") != null ? props.number("notchDepth", 0.0f) * renderScale : (float) Math.min(h * 0.28, 8.0 * renderScale));
         }
         if (props.get("edgeTop") != null || props.get("topEdge") != null)
-            top = edgeFromObject(first(props, "edgeTop", "topEdge"), w);
+            top = edgeFromObject(first(props, "edgeTop", "topEdge"), w, renderScale);
         if (props.get("edgeRight") != null || props.get("rightEdge") != null)
-            right = edgeFromObject(first(props, "edgeRight", "rightEdge"), h);
+            right = edgeFromObject(first(props, "edgeRight", "rightEdge"), h, renderScale);
         if (props.get("edgeBottom") != null || props.get("bottomEdge") != null)
-            bottom = edgeFromObject(first(props, "edgeBottom", "bottomEdge"), w);
+            bottom = edgeFromObject(first(props, "edgeBottom", "bottomEdge"), w, renderScale);
         if (props.get("edgeLeft") != null || props.get("leftEdge") != null)
-            left = edgeFromObject(first(props, "edgeLeft", "leftEdge"), h);
+            left = edgeFromObject(first(props, "edgeLeft", "leftEdge"), h, renderScale);
 
         return builder.edges(top, right, bottom, left).build();
     }
 
     static UiCompoundSdf buildCompoundSdf(UiProps props, String shape,
-                                             double x, double y, double w, double h) {
-        float smoothing = Math.max(0.0f, props.number("smoothing", props.number("smoothness", 10.0f)));
+                                             double x, double y, double w, double h, float renderScale) {
+        float smoothing = Math.max(0.0f, props.number("smoothing", props.number("smoothness", 10.0f)) * renderScale);
         if (shape.equals("smooth-squircle-union") || shape.equals("smooth_squircle_union")) {
-            UiRect first = compoundRect(props.get("first"), x, y,
+            UiRect first = compoundRect(props.get("first"), x, y, renderScale,
                     UiRect.of(x, y + h * 0.16, w * 0.62, h * 0.68));
-            UiRect second = compoundRect(props.get("second"), x, y,
+            UiRect second = compoundRect(props.get("second"), x, y, renderScale,
                     UiRect.of(x + w * 0.38, y + h * 0.16, w * 0.62, h * 0.68));
             float defaultExponent = props.number("exponent", 4.0f);
             return UiCompoundSdf.smoothSquircleUnion(
@@ -254,24 +276,24 @@ final class UiShapeGeometry {
         }
         if (shape.equals("smooth-box-union") || shape.equals("smooth_box_union")
                 || shape.equals("compound-sdf") || shape.equals("compound_sdf")) {
-            UiRect first = compoundRect(props.get("first"), x, y,
+            UiRect first = compoundRect(props.get("first"), x, y, renderScale,
                     UiRect.of(x, y + h * 0.16, w * 0.62, h * 0.68));
-            UiRect second = compoundRect(props.get("second"), x, y,
+            UiRect second = compoundRect(props.get("second"), x, y, renderScale,
                     UiRect.of(x + w * 0.38, y + h * 0.16, w * 0.62, h * 0.68));
-            float defaultRadius = props.number("radius", Math.min((float) w, (float) h) * 0.24f);
+            float defaultRadius = props.get("radius") != null ? props.number("radius", 0.0f) * renderScale : Math.min((float) w, (float) h) * 0.24f;
             return UiCompoundSdf.smoothBoxUnion(
-                    first, props.number("firstRadius", defaultRadius),
-                    second, props.number("secondRadius", defaultRadius),
+                    first, props.get("firstRadius") != null ? props.number("firstRadius", 0.0f) * renderScale : defaultRadius,
+                    second, props.get("secondRadius") != null ? props.number("secondRadius", 0.0f) * renderScale : defaultRadius,
                     smoothing
             );
         }
 
-        UiCompoundSdf.Circle[] circles = readCompoundCircles(props.get("sources"), x, y);
+        UiCompoundSdf.Circle[] circles = readCompoundCircles(props.get("sources"), x, y, renderScale);
         if (circles.length == 0) {
-            float defaultRadius = props.number("radius", Math.min((float) w, (float) h) * 0.34f);
-            float separation = props.number("separation", Math.max(2.0f, defaultRadius * 0.72f));
-            double cx = x + props.number("cx", (float) (w * 0.5));
-            double cy = y + props.number("cy", (float) (h * 0.5));
+            float defaultRadius = props.get("radius") != null ? props.number("radius", 0.0f) * renderScale : Math.min((float) w, (float) h) * 0.34f;
+            float separation = props.get("separation") != null ? props.number("separation", 0.0f) * renderScale : Math.max(2.0f * renderScale, defaultRadius * 0.72f);
+            double cx = x + (props.get("cx") != null ? props.number("cx", 0.0f) * renderScale : w * 0.5);
+            double cy = y + (props.get("cy") != null ? props.number("cy", 0.0f) * renderScale : h * 0.5);
             circles = new UiCompoundSdf.Circle[]{
                     UiCompoundSdf.circle(cx - separation * 0.5, cy, defaultRadius),
                     UiCompoundSdf.circle(cx + separation * 0.5, cy, defaultRadius)
@@ -280,16 +302,16 @@ final class UiShapeGeometry {
         return UiCompoundSdf.islandBlob(smoothing, circles);
     }
 
-    private static UiCompoundSdf.Circle[] readCompoundCircles(Object value, double offsetX, double offsetY) {
+    private static UiCompoundSdf.Circle[] readCompoundCircles(Object value, double offsetX, double offsetY, float renderScale) {
         if (!(value instanceof Iterable<?> iterable)) return new UiCompoundSdf.Circle[0];
         UiCompoundSdf.Circle[] out = new UiCompoundSdf.Circle[UiCompoundSdf.MAX_CIRCLES];
         int count = 0;
         for (Object item : iterable) {
             if (count >= out.length) break;
             if (!(item instanceof Map<?, ?> map)) continue;
-            double cx = offsetX + number(map.get("x"), 0.0f);
-            double cy = offsetY + number(map.get("y"), 0.0f);
-            double radius = Math.max(0.0, number(map.containsKey("radius") ? map.get("radius") : map.get("r"), 0.0f));
+            double cx = offsetX + number(map.get("x"), 0.0f) * renderScale;
+            double cy = offsetY + number(map.get("y"), 0.0f) * renderScale;
+            double radius = Math.max(0.0, number(map.containsKey("radius") ? map.get("radius") : map.get("r"), 0.0f) * renderScale);
             if (radius <= 0.0) continue;
             out[count++] = UiCompoundSdf.circle(cx, cy, radius);
         }
@@ -298,17 +320,19 @@ final class UiShapeGeometry {
         return result;
     }
 
-    private static UiRect compoundRect(Object value, double offsetX, double offsetY, UiRect fallback) {
+    private static UiRect compoundRect(Object value, double offsetX, double offsetY, float renderScale, UiRect fallback) {
         if (!(value instanceof Map<?, ?> map)) return fallback;
-        double x = offsetX + number(map.get("x"), (float) (fallback.x() - offsetX));
-        double y = offsetY + number(map.get("y"), (float) (fallback.y() - offsetY));
-        double w = Math.max(0.0, number(map.containsKey("width") ? map.get("width") : map.get("w"), fallback.width()));
-        double h = Math.max(0.0, number(map.containsKey("height") ? map.get("height") : map.get("h"), fallback.height()));
+        double x = offsetX + (map.get("x") != null ? number(map.get("x"), 0.0f) * renderScale : fallback.x() - offsetX);
+        double y = offsetY + (map.get("y") != null ? number(map.get("y"), 0.0f) * renderScale : fallback.y() - offsetY);
+        Object rawW = map.containsKey("width") ? map.get("width") : map.get("w");
+        double w = Math.max(0.0, rawW != null ? number(rawW, 0.0f) * renderScale : fallback.width());
+        Object rawH = map.containsKey("height") ? map.get("height") : map.get("h");
+        double h = Math.max(0.0, rawH != null ? number(rawH, 0.0f) * renderScale : fallback.height());
         return UiRect.of(x, y, w, h);
     }
 
     static UiPrimitive buildPrimitive(UiProps props, UiStyle style, String shape,
-                                       double x, double y, double w, double h) {
+                                       double x, double y, double w, double h, float renderScale) {
         String rawPreset = props.string("preset", shape).trim().toLowerCase(Locale.ROOT);
         UiPrimitive.Preset preset = switch (rawPreset) {
             case "chamfer", "chamfered", "bevel", "beveled" -> UiPrimitive.Preset.CHAMFERED;
@@ -325,12 +349,12 @@ final class UiShapeGeometry {
             default -> UiPrimitive.Preset.RECT;
         };
 
-        float radius = props.number("radius", style.radius());
-        float cut = props.number("cut", props.number("chamfer", Math.max(2.0f, style.radius())));
+        float radius = props.number("radius", style.radius()) * renderScale;
+        float cut = props.number("cut", props.number("chamfer", Math.max(2.0f, style.radius()))) * renderScale;
         UiPrimitive.Builder builder = UiPrimitive.builder(x, y, w, h)
                 .preset(preset)
                 .cut(cut)
-                .rounding(props.number("rounding", props.number("edgeRounding", 0.0f)));
+                .rounding(props.number("rounding", props.number("edgeRounding", 0.0f)) * renderScale);
 
         UiCornerSpec defaultCorner = preset == UiPrimitive.Preset.CHAMFERED
                 ? UiCornerSpec.chamfered(cut)
@@ -341,44 +365,46 @@ final class UiShapeGeometry {
                 || props.get("cornerBR") != null || props.get("cornerBottomRight") != null
                 || props.get("cornerBL") != null || props.get("cornerBottomLeft") != null) {
             builder.corner(UiPrimitive.Corner.TOP_LEFT,
-                            corner(props, "TL", "TopLeft", defaultCorner, radius, cut))
+                            corner(props, "TL", "TopLeft", defaultCorner, radius, cut, renderScale))
                     .corner(UiPrimitive.Corner.TOP_RIGHT,
-                            corner(props, "TR", "TopRight", defaultCorner, radius, cut))
+                            corner(props, "TR", "TopRight", defaultCorner, radius, cut, renderScale))
                     .corner(UiPrimitive.Corner.BOTTOM_RIGHT,
-                            corner(props, "BR", "BottomRight", defaultCorner, radius, cut))
+                            corner(props, "BR", "BottomRight", defaultCorner, radius, cut, renderScale))
                     .corner(UiPrimitive.Corner.BOTTOM_LEFT,
-                            corner(props, "BL", "BottomLeft", defaultCorner, radius, cut));
+                            corner(props, "BL", "BottomLeft", defaultCorner, radius, cut, renderScale));
         }
 
         Object edges = props.get("edges");
-        applyPrimitiveEdge(builder, UiPrimitive.Side.TOP, edgeValue(edges, "top"), w);
-        applyPrimitiveEdge(builder, UiPrimitive.Side.RIGHT, edgeValue(edges, "right"), h);
-        applyPrimitiveEdge(builder, UiPrimitive.Side.BOTTOM, edgeValue(edges, "bottom"), w);
-        applyPrimitiveEdge(builder, UiPrimitive.Side.LEFT, edgeValue(edges, "left"), h);
-        applyPrimitiveEdge(builder, UiPrimitive.Side.TOP, first(props, "edgeTop", "topEdge"), w);
-        applyPrimitiveEdge(builder, UiPrimitive.Side.RIGHT, first(props, "edgeRight", "rightEdge"), h);
-        applyPrimitiveEdge(builder, UiPrimitive.Side.BOTTOM, first(props, "edgeBottom", "bottomEdge"), w);
-        applyPrimitiveEdge(builder, UiPrimitive.Side.LEFT, first(props, "edgeLeft", "leftEdge"), h);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.TOP, edgeValue(edges, "top"), w, renderScale);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.RIGHT, edgeValue(edges, "right"), h, renderScale);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.BOTTOM, edgeValue(edges, "bottom"), w, renderScale);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.LEFT, edgeValue(edges, "left"), h, renderScale);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.TOP, first(props, "edgeTop", "topEdge"), w, renderScale);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.RIGHT, first(props, "edgeRight", "rightEdge"), h, renderScale);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.BOTTOM, first(props, "edgeBottom", "bottomEdge"), w, renderScale);
+        applyPrimitiveEdge(builder, UiPrimitive.Side.LEFT, first(props, "edgeLeft", "leftEdge"), h, renderScale);
 
-        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.TOP_LEFT, "TL", "TopLeft");
-        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.TOP_RIGHT, "TR", "TopRight");
-        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.BOTTOM_RIGHT, "BR", "BottomRight");
-        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.BOTTOM_LEFT, "BL", "BottomLeft");
+        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.TOP_LEFT, "TL", "TopLeft", renderScale);
+        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.TOP_RIGHT, "TR", "TopRight", renderScale);
+        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.BOTTOM_RIGHT, "BR", "BottomRight", renderScale);
+        applyPrimitiveCornerOffset(builder, props, UiPrimitive.Corner.BOTTOM_LEFT, "BL", "BottomLeft", renderScale);
         return builder.build();
     }
 
     private static void applyPrimitiveEdge(UiPrimitive.Builder builder,
                                            UiPrimitive.Side side,
                                            Object value,
-                                           double length) {
-        if (value != null) builder.side(side, edgeFromObject(value, length));
+                                           double length,
+                                           float renderScale) {
+        if (value != null) builder.side(side, edgeFromObject(value, length, renderScale));
     }
 
     private static void applyPrimitiveCornerOffset(UiPrimitive.Builder builder,
                                                    UiProps props,
                                                    UiPrimitive.Corner corner,
                                                    String shortName,
-                                                   String longName) {
+                                                   String longName,
+                                                   float renderScale) {
         Object offsets = props.get("cornerOffsets");
         Object value = cornerValue(offsets, shortName, longName);
         float dx = 0.0f;
@@ -389,6 +415,8 @@ final class UiShapeGeometry {
         }
         dx = props.number("offset" + shortName + "X", props.number("offset" + longName + "X", dx));
         dy = props.number("offset" + shortName + "Y", props.number("offset" + longName + "Y", dy));
+        dx *= renderScale;
+        dy *= renderScale;
         if (Math.abs(dx) > 0.0001f || Math.abs(dy) > 0.0001f) builder.cornerOffset(corner, dx, dy);
     }
 

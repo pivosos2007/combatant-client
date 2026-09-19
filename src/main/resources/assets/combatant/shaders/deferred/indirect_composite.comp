@@ -32,6 +32,11 @@ bool ownsGbufferPixel(vec2 uv) {
     return abs(gbufferDepth - currentDepth) <= tolerance;
 }
 
+float liftedMaterialAo(float value) {
+    float lifted = (1.5 * value) / max(1.0 + 0.5 * value, 1e-5);
+    return mix(1.0, lifted, 0.9);
+}
+
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(u_LightingColor);
@@ -53,6 +58,7 @@ void main() {
             : 1.0;
 
     float materialAo = clamp(surface.a, 0.0, 1.0);
+    if (u_Composite.flags.y > 0.5) materialAo = liftedMaterialAo(materialAo);
     float metallic = clamp(material.g, 0.0, 1.0);
     float dielectricF0 = clamp(material.b, 0.0, 1.0);
     vec3 f0 = mix(vec3(dielectricF0), max(surface.rgb, vec3(0.0)), metallic);

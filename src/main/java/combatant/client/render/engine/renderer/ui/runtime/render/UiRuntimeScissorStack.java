@@ -21,6 +21,7 @@ public final class UiRuntimeScissorStack {
     private final Deque<Boolean> pushed = new ArrayDeque<>();
 
     public boolean push(UiBounds bounds, UiRenderContext context) {
+        bounds = context != null ? context.renderBounds(bounds) : bounds;
         if (bounds == null || bounds.width() <= 0.0f || bounds.height() <= 0.0f) {
             pushed.push(false);
             return false;

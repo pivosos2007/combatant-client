@@ -18,6 +18,7 @@ public enum UiJustify {
     public static UiJustify parse(String raw, UiJustify fallback) {
         if (raw == null || raw.isBlank()) return fallback;
         return switch (raw.trim().replace('-', '_').toUpperCase(Locale.ROOT)) {
+            case "START", "LEFT", "TOP" -> START;
             case "CENTER", "MIDDLE" -> CENTER;
             case "END", "RIGHT", "BOTTOM" -> END;
             case "BETWEEN", "SPACE_BETWEEN" -> BETWEEN;
