@@ -7,6 +7,8 @@
 
 package combatant.client.render.engine.world;
 
+import combatant.client.util.logging.DebugLog;
+
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -25,13 +27,29 @@ public final class DynamicLightRegistry {
 
     public static void collect(DynamicLightProvider.Context context, Consumer<LightDescriptor> output) {
         if (output == null) return;
+        try {
+            BuiltinDynamicLightProvider.INSTANCE.collect(context, descriptor -> {
+                if (descriptor != null && descriptor.valid()) output.accept(descriptor);
+            });
+        } catch (Throwable error) {
+            DebugLog.warnOnChange(
+                    "dynamic-light-builtin-provider", error.getClass().getName() + ":" + error.getMessage(),
+                    "[DynamicLight] built-in provider failed softly: %s: %s",
+                    error.getClass().getSimpleName(), error.getMessage()
+            );
+        }
         for (DynamicLightProvider provider : PROVIDERS) {
             try {
                 provider.collect(context, descriptor -> {
                     if (descriptor != null && descriptor.valid()) output.accept(descriptor);
                 });
-            } catch (Throwable ignored) {
-                // One addon/provider must not invalidate the renderer's canonical lighting chain.
+            } catch (Throwable error) {
+                DebugLog.warnOnChange(
+                        "dynamic-light-provider:" + provider.getClass().getName(),
+                        error.getClass().getName() + ":" + error.getMessage(),
+                        "[DynamicLight] provider %s failed softly: %s: %s",
+                        provider.getClass().getName(), error.getClass().getSimpleName(), error.getMessage()
+                );
             }
         }
     }

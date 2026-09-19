@@ -20,10 +20,20 @@ public interface DynamicLightProvider {
     record Context(ClientLevel level,
                    WorldRenderState worldState,
                    Vec3 cameraPosition,
-                   long frameId) {
+                   long frameId,
+                   float tickProgress) {
         public Context {
             worldState = worldState == null ? WorldRenderState.unknown(0L) : worldState;
             cameraPosition = cameraPosition == null ? Vec3.ZERO : cameraPosition;
+            if (!Float.isFinite(tickProgress)) tickProgress = 0.0f;
+            tickProgress = Math.max(0.0f, Math.min(1.0f, tickProgress));
+        }
+
+        public Context(ClientLevel level,
+                       WorldRenderState worldState,
+                       Vec3 cameraPosition,
+                       long frameId) {
+            this(level, worldState, cameraPosition, frameId, 0.0f);
         }
     }
 }

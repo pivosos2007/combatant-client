@@ -34,7 +34,8 @@ public record LightDescriptor(
         float outerConeCos,
         float areaRadius,
         long stableId,
-        boolean castsShadow
+        boolean castsShadow,
+        int shadowCasterExclusionEntityId
 ) {
     public enum Type {
         POINT,
@@ -64,6 +65,18 @@ public record LightDescriptor(
         }
     }
 
+    /** Source-compatible constructor for providers using the pre-exclusion shadow contract. */
+    public LightDescriptor(Type type,
+                           double x, double y, double z,
+                           float directionX, float directionY, float directionZ,
+                           float red, float green, float blue,
+                           float radius, float innerConeCos, float outerConeCos,
+                           float areaRadius, long stableId, boolean castsShadow) {
+        this(type, x, y, z, directionX, directionY, directionZ,
+                red, green, blue, radius, innerConeCos, outerConeCos, areaRadius,
+                stableId, castsShadow, -1);
+    }
+
     /** Source-compatible constructor for providers that do not request local shadows. */
     public LightDescriptor(Type type,
                            double x, double y, double z,
@@ -72,7 +85,7 @@ public record LightDescriptor(
                            float radius, float innerConeCos, float outerConeCos,
                            float areaRadius, long stableId) {
         this(type, x, y, z, directionX, directionY, directionZ,
-                red, green, blue, radius, innerConeCos, outerConeCos, areaRadius, stableId, false);
+                red, green, blue, radius, innerConeCos, outerConeCos, areaRadius, stableId, false, -1);
     }
 
     public boolean valid() {
@@ -84,7 +97,7 @@ public record LightDescriptor(
                                         float red, float green, float blue,
                                         float radius) {
         return new LightDescriptor(Type.POINT, x, y, z, 0.0f, -1.0f, 0.0f,
-                red, green, blue, radius, 1.0f, -1.0f, 0.0f, stableId, false);
+                red, green, blue, radius, 1.0f, -1.0f, 0.0f, stableId, false, -1);
     }
 
     public static LightDescriptor spot(long stableId,
@@ -93,7 +106,7 @@ public record LightDescriptor(
                                        float red, float green, float blue,
                                        float radius, float innerConeCos, float outerConeCos) {
         return new LightDescriptor(Type.SPOT, x, y, z, directionX, directionY, directionZ,
-                red, green, blue, radius, innerConeCos, outerConeCos, 0.0f, stableId, false);
+                red, green, blue, radius, innerConeCos, outerConeCos, 0.0f, stableId, false, -1);
     }
 
     public static LightDescriptor sphere(long stableId,
@@ -101,7 +114,7 @@ public record LightDescriptor(
                                          float red, float green, float blue,
                                          float radius, float areaRadius) {
         return new LightDescriptor(Type.SPHERE, x, y, z, 0.0f, -1.0f, 0.0f,
-                red, green, blue, radius, 1.0f, -1.0f, areaRadius, stableId, false);
+                red, green, blue, radius, 1.0f, -1.0f, areaRadius, stableId, false, -1);
     }
 
     /** Returns the same physical light with explicit local-shadow participation. */
@@ -110,7 +123,16 @@ public record LightDescriptor(
                 directionX, directionY, directionZ,
                 red, green, blue, radius,
                 innerConeCos, outerConeCos, areaRadius,
-                stableId, value);
+                stableId, value, shadowCasterExclusionEntityId);
+    }
+
+    /** Excludes the light-owning entity from its own local shadow map. */
+    public LightDescriptor withShadowCasterExclusion(int entityId) {
+        return new LightDescriptor(type, x, y, z,
+                directionX, directionY, directionZ,
+                red, green, blue, radius,
+                innerConeCos, outerConeCos, areaRadius,
+                stableId, castsShadow, entityId);
     }
 
     private static float nonNegative(float value) {

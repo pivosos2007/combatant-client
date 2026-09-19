@@ -94,7 +94,8 @@ final class DeferredShadowMapSource implements AutoCloseable {
                     view,
                     target,
                     renderer,
-                    primarySubmission
+                    primarySubmission,
+                    -1
             );
         }
 

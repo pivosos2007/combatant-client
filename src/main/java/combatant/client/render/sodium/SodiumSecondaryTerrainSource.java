@@ -10,6 +10,7 @@ package combatant.client.render.sodium;
 import combatant.client.mixins.sodium.SodiumRenderSectionManagerAccessor;
 import combatant.client.mixins.sodium.SodiumSortedRenderListsInvoker;
 import combatant.client.render.engine.deferred.DeferredSecondaryView;
+import combatant.client.render.engine.deferred.DeferredSecondaryViewCulling;
 import combatant.client.render.engine.deferred.DeferredViewFamily;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
@@ -208,7 +209,8 @@ public final class SodiumSecondaryTerrainSource {
     private static CullResult cull(TopologySnapshot snapshot, DeferredSecondaryView view, long epoch) {
         Matrix4f viewProjection = view.viewProjection();
         boolean directionalShadow = view.family() == DeferredViewFamily.SHADOW_CASCADE;
-        FrustumIntersection frustum = directionalShadow ? null : new FrustumIntersection(viewProjection);
+        boolean localLightShadow = view.family() == DeferredViewFamily.LOCAL_LIGHT_SHADOW;
+        FrustumIntersection frustum = (directionalShadow || localLightShadow) ? null : new FrustumIntersection(viewProjection);
         double cameraX = view.origin().x;
         double cameraY = view.origin().y;
         double cameraZ = view.origin().z;
@@ -221,6 +223,10 @@ public final class SodiumSecondaryTerrainSource {
                             region.minX(), region.minY(), region.minZ(),
                             region.maxX(), region.maxY(), region.maxZ(),
                             cameraX, cameraY, cameraZ)
+                    : localLightShadow
+                    ? DeferredSecondaryViewCulling.testPerspectiveAabb(view,
+                            region.minX(), region.minY(), region.minZ(),
+                            region.maxX(), region.maxY(), region.maxZ())
                     : testWorldAabb(frustum,
                             region.minX(), region.minY(), region.minZ(),
                             region.maxX(), region.maxY(), region.maxZ(),
@@ -239,6 +245,9 @@ public final class SodiumSecondaryTerrainSource {
                         ? testShadowCascadeAabbXY(viewProjection,
                                 minX, minY, minZ, maxX, maxY, maxZ,
                                 cameraX, cameraY, cameraZ)
+                        : localLightShadow
+                        ? DeferredSecondaryViewCulling.testPerspectiveAabb(
+                                view, minX, minY, minZ, maxX, maxY, maxZ)
                         : testWorldAabb(frustum,
                                 minX, minY, minZ, maxX, maxY, maxZ,
                                 cameraX, cameraY, cameraZ);

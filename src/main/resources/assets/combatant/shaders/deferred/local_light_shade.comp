@@ -275,7 +275,10 @@ void main() {
         int type = int(light.radianceType.w + 0.5);
         float sourceDistance = distanceValue;
         if (type == 2) sourceDistance = max(distanceValue - max(light.coneArea.y, 0.0), 1e-3);
-        float attenuation = 1.0 / max(sourceDistance * sourceDistance, 1e-4);
+        float normalizedDistance = clamp(distanceValue / max(radius, 1e-4), 0.0, 1.0);
+        float rangeFade = 1.0 - normalizedDistance * normalizedDistance;
+        rangeFade *= rangeFade;
+        float attenuation = rangeFade / max(sourceDistance * sourceDistance, 1e-4);
 
         if (type == 1) {
             vec3 fromLight = -lightDirection;

@@ -155,8 +155,7 @@ final class DeferredDynamicLightSource implements AutoCloseable {
                 .priority(100)
                 .write(DeferredResource.LOCAL_LIGHT_SHADOW_DEPTH, DeferredResource.LOCAL_LIGHT_SHADOW_DATA)
                 .when(context -> context.primaryView().current() != null
-                        && collectedFrameId == context.frame().frameId()
-                        && !shadowAllocations.isEmpty())
+                        && collectedFrameId == context.frame().frameId())
                 .execute(this::renderShadowAtlas)
                 .build());
         passes.add(DeferredPassSpec.builder("world.local-light.prepare", DeferredStage.POST_LIGHTING)
@@ -223,9 +222,9 @@ final class DeferredDynamicLightSource implements AutoCloseable {
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft == null ? null : minecraft.level;
         DynamicLightRegistry.collect(new DynamicLightProvider.Context(
-                level, context.worldState(), view.cameraPosition(), frameId
+                level, context.worldState(), view.cameraPosition(), frameId, context.frame().tickProgress()
         ), light -> {
-            if (light != null && light.valid()) collected.add(light);
+            if (light != null && light.valid() && intersectsPrimaryFrustum(light, view)) collected.add(light);
         });
 
         Vec3 camera = view.cameraPosition();
@@ -313,7 +312,7 @@ final class DeferredDynamicLightSource implements AutoCloseable {
             int viewportY = (slot / config.atlasColumns()) * config.faceResolution();
             context.secondaryViews().register(buildShadowView(
                     light, face, slot, config.faceResolution(), viewportX, viewportY, config.nearPlane(),
-                    context.rhi().capabilities().zeroToOneDepth()
+                    config.pointFaceFovDegrees(), context.rhi().capabilities().zeroToOneDepth()
             ));
         }
     }
@@ -325,6 +324,7 @@ final class DeferredDynamicLightSource implements AutoCloseable {
                                                           int viewportX,
                                                           int viewportY,
                                                           float configuredNearPlane,
+                                                          float pointFaceFovDegrees,
                                                           boolean zeroToOneDepth) {
         Vector3f direction;
         Vector3f up;
@@ -341,10 +341,10 @@ final class DeferredDynamicLightSource implements AutoCloseable {
         } else {
             direction = cubeDirection(face);
             up = cubeUp(face);
-            fov = (float) (Math.PI * 0.5);
+            fov = (float) Math.toRadians(pointFaceFovDegrees);
         }
 
-        float nearPlane = Math.min(configuredNearPlane, Math.max(0.005f, light.radius() * 0.25f));
+        float nearPlane = Math.min(configuredNearPlane, Math.max(0.0025f, light.radius() * 0.005f));
         float farPlane = Math.max(nearPlane + 0.01f, light.radius());
         Matrix4f view = new Matrix4f().lookAt(new Vector3f(), new Vector3f(direction), up);
         // World rendering is reversed-Z; swapping geometric near/far keeps the shadow target in the
@@ -383,24 +383,26 @@ final class DeferredDynamicLightSource implements AutoCloseable {
         boolean canRender = config.enabled() && context.featureEnabled(DeferredFeature.SHADOWS)
                 && !views.isEmpty() && primarySubmission != null && renderer != null;
 
-        int targetWidth = canRender ? config.atlasWidth() : (shadowAtlas != null ? shadowAtlasWidth : 1);
-        int targetHeight = canRender ? config.atlasHeight() : (shadowAtlas != null ? shadowAtlasHeight : 1);
-        TextureTarget target = ensureShadowAtlas(targetWidth, targetHeight);
-        CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
-        encoder.clearColorAndDepthTextures(
-                target.getColorTexture(), CLEAR_COLOR,
-                target.getDepthTexture(), 0.0
-        );
+        TextureTarget target = canRender
+                ? ensureShadowAtlas(config.atlasWidth(), config.atlasHeight())
+                : (shadowAtlas != null ? shadowAtlas : ensureShadowAtlas(1, 1));
 
         if (canRender) {
+            CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
+            encoder.clearColorAndDepthTextures(
+                    target.getColorTexture(), CLEAR_COLOR,
+                    target.getDepthTexture(), 0.0
+            );
             for (DeferredSecondaryView view : views) {
+                LightDescriptor shadowLight = shadowLightForView(view.index());
                 secondaryCasters.render(
                         context,
                         SodiumSecondaryTerrainContext.Purpose.LOCAL_LIGHT_SHADOW,
                         view,
                         target,
                         renderer,
-                        primarySubmission
+                        primarySubmission,
+                        shadowLight == null ? -1 : shadowLight.shadowCasterExclusionEntityId()
                 );
             }
             publishedShadowAllocations = shadowAllocations;
@@ -681,6 +683,42 @@ final class DeferredDynamicLightSource implements AutoCloseable {
     public void close() {
         closeOwned();
         owner = null;
+    }
+
+    private LightDescriptor shadowLightForView(int slot) {
+        for (LightDescriptor light : frameLights) {
+            ShadowAllocation allocation = shadowAllocations.get(light.stableId());
+            if (allocation == null) continue;
+            if (slot >= allocation.baseView() && slot < allocation.baseView() + allocation.viewCount()) return light;
+        }
+        return null;
+    }
+
+    private static boolean intersectsPrimaryFrustum(LightDescriptor light, DeferredPrimaryViewSource.FrameView view) {
+        Vec3 camera = view.cameraPosition();
+        double dx = light.x() - camera.x;
+        double dy = light.y() - camera.y;
+        double dz = light.z() - camera.z;
+        float radius = light.radius();
+        if (dx * dx + dy * dy + dz * dz <= (double) radius * radius) return true;
+
+        Vector3f position = new Vector3f((float) dx, (float) dy, (float) dz);
+        view.view().transformPosition(position);
+        float depth = -position.z;
+        if (depth + radius <= 1.0e-4f) return false;
+        if (view.farPlane() > 0.0f && depth - radius > view.farPlane()) return false;
+
+        Matrix4f projection = view.unjitteredProjection();
+        Vector4f clip = new Vector4f(position, 1.0f);
+        projection.transform(clip);
+        if (Math.abs(clip.w) <= 1.0e-6f) return false;
+        float centerX = clip.x / clip.w;
+        float centerY = clip.y / clip.w;
+        float safeDepth = Math.max(depth, 1.0e-4f);
+        float extentX = Math.abs(projection.m00()) * radius / safeDepth;
+        float extentY = Math.abs(projection.m11()) * radius / safeDepth;
+        return centerX + extentX >= -1.0f && centerX - extentX <= 1.0f
+                && centerY + extentY >= -1.0f && centerY - extentY <= 1.0f;
     }
 
     private static int shadowViewCount(LightDescriptor light) {

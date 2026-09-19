@@ -16,10 +16,11 @@ record DeferredLocalShadowConfig(
         float retentionBoost,
         float normalOffsetTexels,
         float receiverBiasTexels,
-        float filterRadiusTexels
+        float filterRadiusTexels,
+        float pointFaceFovDegrees
 ) {
     private static final DeferredLocalShadowConfig DEFAULT = new DeferredLocalShadowConfig(
-            true, 24, 512, 0.05f, 1.20f, 1.0f, 1.0f, 1.25f
+            true, 6, 384, 0.01f, 1.35f, 1.0f, 1.0f, 1.0f, 92.0f
     );
 
     DeferredLocalShadowConfig {
@@ -30,6 +31,7 @@ record DeferredLocalShadowConfig(
         normalOffsetTexels = finiteClamp(normalOffsetTexels, 0.0f, 8.0f, 1.0f);
         receiverBiasTexels = finiteClamp(receiverBiasTexels, 0.0f, 8.0f, 1.0f);
         filterRadiusTexels = finiteClamp(filterRadiusTexels, 0.0f, 8.0f, 1.25f);
+        pointFaceFovDegrees = finiteClamp(pointFaceFovDegrees, 90.0f, 110.0f, 92.0f);
     }
 
     static DeferredLocalShadowConfig current() {

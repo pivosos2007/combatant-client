@@ -95,7 +95,8 @@ final class DeferredSecondaryShadowCasterSource implements AutoCloseable {
                 DeferredSecondaryView view,
                 TextureTarget destination,
                 SodiumWorldRenderer renderer,
-                SodiumTerrainSubmission primarySubmission) {
+                SodiumTerrainSubmission primarySubmission,
+                int excludedEntityId) {
         int width = view.hasExplicitViewport() ? view.viewportWidth() : destination.width;
         int height = view.hasExplicitViewport() ? view.viewportHeight() : destination.height;
         TextureTarget localTarget = ensureScratch(width, height);
@@ -108,7 +109,7 @@ final class DeferredSecondaryShadowCasterSource implements AutoCloseable {
         DeferredSecondaryView localView = view.withViewport(0, 0, width, height);
         renderTerrain(purpose, localView, localTarget, renderer, primarySubmission);
 
-        CasterBatch batch = collect(context, localView);
+        CasterBatch batch = collect(context, localView, excludedEntityId);
         if (!batch.empty()) {
             renderFeatures(context, localView, localTarget, batch);
         }
@@ -147,7 +148,7 @@ final class DeferredSecondaryShadowCasterSource implements AutoCloseable {
         });
     }
 
-    private CasterBatch collect(DeferredPassContext context, DeferredSecondaryView view) {
+    private CasterBatch collect(DeferredPassContext context, DeferredSecondaryView view, int excludedEntityId) {
         DeferredSecondaryCasterConfig config = DeferredSecondaryCasterConfig.current();
         boolean entitiesEnabled = config.entitiesFor(view.family());
         boolean blockEntitiesEnabled = config.blockEntitiesFor(view.family());
@@ -158,11 +159,12 @@ final class DeferredSecondaryShadowCasterSource implements AutoCloseable {
         if (minecraft == null || level == null) return CasterBatch.EMPTY;
 
         AABB worldBounds = worldBounds(context, view, config.boundsPadding());
-        FrustumIntersection frustum = new FrustumIntersection(view.viewProjection());
+        FrustumIntersection frustum = view.family() == DeferredViewFamily.LOCAL_LIGHT_SHADOW
+                ? null : new FrustumIntersection(view.viewProjection());
         Vec3 eye = secondaryEye(view);
 
         List<EntityRenderState> entityStates = entitiesEnabled
-                ? collectEntities(context, minecraft, level, view, eye, worldBounds, frustum, config)
+                ? collectEntities(context, minecraft, level, view, eye, worldBounds, frustum, config, excludedEntityId)
                 : List.of();
         List<BlockEntityRenderState> blockEntityStates = blockEntitiesEnabled
                 ? collectBlockEntities(context, minecraft, level, view, eye, worldBounds, frustum, config)
@@ -178,7 +180,8 @@ final class DeferredSecondaryShadowCasterSource implements AutoCloseable {
                                                     Vec3 eye,
                                                     AABB worldBounds,
                                                     FrustumIntersection frustum,
-                                                    DeferredSecondaryCasterConfig config) {
+                                                    DeferredSecondaryCasterConfig config,
+                                                    int excludedEntityId) {
         long frameId = context.frame().frameId();
         if (cachedEntityFrame != frameId) {
             cachedEntityFrame = frameId;
@@ -189,21 +192,24 @@ final class DeferredSecondaryShadowCasterSource implements AutoCloseable {
         level.getEntities(
                 EntityTypeTest.forClass(Entity.class),
                 worldBounds,
-                entity -> !entity.isRemoved(),
+                entity -> !entity.isRemoved() && entity.getId() != excludedEntityId,
                 queried,
                 config.maxEntityQueryCandidates()
         );
         if (queried.isEmpty()) return List.of();
 
         EntityRenderDispatcher dispatcher = minecraft.getEntityRenderDispatcher();
-        Frustum rendererFrustum = new Frustum(view.view(), view.projection());
-        rendererFrustum.prepare(view.origin().x, view.origin().y, view.origin().z);
+        Frustum rendererFrustum = view.family() == DeferredViewFamily.LOCAL_LIGHT_SHADOW
+                ? null : new Frustum(view.view(), view.projection());
+        if (rendererFrustum != null) {
+            rendererFrustum.prepare(view.origin().x, view.origin().y, view.origin().z);
+        }
         ArrayList<EntityCandidate> visible = new ArrayList<>(queried.size());
         for (Entity entity : queried) {
             AABB box = entity.getBoundingBox().inflate(config.boundsPadding());
-            if (!testAabb(frustum, box, view.origin())) continue;
+            if (!testAabb(view, frustum, box)) continue;
             try {
-                if (!dispatcher.shouldRender(entity, rendererFrustum, eye.x, eye.y, eye.z)) continue;
+                if (rendererFrustum != null && !dispatcher.shouldRender(entity, rendererFrustum, eye.x, eye.y, eye.z)) continue;
             } catch (Throwable error) {
                 // A renderer-specific visibility failure must not turn into false-negative culling.
                 DebugLog.warnOnChange("deferred-secondary-entity-visibility:" + entity.getType(), error.toString(),
@@ -282,7 +288,7 @@ final class DeferredSecondaryShadowCasterSource implements AutoCloseable {
                 BlockPos pos = blockEntity.getBlockPos();
                 if (!offscreen) {
                     AABB box = new AABB(pos).inflate(config.boundsPadding());
-                    if (!testAabb(frustum, box, view.origin())) continue;
+                    if (!testAabb(view, frustum, box)) continue;
                 }
                 double dx = pos.getX() + 0.5 - eye.x;
                 double dy = pos.getY() + 0.5 - eye.y;
@@ -542,6 +548,9 @@ final class DeferredSecondaryShadowCasterSource implements AutoCloseable {
     }
 
     private static AABB worldBounds(DeferredPassContext context, DeferredSecondaryView view, double padding) {
+        if (view.family() == DeferredViewFamily.LOCAL_LIGHT_SHADOW) {
+            return DeferredSecondaryViewCulling.perspectiveRangeBounds(view, padding);
+        }
         Matrix4f inverse = view.viewProjection().invert();
         float nearClipZ = context.rhi().capabilities().zeroToOneDepth() ? 0.0f : -1.0f;
         double minX = Double.POSITIVE_INFINITY;
@@ -580,7 +589,12 @@ final class DeferredSecondaryShadowCasterSource implements AutoCloseable {
         );
     }
 
-    private static boolean testAabb(FrustumIntersection frustum, AABB box, Vec3 origin) {
+    private static boolean testAabb(DeferredSecondaryView view, FrustumIntersection frustum, AABB box) {
+        if (view.family() == DeferredViewFamily.LOCAL_LIGHT_SHADOW) {
+            return DeferredSecondaryViewCulling.testPerspectiveAabb(view, box);
+        }
+        if (frustum == null) return true;
+        Vec3 origin = view.origin();
         return frustum.testAab(
                 (float) (box.minX - origin.x),
                 (float) (box.minY - origin.y),
