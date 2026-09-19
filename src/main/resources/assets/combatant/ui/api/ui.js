@@ -17,6 +17,11 @@ const UI_STYLE_KEYS_BY_NORMALIZED = new Map(
   UI_CONTRACT.styleKeys.map(key => [normalizeStyleKey(key), key])
 );
 const UI_PROMOTED_STYLES = Object.freeze({ ...(UI_CONTRACT.promotedStyles ?? {}) });
+const UI_STYLE_ALIASES = Object.freeze({ ...(UI_CONTRACT.styleAliases ?? {}) });
+const UI_STYLE_VALUE_ALIASES = Object.freeze({ ...(UI_CONTRACT.styleValueAliases ?? {}) });
+for (const [alias, target] of Object.entries(UI_STYLE_ALIASES)) {
+  UI_STYLE_KEYS_BY_NORMALIZED.set(normalizeStyleKey(alias), target);
+}
 const UI_EVENT_ALIASES = Object.freeze({ ...(UI_CONTRACT.eventAliases ?? {}) });
 const UI_STRUCTURAL_NODE_KEYS = new Set(UI_CONTRACT.structuralNodeKeys ?? []);
 const UI_RESERVED_NODE_KEYS = new Set([
@@ -31,6 +36,7 @@ export const ui = {
     version: Number(UI_CONTRACT.version) || 0,
     nodeTypes: Object.freeze([...UI_NODE_TYPES]),
     styleKeys: Object.freeze([...UI_CONTRACT.styleKeys]),
+    styleAliases: Object.freeze({ ...UI_STYLE_ALIASES }),
   }),
   /**
    * React-like authoring entry point. Runtime node strings use Combatant node names
@@ -51,33 +57,41 @@ export const ui = {
   when(condition, child) {
     return condition ? child : null;
   },
-  node(type, init = {}) {
-    return normalize(type, init);
+  node(type, init = {}, ...children) {
+    return normalize(type, withChildren(init, children));
   },
-  root(init = {}) { return normalize("root", init); },
-  panel(init = {}) { return normalize("panel", init); },
-  row(init = {}) { return normalize("row", init); },
-  column(init = {}) { return normalize("column", init); },
-  stack(init = {}) { return normalize("stack", init); },
-  vector(init = {}) {
-    return normalize("vector", { overflow: init.overflow ?? "hidden", ...init });
+  root(init = {}, ...children) { return normalize("root", withChildren(init, children)); },
+  panel(init = {}, ...children) { return normalize("panel", withChildren(init, children)); },
+  row(init = {}, ...children) { return normalize("row", withChildren(init, children)); },
+  column(init = {}, ...children) { return normalize("column", withChildren(init, children)); },
+  stack(init = {}, ...children) { return normalize("stack", withChildren(init, children)); },
+  vector(init = {}, ...children) {
+    const source = withChildren(init, children);
+    return normalize("vector", { overflow: source.overflow ?? "hidden", ...source });
   },
-  plot(init = {}) {
-    const xDomain = Array.isArray(init.xDomain) ? init.xDomain : [0, 1];
-    const yDomain = Array.isArray(init.yDomain) ? init.yDomain : [0, 1];
+  plot(init = {}, ...children) {
+    const source = withChildren(init, children);
+    const xDomain = Array.isArray(source.xDomain) ? source.xDomain : [0, 1];
+    const yDomain = Array.isArray(source.yDomain) ? source.yDomain : [0, 1];
     const minX = ui.num(xDomain[0], 0);
     const maxX = ui.num(xDomain[1], minX + 1);
     const minY = ui.num(yDomain[0], 0);
     const maxY = ui.num(yDomain[1], minY + 1);
-    const viewBox = init.viewBox ?? [minX, minY, Math.max(1e-9, maxX - minX), Math.max(1e-9, maxY - minY)];
-    const { xDomain: _xDomain, yDomain: _yDomain, ...rest } = init;
+    const viewBox = source.viewBox ?? [minX, minY, Math.max(1e-9, maxX - minX), Math.max(1e-9, maxY - minY)];
+    const { xDomain: _xDomain, yDomain: _yDomain, ...rest } = source;
     return ui.vector({ yAxis: "up", preserveAspectRatio: "none", ...rest, viewBox });
   },
-  text(init = "") {
-    if (typeof init === "string" || typeof init === "number") return normalize("text", { text: String(init) });
-    const text = init?.text ?? primitiveText(init?.children);
+  text(init = "", ...children) {
+    if ((typeof init === "string" || typeof init === "number") && children.length === 0) {
+      return normalize("text", { text: String(init) });
+    }
+    const source = withChildren(init, children);
+    const text = source?.text ?? primitiveText(source?.children);
+    if (children.length > 0 && text === undefined) {
+      throw new TypeError("ui.text(...children) accepts only string/number text children.");
+    }
     return normalize("text", {
-      ...init,
+      ...source,
       ...(text !== undefined ? { text, children: [] } : {}),
     });
   },
@@ -141,14 +155,14 @@ export const ui = {
   spline(init = {}) { return normalize("path", { ...init, curve: "spline", strokeWidth: init.strokeWidth ?? 1 }); },
   area(init = {}) { return normalize("path", { ...init, curve: init.curve ?? "linear", area: init.area ?? true, strokeWidth: init.strokeWidth ?? 1 }); },
   item(init = {}) { return normalize("item", init); },
-  button(init = {}) { return normalize("button", init); },
-  scroll(init = {}) { return normalize("scroll", init); },
+  button(init = {}, ...children) { return normalize("button", withChildren(init, children)); },
+  scroll(init = {}, ...children) { return normalize("scroll", withChildren(init, children)); },
   spacer(init = {}) { return normalize("spacer", init); },
-  inputText(init = {}) { return normalize("input_text", init); },
-  checkbox(init = {}) { return normalize("checkbox", init); },
-  slider(init = {}) { return normalize("slider", init); },
+  inputText(init = {}, ...children) { return normalize("input_text", withChildren(init, children)); },
+  checkbox(init = {}, ...children) { return normalize("checkbox", withChildren(init, children)); },
+  slider(init = {}, ...children) { return normalize("slider", withChildren(init, children)); },
   divider(init = {}) { return normalize("divider", init); },
-  canvas(init = {}) { return normalize("canvas", init); },
+  canvas(init = {}, ...children) { return normalize("canvas", withChildren(init, children)); },
 
   num(value, fallback = 0) {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -185,6 +199,7 @@ export const ui = {
   abs(x = 0, y = 0, w = 0, h = 0, extra = "") {
     return ui.cls("absolute", `x-${ui.fmt(x)}`, `y-${ui.fmt(y)}`, `w-${ui.fmt(w)}`, `h-${ui.fmt(h)}`, extra);
   },
+  /** @deprecated ctx.props is deep-converted to plain JS objects. Prefer value?.[key] ?? fallback. */
   prop(value, key, fallback = undefined) {
     if (value === null || value === undefined) return fallback;
     try {
@@ -201,6 +216,7 @@ export const ui = {
     }
     return fallback;
   },
+  /** @deprecated ctx.props collections are plain JS arrays. Prefer Array.isArray(value) checks. */
   arr(value) {
     if (value === null || value === undefined) return [];
     try {
@@ -468,15 +484,25 @@ function normalize(type, init) {
       layoutStyle.textAlign = value;
       continue;
     }
-    layoutStyle[styleKey] = value;
+    const canonicalKey = canonicalStyleKey(styleKey) ?? styleKey;
+    layoutStyle[canonicalKey] = normalizeStyleValue(canonicalKey, value);
   }
 
-  const explicitStyle = isPlainObject(source.style) ? source.style : {};
+  const explicitStyleSource = isPlainObject(source.style) ? source.style : {};
   if (UI_VALIDATION && source.style !== undefined && source.style !== null && !isPlainObject(source.style)) {
     throw new TypeError(`UI node '${canonicalType}' field 'style' must be an object.`);
   }
+  const explicitStyle = normalizeInlineStyle(explicitStyleSource, canonicalType);
+  if (UI_VALIDATION) {
+    for (const key of Object.keys(explicitStyle)) {
+      if (Object.prototype.hasOwnProperty.call(layoutStyle, key)) {
+        throw new TypeError(
+          `UI node '${canonicalType}' defines '${key}' twice: as a top-level layout prop and inside style. Keep the canonical style.${key} declaration only.`
+        );
+      }
+    }
+  }
   const resolvedStyle = ui.style(layoutStyle, explicitStyle);
-  validateInlineStyle(resolvedStyle, canonicalType);
 
   const normalizedEvents = isPlainObject(source.events) ? { ...source.events } : {};
   if (UI_VALIDATION && source.events !== undefined && source.events !== null && !isPlainObject(source.events)) {
@@ -540,25 +566,56 @@ function canonicalStyleKey(key) {
   return UI_STYLE_KEYS_BY_NORMALIZED.get(normalizeStyleKey(key));
 }
 
-function validateInlineStyle(style, nodeType) {
-  if (!UI_VALIDATION || !isPlainObject(style)) return;
+function normalizeStyleValue(key, value) {
+  if (typeof value !== "string") return value;
+  const normalized = value.trim().toLowerCase();
+  const aliases = UI_STYLE_VALUE_ALIASES[key];
+  const canonical = aliases && Object.prototype.hasOwnProperty.call(aliases, normalized)
+    ? aliases[normalized]
+    : normalized;
+  const accepted = UI_CONTRACT.styleValues?.[key];
+  return Array.isArray(accepted) && accepted.includes(canonical) ? canonical : (canonical !== normalized ? canonical : value);
+}
+
+function normalizeInlineStyle(style, nodeType) {
+  if (!isPlainObject(style) || Object.keys(style).length === 0) return {};
+  const out = {};
+  const sourceKeys = new Map();
   const styleValues = UI_CONTRACT.styleValues ?? {};
-  for (const [rawKey, value] of Object.entries(style)) {
+
+  for (const [rawKey, rawValue] of Object.entries(style)) {
     const key = canonicalStyleKey(rawKey);
     if (!key) {
+      if (!UI_VALIDATION) {
+        out[rawKey] = rawValue;
+        continue;
+      }
       const suggestion = closest(normalizeStyleKey(rawKey), UI_STYLE_KEYS_BY_NORMALIZED.keys(), normalizeStyleKey);
       const suffix = suggestion ? ` Did you mean '${UI_STYLE_KEYS_BY_NORMALIZED.get(normalizeStyleKey(suggestion)) ?? suggestion}'?` : "";
       throw new TypeError(`Unknown UI style property '${rawKey}' on '${nodeType}'.${suffix}`);
     }
-    const accepted = styleValues[key];
-    if (!Array.isArray(accepted) || value === null || value === undefined || typeof value !== "string") continue;
-    const normalized = value.trim().toLowerCase();
-    if (!accepted.includes(normalized)) {
+
+    if (UI_VALIDATION && Object.prototype.hasOwnProperty.call(out, key)) {
       throw new TypeError(
-        `Invalid UI style value '${value}' for '${key}' on '${nodeType}'. Expected one of: ${accepted.join(", ")}.`
+        `UI style on '${nodeType}' defines '${key}' more than once through '${sourceKeys.get(key)}' and '${rawKey}'. Use only '${key}'.`
       );
     }
+
+    const value = normalizeStyleValue(key, rawValue);
+    const accepted = styleValues[key];
+    if (UI_VALIDATION && Array.isArray(accepted) && value !== null && value !== undefined && typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (!accepted.includes(normalized)) {
+        throw new TypeError(
+          `Invalid UI style value '${rawValue}' for '${key}' on '${nodeType}'. Expected one of: ${accepted.join(", ")}.`
+        );
+      }
+    }
+
+    out[key] = value;
+    sourceKeys.set(key, rawKey);
   }
+  return out;
 }
 
 function validateEvents(events, nodeType) {
@@ -609,6 +666,13 @@ function editDistance(a, b) {
     for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
   }
   return prev[b.length];
+}
+
+
+function withChildren(init, children) {
+  const source = init && typeof init === "object" && !Array.isArray(init) ? init : {};
+  if (!children || children.length === 0) return source;
+  return { ...source, children };
 }
 
 function normalizeChildren(value) {

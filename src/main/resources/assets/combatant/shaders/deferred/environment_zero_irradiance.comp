@@ -17,5 +17,5 @@ void main() {
 
     // Unknown environment is represented explicitly as zero incoming irradiance. Do not infer
     // sky/block light from vanilla lightmap data or from rendered color.
-    imageStore(u_OutputIrradiance, pixel, vec4(0.0, 0.0, 0.0, 1.0));
+    imageStore(u_OutputIrradiance, pixel, vec4(0.0));
 }

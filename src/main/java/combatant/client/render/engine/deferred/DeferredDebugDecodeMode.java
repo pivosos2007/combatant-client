@@ -28,6 +28,10 @@ public enum DeferredDebugDecodeMode {
     LINEAR_DEPTH(13),
     /** Packed renderer-owned baseline block/sky light pair (R=block, G=sky). */
     LIGHT_PAIR(14),
+    /** Texture already stores a linear view-space distance/value in R. */
+    LINEAR_VALUE(15),
+    /** Signed XYZ vector mapped from [-1,1] to display RGB. */
+    SIGNED_VECTOR(16),
 
     /** Current reflection trace eligibility: exactly the shared G-buffer ownership policy. */
     SHARED_REFLECTION_ELIGIBILITY(20),

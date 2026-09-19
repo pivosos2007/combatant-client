@@ -7,6 +7,9 @@
 
 const n = ui.num;
 const c = ui.str;
+const s = ui.fmt;
+const cls = ui.cls;
+const abs = ui.abs;
 const prop = ui.prop;
 const arr = ui.arr;
 const color = ui.color.get;
@@ -22,16 +25,21 @@ function withAlpha(hex, amount) {
 
 const alpha01 = ui.color.opacity;
 
+function font(family, size, type) {
+  const suffix = type ? `-${type}` : "";
+  return cls(`font-${family}${suffix}`, `font-size-${s(size)}`);
+}
+
 
 export class HudPanelLayout {
   constructor(ctx) {
     this.ctx = ctx || {};
     this.p = this.ctx.props || {};
-    this.pal = prop(this.p, "palette", {});
-    this.v = prop(this.p, "variant", {});
+    this.pal = this.p.palette ?? {};
+    this.v = this.p.variant ?? {};
     this.base = {
       headerH: 15.5,
-      bodyY: n(prop(this.v, "bodyY", 18.5), 18.5),
+      bodyY: n(this.v.bodyY ?? 18.5, 18.5),
       radius: 4.0,
       stroke: 0.55,
       softness: 1.0,
@@ -64,21 +72,21 @@ export class HudPanelLayout {
   }
 
   horizontalLayout() {
-    const left = n(prop(this.v, "leftInsetX", this.base.leftInsetX), this.base.leftInsetX);
-    const iconSlotW = n(prop(this.v, "headerIconSlotW", this.base.headerIconSlotW), this.base.headerIconSlotW);
+    const left = n(this.v.leftInsetX ?? this.base.leftInsetX, this.base.leftInsetX);
+    const iconSlotW = n(this.v.headerIconSlotW ?? this.base.headerIconSlotW, this.base.headerIconSlotW);
     const iconDividerGap = n(
-      prop(this.v, "headerIconDividerGap", this.base.headerIconDividerGap),
+      this.v.headerIconDividerGap ?? this.base.headerIconDividerGap,
       this.base.headerIconDividerGap
     );
     const dividerTitleGap = n(
-      prop(this.v, "headerDividerTitleGap", this.base.headerDividerTitleGap),
+      this.v.headerDividerTitleGap ?? this.base.headerDividerTitleGap,
       this.base.headerDividerTitleGap
     );
     const dividerW = 0.5;
     const dividerCenterX = left + iconSlotW + iconDividerGap;
     const dividerX = dividerCenterX - dividerW * 0.5;
     const titleX = dividerCenterX + dividerW * 0.5 + dividerTitleGap;
-    const contentInsetX = n(prop(this.v, "contentInsetX", this.base.leftInsetX), this.base.leftInsetX);
+    const contentInsetX = n(this.v.contentInsetX ?? this.base.leftInsetX, this.base.leftInsetX);
     return {
       left,
       iconSlotW,
@@ -346,7 +354,7 @@ export class HudPanelLayout {
     const rowTextH = n(this.p.rowTextHeight, 8);
     const titleH = n(this.p.headerTextHeight, 8);
     const iconH = n(this.p.headerIconHeight, 8);
-    const iconScale = Math.max(0.25, n(prop(this.v, "headerIconScale", 1), 1));
+    const iconScale = Math.max(0.25, n(this.v.headerIconScale ?? 1, 1));
     const horizontal = this.horizontalLayout();
     const count = String(Math.max(0, Math.round(n(this.p.activeCount, 0))));
     const counterLabelText = c(counterLabel, "Active:");
@@ -355,7 +363,7 @@ export class HudPanelLayout {
     const countValueW = Math.max(8, measuredCountValueW > 0 ? measuredCountValueW + 1.5 : count.length * 6.5 * fs + 5.5);
     const countLabelW = Math.max(26 * fs, measuredCountLabelW > 0 ? measuredCountLabelW + 1.5 : counterLabelText.length * 5.9 * fs + 1.5);
     const countGap = Math.max(3.2, 3.0 * fs);
-    const countValueX = w - countValueW - n(prop(this.v, "countValueOffset", 3), 3);
+    const countValueX = w - countValueW - n(this.v.countValueOffset ?? 3, 3);
     const countLabelX = countValueX - countLabelW - countGap;
     const countY = (headerH - rowTextH) * 0.5 + 0.8;
     const titleX = horizontal.titleX;
@@ -389,7 +397,7 @@ export class HudPanelLayout {
         gradientEndColor: c(this.p.headerIconGradientEnd, c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF"))),
         gradientAngle: n(this.p.headerIconGradientAngle, 45),
         style: ui.absolute(horizontal.left, iconY, horizontal.iconSlotW, iconH + 4, {
-          fontFamily: c(prop(this.v, "headerIconFont", "IconsNur"), "IconsNur"),
+          fontFamily: c(this.v.headerIconFont ?? "IconsNur", "IconsNur"),
           fontSize: this.fontSize(iconScale),
           textAlign: "center",
         }),
@@ -420,11 +428,6 @@ export class HudPanelLayout {
       key: `panel:${c(this.p.id, "panel")}`,
       class: this.p.shadowControlled === true ? "" : "shadow-panel",
       style: { width: w, height: h, borderRadius: this.base.radius },
-      children: [
-        ...this.chrome(),
-        ...this.header(this.counterLabel()),
-        ...this.renderContent(),
-      ],
-    });
+    }, this.chrome(), this.header(this.counterLabel()), this.renderContent());
   }
 }

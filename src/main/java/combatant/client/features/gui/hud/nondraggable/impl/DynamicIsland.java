@@ -22,11 +22,11 @@ import org.lwjgl.glfw.GLFW;
 import combatant.client.config.SettingDef;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
+import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.RGBAColorValue;
 import combatant.client.config.values.RGBColorValue;
 import combatant.client.features.gui.clickgui.ClickGuiScreen;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
-import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderSpace;
@@ -99,13 +99,17 @@ public final class DynamicIsland extends AbstractHudElement {
     private static final int ICON_NEXT = 0xEA05;
     private static final int ICON_SHUFFLE = 0xEA06;
 
-    private static final int BASE_SHADOW = 0xFF000000;
-    private static final int BASE_STROKE = 0xFFFFFFFF;
     private static final int STATUS_PVP = 0xFFFF6368;
 
     private final Minecraft mc = Minecraft.getInstance();
     private final MediaSessionService mediaService = MediaSessionService.get();
     private final BooleanValue syncTheme = new BooleanValue("dynamic_island_sync_theme", true);
+    private final ModeValue panelStyle = new ModeValue(
+            "dynamic_island_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
+            HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT, HudRenderUtil.PANEL_STYLE_GRADIENT);
+    private final NumberValue<Integer> themeMix = new NumberValue<>("dynamic_island_theme_mix", 100, 0, 100);
+    private final NumberValue<Integer> themeGradientStrength =
+            new NumberValue<>("dynamic_island_theme_gradient_strength", 72, 0, 100);
     private final NumberValue<Integer> themeAlpha = new NumberValue<>("dynamic_island_theme_alpha", 200, 0, 255);
     private final BooleanValue blur = new BooleanValue("dynamic_island_blur", true);
     private final NumberValue<Integer> blurAlpha = new NumberValue<>("dynamic_island_blur_alpha", 120, 0, 255);
@@ -163,10 +167,10 @@ public final class DynamicIsland extends AbstractHudElement {
     private float progressY;
     private float progressW;
 
-    private int uiBezelTint;
-    private int uiBezelEdge;
     private int uiDisplayBg;
-    private int uiDisplayEdge;
+    private int uiDisplayBgStart;
+    private int uiDisplayBgEnd;
+    private float uiDisplayBgAngle = 90.0f;
     private int uiPhosphor;
     private int uiPhosphorDim;
     private int uiMatrixOff;
@@ -449,6 +453,10 @@ public final class DynamicIsland extends AbstractHudElement {
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.bool(syncTheme));
+        defs.add(SettingDef.mode(panelStyle).visibleWhen(syncTheme::get));
+        defs.add(SettingDef.number(themeMix).visibleWhen(syncTheme::get));
+        defs.add(SettingDef.number(themeGradientStrength)
+                .visibleWhen(() -> syncTheme.get() && HudRenderUtil.PANEL_STYLE_GRADIENT.equals(panelStyle.get())));
         defs.add(SettingDef.number(themeAlpha).visibleWhen(syncTheme::get));
         defs.add(SettingDef.bool(blur));
         defs.add(SettingDef.number(blurAlpha).visibleWhen(blur::get));
@@ -696,7 +704,7 @@ public final class DynamicIsland extends AbstractHudElement {
 
         if (!renderScripted(renderer, fallback, titleRenderer, metaRenderer, ctx, tickDelta, screenW, screenH, drawWidth, drawHeight,
                 drawMainWidth, mainX, alpha, compactContentAlpha, expandedContentAlpha, bezelCut, accent)) {
-            drawFallback(renderer, drawX + mainX, drawY, drawMainWidth, drawHeight, 3.0f, alpha, accent);
+            drawFallback(renderer, drawX + mainX, drawY, drawMainWidth, drawHeight, bezelCut, alpha);
         }
     }
 
@@ -789,26 +797,17 @@ public final class DynamicIsland extends AbstractHudElement {
         String phosphorDim = stringProp(props, "phosphorDim", "#66FFFFFF");
         String matrixOff = stringProp(props, "matrixOff", "#22FFFFFF");
 
-        float shellBlurAlpha = (boolProp(props, "blur", false)
+        float surfaceBlurAlpha = (boolProp(props, "blur", false)
                 ? numberProp(props, "blurAlpha", 0.45f)
-                : 0.14f) * rootAlpha;
-        float displayBlurAlpha = (boolProp(props, "blur", false)
-                ? Math.max(0.42f, numberProp(props, "blurAlpha", 0.45f))
-                : 0.22f) * rootAlpha;
-        patchShape(patches, "shell:shadow", "fill", scaleHexAlpha(stringProp(props, "shadow", "#00000000"), rootAlpha));
-        patchShape(patches, "shell:bezel",
+                : 0.0f) * rootAlpha;
+        patchShape(patches, "shell:surface",
                 "chamfer", props.get("bezelCut"),
-                "fill", scaleHexAlpha(stringProp(props, "bezelTint", "#00000000"), rootAlpha),
-                "stroke", scaleHexAlpha(stringProp(props, "bezelEdge", "#00FFFFFF"), rootAlpha),
-                "glassTint", scaleHexAlpha(stringProp(props, "bezelTint", "#00000000"), rootAlpha),
-                "blurAlpha", shellBlurAlpha);
-        patchShape(patches, "shell:display",
                 "fill", scaleHexAlpha(stringProp(props, "displayBg", "#FF050608"), rootAlpha),
-                "stroke", scaleHexAlpha(stringProp(props, "displayEdge", "#22FFFFFF"), rootAlpha),
-                "blurAlpha", displayBlurAlpha,
-                "blurBrightness", 1.06f);
-        patchShape(patches, "shell:highlight", "fill",
-                scaleHexAlpha(stringProp(props, "bezelEdge", "#00FFFFFF"), 0.64f * rootAlpha));
+                "startColor", scaleHexAlpha(stringProp(props, "displayBgStart", "#FF050608"), rootAlpha),
+                "endColor", scaleHexAlpha(stringProp(props, "displayBgEnd", "#FF050608"), rootAlpha),
+                "angle", numberProp(props, "displayBgAngle", 90.0f),
+                "blurAlpha", surfaceBlurAlpha,
+                "blurBrightness", 1.0f);
         float shellInteraction = numberProp(props, "bodyHover", 0.0f) * 0.025f
                 + numberProp(props, "bodyPress", 0.0f) * 0.045f;
         patchShape(patches, "shell:interaction", "fill", scaleHexAlpha(phosphor, shellInteraction * rootAlpha));
@@ -838,9 +837,7 @@ public final class DynamicIsland extends AbstractHudElement {
                             "startColor", scaleHexAlpha(categoryColor,
                                     rootAlpha * (active ? 0.24f : (hovered ? 0.10f : 0.0f))),
                             "endColor", scaleHexAlpha(phosphorDim,
-                                    rootAlpha * (active ? 0.10f : (hovered ? 0.035f : 0.0f))),
-                            "stroke", scaleHexAlpha(categoryColor,
-                                    rootAlpha * (active ? 0.34f : (hovered ? 0.13f : 0.0f))));
+                                    rootAlpha * (active ? 0.10f : (hovered ? 0.035f : 0.0f))));
                     patchText(patches, "clickgui:tab:" + index, label,
                             scaleHexAlpha(active || hovered ? categoryColor : secondary, rootAlpha * textAlpha));
                     patchShape(patches, "clickgui:tab:" + index,
@@ -863,7 +860,7 @@ public final class DynamicIsland extends AbstractHudElement {
             float compactTitleW = Math.max(0.0f, mainWidth - 82.0f - (boolProp(props, "pvpActive", false) ? 50.0f : 24.0f) - 7.0f);
             patchClippedText(patches, "music:title:compact", numberProp(props, "titleWidthCompact", 0.0f), compactTitleW,
                     numberProp(props, "titleScrollTime", 0.0f), 1.0f, 18.0f, 15.0f);
-            patchShape(patches, "music:divider", "fill", scaleHexAlpha(stringProp(props, "displayEdge", "#00FFFFFF"), compactVisible));
+            patchShape(patches, "music:divider", "fill", scaleHexAlpha(phosphorDim, 0.46f * compactVisible));
             if (boolProp(props, "pvpActive", false)) {
                 patchPhosphorText(patches, "music:pvp:compact", stringProp(props, "pvpTelemetry", "PVP 00"),
                         scaleHexAlpha(phosphor, compactVisible), scaleHexAlpha(phosphor, compactVisible), 1.8f, 0.28f);
@@ -874,8 +871,7 @@ public final class DynamicIsland extends AbstractHudElement {
             }
             patchImage(patches, "artwork:compact", stringProp(props, "artworkTexture", ""), scaleHexAlpha("#FFFFFFFF", compactVisible));
             patchShape(patches, "artwork:compact:fallback",
-                    "fill", scaleHexAlpha(phosphorDim, 0.72f * compactVisible),
-                    "stroke", scaleHexAlpha(stringProp(props, "displayEdge", "#00FFFFFF"), compactVisible));
+                    "fill", scaleHexAlpha(phosphorDim, 0.72f * compactVisible));
         }
 
         if (musicMode) {
@@ -901,12 +897,10 @@ public final class DynamicIsland extends AbstractHudElement {
             patchPhosphorText(patches, "music:total:expanded", stringProp(props, "total", "0:00"),
                     scaleHexAlpha(phosphor, expandedVisible), scaleHexAlpha(phosphor, expandedVisible), 1.5f, 0.14f);
             patchShape(patches, "artwork:expanded:frame",
-                    "fill", scaleHexAlpha(phosphorDim, 0.16f * expandedVisible),
-                    "stroke", scaleHexAlpha(stringProp(props, "displayEdge", "#00FFFFFF"), expandedVisible));
+                    "fill", scaleHexAlpha(phosphorDim, 0.16f * expandedVisible));
             patchImage(patches, "artwork:expanded", stringProp(props, "artworkTexture", ""), scaleHexAlpha("#FFFFFFFF", expandedVisible));
             patchShape(patches, "artwork:expanded:fallback",
-                    "fill", scaleHexAlpha(phosphorDim, 0.72f * expandedVisible),
-                    "stroke", scaleHexAlpha(stringProp(props, "displayEdge", "#00FFFFFF"), expandedVisible));
+                    "fill", scaleHexAlpha(phosphorDim, 0.72f * expandedVisible));
             boolean shuffleActive = boolProp(props, "shuffleActive", false);
             boolean repeatActive = boolProp(props, "repeatActive", false);
             if (boolProp(props, "showShuffle", false)) {
@@ -937,15 +931,8 @@ public final class DynamicIsland extends AbstractHudElement {
 
         putBounds(patches, "dynamic-island", rootX, rootY, width, height);
         putBounds(patches, "content", rootX, rootY, width, height);
-        putBounds(patches, "shell:shadow", rootX + mainX, rootY, mainWidth, height);
-        putBounds(patches, "shell:bezel", rootX + mainX, rootY, mainWidth, height);
-        putBounds(patches, "shell:display", rootX + mainX + 2.25f, rootY + 2.25f,
-                Math.max(1.0f, mainWidth - 4.5f), Math.max(1.0f, height - 4.5f));
-        float bezelCut = numberProp(props, "bezelCut", CLOSED_CHAMFER);
-        putBounds(patches, "shell:highlight", rootX + mainX + bezelCut + 4.0f, rootY + 1.1f,
-                Math.max(1.0f, mainWidth - (bezelCut + 4.0f) * 2.0f), 0.65f);
-        putBounds(patches, "shell:interaction", rootX + mainX + 2.25f, rootY + 2.25f,
-                Math.max(1.0f, mainWidth - 4.5f), Math.max(1.0f, height - 4.5f));
+        putBounds(patches, "shell:surface", rootX + mainX, rootY, mainWidth, height);
+        putBounds(patches, "shell:interaction", rootX + mainX, rootY, mainWidth, height);
 
         if (clickGuiMode) {
             Object tabsValue = props.get("clickGuiTabs");
@@ -1133,11 +1120,6 @@ public final class DynamicIsland extends AbstractHudElement {
         props.put("supportsSeek", currentSnapshot != null && currentSnapshot.supportsSeek());
         Identifier artwork = currentSnapshot != null ? currentSnapshot.artworkTexture() : null;
         props.put("artworkTexture", artwork != null ? artwork.toString() : "");
-        Screen propsScreen = ClientScreen.current();
-        boolean suppressPauseShadow = propsScreen != null && propsScreen.isPauseScreen();
-        props.put("shadow", suppressPauseShadow
-                ? "#00000000"
-                : hex(HudRenderUtil.scaleAlpha(BASE_SHADOW, 0.28f)));
         int modePhosphor = currentMode == IslandMode.PVP
                 ? HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.12f)
                 : uiPhosphor;
@@ -1147,10 +1129,10 @@ public final class DynamicIsland extends AbstractHudElement {
         int modeMatrixOff = currentMode == IslandMode.PVP
                 ? HudRenderUtil.mixColor(modePhosphor, uiDisplayBg, 0.86f)
                 : uiMatrixOff;
-        props.put("bezelTint", hex(uiBezelTint));
-        props.put("bezelEdge", hex(uiBezelEdge));
         props.put("displayBg", hex(uiDisplayBg));
-        props.put("displayEdge", hex(uiDisplayEdge));
+        props.put("displayBgStart", hex(uiDisplayBgStart));
+        props.put("displayBgEnd", hex(uiDisplayBgEnd));
+        props.put("displayBgAngle", uiDisplayBgAngle);
         props.put("phosphor", hex(modePhosphor));
         props.put("phosphorDim", hex(modePhosphorDim));
         props.put("matrixOff", hex(modeMatrixOff));
@@ -1322,21 +1304,20 @@ public final class DynamicIsland extends AbstractHudElement {
                               float drawY,
                               float drawWidth,
                               float drawHeight,
-                              float radius,
-                              float alpha,
-                              int accent) {
-        Screen fallbackScreen = ClientScreen.current();
-        if (fallbackScreen == null || !fallbackScreen.isPauseScreen()) {
-            renderer.roundedRectShadow(drawX, drawY, drawWidth, drawHeight, radius, 8f, 14f,
-                    HudRenderUtil.scaleAlpha(BASE_SHADOW, 0.28f * alpha));
+                              float chamfer,
+                              float alpha) {
+        if (blur.get()) {
+            renderer.blurChamferedRect(drawX, drawY, drawWidth, drawHeight, chamfer, 8.0f, 1.0f,
+                    (blurAlpha.get() / 255.0f) * alpha, 0xFFFFFF);
         }
-        renderer.roundedRect(drawX, drawY, drawWidth, drawHeight, radius, 1.1f,
-                HudRenderUtil.scaleAlpha(uiBezelTint, alpha));
-        renderer.roundedRectStroke(drawX, drawY, drawWidth, drawHeight, radius, 1.1f, 1f,
-                HudRenderUtil.scaleAlpha(uiBezelEdge, alpha));
-        renderer.roundedRect(drawX + 2.25f, drawY + 2.25f,
-                Math.max(1.0f, drawWidth - 4.5f), Math.max(1.0f, drawHeight - 4.5f), 2.0f,
-                HudRenderUtil.scaleAlpha(uiDisplayBg, alpha));
+        int start = HudRenderUtil.scaleAlpha(uiDisplayBgStart, alpha);
+        int end = HudRenderUtil.scaleAlpha(uiDisplayBgEnd, alpha);
+        if (start == end) {
+            renderer.chamferedRect(drawX, drawY, drawWidth, drawHeight, chamfer, start);
+        } else {
+            renderer.chamferedRectGradient(drawX, drawY, drawWidth, drawHeight, chamfer,
+                    start, end, uiDisplayBgAngle, 0.0f);
+        }
         if (currentMode == IslandMode.CLICKGUI) {
             ClickGuiRenderer.ClickGuiIslandState state = ClickGuiRenderer.islandState();
             TextRenderer tabFont = ClickGuiRenderer.getOnestBold();
@@ -1447,17 +1428,30 @@ public final class DynamicIsland extends AbstractHudElement {
 
     private void updatePalette() {
         if (syncTheme.get()) {
-            SettingsGuiPalette palette = SettingsGuiPalette.current();
+            int alpha = themeAlpha.get();
+            float mix = themeMix.get() / 100.0f;
             int accent = theme().accent();
-            uiBezelTint = HudRenderUtil.setAlpha(
-                    HudRenderUtil.mixColor(palette.workspaceGlassTint(), accent, 0.08f),
-                    Math.min(themeAlpha.get(), 142));
-            uiBezelEdge = HudRenderUtil.scaleAlpha(
-                    HudRenderUtil.mixColor(palette.glassEdgeStrong(), accent, 0.16f), 0.72f);
-            uiDisplayBg = HudRenderUtil.setAlpha(
-                    HudRenderUtil.mixRgb(palette.navigationPlaneBottom(), 0xFF000000, 0.56f), 124);
-            uiDisplayEdge = HudRenderUtil.scaleAlpha(
-                    HudRenderUtil.mixColor(palette.glassEdgeSoft(), accent, 0.08f), 0.52f);
+            int baseSurface = HudRenderUtil.setAlpha(
+                    HudRenderUtil.mixColor(theme().windowBg(), theme().surface(), 0.38f), alpha);
+
+            uiDisplayBgAngle = 90.0f;
+            if (HudRenderUtil.PANEL_STYLE_GRADIENT.equals(panelStyle.get())) {
+                float strength = (themeGradientStrength.get() / 100.0f) * mix;
+                HudRenderUtil.ThemeGradient gradient = HudRenderUtil.themePanelGradient(alpha);
+                uiDisplayBgStart = HudRenderUtil.gradientSurface(baseSurface, gradient.start(), strength);
+                uiDisplayBgEnd = HudRenderUtil.gradientSurface(baseSurface, gradient.end(), strength);
+                uiDisplayBgAngle = gradient.angleDeg();
+                uiDisplayBg = HudRenderUtil.mixColor(uiDisplayBgStart, uiDisplayBgEnd, 0.5f);
+            } else if (HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get())) {
+                uiDisplayBg = HudRenderUtil.accentSurface(baseSurface, 0.42f * mix);
+                uiDisplayBgStart = uiDisplayBg;
+                uiDisplayBgEnd = uiDisplayBg;
+            } else {
+                uiDisplayBg = baseSurface;
+                uiDisplayBgStart = baseSurface;
+                uiDisplayBgEnd = baseSurface;
+            }
+
             uiPhosphor = HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.22f);
             uiPhosphorDim = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(uiPhosphor, uiDisplayBg, 0.48f), 255);
             uiMatrixOff = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(uiPhosphor, uiDisplayBg, 0.86f), 255);
@@ -1468,11 +1462,10 @@ public final class DynamicIsland extends AbstractHudElement {
 
         int baseBg = bgColor.getArgb();
         int accent = accentColor.getArgb() | 0xFF000000;
-        uiBezelTint = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(baseBg, accent, 0.08f),
-                Math.min((baseBg >>> 24) & 0xFF, 150));
-        uiBezelEdge = HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(BASE_STROKE, accent, 0.20f), 0.72f);
         uiDisplayBg = HudRenderUtil.setAlpha(HudRenderUtil.mixRgb(baseBg, 0xFF000000, 0.60f), 132);
-        uiDisplayEdge = HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(BASE_STROKE, accent, 0.10f), 0.44f);
+        uiDisplayBgStart = uiDisplayBg;
+        uiDisplayBgEnd = uiDisplayBg;
+        uiDisplayBgAngle = 90.0f;
         uiPhosphor = HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.22f);
         uiPhosphorDim = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(uiPhosphor, uiDisplayBg, 0.48f), 255);
         uiMatrixOff = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(uiPhosphor, uiDisplayBg, 0.86f), 255);

@@ -1,0 +1,19 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = 0) uniform sampler2D u_TemporalSignal;
+layout(binding = 1) uniform sampler2D u_TemporalDepth;
+layout(binding = 2) uniform sampler2D u_TemporalAge;
+layout(binding = 3, rgba16f) writeonly uniform image2D u_HistorySignal;
+layout(binding = 4, r32f) writeonly uniform image2D u_HistoryDepth;
+layout(binding = 5, r8) writeonly uniform image2D u_HistoryAge;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_HistorySignal);
+    if (any(greaterThanEqual(pixel, size))) return;
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    imageStore(u_HistorySignal, pixel, textureLod(u_TemporalSignal, uv, 0.0));
+    imageStore(u_HistoryDepth, pixel, vec4(textureLod(u_TemporalDepth, uv, 0.0).r));
+    imageStore(u_HistoryAge, pixel, vec4(textureLod(u_TemporalAge, uv, 0.0).r));
+}

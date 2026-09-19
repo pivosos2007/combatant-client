@@ -77,6 +77,11 @@ void main() {
     } else if (mode == 14) {
         // R=block-light baseline factor, G=sky-light baseline factor.
         rgb = vec3(clamp(value.z, 0.0, 1.0), clamp(value.w, 0.0, 1.0), 0.0);
+    } else if (mode == 15) {
+        float farPlane = max(u_Params.aux.y, 1.0);
+        rgb = vec3(clamp(log2(1.0 + max(value.x, 0.0)) / log2(1.0 + farPlane), 0.0, 1.0));
+    } else if (mode == 16) {
+        rgb = clamp(value.xyz * 0.5 + 0.5, 0.0, 1.0);
     } else {
         rgb = clamp(value.rgb, 0.0, 1.0);
     }

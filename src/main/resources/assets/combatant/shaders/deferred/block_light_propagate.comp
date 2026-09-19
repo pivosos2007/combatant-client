@@ -16,6 +16,8 @@ layout(std430, binding = 3) readonly buffer BlockLightVolumeData {
     vec4 volumeSizeAndColumns;
     vec4 atlasSizeAndRows;
     vec4 originAndAttenuation;
+    // xyz = absolute block origin represented by u_PreviousRadiance, w = history valid.
+    vec4 previousOriginAndHistory;
 } u_Volume;
 
 ivec3 volumeSize() {
@@ -30,30 +32,44 @@ ivec2 atlasPixel(ivec3 voxel) {
                  sliceRow * volumeSize().y + voxel.y);
 }
 
-vec3 neighborRadiance(ivec3 voxel) {
+bool insideVolume(ivec3 voxel) {
     ivec3 size = volumeSize();
-    if (any(lessThan(voxel, ivec3(0))) || any(greaterThanEqual(voxel, size))) return vec3(0.0);
-    return max(texelFetch(u_PreviousRadiance, atlasPixel(voxel), 0).rgb, vec3(0.0));
+    return all(greaterThanEqual(voxel, ivec3(0))) && all(lessThan(voxel, size));
+}
+
+ivec3 previousVoxel(ivec3 currentVoxel) {
+    // The same world cell has a different integer index after the camera-centered volume moves.
+    // Reprojection is exact because both origins are block-aligned integers.
+    ivec3 currentOrigin = ivec3(round(u_Volume.originAndAttenuation.xyz));
+    ivec3 previousOrigin = ivec3(round(u_Volume.previousOriginAndHistory.xyz));
+    return currentVoxel + currentOrigin - previousOrigin;
+}
+
+vec3 previousRadiance(ivec3 currentVoxel) {
+    if (u_Volume.previousOriginAndHistory.w < 0.5) return vec3(0.0);
+    ivec3 previous = previousVoxel(currentVoxel);
+    if (!insideVolume(previous)) return vec3(0.0);
+    return max(texelFetch(u_PreviousRadiance, atlasPixel(previous), 0).rgb, vec3(0.0));
 }
 
 void main() {
     ivec3 voxel = ivec3(gl_GlobalInvocationID.xyz);
-    ivec3 size = volumeSize();
-    if (any(greaterThanEqual(voxel, size))) return;
+    if (!insideVolume(voxel)) return;
 
     ivec2 pixel = atlasPixel(voxel);
     vec4 seed = texelFetch(u_Seed, pixel, 0);
     vec3 result = max(seed.rgb, vec3(0.0));
 
-    // Exact block dampening is injected by the producer. One light level is always lost per cell,
-    // while opaque cells can attenuate the full signal. No material/type inference happens here.
+    // Minecraft block-light semantics: every cell crossing loses one light level and the exact
+    // target block dampening supplied by the CPU can only increase that loss. This gives the LPV
+    // real wall occlusion without turning it into scene-radiance GI.
     float attenuation = max(max(seed.a, 0.0), max(u_Volume.originAndAttenuation.w, 0.0));
-    result = max(result, neighborRadiance(voxel + ivec3( 1, 0, 0)) - vec3(attenuation));
-    result = max(result, neighborRadiance(voxel + ivec3(-1, 0, 0)) - vec3(attenuation));
-    result = max(result, neighborRadiance(voxel + ivec3(0,  1, 0)) - vec3(attenuation));
-    result = max(result, neighborRadiance(voxel + ivec3(0, -1, 0)) - vec3(attenuation));
-    result = max(result, neighborRadiance(voxel + ivec3(0, 0,  1)) - vec3(attenuation));
-    result = max(result, neighborRadiance(voxel + ivec3(0, 0, -1)) - vec3(attenuation));
+    result = max(result, previousRadiance(voxel + ivec3( 1, 0, 0)) - vec3(attenuation));
+    result = max(result, previousRadiance(voxel + ivec3(-1, 0, 0)) - vec3(attenuation));
+    result = max(result, previousRadiance(voxel + ivec3(0,  1, 0)) - vec3(attenuation));
+    result = max(result, previousRadiance(voxel + ivec3(0, -1, 0)) - vec3(attenuation));
+    result = max(result, previousRadiance(voxel + ivec3(0, 0,  1)) - vec3(attenuation));
+    result = max(result, previousRadiance(voxel + ivec3(0, 0, -1)) - vec3(attenuation));
 
     imageStore(u_NextRadiance, pixel, vec4(max(result, vec3(0.0)), 1.0));
 }

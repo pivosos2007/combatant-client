@@ -86,6 +86,8 @@ public final class MediaPlayer extends DraggableHudElement {
             new ModeValue("media_player_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,
                     HudRenderUtil.PANEL_STYLE_DEFAULT, HudRenderUtil.PANEL_STYLE_ACCENT,
                     HudRenderUtil.PANEL_STYLE_GRADIENT);
+    private final NumberValue<Integer> themeMix =
+            new NumberValue<>("media_player_theme_mix", 100, 0, 100);
     private final NumberValue<Integer> themeGradientStrength =
             new NumberValue<>("media_player_theme_gradient_strength", 72, 0, 100);
     private final RGBAColorValue bg =
@@ -127,6 +129,8 @@ public final class MediaPlayer extends DraggableHudElement {
     private float prevHover;
     private float nextHover;
     private float repeatHover;
+    private float progressHover;
+    private float progressPress;
 
     private float shuffleX;
     private float shuffleY;
@@ -138,6 +142,10 @@ public final class MediaPlayer extends DraggableHudElement {
     private float nextY;
     private float repeatX;
     private float repeatY;
+    private float progressX;
+    private float progressY;
+    private float progressW;
+    private float progressH;
     private float buttonSize;
     private int uiAccent;
     private int uiAccentSoft;
@@ -166,6 +174,7 @@ public final class MediaPlayer extends DraggableHudElement {
         defs.add(SettingDef.number(scale));
         defs.add(SettingDef.bool(syncTheme));
         defs.add(SettingDef.mode(panelStyle).visibleWhen(syncTheme::get));
+        defs.add(SettingDef.number(themeMix).visibleWhen(syncTheme::get));
         defs.add(SettingDef.number(themeGradientStrength).visibleWhen(this::isGradientPanelStyle));
         defs.add(SettingDef.color(bg).visibleWhen(() -> !syncTheme.get() && !isGlassEffect()));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(() -> syncTheme.get() && !isGlassEffect()));
@@ -199,10 +208,15 @@ public final class MediaPlayer extends DraggableHudElement {
     @Override
     public boolean isMouseOverInteractive(float mx, float my) {
         if (!(ClientScreen.current() instanceof ChatScreen)) return false;
-        if (buttonSize <= 0f) return false;
-        boolean showShuffle = currentSnapshot != null && currentSnapshot.supportsShuffle();
-        boolean showRepeat = currentSnapshot != null && currentSnapshot.supportsRepeat();
-        return hit(mx, my, playX, playY, buttonSize, buttonSize)
+        boolean hasSession = currentSnapshot != null && currentSnapshot.hasSession();
+        if (!hasSession) return false;
+        boolean seekHit = currentSnapshot.supportsSeek() && progressW > 0f
+                && hit(mx, my, progressX - 2f, progressY - 5f, progressW + 4f, progressH + 10f);
+        if (buttonSize <= 0f) return seekHit;
+        boolean showShuffle = currentSnapshot.supportsShuffle();
+        boolean showRepeat = currentSnapshot.supportsRepeat();
+        return seekHit
+                || hit(mx, my, playX, playY, buttonSize, buttonSize)
                 || (showShuffle && hit(mx, my, shuffleX, shuffleY, buttonSize, buttonSize))
                 || hit(mx, my, prevX, prevY, buttonSize, buttonSize)
                 || hit(mx, my, nextX, nextY, buttonSize, buttonSize)
@@ -217,7 +231,16 @@ public final class MediaPlayer extends DraggableHudElement {
 
         boolean consumed = false;
         try {
-            if (currentSnapshot.supportsShuffle() && hit(mx, my, shuffleX, shuffleY, buttonSize, buttonSize)) {
+            if (currentSnapshot.supportsSeek() && progressW > 0f
+                    && hit(mx, my, progressX - 2f, progressY - 5f, progressW + 4f, progressH + 10f)) {
+                long duration = Math.max(0L, currentSnapshot.durationSeconds());
+                if (duration > 0L) {
+                    float fraction = clamp01((mx - progressX) / progressW);
+                    mediaService.seekTo(Math.round(duration * fraction));
+                    progressPress = 1.0f;
+                    consumed = true;
+                }
+            } else if (currentSnapshot.supportsShuffle() && hit(mx, my, shuffleX, shuffleY, buttonSize, buttonSize)) {
                 mediaService.toggleShuffle();
                 consumed = true;
             } else if (hit(mx, my, playX, playY, buttonSize, buttonSize)) {
@@ -298,18 +321,10 @@ public final class MediaPlayer extends DraggableHudElement {
         long predictedDur = hasSession ? snapshot.durationSeconds() : 0L;
         String timeText = hasSession ? formatTime(predictedPos) : "";
 
-        metaRenderer.begin(metaScale, false, false);
-        float timeW = hasSession ? (float) metaRenderer.getWidth(timeText, false) : 0f;
-        metaRenderer.end();
-
         final boolean showShuffle = hasSession && snapshot.supportsShuffle();
         final boolean showRepeat = hasSession && snapshot.supportsRepeat();
         final int activeControls = 3 + (showShuffle ? 1 : 0) + (showRepeat ? 1 : 0);
         final float btnSizeBase = BASE_BUTTON_SIZE * baseScale;
-
-        float maxOwnerW = Math.max(0f, contentW - timeW - buttonGap);
-        String ownerText = hasSession ? trimText(metaRenderer, owner, maxOwnerW, metaScale) : "";
-
 
         String titleText = hasSession ? title : "";
         String artistText = hasSession ? trimText(artistRenderer, artist, contentW, artistScale) : "";
@@ -328,7 +343,6 @@ public final class MediaPlayer extends DraggableHudElement {
 
         metaRenderer.begin(metaScale, false, false);
         float metaH = (float) metaRenderer.getHeight(false);
-        float ownerW = hasSession ? (float) metaRenderer.getWidth(ownerText, false) : 0f;
         metaRenderer.end();
 
         float contentH = titleH + textGap + artistH + barGap + barH + bottomGap + metaH;
@@ -350,6 +364,7 @@ public final class MediaPlayer extends DraggableHudElement {
         boolean useSyncTheme = syncTheme.get();
         boolean accentPanel = useSyncTheme && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
         boolean gradientPanel = isGradientPanelStyle();
+        float themeBlend = themeMix.get() / 100.0f;
         boolean blurEnabled = isBlurEffect();
         boolean glassEnabled = isGlassEffect();
         int baseRgb = glassEnabled ? HudRenderUtil.glassBackgroundRgb()
@@ -388,7 +403,7 @@ public final class MediaPlayer extends DraggableHudElement {
                 : HudRenderUtil.scaleAlpha(bg, scale);
         boolean useGradient = !glassEnabled && useSyncTheme && gradient.get();
         if (!glassEnabled && gradientPanel) {
-            float strength = themeGradientStrength.get() / 100.0f;
+            float strength = (themeGradientStrength.get() / 100.0f) * themeBlend;
             HudRenderUtil.ThemeGradient themeGradient = HudRenderUtil.themePanelGradient(255);
             int topBase = HudRenderUtil.setAlpha(theme().windowBg(), bgAlpha);
             int bottomBase = HudRenderUtil.setAlpha(
@@ -404,12 +419,12 @@ public final class MediaPlayer extends DraggableHudElement {
                     top, bottom, themeGradient.angleDeg());
         } else if (!glassEnabled && accentPanel) {
             int top = HudRenderUtil.scaleAlpha(
-                    HudRenderUtil.accentSurface(HudRenderUtil.setAlpha(theme().windowBg(), bgAlpha), 0.18f), scale
+                    HudRenderUtil.accentSurface(HudRenderUtil.setAlpha(theme().windowBg(), bgAlpha), 0.18f * themeBlend), scale
             );
             int bottom = HudRenderUtil.scaleAlpha(
                     HudRenderUtil.accentSurface(
                             HudRenderUtil.setAlpha(HudRenderUtil.mixColor(theme().surface(), theme().windowHeader(), 0.32f), bgAlpha),
-                            0.30f
+                            0.30f * themeBlend
                     ), scale
             );
             renderer.roundedRectGradient(drawX, drawY, boxW * scale, boxH * scale, radius * scale, 1.0f, top, bottom, 90.0f);
@@ -497,26 +512,12 @@ public final class MediaPlayer extends DraggableHudElement {
 
         float barX = drawX + textX * scale;
         float barW = contentW * scale;
-        float barRadius = Math.max(1f, barH * 0.5f) * scale;
-        int barBg = HudRenderUtil.scaleAlpha(0x55000000, scale);
-        renderer.roundedRect(barX, drawY + barY * scale, barW, barH * scale, barRadius, 1.0f, barBg);
-
+        float baseBarY = drawY + barY * scale;
+        float baseBarH = Math.max(0.8f, barH * scale);
         float progress = predictedDur > 0 ? Math.min(1.0f, Math.max(0.0f,
                 (float) predictedPos / (float) predictedDur)) : 0f;
-        int barFill = HudRenderUtil.scaleAlpha(uiAccent, scale);
-        renderer.roundedRect(barX, drawY + barY * scale, barW * progress, barH * scale, barRadius, 1.0f, barFill);
-
-        metaRenderer.begin(metaScale * scale, false, false);
-        metaRenderer.render(timeText, drawX + textX * scale, drawY + bottomY * scale,
-                new RenderColor(HudRenderUtil.scaleAlpha(uiTextMuted, scale)), false);
-
-        float ownerX = drawX + (textX + contentW - ownerW) * scale;
-        metaRenderer.render(ownerText, ownerX, drawY + bottomY * scale,
-                new RenderColor(HudRenderUtil.scaleAlpha(uiTextMuted, scale)), false);
-        metaRenderer.end();
 
         buttonSize = btnSizeBase * scale;
-
         float controlsReservedW = btnSizeBase * activeControls + buttonGap * Math.max(0, activeControls - 1);
         float controlsX = textX + (contentW - controlsReservedW) * 0.5f;
         float controlsY = bottomY + (metaH - btnSizeBase) * 0.5f;
@@ -549,9 +550,61 @@ public final class MediaPlayer extends DraggableHudElement {
             repeatX = repeatY = 0f;
         }
 
+        progressX = barX;
+        progressY = baseBarY;
+        progressW = barW;
+        progressH = baseBarH;
+        progressPress = lerp(progressPress, 0f, 0.18f);
+        updateHover(chatOpen, showShuffle, showRepeat);
+
+        float progressFocus = Math.max(progressHover, progressPress);
+        float hoverExtra = 1.45f * baseScale * scale * progressFocus;
+        float drawBarH = baseBarH + hoverExtra;
+        float drawBarY = baseBarY - hoverExtra * 0.5f;
+        float barRadius = Math.max(1f, drawBarH * 0.5f);
+        int barBg = HudRenderUtil.scaleAlpha(0x55000000, scale);
+        int barFill = HudRenderUtil.scaleAlpha(uiAccent, scale);
+        renderer.roundedRect(barX, drawBarY, barW, drawBarH, barRadius, 1.0f, barBg);
+        renderer.roundedRect(barX, drawBarY, barW * progress, drawBarH, barRadius, 1.0f, barFill);
+
+        if (snapshot.supportsSeek() && progressFocus > 0.015f && barW > 0f) {
+            float thumbSize = Math.max(5.2f * baseScale * scale, drawBarH + 2.0f * baseScale * scale);
+            float thumbRadius = thumbSize * 0.5f;
+            float thumbX = barX + barW * progress;
+            float thumbY = drawBarY + drawBarH * 0.5f;
+            renderer.roundedRect(
+                    thumbX - thumbRadius,
+                    thumbY - thumbRadius,
+                    thumbSize,
+                    thumbSize,
+                    thumbRadius,
+                    1.0f,
+                    HudRenderUtil.scaleAlpha(uiAccent, scale * progressFocus)
+            );
+        }
+
+        metaRenderer.begin(metaScale * scale, false, false);
+        metaRenderer.render(timeText, drawX + textX * scale, drawY + bottomY * scale,
+                new RenderColor(HudRenderUtil.scaleAlpha(uiTextMuted, scale)), false);
+        metaRenderer.end();
+
+        float ownerGap = 3.0f * baseScale;
+        float ownerAreaX = controlsX + controlsReservedW + ownerGap;
+        float ownerAreaW = Math.max(0f, textX + contentW - ownerAreaX);
+        if (ownerAreaW > 1f && !owner.isEmpty()) {
+            String ownerRowText = trimText(metaRenderer, owner, ownerAreaW, metaScale);
+            metaRenderer.begin(metaScale, false, false);
+            float ownerRowW = (float) metaRenderer.getWidth(ownerRowText, false);
+            metaRenderer.end();
+            metaRenderer.begin(metaScale * scale, false, false);
+            float ownerX = drawX + (textX + contentW - ownerRowW) * scale;
+            metaRenderer.render(ownerRowText, ownerX, drawY + bottomY * scale,
+                    new RenderColor(HudRenderUtil.scaleAlpha(uiTextMuted, scale)), false);
+            metaRenderer.end();
+        }
+
         float controlIconScale = iconScale * 1.05f;
 
-        updateHover(chatOpen, showShuffle, showRepeat);
         if (showShuffle) {
             drawControl(renderer, iconRenderer, iconString(ICON_SHUFFLE),
                     shuffleX, shuffleY, buttonSize, shuffleHover, scale, controlIconScale, shuffleColor(snapshot, scale));
@@ -629,6 +682,7 @@ public final class MediaPlayer extends DraggableHudElement {
             prevHover = lerp(prevHover, 0f, 0.2f);
             nextHover = lerp(nextHover, 0f, 0.2f);
             repeatHover = lerp(repeatHover, 0f, 0.2f);
+            progressHover = lerp(progressHover, 0f, 0.2f);
             return;
         }
         int fbw = mc.getWindow().getWidth();
@@ -641,6 +695,9 @@ public final class MediaPlayer extends DraggableHudElement {
         prevHover = lerp(prevHover, hit(mx, my, prevX, prevY, buttonSize, buttonSize) ? 1f : 0f, 0.25f);
         nextHover = lerp(nextHover, hit(mx, my, nextX, nextY, buttonSize, buttonSize) ? 1f : 0f, 0.25f);
         repeatHover = lerp(repeatHover, showRepeat && hit(mx, my, repeatX, repeatY, buttonSize, buttonSize) ? 1f : 0f, 0.25f);
+        boolean seekHover = currentSnapshot != null && currentSnapshot.supportsSeek() && progressW > 0f
+                && hit(mx, my, progressX - 2f, progressY - 5f, progressW + 4f, progressH + 10f);
+        progressHover = lerp(progressHover, seekHover ? 1f : 0f, 0.25f);
     }
 
     private void updateButtons() {
@@ -654,12 +711,18 @@ public final class MediaPlayer extends DraggableHudElement {
         nextY = (float) 0.0;
         repeatX = (float) 0.0;
         repeatY = (float) 0.0;
+        progressX = 0f;
+        progressY = 0f;
+        progressW = 0f;
+        progressH = 0f;
         buttonSize = (float) 0.0;
         playHover = 0f;
         shuffleHover = 0f;
         prevHover = 0f;
         nextHover = 0f;
         repeatHover = 0f;
+        progressHover = 0f;
+        progressPress = 0f;
     }
 
     private int shuffleColor(MediaSessionService.Snapshot snapshot, float alpha) {
@@ -788,14 +851,15 @@ public final class MediaPlayer extends DraggableHudElement {
         float alpha = blurAlpha.get() / 255f;
         HudRenderUtil.drawLiquidGlass(x, y, w, h, radius, scale, true, alpha);
         if (isGradientPanelStyle()) {
-            float strength = themeGradientStrength.get() / 100.0f;
+            float strength = (themeGradientStrength.get() / 100.0f) * (themeMix.get() / 100.0f);
             HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(Math.round(72.0f * strength));
             Renderer2D.COLOR.roundedRectGradient(
                     x, y, w, h, radius, 1.0f,
                     panelGradient.start(), panelGradient.end(), panelGradient.angleDeg()
             );
         } else if (syncTheme.get() && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get())) {
-            HudRenderUtil.ThemeGradient accentGradient = HudRenderUtil.themeAccentGradient(42);
+            HudRenderUtil.ThemeGradient accentGradient = HudRenderUtil.themeAccentGradient(
+                    Math.round(42.0f * (themeMix.get() / 100.0f)));
             Renderer2D.COLOR.roundedRectGradient(
                     x, y, w, h, radius, 1.0f,
                     accentGradient.start(), accentGradient.end(), accentGradient.angleDeg()

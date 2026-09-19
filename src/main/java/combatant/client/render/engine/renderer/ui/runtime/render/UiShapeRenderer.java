@@ -175,8 +175,11 @@ public final class UiShapeRenderer {
 
         boolean primitiveShape = UiShapeGeometry.isPrimitiveShape(shape);
         boolean compoundShape = UiShapeGeometry.isCompoundShape(shape);
-        // Blur only shapes supported by the blur mask family.
-        if (!primitiveShape && !compoundShape) renderShapeBlur(renderer, props, style, shape, x, y, w, h, cut, alpha, context);
+        // Backdrop effects must use the same authored silhouette as the painted shape.
+        if (!primitiveShape && !compoundShape) {
+            renderShapeBlur(renderer, props, style, shape, x, y, w, h, cut, alpha, context);
+            renderShapeLiquidGlass(renderer, props, style, shape, x, y, w, h, alpha, context);
+        }
 
         if (compoundShape) {
             UiCompoundSdf compound = UiShapeGeometry.buildCompoundSdf(props, shape, x, y, w, h, context.transform().scale());
@@ -203,6 +206,7 @@ public final class UiShapeRenderer {
 
         if (primitiveShape) {
             UiPrimitive primitive = UiShapeGeometry.buildPrimitive(props, style, shape, x, y, w, h, context.transform().scale());
+            renderPrimitiveBlur(renderer, props, style, shape, x, y, w, h, cut, alpha, context);
             if (props.bool("liquidGlass", style.liquidGlass())) {
                 UiBackdropRuntime.drawLiquidGlass(renderer, props, () -> {
                     int glassTint = resolveColor(props.get("glassTint"), 0xFFFFFFFF, alpha);
@@ -706,6 +710,85 @@ public final class UiShapeRenderer {
         return value == null ? fallback : UiRenderColors.resolve(value, fallback, alpha);
     }
 
+
+    private void renderPrimitiveBlur(Renderer2D renderer,
+                                     UiProps props,
+                                     UiStyle style,
+                                     String shape,
+                                     double x,
+                                     double y,
+                                     double w,
+                                     double h,
+                                     double cut,
+                                     float alpha,
+                                     UiRenderContext context) {
+        if (!props.bool("blur", false)) return;
+        float quality = props.number("blurQuality", style.blurQuality());
+        float brightness = props.number("blurBrightness", style.blurBrightness());
+        float blurAlpha = props.number("blurAlpha", style.blurAlpha()) * alpha;
+        if (blurAlpha <= 0.001f) return;
+
+        String preset = props.string("preset", shape).trim().toLowerCase(Locale.ROOT);
+        switch (preset) {
+            case "chamfer", "chamfered", "bevel", "beveled" -> renderer.blurChamferedRect(
+                    x, y, w, h, cut, quality, brightness, blurAlpha, 0xFFFFFF);
+            case "", "primitive", "procedural-panel", "procedural_panel",
+                 "panel-primitive", "panel_primitive", "rect", "rectangle" -> renderer.blurRect(
+                    x, y, w, h,
+                    context.renderLength(props.number("radius", style.radius())),
+                    quality, brightness, blurAlpha, 0xFFFFFF);
+            default -> {
+                // The legacy blur batch only has analytic rect/chamfer masks. Do not blur a
+                // bounding rectangle for arbitrary polygons: a wrong silhouette is worse than
+                // no blur and is visually obvious around notches/angled edges.
+            }
+        }
+    }
+
+    private void renderShapeLiquidGlass(Renderer2D renderer,
+                                        UiProps props,
+                                        UiStyle style,
+                                        String shape,
+                                        double x,
+                                        double y,
+                                        double w,
+                                        double h,
+                                        float alpha,
+                                        UiRenderContext context) {
+        if (!props.bool("liquidGlass", style.liquidGlass())) return;
+
+        int glassTint = resolveColor(props.get("glassTint"), 0xFFFFFFFF, alpha);
+        float glassAlpha = props.number("glassAlpha", 1.0f) * alpha;
+        float blurAlpha = props.number("blurAlpha", style.blurAlpha()) * alpha;
+        Renderer2D.LiquidGlassPreset preset = glassPreset(props);
+
+        Runnable draw = switch (shape) {
+            case "rounded", "rounded-rect", "rounded_rect",
+                 "rounded-gradient", "rounded_gradient", "rounded-rect-gradient", "rounded_rect_gradient" -> {
+                float radius = context.renderLength(props.number("radius", style.radius()));
+                yield () -> renderer.liquidGlassRect(x, y, w, h, radius,
+                        glassTint, glassAlpha, blurAlpha, preset);
+            }
+            case "rounded-corners", "rounded_corners", "rounded-rect-corners", "rounded_rect_corners" -> {
+                float radius = context.renderLength(props.number("radius", style.radius()));
+                float radiusTL = props.get("radiusTL") != null ? context.renderLength(props.number("radiusTL", 0.0f)) : radius;
+                float radiusTR = props.get("radiusTR") != null ? context.renderLength(props.number("radiusTR", 0.0f)) : radius;
+                float radiusBR = props.get("radiusBR") != null ? context.renderLength(props.number("radiusBR", 0.0f)) : radius;
+                float radiusBL = props.get("radiusBL") != null ? context.renderLength(props.number("radiusBL", 0.0f)) : radius;
+                yield () -> renderer.liquidGlassRectCorners(x, y, w, h,
+                        radiusTL, radiusTR, radiusBR, radiusBL,
+                        glassTint, glassAlpha, blurAlpha, preset);
+            }
+            case "squircle", "superellipse" -> {
+                UiBoxShape box = UiShapeGeometry.buildBoxShape(props, style, shape, x, y, w, h, context.transform().scale());
+                yield () -> renderer.liquidGlassSquircle(box, glassTint, glassAlpha, blurAlpha, preset);
+            }
+            default -> null;
+        };
+
+        if (draw != null) UiBackdropRuntime.drawLiquidGlass(renderer, props, draw);
+    }
+
     private void renderShapeBlur(Renderer2D renderer,
                                  UiProps props,
                                  UiStyle style,
@@ -735,7 +818,8 @@ public final class UiShapeRenderer {
                         props.number("power", props.number("exponent", fallbackPower)),
                         quality, brightness, blurAlpha, 0xFFFFFF);
             }
-            case "rounded", "round" -> renderer.blurRect(
+            case "rounded", "round", "rounded-rect", "rounded_rect",
+                 "rounded-gradient", "rounded_gradient", "rounded-rect-gradient", "rounded_rect_gradient" -> renderer.blurRect(
                     x, y, w, h,
                     context.renderLength(props.number("radius", style.radius())),
                     quality,

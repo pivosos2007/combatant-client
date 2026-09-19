@@ -15,6 +15,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.HashMap;
@@ -86,6 +88,18 @@ public final class BlockLightEmitterRegistry {
                 emitter.blue * emitter.intensity * levelScale,
                 level
         );
+    }
+
+    /**
+     * Reuses the exact block-emission metadata for held/dropped block items. This does not create
+     * an analytic light by itself; dynamic-light providers can opt into that separate contract
+     * without duplicating emitter color tables or inferring source color from rendered pixels.
+     */
+    public ResolvedEmitter resolve(ItemStack stack) {
+        if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof BlockItem blockItem)) {
+            return ResolvedEmitter.NONE;
+        }
+        return resolve(blockItem.getBlock().defaultBlockState());
     }
 
     public record ResolvedEmitter(float red, float green, float blue, int vanillaLevel) {

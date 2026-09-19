@@ -286,5 +286,58 @@
       "clip",
       "ellipsis"
     ]
+  },
+  "styleAliases": {
+    "paddingHorizontal": "paddingX",
+    "paddingVertical": "paddingY",
+    "marginHorizontal": "marginX",
+    "marginVertical": "marginY",
+    "grow": "flexGrow",
+    "shrink": "flexShrink",
+    "x": "left",
+    "y": "top",
+    "align": "alignItems",
+    "justify": "justifyContent",
+    "radius": "borderRadius",
+    "background": "backgroundColor",
+    "strokeColor": "borderColor",
+    "strokeWidth": "borderWidth",
+    "shadow": "boxShadow",
+    "textColor": "color"
+  },
+  "styleValueAliases": {
+    "flexDirection": {
+      "horizontal": "row",
+      "x": "row",
+      "vertical": "column",
+      "y": "column",
+      "col": "column"
+    },
+    "position": {
+      "static": "relative",
+      "flow": "relative"
+    },
+    "alignItems": {
+      "left": "start",
+      "top": "start",
+      "right": "end",
+      "bottom": "end",
+      "middle": "center",
+      "fill": "stretch"
+    },
+    "justifyContent": {
+      "left": "start",
+      "top": "start",
+      "right": "end",
+      "bottom": "end",
+      "middle": "center",
+      "space-between": "between"
+    },
+    "overflow": {
+      "clip": "hidden",
+      "x": "scroll-x",
+      "y": "scroll-y",
+      "auto": "scroll"
+    }
   }
 }

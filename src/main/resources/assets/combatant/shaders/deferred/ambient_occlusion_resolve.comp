@@ -1,42 +1,38 @@
 #version 430 core
 
-/*
- * This file is part of the Combatant Client distribution.
- * Copyright (c) 2026 pivosos2007.
- *
- * Licensed under the GNU General Public License v3.0.
- */
-
+/* Full-resolution depth/normal-aware presentation of the temporally accumulated half-res GTAO. */
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-layout(binding = 0) uniform sampler2D u_RawVisibility;
-layout(binding = 1) uniform sampler2D u_RawBentNormal;
+layout(binding = 0) uniform sampler2D u_TemporalSignal;
+layout(binding = 1) uniform sampler2D u_TemporalDepth;
 layout(binding = 2) uniform sampler2D u_ResolvedDepth;
 layout(binding = 3) uniform sampler2D u_GbufferGeometry;
 layout(binding = 4) uniform sampler2D u_GbufferDepth;
 layout(binding = 5, r8) writeonly uniform image2D u_AmbientVisibility;
 layout(binding = 6, rgba16f) writeonly uniform image2D u_BentNormal;
 
-layout(std430, binding = 7) readonly buffer AmbientOcclusionData {
+layout(std430, binding = 7) readonly buffer AmbientOcclusionResolveData {
     mat4 inverseProjection;
-    mat4 projection;
     vec4 depthTransform;
-    vec4 params0;
-    vec4 params1;
 } u_Ao;
+
+vec2 signNotZero(vec2 v) {
+    return vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0);
+}
 
 vec3 decodeOctahedral(vec2 encoded) {
     vec2 f = encoded * 2.0 - 1.0;
     vec3 n = vec3(f, 1.0 - abs(f.x) - abs(f.y));
-    if (n.z < 0.0) n.xy = (1.0 - abs(n.yx)) * vec2(n.x >= 0.0 ? 1.0 : -1.0, n.y >= 0.0 ? 1.0 : -1.0);
-    return normalize(n);
+    if (n.z < 0.0) n.xy = (1.0 - abs(n.yx)) * signNotZero(n.xy);
+    float l2 = dot(n, n);
+    return l2 > 1.0e-12 ? n * inversesqrt(l2) : vec3(0.0, 0.0, 1.0);
 }
 
 vec3 reconstructView(vec2 uv, float depth) {
     vec2 ndcXY = uv * 2.0 - 1.0;
     float ndcZ = depth * u_Ao.depthTransform.x + u_Ao.depthTransform.y;
     vec4 h = u_Ao.inverseProjection * vec4(ndcXY, ndcZ, 1.0);
-    if (abs(h.w) < 1e-7) return vec3(0.0);
+    if (abs(h.w) < 1.0e-7) return vec3(0.0);
     return h.xyz / h.w;
 }
 
@@ -48,12 +44,17 @@ bool ownsPixel(vec2 uv, out float depth) {
     return abs(depth - gbufferDepth) <= tolerance;
 }
 
+vec3 safeNormal(vec3 value, vec3 fallbackValue) {
+    float l2 = dot(value, value);
+    return l2 > 1.0e-10 ? value * inversesqrt(l2) : fallbackValue;
+}
+
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     ivec2 outputSize = imageSize(u_AmbientVisibility);
     if (any(greaterThanEqual(pixel, outputSize))) return;
 
-    vec2 uv = (vec2(pixel) + vec2(0.5)) / vec2(outputSize);
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(outputSize);
     float centerDepth;
     if (!ownsPixel(uv, centerDepth)) {
         imageStore(u_AmbientVisibility, pixel, vec4(1.0));
@@ -62,12 +63,12 @@ void main() {
     }
 
     vec3 centerView = reconstructView(uv, centerDepth);
-    float centerLinearDepth = max(-centerView.z, 1e-4);
+    float centerLinearDepth = max(-centerView.z, 1.0e-4);
     vec3 centerNormal = decodeOctahedral(textureLod(u_GbufferGeometry, uv, 0.0).rg);
 
-    ivec2 rawSize = textureSize(u_RawVisibility, 0);
-    vec2 rawPosition = uv * vec2(rawSize) - vec2(0.5);
-    ivec2 rawBase = ivec2(floor(rawPosition));
+    ivec2 halfSize = textureSize(u_TemporalSignal, 0);
+    vec2 halfPosition = uv * vec2(halfSize) - 0.5;
+    ivec2 halfBase = ivec2(floor(halfPosition));
 
     float visibilitySum = 0.0;
     vec3 bentSum = vec3(0.0);
@@ -75,49 +76,43 @@ void main() {
 
     for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
-            ivec2 rawPixel = clamp(rawBase + ivec2(x, y), ivec2(0), rawSize - 1);
-            vec2 rawUv = (vec2(rawPixel) + vec2(0.5)) / vec2(rawSize);
+            ivec2 halfPixel = clamp(halfBase + ivec2(x, y), ivec2(0), halfSize - 1);
+            vec2 halfUv = (vec2(halfPixel) + 0.5) / vec2(halfSize);
+            float sampleDepth = texelFetch(u_TemporalDepth, halfPixel, 0).r;
+            if (sampleDepth <= 0.0) continue;
 
-            float sampleDepth;
-            if (!ownsPixel(rawUv, sampleDepth)) continue;
-
-            vec3 sampleView = reconstructView(rawUv, sampleDepth);
-            float sampleLinearDepth = max(-sampleView.z, 1e-4);
-            vec3 sampleNormal = decodeOctahedral(textureLod(u_GbufferGeometry, rawUv, 0.0).rg);
+            vec3 sampleView = reconstructView(halfUv, sampleDepth);
+            float sampleLinearDepth = max(-sampleView.z, 1.0e-4);
+            vec3 sampleNormal = decodeOctahedral(textureLod(u_GbufferGeometry, halfUv, 0.0).rg);
 
             float depthDifference = abs(sampleLinearDepth - centerLinearDepth);
             float depthScale = max(0.04, 0.015 * centerLinearDepth);
             float depthWeight = exp2(-depthDifference / depthScale);
-            float normalWeight = pow(max(dot(centerNormal, sampleNormal), 0.0), 12.0);
-
-            vec2 delta = vec2(rawPixel) - rawPosition;
+            float normalWeight = pow(max(dot(centerNormal, sampleNormal), 0.0), 16.0);
+            vec2 delta = vec2(halfPixel) - halfPosition;
             float spatialWeight = exp2(-0.75 * dot(delta, delta));
             float weight = spatialWeight * depthWeight * normalWeight;
-            if (weight <= 1e-5) continue;
+            if (weight <= 1.0e-6) continue;
 
-            float visibility = clamp(texelFetch(u_RawVisibility, rawPixel, 0).r, 0.0, 1.0);
-            vec3 bent = texelFetch(u_RawBentNormal, rawPixel, 0).xyz;
-            if (dot(bent, bent) <= 1e-6) bent = sampleNormal;
-            bent = normalize(bent);
+            vec4 signal = texelFetch(u_TemporalSignal, halfPixel, 0);
+            vec3 bent = safeNormal(signal.gba, sampleNormal);
             if (dot(bent, centerNormal) <= 0.0) bent = centerNormal;
-
-            visibilitySum += visibility * weight;
+            visibilitySum += clamp(signal.r, 0.0, 1.0) * weight;
             bentSum += bent * weight;
             weightSum += weight;
         }
     }
 
-    float visibility;
-    vec3 bentNormal;
-    if (weightSum > 1e-5) {
+    float visibility = 1.0;
+    vec3 bentNormal = centerNormal;
+    if (weightSum > 1.0e-6) {
         visibility = visibilitySum / weightSum;
-        bentNormal = normalize(bentSum / weightSum);
+        bentNormal = safeNormal(bentSum / weightSum, centerNormal);
     } else {
-        ivec2 nearestRaw = clamp(ivec2(round(rawPosition)), ivec2(0), rawSize - 1);
-        visibility = clamp(texelFetch(u_RawVisibility, nearestRaw, 0).r, 0.0, 1.0);
-        bentNormal = texelFetch(u_RawBentNormal, nearestRaw, 0).xyz;
-        if (dot(bentNormal, bentNormal) <= 1e-6) bentNormal = centerNormal;
-        bentNormal = normalize(bentNormal);
+        ivec2 nearestHalf = clamp(ivec2(round(halfPosition)), ivec2(0), halfSize - 1);
+        vec4 signal = texelFetch(u_TemporalSignal, nearestHalf, 0);
+        visibility = signal.r;
+        bentNormal = safeNormal(signal.gba, centerNormal);
     }
 
     if (dot(bentNormal, centerNormal) <= 0.05) bentNormal = centerNormal;

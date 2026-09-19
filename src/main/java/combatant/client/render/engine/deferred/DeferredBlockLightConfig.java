@@ -7,19 +7,34 @@
 
 package combatant.client.render.engine.deferred;
 
-/** Numerical/quality policy for the renderer-owned colored block-light clipmap. */
+/** Numerical/quality policy for the renderer-owned colored block-light volume. */
 record DeferredBlockLightConfig(
         boolean enabled,
         int sizeX,
         int sizeY,
         int sizeZ,
         int originAlignment,
-        int refreshIntervalFrames,
-        int propagationSteps,
-        float surfaceSampleOffset
+        int seedRefreshIntervalFrames,
+        int propagationIterationsPerFrame,
+        float surfaceSampleOffset,
+        float edgeFadeStart,
+        float edgeFadeEnd
 ) {
+    /*
+     * The block-light field is a persistent, camera-position-centered world-space volume. Camera
+     * rotation never changes its coverage; only block-aligned camera translation scrolls the field.
+     * Propagation advances a small bounded amount every frame instead of rebuilding many full-volume
+     * flood-fill passes whenever the camera crosses a cell boundary.
+     */
     private static final DeferredBlockLightConfig DEFAULT = new DeferredBlockLightConfig(
-            true, 48, 32, 48, 4, 4, 15, 0.25f
+            true,
+            64, 48, 64,
+            4,
+            4,
+            1,
+            0.5f,
+            0.75f,
+            1.0f
     );
 
     DeferredBlockLightConfig {
@@ -27,10 +42,11 @@ record DeferredBlockLightConfig(
         sizeY = clamp(sizeY, 8, 128);
         sizeZ = clamp(sizeZ, 8, 128);
         originAlignment = clamp(originAlignment, 1, 16);
-        refreshIntervalFrames = clamp(refreshIntervalFrames, 1, 120);
-        propagationSteps = clamp(propagationSteps, 1, 32);
-        surfaceSampleOffset = Float.isFinite(surfaceSampleOffset)
-                ? Math.max(0.0f, Math.min(1.0f, surfaceSampleOffset)) : 0.25f;
+        seedRefreshIntervalFrames = clamp(seedRefreshIntervalFrames, 1, 120);
+        propagationIterationsPerFrame = clamp(propagationIterationsPerFrame, 1, 4);
+        surfaceSampleOffset = finiteClamp(surfaceSampleOffset, 0.0f, 1.0f, 0.5f);
+        edgeFadeStart = finiteClamp(edgeFadeStart, 0.0f, 1.0f, 0.75f);
+        edgeFadeEnd = finiteClamp(edgeFadeEnd, edgeFadeStart + 0.01f, 1.25f, 1.0f);
     }
 
     static DeferredBlockLightConfig current() {
@@ -54,6 +70,11 @@ record DeferredBlockLightConfig(
     }
 
     private static int clamp(int value, int minimum, int maximum) {
+        return Math.max(minimum, Math.min(maximum, value));
+    }
+
+    private static float finiteClamp(float value, float minimum, float maximum, float fallback) {
+        if (!Float.isFinite(value)) return fallback;
         return Math.max(minimum, Math.min(maximum, value));
     }
 }

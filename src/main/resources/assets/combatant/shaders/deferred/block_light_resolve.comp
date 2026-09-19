@@ -21,6 +21,8 @@ layout(std430, binding = 5) readonly buffer BlockLightResolveData {
     vec4 volumeSizeAndColumns;
     vec4 atlasSizeAndRows;
     vec4 originAndSurfaceOffset;
+    // x=edge fade start, y=edge fade end. z keeps the CPU volume-bias policy visible to captures.
+    vec4 edgeFade;
 } u_Block;
 
 vec3 decodeOctahedral(vec2 encoded) {
@@ -56,11 +58,20 @@ vec3 voxelRadiance(ivec3 voxel) {
     return max(texelFetch(u_BlockLightVolume, atlasPixel(voxel), 0).rgb, vec3(0.0));
 }
 
-vec3 sampleVolume(vec3 cameraRelativePosition) {
+vec4 sampleVolume(vec3 cameraRelativePosition) {
     vec3 originRelativeToCamera = u_Block.originAndSurfaceOffset.xyz;
     // Samples live at block centers. Keep the entire lookup camera-relative so large Minecraft
     // world coordinates never lose sub-block precision in 32-bit shader arithmetic.
     vec3 coordinate = cameraRelativePosition - originRelativeToCamera - vec3(0.5);
+    vec3 size = vec3(volumeSize());
+
+    // Bounded-volume edge handoff: the colored volume owns the inner region, then fades back to the
+    // neutral Minecraft block-light contract before it runs out of geometric information.
+    vec3 centered = (coordinate + vec3(0.5) - size * 0.5) / max(size * 0.5, vec3(1.0));
+    float edgeDistance = max(abs(centered.x), max(abs(centered.y), abs(centered.z)));
+    float coverage = 1.0 - smoothstep(u_Block.edgeFade.x, u_Block.edgeFade.y, edgeDistance);
+    if (coverage <= 0.0) return vec4(0.0);
+
     ivec3 base = ivec3(floor(coordinate));
     vec3 fraction = fract(coordinate);
 
@@ -77,7 +88,8 @@ vec3 sampleVolume(vec3 cameraRelativePosition) {
     vec3 c10 = mix(c010, c110, fraction.x);
     vec3 c01 = mix(c001, c101, fraction.x);
     vec3 c11 = mix(c011, c111, fraction.x);
-    return mix(mix(c00, c10, fraction.y), mix(c01, c11, fraction.y), fraction.z);
+    vec3 radiance = mix(mix(c00, c10, fraction.y), mix(c01, c11, fraction.y), fraction.z);
+    return vec4(max(radiance, vec3(0.0)), clamp(coverage, 0.0, 1.0));
 }
 
 void main() {
@@ -91,7 +103,7 @@ void main() {
     float tolerance = max(1.0e-6, abs(gbufferDepth) * 1.0e-5);
     bool ownsPixel = depth > 0.0 && gbufferDepth > 0.0 && abs(depth - gbufferDepth) <= tolerance;
     if (!ownsPixel) {
-        imageStore(u_BlockLightIrradiance, pixel, vec4(0.0, 0.0, 0.0, 1.0));
+        imageStore(u_BlockLightIrradiance, pixel, vec4(0.0));
         return;
     }
 
@@ -102,6 +114,6 @@ void main() {
     vec3 worldNormal = normalize((u_Block.inverseView * vec4(viewNormal, 0.0)).xyz);
     cameraRelativePosition += worldNormal * u_Block.originAndSurfaceOffset.w;
 
-    vec3 irradiance = sampleVolume(cameraRelativePosition);
-    imageStore(u_BlockLightIrradiance, pixel, vec4(max(irradiance, vec3(0.0)), 1.0));
+    vec4 irradiance = sampleVolume(cameraRelativePosition);
+    imageStore(u_BlockLightIrradiance, pixel, irradiance);
 }

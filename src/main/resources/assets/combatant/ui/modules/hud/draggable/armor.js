@@ -9,9 +9,6 @@ const n = ui.num;
 const c = ui.str;
 const s = ui.fmt;
 const cls = ui.cls;
-const abs = ui.abs;
-const prop = ui.prop;
-const arr = ui.arr;
 
 function parseArgb(value, fallback = "#FFFFFFFF") {
   const src = c(value, fallback);
@@ -130,7 +127,7 @@ function dividerNode(key, horizontal, x, y, slotSize, gap, scale, colors, angle)
     return ui.shape({
       key,
       shape: "rounded-gradient",
-      class: abs(x + gap * 0.5 - thickness * 0.5, y + inset, thickness, length),
+      style: ui.absolute(x + gap * 0.5 - thickness * 0.5, y + inset, thickness, length),
       radius: thickness * 0.5,
       startColor: colors.dividerStart,
       endColor: colors.dividerEnd,
@@ -140,7 +137,7 @@ function dividerNode(key, horizontal, x, y, slotSize, gap, scale, colors, angle)
   return ui.shape({
     key,
     shape: "rounded-gradient",
-    class: abs(x + inset, y + gap * 0.5 - thickness * 0.5, length, thickness),
+    style: ui.absolute(x + inset, y + gap * 0.5 - thickness * 0.5, length, thickness),
     radius: thickness * 0.5,
     startColor: colors.dividerStart,
     endColor: colors.dividerEnd,
@@ -149,7 +146,7 @@ function dividerNode(key, horizontal, x, y, slotSize, gap, scale, colors, angle)
 }
 
 function itemNode(cell, fallbackIndex, p, horizontal, slotSize, gap, scale) {
-  const visualIndex = Math.max(0, Math.round(n(prop(cell, "visualIndex", fallbackIndex), fallbackIndex)));
+  const visualIndex = Math.max(0, Math.round(n(cell?.visualIndex ?? fallbackIndex, fallbackIndex)));
   const size = 16 * scale;
   const offset = (slotSize - size) * 0.5;
   const x = (horizontal ? visualIndex * (slotSize + gap) : 0) + offset;
@@ -157,17 +154,17 @@ function itemNode(cell, fallbackIndex, p, horizontal, slotSize, gap, scale) {
   const overlayMode = c(p.stateMode, "TEXT").toUpperCase() === "TEXT" ? "durability-text" : "durability";
   return ui.item({
     key: `armor:item:${visualIndex}`,
-    stack: prop(cell, "stack", null),
-    item: c(prop(cell, "item", ""), ""),
-    count: n(prop(cell, "count", 1), 1),
-    damage: n(prop(cell, "damage", 0), 0),
-    maxDamage: n(prop(cell, "maxDamage", 0), 0),
+    stack: cell?.stack ?? null,
+    item: c(cell?.item ?? "", ""),
+    count: n(cell?.count ?? 1, 1),
+    damage: n(cell?.damage ?? 0, 0),
+    maxDamage: n(cell?.maxDamage ?? 0, 0),
     overlay: true,
     overlayMode,
     durabilityThreshold: n(p.durabilityThreshold, 70),
     durabilityColorThreshold: n(p.durabilityColorThreshold, 70),
     seed: visualIndex,
-    class: abs(x, y, size, size),
+    style: ui.absolute(x, y, size, size),
   });
 }
 
@@ -268,14 +265,13 @@ export function render(ctx) {
     }
   }
 
-  const items = arr(p.items);
+  const items = Array.isArray(p.items) ? p.items : [];
   for (let i = 0; i < items.length; i++) {
     nodes.push(itemNode(items[i], i, p, horizontal, slotSize, gap, scale));
   }
 
   return ui.root({
     key: "armor",
-    class: abs(0, 0, width, height),
-    children: nodes,
-  });
+    style: { width, height },
+  }, nodes);
 }

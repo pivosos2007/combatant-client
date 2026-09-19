@@ -46,11 +46,11 @@ class StatisticsPanelLayout extends HudPanelLayout {
 
   statRow(row, index, y) {
     const rowH = n(this.p.rowTextHeight, 8);
-    const key = c(prop(row, "key", `row_${index}`), `row_${index}`);
-    const label = c(prop(row, "label", ""), "");
-    const value = c(prop(row, "value", ""), "");
-    const valueColor = c(prop(row, "valueColor", color(this.pal, "text", "#FFFFFFFF")), color(this.pal, "text", "#FFFFFFFF"));
-    const progress = Math.max(0, Math.min(1, n(prop(row, "animation", 1), 1)));
+    const key = c(row?.key ?? `row_${index}`, `row_${index}`);
+    const label = c(row?.label ?? "", "");
+    const value = c(row?.value ?? "", "");
+    const valueColor = c(row?.valueColor ?? color(this.pal, "text", "#FFFFFFFF"), color(this.pal, "text", "#FFFFFFFF"));
+    const progress = Math.max(0, Math.min(1, n(row?.animation ?? 1, 1)));
     const slideX = (1 - progress) * 5;
     const rowLeft = 7;
     const contentRight = this.p.showPlayTime === true ? this.w() - 62 : this.w() - 6;
@@ -63,54 +63,51 @@ class StatisticsPanelLayout extends HudPanelLayout {
         gap: 3,
         overflow: "hidden",
       }),
-      children: [
-        ui.shape({
-          key: `stat:${key}:dot`,
-          shape: "circle",
-          fill: alpha(color(this.pal, "counter", "#FFFFFFFF"), progress),
-          style: {
-            width: 3,
-            height: 3,
-            marginLeft: slideX,
-            flexShrink: 0,
-          },
-        }),
-        ui.text({
-          key: `stat:${key}:label`,
-          text: label,
-          color: alpha(color(this.pal, "muted", "#FFA5A5A5"), progress),
-          style: {
-            fontFamily: "OnestMedium",
-            fontSize: this.fontSize(0.92),
-            flexGrow: 1,
-            flexShrink: 1,
-            minWidth: 0,
-            overflow: "hidden",
-          },
-        }),
-        ui.text({
-          key: `stat:${key}:value`,
-          text: value,
-          color: alpha(valueColor, progress),
-          style: {
-            fontFamily: "OnestMedium",
-            fontSize: this.fontSize(0.94),
-            flexShrink: 0,
-            marginRight: slideX,
-            textAlign: "right",
-          },
-        }),
-      ],
-    })];
+    },
+      ui.shape({
+        key: `stat:${key}:dot`,
+        shape: "circle",
+        fill: alpha(color(this.pal, "counter", "#FFFFFFFF"), progress),
+        style: {
+          width: 3,
+          height: 3,
+          marginLeft: slideX,
+          flexShrink: 0,
+        },
+      }),
+      ui.text({
+        key: `stat:${key}:label`,
+        color: alpha(color(this.pal, "muted", "#FFA5A5A5"), progress),
+        style: {
+          fontFamily: "OnestMedium",
+          fontSize: this.fontSize(0.92),
+          flexGrow: 1,
+          flexShrink: 1,
+          minWidth: 0,
+          overflow: "hidden",
+        },
+      }, label),
+      ui.text({
+        key: `stat:${key}:value`,
+        color: alpha(valueColor, progress),
+        style: {
+          fontFamily: "OnestMedium",
+          fontSize: this.fontSize(0.94),
+          flexShrink: 0,
+          marginRight: slideX,
+          textAlign: "right",
+        },
+      }, value)
+    )];
   }
 
   statisticsBody() {
     const w = this.w();
     const nodes = [];
-    const rows = arr(this.p.rows);
+    const rows = Array.isArray(this.p.rows) ? this.p.rows : [];
     let rowY = 23;
     for (let i = 0; i < rows.length; i++) {
-      const progress = Math.max(0, Math.min(1, n(prop(rows[i], "animation", 1), 1)));
+      const progress = Math.max(0, Math.min(1, n(rows[i]?.animation ?? 1, 1)));
       nodes.push(...this.statRow(rows[i], i, rowY));
       rowY += 12 * progress;
     }
@@ -249,7 +246,7 @@ class StatisticsPanelLayout extends HudPanelLayout {
     const graphStyle = ui.absolute(plotX + 2, plotY + 2, Math.max(1, plotW - 4), Math.max(1, plotH - 4));
     const accentStart = c(this.p.accentStartColor, color(this.pal, "counter", "#FFFFFFFF"));
     const accentEnd = c(this.p.accentEndColor, color(this.pal, "text", "#FFFFFFFF"));
-    const graphValues = arr(this.p.graphValues);
+    const graphValues = Array.isArray(this.p.graphValues) ? this.p.graphValues : [];
     const domainMax = Math.max(0.001, n(this.p.graphDomainMax, 24));
     const plotChildren = [];
 
@@ -292,8 +289,7 @@ class StatisticsPanelLayout extends HudPanelLayout {
       style: graphStyle,
       xDomain: [0, 99],
       yDomain: [0, domainMax],
-      children: plotChildren,
-    }));
+    }, plotChildren));
     return nodes;
   }
 
@@ -304,13 +300,7 @@ class StatisticsPanelLayout extends HudPanelLayout {
       key: "panel:statistics",
       class: this.p.shadowControlled === true ? "" : "shadow-panel",
       style: { width: w, height: totalH, borderRadius: this.base.radius },
-      children: [
-        ...this.chrome(),
-        ...this.statisticsHeader(),
-        ...this.statisticsBody(),
-        ...this.graphNodes(),
-      ],
-    });
+    }, this.chrome(), this.statisticsHeader(), this.statisticsBody(), this.graphNodes());
   }
 }
 

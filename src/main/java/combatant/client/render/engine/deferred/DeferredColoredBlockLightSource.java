@@ -35,9 +35,12 @@ import combatant.client.render.engine.rhi.shader.StorageImageBinding;
 import combatant.client.render.engine.rhi.shader.StorageImageDescriptor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.Vec3;
 import org.lwjgl.system.MemoryUtil;
 
@@ -45,7 +48,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Renderer-owned Minecraft block-light propagation.
@@ -65,6 +67,7 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
             .member("volumeSizeAndColumns", Std430Type.VEC4)
             .member("atlasSizeAndRows", Std430Type.VEC4)
             .member("originAndAttenuation", Std430Type.VEC4)
+            .member("previousOriginAndHistory", Std430Type.VEC4)
             .build();
 
     private static final Std430StructLayout RESOLVE_DATA_LAYOUT = Std430StructLayout.builder()
@@ -74,6 +77,7 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
             .member("volumeSizeAndColumns", Std430Type.VEC4)
             .member("atlasSizeAndRows", Std430Type.VEC4)
             .member("originAndSurfaceOffset", Std430Type.VEC4)
+            .member("edgeFade", Std430Type.VEC4)
             .build();
 
     private static final ShaderResourceLayout SEED_LAYOUT = new ShaderResourceLayout(List.of(
@@ -110,10 +114,13 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
     private RhiStorageImage radianceB;
     private RhiStorageImage finalRadiance;
     private ByteBuffer seedUpload;
-    private long lastRefreshFrame = Long.MIN_VALUE;
+    private long lastSeedRefreshFrame = Long.MIN_VALUE;
     private int originX = Integer.MIN_VALUE;
     private int originY = Integer.MIN_VALUE;
     private int originZ = Integer.MIN_VALUE;
+    private int radianceOriginX = Integer.MIN_VALUE;
+    private int radianceOriginY = Integer.MIN_VALUE;
+    private int radianceOriginZ = Integer.MIN_VALUE;
 
     void install(ArrayList<DeferredPassSpec> passes) {
         passes.add(DeferredPassSpec.builder("world.block-light.volume", DeferredStage.PRE_LIGHTING)
@@ -168,25 +175,29 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
         ensureVolumeImages();
         if (worldOwner != level) {
             worldOwner = level;
-            lastRefreshFrame = Long.MIN_VALUE;
-            originX = originY = originZ = Integer.MIN_VALUE;
+            resetVolumeState();
         }
 
-        int nextOriginX = alignOrigin(floorBlock(view.cameraPosition().x), config.sizeX());
-        int nextOriginY = alignOrigin(floorBlock(view.cameraPosition().y), config.sizeY());
-        int nextOriginZ = alignOrigin(floorBlock(view.cameraPosition().z), config.sizeZ());
+        int[] nextOrigin = selectVolumeOrigin(view);
+        int nextOriginX = nextOrigin[0];
+        int nextOriginY = nextOrigin[1];
+        int nextOriginZ = nextOrigin[2];
         boolean moved = nextOriginX != originX || nextOriginY != originY || nextOriginZ != originZ;
-        boolean periodicRefresh = lastRefreshFrame == Long.MIN_VALUE
-                || context.frame().frameId() - lastRefreshFrame >= config.refreshIntervalFrames();
+        boolean periodicRefresh = lastSeedRefreshFrame == Long.MIN_VALUE
+                || context.frame().frameId() - lastSeedRefreshFrame >= config.seedRefreshIntervalFrames();
 
         if (moved || periodicRefresh) {
             originX = nextOriginX;
             originY = nextOriginY;
             originZ = nextOriginZ;
             uploadSeed(level);
-            propagate(context);
-            lastRefreshFrame = context.frame().frameId();
+            lastSeedRefreshFrame = context.frame().frameId();
         }
+
+        // Persistent flood fill: keep the previous volume alive and advance only a
+        // bounded number of iterations each frame. When the camera-centered volume moves, the
+        // shader reprojects previous voxels by the exact integer origin delta instead of resetting.
+        advancePropagation(context);
 
         if (finalRadiance != null) {
             context.resources().bindStorageImage(DeferredResource.BLOCK_LIGHT_VOLUME_SEED, seedVolume);
@@ -200,7 +211,7 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
         int atlasHeight = config.atlasHeight();
         int pixelCount = Math.multiplyExact(atlasWidth, atlasHeight);
 
-        // Unused atlas texels behave as fully blocking, zero-emission cells.
+        // Unused atlas texels and unavailable chunks behave as fully blocking, zero-emission cells.
         for (int pixel = 0; pixel < pixelCount; pixel++) {
             int offset = pixel * 16;
             upload.putFloat(offset, 0.0f);
@@ -209,28 +220,46 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
             upload.putFloat(offset + 12, 1.0f);
         }
 
-        BlockPos.MutableBlockPos position = new BlockPos.MutableBlockPos();
         BlockLightEmitterRegistry emitters = BlockLightEmitterRegistry.global();
         int columns = config.atlasColumns();
         for (int z = 0; z < config.sizeZ(); z++) {
             int worldZ = originZ + z;
+            int chunkZ = worldZ >> 4;
+            int localZ = worldZ & 15;
             int sliceColumn = z % columns;
             int sliceRow = z / columns;
+            int cachedChunkX = Integer.MIN_VALUE;
+            ChunkAccess chunk = null;
             for (int x = 0; x < config.sizeX(); x++) {
                 int worldX = originX + x;
-                boolean chunkLoaded = level.hasChunk(worldX >> 4, worldZ >> 4);
+                int chunkX = worldX >> 4;
+                int localX = worldX & 15;
+                if (chunkX != cachedChunkX) {
+                    cachedChunkX = chunkX;
+                    chunk = level.getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
+                }
+                if (chunk == null) continue;
+
+                LevelChunkSection[] sections = chunk.getSections();
+                int cachedSectionY = Integer.MIN_VALUE;
+                LevelChunkSection section = null;
                 for (int y = 0; y < config.sizeY(); y++) {
                     int worldY = originY + y;
                     int atlasX = sliceColumn * config.sizeX() + x;
                     int atlasY = sliceRow * config.sizeY() + y;
                     int offset = (atlasY * atlasWidth + atlasX) * 16;
+                    if (level.isOutsideBuildHeight(worldY)) continue;
 
-                    if (!chunkLoaded || level.isOutsideBuildHeight(worldY)) {
-                        continue;
+                    int sectionY = SectionPos.blockToSectionCoord(worldY);
+                    if (sectionY != cachedSectionY) {
+                        cachedSectionY = sectionY;
+                        int sectionIndex = level.getSectionIndexFromSectionY(sectionY);
+                        section = sectionIndex >= 0 && sectionIndex < sections.length
+                                ? sections[sectionIndex] : null;
                     }
+                    if (section == null) continue;
 
-                    position.set(worldX, worldY, worldZ);
-                    BlockState state = level.getBlockState(position);
+                    BlockState state = section.getBlockState(localX, worldY & 15, localZ);
                     BlockLightEmitterRegistry.ResolvedEmitter emitter = emitters.resolve(state);
                     float dampening = Math.max(0.0f, Math.min(1.0f, state.getLightDampening() / 15.0f));
                     upload.putFloat(offset, emitter.red());
@@ -248,34 +277,48 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
         );
     }
 
-    private void propagate(DeferredPassContext context) {
+    private void advancePropagation(DeferredPassContext context) {
         RhiStorageBuffer parameters = volumeData();
-        Std430Writer writer = volumeWriter();
-        parameters.upload(writer.buffer(), 0L);
+        GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
+        int groupsX = groups(config.sizeX(), VOLUME_LOCAL_SIZE);
+        int groupsY = groups(config.sizeY(), VOLUME_LOCAL_SIZE);
+        int groupsZ = groups(config.sizeZ(), VOLUME_LOCAL_SIZE);
 
-        // CPU transfer wrote the seed image; make it visible to compute consumers before dispatch.
+        // CPU transfer may have refreshed the occupancy/emission seed. Make it visible before any
+        // compute consumer. This barrier is intentionally cheap compared to rebuilding 15 complete
+        // flood-fill passes on every refresh.
         context.advancedShaders().barrier(new RhiResourceBarrier(
                 RhiResourceBarrier.Stage.ALL, RhiResourceBarrier.Access.WRITE,
                 RhiResourceBarrier.Stage.ALL, RhiResourceBarrier.Access.READ,
                 List.of(), List.of(seedVolume)
         ));
 
-        GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
-        int groupsX = groups(config.sizeX(), VOLUME_LOCAL_SIZE);
-        int groupsY = groups(config.sizeY(), VOLUME_LOCAL_SIZE);
-        int groupsZ = groups(config.sizeZ(), VOLUME_LOCAL_SIZE);
+        if (finalRadiance == null) {
+            Std430Writer initialize = volumeWriter(originX, originY, originZ, false);
+            parameters.upload(initialize.buffer(), 0L);
+            context.advancedShaders().dispatch(new ComputeDispatchCommand(
+                    "Combatant block-light initialize",
+                    seedPipeline(), groupsX, groupsY, groupsZ,
+                    List.of(new StorageBinding(2, parameters, 0L, initialize.byteSize(), StorageAccess.READ_ONLY)),
+                    List.of(new SampledTextureBinding(0, seedVolume.view(), nearest)),
+                    List.of(new StorageImageBinding(1, radianceA, StorageAccess.WRITE_ONLY))
+            ));
+            finalRadiance = radianceA;
+            radianceOriginX = originX;
+            radianceOriginY = originY;
+            radianceOriginZ = originZ;
+        }
 
-        context.advancedShaders().dispatch(new ComputeDispatchCommand(
-                "Combatant block-light seed",
-                seedPipeline(), groupsX, groupsY, groupsZ,
-                List.of(new StorageBinding(2, parameters, 0L, writer.byteSize(), StorageAccess.READ_ONLY)),
-                List.of(new SampledTextureBinding(0, seedVolume.view(), nearest)),
-                List.of(new StorageImageBinding(1, radianceA, StorageAccess.WRITE_ONLY))
-        ));
+        for (int iteration = 0; iteration < config.propagationIterationsPerFrame(); iteration++) {
+            RhiStorageImage previous = finalRadiance;
+            RhiStorageImage next = previous == radianceA ? radianceB : radianceA;
+            boolean historyValid = radianceOriginX != Integer.MIN_VALUE;
+            int previousOriginX = historyValid ? radianceOriginX : originX;
+            int previousOriginY = historyValid ? radianceOriginY : originY;
+            int previousOriginZ = historyValid ? radianceOriginZ : originZ;
 
-        RhiStorageImage previous = radianceA;
-        RhiStorageImage next = radianceB;
-        for (int iteration = 0; iteration < config.propagationSteps(); iteration++) {
+            Std430Writer writer = volumeWriter(previousOriginX, previousOriginY, previousOriginZ, historyValid);
+            parameters.upload(writer.buffer(), 0L);
             computeReadBarrier(context, previous);
             context.advancedShaders().dispatch(new ComputeDispatchCommand(
                     "Combatant block-light propagation " + iteration,
@@ -287,11 +330,11 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
                     ),
                     List.of(new StorageImageBinding(2, next, StorageAccess.WRITE_ONLY))
             ));
-            RhiStorageImage swap = previous;
-            previous = next;
-            next = swap;
+            finalRadiance = next;
+            radianceOriginX = originX;
+            radianceOriginY = originY;
+            radianceOriginZ = originZ;
         }
-        finalRadiance = previous;
     }
 
     private void resolveToScreen(DeferredPassContext context) {
@@ -317,7 +360,10 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
                         (float) (originX - camera.x),
                         (float) (originY - camera.y),
                         (float) (originZ - camera.z),
-                        config.surfaceSampleOffset());
+                        config.surfaceSampleOffset())
+                .putVec4(0, "edgeFade",
+                        config.edgeFadeStart(), config.edgeFadeEnd(),
+                        0.5f, 0.0f);
         RhiStorageBuffer data = resolveData();
         data.upload(writer.buffer(), 0L);
 
@@ -339,14 +385,20 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
         ));
     }
 
-    private Std430Writer volumeWriter() {
+    private Std430Writer volumeWriter(int previousOriginX,
+                                      int previousOriginY,
+                                      int previousOriginZ,
+                                      boolean historyValid) {
         return new Std430Writer(VOLUME_DATA_LAYOUT, 1)
                 .putVec4(0, "volumeSizeAndColumns",
                         config.sizeX(), config.sizeY(), config.sizeZ(), config.atlasColumns())
                 .putVec4(0, "atlasSizeAndRows",
-                        config.atlasWidth(), config.atlasHeight(), config.atlasRows(), config.propagationSteps())
+                        config.atlasWidth(), config.atlasHeight(), config.atlasRows(),
+                        config.propagationIterationsPerFrame())
                 .putVec4(0, "originAndAttenuation",
-                        originX, originY, originZ, 1.0f / 15.0f);
+                        originX, originY, originZ, 1.0f / 15.0f)
+                .putVec4(0, "previousOriginAndHistory",
+                        previousOriginX, previousOriginY, previousOriginZ, historyValid ? 1.0f : 0.0f);
     }
 
     private void ensureOwner(CombatantRhi rhi) {
@@ -446,8 +498,7 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
             seedUpload = null;
         }
         worldOwner = null;
-        lastRefreshFrame = Long.MIN_VALUE;
-        originX = originY = originZ = Integer.MIN_VALUE;
+        resetVolumeState();
     }
 
     private static void computeReadBarrier(DeferredPassContext context, RhiStorageImage image) {
@@ -468,6 +519,28 @@ final class DeferredColoredBlockLightSource implements AutoCloseable {
         RhiStorageImage value = context.resources().storageImage(resource);
         if (value == null) throw new IllegalStateException("Deferred storage image is not bound: " + resource);
         return value;
+    }
+
+    private void resetVolumeState() {
+        lastSeedRefreshFrame = Long.MIN_VALUE;
+        originX = originY = originZ = Integer.MIN_VALUE;
+        radianceOriginX = radianceOriginY = radianceOriginZ = Integer.MIN_VALUE;
+        finalRadiance = null;
+    }
+
+    private int[] selectVolumeOrigin(DeferredPrimaryViewSource.FrameView view) {
+        Vec3 camera = view.cameraPosition();
+
+        // Block-light propagation is authoritative world-space state. Its coverage must not depend on
+        // camera yaw/pitch: rotating a stationary camera must never move cells into or out of the volume.
+        // Keep the bounded volume centered on camera position and move it only when the camera crosses
+        // the block-aligned origin hysteresis. View/frustum bias belongs to analytic dynamic-light culling,
+        // not to the persistent Minecraft-style block-light field.
+        return new int[]{
+                alignOrigin(floorBlock(camera.x), config.sizeX()),
+                alignOrigin(floorBlock(camera.y), config.sizeY()),
+                alignOrigin(floorBlock(camera.z), config.sizeZ())
+        };
     }
 
     private int alignOrigin(int center, int size) {

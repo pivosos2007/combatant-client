@@ -12,85 +12,37 @@ const abs = ui.abs;
 const colorAlpha = ui.color.alpha;
 const PROGRESS_DOTS = 32;
 
-function displayCorners(expanded) {
-  const round = ui.corner.rounded(2.4);
-  const cut = ui.corner.chamfered(expanded ? 4.5 : 3.0);
-  return ui.corner.mixed(round, round, cut, cut);
-}
-
-function displayEdges() {
-  return {
-    top: ui.edge.straight(),
-    right: ui.edge.inset(0.35),
-    bottom: ui.edge.inset(0.35),
-    left: ui.edge.inset(0.35),
-  };
-}
-
 function displayShell(p) {
   const x = num(p.mainX, 0);
   const w = num(p.mainWidth, num(p.width, 126));
   const h = num(p.height, 35);
   const cut = num(p.bezelCut, 4.5);
   const alpha = num(p.alpha, 1);
-  const inset = 2.25;
   const nodes = [
+    // Keep the shell on one analytic chamfer primitive. The same `chamfer` value drives
+    // both the backdrop-blur mask and the painted surface, so the two silhouettes cannot drift.
     ui.shape({
-      key: "shell:shadow",
-      shape: "rounded-shadow",
-      class: abs(x, 0, w, h),
-      radius: 3,
-      softness: 7,
-      spread: 10,
-      color: colorAlpha(p.shadow, alpha),
-      fill: colorAlpha(p.shadow, alpha),
-    }),
-    ui.shape({
-      key: "shell:bezel",
+      key: "shell:surface",
       shape: "primitive",
       preset: "chamfered",
       class: abs(x, 0, w, h),
       chamfer: cut,
-      fill: colorAlpha(p.bezelTint, alpha),
-      stroke: colorAlpha(p.bezelEdge, alpha),
-      strokeWidth: 1,
-      liquidGlass: true,
-      glassTint: colorAlpha(p.bezelTint, alpha),
-      glassAlpha: 0.62,
-      blurAlpha: (p.blur === true ? num(p.blurAlpha, 0.45) : 0.14) * alpha,
-      glassPreset: "hud-small",
-      glassInnerGlow: 0.014,
-      glassInnerGlowSize: 3.5,
-    }),
-    ui.shape({
-      key: "shell:display",
-      shape: "box",
-      class: abs(x + inset, inset, Math.max(1, w - inset * 2), Math.max(1, h - inset * 2)),
-      corners: displayCorners(num(p.expand, 0) > 0.5),
-      edges: displayEdges(),
-      cut: num(p.expand, 0) > 0.5 ? 4.5 : 3.0,
-      blur: true,
+      blur: p.blur === true,
       blurQuality: 8,
-      blurBrightness: 1.06,
-      blurAlpha: (p.blur === true ? Math.max(0.42, num(p.blurAlpha, 0.45)) : 0.22) * alpha,
+      blurBrightness: 1.0,
+      blurAlpha: (p.blur === true ? num(p.blurAlpha, 0.45) : 0) * alpha,
       fill: colorAlpha(p.displayBg, alpha),
-      stroke: colorAlpha(p.displayEdge, alpha),
-      strokeWidth: 0.8,
-    }),
-    ui.shape({
-      key: "shell:highlight",
-      shape: "rect",
-      class: abs(x + cut + 4, 1.1, Math.max(1, w - (cut + 4) * 2), 0.65),
-      fill: colorAlpha(p.bezelEdge, 0.64 * alpha),
+      startColor: colorAlpha(p.displayBgStart || p.displayBg, alpha),
+      endColor: colorAlpha(p.displayBgEnd || p.displayBg, alpha),
+      angle: num(p.displayBgAngle, 90),
     }),
     ui.shape({
       key: "shell:interaction",
-      shape: "box",
-      class: abs(x + inset, inset, Math.max(1, w - inset * 2), Math.max(1, h - inset * 2)),
-      corners: displayCorners(num(p.expand, 0) > 0.5),
-      edges: displayEdges(),
+      shape: "primitive",
+      preset: "chamfered",
+      class: abs(x, 0, w, h),
+      chamfer: cut,
       fill: colorAlpha(p.phosphor, (0.025 * num(p.bodyHover, 0) + 0.045 * num(p.bodyPress, 0)) * alpha),
-      strokeWidth: 0,
     }),
   ];
   return nodes;
@@ -123,8 +75,6 @@ function artwork(p, key, x, y, size, alpha) {
     class: abs(x, y, size, size),
     corners: ui.corner.all(ui.corner.chamfered(2)),
     fill: colorAlpha(p.phosphorDim, 0.72 * alpha),
-    stroke: colorAlpha(p.displayEdge, alpha),
-    strokeWidth: 0.8,
   });
 }
 
@@ -184,8 +134,6 @@ function clickGuiTabs(p) {
       startColor: colorAlpha(categoryColor, (active ? 0.24 : (hovered ? 0.10 : 0)) * alpha),
       endColor: colorAlpha(p.phosphorDim, (active ? 0.10 : (hovered ? 0.035 : 0)) * alpha),
       angle: 0,
-      stroke: colorAlpha(categoryColor, (active ? 0.34 : (hovered ? 0.13 : 0)) * alpha),
-      strokeWidth: 0.7,
     }));
     nodes.push(ui.text({
       key: `clickgui:tab:${index}`,
@@ -222,7 +170,7 @@ function musicCompact(ctx, p) {
       text: p.time || "00:00",
       class: cls(abs(x + 9, 10.3, 40, 14), "font-MatrixSansPrint font-size-12.96 text-align-center"),
     }, alpha, 0.20, 1.7),
-    ui.shape({ key: "music:divider", shape: "rect", class: abs(x + 52, 8, 0.75, 19), fill: colorAlpha(p.displayEdge, alpha) }),
+    ui.shape({ key: "music:divider", shape: "rect", class: abs(x + 52, 8, 0.75, 19), fill: colorAlpha(p.phosphorDim, 0.46 * alpha) }),
     artwork(p, "artwork:compact", x + 58, 8.5, 18, alpha),
     ui.clippedText({
       key: "music:title:compact",
@@ -360,7 +308,6 @@ function musicExpanded(p) {
     ui.shape({
       key: "artwork:expanded:frame", shape: "box", class: abs(x + 12, 23, 30, 30),
       corners: ui.corner.all(ui.corner.chamfered(2.5)), fill: colorAlpha(p.phosphorDim, 0.16 * alpha),
-      stroke: colorAlpha(p.displayEdge, alpha), strokeWidth: 0.8,
     }),
     artwork(p, "artwork:expanded", x + 14, 25, 26, alpha),
     ui.clippedText({

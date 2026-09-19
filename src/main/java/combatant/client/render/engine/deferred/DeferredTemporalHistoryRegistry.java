@@ -218,6 +218,16 @@ public final class DeferredTemporalHistoryRegistry {
                 DeferredHistoryStorageMode.STORE_AFTER_CONSUME
         ));
         register(new Definition(
+                DeferredTemporalHistoryId.AMBIENT_OCCLUSION,
+                List.of(DeferredResource.GTAO_TEMPORAL_SIGNAL, DeferredResource.GTAO_TEMPORAL_DEPTH,
+                        DeferredResource.GTAO_TEMPORAL_AGE),
+                List.of(DeferredResource.HISTORY_GTAO_SIGNAL, DeferredResource.HISTORY_GTAO_DEPTH,
+                        DeferredResource.HISTORY_GTAO_AGE),
+                DeferredResource.HISTORY_GTAO_AGE,
+                1, DeferredHistoryProducer.AMBIENT_OCCLUSION, "world.gtao.history",
+                DeferredHistoryStorageMode.STORE_AFTER_CONSUME
+        ));
+        register(new Definition(
                 DeferredTemporalHistoryId.REFLECTIONS,
                 List.of(DeferredResource.REFLECTION_COLOR, DeferredResource.REFLECTION_CONFIDENCE),
                 List.of(DeferredResource.HISTORY_REFLECTION, DeferredResource.HISTORY_REFLECTION_CONFIDENCE),

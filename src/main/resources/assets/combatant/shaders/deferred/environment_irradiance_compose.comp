@@ -44,7 +44,9 @@ void main() {
 
     vec2 uv = (vec2(pixel) + vec2(0.5)) / vec2(size);
     vec3 advancedSky = max(textureLod(u_SkyDiffuseIrradiance, uv, 0.0).rgb, vec3(0.0));
-    vec3 advancedBlock = max(textureLod(u_BlockLightIrradiance, uv, 0.0).rgb, vec3(0.0));
+    vec4 advancedBlockSample = textureLod(u_BlockLightIrradiance, uv, 0.0);
+    vec3 advancedBlock = max(advancedBlockSample.rgb, vec3(0.0));
+    float advancedBlockCoverage = clamp(advancedBlockSample.a, 0.0, 1.0);
 
     vec2 minecraftLight = textureLod(u_GbufferGeometry, uv, 0.0).ba;
     float blockLevel = decodeMinecraftLightLevel(minecraftLight.x);
@@ -66,6 +68,25 @@ void main() {
     // EnvironmentAttributes.AMBIENT_LIGHT_COLOR is already the renderer-facing ambient term.
     vec3 baselineAmbient = max(u_Baseline.ambientColor.rgb, vec3(0.0));
 
-    vec3 irradiance = advancedSky + advancedBlock + baselineSky + baselineBlock + baselineAmbient;
+    // Minecraft's block-light level remains the authoritative intensity/visibility contract.
+    // The bounded colored-light volume supplies chroma only. Volume coverage is not producer
+    // validity: a persistent LPV can still be converging or temporarily have no colored sample.
+    // Never replace valid Minecraft block light with zero/stale LPV data merely because the pixel
+    // happens to lie inside the volume.
+    float advancedStrength = max(advancedBlock.r, max(advancedBlock.g, advancedBlock.b));
+    vec3 advancedTint = advancedStrength > 1.0e-5
+            ? advancedBlock / advancedStrength
+            : vec3(1.0);
+
+    // One propagated light level is 1/15 in the volume. Once at least that much signal is present,
+    // the LPV has enough evidence to own the block-light hue. Below it, blend continuously back to
+    // the renderer-owned Minecraft baseline instead of producing temporal islands.
+    float colorConfidence = advancedBlockCoverage
+            * smoothstep(0.0, 1.0 / 15.0, advancedStrength)
+            * step(1.0e-5, blockBrightness);
+    vec3 coloredBlock = advancedTint * blockBrightness;
+    vec3 resolvedBlock = mix(baselineBlock, coloredBlock, colorConfidence);
+
+    vec3 irradiance = advancedSky + baselineSky + resolvedBlock + baselineAmbient;
     imageStore(u_EnvironmentIrradiance, pixel, vec4(max(irradiance, vec3(0.0)), 1.0));
 }

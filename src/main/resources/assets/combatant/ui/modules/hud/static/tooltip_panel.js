@@ -7,8 +7,6 @@
 
 const n = ui.num;
 const c = ui.str;
-const arr = ui.arr;
-const prop = ui.prop;
 const cls = ui.cls;
 
 function fmt3(value) {
@@ -154,12 +152,12 @@ function maxContentWidth(p, m) {
 }
 
 function hasExplicitBreakAfterFirst(p) {
-  const source = arr(p.lines);
+  const source = Array.isArray(p.lines) ? p.lines : [];
   let firstSeen = false;
   let gapAfterFirst = false;
 
   for (const entry of source) {
-    const raw = c(prop(entry, "text", ""), "").trim();
+    const raw = c(entry?.text ?? "", "").trim();
     if (!raw) {
       if (firstSeen) gapAfterFirst = true;
       continue;
@@ -185,13 +183,13 @@ function shouldDrawDivider(p, visibleLineCount, header) {
 }
 
 function normalizeLines(p, m, colors, header) {
-  const source = arr(p.lines);
+  const source = Array.isArray(p.lines) ? p.lines : [];
   const lines = [];
   let pendingGroupGap = false;
 
   for (let i = 0; i < source.length; i++) {
     const entry = source[i];
-    const raw = c(prop(entry, "text", ""), "").trim();
+    const raw = c(entry?.text ?? "", "").trim();
     if (!raw) {
       pendingGroupGap = true;
       continue;
@@ -209,7 +207,7 @@ function normalizeLines(p, m, colors, header) {
     lines.push({
       key: `line:${lines.length}`,
       text: raw,
-      color: c(prop(entry, "color", ""), colors.text),
+      color: c(entry?.color ?? "", colors.text),
       gapBefore,
     });
   }

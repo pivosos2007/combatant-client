@@ -11,6 +11,8 @@ export type UiAuthoringContract = {
   readonly version: number;
   readonly nodeTypes: readonly UiNodeType[];
   readonly styleKeys: readonly (keyof UiInlineStyle)[];
+  /** Legacy/alternate authoring keys normalized to one canonical style key by ui.js. */
+  readonly styleAliases: Readonly<Record<string, keyof UiInlineStyle>>;
 };
 
 export type UiNodeType =
@@ -79,8 +81,10 @@ export type UiInlineStyle = {
 
   padding?: number;
   paddingX?: number;
+  /** @deprecated Prefer paddingX. */
   paddingHorizontal?: number;
   paddingY?: number;
+  /** @deprecated Prefer paddingY. */
   paddingVertical?: number;
   paddingLeft?: number;
   paddingTop?: number;
@@ -89,8 +93,10 @@ export type UiInlineStyle = {
 
   margin?: number;
   marginX?: number;
+  /** @deprecated Prefer marginX. */
   marginHorizontal?: number;
   marginY?: number;
+  /** @deprecated Prefer marginY. */
   marginVertical?: number;
   marginLeft?: number;
   marginTop?: number;
@@ -98,9 +104,11 @@ export type UiInlineStyle = {
   marginBottom?: number;
 
   gap?: number;
+  /** @deprecated Prefer flexGrow. */
   grow?: number;
   flexGrow?: number;
   /** Explicit main-axis shrink weight. Default 0 preserves legacy fixed-size behavior. */
+  /** @deprecated Prefer flexShrink. */
   shrink?: number;
   flexShrink?: number;
   /** Browser-like container flow. display:flex defaults to row; block maps to vertical flow. */
@@ -108,29 +116,39 @@ export type UiInlineStyle = {
   flexDirection?: "row" | "column";
 
   position?: "absolute" | "relative" | "static" | "flow";
+  /** @deprecated Prefer position: "absolute" or "relative". */
   absolute?: boolean;
   left?: number;
   top?: number;
   right?: number;
   bottom?: number;
+  /** @deprecated Prefer left. */
   x?: number;
+  /** @deprecated Prefer top. */
   y?: number;
 
+  /** @deprecated Prefer alignItems. */
   align?: UiAlign;
   alignItems?: UiAlign;
+  /** @deprecated Prefer justifyContent. */
   justify?: UiJustify;
   justifyContent?: UiJustify;
   overflow?: UiOverflow;
 
+  /** @deprecated Prefer borderRadius for ordinary layout boxes. */
   radius?: number;
   borderRadius?: number;
+  /** @deprecated Prefer backgroundColor. */
   background?: string | number;
   backgroundColor?: string | number;
   borderColor?: string | number;
+  /** @deprecated Prefer borderColor. */
   strokeColor?: string | number;
   borderWidth?: number;
+  /** @deprecated Prefer borderWidth. */
   strokeWidth?: number;
 
+  /** @deprecated Prefer boxShadow. */
   shadow?: false | { color?: string | number; blur?: number; innerAlpha?: number };
   boxShadow?: false | { color?: string | number; blur?: number; innerAlpha?: number };
   shadowColor?: string | number;
@@ -146,6 +164,7 @@ export type UiInlineStyle = {
   marquee?: boolean;
 
   color?: string | number;
+  /** @deprecated Prefer color. */
   textColor?: string | number;
   fontFamily?: string;
   fontWeight?: number | "normal" | "bold" | "semibold" | string;
@@ -193,13 +212,13 @@ export type UiLayoutProps = {
   maxWidth?: number;
   /** Maximum resolved height. */
   maxHeight?: number;
-  /** Main-axis grow weight inside row/column layout. */
+  /** @deprecated Prefer style.flexGrow (or flexGrow while using legacy promoted props). */
   grow?: number;
-  /** CSS/React-style alias for grow. */
+  /** Main-axis grow weight inside row/column layout. */
   flexGrow?: number;
-  /** Explicit main-axis shrink weight. */
+  /** @deprecated Prefer style.flexShrink (or flexShrink while using legacy promoted props). */
   shrink?: number;
-  /** CSS/React-style alias for shrink. */
+  /** Explicit main-axis shrink weight. */
   flexShrink?: number;
   /** Browser-style flow aliases promoted into inline style. */
   display?: "flex" | "block";
@@ -224,7 +243,7 @@ export type UiLayoutProps = {
   marginRight?: number;
   marginBottom?: number;
   gap?: number;
-  /** Browser-style position alias. Only absolute removes the node from normal flow. */
+  /** Browser-style position. Canonical values are absolute or relative; static/flow remain legacy aliases. */
   position?: "absolute" | "relative" | "static" | "flow";
   /** Removes the node from normal parent flow and uses x/y offsets. */
   absolute?: boolean;
@@ -830,15 +849,16 @@ export interface UiFactory {
   fragment(...children: UiChildInput[]): UiNode[];
   /** Returns child when condition is truthy, otherwise null. */
   when(condition: unknown, child: UiChildInput): UiChildInput;
-  node(type: UiNodeType, init?: NodeInit): UiNode;
-  root(init?: NodeInit): UiNode;
-  panel(init?: NodeInit): UiNode;
-  row(init?: NodeInit): UiNode;
-  column(init?: NodeInit): UiNode;
-  stack(init?: NodeInit): UiNode;
-  vector(init?: VectorInit): UiVectorNode;
-  plot(init?: PlotInit): UiVectorNode;
-  text(init?: TextInit | number): UiTextNode;
+  node(type: UiNodeType, init?: NodeInit, ...children: UiChildInput[]): UiNode;
+  root(init?: NodeInit, ...children: UiChildInput[]): UiNode;
+  panel(init?: NodeInit, ...children: UiChildInput[]): UiNode;
+  row(init?: NodeInit, ...children: UiChildInput[]): UiNode;
+  column(init?: NodeInit, ...children: UiChildInput[]): UiNode;
+  stack(init?: NodeInit, ...children: UiChildInput[]): UiNode;
+  vector(init?: VectorInit, ...children: UiChildInput[]): UiVectorNode;
+  plot(init?: PlotInit, ...children: UiChildInput[]): UiVectorNode;
+  /** Text can be authored as ui.text("hello") or ui.text({ style: ... }, "hello"). */
+  text(init?: TextInit | number, ...children: Array<string | number | boolean | null | undefined>): UiTextNode;
   image(init: ImageInit): UiImageNode;
   svg(init: ImageInit): UiImageNode;
   shape(init?: ShapeInit): UiShapeNode;
@@ -880,9 +900,9 @@ export interface UiFactory {
   inset(init?: { left?: number; top?: number; right?: number; bottom?: number; width?: number; height?: number } & UiInlineStyle): UiInlineStyle;
   /** @deprecated Utility-class positioning is legacy-only. Prefer style: ui.absolute(...). */
   abs(x?: number, y?: number, w?: number, h?: number, extra?: string): string;
-  /** Safe property lookup supporting plain objects and host map-like values. */
+  /** @deprecated ctx.props is deep-converted to plain JS objects; use ordinary property access. */
   prop<T = unknown>(value: unknown, key: string, fallback?: T): T | unknown;
-  /** Converts arrays/iterables/host collections to a plain JS array, or [] on failure. */
+  /** @deprecated ctx.props collections are deep-converted to plain JS arrays. */
   arr<T = unknown>(value: unknown): T[];
   color: {
     /** Reads a string color from a plain object or host map-like value. */
@@ -897,14 +917,14 @@ export interface UiFactory {
   spline(init?: PathInit): UiPathNode;
   area(init?: PathInit): UiPathNode;
   item(init?: NodeInit & { /** Multiplies Renderer2D item alpha for this node. */ alpha?: number }): UiNode;
-  button(init?: NodeInit): UiNode;
-  scroll(init?: NodeInit): UiNode;
+  button(init?: NodeInit, ...children: UiChildInput[]): UiNode;
+  scroll(init?: NodeInit, ...children: UiChildInput[]): UiNode;
   spacer(init?: NodeInit): UiNode;
-  inputText(init?: NodeInit): UiNode;
-  checkbox(init?: NodeInit): UiNode;
-  slider(init?: NodeInit): UiNode;
+  inputText(init?: NodeInit, ...children: UiChildInput[]): UiNode;
+  checkbox(init?: NodeInit, ...children: UiChildInput[]): UiNode;
+  slider(init?: NodeInit, ...children: UiChildInput[]): UiNode;
   divider(init?: NodeInit): UiNode;
-  canvas(init?: NodeInit): UiNode;
+  canvas(init?: NodeInit, ...children: UiChildInput[]): UiNode;
   corner: {
     square(): UiCornerSpec;
     rounded(radius?: number, radiusY?: number): UiCornerSpec;
@@ -934,7 +954,7 @@ export type UiRenderContext = {
   width: number;
   /** Host surface height in logical UI units. */
   height: number;
-  /** Host-provided snapshot props. */
+  /** Host-provided snapshot props, recursively converted to ordinary JS objects/arrays. */
   props: Record<string, unknown>;
 };
 
