@@ -7,6 +7,7 @@
 
 package combatant.client.render.engine.renderer.ui.runtime.script;
 
+import combatant.client.render.engine.renderer.ui.runtime.core.UiAuthoringContract;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNodeSpec;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNodeType;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiProps;
@@ -19,18 +20,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public final class UiScriptObjectConverter {
-    private static final List<String> RESERVED_NODE_KEYS = List.of(
-            "type", "key", "class", "className", "style", "props", "events", "meta", "children",
-            "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "grow", "flexGrow", "shrink", "flexShrink", "display", "flexDirection",
-            "padding", "paddingX", "paddingHorizontal", "paddingY", "paddingVertical", "paddingLeft", "paddingTop", "paddingRight", "paddingBottom",
-            "margin", "marginX", "marginHorizontal", "marginY", "marginVertical", "marginLeft", "marginTop", "marginRight", "marginBottom", "gap",
-            "position", "absolute", "x", "y", "left", "top", "right", "bottom", "align", "alignItems", "justify", "justifyContent", "overflow",
-            "fontSize", "lineHeight", "fontFamily", "fontWeight", "fontStyle",
-            "textAlign", "maxTextWidth", "ellipsis", "whiteSpace", "overflowWrap", "maxLines", "textOverflow", "marquee",
-            "onClick", "onChange", "onInput", "onScroll"
-    );
+    private static final Set<String> RESERVED_NODE_KEYS = UiAuthoringContract.reservedNodeKeys();
 
     public UiNodeSpec convert(Object value) {
         if (value instanceof Map<?, ?> map) {
@@ -129,10 +122,9 @@ public final class UiScriptObjectConverter {
 
     private static Map<String, String> events(Map<?, ?> node) {
         Map<String, String> events = eventMap(node.get("events"));
-        directEvent(node, events, "onClick", "click");
-        directEvent(node, events, "onChange", "change");
-        directEvent(node, events, "onInput", "input");
-        directEvent(node, events, "onScroll", "scroll");
+        for (Map.Entry<String, String> alias : UiAuthoringContract.eventAliases().entrySet()) {
+            directEvent(node, events, alias.getKey(), alias.getValue());
+        }
         return events.isEmpty() ? Map.of() : events;
     }
 
@@ -179,81 +171,25 @@ public final class UiScriptObjectConverter {
 
     private static Map<String, Object> inlineStyle(Map<?, ?> node, UiNodeType type) {
         Map<String, Object> style = new LinkedHashMap<>();
-        promote(node, style, "width", "width");
-        promote(node, style, "height", "height");
-        promote(node, style, "minWidth", "minWidth");
-        promote(node, style, "minHeight", "minHeight");
-        promote(node, style, "maxWidth", "maxWidth");
-        promote(node, style, "maxHeight", "maxHeight");
-        promote(node, style, "grow", "grow");
-        promote(node, style, "flexGrow", "flexGrow");
-        promote(node, style, "shrink", "shrink");
-        promote(node, style, "flexShrink", "flexShrink");
-        promote(node, style, "display", "display");
-        promote(node, style, "flexDirection", "flexDirection");
-        promote(node, style, "padding", "padding");
-        promote(node, style, "paddingX", "paddingX");
-        promote(node, style, "paddingHorizontal", "paddingHorizontal");
-        promote(node, style, "paddingY", "paddingY");
-        promote(node, style, "paddingVertical", "paddingVertical");
-        promote(node, style, "paddingLeft", "paddingLeft");
-        promote(node, style, "paddingTop", "paddingTop");
-        promote(node, style, "paddingRight", "paddingRight");
-        promote(node, style, "paddingBottom", "paddingBottom");
-        promote(node, style, "margin", "margin");
-        promote(node, style, "marginX", "marginX");
-        promote(node, style, "marginHorizontal", "marginHorizontal");
-        promote(node, style, "marginY", "marginY");
-        promote(node, style, "marginVertical", "marginVertical");
-        promote(node, style, "marginLeft", "marginLeft");
-        promote(node, style, "marginTop", "marginTop");
-        promote(node, style, "marginRight", "marginRight");
-        promote(node, style, "marginBottom", "marginBottom");
-        promote(node, style, "gap", "gap");
-        promote(node, style, "position", "position");
-        promote(node, style, "absolute", "absolute");
-        promote(node, style, "x", "x");
-        promote(node, style, "y", "y");
-        promote(node, style, "left", "left");
-        promote(node, style, "top", "top");
-        promote(node, style, "right", "right");
-        promote(node, style, "bottom", "bottom");
-        promote(node, style, "justify", "justify");
-        promote(node, style, "justifyContent", "justifyContent");
-        promote(node, style, "overflow", "overflow");
-        promote(node, style, "fontSize", "fontSize");
-        promote(node, style, "lineHeight", "lineHeight");
-        promote(node, style, "fontFamily", "fontFamily");
-        promote(node, style, "fontWeight", "fontWeight");
-        promote(node, style, "fontStyle", "fontStyle");
-        promote(node, style, "textAlign", "textAlign");
-        promote(node, style, "maxTextWidth", "maxTextWidth");
-        promote(node, style, "ellipsis", "ellipsis");
-        promote(node, style, "whiteSpace", "whiteSpace");
-        promote(node, style, "overflowWrap", "overflowWrap");
-        promote(node, style, "maxLines", "maxLines");
-        promote(node, style, "textOverflow", "textOverflow");
-        promote(node, style, "marquee", "marquee");
+        for (Map.Entry<String, String> promotion : UiAuthoringContract.promotedStyles().entrySet()) {
+            String sourceKey = promotion.getKey();
+            if (!node.containsKey(sourceKey)) continue;
 
-        if (node.containsKey("align")) {
-            Object align = node.get("align");
-            if (type == UiNodeType.TEXT && align instanceof String text
+            Object value = node.get(sourceKey);
+            if ("align".equals(sourceKey)
+                    && type == UiNodeType.TEXT
+                    && value instanceof String text
                     && ("left".equalsIgnoreCase(text) || "right".equalsIgnoreCase(text)
                     || "center".equalsIgnoreCase(text) || "end".equalsIgnoreCase(text))) {
-                style.put("textAlign", align);
-            } else {
-                style.put("align", align);
+                style.put("textAlign", value);
+                continue;
             }
+            style.put(promotion.getValue(), value);
         }
-        promote(node, style, "alignItems", "alignItems");
 
         // Explicit style is last, matching browser/CSS precedence over convenience aliases.
         style.putAll(mapObject(node.get("style")));
         return style;
-    }
-
-    private static void promote(Map<?, ?> source, Map<String, Object> target, String sourceKey, String styleKey) {
-        if (source.containsKey(sourceKey)) target.put(styleKey, source.get(sourceKey));
     }
 
     private static Map<String, Object> mapObject(Object value) {
@@ -268,15 +204,13 @@ public final class UiScriptObjectConverter {
     }
 
     private static UiNodeType nodeType(String raw) {
-        String normalized = raw == null ? "panel" : raw.trim().replace('-', '_').toUpperCase(Locale.ROOT);
-        try {
-            return UiNodeType.valueOf(normalized);
-        } catch (IllegalArgumentException ignored) {
-            if (UiRuntimeValidation.enabled()) {
-                throw UiRuntimeValidation.invalid("Unknown UI node type '" + raw + "'.");
-            }
-            return UiNodeType.PANEL;
+        String canonical = UiAuthoringContract.canonicalNodeType(raw);
+        if (!UiAuthoringContract.isKnownNodeType(canonical)) {
+            throw UiRuntimeValidation.invalid(
+                    "Unknown UI node type '" + raw + "'. Known types: " + UiAuthoringContract.nodeTypes()
+            );
         }
+        return UiNodeType.valueOf(canonical.toUpperCase(Locale.ROOT));
     }
 
     private static void validateFieldShape(Map<?, ?> map, String field, Class<?> expectedType) {

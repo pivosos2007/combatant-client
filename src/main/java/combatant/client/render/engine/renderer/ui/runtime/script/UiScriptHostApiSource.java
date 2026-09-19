@@ -7,6 +7,9 @@
 
 package combatant.client.render.engine.renderer.ui.runtime.script;
 
+import combatant.client.render.engine.renderer.ui.runtime.core.UiAuthoringContract;
+import combatant.client.render.engine.renderer.ui.runtime.debug.UiRuntimeValidation;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +29,10 @@ enum UiScriptHostApiSource {
      */
     static String executableSource() {
         return SourceHolder.SOURCE;
+    }
+
+    static String contractBootstrapSource() {
+        return ContractHolder.SOURCE;
     }
 
     private static String loadCanonicalSource() {
@@ -51,6 +58,25 @@ enum UiScriptHostApiSource {
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read canonical UI script API: " + RESOURCE_PATH, e);
         }
+    }
+
+    private static final class ContractHolder {
+        private static final String SOURCE = """
+                (() => {
+                  const freeze = value => {
+                    if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+                    for (const child of Object.values(value)) freeze(child);
+                    return Object.freeze(value);
+                  };
+                  const contract = %s;
+                  Object.defineProperty(globalThis, "__combatant_ui_contract", {
+                    value: freeze(contract), writable: false, configurable: false, enumerable: false
+                  });
+                  Object.defineProperty(globalThis, "__combatant_ui_validation", {
+                    value: %s, writable: false, configurable: false, enumerable: false
+                  });
+                })();
+                """.formatted(UiAuthoringContract.rawJson(), UiRuntimeValidation.enabled());
     }
 
     private static final class SourceHolder {

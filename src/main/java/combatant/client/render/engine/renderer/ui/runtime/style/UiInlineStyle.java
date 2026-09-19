@@ -7,6 +7,7 @@
 
 package combatant.client.render.engine.renderer.ui.runtime.style;
 
+import combatant.client.render.engine.renderer.ui.runtime.core.UiAuthoringContract;
 import combatant.client.render.engine.renderer.ui.runtime.debug.UiRuntimeValidation;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiBlendSpec;
 import combatant.client.render.engine.text.FontInfo;
@@ -27,24 +28,7 @@ import java.util.Set;
 public final class UiInlineStyle {
     public static final UiInlineStyle EMPTY = new UiInlineStyle(Map.of());
 
-    private static final Set<String> KNOWN_KEYS = Set.of(
-            "width", "height", "minwidth", "minheight", "maxwidth", "maxheight",
-            "padding", "paddingx", "paddinghorizontal", "paddingy", "paddingvertical",
-            "paddingleft", "paddingtop", "paddingright", "paddingbottom",
-            "margin", "marginx", "marginhorizontal", "marginy", "marginvertical",
-            "marginleft", "margintop", "marginright", "marginbottom",
-            "gap", "grow", "flexgrow", "shrink", "flexshrink", "display", "flexdirection",
-            "position", "absolute", "left", "top", "right", "bottom", "x", "y",
-            "align", "alignitems", "justify", "justifycontent", "overflow",
-            "radius", "borderradius",
-            "background", "backgroundcolor", "bordercolor", "strokecolor", "borderwidth", "strokewidth",
-            "shadow", "boxshadow", "shadowcolor", "shadowblur", "shadowinneralpha",
-            "blur", "blurquality", "blurbrightness", "bluralpha", "liquidglass", "clip", "marquee",
-            "color", "textcolor", "fontfamily", "fontweight", "fontstyle", "fontsize", "lineheight", "fontscale", "textscale",
-            "textshadow", "texteffect", "texteffectspeed", "textbackend", "maxtextwidth", "ellipsis",
-            "whitespace", "overflowwrap", "maxlines", "textoverflow",
-            "textalign", "cursor", "blend", "opacity"
-    );
+    private static final Set<String> KNOWN_KEYS = UiAuthoringContract.normalizedStyleKeys();
 
     private final Map<String, Object> values;
 
@@ -56,7 +40,14 @@ public final class UiInlineStyle {
         LinkedHashMap<String, Object> normalized = new LinkedHashMap<>(source.size());
         for (Map.Entry<String, ?> entry : source.entrySet()) {
             if (entry.getKey() == null) continue;
-            normalized.put(normalizeKey(entry.getKey()), entry.getValue());
+            Object value = entry.getValue();
+            if (value instanceof String text && !UiAuthoringContract.acceptsStyleValue(entry.getKey(), text)) {
+                invalid(
+                        "UI inline style '" + entry.getKey() + "' has unknown value '" + text
+                                + "'. Expected one of " + UiAuthoringContract.acceptedStyleValues(entry.getKey()) + "."
+                );
+            }
+            normalized.put(normalizeKey(entry.getKey()), value);
         }
         this.values = normalized.isEmpty() ? Map.of() : Collections.unmodifiableMap(normalized);
         validateKnownKeys();

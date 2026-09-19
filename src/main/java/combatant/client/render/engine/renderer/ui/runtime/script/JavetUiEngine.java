@@ -92,6 +92,9 @@ final class JavetUiEngine implements UiScriptEngine {
         runtime.setMemorySaverModeEnabled(false);
         runtime.setBatterySaverModeEnabled(false);
         runtime.getExecutor(BOOTSTRAP_SOURCE).executeVoid();
+        runtime.getExecutor(UiScriptHostApiSource.contractBootstrapSource())
+                .setResourceName("combatant:ui/api/ui.contract.json")
+                .executeVoid();
         runtime.getExecutor(UiScriptHostApiSource.executableSource())
                 .setResourceName("combatant:ui/api/ui.js")
                 .executeVoid();

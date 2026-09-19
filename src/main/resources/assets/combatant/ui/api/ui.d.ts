@@ -6,6 +6,13 @@
  */
 
 /** Node kinds understood by the runtime layout/render/input layers. */
+/** Runtime authoring contract loaded from ui.contract.json. Useful for tooling/diagnostics. */
+export type UiAuthoringContract = {
+  readonly version: number;
+  readonly nodeTypes: readonly UiNodeType[];
+  readonly styleKeys: readonly (keyof UiInlineStyle)[];
+};
+
 export type UiNodeType =
   | "root"
   | "panel"
@@ -812,6 +819,8 @@ export type CompactHudStatProps = {
 
 /** Factory available to JS/TS authors; the runtime loads this API from the canonical ui.js resource. */
 export interface UiFactory {
+  /** Canonical runtime contract; mirrors ui.contract.json. */
+  readonly contract: UiAuthoringContract;
   /** React-like element construction without a second runtime: everything normalizes to UiNode. */
   h<P = Record<string, unknown>>(type: UiElementType<P>, init?: P | null, ...children: UiChildInput[]): UiChildInput;
   createElement<P = Record<string, unknown>>(type: UiElementType<P>, init?: P | null, ...children: UiChildInput[]): UiChildInput;

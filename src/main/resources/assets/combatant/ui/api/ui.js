@@ -7,7 +7,31 @@
 
 const UI_FRAGMENT = Object.freeze({ __combatantUiFragment: true });
 
+const UI_CONTRACT = globalThis.__combatant_ui_contract;
+if (!UI_CONTRACT || !Array.isArray(UI_CONTRACT.nodeTypes) || !Array.isArray(UI_CONTRACT.styleKeys)) {
+  throw new Error("Combatant UI API was loaded without ui.contract.json bootstrap.");
+}
+const UI_VALIDATION = globalThis.__combatant_ui_validation === true;
+const UI_NODE_TYPES = new Set(UI_CONTRACT.nodeTypes.map(type => canonicalNodeType(type)));
+const UI_STYLE_KEYS_BY_NORMALIZED = new Map(
+  UI_CONTRACT.styleKeys.map(key => [normalizeStyleKey(key), key])
+);
+const UI_PROMOTED_STYLES = Object.freeze({ ...(UI_CONTRACT.promotedStyles ?? {}) });
+const UI_EVENT_ALIASES = Object.freeze({ ...(UI_CONTRACT.eventAliases ?? {}) });
+const UI_STRUCTURAL_NODE_KEYS = new Set(UI_CONTRACT.structuralNodeKeys ?? []);
+const UI_RESERVED_NODE_KEYS = new Set([
+  ...UI_STRUCTURAL_NODE_KEYS,
+  ...Object.keys(UI_PROMOTED_STYLES),
+  ...Object.keys(UI_EVENT_ALIASES),
+]);
+
 export const ui = {
+  /** Read-only runtime authoring contract used by tooling and diagnostics. */
+  contract: Object.freeze({
+    version: Number(UI_CONTRACT.version) || 0,
+    nodeTypes: Object.freeze([...UI_NODE_TYPES]),
+    styleKeys: Object.freeze([...UI_CONTRACT.styleKeys]),
+  }),
   /**
    * React-like authoring entry point. Runtime node strings use Combatant node names
    * ("row", "column", "text", ...); function values are lightweight components.
@@ -429,158 +453,162 @@ export const ui = {
 };
 
 function normalize(type, init) {
-  const {
-    key = "",
-    class: classValue = "",
-    className = "",
-    style = {},
-    width,
-    height,
-    minWidth,
-    minHeight,
-    maxWidth,
-    maxHeight,
-    grow,
-    flexGrow,
-    shrink,
-    flexShrink,
-    display,
-    flexDirection,
-    padding,
-    paddingX,
-    paddingHorizontal,
-    paddingY,
-    paddingVertical,
-    paddingLeft,
-    paddingTop,
-    paddingRight,
-    paddingBottom,
-    margin,
-    marginX,
-    marginHorizontal,
-    marginY,
-    marginVertical,
-    marginLeft,
-    marginTop,
-    marginRight,
-    marginBottom,
-    gap,
-    position,
-    absolute,
-    x,
-    y,
-    left,
-    top,
-    right,
-    bottom,
-    align,
-    alignItems,
-    justify,
-    justifyContent,
-    overflow,
-    fontSize,
-    lineHeight,
-    fontFamily,
-    fontWeight,
-    fontStyle,
-    textAlign,
-    maxTextWidth,
-    ellipsis,
-    whiteSpace,
-    overflowWrap,
-    maxLines,
-    textOverflow,
-    marquee,
-    props = {},
-    events = {},
-    onClick,
-    onChange,
-    onInput,
-    onScroll,
-    meta = {},
-    children = [],
-    ...rest
-  } = init ?? {};
+  const canonicalType = assertNodeType(type);
+  const source = init && typeof init === "object" && !Array.isArray(init) ? init : {};
   const layoutStyle = {};
-  if (width !== undefined) layoutStyle.width = width;
-  if (height !== undefined) layoutStyle.height = height;
-  if (minWidth !== undefined) layoutStyle.minWidth = minWidth;
-  if (minHeight !== undefined) layoutStyle.minHeight = minHeight;
-  if (maxWidth !== undefined) layoutStyle.maxWidth = maxWidth;
-  if (maxHeight !== undefined) layoutStyle.maxHeight = maxHeight;
-  if (grow !== undefined) layoutStyle.flexGrow = grow;
-  if (flexGrow !== undefined) layoutStyle.flexGrow = flexGrow;
-  if (shrink !== undefined) layoutStyle.flexShrink = shrink;
-  if (flexShrink !== undefined) layoutStyle.flexShrink = flexShrink;
-  if (display !== undefined) layoutStyle.display = display;
-  if (flexDirection !== undefined) layoutStyle.flexDirection = flexDirection;
-  if (padding !== undefined) layoutStyle.padding = padding;
-  if (paddingX !== undefined) layoutStyle.paddingX = paddingX;
-  if (paddingHorizontal !== undefined) layoutStyle.paddingHorizontal = paddingHorizontal;
-  if (paddingY !== undefined) layoutStyle.paddingY = paddingY;
-  if (paddingVertical !== undefined) layoutStyle.paddingVertical = paddingVertical;
-  if (paddingLeft !== undefined) layoutStyle.paddingLeft = paddingLeft;
-  if (paddingTop !== undefined) layoutStyle.paddingTop = paddingTop;
-  if (paddingRight !== undefined) layoutStyle.paddingRight = paddingRight;
-  if (paddingBottom !== undefined) layoutStyle.paddingBottom = paddingBottom;
-  if (margin !== undefined) layoutStyle.margin = margin;
-  if (marginX !== undefined) layoutStyle.marginX = marginX;
-  if (marginHorizontal !== undefined) layoutStyle.marginHorizontal = marginHorizontal;
-  if (marginY !== undefined) layoutStyle.marginY = marginY;
-  if (marginVertical !== undefined) layoutStyle.marginVertical = marginVertical;
-  if (marginLeft !== undefined) layoutStyle.marginLeft = marginLeft;
-  if (marginTop !== undefined) layoutStyle.marginTop = marginTop;
-  if (marginRight !== undefined) layoutStyle.marginRight = marginRight;
-  if (marginBottom !== undefined) layoutStyle.marginBottom = marginBottom;
-  if (gap !== undefined) layoutStyle.gap = gap;
-  if (position !== undefined) layoutStyle.position = position;
-  if (absolute !== undefined) layoutStyle.absolute = absolute;
-  if (x !== undefined) layoutStyle.left = x;
-  if (y !== undefined) layoutStyle.top = y;
-  if (left !== undefined) layoutStyle.left = left;
-  if (top !== undefined) layoutStyle.top = top;
-  if (right !== undefined) layoutStyle.right = right;
-  if (bottom !== undefined) layoutStyle.bottom = bottom;
-  if (align !== undefined) {
-    if (type === "text" && (align === "left" || align === "right" || align === "center" || align === "end")) {
-      layoutStyle.textAlign = align;
-    } else {
-      layoutStyle.alignItems = align;
+
+  for (const [sourceKey, styleKey] of Object.entries(UI_PROMOTED_STYLES)) {
+    if (!Object.prototype.hasOwnProperty.call(source, sourceKey)) continue;
+    const value = source[sourceKey];
+    if (
+      sourceKey === "align"
+      && canonicalType === "text"
+      && (value === "left" || value === "right" || value === "center" || value === "end")
+    ) {
+      layoutStyle.textAlign = value;
+      continue;
+    }
+    layoutStyle[styleKey] = value;
+  }
+
+  const explicitStyle = isPlainObject(source.style) ? source.style : {};
+  if (UI_VALIDATION && source.style !== undefined && source.style !== null && !isPlainObject(source.style)) {
+    throw new TypeError(`UI node '${canonicalType}' field 'style' must be an object.`);
+  }
+  const resolvedStyle = ui.style(layoutStyle, explicitStyle);
+  validateInlineStyle(resolvedStyle, canonicalType);
+
+  const normalizedEvents = isPlainObject(source.events) ? { ...source.events } : {};
+  if (UI_VALIDATION && source.events !== undefined && source.events !== null && !isPlainObject(source.events)) {
+    throw new TypeError(`UI node '${canonicalType}' field 'events' must be an object.`);
+  }
+  for (const [sourceKey, eventName] of Object.entries(UI_EVENT_ALIASES)) {
+    if (source[sourceKey] !== undefined && source[sourceKey] !== null) {
+      normalizedEvents[eventName] = source[sourceKey];
     }
   }
-  if (alignItems !== undefined) layoutStyle.alignItems = alignItems;
-  if (justify !== undefined) layoutStyle.justifyContent = justify;
-  if (justifyContent !== undefined) layoutStyle.justifyContent = justifyContent;
-  if (overflow !== undefined) layoutStyle.overflow = overflow;
-  if (fontSize !== undefined) layoutStyle.fontSize = fontSize;
-  if (lineHeight !== undefined) layoutStyle.lineHeight = lineHeight;
-  if (fontFamily !== undefined) layoutStyle.fontFamily = fontFamily;
-  if (fontWeight !== undefined) layoutStyle.fontWeight = fontWeight;
-  if (fontStyle !== undefined) layoutStyle.fontStyle = fontStyle;
-  if (textAlign !== undefined) layoutStyle.textAlign = textAlign;
-  if (maxTextWidth !== undefined) layoutStyle.maxTextWidth = maxTextWidth;
-  if (ellipsis !== undefined) layoutStyle.ellipsis = ellipsis;
-  if (whiteSpace !== undefined) layoutStyle.whiteSpace = whiteSpace;
-  if (overflowWrap !== undefined) layoutStyle.overflowWrap = overflowWrap;
-  if (maxLines !== undefined) layoutStyle.maxLines = maxLines;
-  if (textOverflow !== undefined) layoutStyle.textOverflow = textOverflow;
-  if (marquee !== undefined) layoutStyle.marquee = marquee;
+  if (UI_VALIDATION) validateEvents(normalizedEvents, canonicalType);
 
-  const normalizedEvents = { ...events };
-  if (onClick !== undefined && onClick !== null) normalizedEvents.click = onClick;
-  if (onChange !== undefined && onChange !== null) normalizedEvents.change = onChange;
-  if (onInput !== undefined && onInput !== null) normalizedEvents.input = onInput;
-  if (onScroll !== undefined && onScroll !== null) normalizedEvents.scroll = onScroll;
+  const props = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (UI_RESERVED_NODE_KEYS.has(key)) continue;
+    props[key] = value;
+  }
+  if (isPlainObject(source.props)) {
+    Object.assign(props, source.props);
+  } else if (UI_VALIDATION && source.props !== undefined && source.props !== null) {
+    throw new TypeError(`UI node '${canonicalType}' field 'props' must be an object.`);
+  }
+
+  const meta = isPlainObject(source.meta) ? source.meta : {};
+  if (UI_VALIDATION && source.meta !== undefined && source.meta !== null && !isPlainObject(source.meta)) {
+    throw new TypeError(`UI node '${canonicalType}' field 'meta' must be an object.`);
+  }
+
   return {
-    type,
-    key,
-    class: ui.cls(className, classValue),
-    style: ui.style(layoutStyle, style && typeof style === "object" && !Array.isArray(style) ? style : {}),
-    props: { ...rest, ...props },
+    type: canonicalType,
+    key: typeof source.key === "string" ? source.key : "",
+    class: ui.cls(
+      typeof source.className === "string" ? source.className : "",
+      typeof source.class === "string" ? source.class : ""
+    ),
+    style: resolvedStyle,
+    props,
     events: normalizedEvents,
     meta,
-    children: normalizeChildren(children),
+    children: normalizeChildren(source.children ?? []),
   };
+}
+
+function assertNodeType(type) {
+  const canonical = canonicalNodeType(type);
+  if (UI_NODE_TYPES.has(canonical)) return canonical;
+  const suggestion = closest(canonical, UI_NODE_TYPES);
+  const suffix = suggestion ? ` Did you mean '${suggestion}'?` : "";
+  throw new TypeError(`Unknown UI node type '${String(type)}'.${suffix}`);
+}
+
+function canonicalNodeType(type) {
+  return String(type ?? "").trim().replace(/-/g, "_").toLowerCase();
+}
+
+function normalizeStyleKey(key) {
+  return String(key ?? "").trim().replace(/[-_\\s]/g, "").toLowerCase();
+}
+
+function canonicalStyleKey(key) {
+  return UI_STYLE_KEYS_BY_NORMALIZED.get(normalizeStyleKey(key));
+}
+
+function validateInlineStyle(style, nodeType) {
+  if (!UI_VALIDATION || !isPlainObject(style)) return;
+  const styleValues = UI_CONTRACT.styleValues ?? {};
+  for (const [rawKey, value] of Object.entries(style)) {
+    const key = canonicalStyleKey(rawKey);
+    if (!key) {
+      const suggestion = closest(normalizeStyleKey(rawKey), UI_STYLE_KEYS_BY_NORMALIZED.keys(), normalizeStyleKey);
+      const suffix = suggestion ? ` Did you mean '${UI_STYLE_KEYS_BY_NORMALIZED.get(normalizeStyleKey(suggestion)) ?? suggestion}'?` : "";
+      throw new TypeError(`Unknown UI style property '${rawKey}' on '${nodeType}'.${suffix}`);
+    }
+    const accepted = styleValues[key];
+    if (!Array.isArray(accepted) || value === null || value === undefined || typeof value !== "string") continue;
+    const normalized = value.trim().toLowerCase();
+    if (!accepted.includes(normalized)) {
+      throw new TypeError(
+        `Invalid UI style value '${value}' for '${key}' on '${nodeType}'. Expected one of: ${accepted.join(", ")}.`
+      );
+    }
+  }
+}
+
+function validateEvents(events, nodeType) {
+  for (const [eventName, action] of Object.entries(events)) {
+    if (action === null || action === undefined) continue;
+    if (typeof action !== "string") {
+      throw new TypeError(`UI event '${eventName}' on '${nodeType}' must name a string action.`);
+    }
+  }
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function closest(value, candidates, normalizer = candidate => candidate) {
+  const needle = String(value ?? "");
+  let best = null;
+  let bestDistance = Infinity;
+  for (const candidate of candidates) {
+    const normalizedCandidate = String(normalizer(candidate));
+    const distance = editDistance(needle, normalizedCandidate);
+    if (distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  const limit = Math.max(2, Math.floor(needle.length * 0.4));
+  return bestDistance <= limit ? best : null;
+}
+
+function editDistance(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  const curr = new Array(b.length + 1);
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(
+        curr[j - 1] + 1,
+        prev[j] + 1,
+        prev[j - 1] + cost
+      );
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
+  }
+  return prev[b.length];
 }
 
 function normalizeChildren(value) {

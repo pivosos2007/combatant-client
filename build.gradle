@@ -207,6 +207,144 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+def resolveUiContractSource = { roots, relativePath, fallbackPath ->
+    File resolved = roots.collect { new File(it, relativePath) }.find { it.isFile() }
+    resolved != null ? resolved : file(fallbackPath)
+}
+
+tasks.register("verifyUiApiContract") {
+    group = "verification"
+    description = "Verifies the canonical Combatant UI authoring contract against Java and TypeScript surfaces."
+
+    inputs.files(
+            file("src/main/resources/assets/combatant/ui/api/ui.contract.json"),
+            file("src/main/resources/assets/combatant/ui/api/ui.d.ts"),
+            file("src/main/java/combatant/client/render/engine/renderer/ui/runtime/core/UiNodeType.java"),
+            file("resources/assets/combatant/ui/api/ui.contract.json"),
+            file("resources/assets/combatant/ui/api/ui.d.ts"),
+            file("java/combatant/client/render/engine/renderer/ui/runtime/core/UiNodeType.java")
+    )
+
+    doLast {
+        File contractFile = resolveUiContractSource(
+                sourceSets.main.resources.srcDirs,
+                "assets/combatant/ui/api/ui.contract.json",
+                "resources/assets/combatant/ui/api/ui.contract.json"
+        )
+        File declarationsFile = resolveUiContractSource(
+                sourceSets.main.resources.srcDirs,
+                "assets/combatant/ui/api/ui.d.ts",
+                "resources/assets/combatant/ui/api/ui.d.ts"
+        )
+        File nodeTypeFile = resolveUiContractSource(
+                sourceSets.main.java.srcDirs,
+                "combatant/client/render/engine/renderer/ui/runtime/core/UiNodeType.java",
+                "java/combatant/client/render/engine/renderer/ui/runtime/core/UiNodeType.java"
+        )
+
+        [contractFile, declarationsFile, nodeTypeFile].each { candidate ->
+            if (!candidate.isFile()) {
+                throw new GradleException("UI contract verification input is missing: ${candidate}")
+            }
+        }
+
+        def contract = new groovy.json.JsonSlurper().parse(contractFile)
+        def rawNodeTypes = (contract.nodeTypes ?: []).collect { String.valueOf(it) }
+        def expectedNodeTypes = new LinkedHashSet(rawNodeTypes)
+        if (expectedNodeTypes.isEmpty()) {
+            throw new GradleException("ui.contract.json must declare at least one node type.")
+        }
+        if (expectedNodeTypes.size() != rawNodeTypes.size()) {
+            throw new GradleException("ui.contract.json contains duplicate nodeTypes.")
+        }
+
+        String enumSource = nodeTypeFile.getText("UTF-8")
+        def enumMatcher = enumSource =~ /(?s)public\s+enum\s+UiNodeType\s*\{(.*)\}\s*$/
+        if (!enumMatcher.find()) {
+            throw new GradleException("Could not parse UiNodeType enum for UI contract verification.")
+        }
+        def enumNames = new LinkedHashSet()
+        (enumMatcher.group(1) =~ /(?m)^\s*([A-Z][A-Z0-9_]*)\s*,?\s*$/).each { match ->
+            enumNames.add(match[1].toLowerCase(java.util.Locale.ROOT))
+        }
+        if (enumNames != expectedNodeTypes) {
+            def missingInJava = new LinkedHashSet(expectedNodeTypes)
+            missingInJava.removeAll(enumNames)
+            def missingInContract = new LinkedHashSet(enumNames)
+            missingInContract.removeAll(expectedNodeTypes)
+            throw new GradleException(
+                    "UI node-type contract mismatch. Missing in UiNodeType=${missingInJava}, "
+                            + "missing in ui.contract.json=${missingInContract}"
+            )
+        }
+
+        String declarations = declarationsFile.getText("UTF-8")
+        def nodeTypeMatcher = declarations =~ /(?s)export\s+type\s+UiNodeType\s*=\s*(.*?);/
+        if (!nodeTypeMatcher.find()) {
+            throw new GradleException("Could not parse UiNodeType from ui.d.ts.")
+        }
+        def declarationNodeTypes = new LinkedHashSet()
+        (nodeTypeMatcher.group(1) =~ /"([^"]+)"/).each { match -> declarationNodeTypes.add(match[1]) }
+        if (declarationNodeTypes != expectedNodeTypes) {
+            def missingInTypes = new LinkedHashSet(expectedNodeTypes)
+            missingInTypes.removeAll(declarationNodeTypes)
+            def extraInTypes = new LinkedHashSet(declarationNodeTypes)
+            extraInTypes.removeAll(expectedNodeTypes)
+            throw new GradleException(
+                    "UI TypeScript node-type contract mismatch. Missing=${missingInTypes}, extra=${extraInTypes}"
+            )
+        }
+
+        def styleMatcher = declarations =~ /(?s)export\s+type\s+UiInlineStyle\s*=\s*\{(.*?)\r?\n\};/
+        if (!styleMatcher.find()) {
+            throw new GradleException("Could not parse UiInlineStyle from ui.d.ts.")
+        }
+        def declarationStyleKeys = new LinkedHashSet()
+        (styleMatcher.group(1) =~ /(?m)^\s{2}([A-Za-z_$][A-Za-z0-9_$]*)\?:/).each { match ->
+            declarationStyleKeys.add(match[1])
+        }
+        def rawStyleKeys = (contract.styleKeys ?: []).collect { String.valueOf(it) }
+        def expectedStyleKeys = new LinkedHashSet(rawStyleKeys)
+        if (expectedStyleKeys.size() != rawStyleKeys.size()) {
+            throw new GradleException("ui.contract.json contains duplicate styleKeys.")
+        }
+        if (declarationStyleKeys != expectedStyleKeys) {
+            def missingInTypes = new LinkedHashSet(expectedStyleKeys)
+            missingInTypes.removeAll(declarationStyleKeys)
+            def extraInTypes = new LinkedHashSet(declarationStyleKeys)
+            extraInTypes.removeAll(expectedStyleKeys)
+            throw new GradleException(
+                    "UI TypeScript style-key contract mismatch. Missing=${missingInTypes}, extra=${extraInTypes}"
+            )
+        }
+
+        (contract.promotedStyles ?: [:]).each { sourceKey, targetKey ->
+            if (!expectedStyleKeys.contains(String.valueOf(targetKey))) {
+                throw new GradleException(
+                        "UI promoted style '${sourceKey}' targets unknown style key '${targetKey}'."
+                )
+            }
+        }
+        (contract.styleValues ?: [:]).each { styleKey, values ->
+            if (!expectedStyleKeys.contains(String.valueOf(styleKey))
+                    && !(contract.promotedStyles ?: [:]).containsKey(styleKey)) {
+                throw new GradleException("UI styleValues declares unknown style key '${styleKey}'.")
+            }
+            if (!(values instanceof Collection) || values.isEmpty()) {
+                throw new GradleException("UI styleValues['${styleKey}'] must be a non-empty array.")
+            }
+        }
+    }
+}
+
+tasks.named("compileJava") {
+    dependsOn tasks.named("verifyUiApiContract")
+}
+
+tasks.named("processResources") {
+    dependsOn tasks.named("verifyUiApiContract")
+}
+
 // Packaging is intentionally independent from verification. Tests remain available through
 // the explicit `test` / `check` tasks, but the normal `build` path only assembles artifacts.
 tasks.named('build') {
