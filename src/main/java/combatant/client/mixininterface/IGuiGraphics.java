@@ -9,12 +9,12 @@ package combatant.client.mixininterface;
 
 public interface IGuiGraphics {
     /**
-     * Runs a task without vanilla UI scaling applied to DrawContext's matrix stack.
+     * Runs a task without vanilla UI scaling applied to {@code net.minecraft.client.gui.GuiGraphicsExtractor} matrix stack.
      */
     void combatant$runUnscaled(Runnable task);
 
     /**
-     * Runs a task with an additional 2D transform applied to DrawContext's matrix stack.
+     * Runs a task with an additional 2D transform applied to {@code net.minecraft.client.gui.GuiGraphicsExtractor} matrix stack.
      * Order: translate(tx, ty) then rotate(angleRad). Angle in radians.
      */
     void combatant$withTransform(float tx, float ty, float angleRad, Runnable task);

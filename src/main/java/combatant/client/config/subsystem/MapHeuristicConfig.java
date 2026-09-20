@@ -8,7 +8,6 @@
 package combatant.client.config.subsystem;
 
 import combatant.client.config.SettingDef;
-import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
 
 import java.util.List;
@@ -17,7 +16,6 @@ import java.util.List;
 public final class MapHeuristicConfig extends SubsystemConfig {
     public static final MapHeuristicConfig INSTANCE = new MapHeuristicConfig();
 
-    private final BooleanValue enabled = bool("enabled", true);
     private final NumberValue<Integer> maxSamplesPerTarget = number("maxSamplesPerTarget", 24, 2, 128);
     private final NumberValue<Integer> maxSampleAgeMs = number("maxSampleAgeMs", 120000, 1000, 900000);
     private final NumberValue<Double> minBaseline = number("minBaseline", 8.0, 0.0, 512.0);
@@ -36,7 +34,6 @@ public final class MapHeuristicConfig extends SubsystemConfig {
 
     private MapHeuristicConfig() { loadConfig(); }
     public static MapHeuristicConfig get() { return INSTANCE; }
-    public boolean enabled() { return enabled.get(); }
     public int maxSamplesPerTarget() { return maxSamplesPerTarget.get().intValue(); }
     public int maxSampleAgeMs() { return maxSampleAgeMs.get().intValue(); }
     public double minBaseline() { return minBaseline.get().doubleValue(); }
@@ -56,7 +53,6 @@ public final class MapHeuristicConfig extends SubsystemConfig {
     @Override
     public List<SettingDef> getSettingDefs() {
         return List.of(
-                SettingDef.bool("enabled", enabled),
                 SettingDef.number("maxSamplesPerTarget", maxSamplesPerTarget),
                 SettingDef.number("maxSampleAgeMs", maxSampleAgeMs),
                 SettingDef.number("minBaseline", minBaseline),

@@ -17,6 +17,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.textures.GpuSampler;
 import combatant.client.render.engine.core.CombatantRenderSystem;
+import combatant.client.render.engine.deferred.DevDeferredRuntime;
 import combatant.client.render.engine.material.MaterialAtlasManager;
 import combatant.client.render.sodium.SodiumSecondaryTerrainContext;
 import combatant.client.util.logging.DebugLog;
@@ -62,10 +63,10 @@ public abstract class SodiumDefaultChunkRendererMixin {
         if (secondary != null) {
             return secondary.openPass(encoder, label);
         }
-        if (terrainPass.isTranslucent() || !CombatantRenderSystem.deferredWorld().enabled()) {
+        if (terrainPass.isTranslucent() || !DevDeferredRuntime.world().enabled()) {
             return original.call(encoder, label, color, clearColor, depth, clearDepth);
         }
-        RenderPass pass = CombatantRenderSystem.deferredWorld().openGeometryPass(
+        RenderPass pass = DevDeferredRuntime.world().openGeometryPass(
                 encoder, label, color, clearColor, depth, clearDepth
         );
         combatant$logPrimaryCaptureContract(matrices, color, depth);
@@ -141,7 +142,7 @@ public abstract class SodiumDefaultChunkRendererMixin {
         original.call(pass, name, view, sampler);
         if (!"u_BlockTex".equals(name)) return;
         if (terrainPass.isTranslucent() || SodiumSecondaryTerrainContext.active()) return;
-        if (!CombatantRenderSystem.deferredWorld().enabled()) return;
+        if (!DevDeferredRuntime.world().enabled()) return;
         MaterialAtlasManager.global().bind(pass, sampler, view);
     }
 

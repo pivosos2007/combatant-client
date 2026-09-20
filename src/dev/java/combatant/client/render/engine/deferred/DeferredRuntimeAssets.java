@@ -118,7 +118,7 @@ public enum DeferredRuntimeAssets {
     @AssetLoad(value = AssetLoadPhase.POST_RELOAD, scope = SCOPE, order = 100)
     public static void reload(ResourceManager resources) {
         prepare(resources, true);
-        CombatantRenderSystem.deferredWorld().requestHistoryReset(DeferredHistoryResetReason.RESOURCE_RELOAD);
+        DevDeferredRuntime.world().requestHistoryReset(DeferredHistoryResetReason.RESOURCE_RELOAD);
     }
 
     /** Device/backend switches happen outside the ordinary resource-reload hook sequence. */
@@ -236,9 +236,9 @@ public enum DeferredRuntimeAssets {
         // Native .comp programs are Combatant-owned rather than ShaderManager-owned. Resource
         // reload must therefore explicitly discard/recompile them while the scope is active.
         if (rebuildNativePrograms) {
-            CombatantRenderSystem.deferredGraph().releaseBackendResources(CombatantRenderSystem.rhi());
+            DevDeferredRuntime.graph().releaseBackendResources(CombatantRenderSystem.rhi());
         }
-        CombatantRenderSystem.deferredGraph().prepareBackendResources();
+        DevDeferredRuntime.graph().prepareBackendResources();
         preparedResourceGeneration = combatant.client.util.resources.RenderResourceReadiness.generation();
         DebugLog.renderThreadOnChange(
                 "combatant.deferred.assets",
@@ -251,7 +251,7 @@ public enum DeferredRuntimeAssets {
     @AssetLoad(value = AssetLoadPhase.DEACTIVATE, scope = SCOPE, order = 100)
     public static void release(ResourceManager resources) {
         RenderSystem.assertOnRenderThread();
-        CombatantRenderSystem.deferredGraph().releaseBackendResources(CombatantRenderSystem.rhi());
+        DevDeferredRuntime.graph().releaseBackendResources(CombatantRenderSystem.rhi());
         preparedResourceGeneration = Long.MIN_VALUE;
         // The immutable RenderPipeline descriptor can stay registered. Combatant-owned native
         // programs are released here; Mojang may retain its graphics pipeline cache until the next

@@ -25,7 +25,10 @@ public final class MapUiConfig extends SubsystemConfig {
     private final BooleanValue hudEnabled = bool("hudEnabled", true);
     private final BooleanValue hudWaypointMarkers = bool("hudWaypointMarkers", true);
     private final BooleanValue hudPlayerMarkers = bool("hudPlayerMarkers", true);
-    private final NumberValue<Integer> hudPlayerMaxDistance = number("hudPlayerMaxDistance", 100_000, 32, 1_000_000);
+    private final NumberValue<Integer> hudPlayerMaxDistance = number("hudPlayerMaxDistance", 20_000, 32, 1_000_000);
+    private final BooleanValue showInvisibleRadar = bool("showInvisibleRadar", false);
+    private final BooleanValue allowServerPlayerData = bool("allowServerPlayerData", false);
+    private final BooleanValue allowServerConfiguration = bool("allowServerConfiguration", false);
 
     private MapUiConfig() {
         loadConfig();
@@ -91,6 +94,30 @@ public final class MapUiConfig extends SubsystemConfig {
         return hudPlayerMaxDistance;
     }
 
+    public boolean showInvisibleRadar() {
+        return showInvisibleRadar.get();
+    }
+
+    public BooleanValue showInvisibleRadarValue() {
+        return showInvisibleRadar;
+    }
+
+    public boolean allowServerPlayerData() {
+        return allowServerPlayerData.get();
+    }
+
+    public BooleanValue allowServerPlayerDataValue() {
+        return allowServerPlayerData;
+    }
+
+    public boolean allowServerConfiguration() {
+        return allowServerConfiguration.get();
+    }
+
+    public BooleanValue allowServerConfigurationValue() {
+        return allowServerConfiguration;
+    }
+
     @Override
     public List<SettingDef> getSettingDefs() {
         return List.of(
@@ -104,7 +131,10 @@ public final class MapUiConfig extends SubsystemConfig {
                 SettingDef.bool("hudPlayerMarkers", hudPlayerMarkers)
                         .visibleWhen(this::hudEnabled),
                 SettingDef.number("hudPlayerMaxDistance", hudPlayerMaxDistance)
-                        .visibleWhen(() -> hudEnabled() && hudPlayerMarkers())
+                        .visibleWhen(() -> hudEnabled() && hudPlayerMarkers()),
+                SettingDef.bool("showInvisibleRadar", showInvisibleRadar),
+                SettingDef.bool("allowServerPlayerData", allowServerPlayerData),
+                SettingDef.bool("allowServerConfiguration", allowServerConfiguration)
         );
     }
 }

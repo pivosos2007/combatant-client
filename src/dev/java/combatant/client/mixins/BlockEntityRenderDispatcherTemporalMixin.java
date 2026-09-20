@@ -8,7 +8,7 @@
 package combatant.client.mixins;
 
 import combatant.client.mixininterface.ITemporalMotionRenderState;
-import combatant.client.render.engine.core.CombatantRenderSystem;
+import combatant.client.render.engine.deferred.DevDeferredRuntime;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
 import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
@@ -32,6 +32,6 @@ public abstract class BlockEntityRenderDispatcherTemporalMixin {
         BlockEntityRenderState state = cir.getReturnValue();
         if (!(state instanceof ITemporalMotionRenderState temporalState)) return;
         temporalState.combatant$setTemporalMotionState(
-                CombatantRenderSystem.deferredWorld().captureBlockEntityMotion(blockEntity, state));
+                DevDeferredRuntime.world().captureBlockEntityMotion(blockEntity, state));
     }
 }

@@ -6,13 +6,11 @@
 package combatant.client.features.maplink.model;
 
 public enum MapLinkProfileStatus {
-    DISABLED,
     IDLE,
     CONNECTING,
     LIVE,
     STALE,
     AUTH_ERROR,
     HTTP_ERROR,
-    PARSE_ERROR,
-    WORLD_UNMAPPED
+    PARSE_ERROR
 }

@@ -17,7 +17,6 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import com.mojang.blaze3d.resource.ResourceHandle;
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.minecraft.client.CloudStatus;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
@@ -37,17 +36,16 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.BlockHighlight;
+import combatant.client.features.module.modules.visuals.MotionBlur;
+import combatant.client.features.module.modules.visuals.ReimaginedVisual;
 import combatant.client.features.module.modules.visuals.WorldTweaks;
 import combatant.client.mixins.accessors.GameRendererAccessor;
 import combatant.client.mixins.accessors.LevelRendererAccessor;
-import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.depth.PreTranslucentDepth;
 import combatant.client.render.engine.depth.WorldSceneDepth;
-import combatant.client.render.engine.world.environment.CloudProfileRegistry;
-import combatant.client.render.engine.world.environment.DimensionRenderProfile;
-import combatant.client.render.engine.world.environment.DimensionRenderProfileRegistry;
 import combatant.client.render.iris.IrisRuntime;
+import combatant.client.render.sky.CustomSkyboxRenderer;
 
 @Mixin(LevelRenderer.class)
 public abstract class LevelRendererMixin {
@@ -95,9 +93,8 @@ public abstract class LevelRendererMixin {
 
     @Unique
     private static boolean combatant$needsWorldSceneDepthCapture() {
-        // Retained as a compatibility gate for the existing capture hook. ReimaginedVisual no
-        // longer uses WorldSceneDepth; deferred camera post consumes FINAL_RESOLVED_DEPTH.
-        return false;
+        ReimaginedVisual visual = Modules.get(ReimaginedVisual.class);
+        return (visual != null && visual.needsWorldSceneDepthCapture()) || MotionBlur.isActiveStatic();
     }
 
     @Unique
@@ -142,24 +139,6 @@ public abstract class LevelRendererMixin {
             );
         }
 
-        // Refine the early GameRenderer capture with LevelRenderer's exact position matrix. The
-        // primary source treats a second capture for the same frame as an update, so temporal
-        // history advances exactly once and never depends on late HUD/world callbacks.
-        var frame = CombatantRenderSystem.currentContext();
-        if (frame != null && cameraRenderState != null && cameraRenderState.pos != null) {
-            org.joml.Matrix4f projection = CombatantWorldMatrices.renderProjectionMatrix();
-            org.joml.Matrix4f unjitteredProjection = CombatantWorldMatrices.unjitteredRenderProjectionMatrix();
-            org.joml.Vector2f jitter = CombatantWorldMatrices.jitterPixels();
-            if (projection == null) projection = cameraRenderState.projectionMatrix;
-            if (unjitteredProjection == null) unjitteredProjection = projection;
-            if (projection != null && unjitteredProjection != null) {
-                CombatantRenderSystem.deferredWorld().capturePrimaryView(
-                        frame.frameId(), positionMatrix, projection, unjitteredProjection, jitter,
-                        cameraRenderState.pos, cameraRenderState.depthFar
-                );
-            }
-
-        }
     }
 
     @Inject(
@@ -237,38 +216,26 @@ public abstract class LevelRendererMixin {
         });
     }
 
-    @Inject(method = "addCloudsPass", at = @At("HEAD"), cancellable = true)
-    private void combatant$deferredOwnsClouds(
-            FrameGraphBuilder frameGraphBuilder,
-            CloudStatus cloudStatus,
-            net.minecraft.world.phys.Vec3 cameraPosition,
-            long ticks,
-            float partialTick,
-            int cloudColor,
-            float cloudHeight,
-            int renderDistance,
-            CallbackInfo ci
-    ) {
-        if (cloudStatus == CloudStatus.OFF || IrisRuntime.isShaderpackRendererActive()) return;
-        if (!CombatantRenderSystem.deferredWorld().enabled()) return;
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null || minecraft.level == null) return;
-        DimensionRenderProfile profile = DimensionRenderProfileRegistry.resolve(minecraft.level.dimension());
-        if (!CloudProfileRegistry.resolve(profile.cloudProfile()).valid()) return;
-        ci.cancel();
-    }
-
-    @Inject(method = "addSkyPass", at = @At("HEAD"))
-    private void combatant$applyVanillaSkyOverrides(FrameGraphBuilder frameGraphBuilder,
-                                                     net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState,
-                                                     GpuBufferSlice fog, CallbackInfo ci) {
+    @Inject(method = "addSkyPass", at = @At("HEAD"), cancellable = true)
+    private void combatant$renderSky(FrameGraphBuilder frameGraphBuilder,
+                                     net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState,
+                                     GpuBufferSlice fog, CallbackInfo ci) {
+        if (IrisRuntime.isModLoaded() || shouldSkipSky(cameraRenderState)) return;
         LevelRendererAccessor accessor = (LevelRendererAccessor) this;
         SkyRenderState sky = accessor.combatant$getWorldRenderState().skyRenderState;
         if (sky == null || sky.skybox != DimensionType.Skybox.OVERWORLD) return;
         WorldTweaks worldTweaks = Modules.get(WorldTweaks.class);
         if (worldTweaks != null) worldTweaks.applySkyOverrides(sky);
-        // No cancellation: deferred OFF uses Minecraft's standard sky. Deferred sky ownership is
-        // handled by DeferredWorldPipeline, never by the legacy ReimaginedVisual shader sky.
+        ReimaginedVisual visual = Modules.get(ReimaginedVisual.class);
+        if (visual == null || !visual.isEnabled()) return;
+        Minecraft client = Minecraft.getInstance();
+        net.minecraft.client.Camera camera = client != null && client.gameRenderer != null
+                ? client.gameRenderer.mainCamera() : null;
+        if (camera == null) return;
+        FramePass pass = frameGraphBuilder.addPass("combatant_sky");
+        targets.main = pass.readsAndWrites(targets.main);
+        pass.executes(() -> CustomSkyboxRenderer.render(camera, fog, sky, accessor.combatant$getSkyRendering()));
+        ci.cancel();
     }
 
     @Inject(

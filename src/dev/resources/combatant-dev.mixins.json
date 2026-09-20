@@ -5,7 +5,17 @@
   "package": "combatant.client.mixins",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "ProfilersMixin"
+    "ProfilersMixin",
+    "DevDeferredGameRendererMixin",
+    "DevDeferredLevelRendererMixin",
+    "DevDeferredClientPacketListenerMixin",
+    "BlockEntityRenderDispatcherTemporalMixin",
+    "BlockEntityRenderStateTemporalMixin",
+    "EntityRendererTemporalMixin",
+    "EntityRenderStateTemporalMixin",
+    "sodium.SodiumDefaultChunkRendererMixin",
+    "sodium.DevDeferredSodiumShaderChunkRendererMixin",
+    "sodium.DevDeferredSodiumWorldRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

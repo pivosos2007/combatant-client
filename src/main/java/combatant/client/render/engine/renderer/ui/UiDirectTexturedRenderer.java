@@ -28,7 +28,7 @@ import net.minecraft.client.Minecraft;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Direct textured lowering routed through the production UiPassExecutor. */
+/** Submits textured UI meshes. */
 public final class UiDirectTexturedRenderer {
     private UiDirectTexturedRenderer() {
     }

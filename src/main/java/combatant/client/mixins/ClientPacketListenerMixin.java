@@ -34,8 +34,6 @@ import combatant.client.features.module.modules.visuals.TotemFX;
 import combatant.client.features.module.modules.visuals.WorldTweaks;
 import combatant.client.features.relations.StaffTracker;
 import combatant.client.util.logging.DebugLog;
-import combatant.client.render.engine.core.CombatantRenderSystem;
-import combatant.client.render.engine.deferred.DeferredHistoryResetReason;
 import combatant.client.util.logging.ServerDumpUtil;
 import combatant.client.util.player.NetworkStatsUtil;
 import combatant.client.util.player.effect.StatusEffectHeuristics;
@@ -58,11 +56,6 @@ public abstract class ClientPacketListenerMixin {
     @Unique
     private static final Pattern PING_PATTERN =
             Pattern.compile("Пинг:\\s*(\\d+)");
-
-    @Inject(method = "handleMovePlayer", at = @At("HEAD"))
-    private void combatant$invalidateDeferredHistoryOnTeleport(ClientboundPlayerPositionPacket packet, CallbackInfo ci) {
-        CombatantRenderSystem.deferredWorld().requestHistoryReset(DeferredHistoryResetReason.TELEPORT);
-    }
 
     @Inject(method = "handlePlayerAbilities", at = @At("HEAD"), cancellable = true)
     private void combatant$flightAbilities(ClientboundPlayerAbilitiesPacket packet, CallbackInfo ci) {

@@ -85,7 +85,7 @@ public final class Pl3xMapConnection extends AbstractMapLinkConnection {
     }
 
     private void resolveCadenceOnce(PlayerUpdate update) {
-        if (cadenceResolved || profile.refreshIntervalMs() > 0) return;
+        if (cadenceResolved) return;
         synchronized (this) {
             if (cadenceResolved) return;
             cadenceResolved = true;

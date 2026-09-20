@@ -11,12 +11,12 @@ import combatant.client.config.values.MapLinkProfilesValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.maplink.model.MapLinkProfile;
 
-import java.util.Comparator;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
-/**
- * Backend ownership for MapLink networking. No GUI contributor is registered yet.
- */
+/** Backend ownership for MapLink networking and persisted server profiles. */
 @ConfigSubsystem(value = "map/maplink", settingOwner = "maplink")
 public final class MapLinkConfig extends SubsystemConfig {
     public static final MapLinkConfig INSTANCE = new MapLinkConfig();
@@ -59,7 +59,6 @@ public final class MapLinkConfig extends SubsystemConfig {
     public List<MapLinkProfile> profiles() {
         return profiles.get().stream()
                 .filter(MapLinkConfig::isConfiguredProfile)
-                .sorted(Comparator.comparingInt(MapLinkProfile::sourcePriority).reversed())
                 .toList();
     }
 
@@ -76,6 +75,40 @@ public final class MapLinkConfig extends SubsystemConfig {
     public void setProfiles(List<MapLinkProfile> newProfiles) {
         profiles.set(newProfiles);
         saveConfig();
+    }
+
+    /** Stores auto-discovered web-map world aliases for invisibility/reconnect recovery. */
+    public synchronized void rememberDimensionMappings(String profileId, Map<String, String> learnedMappings) {
+        if (profileId == null || profileId.isBlank() || learnedMappings == null || learnedMappings.isEmpty()) return;
+        List<MapLinkProfile> current = profiles.get();
+        List<MapLinkProfile> next = new ArrayList<>(current.size());
+        boolean changed = false;
+        for (MapLinkProfile profile : current) {
+            if (profile == null || !profile.id().equals(profileId)) {
+                next.add(profile);
+                continue;
+            }
+            LinkedHashMap<String, String> mappings = new LinkedHashMap<>(profile.dimensionMappings());
+            boolean profileChanged = false;
+            for (Map.Entry<String, String> entry : learnedMappings.entrySet()) {
+                String providerWorld = entry.getKey() == null ? "" : entry.getKey().trim();
+                String minecraftDimension = entry.getValue() == null ? "" : entry.getValue().trim();
+                if (providerWorld.isBlank() || minecraftDimension.isBlank()) continue;
+                String previous = mappings.put(providerWorld, minecraftDimension);
+                if (!minecraftDimension.equals(previous)) profileChanged = true;
+            }
+            if (profileChanged) {
+                changed = true;
+                next.add(new MapLinkProfile(profile.id(), profile.displayName(), profile.serverMatcher(), profile.baseUrl(),
+                        profile.providerType(), profile.maxUpdateDelayMs(), profile.defaultY(), mappings, profile.requestHeaders()));
+            } else {
+                next.add(profile);
+            }
+        }
+        if (changed) {
+            profiles.set(next);
+            saveConfig();
+        }
     }
 
     @Override

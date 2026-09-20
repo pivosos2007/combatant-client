@@ -20,8 +20,7 @@ public record MapLinkObservation(
         double z,
         long fetchTimestamp,
         long providerTimestamp,
-        String revision,
-        int sourcePriority
+        String revision
 ) {
     public boolean worldMapped() {
         return mappedWorld != null && !mappedWorld.isBlank();

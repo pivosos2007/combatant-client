@@ -158,8 +158,8 @@ enum UnifiedSettingRenderer {
         UnifiedSettingsSkin.syncTheme();
         SliderSetting.UiState ui = setting.ui();
         NumberValue<N> value = setting.value();
-        double min = value.getMin().doubleValue();
-        double max = value.getMax().doubleValue();
+        double min = setting.sliderMin();
+        double max = setting.sliderMax();
         double val = value.get().doubleValue();
 
         ui.lastX = x;
@@ -309,7 +309,7 @@ enum UnifiedSettingRenderer {
         float trackH = m(2.4f, 1.2f);
         if (!UnifiedSettingsSkin.inside(mx, my, trackX, trackY - m(6f, 2f), trackW, trackH + m(12f, 4f))) return;
         ui.dragging = true;
-        setSliderValueFromMouse(setting, (float) mx, trackX, trackW, setting.value().getMin().doubleValue(), setting.value().getMax().doubleValue());
+        setSliderValueFromMouse(setting, (float) mx, trackX, trackW, setting.sliderMin(), setting.sliderMax());
     }
 
     static <N extends Number> void mouseReleased(SliderSetting<N> setting, double mx, double my, int button) {

@@ -151,7 +151,7 @@ public final class HeuristicRuntime {
 
     public boolean offer(HeuristicObservation observation) {
         LocationSessionKey session = activeSession.get();
-        if (observation == null || observation.targetUuid() == null || !config.enabled()
+        if (observation == null || observation.targetUuid() == null
                 || session == null || !session.equals(observation.session())) {
             rejectedMode.incrementAndGet();
             return false;

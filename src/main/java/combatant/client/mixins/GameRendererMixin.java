@@ -63,10 +63,6 @@ import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.core.RenderPhaseScope;
 import combatant.client.render.engine.depth.WorldSceneDepth;
-import combatant.client.render.engine.deferred.DeferredJitterSequence;
-import combatant.client.render.engine.deferred.DeferredFeature;
-import combatant.client.render.engine.deferred.DeferredRuntimeConfig;
-import combatant.client.render.engine.rhi.shader.RhiShaderStage;
 import combatant.client.render.engine.debug.UiClipDebugScene;
 import combatant.client.render.engine.msaa.MsaaWorldTarget;
 import combatant.client.config.MainConfig;
@@ -77,6 +73,7 @@ import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.profiler.RenderProfiler3D;
 import combatant.client.render.engine.profiler.TracyGpuProfiler;
 import combatant.client.render.engine.renderer.MeshRenderer;
+import combatant.client.features.module.modules.visuals.MotionBlur;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.UiBlurResources;
 import combatant.client.render.engine.renderer.Renderer3D;
@@ -159,9 +156,11 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
 
     @Unique
     private static boolean combatant$needsResolvedMainDepth() {
-        // Legacy ReimaginedVisual DoF depth capture is retired. Deferred camera post consumes
-        // FINAL_RESOLVED_DEPTH through the typed frame-graph contract instead.
-        return false;
+        if (MotionBlur.isActiveStatic()) return true;
+        ReimaginedVisual module = Modules.get(ReimaginedVisual.class);
+        if (module == null) return false;
+        if (module.needsResolvedMainDepthCapture()) return true;
+        return MainConfig.get().getMsaa3dSamples() > 1 && module.isActive();
     }
 
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
@@ -514,47 +513,15 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                     new Matrix4f(cameraRenderState.viewRotationMatrix)
             );
 
-            Matrix4f unjitteredProjection = new Matrix4f(renderProjectionMatrix);
-            Matrix4f jitteredProjection = unjitteredProjection;
-            org.joml.Vector2f jitterPixels = new org.joml.Vector2f();
-            if (CombatantRenderSystem.deferredWorld().enabled()
-                    && CombatantRenderSystem.deferredWorld().smokeTestState()
-                    .featureEnabled(DeferredFeature.TAA, DeferredRuntimeConfig.current())
-                    && CombatantRenderSystem.rhi().advancedShaders().supports(RhiShaderStage.COMPUTE)) {
-                var mainTarget = minecraft.gameRenderer.mainRenderTarget();
-                var colorView = mainTarget != null ? mainTarget.getColorTextureView() : null;
-                int renderWidth = colorView != null ? Math.max(1, colorView.getWidth(0))
-                        : Math.max(1, minecraft.getWindow().getWidth());
-                int renderHeight = colorView != null ? Math.max(1, colorView.getHeight(0))
-                        : Math.max(1, minecraft.getWindow().getHeight());
-                jitterPixels = DeferredJitterSequence.sample(frame.frameId());
-                jitteredProjection = DeferredJitterSequence.apply(
-                        unjitteredProjection, jitterPixels, renderWidth, renderHeight
-                );
-                frame = CombatantRenderSystem.beginFrame(
-                        tickProgress, frameDeltaTicks, fixedDeltaTicks, jitteredProjection,
-                        new Matrix4f(cameraRenderState.viewRotationMatrix)
-                );
-            }
-
             CombatantWorldMatrices.capture(
                     cameraRenderState.viewRotationMatrix,
-                    jitteredProjection,
-                    unjitteredProjection,
+                    renderProjectionMatrix,
+                    renderProjectionMatrix,
                     cameraRenderState.projectionMatrix,
-                    jitterPixels,
+                    new org.joml.Vector2f(),
                     cameraPosition
             );
-            CombatantRenderSystem.deferredWorld().capturePrimaryView(
-                    frame.frameId(),
-                    cameraRenderState.viewRotationMatrix,
-                    jitteredProjection,
-                    unjitteredProjection,
-                    jitterPixels,
-                    cameraPosition,
-                    cameraRenderState.depthFar
-            );
-            return original.call(instance, jitteredProjection);
+            return original.call(instance, renderProjectionMatrix);
         }
         return original.call(instance, renderProjectionMatrix);
     }
@@ -594,27 +561,10 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                         WorldSceneDepth.captureResolvedMain(minecraft.gameRenderer.mainRenderTarget());
                     }
                 }
-                com.mojang.blaze3d.pipeline.RenderTarget resolvedMain = minecraft.gameRenderer.mainRenderTarget();
-                com.mojang.blaze3d.textures.GpuTextureView resolvedDepth = WorldSceneDepth.hasMain()
-                        ? WorldSceneDepth.mainDepthView()
-                        : resolvedMain.getDepthTextureView();
-                CombatantRenderSystem.deferredWorld().beforePostProcess(
-                        resolvedMain.getColorTextureView(), resolvedDepth
-                );
             }
             try (RenderPhaseScope combatant$postPreHandPhase = CombatantRenderSystem.phase(RenderPhase.WORLD_POST_PRE_HAND)) {
                 PostProcessManager.renderAll(PostProcessPass.Phase.PRE_HAND,
                         tickCounter.getGameTimeDeltaPartialTick(true));
-                com.mojang.blaze3d.pipeline.RenderTarget resolvedMain = minecraft != null
-                        ? minecraft.gameRenderer.mainRenderTarget() : null;
-                if (resolvedMain != null) {
-                    com.mojang.blaze3d.textures.GpuTextureView resolvedDepth = WorldSceneDepth.hasMain()
-                            ? WorldSceneDepth.mainDepthView()
-                            : resolvedMain.getDepthTextureView();
-                    CombatantRenderSystem.deferredWorld().afterPostProcess(
-                            resolvedMain.getColorTextureView(), resolvedDepth
-                    );
-                }
                 combatant$renderCombatantWorldAfterPreHandPostProcess(tickCounter);
             }
         }
@@ -664,15 +614,6 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             try (RenderPhaseScope combatant$postHandPhase = CombatantRenderSystem.phase(RenderPhase.WORLD_POST_HAND)) {
                 PostProcessManager.renderAll(PostProcessPass.Phase.POST_HAND,
                         tickCounter.getGameTimeDeltaPartialTick(true));
-                if (minecraft != null) {
-                    com.mojang.blaze3d.pipeline.RenderTarget resolvedMain = minecraft.gameRenderer.mainRenderTarget();
-                    com.mojang.blaze3d.textures.GpuTextureView resolvedDepth = WorldSceneDepth.hasMain()
-                            ? WorldSceneDepth.mainDepthView()
-                            : resolvedMain.getDepthTextureView();
-                    CombatantRenderSystem.deferredWorld().finalComposite(
-                            resolvedMain.getColorTextureView(), resolvedDepth
-                    );
-                }
             }
         }
     }

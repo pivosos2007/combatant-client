@@ -65,7 +65,7 @@ public final class SquareMapConnection extends AbstractMapLinkConnection {
     }
 
     private void resolveCadenceOnce() {
-        if (cadenceResolved || profile.refreshIntervalMs() > 0) return;
+        if (cadenceResolved) return;
         synchronized (this) {
             if (cadenceResolved) return;
             cadenceResolved = true;

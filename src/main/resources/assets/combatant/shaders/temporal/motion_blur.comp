@@ -1,0 +1,75 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_Color;
+layout(binding = 1) uniform sampler2D u_Depth;
+layout(binding = 2) uniform sampler2D u_Velocity;
+layout(binding = 3) uniform sampler2D u_Validity;
+layout(binding = 4) uniform sampler2D u_NeighborMax;
+layout(binding = 5, rgba8) writeonly uniform image2D u_Output;
+layout(std430, binding = 6) readonly buffer MotionParams { vec4 extent; vec4 policy; mat4 inverseProjection; vec4 depthTransform; } u_Params;
+
+float viewDistance(vec2 uv, float depth) {
+    if (!(depth > 0.0) || isnan(depth) || isinf(depth)) return 0.0;
+    float ndcZ = depth * u_Params.depthTransform.x + u_Params.depthTransform.y;
+    vec4 h = u_Params.inverseProjection * vec4(uv * 2.0 - 1.0, ndcZ, 1.0);
+    if (abs(h.w) < 1e-7) return 0.0;
+    float d = length(h.xyz / h.w);
+    return (isnan(d) || isinf(d)) ? 0.0 : d;
+}
+
+vec3 safeHdr(vec3 c) { return (any(isnan(c)) || any(isinf(c))) ? vec3(0.0) : max(c, vec3(0.0)); }
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_Output);
+    if (any(greaterThanEqual(pixel, size))) return;
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    vec4 base = textureLod(u_Color, uv, 0.0);
+    if (textureLod(u_Validity, uv, 0.0).r < 0.5) {
+        imageStore(u_Output, pixel, base);
+        return;
+    }
+
+    vec2 velocity = textureLod(u_Velocity, uv, 0.0).xy * vec2(size);
+    float currentLen = length(velocity);
+    ivec2 tiles = max(textureSize(u_NeighborMax, 0), ivec2(1));
+    ivec2 tile = clamp(ivec2(uv * vec2(tiles)), ivec2(0), tiles - 1);
+    vec2 neighbor = texelFetch(u_NeighborMax, tile, 0).xy;
+    float minimum = max(0.0, u_Params.policy.z);
+    if (currentLen >= minimum * 0.5 && length(neighbor) > currentLen) velocity = neighbor;
+
+    velocity *= max(0.0, u_Params.policy.x) * max(0.0, u_Params.policy.w);
+    float lenPx = length(velocity);
+    float maxPixels = max(0.0, u_Params.policy.y);
+    if (lenPx > maxPixels && lenPx > 1e-5) velocity *= maxPixels / lenPx;
+    lenPx = min(lenPx, maxPixels);
+    if (lenPx < minimum || maxPixels <= 0.0) {
+        imageStore(u_Output, pixel, base);
+        return;
+    }
+
+    int samples = clamp(int(u_Params.extent.w + 0.5), 4, 64);
+    float centerDistance = viewDistance(uv, textureLod(u_Depth, uv, 0.0).r);
+    vec2 texel = 1.0 / vec2(size);
+    vec2 span = velocity * texel;
+    vec3 accum = vec3(0.0);
+    float weightSum = 0.0;
+    float edgeStrength = max(0.0, u_Params.depthTransform.z);
+    for (int i = 0; i < 64; ++i) {
+        if (i >= samples) break;
+        float t = (float(i) + 0.5) / float(samples) - 0.5;
+        vec2 suv = uv + span * t;
+        if (any(lessThan(suv, vec2(0.0))) || any(greaterThan(suv, vec2(1.0)))) continue;
+        float sampleDistance = viewDistance(suv, textureLod(u_Depth, suv, 0.0).r);
+        float weight = 1.0;
+        if (centerDistance > 0.0 && sampleDistance > 0.0) {
+            float scale = max(0.05, centerDistance * 0.02);
+            weight = 1.0 / (1.0 + edgeStrength * abs(sampleDistance - centerDistance) / scale);
+        }
+        accum += safeHdr(textureLod(u_Color, suv, 0.0).rgb) * weight;
+        weightSum += weight;
+    }
+    vec3 color = weightSum > 1e-5 ? accum / weightSum : safeHdr(base.rgb);
+    imageStore(u_Output, pixel, vec4(color, base.a));
+}
+

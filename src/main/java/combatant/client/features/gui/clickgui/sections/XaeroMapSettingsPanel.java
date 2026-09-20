@@ -199,6 +199,7 @@ final class XaeroMapSettingsPanel {
         addCombatantArrowSettings();
         addCombatantHudSettings();
         addCombatantPlayerSettings();
+        addServerIntegrationSettings();
 
         addProfiled(manager, WorldMapProfiledConfigOptions.COORDINATES, Category.DISPLAY);
         addProfiled(manager, WorldMapProfiledConfigOptions.FOOTSTEPS, Category.DISPLAY);
@@ -244,9 +245,9 @@ final class XaeroMapSettingsPanel {
 
         addProfiled(manager, WorldMapProfiledConfigOptions.MINIMAP_RADAR, Category.PLAYERS);
         addProfiled(manager, WorldMapProfiledConfigOptions.DISPLAY_TRACKED_PLAYERS, Category.PLAYERS);
-        addProfiled(manager, WorldMapProfiledConfigOptions.OPAC_CLAIMS, Category.PLAYERS);
-        addProfiled(manager, WorldMapProfiledConfigOptions.OPAC_CLAIMS_BORDER_OPACITY, Category.PLAYERS);
-        addProfiled(manager, WorldMapProfiledConfigOptions.OPAC_CLAIMS_FILL_OPACITY, Category.PLAYERS);
+        addProfiled(manager, WorldMapProfiledConfigOptions.OPAC_CLAIMS, Category.DISPLAY);
+        addProfiled(manager, WorldMapProfiledConfigOptions.OPAC_CLAIMS_BORDER_OPACITY, Category.DISPLAY);
+        addProfiled(manager, WorldMapProfiledConfigOptions.OPAC_CLAIMS_FILL_OPACITY, Category.DISPLAY);
 
         addProfiled(manager, WorldMapProfiledConfigOptions.MAP_TELEPORT_ALLOWED, Category.NAVIGATION);
         addProfiled(manager, WorldMapProfiledConfigOptions.PARTIAL_Y_TELEPORT, Category.NAVIGATION);
@@ -706,10 +707,12 @@ final class XaeroMapSettingsPanel {
         MapUiConfig config = MapUiConfig.get();
         ModeSetting mode = new ModeSetting(tr("gui.combatant.map.display.arrow_color", "Player arrow color"), config.arrowColorModeValue());
         mode.setI18nEnabled(false, false);
+        mode.setParent(config);
         entries.add(new Entry(mode, Category.DISPLAY, "player arrow color theme custom"));
 
         ColorSetting color = new ColorSetting(tr("gui.combatant.map.display.arrow_custom", "Custom arrow color"), config.arrowCustomColorValue());
         color.setI18nEnabled(false, false);
+        color.setParent(config);
         color.visibleWhen(config::isCustomArrowColor);
         entries.add(new Entry(color, Category.DISPLAY, "custom player arrow color tint"));
     }
@@ -721,6 +724,7 @@ final class XaeroMapSettingsPanel {
                 tr("gui.combatant.map.hud.enabled", "World HUD"),
                 config.hudEnabledValue());
         enabled.setI18nEnabled(false, false);
+        enabled.setParent(config);
         entries.add(new Entry(enabled, Category.DISPLAY,
                 "world hud markers overlay enable disable"));
 
@@ -728,6 +732,7 @@ final class XaeroMapSettingsPanel {
                 tr("gui.combatant.map.hud.waypoints", "HUD waypoint markers"),
                 config.hudWaypointMarkersValue());
         waypoints.setI18nEnabled(false, false);
+        waypoints.setParent(config);
         waypoints.visibleWhen(config::hudEnabled);
         entries.add(new Entry(waypoints, Category.WAYPOINTS,
                 "hud waypoint markers world labels enable disable"));
@@ -736,6 +741,7 @@ final class XaeroMapSettingsPanel {
                 tr("gui.combatant.map.hud.players", "HUD distant players"),
                 config.hudPlayerMarkersValue());
         players.setI18nEnabled(false, false);
+        players.setParent(config);
         players.visibleWhen(config::hudEnabled);
         entries.add(new Entry(players, Category.PLAYERS,
                 "hud distant remote players heads maplink relations"));
@@ -744,6 +750,8 @@ final class XaeroMapSettingsPanel {
                 tr("gui.combatant.map.hud.player_distance", "Player HUD distance"),
                 config.hudPlayerMaxDistanceValue());
         distance.setI18nEnabled(false, false);
+        distance.setParent(config);
+        distance.sliderRange(32, 20_000);
         distance.visibleWhen(() -> config.hudEnabled() && config.hudPlayerMarkers());
         entries.add(new Entry(distance, Category.PLAYERS,
                 "player hud distance max range meters"));
@@ -755,18 +763,52 @@ final class XaeroMapSettingsPanel {
                 tr("gui.combatant.map.players.advanced_markers", "Advanced player markers"),
                 config.advancedPlayerMarkersValue());
         advanced.setI18nEnabled(false, false);
+        advanced.setParent(config);
         entries.add(new Entry(advanced, Category.PLAYERS,
                 "advanced player markers heads names relations skins expanded display"));
+
+        BooleanSetting invisible = new BooleanSetting(
+                tr("gui.combatant.map.players.show_invisible", "Show invisible"),
+                config.showInvisibleRadarValue());
+        invisible.setI18nEnabled(false, false);
+        invisible.setParent(config);
+        entries.add(new Entry(invisible, Category.PLAYERS,
+                "show invisible hidden sneaking crouching radar entities players"));
+    }
+
+    private void addServerIntegrationSettings() {
+        MapUiConfig config = MapUiConfig.get();
+        entries.add(new Entry(new SectionHeaderSetting(
+                tr("gui.combatant.map.server.section", "Server data"),
+                tr("gui.combatant.map.server.section.description",
+                        "Choose whether the server may send player positions or override map settings.")),
+                Category.ADVANCED, "server data privacy permissions xaerolib config players"));
+
+        BooleanSetting playerData = new BooleanSetting(
+                tr("gui.combatant.map.server.player_data", "Server player data"),
+                config.allowServerPlayerDataValue());
+        playerData.setI18nEnabled(false, false);
+        playerData.setParent(config);
+        entries.add(new Entry(playerData, Category.ADVANCED,
+                "server player data tracked positions telemetry xaerolib allow deny"));
+
+        BooleanSetting serverConfig = new BooleanSetting(
+                tr("gui.combatant.map.server.configuration", "Server map settings"),
+                config.allowServerConfigurationValue());
+        serverConfig.setI18nEnabled(false, false);
+        serverConfig.setParent(config);
+        entries.add(new Entry(serverConfig, Category.ADVANCED,
+                "server map settings config enforcement xaerolib allow deny"));
     }
 
     private void addCurrentCaveMode() {
         List<Integer> modes = List.of(0, 1, 2);
         List<String> labels = List.of(
-                tr("gui.xaero_off", "Off"),
-                tr("gui.xaero_wm_cave_mode_type_layered", "Layered"),
-                tr("gui.xaero_wm_cave_mode_type_full", "Full")
+                tr("gui.combatant.map.cave.mode.off", "Off"),
+                tr("gui.combatant.map.cave.mode.layered", "By layer"),
+                tr("gui.combatant.map.cave.mode.full", "Full depth")
         );
-        ModeSetting setting = new ModeSetting(tr("gui.combatant.map.cave.current_mode", "Current cave mode"), new ExternalModeValue<>(
+        ModeSetting setting = new ModeSetting(tr("gui.combatant.map.cave.current_mode", "Underground view"), new ExternalModeValue<>(
                 "currentCaveMode",
                 () -> {
                     MapDimension dimension = dimensionSupplier.get();
@@ -924,9 +966,9 @@ final class XaeroMapSettingsPanel {
             if (manager.getRedirectorManager().shouldDeactivateWidget(option)) {
                 var tooltip = manager.getRedirectorManager().getTooltip(option);
                 String detail = tooltip == null ? "" : LegacyTextUtil.stripLegacy(tooltip.getString()).trim();
-                return detail.isBlank() ? "Controlled by Xaero compatibility override" : detail;
+                return detail.isBlank() ? tr("gui.combatant.map.common.compatibility_override", "Controlled by compatibility settings") : detail;
             }
-            if (isProfiledControlled(manager, option)) return "Enforced by server";
+            if (isProfiledControlled(manager, option)) return tr("gui.combatant.map.common.server_controlled", "Controlled by server");
         } catch (RuntimeException | LinkageError error) {
             DebugLog.warnOnce("clickgui-map-xaero-override-" + option.getId(),
                     "Failed to resolve Xaero override state for " + option.getId(), error);
@@ -1015,7 +1057,6 @@ final class XaeroMapSettingsPanel {
                 tr("gui.combatant.map.triangulation.section.quality", "Resolve quality"),
                 tr("gui.combatant.map.triangulation.section.quality.description", "Observation retention, required movement and bearing separation.")),
                 Category.TRIANGULATION, "resolver quality samples baseline bearing noise"));
-        addSubsystemSetting(MapHeuristicConfig.get(), Category.TRIANGULATION, "enabled");
         addSubsystemSetting(MapHeuristicConfig.get(), Category.TRIANGULATION, "maxSamplesPerTarget");
         addSubsystemSetting(MapHeuristicConfig.get(), Category.TRIANGULATION, "maxSampleAgeMs");
         addSubsystemSetting(MapHeuristicConfig.get(), Category.TRIANGULATION, "minBaseline");
@@ -1049,7 +1090,9 @@ final class XaeroMapSettingsPanel {
 
         TextSetting displayName = new TextSetting(tr("gui.combatant.map.maplink.profile.name", "Profile name"),
                 new ExternalStringValue("mapLinkProfileName", this::selectedMapLinkDisplayName,
-                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, value, profile.enabled(), profile.serverMatcher(), profile.baseUrl(), profile.providerType(), profile.refreshIntervalMs(), profile.defaultY(), profile.sourcePriority(), profile.dimensionMappings(), profile.requestHeaders()))));
+                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, value,
+                                profile.serverMatcher(), profile.baseUrl(), profile.providerType(), profile.maxUpdateDelayMs(),
+                                profile.defaultY(), profile.dimensionMappings(), profile.requestHeaders()))));
         displayName.setI18nEnabled(false, false);
         displayName.visibleWhen(this::hasSelectedMapLinkProfile);
         mapLinkEditorAnchor = displayName;
@@ -1057,14 +1100,18 @@ final class XaeroMapSettingsPanel {
 
         TextSetting serverMatcher = new TextSetting(tr("gui.combatant.map.maplink.profile.server", "Minecraft server"),
                 new ExternalStringValue("mapLinkServerMatcher", this::selectedMapLinkServerMatcher,
-                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(), mapLinkProfileConfigured(value, profile.baseUrl()), value, profile.baseUrl(), profile.providerType(), profile.refreshIntervalMs(), profile.defaultY(), profile.sourcePriority(), profile.dimensionMappings(), profile.requestHeaders()))));
+                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(),
+                                value, profile.baseUrl(), profile.providerType(), profile.maxUpdateDelayMs(),
+                                profile.defaultY(), profile.dimensionMappings(), profile.requestHeaders()))));
         serverMatcher.setI18nEnabled(false, false);
         serverMatcher.visibleWhen(this::hasSelectedMapLinkProfile);
         entries.add(new Entry(serverMatcher, Category.MAPLINK, "maplink profile server matcher address host ip"));
 
         TextSetting baseUrl = new TextSetting(tr("gui.combatant.map.maplink.profile.url", "Web map URL"),
                 new ExternalStringValue("mapLinkBaseUrl", this::selectedMapLinkBaseUrl,
-                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(), mapLinkProfileConfigured(profile.serverMatcher(), value), profile.serverMatcher(), value, profile.providerType(), profile.refreshIntervalMs(), profile.defaultY(), profile.sourcePriority(), profile.dimensionMappings(), profile.requestHeaders()))));
+                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(),
+                                profile.serverMatcher(), value, profile.providerType(), profile.maxUpdateDelayMs(),
+                                profile.defaultY(), profile.dimensionMappings(), profile.requestHeaders()))));
         baseUrl.setI18nEnabled(false, false);
         baseUrl.visibleWhen(this::hasSelectedMapLinkProfile);
         entries.add(new Entry(baseUrl, Category.MAPLINK, "maplink profile url base endpoint web map"));
@@ -1073,43 +1120,35 @@ final class XaeroMapSettingsPanel {
         List<String> providerLabels = providers.stream().map(XaeroMapSettingsPanel::mapLinkProviderLabel).toList();
         ModeSetting provider = new ModeSetting(tr("gui.combatant.map.maplink.profile.provider", "Provider"),
                 new ExternalModeValue<>("mapLinkProvider", this::selectedMapLinkProvider,
-                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(), profile.enabled(), profile.serverMatcher(), profile.baseUrl(), value, profile.refreshIntervalMs(), profile.defaultY(), profile.sourcePriority(), profile.dimensionMappings(), profile.requestHeaders())),
+                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(),
+                                profile.serverMatcher(), profile.baseUrl(), value, profile.maxUpdateDelayMs(),
+                                profile.defaultY(), profile.dimensionMappings(), profile.requestHeaders())),
                         providers, providerLabels));
         provider.setI18nEnabled(false, false);
         provider.visibleWhen(this::hasSelectedMapLinkProfile);
         entries.add(new Entry(provider, Category.MAPLINK, "maplink provider bluemap dynmap liveatlas pl3x squaremap players json"));
 
-        SliderSetting<Long> refresh = new SliderSetting<>(tr("gui.combatant.map.maplink.profile.refresh", "Refresh interval (ms)"),
-                new ExternalLongValue("mapLinkRefresh", this::selectedMapLinkRefresh,
-                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(), profile.enabled(), profile.serverMatcher(), profile.baseUrl(), profile.providerType(), value, profile.defaultY(), profile.sourcePriority(), profile.dimensionMappings(), profile.requestHeaders())),
-                        500L, 120000L));
-        refresh.setI18nEnabled(false, false);
-        refresh.visibleWhen(this::hasSelectedMapLinkProfile);
-        entries.add(new Entry(refresh, Category.MAPLINK, "maplink refresh interval polling"));
+        SliderSetting<Long> maxUpdateDelay = new SliderSetting<>(
+                tr("gui.combatant.map.maplink.profile.max_update_delay", "Max player update interval (ms)"),
+                new ExternalLongValue("mapLinkMaxUpdateDelay", this::selectedMapLinkMaxUpdateDelay,
+                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(),
+                                profile.serverMatcher(), profile.baseUrl(), profile.providerType(), value,
+                                profile.defaultY(), profile.dimensionMappings(), profile.requestHeaders())),
+                        MapLinkProfile.MIN_MAX_UPDATE_DELAY_MS, MapLinkProfile.MAX_MAX_UPDATE_DELAY_MS));
+        maxUpdateDelay.setI18nEnabled(false, false);
+        maxUpdateDelay.visibleWhen(this::hasSelectedMapLinkProfile);
+        entries.add(new Entry(maxUpdateDelay, Category.MAPLINK,
+                "maplink max update delay refresh interval polling provider cadence"));
 
-        SliderSetting<Integer> defaultY = new SliderSetting<>(tr("gui.combatant.map.maplink.profile.default_y", "Fallback Y"),
+        SliderSetting<Integer> defaultY = new SliderSetting<>(tr("gui.combatant.map.maplink.profile.default_y", "Y when the web map has no height"),
                 new ExternalIntegerRangeValue("mapLinkDefaultY", this::selectedMapLinkDefaultY,
-                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(), profile.enabled(), profile.serverMatcher(), profile.baseUrl(), profile.providerType(), profile.refreshIntervalMs(), value, profile.sourcePriority(), profile.dimensionMappings(), profile.requestHeaders())),
-                        -64, 320));
+                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(),
+                                profile.serverMatcher(), profile.baseUrl(), profile.providerType(), profile.maxUpdateDelayMs(),
+                                value, profile.dimensionMappings(), profile.requestHeaders())),
+                        -100, 1000));
         defaultY.setI18nEnabled(false, false);
         defaultY.visibleWhen(this::hasSelectedMapLinkProfile);
         entries.add(new Entry(defaultY, Category.MAPLINK, "maplink fallback default y height"));
-
-        SliderSetting<Integer> priority = new SliderSetting<>(tr("gui.combatant.map.maplink.profile.priority", "Source priority"),
-                new ExternalIntegerRangeValue("mapLinkPriority", this::selectedMapLinkPriority,
-                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(), profile.enabled(), profile.serverMatcher(), profile.baseUrl(), profile.providerType(), profile.refreshIntervalMs(), profile.defaultY(), value, profile.dimensionMappings(), profile.requestHeaders())),
-                        -100, 100));
-        priority.setI18nEnabled(false, false);
-        priority.visibleWhen(this::hasSelectedMapLinkProfile);
-        entries.add(new Entry(priority, Category.MAPLINK, "maplink source priority location source"));
-
-        TextListSetting mappings = new TextListSetting(tr("gui.combatant.map.maplink.profile.mappings", "World mappings"),
-                new ExternalMapSetValue("mapLinkMappings", this::selectedMapLinkMappings,
-                        value -> updateSelectedMapLinkProfile(profile -> copyMapLinkProfile(profile, profile.displayName(), profile.enabled(), profile.serverMatcher(), profile.baseUrl(), profile.providerType(), profile.refreshIntervalMs(), profile.defaultY(), profile.sourcePriority(), value, profile.requestHeaders()))),
-                TextListSetting.PickerMode.TEXT);
-        mappings.setI18nEnabled(false, false);
-        mappings.visibleWhen(this::hasSelectedMapLinkProfile);
-        entries.add(new Entry(mappings, Category.MAPLINK, "maplink world mappings dimension provider world"));
 
         entries.add(new Entry(new SectionHeaderSetting(
                 tr("gui.combatant.map.maplink.section.network", "Network"),
@@ -1185,8 +1224,8 @@ final class XaeroMapSettingsPanel {
         String label = server.isBlank()
                 ? tr("gui.combatant.map.maplink.profiles.new_profile", "New MapLink profile")
                 : server;
-        MapLinkProfile created = new MapLinkProfile(id, label, false, server, "",
-                MapLinkProviderType.BLUEMAP, 10_000L, 64, 0, Map.of(), Map.of());
+        MapLinkProfile created = new MapLinkProfile(id, label, server, "",
+                MapLinkProviderType.BLUEMAP, MapLinkProfile.DEFAULT_MAX_UPDATE_DELAY_MS, 64, Map.of(), Map.of());
         List<MapLinkProfile> next = new ArrayList<>(MapLinkConfig.get().allProfiles());
         next.add(created);
         MapLinkConfig.get().setProfiles(next);
@@ -1214,26 +1253,20 @@ final class XaeroMapSettingsPanel {
         return out.isEmpty() ? "server" : out.toString();
     }
 
-    private static boolean mapLinkProfileConfigured(String serverMatcher, String baseUrl) {
-        return serverMatcher != null && !serverMatcher.isBlank() && baseUrl != null && !baseUrl.isBlank();
-    }
-
-    private static MapLinkProfile copyMapLinkProfile(MapLinkProfile source, String displayName, boolean enabled,
+    private static MapLinkProfile copyMapLinkProfile(MapLinkProfile source, String displayName,
                                                      String serverMatcher, String baseUrl, MapLinkProviderType providerType,
-                                                     long refreshIntervalMs, int defaultY, int sourcePriority,
+                                                     long maxUpdateDelayMs, int defaultY,
                                                      Map<String, String> mappings, Map<String, String> headers) {
-        return new MapLinkProfile(source.id(), displayName, enabled, serverMatcher, baseUrl, providerType,
-                refreshIntervalMs, defaultY, sourcePriority, mappings, headers);
+        return new MapLinkProfile(source.id(), displayName, serverMatcher, baseUrl, providerType,
+                maxUpdateDelayMs, defaultY, mappings, headers);
     }
 
     private String selectedMapLinkDisplayName() { MapLinkProfile p = selectedMapLinkProfile(); return p == null ? "" : p.displayName(); }
     private String selectedMapLinkServerMatcher() { MapLinkProfile p = selectedMapLinkProfile(); return p == null ? "" : p.serverMatcher(); }
     private String selectedMapLinkBaseUrl() { MapLinkProfile p = selectedMapLinkProfile(); return p == null ? "" : p.baseUrl(); }
     private MapLinkProviderType selectedMapLinkProvider() { MapLinkProfile p = selectedMapLinkProfile(); return p == null ? MapLinkProviderType.BLUEMAP : p.providerType(); }
-    private long selectedMapLinkRefresh() { MapLinkProfile p = selectedMapLinkProfile(); return p == null ? 10_000L : p.refreshIntervalMs(); }
+    private long selectedMapLinkMaxUpdateDelay() { MapLinkProfile p = selectedMapLinkProfile(); return p == null ? MapLinkProfile.DEFAULT_MAX_UPDATE_DELAY_MS : p.maxUpdateDelayMs(); }
     private int selectedMapLinkDefaultY() { MapLinkProfile p = selectedMapLinkProfile(); return p == null ? 64 : p.defaultY(); }
-    private int selectedMapLinkPriority() { MapLinkProfile p = selectedMapLinkProfile(); return p == null ? 0 : p.sourcePriority(); }
-    private Map<String, String> selectedMapLinkMappings() { MapLinkProfile p = selectedMapLinkProfile(); return p == null ? Map.of() : p.dimensionMappings(); }
 
     private static String relationLabel(CategoryType type) {
         if (type == null) type = CategoryType.DEFAULT;
@@ -1270,7 +1303,6 @@ final class XaeroMapSettingsPanel {
     private static String mapLinkStatusLabel(MapLinkProfileStatus status) {
         if (status == null) return tr("gui.combatant.map.maplink.status.idle", "Idle");
         return switch (status) {
-            case DISABLED -> tr("gui.combatant.map.maplink.status.disabled", "Disabled");
             case IDLE -> tr("gui.combatant.map.maplink.status.idle", "Idle");
             case CONNECTING -> tr("gui.combatant.map.maplink.status.connecting", "Connecting");
             case LIVE -> tr("gui.combatant.map.maplink.status.live", "Live");
@@ -1278,7 +1310,6 @@ final class XaeroMapSettingsPanel {
             case AUTH_ERROR -> tr("gui.combatant.map.maplink.status.auth_error", "Auth error");
             case HTTP_ERROR -> tr("gui.combatant.map.maplink.status.http_error", "HTTP error");
             case PARSE_ERROR -> tr("gui.combatant.map.maplink.status.parse_error", "Parse error");
-            case WORLD_UNMAPPED -> tr("gui.combatant.map.maplink.status.world_unmapped", "World unmapped");
         };
     }
 
@@ -1337,10 +1368,23 @@ final class XaeroMapSettingsPanel {
             var display = option.getDisplayGetter().apply(option, value);
             String label = display == null ? String.valueOf(value) : LegacyTextUtil.stripLegacy(display.getString());
             label = label == null || label.isBlank() ? String.valueOf(value) : label.trim();
+            label = combatantOptionValueLabel(option, value, label);
             if (labels.contains(label)) label = label + " (" + value + ')';
             labels.add(label);
         }
         return new ModeSetting(name, new ExternalModeValue<>(option.getId(), getter, setter, values, labels));
+    }
+
+    private static String combatantOptionValueLabel(ConfigOption<?> option, Object value, String fallback) {
+        if (option == WorldMapProfiledConfigOptions.DEFAULT_CAVE_MODE_TYPE && value instanceof Number number) {
+            return switch (number.intValue()) {
+                case 0 -> tr("gui.combatant.map.cave.mode.off", "Off");
+                case 1 -> tr("gui.combatant.map.cave.mode.layered", "By layer");
+                case 2 -> tr("gui.combatant.map.cave.mode.full", "Full depth");
+                default -> fallback;
+            };
+        }
+        return fallback;
     }
 
     private static String searchText(ConfigOption<?> option, String name) {
@@ -1349,6 +1393,8 @@ final class XaeroMapSettingsPanel {
     }
 
     private static String resolveDisplayName(ConfigOption<?> option) {
+        String override = combatantOptionName(option);
+        if (override != null) return override;
         var component = option.getDisplayName();
         if (component != null) {
             String displayName = LegacyTextUtil.stripLegacy(component.getString());
@@ -1357,8 +1403,40 @@ final class XaeroMapSettingsPanel {
         return humanizeOptionId(option.getId());
     }
 
+    private static String combatantOptionName(ConfigOption<?> option) {
+        if (option == WorldMapProfiledConfigOptions.CAVE_MODE_ALLOWED)
+            return tr("gui.combatant.map.cave.enabled", "Underground map");
+        if (option == WorldMapProfiledConfigOptions.CAVE_MODE_ALLOWED_DIMENSIONS)
+            return tr("gui.combatant.map.cave.dimensions", "Dimensions with underground map");
+        if (option == WorldMapProfiledConfigOptions.CAVE_MODE_DEPTH)
+            return tr("gui.combatant.map.cave.depth", "Visible depth");
+        if (option == WorldMapProfiledConfigOptions.LEGIBLE_CAVE_MAPS)
+            return tr("gui.combatant.map.cave.depth_lighting", "Depth-based lighting");
+        if (option == WorldMapProfiledConfigOptions.AUTO_CAVE_MODE)
+            return tr("gui.combatant.map.cave.auto", "Automatic underground view");
+        if (option == WorldMapProfiledConfigOptions.CAVE_MODE_TOGGLE_TIMER)
+            return tr("gui.combatant.map.cave.switch_delay", "Switch delay");
+        if (option == WorldMapProfiledConfigOptions.DEFAULT_CAVE_MODE_TYPE)
+            return tr("gui.combatant.map.cave.default_mode", "Default underground view");
+        if (option == WorldMapProfiledConfigOptions.DISPLAY_CAVE_MODE_START)
+            return tr("gui.combatant.map.cave.show_upper_limit", "Show upper Y limit");
+        if (option == WorldMapPrimaryClientConfigOptions.CAVE_MODE_START)
+            return tr("gui.combatant.map.cave.upper_limit", "Upper Y limit");
+        if (option == WorldMapProfiledConfigOptions.MINIMAP_RADAR)
+            return tr("gui.combatant.map.players.radar_on_map", "Entity radar on map");
+        if (option == WorldMapProfiledConfigOptions.DISPLAY_TRACKED_PLAYERS)
+            return tr("gui.combatant.map.players.tracked", "Tracked players");
+        if (option == WorldMapProfiledConfigOptions.OPAC_CLAIMS)
+            return tr("gui.combatant.map.display.claims", "Territory overlay");
+        if (option == WorldMapProfiledConfigOptions.OPAC_CLAIMS_BORDER_OPACITY)
+            return tr("gui.combatant.map.display.claims_border_opacity", "Territory border opacity");
+        if (option == WorldMapProfiledConfigOptions.OPAC_CLAIMS_FILL_OPACITY)
+            return tr("gui.combatant.map.display.claims_fill_opacity", "Territory fill opacity");
+        return null;
+    }
+
     private static String humanizeOptionId(String id) {
-        if (id == null || id.isBlank()) return tr("gui.combatant.map.common.xaero_setting", "Xaero setting");
+        if (id == null || id.isBlank()) return tr("gui.combatant.map.common.map_setting", "Map setting");
         String[] words = id.trim().replace('.', '_').replace('-', '_').split("_+");
         StringBuilder out = new StringBuilder(id.length() + 4);
         for (String word : words) {
@@ -1438,8 +1516,10 @@ final class XaeroMapSettingsPanel {
             return;
         }
 
-        scrollbarW = 2.5f;
-        scrollbarX = contentX + contentW - 4.0f;
+        // Keep the bar in the browser's right gutter instead of covering the settings column.
+        // The old 2.5px track sat 4px inside content and was both visually weak and intrusive.
+        scrollbarW = 4.0f;
+        scrollbarX = contentX + contentW + 3.0f;
         scrollbarY = contentY + 5.0f;
         scrollbarH = Math.max(1.0f, contentH - 10.0f);
         scrollbarThumbH = Math.max(18.0f, scrollbarH * (scrollbarH / (scrollbarH + maxScroll)));
@@ -1521,13 +1601,13 @@ final class XaeroMapSettingsPanel {
         return Math.max(0, Math.min(size, (int) Math.ceil((contentViewportBottom - rowY) / rowHeight) + 1));
     }
     private enum Category {
-        DISPLAY("display", "Display", "Map chrome, coordinates, arrow and footprints", "map"),
+        DISPLAY("display", "Display", "Map interface, coordinates and additional layers", "map"),
         TERRAIN("terrain", "Terrain", "Terrain colors, lighting and chunk updates", "layers"),
         WAYPOINTS("waypoints", "Waypoints", "Waypoint rendering and visibility", "map-pinned"),
-        CAVE("cave", "Cave", "Xaero cave mode, depth and start layer", "land-plot"),
-        PLAYERS("players", "Players & Radar", "Xaero tracked players, radar entities and claims", "users-round"),
+        CAVE("cave", "Underground", "Underground map display and depth settings", "land-plot"),
+        PLAYERS("players", "Players & Radar", "Players on the map, entity radar and distant markers", "users-round"),
         TARGETS("targets", "Targets", "Target players and live location sources", "crosshair"),
-        TRIANGULATION("triangulation", "Triangulation", "Collection mode, resolve quality and live telemetry", "radar"),
+        TRIANGULATION("triangulation", "Triangulation", "Bearing collection, calculation quality and current state", "radar"),
         MAPLINK("maplink", "MapLink", "Per-server web-map profiles and network status", "map"),
         NAVIGATION("navigation", "Navigation", "Teleport and navigation behaviour", "route"),
         ADVANCED("advanced", "Advanced", "Loading budget and technical options", "settings-2");
@@ -2967,7 +3047,7 @@ final class XaeroMapSettingsPanel {
             return switch (state.status()) {
                 case LIVE -> 0xFF72E69A;
                 case CONNECTING -> 0xFFFFD36A;
-                case STALE, WORLD_UNMAPPED -> 0xFFFFA35C;
+                case STALE -> 0xFFFFA35C;
                 default -> 0xFFFF6D78;
             };
         }
@@ -2990,6 +3070,7 @@ final class XaeroMapSettingsPanel {
         }
         @Override public Long get() { return getter.get(); }
         @Override public void set(Long value) { setter.accept(Math.max(getMin(), Math.min(getMax(), value == null ? getMin() : value))); }
+        @Override public String toDisplay() { Long value = get(); return value == null ? "" : Long.toString(value); }
         @Override public Object toJson() { return get(); }
         @Override public void fromJson(Object json) { if (json instanceof Number n) set(n.longValue()); }
     }
@@ -3004,45 +3085,9 @@ final class XaeroMapSettingsPanel {
         }
         @Override public Integer get() { return getter.get(); }
         @Override public void set(Integer value) { setter.accept(Math.max(getMin(), Math.min(getMax(), value == null ? getMin() : value))); }
+        @Override public String toDisplay() { Integer value = get(); return value == null ? "" : Integer.toString(value); }
         @Override public Object toJson() { return get(); }
         @Override public void fromJson(Object json) { if (json instanceof Number n) set(n.intValue()); }
-    }
-
-    private static final class ExternalMapSetValue extends SetValue {
-        private final Supplier<Map<String, String>> getter;
-        private final Consumer<Map<String, String>> setter;
-        private ExternalMapSetValue(String name, Supplier<Map<String, String>> getter, Consumer<Map<String, String>> setter) {
-            super(name);
-            this.getter = getter;
-            this.setter = setter;
-        }
-        @Override public Set<String> get() {
-            LinkedHashSet<String> out = new LinkedHashSet<>();
-            Map<String, String> map = getter.get();
-            if (map != null) map.forEach((key, value) -> out.add(key + "=" + value));
-            return out;
-        }
-        @Override public void set(Set<String> rows) {
-            LinkedHashMap<String, String> out = new LinkedHashMap<>();
-            if (rows != null) {
-                for (String row : rows) {
-                    if (row == null) continue;
-                    int split = row.indexOf('=');
-                    if (split <= 0 || split >= row.length() - 1) continue;
-                    String key = row.substring(0, split).trim();
-                    String value = row.substring(split + 1).trim();
-                    if (!key.isBlank() && !value.isBlank()) out.put(key, value);
-                }
-            }
-            setter.accept(out);
-        }
-        @Override public Object toJson() { return new ArrayList<>(get()); }
-        @Override public void fromJson(Object json) {
-            if (!(json instanceof List<?> list)) return;
-            LinkedHashSet<String> rows = new LinkedHashSet<>();
-            for (Object item : list) if (item instanceof String text) rows.add(text);
-            set(rows);
-        }
     }
 
     private static final class ExternalBooleanValue extends BooleanValue {
@@ -3060,7 +3105,7 @@ final class XaeroMapSettingsPanel {
         @Override public void set(Integer value) { setter.accept(nearest(value)); }
         @Override public Object toJson() { return get(); }
         @Override public void fromJson(Object json) { if (json instanceof Number value) set(value.intValue()); }
-        @Override public String toDisplay() { var display = option.getDisplayGetter().apply(option, get()); return display == null ? super.toDisplay() : LegacyTextUtil.stripLegacy(display.getString()); }
+        @Override public String toDisplay() { var current = get(); var display = option.getDisplayGetter().apply(option, current); return display == null ? (current == null ? "" : Integer.toString(current)) : LegacyTextUtil.stripLegacy(display.getString()); }
         private int nearest(int value) { int result = values.getFirst(); int distance = Math.abs(result - value); for (int candidate : values) { int d = Math.abs(candidate - value); if (d < distance) { result = candidate; distance = d; } } return result; }
     }
     private static final class ExternalDoubleValue extends NumberValue<Double> {
@@ -3070,9 +3115,17 @@ final class XaeroMapSettingsPanel {
         @Override public void set(Double value) { setter.accept(nearest(value)); }
         @Override public Object toJson() { return get(); }
         @Override public void fromJson(Object json) { if (json instanceof Number value) set(value.doubleValue()); }
-        @Override public String toDisplay() { var display = option.getDisplayGetter().apply(option, get()); return display == null ? super.toDisplay() : LegacyTextUtil.stripLegacy(display.getString()); }
+        @Override public String toDisplay() { var current = get(); var display = option.getDisplayGetter().apply(option, current); return display == null ? formatExternalDouble(current) : LegacyTextUtil.stripLegacy(display.getString()); }
         private double nearest(double value) { double result = values.getFirst(); double distance = Math.abs(result - value); for (double candidate : values) { double d = Math.abs(candidate - value); if (d < distance) { result = candidate; distance = d; } } return result; }
     }
+    private static String formatExternalDouble(Double value) {
+        if (value == null) return "";
+        double rounded = Math.round(value * 100.0d) / 100.0d;
+        if (rounded == Math.rint(rounded)) return Long.toString((long) rounded);
+        String text = Double.toString(rounded);
+        return text.endsWith(".0") ? text.substring(0, text.length() - 2) : text;
+    }
+
     private static final class ExternalStringValue extends StringValue {
         private final Supplier<String> getter; private final Consumer<String> setter;
         private ExternalStringValue(String name, Supplier<String> getter, Consumer<String> setter) { super(name, getter.get()); this.getter = getter; this.setter = setter; }

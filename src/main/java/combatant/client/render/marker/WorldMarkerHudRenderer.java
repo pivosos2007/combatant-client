@@ -40,9 +40,9 @@ public enum WorldMarkerHudRenderer {
     public static List<Layout> layout(List<Marker> markers, TextRenderer fallback) {
         if (markers == null || markers.isEmpty() || fallback == null) return List.of();
 
-        TextRenderer titleRegular = BuiltinFontCatalog.ONEST_MEDIUM.renderer(fallback);
+        TextRenderer titleRegular = BuiltinFontCatalog.ONEST_BOLD.renderer(fallback);
         TextRenderer titleBold = BuiltinFontCatalog.ONEST_BOLD.renderer(titleRegular);
-        TextRenderer metaFont = BuiltinFontCatalog.ONEST_MEDIUM.renderer(titleRegular);
+        TextRenderer metaFont = BuiltinFontCatalog.ONEST_BOLD.renderer(titleRegular);
         List<Layout> layouts = new ArrayList<>(markers.size());
 
         for (Marker marker : markers) {
@@ -124,9 +124,9 @@ public enum WorldMarkerHudRenderer {
 
     public static void renderForeground(TextRenderer fallback, List<Layout> layouts) {
         if (fallback == null || layouts == null || layouts.isEmpty()) return;
-        TextRenderer titleRegular = BuiltinFontCatalog.ONEST_MEDIUM.renderer(fallback);
+        TextRenderer titleRegular = BuiltinFontCatalog.ONEST_BOLD.renderer(fallback);
         TextRenderer titleBold = BuiltinFontCatalog.ONEST_BOLD.renderer(titleRegular);
-        TextRenderer metaFont = BuiltinFontCatalog.ONEST_MEDIUM.renderer(titleRegular);
+        TextRenderer metaFont = BuiltinFontCatalog.ONEST_BOLD.renderer(titleRegular);
 
         boolean ownDecorationBatch = false;
         boolean hasDecorations = layouts.stream()

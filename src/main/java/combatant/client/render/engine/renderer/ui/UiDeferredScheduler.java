@@ -30,10 +30,7 @@ import org.joml.Matrix4f;
 
 import java.util.EnumMap;
 
-/**
- * Owns extraction-time UI scheduling and replay. Renderer2D exposes only the stable facade;
- * frame queues, projection restoration and deferred batcher pooling live here.
- */
+/** Schedules deferred 2D rendering. */
 public final class UiDeferredScheduler {
     private static final ObjectArrayList<Deferred2DSubmit> RECORDING = new ObjectArrayList<>(256);
     private static final EnumMap<Renderer2D.Deferred2DLayer, ObjectArrayList<Deferred2DSubmit>> READY_BY_LAYER =

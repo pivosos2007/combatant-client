@@ -20,7 +20,8 @@ abstract class AbstractMapLinkConnection implements MapLinkConnection {
     }
 
     protected long poll(long providerDefaultMs) {
-        return profile.refreshIntervalMs() > 0 ? profile.refreshIntervalMs() : Math.max(250L, providerDefaultMs);
+        long providerDelay = Math.max(MapLinkProfile.MIN_MAX_UPDATE_DELAY_MS, providerDefaultMs);
+        return Math.min(profile.maxUpdateDelayMs(), providerDelay);
     }
 
     protected static UUID parseUuid(String raw) {

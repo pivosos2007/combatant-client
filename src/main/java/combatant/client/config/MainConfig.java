@@ -87,10 +87,6 @@ public final class MainConfig implements ConfigAggregate, ConfigNameProvider, Se
         return visual.getMsaa3dSamples();
     }
 
-    public boolean isTaa3dEnabled() {
-        return visual.isTaa3dEnabled();
-    }
-
     public boolean isClickGuiModulesHintsEnabled() {
         return visual.isClickGuiModulesHintsEnabled();
     }

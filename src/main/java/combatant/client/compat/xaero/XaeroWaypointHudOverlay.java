@@ -43,8 +43,8 @@ public enum XaeroWaypointHudOverlay {
     ;
 
     private static final float BASE_ICON_SIZE = 12.0f;
-    private static final float BASE_NAME_SIZE = 10.5f;
-    private static final float BASE_DISTANCE_SIZE = 8.75f;
+    private static final float BASE_NAME_SIZE = 12.5f;
+    private static final float BASE_DISTANCE_SIZE = 9.5f;
     private static final float SCREEN_MARGIN = 6.0f;
 
     private static List<WorldMarkerHudRenderer.Layout> frameEntries = List.of();

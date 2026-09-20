@@ -7,7 +7,7 @@
 
 package combatant.client.render.iris;
 
-import combatant.client.features.module.modules.visuals.ReimaginedVisual;
+import combatant.client.features.module.modules.visuals.MotionBlur;
 import combatant.client.runtime.RuntimeGate;
 
 public enum IrisCompatibilityGuards {
@@ -17,7 +17,7 @@ public enum IrisCompatibilityGuards {
         if (!RuntimeGate.canRunShaderBridge()) return false;
         return IrisRuntime.isShaderpackRendererActive()
                 && IrisRuntime.supports(IrisCompatibilityFeature.MOTION_BLUR_POLICY)
-                && ReimaginedVisual.isDeferredMotionBlurEnabledStatic();
+                && MotionBlur.isActiveStatic();
     }
 
     public static boolean suppressCombatantTerrainShaderOverrides() {

@@ -57,7 +57,13 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
     );
     private static final Set<String> OPTIONAL_XAERO_MINIMAP_MIXINS = Set.of(
             "combatant.client.mixins.xaero.minimap.AbstractWaypointRenderProviderMixin",
-            "combatant.client.mixins.xaero.minimap.WaypointWorldRendererMixin"
+            "combatant.client.mixins.xaero.minimap.WaypointWorldRendererMixin",
+            "combatant.client.mixins.xaero.minimap.RadarStateUpdaterMixin",
+            "combatant.client.mixins.xaero.minimap.ClientSyncedTrackedPlayerManagerMixin",
+            "combatant.client.mixins.xaero.minimap.MinimapClientWorldDataMixin"
+    );
+    private static final Set<String> OPTIONAL_XAERO_LIB_MIXINS = Set.of(
+            "combatant.client.mixins.xaero.lib.ClientConfigManagerMixin"
     );
     private static final Set<String> OPTIONAL_XAERO_WORLDMAP_MIXINS = Set.of(
             "combatant.client.mixins.xaero.worldmap.WorldMapWaypointAccessor",
@@ -93,6 +99,12 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
         }
         if (OPTIONAL_XAERO_WORLDMAP_MIXINS.contains(mixinClassName)) {
             return FabricLoader.getInstance().isModLoaded("xaeroworldmap");
+        }
+        if (OPTIONAL_XAERO_LIB_MIXINS.contains(mixinClassName)) {
+            FabricLoader loader = FabricLoader.getInstance();
+            return loader.isModLoaded("xaerolib")
+                    || loader.isModLoaded("xaerominimap")
+                    || loader.isModLoaded("xaeroworldmap");
         }
         if (OPTIONAL_MORECULLING_MIXINS.contains(mixinClassName)) {
             return FabricLoader.getInstance().isModLoaded("moreculling");

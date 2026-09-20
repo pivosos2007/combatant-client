@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Structured backend-only value for MapLink provider profiles. */
+/** Structured persisted value for MapLink provider profiles. */
 public final class MapLinkProfilesValue extends ConfigValue<List<MapLinkProfile>> {
     public MapLinkProfilesValue(String name) {
         super(name, List.of());
@@ -33,13 +33,11 @@ public final class MapLinkProfilesValue extends ConfigValue<List<MapLinkProfile>
             LinkedHashMap<String, Object> row = new LinkedHashMap<>();
             row.put("id", profile.id());
             row.put("displayName", profile.displayName());
-            row.put("enabled", profile.enabled());
             row.put("serverMatcher", profile.serverMatcher());
             row.put("baseUrl", profile.baseUrl());
             row.put("providerType", profile.providerType().name().toLowerCase(Locale.ROOT));
-            row.put("refreshIntervalMs", profile.refreshIntervalMs());
+            row.put("maxUpdateDelayMs", profile.maxUpdateDelayMs());
             row.put("defaultY", profile.defaultY());
-            row.put("sourcePriority", profile.sourcePriority());
             row.put("dimensionMappings", profile.dimensionMappings());
             row.put("requestHeaders", profile.requestHeaders());
             out.add(row);
@@ -56,27 +54,24 @@ public final class MapLinkProfilesValue extends ConfigValue<List<MapLinkProfile>
             if (!(rowObject instanceof Map<?, ?> row)) continue;
             String id = string(row.get("id"), "profile-" + fallbackIndex++);
             String displayName = string(row.get("displayName"), id);
-            boolean enabled = bool(row.get("enabled"), true);
             String serverMatcher = string(row.get("serverMatcher"), "");
             String baseUrl = string(row.get("baseUrl"), "");
             MapLinkProviderType providerType = provider(row.get("providerType"));
-            long refreshIntervalMs = number(row.get("refreshIntervalMs"), 0L).longValue();
+            // refreshIntervalMs was an exact polling interval. It is intentionally not migrated:
+            // maxUpdateDelayMs has different semantics (an upper bound for provider cadence).
+            long maxUpdateDelayMs = number(row.get("maxUpdateDelayMs"),
+                    MapLinkProfile.DEFAULT_MAX_UPDATE_DELAY_MS).longValue();
             int defaultY = number(row.get("defaultY"), 64).intValue();
-            int sourcePriority = number(row.get("sourcePriority"), 0).intValue();
             Map<String, String> mappings = stringMap(row.get("dimensionMappings"));
             Map<String, String> headers = stringMap(row.get("requestHeaders"));
-            profiles.add(new MapLinkProfile(id, displayName, enabled, serverMatcher, baseUrl, providerType,
-                    refreshIntervalMs, defaultY, sourcePriority, mappings, headers));
+            profiles.add(new MapLinkProfile(id, displayName, serverMatcher, baseUrl, providerType,
+                    maxUpdateDelayMs, defaultY, mappings, headers));
         }
         value = List.copyOf(profiles);
     }
 
     private static String string(Object value, String fallback) {
         return value instanceof String s ? s : fallback;
-    }
-
-    private static boolean bool(Object value, boolean fallback) {
-        return value instanceof Boolean b ? b : fallback;
     }
 
     private static Number number(Object value, Number fallback) {

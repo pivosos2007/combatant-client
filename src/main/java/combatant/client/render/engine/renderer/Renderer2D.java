@@ -48,20 +48,7 @@ import java.util.function.Consumer;
 
 import static combatant.client.render.engine.renderer.ui.draw.UiMeshGeometry.*;
 
-/**
- * Stable public facade for Combatant 2D drawing.
- *
- * <p>Production execution does <strong>not</strong> replay the semantic UI command stream. Draw
- * methods lower concrete work into {@link OrderedUiBatcher}; that work is compiled by
- * {@link combatant.client.render.engine.renderer.ui.UiPassCompiler} and executed by
- * {@link combatant.client.render.engine.renderer.ui.UiPassExecutor}. Semantic commands recorded by
- * {@link combatant.client.render.engine.renderer.ui.UiRendererSubsystem} exist for normalized
- * metadata, diagnostics, clip snapshots, and backdrop planning only.</p>
- *
- * <p>Callers should stay on this facade. Deferred frame ownership belongs to
- * {@link UiDeferredScheduler}; batching/lowering details are internal renderer implementation and
- * must not be bypassed from HUD/runtime code.</p>
- */
+/** Public API for 2D rendering. */
 public final class Renderer2D {
     public static final int ITEM_OVERLAY_NONE = 0;
     public static final int ITEM_OVERLAY_COUNT = 1;
@@ -3493,7 +3480,6 @@ public final class Renderer2D {
                 preset);
     }
 
-    //Если squirclePower < 1.5f, поведение без squircle
     public void liquidGlassRect(double x, double y, double w, double h,
                                 float radius, float softness,
                                 int tintArgb,

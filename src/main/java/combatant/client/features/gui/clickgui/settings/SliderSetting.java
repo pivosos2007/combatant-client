@@ -14,6 +14,8 @@ public class SliderSetting<N extends Number> extends Setting {
 
     private final NumberValue<N> value;
     private final UiState ui = new UiState();
+    private Double sliderMinOverride;
+    private Double sliderMaxOverride;
 
     public SliderSetting(String name, NumberValue<N> value) {
         super(name, value);
@@ -26,6 +28,38 @@ public class SliderSetting<N extends Number> extends Setting {
 
     UiState ui() {
         return ui;
+    }
+
+    /**
+     * Restricts only the mouse track. The underlying NumberValue bounds remain unchanged,
+     * so direct numeric input may still use the full configured range.
+     */
+    public SliderSetting<N> sliderRange(double min, double max) {
+        if (!Double.isFinite(min) || !Double.isFinite(max)) {
+            throw new IllegalArgumentException("Slider range must be finite");
+        }
+        if (min > max) {
+            double swap = min;
+            min = max;
+            max = swap;
+        }
+        sliderMinOverride = min;
+        sliderMaxOverride = max;
+        return this;
+    }
+
+    double sliderMin() {
+        double hardMin = value.getMin().doubleValue();
+        double hardMax = value.getMax().doubleValue();
+        double requested = sliderMinOverride == null ? hardMin : sliderMinOverride;
+        return Math.max(hardMin, Math.min(hardMax, requested));
+    }
+
+    double sliderMax() {
+        double hardMin = value.getMin().doubleValue();
+        double hardMax = value.getMax().doubleValue();
+        double requested = sliderMaxOverride == null ? hardMax : sliderMaxOverride;
+        return Math.max(sliderMin(), Math.max(hardMin, Math.min(hardMax, requested)));
     }
 
     // ==================== CONFIG ==================== //

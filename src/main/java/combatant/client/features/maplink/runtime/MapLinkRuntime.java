@@ -32,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -145,10 +146,18 @@ public final class MapLinkRuntime {
 
             MapLinkFetchResult result = connection.fetchPlayers(context);
             long success = System.currentTimeMillis();
-            List<MapLinkObservation> observations = mapObservations(profile, result, context, success);
-            boolean unmapped = profile.hasExplicitWorldMappings()
-                    && result.players().stream().anyMatch(player -> !profile.hasMappingFor(player.providerWorld()));
-            long cadence = profile.refreshIntervalMs() > 0 ? profile.refreshIntervalMs() : result.suggestedPollIntervalMs();
+            Map<String, String> worldMappings;
+            Map<String, String> learnedMappings;
+            synchronized (lock) {
+                if (!isCurrentLocked(runtime, profile)) {
+                    runtime.inFlight = false;
+                    return;
+                }
+                learnedMappings = learnWorldMappingsLocked(runtime, profile, result, context);
+                worldMappings = Map.copyOf(runtime.worldMappings);
+            }
+            List<MapLinkObservation> observations = mapObservations(profile, result, context, success, worldMappings);
+            long cadence = result.suggestedPollIntervalMs();
 
             synchronized (lock) {
                 // Reject responses captured under a different server/profile generation.
@@ -163,12 +172,13 @@ public final class MapLinkRuntime {
                 runtime.cadenceMs = cadence;
                 runtime.nextAttemptMs = success + cadence;
                 runtime.inFlight = false;
-                runtime.state = new MapLinkProfileState(profile.id(),
-                        unmapped ? MapLinkProfileStatus.WORLD_UNMAPPED : MapLinkProfileStatus.LIVE,
-                        attempt, success,
-                        unmapped ? "One or more provider worlds have no explicit mapping" : "",
-                        observations.size(), result.providerWorlds(), cadence, 0);
+                runtime.state = new MapLinkProfileState(profile.id(), MapLinkProfileStatus.LIVE,
+                        attempt, success, "", observations.size(), result.providerWorlds(), cadence, 0);
                 publishLocked(success);
+            }
+            if (!learnedMappings.isEmpty()) {
+                Map<String, String> learnedCopy = Map.copyOf(learnedMappings);
+                Minecraft.getInstance().execute(() -> config.rememberDimensionMappings(profile.id(), learnedCopy));
             }
             DebugLog.server("MapLink %s/%s: %d player(s), next %d ms",
                     profile.id(), profile.providerType(), observations.size(), cadence);
@@ -202,17 +212,57 @@ public final class MapLinkRuntime {
     private List<MapLinkObservation> mapObservations(MapLinkProfile profile,
                                                      MapLinkFetchResult result,
                                                      MapLinkFetchContext context,
-                                                     long fetchTime) {
+                                                     long fetchTime,
+                                                     Map<String, String> worldMappings) {
         List<MapLinkObservation> out = new ArrayList<>(result.players().size());
         for (MapLinkRawPlayer player : result.players()) {
             if (player == null || player.name().isBlank()) continue;
             UUID resolved = player.uuid() != null ? player.uuid() : context.resolveKnownUuid(player.name());
-            String mapped = profile.mapWorld(player.providerWorld());
+            String mapped = mapProviderWorld(profile, player.providerWorld(), context.currentWorldId(), worldMappings);
             out.add(new MapLinkObservation(profile.id(), profile.providerType(), player.name(), resolved,
                     player.providerWorld(), mapped, player.x(), player.y(), player.z(), fetchTime,
-                    player.providerTimestamp(), player.revision(), profile.sourcePriority()));
+                    player.providerTimestamp(), player.revision()));
         }
         return List.copyOf(out);
+    }
+
+    private static Map<String, String> learnWorldMappingsLocked(ProfileRuntime runtime,
+                                                        MapLinkProfile profile,
+                                                        MapLinkFetchResult result,
+                                                        MapLinkFetchContext context) {
+        if (runtime == null || result == null || context == null) return Map.of();
+        // Older configs are recovery hints. New aliases are learned from our own web-map position.
+        Map<String, String> persistedMappings = profile.dimensionMappings();
+        runtime.worldMappings.putAll(persistedMappings);
+        String localName = context.localPlayerName();
+        String currentWorld = MapLinkProfile.normalizeWorld(context.currentWorldId());
+        if (localName == null || localName.isBlank() || currentWorld.isBlank()) return Map.of();
+        Map<String, String> learned = new LinkedHashMap<>();
+        for (MapLinkRawPlayer player : result.players()) {
+            if (player == null || !localName.equalsIgnoreCase(player.name())) continue;
+            String providerWorld = MapLinkProfile.normalizeWorld(player.providerWorld());
+            if (providerWorld.isBlank()) continue;
+            runtime.worldMappings.put(providerWorld, currentWorld);
+            if (!currentWorld.equals(persistedMappings.get(providerWorld))) {
+                learned.put(providerWorld, currentWorld);
+            }
+        }
+        return learned.isEmpty() ? Map.of() : Map.copyOf(learned);
+    }
+
+    private static String mapProviderWorld(MapLinkProfile profile,
+                                           String providerWorld,
+                                           String currentWorld,
+                                           Map<String, String> worldMappings) {
+        String normalized = MapLinkProfile.normalizeWorld(providerWorld);
+        if (normalized.isBlank()) return MapLinkProfile.normalizeWorld(currentWorld);
+        if (worldMappings != null) {
+            String learned = worldMappings.get(normalized);
+            if (learned != null && !learned.isBlank()) return MapLinkProfile.normalizeWorld(learned);
+        }
+        String normalizedCurrent = MapLinkProfile.normalizeWorld(currentWorld);
+        if (normalized.equals(normalizedCurrent)) return normalized;
+        return profile.mapWorld(normalized);
     }
 
     private Capture capture(Minecraft mc) {
@@ -240,7 +290,7 @@ public final class MapLinkRuntime {
                 .filter(profile -> MapLinkServerMatcher.matches(profile.serverMatcher(), serverAddress))
                 .toList();
         if (!matched.isEmpty()) return matched;
-        if (legacyFallback != null && legacyFallback.enabled()
+        if (legacyFallback != null
                 && MapLinkServerMatcher.matches(legacyFallback.serverMatcher(), serverAddress)) {
             return List.of(legacyFallback);
         }
@@ -261,14 +311,27 @@ public final class MapLinkRuntime {
         for (MapLinkProfile profile : profiles) {
             ProfileRuntime runtime = runtimes.get(profile.id());
             if (runtime != null && !runtime.profile.equals(profile)) {
+                boolean reconnect = requiresConnectionRefresh(runtime.profile, profile);
                 runtime.profile = profile;
-                runtime.connection = null;
-                runtime.nextAttemptMs = 0L;
-                runtime.failures = 0;
+                runtime.worldMappings.putAll(profile.dimensionMappings());
+                if (reconnect) {
+                    runtime.connection = null;
+                    runtime.nextAttemptMs = 0L;
+                    runtime.failures = 0;
+                }
                 changed = true;
             }
         }
         return changed;
+    }
+
+    private static boolean requiresConnectionRefresh(MapLinkProfile previous, MapLinkProfile next) {
+        if (previous == null || next == null) return true;
+        return previous.providerType() != next.providerType()
+                || !Objects.equals(previous.baseUrl(), next.baseUrl())
+                || previous.maxUpdateDelayMs() != next.maxUpdateDelayMs()
+                || previous.defaultY() != next.defaultY()
+                || !Objects.equals(previous.requestHeaders(), next.requestHeaders());
     }
 
     private boolean markStaleLocked(long now) {
@@ -277,8 +340,7 @@ public final class MapLinkRuntime {
             if (runtime.lastSuccessMs <= 0 || runtime.inFlight) continue;
             long staleThreshold = Math.max(config.staleAfterMs(), Math.max(1_000L, runtime.cadenceMs) * 2L);
             if (now - runtime.lastSuccessMs > staleThreshold
-                    && (runtime.state.status() == MapLinkProfileStatus.LIVE
-                    || runtime.state.status() == MapLinkProfileStatus.WORLD_UNMAPPED)) {
+                    && runtime.state.status() == MapLinkProfileStatus.LIVE) {
                 runtime.state = new MapLinkProfileState(runtime.profile.id(), MapLinkProfileStatus.STALE,
                         runtime.state.lastAttemptMs(), runtime.lastSuccessMs,
                         runtime.state.detail(), runtime.observations.size(), runtime.providerWorlds,
@@ -296,7 +358,6 @@ public final class MapLinkRuntime {
             observations.addAll(runtime.observations);
             states.put(runtime.profile.id(), runtime.state);
         }
-        observations.sort((a, b) -> Integer.compare(b.sourcePriority(), a.sourcePriority()));
         published.set(new MapLinkSnapshot(generation.incrementAndGet(), now, observations, states));
     }
 
@@ -341,10 +402,12 @@ public final class MapLinkRuntime {
         private long cadenceMs = 1_000L;
         private List<MapLinkObservation> observations = List.of();
         private Set<String> providerWorlds = Set.of();
+        private final Map<String, String> worldMappings = new LinkedHashMap<>();
         private MapLinkProfileState state;
 
         private ProfileRuntime(MapLinkProfile profile) {
             this.profile = profile;
+            this.worldMappings.putAll(profile.dimensionMappings());
             this.state = new MapLinkProfileState(profile.id(), MapLinkProfileStatus.IDLE,
                     0L, 0L, "", 0, Set.of(), 0L, 0);
         }

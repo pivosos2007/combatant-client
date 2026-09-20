@@ -7,10 +7,25 @@
 
 package combatant.client.render.engine.postprocess;
 
+import com.mojang.blaze3d.textures.GpuTextureView;
+
 public interface PostProcessPass {
     boolean isActive();
 
-    boolean render(PostProcessExecutionContext execution);
+    /** Compatibility entry point used by the production visual effects. */
+    default boolean render(GpuTextureView source, GpuTextureView destination, float tickDelta) {
+        return false;
+    }
+
+    default boolean render(PostProcessContext context, GpuTextureView source, GpuTextureView destination) {
+        return render(source, destination, context != null ? context.tickDelta() : 0.0f);
+    }
+
+    /** Modern graph entry point. Legacy effects are adapted to the texture-view contract. */
+    default boolean render(PostProcessExecutionContext execution) {
+        if (execution == null) return false;
+        return render(execution.context(), execution.source(), execution.destination());
+    }
 
     /**
      * Whether this pass can profit from a storage-capable graph destination on the active backend.

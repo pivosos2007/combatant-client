@@ -126,6 +126,9 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_MENU_BACKGROUND_WAVES_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/menu_background_waves.frag");
     public static final Identifier SHADER_VISUAL_PREVIEW_CLOUDS_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/visual_preview_clouds.frag");
     public static final Identifier SHADER_POST_FX_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/post_fx.frag");
+    public static final Identifier SHADER_DEPTH_OF_FIELD_FOCUS_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/depth_of_field_focus.frag");
+    public static final Identifier SHADER_DEPTH_OF_FIELD_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/depth_of_field.frag");
+    public static final Identifier SHADER_REIMAGINED_SKYBOX_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/reimagined_skybox.frag");
     public static final Identifier SHADER_HEAT_FX_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/heat_fx.frag");
     public static final Identifier SHADER_ESP_GRADIENT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/shader_esp_gradient.frag");
     public static final Identifier SHADER_ESP_SHADOW_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/shader_esp_shadow.frag");
@@ -150,6 +153,9 @@ public enum CombatantRenderPipelines {
     // Snippets
     private static final RenderPipeline.Snippet MESH_UNIFORMS = new ExtendedRenderPipelineBuilder()
             .withUniform("MeshData", UniformType.UNIFORM_BUFFER)
+            .buildSnippet();
+    private static final RenderPipeline.Snippet FOG_UNIFORMS = new ExtendedRenderPipelineBuilder()
+            .withUniform("Fog", UniformType.UNIFORM_BUFFER)
             .buildSnippet();
     private static final RenderPipeline.Snippet RIG_UNIFORMS = new ExtendedRenderPipelineBuilder()
             .withUniform("RigBones", UniformType.UNIFORM_BUFFER)
@@ -1089,6 +1095,38 @@ public enum CombatantRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(false)
             .build()
+    );
+    public static final RenderPipeline DEPTH_OF_FIELD_FOCUS = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/depth_of_field_focus"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_DEPTH_OF_FIELD_FOCUS_FRAG)
+            .withSampler("u_MainDepth").withSampler("u_TranslucentDepth").withSampler("u_ItemEntityDepth")
+            .withSampler("u_ParticlesDepth").withSampler("u_WeatherDepth").withSampler("u_CloudsDepth")
+            .withUniform("DepthOfField", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST).withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT).withCull(false).build()
+    );
+    public static final RenderPipeline DEPTH_OF_FIELD = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/depth_of_field"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_DEPTH_OF_FIELD_FRAG)
+            .withSampler("u_Texture").withSampler("u_FocusTexture").withSampler("u_MainDepth")
+            .withSampler("u_TranslucentDepth").withSampler("u_ItemEntityDepth").withSampler("u_ParticlesDepth")
+            .withSampler("u_WeatherDepth").withSampler("u_CloudsDepth")
+            .withUniform("DepthOfField", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST).withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT).withCull(false).build()
+    );
+    public static final RenderPipeline WORLD_REIMAGINED_SKYBOX_SHADER = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, FOG_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_reimagined_skybox_shader"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_REIMAGINED_SKYBOX_FRAG)
+            .withUniform("SkyboxShader", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST).withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT).withCull(false).build()
     );
     /**
      * Fullscreen heat distortion + vignette (pos2).

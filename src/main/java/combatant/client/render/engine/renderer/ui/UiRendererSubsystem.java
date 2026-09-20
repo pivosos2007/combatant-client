@@ -15,11 +15,7 @@ import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.helpers.ClipFunction;
 import combatant.client.render.helpers.ScissorFunction;
 
-/**
- * Single UI scheduling gateway. Normalized commands provide semantic/clip metadata while concrete
- * production work is owned by {@link UiPassCompiler} and executed only by {@link UiPassExecutor}.
- * {@link OrderedUiBatcher} remains an internal geometry/batching lowering component during migration.
- */
+/** Coordinates UI recording, compilation, and execution. */
 public final class UiRendererSubsystem {
     private final UiSemanticCommandBuffer semanticCommands = new UiSemanticCommandBuffer();
     private final UiPassCompiler compiler = new UiPassCompiler();

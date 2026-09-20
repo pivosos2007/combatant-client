@@ -4,484 +4,565 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
+
 package combatant.client.features.module.modules.visuals;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import combatant.client.config.ConfigPaths;
-import combatant.client.config.ConfigSerializer;
-import combatant.client.config.values.BooleanMapValue;
-import combatant.client.config.values.BooleanValue;
-import combatant.client.config.values.EnumValue;
-import combatant.client.config.values.NumberValue;
+
+import combatant.client.features.theme.Theme;
+import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.textures.GpuTextureView;
+import combatant.client.config.values.*;
+import combatant.client.features.module.*;
 import combatant.client.features.module.Module;
-import combatant.client.features.module.ModuleCategory;
-import combatant.client.features.module.ModuleInfo;
-import combatant.client.features.module.Modules;
+import combatant.client.render.engine.postprocess.*;
+import combatant.client.render.engine.rhi.CombatantRhi;
+import combatant.client.render.engine.rhi.shader.RhiStorageImage;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.language.I18n;
+import org.joml.Matrix4f;
+import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
-import combatant.client.render.engine.deferred.DeferredCameraPostConfig;
-import combatant.client.render.engine.deferred.DeferredDebugDiagnostics;
-import combatant.client.render.engine.deferred.DeferredDebugView;
-import combatant.client.render.engine.deferred.DeferredDebugVolumeAxis;
-import combatant.client.render.engine.deferred.DeferredEnvironmentFeatureConfig;
-import combatant.client.render.engine.deferred.DeferredFeature;
-import combatant.client.render.engine.deferred.DeferredFeatureOverride;
-import combatant.client.render.engine.deferred.DeferredPostConfig;
-import combatant.client.render.engine.deferred.DeferredRuntimeConfig;
-import combatant.client.render.engine.deferred.DeferredTemporalConfig;
-import combatant.client.render.engine.deferred.DeferredWorldPipeline;
-import combatant.client.render.engine.postprocess.DepthOfFieldQuality;
+import combatant.client.render.engine.core.CombatantWorldMatrices;
+import combatant.client.render.engine.depth.WorldSceneDepth;
+import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
+import combatant.client.render.engine.renderer.FullScreenRenderer;
+import combatant.client.render.engine.profiler.TracyGpuProfiler;
+import combatant.client.render.engine.uniform.impl.DepthOfFieldUniforms;
 import combatant.client.render.helpers.SodiumMaterialFlags;
+import combatant.client.render.iris.IrisSceneDepth;
+import combatant.client.render.iris.IrisRuntime;
 import combatant.client.util.logging.DebugLog;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 
-/**
- * User-facing controller for Combatant's world renderer.
- *
- * <p>Rendering code consumes immutable deferred config snapshots; shaders and passes never read
- * this module directly. The only retained pre-deferred feature is Sodium vegetation deformation,
- * because it is a material/geometry policy rather than a legacy post/sky path.</p>
- */
+//todo Description
 @ModuleInfo(id = "reimaginedvisual", displayName = "ReimaginedVisual", category = ModuleCategory.VISUALS)
-public final class ReimaginedVisual extends Module {
+public class ReimaginedVisual extends Module implements PostProcessPass, PostProcessBackendResourceOwner {
+
+    private static final String SETTING_EFFECTS = "effects";
+    private static final String EFFECT_SHADER_SKY = "shader_sky";
+    private static final String EFFECT_WORLD_SUN = "world_sun";
     private static final String EFFECT_WAVY_VEGETATION = "wavy_vegetation";
-    private static final String EFFECT_SHADOWS = "shadows";
-    private static final String EFFECT_CONTACT_SHADOWS = "contact_shadows";
-    private static final String EFFECT_GTAO = "gtao";
-    private static final String EFFECT_INDIRECT_LIGHT = "indirect_light";
-    private static final String EFFECT_REFLECTIONS = "reflections";
-    private static final String EFFECT_COLORED_BLOCK_LIGHT = "colored_block_light";
-    private static final String EFFECT_DYNAMIC_LIGHTS = "dynamic_lights";
-    private static final String EFFECT_PARTICIPATING_MEDIA = "participating_media";
-    private static final String EFFECT_WATER = "water";
-    private static final String EFFECT_SKY = "sky";
-    private static final String EFFECT_CLOUDS = "clouds";
-    private static final String EFFECT_WEATHER = "weather";
-    private static final String EFFECT_TAA = "taa";
-    private static final String EFFECT_EXPOSURE = "exposure";
-    private static final String EFFECT_BLOOM = "bloom";
     private static final String EFFECT_DEPTH_OF_FIELD = "depth_of_field";
-    private static final String EFFECT_MOTION_BLUR = "motion_blur";
-
-    // Smoke overrides remain a diagnostic layer; normal subsystem enablement is the effects map above.
-    private static final DeferredFeature[] DEBUG_FEATURES = {
-            DeferredFeature.SHADOWS, DeferredFeature.CONTACT_SHADOWS, DeferredFeature.GTAO,
-            DeferredFeature.INDIRECT_LIGHT, DeferredFeature.COLORED_BLOCK_LIGHT, DeferredFeature.DYNAMIC_LIGHTS,
-            DeferredFeature.REFLECTIONS, DeferredFeature.WATER, DeferredFeature.TAA, DeferredFeature.EXPOSURE,
-            DeferredFeature.BLOOM, DeferredFeature.PARTICIPATING_MEDIA,
-            DeferredFeature.DEPTH_OF_FIELD, DeferredFeature.MOTION_BLUR,
-            DeferredFeature.CLOUDS, DeferredFeature.SKY, DeferredFeature.WEATHER
-    };
-
+    private static final String SETTING_SKYBOX_SHADER_SYNC_THEME = "skybox_shader_sync_theme";
+    private static final String SETTING_SKYBOX_SHADER_COLOR = "skybox_shader_color";
+    private static final String SETTING_SKYBOX_SHADER_MOTION_SPEED = "skybox_shader_motion_speed";
+    private static final String SETTING_SKYBOX_SHADER_AURORA_ENABLED = "skybox_shader_aurora_enabled";
+    private static final String SETTING_SKYBOX_SHADER_AURORA_INTENSITY = "skybox_shader_aurora_intensity";
+    private static final String SETTING_SKYBOX_SHADER_AURORA_SPEED = "skybox_shader_aurora_speed";
+    private static final String SETTING_SKYBOX_SHADER_SMALL_STARS = "skybox_shader_small_stars";
+    private static final String SETTING_SKYBOX_SHADER_DUST_STARS = "skybox_shader_dust_stars";
+    private static final String SETTING_SKYBOX_SHADER_MEDIUM_STARS = "skybox_shader_medium_stars";
+    private static final String SETTING_SKYBOX_SHADER_LARGE_STARS = "skybox_shader_large_stars";
+    private static final String SETTING_SKYBOX_SHADER_STAR_BRIGHTNESS = "skybox_shader_star_brightness";
+    private static final String SETTING_SKYBOX_SHADER_TWINKLE_STRENGTH = "skybox_shader_twinkle_strength";
+    private static final String SETTING_SKYBOX_SHADER_LAYERS = "skybox_shader_layers";
+    private static final String SETTING_SKYBOX_SKY_FOG_BLEND = "skybox_sky_fog_blend";
+    private static final String SETTING_WORLD_SUN_GLARE_ENABLED = "world_sun_glare_enabled";
+    private static final String SETTING_WORLD_SUN_SIZE = "world_sun_size";
+    private static final String SETTING_WORLD_SUN_GLOW = "world_sun_glow";
+    private static final String SETTING_WORLD_SUN_INTENSITY = "world_sun_intensity";
+    private static final String SETTING_WAVY_VEGETATION_ROOTED_HORIZONTAL_AMPLITUDE = "wavy_vegetation_rooted_horizontal_amplitude";
+    private static final String SETTING_WAVY_VEGETATION_ROOTED_VERTICAL_AMPLITUDE = "wavy_vegetation_rooted_vertical_amplitude";
+    private static final String SETTING_WAVY_VEGETATION_FREE_HORIZONTAL_AMPLITUDE = "wavy_vegetation_free_horizontal_amplitude";
+    private static final String SETTING_WAVY_VEGETATION_FREE_VERTICAL_AMPLITUDE = "wavy_vegetation_free_vertical_amplitude";
+    private static final String SETTING_WAVY_VEGETATION_SPEED = "wavy_vegetation_speed";
+    private static final String SETTING_DOF_DEPTH_SOURCE = "dof_depth_source";
+    private static final String SETTING_DOF_FAR_START = "dof_far_start";
+    private static final String SETTING_DOF_FAR_TRANSITION = "dof_far_transition";
+    private static final String SETTING_DOF_STRENGTH = "dof_strength";
+    private static final String SETTING_DOF_MAX_RADIUS = "dof_max_radius";
+    private static final String SETTING_DOF_QUALITY = "dof_quality";
+    private static final String SETTING_DOF_DEBUG_COC = "dof_debug_coc";
+    private static final String IRIS_SHADER_SKYBOX_REASON_KEY = "setting.reimaginedvisual.skybox_shader.iris_blocked";
+    private static final String IRIS_SHADER_SKYBOX_REASON_FALLBACK = "Iris is loaded; ReimaginedVisual shader skybox is not used.";
+    private static final String IRIS_DOF_REASON_KEY = "setting.reimaginedvisual.depth_of_field.iris_blocked";
+    private static final String IRIS_DOF_REASON_FALLBACK = "Iris shaderpack pipeline is active.";
     private static final Map<String, Boolean> DEFAULT_EFFECTS = createDefaultEffects();
-    private static final Path LEGACY_MOTION_BLUR_CONFIG = ConfigPaths.root()
-            .resolve("modules").resolve("visuals").resolve("motionblur.json");
-
-    private final BooleanValue deferredRenderer = bool(
-            "reimaginedVisualDeferredRenderer", "deferred_renderer", true);
+    private static final Map<String, Boolean> DEFAULT_SKYBOX_SHADER_LAYERS = createDefaultSkyboxShaderLayers();
+    private final Matrix4f dofProjection = new Matrix4f();
+    private TextureTarget dofFocusTarget;
+    private final DepthOfFieldComputeBackend dofComputeBackend = new DepthOfFieldComputeBackend();
     private final BooleanMapValue effects = group(
-            "reimaginedVisualEffects", "effects", DEFAULT_EFFECTS);
-
-    // UI adapter for Task C renderer-side smoke/debug infrastructure. No compositor logic lives here.
-    private final BooleanValue smokeIsolationMode = visibleWhen(
-            bool("reimaginedVisualSmokeIsolationMode", "smoke_isolation_mode", false),
-            deferredRenderer::get);
-    private final EnumValue<DeferredDebugView> debugView = visibleWhen(
-            enumSetting("reimaginedVisualDebugView", "debug_view", DeferredDebugView.OFF, DeferredDebugView.values()),
-            deferredRenderer::get);
-    private final EnumValue<DeferredDebugVolumeAxis> debugVolumeAxis = visibleWhen(
-            enumSetting("reimaginedVisualDebugVolumeAxis", "debug_volume_axis",
-                    DeferredDebugVolumeAxis.Z, DeferredDebugVolumeAxis.values()),
-            this::isVolumeDebugView);
-    private final NumberValue<Float> debugVolumeSlice = visibleWhen(
-            num("reimaginedVisualDebugVolumeSlice", "debug_volume_slice", 0.5f, 0.0f, 1.0f),
-            this::isVolumeDebugView);
-    // Toggle-once UI command. It self-clears after resetting typed smoke/debug state.
-    private final BooleanValue resetDebugOverrides = visibleWhen(
-            bool("reimaginedVisualResetDebugOverrides", "reset_debug_overrides", false),
-            deferredRenderer::get);
-    private final EnumMap<DeferredFeature, EnumValue<DeferredFeatureOverride>> debugFeatureOverrides =
-            createDebugFeatureOverrides();
-
-    // Kept from the old module: this is still consumed by Sodium's material/vertex contract.
-    private final NumberValue<Float> wavyVegetationRootedHorizontalAmplitude = visibleWhen(
-            num("reimaginedVisualWavyVegetationRootedHorizontalAmplitude",
-                    "wavy_vegetation_rooted_horizontal_amplitude", 1.0f, 0.0f, 3.0f),
-            this::isWavyVegetationSettingsVisible);
-    private final NumberValue<Float> wavyVegetationRootedVerticalAmplitude = visibleWhen(
-            num("reimaginedVisualWavyVegetationRootedVerticalAmplitude",
-                    "wavy_vegetation_rooted_vertical_amplitude", 1.0f, 0.0f, 3.0f),
-            this::isWavyVegetationSettingsVisible);
-    private final NumberValue<Float> wavyVegetationFreeHorizontalAmplitude = visibleWhen(
-            num("reimaginedVisualWavyVegetationFreeHorizontalAmplitude",
-                    "wavy_vegetation_free_horizontal_amplitude", 1.0f, 0.0f, 3.0f),
-            this::isWavyVegetationSettingsVisible);
-    private final NumberValue<Float> wavyVegetationFreeVerticalAmplitude = visibleWhen(
-            num("reimaginedVisualWavyVegetationFreeVerticalAmplitude",
-                    "wavy_vegetation_free_vertical_amplitude", 1.0f, 0.0f, 3.0f),
-            this::isWavyVegetationSettingsVisible);
-    private final NumberValue<Float> wavyVegetationSpeed = visibleWhen(
-            num("reimaginedVisualWavyVegetationSpeed", "wavy_vegetation_speed", 1.0f, 0.0f, 3.0f),
-            this::isWavyVegetationSettingsVisible);
-
-    // Deferred DoF keeps the old user-visible far blur model, but not its legacy depth-source ABI.
-    private final BooleanValue dofAutofocus = visibleWhen(
-            bool("reimaginedVisualDofAutofocus", "dof_autofocus", true), this::isDepthOfFieldSettingsVisible);
-    private final NumberValue<Float> dofFarStart = visibleWhen(
-            num("reimaginedVisualDofFarStart", "dof_far_start", 4.0f, 0.0f, 512.0f), this::isDepthOfFieldSettingsVisible);
-    private final NumberValue<Float> dofFarTransition = visibleWhen(
-            num("reimaginedVisualDofFarTransition", "dof_far_transition", 24.0f, 0.1f, 1024.0f), this::isDepthOfFieldSettingsVisible);
-    private final NumberValue<Float> dofStrength = visibleWhen(
-            num("reimaginedVisualDofStrength", "dof_strength", 0.65f, 0.0f, 1.5f), this::isDepthOfFieldSettingsVisible);
-    private final NumberValue<Float> dofMaxRadius = visibleWhen(
-            num("reimaginedVisualDofMaxRadius", "dof_max_radius", 8.0f, 0.0f, 32.0f), this::isDepthOfFieldSettingsVisible);
-    private final EnumValue<DepthOfFieldQuality> dofQuality = visibleWhen(
-            enumSetting("reimaginedVisualDofQuality", "dof_quality", DepthOfFieldQuality.MEDIUM, DepthOfFieldQuality.values()),
-            this::isDepthOfFieldSettingsVisible);
-    private final NumberValue<Float> dofEdgeProtection = visibleWhen(
-            num("reimaginedVisualDofEdgeProtection", "dof_edge_protection", 0.85f, 0.0f, 4.0f), this::isDepthOfFieldSettingsVisible);
-    private final NumberValue<Float> dofFocusSmoothing = visibleWhen(
-            num("reimaginedVisualDofFocusSmoothing", "dof_focus_smoothing", 8.0f, 0.0f, 32.0f), this::isDepthOfFieldSettingsVisible);
-    // Standalone MotionBlur settings are folded into the real deferred velocity-buffer path.
-    private final NumberValue<Float> motionBlurStrength = visibleWhen(
-            num("reimaginedVisualMotionBlurStrength", "motion_blur_strength", 0.42f, 0.0f, 1.5f), this::isMotionBlurSettingsVisible);
-    private final NumberValue<Integer> motionBlurMaxPixels = visibleWhen(
-            num("reimaginedVisualMotionBlurMaxPixels", "motion_blur_max_pixels", 18, 0, 64), this::isMotionBlurSettingsVisible);
-    private final NumberValue<Float> motionBlurMinMotionPixels = visibleWhen(
-            num("reimaginedVisualMotionBlurMinMotionPixels", "motion_blur_min_motion_pixels", 0.45f, 0.0f, 4.0f), this::isMotionBlurSettingsVisible);
-    private final NumberValue<Float> motionBlurShutterScale = visibleWhen(
-            num("reimaginedVisualMotionBlurShutterScale", "motion_blur_shutter_scale", 1.0f, 0.0f, 6.0f), this::isMotionBlurSettingsVisible);
-    private final NumberValue<Integer> motionBlurSamples = visibleWhen(
-            num("reimaginedVisualMotionBlurSamples", "motion_blur_samples", 12, 4, 32), this::isMotionBlurSettingsVisible);
-    private final NumberValue<Float> motionBlurDepthEdgeProtection = visibleWhen(
-            num("reimaginedVisualMotionBlurDepthEdgeProtection", "motion_blur_depth_edge_protection", 1.0f, 0.0f, 4.0f), this::isMotionBlurSettingsVisible);
-
-    private final NumberValue<Float> bloomThreshold = visibleWhen(
-            num("reimaginedVisualBloomThreshold", "bloom_threshold", 1.0f, 0.0f, 16.0f), () -> isEffectSelected(EFFECT_BLOOM));
-    private final NumberValue<Float> bloomSoftKnee = visibleWhen(
-            num("reimaginedVisualBloomSoftKnee", "bloom_soft_knee", 0.5f, 0.0f, 1.0f), () -> isEffectSelected(EFFECT_BLOOM));
-    private final NumberValue<Float> bloomIntensity = visibleWhen(
-            num("reimaginedVisualBloomIntensity", "bloom_intensity", 0.05f, 0.0f, 2.0f), () -> isEffectSelected(EFFECT_BLOOM));
-
-    // Persisted but intentionally hidden. Prevents old standalone MotionBlur values from being re-applied.
-    private final BooleanValue legacyMotionBlurMigrated = visibleWhen(
-            bool("reimaginedVisualLegacyMotionBlurMigrated", "legacy_motion_blur_migrated", false), () -> false);
-
-    private boolean transientDebugStateInitialized;
+            "reimaginedVisualEffects",
+            SETTING_EFFECTS,
+            DEFAULT_EFFECTS
+    );
+    private final BooleanValue skyboxShaderSyncTheme =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(bool("reimaginedVisualSkyboxShaderSyncTheme", SETTING_SKYBOX_SHADER_SYNC_THEME, true),
+                    this::isShaderSkyboxSettingsVisible));
+    private final RGBColorValue skyboxShaderColor =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(colorNoAlpha("reimaginedVisualSkyboxShaderColor", SETTING_SKYBOX_SHADER_COLOR, "#78A7FF"),
+                    () -> isShaderSkyboxSettingsVisible() && !skyboxShaderSyncTheme.get()));
+    private final NumberValue<Float> skyboxShaderMotionSpeed =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderMotionSpeed", SETTING_SKYBOX_SHADER_MOTION_SPEED, 0.45f, 0.0f, 2.0f),
+                    this::isShaderSkyboxSettingsVisible));
+    private final BooleanValue skyboxShaderAuroraEnabled =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(bool("reimaginedVisualSkyboxShaderAuroraEnabled", SETTING_SKYBOX_SHADER_AURORA_ENABLED, false),
+                    this::isShaderSkyboxSettingsVisible));
+    private final NumberValue<Float> skyboxShaderAuroraIntensity =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderAuroraIntensity", SETTING_SKYBOX_SHADER_AURORA_INTENSITY, 0.70f, 0.0f, 1.5f),
+                    () -> isShaderSkyboxSettingsVisible() && skyboxShaderAuroraEnabled.get()));
+    private final NumberValue<Float> skyboxShaderAuroraSpeed =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderAuroraSpeed", SETTING_SKYBOX_SHADER_AURORA_SPEED, 0.38f, 0.0f, 2.0f),
+                    () -> isShaderSkyboxSettingsVisible() && skyboxShaderAuroraEnabled.get()));
+    private final NumberValue<Float> skyboxShaderSmallStars =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderSmallStars", SETTING_SKYBOX_SHADER_SMALL_STARS, 1.60f, 0.0f, 10.0f),
+                    this::isShaderSkyboxSettingsVisible));
+    private final NumberValue<Float> skyboxShaderDustStars =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderDustStars", SETTING_SKYBOX_SHADER_DUST_STARS, 1.40f, 0.0f, 10.0f),
+                    this::isShaderSkyboxSettingsVisible));
+    private final NumberValue<Float> skyboxShaderMediumStars =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderMediumStars", SETTING_SKYBOX_SHADER_MEDIUM_STARS, 1.30f, 0.0f, 10.0f),
+                    this::isShaderSkyboxSettingsVisible));
+    private final NumberValue<Float> skyboxShaderLargeStars =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderLargeStars", SETTING_SKYBOX_SHADER_LARGE_STARS, 1.15f, 0.0f, 10.0f),
+                    this::isShaderSkyboxSettingsVisible));
+    private final NumberValue<Float> skyboxShaderStarBrightness =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderStarBrightness", SETTING_SKYBOX_SHADER_STAR_BRIGHTNESS, 1.35f, 0.0f, 3.0f),
+                    this::isShaderSkyboxSettingsVisible));
+    private final NumberValue<Float> skyboxShaderTwinkleStrength =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderTwinkleStrength", SETTING_SKYBOX_SHADER_TWINKLE_STRENGTH, 1.35f, 0.0f, 3.0f),
+                    this::isShaderSkyboxSettingsVisible));
+    private final BooleanMapValue skyboxShaderLayers =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(group("reimaginedVisualSkyboxShaderLayers", SETTING_SKYBOX_SHADER_LAYERS, DEFAULT_SKYBOX_SHADER_LAYERS),
+                    this::isShaderSkyboxSettingsVisible));
+    private final NumberValue<Float> skyboxSkyFogBlend =
+            shaderSkyboxNotAppliedWithIris(visibleWhen(
+                    num("reimaginedVisualSkyboxSkyFogBlend", SETTING_SKYBOX_SKY_FOG_BLEND, 0.35f, 0.0f, 1.0f),
+                    this::isShaderSkyboxSettingsVisible
+            ));
+    private final BooleanValue worldSunGlareEnabled =
+            visibleWhen(bool("reimaginedVisualWorldSunGlareEnabled", SETTING_WORLD_SUN_GLARE_ENABLED, true),
+                    this::isWorldSunSettingsVisible);
+    private final NumberValue<Float> worldSunSize =
+            visibleWhen(num("reimaginedVisualWorldSunSize", SETTING_WORLD_SUN_SIZE, 0.06f, 0.01f, 0.20f),
+                    this::isWorldSunSettingsVisible);
+    private final NumberValue<Float> worldSunGlow =
+            visibleWhen(num("reimaginedVisualWorldSunGlow", SETTING_WORLD_SUN_GLOW, 0.18f, 0.02f, 0.40f),
+                    this::isWorldSunSettingsVisible);
+    private final NumberValue<Float> worldSunIntensity =
+            visibleWhen(num("reimaginedVisualWorldSunIntensity", SETTING_WORLD_SUN_INTENSITY, 1.0f, 0.0f, 3.0f),
+                    this::isWorldSunSettingsVisible);
+    private final NumberValue<Float> wavyVegetationRootedHorizontalAmplitude =
+            visibleWhen(num("reimaginedVisualWavyVegetationRootedHorizontalAmplitude", SETTING_WAVY_VEGETATION_ROOTED_HORIZONTAL_AMPLITUDE, 1.0f, 0.0f, 3.0f), this::isWavyVegetationSettingsVisible);
+    private final NumberValue<Float> wavyVegetationRootedVerticalAmplitude =
+            visibleWhen(num("reimaginedVisualWavyVegetationRootedVerticalAmplitude", SETTING_WAVY_VEGETATION_ROOTED_VERTICAL_AMPLITUDE, 1.0f, 0.0f, 3.0f), this::isWavyVegetationSettingsVisible);
+    private final NumberValue<Float> wavyVegetationFreeHorizontalAmplitude =
+            visibleWhen(num("reimaginedVisualWavyVegetationFreeHorizontalAmplitude", SETTING_WAVY_VEGETATION_FREE_HORIZONTAL_AMPLITUDE, 1.0f, 0.0f, 3.0f), this::isWavyVegetationSettingsVisible);
+    private final NumberValue<Float> wavyVegetationFreeVerticalAmplitude =
+            visibleWhen(num("reimaginedVisualWavyVegetationFreeVerticalAmplitude", SETTING_WAVY_VEGETATION_FREE_VERTICAL_AMPLITUDE, 1.0f, 0.0f, 3.0f), this::isWavyVegetationSettingsVisible);
+    private final NumberValue<Float> wavyVegetationSpeed =
+            visibleWhen(num("reimaginedVisualWavyVegetationSpeed", SETTING_WAVY_VEGETATION_SPEED, 1.0f, 0.0f, 3.0f), this::isWavyVegetationSettingsVisible);
+    private final Minecraft mc = Minecraft.getInstance();
     private boolean wavyVegetationStateInitialized;
     private boolean lastWavyVegetationActive;
     private int lastWavyVegetationSettingsPacked;
+    private final NumberValue<Float> dofFarStart =
+            depthOfFieldNotAppliedWithIris(visibleWhen(num("reimaginedVisualDofFarStart", SETTING_DOF_FAR_START, 4.0f, 0.0f, 512.0f),
+                    this::isDepthOfFieldSettingsVisible));
+    private final NumberValue<Float> dofFarTransition =
+            depthOfFieldNotAppliedWithIris(visibleWhen(num("reimaginedVisualDofFarTransition", SETTING_DOF_FAR_TRANSITION, 24.0f, 1.0f, 1024.0f),
+                    this::isDepthOfFieldSettingsVisible));
+    private final NumberValue<Float> dofStrength =
+            depthOfFieldNotAppliedWithIris(visibleWhen(num("reimaginedVisualDofStrength", SETTING_DOF_STRENGTH, 0.65f, 0.0f, 1.5f),
+                    this::isDepthOfFieldSettingsVisible));
+    private final NumberValue<Float> dofMaxRadius =
+            depthOfFieldNotAppliedWithIris(visibleWhen(num("reimaginedVisualDofMaxRadius", SETTING_DOF_MAX_RADIUS, 8.0f, 0.0f, 32.0f),
+                    this::isDepthOfFieldSettingsVisible));
+    private final EnumValue<DepthOfFieldQuality> dofQuality =
+            depthOfFieldNotAppliedWithIris(visibleWhen(enumSetting("reimaginedVisualDofQuality", SETTING_DOF_QUALITY, DepthOfFieldQuality.MEDIUM, DepthOfFieldQuality.values()),
+                    this::isDepthOfFieldSettingsVisible));
+    private final BooleanValue dofDebugCoc =
+            depthOfFieldNotAppliedWithIris(visibleWhen(bool("reimaginedVisualDofDebugCoc", SETTING_DOF_DEBUG_COC, false),
+                    this::isDepthOfFieldSettingsVisible));
+    private boolean depthSamplerSupported = true;
+    private boolean dofFocusResolveSupported = true;
+    private boolean dofComputeSupported = true;
 
-    private EnumMap<DeferredFeature, EnumValue<DeferredFeatureOverride>> createDebugFeatureOverrides() {
-        EnumMap<DeferredFeature, EnumValue<DeferredFeatureOverride>> values = new EnumMap<>(DeferredFeature.class);
-        for (DeferredFeature feature : DEBUG_FEATURES) {
-            String suffix = feature.name().toLowerCase(Locale.ROOT);
-            EnumValue<DeferredFeatureOverride> value = visibleWhen(
-                    enumSetting("reimaginedVisualDebugOverride_" + suffix, "debug_override_" + suffix,
-                            DeferredFeatureOverride.DEFAULT, DeferredFeatureOverride.values()),
-                    deferredRenderer::get);
-            values.put(feature, value);
-        }
-        return values;
+    {
+        PostProcessManager.register(this);
+    }
+
+    private static float clampStarAmount(float value) {
+        return Math.max(0.0f, Math.min(10.0f, value));
     }
 
     private static Map<String, Boolean> createDefaultEffects() {
         LinkedHashMap<String, Boolean> defaults = new LinkedHashMap<>();
+        defaults.put(EFFECT_SHADER_SKY, true);
+        defaults.put(EFFECT_WORLD_SUN, true);
         defaults.put(EFFECT_WAVY_VEGETATION, false);
-        defaults.put(EFFECT_SHADOWS, true);
-        defaults.put(EFFECT_CONTACT_SHADOWS, true);
-        defaults.put(EFFECT_GTAO, true);
-        defaults.put(EFFECT_INDIRECT_LIGHT, true);
-        defaults.put(EFFECT_REFLECTIONS, true);
-        defaults.put(EFFECT_COLORED_BLOCK_LIGHT, true);
-        defaults.put(EFFECT_DYNAMIC_LIGHTS, true);
-        defaults.put(EFFECT_PARTICIPATING_MEDIA, true);
-        defaults.put(EFFECT_WATER, true);
-        defaults.put(EFFECT_SKY, true);
-        defaults.put(EFFECT_CLOUDS, true);
-        defaults.put(EFFECT_WEATHER, true);
-        // Keep projection stable by default until the temporal path is validated independently.
-        defaults.put(EFFECT_TAA, false);
-        defaults.put(EFFECT_EXPOSURE, true);
-        defaults.put(EFFECT_BLOOM, true);
         defaults.put(EFFECT_DEPTH_OF_FIELD, false);
-        defaults.put(EFFECT_MOTION_BLUR, false);
         return defaults;
+    }
+
+    private static Map<String, Boolean> createDefaultSkyboxShaderLayers() {
+        LinkedHashMap<String, Boolean> defaults = new LinkedHashMap<>();
+        defaults.put("waves", true);
+        defaults.put("ribbons", true);
+        defaults.put("sweeps", true);
+        defaults.put("veil", true);
+        defaults.put("nebula", true);
+        defaults.put("detail_curtains", true);
+        defaults.put("polar_arc", true);
+        defaults.put("bursts", true);
+        defaults.put("water_veil", true);
+        defaults.put("caustics", true);
+        defaults.put("refracted_aurora", true);
+        defaults.put("northern_aurora", true);
+        defaults.put("small_stars", true);
+        defaults.put("dust_stars", true);
+        defaults.put("medium_stars", true);
+        defaults.put("large_stars", true);
+        defaults.put("detail_stars", true);
+        return defaults;
+    }
+
+    public static boolean isWorldSunEnabledStatic() {
+        ReimaginedVisual module = module();
+        return module != null && module.isEnabled() && module.isEffectSelected(EFFECT_WORLD_SUN);
+    }
+
+    public static float getWorldSunSizeStatic() {
+        ReimaginedVisual module = module();
+        return module != null ? module.worldSunSize.get() : 0.06f;
+    }
+
+    public static float getWorldSunGlowStatic() {
+        ReimaginedVisual module = module();
+        return module != null ? module.worldSunGlow.get() : 0.18f;
+    }
+
+    public static float getWorldSunIntensityStatic() {
+        ReimaginedVisual module = module();
+        return module != null ? module.worldSunIntensity.get() : 1.0f;
+    }
+
+    public static boolean isWorldSunGlareEnabledStatic() {
+        ReimaginedVisual module = module();
+        return module != null
+                && module.isEnabled()
+                && module.isEffectSelected(EFFECT_WORLD_SUN)
+                && module.worldSunGlareEnabled.get();
     }
 
     public static boolean isWavyVegetationEnabledStatic() {
         ReimaginedVisual module = module();
-        return module != null && module.isEnabled() && module.isEffectSelected(EFFECT_WAVY_VEGETATION);
-    }
-
-    public static boolean isDeferredMotionBlurEnabledStatic() {
-        ReimaginedVisual module = module();
         return module != null
                 && module.isEnabled()
-                && module.deferredRenderer.get()
-                && module.isEffectSelected(EFFECT_MOTION_BLUR)
-                && CombatantRenderSystem.deferredWorld().enabled()
-                && CombatantRenderSystem.deferredWorld().smokeTestState()
-                .featureEnabled(DeferredFeature.MOTION_BLUR, DeferredRuntimeConfig.current());
+                && module.isEffectSelected(EFFECT_WAVY_VEGETATION);
     }
 
     public static int packWavyVegetationSettingsStatic() {
         ReimaginedVisual module = module();
-        return module != null
-                ? module.packWavyVegetationSettings()
-                : packWavyVegetationSettings(1.0f, 1.0f, 1.0f, 1.0f, 1.0f);
-    }
-
-    public DeferredWorldPipeline.LifecycleState deferredLifecycleState() {
-        return CombatantRenderSystem.deferredWorld().lifecycleState();
-    }
-
-    public boolean deferredRequested() {
-        return isEnabled() && deferredRenderer.get();
-    }
-
-    public DeferredDebugDiagnostics rendererDiagnostics() {
-        return CombatantRenderSystem.deferredWorld().debugDiagnostics();
-    }
-
-    @Override
-    public void onTick() {
-        initializeTransientDebugState();
-        migrateLegacyMotionBlurConfig();
-        publishRendererSettings();
-        publishDebugSettings();
-        refreshWavyVegetationTerrainState();
-    }
-
-    @Override
-    public void onEnable() {
-        initializeTransientDebugState();
-        migrateLegacyMotionBlurConfig();
-        publishRendererSettings();
-        publishDebugSettings();
-        CombatantRenderSystem.deferredWorld().requestEnabled(deferredRenderer.get());
-        refreshWavyVegetationTerrainState();
-    }
-
-    @Override
-    public void onDisable() {
-        // Explicit policy: disabling the controller disables deferred rendering; no hidden renderer state survives.
-        DeferredWorldPipeline pipeline = CombatantRenderSystem.deferredWorld();
-        pipeline.requestEnabled(false);
-        resetTransientDebugControls(pipeline, false);
-        clearRendererDebugState(pipeline);
-        DeferredCameraPostConfig.apply(DeferredCameraPostConfig.Snapshot.defaults());
-        DeferredTemporalConfig.setTaaEnabled(false);
-        refreshWavyVegetationTerrainState(false);
-    }
-
-    private void publishRendererSettings() {
-        if (!isEnabled()) return;
-        CombatantRenderSystem.deferredWorld().requestEnabled(deferredRenderer.get());
-
-        DeferredRuntimeConfig.Snapshot runtime = DeferredRuntimeConfig.current();
-        boolean shadows = isEffectSelected(EFFECT_SHADOWS);
-        boolean contactShadows = isEffectSelected(EFFECT_CONTACT_SHADOWS);
-        boolean gtao = isEffectSelected(EFFECT_GTAO);
-        boolean indirect = isEffectSelected(EFFECT_INDIRECT_LIGHT);
-        boolean reflections = isEffectSelected(EFFECT_REFLECTIONS);
-        boolean coloredLight = isEffectSelected(EFFECT_COLORED_BLOCK_LIGHT);
-        boolean dynamicLights = isEffectSelected(EFFECT_DYNAMIC_LIGHTS);
-        boolean media = isEffectSelected(EFFECT_PARTICIPATING_MEDIA);
-        boolean water = isEffectSelected(EFFECT_WATER);
-        boolean sky = isEffectSelected(EFFECT_SKY);
-        boolean clouds = isEffectSelected(EFFECT_CLOUDS);
-        boolean weather = isEffectSelected(EFFECT_WEATHER);
-        boolean taa = isEffectSelected(EFFECT_TAA);
-        if (runtime.shadowsEnabled() != shadows
-                || runtime.contactShadowsEnabled() != contactShadows
-                || runtime.ambientOcclusionEnabled() != gtao
-                || runtime.indirectLightEnabled() != indirect
-                || runtime.reflectionsEnabled() != reflections
-                || runtime.coloredBlockLightEnabled() != coloredLight
-                || runtime.dynamicLightsEnabled() != dynamicLights
-                || runtime.participatingMediaEnabled() != media
-                || runtime.waterEnabled() != water) {
-            DeferredRuntimeConfig.update(builder -> builder
-                    .shadowsEnabled(shadows)
-                    .contactShadowsEnabled(contactShadows)
-                    .ambientOcclusionEnabled(gtao)
-                    .indirectLightEnabled(indirect)
-                    .reflectionsEnabled(reflections)
-                    .coloredBlockLightEnabled(coloredLight)
-                    .dynamicLightsEnabled(dynamicLights)
-                    .participatingMediaEnabled(media)
-                    .waterEnabled(water));
-        }
-
-        DeferredEnvironmentFeatureConfig.Snapshot environment = DeferredEnvironmentFeatureConfig.current();
-        if (environment.skyEnabled() != sky
-                || environment.cloudsEnabled() != clouds
-                || environment.weatherEnabled() != weather) {
-            DeferredEnvironmentFeatureConfig.apply(sky, clouds, weather);
-        }
-        if (DeferredTemporalConfig.current().taaEnabled() != taa) {
-            DeferredTemporalConfig.setTaaEnabled(taa);
-        }
-
-        DeferredPostConfig.Snapshot post = DeferredPostConfig.current();
-        DeferredPostConfig.Snapshot desiredPost = new DeferredPostConfig.Snapshot(
-                post.histogramMinLogLuminance(), post.histogramMaxLogLuminance(), post.histogramMaxSamples(),
-                bloomThreshold.get(), bloomSoftKnee.get(), bloomIntensity.get(),
-                post.bloomInitialScale(), post.bloomMaxMipCount(),
-                isEffectSelected(EFFECT_EXPOSURE), isEffectSelected(EFFECT_BLOOM));
-        if (!desiredPost.equals(post)) DeferredPostConfig.apply(desiredPost);
-
-        DeferredCameraPostConfig.Snapshot desiredCamera = new DeferredCameraPostConfig.Snapshot(
-                isEffectSelected(EFFECT_DEPTH_OF_FIELD), dofAutofocus.get(), dofFarStart.get(), dofFarTransition.get(),
-                dofStrength.get(), dofMaxRadius.get(), dofQuality.get().taps(), dofEdgeProtection.get(),
-                dofFocusSmoothing.get(),
-                isEffectSelected(EFFECT_MOTION_BLUR), motionBlurStrength.get(), motionBlurMaxPixels.get(),
-                motionBlurMinMotionPixels.get(), motionBlurShutterScale.get(), motionBlurSamples.get(),
-                motionBlurDepthEdgeProtection.get()).validated();
-        if (!desiredCamera.equals(DeferredCameraPostConfig.current())) {
-            DeferredCameraPostConfig.apply(desiredCamera);
-        }
-    }
-
-    private void initializeTransientDebugState() {
-        if (transientDebugStateInitialized) return;
-        transientDebugStateInitialized = true;
-        resetTransientDebugControls(CombatantRenderSystem.deferredWorld(), true);
-    }
-
-    private void resetTransientDebugControls(DeferredWorldPipeline pipeline, boolean startup) {
-        boolean changed = smokeIsolationMode.get() || resetDebugOverrides.get();
-        smokeIsolationMode.set(false);
-        resetDebugOverrides.set(false);
-        for (EnumValue<DeferredFeatureOverride> value : debugFeatureOverrides.values()) {
-            if (value.get() != DeferredFeatureOverride.DEFAULT) changed = true;
-            value.set(DeferredFeatureOverride.DEFAULT);
-        }
-        pipeline.clearFeatureOverrides();
-        pipeline.setSmokeIsolationMode(false);
-        if (changed) {
-            DebugLog.warnOnce(
-                    startup ? "deferred-transient-debug-reset-startup" : "deferred-transient-debug-reset-disable",
-                    startup
-                            ? "[Deferred][Smoke] cleared persisted transient isolation/feature overrides at session start"
-                            : "[Deferred][Smoke] cleared transient isolation/feature overrides while disabling renderer"
-            );
-            ConfigSerializer.requestSave(this);
-        }
-    }
-
-    private void publishDebugSettings() {
-        if (!isEnabled()) return;
-        DeferredWorldPipeline pipeline = CombatantRenderSystem.deferredWorld();
-        if (resetDebugOverrides.get()) {
-            resetDebugSettings(pipeline);
-            resetDebugOverrides.set(false);
-            ConfigSerializer.requestSave(this);
-            return;
-        }
-
-        pipeline.setSmokeIsolationMode(smokeIsolationMode.get());
-        for (Map.Entry<DeferredFeature, EnumValue<DeferredFeatureOverride>> entry : debugFeatureOverrides.entrySet()) {
-            pipeline.setFeatureOverride(entry.getKey(), entry.getValue().get());
-        }
-        pipeline.setDebugView(debugView.get());
-        pipeline.setDebugVolumeSlice(debugVolumeAxis.get(), debugVolumeSlice.get());
-    }
-
-    private void resetDebugSettings(DeferredWorldPipeline pipeline) {
-        smokeIsolationMode.set(false);
-        debugView.set(DeferredDebugView.OFF);
-        debugVolumeAxis.set(DeferredDebugVolumeAxis.Z);
-        debugVolumeSlice.set(0.5f);
-        for (EnumValue<DeferredFeatureOverride> value : debugFeatureOverrides.values()) {
-            value.set(DeferredFeatureOverride.DEFAULT);
-        }
-        clearRendererDebugState(pipeline);
-    }
-
-    private static void clearRendererDebugState(DeferredWorldPipeline pipeline) {
-        pipeline.clearFeatureOverrides();
-        pipeline.setSmokeIsolationMode(false);
-        pipeline.setDebugView(DeferredDebugView.OFF);
-        pipeline.setDebugVolumeSlice(DeferredDebugVolumeAxis.Z, 0.5f);
-    }
-
-    private boolean isVolumeDebugView() {
-        DeferredDebugView selected = debugView.get();
-        return deferredRenderer.get() && selected != null
-                && selected.sourceKind() == DeferredDebugView.SourceKind.VOLUME;
-    }
-
-    private void migrateLegacyMotionBlurConfig() {
-        if (legacyMotionBlurMigrated.get()) return;
-        legacyMotionBlurMigrated.set(true);
-        if (!Files.isRegularFile(LEGACY_MOTION_BLUR_CONFIG)) {
-            ConfigSerializer.requestSave(this);
-            return;
-        }
-        try {
-            JsonElement parsed = JsonParser.parseString(Files.readString(LEGACY_MOTION_BLUR_CONFIG));
-            if (!parsed.isJsonObject()) {
-                ConfigSerializer.requestSave(this);
-                return;
-            }
-            JsonObject root = parsed.getAsJsonObject();
-            copyFloat(root, "motionBlurStrength", motionBlurStrength);
-            copyInt(root, "motionBlurMaxBlurPixels", motionBlurMaxPixels);
-            copyFloat(root, "motionBlurMinMotionPixels", motionBlurMinMotionPixels);
-            // Old exposure_frames is the closest useful concept to the new shutter scale.
-            copyFloat(root, "motionBlurExposureFrames", motionBlurShutterScale);
-            JsonElement enabled = root.get("enabled");
-            if (enabled != null && enabled.isJsonPrimitive() && enabled.getAsJsonPrimitive().isBoolean()
-                    && enabled.getAsBoolean()) {
-                effects.set(EFFECT_MOTION_BLUR, true);
-            }
-            ConfigSerializer.requestSave(this);
-        } catch (Throwable t) {
-            // Migration is compatibility only; never make renderer startup depend on an old file.
-            DebugLog.warnOnce("reimagined-motionblur-migration",
-                    "Failed to migrate legacy MotionBlur config; keeping new deferred defaults", t);
-        }
-    }
-
-    private static void copyFloat(JsonObject root, String key, NumberValue<Float> target) {
-        JsonElement value = root.get(key);
-        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) return;
-        target.set(value.getAsFloat());
-    }
-
-    private static void copyInt(JsonObject root, String key, NumberValue<Integer> target) {
-        JsonElement value = root.get(key);
-        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) return;
-        target.set(value.getAsInt());
+        return module != null ? module.packWavyVegetationSettings() : packWavyVegetationSettings(1.0f, 1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private static ReimaginedVisual module() {
         return Modules.get(ReimaginedVisual.class);
     }
 
-    private boolean isEffectSelected(String effect) {
-        return effects.get(effect);
+    public boolean isShaderSkyboxEnabled() {
+        return isEnabled() && isEffectSelected(EFFECT_SHADER_SKY);
     }
 
-    private boolean isWavyVegetationSettingsVisible() {
-        return isEffectSelected(EFFECT_WAVY_VEGETATION);
+    public int getShaderSkyboxColor() {
+        if (skyboxShaderSyncTheme.get()) {
+            return Theme.theme().accent() & 0x00FFFFFF;
+        }
+        return skyboxShaderColor.getArgb() & 0x00FFFFFF;
     }
 
-    private boolean isDepthOfFieldSettingsVisible() {
-        return isEffectSelected(EFFECT_DEPTH_OF_FIELD);
+    public float getSkyboxSkyFogBlend() {
+        return Math.max(0.0f, Math.min(1.0f, skyboxSkyFogBlend.get()));
     }
 
-    private boolean isMotionBlurSettingsVisible() {
-        return isEffectSelected(EFFECT_MOTION_BLUR);
+    public float getSkyboxShaderMotionSpeed() {
+        return Math.max(0.0f, Math.min(2.0f, skyboxShaderMotionSpeed.get()));
+    }
+
+    public boolean isSkyboxShaderAuroraEnabled() {
+        return skyboxShaderAuroraEnabled.get();
+    }
+
+    public float getSkyboxShaderAuroraIntensity() {
+        return skyboxShaderAuroraEnabled.get() ? Math.max(0.0f, Math.min(1.5f, skyboxShaderAuroraIntensity.get())) : 0.0f;
+    }
+
+    public float getSkyboxShaderAuroraSpeed() {
+        return Math.max(0.0f, Math.min(2.0f, skyboxShaderAuroraSpeed.get()));
+    }
+
+    public float getSkyboxShaderSmallStars() {
+        return clampStarAmount(skyboxShaderSmallStars.get());
+    }
+
+    public float getSkyboxShaderDustStars() {
+        return clampStarAmount(skyboxShaderDustStars.get());
+    }
+
+    public float getSkyboxShaderMediumStars() {
+        return clampStarAmount(skyboxShaderMediumStars.get());
+    }
+
+    public float getSkyboxShaderLargeStars() {
+        return clampStarAmount(skyboxShaderLargeStars.get());
+    }
+
+    public float getSkyboxShaderStarBrightness() {
+        return Math.max(0.0f, Math.min(3.0f, skyboxShaderStarBrightness.get()));
+    }
+
+    public float getSkyboxShaderTwinkleStrength() {
+        return Math.max(0.0f, Math.min(3.0f, skyboxShaderTwinkleStrength.get()));
+    }
+
+    public int getSkyboxShaderLayerMask() {
+        int mask = 0;
+        int bit = 0;
+        for (String key : DEFAULT_SKYBOX_SHADER_LAYERS.keySet()) {
+            if (skyboxShaderLayers.get(key)) {
+                mask |= 1 << bit;
+            }
+            bit++;
+        }
+        return mask;
+    }
+
+    @Override
+    public WorldPhase getWorldPhase() {
+        return WorldPhase.END_MAIN;
+    }
+
+    @Override
+    public boolean isActive() {
+        return isEnabled()
+                && isEffectSelected(EFFECT_DEPTH_OF_FIELD)
+                && mc != null
+                && mc.player != null
+                && mc.level != null
+                && !isDepthOfFieldBlockedByIris()
+                && depthSamplerSupported;
+    }
+
+    public boolean needsWorldSceneDepthCapture() {
+        return isActive();
+    }
+
+    public boolean needsPreTranslucentDepthCapture() {
+        return false;
+    }
+
+    public boolean needsResolvedMainDepthCapture() {
+        return false;
+    }
+
+    @Override
+    public int getPriority() {
+        return 3;
+    }
+
+    @Override
+    public Phase getPhase() {
+        return Phase.PRE_HAND;
+    }
+
+    @Override
+    public boolean render(GpuTextureView src, GpuTextureView dst, float tickDelta) {
+        return false;
+    }
+
+    @Override
+    public boolean prefersStorageOutput(CombatantRhi rhi) {
+        return dofComputeSupported && isActive() && PostProcessExecutionPolicy.useCompute(rhi);
+    }
+
+    @Override
+    public boolean render(PostProcessExecutionContext execution) {
+        if (execution == null) return false;
+        return renderDepthOfField(
+                execution.context(), execution.source(), execution.destination(),
+                execution.rhi(), execution.destinationStorage());
+    }
+
+    @Override
+    public boolean render(PostProcessContext context, GpuTextureView src, GpuTextureView dst) {
+        return renderDepthOfField(context, src, dst, CombatantRenderSystem.rhi(), null);
+    }
+
+    private boolean renderDepthOfField(PostProcessContext context,
+                                       GpuTextureView src,
+                                       GpuTextureView dst,
+                                       CombatantRhi rhi,
+                                       RhiStorageImage destinationStorage) {
+        if (!isActive() || context == null || src == null || dst == null) {
+            return false;
+        }
+
+        DepthBindings depth = resolveDepthBindings(context);
+        if (!depth.hasAnyDepth()) {
+            if (!dofDebugCoc.get()) {
+                return false;
+            }
+            depth = DepthBindings.empty();
+        }
+
+        buildProjection();
+        boolean focusTextureReady;
+
+        try {
+            FullScreenRenderer.ensureInit();
+
+            if (dofComputeSupported && dofComputeBackend.supported(rhi, destinationStorage)) {
+                try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:dof:compute")) {
+                    dofComputeBackend.render(
+                            rhi, destinationStorage, src,
+                            depth.mainOr(src), depth.translucentOr(src), depth.itemEntityOr(src),
+                            depth.particlesOr(src), depth.weatherOr(src), depth.cloudsOr(src),
+                            PostProcessManager.getSampler(), dofProjection,
+                            context.width(), context.height(),
+                            0.0f, 0.0f, dofFarStart.get(), dofFarTransition.get(),
+                            dofStrength.get(), dofMaxRadius.get(), dofQuality.get().taps(), 0.85f,
+                            dofDebugCoc.get(),
+                            depth.hasMain(), depth.hasTranslucent(), depth.hasItemEntity(),
+                            depth.hasParticles(), depth.hasWeather(), depth.hasClouds());
+                    PostProcessExecutionPolicy.logComputeActive("depth-of-field", "Depth of Field");
+                    return true;
+                } catch (Throwable t) {
+                    dofComputeSupported = false;
+                    PostProcessExecutionPolicy.warnRuntimeFallback("depth-of-field", "Depth of Field", t);
+                    dofComputeBackend.close();
+                }
+            }
+
+            // Raster autofocus is only needed by the compatibility path. Compute resolves the
+            // same single frame-invariant focus texel with a tiny dispatch.
+            focusTextureReady = depth.hasAnyDepth() && ensureDofFocusTarget();
+            DepthOfFieldUniforms.update(
+                    dofProjection,
+                    context.width(),
+                    context.height(),
+                    0.0f,
+                    0.0f,
+                    dofFarStart.get(),
+                    dofFarTransition.get(),
+                    dofStrength.get(),
+                    dofMaxRadius.get(),
+                    dofQuality.get().taps(),
+                    0.85f,
+                    dofDebugCoc.get(),
+                    focusTextureReady,
+                    depth.hasMain(),
+                    depth.hasTranslucent(),
+                    depth.hasItemEntity(),
+                    depth.hasParticles(),
+                    depth.hasWeather(),
+                    depth.hasClouds()
+            );
+            if (focusTextureReady) {
+                try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:dof:focus")) {
+                    FullScreenRenderer.begin("Combatant DepthOfField Focus")
+                            .attachment(dofFocusTarget)
+                            .pipeline(CombatantRenderPipelines.DEPTH_OF_FIELD_FOCUS)
+                            .uniform("DepthOfField", DepthOfFieldUniforms.get())
+                            .sampler("u_MainDepth", depth.mainOr(src), PostProcessManager.getSampler())
+                            .sampler("u_TranslucentDepth", depth.translucentOr(src), PostProcessManager.getSampler())
+                            .sampler("u_ItemEntityDepth", depth.itemEntityOr(src), PostProcessManager.getSampler())
+                            .sampler("u_ParticlesDepth", depth.particlesOr(src), PostProcessManager.getSampler())
+                            .sampler("u_WeatherDepth", depth.weatherOr(src), PostProcessManager.getSampler())
+                            .sampler("u_CloudsDepth", depth.cloudsOr(src), PostProcessManager.getSampler())
+                            .end();
+                }
+            }
+            try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:dof:blur")) {
+                FullScreenRenderer.begin("Combatant DepthOfField Pass")
+                        .attachment(dst)
+                        .pipeline(CombatantRenderPipelines.DEPTH_OF_FIELD)
+                        .uniform("DepthOfField", DepthOfFieldUniforms.get())
+                        .sampler("u_Texture", src, PostProcessManager.getSampler())
+                        .sampler("u_FocusTexture", focusTextureReady ? dofFocusTarget.getColorTextureView() : src,
+                                PostProcessManager.getSampler())
+                        .sampler("u_MainDepth", depth.mainOr(src), PostProcessManager.getSampler())
+                        .sampler("u_TranslucentDepth", depth.translucentOr(src), PostProcessManager.getSampler())
+                        .sampler("u_ItemEntityDepth", depth.itemEntityOr(src), PostProcessManager.getSampler())
+                        .sampler("u_ParticlesDepth", depth.particlesOr(src), PostProcessManager.getSampler())
+                        .sampler("u_WeatherDepth", depth.weatherOr(src), PostProcessManager.getSampler())
+                        .sampler("u_CloudsDepth", depth.cloudsOr(src), PostProcessManager.getSampler())
+                        .end();
+            }
+        } catch (Throwable t) {
+            depthSamplerSupported = false;
+            DebugLog.warnOnce(
+                    "depth-of-field-depth-sampler-fallback",
+                    "Depth of Field depth sampler path failed; disabling depth sampling for this session",
+                    t);
+            return false;
+        }
+
+        return true;
+    }
+
+    private boolean ensureDofFocusTarget() {
+        if (!dofFocusResolveSupported) return false;
+        try {
+            if (dofFocusTarget == null) {
+                dofFocusTarget = new TextureTarget("combatant-depth-of-field-focus", 1, 1, false, GpuFormat.RGBA8_UNORM);
+            }
+            return dofFocusTarget.getColorTextureView() != null;
+        } catch (Throwable t) {
+            dofFocusResolveSupported = false;
+            closeDofFocusTarget();
+            DebugLog.warnOnce(
+                    "depth-of-field-focus-fragment-fallback",
+                    "Depth of Field focus resolve failed; using fragment fallback for this session",
+                    t);
+            return false;
+        }
+    }
+
+    private void closeDofFocusTarget() {
+        if (dofFocusTarget == null) return;
+        dofFocusTarget.destroyBuffers();
+        dofFocusTarget = null;
+    }
+
+    private void buildProjection() {
+        Matrix4f projection = CombatantWorldMatrices.renderProjectionMatrix();
+        if (projection == null) {
+            projection = RenderState.worldProjection;
+        }
+        dofProjection.set(projection);
+    }
+
+    @Override
+    public void onTick() {
+        refreshWavyVegetationTerrainState();
+    }
+
+    @Override
+    public void onEnable() {
+        depthSamplerSupported = true;
+        dofFocusResolveSupported = true;
+        dofComputeSupported = true;
+        refreshWavyVegetationTerrainState();
+    }
+
+    @Override
+    public void onDisable() {
+        closeDofFocusTarget();
+        dofComputeBackend.close();
+        refreshWavyVegetationTerrainState(false);
+    }
+
+    @Override
+    public void releaseBackendResources(CombatantRhi owner) {
+        dofComputeBackend.release(owner);
+        closeDofFocusTarget();
+        dofComputeSupported = true;
+        dofFocusResolveSupported = true;
     }
 
     private void refreshWavyVegetationTerrainState() {
@@ -495,6 +576,7 @@ public final class ReimaginedVisual extends Module {
             lastWavyVegetationActive = false;
             lastWavyVegetationSettingsPacked = 0;
         }
+
         if (lastWavyVegetationActive == active && lastWavyVegetationSettingsPacked == settingsPacked) return;
         lastWavyVegetationActive = active;
         lastWavyVegetationSettingsPacked = settingsPacked;
@@ -503,13 +585,15 @@ public final class ReimaginedVisual extends Module {
 
     private int packWavyVegetationSettings() {
         return packWavyVegetationSettings(
-                wavyVegetationRootedHorizontalAmplitude.get(), wavyVegetationRootedVerticalAmplitude.get(),
-                wavyVegetationFreeHorizontalAmplitude.get(), wavyVegetationFreeVerticalAmplitude.get(),
-                wavyVegetationSpeed.get());
+                wavyVegetationRootedHorizontalAmplitude.get(),
+                wavyVegetationRootedVerticalAmplitude.get(),
+                wavyVegetationFreeHorizontalAmplitude.get(),
+                wavyVegetationFreeVerticalAmplitude.get(),
+                wavyVegetationSpeed.get()
+        );
     }
 
-    private static int packWavyVegetationSettings(float rootedHorizontal, float rootedVertical,
-                                                   float freeHorizontal, float freeVertical, float speed) {
+    private static int packWavyVegetationSettings(float rootedHorizontal, float rootedVertical, float freeHorizontal, float freeVertical, float speed) {
         return (encodeWavyVegetationSetting(rootedHorizontal) << SodiumMaterialFlags.WAVE_ROOTED_HORIZONTAL_SHIFT)
                 | (encodeWavyVegetationSetting(rootedVertical) << SodiumMaterialFlags.WAVE_ROOTED_VERTICAL_SHIFT)
                 | (encodeWavyVegetationSetting(freeHorizontal) << SodiumMaterialFlags.WAVE_FREE_HORIZONTAL_SHIFT)
@@ -520,5 +604,162 @@ public final class ReimaginedVisual extends Module {
     private static int encodeWavyVegetationSetting(float value) {
         float clamped = Math.max(0.0f, Math.min(SodiumMaterialFlags.WAVE_SETTING_MAX, value));
         return Math.round((clamped / SodiumMaterialFlags.WAVE_SETTING_MAX) * SodiumMaterialFlags.WAVE_SETTING_MASK);
+    }
+
+    private DepthBindings resolveDepthBindings(PostProcessContext context) {
+        return resolveWorldSceneDepth();
+    }
+
+    private DepthBindings resolveWorldSceneDepth() {
+        if (IrisSceneDepth.isValid()) {
+            return new DepthBindings(
+                    IrisSceneDepth.mainDepthView(),
+                    IrisSceneDepth.preTranslucentDepthView(),
+                    IrisSceneDepth.preHandDepthView(),
+                    null,
+                    null,
+                    null
+            );
+        }
+        if (!WorldSceneDepth.isValid() || !WorldSceneDepth.hasMain()) {
+            return DepthBindings.empty();
+        }
+        return new DepthBindings(
+                WorldSceneDepth.mainDepthView(),
+                WorldSceneDepth.translucentDepthView(),
+                WorldSceneDepth.itemEntityDepthView(),
+                WorldSceneDepth.particlesDepthView(),
+                WorldSceneDepth.weatherDepthView(),
+                null
+        );
+    }
+
+    private boolean isWorldSunSettingsVisible() {
+        return isEffectSelected(EFFECT_WORLD_SUN);
+    }
+
+    private boolean isShaderSkyboxSettingsVisible() {
+        return isEffectSelected(EFFECT_SHADER_SKY);
+    }
+
+    private boolean isShaderSkyboxBlockedByIris() {
+        return isEffectSelected(EFFECT_SHADER_SKY) && IrisRuntime.isModLoaded();
+    }
+
+    private String shaderSkyboxIrisReason() {
+        String translated = I18n.get(IRIS_SHADER_SKYBOX_REASON_KEY);
+        return IRIS_SHADER_SKYBOX_REASON_KEY.equals(translated) ? IRIS_SHADER_SKYBOX_REASON_FALLBACK : translated;
+    }
+
+    private <V extends ConfigValue<?>> V shaderSkyboxNotAppliedWithIris(V value) {
+        return notAppliedWhen(value, this::isShaderSkyboxBlockedByIris, this::shaderSkyboxIrisReason);
+    }
+
+    private boolean isDepthOfFieldBlockedByIris() {
+        return IrisRuntime.isShaderpackRendererActive();
+    }
+
+    private String depthOfFieldIrisReason() {
+        String translated = I18n.get(IRIS_DOF_REASON_KEY);
+        return IRIS_DOF_REASON_KEY.equals(translated) ? IRIS_DOF_REASON_FALLBACK : translated;
+    }
+
+    private <V extends ConfigValue<?>> V depthOfFieldNotAppliedWithIris(V value) {
+        return notAppliedWhen(value, this::isDepthOfFieldBlockedByIris, this::depthOfFieldIrisReason);
+    }
+
+    private boolean isDepthOfFieldSettingsVisible() {
+        return isEffectSelected(EFFECT_DEPTH_OF_FIELD);
+    }
+
+    private boolean isWavyVegetationSettingsVisible() {
+        return isEffectSelected(EFFECT_WAVY_VEGETATION);
+    }
+
+    private boolean isEffectSelected(String effect) {
+        return effects.get(effect);
+    }
+
+    private record DepthBindings(
+            GpuTextureView main,
+            GpuTextureView translucent,
+            GpuTextureView itemEntity,
+            GpuTextureView particles,
+            GpuTextureView weather,
+            GpuTextureView clouds
+    ) {
+        static DepthBindings empty() {
+            return new DepthBindings(null, null, null, null, null, null);
+        }
+
+        static DepthBindings single(GpuTextureView depth) {
+            return new DepthBindings(depth, null, null, null, null, null);
+        }
+
+        boolean hasAnyDepth() {
+            return primary() != null;
+        }
+
+        boolean hasMain() {
+            return main != null;
+        }
+
+        boolean hasTranslucent() {
+            return translucent != null;
+        }
+
+        boolean hasItemEntity() {
+            return itemEntity != null;
+        }
+
+        boolean hasParticles() {
+            return particles != null;
+        }
+
+        boolean hasWeather() {
+            return weather != null;
+        }
+
+        boolean hasClouds() {
+            return clouds != null;
+        }
+
+        GpuTextureView primary() {
+            if (main != null) return main;
+            if (translucent != null) return translucent;
+            if (itemEntity != null) return itemEntity;
+            if (particles != null) return particles;
+            if (weather != null) return weather;
+            return clouds;
+        }
+
+        GpuTextureView mainOr(GpuTextureView placeholder) {
+            return main != null ? main : firstOr(placeholder);
+        }
+
+        GpuTextureView translucentOr(GpuTextureView placeholder) {
+            return translucent != null ? translucent : firstOr(placeholder);
+        }
+
+        GpuTextureView itemEntityOr(GpuTextureView placeholder) {
+            return itemEntity != null ? itemEntity : firstOr(placeholder);
+        }
+
+        GpuTextureView particlesOr(GpuTextureView placeholder) {
+            return particles != null ? particles : firstOr(placeholder);
+        }
+
+        GpuTextureView weatherOr(GpuTextureView placeholder) {
+            return weather != null ? weather : firstOr(placeholder);
+        }
+
+        GpuTextureView cloudsOr(GpuTextureView placeholder) {
+            return clouds != null ? clouds : firstOr(placeholder);
+        }
+
+        private GpuTextureView firstOr(GpuTextureView placeholder) {
+            GpuTextureView primary = primary();
+            return primary != null ? primary : placeholder;
+        }
     }
 }

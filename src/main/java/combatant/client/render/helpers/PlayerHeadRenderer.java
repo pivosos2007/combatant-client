@@ -7,8 +7,12 @@
 
 package combatant.client.render.helpers;
 
+import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.blaze3d.textures.GpuTextureView;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.resources.Identifier;
 import combatant.client.mixininterface.IGuiGraphics;
 import combatant.client.render.engine.color.RenderColor;
@@ -21,6 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.Locale;
 
+/** Renders player heads from skin textures. */
 public enum PlayerHeadRenderer {
     ;
 
@@ -50,10 +55,6 @@ public enum PlayerHeadRenderer {
     private static final float HAT_V1 = 8f / 64f;
     private static final float HAT_U2 = 48f / 64f;
     private static final float HAT_V2 = 16f / 64f;
-
-    /* ============================================================
-       ROUNDED
-       ============================================================ */
 
     public static void drawRounded(
             GuiGraphicsExtractor ctx,
@@ -134,10 +135,6 @@ public enum PlayerHeadRenderer {
         }
     }
 
-    /* ============================================================
-       RECT (texQuad)
-       ============================================================ */
-
     public static void drawRect(
             GuiGraphicsExtractor ctx,
             float x, float y, float size,
@@ -181,12 +178,12 @@ public enum PlayerHeadRenderer {
                                          RenderColor outlineColor,
                                          float outlineThickness) {
         if (outlineColor != null && outlineThickness > 0f) {
-            Renderer2D.COLOR.roundedRectStroke(
-                    x, y, size, size,
-                    0f, SOFTNESS,
-                    outlineThickness,
-                    outlineColor.argb()
-            );
+            float t = Math.min(outlineThickness, size * 0.5f);
+            int outlineArgb = outlineColor.argb();
+            Renderer2D.COLOR.quad(x, y, size, t, outlineArgb);
+            Renderer2D.COLOR.quad(x, y + size - t, size, t, outlineArgb);
+            Renderer2D.COLOR.quad(x, y + t, t, Math.max(0f, size - t * 2f), outlineArgb);
+            Renderer2D.COLOR.quad(x + size - t, y + t, t, Math.max(0f, size - t * 2f), outlineArgb);
         }
 
         float inset = size * INSET_FACTOR;
@@ -194,25 +191,32 @@ public enum PlayerHeadRenderer {
         float innerY = y + inset;
         float innerS = size - inset * 2f;
 
-        int argb = color.argb();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) return;
+        AbstractTexture texture = mc.getTextureManager().getTexture(skin);
+        if (texture == null) return;
+        GpuTextureView view = texture.getTextureView();
+        GpuSampler sampler = texture.getSampler();
+        if (view == null || sampler == null) return;
 
-        Renderer2D tex = Renderer2D.TEXTURE;
-        tex.begin();
-        try {
-            tex.texQuad(innerX, innerY, innerS, innerS, FACE_U1, FACE_V1, FACE_U2, FACE_V2, argb);
-            if (secondLayer) {
-                tex.texQuad(innerX, innerY, innerS, innerS, HAT_U1, HAT_V1, HAT_U2, HAT_V2, argb);
-            }
-        } finally {
-            tex.end();
+        int argb = color.argb();
+        Renderer2D.COLOR.textureQuad(
+                view, sampler,
+                innerX, innerY, innerS, innerS,
+                FACE_U1, FACE_V1, FACE_U2, FACE_V2,
+                argb
+        );
+
+        if (secondLayer) {
+            Renderer2D.COLOR.textureQuad(
+                    view, sampler,
+                    innerX, innerY, innerS, innerS,
+                    HAT_U1, HAT_V1, HAT_U2, HAT_V2,
+                    argb
+            );
         }
-        tex.render(skin);
     }
 
-
-    /* ============================================================
-       SESSION SKIN CACHE
-       ============================================================ */
 
     public static Identifier resolveCachedSkin(AbstractClientPlayer player) {
         if (player == null) return null;
@@ -307,10 +311,6 @@ public enum PlayerHeadRenderer {
             SESSION_NAME_INDEX.entrySet().removeIf(entry -> evicted.equals(entry.getValue()));
         }
     }
-
-    /* ============================================================
-       PROJECTION
-       ============================================================ */
 
     private static void inProjection(GuiGraphicsExtractor ctx, boolean unscaled, Runnable draw) {
         if (!unscaled) {

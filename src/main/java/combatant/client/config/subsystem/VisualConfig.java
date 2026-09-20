@@ -11,7 +11,6 @@ import combatant.client.config.SettingDef;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.ModeValue;
 import combatant.client.render.iris.IrisRuntime;
-import combatant.client.render.engine.deferred.DeferredTemporalConfig;
 import net.minecraft.client.resources.language.I18n;
 
 import java.util.List;
@@ -27,19 +26,6 @@ public final class VisualConfig extends SubsystemConfig {
     private final ModeValue menuBackground = mode("menuBackground", "png", "png", "aurora", "waves");
     private final BooleanValue menuClockShowSeconds = bool("menuClockShowSeconds", false);
     private final ModeValue msaa3d = mode("msaa3d", "off", "off", "2x", "4x");
-    private final BooleanValue taa3d = value(new BooleanValue("taa3d", true) {
-        @Override
-        public void set(Boolean value) {
-            super.set(value);
-            DeferredTemporalConfig.setTaaEnabled(Boolean.TRUE.equals(value));
-        }
-
-        @Override
-        public void fromJson(Object json) {
-            super.fromJson(json);
-            DeferredTemporalConfig.setTaaEnabled(Boolean.TRUE.equals(get()));
-        }
-    });
     private final BooleanValue clickGuiModulesHints = bool("clickGuiModulesHints", true);
     private final BooleanValue clickGuiHudEditorHints = bool("clickGuiHudEditorHints", true);
 
@@ -73,10 +59,6 @@ public final class VisualConfig extends SubsystemConfig {
         return 0;
     }
 
-    public boolean isTaa3dEnabled() {
-        return taa3d.get();
-    }
-
     public boolean isClickGuiModulesHintsEnabled() {
         return clickGuiModulesHints.get();
     }
@@ -108,16 +90,10 @@ public final class VisualConfig extends SubsystemConfig {
         return settings(
                 SettingDef.mode(msaa3d)
                         .unavailableWhen(IrisRuntime::isShaderpackRendererActive, VisualConfig::irisMsaaReason),
-                SettingDef.bool(taa3d),
                 SettingDef.bool(combatantMainMenu),
                 SettingDef.mode(menuBackground).visibleWhen(combatantMainMenu::get),
                 SettingDef.bool(menuClockShowSeconds)
         );
-    }
-
-    @Override
-    protected void afterLoad() {
-        DeferredTemporalConfig.setTaaEnabled(taa3d.get());
     }
 
     private static String irisMsaaReason() {

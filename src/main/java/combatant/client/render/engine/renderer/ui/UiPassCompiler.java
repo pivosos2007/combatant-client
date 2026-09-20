@@ -30,14 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedHashMap;
 
-/**
- * Owns the production UI work queue and compiles it into one ordered executable plan.
- *
- * <p>Normal draw/text-only {@link OrderedUiBatcher} submissions are lowered here to concrete
- * {@link RhiDrawCommand} sequences. Item and capture-dependent effect/glass submissions retain
- * strict order because their preparation/capture barriers are execution-time dependencies; all of
- * them are still scheduled and executed only through {@link UiPassExecutor}.</p>
- */
+/** Compiles queued UI work into render passes. */
 public final class UiPassCompiler {
     private final ArrayList<Object> pending = new ArrayList<>(8);
 
@@ -505,7 +498,7 @@ public final class UiPassCompiler {
             if (entry instanceof ItemBatch) {
                 items = true;
             } else if (entry instanceof TextBatch) {
-                // Directly supported.
+                // Text needs no compatibility flag.
             } else if (entry instanceof DrawBatch batch) {
                 blur |= batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS;
                 preparedGlass |= batch.type.usesPreparedGlass();

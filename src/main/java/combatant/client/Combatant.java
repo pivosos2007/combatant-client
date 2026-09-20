@@ -492,14 +492,17 @@ public class Combatant implements ClientModInitializer {
 
 
     private static boolean hasPlayerLocationHudWork(HudPhase phase) {
-        return phase == HudPhase.AFTER_BOSS_BAR && PlayerLocationHudOverlay.hasHudWork();
+        // Projected world HUD must remain under the vanilla/custom hotbar. BEFORE_HOTBAR is an
+        // explicit extraction slot, so its deferred marker is emitted before CustomHotbar queues
+        // its own replacement layer work.
+        return phase == HudPhase.BEFORE_HOTBAR && PlayerLocationHudOverlay.hasHudWork();
     }
 
     private static boolean hasXaeroWaypointHudWork(HudPhase phase) {
-        // Keep projected Xaero labels in their own deferred HUD stratum. NameTags lives in
-        // AFTER_MISC_OVERLAYS and DropESP in FIRST; sharing either batch lets a later text flush
-        // composite over an already emitted marker plate.
-        if (phase != HudPhase.AFTER_BOSS_BAR) return false;
+        // Keep projected Xaero labels below the hotbar while retaining a dedicated extraction slot
+        // after ordinary AFTER_MISC_OVERLAYS content. The BEFORE_HOTBAR marker drains this work
+        // before CustomHotbar is extracted even though both use the same deferred HUD layer.
+        if (phase != HudPhase.BEFORE_HOTBAR) return false;
         if (!FabricLoader.getInstance().isModLoaded("xaerominimap")) return false;
         return XaeroWaypointHudOverlay.hasHudWork();
     }

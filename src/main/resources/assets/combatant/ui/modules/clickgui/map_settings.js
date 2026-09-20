@@ -61,7 +61,7 @@ export function buildTemplate(ctx) {
 
   const selectedCategory = categories.find((category) => str(category.id, "") === selected) || categories[0] || {};
   const title = str(selectedCategory.label, "World Map");
-  const description = str(selectedCategory.description, "Xaero World Map settings");
+  const description = str(selectedCategory.description, "Map settings");
 
   return SolidBrowserSurface.surface({
     key: "map-settings",

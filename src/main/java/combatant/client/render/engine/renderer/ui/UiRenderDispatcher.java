@@ -16,7 +16,7 @@ import combatant.client.render.engine.text.GlyphFont;
 import combatant.client.render.engine.text.backend.TextPlacementMode;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
-/** Command-stream and executable-pass gateway used by the Renderer2D facade. */
+/** Routes UI work through the rendering subsystem. */
 public final class UiRenderDispatcher {
     private static final UiRendererSubsystem SUBSYSTEM = new UiRendererSubsystem();
 

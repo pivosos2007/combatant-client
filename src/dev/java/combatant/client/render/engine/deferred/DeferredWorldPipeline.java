@@ -208,7 +208,7 @@ public final class DeferredWorldPipeline {
     private void recoverFailedRuntime(Minecraft minecraft) {
         try {
             releasePhysicalResources();
-            CombatantRenderSystem.deferredGraph().releaseBackendResources(CombatantRenderSystem.rhi());
+            DevDeferredRuntime.graph().releaseBackendResources(CombatantRenderSystem.rhi());
             if (AssetAutoLoader.isScopeActive(DeferredRuntimeAssets.SCOPE)) {
                 if (minecraft == null) {
                     throw new IllegalStateException("Minecraft instance is unavailable during deferred cleanup");
@@ -239,7 +239,7 @@ public final class DeferredWorldPipeline {
             primaryView.reset();
             worldStateSource.reset();
             worldRenderState = worldStateSource.current();
-            CombatantRenderSystem.deferredGraph().releasePhysicalResources(CombatantRenderSystem.rhi());
+            DevDeferredRuntime.graph().releasePhysicalResources(CombatantRenderSystem.rhi());
             geometryPipelineGeneration++;
             activationFailureLatched = false;
             lifecycleState = LifecycleState.ACTIVE;
@@ -271,7 +271,7 @@ public final class DeferredWorldPipeline {
         Minecraft minecraft = Minecraft.getInstance();
         try {
             DeferredRuntimeAssets.reprepareAfterBackendSwitch(minecraft.getResourceManager());
-            CombatantRenderSystem.deferredGraph().releasePhysicalResources(CombatantRenderSystem.rhi());
+            DevDeferredRuntime.graph().releasePhysicalResources(CombatantRenderSystem.rhi());
             resourceBindings.detachFrameGraph();
             primaryView.queueHistoryReset(DeferredHistoryResetReason.BACKEND_RECREATION);
         } catch (Throwable error) {
@@ -544,7 +544,7 @@ public final class DeferredWorldPipeline {
             // Keep direct terrain lighting in a Combatant-owned HDR target. Publishing it into the
             // mutable Minecraft scene target is only a compatibility step for forward opaque draws.
             DeferredPassContext lightingContext = passContext(DeferredStage.LIGHTING);
-            if (!CombatantRenderSystem.deferredGraph().prepareExternalPass("world.lighting.neutral", lightingContext)) {
+            if (!DevDeferredRuntime.graph().prepareExternalPass("world.lighting.neutral", lightingContext)) {
                 throw new IllegalStateException("Deferred neutral-lighting graph pass is unavailable");
             }
             GpuTextureView directLighting = resourceBindings.texture(DeferredResource.DIRECT_LIGHTING_COLOR);
@@ -582,7 +582,7 @@ public final class DeferredWorldPipeline {
             );
             // The external graph pass owns both DIRECT_LIGHTING_COLOR and SCENE_COLOR. Publish
             // validity only after both native draws completed successfully.
-            CombatantRenderSystem.deferredGraph().completeExternalPass("world.lighting.neutral", resourceBindings);
+            DevDeferredRuntime.graph().completeExternalPass("world.lighting.neutral", resourceBindings);
             lightingResolvedThisFrame = true;
             resourceBindings.bindTexture(DeferredResource.SCENE_COLOR, sceneColor);
             executeStage(DeferredStage.POST_LIGHTING);
@@ -642,7 +642,7 @@ public final class DeferredWorldPipeline {
             // authoritative until this world's extracted water passes replacement preflight.
             combatant.client.render.sodium.fluid.WaterSurfacePatchRouting.setReplacementActive(false);
             combatant.client.render.sodium.fluid.WaterSurfaceExtractor.beginWorld(currentWorld);
-            CombatantRenderSystem.deferredGraph().releasePhysicalResources(CombatantRenderSystem.rhi());
+            DevDeferredRuntime.graph().releasePhysicalResources(CombatantRenderSystem.rhi());
             resourceBindings.detachFrameGraph();
             objectMotion.reset();
             DeferredTemporalCoverageBridge.reset();
@@ -873,7 +873,7 @@ public final class DeferredWorldPipeline {
     /** Releases optional persistent/history resources before a device switch or shutdown. */
     public void releasePhysicalResources() {
         RenderSystem.assertOnRenderThread();
-        CombatantRenderSystem.deferredGraph().releasePhysicalResources(CombatantRenderSystem.rhi());
+        DevDeferredRuntime.graph().releasePhysicalResources(CombatantRenderSystem.rhi());
         resourceBindings.reset();
         secondaryViews.reset();
         worldOwner = null;
@@ -981,7 +981,7 @@ public final class DeferredWorldPipeline {
 
     private void executeStage(DeferredStage stage) {
         DeferredPassContext context = passContext(stage);
-        CombatantRenderSystem.deferredGraph().execute(
+        DevDeferredRuntime.graph().execute(
                 stage, context.frame(), resourceBindings, secondaryViews, primaryView,
                 temporalHistory, worldRenderState, frameSettings
         );

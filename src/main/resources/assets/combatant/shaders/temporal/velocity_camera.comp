@@ -1,0 +1,79 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = 0) uniform sampler2D u_ResolvedDepth;
+layout(rg16f, binding = 1) writeonly uniform image2D u_Velocity;
+layout(r8, binding = 3) writeonly uniform image2D u_MotionValidity;
+layout(binding = 4) uniform sampler2D u_GbufferDepth;
+
+layout(std430, binding = 2) readonly buffer TemporalCamera {
+    mat4 currentInverseProjection;
+    mat4 currentInverseView;
+    mat4 previousView;
+    mat4 previousProjection;
+    vec4 cameraDelta;
+    // x=depth->NDC scale, y=depth->NDC bias, z=global previous-view validity, w=contract version.
+    vec4 depthNdcTransform;
+} u_Camera;
+
+void storeInvalid(ivec2 pixel) {
+    imageStore(u_Velocity, pixel, vec4(0.0));
+    imageStore(u_MotionValidity, pixel, vec4(0.0));
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_Velocity);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    if (u_Camera.depthNdcTransform.z < 0.5) {
+        storeInvalid(pixel);
+        return;
+    }
+
+    // Minecraft uses reversed-Z; zero is the clear/far value and contains no geometry motion.
+    float depth = texelFetch(u_ResolvedDepth, pixel, 0).r;
+    if (depth <= 0.0) {
+        storeInvalid(pixel);
+        return;
+    }
+
+    float gbufferDepth = texelFetch(u_GbufferDepth, pixel, 0).r;
+    float ownershipTolerance = max(1e-6, abs(gbufferDepth) * 1e-5);
+    if (gbufferDepth <= 0.0 || abs(depth - gbufferDepth) > ownershipTolerance) {
+        // Forward/object geometry has no previous object transform in the shared contract yet.
+        // Zero velocity would falsely mean stationary+valid, so publish invalid motion instead.
+        storeInvalid(pixel);
+        return;
+    }
+
+    vec2 uv = (vec2(pixel) + vec2(0.5)) / vec2(size);
+    vec2 ndcXY = uv * 2.0 - 1.0;
+    float ndcZ = depth * u_Camera.depthNdcTransform.x + u_Camera.depthNdcTransform.y;
+
+    vec4 currentViewH = u_Camera.currentInverseProjection * vec4(ndcXY, ndcZ, 1.0);
+    if (abs(currentViewH.w) < 1e-7) {
+        storeInvalid(pixel);
+        return;
+    }
+    vec3 currentViewPosition = currentViewH.xyz / currentViewH.w;
+
+    // Captured world matrices are camera-relative. Restore world-relative position, then express
+    // the same point from the previous camera before projecting with the previous frame matrices.
+    vec3 currentWorldRelative = (u_Camera.currentInverseView * vec4(currentViewPosition, 0.0)).xyz;
+    vec3 previousWorldRelative = currentWorldRelative + u_Camera.cameraDelta.xyz;
+    vec4 previousClip = u_Camera.previousProjection * u_Camera.previousView * vec4(previousWorldRelative, 1.0);
+
+    if (abs(previousClip.w) < 1e-7) {
+        storeInvalid(pixel);
+        return;
+    }
+
+    vec2 previousUv = (previousClip.xy / previousClip.w) * 0.5 + 0.5;
+    // Canonical contract: velocity = currentUV - previousUV.
+    vec2 velocity = uv - previousUv;
+    imageStore(u_Velocity, pixel, vec4(velocity, 0.0, 0.0));
+    imageStore(u_MotionValidity, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+}
+

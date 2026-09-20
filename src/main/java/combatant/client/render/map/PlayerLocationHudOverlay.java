@@ -42,8 +42,8 @@ public enum PlayerLocationHudOverlay {
     private static final float HOVER_PAD = 4.0f;
     private static final float CARD_GAP = 5.0f;
     private static final float CARD_RIGHT_PAD = 14.0f;
-    private static final float TITLE_SIZE = 10.25f;
-    private static final float META_SIZE = 8.25f;
+    private static final float TITLE_SIZE = 12.75f;
+    private static final float META_SIZE = 10.0f;
     private static final float SCREEN_MARGIN = 8.0f;
 
     private static List<Layout> frameEntries = List.of();
@@ -103,8 +103,8 @@ public enum PlayerLocationHudOverlay {
             return;
         }
 
-        TextRenderer title = BuiltinFontCatalog.ONEST_MEDIUM.renderer(fallback);
-        TextRenderer meta = BuiltinFontCatalog.ONEST_MEDIUM.renderer(title);
+        TextRenderer title = BuiltinFontCatalog.ONEST_BOLD.renderer(fallback);
+        TextRenderer meta = BuiltinFontCatalog.ONEST_BOLD.renderer(title);
         try {
             for (Layout entry : frameEntries) {
                 if (!entry.hovered()) continue;
@@ -231,8 +231,8 @@ public enum PlayerLocationHudOverlay {
             }
         }
 
-        TextRenderer title = BuiltinFontCatalog.ONEST_MEDIUM.renderer(fallback);
-        TextRenderer meta = BuiltinFontCatalog.ONEST_MEDIUM.renderer(title);
+        TextRenderer title = BuiltinFontCatalog.ONEST_BOLD.renderer(fallback);
+        TextRenderer meta = BuiltinFontCatalog.ONEST_BOLD.renderer(title);
         List<Layout> layouts = new ArrayList<>(candidates.size());
         for (Candidate candidate : candidates) {
             boolean isHovered = candidate == hovered;
@@ -244,8 +244,13 @@ public enum PlayerLocationHudOverlay {
             float cardY = headY - 2.0f;
             float cardHeight = HEAD_SIZE + 4.0f;
             float textX = headX + HEAD_SIZE + CARD_GAP;
-            float titleY = headY + 2.0f;
-            float metaY = headY + 13.0f;
+            float titleHeight = measureHeight(title, TITLE_SIZE);
+            float metaHeight = measureHeight(meta, META_SIZE);
+            float textGap = 1.0f;
+            float textBlockHeight = titleHeight + textGap + metaHeight;
+            float textTop = cardY + (cardHeight - textBlockHeight) * 0.5f;
+            float titleY = textTop;
+            float metaY = textTop + titleHeight + textGap;
             float cardWidth = HEAD_SIZE + 4.0f;
             if (isHovered) {
                 float titleWidth = measure(title, candidate.playerName(), TITLE_SIZE);
@@ -280,6 +285,16 @@ public enum PlayerLocationHudOverlay {
         renderer.begin(TextSizing.scaleForSize(size), true, false);
         try {
             return (float) renderer.getWidth(text, false);
+        } finally {
+            renderer.end();
+        }
+    }
+
+    private static float measureHeight(TextRenderer renderer, float size) {
+        if (renderer == null) return 0.0f;
+        renderer.begin(TextSizing.scaleForSize(size), true, false);
+        try {
+            return (float) renderer.getHeight(false);
         } finally {
             renderer.end();
         }

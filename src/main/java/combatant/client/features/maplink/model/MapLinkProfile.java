@@ -13,38 +13,37 @@ import java.util.Objects;
 
 /** Persisted web-map provider profile. */
 public final class MapLinkProfile {
-    private String id;
-    private String displayName;
-    private boolean enabled;
-    private String serverMatcher;
-    private String baseUrl;
-    private MapLinkProviderType providerType;
-    private long refreshIntervalMs;
-    private int defaultY;
-    private int sourcePriority;
+    public static final long MIN_MAX_UPDATE_DELAY_MS = 1_000L;
+    public static final long DEFAULT_MAX_UPDATE_DELAY_MS = 2_000L;
+    public static final long MAX_MAX_UPDATE_DELAY_MS = 4_000L;
+
+    private final String id;
+    private final String displayName;
+    private final String serverMatcher;
+    private final String baseUrl;
+    private final MapLinkProviderType providerType;
+    private final long maxUpdateDelayMs;
+    private final int defaultY;
+    /** Hidden provider-world -> Minecraft-dimension aliases, learned automatically at runtime. */
     private final Map<String, String> dimensionMappings;
     private final Map<String, String> requestHeaders;
 
     public MapLinkProfile(String id,
                           String displayName,
-                          boolean enabled,
                           String serverMatcher,
                           String baseUrl,
                           MapLinkProviderType providerType,
-                          long refreshIntervalMs,
+                          long maxUpdateDelayMs,
                           int defaultY,
-                          int sourcePriority,
                           Map<String, String> dimensionMappings,
                           Map<String, String> requestHeaders) {
         this.id = sanitizeId(id);
         this.displayName = displayName == null ? "" : displayName.trim();
-        this.enabled = enabled;
         this.serverMatcher = serverMatcher == null ? "" : serverMatcher.trim();
         this.baseUrl = baseUrl == null ? "" : baseUrl.trim();
         this.providerType = providerType == null ? MapLinkProviderType.PLAYERS_JSON : providerType;
-        this.refreshIntervalMs = Math.max(0L, refreshIntervalMs);
+        this.maxUpdateDelayMs = Math.max(MIN_MAX_UPDATE_DELAY_MS, Math.min(MAX_MAX_UPDATE_DELAY_MS, maxUpdateDelayMs));
         this.defaultY = defaultY;
-        this.sourcePriority = sourcePriority;
         this.dimensionMappings = sanitizeMap(dimensionMappings);
         this.requestHeaders = sanitizeMap(requestHeaders);
     }
@@ -53,13 +52,11 @@ public final class MapLinkProfile {
         return new MapLinkProfile(
                 "legacy-locator",
                 "Legacy locator map",
-                true,
                 serverMatcher,
                 baseUrl,
                 MapLinkProviderType.PLAYERS_JSON,
-                10_000L,
+                DEFAULT_MAX_UPDATE_DELAY_MS,
                 64,
-                0,
                 Map.of(),
                 Map.of()
         );
@@ -67,13 +64,11 @@ public final class MapLinkProfile {
 
     public String id() { return id; }
     public String displayName() { return displayName; }
-    public boolean enabled() { return enabled; }
     public String serverMatcher() { return serverMatcher; }
     public String baseUrl() { return baseUrl; }
     public MapLinkProviderType providerType() { return providerType; }
-    public long refreshIntervalMs() { return refreshIntervalMs; }
+    public long maxUpdateDelayMs() { return maxUpdateDelayMs; }
     public int defaultY() { return defaultY; }
-    public int sourcePriority() { return sourcePriority; }
     public Map<String, String> dimensionMappings() { return Map.copyOf(dimensionMappings); }
     public Map<String, String> requestHeaders() { return Map.copyOf(requestHeaders); }
 
@@ -84,17 +79,6 @@ public final class MapLinkProfile {
         if (direct != null && !direct.isBlank()) return normalizeWorld(direct);
         String rawDirect = dimensionMappings.get(providerWorld == null ? "" : providerWorld.trim());
         return rawDirect == null || rawDirect.isBlank() ? normalized : normalizeWorld(rawDirect);
-    }
-
-    public boolean hasExplicitWorldMappings() {
-        return !dimensionMappings.isEmpty();
-    }
-
-    public boolean hasMappingFor(String providerWorld) {
-        if (!hasExplicitWorldMappings()) return true;
-        String normalized = normalizeWorld(providerWorld);
-        return dimensionMappings.containsKey(normalized)
-                || dimensionMappings.containsKey(providerWorld == null ? "" : providerWorld.trim());
     }
 
     public static String normalizeWorld(String raw) {
@@ -137,10 +121,8 @@ public final class MapLinkProfile {
     public boolean equals(Object obj) {
         if (this == obj) return true;
         if (!(obj instanceof MapLinkProfile other)) return false;
-        return enabled == other.enabled
-                && refreshIntervalMs == other.refreshIntervalMs
+        return maxUpdateDelayMs == other.maxUpdateDelayMs
                 && defaultY == other.defaultY
-                && sourcePriority == other.sourcePriority
                 && Objects.equals(id, other.id)
                 && Objects.equals(displayName, other.displayName)
                 && Objects.equals(serverMatcher, other.serverMatcher)
@@ -152,7 +134,7 @@ public final class MapLinkProfile {
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, displayName, enabled, serverMatcher, baseUrl, providerType, refreshIntervalMs,
-                defaultY, sourcePriority, dimensionMappings, requestHeaders);
+        return Objects.hash(id, displayName, serverMatcher, baseUrl, providerType, maxUpdateDelayMs,
+                defaultY, dimensionMappings, requestHeaders);
     }
 }
