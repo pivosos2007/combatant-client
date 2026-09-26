@@ -36,8 +36,8 @@ import static combatant.client.features.theme.Theme.theme;
         id = "system_time",
         displayName = "System Time",
         enabledByDefault = false,
-        order = 170
-)
+        order = 170,
+        description = "hud.draggable.system_time.description")
 public final class SystemTime extends DraggableHudElement implements ScriptableHudStatWidget {
 
     private static final float SCALE_MULT = 0.68f;

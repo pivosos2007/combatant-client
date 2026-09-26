@@ -288,7 +288,7 @@ public final class TargetHud extends DraggableHudElement {
     private int uiHitInner;
 
     public TargetHud() {
-        super("target_hud", "TargetHUD", true);
+        super("target_hud", "TargetHUD", "hud.draggable.target_hud.description", true);
     }
 
     public static void notifyHit(Entity target) {

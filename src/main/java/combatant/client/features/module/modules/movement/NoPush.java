@@ -20,12 +20,11 @@ import combatant.client.features.module.ModuleInfo;
 
 import java.util.LinkedHashMap;
 
-//todo Description
 @ModuleInfo(
         id = "nopush",
         displayName = "NoPush",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.nopush.description")
 public class NoPush extends Module {
 
     private static final String SETTING_TOGGLES = "toggles";

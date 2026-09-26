@@ -1,0 +1,204 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = 0) uniform sampler2D u_ResolvedColor;
+layout(binding = 1) uniform sampler2D u_CurrentColor;
+layout(rgba8, binding = 2) writeonly uniform image2D u_OutputColor;
+
+layout(std430, binding = 7) readonly buffer TaaParams {
+    mat4 currentInverseProjection;
+    mat4 currentInverseView;
+    mat4 previousView;
+    mat4 previousProjection;
+    vec4 cameraDelta;
+    vec4 extentAndPolicy;
+    vec4 depthPolicy;
+    vec4 temporalPolicy;
+    vec4 presentationPolicy; // x=FXAA, y=sharpen, z=sharpen strength, w=pass mode
+} u_Taa;
+
+float luma(vec3 color) {
+    // Match Photon FXAA 3.11: gamma-aware Rec.709 luma proxy.
+    return sqrt(max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 0.0));
+}
+
+vec3 resolvedAt(vec2 uv) {
+    return textureLod(u_ResolvedColor, clamp(uv, vec2(0.0), vec2(1.0)), 0.0).rgb;
+}
+
+vec3 resolvedTexel(ivec2 pixel) {
+    ivec2 size = textureSize(u_ResolvedColor, 0);
+    return texelFetch(u_ResolvedColor, clamp(pixel, ivec2(0), size - ivec2(1)), 0).rgb;
+}
+
+vec3 applyFxaa(ivec2 texel, vec2 uv, vec2 pixelSize) {
+    const int maxIterations = 12;
+    const float edgeThresholdMin = 0.0312;
+    const float edgeThresholdMax = 0.125;
+    const float subpixelQuality = 0.75;
+    const float quality[12] = float[12](
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.5,
+            2.0, 2.0, 2.0, 2.0, 4.0, 8.0);
+
+    // Photon FXAA 3.11 neighborhood.
+    vec3 a = resolvedTexel(texel + ivec2(-1,  1));
+    vec3 b = resolvedTexel(texel + ivec2( 0,  1));
+    vec3 c = resolvedTexel(texel + ivec2( 1,  1));
+    vec3 d = resolvedTexel(texel + ivec2(-1,  0));
+    vec3 e = resolvedTexel(texel);
+    vec3 f = resolvedTexel(texel + ivec2( 1,  0));
+    vec3 g = resolvedTexel(texel + ivec2(-1, -1));
+    vec3 h = resolvedTexel(texel + ivec2( 0, -1));
+    vec3 i = resolvedTexel(texel + ivec2( 1, -1));
+
+    float lumaCenter = luma(e);
+    float lumaUp = luma(b);
+    float lumaLeft = luma(d);
+    float lumaRight = luma(f);
+    float lumaDown = luma(h);
+
+    float lumaMin = min(lumaCenter, min(lumaDown, min(lumaUp, min(lumaLeft, lumaRight))));
+    float lumaMax = max(lumaCenter, max(lumaDown, max(lumaUp, max(lumaLeft, lumaRight))));
+    float lumaRange = lumaMax - lumaMin;
+    if (lumaRange < max(edgeThresholdMin, lumaMax * edgeThresholdMax)) {
+        return e;
+    }
+
+    float lumaUpLeft = luma(a);
+    float lumaUpRight = luma(c);
+    float lumaDownLeft = luma(g);
+    float lumaDownRight = luma(i);
+
+    float lumaHorizontal = lumaDown + lumaUp;
+    float lumaVertical = lumaLeft + lumaRight;
+    float lumaLeftCorners = lumaDownLeft + lumaUpLeft;
+    float lumaDownCorners = lumaDownLeft + lumaDownRight;
+    float lumaRightCorners = lumaDownRight + lumaUpRight;
+    float lumaUpCorners = lumaUpLeft + lumaUpRight;
+
+    float edgeHorizontal = abs(-2.0 * lumaLeft + lumaLeftCorners)
+            + abs(-2.0 * lumaCenter + lumaVertical) * 2.0
+            + abs(-2.0 * lumaRight + lumaRightCorners);
+    float edgeVertical = abs(-2.0 * lumaUp + lumaUpCorners)
+            + abs(-2.0 * lumaCenter + lumaHorizontal) * 2.0
+            + abs(-2.0 * lumaDown + lumaDownCorners);
+    bool horizontal = edgeHorizontal >= edgeVertical;
+
+    float luma1 = horizontal ? lumaDown : lumaLeft;
+    float luma2 = horizontal ? lumaUp : lumaRight;
+    float gradient1 = luma1 - lumaCenter;
+    float gradient2 = luma2 - lumaCenter;
+    bool firstSteepest = abs(gradient1) >= abs(gradient2);
+    float gradientScaled = 0.25 * max(abs(gradient1), abs(gradient2));
+
+    float stepLength = horizontal ? pixelSize.y : pixelSize.x;
+    float localAverage;
+    if (firstSteepest) {
+        stepLength = -stepLength;
+        localAverage = 0.5 * (luma1 + lumaCenter);
+    } else {
+        localAverage = 0.5 * (luma2 + lumaCenter);
+    }
+
+    vec2 currentUv = uv;
+    if (horizontal) currentUv.y += stepLength * 0.5;
+    else currentUv.x += stepLength * 0.5;
+
+    vec2 offset = horizontal ? vec2(pixelSize.x, 0.0) : vec2(0.0, pixelSize.y);
+    vec2 uv1 = currentUv - offset;
+    vec2 uv2 = currentUv + offset;
+    float lumaEnd1 = luma(resolvedAt(uv1)) - localAverage;
+    float lumaEnd2 = luma(resolvedAt(uv2)) - localAverage;
+    bool reached1 = abs(lumaEnd1) >= gradientScaled;
+    bool reached2 = abs(lumaEnd2) >= gradientScaled;
+
+    if (!reached1) uv1 -= offset;
+    if (!reached2) uv2 += offset;
+
+    if (!(reached1 && reached2)) {
+        for (int iteration = 2; iteration < maxIterations; ++iteration) {
+            if (!reached1) lumaEnd1 = luma(resolvedAt(uv1)) - localAverage;
+            if (!reached2) lumaEnd2 = luma(resolvedAt(uv2)) - localAverage;
+            reached1 = abs(lumaEnd1) >= gradientScaled;
+            reached2 = abs(lumaEnd2) >= gradientScaled;
+            if (reached1 && reached2) break;
+            if (!reached1) uv1 -= offset * quality[iteration];
+            if (!reached2) uv2 += offset * quality[iteration];
+        }
+    }
+
+    float distance1 = horizontal ? (uv.x - uv1.x) : (uv.y - uv1.y);
+    float distance2 = horizontal ? (uv2.x - uv.x) : (uv2.y - uv.y);
+    bool direction1 = distance1 < distance2;
+    float distanceFinal = min(distance1, distance2);
+    float edgeThickness = max(distance1 + distance2, 1e-6);
+    float pixelOffset = -distanceFinal / edgeThickness + 0.5;
+
+    bool centerSmaller = lumaCenter < localAverage;
+    bool correctVariation = ((direction1 ? lumaEnd1 : lumaEnd2) < 0.0) != centerSmaller;
+    float finalOffset = correctVariation ? pixelOffset : 0.0;
+
+    float lumaAverage = (2.0 * (lumaHorizontal + lumaVertical)
+            + lumaLeftCorners + lumaRightCorners) / 12.0;
+    float subpixel1 = clamp(abs(lumaAverage - lumaCenter) / max(lumaRange, 1e-6), 0.0, 1.0);
+    float subpixel2 = (-2.0 * subpixel1 + 3.0) * subpixel1 * subpixel1;
+    float subpixelFinal = subpixel2 * subpixel2 * subpixelQuality;
+    finalOffset = max(finalOffset, subpixelFinal);
+
+    vec2 finalUv = uv;
+    if (horizontal) finalUv.y += finalOffset * stepLength;
+    else finalUv.x += finalOffset * stepLength;
+    return resolvedAt(finalUv);
+}
+
+vec3 applyAdaptiveSharpen(ivec2 texel, float strength) {
+    ivec2 size = textureSize(u_ResolvedColor, 0);
+    ivec2 p = clamp(texel, ivec2(0), size - ivec2(1));
+
+    // FidelityFX CAS filter shape used by Photon. Keep the signal in Combatant's
+    // current post-process color space; unlike Photon final.fsh this pass is not
+    // the display transfer stage, so it must not gamma-convert the framebuffer.
+    vec3 a = resolvedTexel(p + ivec2(-1, -1));
+    vec3 b = resolvedTexel(p + ivec2( 0, -1));
+    vec3 c = resolvedTexel(p + ivec2( 1, -1));
+    vec3 d = resolvedTexel(p + ivec2(-1,  0));
+    vec3 e = resolvedTexel(p);
+    vec3 f = resolvedTexel(p + ivec2( 1,  0));
+    vec3 g = resolvedTexel(p + ivec2(-1,  1));
+    vec3 h = resolvedTexel(p + ivec2( 0,  1));
+    vec3 i = resolvedTexel(p + ivec2( 1,  1));
+
+    vec3 minColor = min(d, min(e, min(f, min(b, h))));
+    minColor += min(minColor, min(a, min(c, min(g, i))));
+    vec3 maxColor = max(d, max(e, max(f, max(b, h))));
+    maxColor += max(maxColor, max(a, max(c, max(g, i))));
+
+    vec3 safeMax = max(maxColor, vec3(1e-4));
+    vec3 w = clamp(min(minColor, vec3(2.0) - maxColor) / safeMax, vec3(0.0), vec3(1.0));
+    w = vec3(1.0) - (vec3(1.0) - w) * (vec3(1.0) - w);
+    w *= -1.0 / mix(8.0, 5.0, clamp(strength, 0.0, 1.0));
+
+    vec3 weightSum = vec3(1.0) + 4.0 * w;
+    return max(((b + d + f + h) * w + e) / max(weightSum, vec3(0.2)), vec3(0.0));
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_OutputColor);
+    if (any(greaterThanEqual(pixel, size))) return;
+
+    vec2 pixelSize = 1.0 / vec2(max(size, ivec2(1)));
+    vec2 uv = (vec2(pixel) + 0.5) * pixelSize;
+    int mode = int(u_Taa.presentationPolicy.w + 0.5);
+    vec3 color;
+    if (mode == 1) {
+        color = applyFxaa(pixel, uv, pixelSize);
+    } else if (mode == 2) {
+        color = applyAdaptiveSharpen(pixel, u_Taa.presentationPolicy.z);
+    } else {
+        color = resolvedAt(uv);
+    }
+    float alpha = texelFetch(u_CurrentColor, pixel, 0).a;
+    imageStore(u_OutputColor, pixel, vec4(color, alpha));
+}

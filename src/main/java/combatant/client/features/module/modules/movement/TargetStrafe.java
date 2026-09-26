@@ -28,12 +28,11 @@ import combatant.client.features.module.modules.combat.KillAura;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.combat.SprintController;
 
-//todo Description
 @ModuleInfo(
         id = "targetstrafe",
         displayName = "TargetStrafe",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.targetstrafe.description")
 public final class TargetStrafe extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();

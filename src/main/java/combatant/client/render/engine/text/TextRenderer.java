@@ -171,6 +171,22 @@ public interface TextRenderer {
         }
     }
 
+    /**
+     * Renders MSDF glyphs as a backdrop-refracting liquid-glass surface while preserving the
+     * glyph SDF as the actual material boundary. Renderers without a glass backend fall back to
+     * ordinary quad-gradient text instead of approximating the effect with a rectangular plate.
+     */
+    default double renderLiquidGlassQuadGradient(String text,
+                                                  double x,
+                                                  double y,
+                                                  Font.GlyphQuadGradient gradient,
+                                                  double boundsX,
+                                                  double boundsY,
+                                                  double boundsWidth,
+                                                  double boundsHeight) {
+        return renderQuadGradient(text, x, y, gradient, false);
+    }
+
     default double renderHorizontalFadeClipped(String text,
                                                double x,
                                                double y,

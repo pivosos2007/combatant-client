@@ -34,6 +34,10 @@ public enum PostProcessManager {
     private static final PostProcessGraph GRAPH = new PostProcessGraph();
     private static GpuSampler sampler;
 
+    static {
+        register(TemporalAntiAliasingPass.INSTANCE);
+    }
+
     public static void register(PostProcessPass pass) {
         GRAPH.add(pass);
     }

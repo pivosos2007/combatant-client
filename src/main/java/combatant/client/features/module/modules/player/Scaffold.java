@@ -75,8 +75,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-//todo Description
-@ModuleInfo(id = "scaffold", displayName = "Scaffold", aliases = {"bridge", "autobridge"}, category = ModuleCategory.PLAYER)
+@ModuleInfo(id = "scaffold", displayName = "Scaffold", aliases = {"bridge", "autobridge"}, category = ModuleCategory.PLAYER,
+        description = "module.scaffold.description")
 public class Scaffold extends Module {
     private static final boolean DEBUG_LOGS = true;
     private static final List<BlockPos> NORMAL_OFFSETS = commonOffsets(0, -1, 1);

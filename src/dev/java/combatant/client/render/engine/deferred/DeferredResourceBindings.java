@@ -55,15 +55,6 @@ public final class DeferredResourceBindings {
     public DeferredResourceBindings() {
     }
 
-    /**
-     * Source-compatibility constructor. DeferredResourceAllocator no longer owns production
-     * resources; passing one here has no ownership effect.
-     */
-    @Deprecated(forRemoval = true)
-    public DeferredResourceBindings(DeferredResourceAllocator ignored) {
-        if (ignored == null) throw new IllegalArgumentException("allocator");
-    }
-
     public void beginFrame(long frameId) {
         beginFrame(frameId, historyEpoch);
     }

@@ -72,7 +72,7 @@ private static final float HEALTH_BAR_WIDTH = 81f;
     private final CachedUiScriptRuntime scriptRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
     private CustomHealthBar() {
-        super("vanilla_health", "Health", true);
+        super("vanilla_health", "Health", "hud.static.vanilla_health.description", true);
     }
 
     public static CustomHealthBar get() {

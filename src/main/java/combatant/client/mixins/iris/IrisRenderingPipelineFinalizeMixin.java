@@ -19,6 +19,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.render.engine.depth.PreTranslucentDepth;
 import combatant.client.render.iris.IrisCombatantFrameHooks;
 import combatant.client.render.iris.IrisSceneDepth;
+import combatant.client.render.iris.IrisRuntime;
 
 @Pseudo
 @Mixin(value = IrisRenderingPipeline.class, remap = false)
@@ -29,6 +30,7 @@ public abstract class IrisRenderingPipelineFinalizeMixin {
 
     @Inject(method = "beginLevelRendering", at = @At("HEAD"), remap = false)
     private void combatant$resetIrisSceneDepth(CallbackInfo ci) {
+        IrisRuntime.observePipeline(this);
         IrisSceneDepth.resetFrame();
     }
 
@@ -49,6 +51,7 @@ public abstract class IrisRenderingPipelineFinalizeMixin {
 
     @Inject(method = "destroy", at = @At("HEAD"), remap = false)
     private void combatant$shutdownDepth(CallbackInfo ci) {
+        IrisRuntime.pipelineDestroyed(this);
         IrisSceneDepth.shutdown();
     }
 }

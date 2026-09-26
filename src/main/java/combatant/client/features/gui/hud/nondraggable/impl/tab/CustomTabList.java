@@ -90,7 +90,7 @@ public final class CustomTabList extends AbstractHudElement {
     private int uiRowHighlight;
 
     private CustomTabList() {
-        super("tab_list", "Tab List", true);
+        super("tab_list", "Tab List", "hud.static.tab_list.description", true);
     }
 
     public static boolean shouldReplaceVanilla() {

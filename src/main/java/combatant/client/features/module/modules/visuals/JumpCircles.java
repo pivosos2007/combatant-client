@@ -33,12 +33,11 @@ import combatant.client.util.time.Timer;
 import java.util.*;
 import java.util.List;
 
-//todo Description
 @ModuleInfo(
         id = "jumpcircles",
         displayName = "JumpCircles",
-        category = ModuleCategory.VISUALS
-)
+        category = ModuleCategory.VISUALS,
+        description = "module.jumpcircles.description")
 public class JumpCircles extends Module {
     private final Minecraft mc = Minecraft.getInstance();
     private final EnumValue<CircleMode> mode =

@@ -38,8 +38,7 @@ import java.util.List;
         displayName = "HoleESP",
         aliases = {"holes"},
         category = ModuleCategory.VISUALS,
-        description = "module.holeesp.description"
-)
+        description = "module.holeesp.description")
 public final class HoleESP extends Module {
     private static final Direction[] HORIZONTAL = {
             Direction.NORTH,

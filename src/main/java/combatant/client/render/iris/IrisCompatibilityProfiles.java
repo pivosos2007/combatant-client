@@ -7,7 +7,7 @@
 
 package combatant.client.render.iris;
 
-import java.util.Locale;
+import combatant.client.render.iris.patch.ShaderPatchEngine;
 
 public enum IrisCompatibilityProfiles {
     ;
@@ -16,35 +16,17 @@ public enum IrisCompatibilityProfiles {
         if (!shaderpackInUse) {
             return IrisCompatibilityProfile.NONE;
         }
-        if (isComplementaryReimagined(shaderpackName)) {
-            return IrisCompatibilityProfile.COMPLEMENTARY_REIMAGINED;
-        }
-        if (isPhoton(shaderpackName)) {
-            return IrisCompatibilityProfile.PHOTON;
-        }
-        return IrisCompatibilityProfile.GENERIC_IRIS;
+        return resolve(ShaderPatchEngine.profile(shaderpackName), true);
     }
 
-    private static boolean isComplementaryReimagined(String shaderpackName) {
-        if (shaderpackName == null || shaderpackName.isBlank()) {
-            return false;
-        }
-        String normalized = normalize(shaderpackName);
-        return normalized.contains("complementary")
-                && (normalized.contains("reimagined") || normalized.contains("reimagined latest"));
-    }
-
-    private static boolean isPhoton(String shaderpackName) {
-        if (shaderpackName == null || shaderpackName.isBlank()) {
-            return false;
-        }
-        return normalize(shaderpackName).contains("photon");
-    }
-
-    private static String normalize(String shaderpackName) {
-        return shaderpackName.toLowerCase(Locale.ROOT)
-                .replace('-', ' ')
-                .replace('_', ' ')
-                .replace('+', ' ');
+    public static IrisCompatibilityProfile resolve(ShaderPatchEngine.ShaderpackProfile selected,
+                                                   boolean shaderpackInUse) {
+        if (!shaderpackInUse) return IrisCompatibilityProfile.NONE;
+        if (selected == null || !selected.matched()) return IrisCompatibilityProfile.GENERIC_IRIS;
+        return switch (selected.profileId()) {
+            case "photon" -> IrisCompatibilityProfile.PHOTON;
+            case "complementary_reimagined" -> IrisCompatibilityProfile.COMPLEMENTARY_REIMAGINED;
+            default -> IrisCompatibilityProfile.GENERIC_IRIS;
+        };
     }
 }

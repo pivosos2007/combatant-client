@@ -158,7 +158,7 @@ public final class Inventory extends DraggableHudElement {
     private boolean toggleInit = false;
 
     public Inventory() {
-        super("inventory", "Inventory", true);
+        super("inventory", "Inventory", "hud.draggable.inventory.description", true);
     }
 
     @Override

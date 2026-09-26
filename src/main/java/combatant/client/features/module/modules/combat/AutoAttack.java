@@ -58,12 +58,11 @@ import combatant.client.util.combat.protocol.ProtocolUtil;
 import java.util.LinkedHashMap;
 
 
-//todo Description
 @ModuleInfo(
         id = "triggerbot",
         displayName = "TriggerBot",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.triggerbot.description")
 public class AutoAttack extends Module {
 
     private static final int MAX_CPS = 100;

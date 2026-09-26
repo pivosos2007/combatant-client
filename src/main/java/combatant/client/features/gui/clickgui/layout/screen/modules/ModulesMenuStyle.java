@@ -64,6 +64,18 @@ enum ModulesMenuStyle {
         return textFaint;
     }
 
+    static int hoverDescriptionPrimary(float alpha) {
+        return withAlpha(mix(themeAccent, text, 0.16f), alpha);
+    }
+
+    static int hoverDescriptionSecondary(float alpha) {
+        return withAlpha(mix(themeAccentSoft, text, 0.10f), alpha);
+    }
+
+    static int hoverDescriptionHighlight(float alpha) {
+        return withAlpha(mix(text, themeAccentSoft, 0.22f), alpha);
+    }
+
     static int panelBgGlassDark() {
         return panelBgGlassDark;
     }

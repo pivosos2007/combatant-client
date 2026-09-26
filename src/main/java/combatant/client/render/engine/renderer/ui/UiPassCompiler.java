@@ -314,7 +314,10 @@ public final class UiPassCompiler {
     private static boolean canLowerDirectly(OrderedUiBatcher batcher) {
         if (batcher == null || !batcher.active || batcher.order.isEmpty()) return false;
         for (Object entry : batcher.order) {
-            if (entry instanceof TextBatch) continue;
+            if (entry instanceof TextBatch textBatch) {
+                if (textBatch.liquidGlass) return false;
+                continue;
+            }
             if (!(entry instanceof DrawBatch batch)) return false;
             if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS) return false;
             if (batch.type.usesPreparedGlass()) return false;
@@ -331,7 +334,8 @@ public final class UiPassCompiler {
                 hasItems = true;
                 continue;
             }
-            if (entry instanceof TextBatch) {
+            if (entry instanceof TextBatch textBatch) {
+                if (textBatch.liquidGlass) return false;
                 hasDraws = true;
                 continue;
             }
@@ -398,6 +402,13 @@ public final class UiPassCompiler {
         boolean needsCurrentTargetSnapshot = false;
         boolean needsUiUnderlay = false;
         for (Object entry : batcher.order) {
+            if (entry instanceof TextBatch textBatch && textBatch.liquidGlass) {
+                needsCapturedScene = true;
+                declareBlurChain(descriptors, "captured-world",
+                        Renderer2D.DEFAULT_LIQUID_GLASS_BLUR_QUALITY.iterations,
+                        screenWidth, screenHeight);
+                continue;
+            }
             if (!(entry instanceof DrawBatch batch)) continue;
             needsEffectsTarget |= batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS;
             needsCapturedScene |= batch.backdropRequest.requiresCapturedScene();
@@ -458,6 +469,7 @@ public final class UiPassCompiler {
             case MEDIUM -> Renderer2D.BlurQuality.MEDIUM;
             case HIGH -> Renderer2D.BlurQuality.HIGH;
             case ULTRA -> Renderer2D.BlurQuality.ULTRA;
+            case LIQUID_GLASS -> Renderer2D.BlurQuality.LIQUID_GLASS;
         };
     }
 
@@ -497,8 +509,8 @@ public final class UiPassCompiler {
         for (Object entry : batcher.order) {
             if (entry instanceof ItemBatch) {
                 items = true;
-            } else if (entry instanceof TextBatch) {
-                // Text needs no compatibility flag.
+            } else if (entry instanceof TextBatch textBatch) {
+                preparedGlass |= textBatch.liquidGlass;
             } else if (entry instanceof DrawBatch batch) {
                 blur |= batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS;
                 preparedGlass |= batch.type.usesPreparedGlass();

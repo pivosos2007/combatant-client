@@ -95,6 +95,44 @@ public enum ShaderPatchEngine {
         return repository().select(shaderPackName).targetsByPath.keySet().stream().sorted().toList();
     }
 
+    /** Runtime-facing identity selected by the same manifest rules that own patch application. */
+    public static ShaderpackProfile profile(String shaderPackName) {
+        Repository repository = repository();
+        Repository.Selection selection = repository.select(shaderPackName);
+        Manifest selected = selection.manifestIds.stream()
+                .map(repository.manifestsById::get)
+                .filter(Objects::nonNull)
+                .max(Comparator.comparingInt(Manifest::priority).thenComparing(Manifest::id))
+                .orElse(null);
+        if (selected == null) return ShaderpackProfile.NONE;
+        return new ShaderpackProfile(
+                selected.id,
+                selected.identity.family,
+                selected.identity.profileId,
+                selected.priority,
+                selected.compatibility.features
+        );
+    }
+
+    public record ShaderpackProfile(String manifestId,
+                                    String family,
+                                    String profileId,
+                                    int priority,
+                                    Set<String> features) {
+        public static final ShaderpackProfile NONE = new ShaderpackProfile("", "", "", 0, Set.of());
+
+        public ShaderpackProfile {
+            manifestId = manifestId == null ? "" : manifestId;
+            family = family == null ? "" : family;
+            profileId = profileId == null ? "" : profileId;
+            features = features == null ? Set.of() : Set.copyOf(features);
+        }
+
+        public boolean matched() {
+            return !manifestId.isBlank();
+        }
+    }
+
     private static Repository repository() {
         Repository current = REPOSITORY.get();
         if (current != null) return current;
@@ -294,7 +332,14 @@ public enum ShaderPatchEngine {
     ) {
     }
 
-    private record Manifest(String id, int priority, Identity identity, List<Target> targets) {
+    private record Manifest(String id,
+                            int priority,
+                            Identity identity,
+                            Compatibility compatibility,
+                            List<Target> targets) {
+    }
+
+    private record Compatibility(Set<String> features) {
     }
 
     private record Identity(String family, String profileId, String policy, Pattern packNamePattern) {
@@ -357,8 +402,9 @@ public enum ShaderPatchEngine {
             int priority = manifestJson.has("priority") ? manifestJson.get("priority").getAsInt() : 0;
             Identity identity = readIdentity(requireObject(manifestJson, "identity"));
 
-            // Compatibility is descriptive. Runtime patchability is decided by preflight against the active pack.
-            requireObject(manifestJson, "compatibility");
+            // Runtime patchability is still decided by preflight. Feature metadata is shared with
+            // IrisRuntime so identity/capability selection cannot drift from the applied manifest.
+            Compatibility compatibility = readCompatibility(requireObject(manifestJson, "compatibility"));
 
             String base = parent(manifestPath);
             ArrayList<Target> targets = new ArrayList<>();
@@ -382,7 +428,21 @@ public enum ShaderPatchEngine {
             if (targets.isEmpty()) {
                 throw new IllegalArgumentException("Shader patch manifest has no targets: " + manifestId);
             }
-            return new Manifest(manifestId, priority, identity, List.copyOf(targets));
+            return new Manifest(manifestId, priority, identity, compatibility, List.copyOf(targets));
+        }
+
+        private static Compatibility readCompatibility(JsonObject compatibility) {
+            if (!compatibility.has("features")) return new Compatibility(Set.of());
+            JsonArray values = requireArray(compatibility, "features");
+            LinkedHashSet<String> features = new LinkedHashSet<>();
+            for (JsonElement value : values) {
+                if (!value.isJsonPrimitive()) {
+                    throw new IllegalArgumentException("Compatibility feature must be a string");
+                }
+                String feature = value.getAsString().trim();
+                if (!feature.isEmpty()) features.add(feature);
+            }
+            return new Compatibility(Set.copyOf(features));
         }
 
         private static Set<ShaderPatchCompiler.ShaderStage> readStages(JsonObject targetJson)

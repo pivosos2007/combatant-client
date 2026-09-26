@@ -84,7 +84,7 @@ public final class Radar extends DraggableHudElement {
     private final BooleanValue gradient =
             new BooleanValue("radar_gradient", false);
     public Radar() {
-        super("radar", "Radar", false);
+        super("radar", "Radar", "hud.draggable.radar.description", false);
     }
 
     private static EnumValue<Field> fieldSlot(int slot, Field def) {

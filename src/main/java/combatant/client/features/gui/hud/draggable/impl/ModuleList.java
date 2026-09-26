@@ -90,7 +90,7 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
     private int cachedModulesCount;
     private float cachedTextScale = -1f;
     public ModuleList() {
-        super("module_list", "ModuleList", false);
+        super("module_list", "ModuleList", "hud.draggable.module_list.description", false);
     }
 
     @Override

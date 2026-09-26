@@ -26,12 +26,11 @@ import combatant.client.util.combat.VulcanReachController;
 import java.util.List;
 import java.util.Optional;
 
-//todo Description
 @ModuleInfo(
         id = "reach",
         displayName = "Reach",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.reach.description")
 public class Reach extends Module {
 
     public final EnumValue<KillAura.RaycastMode> raycast =

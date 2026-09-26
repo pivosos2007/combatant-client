@@ -57,18 +57,6 @@ final class DeferredDisocclusionSource implements AutoCloseable {
     private RhiStorageBuffer params;
 
     void install(ArrayList<DeferredPassSpec> passes) {
-        passes.add(DeferredPassSpec.builder("world.temporal.disocclusion", DeferredStage.PRE_TRANSLUCENCY_TEMPORAL_VALIDATION)
-                .read(DeferredResource.VELOCITY, DeferredResource.MOTION_VALIDITY, DeferredResource.RESOLVED_DEPTH, DeferredResource.HISTORY_DEPTH)
-                .write(DeferredResource.DISOCCLUSION_MASK)
-                .requires(RhiShaderStage.COMPUTE)
-                .when(context -> temporalConsumersEnabled(context.settings())
-                        && available(context, DeferredResource.VELOCITY, DeferredResource.MOTION_VALIDITY,
-                        DeferredResource.RESOLVED_DEPTH))
-                .execute(context -> render(context, DeferredResource.VELOCITY, DeferredResource.MOTION_VALIDITY,
-                        DeferredResource.RESOLVED_DEPTH, DeferredResource.DISOCCLUSION_MASK,
-                        "Combatant temporal disocclusion mask", sharedDepthThreshold(context.settings())))
-                .build());
-
         passes.add(DeferredPassSpec.builder("world.temporal.final-disocclusion", DeferredStage.POST_TRANSLUCENCY)
                 .priority(100)
                 .read(DeferredResource.FINAL_VELOCITY, DeferredResource.FINAL_MOTION_VALIDITY,
@@ -145,25 +133,6 @@ final class DeferredDisocclusionSource implements AutoCloseable {
         ));
     }
 
-    private static boolean temporalConsumersEnabled(DeferredRuntimeConfig.Snapshot settings) {
-        return settings.indirectLightEnabled() && settings.indirectTemporalEnabled()
-                || settings.reflectionsEnabled() && settings.reflectionTemporalEnabled();
-    }
-
-    /**
-     * Shared mask rejects only discontinuities every active signal agrees are invalid. Individual
-     * temporal resolves may still apply their stricter signal-specific threshold afterwards.
-     */
-    private static float sharedDepthThreshold(DeferredRuntimeConfig.Snapshot settings) {
-        boolean indirect = settings.indirectLightEnabled() && settings.indirectTemporalEnabled();
-        boolean reflections = settings.reflectionsEnabled() && settings.reflectionTemporalEnabled();
-        if (indirect && reflections) {
-            return Math.max(settings.indirectTemporalDepthThreshold(), settings.reflectionTemporalDepthThreshold());
-        }
-        if (indirect) return settings.indirectTemporalDepthThreshold();
-        if (reflections) return settings.reflectionTemporalDepthThreshold();
-        return Math.max(settings.indirectTemporalDepthThreshold(), settings.reflectionTemporalDepthThreshold());
-    }
 
     private void ensureOwner(CombatantRhi rhi) {
         if (owner == rhi) return;

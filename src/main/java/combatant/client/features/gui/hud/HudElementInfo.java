@@ -22,6 +22,8 @@ public @interface HudElementInfo {
 
     String displayName();
 
+    String description() default "";
+
     boolean enabledByDefault() default false;
 
     int order() default 0;

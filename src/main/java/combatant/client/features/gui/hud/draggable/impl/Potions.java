@@ -153,7 +153,7 @@ public final class Potions extends DraggableHudElement {
     private int uiBlurTint;
 
     public Potions() {
-        super("potions", "Potions", true);
+        super("potions", "Potions", "hud.draggable.potions.description", true);
     }
 
     private static int clamp255(int value) {

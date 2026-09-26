@@ -37,8 +37,8 @@ import static combatant.client.features.theme.Theme.theme;
         id = "armor",
         displayName = "Armor",
         enabledByDefault = false,
-        order = 210
-)
+        order = 210,
+        description = "hud.draggable.armor.description")
 public final class Armor extends DraggableHudElement {
 
     {

@@ -80,7 +80,7 @@ public final class CustomHotbar extends AbstractHudElement {
     private final NumberValue<Integer> blurAlpha =
             new NumberValue<>("blur_alpha", 255, 20, 255);
     private CustomHotbar() {
-        super("vanilla_hotbar", "Hotbar", true);
+        super("vanilla_hotbar", "Hotbar", "hud.static.vanilla_hotbar.description", true);
     }
 
     public static CustomHotbar get() {

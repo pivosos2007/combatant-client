@@ -107,7 +107,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
     private float stackHeightAnim;
 
     private HudNotifier() {
-        super("hud_notifier", "HudNotifier", true);
+        super("hud_notifier", "HudNotifier", "hud.draggable.hud_notifier.description", true);
         ModuleManager.addListener(this);
     }
 

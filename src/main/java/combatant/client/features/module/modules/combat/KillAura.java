@@ -58,12 +58,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
-//todo Description
 @ModuleInfo(
         id = "killaura",
         displayName = "KillAura",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.killaura.description")
 public class KillAura extends Module {
 
     private static final int MAX_CPS = 100;

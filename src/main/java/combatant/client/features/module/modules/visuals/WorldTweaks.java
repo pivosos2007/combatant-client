@@ -32,8 +32,8 @@ import combatant.client.render.engine.RenderState;
 import java.time.LocalTime;
 import java.util.LinkedHashMap;
 
-//todo Description
-@ModuleInfo(id = "worldtweaks", displayName = "WorldTweaks", category = ModuleCategory.VISUALS)
+@ModuleInfo(id = "worldtweaks", displayName = "WorldTweaks", category = ModuleCategory.VISUALS,
+        description = "module.worldtweaks.description")
 public class WorldTweaks extends Module {
 
     private static final long DAY_TICKS = 24000L;

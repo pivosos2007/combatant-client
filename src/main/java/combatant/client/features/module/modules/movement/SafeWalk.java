@@ -21,12 +21,11 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.util.entity.EagleUtil;
 
-//todo Description
 @ModuleInfo(
         id = "safewalk",
         displayName = "SafeWalk",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.safewalk.description")
 public final class SafeWalk extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();

@@ -22,8 +22,8 @@ import combatant.client.render.engine.postprocess.PostProcessPass;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.uniform.impl.PostFXUniforms;
 
-//todo Description
-@ModuleInfo(id = "postfx", displayName = "PostFX", category = ModuleCategory.VISUALS)
+@ModuleInfo(id = "postfx", displayName = "PostFX", category = ModuleCategory.VISUALS,
+        description = "module.postfx.description")
 public class PostFX extends Module implements PostProcessPass {
 
     private static final String SETTING_PRESET = "preset";

@@ -41,8 +41,7 @@ import java.util.Map;
         displayName = "NoDelay",
         aliases = {"FastUse", "FastBreak", "FastPlace"},
         category = ModuleCategory.PLAYER,
-        description = "module.nodelay.description"
-)
+        description = "module.nodelay.description")
 public final class NoDelay extends Module {
 
     private static final float VULCAN_297_MIN_SERVER_ACCEPT_PROGRESS = 0.7f;

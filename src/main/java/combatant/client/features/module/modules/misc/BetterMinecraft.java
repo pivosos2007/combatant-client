@@ -13,12 +13,11 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.runtime.RuntimeGate;
 
-//todo Description
 @ModuleInfo(
         id = "betterminecraft",
         displayName = "BetterMinecraft",
-        category = ModuleCategory.MISC
-)
+        category = ModuleCategory.MISC,
+        description = "module.betterminecraft.description")
 public final class BetterMinecraft extends Module {
 
     private final BooleanValue hideRecipeBook = bool("hide_recipe_book", true);

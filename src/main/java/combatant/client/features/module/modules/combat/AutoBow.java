@@ -61,12 +61,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
-//todo Description
 @ModuleInfo(
         id = "autobow",
         displayName = "AutoBow",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.autobow.description")
 public class AutoBow extends Module {
 
     private static final int COLOR_IDLE = 0x66FFFFFF;

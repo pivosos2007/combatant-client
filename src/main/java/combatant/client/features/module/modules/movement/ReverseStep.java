@@ -34,12 +34,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
-//todo Description
 @ModuleInfo(
         id = "reversestep",
         displayName = "ReverseStep",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.reversestep.description")
 public final class ReverseStep extends Module {
 
     private static final Set<Block> UNWANTED_BLOCKS = Set.of(

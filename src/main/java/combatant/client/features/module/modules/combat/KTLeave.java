@@ -29,12 +29,11 @@ import combatant.client.features.module.modules.player.AutoTotem;
 import combatant.client.util.network.BlinkManager;
 import combatant.client.util.pvp.client.CooldownsState;
 
-//todo Description
 @ModuleInfo(
         id = "ktleave",
         displayName = "KTLeave",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.ktleave.description")
 public final class KTLeave extends Module {
     private static final String ACTION_LEAVE = "leave";
 

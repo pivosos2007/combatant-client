@@ -136,7 +136,7 @@ public final class Keybinds extends DraggableHudElement {
     private int uiBlurTint;
 
     public Keybinds() {
-        super("keybinds", "Keybinds", true);
+        super("keybinds", "Keybinds", "hud.draggable.keybinds.description", true);
     }
 
     private static String iconFor(ModuleCategory category) {

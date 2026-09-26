@@ -47,12 +47,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
-//todo Description
 @ModuleInfo(
         id = "projectilepuncher",
         displayName = "ProjectilePuncher",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.projectilepuncher.description")
 public final class ProjectilePuncher extends Module {
 
     private static final String PROJECTILE_FIREBALL = "fireball";

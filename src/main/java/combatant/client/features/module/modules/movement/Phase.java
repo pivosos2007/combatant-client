@@ -46,13 +46,12 @@ import combatant.client.util.player.MovementUtil;
 import combatant.client.util.player.inventory.InventorySwap;
 
 @Deprecated
-//todo Description
 //работает только на ванилах без ач
 @ModuleInfo(
         id = "phase",
         displayName = "Phase",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.phase.description")
 public class Phase extends Module {
 
     private final EnumValue<Mode> mode =

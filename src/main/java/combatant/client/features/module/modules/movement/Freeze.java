@@ -11,12 +11,11 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 
-//todo Description
 @ModuleInfo(
         id = "freeze",
         displayName = "Freeze",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.freeze.description")
 public final class Freeze extends Module {
 
     public Freeze() {

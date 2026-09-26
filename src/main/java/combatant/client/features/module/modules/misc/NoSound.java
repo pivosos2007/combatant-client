@@ -16,12 +16,11 @@ import combatant.client.features.module.ModuleInfo;
 import java.util.Locale;
 import java.util.Set;
 
-//todo Description
 @ModuleInfo(
         id = "nosound",
         displayName = "NoSound",
-        category = ModuleCategory.MISC
-)
+        category = ModuleCategory.MISC,
+        description = "module.nosound.description")
 public class NoSound extends Module {
     private static final String SETTING_SOUND_IDS = "sound_ids";
     private final SetValue soundIds = textList("noSoundIds", SETTING_SOUND_IDS, TextListSetting.PickerMode.SOUNDS);

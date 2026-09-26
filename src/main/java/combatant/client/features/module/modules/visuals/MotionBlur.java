@@ -21,7 +21,8 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 
 /** Motion-vector compute blur extracted from the latest ReimaginedVisual camera-post path. */
-@ModuleInfo(id = "motionblur", displayName = "MotionBlur", category = ModuleCategory.VISUALS)
+@ModuleInfo(id = "motionblur", displayName = "MotionBlur", category = ModuleCategory.VISUALS,
+        description = "module.motionblur.description")
 public final class MotionBlur extends Module implements PostProcessPass, PostProcessBackendResourceOwner {
     private final Minecraft mc = Minecraft.getInstance();
     private final TemporalMotionBlurBackend backend = new TemporalMotionBlurBackend();

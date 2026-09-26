@@ -12,12 +12,11 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 
-//todo Description
 @ModuleInfo(
         id = "cameraclip",
         displayName = "CameraClip",
-        category = ModuleCategory.VISUALS
-)
+        category = ModuleCategory.VISUALS,
+        description = "module.cameraclip.description")
 public final class CameraClip extends Module {
 
     private final NumberValue<Double> distanceMultiplier =

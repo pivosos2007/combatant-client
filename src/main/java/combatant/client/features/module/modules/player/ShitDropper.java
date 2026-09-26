@@ -20,12 +20,11 @@ import combatant.client.util.player.inventory.InventorySwap;
 import java.util.ArrayList;
 import java.util.List;
 
-//todo Description
 @ModuleInfo(
         id = "shitdropper",
         displayName = "ShitDropper",
-        category = ModuleCategory.PLAYER
-)
+        category = ModuleCategory.PLAYER,
+        description = "module.shitdropper.description")
 public class ShitDropper extends Module {
 
     private static final Minecraft mc = Minecraft.getInstance();

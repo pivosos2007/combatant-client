@@ -36,12 +36,11 @@ import combatant.client.util.player.MovementUtil;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.simulation.PlayerSimulationCache;
 
-//todo Description
 @ModuleInfo(
         id = "windjump",
         displayName = "WindJump",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.windjump.description")
 public class WindJump extends Module {
 
     private static final String SETTING_ITEM_USAGE_MODE = "item_usage_mode";

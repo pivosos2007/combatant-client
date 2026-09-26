@@ -194,7 +194,6 @@ public enum VulkanMsaaResolveBridge {
                 if (attachment == null) continue;
                 ResolveTarget target = target(attachment.textureView().texture());
                 if (target == null) continue;
-                if (!target.snapshot) continue;
                 if (target.aspect != Aspect.COLOR) {
                     throw new IllegalStateException("Depth resolve target registered for a color attachment");
                 }
@@ -214,7 +213,6 @@ public enum VulkanMsaaResolveBridge {
         if (depth == null) return;
         ResolveTarget target = target(depth.textureView().texture());
         if (target == null) return;
-        if (!target.snapshot) return;
         if (target.aspect != Aspect.DEPTH) {
             throw new IllegalStateException("Color resolve target registered for a depth attachment");
         }

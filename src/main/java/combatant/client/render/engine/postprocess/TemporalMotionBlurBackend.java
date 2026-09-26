@@ -13,6 +13,7 @@ import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.shader.*;
+import combatant.client.render.engine.temporal.TemporalVelocityContract;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
@@ -28,7 +29,6 @@ import java.util.List;
 public final class TemporalMotionBlurBackend implements AutoCloseable {
     private static final int LOCAL_SIZE = 8;
     private static final int TILE_SIZE = 16;
-    private static final float CONTRACT_VERSION = 1.0f;
 
     private static final Identifier VELOCITY_SHADER = id("temporal/velocity_camera");
     private static final Identifier TILE_SHADER = id("temporal/motion_tile_max");
@@ -129,7 +129,7 @@ public final class TemporalMotionBlurBackend implements AutoCloseable {
                 .putMat4(0, "previousProjection", previousProjection)
                 .putVec4(0, "cameraDelta", (float) cameraDelta.x, (float) cameraDelta.y, (float) cameraDelta.z, 0.0f)
                 .putVec4(0, "depthNdcTransform", zeroToOne ? 1.0f : 2.0f, zeroToOne ? 0.0f : -1.0f,
-                        historyValid ? 1.0f : 0.0f, CONTRACT_VERSION);
+                        historyValid ? 1.0f : 0.0f, TemporalVelocityContract.VERSION);
         cameraBuffer().upload(cameraWriter.buffer(), 0L);
 
         Std430Writer motionWriter = new Std430Writer(MOTION_LAYOUT, 1)

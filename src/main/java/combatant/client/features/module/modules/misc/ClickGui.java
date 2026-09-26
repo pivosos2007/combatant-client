@@ -24,7 +24,8 @@ import net.minecraft.client.Minecraft;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-@ModuleInfo(id = "clickgui", displayName = "ClickGUI", aliases = {"menu", "settings"}, category = ModuleCategory.MISC)
+@ModuleInfo(id = "clickgui", displayName = "ClickGUI", aliases = {"menu", "settings"}, category = ModuleCategory.MISC,
+        description = "module.clickgui.description")
 public class ClickGui extends Module {
     private static boolean suppressScreenClose = false;
 

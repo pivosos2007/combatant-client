@@ -13,8 +13,9 @@ import combatant.client.render.engine.renderer.Renderer2D;
 public enum UiBlurQuality {
     LOW(0, 2),
     MEDIUM(1, 3),
-    HIGH(2, 4),
-    ULTRA(3, 5);
+    HIGH(2, 3),
+    ULTRA(3, 5),
+    LIQUID_GLASS(4, 4);
 
     public final int id;
     public final int iterations;
@@ -31,6 +32,7 @@ public enum UiBlurQuality {
             case MEDIUM -> MEDIUM;
             case HIGH -> HIGH;
             case ULTRA -> ULTRA;
+            case LIQUID_GLASS -> LIQUID_GLASS;
         };
     }
 }

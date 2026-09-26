@@ -9,12 +9,6 @@
     "DevDeferredGameRendererMixin",
     "DevDeferredLevelRendererMixin",
     "DevDeferredClientPacketListenerMixin",
-    "BlockEntityRenderDispatcherTemporalMixin",
-    "BlockEntityRenderStateTemporalMixin",
-    "EntityRendererTemporalMixin",
-    "EntityRenderStateTemporalMixin",
-    "sodium.SodiumDefaultChunkRendererMixin",
-    "sodium.DevDeferredSodiumShaderChunkRendererMixin",
     "sodium.DevDeferredSodiumWorldRendererMixin"
   ],
   "injectors": {

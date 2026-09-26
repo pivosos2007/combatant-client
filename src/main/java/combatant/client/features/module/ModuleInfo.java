@@ -27,7 +27,7 @@ public @interface ModuleInfo {
     ModuleCategory category();
 
     /**
-     * Plain description or i18n key. Optional, but carried by Module metadata when present.
+     * i18n key for the module description.
      */
     String description() default "";
 

@@ -40,8 +40,8 @@ import static combatant.client.features.theme.Theme.theme;
         id = "triangulator",
         displayName = "Triangulator",
         enabledByDefault = false,
-        order = 940
-)
+        order = 940,
+        description = "hud.draggable.triangulator.description")
 public final class Triangulator extends DraggableHudElement {
 
     // Baked HUD layout default from user cfg.
@@ -209,7 +209,7 @@ public final class Triangulator extends DraggableHudElement {
     private int uiDanger;
 
     public Triangulator() {
-        super("triangulator", "Triangulator", false);
+        super("triangulator", "Triangulator", "hud.draggable.triangulator.description", false);
     }
 
     private static SolveResult solveStatic(List<CachedThrow> throwsToSolve, double minAngleThreshold) {

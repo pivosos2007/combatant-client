@@ -36,12 +36,11 @@ import combatant.client.features.module.ModuleInfo;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-//todo Description
 @ModuleInfo(
         id = "nostun",
         displayName = "NoStun",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.nostun.description")
 public class NoStun extends Module {
 
     private static final float DEFAULT_SLIPPERINESS = 0.6F;

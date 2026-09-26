@@ -34,8 +34,8 @@ import static combatant.client.features.theme.Theme.theme;
         id = "timer_indicator",
         displayName = "Timer",
         enabledByDefault = false,
-        order = 190
-)
+        order = 190,
+        description = "hud.draggable.timer_indicator.description")
 public final class TimerIndicator extends DraggableHudElement {
 
     {

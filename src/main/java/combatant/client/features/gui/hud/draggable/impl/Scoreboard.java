@@ -167,7 +167,7 @@ public final class Scoreboard extends DraggableHudElement {
     private final List<SidebarLine> cachedLines = new ArrayList<>();
 
     public Scoreboard() {
-        super("scoreboard", "Scoreboard", false);
+        super("scoreboard", "Scoreboard", "hud.draggable.scoreboard.description", false);
     }
 
     public static boolean shouldReplaceVanilla() {

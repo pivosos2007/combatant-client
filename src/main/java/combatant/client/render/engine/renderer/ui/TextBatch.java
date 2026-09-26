@@ -13,6 +13,7 @@ import combatant.client.render.engine.text.backend.TextPlacementMode;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
 import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
+import combatant.client.render.engine.renderer.ui.draw.UiRect;
 
 public final class TextBatch {
     public String label;
@@ -22,6 +23,8 @@ public final class TextBatch {
     public UiClipSnapshot clipSnapshot = UiClipSnapshot.NONE;
     public UiScissorSnapshot scissorSnapshot = UiScissorSnapshot.NONE;
     public MeshBuilder mesh;
+    public boolean liquidGlass;
+    public UiRect glassBounds;
 
     public void begin(String label, GlyphFont font, RenderPipeline pipeline,
                TextPlacementMode placement, UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot) {
@@ -31,6 +34,8 @@ public final class TextBatch {
         this.placement = placement != null ? placement : TextPlacementMode.UI;
         this.scissorSnapshot = scissorSnapshot != null ? scissorSnapshot : UiScissorSnapshot.NONE;
         this.clipSnapshot = clipSnapshot != null ? clipSnapshot : UiClipSnapshot.NONE;
+        this.liquidGlass = false;
+        this.glassBounds = null;
         if (mesh == null) {
             mesh = new MeshBuilder(pipeline);
         } else if (mesh.isBuilding()) {
@@ -41,11 +46,50 @@ public final class TextBatch {
 
     public boolean canMerge(GlyphFont font, RenderPipeline pipeline, TextPlacementMode placement,
                             UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot) {
-        return this.font == font
+        return !liquidGlass
+                && this.font == font
                 && this.pipeline == pipeline
                 && this.placement == (placement != null ? placement : TextPlacementMode.UI)
                 && this.scissorSnapshot.id() == scissorSnapshot.id()
                 && this.clipSnapshot.id() == clipSnapshot.id();
+    }
+
+    public void beginLiquidGlass(String label,
+                                 GlyphFont font,
+                                 RenderPipeline pipeline,
+                                 TextPlacementMode placement,
+                                 UiRect bounds,
+                                 UiScissorSnapshot scissorSnapshot,
+                                 UiClipSnapshot clipSnapshot) {
+        begin(label, font, pipeline, placement, scissorSnapshot, clipSnapshot);
+        this.liquidGlass = true;
+        this.glassBounds = bounds;
+    }
+
+    public boolean canMergeLiquidGlass(GlyphFont font,
+                                       RenderPipeline pipeline,
+                                       TextPlacementMode placement,
+                                       UiScissorSnapshot scissorSnapshot,
+                                       UiClipSnapshot clipSnapshot) {
+        return liquidGlass
+                && this.font == font
+                && this.pipeline == pipeline
+                && this.placement == (placement != null ? placement : TextPlacementMode.UI)
+                && this.scissorSnapshot.id() == scissorSnapshot.id()
+                && this.clipSnapshot.id() == clipSnapshot.id();
+    }
+
+    public void expandGlassBounds(UiRect bounds) {
+        if (bounds == null) return;
+        if (glassBounds == null) {
+            glassBounds = bounds;
+            return;
+        }
+        float x0 = Math.min(glassBounds.x(), bounds.x());
+        float y0 = Math.min(glassBounds.y(), bounds.y());
+        float x1 = Math.max(glassBounds.x() + glassBounds.width(), bounds.x() + bounds.width());
+        float y1 = Math.max(glassBounds.y() + glassBounds.height(), bounds.y() + bounds.height());
+        glassBounds = new UiRect(x0, y0, Math.max(0f, x1 - x0), Math.max(0f, y1 - y0));
     }
 
     public void append(MeshBuilder source) {

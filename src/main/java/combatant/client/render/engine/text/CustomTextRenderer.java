@@ -28,6 +28,7 @@ public class CustomTextRenderer implements TextRenderer {
     public static final RenderColor SHADOW_COLOR = new RenderColor(60, 60, 60, 180);
     public final FontFace fontFace;
     private final MeshBuilder mesh = new MeshBuilder(CombatantRenderPipelines.UI_TEXT);
+    private final MeshBuilder liquidGlassMesh = new MeshBuilder(CombatantRenderPipelines.UI_TEXT_MSDF_GLASS_FAST);
     private GlyphFont[] fonts;
     private GlyphFont font;
     private int fontIndex;
@@ -269,6 +270,45 @@ public class CustomTextRenderer implements TextRenderer {
         return width;
     }
 
+    @Override
+    public double renderLiquidGlassQuadGradient(String text,
+                                                 double x,
+                                                 double y,
+                                                 Font.GlyphQuadGradient gradient,
+                                                 double boundsX,
+                                                 double boundsY,
+                                                 double boundsWidth,
+                                                 double boundsHeight) {
+        if (text == null || text.isEmpty() || gradient == null) return x;
+        boolean wasBuilding = building;
+        if (!wasBuilding) begin();
+        try {
+            if (font == null || !font.isMsdf() || RenderWarpStack.active()) {
+                return renderQuadGradient(text, x, y, gradient, false);
+            }
+
+            if (liquidGlassMesh.isBuilding()) liquidGlassMesh.end();
+            liquidGlassMesh.begin();
+            double width = font.renderQuadGradient(liquidGlassMesh, text, x, y, scale / 1.5, gradient);
+            liquidGlassMesh.end();
+
+            TextRenderSystem.submitLiquidGlassGlyphMesh(
+                    "Combatant UI Liquid Glass Text",
+                    font,
+                    liquidGlassMesh,
+                    CombatantRenderPipelines.UI_TEXT_MSDF_GLASS_FAST,
+                    TextPlacementMode.UI,
+                    boundsX,
+                    boundsY,
+                    boundsWidth,
+                    boundsHeight
+            );
+            return width;
+        } finally {
+            if (!wasBuilding) end();
+        }
+    }
+
     public double renderHorizontalFade(String text,
                                        double x,
                                        double y,
@@ -404,6 +444,7 @@ public class CustomTextRenderer implements TextRenderer {
     /** Preallocates the text mesh so the first glyph draw does not allocate native buffers. */
     public void prewarmBuffers() {
         mesh.prewarmDefaultCapacity();
+        liquidGlassMesh.reserve(256, 384);
     }
 
     private void ensureMeshStarted() {
@@ -426,6 +467,7 @@ public class CustomTextRenderer implements TextRenderer {
 
     public void destroy() {
         mesh.close();
+        liquidGlassMesh.close();
         if (fonts == null) return;
         for (GlyphFont f : this.fonts) {
             f.close();

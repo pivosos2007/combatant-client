@@ -85,8 +85,8 @@ import combatant.client.util.text.TextRenderUtil;
 import java.util.*;
 
 
-//todo Description
-@ModuleInfo(id = "nametags", displayName = "NameTags", aliases = {"nametag", "tags", "names"}, category = ModuleCategory.VISUALS)
+@ModuleInfo(id = "nametags", displayName = "NameTags", aliases = {"nametag", "tags", "names"}, category = ModuleCategory.VISUALS,
+        description = "module.nametags.description")
 public class NameTags extends Module {
 
     // Screen-space geometry is authored directly in UNSCALED_LOGICAL units.

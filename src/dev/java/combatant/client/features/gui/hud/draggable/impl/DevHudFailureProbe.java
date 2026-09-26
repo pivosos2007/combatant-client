@@ -12,8 +12,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
         id = "dev_hud_failure_probe",
         displayName = "Dev HUD Failure",
         enabledByDefault = true,
-        order = Integer.MAX_VALUE - 1
-)
+        order = Integer.MAX_VALUE - 1,
+        description = "hud.draggable.dev_hud_failure_probe.description")
 public final class DevHudFailureProbe extends DraggableHudElement {
     private final BooleanValue failNextRender = bool(
             "dev_hud_fail_next_render", "fail_next_render", false);

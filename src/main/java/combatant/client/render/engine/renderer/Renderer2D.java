@@ -90,8 +90,9 @@ public final class Renderer2D {
     public enum BlurQuality {
         LOW(0, 2),
         MEDIUM(1, 3),
-        HIGH(2, 4),
-        ULTRA(3, 5);
+        HIGH(2, 3),
+        ULTRA(3, 5),
+        LIQUID_GLASS(4, 4);
 
         public final int id;
         public final int iterations;
@@ -103,7 +104,7 @@ public final class Renderer2D {
     }
 
     public static final BlurQuality DEFAULT_BLUR_QUALITY = BlurQuality.MEDIUM;
-    public static final BlurQuality DEFAULT_LIQUID_GLASS_BLUR_QUALITY = BlurQuality.HIGH;
+    public static final BlurQuality DEFAULT_LIQUID_GLASS_BLUR_QUALITY = BlurQuality.LIQUID_GLASS;
     public static final float DEFAULT_KAWASE_OFFSET_PX = 1.0f;
     public static final float LIQUID_GLASS_KAWASE_OFFSET_PX = 1.15f;
 
@@ -129,6 +130,8 @@ public final class Renderer2D {
     private float liquidGlassUiBlurOffsetPx = 0.85f;
     private float liquidGlassUiMix = 1.0f;
     private UiLiquidGlassMaterial liquidGlassMaterial = UiLiquidGlassMaterial.DEFAULT;
+    private @Nullable BlurQuality liquidGlassBlurQualityOverride;
+    private float liquidGlassBlurOffsetOverridePx = Float.NaN;
 
     public Renderer2D(boolean textured) {
         this.textured = textured;
@@ -180,6 +183,27 @@ public final class Renderer2D {
             draw.run();
         } finally {
             liquidGlassMaterial = previous;
+        }
+    }
+
+    /**
+     * Temporarily overrides the prepared Kawase profile used by ordinary liquid-glass rects.
+     * This is intended for UI skins that need a slightly wider backdrop blur without changing
+     * the global liquid-glass material or adding a second blur pass.
+     */
+    public void withLiquidGlassBlurProfile(BlurQuality quality, float offsetPx, Runnable draw) {
+        if (draw == null) return;
+        BlurQuality previousQuality = liquidGlassBlurQualityOverride;
+        float previousOffset = liquidGlassBlurOffsetOverridePx;
+        liquidGlassBlurQualityOverride = quality != null ? quality : DEFAULT_LIQUID_GLASS_BLUR_QUALITY;
+        liquidGlassBlurOffsetOverridePx = Float.isFinite(offsetPx)
+                ? Math.max(0.0f, offsetPx)
+                : LIQUID_GLASS_KAWASE_OFFSET_PX;
+        try {
+            draw.run();
+        } finally {
+            liquidGlassBlurQualityOverride = previousQuality;
+            liquidGlassBlurOffsetOverridePx = previousOffset;
         }
     }
 
@@ -3138,8 +3162,10 @@ public final class Renderer2D {
         double h = bounds.height();
         if (w <= 0.0 || h <= 0.0) return;
 
+        float effectiveDistort = safe.distortPx * clamp01(glassAlpha);
         UiBackdropRequest backdrop = liquidGlassBackdrop(
-                bounds, UiBlurQuality.HIGH, LIQUID_GLASS_KAWASE_OFFSET_PX);
+                bounds, UiBlurQuality.LIQUID_GLASS, LIQUID_GLASS_KAWASE_OFFSET_PX,
+                safe.thicknessPx, effectiveDistort, 0.0f);
         // The effect command needs the capture bounds; the exact implicit mask is evaluated by the
         // liquid-glass batch itself and intentionally stays backend-local.
         effect(UiEffectSpec.liquidGlass(
@@ -3191,7 +3217,7 @@ public final class Renderer2D {
         }
 
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
+        DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS_LIGHT, src, sampler,
                 DEFAULT_LIQUID_GLASS_BLUR_QUALITY, LIQUID_GLASS_KAWASE_OFFSET_PX, backdrop);
         if (batch == null) {
             endAutoBatch(auto);
@@ -3207,7 +3233,7 @@ public final class Renderer2D {
         int b = tintArgb & 0xFF;
         int finalA = (int) (a * clamp01(glassAlpha));
         float mix = packLiquidGlassFresnel(safe.fresnelMix, 0.0f, 0.0f);
-        float packedDistort = packLiquidGlassPayload(safe.distortPx * clamp01(glassAlpha), 2.0f, clamp01(blurAlpha), false);
+        float packedDistort = packLiquidGlassPayload(effectiveDistort, 2.0f, clamp01(blurAlpha), false);
 
         int i1 = appendLiquidGlassCompoundVertex(mesh, x, y, mix, packedDistort, r, g, b, finalA, bounds,
                 payload, sourceCount, compound.smoothing(), shapeMode, safe, liquidGlassMaterial);
@@ -3289,17 +3315,21 @@ public final class Renderer2D {
 
     private UiBackdropRequest liquidGlassBackdrop(UiRect bounds,
                                                    UiBlurQuality sceneQuality,
-                                                   float sceneOffsetPx) {
+                                                   float sceneOffsetPx,
+                                                   float thickness,
+                                                   float distortStrength,
+                                                   float prismStrength) {
+        UiRect blurBounds = liquidGlassBlurBounds(bounds, thickness, distortStrength, prismStrength);
         UiBackdropRequest.SceneSource sceneSource = liquidGlassSceneSourceOverride;
         UiBackdropRequest request = switch (sceneSource != null
                 ? sceneSource
                 : UiBackdropRequest.SceneSource.CAPTURED_SCENE) {
             case UI_UNDERLAY -> UiBackdropRequest.uiUnderlayGlass(
-                    bounds, sceneQuality, sceneOffsetPx);
+                    blurBounds, sceneQuality, sceneOffsetPx);
             case CURRENT_TARGET -> UiBackdropRequest.currentTargetGlass(
-                    bounds, sceneQuality, sceneOffsetPx);
+                    blurBounds, sceneQuality, sceneOffsetPx);
             case CAPTURED_SCENE, NONE -> UiBackdropRequest.capturedSceneGlass(
-                    bounds, sceneQuality, sceneOffsetPx);
+                    blurBounds, sceneQuality, sceneOffsetPx);
         };
         UiBackdropRequest.UiUnderlayMode mode = liquidGlassUiUnderlayOverride;
         if (mode == null) {
@@ -3311,6 +3341,66 @@ public final class Renderer2D {
                 ? UiBackdropRequest.BlurParameters.of(liquidGlassUiBlurQuality, liquidGlassUiBlurOffsetPx)
                 : UiBackdropRequest.BlurParameters.NONE;
         return request.withUiUnderlay(mode, uiBlur, liquidGlassUiMix);
+    }
+
+    /**
+     * Expand only the blur workload bounds enough to cover the displaced blur samples used by the
+     * glass shader. The sharp scene stays full-frame; this margin exists solely so regional Kawase
+     * textures never expose untouched texels when refraction/mirror sampling walks outside the
+     * geometric panel bounds.
+     */
+    private UiRect liquidGlassBlurBounds(UiRect bounds,
+                                         float thickness,
+                                         float distortStrength,
+                                         float prismStrength) {
+        if (bounds == null) return null;
+
+        ViewportContext viewport = ViewportContext.current();
+        if (viewport == null) return bounds;
+
+        float framebufferWidth = Math.max(1.0f, viewport.framebufferWidth());
+        float framebufferHeight = Math.max(1.0f, viewport.framebufferHeight());
+        float logicalWidth = Math.max(1.0f, viewport.width());
+        float logicalHeight = Math.max(1.0f, viewport.height());
+
+        float distortion = Mth.clamp(Float.isFinite(distortStrength) ? distortStrength : 0.0f,
+                0.0f, 0.35f);
+        float adjustedPrism = prismStrength > 0.01f
+                ? Math.min(1.0f, clamp01(prismStrength) * 1.18f)
+                : 0.0f;
+        // prismBand is capped by 0.72 * adjusted prism strength in the fragment shader.
+        float maxPrismBand = 0.72f * adjustedPrism;
+        float centerDistortFramebufferPx = distortion
+                * Math.min(framebufferWidth, framebufferHeight)
+                * 0.42f
+                * (1.0f + maxPrismBand * 1.10f);
+
+        float shaderThickness = Math.max(Float.isFinite(thickness) ? thickness : 0.0f, 1.0f);
+        float mirrorReachFramebufferPx = shaderThickness * 4.40f
+                + centerDistortFramebufferPx * 0.55f;
+        if (adjustedPrism > 0.0f) {
+            // Full glass takes four additional blurred rim taps around mirrorUv.
+            mirrorReachFramebufferPx += 6.0f + shaderThickness * 0.11f;
+        }
+
+        float frostedJitterFramebufferPx = Math.min(4.0f,
+                Math.max(0.0f, materialFrostedJitter(liquidGlassMaterial)));
+        float blurSampleReachFramebufferPx = Math.max(
+                centerDistortFramebufferPx + frostedJitterFramebufferPx,
+                mirrorReachFramebufferPx) + 2.0f;
+
+        float logicalPerFramebufferX = logicalWidth / framebufferWidth;
+        float logicalPerFramebufferY = logicalHeight / framebufferHeight;
+        float logicalPadding = blurSampleReachFramebufferPx
+                * Math.max(logicalPerFramebufferX, logicalPerFramebufferY);
+        if (!(logicalPadding > 0.0f) || !Float.isFinite(logicalPadding)) return bounds;
+
+        return new UiRect(
+                bounds.x() - logicalPadding,
+                bounds.y() - logicalPadding,
+                bounds.width() + logicalPadding * 2.0f,
+                bounds.height() + logicalPadding * 2.0f
+        );
     }
 
     public void liquidGlassSquircle(UiBoxShape squircle,
@@ -3384,7 +3474,8 @@ public final class Renderer2D {
                 : LIQUID_GLASS_KAWASE_OFFSET_PX;
         UiShape glassShape = UiShape.polyline(primitive.points(), primitive.pointCount(), true);
         UiBackdropRequest backdrop = liquidGlassBackdrop(
-                bounds, UiBlurQuality.fromRenderer(preparedBlurQuality), preparedBlurOffset);
+                bounds, UiBlurQuality.fromRenderer(preparedBlurQuality), preparedBlurOffset,
+                thickness, distortPx, prismStrength);
         effect(UiEffectSpec.liquidGlass(
                 glassShape, primitive.rounding(), thickness, distortPx, tintArgb, backdrop));
         Minecraft mc = Minecraft.getInstance();
@@ -3403,7 +3494,10 @@ public final class Renderer2D {
         }
 
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
+        UiBatchType glassBatchType = prismStrength > 0.01f
+                ? UiBatchType.LIQUID_GLASS
+                : UiBatchType.LIQUID_GLASS_LIGHT;
+        DrawBatch batch = UI_BATCHER.getOrCreateBlur(glassBatchType, src, sampler,
                 preparedBlurQuality, preparedBlurOffset, backdrop);
         if (batch == null) {
             endAutoBatch(auto);
@@ -3882,8 +3976,15 @@ public final class Renderer2D {
         UiShape glassShape = wholeBoxSquircle
                 ? UiShape.box(UiBoxShape.squircle(x, y, w, h, shapePower))
                 : UiShape.roundedRect(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL);
+        BlurQuality preparedBlurQuality = liquidGlassBlurQualityOverride != null
+                ? liquidGlassBlurQualityOverride
+                : DEFAULT_LIQUID_GLASS_BLUR_QUALITY;
+        float preparedBlurOffset = Float.isFinite(liquidGlassBlurOffsetOverridePx)
+                ? Math.max(0.0f, liquidGlassBlurOffsetOverridePx)
+                : LIQUID_GLASS_KAWASE_OFFSET_PX;
         UiBackdropRequest backdrop = liquidGlassBackdrop(
-                glassShape.bounds(), UiBlurQuality.HIGH, LIQUID_GLASS_KAWASE_OFFSET_PX);
+                glassShape.bounds(), UiBlurQuality.fromRenderer(preparedBlurQuality), preparedBlurOffset,
+                softness, distortPx, prismStrength);
         effect(UiEffectSpec.liquidGlass(glassShape, softness, softness, distortPx, tintArgb, backdrop));
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
@@ -3895,8 +3996,11 @@ public final class Renderer2D {
         if (sampler == null) return;
 
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
-                DEFAULT_LIQUID_GLASS_BLUR_QUALITY, LIQUID_GLASS_KAWASE_OFFSET_PX, backdrop);
+        UiBatchType glassBatchType = prismStrength > 0.01f
+                ? UiBatchType.LIQUID_GLASS
+                : UiBatchType.LIQUID_GLASS_LIGHT;
+        DrawBatch batch = UI_BATCHER.getOrCreateBlur(glassBatchType, src, sampler,
+                preparedBlurQuality, preparedBlurOffset, backdrop);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -4834,6 +4938,16 @@ public final class Renderer2D {
                                           RenderPipeline pipeline,
                                           TextPlacementMode placement) {
         return UiRenderDispatcher.enqueueTextMesh(label, font, sourceMesh, pipeline, placement);
+    }
+
+    public static boolean enqueueLiquidGlassTextMesh(String label,
+                                                     GlyphFont font,
+                                                     MeshBuilder sourceMesh,
+                                                     RenderPipeline pipeline,
+                                                     TextPlacementMode placement,
+                                                     UiRect bounds) {
+        return UiRenderDispatcher.enqueueLiquidGlassTextMesh(
+                label, font, sourceMesh, pipeline, placement, bounds);
     }
 
     public static RenderWarpStack.Scope pushWarp(RenderWarp warp) {

@@ -8,6 +8,8 @@
 package combatant.client.render.engine.text;
 
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.blaze3d.textures.GpuTextureView;
 import combatant.client.render.engine.text.backend.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
@@ -17,11 +19,13 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.UiRenderDispatcher;
 import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
 import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
+import combatant.client.render.engine.renderer.ui.draw.UiRect;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
 import combatant.client.render.engine.rhi.resource.GlyphAtlasManager;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
+import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
 import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 
 import java.util.ArrayList;
@@ -73,6 +77,44 @@ public enum TextRenderSystem {
 
     public static void noteDirectAdjacentTextBatch(int commands) {
         STATS.directAdjacentTextBatch(commands);
+    }
+
+    public static void submitLiquidGlassGlyphMesh(String label,
+                                                   GlyphFont font,
+                                                   MeshBuilder mesh,
+                                                   RenderPipeline pipeline,
+                                                   TextPlacementMode placement,
+                                                   double boundsX,
+                                                   double boundsY,
+                                                   double boundsWidth,
+                                                   double boundsHeight) {
+        if (font == null || mesh == null || pipeline == null) return;
+        if (mesh.isBuilding()) mesh.end();
+        if (mesh.getIndicesCount() <= 0) return;
+
+        UiRect bounds = UiRect.of(boundsX, boundsY, boundsWidth, boundsHeight);
+        TextPlacementMode uiPlacement = placement != null ? placement : TextPlacementMode.UI;
+        if (uiPlacement == TextPlacementMode.UI || uiPlacement == TextPlacementMode.SCREEN_SPACE) {
+            if (Renderer2D.enqueueLiquidGlassTextMesh(label, font, mesh, pipeline, uiPlacement, bounds)) {
+                return;
+            }
+            boolean auto = UiRenderDispatcher.beginAutoBatch();
+            if (auto) {
+                try {
+                    if (Renderer2D.enqueueLiquidGlassTextMesh(label, font, mesh, pipeline, uiPlacement, bounds)) {
+                        return;
+                    }
+                } finally {
+                    UiRenderDispatcher.endAutoBatch(true);
+                }
+            }
+        }
+
+        // Glass text is a UI backdrop material. Outside an ordered UI batch, preserve readable
+        // output rather than sampling the active color attachment recursively.
+        submitGlyphMeshImmediate(label, font, mesh,
+                font.isMsdf() ? CombatantRenderPipelines.UI_TEXT_MSDF_FAST : CombatantRenderPipelines.UI_TEXT_FAST,
+                uiPlacement);
     }
 
     public static void submitGlyphMesh(String label,
@@ -185,6 +227,60 @@ public enum TextRenderSystem {
                 MsdfTextUniforms.update(font.getPxRange(), font.getAtlasWidth(), font.getAtlasHeight());
                 command.uniform("MsdfText", MsdfTextUniforms.get());
             }
+
+            commands.add(command.build());
+            handle = null;
+        } finally {
+            if (handle != null) handle.close();
+        }
+    }
+
+    public static void appendLiquidGlassGlyphMeshCommand(List<RhiDrawCommand> commands,
+                                                         String label,
+                                                         GlyphFont font,
+                                                         MeshBuilder mesh,
+                                                         RenderPipeline pipeline,
+                                                         TextPlacementMode placement,
+                                                         UiClipSnapshot clipSnapshot,
+                                                         GpuTextureView sceneView,
+                                                         GpuSampler sceneSampler,
+                                                         GpuTextureView blurView,
+                                                         GpuSampler blurSampler,
+                                                         float framebufferWidth,
+                                                         float framebufferHeight) {
+        if (commands == null || font == null || mesh == null || pipeline == null) return;
+        if (sceneView == null || sceneSampler == null || blurView == null || blurSampler == null) return;
+        if (mesh.isBuilding()) mesh.end();
+        if (mesh.getIndicesCount() <= 0 || !font.isReady() || !font.isMsdf()) return;
+
+        AbstractTexture texture = font.getTexture();
+        if (texture == null || texture.getTextureView() == null || texture.getSampler() == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gameRenderer.mainRenderTarget() == null) return;
+
+        int vertexBytes = mesh.getVertexBytes();
+        int indexBytes = mesh.getIndexBytes();
+        GpuMeshHandle handle = null;
+        try {
+            handle = CombatantRenderSystem.rhi().dynamicMeshes().upload(mesh);
+            STATS.meshUpload(vertexBytes, indexBytes);
+            STATS.glyphs(Math.max(0, mesh.getVertexCount() / 4));
+            STATS.backend(TextBackendPreference.MSDF);
+
+            UIBatchUniforms.update(framebufferWidth, framebufferHeight);
+            MsdfTextUniforms.update(font.getPxRange(), font.getAtlasWidth(), font.getAtlasHeight());
+
+            RhiDrawCommand.Builder command = RhiDrawCommand.builder(
+                            label != null ? label : "Combatant Liquid Glass Text")
+                    .pipeline(pipeline)
+                    .colorAttachment(UiMsaaClipLayer.currentColorAttachment(
+                            mc.gameRenderer.mainRenderTarget().getColorTextureView()))
+                    .mesh(handle)
+                    .sampler("u_Texture", texture.getTextureView(), texture.getSampler())
+                    .sampler("u_SceneTexture", sceneView, sceneSampler)
+                    .sampler("u_BlurTexture", blurView, blurSampler)
+                    .uniform("UIBatch", UIBatchUniforms.get())
+                    .uniform("MsdfText", MsdfTextUniforms.get());
 
             commands.add(command.build());
             handle = null;

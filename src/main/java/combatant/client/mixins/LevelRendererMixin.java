@@ -7,6 +7,7 @@
 
 package combatant.client.mixins;
 
+import combatant.client.config.MainConfig;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
@@ -94,7 +95,9 @@ public abstract class LevelRendererMixin {
     @Unique
     private static boolean combatant$needsWorldSceneDepthCapture() {
         ReimaginedVisual visual = Modules.get(ReimaginedVisual.class);
-        return (visual != null && visual.needsWorldSceneDepthCapture()) || MotionBlur.isActiveStatic();
+        return (visual != null && visual.needsWorldSceneDepthCapture())
+                || MotionBlur.isActiveStatic()
+                || MainConfig.get().isTaaRuntimeActive();
     }
 
     @Unique

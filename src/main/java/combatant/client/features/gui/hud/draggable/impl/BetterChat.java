@@ -34,8 +34,8 @@ import java.util.Map;
         id = "better_chat",
         displayName = "Better Chat",
         enabledByDefault = true,
-        order = 40
-)
+        order = 40,
+        description = "hud.draggable.better_chat.description")
 public final class BetterChat extends DraggableHudElement {
 
     {

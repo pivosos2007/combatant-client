@@ -38,8 +38,8 @@ import static combatant.client.features.theme.Theme.theme;
         id = "speed_bps",
         displayName = "Speed BPS",
         enabledByDefault = true,
-        order = 90
-)
+        order = 90,
+        description = "hud.draggable.speed_bps.description")
 public final class SpeedBps extends DraggableHudElement implements ScriptableHudStatWidget {
 
     private static final Identifier SPEED_ICON = Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/speedometer.png");

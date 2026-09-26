@@ -50,12 +50,11 @@ import combatant.client.util.world.ExplosionDamageUtil;
 
 import java.util.List;
 
-//todo Description
 @ModuleInfo(
         id = "elytratarget",
         displayName = "ElytraTarget",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.elytratarget.description")
 public final class ElytraTarget extends Module {
 
     private static final int PURSUIT_ROTATION_PRIORITY = 80;

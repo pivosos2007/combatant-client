@@ -36,8 +36,8 @@ import static combatant.client.features.theme.Theme.theme;
         id = "tps",
         displayName = "TPS",
         enabledByDefault = false,
-        order = 160
-)
+        order = 160,
+        description = "hud.draggable.tps.description")
 public final class Tps extends DraggableHudElement implements ScriptableHudStatWidget {
 
     private static final Identifier TPS_ICON = Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/tps.png");

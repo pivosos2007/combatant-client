@@ -7,7 +7,7 @@ package combatant.client.render.engine.water;
 
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.sodium.fluid.WaterSurfaceContract;
-import combatant.client.render.sodium.fluid.WaterSurfaceExtractor;
+import combatant.client.render.sodium.fluid.FluidSurfaceMetadataCapture;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -73,7 +73,7 @@ public record CameraMediumState(
             topState = aboveState;
         }
 
-        WaterSurfaceExtractor.SurfaceSample extracted = WaterSurfaceExtractor.sampleTopSurface(
+        FluidSurfaceMetadataCapture.SurfaceSample extracted = FluidSurfaceMetadataCapture.sampleTopSurface(
                 topCell, fluidTypeId, camera.x, camera.z);
         if (extracted.valid()) {
             return new CameraMediumState(Medium.WATER, fluidTypeId, extracted.worldY(),

@@ -16,12 +16,11 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 
-//todo Description
 @ModuleInfo(
         id = "seeinvisibles",
         displayName = "SeeInvisibles",
-        category = ModuleCategory.VISUALS
-)
+        category = ModuleCategory.VISUALS,
+        description = "module.seeinvisibles.description")
 public class SeeInvisibles extends Module {
 
     private final NumberValue<Integer> alpha = num("seeInvisiblesAlpha", "alpha", 110, 0, 255);

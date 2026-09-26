@@ -24,6 +24,16 @@ public enum IrisCombatantFrameHooks {
     public static void beginRenderLevel(DeltaTracker tickCounter) {
         currentTickCounter = tickCounter;
         renderedAfterFinalization = false;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft != null) {
+            String dimension = minecraft.level == null ? "" : minecraft.level.dimension().identifier().toString();
+            IrisRuntime.observeFrame(
+                    minecraft.level,
+                    dimension,
+                    minecraft.getWindow().getWidth(),
+                    minecraft.getWindow().getHeight()
+            );
+        }
         if (!loggedFrameHook) {
             loggedFrameHook = true;
             DebugLog.info("[IrisCompat] GameRenderer.renderLevel frame hook active");

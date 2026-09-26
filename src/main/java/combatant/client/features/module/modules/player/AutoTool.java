@@ -21,12 +21,11 @@ import combatant.client.mixins.accessors.MultiPlayerGameModeAccessor;
 import combatant.client.mixins.accessors.PlayerInventoryAccessor;
 import combatant.client.util.player.inventory.InventorySwap;
 
-//todo Description
 @ModuleInfo(
         id = "autotool",
         displayName = "AutoTool",
-        category = ModuleCategory.PLAYER
-)
+        category = ModuleCategory.PLAYER,
+        description = "module.autotool.description")
 public class AutoTool extends Module {
 
     private static final String SETTING_RESTORE_DELAY = "restore_delay_ms";

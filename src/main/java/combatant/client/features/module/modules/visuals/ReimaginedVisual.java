@@ -37,8 +37,8 @@ import combatant.client.util.logging.DebugLog;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-//todo Description
-@ModuleInfo(id = "reimaginedvisual", displayName = "ReimaginedVisual", category = ModuleCategory.VISUALS)
+@ModuleInfo(id = "reimaginedvisual", displayName = "ReimaginedVisual", category = ModuleCategory.VISUALS,
+        description = "module.reimaginedvisual.description")
 public class ReimaginedVisual extends Module implements PostProcessPass, PostProcessBackendResourceOwner {
 
     private static final String SETTING_EFFECTS = "effects";

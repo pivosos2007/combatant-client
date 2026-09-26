@@ -36,12 +36,11 @@ import combatant.client.util.combat.CombatStrikeController;
 import combatant.client.util.combat.SprintController;
 import combatant.client.util.player.MovementUtil;
 
-//todo Description
 @ModuleInfo(
         id = "sprint",
         displayName = "Sprint",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.sprint.description")
 public final class Sprint extends Module {
 
     private static final double VULCAN_SPRINT_A_SPEED_GATE = 0.25;

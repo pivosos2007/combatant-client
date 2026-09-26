@@ -178,7 +178,7 @@ public final class Cooldowns extends DraggableHudElement {
     private int uiBlurTint;
 
     public Cooldowns() {
-        super("cooldowns", "Cooldowns", true);
+        super("cooldowns", "Cooldowns", "hud.draggable.cooldowns.description", true);
     }
 
     private static int clamp255(int value) {

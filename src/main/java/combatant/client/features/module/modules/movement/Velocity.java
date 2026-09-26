@@ -73,12 +73,11 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Velocity modes ported from LiquidBounce's ModuleVelocity.
  */
-//todo Description
 @ModuleInfo(
         id = "velocity",
         displayName = "Velocity",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.velocity.description")
 public final class Velocity extends Module {
 
     private static final double VULCAN_297_SAFE_HORIZONTAL_RATIO = 0.25;

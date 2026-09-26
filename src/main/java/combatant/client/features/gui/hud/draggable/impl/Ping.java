@@ -37,8 +37,8 @@ import static combatant.client.features.theme.Theme.theme;
         id = "ping",
         displayName = "Ping",
         enabledByDefault = false,
-        order = 150
-)
+        order = 150,
+        description = "hud.draggable.ping.description")
 public final class Ping extends DraggableHudElement implements ScriptableHudStatWidget {
 
     private static final Identifier PING_ICON = Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/ping.png");

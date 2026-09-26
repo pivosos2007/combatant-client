@@ -17,6 +17,7 @@ import net.irisshaders.iris.vertices.ImmediateState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.ItemStack;
 import combatant.client.render.CombatantEntityRenderTypes;
+import combatant.client.render.iris.patch.ShaderPatchEngine;
 
 enum IrisRuntimeBridge {
     ;
@@ -27,7 +28,8 @@ enum IrisRuntimeBridge {
         boolean shaderpackInUse = probe(api::isShaderPackInUse, packName != null && !packName.isBlank());
         boolean shadersEnabled = shadersEnabled(api, shaderpackInUse);
         boolean renderingShadowPass = probe(api::isRenderingShadowPass, false);
-        IrisCompatibilityProfile profile = IrisCompatibilityProfiles.resolve(packName, shaderpackInUse);
+        ShaderPatchEngine.ShaderpackProfile patchProfile = ShaderPatchEngine.profile(packName);
+        IrisCompatibilityProfile profile = IrisCompatibilityProfiles.resolve(patchProfile, shaderpackInUse);
 
         return new IrisRuntimeSnapshot(
                 true,
@@ -37,6 +39,10 @@ enum IrisRuntimeBridge {
                 renderingShadowPass,
                 packName,
                 profile,
+                patchProfile.manifestId(),
+                patchProfile.features(),
+                0L,
+                "unstamped",
                 "ok"
         );
     }

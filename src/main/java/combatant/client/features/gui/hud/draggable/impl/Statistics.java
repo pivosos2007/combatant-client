@@ -165,7 +165,7 @@ public final class Statistics extends DraggableHudElement {
     private long bedWarsContextUntilMs;
 
     public Statistics() {
-        super("statistics", "Statistics", true);
+        super("statistics", "Statistics", "hud.draggable.statistics.description", true);
     }
 
     @Override

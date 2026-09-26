@@ -153,7 +153,7 @@ public final class MediaPlayer extends DraggableHudElement {
     private int uiTextMuted;
 
     public MediaPlayer() {
-        super("media_player", "Media Player", false);
+        super("media_player", "Media Player", "hud.draggable.media_player.description", false);
     }
 
     private static String iconString(int codepoint) {

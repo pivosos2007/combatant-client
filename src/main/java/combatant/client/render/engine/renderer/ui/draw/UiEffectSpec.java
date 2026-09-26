@@ -7,6 +7,8 @@
 
 package combatant.client.render.engine.renderer.ui.draw;
 
+import combatant.client.render.engine.renderer.Renderer2D;
+
 public record UiEffectSpec(UiEffectKind kind,
                            UiShape shape,
                            float intensity,
@@ -46,8 +48,8 @@ public record UiEffectSpec(UiEffectKind kind,
         UiRect bounds = shape != null ? shape.bounds() : null;
         UiBackdropRequest backdrop = UiBackdropRequest.capturedSceneGlass(
                 bounds,
-                UiBlurQuality.HIGH,
-                1.15f
+                UiBlurQuality.LIQUID_GLASS,
+                Renderer2D.LIQUID_GLASS_KAWASE_OFFSET_PX
         );
         return liquidGlass(shape, radius, thickness, distortion, argb, backdrop);
     }

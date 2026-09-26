@@ -13,8 +13,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
         id = "dev_ui_failure_probe",
         displayName = "Dev UI Failure",
         enabledByDefault = true,
-        order = Integer.MAX_VALUE
-)
+        order = Integer.MAX_VALUE,
+        description = "hud.static.dev_ui_failure_probe.description")
 public final class DevUiFailureProbe extends AbstractHudElement {
     private final BooleanValue failNextRender = bool(
             "dev_ui_fail_next_render", "fail_next_render", false);

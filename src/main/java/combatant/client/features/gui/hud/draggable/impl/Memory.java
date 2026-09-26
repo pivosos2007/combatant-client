@@ -35,8 +35,8 @@ import static combatant.client.features.theme.Theme.theme;
         id = "memory",
         displayName = "Memory",
         enabledByDefault = true,
-        order = 130
-)
+        order = 130,
+        description = "hud.draggable.memory.description")
 public final class Memory extends DraggableHudElement implements ScriptableHudStatWidget {
 
     private static final Identifier MEMORY_ICON = Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/memory.png");

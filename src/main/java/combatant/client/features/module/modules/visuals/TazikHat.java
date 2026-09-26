@@ -37,12 +37,11 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Random;
 
-//todo Description
 @ModuleInfo(
         id = "tazikhat",
         displayName = "TazikHat",
-        category = ModuleCategory.VISUALS
-)
+        category = ModuleCategory.VISUALS,
+        description = "module.tazikhat.description")
 public final class TazikHat extends Module {
 
     private static final int SEGMENTS = 56;

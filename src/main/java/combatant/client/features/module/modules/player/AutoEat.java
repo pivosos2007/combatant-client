@@ -28,12 +28,11 @@ import combatant.client.mixins.accessors.PlayerInventoryAccessor;
 import combatant.client.util.item.FoodUtil;
 import combatant.client.util.player.inventory.InventorySwap;
 
-//todo Description
 @ModuleInfo(
         id = "autoeat",
         displayName = "AutoEat",
-        category = ModuleCategory.PLAYER
-)
+        category = ModuleCategory.PLAYER,
+        description = "module.autoeat.description")
 public class AutoEat extends Module {
 
     private static final String SETTING_EAT_MODE = "eat_mode";

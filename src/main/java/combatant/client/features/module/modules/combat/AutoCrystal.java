@@ -61,13 +61,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-//todo Description
 @ModuleInfo(
         id = "autocrystal",
         displayName = "AutoCrystal",
         aliases = "CrystalAura",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.autocrystal.description")
 public class AutoCrystal extends Module {
 
     private static final int ROTATION_PRIORITY = 35;

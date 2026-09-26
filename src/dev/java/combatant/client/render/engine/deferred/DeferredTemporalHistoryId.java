@@ -4,21 +4,11 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-
 package combatant.client.render.engine.deferred;
 
-/** Stable semantic history identities shared by temporal consumers. */
+/** Stable semantic history identities retained by the shared temporal/post services. */
 public enum DeferredTemporalHistoryId {
     SCENE,
-    INDIRECT_LIGHT,
-    REFLECTIONS,
-    CLOUDS,
-    CLOUDS_HIGH,
-    CLOUDS_CONVECTIVE,
-    AMBIENT_OCCLUSION,
-    FROXEL_MEDIA,
     EXPOSURE,
-    WATER,
-    WATER_REFLECTIONS,
     TAA
 }

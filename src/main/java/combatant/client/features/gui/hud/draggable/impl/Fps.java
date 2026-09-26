@@ -36,8 +36,8 @@ import static combatant.client.features.theme.Theme.theme;
         id = "fps",
         displayName = "FPS",
         enabledByDefault = true,
-        order = 120
-)
+        order = 120,
+        description = "hud.draggable.fps.description")
 public final class Fps extends DraggableHudElement implements ScriptableHudStatWidget {
 
     private static final Identifier FPS_ICON = Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/fps.png");

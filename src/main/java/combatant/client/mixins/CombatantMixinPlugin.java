@@ -24,11 +24,16 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
     private static final Set<String> DISABLED_SODIUM_SHADOW_GRAPH_MIXINS = Set.of();
     private static final Set<String> OPTIONAL_SODIUM_MIXINS = Set.of(
             "combatant.client.mixins.sodium.SodiumBlockRendererMixin",
+            "combatant.client.mixins.sodium.SodiumBlockMetadataCaptureMixin",
             "combatant.client.mixins.sodium.SodiumBlockVisibilityMixin",
             "combatant.client.mixins.sodium.SodiumChunkMeshFormatsMixin",
             "combatant.client.mixins.sodium.SodiumChunkBuilderMeshingTaskMixin",
             "combatant.client.mixins.sodium.SodiumChunkVertexMixin",
             "combatant.client.mixins.sodium.SodiumDefaultFluidRendererMixin",
+            "combatant.client.mixins.sodium.SodiumFluidMetadataCaptureMixin",
+            "combatant.client.mixins.sodium.SodiumFluidMetadataMeshingTaskMixin",
+            "combatant.client.mixins.sodium.SodiumRenderRegionFluidMetadataMixin",
+            "combatant.client.mixins.sodium.SodiumRenderSectionSurfaceMixin",
             "combatant.client.mixins.sodium.SodiumDefaultChunkRendererMixin",
             "combatant.client.mixins.sodium.SodiumQueuedSectionStorageMixin",
             "combatant.client.mixins.sodium.SodiumRenderSectionManagerAccessor",

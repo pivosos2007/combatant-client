@@ -14,12 +14,11 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 
-//todo Description
 @ModuleInfo(
         id = "spearassist",
         displayName = "SpearAssist",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.spearassist.description")
 public class SpearAssist extends Module {
 
     private static final String SETTING_TOGGLES = "toggles";

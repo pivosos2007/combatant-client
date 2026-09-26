@@ -53,7 +53,7 @@ final class DeferredHdrPostSource implements AutoCloseable {
     private static final Identifier BLOOM_COPY = id("deferred/bloom_copy");
     private static final Identifier BLOOM_UPSAMPLE = id("deferred/bloom_upsample");
     private static final Identifier BLOOM_FINALIZE = id("deferred/bloom_finalize");
-    private static final Identifier NEUTRAL_COLOR = id("deferred/environment_zero_irradiance");
+    private static final Identifier NEUTRAL_COLOR = id("deferred/post_neutral_color");
 
     private static final Std430StructLayout HISTOGRAM_ELEMENT = Std430StructLayout.builder()
             .member("count", Std430Type.UINT)

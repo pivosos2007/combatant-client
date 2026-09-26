@@ -145,7 +145,7 @@ public final class Admins extends DraggableHudElement {
     private int uiBlurTint;
 
     public Admins() {
-        super("admins", "Admins", true);
+        super("admins", "Admins", "hud.draggable.admins.description", true);
     }
 
     private static List<StaffData.StaffEntry> filterStaff(List<StaffData.StaffEntry> in) {

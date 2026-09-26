@@ -29,12 +29,11 @@ import combatant.client.features.gui.clickgui.settings.TextListSetting;
 
 import java.util.Optional;
 
-//todo Description
 @ModuleInfo(
         id = "norender",
         displayName = "NoRender",
-        category = ModuleCategory.VISUALS
-)
+        category = ModuleCategory.VISUALS,
+        description = "module.norender.description")
 public class NoRender extends Module {
 
     private static final String SETTING_TOGGLES = "toggles";

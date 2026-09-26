@@ -22,8 +22,8 @@ import combatant.client.runtime.RuntimeDiagnostics;
         id = "panic",
         displayName = "Panic", aliases = {"selfdestruct"},
         category = ModuleCategory.MISC,
-        enabledByDefault = true
-)
+        enabledByDefault = true,
+        description = "module.panic.description")
 public final class Panic extends Module implements RuntimeControlModule {
     private final FunctionBindSetting disableRestoreBind =
             action("disable_restore", "Z+X+C", BindMode.PRESS);

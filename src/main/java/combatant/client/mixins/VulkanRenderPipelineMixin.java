@@ -125,6 +125,29 @@ public abstract class VulkanRenderPipelineMixin {
 
     @ModifyArg(
             method = "compile",
+            at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkPipelineRasterizationStateCreateInfo;depthBiasEnable(Z)Lorg/lwjgl/vulkan/VkPipelineRasterizationStateCreateInfo;"),
+            index = 0
+    )
+    private static boolean combatant$fixDepthBiasEnable(boolean original) {
+        if (!VulkanRenderStateBridge.vulkanBackendActive() || original) {
+            return original;
+        }
+
+        RenderPipeline pipeline = VulkanRenderStateBridge.currentCompilingPipeline();
+        if (pipeline == null || pipeline.getDepthStencilState() == null) {
+            return false;
+        }
+
+        // Mojang's Vulkan path currently enables raster depth bias only when BOTH factors are
+        // non-zero, while the GL path correctly enables it when EITHER factor is non-zero.
+        // WORLD_COLORED_COPLANAR_DEPTH intentionally uses constant-only bias (0, 1), so Vulkan
+        // silently disabled the bias and MSAA sample positions exposed coplanar fighting.
+        var depthState = pipeline.getDepthStencilState();
+        return depthState.depthBiasConstant() != 0.0f || depthState.depthBiasScaleFactor() != 0.0f;
+    }
+
+    @ModifyArg(
+            method = "compile",
             at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkPipelineRasterizationStateCreateInfo;cullMode(I)Lorg/lwjgl/vulkan/VkPipelineRasterizationStateCreateInfo;"),
             index = 0
     )

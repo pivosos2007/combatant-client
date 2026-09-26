@@ -30,8 +30,8 @@ import combatant.client.render.engine.postprocess.PostProcessPass;
 import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.uniform.impl.DamageTintUniforms;
 
-//todo Description
-@ModuleInfo(id = "damagetint", displayName = "DamageTint", category = ModuleCategory.VISUALS)
+@ModuleInfo(id = "damagetint", displayName = "DamageTint", category = ModuleCategory.VISUALS,
+        description = "module.damagetint.description")
 public class DamageTint extends Module implements PostProcessPass {
 
     private static final String SETTING_START_HP = "start_hp";

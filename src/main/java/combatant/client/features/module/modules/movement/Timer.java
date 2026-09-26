@@ -25,12 +25,11 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.util.input.KeyManager;
 import combatant.client.util.player.MovementUtil;
 
-//todo Description
 @ModuleInfo(
         id = "timer",
         displayName = "Timer",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.timer.description")
 public class Timer extends Module {
 
     // ── Vulcan TimerA sliding-window model ───────────────────────────────────────

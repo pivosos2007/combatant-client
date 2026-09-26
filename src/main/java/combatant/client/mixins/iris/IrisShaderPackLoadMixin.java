@@ -14,12 +14,14 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.render.iris.patch.ShaderPatchEngine;
+import combatant.client.render.iris.IrisRuntime;
 
 @Pseudo
 @Mixin(value = Iris.class, remap = false)
 public abstract class IrisShaderPackLoadMixin {
     @Inject(method = "loadExternalShaderpack", at = @At("HEAD"), remap = false)
     private static void combatant$beginShaderPatchSession(String shaderPackName, CallbackInfoReturnable<Boolean> cir) {
+        IrisRuntime.invalidateIntegration("shaderpack_load");
         ShaderPatchEngine.beginShaderPackLoad(shaderPackName);
     }
 

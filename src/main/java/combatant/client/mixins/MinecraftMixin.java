@@ -347,6 +347,7 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
 
     @Inject(method = "setLevel", at = @At("TAIL"))
     private void combatant$captureSingleplayerJoinSession(ClientLevel world, CallbackInfo ci) {
+        combatant.client.render.sodium.fluid.FluidSurfaceMetadataCapture.beginWorld(world);
         if (world == null) {
             SessionChanger.clearSingleplayerJoinSession();
         } else {

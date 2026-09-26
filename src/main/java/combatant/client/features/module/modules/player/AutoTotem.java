@@ -24,12 +24,11 @@ import combatant.client.util.player.inventory.InventorySwap;
 
 import java.util.function.Predicate;
 
-//todo Description
 @ModuleInfo(
         id = "autototem",
         displayName = "AutoTotem",
-        category = ModuleCategory.PLAYER
-)
+        category = ModuleCategory.PLAYER,
+        description = "module.autototem.description")
 public class AutoTotem extends Module {
     private final Minecraft mc = Minecraft.getInstance();
 

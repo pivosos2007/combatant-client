@@ -38,8 +38,8 @@ import static combatant.client.features.theme.Theme.theme;
         id = "xyz",
         displayName = "XYZ",
         enabledByDefault = true,
-        order = 100
-)
+        order = 100,
+        description = "hud.draggable.xyz.description")
 public final class Coordinates extends DraggableHudElement implements ScriptableHudStatWidget {
 
     private static final Identifier COORDS_ICON = Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/coords.png");

@@ -36,12 +36,11 @@ import combatant.client.util.player.inventory.FireworkUseController;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.pvp.client.CooldownsState;
 
-//todo Description
 @ModuleInfo(
         id = "elytrahelper",
         displayName = "ElytraHelper",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.elytrahelper.description")
 public class ElytraHelper extends Module {
 
     private static final String SETTING_AUTO_TAKEOFF = "auto_takeoff";

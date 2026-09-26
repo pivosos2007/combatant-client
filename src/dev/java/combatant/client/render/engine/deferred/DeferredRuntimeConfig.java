@@ -21,6 +21,8 @@ import java.util.function.Consumer;
  * identity unless an immutable GPU contract actually changes.</p>
  */
 public final class DeferredRuntimeConfig {
+    private static final int MAX_LEGACY_REFLECTION_CASCADES = 4;
+    private static final int MAX_LEGACY_SHADOW_CASCADES = 8;
     private static final AtomicLong GENERATION = new AtomicLong();
     private static final AtomicReference<Snapshot> CURRENT = new AtomicReference<>(Snapshot.fromSystemProperties());
 
@@ -318,7 +320,7 @@ public final class DeferredRuntimeConfig {
                     clamp(reflectionTraceMipStepScale, 0.01f, 4.0f),
                     clamp(reflectionScreenConfidenceThreshold, 0.0f, 1.0f),
                     clamp(reflectionCascadeConfidence, 0.0f, 1.0f),
-                    clamp(reflectionCascadeCount, 0, DeferredReflectionCascadeSource.MAX_CASCADE_COUNT),
+                    clamp(reflectionCascadeCount, 0, MAX_LEGACY_REFLECTION_CASCADES),
                     clamp(reflectionCascadeFaceResolution, 64, 2048),
                     clamp(reflectionCascadeUpdateIntervalFrames, 1, 240),
                     clamp(reflectionCascadeDistanceScale, 0.1f, 2.0f),
@@ -334,7 +336,7 @@ public final class DeferredRuntimeConfig {
                     clamp(contactShadowEdgeMargin, 0.0001f, 0.1f),
                     clamp(contactShadowMipStepScale, 0.01f, 4.0f),
                     clamp(contactShadowStepGrowth, 1.0f, 2.0f),
-                    clamp(shadowCascadeCount, 1, DeferredShadowCascadeSource.MAX_CASCADE_COUNT),
+                    clamp(shadowCascadeCount, 1, MAX_LEGACY_SHADOW_CASCADES),
                     clamp(shadowResolution, 256, 8192),
                     clamp(shadowSplitLambda, 0.0f, 1.0f),
                     clamp(shadowCasterDistance, 0.0f, 1024.0f),

@@ -30,12 +30,11 @@ import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.renderer.Renderer3D;
 
-//todo Description
 @ModuleInfo(
         id = "airplace",
         displayName = "AirPlace",
-        category = ModuleCategory.PLAYER
-)
+        category = ModuleCategory.PLAYER,
+        description = "module.airplace.description")
 public class AirPlace extends Module {
 
     private static final String SETTING_DISTANCE = "distance";

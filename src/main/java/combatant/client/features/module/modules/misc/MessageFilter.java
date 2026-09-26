@@ -18,12 +18,11 @@ import combatant.client.features.module.ModuleInfo;
 import java.util.Locale;
 import java.util.Set;
 
-//todo Description
 @ModuleInfo(
         id = "message_filter",
         displayName = "MessageFilter",
-        category = ModuleCategory.MISC
-)
+        category = ModuleCategory.MISC,
+        description = "module.message_filter.description")
 public class MessageFilter extends Module {
 
     private static final String SETTING_FILTER_CHAT = "filter_chat";

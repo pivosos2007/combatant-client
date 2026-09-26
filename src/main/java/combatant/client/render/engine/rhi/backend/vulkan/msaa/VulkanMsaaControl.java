@@ -84,14 +84,10 @@ public final class VulkanMsaaControl implements MsaaControl {
     public boolean resolve(RenderTarget src, RenderTarget dst, boolean color, boolean depth) {
         if (src == null || dst == null) return false;
         if (VulkanMsaaResolveBridge.matchesPreparedTarget(src, dst, color, depth)) {
-            try {
-                boolean ok = true;
-                if (color) ok &= resolveColorSnapshot(src.getColorTextureView(), dst.getColorTextureView());
-                if (depth) ok &= resolveDepthSnapshot(src.getDepthTextureView(), dst.getDepthTextureView());
-                return ok;
-            } finally {
-                VulkanMsaaResolveBridge.abandon(src);
-            }
+            // The prepared target is resolved inline by every render pass which writes the
+            // multisampled attachments. Prefer that result; only use an empty snapshot pass if
+            // no matching render pass completed since prepareTarget().
+            if (VulkanMsaaResolveBridge.complete(src, dst, color, depth)) return true;
         }
         boolean ok = true;
         if (color) ok &= resolveColorSnapshot(src.getColorTextureView(), dst.getColorTextureView());

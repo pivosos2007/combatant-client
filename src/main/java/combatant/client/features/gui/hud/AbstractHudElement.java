@@ -20,6 +20,10 @@ public abstract class AbstractHudElement extends BaseHudElement {
         super(id, title, defaultEnabled);
     }
 
+    protected AbstractHudElement(String id, String title, String description, boolean defaultEnabled) {
+        super(id, title, description, defaultEnabled);
+    }
+
     @Override
     public String getTranslationKeyPrefix() {
         return "setting.hud_element." + getId();

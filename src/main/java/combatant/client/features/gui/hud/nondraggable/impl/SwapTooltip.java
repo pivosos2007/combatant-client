@@ -57,7 +57,7 @@ public final class SwapTooltip extends AbstractHudElement {
             visibleWhen(num("swap_text_effect_speed", 18, 1, 60), () -> textEffect.get() != TextEffect.NONE);
 
     private SwapTooltip() {
-        super("swap_tooltip", "Swap Tooltip", true);
+        super("swap_tooltip", "Swap Tooltip", "hud.static.swap_tooltip.description", true);
     }
 
     public static SwapTooltip get() {

@@ -25,12 +25,11 @@ import combatant.client.util.sound.SoundCatalog;
 import combatant.client.util.sound.SoundKey;
 import combatant.client.util.sound.SoundOptions;
 
-//todo Description
 @ModuleInfo(
         id = "hitsounds",
         displayName = "HitSounds",
-        category = ModuleCategory.MISC
-)
+        category = ModuleCategory.MISC,
+        description = "module.hitsounds.description")
 public class HitSounds extends Module {
 
     private static final String SETTING_SOURCES = "sources";

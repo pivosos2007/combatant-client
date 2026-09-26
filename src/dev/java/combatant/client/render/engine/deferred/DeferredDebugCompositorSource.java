@@ -145,30 +145,7 @@ final class DeferredDebugCompositorSource implements AutoCloseable {
                     + (reason.isBlank() ? "" : " (" + reason + ")"));
         }
         if (view.sourceKind() == DeferredDebugView.SourceKind.SHARED_INPUTS) {
-            boolean valid = context.primaryView().current() != null
-                    && context.isValid(DeferredResource.GBUFFER_GEOMETRY)
-                    && context.resources().texture(DeferredResource.GBUFFER_GEOMETRY) != null
-                    && context.isValid(DeferredResource.GBUFFER_MATERIAL)
-                    && context.resources().texture(DeferredResource.GBUFFER_MATERIAL) != null
-                    && context.isValid(DeferredResource.GBUFFER_DEPTH)
-                    && context.resources().texture(DeferredResource.GBUFFER_DEPTH) != null
-                    && context.isValid(DeferredResource.RESOLVED_DEPTH)
-                    && context.resources().texture(DeferredResource.RESOLVED_DEPTH) != null;
-            if (!valid) {
-                return unavailable(state, view, "shared input set unavailable: geometry/material/gbuffer-depth/resolved-depth/view");
-            }
-            state.setUnavailableDebugResourceReason("");
-            DeferredPrimaryViewSource.FrameView current = context.primaryView().current();
-            String resolution = current == null ? "unknown"
-                    : current.renderWidth() + "x" + current.renderHeight() + "->"
-                    + current.outputWidth() + "x" + current.outputHeight();
-            DebugLog.renderThreadOnChange(
-                    "combatant.deferred.debug.ready",
-                    view.name() + "|" + resolution + "|" + context.rhi().capabilities().zeroToOneDepth(),
-                    "[Deferred][Debug] view=%s source=SHARED_INPUTS render/output=%s zeroToOneDepth=%s ready",
-                    view, resolution, context.rhi().capabilities().zeroToOneDepth()
-            );
-            return true;
+            return unavailable(state, view, "shared-input debug path removed with standalone G-buffer ownership");
         }
 
         DeferredResource resource = view.resource();
@@ -314,17 +291,7 @@ final class DeferredDebugCompositorSource implements AutoCloseable {
                         ), List.of(), List.of(targetBinding)
                 ));
             }
-            case SHARED_INPUTS -> context.advancedShaders().dispatch(new ComputeDispatchCommand(
-                    "Combatant shared-input debug " + view.name(), sharedInputPipeline(), groupsX, groupsY, 1,
-                    List.of(sharedParameterBinding),
-                    List.of(
-                            new SampledTextureBinding(0, requireTexture(context, DeferredResource.GBUFFER_GEOMETRY), nearest),
-                            new SampledTextureBinding(1, requireTexture(context, DeferredResource.GBUFFER_MATERIAL), nearest),
-                            new SampledTextureBinding(2, requireTexture(context, DeferredResource.GBUFFER_DEPTH), nearest),
-                            new SampledTextureBinding(3, requireTexture(context, DeferredResource.RESOLVED_DEPTH), nearest)
-                    ),
-                    List.of(sharedTargetBinding)
-            ));
+            case SHARED_INPUTS -> { }
             case NONE -> { }
         }
     }
@@ -426,12 +393,7 @@ final class DeferredDebugCompositorSource implements AutoCloseable {
             if (view.resource() != null && view.resource() != DeferredResource.DEBUG_PRESENTATION) {
                 resources.add(view.resource());
             }
-            if (view.sourceKind() == DeferredDebugView.SourceKind.SHARED_INPUTS) {
-                resources.add(DeferredResource.GBUFFER_GEOMETRY);
-                resources.add(DeferredResource.GBUFFER_MATERIAL);
-                resources.add(DeferredResource.GBUFFER_DEPTH);
-                resources.add(DeferredResource.RESOLVED_DEPTH);
-            }
+
         }
         return resources.toArray(DeferredResource[]::new);
     }

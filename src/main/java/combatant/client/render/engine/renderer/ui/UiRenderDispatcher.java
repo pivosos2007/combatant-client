@@ -14,6 +14,7 @@ import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.GlyphFont;
 import combatant.client.render.engine.text.backend.TextPlacementMode;
+import combatant.client.render.engine.renderer.ui.draw.UiRect;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
 /** Routes UI work through the rendering subsystem. */
@@ -68,6 +69,30 @@ public final class UiRenderDispatcher {
                 font,
                 pipeline,
                 placement != null ? placement : TextPlacementMode.UI
+        );
+        if (batch == null) return false;
+        batch.append(sourceMesh);
+        return true;
+    }
+
+    public static boolean enqueueLiquidGlassTextMesh(
+            String label,
+            GlyphFont font,
+            MeshBuilder sourceMesh,
+            RenderPipeline pipeline,
+            TextPlacementMode placement,
+            UiRect bounds) {
+        OrderedUiBatcher batcher = Renderer2D.UI_BATCHER;
+        if (!batcher.isActive() || batcher.isFlushing()) return false;
+        if (font == null || sourceMesh == null || pipeline == null || bounds == null) return false;
+        if (sourceMesh.isBuilding()) sourceMesh.end();
+        if (sourceMesh.getIndicesCount() <= 0) return true;
+        TextBatch batch = batcher.getOrCreateLiquidGlassTextBatch(
+                label,
+                font,
+                pipeline,
+                placement != null ? placement : TextPlacementMode.UI,
+                bounds
         );
         if (batch == null) return false;
         batch.append(sourceMesh);

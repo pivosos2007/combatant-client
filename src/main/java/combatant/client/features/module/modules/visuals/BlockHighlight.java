@@ -36,12 +36,11 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
 
-//todo Description
 @ModuleInfo(
         id = "blockhighlight",
         displayName = "BlockHighlight",
-        category = ModuleCategory.VISUALS
-)
+        category = ModuleCategory.VISUALS,
+        description = "module.blockhighlight.description")
 public class BlockHighlight extends Module {
 
     private static final double RAINBOW_SPATIAL_SCALE = 12.0;

@@ -70,12 +70,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
-//todo Description
 @ModuleInfo(
         id = "attributeswap",
         displayName = "AttributeSwap",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.attributeswap.description")
 public class AttributeSwap extends Module {
 
     private static final int HOTBAR_RESET_TICKS = 0;

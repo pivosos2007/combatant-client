@@ -115,7 +115,7 @@ public final class BetterButtons extends AbstractHudElement {
             new NumberValue<>("custom_text_pad_x", 6.0f, 0.0f, 16.0f);
 
     private BetterButtons() {
-        super("vanilla_buttons", "Buttons", true);
+        super("vanilla_buttons", "Buttons", "hud.static.vanilla_buttons.description", true);
     }
 
     public static BetterButtons get() {

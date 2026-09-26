@@ -47,6 +47,8 @@ public final class ModulesMenuScreen {
     private static final float MODULE_ROW_H = 20.0f;
     private static final float PANEL_RADIUS = 10.0f;
     private static final float TEXT_LEFT_PADDING = 10.0f;
+    private static final float HOVER_DESCRIPTION_MAX_W = 290.0f;
+    private static final float HOVER_DESCRIPTION_FONT = 11.0f;
 
     private static final float LIQUID_GLASS_LOGICAL_SCALE = 3.0f;
     private static float ACTIVE_PORT_SCALE = LIQUID_GLASS_LOGICAL_SCALE;
@@ -71,7 +73,14 @@ public final class ModulesMenuScreen {
     private TextRenderer regular;
     private TextRenderer medium;
     private TextRenderer semibold;
+    private TextRenderer comfortaa;
     private long fontGeneration = Long.MIN_VALUE;
+
+    private String frameHoverDescriptionId;
+    private String frameHoverDescription;
+    private String activeHoverDescriptionId;
+    private String activeHoverDescription;
+    private float hoverDescriptionAnim;
 
     public ModulesMenuScreen() {
         ModulesMenuCategory[] values = ModulesMenuCategory.values();
@@ -239,6 +248,9 @@ public final class ModulesMenuScreen {
 
         layout(areaX, areaY, areaW, areaH);
 
+        frameHoverDescriptionId = null;
+        frameHoverDescription = null;
+
         for (ModulesMenuPanel panel : panels) {
             if (panel.isDraggingScrollbar()) panel.updateScrollbarDrag(mouseX, mouseY);
             float alpha = panelAlpha(panel);
@@ -256,6 +268,8 @@ public final class ModulesMenuScreen {
             }
         }
 
+        updateHoverDescription(dt);
+        renderHoverDescription();
         renderSearch(mouseX, mouseY);
         renderHints();
 
@@ -401,6 +415,11 @@ public final class ModulesMenuScreen {
     }
 
     private void resetTransientState() {
+        frameHoverDescriptionId = null;
+        frameHoverDescription = null;
+        activeHoverDescriptionId = null;
+        activeHoverDescription = null;
+        hoverDescriptionAnim = 0.0f;
         for (ModulesMenuPanel panel : panels) {
             panel.selected = null;
             panel.selectedTitle = null;
@@ -497,6 +516,9 @@ public final class ModulesMenuScreen {
                     float rowH = MODULE_ROW_H * scale;
                     boolean hover = inside(mouseX, mouseY, pageX, y, listW, rowH);
                     float hoverAnim = panel.hoverAnim(entry.getId(), hover);
+                    if (hover && panel.selected == null) {
+                        captureHoverDescription(entry.getId(), entry.description());
+                    }
                     renderModuleRowHover(panel, entry.getId(), pageX, y, listW, rowH,
                             mouseX, mouseY, alpha, hoverAnim);
                 }
@@ -704,6 +726,109 @@ public final class ModulesMenuScreen {
         int hash = moduleId != null ? moduleId.hashCode() : 0x6D2B79F5;
         hash ^= hash >>> 16;
         return (hash & 0x00FFFFFF) / 16777215.0f;
+    }
+
+    private void captureHoverDescription(String id, String description) {
+        if (id == null || id.isBlank() || description == null || description.isBlank()) return;
+        frameHoverDescriptionId = id;
+        frameHoverDescription = description;
+    }
+
+    private void updateHoverDescription(float dt) {
+        boolean hasTarget = frameHoverDescription != null && !frameHoverDescription.isBlank();
+        if (hasTarget && !frameHoverDescriptionId.equals(activeHoverDescriptionId)) {
+            activeHoverDescriptionId = frameHoverDescriptionId;
+            activeHoverDescription = frameHoverDescription;
+            hoverDescriptionAnim = Math.min(hoverDescriptionAnim, 0.32f);
+        } else if (hasTarget) {
+            activeHoverDescription = frameHoverDescription;
+        }
+
+        float target = hasTarget ? 1.0f : 0.0f;
+        hoverDescriptionAnim = AnimationUtility.approach(
+                hoverDescriptionAnim,
+                target,
+                dt,
+                hasTarget ? 9.5f : 11.5f
+        );
+        hoverDescriptionAnim = AnimationUtility.snap(hoverDescriptionAnim, target, 0.008f);
+
+        if (!hasTarget && hoverDescriptionAnim <= 0.001f) {
+            activeHoverDescriptionId = null;
+            activeHoverDescription = null;
+        }
+    }
+
+    private void renderHoverDescription() {
+        if (comfortaa == null || activeHoverDescription == null || activeHoverDescription.isBlank()) return;
+        float raw = AnimationUtility.clamp01(hoverDescriptionAnim);
+        if (raw <= 0.001f) return;
+
+        float alphaProgress = AnimationUtility.easeOutQuint(raw);
+        float motionProgress = AnimationUtility.easeOutBack(raw, 0.72f);
+        float alpha = alphaProgress * easeOutCubic(screenAnim);
+        if (alpha <= 0.001f) return;
+
+        float sizeScale = 0.965f + 0.035f * Math.max(0.0f, motionProgress);
+        float fontSize = HOVER_DESCRIPTION_FONT * scale * sizeScale;
+        float maxWidth = HOVER_DESCRIPTION_MAX_W * scale;
+        String text = ClickGuiRenderer.fitText(comfortaa, activeHoverDescription, fontSize, maxWidth);
+        if (text == null || text.isBlank()) return;
+
+        float textW = ClickGuiRenderer.textWidth(comfortaa, text, fontSize);
+        float textH = textHeight(comfortaa, fontSize);
+        float minPanelY = Float.MAX_VALUE;
+        for (ModulesMenuPanel panel : panels) minPanelY = Math.min(minPanelY, panel.y);
+        if (!Float.isFinite(minPanelY)) return;
+
+        float x = areaX + areaW * 0.5f - textW * 0.5f;
+        float y = minPanelY - textH - 10.0f * scale
+                + (1.0f - motionProgress) * 5.5f * scale;
+        y = Math.max(areaY + 2.0f * scale, y);
+
+        int primary = ModulesMenuStyle.hoverDescriptionPrimary(alpha);
+        int secondary = ModulesMenuStyle.hoverDescriptionSecondary(alpha);
+        int highlight = ModulesMenuStyle.hoverDescriptionHighlight(alpha);
+        float phase = AnimationUtility.time(0.00034f, AnimationUtility.Mode.NANOS);
+        float phase01 = phase - (float) Math.floor(phase);
+        float invWidth = 1.0f / Math.max(1.0f, textW);
+
+        comfortaa.beginSize(fontSize, false, false);
+        try {
+            comfortaa.renderLiquidGlassQuadGradient(
+                    text,
+                    x,
+                    y,
+                    (index, codePoint, x0, y0, x1, y1, out) -> {
+                        float nx0 = AnimationUtility.clamp((float) ((x0 - x) * invWidth), 0.0f, 1.0f);
+                        float nx1 = AnimationUtility.clamp((float) ((x1 - x) * invWidth), 0.0f, 1.0f);
+                        out[0] = hoverDescriptionColor(nx0, phase01, primary, secondary, highlight);
+                        out[1] = out[0];
+                        out[2] = hoverDescriptionColor(nx1, phase01, primary, secondary, highlight);
+                        out[3] = out[2];
+                    },
+                    x - 3.0f * scale,
+                    y - 3.0f * scale,
+                    textW + 6.0f * scale,
+                    textH + 6.0f * scale
+            );
+        } finally {
+            comfortaa.end();
+        }
+    }
+
+    private static int hoverDescriptionColor(float x,
+                                             float phase,
+                                             int primary,
+                                             int secondary,
+                                             int highlight) {
+        float wave = 0.5f + 0.5f * (float) Math.sin((x * 1.35f - phase) * Math.PI * 2.0);
+        int base = mix(primary, secondary, wave);
+        float distance = Math.abs(x - phase);
+        distance = Math.min(distance, 1.0f - distance);
+        float shimmer = 1.0f - AnimationUtility.smoothstep(
+                AnimationUtility.clamp(distance / 0.16f, 0.0f, 1.0f));
+        return mix(base, highlight, shimmer * 0.78f);
     }
 
     private void renderSettingsPage(ModulesMenuPanel panel, float mouseX, float mouseY, float alpha) {
@@ -916,24 +1041,28 @@ public final class ModulesMenuScreen {
         // liquidGlassRect already composites its prepared blur as an independent alpha layer.
         // A blurRect immediately before it prepares and draws a second blur chain for every panel,
         // while also evicting the reusable captured-world blur from the single-frame cache.
-        Renderer2D.COLOR.liquidGlassRect(
-                x,
-                y,
-                w,
-                h,
-                radius,
-                thickness,
-                0xFFFFFFFF,
-                materialAlpha,
-                blurAlpha,
-                fresnelPower,
-                fresnelAlpha,
-                baseAlpha,
-                fresnelMix,
-                distortion,
-                0.0f,
-                prism.strength(),
-                prism.phase()
+        Renderer2D.COLOR.withLiquidGlassBlurProfile(
+                Renderer2D.BlurQuality.LIQUID_GLASS,
+                1.38f,
+                () -> Renderer2D.COLOR.liquidGlassRect(
+                        x,
+                        y,
+                        w,
+                        h,
+                        radius,
+                        thickness,
+                        0xFFFFFFFF,
+                        materialAlpha,
+                        blurAlpha,
+                        fresnelPower,
+                        fresnelAlpha,
+                        baseAlpha,
+                        fresnelMix,
+                        distortion,
+                        0.0f,
+                        prism.strength(),
+                        prism.phase()
+                )
         );
     }
 
@@ -1021,12 +1150,14 @@ public final class ModulesMenuScreen {
             regular = null;
             medium = null;
             semibold = null;
+            comfortaa = null;
             fontGeneration = generation;
         }
         if (regular == null)
             regular = BuiltinFontCatalog.ONEST_REGULAR.renderer(ClickGuiRenderer.getInterRegular());
         if (medium == null) medium = BuiltinFontCatalog.ONEST_MEDIUM.renderer(regular);
         if (semibold == null) semibold = BuiltinFontCatalog.ONEST_BOLD.renderer(medium);
+        if (comfortaa == null) comfortaa = BuiltinFontCatalog.COMFORTAA.renderer(regular);
     }
 
     private String bindingLabel(ModuleComponent.CardEntry entry) {

@@ -25,6 +25,8 @@ public enum ResourceReloadHooks {
     public static void onReload(ResourceManager manager) {
         if (manager == null) return;
 
+        IrisRuntime.invalidateIntegration("resource_reload");
+
         boolean shaderResourcesPublished = false;
         try {
             // Static resource-backed systems are discovered through @AssetLoad.

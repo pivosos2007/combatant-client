@@ -6,10 +6,15 @@ layout(binding = 0) uniform sampler2D u_Texture;
 layout(binding = 1, rgba8) writeonly uniform image2D u_Output;
 layout(std430, binding = 2) readonly buffer UIBlurComputeParams {
     vec4 params; // x offset px, y up-pass, z brightness
+    vec4 region; // xy output origin, zw output extent
 } u_Blur;
 
 void main() {
-    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 localPixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 regionExtent = ivec2(u_Blur.region.zw + vec2(0.5));
+    if (any(greaterThanEqual(localPixel, regionExtent))) return;
+
+    ivec2 pixel = localPixel + ivec2(u_Blur.region.xy + vec2(0.5));
     ivec2 outputSize = imageSize(u_Output);
     if (any(greaterThanEqual(pixel, outputSize))) return;
 

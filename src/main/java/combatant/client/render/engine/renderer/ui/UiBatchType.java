@@ -27,6 +27,7 @@ public enum UiBatchType {
     TEXTURED_SHAPE(CombatantRenderPipelines.UI_TEXTURED_SHAPE_BATCH, CombatantRenderPipelines.UI_TEXTURED_SHAPE_BATCH_ANALYTIC_CLIP, true, true),
     BLUR(CombatantRenderPipelines.UI_BLUR_BATCH, CombatantRenderPipelines.UI_BLUR_BATCH_ANALYTIC_CLIP, true, true),
     BLUR_CORNERS(CombatantRenderPipelines.UI_BLUR_BATCH_CORNERS, CombatantRenderPipelines.UI_BLUR_BATCH_CORNERS_ANALYTIC_CLIP, true, true),
+    LIQUID_GLASS_LIGHT(CombatantRenderPipelines.UI_LIQUID_GLASS_LIGHT_BATCH, CombatantRenderPipelines.UI_LIQUID_GLASS_LIGHT_BATCH_ANALYTIC_CLIP, true, true),
     LIQUID_GLASS(CombatantRenderPipelines.UI_LIQUID_GLASS_BATCH, CombatantRenderPipelines.UI_LIQUID_GLASS_BATCH_ANALYTIC_CLIP, true, true);
 
     public final RenderPipeline pipeline;
@@ -58,6 +59,6 @@ public enum UiBatchType {
 
     /** Materials that sample both the captured clean scene and its shared Kawase blur. */
     public boolean usesPreparedGlass() {
-        return this == LIQUID_GLASS || this == MAIN_MENU_HONEYCOMB;
+        return this == LIQUID_GLASS || this == LIQUID_GLASS_LIGHT || this == MAIN_MENU_HONEYCOMB;
     }
 }

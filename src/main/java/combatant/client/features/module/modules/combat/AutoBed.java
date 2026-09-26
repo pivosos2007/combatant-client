@@ -65,8 +65,7 @@ import java.util.concurrent.ConcurrentHashMap;
         displayName = "AutoBed",
         aliases = {"BedAura", "Bed"},
         category = ModuleCategory.COMBAT,
-        description = "module.autobed.description"
-)
+        description = "module.autobed.description")
 public class AutoBed extends Module {
     private static final int ROTATION_PRIORITY = 33;
     private static final long DAMAGE_RESET_MS = 1000L;

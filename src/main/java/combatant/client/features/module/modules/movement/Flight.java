@@ -34,12 +34,11 @@ import combatant.client.mixins.accessors.LocalPlayerAccessor;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
 import combatant.client.util.player.MovementUtil;
 
-//todo Description
 @ModuleInfo(
         id = "flight",
         displayName = "Flight",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.flight.description")
 public class Flight extends Module {
 
     private final EnumValue<Mode> mode =

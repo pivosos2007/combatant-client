@@ -914,7 +914,9 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     }
 
     public String getDescription() {
-        return translateFirst(description, "module." + name() + ".description");
+        if (description == null || description.isBlank()) return "";
+        String translated = I18n.get(description);
+        return translated.equals(description) ? "" : translated;
     }
 
     public ModuleCategory getCategory() {

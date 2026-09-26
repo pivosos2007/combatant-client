@@ -40,12 +40,11 @@ import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
 import combatant.client.util.click.ClickScheduler;
 import combatant.client.util.target.TargetManager;
 
-//todo Description
 @ModuleInfo(
         id = "criticals",
         displayName = "Criticals",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.criticals.description")
 public final class Criticals extends Module {
 
     private static final float VANILLA_JUMP_MOTION = 0.42f;

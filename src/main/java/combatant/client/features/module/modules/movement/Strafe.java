@@ -39,12 +39,11 @@ import combatant.client.util.player.MovementUtil;
 
 import java.util.List;
 
-//todo Description
 @ModuleInfo(
         id = "strafe",
         displayName = "Strafe",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.strafe.description")
 public final class Strafe extends Module {
 
     private static final int ROTATION_PRIORITY = 15;

@@ -27,12 +27,11 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.Freecam;
 
-//todo Description
 @ModuleInfo(
         id = "airjump",
         displayName = "AirJump",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.airjump.description")
 public class AirJump extends Module {
 
     private final EnumValue<Mode> mode =

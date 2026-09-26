@@ -44,8 +44,8 @@ import combatant.client.util.player.inventory.InventorySwap;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
-//todo Description
-@ModuleInfo(id = "elytrafly", displayName = "ElytraFly", aliases = {"elytra", "efly", "elytraflight"}, category = ModuleCategory.MOVEMENT)
+@ModuleInfo(id = "elytrafly", displayName = "ElytraFly", aliases = {"elytra", "efly", "elytraflight"}, category = ModuleCategory.MOVEMENT,
+        description = "module.elytrafly.description")
 public class ElytraFly extends Module {
 
     private static final int FIREWORK_ROTATION_PRIORITY = 8;

@@ -29,8 +29,7 @@ import java.util.LinkedHashMap;
         displayName = "RubberHand",
         aliases = "MultiActions",
         category = ModuleCategory.COMBAT,
-        description = "module.rubberhand.description"
-)
+        description = "module.rubberhand.description")
 public class RubberHand extends Module {
 
     private static final String SETTING_ACTIONS = "actions";

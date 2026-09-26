@@ -1,0 +1,215 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = 0) uniform sampler2D u_CurrentColor;
+layout(binding = 1) uniform sampler2D u_CurrentDepth;
+layout(binding = 2) uniform sampler2D u_HistoryColor;
+layout(binding = 3) uniform sampler2D u_HistoryDepth;
+layout(rgba8, binding = 4) writeonly uniform image2D u_OutputColor;
+layout(rgba16f, binding = 5) writeonly uniform image2D u_NextHistoryColor;
+layout(r32f, binding = 6) writeonly uniform image2D u_NextHistoryDepth;
+
+layout(std430, binding = 7) readonly buffer TaaParams {
+    mat4 currentInverseProjection;
+    mat4 currentInverseView;
+    mat4 previousView;
+    mat4 previousProjection;
+    vec4 cameraDelta;
+    vec4 extentAndPolicy;  // xy=extent, z=history valid, w=contract version
+    vec4 depthPolicy;      // x=depth scale, y=depth bias, z=depth tolerance, w=unused
+    vec4 temporalPolicy;   // x=near current weight, y=far current weight, z=off-center rejection
+    vec4 presentationPolicy;
+} u_Taa;
+
+vec3 reinhard(vec3 color) {
+    color = max(color, vec3(0.0));
+    return color / (color + 1.0);
+}
+
+vec3 reinhardInverse(vec3 color) {
+    color = clamp(color, vec3(0.0), vec3(0.9999));
+    return color / max(vec3(1.0) - color, vec3(1e-4));
+}
+
+vec3 rgbToYCoCg(vec3 c) {
+    return vec3(c.r * 0.25 + c.g * 0.5 + c.b * 0.25,
+                c.r * 0.5 - c.b * 0.5,
+               -c.r * 0.25 + c.g * 0.5 - c.b * 0.25);
+}
+
+vec3 yCoCgToRgb(vec3 c) {
+    return vec3(c.x + c.y - c.z, c.x + c.z, c.x - c.y - c.z);
+}
+
+// Photon/SMAA-style 5-tap Catmull-Rom history reconstruction.
+// The history sampler is linear, so the middle four taps collapse into one bilinear read.
+vec4 sampleHistoryCatmullRom(vec2 coord) {
+    const float sharpness = 0.6;
+    vec2 resolution = vec2(textureSize(u_HistoryColor, 0));
+    vec2 pixelSize = 1.0 / resolution;
+
+    vec2 position = resolution * coord;
+    vec2 centerPosition = floor(position - 0.5) + 0.5;
+    vec2 f = position - centerPosition;
+    vec2 f2 = f * f;
+    vec2 f3 = f * f2;
+
+    vec2 w0 = -sharpness * f3 + 2.0 * sharpness * f2 - sharpness * f;
+    vec2 w1 = (2.0 - sharpness) * f3 - (3.0 - sharpness) * f2 + 1.0;
+    vec2 w2 = -(2.0 - sharpness) * f3
+            + (3.0 - 2.0 * sharpness) * f2 + sharpness * f;
+    vec2 w3 = sharpness * f3 - sharpness * f2;
+
+    vec2 w12 = w1 + w2;
+    vec2 tc12 = pixelSize * (centerPosition + w2 / w12);
+    vec2 tc0 = pixelSize * (centerPosition - 1.0);
+    vec2 tc3 = pixelSize * (centerPosition + 2.0);
+
+    float l0 = w12.x * w0.y;
+    float l1 = w0.x * w12.y;
+    float l2 = w12.x * w12.y;
+    float l3 = w3.x * w12.y;
+    float l4 = w12.x * w3.y;
+
+    vec4 color = texture(u_HistoryColor, vec2(tc12.x, tc0.y)) * l0
+            + texture(u_HistoryColor, vec2(tc0.x, tc12.y)) * l1
+            + texture(u_HistoryColor, tc12) * l2
+            + texture(u_HistoryColor, vec2(tc3.x, tc12.y)) * l3
+            + texture(u_HistoryColor, vec2(tc12.x, tc3.y)) * l4;
+    return color / max(l0 + l1 + l2 + l3 + l4, 1e-6);
+}
+
+vec3 temporalColor(ivec2 pixel) {
+    ivec2 size = textureSize(u_CurrentColor, 0);
+    return rgbToYCoCg(reinhard(texelFetch(u_CurrentColor,
+            clamp(pixel, ivec2(0), size - ivec2(1)), 0).rgb));
+}
+
+void neighborhoodBounds(ivec2 center, float distanceFactor, out vec3 lo, out vec3 hi) {
+    vec3 a = temporalColor(center + ivec2(-1,  1));
+    vec3 b = temporalColor(center + ivec2( 0,  1));
+    vec3 c = temporalColor(center + ivec2( 1,  1));
+    vec3 d = temporalColor(center + ivec2(-1,  0));
+    vec3 e = temporalColor(center);
+    vec3 f = temporalColor(center + ivec2( 1,  0));
+    vec3 g = temporalColor(center + ivec2(-1, -1));
+    vec3 h = temporalColor(center + ivec2( 0, -1));
+    vec3 i = temporalColor(center + ivec2( 1, -1));
+
+    vec3 crossMin = min(e, min(b, min(d, min(f, h))));
+    vec3 crossMax = max(e, max(b, max(d, max(f, h))));
+    lo = 0.5 * (crossMin + min(crossMin, min(a, min(c, min(g, i)))));
+    hi = 0.5 * (crossMax + max(crossMax, max(a, max(c, max(g, i)))));
+
+    vec3 mean = (a + b + c + d + e + f + g + h + i) / 9.0;
+    vec3 second = (a * a + b * b + c * c + d * d + e * e
+            + f * f + g * g + h * h + i * i) / 9.0;
+    vec3 sigma = sqrt(max(second - mean * mean, vec3(0.0)));
+    float gamma = mix(0.75, 1.25, clamp((distanceFactor - 0.25) / 0.75, 0.0, 1.0));
+    lo = max(lo, mean - gamma * sigma);
+    hi = min(hi, mean + gamma * sigma);
+}
+
+vec3 clipAabb(vec3 history, vec3 lo, vec3 hi) {
+    vec3 center = 0.5 * (lo + hi);
+    vec3 extent = max(0.5 * (hi - lo), vec3(1e-3));
+    vec3 delta = history - center;
+    vec3 unit = abs(delta / extent);
+    float outside = max(unit.x, max(unit.y, unit.z));
+    return outside > 1.0 ? center + delta / outside : history;
+}
+
+bool insideUv(vec2 uv) {
+    return all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)));
+}
+
+vec3 closestFragment(ivec2 center) {
+    ivec2 size = textureSize(u_CurrentDepth, 0);
+    ivec2 offsets[5] = ivec2[5](ivec2(0), ivec2(-2, -2), ivec2(2, -2),
+            ivec2(-2, 2), ivec2(2, 2));
+    ivec2 bestPixel = clamp(center, ivec2(0), size - ivec2(1));
+    float bestDepth = texelFetch(u_CurrentDepth, bestPixel, 0).r;
+    for (int index = 1; index < 5; ++index) {
+        ivec2 candidate = clamp(center + offsets[index], ivec2(0), size - ivec2(1));
+        float depth = texelFetch(u_CurrentDepth, candidate, 0).r;
+        // Minecraft's production depth target uses reversed depth: larger is closer.
+        if (depth > bestDepth) {
+            bestPixel = candidate;
+            bestDepth = depth;
+        }
+    }
+    return vec3((vec2(bestPixel) + 0.5) / vec2(size), bestDepth);
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_OutputColor);
+    if (any(greaterThanEqual(pixel, size))) return;
+
+    vec2 currentUv = (vec2(pixel) + 0.5) / vec2(size);
+    vec4 current = texelFetch(u_CurrentColor, pixel, 0);
+    float currentDepth = texelFetch(u_CurrentDepth, pixel, 0).r;
+    vec3 resolvedColor = current.rgb;
+    float storedAge = 1.0;
+
+    if (u_Taa.extentAndPolicy.z > 0.5) {
+        vec3 closest = closestFragment(pixel);
+        vec2 ndcXY = closest.xy * 2.0 - 1.0;
+        float ndcZ = closest.z * u_Taa.depthPolicy.x + u_Taa.depthPolicy.y;
+        vec4 viewH = u_Taa.currentInverseProjection * vec4(ndcXY, ndcZ, 1.0);
+        bool background = closest.z <= 1e-7 || abs(viewH.w) <= 1e-7;
+
+        vec4 previousClip;
+        vec3 viewPosition = viewH.xyz;
+        if (background) {
+            vec3 worldDirection = (u_Taa.currentInverseView * vec4(viewH.xyz, 0.0)).xyz;
+            previousClip = u_Taa.previousProjection * u_Taa.previousView * vec4(worldDirection, 0.0);
+        } else {
+            viewPosition = viewH.xyz / viewH.w;
+            vec3 worldRelative = (u_Taa.currentInverseView * vec4(viewPosition, 0.0)).xyz;
+            previousClip = u_Taa.previousProjection * u_Taa.previousView
+                    * vec4(worldRelative + u_Taa.cameraDelta.xyz, 1.0);
+        }
+
+        if (abs(previousClip.w) > 1e-7) {
+            // Match Photon's native TAA exactly: the closest-fragment sample is used only
+            // to estimate the motion vector. Applying the closest fragment's reprojected UV
+            // directly to the center pixel shifts history by up to two pixels at depth edges.
+            vec2 reprojectedClosestUv = (previousClip.xy / previousClip.w) * 0.5 + 0.5;
+            vec2 velocity = closest.xy - reprojectedClosestUv;
+            vec2 previousUv = currentUv - velocity;
+            if (insideUv(previousUv)) {
+                vec4 history = sampleHistoryCatmullRom(previousUv);
+                history.rgb = max(history.rgb, vec3(0.0));
+                ivec2 historySize = textureSize(u_HistoryColor, 0);
+                ivec2 agePixel = clamp(ivec2(previousUv * vec2(historySize)),
+                        ivec2(0), historySize - ivec2(1));
+                storedAge = max(1.0, texelFetch(u_HistoryColor, agePixel, 0).a + 1.0);
+
+                float distanceFactor = background ? 1.0
+                        : 1.0 - exp2(-0.025 * length(viewPosition));
+                vec3 lo, hi;
+                neighborhoodBounds(pixel, distanceFactor, lo, hi);
+                vec3 historyYCoCg = rgbToYCoCg(reinhard(history.rgb));
+                historyYCoCg = clipAabb(historyYCoCg, lo, hi);
+
+                float currentWeight = max(1.0 / storedAge,
+                        mix(u_Taa.temporalPolicy.x, u_Taa.temporalPolicy.y, distanceFactor));
+                vec2 pixelOffset = 1.0 - abs(2.0 * fract(vec2(size) * previousUv) - 1.0);
+                float offCenter = sqrt(max(0.0, pixelOffset.x * pixelOffset.y))
+                        * u_Taa.temporalPolicy.z + (1.0 - u_Taa.temporalPolicy.z);
+                currentWeight = 1.0 - (1.0 - currentWeight) * offCenter;
+
+                vec3 currentYCoCg = rgbToYCoCg(reinhard(current.rgb));
+                vec3 blended = mix(historyYCoCg, currentYCoCg, clamp(currentWeight, 0.0, 1.0));
+                resolvedColor = reinhardInverse(yCoCgToRgb(blended));
+                storedAge *= offCenter;
+            }
+        }
+    }
+
+    imageStore(u_OutputColor, pixel, vec4(resolvedColor, current.a));
+    imageStore(u_NextHistoryColor, pixel, vec4(resolvedColor, storedAge));
+    imageStore(u_NextHistoryDepth, pixel, vec4(currentDepth, 0.0, 0.0, 0.0));
+}

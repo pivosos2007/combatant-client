@@ -16,6 +16,7 @@ import combatant.client.util.logging.DebugLog;
 public enum IrisRuntime {
     ;
     private static final boolean MOD_LOADED = FabricLoader.getInstance().isModLoaded("iris");
+    private static final IrisIntegrationEpochTracker INTEGRATION_EPOCH = new IrisIntegrationEpochTracker();
     private static volatile boolean loggedApiFailure;
 
     public static IrisRuntimeSnapshot snapshot() {
@@ -24,7 +25,7 @@ public enum IrisRuntime {
         }
 
         try {
-            return IrisRuntimeBridge.snapshot();
+            return INTEGRATION_EPOCH.stamp(IrisRuntimeBridge.snapshot());
         } catch (LinkageError | RuntimeException t) {
             if (!loggedApiFailure) {
                 loggedApiFailure = true;
@@ -36,6 +37,30 @@ public enum IrisRuntime {
 
     public static boolean isModLoaded() {
         return MOD_LOADED;
+    }
+
+    public static void observeFrame(Object worldOwner, String dimensionId, int width, int height) {
+        if (!MOD_LOADED) return;
+        INTEGRATION_EPOCH.observeFrame(worldOwner, dimensionId, width, height);
+    }
+
+    public static void observePipeline(Object pipelineOwner) {
+        if (!MOD_LOADED) return;
+        INTEGRATION_EPOCH.observePipeline(pipelineOwner);
+    }
+
+    public static void pipelineDestroyed(Object pipelineOwner) {
+        if (!MOD_LOADED) return;
+        INTEGRATION_EPOCH.pipelineDestroyed(pipelineOwner);
+    }
+
+    public static void invalidateIntegration(String reason) {
+        if (!MOD_LOADED) return;
+        INTEGRATION_EPOCH.invalidate(reason);
+    }
+
+    public static long integrationEpoch() {
+        return MOD_LOADED ? INTEGRATION_EPOCH.epoch() : 0L;
     }
 
     public static boolean isShaderpackRendererActive() {
@@ -168,6 +193,10 @@ public enum IrisRuntime {
                 false,
                 "",
                 IrisCompatibilityProfile.NONE,
+                "",
+                java.util.Set.of(),
+                INTEGRATION_EPOCH.epoch(),
+                INTEGRATION_EPOCH.reason(),
                 status == null || status.isBlank() ? "api unavailable" : status
         );
     }

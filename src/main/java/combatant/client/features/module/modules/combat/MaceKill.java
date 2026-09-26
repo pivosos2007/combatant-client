@@ -30,12 +30,11 @@ import combatant.client.features.module.ModuleInfo;
 
 //Такая хуйня на более менее ач работать не будет
 // thx liquidbounce
-//todo Description
 @ModuleInfo(
         id = "macekill",
         displayName = "MaceKill",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.macekill.description")
 public final class MaceKill extends Module {
     public static boolean cancelCrit;
 

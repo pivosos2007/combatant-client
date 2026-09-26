@@ -26,12 +26,11 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
 import combatant.client.util.player.MovementUtil;
 
-//todo Description
 @ModuleInfo(
         id = "speed",
         displayName = "Speed",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.speed.description")
 public final class Speed extends Module {
 
     public final NumberValue<Float> legitMultiplier = num("legit_multiplier", 1.20f, 1.15f, 1.50f);

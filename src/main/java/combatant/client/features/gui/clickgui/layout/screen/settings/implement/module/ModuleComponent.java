@@ -34,6 +34,12 @@ import java.util.Map;
 
 public final class ModuleComponent {
     private static final float PARALLAX_MAX_ANGLE = 4.6f;
+    private static final float DESCRIPTION_TEXT_SIZE = 9.0f;
+    private static final int MAX_DESCRIPTION_LINES = 2;
+    private static final float DESCRIPTION_TEXT_LEFT = 15.0f;
+    private static final float DESCRIPTION_TEXT_RIGHT = 10.0f;
+    private static final float DESCRIPTION_ICON_X = 6.5f;
+    private static final float DESCRIPTION_ICON_SIZE = 9.0f;
     private static final float PARALLAX_DEPTH = 4.8f;
     private static final float PARALLAX_PERSPECTIVE = 0.92f;
     private static final float PARALLAX_SCALE_BOOST = 0.012f;
@@ -317,90 +323,35 @@ public final class ModuleComponent {
     }
 
     private void drawDescription(String description, float x, float y, float w, float scale, SettingsGuiPalette palette) {
-        float maxWidth = w - 25f * scale;
-        float currentX = x + 10f * scale;
-        float currentY = y + 19f * scale;
-        String[] words = description.split(" ");
-        StringBuilder line = new StringBuilder();
-        int currentLine = 1;
-        float textSize = 10f * scale;
+        DescriptionLayout layout = layoutDescription(description, w, scale);
+        if (layout.lines().isEmpty()) return;
+
+        float textSize = DESCRIPTION_TEXT_SIZE * scale;
+        float textY = y + 19f * scale;
+        float textX = x + DESCRIPTION_TEXT_LEFT * scale;
+        float lineStep = descriptionLineStep(scale);
         TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(ClickGuiRenderer.getInterRegular());
-        int iconColor = palette.moduleDescriptionIcon();
-        int textColor = palette.moduleDescriptionText();
 
-        for (String word : words) {
-            float wordWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), word + " ", textSize);
-            if (currentX + wordWidth > x + maxWidth) {
-                if (currentLine == 1) {
-                    ClickGuiRenderer.drawText(
-                            icons,
-                            "J",
-                            x + 6.5f * scale,
-                            currentY + 0.75f * scale,
-                            9f * scale,
-                            iconColor,
-                            false
-                    );
-                    ClickGuiRenderer.drawText(
-                            ClickGuiRenderer.getInterRegular(),
-                            line.toString(),
-                            x + 15f * scale,
-                            currentY,
-                            textSize,
-                            textColor,
-                            false
-                    );
-                } else {
-                    ClickGuiRenderer.drawText(
-                            ClickGuiRenderer.getInterRegular(),
-                            line.toString(),
-                            x + 5f * scale,
-                            currentY,
-                            textSize,
-                            textColor,
-                            false
-                    );
-                }
-                line = new StringBuilder();
-                currentY += ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), textSize) - 5.75f * scale;
-                currentX = x + 10f * scale;
-                currentLine++;
-            }
-            line.append(word).append(" ");
-            currentX += wordWidth;
-        }
+        ClickGuiRenderer.drawText(
+                icons,
+                "J",
+                x + DESCRIPTION_ICON_X * scale,
+                textY + 0.55f * scale,
+                DESCRIPTION_ICON_SIZE * scale,
+                palette.moduleDescriptionIcon(),
+                false
+        );
 
-        if (!line.isEmpty()) {
-            if (currentLine == 1) {
-                ClickGuiRenderer.drawText(
-                        icons,
-                        "J",
-                        x + 6.5f * scale,
-                        currentY + 0.75f * scale,
-                        9f * scale,
-                        iconColor,
-                        false
-                );
-                ClickGuiRenderer.drawText(
-                        ClickGuiRenderer.getInterRegular(),
-                        line.toString(),
-                        x + 15f * scale,
-                        currentY,
-                        textSize,
-                        textColor,
-                        false
-                );
-            } else {
-                ClickGuiRenderer.drawText(
-                        ClickGuiRenderer.getInterRegular(),
-                        line.toString(),
-                        x + 7f * scale,
-                        currentY,
-                        textSize,
-                        textColor,
-                        false
-                );
-            }
+        for (int i = 0; i < layout.lines().size(); i++) {
+            ClickGuiRenderer.drawText(
+                    ClickGuiRenderer.getInterRegular(),
+                    layout.lines().get(i),
+                    textX,
+                    textY + i * lineStep,
+                    textSize,
+                    palette.moduleDescriptionText(),
+                    false
+            );
         }
     }
 
@@ -518,20 +469,82 @@ public final class ModuleComponent {
     }
 
     private float descriptionHeight(String description, float w, float scale) {
-        float maxWidth = w - 25f * scale;
-        float currentX = 0f;
-        int lineCount = 1;
-        for (String word : description.split(" ")) {
-            float wordW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), word + " ", 10f * scale);
-            if (currentX + wordW > maxWidth) {
-                lineCount++;
-                currentX = 0f;
+        return layoutDescription(description, w, scale).height();
+    }
+
+    private DescriptionLayout layoutDescription(String description, float w, float scale) {
+        String normalized = normalizeDescription(description).trim();
+        if (normalized.isEmpty()) return new DescriptionLayout(List.of(), 0f);
+
+        float textSize = DESCRIPTION_TEXT_SIZE * scale;
+        float maxWidth = Math.max(24f * scale,
+                w - (DESCRIPTION_TEXT_LEFT + DESCRIPTION_TEXT_RIGHT) * scale);
+        List<String> lines = new ArrayList<>(MAX_DESCRIPTION_LINES);
+        String[] words = normalized.split("\\s+");
+        StringBuilder current = new StringBuilder();
+        boolean truncated = false;
+
+        for (int i = 0; i < words.length; i++) {
+            String word = words[i];
+            if (word.isBlank()) continue;
+            String candidate = current.isEmpty() ? word : current + " " + word;
+            if (ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), candidate, textSize) <= maxWidth) {
+                current.setLength(0);
+                current.append(candidate);
+                continue;
             }
-            currentX += wordW;
+
+            if (!current.isEmpty()) {
+                lines.add(current.toString());
+                current.setLength(0);
+                if (lines.size() >= MAX_DESCRIPTION_LINES) {
+                    truncated = true;
+                    break;
+                }
+            }
+
+            if (ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), word, textSize) > maxWidth) {
+                current.append(ClickGuiRenderer.fitText(
+                        ClickGuiRenderer.getInterRegular(), word, textSize, maxWidth));
+            } else {
+                current.append(word);
+            }
         }
-        float lineH = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), 10f * scale);
-        float compactStep = Math.max(scale, lineH - 5.75f * scale);
-        return Math.max(0f, lineH - 4f * scale + (lineCount - 1) * compactStep);
+
+        if (!current.isEmpty() && lines.size() < MAX_DESCRIPTION_LINES) {
+            lines.add(current.toString());
+        } else if (!current.isEmpty()) {
+            truncated = true;
+        }
+
+        if (lines.isEmpty()) {
+            lines.add(ClickGuiRenderer.fitText(
+                    ClickGuiRenderer.getInterRegular(), normalized, textSize, maxWidth));
+        }
+
+        if (truncated || lines.size() == MAX_DESCRIPTION_LINES && joinedLength(lines) < normalized.length()) {
+            int last = lines.size() - 1;
+            String withEllipsis = lines.get(last).replaceAll("[.\u2026]+$", "") + "…";
+            lines.set(last, ClickGuiRenderer.fitText(
+                    ClickGuiRenderer.getInterRegular(), withEllipsis, textSize, maxWidth));
+        }
+
+        float lineHeight = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), textSize);
+        float height = Math.max(0f,
+                lineHeight - 3.0f * scale + (lines.size() - 1) * descriptionLineStep(scale));
+        return new DescriptionLayout(List.copyOf(lines), height);
+    }
+
+    private static int joinedLength(List<String> lines) {
+        int length = Math.max(0, lines.size() - 1);
+        for (String line : lines) length += line.length();
+        return length;
+    }
+
+    private float descriptionLineStep(float scale) {
+        float lineHeight = ClickGuiRenderer.textHeight(
+                ClickGuiRenderer.getInterRegular(), DESCRIPTION_TEXT_SIZE * scale);
+        return Math.max(6.0f * scale, lineHeight - 2.5f * scale);
     }
 
     private int getComponentHeight(CardEntry entry, float w, float scale) {
@@ -547,6 +560,9 @@ public final class ModuleComponent {
             column = (column + 1) % 2;
         }
         return offsets;
+    }
+
+    private record DescriptionLayout(List<String> lines, float height) {
     }
 
     public record CardEntry(String id,

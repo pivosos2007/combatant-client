@@ -36,12 +36,11 @@ import combatant.client.util.player.inventory.InventorySwap;
 
 import java.util.Set;
 
-//todo Description
 @ModuleInfo(
         id = "autoarmor",
         displayName = "AutoArmor",
-        category = ModuleCategory.PLAYER
-)
+        category = ModuleCategory.PLAYER,
+        description = "module.autoarmor.description")
 public class AutoArmor extends Module {
 
     private static final String SETTING_MODE = "mode";

@@ -29,8 +29,8 @@ import combatant.client.features.module.ModuleInfo;
 /**
  * ViewModel: mini items + custom swing animations
  */
-//todo Description
-@ModuleInfo(id = "viewmodel", displayName = "ViewModel", category = ModuleCategory.VISUALS)
+@ModuleInfo(id = "viewmodel", displayName = "ViewModel", category = ModuleCategory.VISUALS,
+        description = "module.viewmodel.description")
 public class ViewModel extends Module {
 
     private static final String SETTING_MODE = "mode";

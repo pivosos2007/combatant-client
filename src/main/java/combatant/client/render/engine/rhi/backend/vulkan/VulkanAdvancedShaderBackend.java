@@ -1187,6 +1187,19 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
                 case READ_WRITE -> VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
             };
         }
+        if (stage == RhiResourceBarrier.Stage.GRAPHICS) {
+            int reads = VK_ACCESS_SHADER_READ_BIT
+                    | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT
+                    | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+            int writes = VK_ACCESS_SHADER_WRITE_BIT
+                    | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                    | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            return switch (access) {
+                case READ -> reads;
+                case WRITE -> writes;
+                case READ_WRITE -> reads | writes;
+            };
+        }
         return switch (access) {
             case READ -> VK_ACCESS_SHADER_READ_BIT;
             case WRITE -> VK_ACCESS_SHADER_WRITE_BIT;

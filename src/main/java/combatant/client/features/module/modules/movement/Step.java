@@ -37,12 +37,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 //todo 297 vulcan step remove goofy ass shit
-//todo Description
 @ModuleInfo(
         id = "step",
         displayName = "Step",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.step.description")
 public final class Step extends Module {
 
     private static final double[] JUMP_ORDER = {

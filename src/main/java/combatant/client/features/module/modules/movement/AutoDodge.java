@@ -64,12 +64,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-//todo Description
 @ModuleInfo(
         id = "autododge",
         displayName = "AutoDodge",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.autododge.description")
 public final class AutoDodge extends Module {
 
     private static final String THREAT_ARROW = "arrow";

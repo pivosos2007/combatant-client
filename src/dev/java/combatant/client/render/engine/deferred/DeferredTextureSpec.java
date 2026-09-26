@@ -43,8 +43,7 @@ public record DeferredTextureSpec(
         INDIRECT_LIGHT,
         REFLECTION_TRACE,
         REFLECTION_OUTPUT,
-        REFLECTION_HISTORY,
-        CLOUD_RENDER;
+        REFLECTION_HISTORY;
 
         public float scale(DeferredRuntimeConfig.Snapshot settings) {
             if (settings == null) settings = DeferredRuntimeConfig.current();
@@ -59,7 +58,6 @@ public record DeferredTextureSpec(
                 case REFLECTION_TRACE -> settings.reflectionTraceScale();
                 case REFLECTION_OUTPUT -> settings.reflectionOutputScale();
                 case REFLECTION_HISTORY -> settings.reflectionHistoryScale();
-                case CLOUD_RENDER -> DeferredCloudConfig.current().renderScale();
             };
         }
 

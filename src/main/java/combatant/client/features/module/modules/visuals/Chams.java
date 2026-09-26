@@ -61,8 +61,8 @@ import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.rhi.CombatantRhi;
 
-//todo Description
-@ModuleInfo(id = "chams", displayName = "Chams", category = ModuleCategory.VISUALS)
+@ModuleInfo(id = "chams", displayName = "Chams", category = ModuleCategory.VISUALS,
+        description = "module.chams.description")
 public class Chams extends Module {
 
     private static final int METALLIC_OCCUPANCY_CELL_SIZE = 8;

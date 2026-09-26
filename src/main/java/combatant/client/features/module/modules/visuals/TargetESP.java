@@ -44,8 +44,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntFunction;
 
-//todo Description
-@ModuleInfo(id = "targetesp", displayName = "TargetESP", aliases = {"target", "targetrender"}, category = ModuleCategory.VISUALS)
+@ModuleInfo(id = "targetesp", displayName = "TargetESP", aliases = {"target", "targetrender"}, category = ModuleCategory.VISUALS,
+        description = "module.targetesp.description")
 public class TargetESP extends Module {
 
     private static final String SETTING_MODE = "mode";

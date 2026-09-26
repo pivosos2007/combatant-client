@@ -46,6 +46,7 @@ import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
 import combatant.client.render.engine.renderer.ui.draw.UiBlurQuality;
+import combatant.client.render.engine.renderer.ui.draw.UiRect;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -82,6 +83,7 @@ public final class OrderedUiBatcher {
     @Nullable GpuSampler sharedBlurredSampler;
     Renderer2D.BlurQuality sharedBlurQuality = Renderer2D.DEFAULT_BLUR_QUALITY;
     float sharedBlurOffsetPx = Renderer2D.DEFAULT_KAWASE_OFFSET_PX;
+    @Nullable UiBlurRegion sharedBlurRegion;
     Renderer2D.Deferred2DLayer replayLayer;
     boolean hudBackdropContribution;
 
@@ -96,7 +98,8 @@ public final class OrderedUiBatcher {
                                                 @Nullable GpuSampler sourceSampler,
                                                 float screenW,
                                                 float screenH,
-                                                float uiScale) {
+                                                float uiScale,
+                                                @Nullable UiRect blurBounds) {
         if (mc == null || sourceView == null || sourceSampler == null) return;
         LIQUID_GLASS_PREWARMER.resetSharedBlur();
         LIQUID_GLASS_PREWARMER.prepareSharedBlurInternal(
@@ -107,7 +110,8 @@ public final class OrderedUiBatcher {
                 screenH,
                 uiScale,
                 Renderer2D.DEFAULT_LIQUID_GLASS_BLUR_QUALITY,
-                Renderer2D.LIQUID_GLASS_KAWASE_OFFSET_PX
+                Renderer2D.LIQUID_GLASS_KAWASE_OFFSET_PX,
+                blurBounds
         );
         LIQUID_GLASS_PREWARMER.resetSharedBlur();
     }
@@ -193,10 +197,8 @@ public final class OrderedUiBatcher {
         UiBackdropRequest normalizedBackdrop = backdropRequest != null
                 ? backdropRequest
                 : UiBackdropRequest.NONE;
-        if (normalizedBackdrop.requiresCapturedScene() && normalizedBackdrop.sceneBlur().enabled()) {
-            UiBlurResources.requestLiquidGlassBlur();
-        }
-        if (type == UiBatchType.LIQUID_GLASS && normalizedBackdrop.requiresUiUnderlayCapture()) {
+        if ((type == UiBatchType.LIQUID_GLASS || type == UiBatchType.LIQUID_GLASS_LIGHT)
+                && normalizedBackdrop.requiresUiUnderlayCapture()) {
             UiBlurResources.requestUiUnderlay(UiDeferredScheduler.layerForCurrentPhase(false));
         }
         UiScissorSnapshot scissor = ScissorFunction.currentSnapshot();
@@ -267,6 +269,31 @@ public final class OrderedUiBatcher {
 
         TextBatch batch = obtainTextBatch();
         batch.begin(label, font, pipeline, normalizedPlacement, scissor, clip);
+        order.add(batch);
+        return batch;
+    }
+
+    public TextBatch getOrCreateLiquidGlassTextBatch(String label,
+                                                     GlyphFont font,
+                                                     RenderPipeline pipeline,
+                                                     TextPlacementMode placement,
+                                                     UiRect bounds) {
+        if (!active) return null;
+        TextPlacementMode normalizedPlacement = placement != null ? placement : TextPlacementMode.UI;
+        UiScissorSnapshot scissor = ScissorFunction.currentSnapshot();
+        UiClipSnapshot clip = ClipFunction.currentSnapshot();
+
+        if (!order.isEmpty()) {
+            Object last = order.get(order.size() - 1);
+            if (last instanceof TextBatch textBatch
+                    && textBatch.canMergeLiquidGlass(font, pipeline, normalizedPlacement, scissor, clip)) {
+                textBatch.expandGlassBounds(bounds);
+                return textBatch;
+            }
+        }
+
+        TextBatch batch = obtainTextBatch();
+        batch.beginLiquidGlass(label, font, pipeline, normalizedPlacement, bounds, scissor, clip);
         order.add(batch);
         return batch;
     }
@@ -402,6 +429,10 @@ public final class OrderedUiBatcher {
 
             boolean hasCapturedSceneBackdrop = false;
             for (Object orderedEntry : order) {
+                if (orderedEntry instanceof TextBatch textBatch && textBatch.liquidGlass) {
+                    hasCapturedSceneBackdrop = true;
+                    break;
+                }
                 if (orderedEntry instanceof DrawBatch orderedBatch
                         && orderedBatch.backdropRequest.requiresCapturedScene()) {
                     hasCapturedSceneBackdrop = true;
@@ -452,6 +483,62 @@ public final class OrderedUiBatcher {
                     if (!textBatch.isEmpty()) {
                         vertices += textBatch.mesh.getVertexCount();
                         indices += textBatch.mesh.getIndicesCount();
+                        if (textBatch.liquidGlass) {
+                            GpuTextureView sourceView = liquidSourceView;
+                            GpuSampler sourceSampler = liquidSourceSampler;
+                            if (sourceView != null && sourceSampler != null
+                                    && !textBatch.clipSnapshot.usesAnalyticPipeline()) {
+                                drawCalls += prepareSharedBlur(
+                                        mc,
+                                        sourceView,
+                                        sourceSampler,
+                                        screenW,
+                                        screenH,
+                                        uiScale,
+                                        Renderer2D.DEFAULT_LIQUID_GLASS_BLUR_QUALITY,
+                                        Renderer2D.LIQUID_GLASS_KAWASE_OFFSET_PX,
+                                        textBatch.glassBounds
+                                );
+                                GpuTextureView blurView = matchingSharedBlurView(sourceView, sourceSampler);
+                                GpuSampler blurSampler = matchingSharedBlurSampler(sourceView, sourceSampler);
+                                if (blurView != null && blurSampler != null) {
+                                    drawCalls++;
+                                    int mirrorStart = pendingDraws.size();
+                                    TextRenderSystem.appendLiquidGlassGlyphMeshCommand(
+                                            pendingDraws,
+                                            textBatch.label,
+                                            textBatch.font,
+                                            textBatch.mesh,
+                                            textBatch.pipeline,
+                                            textBatch.placement,
+                                            textBatch.clipSnapshot,
+                                            sourceView,
+                                            sourceSampler,
+                                            blurView,
+                                            blurSampler,
+                                            screenW,
+                                            screenH
+                                    );
+                                    mirrorNewDraws(pendingDraws, mirrorStart,
+                                            textBatch.clipSnapshot.usesMsaaStencil() ? null : secondaryReplayView);
+                                    continue;
+                                }
+                            }
+                            drawCalls++;
+                            int mirrorStart = pendingDraws.size();
+                            TextRenderSystem.appendGlyphMeshCommand(
+                                    pendingDraws,
+                                    textBatch.label,
+                                    textBatch.font,
+                                    textBatch.mesh,
+                                    CombatantRenderPipelines.UI_TEXT_MSDF_FAST,
+                                    textBatch.placement,
+                                    textBatch.clipSnapshot
+                            );
+                            mirrorNewDraws(pendingDraws, mirrorStart,
+                                    textBatch.clipSnapshot.usesMsaaStencil() ? null : secondaryReplayView);
+                            continue;
+                        }
                         drawCalls++;
                         int mirrorStart = pendingDraws.size();
                         TextRenderSystem.appendGlyphMeshCommand(pendingDraws, textBatch.label, textBatch.font,
@@ -486,8 +573,9 @@ public final class OrderedUiBatcher {
                     GpuSampler blurSourceSampler = (uiUnderlayScene || capturedScene || currentTargetScene)
                             ? PostProcessManager.getSampler()
                             : batch.sampler;
+                    UiRect blurBounds = blurBoundsFor(batch);
                     int blurPassCalls = prepareSharedBlur(mc, blurSourceView, blurSourceSampler, screenW, screenH, uiScale,
-                            batch.blurQuality, batch.blurOffsetPx);
+                            batch.blurQuality, batch.blurOffsetPx, blurBounds);
                     if (sharedBlurredView != null && sharedBlurredSampler != null) {
                         MeshRenderer builder = MeshRenderer.begin()
                                 .attachments(mainColorView, null)
@@ -538,18 +626,20 @@ public final class OrderedUiBatcher {
                             ? backdropSampler
                             : capturedScene && liquidSourceSampler != null ? liquidSourceSampler : batch.sampler;
                     boolean clippedComposite = batch.clipSnapshot.active();
+                    UiRect blurBounds = blurBoundsFor(batch);
                     if (!batch.backdropRequest.sceneBlur().enabled()) {
                         resetSharedBlur();
-                    } else if (clippedComposite && capturedScene) {
-                        adoptFrameBlurCache(sourceView, sourceSampler, screenW, screenH, uiScale,
-                                batch.blurQuality, batch.blurOffsetPx);
+                    } else if (clippedComposite && capturedScene
+                            && adoptFrameBlurCache(sourceView, sourceSampler, screenW, screenH, uiScale,
+                            batch.blurQuality, batch.blurOffsetPx, blurBounds)) {
+                        // Region-aware prewarm already covers this clipped glass surface.
                     } else {
                         // UI underlay/current-target snapshot content can change between two glass
                         // surfaces in the same ordered stream. Never reuse a blur only because the
                         // texture handle stayed the same.
                         if (uiUnderlayScene || currentTargetScene) resetSharedBlur();
                         drawCalls += prepareSharedBlur(mc, sourceView, sourceSampler, screenW, screenH, uiScale,
-                                batch.blurQuality, batch.blurOffsetPx);
+                                batch.blurQuality, batch.blurOffsetPx, blurBounds);
                     }
                     GpuTextureView liquidBlurView = matchingSharedBlurView(sourceView, sourceSampler);
                     GpuSampler liquidBlurSampler = matchingSharedBlurSampler(sourceView, sourceSampler);
@@ -574,7 +664,8 @@ public final class OrderedUiBatcher {
                                 screenH,
                                 1.0f,
                                 rendererQuality(uiBlur.quality()),
-                                uiBlur.offsetPx()
+                                uiBlur.offsetPx(),
+                                batch.backdropRequest.captureBounds()
                         );
                         GpuTextureView preparedUiView = matchingSharedBlurView(
                                 glassUiUnderlayView, glassUiUnderlaySampler);
@@ -1026,8 +1117,14 @@ public final class OrderedUiBatcher {
 
     private static RenderPipeline pipelineForGlass(DrawBatch batch, boolean uiUnderlay) {
         if (!uiUnderlay) return pipelineFor(batch);
-        return batch.clipSnapshot.usesAnalyticPipeline()
-                ? CombatantRenderPipelines.UI_LIQUID_GLASS_BATCH_UI_UNDERLAY_ANALYTIC_CLIP
+        boolean light = batch.type == UiBatchType.LIQUID_GLASS_LIGHT;
+        if (batch.clipSnapshot.usesAnalyticPipeline()) {
+            return light
+                    ? CombatantRenderPipelines.UI_LIQUID_GLASS_LIGHT_BATCH_UI_UNDERLAY_ANALYTIC_CLIP
+                    : CombatantRenderPipelines.UI_LIQUID_GLASS_BATCH_UI_UNDERLAY_ANALYTIC_CLIP;
+        }
+        return light
+                ? CombatantRenderPipelines.UI_LIQUID_GLASS_LIGHT_BATCH_UI_UNDERLAY
                 : CombatantRenderPipelines.UI_LIQUID_GLASS_BATCH_UI_UNDERLAY;
     }
 
@@ -1037,6 +1134,7 @@ public final class OrderedUiBatcher {
             case MEDIUM -> Renderer2D.BlurQuality.MEDIUM;
             case HIGH -> Renderer2D.BlurQuality.HIGH;
             case ULTRA -> Renderer2D.BlurQuality.ULTRA;
+            case LIQUID_GLASS -> Renderer2D.BlurQuality.LIQUID_GLASS;
         };
     }
 
@@ -1134,8 +1232,15 @@ public final class OrderedUiBatcher {
                                         float screenH,
                                         float uiScale,
                                         Renderer2D.BlurQuality quality,
-                                        float offsetPx) {
+                                        float offsetPx,
+                                        @Nullable UiRect blurBounds) {
         if (sourceView == null || sourceSampler == null) return false;
+        Renderer2D.BlurQuality normalizedQuality = quality != null ? quality : Renderer2D.DEFAULT_BLUR_QUALITY;
+        int sourceW = Math.max(1, Math.round(screenW));
+        int sourceH = Math.max(1, Math.round(screenH));
+        float normalizedOffset = Float.isFinite(offsetPx) ? Math.max(0.0f, offsetPx) : Renderer2D.DEFAULT_KAWASE_OFFSET_PX;
+        UiBlurRegion requestedRegion = UiBlurResources.blurRegion(blurBounds, sourceW, sourceH,
+                Math.max(1, normalizedQuality.iterations), normalizedOffset);
         FrameBlurCacheEntry cachedBlur = UiBlurResources.findReusable(
                 UiBlurResources.currentFrameId(),
                 UiBlurResources.currentPhase(),
@@ -1144,8 +1249,9 @@ public final class OrderedUiBatcher {
                 screenW,
                 screenH,
                 uiScale,
-                quality,
-                offsetPx
+                normalizedQuality,
+                normalizedOffset,
+                requestedRegion
         );
         if (cachedBlur == null || cachedBlur.blurredView == null || cachedBlur.blurredSampler == null) {
             return false;
@@ -1154,8 +1260,9 @@ public final class OrderedUiBatcher {
         sharedBlurSourceSampler = sourceSampler;
         sharedBlurredView = cachedBlur.blurredView;
         sharedBlurredSampler = cachedBlur.blurredSampler;
-        sharedBlurQuality = quality != null ? quality : Renderer2D.DEFAULT_BLUR_QUALITY;
-        sharedBlurOffsetPx = Float.isFinite(offsetPx) ? Math.max(0.0f, offsetPx) : Renderer2D.DEFAULT_KAWASE_OFFSET_PX;
+        sharedBlurQuality = normalizedQuality;
+        sharedBlurOffsetPx = normalizedOffset;
+        sharedBlurRegion = cachedBlur.region;
         return true;
     }
 
@@ -1180,7 +1287,7 @@ public final class OrderedUiBatcher {
                                   float screenH,
                                   float uiScale) {
         return prepareSharedBlur(mc, sourceView, sourceSampler, screenW, screenH, uiScale,
-                Renderer2D.DEFAULT_BLUR_QUALITY, Renderer2D.DEFAULT_KAWASE_OFFSET_PX);
+                Renderer2D.DEFAULT_BLUR_QUALITY, Renderer2D.DEFAULT_KAWASE_OFFSET_PX, null);
     }
 
     int prepareSharedBlur(Minecraft mc,
@@ -1190,13 +1297,18 @@ public final class OrderedUiBatcher {
                           float screenH,
                           float uiScale,
                           Renderer2D.BlurQuality blurQuality,
-                          float offsetPx) {
+                          float offsetPx,
+                          @Nullable UiRect blurBounds) {
         if (CombatantRenderSystem.rhi().shapeClip().isActive()
                 && !UiBlurResources.isUiUnderlaySource(sourceView)) {
-            adoptFrameBlurCache(sourceView, sourceSampler, screenW, screenH, uiScale, blurQuality, offsetPx);
+            adoptFrameBlurCache(sourceView, sourceSampler, screenW, screenH, uiScale,
+                    blurQuality, offsetPx, blurBounds);
+            // Offscreen blur passes must not be created from inside an active shape-clip target.
+            // Clip users prewarm the exact requested region before the clip becomes active.
             return 0;
         }
-        return prepareSharedBlurInternal(mc, sourceView, sourceSampler, screenW, screenH, uiScale, blurQuality, offsetPx);
+        return prepareSharedBlurInternal(mc, sourceView, sourceSampler, screenW, screenH, uiScale,
+                blurQuality, offsetPx, blurBounds);
     }
 
     private int prepareSharedBlurInternal(Minecraft mc,
@@ -1206,7 +1318,8 @@ public final class OrderedUiBatcher {
                                           float screenH,
                                           float uiScale,
                                           Renderer2D.BlurQuality blurQuality,
-                                          float offsetPx) {
+                                          float offsetPx,
+                                          @Nullable UiRect blurBounds) {
         if (sourceView == null || sourceSampler == null
                 || sourceView.isClosed() || sourceView.texture().isClosed()) {
             return 0;
@@ -1214,19 +1327,25 @@ public final class OrderedUiBatcher {
         Renderer2D.BlurQuality quality = blurQuality != null ? blurQuality : Renderer2D.DEFAULT_BLUR_QUALITY;
         int iterations = Math.max(1, quality.iterations);
         float passOffset = Float.isFinite(offsetPx) ? Math.max(0.0f, offsetPx) : Renderer2D.DEFAULT_KAWASE_OFFSET_PX;
+        int fullWidth = Math.max(1, Math.round(screenW));
+        int fullHeight = Math.max(1, Math.round(screenH));
+        UiBlurRegion requestedRegion = UiBlurResources.blurRegion(
+                blurBounds, fullWidth, fullHeight, iterations, passOffset);
 
         if (sharedBlurredView != null && sharedBlurredSampler != null
                 && sharedBlurSourceView == sourceView
                 && sharedBlurSourceSampler == sourceSampler
                 && sharedBlurQuality == quality
-                && Float.compare(sharedBlurOffsetPx, passOffset) == 0) {
+                && Float.compare(sharedBlurOffsetPx, passOffset) == 0
+                && sharedBlurRegion != null
+                && sharedBlurRegion.contains(requestedRegion)) {
             return 0;
         }
 
         long frameId = UiBlurResources.currentFrameId();
         RenderPhase phase = UiBlurResources.currentPhase();
         FrameBlurCacheEntry cachedBlur = UiBlurResources.findReusable(frameId, phase, sourceView, sourceSampler,
-                screenW, screenH, uiScale, quality, passOffset);
+                screenW, screenH, uiScale, quality, passOffset, requestedRegion);
         if (cachedBlur != null) {
             sharedBlurSourceView = sourceView;
             sharedBlurSourceSampler = sourceSampler;
@@ -1234,6 +1353,7 @@ public final class OrderedUiBatcher {
             sharedBlurredSampler = cachedBlur.blurredSampler;
             sharedBlurQuality = quality;
             sharedBlurOffsetPx = passOffset;
+            sharedBlurRegion = cachedBlur.region;
             return 0;
         }
 
@@ -1247,11 +1367,11 @@ public final class OrderedUiBatcher {
                 return 0;
             }
 
-            int sourceW = Math.max(1, Math.round(screenW));
-            int sourceH = Math.max(1, Math.round(screenH));
+            int sourceW = fullWidth;
+            int sourceH = fullHeight;
 
             UiComputeBlurBackend.Result computeResult = UiBlurResources.tryComputeBlur(
-                    sourceView, sourceSampler, sourceW, sourceH, iterations, passOffset);
+                    sourceView, sourceSampler, sourceW, sourceH, iterations, passOffset, requestedRegion);
             if (computeResult != null && computeResult.view() != null && computeResult.sampler() != null) {
                 sharedBlurSourceView = sourceView;
                 sharedBlurSourceSampler = sourceSampler;
@@ -1259,8 +1379,9 @@ public final class OrderedUiBatcher {
                 sharedBlurredSampler = computeResult.sampler();
                 sharedBlurQuality = quality;
                 sharedBlurOffsetPx = passOffset;
+                sharedBlurRegion = requestedRegion;
                 UiBlurResources.remember(frameId, phase, sourceView, sourceSampler, sharedBlurredView, sharedBlurredSampler,
-                        screenW, screenH, uiScale, quality, passOffset);
+                        screenW, screenH, uiScale, quality, passOffset, requestedRegion);
                 return 0;
             }
 
@@ -1271,7 +1392,8 @@ public final class OrderedUiBatcher {
             for (int level = 0; level < iterations; level++) {
                 TextureTarget target = UiBlurResources.ensureKawaseDown(mc, level, sourceView);
                 if (target == null) return 0;
-                if (!drawKawasePass(target, currentView, currentSampler, sourceW, sourceH, passOffset, false)) {
+                if (!drawKawasePass(target, currentView, currentSampler, sourceW, sourceH, passOffset, false,
+                        requestedRegion, fullWidth, fullHeight)) {
                     return 0;
                 }
 
@@ -1286,7 +1408,8 @@ public final class OrderedUiBatcher {
             for (int level = iterations - 2; level >= 0; level--) {
                 TextureTarget target = UiBlurResources.ensureKawaseUp(mc, level, sourceView);
                 if (target == null) return 0;
-                if (!drawKawasePass(target, currentView, currentSampler, sourceW, sourceH, passOffset, true)) {
+                if (!drawKawasePass(target, currentView, currentSampler, sourceW, sourceH, passOffset, true,
+                        requestedRegion, fullWidth, fullHeight)) {
                     return 0;
                 }
 
@@ -1308,10 +1431,47 @@ public final class OrderedUiBatcher {
             sharedBlurredSampler = blurSampler;
             sharedBlurQuality = quality;
             sharedBlurOffsetPx = passOffset;
+            sharedBlurRegion = requestedRegion;
             UiBlurResources.remember(frameId, phase, sourceView, sourceSampler, currentView, blurSampler,
-                    screenW, screenH, uiScale, quality, passOffset);
+                    screenW, screenH, uiScale, quality, passOffset, requestedRegion);
             return drawCalls;
         }
+    }
+
+
+    private @Nullable UiRect blurBoundsFor(DrawBatch batch) {
+        if (batch == null || batch.backdropRequest == null) return null;
+        UiRect own = batch.backdropRequest.captureBounds();
+        // A clipped draw is prewarmed immediately before entering the clip. Do not inflate that
+        // request with unrelated HUD glass that may execute later outside the clip.
+        if (batch.clipSnapshot.active()) return own;
+        if (batch.backdropRequest.sceneSource() != UiBackdropRequest.SceneSource.CAPTURED_SCENE) {
+            return own;
+        }
+        if (own == null) return null;
+
+        UiRect union = own;
+        for (Object entry : order) {
+            if (!(entry instanceof DrawBatch other) || other == batch) continue;
+            if (!(other.type == UiBatchType.BLUR || other.type == UiBatchType.BLUR_CORNERS
+                    || other.type.usesPreparedGlass())) continue;
+            if (other.backdropRequest.sceneSource() != UiBackdropRequest.SceneSource.CAPTURED_SCENE
+                    || !other.backdropRequest.sceneBlur().enabled()
+                    || other.blurQuality != batch.blurQuality
+                    || Float.compare(other.blurOffsetPx, batch.blurOffsetPx) != 0) continue;
+            UiRect bounds = other.backdropRequest.captureBounds();
+            if (bounds == null) return null;
+            union = union(union, bounds);
+        }
+        return union;
+    }
+
+    private static UiRect union(UiRect a, UiRect b) {
+        float left = Math.min(a.x(), b.x());
+        float top = Math.min(a.y(), b.y());
+        float right = Math.max(a.x() + a.width(), b.x() + b.width());
+        float bottom = Math.max(a.y() + a.height(), b.y() + b.height());
+        return new UiRect(left, top, right - left, bottom - top);
     }
 
     private static String blurProfile(@Nullable GpuTextureView sourceView,
@@ -1324,6 +1484,7 @@ public final class OrderedUiBatcher {
             case MEDIUM -> "medium";
             case HIGH -> "high";
             case ULTRA -> "ultra";
+            case LIQUID_GLASS -> "liquid_glass";
         };
         return source + "_" + level;
     }
@@ -1334,9 +1495,13 @@ public final class OrderedUiBatcher {
                                           int sourceW,
                                           int sourceH,
                                           float passOffset,
-                                          boolean upPass) {
-        if (target == null || sourceView == null || sourceSampler == null) return false;
-        MeshBuilder compositeMesh = UiBlurResources.ensureCompositeMesh(target.width, target.height);
+                                          boolean upPass,
+                                          UiBlurRegion fullRegion,
+                                          int fullWidth,
+                                          int fullHeight) {
+        if (target == null || sourceView == null || sourceSampler == null || fullRegion == null) return false;
+        UiBlurRegion targetRegion = fullRegion.scaleTo(fullWidth, fullHeight, target.width, target.height);
+        MeshBuilder compositeMesh = UiBlurResources.ensureBlurRegionMesh(target.width, target.height, targetRegion);
         if (compositeMesh == null) return false;
 
         Matrix4f previousProjection = MeshRenderer.projection();
@@ -1387,6 +1552,7 @@ public final class OrderedUiBatcher {
         sharedBlurredSampler = null;
         sharedBlurQuality = Renderer2D.DEFAULT_BLUR_QUALITY;
         sharedBlurOffsetPx = Renderer2D.DEFAULT_KAWASE_OFFSET_PX;
+        sharedBlurRegion = null;
     }
 
     void resetOrder() {

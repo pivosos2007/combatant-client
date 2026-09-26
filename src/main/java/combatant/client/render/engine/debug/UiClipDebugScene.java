@@ -20,6 +20,7 @@ import combatant.client.render.engine.core.RenderPhaseScope;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.UiBlurResources;
+import combatant.client.render.engine.renderer.ui.draw.UiRect;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.svg.SvgRenderOptions;
@@ -171,7 +172,8 @@ public enum UiClipDebugScene {
         if (textureClip) ClipFunction.pop();
 
         float gx = tx + cellW + gap;
-        UiBlurResources.requestBeforeNextShapeClip();
+        UiBlurResources.requestBeforeNextShapeClip(
+                new UiRect(gx - 24.0f, y + 8.0f, cellW + 48.0f, 70.0f));
         boolean glassClip = ClipFunction.pushRoundedRectAnalyticRequired(gx, y, cellW, h, 22.0f);
         renderer.liquidGlassRect(gx - 24.0f, y + 8.0f, cellW + 48.0f, 70.0f,
                 24.0f, 0xFF8AB4FF, 0.92f, Renderer2D.LiquidGlassPreset.BALANCED);

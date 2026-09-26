@@ -11,12 +11,7 @@ import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.deferred.DevDeferredRuntime;
-import combatant.client.render.engine.world.environment.CloudProfileRegistry;
-import combatant.client.render.engine.world.environment.DimensionRenderProfileRegistry;
-import combatant.client.render.iris.IrisRuntime;
-import net.minecraft.client.CloudStatus;
 import net.minecraft.client.DeltaTracker;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import org.joml.Matrix4fc;
 import org.spongepowered.asm.mixin.Mixin;
@@ -42,19 +37,5 @@ public abstract class DevDeferredLevelRendererMixin {
         DevDeferredRuntime.world().capturePrimaryView(
                 frame.frameId(), positionMatrix, projection, unjittered,
                 CombatantWorldMatrices.jitterPixels(), cameraRenderState.pos, cameraRenderState.depthFar);
-    }
-
-    @Inject(method = "addCloudsPass", at = @At("HEAD"), cancellable = true)
-    private void combatant$devDeferredOwnsClouds(
-            com.mojang.blaze3d.framegraph.FrameGraphBuilder frameGraphBuilder,
-            CloudStatus cloudStatus, net.minecraft.world.phys.Vec3 cameraPosition,
-            long ticks, float partialTick, int cloudColor, float cloudHeight, int renderDistance,
-            CallbackInfo ci) {
-        if (cloudStatus == CloudStatus.OFF || IrisRuntime.isShaderpackRendererActive()) return;
-        if (!DevDeferredRuntime.world().enabled()) return;
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null || minecraft.level == null) return;
-        var profile = DimensionRenderProfileRegistry.resolve(minecraft.level.dimension());
-        if (CloudProfileRegistry.resolve(profile.cloudProfile()).valid()) ci.cancel();
     }
 }

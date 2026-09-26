@@ -100,7 +100,7 @@ public final class BetterTooltips extends AbstractHudElement {
             visibleWhen(bind("shulker_preview_hold", "LEFT_SHIFT", BindMode.HOLD), this::isShulkerPreviewEnabled);
     private final ScriptedTooltipPanel tooltipPanel = new ScriptedTooltipPanel("better_tooltips");
     private BetterTooltips() {
-        super("vanilla_tooltips", "Tooltips", true);
+        super("vanilla_tooltips", "Tooltips", "hud.static.vanilla_tooltips.description", true);
     }
 
     public static BetterTooltips get() {

@@ -52,12 +52,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-//todo Description
 @ModuleInfo(
         id = "nofall",
         displayName = "NoFall",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.nofall.description")
 public class NoFall extends Module {
 
     private static final int MLG_COLLISION_PREDICTION_TICKS = 20;

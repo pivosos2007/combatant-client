@@ -29,6 +29,7 @@ public final class FrameBlurCacheEntry {
     int uiScaleBits;
     int blurQualityId;
     int blurOffsetBits;
+    @Nullable UiBlurRegion region;
 
     public boolean matches(long frameId,
                             RenderPhase phase,
@@ -38,7 +39,8 @@ public final class FrameBlurCacheEntry {
                             float screenH,
                             float uiScale,
                             Renderer2D.BlurQuality blurQuality,
-                            float offsetPx) {
+                            float offsetPx,
+                            @Nullable UiBlurRegion requestedRegion) {
         Renderer2D.BlurQuality quality = blurQuality != null ? blurQuality : Renderer2D.DEFAULT_BLUR_QUALITY;
         return blurredView != null
                 && blurredSampler != null
@@ -50,7 +52,9 @@ public final class FrameBlurCacheEntry {
                 && this.screenH == Math.max(1, Math.round(screenH))
                 && this.uiScaleBits == scaleBits(uiScale)
                 && this.blurQualityId == quality.id
-                && this.blurOffsetBits == Float.floatToIntBits(Float.isFinite(offsetPx) ? Math.max(0.0f, offsetPx) : Renderer2D.DEFAULT_KAWASE_OFFSET_PX);
+                && this.blurOffsetBits == Float.floatToIntBits(Float.isFinite(offsetPx) ? Math.max(0.0f, offsetPx) : Renderer2D.DEFAULT_KAWASE_OFFSET_PX)
+                && this.region != null
+                && (requestedRegion == null || this.region.contains(requestedRegion));
     }
 
     public void set(long frameId,
@@ -63,7 +67,8 @@ public final class FrameBlurCacheEntry {
                      float screenH,
                      float uiScale,
                      Renderer2D.BlurQuality blurQuality,
-                     float offsetPx) {
+                     float offsetPx,
+                     @Nullable UiBlurRegion region) {
         Renderer2D.BlurQuality quality = blurQuality != null ? blurQuality : Renderer2D.DEFAULT_BLUR_QUALITY;
         this.frameId = frameId;
         this.phase = phase != null ? phase : RenderPhase.NONE;
@@ -76,6 +81,7 @@ public final class FrameBlurCacheEntry {
         this.uiScaleBits = scaleBits(uiScale);
         this.blurQualityId = quality.id;
         this.blurOffsetBits = Float.floatToIntBits(Float.isFinite(offsetPx) ? Math.max(0.0f, offsetPx) : Renderer2D.DEFAULT_KAWASE_OFFSET_PX);
+        this.region = region;
     }
 
     public void clear() {
@@ -90,5 +96,6 @@ public final class FrameBlurCacheEntry {
         uiScaleBits = 0;
         blurQualityId = 0;
         blurOffsetBits = 0;
+        region = null;
     }
 }

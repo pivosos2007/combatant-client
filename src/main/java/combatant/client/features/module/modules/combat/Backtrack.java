@@ -34,12 +34,11 @@ import combatant.client.util.network.BacktrackController;
 /**
  * Backtrack module front-end for the shared BlinkManager-backed incoming packet controller.
  */
-//todo Description
 @ModuleInfo(
         id = "backtrack",
         displayName = "Backtrack",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.backtrack.description")
 public final class Backtrack extends Module {
 
     private final NumberValue<Float> minRange = numCommon(

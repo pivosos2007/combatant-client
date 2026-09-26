@@ -43,6 +43,7 @@ final class UiComputeBlurBackend implements AutoCloseable {
     private static final Identifier SHADER = Identifier.fromNamespaceAndPath("combatant", "ui_blur");
     private static final Std430StructLayout PARAMS_LAYOUT = Std430StructLayout.builder()
             .member("params", Std430Type.VEC4)
+            .member("region", Std430Type.VEC4)
             .build();
     private static final ShaderResourceLayout LAYOUT = new ShaderResourceLayout(List.of(
             new ShaderResourceSlot(0, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
@@ -61,11 +62,13 @@ final class UiComputeBlurBackend implements AutoCloseable {
                              String domain,
                              GpuTextureView source,
                              GpuSampler sourceSampler,
+                             RhiResourceBarrier.Stage producerStage,
                              int screenWidth,
                              int screenHeight,
                              int iterations,
-                             float offsetPx) {
-        if (disabledForSession || rhi == null || source == null || sourceSampler == null) return null;
+                             float offsetPx,
+                             UiBlurRegion region) {
+        if (disabledForSession || rhi == null || source == null || sourceSampler == null || region == null) return null;
         if (!PostProcessExecutionPolicy.useCompute(rhi)) return null;
         if (iterations < 1) return null;
 
@@ -78,11 +81,14 @@ final class UiComputeBlurBackend implements AutoCloseable {
             GpuSampler currentSampler = sourceSampler;
             RhiStorageImage lastWritten = null;
 
-            // The source may have been produced by a framebuffer draw or transfer immediately
-            // before this chain. Use a backend-wide dependency because ordinary sampled views
-            // are intentionally not required to be RhiStorageImage-owned.
+            // The UI source has one known producer in this path: ordinary framebuffer/UI draws
+            // are GRAPHICS, while captured-world/current-target snapshots come from a transfer copy.
+            // Use one producer-specific dependency instead of ALL_COMMANDS or several global barriers.
+            RhiResourceBarrier.Stage sourceStage = producerStage != null
+                    ? producerStage
+                    : RhiResourceBarrier.Stage.GRAPHICS;
             owner.advancedShaders().barrier(new RhiResourceBarrier(
-                    RhiResourceBarrier.Stage.ALL,
+                    sourceStage,
                     RhiResourceBarrier.Access.WRITE,
                     RhiResourceBarrier.Stage.COMPUTE,
                     RhiResourceBarrier.Access.READ,
@@ -94,7 +100,8 @@ final class UiComputeBlurBackend implements AutoCloseable {
                 int width = Math.max(1, screenWidth >> (level + 1));
                 int height = Math.max(1, screenHeight >> (level + 1));
                 RhiStorageImage output = image(domain, level, width, height);
-                dispatch(current, currentSampler, output, offsetPx, false);
+                UiBlurRegion levelRegion = region.scaleTo(screenWidth, screenHeight, width, height);
+                dispatch(current, currentSampler, output, offsetPx, false, levelRegion);
                 computeReadBarrier(output);
                 current = output.view();
                 currentSampler = linear;
@@ -105,7 +112,8 @@ final class UiComputeBlurBackend implements AutoCloseable {
                 int width = Math.max(1, screenWidth >> (level + 1));
                 int height = Math.max(1, screenHeight >> (level + 1));
                 RhiStorageImage output = image(domain, level, width, height);
-                dispatch(current, currentSampler, output, offsetPx, true);
+                UiBlurRegion levelRegion = region.scaleTo(screenWidth, screenHeight, width, height);
+                dispatch(current, currentSampler, output, offsetPx, true, levelRegion);
                 computeReadBarrier(output);
                 current = output.view();
                 currentSampler = linear;
@@ -116,7 +124,7 @@ final class UiComputeBlurBackend implements AutoCloseable {
             owner.advancedShaders().barrier(new RhiResourceBarrier(
                     RhiResourceBarrier.Stage.COMPUTE,
                     RhiResourceBarrier.Access.WRITE,
-                    RhiResourceBarrier.Stage.ALL,
+                    RhiResourceBarrier.Stage.GRAPHICS,
                     RhiResourceBarrier.Access.READ,
                     List.of(),
                     List.of(lastWritten)
@@ -143,17 +151,19 @@ final class UiComputeBlurBackend implements AutoCloseable {
                           GpuSampler sampler,
                           RhiStorageImage output,
                           float offsetPx,
-                          boolean upPass) {
+                          boolean upPass,
+                          UiBlurRegion region) {
         Std430Writer writer = new Std430Writer(PARAMS_LAYOUT, 1)
-                .putVec4(0, "params", Math.max(0.0f, offsetPx), upPass ? 1.0f : 0.0f, 1.0f, 0.0f);
+                .putVec4(0, "params", Math.max(0.0f, offsetPx), upPass ? 1.0f : 0.0f, 1.0f, 0.0f)
+                .putVec4(0, "region", region.x(), region.y(), region.width(), region.height());
         RhiStorageBuffer paramsBuffer = params(upPass);
         paramsBuffer.upload(writer.buffer(), 0L);
 
         owner.advancedShaders().dispatch(new ComputeDispatchCommand(
                 upPass ? "Combatant UI blur up" : "Combatant UI blur down",
                 pipeline(),
-                groups(output.descriptor().width()),
-                groups(output.descriptor().height()),
+                groups(region.width()),
+                groups(region.height()),
                 1,
                 List.of(new StorageBinding(2, paramsBuffer, 0L, writer.byteSize(), StorageAccess.READ_ONLY)),
                 List.of(new SampledTextureBinding(0, source, sampler)),

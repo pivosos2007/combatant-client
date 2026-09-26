@@ -22,7 +22,7 @@ import net.minecraft.client.Minecraft;
 
 /** Failing, resource-free diagnostic fixture. Dev source set only. */
 @ModuleInfo(id = "deverrorprobe", displayName = "ErrorHandler Probe", category = ModuleCategory.MISC,
-        description = "Development-only, manually armed failure scenarios")
+        description = "module.deverrorprobe.description")
 public final class DevErrorProbe extends Module {
     private final ModeValue scenario = modeSetting("devErrorScenario", "scenario", "Tick",
             "Tick", "Event", "Setting", "Component", "Enable", "Cleanup", "Recovery");

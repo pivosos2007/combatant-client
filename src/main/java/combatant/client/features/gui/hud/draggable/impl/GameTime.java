@@ -37,8 +37,8 @@ import static combatant.client.features.theme.Theme.theme;
         id = "game_time",
         displayName = "Game Time",
         enabledByDefault = false,
-        order = 180
-)
+        order = 180,
+        description = "hud.draggable.game_time.description")
 public final class GameTime extends DraggableHudElement implements ScriptableHudStatWidget {
 
     private static final float SCALE_MULT = 0.68f;

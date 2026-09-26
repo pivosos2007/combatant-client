@@ -30,6 +30,7 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
 
     private final String id;
     private final String title;
+    private final String description;
     private final BooleanValue enabled;
     private final List<SettingDef> settingDefs = new ArrayList<>();
     private final Map<ConfigValue<?>, SettingDef> settingDefsByValue = new IdentityHashMap<>();
@@ -48,12 +49,18 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
 
         this.id = info.id();
         this.title = info.displayName();
+        this.description = info.description();
         this.enabled = new BooleanValue("enabled", info.enabledByDefault());
     }
 
     protected BaseHudElement(String id, String title, boolean defaultEnabled) {
+        this(id, title, "", defaultEnabled);
+    }
+
+    protected BaseHudElement(String id, String title, String description, boolean defaultEnabled) {
         this.id = id;
         this.title = title;
+        this.description = description == null ? "" : description;
         this.enabled = new BooleanValue("enabled", defaultEnabled);
     }
 
@@ -432,6 +439,14 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
 
     public final String getTitle() {
         return translateTitle(title, getTranslationKeyPrefix(), id);
+    }
+
+    public final String getDescription() {
+        if (description != null && !description.isBlank()) {
+            String translated = I18n.get(description);
+            if (!translated.equals(description)) return translated;
+        }
+        return "";
     }
 
     private static String translateTitle(String fallback, String prefix, String id) {

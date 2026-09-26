@@ -57,37 +57,6 @@ public final class DeferredPassGraph {
     private boolean dirty = true;
 
     public DeferredPassGraph() {
-        corePasses.add(DeferredPassSpec.builder("world.geometry.opaque", DeferredStage.OPAQUE_GEOMETRY)
-                .write(DeferredResource.SCENE_COLOR, DeferredResource.MAIN_DEPTH,
-                        DeferredResource.GBUFFER_SURFACE, DeferredResource.GBUFFER_GEOMETRY,
-                        DeferredResource.GBUFFER_AUXILIARY, DeferredResource.GBUFFER_MATERIAL,
-                        DeferredResource.GBUFFER_MATERIAL_ID)
-                .external().build());
-        corePasses.add(DeferredPassSpec.builder("world.geometry.cutout", DeferredStage.CUTOUT_GEOMETRY)
-                .readWrite(DeferredResource.SCENE_COLOR, DeferredResource.MAIN_DEPTH,
-                        DeferredResource.GBUFFER_SURFACE, DeferredResource.GBUFFER_GEOMETRY,
-                        DeferredResource.GBUFFER_AUXILIARY, DeferredResource.GBUFFER_MATERIAL,
-                        DeferredResource.GBUFFER_MATERIAL_ID)
-                .external().build());
-        corePasses.add(DeferredPassSpec.builder("world.lighting.neutral", DeferredStage.LIGHTING)
-                .read(DeferredResource.GBUFFER_SURFACE, DeferredResource.GBUFFER_GEOMETRY,
-                        DeferredResource.GBUFFER_AUXILIARY, DeferredResource.GBUFFER_MATERIAL,
-                        DeferredResource.GBUFFER_DEPTH, DeferredResource.RESOLVED_DEPTH,
-                        DeferredResource.ENVIRONMENT_IRRADIANCE)
-                .optionalRead(DeferredResource.SHADOW_COLOR, DeferredResource.CLOUD_SHADOW_VISIBILITY,
-                        DeferredResource.AMBIENT_OCCLUSION)
-                .write(DeferredResource.DIRECT_LIGHTING_COLOR, DeferredResource.SCENE_COLOR)
-                .external().build());
-        corePasses.add(DeferredPassSpec.builder("world.forward.opaque", DeferredStage.FORWARD_OPAQUE)
-                .readWrite(DeferredResource.SCENE_COLOR, DeferredResource.MAIN_DEPTH)
-                .external().build());
-        corePasses.add(DeferredPassSpec.builder("world.translucency.forward", DeferredStage.TRANSLUCENCY)
-                .readWrite(DeferredResource.SCENE_COLOR, DeferredResource.MAIN_DEPTH)
-                .external().build());
-        corePasses.add(DeferredPassSpec.builder("world.postprocess.external", DeferredStage.POST_PROCESS)
-                .read(DeferredResource.MAIN_DEPTH)
-                .readWrite(DeferredResource.SCENE_COLOR)
-                .external().build());
         backendPasses.install(corePasses);
     }
 

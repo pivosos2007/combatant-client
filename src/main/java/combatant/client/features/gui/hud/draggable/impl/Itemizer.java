@@ -88,7 +88,7 @@ private static final float BASE_ICON_CARD = 24.0f;
     private boolean foregroundReady;
 
     public Itemizer() {
-        super("itemizer", "Itemizer", true);
+        super("itemizer", "Itemizer", "hud.draggable.itemizer.description", true);
         INSTANCE = this;
         defaultLayout(-16.0f, 48.0f, "CENTER", "CENTER");
     }

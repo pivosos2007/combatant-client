@@ -56,12 +56,11 @@ import java.util.Set;
  * Credit:
  * Behavior design and feature scope were adapted from the InvMove mod by pieking1215.
  */
-//todo Description
 @ModuleInfo(
         id = "inventorymove",
         displayName = "InventoryMove",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.inventorymove.description")
 public class InventoryMove extends Module {
 
     private static final long STOP_TIMEOUT_MS = 100L;

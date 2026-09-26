@@ -15,12 +15,11 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 
-//todo Description
 @ModuleInfo(
         id = "parkour",
         displayName = "Parkour",
-        category = ModuleCategory.MOVEMENT
-)
+        category = ModuleCategory.MOVEMENT,
+        description = "module.parkour.description")
 public final class Parkour extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();

@@ -20,12 +20,11 @@ import combatant.client.mixins.accessors.PlayerInventoryAccessor;
 import combatant.client.util.player.ResetAttackCooldown;
 import combatant.client.util.player.inventory.InventorySwap;
 
-//todo Description
 @ModuleInfo(
         id = "clickpearl",
         displayName = "ClickPearl",
-        category = ModuleCategory.PLAYER
-)
+        category = ModuleCategory.PLAYER,
+        description = "module.clickpearl.description")
 public class ClickPearl extends Module {
     private static final String ACTION_CLICKPEARL = "clickpearl";
 

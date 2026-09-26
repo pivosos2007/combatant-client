@@ -14,6 +14,7 @@ import combatant.client.features.gui.clickgui.layout.screen.settings.implement.m
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.gui.clickgui.settings.SettingFactory;
 import combatant.client.features.gui.clickgui.settings.SettingErrorView;
+import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
@@ -71,7 +72,7 @@ public enum MenuSettingsResolver {
                     out.add(new ModuleComponent.CardEntry(
                             widget.getId(),
                             widget.getTitle(),
-                            "",
+                            widget.getDescription(),
                             "",
                             !widget.getSettingDefs().isEmpty() || failed,
                             widget.isEnabled(),
@@ -165,7 +166,7 @@ public enum MenuSettingsResolver {
         return new ModuleComponent.CardEntry(
                 staticHud.getId(),
                 title,
-                "",
+                staticHud.getDescription(),
                 "",
                 !staticHud.getSettingDefs().isEmpty() || failed,
                 staticHud.isEnabled(),
@@ -176,7 +177,9 @@ public enum MenuSettingsResolver {
     }
 
     private static ModuleComponent.CardEntry uiReadOnlyCard(String id, String title) {
-        return new ModuleComponent.CardEntry(id, title, "", "", true, false, false);
+        String translationId = id.startsWith("ui_") ? id.substring(3) : id;
+        String description = ClickGuiI18n.tr("clickgui.settings.ui." + translationId + ".description", "");
+        return new ModuleComponent.CardEntry(id, title, description, "", true, false, false);
     }
 
     private static String mapUiAlias(String id) {

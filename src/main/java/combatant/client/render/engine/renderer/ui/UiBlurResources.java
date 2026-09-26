@@ -18,7 +18,9 @@ import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.draw.UiRect;
 import combatant.client.render.engine.rhi.resource.TransientTargetDescriptor;
+import combatant.client.render.engine.rhi.shader.RhiResourceBarrier;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.vertex.CombatantVertexFormats;
 import net.minecraft.client.Minecraft;
@@ -47,16 +49,22 @@ public final class UiBlurResources {
     private static MeshBuilder compositeMesh;
     private static int compositeWidth = -1;
     private static int compositeHeight = -1;
+    private static MeshBuilder blurRegionMesh;
+    private static int blurRegionTargetWidth = -1;
+    private static int blurRegionTargetHeight = -1;
+    private static UiBlurRegion blurRegionMeshBounds;
     private static boolean worldSourceReady;
-    private static boolean liquidGlassBlurRequested;
     private static boolean blurBeforeNextShapeClipRequested;
+    private static boolean pendingClipBlurFullFrame;
+    private static @Nullable UiRect pendingClipBlurBounds;
 
     private UiBlurResources() {
     }
 
     public static void beginDeferredFrame() {
-        liquidGlassBlurRequested = false;
         blurBeforeNextShapeClipRequested = false;
+        pendingClipBlurFullFrame = false;
+        pendingClipBlurBounds = null;
         UI_UNDERLAY_REQUESTED.clear();
         activeUiUnderlayLayer = null;
         activeUiUnderlayFrame = Long.MIN_VALUE;
@@ -231,19 +239,29 @@ public final class UiBlurResources {
         }
     }
 
-    public static void requestLiquidGlassBlur() {
-        liquidGlassBlurRequested = true;
+    public static void requestBeforeNextShapeClip() {
+        blurBeforeNextShapeClipRequested = true;
+        pendingClipBlurFullFrame = true;
+        pendingClipBlurBounds = null;
     }
 
-    public static void requestBeforeNextShapeClip() {
-        liquidGlassBlurRequested = true;
+    public static void requestBeforeNextShapeClip(@Nullable UiRect bounds) {
         blurBeforeNextShapeClipRequested = true;
+        if (bounds == null) {
+            pendingClipBlurFullFrame = true;
+            pendingClipBlurBounds = null;
+        } else if (!pendingClipBlurFullFrame) {
+            pendingClipBlurBounds = union(pendingClipBlurBounds, bounds);
+        }
     }
 
     public static void prepareBeforeShapeClipIfRequested() {
         if (!blurBeforeNextShapeClipRequested) return;
         blurBeforeNextShapeClipRequested = false;
-        UiDeferredScheduler.deferAction(UiBlurResources::prepareCapturedWorldBlur);
+        UiRect bounds = pendingClipBlurFullFrame ? null : pendingClipBlurBounds;
+        pendingClipBlurFullFrame = false;
+        pendingClipBlurBounds = null;
+        UiDeferredScheduler.deferAction(() -> prepareCapturedWorldBlur(bounds));
     }
 
     public static void captureWorldSource() {
@@ -252,16 +270,13 @@ public final class UiBlurResources {
         RenderTarget framebuffer = minecraft.gameRenderer.mainRenderTarget();
         TextureTarget source = ensureGlassSource(minecraft);
         worldSourceReady = copyMainColor(framebuffer, source);
-        if (!worldSourceReady || !liquidGlassBlurRequested || source == null) return;
-        prepareCapturedWorldBlur();
+        // Do not eagerly build a full-frame pyramid here. Real glass bounds are known later
+        // during UI replay (or explicitly before a shape clip), so the blur workload can stay local.
     }
 
     /** Module-only replays changed the HUD backdrop without changing its texture handle. */
     public static void backdropContributionsSubmitted() {
         CAPTURED_WORLD_FRAME_CACHE.clear();
-        if (worldSourceReady && liquidGlassBlurRequested) {
-            prepareCapturedWorldBlur();
-        }
     }
 
     public static void invalidateWorldSource() {
@@ -332,6 +347,61 @@ public final class UiBlurResources {
         return compositeMesh;
     }
 
+
+    static MeshBuilder ensureBlurRegionMesh(int targetWidth, int targetHeight, UiBlurRegion region) {
+        if (targetWidth <= 0 || targetHeight <= 0 || region == null) return null;
+        UiBlurRegion clipped = region.scaleTo(targetWidth, targetHeight, targetWidth, targetHeight);
+        if (blurRegionMesh != null
+                && blurRegionTargetWidth == targetWidth
+                && blurRegionTargetHeight == targetHeight
+                && clipped.equals(blurRegionMeshBounds)) {
+            return blurRegionMesh;
+        }
+
+        MeshBuilder mesh = blurRegionMesh;
+        if (mesh == null) {
+            mesh = new MeshBuilder(
+                    CombatantVertexFormats.POS2_TEXTURE_COLOR,
+                    com.mojang.blaze3d.PrimitiveTopology.TRIANGLES,
+                    4,
+                    6
+            );
+        }
+        mesh.begin();
+        float left = clipped.x();
+        float right = clipped.x() + clipped.width();
+        float top = targetHeight - (clipped.y() + clipped.height());
+        float bottom = targetHeight - clipped.y();
+        float u0 = left / targetWidth;
+        float u1 = right / targetWidth;
+        float v0 = clipped.y() / (float) targetHeight;
+        float v1 = (clipped.y() + clipped.height()) / (float) targetHeight;
+        int i1 = mesh.vec2(left, top).raw2(u0, v1).color(255, 255, 255, 255).next();
+        int i2 = mesh.vec2(left, bottom).raw2(u0, v0).color(255, 255, 255, 255).next();
+        int i3 = mesh.vec2(right, bottom).raw2(u1, v0).color(255, 255, 255, 255).next();
+        int i4 = mesh.vec2(right, top).raw2(u1, v1).color(255, 255, 255, 255).next();
+        mesh.quad(i1, i2, i3, i4);
+        mesh.end();
+
+        blurRegionMesh = mesh;
+        blurRegionTargetWidth = targetWidth;
+        blurRegionTargetHeight = targetHeight;
+        blurRegionMeshBounds = clipped;
+        return mesh;
+    }
+
+    static UiBlurRegion blurRegion(@Nullable UiRect bounds,
+                                   int framebufferWidth,
+                                   int framebufferHeight,
+                                   int iterations,
+                                   float offsetPx) {
+        ViewportContext viewport = ViewportContext.current();
+        float logicalWidth = viewport != null ? viewport.width() : framebufferWidth;
+        float logicalHeight = viewport != null ? viewport.height() : framebufferHeight;
+        return UiBlurRegion.fromLogicalBounds(bounds, framebufferWidth, framebufferHeight,
+                logicalWidth, logicalHeight, iterations, offsetPx);
+    }
+
     public static long currentFrameId() {
         RenderFrameContext context = CombatantRenderSystem.ensureFrameContext();
         return context != null ? context.frameId() : Long.MIN_VALUE;
@@ -355,7 +425,8 @@ public final class UiBlurResources {
             float screenHeight,
             float uiScale,
             Renderer2D.BlurQuality blurQuality,
-            float offsetPx) {
+            float offsetPx,
+            @Nullable UiBlurRegion requestedRegion) {
         // The underlay can receive more ordinary UI draws between two glass effects in the
         // same frame. Until capture generations are explicit in the pass graph, reusing its
         // earlier blur would be stale. PASS_THROUGH never enters this cache.
@@ -372,7 +443,8 @@ public final class UiBlurResources {
                 screenHeight,
                 cacheUiScale,
                 blurQuality,
-                offsetPx
+                offsetPx,
+                requestedRegion
         ) ? cache : null;
     }
 
@@ -387,7 +459,8 @@ public final class UiBlurResources {
             float screenHeight,
             float uiScale,
             Renderer2D.BlurQuality blurQuality,
-            float offsetPx) {
+            float offsetPx,
+            @Nullable UiBlurRegion region) {
         if (isUiUnderlaySource(sourceView) || isCurrentTargetSnapshotSource(sourceView)) return;
         cacheForSource(sourceView).set(
                 frameId,
@@ -400,11 +473,12 @@ public final class UiBlurResources {
                 screenHeight,
                 cacheScaleForSource(sourceView, uiScale),
                 blurQuality,
-                offsetPx
+                offsetPx,
+                region
         );
     }
 
-    private static void prepareCapturedWorldBlur() {
+    private static void prepareCapturedWorldBlur(@Nullable UiRect bounds) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || !worldSourceReady) return;
 
@@ -423,7 +497,8 @@ public final class UiBlurResources {
                 sourceSampler,
                 minecraft.getWindow().getWidth(),
                 minecraft.getWindow().getHeight(),
-                uiScale
+                uiScale,
+                bounds
         );
     }
 
@@ -489,14 +564,19 @@ public final class UiBlurResources {
             int screenWidth,
             int screenHeight,
             int iterations,
-            float offsetPx) {
-        if (sourceView == null || sourceSampler == null) return null;
+            float offsetPx,
+            UiBlurRegion region) {
+        if (sourceView == null || sourceSampler == null || region == null) return null;
+        RhiResourceBarrier.Stage producerStage =
+                isCapturedWorldSource(sourceView) || isCurrentTargetSnapshotSource(sourceView)
+                        ? RhiResourceBarrier.Stage.TRANSFER
+                        : RhiResourceBarrier.Stage.GRAPHICS;
         return COMPUTE_BLUR.tryBlur(
                 CombatantRenderSystem.rhi(),
                 blurSourceDomain(sourceView),
-                sourceView, sourceSampler,
+                sourceView, sourceSampler, producerStage,
                 Math.max(1, screenWidth), Math.max(1, screenHeight),
-                Math.max(1, iterations), offsetPx);
+                Math.max(1, iterations), offsetPx, region);
     }
 
     /**
@@ -513,12 +593,28 @@ public final class UiBlurResources {
         activeUiUnderlayLayer = null;
         activeUiUnderlayFrame = Long.MIN_VALUE;
         worldSourceReady = false;
-        liquidGlassBlurRequested = false;
         blurBeforeNextShapeClipRequested = false;
+        pendingClipBlurFullFrame = false;
+        pendingClipBlurBounds = null;
+        blurRegionMesh = null;
+        blurRegionMeshBounds = null;
+        blurRegionTargetWidth = -1;
+        blurRegionTargetHeight = -1;
         UI_UNDERLAY_REQUESTED.clear();
         SURFACE_FRAME_CACHE.clear();
         CAPTURED_WORLD_FRAME_CACHE.clear();
         UI_UNDERLAY_FRAME_CACHE.clear();
+    }
+
+
+    private static @Nullable UiRect union(@Nullable UiRect a, @Nullable UiRect b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        float left = Math.min(a.x(), b.x());
+        float top = Math.min(a.y(), b.y());
+        float right = Math.max(a.x() + a.width(), b.x() + b.width());
+        float bottom = Math.max(a.y() + a.height(), b.y() + b.height());
+        return new UiRect(left, top, right - left, bottom - top);
     }
 
     private static FrameBlurCacheEntry cacheForSource(@Nullable GpuTextureView sourceView) {

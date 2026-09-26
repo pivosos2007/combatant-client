@@ -267,7 +267,7 @@ public final class MaterialRegistry {
 
     /** Height maps alone never opt a surface into patch topology. */
     private static MaterialTessellationProfile defaultTessellation(MaterialDomain domain) {
-        return domain == MaterialDomain.WATER ? MaterialTessellationProfile.WATER : MaterialTessellationProfile.NONE;
+        return MaterialTessellationProfile.NONE;
     }
 
     private static EnumMap<MaterialTextureSemantic, Identifier> discoverMaps(Set<Identifier> available,
@@ -531,7 +531,7 @@ public final class MaterialRegistry {
         }
 
         private static MaterialSubmissionRoute defaultRoute(MaterialDomain domain, MaterialSubmissionRoute producerRoute) {
-            if (domain == MaterialDomain.WATER) return MaterialSubmissionRoute.EXTRACTED_PATCH;
+            if (domain == MaterialDomain.WATER) return MaterialSubmissionRoute.FORWARD_SPECIAL;
             if (domain == MaterialDomain.LAVA || domain == MaterialDomain.GLASS || domain == MaterialDomain.PORTAL) {
                 return MaterialSubmissionRoute.FORWARD_SPECIAL;
             }

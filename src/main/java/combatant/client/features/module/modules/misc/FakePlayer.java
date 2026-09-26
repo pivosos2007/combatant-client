@@ -43,12 +43,11 @@ import combatant.client.features.module.ModuleInfo;
 
 import java.util.UUID;
 
-//todo Description
 @ModuleInfo(
         id = "fakeplayer",
         displayName = "FakePlayer",
-        category = ModuleCategory.MISC
-)
+        category = ModuleCategory.MISC,
+        description = "module.fakeplayer.description")
 public class FakePlayer extends Module {
 
     private static final String SETTING_COPY_INVENTORY = "copy_inventory";

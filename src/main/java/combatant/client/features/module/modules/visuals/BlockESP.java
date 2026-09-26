@@ -33,13 +33,12 @@ import combatant.client.util.logging.DebugLog;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-//todo Description
 @ModuleInfo(
         id = "blockesp",
         displayName = "BlockESP",
         aliases = {"xray", "oreesp", "blocks"},
-        category = ModuleCategory.VISUALS
-)
+        category = ModuleCategory.VISUALS,
+        description = "module.blockesp.description")
 public class BlockESP extends Module {
 
     private static final int SECTION_SCAN_BUDGET_PER_TICK = 10;

@@ -12,7 +12,6 @@ import combatant.client.runtime.error.FailureBoundary;
 import combatant.client.runtime.error.FailureIsolation;
 
 import combatant.client.util.logging.DebugLog;
-import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.runtime.discovery.CombatantIndex;
 
 import java.lang.reflect.Constructor;

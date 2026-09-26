@@ -60,7 +60,6 @@ public final class DeferredSmokeTestState {
         } while (!current.compareAndSet(previous, next));
         generation.incrementAndGet();
         requestTemporalReset(feature);
-        syncWaterRouting(next);
     }
 
     public void clearFeatureOverrides() {
@@ -71,7 +70,6 @@ public final class DeferredSmokeTestState {
         } while (!current.compareAndSet(previous, previous.withOverrides(Map.of())));
         generation.incrementAndGet();
         for (DeferredFeature feature : previous.overrides().keySet()) requestTemporalReset(feature);
-        syncWaterRouting(current.get());
     }
 
     public void setIsolationMode(boolean enabled) {
@@ -82,7 +80,6 @@ public final class DeferredSmokeTestState {
         for (DeferredFeature feature : DeferredFeature.values()) {
             if (isHookedFeature(feature)) requestTemporalReset(feature);
         }
-        syncWaterRouting(current.get());
     }
 
     public void setDebugView(DeferredDebugView view) {
@@ -106,10 +103,6 @@ public final class DeferredSmokeTestState {
         return resolveFeature(feature, production, frame.get());
     }
 
-    boolean cloudWorkEnabledForFrame() {
-        return resolveFeature(DeferredFeature.CLOUDS, DeferredRuntimeConfig.current(), frame.get());
-    }
-
     String featureDisableReasonForFrame(DeferredFeature feature, DeferredRuntimeConfig.Snapshot production) {
         if (feature == null) return "";
         Snapshot state = frame.get();
@@ -130,9 +123,8 @@ public final class DeferredSmokeTestState {
         return feature.productionEnabled(production);
     }
 
-    /** Sky/weather remain available in isolation; clouds are a real expensive subsystem and are isolation-gated. */
     private static boolean isHookedFeature(DeferredFeature feature) {
-        return feature != DeferredFeature.SKY && feature != DeferredFeature.WEATHER;
+        return feature != null;
     }
 
     Set<DeferredFeature> consumePendingTemporalResetFeatures() {
@@ -153,14 +145,6 @@ public final class DeferredSmokeTestState {
             next.add(feature);
             return next;
         });
-    }
-
-    private static void syncWaterRouting(Snapshot state) {
-        // Sodium replacement must be released before the next terrain submission whenever WATER
-        // becomes effectively disabled. FORCE_ENABLED still wins while isolation mode is active.
-        if (!resolveFeature(DeferredFeature.WATER, DeferredRuntimeConfig.current(), state)) {
-            combatant.client.render.sodium.fluid.WaterSurfacePatchRouting.setReplacementActive(false);
-        }
     }
 
     private void update(java.util.function.UnaryOperator<Snapshot> editor) {

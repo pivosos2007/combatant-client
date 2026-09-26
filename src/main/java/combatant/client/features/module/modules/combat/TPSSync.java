@@ -15,12 +15,11 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.util.player.NetworkStatsUtil;
 
-//todo Description
 @ModuleInfo(
         id = "tpssync",
         displayName = "TPSSync",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.tpssync.description")
 public class TPSSync extends Module {
 
     private static final String SETTING_START_TPS = "start_tps";

@@ -41,12 +41,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 
-//todo Description
 @ModuleInfo(
         id = "hitbox",
         displayName = "Hitbox",
-        category = ModuleCategory.COMBAT
-)
+        category = ModuleCategory.COMBAT,
+        description = "module.hitbox.description")
 public class Hitbox extends Module {
 
     private static final String ACTION_SUPPRESS_HITBOX = "suppress_hitbox";

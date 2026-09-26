@@ -168,7 +168,7 @@ public final class CustomBar extends AbstractHudElement {
             new KeyBindValue("locator_bar_toggle", "U");
 
     private CustomBar() {
-        super("vanilla_bar", "Bar", true);
+        super("vanilla_bar", "Bar", "hud.static.vanilla_bar.description", true);
     }
 
     public static CustomBar get() {

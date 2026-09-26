@@ -66,8 +66,7 @@ import java.util.concurrent.ConcurrentHashMap;
         displayName = "AutoAnchor",
         aliases = {"AnchorAura", "Anchor"},
         category = ModuleCategory.COMBAT,
-        description = "module.autoanchor.description"
-)
+        description = "module.autoanchor.description")
 public class AutoAnchor extends Module {
     private static final int ROTATION_PRIORITY = 34;
     private static final long DAMAGE_RESET_MS = 1000L;

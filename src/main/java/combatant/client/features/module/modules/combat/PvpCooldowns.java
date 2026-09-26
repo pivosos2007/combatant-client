@@ -31,12 +31,11 @@ import java.util.*;
 /**
  * Handles PvP cooldown rendering and optional local rule synthesis.
  */
-//todo Description
 @ModuleInfo(
         id = "pvpcooldowns",
         displayName = "PvpCooldowns",
-        category = ModuleCategory.MISC
-)
+        category = ModuleCategory.MISC,
+        description = "module.pvpcooldowns.description")
 public class PvpCooldowns extends Module {
 
     private static final long LOCAL_RULE_GRACE_MS = 10_000L;

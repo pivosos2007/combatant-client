@@ -83,7 +83,7 @@ public final class MaterialClassifier {
             return new MaterialClassification(
                     MaterialDomain.WATER,
                     MaterialTrait.mask(MaterialTrait.FLUID, MaterialTrait.TRANSMISSIVE, MaterialTrait.REFRACTIVE),
-                    MaterialSubmissionRoute.EXTRACTED_PATCH,
+                    MaterialSubmissionRoute.FORWARD_SPECIAL,
                     fluid.is(TAG_WATER) ? MaterialResolutionSource.TAG : MaterialResolutionSource.VANILLA_FALLBACK
             );
         }
@@ -111,7 +111,7 @@ public final class MaterialClassifier {
             case TRANSLUCENT -> translucentSurface(source);
             case WATER -> new MaterialClassification(MaterialDomain.WATER,
                     MaterialTrait.mask(MaterialTrait.FLUID, MaterialTrait.TRANSMISSIVE, MaterialTrait.REFRACTIVE),
-                    MaterialSubmissionRoute.EXTRACTED_PATCH, source);
+                    MaterialSubmissionRoute.FORWARD_SPECIAL, source);
             case LAVA -> new MaterialClassification(MaterialDomain.LAVA,
                     MaterialTrait.mask(MaterialTrait.FLUID, MaterialTrait.EMISSIVE),
                     MaterialSubmissionRoute.FORWARD_SPECIAL, source);

@@ -178,7 +178,7 @@ public final class DynamicIsland extends AbstractHudElement {
     private int uiTextSecondary;
 
     private DynamicIsland() {
-        super("dynamic_island", "Dynamic Island", true);
+        super("dynamic_island", "Dynamic Island", "hud.static.dynamic_island.description", true);
     }
 
     public static boolean shouldRenderInScreenOverlay(Screen screen) {

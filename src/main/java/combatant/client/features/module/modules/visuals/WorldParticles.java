@@ -39,12 +39,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
-//todo Description
 @ModuleInfo(
         id = "worldparticles",
         displayName = "WorldParticles",
-        category = ModuleCategory.VISUALS
-)
+        category = ModuleCategory.VISUALS,
+        description = "module.worldparticles.description")
 public class WorldParticles extends Module {
     private static final float SPRITE_SIZE_MULTIPLIER = 4.0f;
     private static final float SPRITE_ALPHA_MULTIPLIER = 0.40f;

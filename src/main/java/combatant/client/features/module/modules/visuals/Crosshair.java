@@ -59,12 +59,11 @@ import combatant.client.util.combat.VulcanReachController;
 import java.util.List;
 import java.util.Locale;
 
-//todo Description
 @ModuleInfo(
         id = "crosshair",
         displayName = "Crosshair",
-        category = ModuleCategory.VISUALS
-)
+        category = ModuleCategory.VISUALS,
+        description = "module.crosshair.description")
 public class Crosshair extends Module {
 
     private static final int DEFAULT_COLOR = 0xFFFFFFFF;

@@ -15,6 +15,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.features.gui.preview.VisualPreviewRuntime;
 import combatant.client.features.module.modules.visuals.*;
 import combatant.client.render.engine.postprocess.PostProcessPass;
+import combatant.client.render.engine.postprocess.TemporalAntiAliasingPass;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
@@ -60,6 +61,7 @@ import combatant.client.mixins.accessors.LocalPlayerAccessor;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
+import combatant.client.render.engine.temporal.TemporalJitterSequence;
 import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.core.RenderPhaseScope;
 import combatant.client.render.engine.depth.WorldSceneDepth;
@@ -156,7 +158,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
 
     @Unique
     private static boolean combatant$needsResolvedMainDepth() {
-        if (MotionBlur.isActiveStatic()) return true;
+        if (MotionBlur.isActiveStatic() || MainConfig.get().isTaaRuntimeActive()) return true;
         ReimaginedVisual module = Modules.get(ReimaginedVisual.class);
         if (module == null) return false;
         if (module.needsResolvedMainDepthCapture()) return true;
@@ -513,15 +515,27 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                     new Matrix4f(cameraRenderState.viewRotationMatrix)
             );
 
+            Matrix4f unjitteredProjection = new Matrix4f(renderProjectionMatrix);
+            org.joml.Vector2f jitter = new org.joml.Vector2f();
+            Matrix4f effectiveProjection = unjitteredProjection;
+            if (TemporalAntiAliasingPass.shouldJitter()) {
+                int width = minecraft != null && minecraft.gameRenderer.mainRenderTarget() != null
+                        ? Math.max(1, minecraft.gameRenderer.mainRenderTarget().width) : 1;
+                int height = minecraft != null && minecraft.gameRenderer.mainRenderTarget() != null
+                        ? Math.max(1, minecraft.gameRenderer.mainRenderTarget().height) : 1;
+                jitter = TemporalJitterSequence.sample(frame.frameId());
+                effectiveProjection = TemporalJitterSequence.apply(unjitteredProjection, jitter, width, height);
+            }
+
             CombatantWorldMatrices.capture(
                     cameraRenderState.viewRotationMatrix,
-                    renderProjectionMatrix,
-                    renderProjectionMatrix,
+                    effectiveProjection,
+                    unjitteredProjection,
                     cameraRenderState.projectionMatrix,
-                    new org.joml.Vector2f(),
+                    jitter,
                     cameraPosition
             );
-            return original.call(instance, renderProjectionMatrix);
+            return original.call(instance, effectiveProjection);
         }
         return original.call(instance, renderProjectionMatrix);
     }

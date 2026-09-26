@@ -50,6 +50,10 @@ public abstract class DraggableHudElement extends BaseHudElement {
         super(id, title, defaultEnabled);
     }
 
+    protected DraggableHudElement(String id, String title, String description, boolean defaultEnabled) {
+        super(id, title, description, defaultEnabled);
+    }
+
     public DraggableLayoutValue layoutValue() {
         return layoutValue;
     }

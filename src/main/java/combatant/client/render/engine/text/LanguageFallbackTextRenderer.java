@@ -184,6 +184,47 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
     }
 
     @Override
+    public double renderLiquidGlassQuadGradient(String text,
+                                                 double x,
+                                                 double y,
+                                                 Font.GlyphQuadGradient gradient,
+                                                 double boundsX,
+                                                 double boundsY,
+                                                 double boundsWidth,
+                                                 double boundsHeight) {
+        if (text == null || text.isEmpty() || gradient == null) return x;
+        boolean implicitBegin = !building;
+        if (implicitBegin) begin();
+        try {
+            final double[] cursor = {x};
+            final int[] glyphBase = {0};
+            visitRuns(text, text.length(), (renderer, start, finish) -> {
+                String run = text.substring(start, finish);
+                int runGlyphBase = glyphBase[0];
+                withRenderer(renderer, () -> {
+                    cursor[0] = renderer.renderLiquidGlassQuadGradient(
+                            run,
+                            cursor[0],
+                            y,
+                            (index, codePoint, x0, y0, x1, y1, out) ->
+                                    gradient.colors(runGlyphBase + index, codePoint, x0, y0, x1, y1, out),
+                            boundsX,
+                            boundsY,
+                            boundsWidth,
+                            boundsHeight
+                    );
+                    return 0.0;
+                });
+                glyphBase[0] += run.codePointCount(0, run.length());
+                return 0.0;
+            });
+            return cursor[0];
+        } finally {
+            if (implicitBegin) end();
+        }
+    }
+
+    @Override
     public boolean isBuilding() {
         return building;
     }

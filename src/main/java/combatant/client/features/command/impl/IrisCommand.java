@@ -47,7 +47,9 @@ public final class IrisCommand implements ClientCommand {
         }
         CommandOutput.send("Iris API: " + (snapshot.apiAvailable() ? "available" : "unavailable")
                 + ", status: " + snapshot.status()
-                + ", shadow pass: " + snapshot.renderingShadowPass());
+                + ", shadow pass: " + snapshot.renderingShadowPass()
+                + ", epoch: " + snapshot.integrationEpoch()
+                + " (" + snapshot.integrationEpochReason() + ")");
 
         IrisCompatibilityProfile profile = snapshot.profile();
         String features = profile.features().isEmpty()
@@ -56,7 +58,11 @@ public final class IrisCommand implements ClientCommand {
                 .map(IrisCommand::formatFeature)
                 .collect(Collectors.joining(", "));
         CommandOutput.send("Iris profile: " + profile.getId()
-                + " (" + profile.displayName() + "), features: " + features);
+                + " (" + profile.displayName() + "), manifest: "
+                + (snapshot.patchManifestId().isBlank() ? "none" : snapshot.patchManifestId())
+                + ", features: " + features);
+        CommandOutput.send("Iris manifest capabilities: "
+                + (snapshot.patchFeatures().isEmpty() ? "none" : String.join(", ", snapshot.patchFeatures())));
         List<String> patchDiagnostics = ShaderPatchEngine.diagnostics();
         CommandOutput.send("Iris patch compiler: " + (patchDiagnostics.isEmpty() ? "no session data" : "session data follows"));
         for (String diagnostic : patchDiagnostics) {

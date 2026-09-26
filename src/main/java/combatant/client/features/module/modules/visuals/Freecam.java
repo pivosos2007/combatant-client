@@ -25,8 +25,8 @@ import combatant.client.util.entity.FreecamEntity;
 
 import java.util.Map;
 
-//todo Description
-@ModuleInfo(id = "freecam", displayName = "Freecam", aliases = {"camera", "spectator"}, category = ModuleCategory.VISUALS)
+@ModuleInfo(id = "freecam", displayName = "Freecam", aliases = {"camera", "spectator"}, category = ModuleCategory.VISUALS,
+        description = "module.freecam.description")
 public class Freecam extends Module {
 
     private static final String SETTING_TOGGLES = "toggles";
