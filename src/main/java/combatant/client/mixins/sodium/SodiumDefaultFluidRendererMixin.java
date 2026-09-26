@@ -92,6 +92,14 @@ public abstract class SodiumDefaultFluidRendererMixin {
         FluidSurfaceContext.Entry context = FluidSurfaceContext.current();
         if (context == null || quad == null) return;
 
+        // The material producer and Combatant's vertex encoder form one contract. Iris owns the
+        // Sodium terrain format while its pipeline is active, so ordinary Sodium vertices do not
+        // carry this extension. Keep this boundary fail-safe in case another renderer changes the
+        // mixin composition independently of CombatantMixinPlugin.
+        for (ChunkVertexEncoder.Vertex vertex : vertices) {
+            if (!(vertex instanceof CombatantChunkVertexExtension)) return;
+        }
+
         TextureAtlasSprite sprite = quad.getSprite();
         MaterialClassification classification = context.classification();
         MaterialSurfaceDescriptor descriptor = MaterialRegistry.global().resolve(sprite, classification);
