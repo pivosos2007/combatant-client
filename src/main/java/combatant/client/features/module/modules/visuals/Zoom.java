@@ -9,6 +9,7 @@ package combatant.client.features.module.modules.visuals;
 
 import net.minecraft.util.Mth;
 import combatant.client.config.values.BindMode;
+import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.clickgui.settings.FunctionBindSetting;
@@ -26,6 +27,7 @@ import combatant.client.render.engine.animation.AnimationUtility;
 public final class Zoom extends Module {
     private static final String ACTION_ZOOM_HOLD = "zoom_hold";
     private static final float EPSILON = 0.0005f;
+    private static final float MAX_DIVISOR = 50.0f;
 
     private final FunctionBindSetting zoomHoldAction = action(ACTION_ZOOM_HOLD, "C", BindMode.HOLD);
     private final NumberValue<Float> zoomDivisor = num("zoom_divisor", 4.0f, 1.0f, 30.0f);
@@ -39,10 +41,14 @@ public final class Zoom extends Module {
             0,
             100
     );
+    private final BooleanValue scrollZoom = bool("zoom_scroll", "scroll_zoom", false);
+    private final NumberValue<Integer> scrollStepPercent = visibleWhen(
+            num("zoom_scroll_step_percent", "scroll_step_percent", 15, 5, 50), scrollZoom::get);
 
     private boolean zooming;
     private float progress;
     private float currentDivisor = 1.0f;
+    private float scrollFactor = 1.0f;
 
     @Override
     public void onFrame(float tickDelta) {
@@ -61,8 +67,10 @@ public final class Zoom extends Module {
         }
 
         progress = AnimationUtility.clamp01(progress);
+        // Forget the scrolled level only once fully zoomed out, so releasing the key does not jump.
+        if (!held && progress <= EPSILON) scrollFactor = 1.0f;
 
-        float targetDivisor = Math.max(1.0f, zoomDivisor.get());
+        float targetDivisor = Mth.clamp(zoomDivisor.get() * scrollFactor, 1.0f, MAX_DIVISOR);
         float eased = animation.get().apply(progress);
         currentDivisor = Math.max(1.0f, AnimationUtility.lerp(1.0f, targetDivisor, eased));
     }
@@ -72,6 +80,16 @@ public final class Zoom extends Module {
         zooming = false;
         progress = 0.0f;
         currentDivisor = 1.0f;
+        scrollFactor = 1.0f;
+    }
+
+    /** Mouse wheel while the zoom key is held; returns true when the scroll was used (hotbar stays put). */
+    public boolean onScroll(double vertical) {
+        if (!isEnabled() || !scrollZoom.get() || !zooming || vertical == 0.0) return false;
+        float step = 1.0f + scrollStepPercent.get() / 100.0f;
+        float next = vertical > 0.0 ? scrollFactor * step : scrollFactor / step;
+        scrollFactor = Mth.clamp(next, 1.0f / zoomDivisor.get(), MAX_DIVISOR / zoomDivisor.get());
+        return true;
     }
 
     public boolean isZooming() {

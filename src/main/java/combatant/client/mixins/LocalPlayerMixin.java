@@ -287,6 +287,9 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         if (!ns.isFunctionEnabled(NoStun.fnUseSpeed())) return;
 
         LocalPlayer player = (LocalPlayer) (Object) this;
+        // NoSlow already lifted the slowdown; boosting on top of that would walk faster than not eating at all.
+        NoSlow noSlow = Modules.get(NoSlow.class);
+        if (noSlow != null && noSlow.shouldModifyInput(player)) return;
         if (player.isUsingItem() && !player.isPassenger()) {
             Vec2 base = cir.getReturnValue();
 

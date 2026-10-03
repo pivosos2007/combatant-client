@@ -438,6 +438,9 @@ public abstract class ClientPacketListenerMixin {
         if (packet.getEventId() == 35) { // 35 = сработал тотем бессмертия
             ClientPacketListener handler = (ClientPacketListener) (Object) this;
             Minecraft client = Minecraft.getInstance();
+            // The handler runs once on the network thread and again after it is rescheduled to the main thread,
+            // so an unguarded HEAD hook would count every pop twice.
+            if (!client.isSameThread()) return;
 
             Entity entity = packet.getEntity(handler.getLevel());
             if (entity == null) return;

@@ -8,6 +8,7 @@
 package combatant.client.features.gui.hud.draggable.impl;
 
 
+import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
@@ -905,9 +906,9 @@ public final class Cooldowns extends DraggableHudElement {
 
     private String formatSeconds(float seconds) {
         if (seconds >= 10.0f) {
-            return String.format("%.0fs", seconds);
+            return FastFormat.noDecimals(seconds) + "s";
         }
-        return String.format("%.1fs", Math.round(seconds * 10.0f) / 10.0f);
+        return FastFormat.oneDecimal(Math.round(seconds * 10.0f) / 10.0f) + "s";
     }
 
     private int withAlpha(int rgb, int alpha) {

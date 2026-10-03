@@ -22,7 +22,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Sodium 0.9.1+mc26.2 adapter. Keep private storage details out of deferred renderer code. */
+/** Sodium 0.9.2+mc26.2 adapter. Keep private storage details out of deferred renderer code. */
 @Pseudo
 @Mixin(value = QueuedSectionStorage.class, remap = false)
 public abstract class SodiumQueuedSectionStorageMixin implements SodiumSectionStorageView {

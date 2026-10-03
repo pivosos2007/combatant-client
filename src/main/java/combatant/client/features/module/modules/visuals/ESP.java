@@ -8,6 +8,7 @@
 package combatant.client.features.module.modules.visuals;
 
 
+import combatant.client.util.text.FastFormat;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.ProjectionType;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
@@ -238,23 +239,35 @@ public class ESP extends Module {
         PostProcessManager.register(shaderEspPass);
     }
 
-    private static boolean containsEntityId(Set<String> selected, Identifier id) {
-        String full = id.toString();
-        String path = id.getPath();
+    /**
+     * Lower-cased, trimmed copy of the user's entity-id list. A configured entry matches either the full
+     * "namespace:path" id or just the path (which also covers the bare "zombie" spelling for vanilla ids).
+     */
+    private static Set<String> normalizeEntityIds(Set<String> selected) {
+        Set<String> normalized = new java.util.HashSet<>(Math.max(4, selected.size() * 2));
         for (String raw : selected) {
             if (raw == null || raw.isBlank()) {
                 continue;
             }
-            String normalized = raw.trim().toLowerCase(Locale.ROOT);
-            if (full.equals(normalized) || path.equals(normalized)) {
-                return true;
-            }
-            if (!normalized.contains(":") && full.equals("minecraft:" + normalized)) {
-                return true;
-            }
+            normalized.add(raw.trim().toLowerCase(Locale.ROOT));
         }
-        return false;
+        return normalized;
     }
+
+    /** Registry id string of an entity type, memoised: the registry is frozen, and toString() allocates. */
+    private static String entityTypeKey(net.minecraft.world.entity.EntityType<?> type) {
+        String cached = ENTITY_TYPE_KEYS.get(type);
+        if (cached != null) {
+            return cached;
+        }
+        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(type);
+        String key = id != null ? id.toString() : "";
+        ENTITY_TYPE_KEYS.put(type, key);
+        return key;
+    }
+
+    private static final java.util.Map<net.minecraft.world.entity.EntityType<?>, String> ENTITY_TYPE_KEYS =
+            new java.util.IdentityHashMap<>();
 
     private static GpuSampler getShaderEspSampler() {
         if (shaderEspSampler != null) {
@@ -282,7 +295,7 @@ public class ESP extends Module {
         if (Math.abs(health - Math.round(health)) < 0.05f) {
             return Math.round(health) + " HP";
         }
-        return String.format(Locale.ROOT, "%.1f HP", health);
+        return FastFormat.oneDecimal(health) + " HP";
     }
 
     private static void addFilledBox(MeshBuilder mesh,
@@ -682,9 +695,9 @@ public class ESP extends Module {
         if (e == null) return false;
         if (e instanceof Player) return false;
         if (e == mc.player) return false;
-        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(e.getType());
-        if (id == null) return false;
-        return searchEntities.get().contains(id.toString());
+        String key = entityTypeKey(e.getType());
+        if (key.isEmpty()) return false;
+        return searchEntities.get().contains(key);
     }
 
     private int resolvePlayerColor(Player p) {
@@ -754,9 +767,34 @@ public class ESP extends Module {
             return entries;
         }
 
+        // Which entities match the configured ids only changes when entities spawn/despawn or the list is
+        // edited, so the scan over every rendered entity runs once per game tick; frames only measure the
+        // distance of the (few) matches.
+        long tick = mc.level.getGameTime();
+        int selectionHash = selected.hashCode();
+        if (chamsMatchLevel != mc.level || chamsMatchTick != tick || chamsMatchSelectionHash != selectionHash) {
+            chamsMatchLevel = mc.level;
+            chamsMatchTick = tick;
+            chamsMatchSelectionHash = selectionHash;
+            chamsMatches.clear();
+            Set<String> normalized = normalizeEntityIds(selected);
+            if (!normalized.isEmpty()) {
+                java.util.Map<net.minecraft.world.entity.EntityType<?>, Boolean> typeMatches = new java.util.IdentityHashMap<>();
+                for (Entity entity : mc.level.entitiesForRendering()) {
+                    if (shouldRenderShaderChamsEntity(entity, normalized, typeMatches)) {
+                        chamsMatches.add(entity);
+                    }
+                }
+            }
+        }
+        if (chamsMatches.isEmpty()) {
+            return entries;
+        }
+
         int color = shaderChamsEntityColor.getArgb();
-        for (Entity entity : mc.level.entitiesForRendering()) {
-            if (!shouldRenderShaderChamsEntity(entity, selected)) {
+        for (int i = 0, size = chamsMatches.size(); i < size; i++) {
+            Entity entity = chamsMatches.get(i);
+            if (entity.isRemoved()) {
                 continue;
             }
             double distSq = entity.distanceToSqr(camPos);
@@ -768,15 +806,33 @@ public class ESP extends Module {
         return entries;
     }
 
-    private boolean shouldRenderShaderChamsEntity(Entity entity, Set<String> selected) {
+    private boolean shouldRenderShaderChamsEntity(Entity entity,
+                                                  Set<String> normalized,
+                                                  java.util.Map<net.minecraft.world.entity.EntityType<?>, Boolean> typeMatches) {
         if (entity == null) return false;
         if (entity instanceof Player) return false;
         if (entity == mc.player) return false;
 
-        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
-        if (id == null) return false;
-        return containsEntityId(selected, id);
+        net.minecraft.world.entity.EntityType<?> type = entity.getType();
+        Boolean matches = typeMatches.get(type);
+        if (matches == null) {
+            String full = entityTypeKey(type);
+            boolean hit = false;
+            if (!full.isEmpty()) {
+                int colon = full.indexOf(':');
+                String path = colon >= 0 ? full.substring(colon + 1) : full;
+                hit = normalized.contains(full) || normalized.contains(path);
+            }
+            matches = hit;
+            typeMatches.put(type, matches);
+        }
+        return matches;
     }
+
+    private net.minecraft.client.multiplayer.ClientLevel chamsMatchLevel;
+    private long chamsMatchTick = Long.MIN_VALUE;
+    private int chamsMatchSelectionHash;
+    private final List<Entity> chamsMatches = new ArrayList<>();
 
     private boolean renderShaderColorPass(GpuTextureView dst, int width, int height) {
         if (shaderMask.getColorTextureView() == null) {

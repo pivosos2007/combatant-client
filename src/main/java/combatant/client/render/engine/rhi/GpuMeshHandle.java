@@ -171,6 +171,8 @@ public record GpuMeshHandle(GpuBuffer vertexBuffer,
      * meshes draw thousands of instances from unrelated vertex ranges.
      */
     public void drawIndexed(RenderPass pass, String label) {
+        // Cheap volatile read when nothing is pending; see DynamicMeshWrites.
+        combatant.client.render.engine.rhi.upload.DynamicMeshWrites.flushPending();
         validateForDraw(label);
         pass.drawIndexed(indexCount, 1, firstIndex, baseVertex, 0);
     }

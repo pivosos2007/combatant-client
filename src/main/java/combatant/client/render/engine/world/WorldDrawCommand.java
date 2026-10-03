@@ -41,9 +41,17 @@ public record WorldDrawCommand(RenderPipeline pipeline, Renderer3D.DepthMode dep
 
     public boolean canMerge(WorldDrawCommand other) {
         if (other == null) return false;
-        return pipeline == other.pipeline
-                && depthMode == other.depthMode
-                && lineWidthBits == other.lineWidthBits
-                && bindings.compatibleWith(other.bindings);
+        return canMerge(other.pipeline, other.depthMode, other.lineWidthBits, other.bindings);
+    }
+
+    /** Allocation-free merge test against the fields of a would-be command. */
+    public boolean canMerge(RenderPipeline otherPipeline,
+                            Renderer3D.DepthMode otherDepthMode,
+                            int otherLineWidthBits,
+                            Renderer3D.BatchBindings otherBindings) {
+        return pipeline == otherPipeline
+                && depthMode == otherDepthMode
+                && lineWidthBits == otherLineWidthBits
+                && bindings.compatibleWith(otherBindings);
     }
 }

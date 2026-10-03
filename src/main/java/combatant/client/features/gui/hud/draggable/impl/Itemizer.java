@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
 import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
@@ -608,7 +609,7 @@ private static final float BASE_ICON_CARD = 24.0f;
     }
 
     private static String hex(int argb) {
-        return String.format("#%08X", argb);
+        return UiScriptColor.hex(argb);
     }
 
     private static String string(Object value) {

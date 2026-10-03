@@ -8,6 +8,8 @@
 package combatant.client.features.gui.hud.draggable.impl;
 
 
+import combatant.client.util.text.FastFormat;
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.SettingDef;
@@ -418,7 +420,7 @@ public final class Statistics extends DraggableHudElement {
                         scriptHeaderTextHeight,
                         scriptRowTextHeight,
                         playTime,
-                        String.format(Locale.ROOT, "%.2f BPS", snapshot.averageBps()),
+                        FastFormat.twoDecimals(snapshot.averageBps()) + " BPS",
                         arcEndAngle,
                         arcHashTime,
                         showPlayTime,
@@ -478,7 +480,7 @@ public final class Statistics extends DraggableHudElement {
         if (information.get(INFO_KD)) {
             String kd = snapshot.deaths() == 0
                     ? Integer.toString(snapshot.kills())
-                    : String.format(Locale.ROOT, "%.2f", snapshot.kd());
+                    : FastFormat.twoDecimals(snapshot.kd());
             rows.add(infoRow(INFO_KD, "K/D", kd, uiText));
         }
         if (information.get(INFO_KILLS)) {
@@ -489,7 +491,7 @@ public final class Statistics extends DraggableHudElement {
         }
         if (information.get(INFO_AVERAGE_SPEED)) {
             rows.add(infoRow(INFO_AVERAGE_SPEED, "Average Speed",
-                    String.format(Locale.ROOT, "%.2f BPS", snapshot.averageBps()), uiCounter));
+                    FastFormat.twoDecimals(snapshot.averageBps()) + " BPS", uiCounter));
         }
 
         if (exampleData || isBedWarsContext()) {
@@ -691,7 +693,7 @@ public final class Statistics extends DraggableHudElement {
         row.put("key", key != null ? key : "row");
         row.put("label", label != null ? label : "");
         row.put("value", value != null ? value : "");
-        row.put("valueColor", String.format("#%08X", valueColor));
+        row.put("valueColor", UiScriptColor.hex(valueColor));
         return row;
     }
 
@@ -762,9 +764,9 @@ public final class Statistics extends DraggableHudElement {
         long minutes = (totalSeconds / 60L) % 60L;
         long hours = totalSeconds / 3600L;
         if (hours > 0L) {
-            return String.format(Locale.ROOT, "%d:%02d:%02d", hours, minutes, seconds);
+            return hours + ":" + FastFormat.clock(minutes, seconds);
         }
-        return String.format(Locale.ROOT, "%02d:%02d", minutes, seconds);
+        return FastFormat.clock(minutes, seconds);
     }
 
     private void updatePalette() {

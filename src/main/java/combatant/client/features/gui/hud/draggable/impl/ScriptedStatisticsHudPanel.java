@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
 import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -30,7 +31,7 @@ final class ScriptedStatisticsHudPanel {
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
     private static String hex(int argb) {
-        return String.format("#%08X", argb);
+        return UiScriptColor.hex(argb);
     }
 
     private static float floatValue(Object value) {

@@ -19,7 +19,7 @@
     "combatant.mixins.json"
   ],
   "depends": {
-    "sodium": "0.9.1",
+    "sodium": ">=0.9.1",
     "fabricloader": "*",
     "minecraft": "${minecraft_version}"
   },

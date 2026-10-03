@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.nondraggable.impl;
 
+import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.util.screen.ClientScreen;
@@ -402,12 +403,12 @@ public final class DynamicIsland extends AbstractHudElement {
     }
 
     private static String formatClock(LocalTime time) {
-        return String.format("%02d:%02d", time.getHour(), time.getMinute());
+        return FastFormat.clock(time.getHour(), time.getMinute());
     }
 
     private static String formatPvpTelemetry(float seconds) {
         long remaining = Math.max(0L, (long) Math.ceil(Math.max(0f, seconds)));
-        return remaining < 100L ? String.format("PVP %02d", remaining) : "PVP " + remaining;
+        return remaining < 100L ? "PVP " + FastFormat.pad2(remaining) : "PVP " + remaining;
     }
 
     private static String formatShortTime(float seconds) {
@@ -418,7 +419,7 @@ public final class DynamicIsland extends AbstractHudElement {
         long sec = Math.max(0L, seconds);
         long m = sec / 60L;
         long s = sec % 60L;
-        return String.format("%d:%02d", m, s);
+        return FastFormat.minutesSeconds(m, s);
     }
 
     private static String iconString(int codepoint) {
@@ -426,7 +427,7 @@ public final class DynamicIsland extends AbstractHudElement {
     }
 
     private static String hex(int argb) {
-        return String.format("#%08X", argb);
+        return UiScriptColor.hex(argb);
     }
 
     private static float clamp(float value, float min, float max) {
@@ -591,11 +592,14 @@ public final class DynamicIsland extends AbstractHudElement {
         boolean chatOpen = currentScreen instanceof ChatScreen;
         boolean clickGuiVisible = clickGuiEnabled();
         boolean clickGuiTabShellScreen = currentScreen instanceof ClickGuiScreen;
-        ClickGuiRenderer.ClickGuiIslandState clickGuiState = ClickGuiRenderer.islandState();
+        // The tab-bar state (tab list, hover tests) is only meaningful while the ClickGUI shell is the
+        // active screen; building it every frame for the always-on island was pure overhead.
+        ClickGuiRenderer.ClickGuiIslandState clickGuiState = clickGuiVisible && clickGuiTabShellScreen
+                ? ClickGuiRenderer.islandState()
+                : null;
         boolean clickGuiBridge = isEnabled()
                 && screenOverlayPass
-                && clickGuiVisible
-                && clickGuiTabShellScreen
+                && clickGuiState != null
                 && clickGuiState.lifecycle() > 0.001f
                 && clickGuiState.tabBarW() > 1.0f;
         if (clickGuiVisible && clickGuiTabShellScreen && !clickGuiBridge) {
@@ -1071,9 +1075,12 @@ public final class DynamicIsland extends AbstractHudElement {
         props.put("bezelCut", bezelCut);
         props.put("time", formatClock(LocalTime.now()));
         props.put("pvpTelemetry", pvpActive ? formatPvpTelemetry(predictedPvpSeconds()) : "");
-        ClickGuiRenderer.ClickGuiIslandState clickGuiState = ClickGuiRenderer.islandState();
-        ArrayList<LinkedHashMap<String, Object>> clickGuiTabs = new ArrayList<>(clickGuiState.tabs().size());
-        for (ClickGuiRenderer.ClickGuiIslandTab tab : clickGuiState.tabs()) {
+        ClickGuiRenderer.ClickGuiIslandState clickGuiState = currentMode == IslandMode.CLICKGUI
+                ? ClickGuiRenderer.islandState()
+                : null;
+        List<ClickGuiRenderer.ClickGuiIslandTab> islandTabs = clickGuiState != null ? clickGuiState.tabs() : List.of();
+        ArrayList<LinkedHashMap<String, Object>> clickGuiTabs = new ArrayList<>(islandTabs.size());
+        for (ClickGuiRenderer.ClickGuiIslandTab tab : islandTabs) {
             LinkedHashMap<String, Object> item = new LinkedHashMap<>();
             item.put("label", tab.label());
             item.put("x", tab.relativeX());
@@ -1083,8 +1090,8 @@ public final class DynamicIsland extends AbstractHudElement {
             clickGuiTabs.add(item);
         }
         props.put("clickGuiTabs", clickGuiTabs);
-        props.put("clickGuiActiveX", clickGuiState.activeX() - clickGuiState.tabBarX());
-        props.put("clickGuiActiveWidth", clickGuiState.activeW());
+        props.put("clickGuiActiveX", clickGuiState != null ? clickGuiState.activeX() - clickGuiState.tabBarX() : 0.0f);
+        props.put("clickGuiActiveWidth", clickGuiState != null ? clickGuiState.activeW() : 0.0f);
         props.put("title", title);
         props.put("artist", artist);
         props.put("titleWidthCompact", measureWidth(titleRenderer, title, 0.82f));

@@ -591,6 +591,12 @@ tasks.matching { it.name == "sourcesJar" }.configureEach {
     exclude("combatant/nativeguard/**")
 }
 
+// Agent tooling writes runtime state to .omc/ in whatever directory a session started in. Inside src/ that
+// state is picked up as resources: its duplicate entries fail sourcesJar and the files would ship in the mod jar.
+tasks.withType(AbstractCopyTask).configureEach {
+    exclude("**/.omc/**")
+}
+
 jar {
     manifest {
         attributes("Multi-Release": "true")

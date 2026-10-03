@@ -52,6 +52,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.config.values.ItemCooldownRulesValue;
 import combatant.client.events.Events;
 import combatant.client.events.impl.PlayerJumpEvent;
+import combatant.client.events.impl.PlayerStepEvent;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.PvpCooldowns;
 import combatant.client.features.module.modules.combat.TPSSync;
@@ -458,6 +459,17 @@ public abstract class LivingEntityMixin {
         if (vanilla < 1.0F) {
             cir.setReturnValue(1.0F);
         }
+    }
+
+    @ModifyReturnValue(method = "maxUpStep", at = @At("RETURN"))
+    private float combatant$modifyStepHeight(float original) {
+        LivingEntity self = (LivingEntity) (Object) this;
+        if (!(self instanceof LocalPlayer)) return original;
+        if (!Events.BUS.hasListeners(PlayerStepEvent.class)) return original;
+
+        PlayerStepEvent event = new PlayerStepEvent(original);
+        Events.BUS.post(event);
+        return event.getHeight();
     }
 
 }

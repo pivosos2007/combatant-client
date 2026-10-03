@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.nondraggable.impl;
 
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.util.resources.asset.UiScriptAsset;
 import java.util.LinkedHashMap;
@@ -31,10 +32,12 @@ import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext
 import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptPatchSet;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
 
 import java.util.List;
+import java.util.Map;
 
 import static combatant.client.features.theme.Theme.theme;
 
@@ -54,6 +57,9 @@ private static final float HEALTH_BAR_WIDTH = 81f;
     private static final float HEALTH_ANIM_SPEED = 10.0f;
     private static final String STYLE_TARGET_HUD = "TargetHud";
     private static final String STYLE_DYNAMIC = "Dynamic";
+    // Node key and existence threshold of the health fill in custom_health_bar.js.
+    private static final String HEALTH_FILL_KEY = "health:fill";
+    private static final float SCRIPT_FILL_MIN_RATIO = 0.0001f;
     private static float animatedHealth = -1.0f;
     private static float animatedAbsorb = -1.0f;
     private static long lastHealthAnimMs = -1L;
@@ -235,7 +241,7 @@ private static final float HEALTH_BAR_WIDTH = 81f;
     }
 
     private static String hex(int argb) {
-        return String.format("#%08X", argb);
+        return UiScriptColor.hex(argb);
     }
 
     private static void updateHealthAnim(LocalPlayer player, float health, float absorb) {
@@ -333,8 +339,17 @@ private static final float HEALTH_BAR_WIDTH = 81f;
         UiScriptModule loaded = ensureModule(mc);
         if (loaded == null) return;
 
-        LinkedHashMap<String, Object> props = buildBarProps(width, height, radius, baseRatio, absorbRatio);
-        long signature = CachedUiScriptRuntime.signature(props);
+        float healthRatio = Mth.clamp(baseRatio, 0.0f, 1.0f);
+        float absorb = Mth.clamp(absorbRatio, 0.0f, 1.0f);
+        double now = Util.getMillis() / 1000.0;
+        float phase = (float) now;
+        float smokeTime = (float) (now + phase * 0.37);
+
+        LinkedHashMap<String, Object> props = buildBarProps(width, height, radius, absorb);
+        long signature = treeSignature(props, healthRatio, absorb, phase);
+        props.put("healthRatio", healthRatio);
+        props.put("phase", phase);
+        props.put("smokeTime", smokeTime);
         UiRuntime runtime = scriptRuntime.bake(
                 moduleHandle,
                 loaded,
@@ -348,27 +363,45 @@ private static final float HEALTH_BAR_WIDTH = 81f;
                 width,
                 height,
                 () -> props,
-                null
+                () -> healthFillPatches(healthRatio, smokeTime)
         );
         if (runtime == null) return;
         runtime.render(new UiRenderContext(r2d, TextRenderer.get(), null, 0.0f, UiProjectionMode.CURRENT));
     }
 
-    private LinkedHashMap<String, Object> buildBarProps(float width,
-                                                                   float height,
-                                                                   float radius,
-                                                                   float baseRatio,
-                                                                   float absorbRatio) {
-        float phase = (float) (Util.getMillis() / 1000.0);
+    /**
+     * Changes only when the script has to run again. This used to hash every prop, including the
+     * clock-driven phase, so V8 re-ran the script and the runtime rebuilt the tree on every frame.
+     * The smoke clock and (in theme colour mode) the fill level are now patched onto the existing
+     * node instead. Absorption still rebuilds per frame: its pulse is baked into the colours the
+     * script computes.
+     */
+    private long treeSignature(LinkedHashMap<String, Object> structuralProps, float healthRatio, float absorbRatio, float phase) {
+        long h = CachedUiScriptRuntime.signature(structuralProps);
+        h = CachedUiScriptRuntime.mix(h, isDynamicHealthColorMode()
+                ? healthRatio
+                : (healthRatio > SCRIPT_FILL_MIN_RATIO ? 1.0f : 0.0f));
+        if (absorbRatio > SCRIPT_FILL_MIN_RATIO) h = CachedUiScriptRuntime.mix(h, phase);
+        return h;
+    }
 
+    private static Map<String, ? extends Map<String, ?>> healthFillPatches(float healthRatio, float smokeTime) {
+        if (healthRatio <= SCRIPT_FILL_MIN_RATIO) return Map.of();
+        return UiScriptPatchSet.create(1)
+                .put(HEALTH_FILL_KEY, "fillRatio", healthRatio, "time", smokeTime)
+                .asMap();
+    }
+
+    private LinkedHashMap<String, Object> buildBarProps(float width,
+                                                        float height,
+                                                        float radius,
+                                                        float absorbRatio) {
         LinkedHashMap<String, Object> props = new LinkedHashMap<>();
         props.put("width", width);
         props.put("height", height);
         props.put("radius", radius);
-        props.put("healthRatio", Mth.clamp(baseRatio, 0.0f, 1.0f));
-        props.put("absorbRatio", Mth.clamp(absorbRatio, 0.0f, 1.0f));
+        props.put("absorbRatio", absorbRatio);
         props.put("alpha", getHudHealthAlphaFactor());
-        props.put("phase", phase);
         props.put("colorMode", isDynamicHealthColorMode() ? "dynamic" : "theme");
         props.put("themeAccent", hex(0xFF000000 | (theme().accent() & 0x00FFFFFF)));
         props.put("themeAccentSoft", hex(0xFF000000 | (theme().accentSoft() & 0x00FFFFFF)));

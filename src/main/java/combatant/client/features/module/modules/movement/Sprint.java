@@ -129,7 +129,14 @@ public final class Sprint extends Module {
             return;
         }
 
-        if (!event.isMoving() || !shouldUseOmniDirectional(player)) {
+        if (!event.isMoving()) {
+            return;
+        }
+
+        boolean allow = shouldUseOmniDirectional(player)
+                || (isEnabled() && canOperate(player) && !shouldSuppressExternalVulcanSprint(player) && event.getForward() > 1.0E-5f);
+
+        if (!allow) {
             return;
         }
 

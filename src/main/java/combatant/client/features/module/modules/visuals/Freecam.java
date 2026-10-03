@@ -9,10 +9,12 @@ package combatant.client.features.module.modules.visuals;
 
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.config.values.BindMode;
 import combatant.client.config.values.BooleanMapValue;
+import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.GameTickEvent;
@@ -49,6 +51,10 @@ public class Freecam extends Module {
             num("horizontalSpeed", SETTING_HORIZONTAL_SPEED, 0.8, 0.1, 5.0);
     private final NumberValue<Double> verticalSpeed =
             num("verticalSpeed", SETTING_VERTICAL_SPEED, 0.8, 0.1, 5.0);
+    private final NumberValue<Double> sprintMultiplier =
+            num("freecamSprintMultiplier", "sprint_multiplier", 2.0, 1.0, 5.0);
+    private final BooleanValue scrollSpeed = bool("freecamScrollSpeed", "scroll_speed", false);
+    private double speedScale = 1.0;
     public CameraType prevPerspective;
     public FreecamEntity camEntity;
 
@@ -77,6 +83,7 @@ public class Freecam extends Module {
             return;
         }
 
+        speedScale = 1.0;
         prevPerspective = mc.options.getCameraType();
         mc.options.setCameraType(CameraType.FIRST_PERSON);
 
@@ -199,7 +206,7 @@ public class Freecam extends Module {
 
         if (move.lengthSqr() != 0) {
             double speed = hSpeed();
-            if (o.keySprint.isDown()) speed *= 2.0;
+            if (o.keySprint.isDown()) speed *= sprintMultiplier.get();
             move = move.normalize().scale(speed);
         }
 
@@ -234,11 +241,19 @@ public class Freecam extends Module {
     }
 
     public double hSpeed() {
-        return horizontalSpeed.get();
+        return horizontalSpeed.get() * speedScale;
     }
 
     public double vSpeed() {
-        return verticalSpeed.get();
+        return verticalSpeed.get() * speedScale;
+    }
+
+    /** Mouse wheel while the camera moves: faster or slower, shown as a short notice. Returns true when used. */
+    public boolean onScroll(double vertical) {
+        if (!isEnabled() || !scrollSpeed.get() || !cameraInput || vertical == 0.0) return false;
+        speedScale = Mth.clamp(speedScale * (vertical > 0.0 ? 1.15 : 1.0 / 1.15), 0.1, 10.0);
+        Notifier.update("freecam.speed", I18n.get("notification.freecam.speed", String.format("%.1f", speedScale)));
+        return true;
     }
 
 }

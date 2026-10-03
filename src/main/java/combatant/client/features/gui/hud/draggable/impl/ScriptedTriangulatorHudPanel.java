@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
 import combatant.client.util.resources.asset.UiScriptAsset;
 import java.util.LinkedHashMap;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
@@ -32,7 +33,7 @@ final class ScriptedTriangulatorHudPanel {
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
     static String hex(int argb) {
-        return String.format("#%08X", argb);
+        return UiScriptColor.hex(argb);
     }
 
     static LinkedHashMap<String, Object> row(String key,

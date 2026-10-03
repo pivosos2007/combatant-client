@@ -38,6 +38,7 @@ import combatant.client.render.engine.rhi.resource.RenderResourceManager;
 import combatant.client.render.engine.rhi.shader.AdvancedShaderBackend;
 import combatant.client.render.engine.rhi.state.PipelineStateBackend;
 import combatant.client.render.engine.rhi.upload.DynamicMeshBackend;
+import combatant.client.render.engine.rhi.upload.DynamicMeshWrites;
 import combatant.client.render.engine.rhi.upload.Blaze3dDynamicMeshBackend;
 import combatant.client.render.engine.rhi.upload.Blaze3dPersistentMeshBackend;
 import combatant.client.render.engine.rhi.upload.PersistentMeshBackend;
@@ -177,6 +178,8 @@ public final class CombatantVulkanBackend implements CombatantRhi {
     @Override
     public void drawMeshes(List<RhiDrawCommand> commands) {
         if (commands == null || commands.isEmpty()) return;
+        // Dynamic meshes are written through open mappings; publish them before any draw reads the arenas.
+        DynamicMeshWrites.flushPending();
         try {
             CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
             int cursor = 0;

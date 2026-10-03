@@ -7,6 +7,7 @@
 
 package combatant.client.features.theme;
 
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
 import net.minecraft.util.Util;
 import combatant.client.render.engine.animation.AnimationUtility;
 
@@ -910,7 +911,7 @@ public enum Themes {
     }
 
     public static String colorString(int argb) {
-        return String.format("#%08X", argb);
+        return UiScriptColor.hex(argb);
     }
 
     public static int colorValue(Object raw, int fallback) {

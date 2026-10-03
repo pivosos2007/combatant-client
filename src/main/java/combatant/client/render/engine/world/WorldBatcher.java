@@ -16,18 +16,19 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Compiles public Renderer3D batch requests into ordered world draw commands.
+ *
+ * <p>{@link #batch} runs once per emitted primitive (every ESP box face, glyph run, billboard quad),
+ * so it must not allocate on the merge path: the merge test compares against the previous command's
+ * fields directly, and mesh pools are keyed by pipeline identity with a per-pool cursor.</p>
  */
 public final class WorldBatcher {
     private final List<WorldDrawCommand> commands = new ArrayList<>();
-    private final Map<PoolKey, List<MeshBuilder>> pools = new HashMap<>();
-    private final Map<PoolKey, Integer> poolCursor = new HashMap<>();
-
+    private final IdentityHashMap<RenderPipeline, MeshPool> pools = new IdentityHashMap<>();
     private WorldDrawCommand lastCommand;
 
     private static boolean isLineMode(RenderPipeline pipeline) {
@@ -39,7 +40,7 @@ public final class WorldBatcher {
 
     public void beginFrame() {
         commands.clear();
-        poolCursor.clear();
+        for (MeshPool pool : pools.values()) pool.cursor = 0;
         lastCommand = null;
     }
 
@@ -48,24 +49,20 @@ public final class WorldBatcher {
                              float lineWidth,
                              Renderer3D.BatchBindings bindings) {
         if (pipeline == null) return null;
-
         int lineBits = isLineMode(pipeline)
                 ? Float.floatToIntBits(lineWidth > 0.0f ? lineWidth : 1.0f)
                 : 0;
+        Renderer3D.DepthMode resolvedDepth = depthMode != null ? depthMode : Renderer3D.DepthMode.MAIN;
         Renderer3D.BatchBindings resolvedBindings = bindings != null ? bindings : Renderer3D.BatchBindings.none();
-
-        if (lastCommand != null && lastCommand.mesh().isBuilding()) {
-            WorldDrawCommand candidate = new WorldDrawCommand(pipeline, depthMode, lineBits, resolvedBindings, lastCommand.mesh());
-            if (candidate.canMerge(lastCommand)) {
-                return lastCommand.mesh();
-            }
+        WorldDrawCommand previous = lastCommand;
+        if (previous != null && previous.mesh().isBuilding()
+                && previous.canMerge(pipeline, resolvedDepth, lineBits, resolvedBindings)) {
+            return previous.mesh();
         }
-
         MeshBuilder mesh = acquireMesh(pipeline);
         if (mesh == null) return null;
         mesh.beginWorld(currentCameraAnchor());
-
-        WorldDrawCommand command = new WorldDrawCommand(pipeline, depthMode, lineBits, resolvedBindings, mesh);
+        WorldDrawCommand command = new WorldDrawCommand(pipeline, resolvedDepth, lineBits, resolvedBindings, mesh);
         commands.add(command);
         lastCommand = command;
         return mesh;
@@ -96,20 +93,24 @@ public final class WorldBatcher {
     }
 
     private MeshBuilder acquireMesh(RenderPipeline pipeline) {
-        PoolKey key = new PoolKey(pipeline);
-        List<MeshBuilder> pool = pools.computeIfAbsent(key, k -> new ArrayList<>());
-        int cursor = poolCursor.getOrDefault(key, 0);
+        MeshPool pool = pools.get(pipeline);
+        if (pool == null) {
+            pool = new MeshPool();
+            pools.put(pipeline, pool);
+        }
         MeshBuilder mesh;
-        if (cursor < pool.size()) {
-            mesh = pool.get(cursor);
+        if (pool.cursor < pool.meshes.size()) {
+            mesh = pool.meshes.get(pool.cursor);
         } else {
             mesh = new MeshBuilder(pipeline);
-            pool.add(mesh);
+            pool.meshes.add(mesh);
         }
-        poolCursor.put(key, cursor + 1);
+        pool.cursor++;
         return mesh;
     }
 
-    private record PoolKey(RenderPipeline pipeline) {
+    private static final class MeshPool {
+        private final ArrayList<MeshBuilder> meshes = new ArrayList<>();
+        private int cursor;
     }
 }

@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.visuals;
 
+import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -176,6 +177,9 @@ public class Predictions extends Module {
 
     private ItemStack tntTimerIcon = ItemStack.EMPTY;
     private final List<TimerPlate> timerPlates = new ArrayList<>();
+    private ClientLevel cachedProjectileLevel;
+    private long cachedProjectileTick = Long.MIN_VALUE;
+    private List<TrajectoryResult> cachedProjectileResults = Collections.emptyList();
     private List<Vec3> smoothedAimPoints = List.of();
     private Vec3 smoothedAimHitPos;
     private Vec3 smoothedAimNormal;
@@ -575,21 +579,61 @@ public class Predictions extends Module {
         }
     }
 
+    /**
+     * Thrown-projectile trajectories only depend on entity positions/velocities and world blocks, all of
+     * which advance per game tick, so the whole simulation (a ray clip plus an entity sweep per simulated
+     * tick per projectile) is done once per tick and shared by the world and HUD passes instead of being
+     * redone every frame in both.
+     */
     private List<TrajectoryResult> simulateProjectiles(float tickDelta) {
         ClientLevel world = mc.level;
         if (world == null) return Collections.emptyList();
 
+        long tick = world.getGameTime();
+        if (world == cachedProjectileLevel && tick == cachedProjectileTick) {
+            return cachedProjectileResults;
+        }
+        List<TrajectoryResult> computed = computeProjectileTrajectories(world, tickDelta);
+        cachedProjectileLevel = world;
+        cachedProjectileTick = tick;
+        cachedProjectileResults = computed;
+        return computed;
+    }
+
+    private static boolean isPredictedProjectile(Entity e) {
+        return e instanceof ThrownEnderpearl
+                || e instanceof ThrownTrident
+                || e instanceof AbstractArrow
+                || e instanceof Fireball
+                || e instanceof WindCharge
+                || e instanceof FireworkRocketEntity
+                || e instanceof Snowball
+                || e instanceof ThrownEgg
+                || e instanceof AbstractThrownPotion;
+    }
+
+    private List<TrajectoryResult> computeProjectileTrajectories(ClientLevel world, float tickDelta) {
         List<TrajectoryResult> out = new ArrayList<>();
 
+        // Sorting every rendered entity by distance (with a fresh distanceToSqr per comparison) was the
+        // hot spot; only projectile types can ever produce a trajectory, so filter before sorting. The
+        // sort is stable, so the relative order of projectiles is unchanged.
         List<Entity> candidates = new ArrayList<>();
         for (Entity e : world.entitiesForRendering()) {
-            candidates.add(e);
+            if (isPredictedProjectile(e)) candidates.add(e);
         }
-        candidates.sort((a, b) -> {
-            double da = mc.player == null ? 0.0 : a.distanceToSqr(mc.player);
-            double db = mc.player == null ? 0.0 : b.distanceToSqr(mc.player);
-            return Double.compare(da, db);
-        });
+        if (candidates.isEmpty()) return out;
+        Player self = mc.player;
+        if (self != null && candidates.size() > 1) {
+            double[] distances = new double[candidates.size()];
+            for (int i = 0; i < distances.length; i++) distances[i] = candidates.get(i).distanceToSqr(self);
+            Integer[] order = new Integer[distances.length];
+            for (int i = 0; i < order.length; i++) order[i] = i;
+            java.util.Arrays.sort(order, (a, b) -> Double.compare(distances[a], distances[b]));
+            List<Entity> sorted = new ArrayList<>(order.length);
+            for (Integer index : order) sorted.add(candidates.get(index));
+            candidates = sorted;
+        }
         int limit = Math.max(1, maxProjectiles.get());
         int processed = 0;
         int pearlProcessed = 0;
@@ -1299,7 +1343,7 @@ public class Predictions extends Module {
     }
 
     private String formatTime(double seconds) {
-        String s = String.format(Locale.US, "%.1f", seconds);
+        String s = FastFormat.oneDecimal(seconds);
         s = s.replace('.', ',');
         return s + " s";
     }

@@ -217,6 +217,7 @@ public class NameTags extends Module {
     private final Map<UUID, ItemStack[]> slotCache = new HashMap<>();
     private final Map<UUID, EffectCache> effectCache = new HashMap<>();
     private final Map<UUID, EnchantCache> enchantCache = new HashMap<>();
+    private final Map<UUID, LabelCacheEntry> labelCache = new HashMap<>();
     private final Map<UUID, Float> totemPopAnimations = new HashMap<>();
     private final Map<UUID, Integer> totemPopLastCounts = new HashMap<>();
     private final HashSet<UUID> seenIds = new HashSet<>();
@@ -1764,6 +1765,7 @@ public class NameTags extends Module {
             slotCache.clear();
             effectCache.clear();
             enchantCache.clear();
+            labelCache.clear();
             totemPopAnimations.clear();
             totemPopLastCounts.clear();
             return;
@@ -1771,6 +1773,7 @@ public class NameTags extends Module {
         slotCache.keySet().removeIf(id -> !seenIds.contains(id));
         effectCache.keySet().removeIf(id -> !seenIds.contains(id));
         enchantCache.keySet().removeIf(id -> !seenIds.contains(id));
+        labelCache.keySet().removeIf(id -> !seenIds.contains(id));
         totemPopAnimations.keySet().removeIf(id -> !seenIds.contains(id));
         totemPopLastCounts.keySet().removeIf(id -> !seenIds.contains(id));
     }
@@ -2118,7 +2121,29 @@ public class NameTags extends Module {
         return 6 + maxLines * lineHeight;
     }
 
+    /**
+     * Name, prefix, ping and health only change with game state, which advances per tick, but the label was
+     * rebuilt (display-name component conversion, health snapshot, string joins) for every player on every
+     * frame, and twice per frame in HYBRID presentation. Cached per player for the current game tick and
+     * for the settings that shape it.
+     */
     private LabelInfo buildLabelInfo(Player player) {
+        long tick = mc.level != null ? mc.level.getGameTime() : Long.MIN_VALUE;
+        int signature = (shouldUseTabNames() ? 1 : 0)
+                | (pvpPrefix.get() ? 2 : 0)
+                | (shouldShowPingText() ? 4 : 0)
+                | (hpDecimals.get() ? 8 : 0);
+        UUID id = player.getUUID();
+        LabelCacheEntry cached = labelCache.get(id);
+        if (cached != null && cached.tick == tick && cached.signature == signature && cached.player == player) {
+            return cached.info;
+        }
+        LabelInfo info = computeLabelInfo(player);
+        labelCache.put(id, new LabelCacheEntry(tick, signature, player, info));
+        return info;
+    }
+
+    private LabelInfo computeLabelInfo(Player player) {
         Component styledName = resolveNameplateText(player);
         String name = styledName == null ? "" : styledName.getString();
         String prefix = "";
@@ -2536,5 +2561,8 @@ public class NameTags extends Module {
 
     private record LabelInfo(String pvpPrefix, Component styledName, String name, int ping, String pingText, String hp,
                              int infoColor) {
+    }
+
+    private record LabelCacheEntry(long tick, int signature, Player player, LabelInfo info) {
     }
 }

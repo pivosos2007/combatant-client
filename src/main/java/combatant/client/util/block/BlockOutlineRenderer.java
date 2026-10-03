@@ -16,6 +16,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.engine.uniform.MeshBuilder;
 
 public enum BlockOutlineRenderer {
     ;
@@ -41,33 +42,7 @@ public enum BlockOutlineRenderer {
         if (renderer == null || box == null) {
             return;
         }
-
-        int a = alpha(argb);
-        int r = red(argb);
-        int g = green(argb);
-        int b = blue(argb);
-
-        double minX = box.minX;
-        double minY = box.minY;
-        double minZ = box.minZ;
-        double maxX = box.maxX;
-        double maxY = box.maxY;
-        double maxZ = box.maxZ;
-
-        line(renderer, minX, minY, minZ, maxX, minY, minZ, r, g, b, a);
-        line(renderer, maxX, minY, minZ, maxX, minY, maxZ, r, g, b, a);
-        line(renderer, maxX, minY, maxZ, minX, minY, maxZ, r, g, b, a);
-        line(renderer, minX, minY, maxZ, minX, minY, minZ, r, g, b, a);
-
-        line(renderer, minX, maxY, minZ, maxX, maxY, minZ, r, g, b, a);
-        line(renderer, maxX, maxY, minZ, maxX, maxY, maxZ, r, g, b, a);
-        line(renderer, maxX, maxY, maxZ, minX, maxY, maxZ, r, g, b, a);
-        line(renderer, minX, maxY, maxZ, minX, maxY, minZ, r, g, b, a);
-
-        line(renderer, minX, minY, minZ, minX, maxY, minZ, r, g, b, a);
-        line(renderer, maxX, minY, minZ, maxX, maxY, minZ, r, g, b, a);
-        line(renderer, maxX, minY, maxZ, maxX, maxY, maxZ, r, g, b, a);
-        line(renderer, minX, minY, maxZ, minX, maxY, maxZ, r, g, b, a);
+        renderer.outlineBoxAmbientWidth(box, argb);
     }
 
     private static void renderVoxelShape(Renderer3D renderer,
@@ -88,9 +63,21 @@ public enum BlockOutlineRenderer {
         int r = red(argb);
         int g = green(argb);
         int b = blue(argb);
-        shape.move(pos.getX(), pos.getY(), pos.getZ()).forAllEdges((x1, y1, z1, x2, y2, z2) ->
-                line(renderer, x1, y1, z1, x2, y2, z2, r, g, b, a)
-        );
+        MeshBuilder mesh = renderer.lines();
+        if (mesh == null) {
+            return;
+        }
+        // Offsetting inside the edge callback gives the same coordinates as shape.move(..) (which adds the
+        // offset to every coordinate) without building a second shape per block per frame.
+        final double ox = pos.getX();
+        final double oy = pos.getY();
+        final double oz = pos.getZ();
+        shape.forAllEdges((x1, y1, z1, x2, y2, z2) -> {
+            mesh.ensureLineCapacity();
+            int i1 = mesh.vec3(x1 + ox, y1 + oy, z1 + oz).color(r, g, b, a).next();
+            int i2 = mesh.vec3(x2 + ox, y2 + oy, z2 + oz).color(r, g, b, a).next();
+            mesh.line(i1, i2);
+        });
     }
 
     private static void line(Renderer3D renderer,

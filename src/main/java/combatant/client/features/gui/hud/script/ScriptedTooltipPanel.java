@@ -8,6 +8,7 @@
 package combatant.client.features.gui.hud.script;
 
 
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.theme.Themes;
@@ -455,7 +456,7 @@ public final class ScriptedTooltipPanel {
     }
 
     private static String hex(int argb) {
-        return String.format("#%08X", argb);
+        return UiScriptColor.hex(argb);
     }
 
     public record Style(int backgroundAlpha,

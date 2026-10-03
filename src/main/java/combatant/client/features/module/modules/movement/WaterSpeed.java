@@ -7,6 +7,8 @@
 
 package combatant.client.features.module.modules.movement;
 
+import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.PacketEvent;
 import combatant.client.features.module.Module;
@@ -34,12 +36,15 @@ import java.util.concurrent.TimeUnit;
 //does not bypass anything serious todo bypasses
 public final class WaterSpeed extends Module {
 
-    private static final long ARM_DELAY_NANOS = TimeUnit.MILLISECONDS.toNanos(160L);
     private static final double NON_SPRINT_HORIZONTAL_MULTIPLIER = 1.156D;
     private static final double SPRINT_HORIZONTAL_MULTIPLIER = 1.025D;
     private static final double JUMP_VERTICAL_BOOST = 0.05D;
     private static final double SNEAK_VERTICAL_BOOST = -0.05D;
     private static final double IDLE_VERTICAL_BOOST = 0.005D;
+
+    private final NumberValue<Float> strength = num("waterSpeedStrength", "strength", 1.0f, 0.0f, 2.0f);
+    private final BooleanValue vertical = bool("waterSpeedVertical", "vertical", true);
+    private final NumberValue<Integer> armDelayMs = num("waterSpeedArmDelayMs", "arm_delay_ms", 160, 0, 500);
 
     private final Minecraft mc = Minecraft.getInstance();
 
@@ -89,10 +94,12 @@ public final class WaterSpeed extends Module {
         } else {
             verticalBoost = player.isSprinting() ? 0.0D : IDLE_VERTICAL_BOOST;
         }
+        if (!vertical.get()) verticalBoost = 0.0D;
 
         double horizontalMultiplier = player.isSprinting()
                 ? SPRINT_HORIZONTAL_MULTIPLIER
                 : NON_SPRINT_HORIZONTAL_MULTIPLIER;
+        horizontalMultiplier = 1.0D + (horizontalMultiplier - 1.0D) * strength.get();
 
         Vec3 velocity = player.getDeltaMovement();
         player.setDeltaMovement(
@@ -144,7 +151,7 @@ public final class WaterSpeed extends Module {
             resetArmTimer();
             return false;
         }
-        return System.nanoTime() - armedSinceNanos >= ARM_DELAY_NANOS;
+        return System.nanoTime() - armedSinceNanos >= TimeUnit.MILLISECONDS.toNanos(armDelayMs.get());
     }
 
     private void resetArmTimer() {

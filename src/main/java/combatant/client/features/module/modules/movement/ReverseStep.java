@@ -250,7 +250,7 @@ public final class ReverseStep extends Module {
 
     private void handleInstant(LocalPlayer player) {
         BlockHitResult ground = raycastGround(player, maximumFallDistance.get());
-        if (ground == null || ground.getType() != HitResult.Type.BLOCK) return;
+        if (ground == null || ground.getType() != HitResult.Type.BLOCK || startsInsideGround(ground)) return;
 
         double targetY = ground.getLocation().y;
         if (targetY >= player.getY()) return;
@@ -283,7 +283,7 @@ public final class ReverseStep extends Module {
 
         double searchDistance = Math.min(maximumFallDistance.get(), VULCAN_297_GROUND_SEARCH_DISTANCE);
         BlockHitResult ground = raycastGround(player, searchDistance);
-        if (ground == null || ground.getType() != HitResult.Type.BLOCK) return;
+        if (ground == null || ground.getType() != HitResult.Type.BLOCK || startsInsideGround(ground)) return;
 
         double targetY = ground.getLocation().y;
         double distanceToGround = player.getY() - targetY;
@@ -379,6 +379,15 @@ public final class ReverseStep extends Module {
         BlockPos pos = hit.getBlockPos();
         Block block = mc.level.getBlockState(pos).getBlock();
         return UNWANTED_BLOCKS.contains(block);
+    }
+
+    /**
+     * A ray that starts on the top face of a full block counts as starting inside it and reports a point about a
+     * millimetre below the feet. Treating that as ground to drop onto sinks a player whose onGround flag is briefly
+     * false (after a teleport or a server setback) into the floor on every tick, so it never lands again.
+     */
+    private static boolean startsInsideGround(BlockHitResult hit) {
+        return hit.isInside();
     }
 
     private BlockHitResult raycastGround(LocalPlayer player, double distance) {

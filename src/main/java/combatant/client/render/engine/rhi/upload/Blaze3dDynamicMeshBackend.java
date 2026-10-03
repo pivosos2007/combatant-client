@@ -190,6 +190,7 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
 
     @Override
     public void beginFrame(long frameId) {
+        DynamicMeshWrites.flushPending();
         // Retire active arenas if framePresented() was skipped.
         if (!activeArenas.isEmpty()) {
             framePresented();
@@ -202,11 +203,13 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
 
     @Override
     public void endSubmission() {
-        // Direct mapped writes are closed per allocation; no batch flush is required.
+        // Mappings stay open between uploads; make sure nothing is left unflushed at submission end.
+        DynamicMeshWrites.flushPending();
     }
 
     @Override
     public void framePresented() {
+        DynamicMeshWrites.flushPending();
         if (!activeArenas.isEmpty()) {
             Blaze3dFrameFence frameFence = new Blaze3dFrameFence(RenderSystem.getDevice().createCommandEncoder().createFence());
             for (Blaze3dMeshArena arena : activeArenas) {
@@ -246,6 +249,7 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
 
     @Override
     public void close() {
+        DynamicMeshWrites.flushPending();
         for (Blaze3dMeshArena arena : activeArenas) {
             arena.close();
         }

@@ -34,17 +34,18 @@ import java.util.Map;
 public final class MsdfFont implements GlyphFont {
     private static final int FONT_SIZES = 5;
     private static final float BASE_HEIGHT = 27f;
-    private static final int WIDTH_CACHE_LIMIT = 512;
+    private static final int WIDTH_CACHE_SLOTS = 1024;
     private static volatile String lastError = "";
     private final MsdfAtlas atlas;
     private final float pixelScale;
     private final int height;
-    private final LinkedHashMap<WidthKey, Double> widthCache = new LinkedHashMap<>(WIDTH_CACHE_LIMIT, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<WidthKey, Double> eldest) {
-            return size() > WIDTH_CACHE_LIMIT;
-        }
-    };
+    /**
+     * Direct-mapped width cache. The former access-ordered LinkedHashMap allocated a key record per lookup
+     * and relinked its entry on every hit; text is measured many times per frame, so lookups here allocate
+     * nothing and a colliding string simply replaces the slot. Entries are immutable, so a racing reader
+     * can never observe a half-written value.
+     */
+    private final WidthEntry[] widthCache = new WidthEntry[WIDTH_CACHE_SLOTS];
 
     private MsdfFont(MsdfAtlas atlas, float targetHeight) {
         this.atlas = atlas;
@@ -99,9 +100,12 @@ public final class MsdfFont implements GlyphFont {
     public double getWidth(String string, int length) {
         if (string == null || string.isEmpty() || length <= 0) return 0.0;
         int safeLength = Math.min(length, string.length());
-        WidthKey key = new WidthKey(string, safeLength);
-        Double cached = widthCache.get(key);
-        if (cached != null) return cached;
+        int hash = string.hashCode();
+        int slot = ((hash ^ (hash >>> 16)) + safeLength * 0x9E3779B1) & (WIDTH_CACHE_SLOTS - 1);
+        WidthEntry cached = widthCache[slot];
+        if (cached != null && cached.length == safeLength && (cached.text == string || cached.text.equals(string))) {
+            return cached.width;
+        }
 
         double width = 0;
         for (int i = 0; i < safeLength; ) {
@@ -111,7 +115,7 @@ public final class MsdfFont implements GlyphFont {
             if (g != null) width += g.advance * pixelScale;
             i += Character.charCount(cp);
         }
-        widthCache.put(key, width);
+        widthCache[slot] = new WidthEntry(string, safeLength, width);
         return width;
     }
 
@@ -306,7 +310,7 @@ public final class MsdfFont implements GlyphFont {
 
     @Override
     public void close() {
-        widthCache.clear();
+        java.util.Arrays.fill(widthCache, null);
         atlas.release();
     }
 
@@ -346,7 +350,7 @@ public final class MsdfFont implements GlyphFont {
         return argb & 0xFF;
     }
 
-    private record WidthKey(String text, int length) {
+    private record WidthEntry(String text, int length, double width) {
     }
 
     private static final class MsdfAtlas {
@@ -529,16 +533,20 @@ public final class MsdfFont implements GlyphFont {
         private static Texture uploadTexture(BufferedImage image) {
             int w = image.getWidth();
             int h = image.getHeight();
-            int[] pixels = new int[w * h];
-            image.getRGB(0, 0, w, h, pixels, 0, w);
 
             ByteBuffer buffer = MemoryUtil.memAlloc(w * h * 4);
             try {
-                for (int argb : pixels) {
-                    buffer.put((byte) ((argb >> 16) & 0xFF));
-                    buffer.put((byte) ((argb >> 8) & 0xFF));
-                    buffer.put((byte) (argb & 0xFF));
-                    buffer.put((byte) ((argb >> 24) & 0xFF));
+                if (!copyInterleavedBytes(image, buffer)) {
+                    // Generic path: getRGB converts every pixel through the ColorModel, which
+                    // showed up as seconds of reload time for large atlases.
+                    int[] pixels = new int[w * h];
+                    image.getRGB(0, 0, w, h, pixels, 0, w);
+                    for (int argb : pixels) {
+                        buffer.put((byte) ((argb >> 16) & 0xFF));
+                        buffer.put((byte) ((argb >> 8) & 0xFF));
+                        buffer.put((byte) (argb & 0xFF));
+                        buffer.put((byte) ((argb >> 24) & 0xFF));
+                    }
                 }
                 buffer.flip();
 
@@ -550,6 +558,36 @@ public final class MsdfFont implements GlyphFont {
             } finally {
                 MemoryUtil.memFree(buffer);
             }
+        }
+
+        /**
+         * Fast RGBA copy for the byte layouts ImageIO produces for PNGs. Returns false (and writes
+         * nothing) for any other layout so the caller falls back to getRGB.
+         */
+        private static boolean copyInterleavedBytes(BufferedImage image, ByteBuffer out) {
+            int type = image.getType();
+            if (type != BufferedImage.TYPE_4BYTE_ABGR && type != BufferedImage.TYPE_3BYTE_BGR) return false;
+            var raster = image.getRaster();
+            if (raster.getSampleModelTranslateX() != 0 || raster.getSampleModelTranslateY() != 0) return false;
+            if (!(raster.getDataBuffer() instanceof java.awt.image.DataBufferByte dataBuffer)
+                    || dataBuffer.getNumBanks() != 1) return false;
+
+            byte[] data = dataBuffer.getData();
+            int pixels = image.getWidth() * image.getHeight();
+            if (type == BufferedImage.TYPE_4BYTE_ABGR) {
+                if (data.length < pixels * 4) return false;
+                for (int i = 0, p = 0; i < pixels; i++, p += 4) {
+                    // Stored A, B, G, R; uploaded R, G, B, A.
+                    out.put(data[p + 3]).put(data[p + 2]).put(data[p + 1]).put(data[p]);
+                }
+            } else {
+                if (data.length < pixels * 3) return false;
+                for (int i = 0, p = 0; i < pixels; i++, p += 3) {
+                    // Stored B, G, R with no alpha channel: opaque.
+                    out.put(data[p + 2]).put(data[p + 1]).put(data[p]).put((byte) 0xFF);
+                }
+            }
+            return true;
         }
 
         private static float getFloat(JsonObject obj, String key, float fallback) {

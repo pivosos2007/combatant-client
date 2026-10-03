@@ -8,7 +8,10 @@
 package combatant.client.features.module.modules.player;
 
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.EnumValue;
+import combatant.client.config.values.ItemIdSetValue;
 import combatant.client.config.values.NumberValue;
+import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -23,11 +26,13 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 @ModuleInfo(
@@ -49,6 +54,11 @@ public final class ChestStealer extends Module {
             bool("chestStealerAutoClose", "auto_close", true);
     private final BooleanValue ignoreEnderChest =
             bool("chestStealerIgnoreEnderChest", "ignore_ender_chest", true);
+    private final EnumValue<FilterMode> filterMode =
+            enumSetting("chestStealerFilterMode", "filter_mode", FilterMode.ALL, FilterMode.values());
+    private final ItemIdSetValue filterItems = visibleWhen(
+            itemList("chestStealerFilterItems", "filter_items", TextListSetting.PickerMode.ITEMS),
+            () -> filterMode.get() != FilterMode.ALL);
 
     private long nextActionAtNs;
     private boolean pendingAction;
@@ -93,7 +103,8 @@ public final class ChestStealer extends Module {
             generation++;
             activeContainerId = menu.containerId;
             pendingAction = false;
-            nextActionAtNs = 0L;
+            scheduleNextAction();
+            return;
         }
 
         if (pendingAction || System.nanoTime() < nextActionAtNs) return;
@@ -116,9 +127,19 @@ public final class ChestStealer extends Module {
     private int firstLootableSlot(AbstractContainerMenu menu, int containerSlots) {
         for (int i = 0; i < containerSlots; i++) {
             Slot slot = menu.slots.get(i);
-            if (slot != null && slot.hasItem() && !slot.getItem().isEmpty()) return i;
+            if (slot != null && slot.hasItem() && !slot.getItem().isEmpty() && passesFilter(slot.getItem())) return i;
         }
         return -1;
+    }
+
+    /** An empty list never filters, so switching the mode before picking items does not auto-close every chest. */
+    private boolean passesFilter(ItemStack stack) {
+        FilterMode mode = filterMode.get();
+        if (mode == FilterMode.ALL) return true;
+        Set<String> ids = filterItems.get();
+        if (ids == null || ids.isEmpty()) return true;
+        boolean listed = ids.contains(BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+        return mode == FilterMode.WHITELIST ? listed : !listed;
     }
 
 
@@ -206,5 +227,11 @@ public final class ChestStealer extends Module {
         nextActionAtNs = 0L;
         pendingAction = false;
         activeContainerId = -1;
+    }
+
+    public enum FilterMode {
+        ALL,
+        WHITELIST,
+        BLACKLIST
     }
 }

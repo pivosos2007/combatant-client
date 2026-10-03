@@ -235,6 +235,18 @@ public final class MainConfig implements ConfigAggregate, ConfigNameProvider, Se
         return inventory.inventorySwapStrictMovementLockTicksValue();
     }
 
+    public boolean isMultitask() {
+        return inventory.isMultitask();
+    }
+
+    public void setMultitask(boolean enabled) {
+        inventory.setMultitask(enabled);
+    }
+
+    public BooleanValue multitaskValue() {
+        return inventory.multitaskValue();
+    }
+
     public List<SettingDef> getImageSettingDefs() {
         return visual.getSettingDefs();
     }
