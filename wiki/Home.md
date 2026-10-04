@@ -1,6 +1,6 @@
 # Combatant Function Wiki
 
-This wiki provides a generated function-by-function reference for repository source code.
+This wiki provides a generated function-by-function machine-generated reference for repository source code.
 
 ## Pages
 
