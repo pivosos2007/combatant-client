@@ -35,6 +35,7 @@ import combatant.client.features.relations.CategoryType;
 import combatant.client.util.network.BlinkManager;
 import combatant.client.util.target.TargetingUtil;
 import combatant.client.util.pvp.client.CooldownsState;
+import combatant.client.util.pvp.opponents.TotemPopCounter;
 
 @ModuleInfo(
         id = "ktleave",
@@ -48,6 +49,7 @@ public final class KTLeave extends Module {
     private static final String CONDITION_NEARBY_CRYSTAL = "nearby_crystal";
     private static final String CONDITION_STAFF = "staff";
     private static final String CONDITION_NEARBY_PLAYER = "nearby_player";
+    private static final String CONDITION_TOTEM_POPS = "totem_pops";
 
     private final BooleanMapValue conditions = group("ktLeaveConditions", "conditions", defaultConditions());
     private final NumberValue<Integer> hpThreshold = visibleWhen(numCommon(
@@ -61,6 +63,10 @@ public final class KTLeave extends Module {
     private final BooleanValue includeAbsorption = visibleWhen(
             bool("ktLeaveIncludeAbsorption", "include_absorption", true),
             () -> conditions.get(CONDITION_LOW_HEALTH)
+    );
+    private final NumberValue<Integer> popThreshold = visibleWhen(
+            num("ktLeavePopThreshold", "pop_threshold", 3, 1, 10),
+            () -> conditions.get(CONDITION_TOTEM_POPS)
     );
     private final NumberValue<Float> nearbyPlayerRange = visibleWhen(
             num("ktLeaveNearbyPlayerRange", "nearby_player_range", 10.0F, 1.0F, 100.0F),
@@ -116,6 +122,8 @@ public final class KTLeave extends Module {
             resetState();
             lastWorld = mc.level;
             joinCooldownUntilMs = now + joinCooldownMs.get();
+            // The pop counter keeps entries for minutes; without this, rejoining would leave again at once.
+            TotemPopCounter.reset(mc.player.getUUID());
             return;
         }
 
@@ -173,7 +181,9 @@ public final class KTLeave extends Module {
         boolean nearbyCrystal = conditions.get(CONDITION_NEARBY_CRYSTAL) && hasNearbyCrystal(player);
         boolean staff = conditions.get(CONDITION_STAFF) && hasStaffNearby(player);
         boolean nearbyPlayer = conditions.get(CONDITION_NEARBY_PLAYER) && hasNearbyTargetPlayer();
-        return new TriggerState(lowHealth, noTotems, nearbyCrystal, staff, nearbyPlayer);
+        boolean totemPops = conditions.get(CONDITION_TOTEM_POPS)
+                && TotemPopCounter.getCount(player.getUUID()) >= popThreshold.get();
+        return new TriggerState(lowHealth, noTotems, nearbyCrystal, staff, nearbyPlayer, totemPops);
     }
 
     private boolean hasAnyTotem(LocalPlayer player) {
@@ -344,6 +354,7 @@ public final class KTLeave extends Module {
         defaults.put(CONDITION_NEARBY_CRYSTAL, false);
         defaults.put(CONDITION_STAFF, false);
         defaults.put(CONDITION_NEARBY_PLAYER, false);
+        defaults.put(CONDITION_TOTEM_POPS, false);
         return defaults;
     }
 
@@ -352,14 +363,15 @@ public final class KTLeave extends Module {
             boolean noTotems,
             boolean nearbyCrystal,
             boolean staff,
-            boolean nearbyPlayer
+            boolean nearbyPlayer,
+            boolean totemPops
     ) {
         private boolean any() {
-            return lowHealth || noTotems || nearbyCrystal || staff || nearbyPlayer;
+            return lowHealth || noTotems || nearbyCrystal || staff || nearbyPlayer || totemPops;
         }
 
         private boolean lowHealthOnly() {
-            return lowHealth && !noTotems && !nearbyCrystal && !staff && !nearbyPlayer;
+            return lowHealth && !noTotems && !nearbyCrystal && !staff && !nearbyPlayer && !totemPops;
         }
     }
 

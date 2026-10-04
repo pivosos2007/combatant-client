@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 
 import combatant.client.compat.xaero.XaeroMinimapIntegration;
@@ -316,16 +317,16 @@ public final class TargetHud extends DraggableHudElement {
             return Integer.toString(Math.round(health));
         }
         if (health >= 10.0f) {
-            return String.format(Locale.ROOT, "%.1f", health);
+            return FastFormat.oneDecimal(health);
         }
-        return String.format(Locale.ROOT, "%.2f", health);
+        return FastFormat.twoDecimals(health);
     }
 
     private static String formatDistance(float distance) {
         if (distance >= 100.0f) {
             return Integer.toString(Math.round(distance));
         }
-        return String.format(Locale.ROOT, "%.1f", distance);
+        return FastFormat.oneDecimal(distance);
     }
 
     private static int[] buildWaveColors(long elapsedMs,

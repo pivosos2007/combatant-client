@@ -58,12 +58,19 @@ public final class UiShapeRenderer {
         return value != null ? value : props.get(second);
     }
 
-    private static float chamferCorner(UiProps props, String shortName, String longName, float fallback) {
-        Object value = props.get("cut" + shortName);
-        if (value == null) value = props.get("chamfer" + shortName);
-        if (value == null) value = props.get("cut" + longName);
-        if (value == null) value = props.get("chamfer" + longName);
-        return number(value, fallback);
+    // Lookup order per corner: cutXX, chamferXX, cutLongName, chamferLongName. Built once instead
+    // of concatenating four keys per corner per shape per frame.
+    private static final String[] CORNER_TL = {"cutTL", "chamferTL", "cutTopLeft", "chamferTopLeft"};
+    private static final String[] CORNER_TR = {"cutTR", "chamferTR", "cutTopRight", "chamferTopRight"};
+    private static final String[] CORNER_BR = {"cutBR", "chamferBR", "cutBottomRight", "chamferBottomRight"};
+    private static final String[] CORNER_BL = {"cutBL", "chamferBL", "cutBottomLeft", "chamferBottomLeft"};
+
+    private static float chamferCorner(UiProps props, String[] keys, float fallback) {
+        for (String key : keys) {
+            Object value = props.get(key);
+            if (value != null) return number(value, fallback);
+        }
+        return fallback;
     }
 
     private static float number(Object value, float fallback) {
@@ -163,10 +170,6 @@ public final class UiShapeRenderer {
         double h = Math.max(0.0, context.renderLength(props.number("renderHeight", primitiveLogicalBounds.height())));
         float logicalCut = props.number("cut", props.number("chamfer", style.radius()));
         double cut = context.renderLength(logicalCut);
-        double cutTL = context.renderLength(chamferCorner(props, "TL", "TopLeft", logicalCut));
-        double cutTR = context.renderLength(chamferCorner(props, "TR", "TopRight", logicalCut));
-        double cutBR = context.renderLength(chamferCorner(props, "BR", "BottomRight", logicalCut));
-        double cutBL = context.renderLength(chamferCorner(props, "BL", "BottomLeft", logicalCut));
         boolean linearGradient = hasLinearGradient(props);
         int gradientStart = resolveColor(props.get("startColor"), fill, alpha);
         int gradientEnd = resolveColor(props.get("endColor"), fill, alpha);
@@ -250,6 +253,39 @@ public final class UiShapeRenderer {
             return;
         }
 
+        if (renderNamedShape(renderer, props, style, context, shape, vector, logicalBounds, x, y, w, h,
+                fill, stroke, strokeWidth, alpha, linearGradient, gradientStart, gradientEnd, gradientAngle, gradientOffset)) {
+            return;
+        }
+        renderCutShape(renderer, props, context, shape, logicalBounds, x, y, w, h, logicalCut, cut,
+                fill, stroke, strokeWidth, alpha, linearGradient, gradientStart, gradientEnd, gradientAngle, gradientOffset);
+    }
+
+    // The shape arms live outside renderShapeInternal on purpose: HotSpot never JIT-compiles a
+    // method over 8000 bytes of bytecode (HugeMethodLimit), and as one method this had reached
+    // 8068, so every scripted HUD shape was drawn by the interpreter on every frame.
+
+    /** Draws the shapes selected by name. Returns false for the cut/chamfer family, which {@link #renderCutShape} draws. */
+    private boolean renderNamedShape(Renderer2D renderer,
+                                     UiProps props,
+                                     UiStyle style,
+                                     UiRenderContext context,
+                                     String shape,
+                                     UiVectorSpace vector,
+                                     UiBounds logicalBounds,
+                                     double x,
+                                     double y,
+                                     double w,
+                                     double h,
+                                     int fill,
+                                     int stroke,
+                                     float strokeWidth,
+                                     float alpha,
+                                     boolean linearGradient,
+                                     int gradientStart,
+                                     int gradientEnd,
+                                     float gradientAngle,
+                                     float gradientOffset) {
         switch (shape) {
             case "rounded-soft-shadow", "rounded_soft_shadow", "soft-shadow", "soft_shadow" -> {
                 float radius = context.renderLength(props.number("radius", style.radius()));
@@ -259,7 +295,7 @@ public final class UiShapeRenderer {
                 if ((color >>> 24) > 0 && blur > 0.0f) {
                     renderer.roundedRectSoftShadow(x, y, w, h, radius, blur, innerAlpha, color);
                 }
-                return;
+                return true;
             }
             case "rounded-shadow", "rounded_shadow", "shadow" -> {
                 float radius = context.renderLength(props.number("radius", style.radius()));
@@ -269,7 +305,7 @@ public final class UiShapeRenderer {
                 if ((color >>> 24) > 0) {
                     renderer.roundedRectShadow(x, y, w, h, radius, softness, spread, color);
                 }
-                return;
+                return true;
             }
             case "rounded-glow", "rounded_glow", "glow" -> {
                 float radius = context.renderLength(props.number("radius", style.radius()));
@@ -279,7 +315,7 @@ public final class UiShapeRenderer {
                 if ((color >>> 24) > 0 && glow > 0.0f) {
                     renderer.roundedRectGlow(x, y, w, h, radius, softness, glow, color);
                 }
-                return;
+                return true;
             }
             case "radial-glow-masked", "radial_glow_masked", "radial-glow", "radial_glow" -> {
                 float radius = context.renderLength(props.number("radius", style.radius()));
@@ -291,7 +327,7 @@ public final class UiShapeRenderer {
                 if ((color >>> 24) > 0 && glowRadius > 0.0f) {
                     renderer.radialGlowMasked(x, y, w, h, radius, softness, glowRadius, (float) x + cx, (float) y + cy, color);
                 }
-                return;
+                return true;
             }
             case "rounded-gradient-quad", "rounded_gradient_quad", "rounded-quad-gradient", "rounded_quad_gradient" -> {
                 float radius = context.renderLength(props.number("radius", style.radius()));
@@ -301,7 +337,7 @@ public final class UiShapeRenderer {
                         resolveColor(first(props, "topRightColor", "cTopRight"), gradientEnd, alpha),
                         resolveColor(first(props, "bottomRightColor", "cBottomRight"), gradientEnd, alpha),
                         resolveColor(first(props, "bottomLeftColor", "cBottomLeft"), gradientStart, alpha));
-                return;
+                return true;
             }
             case "rounded-stroke-gradient", "rounded_stroke_gradient" -> {
                 float radius = context.renderLength(props.number("radius", style.radius()));
@@ -314,7 +350,7 @@ public final class UiShapeRenderer {
                             start, end, props.number("angle", props.number("strokeAngle", 90.0f)),
                             props.get("offset") != null ? context.renderLength(props.number("offset", 0.0f)) : context.renderLength(props.number("strokeOffset", 0.0f)));
                 }
-                return;
+                return true;
             }
             case "circle-soft-shadow", "circle_soft_shadow" -> {
                 double radius = context.renderLength(props.number("radius",
@@ -331,7 +367,7 @@ public final class UiShapeRenderer {
                 if ((color >>> 24) > 0 && radius > 0.0 && blur > 0.0f) {
                     renderer.circleSoftShadow(cx, cy, radius, blur, innerAlpha, color);
                 }
-                return;
+                return true;
             }
             case "rect", "quad" -> {
                 if ((fill >>> 24) > 0) {
@@ -340,7 +376,7 @@ public final class UiShapeRenderer {
                 if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
                     renderer.roundedRectStroke(x, y, w, h, 0.0f, 0.0f, strokeWidth, stroke);
                 }
-                return;
+                return true;
             }
             case "gradient", "rect-gradient", "rect_gradient", "quad-gradient", "quad_gradient" -> {
                 int start = resolveColor(props.get("startColor"), fill, alpha);
@@ -371,7 +407,7 @@ public final class UiShapeRenderer {
                                 props.get("strokeOffset") != null ? context.renderLength(props.number("strokeOffset", 0.0f)) : context.renderLength(props.number("offset", 0.0f)));
                     }
                 }
-                return;
+                return true;
             }
             case "rounded", "rounded-rect", "rounded_rect" -> {
                 float radius = context.renderLength(props.number("radius", style.radius()));
@@ -381,7 +417,7 @@ public final class UiShapeRenderer {
                 if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
                     renderer.roundedRectStroke(x, y, w, h, radius, strokeWidth, stroke);
                 }
-                return;
+                return true;
             }
             case "rounded-gradient", "rounded_gradient", "rounded-rect-gradient", "rounded_rect_gradient" -> {
                 float radius = context.renderLength(props.number("radius", style.radius()));
@@ -413,7 +449,7 @@ public final class UiShapeRenderer {
                                 props.get("strokeOffset") != null ? context.renderLength(props.number("strokeOffset", 0.0f)) : context.renderLength(props.number("offset", 0.0f)));
                     }
                 }
-                return;
+                return true;
             }
             case "rounded-progress-gradient", "rounded_progress_gradient", "progress-rounded-gradient",
                 "progress_rounded_gradient" -> {
@@ -429,7 +465,7 @@ public final class UiShapeRenderer {
                             props.number("angle", 0.0f),
                             context.renderLength(props.number("offset", 0.0f)));
                 }
-                return;
+                return true;
             }
             case "rounded-smoke-fill", "rounded_smoke_fill", "smoke-fill", "smoke_fill" -> {
                 float radius = context.renderLength(props.number("radius", style.radius()));
@@ -456,7 +492,7 @@ public final class UiShapeRenderer {
                             props.number("intensity", 1.45f)
                     );
                 }
-                return;
+                return true;
             }
             case "rounded-corners", "rounded_corners", "rounded-rect-corners", "rounded_rect_corners" -> {
                 float radius = context.renderLength(props.number("radius", style.radius()));
@@ -485,7 +521,7 @@ public final class UiShapeRenderer {
                     renderer.roundedRectStrokeCorners(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL,
                             strokeWidth, stroke);
                 }
-                return;
+                return true;
             }
             case "circle" -> {
                 double radius = context.renderLength(props.number("radius",
@@ -502,7 +538,7 @@ public final class UiShapeRenderer {
                 if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
                     renderer.circleStroke(cx, cy, radius, strokeWidth, stroke);
                 }
-                return;
+                return true;
             }
             case "circle-stroke", "circle_stroke", "ring" -> {
                 double radius = context.renderLength(props.number("radius",
@@ -518,7 +554,7 @@ public final class UiShapeRenderer {
                 if ((color >>> 24) > 0 && thickness > 0.0f) {
                     renderer.circleStroke(cx, cy, radius, thickness, color);
                 }
-                return;
+                return true;
             }
             case "arc", "arc-stroke", "arc_stroke", "arc-flat", "arc_flat", "arc-gradient", "arc_gradient", "arc-hash", "arc_hash" -> {
                 float authoredThickness = props.number("thickness", Math.max(1.0f, style.strokeWidth()));
@@ -536,7 +572,7 @@ public final class UiShapeRenderer {
                 float startAngle = props.number("startAngle", 0.0f);
                 float endAngle = props.number("endAngle", 360.0f);
                 int color = (stroke >>> 24) > 0 ? stroke : fill;
-                if (thickness <= 0.0f) return;
+                if (thickness <= 0.0f) return true;
                 if (shape.equals("arc-gradient") || shape.equals("arc_gradient")
                         || shape.equals("arc-hash") || shape.equals("arc_hash")) {
                     int start = resolveColor(props.get("startColor"), color, alpha);
@@ -560,10 +596,37 @@ public final class UiShapeRenderer {
                         renderer.arcStroke(cx, cy, radius, thickness, startAngle, endAngle, color);
                     }
                 }
-                return;
+                return true;
             }
         }
+        return false;
+    }
 
+    private void renderCutShape(Renderer2D renderer,
+                                UiProps props,
+                                UiRenderContext context,
+                                String shape,
+                                UiBounds logicalBounds,
+                                double x,
+                                double y,
+                                double w,
+                                double h,
+                                float logicalCut,
+                                double cut,
+                                int fill,
+                                int stroke,
+                                float strokeWidth,
+                                float alpha,
+                                boolean linearGradient,
+                                int gradientStart,
+                                int gradientEnd,
+                                float gradientAngle,
+                                float gradientOffset) {
+        // Per-corner overrides are only read here; resolving them for every shape cost 16 map lookups each.
+        double cutTL = context.renderLength(chamferCorner(props, CORNER_TL, logicalCut));
+        double cutTR = context.renderLength(chamferCorner(props, CORNER_TR, logicalCut));
+        double cutBR = context.renderLength(chamferCorner(props, CORNER_BR, logicalCut));
+        double cutBL = context.renderLength(chamferCorner(props, CORNER_BL, logicalCut));
         if ((fill >>> 24) > 0 || (linearGradient && ((gradientStart | gradientEnd) >>> 24) > 0)) {
             switch (shape) {
                 case "beveled", "bevel" -> {

@@ -26,6 +26,7 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityEvent;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.EquipmentSlotGroup;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
@@ -37,6 +38,8 @@ import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.NumberValue;
+import combatant.client.config.values.StringValue;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -60,9 +63,16 @@ public class FakePlayer extends Module {
             bool("fakePlayerCopyInventory", SETTING_COPY_INVENTORY, false);
     private final BooleanValue autoTotem =
             bool("fakePlayerAutoTotem", SETTING_AUTO_TOTEM, true);
+    private final NumberValue<Integer> totemLimit =
+            visibleWhen(num("fakePlayerTotemLimit", "totem_limit", 0, 0, 10), autoTotem::get);
+    private final NumberValue<Float> health = num("fakePlayerHealth", "health", 20.0f, 1.0f, 100.0f);
+    private final NumberValue<Float> absorption = num("fakePlayerAbsorption", "absorption", 0.0f, 0.0f, 40.0f);
+    private final NumberValue<Float> regenPerSecond = num("fakePlayerRegen", "regen_per_second", 0.0f, 0.0f, 20.0f);
+    private final StringValue customName = text("fakePlayerName", "custom_name", "");
     private static int nextFakeEntityId = -1_000_000;
     private Player fakePlayer;
     private int deathTime;
+    private int totemPops;
 
     public FakePlayer() {
         AttackEntityCallback.EVENT.register((player, world, hand, target, hitResult) -> {
@@ -117,7 +127,7 @@ public class FakePlayer extends Module {
         despawnFake();
 
         String baseName = mc.player.getGameProfile().name();
-        String fakeName = baseName + "_fake";
+        String fakeName = resolveName(baseName);
         fakePlayer = new net.minecraft.client.player.RemotePlayer(
                 mc.level,
                 new GameProfile(UUID.fromString("66123666-6666-6666-6666-666666666600"), fakeName)
@@ -153,12 +163,28 @@ public class FakePlayer extends Module {
             fakePlayer.setItemSlot(EquipmentSlot.OFFHAND, fakePlayer.getOffhandItem());
         }
 
+        AttributeInstance maxHealth = fakePlayer.getAttribute(Attributes.MAX_HEALTH);
+        if (maxHealth != null) maxHealth.setBaseValue(health.get());
+        // setAbsorptionAmount clamps to MAX_ABSORPTION (0 for a plain player), so raise the cap first.
+        AttributeInstance maxAbsorption = fakePlayer.getAttribute(Attributes.MAX_ABSORPTION);
+        if (maxAbsorption != null) maxAbsorption.setBaseValue(absorption.get());
         fakePlayer.setHealth(fakePlayer.getMaxHealth());
-        fakePlayer.setAbsorptionAmount(0f);
+        fakePlayer.setAbsorptionAmount(absorption.get());
         fakePlayer.setId(allocateFakeEntityId());
 
         mc.level.addEntity(fakePlayer);
         deathTime = 0;
+        totemPops = 0;
+    }
+
+    private String resolveName(String baseName) {
+        String custom = customName.get() == null ? "" : customName.get().trim();
+        return custom.matches("[A-Za-z0-9_]{1,16}") ? custom : baseName + "_fake";
+    }
+
+    /** 0 = unlimited, otherwise the fake only survives that many lethal hits. */
+    private boolean totemsLeft() {
+        return totemLimit.get() == 0 || totemPops < totemLimit.get();
     }
 
     @Override
@@ -171,8 +197,13 @@ public class FakePlayer extends Module {
         if (!isEnabled() || mc.level == null || mc.player == null) return;
         if (fakePlayer == null) return;
 
-        if (autoTotem.get() && fakePlayer.getOffhandItem().getItem() != Items.TOTEM_OF_UNDYING) {
+        if (autoTotem.get() && totemsLeft() && fakePlayer.getOffhandItem().getItem() != Items.TOTEM_OF_UNDYING) {
             fakePlayer.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
+        }
+
+        float regen = regenPerSecond.get();
+        if (regen > 0f && !fakePlayer.isDeadOrDying() && fakePlayer.getHealth() < fakePlayer.getMaxHealth()) {
+            fakePlayer.setHealth(Math.min(fakePlayer.getMaxHealth(), fakePlayer.getHealth() + regen / 20.0f));
         }
 
         if (fakePlayer.isDeadOrDying()) {
@@ -287,9 +318,13 @@ public class FakePlayer extends Module {
             target.setHealth(target.getHealth() - left);
         }
 
-        if (target.isDeadOrDying() && autoTotem.get()
+        if (target.isDeadOrDying() && autoTotem.get() && totemsLeft()
                 && target.getOffhandItem().getItem() == Items.TOTEM_OF_UNDYING) {
             target.setHealth(10f);
+            if (totemLimit.get() > 0) {
+                totemPops++;
+                target.setItemInHand(InteractionHand.OFF_HAND, ItemStack.EMPTY);
+            }
             if (mc.player != null && mc.player.connection != null) {
                 new ClientboundEntityEventPacket(target, EntityEvent.PROTECTED_FROM_DEATH)
                         .handle(mc.player.connection);

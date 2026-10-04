@@ -184,6 +184,17 @@ public enum ModuleManager {
         if (m != null) m.setEnabled(!m.isEnabled(), source);
     }
 
+    // Hot per-frame loops open one profiler zone per module; only build the label when a
+    // profiler is attached, otherwise every frame paid a string concat per enabled module.
+    // The per-module section labels used to be concatenated for every enabled module on every frame even
+    // though the section is a no-op unless the dev profiler classes are on the classpath.
+    private static final boolean PROFILER_2D = RenderProfiler2D.isAvailable();
+    private static final boolean PROFILER_3D = RenderProfiler3D.isAvailable();
+
+    private static ProfilerPhase.Scope moduleScope(String prefix, Module module) {
+        return ProfilerPhase.scope(ProfilerPhase.isActive() ? prefix + module.name() : prefix);
+    }
+
     private static void runModule(Module module, String phase, Runnable action) {
         if (!module.isEnabled()) return;
         try {
@@ -210,7 +221,7 @@ public enum ModuleManager {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("modules:tick")) {
             for (Module m : modulesSnapshot) {
                 if (!m.isEnabled()) continue;
-                try (ProfilerPhase.Scope scope = ProfilerPhase.scope("module:tick:" + m.name())) {
+                try (ProfilerPhase.Scope scope = moduleScope("module:tick:", m)) {
                     runModule(m, "tick", () -> {
                         if (ModuleExtensionManager.beforeTick(m)) {
                             m.onTick();
@@ -238,7 +249,7 @@ public enum ModuleManager {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("modules:frame")) {
             for (Module m : modulesSnapshot) {
                 if (!m.isEnabled()) continue;
-                try (ProfilerPhase.Scope scope = ProfilerPhase.scope("module:frame:" + m.name())) {
+                try (ProfilerPhase.Scope scope = moduleScope("module:frame:", m)) {
                     runModule(m, "frame", () -> {
                         if (ModuleExtensionManager.beforeFrame(m, frameDeltaTicks)) {
                             m.onFrame(frameDeltaTicks);
@@ -263,7 +274,7 @@ public enum ModuleManager {
         try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("modules:hud_legacy:" + phase.name().toLowerCase(Locale.ROOT))) {
             for (Module m : phaseModules) {
                 if (!m.isEnabled()) continue;
-                try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:hud_legacy:" + m.name())) {
+                try (ProfilerPhase.Scope moduleScope = moduleScope("module:hud_legacy:", m)) {
                     runModule(m, "hud", () -> m.onRender2D(ctx, tickDelta));
                 }
             }
@@ -276,8 +287,8 @@ public enum ModuleManager {
         if (phaseModules == null) return;
         for (Module m : phaseModules) {
             if (m.isEnabled() && m.getHudRenderSpace() == space) {
-                try (ProfilerPhase.Scope scope = ProfilerPhase.scope("module:hud:" + m.name());
-                     RenderProfiler2D.Section ignored = RenderProfiler2D.section("module:" + m.name())) {
+                try (ProfilerPhase.Scope scope = moduleScope("module:hud:", m);
+                     RenderProfiler2D.Section ignored = RenderProfiler2D.section(PROFILER_2D ? "module:" + m.name() : null)) {
                     runModule(m, "hud engine", () -> {
                         if (ModuleExtensionManager.beforeHudRender(m, renderer, textRenderer, ctx, tickDelta)) {
                             m.onRenderHudEngine(renderer, textRenderer, ctx, tickDelta);
@@ -299,8 +310,8 @@ public enum ModuleManager {
         if (phaseModules == null) return;
         for (Module m : phaseModules) {
             if (m.isEnabled() && m.getHudRenderSpace() == space) {
-                try (ProfilerPhase.Scope scope = ProfilerPhase.scope("module:hud_fg:" + m.name());
-                     RenderProfiler2D.Section ignored = RenderProfiler2D.section("module_fg:" + m.name())) {
+                try (ProfilerPhase.Scope scope = moduleScope("module:hud_fg:", m);
+                     RenderProfiler2D.Section ignored = RenderProfiler2D.section(PROFILER_2D ? "module_fg:" + m.name() : null)) {
                     runModule(m, "hud foreground", () -> m.onRenderHudEngineForeground(renderer, textRenderer, ctx, tickDelta));
                 }
             }
@@ -339,7 +350,7 @@ public enum ModuleManager {
         try (ProfilerPhase.Scope phaseScope = ProfilerPhase.scope("modules:world_legacy:" + phase.name().toLowerCase(Locale.ROOT))) {
             for (Module m : phaseModules) {
                 if (!m.isEnabled()) continue;
-                try (ProfilerPhase.Scope moduleScope = ProfilerPhase.scope("module:world_legacy:" + m.name())) {
+                try (ProfilerPhase.Scope moduleScope = moduleScope("module:world_legacy:", m)) {
                     runModule(m, "world legacy", () -> m.onRenderWorld(matrices, consumers, tickDelta));
                 }
             }
@@ -353,8 +364,8 @@ public enum ModuleManager {
         try {
             for (Module m : phaseModules) {
                 if (!m.isEnabled()) continue;
-                try (ProfilerPhase.Scope scope = ProfilerPhase.scope("module:world:" + m.name());
-                     RenderProfiler3D.Section ignored = RenderProfiler3D.section("module:" + m.name())) {
+                try (ProfilerPhase.Scope scope = moduleScope("module:world:", m);
+                     RenderProfiler3D.Section ignored = RenderProfiler3D.section(PROFILER_3D ? "module:" + m.name() : null)) {
                     runModule(m, "world engine", () -> {
                         if (ModuleExtensionManager.beforeWorldRender(m, renderer, depthRenderer, tickDelta)) {
                             m.onRenderWorldEngine(renderer, depthRenderer, tickDelta);
@@ -378,7 +389,7 @@ public enum ModuleManager {
         Module[] snapshot = modulesSnapshot;
         for (Module m : snapshot) {
             if (!m.isEnabled()) continue;
-            try (ProfilerPhase.Scope scope = ProfilerPhase.scope("module:world_post_prepare:" + m.name())) {
+            try (ProfilerPhase.Scope scope = moduleScope("module:world_post_prepare:", m)) {
                 runModule(m, "world post prepare", () -> m.onPrepareWorldPostProcess(tickDelta));
             }
         }

@@ -14,7 +14,6 @@ import combatant.client.util.logging.DebugLog;
 import combatant.client.render.engine.rhi.backend.gl.GlNativeStateTracker;
 import combatant.client.render.iris.IrisRuntime;
 import com.mojang.blaze3d.opengl.DirectStateAccess;
-import net.irisshaders.iris.vertices.ImmediateState;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
@@ -41,7 +40,8 @@ public abstract class GlCommandEncoderMixin {
      */
     @Inject(method = "trySetup", at = @At("HEAD"))
     private void combatant$reapplyImportedIrisPipelineState(CallbackInfoReturnable<Boolean> cir) {
-        if (ImmediateState.safeToMultiply && IrisRuntime.isShaderpackRendererActive()) {
+        // Mod-loaded check first: this mixin applies with or without Iris installed.
+        if (IrisRuntime.isImportedGeometrySubmission() && IrisRuntime.isShaderpackRendererActive()) {
             lastPipeline = null;
         }
     }

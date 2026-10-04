@@ -20,6 +20,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.EntityHitResult;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @ModuleInfo(
         id = "autobreed",
         displayName = "AutoBreed",
@@ -34,16 +37,27 @@ public final class AutoBreed extends Module {
     private final NumberValue<Double> range = num("autoBreedRange", "range", 4.5D, 2.0D, 6.0D);
     private final NumberValue<Integer> delayTicks = num("autoBreedDelayTicks", "delay_ticks", 4, 1, 20);
 
+    /** Love mode lasts 30 seconds. */
+    private static final long LOVE_TICKS = 600L;
+
+    /**
+     * Animals fed lately, by entity id. The client never learns an animal's love state (the field is server-only),
+     * so canFallInLove() stays true for one that was just fed and the first animal in the list would be fed again
+     * every cycle while the others were never reached.
+     */
+    private final Map<Integer, Long> fedAt = new HashMap<>();
     private int cooldown;
 
     @Override
     public void onEnable() {
         cooldown = 0;
+        fedAt.clear();
     }
 
     @Override
     public void onDisable() {
         cooldown = 0;
+        fedAt.clear();
     }
 
     @Override
@@ -63,13 +77,18 @@ public final class AutoBreed extends Module {
         double rangeSq = rangeValue * rangeValue;
         AABB box = player.getBoundingBox().inflate(rangeValue);
 
+        long now = mc.level.getGameTime();
+        fedAt.values().removeIf(fed -> now - fed >= LOVE_TICKS);
+
         for (Animal animal : mc.level.getEntitiesOfClass(Animal.class, box, entity -> entity != null && entity.isAlive())) {
             if (player.distanceToSqr(animal) > rangeSq || !animal.canFallInLove()) continue;
+            if (fedAt.containsKey(animal.getId())) continue;
             InteractionHand hand = foodHand(player, animal);
             if (hand == null) continue;
 
             mc.gameMode.interact(player, animal, new EntityHitResult(animal), hand);
             player.swing(hand);
+            fedAt.put(animal.getId(), now);
             cooldown = delayTicks.get();
             return;
         }

@@ -85,7 +85,16 @@ public class DropESP extends Module {
     private static final float MATTE_ICON_SCALE = 0.9375f;
     private static final WorldUiPresentationService.Policy WORLD_PRESENTATION_POLICY =
             new WorldUiPresentationService.Policy(0.0150, 12.0, 18.0, 32.0, 0.45, 4.00);
+    private static final long INFO_TTL_TICKS = 10L;
+    private static final long INFO_SWEEP_TICKS = 100L;
     private final Minecraft mc = Minecraft.getInstance();
+    private final java.util.ArrayList<ItemEntity> nearbyItems = new java.util.ArrayList<>();
+    private final it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<DropInfo> infoCache = new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<>();
+    private final java.util.ArrayList<DropWorldEntry> worldEntries = new java.util.ArrayList<>();
+    private net.minecraft.world.level.Level nearbyLevel;
+    private net.minecraft.world.entity.player.Player nearbyPlayer;
+    private long nearbyTick = Long.MIN_VALUE;
+    private long infoSweepTick;
     private final ModeValue modeValue = modeSetting("dropEspMode", SETTING_MODE, "Matte", "Vanilla", "Matte");
     private final EnumValue<WorldUiPresentationService.Mode> presentationMode =
             enumSetting("dropEspPresentationMode", SETTING_PRESENTATION_MODE,
@@ -158,68 +167,73 @@ public class DropESP extends Module {
         TextRenderer labelRenderer = dropLabelRenderer(TextRenderer.get());
         Vec3 cameraPos = presentationCameraPosition(tickDelta);
         boolean framesEnabled = frameValue.get();
-        java.util.List<DropWorldEntry> entries = new java.util.ArrayList<>();
-        java.util.List<ItemBatchRenderer.WorldItemRow> itemRows = new java.util.ArrayList<>();
+        boolean iconsEnabled = itemIconValue.get();
+        long tick = mc.level.getGameTime();
+        java.util.List<DropWorldEntry> entries = worldEntries;
+        entries.clear();
 
-        for (ItemEntity item : mc.level.getEntitiesOfClass(
-                ItemEntity.class,
-                mc.player.getBoundingBox().inflate(64),
-                e -> true
-        )) {
+        for (ItemEntity item : nearbyItems()) {
+            if (item.isRemoved()) continue;
+            DropInfo info = infoFor(item, tick);
             Vec3 pos = obtainEntityLerpedPos(item, tickDelta);
             double distSq = pos.distanceToSqr(cameraPos);
             double dist = Math.sqrt(distSq);
-            if (!passesDistanceFilter(item, dist)) continue;
+            if (!passesDistanceFilter(info, dist)) continue;
             WorldUiPresentationService.Snapshot presentation = resolvePresentation(dist);
             if (presentation.worldAlpha() <= 0.001f) continue;
 
-            ItemStack stack = item.getItem().copy();
-            Component text = formatReferenceItemLabel(stack);
-            AABB labelBox = item.getBoundingBox().move(pos.subtract(item.position())).inflate(0.1);
-            Vec3 anchor = new Vec3(labelBox.getCenter().x, labelBox.maxY, labelBox.getCenter().z);
+            // Same bounds as bb.move(pos - position).inflate(0.1) without building the two AABBs.
+            AABB bb = item.getBoundingBox();
+            double dx = pos.x - item.getX();
+            double dy = pos.y - item.getY();
+            double dz = pos.z - item.getZ();
+            double minX = (bb.minX + dx) - 0.1, maxX = (bb.maxX + dx) + 0.1;
+            double minY = (bb.minY + dy) - 0.1, maxY = (bb.maxY + dy) + 0.1;
+            double minZ = (bb.minZ + dz) - 0.1, maxZ = (bb.maxZ + dz) + 0.1;
+            Vec3 anchor = new Vec3(minX + (maxX - minX) * 0.5, maxY, minZ + (maxZ - minZ) * 0.5);
 
             Vec3 frameAnchor = null;
             double frameWorldWidth = 0.0;
             double frameWorldHeight = 0.0;
             if (framesEnabled) {
-                AABB frameBox = item.getBoundingBox().move(
-                        pos.x - item.getX(),
-                        pos.y - item.getY(),
-                        pos.z - item.getZ()
-                );
-                frameBox = frameBox.inflate(0.1);
                 frameAnchor = new Vec3(
-                        (frameBox.minX + frameBox.maxX) * 0.5,
-                        (frameBox.minY + frameBox.maxY) * 0.5,
-                        (frameBox.minZ + frameBox.maxZ) * 0.5
+                        (minX + maxX) * 0.5,
+                        (minY + maxY) * 0.5,
+                        (minZ + maxZ) * 0.5
                 );
-                frameWorldWidth = Math.max(frameBox.maxX - frameBox.minX, frameBox.maxZ - frameBox.minZ);
-                frameWorldHeight = frameBox.maxY - frameBox.minY;
+                frameWorldWidth = Math.max(maxX - minX, maxZ - minZ);
+                frameWorldHeight = maxY - minY;
             }
 
             entries.add(new DropWorldEntry(
-                    resolveSortPriority(stack), distSq, anchor, frameAnchor, frameWorldWidth, frameWorldHeight,
-                    presentation.worldUnitsPerPixel(), presentation.worldAlpha(), stack, text, resolveDisplayColor(stack)));
+                    info.sortPriority, distSq, anchor, frameAnchor, frameWorldWidth, frameWorldHeight,
+                    presentation.worldUnitsPerPixel(), presentation.worldAlpha(), item.getItem(), info));
         }
 
         entries.sort(DropESP::compareDropWorldRenderOrder);
-        for (int i = 0; i < entries.size(); i++) {
-            DropWorldEntry entry = entries.get(i);
-            itemRows.add(new ItemBatchRenderer.WorldItemRow(null,
-                    itemIconValue.get() ? new ItemStack[]{entry.stack()} : new ItemStack[0], i));
-        }
         // Capture the billboard axes before GuiItemAtlas performs any off-screen rendering.
         // More importantly, currentBasis itself is backed by the immutable captured camera
         // matrix, so item-atlas state can never influence billboard orientation.
         WorldBillboardRenderer.Basis basis = WorldBillboardRenderer.currentBasis();
-        java.util.List<ItemBatchRenderer.WorldItemSprite[]> sprites =
-                ItemBatchRenderer.resolveWorldItemSprites(itemRows);
+        java.util.List<ItemBatchRenderer.WorldItemSprite[]> sprites = null;
+        if (iconsEnabled && !entries.isEmpty()) {
+            java.util.List<ItemBatchRenderer.WorldItemRow> itemRows = new java.util.ArrayList<>(entries.size());
+            for (int i = 0; i < entries.size(); i++) {
+                itemRows.add(new ItemBatchRenderer.WorldItemRow(null, new ItemStack[]{entries.get(i).stack()}, i));
+            }
+            sprites = ItemBatchRenderer.resolveWorldItemSprites(itemRows);
+        }
+        // "Ag" height only depends on the renderer/scale; measure it once per frame, not once per label.
+        double measuredTextHeight = entries.isEmpty()
+                ? 0.0
+                : WorldTextRenderer.measure(labelRenderer, "Ag", DROP_TEXT_SCALE, false).height();
         for (int i = 0; i < entries.size(); i++) {
-            ItemBatchRenderer.WorldItemSprite sprite = i < sprites.size() && sprites.get(i).length > 0
+            ItemBatchRenderer.WorldItemSprite sprite = sprites != null && i < sprites.size() && sprites.get(i).length > 0
                     ? sprites.get(i)[0]
                     : null;
-            renderWorldDrop(renderer, basis, labelRenderer, entries.get(i), sprite);
+            renderWorldDrop(renderer, basis, labelRenderer, entries.get(i), sprite, iconsEnabled, measuredTextHeight);
         }
+        entries.clear();
     }
 
     @Override
@@ -229,6 +243,7 @@ public class DropESP extends Module {
 
         boolean matteMode = isMatteMode();
         boolean overlayMode = isOverlayMode();
+        boolean iconsEnabled = itemIconValue.get();
         TextRenderer labelRenderer = overlayMode ? dropLabelRenderer(textRenderer) : VanillaTextRenderer.INSTANCE;
         boolean measureStarted = false;
         java.util.List<DropOverlayEntry> overlayEntries = new java.util.ArrayList<>();
@@ -240,25 +255,23 @@ public class DropESP extends Module {
             measureStarted = true;
         }
 
+        long tick = mc.level.getGameTime();
         Vec3 cameraPos = presentationCameraPosition(tickDelta);
-        for (ItemEntity item : mc.level.getEntitiesOfClass(
-                ItemEntity.class,
-                mc.player.getBoundingBox().inflate(64),
-                e -> true
-        )) {
-
+        double measuredTextHeight = Double.NaN;
+        for (ItemEntity item : nearbyItems()) {
+            if (item.isRemoved()) continue;
+            DropInfo info = infoFor(item, tick);
             Vec3 pos = obtainEntityLerpedPos(item, tickDelta);
 
             double distSq = pos.distanceToSqr(cameraPos);
             double dist = Math.sqrt(distSq);
-            if (!passesDistanceFilter(item, dist)) continue;
+            if (!passesDistanceFilter(info, dist)) continue;
             float presentationAlpha = resolvePresentation(dist).screenAlpha();
             if (presentationAlpha <= 0.001f) continue;
 
             ItemStack stack = item.getItem();
-            Component text = formatReferenceItemLabel(stack);
-            int color = resolveDisplayColor(stack);
-            int sortPriority = resolveSortPriority(stack);
+            int color = info.color;
+            int sortPriority = info.sortPriority;
 
             if (overlayMode) {
                 AABB overlayBox = item.getBoundingBox().move(
@@ -269,12 +282,16 @@ public class DropESP extends Module {
                 ScreenSpaceOverlay2D.ScreenRect rect = ScreenSpaceOverlay2D.projectBox(overlayBox, tickDelta);
                 if (rect == null) continue;
 
-                DropLabelEntry matteLabel = matteMode
-                        ? createMatteDropLabel(labelRenderer, stack, text, color, rect, itemIconValue.get())
-                        : null;
-                ScreenSpaceOverlay2D.LabelEntry label = matteMode
-                        ? null
-                        : ScreenSpaceOverlay2D.createCenteredLabel(labelRenderer, text.getString(), color, rect);
+                DropLabelEntry matteLabel = null;
+                ScreenSpaceOverlay2D.LabelEntry label = null;
+                if (matteMode) {
+                    if (Double.isNaN(measuredTextHeight)) {
+                        measuredTextHeight = RuntimeTextLayout.height(labelRenderer, DROP_TEXT_SCALE, false);
+                    }
+                    matteLabel = createMatteDropLabel(labelRenderer, stack, info, rect, iconsEnabled, measuredTextHeight);
+                } else {
+                    label = ScreenSpaceOverlay2D.createCenteredLabel(labelRenderer, info.plainText, color, rect);
+                }
                 overlayEntries.add(new DropOverlayEntry(
                         sortPriority, distSq, rect, color, matteLabel, label, presentationAlpha));
             } else {
@@ -293,10 +310,10 @@ public class DropESP extends Module {
                 Vec3 screen = ScreenProjection.worldToScreen(center, tickDelta);
                 if (screen == null) continue;
 
-                double x = screen.x - (labelRenderer.getWidth(text.getString(), false) / 2.0);
+                double x = screen.x - (labelRenderer.getWidth(info.plainText, false) / 2.0);
                 double y = screen.y;
                 vanillaEntries.add(new DropVanillaEntry(
-                        sortPriority, distSq, ScreenSpaceOverlay2D.labelAt(text.getString(), x, y, color), presentationAlpha));
+                        sortPriority, distSq, ScreenSpaceOverlay2D.labelAt(info.plainText, x, y, color), presentationAlpha));
             }
         }
 
@@ -364,10 +381,10 @@ public class DropESP extends Module {
         }
         try {
             double cursor = label.textX();
-            for (TextRenderUtil.Part part : TextRenderUtil.flattenStyled(label.text(), label.color())) {
-                String safe = RuntimeTextLayout.singleLine(part.text());
-                cursor = labelRenderer.render(safe, cursor, label.textY(),
-                        new RenderColor(scaleAlpha(part.color(), alpha)), false);
+            DropInfo info = label.info();
+            for (int i = 0; i < info.safeParts.length; i++) {
+                cursor = labelRenderer.render(info.safeParts[i], cursor, label.textY(),
+                        new RenderColor(scaleAlpha(info.partColors[i], alpha)), false);
             }
         } finally {
             if (renderStarted) labelRenderer.end();
@@ -392,12 +409,11 @@ public class DropESP extends Module {
 
     private DropLabelEntry createMatteDropLabel(TextRenderer labelRenderer,
                                                 ItemStack stack,
-                                                Component text,
-                                                int color,
+                                                DropInfo info,
                                                 ScreenSpaceOverlay2D.ScreenRect rect,
-                                                boolean icon) {
-        double textWidth = screenStyledTextWidth(labelRenderer, text, DROP_TEXT_SCALE, color);
-        double measuredTextHeight = RuntimeTextLayout.height(labelRenderer, DROP_TEXT_SCALE, false);
+                                                boolean icon,
+                                                double measuredTextHeight) {
+        double textWidth = screenTextWidth(labelRenderer, info);
         double textHeight = Math.max(RICH_TEXT_LOGICAL_HEIGHT, measuredTextHeight);
         double iconBlock = icon ? MATTE_ICON_SIZE + MATTE_ICON_GAP : 0.0;
         double width = textWidth + iconBlock + MATTE_LABEL_PAD_X * 2.0;
@@ -409,37 +425,50 @@ public class DropESP extends Module {
         double iconY = y + (height - MATTE_ICON_SIZE) * 0.5;
         double textX = x + MATTE_LABEL_PAD_X + iconBlock;
         double textY = y + (height - measuredTextHeight) * 0.5;
-        return new DropLabelEntry(stack, text, x, y, width, height, icon, iconX, iconY, textX, textY, color);
+        return new DropLabelEntry(stack, info, x, y, width, height, icon, iconX, iconY, textX, textY, info.color);
     }
 
-    private static double screenStyledTextWidth(TextRenderer renderer, Component text, double scale, int defaultColor) {
-        if (renderer == null || text == null) return 0.0;
+    /** Width of the styled label in the on-screen overlay, measured once per (info, renderer). */
+    private static double screenTextWidth(TextRenderer renderer, DropInfo info) {
+        if (renderer == null) return 0.0;
+        if (info.screenWidthRenderer == renderer) return info.screenTextWidth;
         double width = 0.0;
-        for (TextRenderUtil.Part part : TextRenderUtil.flattenStyled(text, defaultColor)) {
-            width += RuntimeTextLayout.width(renderer, part.text(), scale, false);
+        for (String part : info.safeParts) {
+            width += RuntimeTextLayout.width(renderer, part, DROP_TEXT_SCALE, false);
         }
+        info.screenWidthRenderer = renderer;
+        info.screenTextWidth = width;
         return width;
     }
 
-    private static double worldStyledTextWidth(TextRenderer renderer, Component text, double scale, int defaultColor) {
-        if (renderer == null || text == null) return 0.0;
-        double width = 0.0;
-        for (TextRenderUtil.Part part : TextRenderUtil.flattenStyled(text, defaultColor)) {
-            String safe = RuntimeTextLayout.singleLine(part.text());
-            width += WorldTextRenderer.measure(renderer, safe, scale, false).width();
+    /**
+     * Per-part billboard widths for the current renderer. A zero total width means the glyph font was
+     * not ready yet, so that result is not cached and the measurement is retried next frame.
+     */
+    private static void measureWorldParts(TextRenderer renderer, DropInfo info) {
+        if (info.worldWidthRenderer == renderer) return;
+        double total = 0.0;
+        for (int i = 0; i < info.safeParts.length; i++) {
+            double w = WorldTextRenderer.measure(renderer, info.safeParts[i], DROP_TEXT_SCALE, false).width();
+            info.worldPartWidths[i] = w;
+            total += w;
         }
-        return width;
+        info.worldTextWidth = total;
+        info.worldWidthRenderer = total > 0.0 || info.safeParts.length == 0 ? renderer : null;
     }
 
     private void renderWorldDrop(Renderer3D renderer,
                                  WorldBillboardRenderer.Basis basis,
                                  TextRenderer labelRenderer,
                                  DropWorldEntry entry,
-                                 ItemBatchRenderer.WorldItemSprite itemSprite) {
+                                 ItemBatchRenderer.WorldItemSprite itemSprite,
+                                 boolean iconsEnabled,
+                                 double measuredTextHeight) {
         double textScale = DROP_TEXT_SCALE;
-        double textWidth = worldStyledTextWidth(labelRenderer, entry.text(), textScale, entry.color());
-        double measuredTextHeight = WorldTextRenderer.measure(labelRenderer, "Ag", textScale, false).height();
-        boolean icon = itemIconValue.get() && itemSprite != null;
+        DropInfo info = entry.info();
+        measureWorldParts(labelRenderer, info);
+        double textWidth = info.worldTextWidth;
+        boolean icon = iconsEnabled && itemSprite != null;
         double iconBlock = icon ? MATTE_ICON_SIZE + MATTE_ICON_GAP : 0.0;
         double textHeight = Math.max(RICH_TEXT_LOGICAL_HEIGHT, measuredTextHeight);
         double contentHeight = Math.max(textHeight, icon ? MATTE_ICON_SIZE : 0.0);
@@ -454,7 +483,7 @@ public class DropESP extends Module {
             double fx = -fw * 0.5;
             double fy = -fh * 0.5;
             double t = 0.5;
-            int c = scaleAlpha(entry.color(), entry.alpha());
+            int c = scaleAlpha(info.color, entry.alpha());
             WorldBillboardRenderer.quad(renderer, basis, entry.frameAnchor(), fx - t, fy - t, fw + t * 2.0, t, entry.worldScale(), c);
             WorldBillboardRenderer.quad(renderer, basis, entry.frameAnchor(), fx - t, fy - t, t, fh + t * 2.0, entry.worldScale(), c);
             WorldBillboardRenderer.quad(renderer, basis, entry.frameAnchor(), fx - t, fy + fh, fw + t * 2.0, t, entry.worldScale(), c);
@@ -475,12 +504,21 @@ public class DropESP extends Module {
         }
         double textY = y + (height - measuredTextHeight) * 0.5;
         double textCursor = cursorX;
-        for (TextRenderUtil.Part part : TextRenderUtil.flattenStyled(entry.text(), entry.color())) {
-            String safe = RuntimeTextLayout.singleLine(part.text());
-            WorldBillboardRenderer.text(renderer, basis, labelRenderer, safe, entry.anchor(),
-                    textCursor, textY, textScale, entry.worldScale(), part.color(), entry.alpha(), false);
-            textCursor += WorldTextRenderer.measure(labelRenderer, safe, textScale, false).width();
+        for (int i = 0; i < info.safeParts.length; i++) {
+            WorldBillboardRenderer.text(renderer, basis, labelRenderer, info.safeParts[i], entry.anchor(),
+                    textCursor, textY, textScale, entry.worldScale(), info.partColors[i], entry.alpha(), false);
+            textCursor += info.worldPartWidths[i];
         }
+    }
+
+    @Override
+    public void onDisable() {
+        nearbyItems.clear();
+        worldEntries.clear();
+        infoCache.clear();
+        nearbyLevel = null;
+        nearbyPlayer = null;
+        nearbyTick = Long.MIN_VALUE;
     }
 
     private static TextRenderer dropLabelRenderer(TextRenderer fallback) {
@@ -509,31 +547,111 @@ public class DropESP extends Module {
         return withAlpha(argb, Math.round(source * Math.max(0.0f, Math.min(1.0f, alpha))));
     }
 
-    private boolean passesDistanceFilter(ItemEntity item, double dist) {
-
-        String id = BuiltInRegistries.ITEM.getKey(item.getItem().getItem()).toString().toLowerCase();
-
-        if (specialItemsValue.get().contains(id)) {
+    private boolean passesDistanceFilter(DropInfo info, double dist) {
+        if (info.special) {
             return true;
         }
 
         if (limitCommonDistanceValue.get()) {
-
-            if (item.getItem().isEnchanted()) {
+            if (info.enchanted) {
                 return true;
             }
-
-            var rarity = item.getItem().getOrDefault(
-                    DataComponents.RARITY,
-                    Rarity.COMMON
-            );
-
-            if (rarity == Rarity.COMMON) {
+            if (info.common) {
                 return dist <= commonMaxDistanceValue.get();
             }
         }
 
         return true;
+    }
+
+    /**
+     * Item entities inside the 64 block box around the player. The entity sections are walked once per
+     * game tick instead of once per rendered frame per pass.
+     */
+    private java.util.List<ItemEntity> nearbyItems() {
+        var level = mc.level;
+        var player = mc.player;
+        long tick = level.getGameTime();
+        if (level != nearbyLevel || player != nearbyPlayer || tick != nearbyTick) {
+            nearbyLevel = level;
+            nearbyPlayer = player;
+            nearbyTick = tick;
+            nearbyItems.clear();
+            nearbyItems.addAll(level.getEntitiesOfClass(ItemEntity.class, player.getBoundingBox().inflate(64), e -> true));
+        }
+        return nearbyItems;
+    }
+
+    /**
+     * Everything derived from the item stack and module settings (registry id, illegal/top-enchant
+     * checks, label components, styled parts). Rebuilt when the stack instance or count changes, and every
+     * {@link #INFO_TTL_TICKS} ticks so setting edits still show up promptly.
+     */
+    private DropInfo infoFor(ItemEntity item, long tick) {
+        ItemStack stack = item.getItem();
+        int id = item.getId();
+        DropInfo info = infoCache.get(id);
+        if (info != null && info.stack == stack && info.count == stack.getCount() && tick < info.expiresTick) {
+            info.lastSeenTick = tick;
+            return info;
+        }
+        if (tick - infoSweepTick >= INFO_SWEEP_TICKS) {
+            infoSweepTick = tick;
+            infoCache.values().removeIf(cached -> tick - cached.lastSeenTick > INFO_SWEEP_TICKS);
+        }
+        info = buildInfo(stack, tick);
+        infoCache.put(id, info);
+        return info;
+    }
+
+    private DropInfo buildInfo(ItemStack stack, long tick) {
+        DropInfo info = new DropInfo();
+        info.stack = stack;
+        info.count = stack.getCount();
+        info.lastSeenTick = tick;
+        info.expiresTick = tick + INFO_TTL_TICKS;
+
+        String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().toLowerCase();
+        boolean special = specialItemsValue.get().contains(id);
+        boolean illegal = IllegalItemUtil.isIllegal(stack);
+        boolean top = !illegal && TopEnchantUtil.hasTopEnchant(stack);
+        Rarity rarity = stack.getOrDefault(DataComponents.RARITY, Rarity.COMMON);
+
+        info.special = special;
+        info.enchanted = stack.isEnchanted();
+        info.common = rarity == Rarity.COMMON;
+
+        if (illegal) {
+            info.sortPriority = 1000;
+            info.color = IllegalItemUtil.illegalColor();
+        } else if (top) {
+            info.sortPriority = 900;
+            info.color = TopEnchantUtil.topColor();
+        } else if (special) {
+            info.sortPriority = 800;
+            info.color = specialColorValue.getArgb();
+        } else {
+            info.sortPriority = switch (rarity) {
+                case EPIC -> 400;
+                case RARE -> 300;
+                case UNCOMMON -> 200;
+                case COMMON -> 100;
+                default -> 100;
+            };
+            info.color = rgbaToARGB(RarityColorUtil.INSTANCE.getRarityColor(stack));
+        }
+
+        Component text = formatReferenceItemLabel(stack);
+        info.plainText = text.getString();
+        java.util.List<TextRenderUtil.Part> parts = TextRenderUtil.flattenStyled(text, info.color);
+        info.safeParts = new String[parts.size()];
+        info.partColors = new int[parts.size()];
+        info.worldPartWidths = new double[parts.size()];
+        for (int i = 0; i < parts.size(); i++) {
+            info.safeParts[i] = RuntimeTextLayout.singleLine(parts.get(i).text());
+            info.partColors[i] = parts.get(i).color();
+        }
+        return info;
     }
 
     private WorldUiPresentationService.Snapshot resolvePresentation(double distance) {
@@ -567,43 +685,6 @@ public class DropESP extends Module {
 
     private boolean isOverlayMode() {
         return isMatteMode();
-    }
-
-    private int resolveSortPriority(ItemStack stack) {
-        String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().toLowerCase();
-        if (IllegalItemUtil.isIllegal(stack)) {
-            return 1000;
-        }
-        if (TopEnchantUtil.hasTopEnchant(stack)) {
-            return 900;
-        }
-        if (specialItemsValue.get().contains(id)) {
-            return 800;
-        }
-
-        Rarity rarity = stack.getOrDefault(DataComponents.RARITY, Rarity.COMMON);
-        return switch (rarity) {
-            case EPIC -> 400;
-            case RARE -> 300;
-            case UNCOMMON -> 200;
-            case COMMON -> 100;
-            default -> 100;
-        };
-    }
-
-    private int resolveDisplayColor(ItemStack stack) {
-        String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().toLowerCase();
-        if (IllegalItemUtil.isIllegal(stack)) {
-            return IllegalItemUtil.illegalColor();
-        }
-        if (TopEnchantUtil.hasTopEnchant(stack)) {
-            return TopEnchantUtil.topColor();
-        }
-        if (specialItemsValue.get().contains(id)) {
-            return specialColorValue.getArgb();
-        }
-        float[] c = RarityColorUtil.INSTANCE.getRarityColor(stack);
-        return rgbaToARGB(c);
     }
 
     private int rgbaToARGB(float[] c) {
@@ -643,11 +724,31 @@ public class DropESP extends Module {
                                   double worldScale,
                                   float alpha,
                                   ItemStack stack,
-                                  Component text,
-                                  int color) {
+                                  DropInfo info) {
     }
 
-    private record DropLabelEntry(ItemStack stack, Component text, double x, double y, double width, double height,
+    private record DropLabelEntry(ItemStack stack, DropInfo info, double x, double y, double width, double height,
                                   boolean icon, double iconX, double iconY, double textX, double textY, int color) {
+    }
+
+    /** Cached per-stack presentation data; see {@link #infoFor}. Only touched on the render thread. */
+    private static final class DropInfo {
+        ItemStack stack;
+        int count;
+        long lastSeenTick;
+        long expiresTick;
+        boolean special;
+        boolean enchanted;
+        boolean common;
+        int sortPriority;
+        int color;
+        String plainText;
+        String[] safeParts;
+        int[] partColors;
+        double[] worldPartWidths;
+        double worldTextWidth;
+        TextRenderer worldWidthRenderer;
+        double screenTextWidth;
+        TextRenderer screenWidthRenderer;
     }
 }

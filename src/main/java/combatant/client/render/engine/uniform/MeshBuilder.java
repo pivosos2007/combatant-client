@@ -40,7 +40,9 @@ import static org.lwjgl.system.MemoryUtil.*;
  * builder itself is no longer needed to release its native memory.</p>
  */
 public final class MeshBuilder implements AutoCloseable {
-    private static final boolean DEBUG = developmentEnvironment() || Boolean.getBoolean("combatant.render.debug");
+    // -Dcombatant.render.debug=false turns the per-vertex contract checks off even inside the dev
+    // environment, so profiling runs measure the same code path a release build executes.
+    private static final boolean DEBUG = resolveDebug();
     private static final int DEFAULT_VERTEX_CAPACITY = Integer.getInteger("combatant.render.mesh.defaultVertices", 4096);
     private static final int DEFAULT_INDEX_CAPACITY = Integer.getInteger("combatant.render.mesh.defaultIndices", 8192);
     private static final int MAX_BUFFER_BYTES = Integer.MAX_VALUE - 8;
@@ -59,6 +61,11 @@ public final class MeshBuilder implements AutoCloseable {
     private boolean building;
     private boolean worldCameraAnchored;
     private double cameraX, cameraZ;
+
+    private static boolean resolveDebug() {
+        String configured = System.getProperty("combatant.render.debug");
+        return configured != null ? Boolean.parseBoolean(configured) : developmentEnvironment();
+    }
 
     private static boolean developmentEnvironment() {
         try {
@@ -579,6 +586,31 @@ public final class MeshBuilder implements AutoCloseable {
             memPutInt(indexOut + (long) i * Integer.BYTES, memGetInt(indexIn + (long) i * Integer.BYTES) + baseVertex);
         }
         indicesCount += sourceIndices;
+    }
+
+    /**
+     * Copies the built vertex bytes to {@code dstOffset} inside {@code dst} (a direct buffer) with one
+     * native memcpy, without materialising the duplicate/slice views {@link #vertexBufferView()} builds.
+     */
+    public void copyVerticesTo(ByteBuffer dst, int dstOffset) {
+        validateComplete("MeshBuilder.copyVerticesTo");
+        int bytes = getVerticesOffset();
+        if (dstOffset < 0 || (long) dstOffset + bytes > dst.capacity()) {
+            throw new IndexOutOfBoundsException("MeshBuilder.copyVerticesTo: offset=" + dstOffset + ", bytes=" + bytes
+                    + ", capacity=" + dst.capacity());
+        }
+        memCopy(verticesPtrStart, memAddress0(dst) + dstOffset, bytes);
+    }
+
+    /** Index counterpart of {@link #copyVerticesTo}. */
+    public void copyIndicesTo(ByteBuffer dst, int dstOffset) {
+        validateComplete("MeshBuilder.copyIndicesTo");
+        long bytes = (long) indicesCount * Integer.BYTES;
+        if (dstOffset < 0 || dstOffset + bytes > dst.capacity()) {
+            throw new IndexOutOfBoundsException("MeshBuilder.copyIndicesTo: offset=" + dstOffset + ", bytes=" + bytes
+                    + ", capacity=" + dst.capacity());
+        }
+        memCopy(indicesPtr, memAddress0(dst) + dstOffset, bytes);
     }
 
     public ByteBuffer vertexBufferView() {

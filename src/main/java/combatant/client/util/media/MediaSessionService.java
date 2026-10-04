@@ -49,6 +49,9 @@ public final class MediaSessionService {
     private long lastDebugLogMs;
     private String lastDebugLogKey;
 
+    private static final long REFRESH_INTERVAL_MS = 100L;
+    private long refreshDeadlineMs;
+
     private Snapshot snapshot = Snapshot.empty(isMediaAvailable());
 
     private MediaSessionService() {
@@ -119,7 +122,15 @@ public final class MediaSessionService {
     }
 
     public synchronized Snapshot snapshot() {
-        refresh();
+        // HUD code asks for the snapshot every frame. refresh() polls every native media session and builds
+        // a track key each time, while the playback position it exposes only has one-second resolution, so
+        // re-resolving more than ~10 times a second changes nothing on screen. Local play/pause/seek/skip
+        // reset the deadline so their effect is visible on the very next frame.
+        long now = Util.getMillis();
+        if (now >= refreshDeadlineMs) {
+            refresh();
+            refreshDeadlineMs = now + REFRESH_INTERVAL_MS;
+        }
         return snapshot;
     }
 
@@ -132,6 +143,7 @@ public final class MediaSessionService {
         lastSessionSeenMs = 0L;
         lastDebugLogKey = null;
         snapshot = Snapshot.empty(isMediaAvailable());
+        refreshDeadlineMs = 0L;
     }
 
     public synchronized void playPause() {
@@ -454,6 +466,7 @@ public final class MediaSessionService {
     }
 
     private void resetPredictedAfterSkip() {
+        refreshDeadlineMs = 0L;
         long now = Util.getMillis();
         lastRawPosition = 0L;
         lastRawDuration = 0L;
@@ -462,6 +475,7 @@ public final class MediaSessionService {
     }
 
     private void applyLocalPlaybackState(boolean playing, MediaInfo media) {
+        refreshDeadlineMs = 0L;
         if (media == null) return;
         long now = Util.getMillis();
         long predicted = getPredictedPosition(media);
@@ -474,6 +488,7 @@ public final class MediaSessionService {
     }
 
     private void rememberLocalSeek(long positionSeconds, MediaInfo media) {
+        refreshDeadlineMs = 0L;
         long now = Util.getMillis();
         long rawDur = Math.max(0L, media.duration());
         long[] normalized = normalizeTime(Math.max(0L, positionSeconds), rawDur);

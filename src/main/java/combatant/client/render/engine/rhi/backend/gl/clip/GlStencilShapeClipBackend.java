@@ -39,6 +39,7 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
     private ShapeClipRenderPassContract currentPipelineContract = ShapeClipRenderPassContract.NONE;
     private @Nullable RenderPipeline currentPipeline;
     private String currentPipelineName = "<no-pipeline>";
+    private static final java.util.Map<RenderPipeline, String> PIPELINE_NAMES = new java.util.IdentityHashMap<>();
     private String lastFailure = "none";
 
     private static int clampRef(int value) {
@@ -135,9 +136,12 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
 
     @Override
     public void bindPipeline(RenderPipeline pipeline, ShapeClipRenderPassContract contract) {
+        // Identifier.toString() builds a new string per call and this runs per draw; pipelines are a
+        // small fixed set, so remember each one's name (endRenderPass clears currentPipeline every pass).
+        currentPipelineName = pipeline == null ? "<unknown>"
+                : PIPELINE_NAMES.computeIfAbsent(pipeline, p -> p.getLocation() == null ? "<unknown>" : p.getLocation().toString());
         currentPipeline = pipeline;
         currentPipelineContract = contract == null ? ShapeClipRenderPassContract.NONE : contract;
-        currentPipelineName = pipeline == null || pipeline.getLocation() == null ? "<unknown>" : pipeline.getLocation().toString();
         if (mode != Mode.DISABLED && currentPipelineContract == ShapeClipRenderPassContract.NONE) {
             DebugLog.warnOnce(
                     "shapeclip.stale.pipeline.contract." + currentPipelineName,

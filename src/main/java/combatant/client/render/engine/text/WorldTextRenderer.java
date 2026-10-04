@@ -20,6 +20,14 @@ import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
 public enum WorldTextRenderer {
     ;
 
+    private static Renderer3D.BatchBindings cachedBindings;
+    private static com.mojang.blaze3d.textures.GpuTextureView cachedView;
+    private static com.mojang.blaze3d.textures.GpuSampler cachedSampler;
+    private static boolean cachedMsdf;
+    private static float cachedPxRange;
+    private static int cachedAtlasWidth;
+    private static int cachedAtlasHeight;
+
     public static double drawBillboard(Renderer3D renderer,
                                        TextRenderer textRenderer,
                                        String text,
@@ -67,8 +75,7 @@ public enum WorldTextRenderer {
                 : Renderer3D.DepthMode.MAIN;
         Renderer3D.DepthMode effectiveDepth = requestedDepth;
 
-        Renderer3D.BatchBindings bindings = Renderer3D.BatchBindings.none()
-                .withSampler("u_Texture", texture.getTextureView(), texture.getSampler());
+        Renderer3D.BatchBindings bindings = textBindings(font, texture);
 
         var pipeline = font.isMsdf()
                 ? (effectiveDepth == Renderer3D.DepthMode.NONE
@@ -77,14 +84,6 @@ public enum WorldTextRenderer {
                 : (effectiveDepth == Renderer3D.DepthMode.NONE
                 ? CombatantRenderPipelines.WORLD_TEXT
                 : CombatantRenderPipelines.WORLD_TEXT_DEPTH);
-
-        if (font.isMsdf()) {
-            MsdfUniformKey key = new MsdfUniformKey(font.getPxRange(), font.getAtlasWidth(), font.getAtlasHeight());
-            bindings = bindings.withUniform("MsdfText", key, () -> {
-                MsdfTextUniforms.update(key.pxRange(), key.atlasWidth(), key.atlasHeight());
-                return MsdfTextUniforms.get();
-            });
-        }
 
         MeshBuilder mesh = renderer.batch(pipeline, effectiveDepth, bindings);
         if (mesh == null) return 0.0;
@@ -141,24 +140,65 @@ public enum WorldTextRenderer {
                                    double offsetY,
                                    double worldScale,
                                    RenderColor color) {
+        // Same arithmetic as anchor.add(right.scale(x)).add(up.scale(y)), evaluated on doubles: the old
+        // Vec3 chain allocated ~16 objects per glyph.
+        final double ax = anchor.x, ay = anchor.y, az = anchor.z;
+        final double rx = right.x, ry = right.y, rz = right.z;
+        final double ux = up.x, uy = up.y, uz = up.z;
+        final int cr = color.r, cg = color.g, cb = color.b, ca = color.a;
         font.emitGlyphs(text, localX, localY, glyphScale, (x0, y0, x1, y1, u0, v0, u1, v1) -> {
             mesh.ensureQuadCapacity();
 
-            Vec3 p1 = billboard(anchor, right, up, offsetX + x0 * worldScale, offsetY + y0 * worldScale);
-            Vec3 p2 = billboard(anchor, right, up, offsetX + x0 * worldScale, offsetY + y1 * worldScale);
-            Vec3 p3 = billboard(anchor, right, up, offsetX + x1 * worldScale, offsetY + y1 * worldScale);
-            Vec3 p4 = billboard(anchor, right, up, offsetX + x1 * worldScale, offsetY + y0 * worldScale);
+            double left = offsetX + x0 * worldScale;
+            double top = offsetY + y0 * worldScale;
+            double right2 = offsetX + x1 * worldScale;
+            double bottom = offsetY + y1 * worldScale;
 
-            int i1 = mesh.vec3(p1.x, p1.y, p1.z).raw2(u0, v0).color(color.r, color.g, color.b, color.a).next();
-            int i2 = mesh.vec3(p2.x, p2.y, p2.z).raw2(u0, v1).color(color.r, color.g, color.b, color.a).next();
-            int i3 = mesh.vec3(p3.x, p3.y, p3.z).raw2(u1, v1).color(color.r, color.g, color.b, color.a).next();
-            int i4 = mesh.vec3(p4.x, p4.y, p4.z).raw2(u1, v0).color(color.r, color.g, color.b, color.a).next();
+            int i1 = mesh.vec3((ax + rx * left) + ux * top, (ay + ry * left) + uy * top, (az + rz * left) + uz * top)
+                    .raw2(u0, v0).color(cr, cg, cb, ca).next();
+            int i2 = mesh.vec3((ax + rx * left) + ux * bottom, (ay + ry * left) + uy * bottom, (az + rz * left) + uz * bottom)
+                    .raw2(u0, v1).color(cr, cg, cb, ca).next();
+            int i3 = mesh.vec3((ax + rx * right2) + ux * bottom, (ay + ry * right2) + uy * bottom, (az + rz * right2) + uz * bottom)
+                    .raw2(u1, v1).color(cr, cg, cb, ca).next();
+            int i4 = mesh.vec3((ax + rx * right2) + ux * top, (ay + ry * right2) + uy * top, (az + rz * right2) + uz * top)
+                    .raw2(u1, v0).color(cr, cg, cb, ca).next();
             mesh.quad(i1, i2, i3, i4);
         });
     }
 
-    private static Vec3 billboard(Vec3 anchor, Vec3 right, Vec3 up, double x, double y) {
-        return anchor.add(right.scale(x)).add(up.scale(y));
+    /**
+     * Bindings for one glyph atlas are identical for every string drawn with it, and equal bindings
+     * merge into a single batch by identity. Keep the last set instead of rebuilding two lists (and an
+     * uniform-resolver closure) per string.
+     */
+    private static Renderer3D.BatchBindings textBindings(GlyphFont font, AbstractTexture texture) {
+        var view = texture.getTextureView();
+        var sampler = texture.getSampler();
+        boolean msdf = font.isMsdf();
+        float pxRange = msdf ? font.getPxRange() : 0.0f;
+        int atlasWidth = msdf ? font.getAtlasWidth() : 0;
+        int atlasHeight = msdf ? font.getAtlasHeight() : 0;
+        Renderer3D.BatchBindings cached = cachedBindings;
+        if (cached != null && cachedView == view && cachedSampler == sampler && cachedMsdf == msdf
+                && cachedPxRange == pxRange && cachedAtlasWidth == atlasWidth && cachedAtlasHeight == atlasHeight) {
+            return cached;
+        }
+        Renderer3D.BatchBindings bindings = Renderer3D.BatchBindings.none().withSampler("u_Texture", view, sampler);
+        if (msdf) {
+            MsdfUniformKey key = new MsdfUniformKey(pxRange, atlasWidth, atlasHeight);
+            bindings = bindings.withUniform("MsdfText", key, () -> {
+                MsdfTextUniforms.update(key.pxRange(), key.atlasWidth(), key.atlasHeight());
+                return MsdfTextUniforms.get();
+            });
+        }
+        cachedBindings = bindings;
+        cachedView = view;
+        cachedSampler = sampler;
+        cachedMsdf = msdf;
+        cachedPxRange = pxRange;
+        cachedAtlasWidth = atlasWidth;
+        cachedAtlasHeight = atlasHeight;
+        return bindings;
     }
 
     private static CustomTextRenderer resolve(TextRenderer textRenderer) {

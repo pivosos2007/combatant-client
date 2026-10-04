@@ -18,7 +18,6 @@ import org.apache.commons.io.IOUtils;
 import combatant.client.util.logging.DebugLog;
 
 import java.io.Reader;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -236,8 +235,7 @@ public enum CombatantShaderSources {
 
     private static String load(ResourceManager resourceManager, Identifier requestedId, Identifier sourceId,
                                Resource resource, boolean analyticClip, boolean uiUnderlay, boolean lightGlass) {
-        Map<Identifier, Resource> allResources = resourceManager.listResources("shaders", CombatantShaderSources::isShaderSourceOrInclude);
-        GlslPreprocessor processor = createImportProcessor(allResources, sourceId);
+        GlslPreprocessor processor = createImportProcessor(resourceManager, sourceId);
         try (Reader reader = resource.openAsReader()) {
             String raw = IOUtils.toString(reader);
             if (analyticClip) raw = injectDefineAfterVersion(raw, ANALYTIC_CLIP_DEFINE);
@@ -269,7 +267,11 @@ public enum CombatantShaderSources {
         return path.endsWith(VERT_EXTENSION) || path.endsWith(FRAG_EXTENSION);
     }
 
-    private static GlslPreprocessor createImportProcessor(Map<Identifier, Resource> allResources, Identifier id) {
+    // Imports are resolved one by one through getResource, which returns the same top-priority
+    // resource listResources would. Listing "shaders/" instead walked every mod jar and resource
+    // pack once per compiled shader: gigabytes of garbage per reload, and one log warning per
+    // stray file (e.g. a pack's .DS_Store) per shader.
+    private static GlslPreprocessor createImportProcessor(ResourceManager resourceManager, Identifier id) {
         final Identifier baseId = id.withPath(FileUtil::getFullResourcePath);
         return new GlslPreprocessor() {
             private final Set<Identifier> processed = new it.unimi.dsi.fastutil.objects.ObjectArraySet<>();
@@ -291,7 +293,10 @@ public enum CombatantShaderSources {
                     return null;
                 }
 
-                Resource imported = allResources.get(importId);
+                // Same filter the old listing applied: only shader sources and includes import.
+                Resource imported = isShaderSourceOrInclude(importId)
+                        ? resourceManager.getResource(importId).orElse(null)
+                        : null;
                 if (imported == null) {
                     return "#error Missing import " + importId;
                 }

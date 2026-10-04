@@ -8,6 +8,7 @@
 package combatant.client.features.gui.hud.draggable.impl;
 
 
+import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
@@ -750,9 +751,9 @@ public final class Admins extends DraggableHudElement {
         long min = sec / 60L;
         long hrs = min / 60L;
         if (hrs == 0) {
-            return String.format("%02d:%02d", min, sec % 60L);
+            return FastFormat.clock(min, sec % 60L);
         }
-        return String.format("%02d:%02d:%02d", hrs, min % 60L, sec % 60L);
+        return FastFormat.clock(hrs, min % 60L, sec % 60L);
     }
 
     private int withAlpha(int rgb, int alpha) {

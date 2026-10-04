@@ -32,6 +32,9 @@ public final class AntiBotTracker {
     private static final long SUSPECT_TTL_MS = 8_000L;
     private static final long TAB_TTL_MS = 30_000L;
     private static final int BOT_SCORE = 4;
+    // Strict mode acts one point earlier, but only as a live check: a player that scores 3 is
+    // not remembered as a bot, so gaining a tab entry or armor clears them again.
+    private static final int STRICT_BOT_SCORE = 3;
     private static final EquipmentSlot[] ARMOR_SLOTS = {
             EquipmentSlot.HEAD,
             EquipmentSlot.CHEST,
@@ -43,6 +46,9 @@ public final class AntiBotTracker {
     private final ConcurrentHashMap<UUID, TabInfo> tab = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, SuspectInfo> suspects = new ConcurrentHashMap<>();
     private final ConcurrentHashMap.KeySetView<UUID, Boolean> bots = ConcurrentHashMap.newKeySet();
+    // Targeting asks about every player in range every tick and assess() walks the whole tab
+    // list, so on a 200-player server scores are computed at most once per player per tick.
+    private final ConcurrentHashMap<UUID, Integer> scoreCache = new ConcurrentHashMap<>();
 
     private AntiBotTracker() {
     }
@@ -63,6 +69,7 @@ public final class AntiBotTracker {
             return;
         }
 
+        scoreCache.clear();
         long now = System.currentTimeMillis();
         suspects.entrySet().removeIf(entry -> now - entry.getValue().seenAtMs > SUSPECT_TTL_MS);
         tab.entrySet().removeIf(entry -> {
@@ -76,13 +83,17 @@ public final class AntiBotTracker {
 
         for (UUID uuid : suspects.keySet()) {
             Player player = mc.level.getPlayerByUUID(uuid);
-            if (player != null && assess(player).score() >= BOT_SCORE) {
+            if (player != null && score(player) >= BOT_SCORE) {
                 bots.add(uuid);
             }
         }
     }
 
     public boolean isBot(Player player) {
+        return isBot(player, false);
+    }
+
+    public boolean isBot(Player player, boolean strict) {
         if (player == null || mc.player == null || player == mc.player) {
             return false;
         }
@@ -92,18 +103,23 @@ public final class AntiBotTracker {
             return true;
         }
 
-        BotAssessment assessment = assess(player);
-        if (assessment.score() >= BOT_SCORE) {
+        int score = score(player);
+        if (score >= BOT_SCORE) {
             bots.add(uuid);
             return true;
         }
-        return false;
+        return strict && score >= STRICT_BOT_SCORE;
+    }
+
+    private int score(Player player) {
+        return scoreCache.computeIfAbsent(player.getUUID(), uuid -> assess(player).score());
     }
 
     public void reset() {
         tab.clear();
         suspects.clear();
         bots.clear();
+        scoreCache.clear();
     }
 
     private void handlePlayerList(ClientboundPlayerInfoUpdatePacket packet) {
@@ -120,6 +136,7 @@ public final class AntiBotTracker {
             GameProfile profile = entry.profile();
             if (profile != null) {
                 info.name = profile.name();
+                info.nameLower = profile.name() == null ? null : profile.name().toLowerCase(Locale.ROOT);
                 info.propertiesMissing = profile.properties() == null || profile.properties().isEmpty();
             }
             if (listedAffects) {
@@ -146,6 +163,7 @@ public final class AntiBotTracker {
             tab.remove(uuid);
             suspects.remove(uuid);
             bots.remove(uuid);
+            scoreCache.remove(uuid);
         }
     }
 
@@ -212,8 +230,8 @@ public final class AntiBotTracker {
 
         String normalized = name.toLowerCase(Locale.ROOT);
         for (TabInfo info : tab.values()) {
-            if (info.name != null
-                    && info.name.toLowerCase(Locale.ROOT).equals(normalized)
+            if (info.nameLower != null
+                    && info.nameLower.equals(normalized)
                     && !self.equals(info.uuid)) {
                 return true;
             }
@@ -282,6 +300,7 @@ public final class AntiBotTracker {
     private static final class TabInfo {
         private final UUID uuid;
         private String name;
+        private String nameLower;
         private boolean listed = true;
         private boolean listedKnown;
         private int latency;

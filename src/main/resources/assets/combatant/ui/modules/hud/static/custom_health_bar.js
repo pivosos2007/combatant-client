@@ -158,7 +158,9 @@ function fills(ctx, p, w, h, r) {
   const innerH = Math.max(0, h - inset * 2.0);
   const innerR = Math.max(0, r - inset);
   const phase = n(p.phase, 0);
-  const smokeTime = n(ctx.time, phase) + phase * 0.37;
+  // The host patches health:fill's time every frame without rerunning this script, so it
+  // supplies the clock; the fallback keeps older hosts animating.
+  const smokeTime = n(p.smokeTime, n(ctx.time, phase) + phase * 0.37);
   const pulseT = 0.5 + 0.5 * Math.sin(phase * SKIN.absorption.pulseSpeed);
   const absorbPulse = SKIN.absorption.pulseMin + (SKIN.absorption.pulseMax - SKIN.absorption.pulseMin) * pulseT;
   const flowOffset = Math.sin(ctx.time * SKIN.absorption.flowSpeed + phase * SKIN.absorption.flowPhaseScale)

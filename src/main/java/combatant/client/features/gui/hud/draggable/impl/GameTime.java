@@ -8,6 +8,7 @@
 package combatant.client.features.gui.hud.draggable.impl;
 
 
+import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
@@ -136,7 +137,7 @@ public final class GameTime extends DraggableHudElement implements ScriptableHud
     private static String formatTime(long time) {
         int hours = (int) ((time / 1000 + 6) % 24);
         int minutes = (int) ((time % 1000) * 60 / 1000);
-        return String.format("%02d:%02d", hours, minutes);
+        return FastFormat.clock(hours, minutes);
     }
 
     private static float smoothWidth(float current, float target) {

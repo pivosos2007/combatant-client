@@ -29,6 +29,8 @@ public class TPSSync extends Module {
             new BooleanValue("tpssync_enabled", true);
     private final NumberValue<Float> startTps =
             num("tpssync_start_tps", SETTING_START_TPS, 19.0f, 1.0f, 20.0f);
+    private final NumberValue<Float> minScale =
+            num("tpssync_min_scale", "min_scale", 0.0f, 0.0f, 1.0f);
 
     /** сколько серверных тиков прошло за клиентский */
     public float getServerTickDelta() {
@@ -38,6 +40,6 @@ public class TPSSync extends Module {
         float tps = NetworkStatsUtil.getTps(mc);
         if (tps >= startTps.get()) return 1.0f;
 
-        return Math.max(0.0f, tps / 20.0f);
+        return Math.max(minScale.get(), Math.max(0.0f, tps / 20.0f));
     }
 }

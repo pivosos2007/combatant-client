@@ -73,6 +73,17 @@ public class MouseMixin {
                 ci.cancel();
             }
         }
+        if (RuntimeGate.canRunClientLogic() && ClientScreen.current() == null) {
+            Zoom zoom = Modules.get(Zoom.class);
+            if (zoom != null && zoom.onScroll(vertical)) {
+                ci.cancel();
+                return;
+            }
+            Freecam freecam = Modules.get(Freecam.class);
+            if (freecam != null && freecam.onScroll(vertical)) {
+                ci.cancel();
+            }
+        }
     }
 
     @Inject(method = "onButton", at = @At("HEAD"), cancellable = true)

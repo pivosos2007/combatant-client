@@ -8,7 +8,9 @@
 package combatant.client.features.module.modules.visuals;
 
 import combatant.client.config.values.BindMode;
+import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.KeyBindValue;
+import combatant.client.config.values.NumberValue;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -30,6 +32,9 @@ import net.minecraft.util.Mth;
 public final class FreeLook extends Module {
     private final Minecraft mc = Minecraft.getInstance();
     private final KeyBindValue freeLookKey = bind("freeLookKey", "free_look_key", "LEFT_ALT", BindMode.HOLD);
+    private final NumberValue<Float> sensitivity = num("freeLookSensitivity", "sensitivity", 0.15f, 0.02f, 0.5f);
+    private final EnumValue<Perspective> perspective =
+            enumSetting("freeLookPerspective", "perspective", Perspective.BACK, Perspective.values());
 
     private CameraType previousPerspective;
     private float cameraYaw;
@@ -80,8 +85,8 @@ public final class FreeLook extends Module {
 
     public void turnCamera(double dx, double dy) {
         if (!isCameraActive()) return;
-        cameraYaw += (float) dx * 0.15F;
-        cameraPitch = Mth.clamp(cameraPitch + (float) dy * 0.15F, -90.0F, 90.0F);
+        cameraYaw += (float) dx * sensitivity.get();
+        cameraPitch = Mth.clamp(cameraPitch + (float) dy * sensitivity.get(), -90.0F, 90.0F);
     }
 
     private void activateCamera(LocalPlayer player) {
@@ -95,7 +100,7 @@ public final class FreeLook extends Module {
             cameraPitch = player.getXRot();
         }
         if (mc.options.getCameraType().isFirstPerson()) {
-            mc.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+            mc.options.setCameraType(perspective.get().cameraType());
         }
         cameraActive = true;
     }
@@ -123,7 +128,7 @@ public final class FreeLook extends Module {
         if (canUse) {
             if (!cameraActive) activateCamera(player);
             if (mc.options.getCameraType().isFirstPerson()) {
-                mc.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+                mc.options.setCameraType(perspective.get().cameraType());
             }
         } else if (cameraActive) {
             deactivateCamera();
@@ -143,5 +148,20 @@ public final class FreeLook extends Module {
         KeyManager.unregisterAll(name);
         if (!freeLookKey.isNone()) KeyManager.registerCombo(name, combo);
         lastKeyCombo = combo;
+    }
+
+    public enum Perspective {
+        BACK(CameraType.THIRD_PERSON_BACK),
+        FRONT(CameraType.THIRD_PERSON_FRONT);
+
+        private final CameraType cameraType;
+
+        Perspective(CameraType cameraType) {
+            this.cameraType = cameraType;
+        }
+
+        public CameraType cameraType() {
+            return cameraType;
+        }
     }
 }

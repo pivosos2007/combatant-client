@@ -33,6 +33,7 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.util.player.MovementUtil;
+import combatant.client.util.time.TimerController;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -81,23 +82,33 @@ public final class Step extends Module {
     private static final String STEP_FLIGHT_EXEMPT_KELP = "kelp";
     private static final String STEP_FLIGHT_EXEMPT_GLIDING = "gliding";
     private static final String STEP_FLIGHT_EXEMPT_CHUNK = "chunk";
-    private static final double VULCAN_297_FLIGHT_F_DECAY = 0.04;
-    private static final double VULCAN_297_JUMP_A_DECAY = 0.15;
+    private static final double VULCAN_297_VERTICAL_RECOVERY_COST = 0.55;
     private static final double VULCAN_297_STEP_JUMP_COST = 0.65;
-    private static final double VULCAN_297_VERTICAL_RECOVERY_COST = 1.0;
-    private static final double VULCAN_297_FLIGHT_F_LIMIT = 1.6;
-    private static final double VULCAN_297_JUMP_A_LIMIT = 1.7;
+    private static final double VULCAN_297_FLIGHT_F_DECAY = 0.05;
+    private static final double VULCAN_297_JUMP_A_DECAY = 0.05;
+    private static final double VULCAN_297_FLIGHT_F_LIMIT = 1.35;
+    private static final double VULCAN_297_JUMP_A_LIMIT = 1.25;
+
     private final Minecraft mc = Minecraft.getInstance();
     private final EnumValue<Mode> mode = enumSetting("stepMode", "mode", Mode.INSTANT, Mode.values());
     private final NumberValue<Float> height = visibleWhen(num("stepHeight", "height", 1.0f, 0.6f, 5.0f), () -> mode.get() == Mode.INSTANT);
+    private final BooleanValue adaptiveOffsets = visibleWhen(bool("stepAdaptiveOffsets", "adaptive_offsets", true), () -> mode.get() == Mode.INSTANT);
     private final BooleanValue trim = visibleWhen(bool("stepTrim", "trim", false), () -> mode.get() == Mode.INSTANT);
+    private final BooleanValue sneak = visibleWhen(bool("stepSneak", "sneak", false), () -> mode.get() == Mode.INSTANT);
     private final NumberValue<Integer> simulateJumpOrderStart =
-            visibleWhen(num("stepSimulateJumpOrderStart", "simulate_jump_order_start", 0, 0, JUMP_ORDER.length - 1), () -> mode.get() == Mode.INSTANT);
+            visibleWhen(num("stepSimulateJumpOrderStart", "simulate_jump_order_start", 0, 0, JUMP_ORDER.length - 1),
+                    () -> mode.get() == Mode.INSTANT && !adaptiveOffsets.get());
     private final NumberValue<Integer> simulateJumpOrderEnd =
-            visibleWhen(num("stepSimulateJumpOrderEnd", "simulate_jump_order_end", 2, 0, JUMP_ORDER.length - 1), () -> mode.get() == Mode.INSTANT);
+            visibleWhen(num("stepSimulateJumpOrderEnd", "simulate_jump_order_end", 2, 0, JUMP_ORDER.length - 1),
+                    () -> mode.get() == Mode.INSTANT && !adaptiveOffsets.get());
     private final NumberValue<Integer> waitTicks = visibleWhen(num("stepWaitTicks", "wait_ticks", 0, 0, 60), () -> mode.get() == Mode.INSTANT);
     private final EnumValue<PacketMode> packetMode =
             visibleWhen(enumSetting("stepPacketMode", "packet_mode", PacketMode.FULL, PacketMode.values()), () -> mode.get() == Mode.INSTANT);
+    private final BooleanValue useTimer = visibleWhen(bool("stepUseTimer", "use_timer", false), () -> mode.get() == Mode.INSTANT);
+    private final NumberValue<Float> timerSpeed =
+            visibleWhen(num("stepTimerSpeed", "timer_speed", 0.6f, 0.1f, 1.0f), () -> mode.get() == Mode.INSTANT && useTimer.get());
+    private final NumberValue<Integer> timerTicks =
+            visibleWhen(num("stepTimerTicks", "timer_ticks", 2, 1, 10), () -> mode.get() == Mode.INSTANT && useTimer.get());
     private final BooleanMapValue vulcan297FlightExempts =
             visibleWhen(group("stepVulcan297FlightExempts", "vulcan297_flight_exempts", vulcan297FlightExemptDefaults()), () -> mode.get() == Mode.VULCAN_297);
     private int ticksWait;
@@ -145,6 +156,7 @@ public final class Step extends Module {
         resetVulcan();
         vulcan297FlightFRisk = 0.0;
         vulcan297JumpARisk = 0.0;
+        TimerController.clear(this);
     }
 
     @EventHandler
@@ -196,6 +208,12 @@ public final class Step extends Module {
     @EventHandler
     private void onPlayerStep(PlayerStepEvent event) {
         if (!isEnabled() || mode.get() != Mode.INSTANT || ticksWait > 0) return;
+        LocalPlayer player = mc.player;
+        if (player == null) return;
+        if (!player.onGround()) return;
+        if (player.isInWater() || player.isInLava() || player.isPassenger() || player.isFallFlying() || player.onClimbable()) return;
+        if (!sneak.get() && player.isShiftKeyDown()) return;
+
         event.setHeight(height.get());
     }
 
@@ -208,29 +226,74 @@ public final class Step extends Module {
         double stepHeight = event.getAdjustedVec().y;
         if (stepHeight <= 0.5) return;
 
-        int start = Math.min(simulateJumpOrderStart.get(), simulateJumpOrderEnd.get());
-        int end = Math.max(simulateJumpOrderStart.get(), simulateJumpOrderEnd.get());
-        if (start == 0 && end == 0) {
-            ticksWait = waitTicks.get();
-            return;
+        if (packetMode.get() != PacketMode.NONE) {
+            double[] offsets = getOffsets(stepHeight);
+            if (offsets.length > 0) {
+                player.awardStat(Stats.JUMP);
+
+                Vec3 before = event.getBeforePos() != null && event.getBeforePos() != Vec3.ZERO
+                        ? event.getBeforePos() : player.position();
+                Vec3 after = event.getAfterPos() != null && event.getAfterPos() != Vec3.ZERO
+                        ? event.getAfterPos() : player.position();
+                double stepX = before.x;
+                double stepZ = before.z;
+                double baseY = before.y;
+                double maxY = after.y;
+
+                for (double offset : offsets) {
+                    if (offset <= 0.0) continue;
+
+                    double y = baseY + offset;
+                    if (trim.get()) {
+                        y = Math.min(y, maxY);
+                    }
+                    Packet<?> packet = movePacket(player, stepX, y, stepZ);
+                    if (packet != null) {
+                        mc.getConnection().send(packet);
+                    }
+                }
+            }
         }
 
-        player.awardStat(Stats.JUMP);
-
-        double maxY = player.getY();
-        double baseY = player.getY() - stepHeight;
-        for (int i = start; i <= end && i < JUMP_ORDER.length; i++) {
-            double additionalY = JUMP_ORDER[i];
-            if (additionalY == 0.0) continue;
-
-            double y = baseY + additionalY;
-            if (trim.get()) {
-                y = Math.min(y, maxY);
-            }
-            mc.getConnection().send(movePacket(player, y));
+        if (useTimer.get()) {
+            TimerController.requestTimerSpeed(timerSpeed.get(), TimerController.NORMAL, this, timerTicks.get());
         }
 
         ticksWait = waitTicks.get();
+    }
+
+    private double[] getOffsets(double stepHeight) {
+        if (adaptiveOffsets.get()) {
+            if (stepHeight <= 1.0) {
+                return new double[] { 0.41999998688698, 0.7531999805212 };
+            } else if (stepHeight <= 1.5) {
+                return new double[] { 0.41999998688698, 0.7531999805212, 1.00133597911215, 1.166109260938214, 1.24918707874468, 1.20 };
+            } else if (stepHeight <= 2.0) {
+                return new double[] { 0.42, 0.78, 1.10, 1.35, 1.50, 1.55 };
+            } else if (stepHeight <= 2.5) {
+                return new double[] { 0.425, 0.821, 1.199, 1.559, 1.899, 2.219, 2.519 };
+            } else {
+                int count = (int) Math.ceil(stepHeight / 0.4);
+                double[] offsets = new double[Math.max(1, count - 1)];
+                for (int i = 0; i < offsets.length; i++) {
+                    offsets[i] = (i + 1) * (stepHeight / count);
+                }
+                return offsets;
+            }
+        } else {
+            int start = Math.min(simulateJumpOrderStart.get(), simulateJumpOrderEnd.get());
+            int end = Math.max(simulateJumpOrderStart.get(), simulateJumpOrderEnd.get());
+            if (start == 0 && end == 0) {
+                return new double[0];
+            }
+            int length = Math.max(0, end - start + 1);
+            double[] offsets = new double[length];
+            int idx = 0;
+            for (int i = start; i <= end && i < JUMP_ORDER.length; i++) {
+                offsets[idx++] = JUMP_ORDER[i];
+            }
+            return offsets;
+        }
     }
 
     private void tickVulcan286() {
@@ -268,67 +331,84 @@ public final class Step extends Module {
         }
     }
 
-    private void tickVulcan297AggressiveSequence(LocalPlayer player) {
-        if (isVulcan297StepCExempt(player)) {
-            tickVulcan286Sequence(player);
-            return;
-        }
-
-        if (vulcanSequenceTicks == 2) {
-            if (vulcanEvenStep) {
-                Vec3 velocity = player.getDeltaMovement();
-                player.setDeltaMovement(withStrafe(new Vec3(velocity.x, 0.24680001947880004, velocity.z), player, 0.2));
-            }
-            return;
-        }
-
-        if (vulcanSequenceTicks == 3) {
-            if (vulcanEvenStep) {
-                Vec3 velocity = player.getDeltaMovement();
-                player.setDeltaMovement(velocity.x, 0.0, velocity.z);
-            }
-            return;
-        }
-
-        if (vulcanSequenceTicks >= 4) {
-            resetVulcan();
-        }
-    }
-
     private void tickVulcan297() {
         if (!vulcanStepping || mc.player == null) return;
 
         vulcanSequenceTicks++;
         LocalPlayer player = mc.player;
 
-        if (vulcan297Aggressive && isVulcan297FlightExempt(player)) {
-            tickVulcan297AggressiveSequence(player);
+        if (vulcan297Aggressive) {
+            tickVulcan297Aggressive(player);
             return;
         }
 
-        if (player.onGround() && vulcanSequenceTicks > 1 || vulcanSequenceTicks >= 10) {
+        tickVulcan297Standard(player);
+    }
+
+    private void tickVulcan297Standard(LocalPlayer player) {
+        if (vulcanSequenceTicks == 2) {
+            if (vulcanEvenStep) {
+                Vec3 velocity = player.getDeltaMovement();
+                double forwardMotion = MovementUtil.isMoving() ? 0.22 : 0.0;
+                player.setDeltaMovement(withStrafe(new Vec3(velocity.x, 0.24680001947880004, velocity.z), player, forwardMotion));
+                vulcan297FlightFRisk += VULCAN_297_VERTICAL_RECOVERY_COST;
+            }
+            return;
+        }
+
+        if (vulcanSequenceTicks == 3) {
+            Vec3 velocity = player.getDeltaMovement();
+            player.setDeltaMovement(velocity.x, 0.0, velocity.z);
+            vulcan297FlightFRisk += VULCAN_297_VERTICAL_RECOVERY_COST * 0.5;
+            return;
+        }
+
+        if (vulcanSequenceTicks >= 4) {
+            Vec3 velocity = player.getDeltaMovement();
+            player.setDeltaMovement(velocity.x, -0.17, velocity.z);
             resetVulcan();
         }
     }
 
-    private Packet<?> movePacket(LocalPlayer player, double y) {
+    private void tickVulcan297Aggressive(LocalPlayer player) {
+        if (vulcanSequenceTicks == 1) {
+            Vec3 velocity = player.getDeltaMovement();
+            player.setDeltaMovement(withStrafe(new Vec3(velocity.x, 0.42, velocity.z), player, 0.28));
+            return;
+        }
+
+        if (vulcanSequenceTicks == 2) {
+            Vec3 velocity = player.getDeltaMovement();
+            player.setDeltaMovement(withStrafe(new Vec3(velocity.x, 0.2, velocity.z), player, 0.24));
+            return;
+        }
+
+        if (vulcanSequenceTicks >= 3) {
+            Vec3 velocity = player.getDeltaMovement();
+            player.setDeltaMovement(velocity.x, 0.0, velocity.z);
+            resetVulcan();
+        }
+    }
+
+    private Packet<?> movePacket(LocalPlayer player, double x, double y, double z) {
         return switch (packetMode.get()) {
             case FULL -> new ServerboundMovePlayerPacket.PosRot(
-                    player.getX(),
+                    x,
                     y,
-                    player.getZ(),
+                    z,
                     player.getYRot(),
                     player.getXRot(),
                     false,
-                    player.horizontalCollision
+                    false
             );
             case POSITION_AND_ON_GROUND -> new ServerboundMovePlayerPacket.Pos(
-                    player.getX(),
+                    x,
                     y,
-                    player.getZ(),
+                    z,
                     false,
-                    player.horizontalCollision
+                    false
             );
+            case NONE -> null;
         };
     }
 
@@ -481,6 +561,7 @@ public final class Step extends Module {
 
     public enum PacketMode {
         FULL,
-        POSITION_AND_ON_GROUND
+        POSITION_AND_ON_GROUND,
+        NONE
     }
 }

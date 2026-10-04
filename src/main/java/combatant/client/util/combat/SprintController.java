@@ -15,6 +15,7 @@ import combatant.client.events.impl.GameTickEvent;
 import combatant.client.events.impl.PacketEvent;
 import combatant.client.events.impl.SprintControlEvent;
 import combatant.client.features.module.Modules;
+import combatant.client.features.module.modules.movement.NoSlow;
 import combatant.client.features.module.modules.movement.Sprint;
 import combatant.client.mixins.accessors.LocalPlayerAccessor;
 
@@ -95,7 +96,16 @@ public final class SprintController {
             return false;
         }
 
+        NoSlow noSlow = Modules.get(NoSlow.class);
+        if (noSlow != null && noSlow.shouldAllowSprint(player)) {
+            return !player.isSprinting() && player.input != null && player.input.hasForwardImpulse() && hasFoodForSprint(player);
+        }
+
         return ((LocalPlayerAccessor) player).combatant$canStartSprinting();
+    }
+
+    private boolean hasFoodForSprint(LocalPlayer player) {
+        return player.getFoodData().getFoodLevel() > 6.0F || player.getAbilities().mayfly;
     }
 
     /**
@@ -209,6 +219,14 @@ public final class SprintController {
     }
 
     private boolean shouldVanillaStopSprinting(LocalPlayer player) {
+        NoSlow noSlow = Modules.get(NoSlow.class);
+        if (noSlow != null && noSlow.shouldAllowSprint(player)) {
+            if (player.isSwimming()) {
+                return !player.input.hasForwardImpulse() || !player.isInWater();
+            }
+            return !player.input.hasForwardImpulse() || !hasFoodForSprint(player);
+        }
+
         LocalPlayerAccessor accessor = (LocalPlayerAccessor) player;
 
         if (player.isSwimming()) {
@@ -285,19 +303,9 @@ public final class SprintController {
         LocalPlayer player = mc.player;
 
         if (player == null) {
-            clearSprintBlock();
-            return false;
+            return true;
         }
 
-        if (blockSprintUntilAge == Integer.MIN_VALUE) {
-            return false;
-        }
-
-        if (player.tickCount >= blockSprintUntilAge) {
-            clearSprintBlock();
-            return false;
-        }
-
-        return true;
+        return player.tickCount < blockSprintUntilAge;
     }
 }

@@ -27,6 +27,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
+import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -125,8 +126,15 @@ public final class Blink extends Module {
     public void onBlinkPacket(BlinkPacketEvent event) {
         if (!isEnabled() || event.getOrigin() != TransferOrigin.OUTGOING) return;
         Packet<?> packet = event.getPacket();
-        if (packetMode.get() == PacketMode.MOVEMENT_ONLY && !(packet instanceof ServerboundMovePlayerPacket)) return;
+        // BlinkManager flushes the queue whenever a packet or the per-tick poll (packet == null) comes back FLUSH.
+        // The client sends a tick-end packet every tick, so in movement-only mode it has to be held with the
+        // movement packets, and the poll has to answer QUEUE, or nothing is ever held back.
+        if (packet != null && packetMode.get() == PacketMode.MOVEMENT_ONLY && !isMovementTraffic(packet)) return;
         event.setAction(BlinkManager.Action.QUEUE);
+    }
+
+    private static boolean isMovementTraffic(Packet<?> packet) {
+        return packet instanceof ServerboundMovePlayerPacket || packet instanceof ServerboundClientTickEndPacket;
     }
 
     @EventHandler(priority = 100)

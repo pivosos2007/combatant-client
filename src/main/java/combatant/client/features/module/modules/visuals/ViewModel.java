@@ -323,11 +323,25 @@ public class ViewModel extends Module {
      * Item checks
      * -------------------------------------------- */
 
+    /** Registry id of the stack's item; memoised because hand rendering asks for it several times a frame. */
+    private static String itemId(ItemStack st) {
+        var item = st.getItem();
+        String id = ITEM_IDS.get(item);
+        if (id == null) {
+            id = BuiltInRegistries.ITEM.getKey(item).toString();
+            ITEM_IDS.put(item, id);
+        }
+        return id;
+    }
+
+    private static final java.util.Map<net.minecraft.world.item.Item, String> ITEM_IDS =
+            new java.util.IdentityHashMap<>();
+
     public boolean shouldScale(ItemStack st) {
         if (!isActiveForHandRender()) return false;
         if (miniAll.get()) return true;
         if (st == null || st.isEmpty()) return false;
-        String id = BuiltInRegistries.ITEM.getKey(st.getItem()).toString();
+        String id = itemId(st);
         return miniItems.get().contains(id);
     }
 
@@ -336,14 +350,14 @@ public class ViewModel extends Module {
         if (!swingEnabled.get()) return false;
         if (swingAll.get()) return true;
         if (st == null || st.isEmpty()) return false;
-        String id = BuiltInRegistries.ITEM.getKey(st.getItem()).toString();
+        String id = itemId(st);
         return swingItems.get().contains(id);
     }
 
     public boolean shouldBypassRotationTransform(ItemStack st) {
         if (!isBasicModeActive()) return false;
         if (st == null || st.isEmpty()) return false;
-        String id = BuiltInRegistries.ITEM.getKey(st.getItem()).toString();
+        String id = itemId(st);
         return rotationBypassItems.get().contains(id);
     }
 

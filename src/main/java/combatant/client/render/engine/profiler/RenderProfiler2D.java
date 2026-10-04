@@ -13,6 +13,11 @@ public enum RenderProfiler2D {
     ;
     private static final boolean DEV = DevProfilerBridge.available("RenderProfiler2D");
 
+    /** True when the dev profiler classes are present; lets hot callers skip building section labels. */
+    public static boolean isAvailable() {
+        return DEV;
+    }
+
     public static boolean isEnabled() {
         if (!DEV) return false;
         return DevProfilerBridge.bool("RenderProfiler2D", "isEnabled", false, new Class<?>[0]);

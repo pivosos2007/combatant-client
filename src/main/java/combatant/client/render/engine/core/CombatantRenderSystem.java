@@ -24,6 +24,7 @@ import combatant.client.render.engine.core.policy.LightPolicy;
 import combatant.client.render.engine.core.policy.VanillaWorldFogProvider;
 import combatant.client.render.engine.depth.WorldSceneDepth;
 import combatant.client.render.engine.framegraph.CombatantFrameGraph;
+import combatant.client.render.engine.profiler.FrameRateLog;
 import combatant.client.render.engine.profiler.FrameStutterProfiler;
 import combatant.client.render.engine.profiler.RenderFrameProfiler;
 import combatant.client.render.engine.profiler.TracyProfiler;
@@ -201,11 +202,33 @@ public enum CombatantRenderSystem {
         }
     }
 
+    // rhi() runs this on every call; the answer only changes when Blaze3D swaps its device, so
+    // cache it per device instance instead of re-reading device info and lowercasing each time.
+    private static Object detectedForDevice;
+    private static BackendKind detectedKind = BackendKind.UNKNOWN;
+
     private static BackendKind detectBackendKind() {
+        Object device;
+        try {
+            device = RenderSystem.tryGetDevice();
+        } catch (Throwable ignored) {
+            device = null;
+        }
+        if (device != null && device == detectedForDevice) return detectedKind;
+
+        BackendKind kind = detectBackendKindUncached(device);
+        // Only cache real devices: before the device exists the description can still change.
+        if (device != null && kind != BackendKind.UNKNOWN) {
+            detectedForDevice = device;
+            detectedKind = kind;
+        }
+        return kind;
+    }
+
+    private static BackendKind detectBackendKindUncached(Object deviceObject) {
         String backendName = null;
         try {
-            var device = RenderSystem.tryGetDevice();
-            if (device != null && device.getDeviceInfo() != null) {
+            if (deviceObject instanceof com.mojang.blaze3d.systems.GpuDevice device && device.getDeviceInfo() != null) {
                 backendName = device.getDeviceInfo().backendName();
             }
         } catch (Throwable ignored) {
@@ -383,11 +406,18 @@ public enum CombatantRenderSystem {
             if (FrameStutterProfiler.isEnabled()) {
                 FrameStutterProfiler.onFramePresented(rhiStatsSnapshot(), uniformStatsSnapshot(), resourceStatsSnapshot());
             }
-            RhiStatsSnapshot rhiSnapshot = rhi().stats().snapshot(TracyProfiler.isEnabled());
-            TracyProfiler.plotUiPipeline(UiPipelineTelemetry.snapshot());
-            TracyProfiler.plotRhiPipeline(rhiSnapshot);
-            TracyProfiler.plotRenderResources(resourceStatsSnapshot());
-            RenderFrameProfiler.endFrame(rhiSnapshot, uniformStatsSnapshot());
+            // The stat snapshots below are large records that only Tracy consumes; building four of them
+            // every frame while no profiler is attached was pure allocation.
+            if (TracyProfiler.isEnabled()) {
+                RhiStatsSnapshot rhiSnapshot = rhi().stats().snapshot(true);
+                TracyProfiler.plotUiPipeline(UiPipelineTelemetry.snapshot());
+                TracyProfiler.plotRhiPipeline(rhiSnapshot);
+                TracyProfiler.plotRenderResources(resourceStatsSnapshot());
+                RenderFrameProfiler.endFrame(rhiSnapshot, uniformStatsSnapshot());
+            } else {
+                RenderFrameProfiler.endFrame(null, null);
+            }
+            FrameRateLog.onFrame();
             lifecycle = FrameLifecycle.PRESENTED;
         } finally {
             SCENE_INSTANCES.endFrame(frameId);

@@ -46,7 +46,11 @@ public final class InventorySwap {
     private final Deque<QueuedAction> strictQueue = new ArrayDeque<>();
     private int lastServerSelectedSlot = -1;
     private int savedSelectedSlot = -1;
+    // Slot a silent swap holds for the duration of its action; wins over hotbar leases so
+    // ensureHasSentCarriedItem inside useItem/attack cannot flip the server back mid-action.
+    private int silentSlot = -1;
     private int internalSwapDepth;
+    private int clientViewDepth;
     private HotbarLease hotbarLease;
     private InventoryLease inventoryLease;
     private Object inventoryActionOwner;
@@ -184,6 +188,22 @@ public final class InventorySwap {
     }
 
     @EventHandler
+    private void onPacketReceive(PacketEvent.Receive event) {
+        Object packet = event.getPacket();
+        // The server moves the held slot itself on join, respawn and pick-block (server-side since 1.21.4).
+        // Without tracking it, a silent swap to that slot is skipped as "already selected" and uses the wrong item.
+        // Receive fires on the netty thread, so hop to the client thread before touching swap state.
+        if (packet instanceof ClientboundSetHeldSlotPacket(int slot)) {
+            mc.execute(() -> lastServerSelectedSlot = slot);
+        } else if (packet instanceof ClientboundLoginPacket) {
+            mc.execute(() -> {
+                lastServerSelectedSlot = -1;
+                silentSlot = -1;
+            });
+        }
+    }
+
+    @EventHandler
     private void onGameTick(GameTickEvent event) {
         tick();
         if (movementLockTicks > 0) {
@@ -236,6 +256,23 @@ public final class InventorySwap {
         if (isMovementLocked()) {
             event.setSprint(false);
         }
+    }
+
+    /**
+     * True while the game draws or animates what the player sees (hand, hotbar, item name popup)
+     * or reads the scroll wheel. Those paths get the real client slot, so a hotbar lease or silent
+     * swap stays server-side instead of flashing the tool in hand.
+     */
+    public boolean isClientView() {
+        return clientViewDepth > 0;
+    }
+
+    public void beginClientView() {
+        clientViewDepth++;
+    }
+
+    public void endClientView() {
+        if (clientViewDepth > 0) clientViewDepth--;
     }
 
     public boolean isInternalSwap() {
@@ -331,6 +368,7 @@ public final class InventorySwap {
     }
 
     public int serverSelectedSlot() {
+        if (isHotbarSlot(silentSlot)) return silentSlot;
         HotbarLease active = activeLease();
         if (active != null) return active.enforcedSlot;
         if (lastServerSelectedSlot >= 0 && lastServerSelectedSlot <= 8) return lastServerSelectedSlot;
@@ -338,6 +376,7 @@ public final class InventorySwap {
     }
 
     public int effectiveSelectedSlot() {
+        if (isHotbarSlot(silentSlot)) return silentSlot;
         HotbarLease active = activeLease();
         return active != null ? active.enforcedSlot : clientSelectedSlot();
     }
@@ -423,27 +462,32 @@ public final class InventorySwap {
         LocalPlayer player = mc.player;
         if (player == null || mc.getConnection() == null || !isHotbarSlot(slot)) return false;
 
-        int current = clientSelectedSlot();
-        if (current != slot) {
-            ((PlayerInventoryAccessor) player.getInventory()).combatant$setSelectedSlot(slot);
-        }
-
-        syncInteractionManagerSlot(slot);
-        if (lastServerSelectedSlot != slot) {
-            mc.getConnection().send(new ServerboundSetCarriedItemPacket(slot));
-            lastServerSelectedSlot = slot;
-        }
+        setClientSelectedSlot(slot);
+        sendCarriedSlot(slot);
         return true;
     }
 
     public boolean sendSelectedSlotIfNeeded(int slot) {
         if (mc.player == null || mc.getConnection() == null || !isHotbarSlot(slot)) return false;
-        if (lastServerSelectedSlot != slot) {
+        sendCarriedSlot(slot);
+        return true;
+    }
+
+    private boolean sendCarriedSlot(int slot) {
+        boolean changed = lastServerSelectedSlot != slot;
+        if (changed) {
             mc.getConnection().send(new ServerboundSetCarriedItemPacket(slot));
             lastServerSelectedSlot = slot;
         }
         syncInteractionManagerSlot(slot);
-        return true;
+        return changed;
+    }
+
+    private void setClientSelectedSlot(int slot) {
+        LocalPlayer player = mc.player;
+        if (player != null && clientSelectedSlot() != slot) {
+            ((PlayerInventoryAccessor) player.getInventory()).combatant$setSelectedSlot(slot);
+        }
     }
 
     public boolean clickSwap(int containerSlot) {
@@ -837,19 +881,32 @@ public final class InventorySwap {
     }
 
     private boolean runSilent(int slot, Runnable action) {
-        if (!isHotbarSlot(slot)) return false;
-        int previous = clientSelectedSlot();
+        LocalPlayer player = mc.player;
+        if (player == null || mc.getConnection() == null || !isHotbarSlot(slot)) return false;
 
-        if (lastServerSelectedSlot != slot) {
-            if (!selectHotbar(slot)) return false;
-        }
+        int previousClientSlot = clientSelectedSlot();
+        int previousSilentSlot = silentSlot;
+
+        // The raw client slot moves too: setItemInHand writes through Inventory.selected, so a bucket fill or
+        // similar result stack must land in the swapped slot, not the one the player is looking at.
+        silentSlot = slot;
+        setClientSelectedSlot(slot);
+        boolean serverSlotMoved = sendCarriedSlot(slot);
 
         try {
             action.run();
             return true;
         } finally {
-            if (lastServerSelectedSlot != previous) {
-                selectHotbar(previous);
+            silentSlot = previousSilentSlot;
+            setClientSelectedSlot(previousClientSlot);
+            // Restore to whatever the server should hold now: an outer silent swap, an active lease, or the
+            // player's own slot. Restoring to the client slot alone would stomp on a lease every time.
+            serverSlotMoved |= sendCarriedSlot(effectiveSelectedSlot());
+
+            // Vanilla servers stop main-hand item use whenever the carried slot changes. Mirror that locally,
+            // otherwise the client keeps "eating" an item the server already cancelled. A held use key restarts it.
+            if (serverSlotMoved && player.isUsingItem() && player.getUsedItemHand() == InteractionHand.MAIN_HAND) {
+                player.stopUsingItem();
             }
         }
     }
@@ -863,12 +920,12 @@ public final class InventorySwap {
 
     private boolean runInventorySilent(int slot, Runnable action) {
         if (isHotbarSlot(slot)) return runSilent(slot, action);
-        int hotbarButton = clientSelectedSlot();
+        // Swap into the slot the server is actually holding (lease or outer silent swap), not the one on screen.
+        int hotbarButton = effectiveSelectedSlot();
         if (!clickSwap(slot, hotbarButton)) return false;
 
         try {
-            action.run();
-            return true;
+            return runSilent(hotbarButton, action);
         } finally {
             clickSwap(slot, hotbarButton);
         }

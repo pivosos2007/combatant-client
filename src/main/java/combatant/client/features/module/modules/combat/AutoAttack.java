@@ -442,6 +442,7 @@ public class AutoAttack extends Module {
     private boolean isValidTarget(Entity entity) {
         if (!(entity instanceof LivingEntity living) || !living.isAlive()) return false;
         if (mc.player == null) return false;
+        if (AntiBot.shouldIgnore(living)) return false;
 
         if (targetToggles.get(TargetFilters.PLAYERS_ONLY) && !(living instanceof Player)) {
             return false;

@@ -9,6 +9,7 @@ package combatant.client.render.engine.renderer.ui.runtime.render;
 
 import combatant.client.render.engine.profiler.RenderCostProfiler;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.runtime.animation.UiAnimationState;
 import combatant.client.render.engine.renderer.ui.runtime.asset.UiAssetRef;
 import combatant.client.render.engine.renderer.ui.runtime.asset.UiAssetRegistry;
 import combatant.client.render.engine.renderer.ui.runtime.asset.UiAssetResolver;
@@ -38,18 +39,6 @@ public final class UiRenderer {
         this.assetResolver = new UiAssetResolver(assetRegistry);
     }
 
-    private static String nodeProfilerLabel(UiNode node) {
-        if (node == null) return "unknown";
-        String debug = node.props() != null ? node.props().string("debugName", "") : "";
-        if (debug == null || debug.isBlank()) {
-            debug = node.props() != null ? node.props().string("name", "") : "";
-        }
-        String key = node.key();
-        String cls = node.styleClass();
-        String id = debug != null && !debug.isBlank() ? debug : (!key.isBlank() ? key : (cls != null && !cls.isBlank() ? cls : "#" + node.runtimeId()));
-        return node.type() + ":" + id;
-    }
-
     public void render(UiNode root, UiRenderContext context) {
         if (root == null || context == null || context.renderer() == null) return;
 
@@ -66,7 +55,8 @@ public final class UiRenderer {
     }
 
     private void renderNode(UiNode node, UiRenderContext context) {
-        try (RenderCostProfiler.Scope ignoredNode = RenderCostProfiler.uiNode(nodeProfilerLabel(node))) {
+        // uiNode() is a permanent no-op; building a label for it cost string work per node per frame.
+        try (RenderCostProfiler.Scope ignoredNode = RenderCostProfiler.uiNode(node)) {
             UiStyle style = node.style();
             UiRenderContext nodeContext = context.multiplyAlpha(style.opacity());
             if (nodeContext.alpha() <= 0.001f) return;
@@ -120,10 +110,19 @@ public final class UiRenderer {
     private UiBounds animatedBounds(UiNode node) {
         UiBounds bounds = node.bounds();
         var animations = node.state().animations();
-        float x = animations.containsKey("x") ? animations.get("x").value() : bounds.x();
-        float y = animations.containsKey("y") ? animations.get("y").value() : bounds.y();
-        float w = animations.containsKey("width") ? animations.get("width").value() : bounds.width();
-        float h = animations.containsKey("height") ? animations.get("height").value() : bounds.height();
+        // Most nodes never animate their bounds: hand back the layout bounds instead of eight map lookups
+        // and a fresh UiBounds per node per frame.
+        if (animations.isEmpty() && bounds.width() >= 0.0f && bounds.height() >= 0.0f) {
+            return bounds;
+        }
+        UiAnimationState ax = animations.get("x");
+        UiAnimationState ay = animations.get("y");
+        UiAnimationState aw = animations.get("width");
+        UiAnimationState ah = animations.get("height");
+        float x = ax != null ? ax.value() : bounds.x();
+        float y = ay != null ? ay.value() : bounds.y();
+        float w = aw != null ? aw.value() : bounds.width();
+        float h = ah != null ? ah.value() : bounds.height();
         return new UiBounds(x, y, Math.max(0.0f, w), Math.max(0.0f, h));
     }
 }

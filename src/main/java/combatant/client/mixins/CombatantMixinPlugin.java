@@ -23,6 +23,7 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
     private static final boolean STUB_IRIS = false;
     private static final Set<String> DISABLED_SODIUM_SHADOW_GRAPH_MIXINS = Set.of();
     private static final Set<String> OPTIONAL_SODIUM_MIXINS = Set.of(
+            "combatant.client.mixins.sodium.SodiumArenaAggregatorStrideMixin",
             "combatant.client.mixins.sodium.SodiumBlockRendererMixin",
             "combatant.client.mixins.sodium.SodiumBlockMetadataCaptureMixin",
             "combatant.client.mixins.sodium.SodiumBlockVisibilityMixin",
@@ -84,6 +85,7 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
             "combatant.client.mixins.iris.IrisVanillaHandInteropMixin"
     );
     private static final Set<String> DISABLED_WITH_IRIS_MIXINS = Set.of(
+            "combatant.client.mixins.sodium.SodiumArenaAggregatorStrideMixin",
             "combatant.client.mixins.sodium.SodiumBlockRendererMixin",
             "combatant.client.mixins.sodium.SodiumChunkMeshFormatsMixin",
             "combatant.client.mixins.sodium.SodiumChunkBuilderMeshingTaskMixin",

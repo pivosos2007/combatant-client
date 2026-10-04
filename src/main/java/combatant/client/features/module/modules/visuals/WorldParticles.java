@@ -185,10 +185,20 @@ public class WorldParticles extends Module {
         return random.nextLong(low, high + 1L);
     }
 
+    // Render-thread scratch vectors. Every particle used to allocate 2-8 Vector3f (plus a Quaternionf and
+    // an 8-slot array per cube) per frame just to rebuild the same camera basis.
+    private static final Vector3f SCRATCH_RIGHT = new Vector3f();
+    private static final Vector3f SCRATCH_UP = new Vector3f();
+    private static final Vector3f[] CUBE_CORNERS = {
+            new Vector3f(), new Vector3f(), new Vector3f(), new Vector3f(),
+            new Vector3f(), new Vector3f(), new Vector3f(), new Vector3f()
+    };
+    private static final Quaternionf SCRATCH_QUATERNION = new Quaternionf();
+
     private static Vec3 offsetInBillboardPlane(Vec3 pos, Quaternionf camRot, float angle, float distance) {
-        Vector3f right = new Vector3f(1.0f, 0.0f, 0.0f).rotate(camRot).mul((float) Math.cos(angle) * distance);
-        Vector3f up = new Vector3f(0.0f, 1.0f, 0.0f).rotate(camRot).mul((float) Math.sin(angle) * distance);
-        return pos.add(right.x() + up.x(), right.y() + up.y(), right.z() + up.z());
+        SCRATCH_RIGHT.set(1.0f, 0.0f, 0.0f).rotate(camRot).mul((float) Math.cos(angle) * distance);
+        SCRATCH_UP.set(0.0f, 1.0f, 0.0f).rotate(camRot).mul((float) Math.sin(angle) * distance);
+        return pos.add(SCRATCH_RIGHT.x() + SCRATCH_UP.x(), SCRATCH_RIGHT.y() + SCRATCH_UP.y(), SCRATCH_RIGHT.z() + SCRATCH_UP.z());
     }
 
     private static void addBillboardQuad(MeshBuilder mesh, double cx, double cy, double cz,
@@ -207,10 +217,10 @@ public class WorldParticles extends Module {
                                                  int bottomRightArgb,
                                                  int topRightArgb,
                                                  int topLeftArgb) {
-        Vector3f baseRight = new Vector3f(1.0f, 0.0f, 0.0f).rotate(camRot);
-        Vector3f baseUp = new Vector3f(0.0f, 1.0f, 0.0f).rotate(camRot);
-        addBillboardQuadGradient(mesh, cx, cy, cz, size, baseRight, baseUp, rollRadians,
-                bottomLeftArgb, bottomRightArgb, topRightArgb, topLeftArgb);
+        addBillboardQuadGradient(mesh, cx, cy, cz, size,
+                SCRATCH_RIGHT.set(1.0f, 0.0f, 0.0f).rotate(camRot),
+                SCRATCH_UP.set(0.0f, 1.0f, 0.0f).rotate(camRot),
+                rollRadians, bottomLeftArgb, bottomRightArgb, topRightArgb, topLeftArgb);
     }
 
     private static void addBillboardQuadGradient(MeshBuilder mesh, double cx, double cy, double cz,
@@ -263,26 +273,31 @@ public class WorldParticles extends Module {
                                                  float rollRadians,
                                                  int bottomLeftArgb, int bottomRightArgb,
                                                  int topRightArgb, int topLeftArgb) {
-        Vector3f baseRight = new Vector3f(1.0f, 0.0f, 0.0f).rotate(camRot);
-        Vector3f baseUp = new Vector3f(0.0f, 1.0f, 0.0f).rotate(camRot);
+        Vector3f baseRight = SCRATCH_RIGHT.set(1.0f, 0.0f, 0.0f).rotate(camRot);
+        Vector3f baseUp = SCRATCH_UP.set(0.0f, 1.0f, 0.0f).rotate(camRot);
         float cos = (float) Math.cos(rollRadians);
         float sin = (float) Math.sin(rollRadians);
 
-        Vector3f right = new Vector3f(baseRight).mul(cos).add(new Vector3f(baseUp).mul(sin)).mul(halfWidth);
-        Vector3f up = new Vector3f(baseUp).mul(cos).sub(new Vector3f(baseRight).mul(sin)).mul(halfHeight);
+        // right = (baseRight*cos + baseUp*sin) * halfWidth ; up = (baseUp*cos - baseRight*sin) * halfHeight
+        float rightX = (baseRight.x() * cos + baseUp.x() * sin) * halfWidth;
+        float rightY = (baseRight.y() * cos + baseUp.y() * sin) * halfWidth;
+        float rightZ = (baseRight.z() * cos + baseUp.z() * sin) * halfWidth;
+        float upX = (baseUp.x() * cos - baseRight.x() * sin) * halfHeight;
+        float upY = (baseUp.y() * cos - baseRight.y() * sin) * halfHeight;
+        float upZ = (baseUp.z() * cos - baseRight.z() * sin) * halfHeight;
 
-        double p1x = cx - right.x() - up.x();
-        double p1y = cy - right.y() - up.y();
-        double p1z = cz - right.z() - up.z();
-        double p2x = cx + right.x() - up.x();
-        double p2y = cy + right.y() - up.y();
-        double p2z = cz + right.z() - up.z();
-        double p3x = cx + right.x() + up.x();
-        double p3y = cy + right.y() + up.y();
-        double p3z = cz + right.z() + up.z();
-        double p4x = cx - right.x() + up.x();
-        double p4y = cy - right.y() + up.y();
-        double p4z = cz - right.z() + up.z();
+        double p1x = cx - rightX - upX;
+        double p1y = cy - rightY - upY;
+        double p1z = cz - rightZ - upZ;
+        double p2x = cx + rightX - upX;
+        double p2y = cy + rightY - upY;
+        double p2z = cz + rightZ - upZ;
+        double p3x = cx + rightX + upX;
+        double p3y = cy + rightY + upY;
+        double p3z = cz + rightZ + upZ;
+        double p4x = cx - rightX + upX;
+        double p4y = cy - rightY + upY;
+        double p4z = cz - rightZ + upZ;
 
         mesh.ensureQuadCapacity();
         int i1 = mesh.vec3(p1x, p1y, p1z).vec2(0.0, 1.0).colorArgb(bottomLeftArgb).next();
@@ -293,17 +308,16 @@ public class WorldParticles extends Module {
     }
 
     private static void addCube(MeshBuilder mesh, Vec3 pos, Vec3 rotation, float size, int diagonalArgb, int outlineArgb) {
-        Quaternionf quaternion = new Quaternionf().rotationXYZ((float) rotation.x, (float) rotation.y, (float) rotation.z);
-        Vector3f[] corners = new Vector3f[]{
-                rotatedCorner(-0.5f, -0.5f, -0.5f, quaternion, size, pos),
-                rotatedCorner(0.5f, -0.5f, -0.5f, quaternion, size, pos),
-                rotatedCorner(0.5f, 0.5f, -0.5f, quaternion, size, pos),
-                rotatedCorner(-0.5f, 0.5f, -0.5f, quaternion, size, pos),
-                rotatedCorner(-0.5f, -0.5f, 0.5f, quaternion, size, pos),
-                rotatedCorner(0.5f, -0.5f, 0.5f, quaternion, size, pos),
-                rotatedCorner(0.5f, 0.5f, 0.5f, quaternion, size, pos),
-                rotatedCorner(-0.5f, 0.5f, 0.5f, quaternion, size, pos)
-        };
+        Quaternionf quaternion = SCRATCH_QUATERNION.rotationXYZ((float) rotation.x, (float) rotation.y, (float) rotation.z);
+        Vector3f[] corners = CUBE_CORNERS;
+        rotatedCorner(corners[0], -0.5f, -0.5f, -0.5f, quaternion, size, pos);
+        rotatedCorner(corners[1], 0.5f, -0.5f, -0.5f, quaternion, size, pos);
+        rotatedCorner(corners[2], 0.5f, 0.5f, -0.5f, quaternion, size, pos);
+        rotatedCorner(corners[3], -0.5f, 0.5f, -0.5f, quaternion, size, pos);
+        rotatedCorner(corners[4], -0.5f, -0.5f, 0.5f, quaternion, size, pos);
+        rotatedCorner(corners[5], 0.5f, -0.5f, 0.5f, quaternion, size, pos);
+        rotatedCorner(corners[6], 0.5f, 0.5f, 0.5f, quaternion, size, pos);
+        rotatedCorner(corners[7], -0.5f, 0.5f, 0.5f, quaternion, size, pos);
 
         for (int[] edge : CUBE_EDGES) {
             addLine(mesh, corners[edge[0]], corners[edge[1]], outlineArgb);
@@ -313,8 +327,8 @@ public class WorldParticles extends Module {
         }
     }
 
-    private static Vector3f rotatedCorner(float x, float y, float z, Quaternionf quaternion, float size, Vec3 pos) {
-        return new Vector3f(x, y, z)
+    private static void rotatedCorner(Vector3f out, float x, float y, float z, Quaternionf quaternion, float size, Vec3 pos) {
+        out.set(x, y, z)
                 .rotate(quaternion)
                 .mul(size)
                 .add((float) pos.x, (float) pos.y, (float) pos.z);

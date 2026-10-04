@@ -52,7 +52,7 @@ Combatant requires:
 - Fabric Loader 0.19.3
 - Fabric API [`0.152.2+26.2`](https://modrinth.com/mod/fabric-api/version/0.152.2%2B26.2)
 - Java 25
-- Sodium [`sodium-fabric-0.9.1+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.1-fabric)
+- Sodium [`sodium-fabric-0.9.2+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.2-fabric)
 
 Addon/API projects should target the same Minecraft, Fabric Loader, Fabric API, Java, and Sodium versions as the client.
 
@@ -67,7 +67,7 @@ Combatant includes optional compatibility integrations for Iris, ImmediatelyFast
 3. Download the Combatant jar from the GitHub release.
 4. Download the required dependency jars:
    - Fabric API [`0.152.2+26.2`](https://modrinth.com/mod/fabric-api/version/0.152.2%2B26.2)
-   - Sodium [`sodium-fabric-0.9.1+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.1-fabric)
+   - Sodium [`sodium-fabric-0.9.2+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.2-fabric)
 5. Put `combatant-0.1.3.jar`, Fabric API, and Sodium into your Minecraft `mods` folder.
 6. Start the Fabric 26.2 profile.
 

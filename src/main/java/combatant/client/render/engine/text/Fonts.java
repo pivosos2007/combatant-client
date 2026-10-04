@@ -24,7 +24,11 @@ public enum Fonts {
     public static final List<FontFamily> FONT_FAMILIES = new ArrayList<>();
     private static final Map<FontInfo, TextRenderer> RENDERER_CACHE = new HashMap<>();
     private static final Map<String, FontFamily> FAMILY_BY_NAME = new HashMap<>();
-    private static final Map<String, FontFace> FACE_CACHE = new HashMap<>();
+    // Keyed by the caller's family string exactly as passed, one slot per FontInfo.Type. Text
+    // nodes resolve their face every frame; a hit is now a single lookup instead of normalising,
+    // lower-casing and concatenating a "name|type" key each time.
+    private static final Map<String, FontFace[]> FACE_CACHE = new HashMap<>();
+    private static final FontInfo.Type[] FACE_TYPES = FontInfo.Type.values();
     private static final Map<String, String> NORMALIZED_CACHE = new HashMap<>();
     private static final Map<String, String> FAMILY_ALIASES = new HashMap<>();
     public static String DEFAULT_FONT_FAMILY;
@@ -210,33 +214,36 @@ public enum Fonts {
     }
 
     private static FontFace resolveFace(String family, FontInfo.Type type) {
-        if (family == null || family.isBlank()) return null;
+        if (family == null) return null;
+        FontInfo.Type wanted = type != null ? type : FontInfo.Type.Regular;
+        FontFace[] faces = FACE_CACHE.get(family);
+        if (faces != null && faces[wanted.ordinal()] != null) return faces[wanted.ordinal()];
+
+        FontFace face = resolveFaceUncached(family, wanted);
+        if (face != null) {
+            if (faces == null) {
+                faces = new FontFace[FACE_TYPES.length];
+                FACE_CACHE.put(family, faces);
+            }
+            faces[wanted.ordinal()] = face;
+        }
+        return face;
+    }
+
+    private static FontFace resolveFaceUncached(String family, FontInfo.Type wanted) {
+        if (family.isBlank()) return null;
         String name = normalizeFamily(family);
         if (name == null || name.isBlank()) return null;
         FontFamily fontFamily = getFamily(name);
         if (fontFamily == null) return null;
 
-        FontInfo.Type wanted = type != null ? type : FontInfo.Type.Regular;
-        String cacheKey = name.toLowerCase(Locale.ROOT) + "|" + wanted.name();
-        FontFace cached = FACE_CACHE.get(cacheKey);
-        if (cached != null) return cached;
         FontFace face = fontFamily.get(wanted);
-        if (face != null) {
-            FACE_CACHE.put(cacheKey, face);
-            return face;
-        }
+        if (face != null) return face;
         if (wanted != FontInfo.Type.Regular) {
             face = fontFamily.get(FontInfo.Type.Regular);
-            if (face != null) {
-                FACE_CACHE.put(cacheKey, face);
-                return face;
-            }
+            if (face != null) return face;
         }
-        face = fontFamily.get(FontInfo.Type.Bold);
-        if (face != null) {
-            FACE_CACHE.put(cacheKey, face);
-        }
-        return face;
+        return fontFamily.get(FontInfo.Type.Bold);
     }
 
     private static String normalizeFamily(String family) {

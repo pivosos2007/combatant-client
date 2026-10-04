@@ -70,6 +70,22 @@ public enum IrisRuntime {
         return snapshot.modLoaded() && snapshot.apiAvailable() && snapshot.shadersEnabled() && snapshot.shaderpackInUse();
     }
 
+    /**
+     * True while Combatant submits its imported geometry through Iris (Iris' safeToMultiply
+     * window). Reading Iris' ImmediateState directly from always-applied mixins crashes when
+     * Iris is not installed, so the access lives behind the loaded check here.
+     */
+    public static boolean isImportedGeometrySubmission() {
+        if (!MOD_LOADED) {
+            return false;
+        }
+        try {
+            return IrisRuntimeBridge.isImportedGeometrySubmission();
+        } catch (LinkageError | RuntimeException ignored) {
+            return false;
+        }
+    }
+
     public static boolean isRenderingShadowPass() {
         IrisRuntimeSnapshot snapshot = snapshot();
         return snapshot.modLoaded() && snapshot.apiAvailable() && snapshot.renderingShadowPass();

@@ -7,7 +7,6 @@
 
 package combatant.client.mixins;
 
-import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.MoverType;
@@ -23,7 +22,6 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.events.Events;
 import combatant.client.events.impl.PlayerMoveEvent;
-import combatant.client.events.impl.PlayerStepEvent;
 import combatant.client.events.impl.PlayerStepSuccessEvent;
 import combatant.client.events.impl.PlayerVelocityStrafe;
 import combatant.client.features.module.Modules;
@@ -55,6 +53,8 @@ public abstract class EntityMixin implements IEntity {
     private Vec3 combatant$stepBeforePos = Vec3.ZERO;
     @Unique
     private Vec3 combatant$stepRequestedMovement = Vec3.ZERO;
+    @Unique
+    private boolean combatant$stepWasOnGround = false;
 
     @Unique
     @Override
@@ -75,6 +75,7 @@ public abstract class EntityMixin implements IEntity {
         if (self instanceof LocalPlayer) {
             combatant$stepBeforePos = self.position();
             combatant$stepRequestedMovement = movement;
+            combatant$stepWasOnGround = self.onGround();
         }
     }
 
@@ -102,19 +103,10 @@ public abstract class EntityMixin implements IEntity {
         double yDelta = after.y - before.y;
         double horizontalRequested = Math.hypot(requested.x, requested.z);
         if (yDelta <= 0.5 || horizontalRequested <= 1.0E-5) return;
+        if (!combatant$stepWasOnGround) return;
+        if (requested.y > 0.05) return;
 
-        Events.BUS.post(new PlayerStepSuccessEvent(after.subtract(before)));
-    }
-
-    @ModifyReturnValue(method = "maxUpStep", at = @At("RETURN"))
-    private float combatant$modifyStepHeight(float original) {
-        Entity self = (Entity) (Object) this;
-        if (!(self instanceof LocalPlayer)) return original;
-        if (!Events.BUS.hasListeners(PlayerStepEvent.class)) return original;
-
-        PlayerStepEvent event = new PlayerStepEvent(original);
-        Events.BUS.post(event);
-        return event.getHeight();
+        Events.BUS.post(new PlayerStepSuccessEvent(after.subtract(before), before, after));
     }
 
     @Redirect(

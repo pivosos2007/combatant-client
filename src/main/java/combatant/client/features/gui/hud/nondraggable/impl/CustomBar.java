@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud.nondraggable.impl;
 
+import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import com.mojang.authlib.GameProfile;
 import combatant.client.config.subsystem.MapTriangulationConfig;
@@ -1200,7 +1201,7 @@ public final class CustomBar extends AbstractHudElement {
 
     private static String formatDistance(float dist) {
         if (!Float.isFinite(dist)) return "";
-        return String.format(Locale.ROOT, "%.0fm", dist);
+        return FastFormat.noDecimals(dist) + "m";
     }
 
     private static UUID offlineUuid(String name) {

@@ -45,6 +45,7 @@ import combatant.client.util.target.TargetingUtil;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -57,6 +58,8 @@ public final class ProjectilePuncher extends Module {
 
     private static final String PROJECTILE_FIREBALL = "fireball";
     private static final String PROJECTILE_SHULKER_BULLET = "shulker_bullet";
+    private static final String PROJECTILE_WIND_CHARGE = "wind_charge";
+    private static final String PROJECTILE_BREEZE_WIND_CHARGE = "breeze_wind_charge";
     private static final int ROTATION_PRIORITY = 10;
     private final Minecraft mc = Minecraft.getInstance();
     private final NumberValue<Double> range =
@@ -377,10 +380,13 @@ public final class ProjectilePuncher extends Module {
     private boolean rotationReleased = true;
 
     private static Map<String, Boolean> projectileDefaults() {
-        return Map.of(
-                PROJECTILE_FIREBALL, true,
-                PROJECTILE_SHULKER_BULLET, true
-        );
+        // Wind charges start off: knocking one away is only wanted by players who fight with them.
+        Map<String, Boolean> defaults = new LinkedHashMap<>();
+        defaults.put(PROJECTILE_FIREBALL, true);
+        defaults.put(PROJECTILE_SHULKER_BULLET, true);
+        defaults.put(PROJECTILE_WIND_CHARGE, false);
+        defaults.put(PROJECTILE_BREEZE_WIND_CHARGE, false);
+        return defaults;
     }
 
     private static Vec3 clampToBox(Vec3 point, AABB box) {
@@ -648,6 +654,12 @@ public final class ProjectilePuncher extends Module {
         }
         if (type == net.minecraft.world.entity.EntityTypes.SHULKER_BULLET) {
             return projectiles.get(PROJECTILE_SHULKER_BULLET);
+        }
+        if (type == net.minecraft.world.entity.EntityTypes.WIND_CHARGE) {
+            return projectiles.get(PROJECTILE_WIND_CHARGE);
+        }
+        if (type == net.minecraft.world.entity.EntityTypes.BREEZE_WIND_CHARGE) {
+            return projectiles.get(PROJECTILE_BREEZE_WIND_CHARGE);
         }
         return false;
     }

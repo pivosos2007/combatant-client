@@ -7,6 +7,7 @@
 
 package combatant.client.features.theme;
 
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
 import com.google.gson.*;
 import combatant.client.config.ConfigPaths;
 import combatant.client.config.profile.ConfigProfileStorage;
@@ -89,7 +90,7 @@ final class ThemeStore {
     }
 
     static String colorToString(int argb) {
-        return String.format("#%08X", argb);
+        return UiScriptColor.hex(argb);
     }
 
     private static JsonObject getObject(JsonObject obj, String key) {

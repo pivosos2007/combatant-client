@@ -49,10 +49,10 @@ public final class MaterialRegistry {
         this.resources = resources;
         this.gpuMapAvailability = Map.of();
 
-        Set<Identifier> available = new HashSet<>();
-        for (String namespace : resources.getNamespaces()) {
-            available.addAll(resources.listResources("textures", id -> id.getPath().endsWith(".png")).keySet());
-        }
+        // listResources already spans every namespace; calling it once per namespace repeated the
+        // same full texture walk hundreds of times in large modpacks.
+        Set<Identifier> available = new HashSet<>(
+                resources.listResources("textures", id -> id.getPath().endsWith(".png")).keySet());
 
         Map<DescriptorKey, ExplicitDescriptor> explicit = loadExplicitDescriptors(resources);
         snapshot = new Snapshot(Set.copyOf(available), Map.copyOf(explicit), new HashMap<>(), new HashMap<>(), new HashMap<>());
