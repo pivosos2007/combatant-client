@@ -24,6 +24,7 @@ Combatant is already usable, but it is not feature-complete. Some areas still ne
 
 - [`Configs and HUD Guide`](CONFIGS_AND_HUD.md) - config profiles, `.cbcfg` files, loading profiles, and HUD element setup.
 - [`Client Commands`](CLIENT_COMMANDS.md) - command syntax, aliases, descriptions, and optional mod requirements.
+- [`Function Wiki`](wiki/Home.md) - generated function reference that documents discovered functions across the repository.
 
 ## Logo wanted
 
