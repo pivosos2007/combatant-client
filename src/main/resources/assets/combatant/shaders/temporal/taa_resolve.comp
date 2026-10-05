@@ -42,7 +42,7 @@ vec3 yCoCgToRgb(vec3 c) {
     return vec3(c.x + c.y - c.z, c.x + c.z, c.x - c.y - c.z);
 }
 
-// Photon/SMAA-style 5-tap Catmull-Rom history reconstruction.
+// 5-tap Catmull-Rom history reconstruction.
 // The history sampler is linear, so the middle four taps collapse into one bilinear read.
 vec4 sampleHistoryCatmullRom(vec2 coord) {
     const float sharpness = 0.6;
@@ -177,7 +177,7 @@ void main() {
         }
 
         if (abs(previousClip.w) > 1e-7) {
-            // Match Photon's native TAA exactly: the closest-fragment sample is used only
+            /the closest-fragment sample is used only
             // to estimate the motion vector. Applying the closest fragment's reprojected UV
             // directly to the center pixel shifts history by up to two pixels at depth edges.
             vec2 reprojectedClosestUv = (previousClip.xy / previousClip.w) * 0.5 + 0.5;
