@@ -7,6 +7,8 @@
 
 package combatant.client.render.engine.renderer.ui.runtime.render;
 
+import combatant.client.render.engine.renderer.ui.draw.UiRect;
+
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
@@ -38,7 +40,8 @@ final class UiBoxRenderer {
             );
         }
 
-        if (style.blur()) {
+        // Glass already prepares its own source/blur; do not issue a second blur pass.
+        if (style.blur() && !style.liquidGlass()) {
             context.renderer().blurRect(
                     bounds.x(),
                     bounds.y(),
@@ -53,7 +56,9 @@ final class UiBoxRenderer {
         }
 
         if (style.liquidGlass()) {
-            UiBackdropRuntime.drawLiquidGlass(context.renderer(), node.props(), () ->
+            UiBackdropRuntime.drawLiquidGlass(context.renderer(), node,
+                    UiRect.of(bounds.x(), bounds.y(), bounds.width(), bounds.height()),
+                    node.props(), () ->
                     context.renderer().liquidGlassRect(
                             bounds.x(),
                             bounds.y(),

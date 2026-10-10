@@ -15,6 +15,8 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.world.item.ItemStack;
+import combatant.client.util.player.inventory.InventorySlotLocks;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -202,6 +204,16 @@ public abstract class GuiMixin {
         if (RuntimeGate.isPanic()) return;
         // Completely remove vanilla vignette post-processing
         ci.cancel();
+    }
+
+    // Vanilla calls extractSlot with seed 1..9 for hotbar and 10 for offhand.
+    // Use this real slot index, not an ItemStack identity (the latter can tint unrelated icons).
+    @Inject(method = "extractSlot", at = @At("TAIL"))
+    private void combatant$offhandSlotLockOverlay(GuiGraphicsExtractor ctx, int x, int y,
+            DeltaTracker delta, Player player, ItemStack stack, int seed, CallbackInfo ci) {
+        if (seed == 10 && InventorySlotLocks.isLocked(InventorySlotLocks.OFFHAND)) {
+            InventorySlotLocks.renderLockOverlay(ctx, x, y);
+        }
     }
 
     @Inject(

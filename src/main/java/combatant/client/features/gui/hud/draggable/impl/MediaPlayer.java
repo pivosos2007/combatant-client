@@ -29,6 +29,8 @@ import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiMaterialInteractionState;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.TextRenderer;
@@ -76,6 +78,12 @@ public final class MediaPlayer extends DraggableHudElement {
     private static final int ICON_NEXT = 0xEA05;
     private static final int ICON_SHUFFLE = 0xEA06;
 
+    private final UiMaterialInteractionState glassFluid = new UiMaterialInteractionState();
+    // MediaPlayer: optical inertia/chroma without SDF dents or extra stacked capture.
+    private static final UiGlassOpticsSpec MEDIA_GLASS = UiGlassOpticsSpec.LIQUID
+            .withInteractionStrength(0.75f).withChromaticAberration(0.28f)
+            .withMagnification(1.02f).withShapeDeformation(false);
+
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final MediaSessionService mediaService = MediaSessionService.get();
@@ -118,6 +126,14 @@ public final class MediaPlayer extends DraggableHudElement {
             new RGBColorValue("media_player_text", "#FFFFFF");
     private final ModeValue bgEffect =
             new ModeValue("media_player_bg_effect", "None", EFFECT_NONE, EFFECT_BLUR, EFFECT_GLASS);
+    // Glass optics are deliberately owned by this element, not global UI theme switches.
+    private final BooleanValue glassReactivity = new BooleanValue("media_player_glass_reactivity", true);
+    // UI value is percent of the 0.25 maximum physical refraction coefficient.
+    private final NumberValue<Integer> glassRefraction = new NumberValue<>("media_player_glass_refraction", 11, 0, 100);
+    private final NumberValue<Integer> glassAberration = new NumberValue<>("media_player_glass_aberration", 28, 0, 95);
+    private final NumberValue<Integer> glassMagnification = new NumberValue<>("media_player_glass_magnification", 102, 65, 180);
+    private final BooleanValue glassDeformShape = new BooleanValue("media_player_glass_deform_shape", false);
+    private final BooleanValue glassStacked = new BooleanValue("media_player_glass_stacked", false);
     private final NumberValue<Integer> blurAlpha =
             new NumberValue<>("media_player_blur_alpha", 255, 0, 255);
     private final BooleanValue gradient =
@@ -183,6 +199,12 @@ public final class MediaPlayer extends DraggableHudElement {
         defs.add(SettingDef.colorNoAlpha(text).visibleWhen(() -> !syncTheme.get()));
         defs.add(SettingDef.mode(bgEffect));
         defs.add(SettingDef.number(blurAlpha).visibleWhen(this::hasEffect));
+        defs.add(SettingDef.bool(glassReactivity).visibleWhen(this::isGlassEffect));
+        defs.add(SettingDef.number(glassRefraction).visibleWhen(this::isGlassEffect));
+        defs.add(SettingDef.number(glassAberration).visibleWhen(this::isGlassEffect));
+        defs.add(SettingDef.number(glassMagnification).visibleWhen(this::isGlassEffect));
+        defs.add(SettingDef.bool(glassDeformShape).visibleWhen(() -> isGlassEffect() && glassReactivity.get()));
+        defs.add(SettingDef.bool(glassStacked).visibleWhen(this::isGlassEffect));
         defs.add(SettingDef.bool(gradient).visibleWhen(() -> syncTheme.get() && !isGlassEffect()));
         defs.add(SettingDef.bool(strokeEnabled));
         defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(() -> strokeEnabled.get() && !syncTheme.get()));
@@ -850,7 +872,14 @@ public final class MediaPlayer extends DraggableHudElement {
 
     private void drawGlass(float x, float y, float w, float h, float radius, float scale, int accentSoft) {
         float alpha = blurAlpha.get() / 255f;
-        HudRenderUtil.drawLiquidGlass(x, y, w, h, radius, scale, true, alpha);
+        UiGlassOpticsSpec optics = MEDIA_GLASS
+                .withRefraction(glassRefraction.get() / 400f)
+                .withInteractionStrength(glassReactivity.get() ? 0.75f : 0f)
+                .withChromaticAberration(glassAberration.get() / 100f)
+                .withMagnification(glassMagnification.get() / 100f)
+                .withShapeDeformation(glassDeformShape.get());
+        HudRenderUtil.drawReactiveGlass(x, y, w, h, radius, scale, true,
+                alpha, alpha, glassFluid, optics, glassStacked.get());
         if (isGradientPanelStyle()) {
             float strength = (themeGradientStrength.get() / 100.0f) * (themeMix.get() / 100.0f);
             HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(Math.round(72.0f * strength));

@@ -17,6 +17,9 @@ import java.util.Map;
 public final class UiState {
     private final Map<String, UiAnimationState> animations = new Object2ObjectOpenHashMap<>();
     private final Map<String, UiMotionSignal> motionSignals = new Object2ObjectOpenHashMap<>();
+    private final UiMaterialInteractionState materialInteraction = new UiMaterialInteractionState();
+    public UiMaterialInteractionState materialInteraction() { return materialInteraction; }
+
     private boolean hovered;
     private boolean active;
     private boolean focused;

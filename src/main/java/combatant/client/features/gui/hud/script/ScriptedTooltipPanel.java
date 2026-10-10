@@ -307,7 +307,10 @@ public final class ScriptedTooltipPanel {
             // this floor prevents a wrapped line from making the card shrink back to the width
             // of its longest individual continuation row.
             float contentWidthFloor = Math.min(longest, widthLimit);
-            float wrapWidth = Math.max(1.0f, contentWidthFloor > 0.0f ? contentWidthFloor : widthLimit);
+            // The scripted panel's text box is rounded to layout pixels. Leave a small
+            // width reserve so measured words cannot be clipped by that rounding.
+            // Always wrap against the available content cap, not the measured first row.
+            float wrapWidth = Math.max(1.0f, widthLimit - Math.max(1.0f, 3.0f * scale));
 
             int logicalGroup = 0;
             for (Line line : lines) {

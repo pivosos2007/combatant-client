@@ -60,6 +60,9 @@ public final class Itemizer extends DraggableHudElement {
     private static final float KEY_FONT_SIZE = 11.0f;
     private static final float KEY_RIGHT = 7.0f;
     private static final float FADE_EPSILON = 0.013f;
+    private static final float ENTER_SECONDS = 0.30f;
+    private static final float EXIT_SECONDS = 0.24f;
+    private static final float MOVE_SECONDS = 0.32f;
     private static final float EVENT_LIFE = 1.8f;
     public static Itemizer INSTANCE;
 
@@ -87,6 +90,9 @@ public final class Itemizer extends DraggableHudElement {
     private float layoutW;
     private float layoutH;
     private boolean foregroundReady;
+    private float visibilityAnim;
+    private final DimensionTween widthTween = new DimensionTween();
+    private final DimensionTween heightTween = new DimensionTween();
 
     public Itemizer() {
         super("itemizer", "Itemizer", "hud.draggable.itemizer.description", true);
@@ -225,26 +231,22 @@ public final class Itemizer extends DraggableHudElement {
         for (int i = 0; i < active.size(); i++) {
             Entry entry = active.get(i);
             int row = i / perRow;
-            float destX = nextX[row];
-            float destY = row * ROW_STEP;
+            entry.moveTo(nextX[row], row * ROW_STEP);
             nextX[row] += entry.w + CARD_GAP;
-            if (!entry.positioned) {
-                entry.x = destX;
-                entry.y = destY + 5.0f;
-                entry.positioned = true;
-            }
-            entry.x = AnimationUtility.approach(entry.x, destX, dt, 18.0f);
-            entry.y = AnimationUtility.approach(entry.y, destY, dt, 18.0f);
         }
+
+        visibilityAnim = HudRenderUtil.animateVisibility(visibilityAnim, !active.isEmpty());
         for (Entry entry : entries.values()) {
-            entry.alpha = AnimationUtility.approach(entry.alpha, entry.targetVisible ? 1.0f : 0.0f,
-                    dt, entry.targetVisible ? 15.0f : 10.0f);
+            entry.advance(dt);
             boolean hot = entry.targetVisible && entry.snapshot != null
                     && (entry.snapshot.aware() || entry.snapshot.inProgress());
             entry.heat = AnimationUtility.approach(entry.heat, hot ? 1.0f : 0.0f, dt, 10.0f);
+            entry.updateRenderGeometry();
         }
-        entries.values().removeIf(entry -> !entry.targetVisible && entry.alpha <= FADE_EPSILON);
-        for (Entry entry : entries.values()) if (entry.snapshot != null && entry.alpha > FADE_EPSILON) drawn.add(entry);
+        entries.values().removeIf(entry -> !entry.targetVisible && entry.progress <= FADE_EPSILON);
+        for (Entry entry : entries.values()) {
+            if (entry.snapshot != null && entry.renderAlpha > FADE_EPSILON) drawn.add(entry);
+        }
 
         layoutW = maxWidth;
         layoutH = targetHeight;
@@ -252,15 +254,21 @@ public final class Itemizer extends DraggableHudElement {
             layoutW = Math.max(layoutW, entry.x + entry.w);
             layoutH = Math.max(layoutH, entry.y + CARD_HEIGHT);
         }
-        if (drawn.isEmpty()) {
+        float contentW = widthTween.update(layoutW, dt);
+        float contentH = heightTween.update(layoutH, dt);
+        float baseScale = scale.get().floatValue();
+        width = contentW * baseScale;
+        height = contentH * baseScale;
+        if (drawn.isEmpty() && visibilityAnim <= FADE_EPSILON) {
             width = height = 0.0f;
             return;
         }
-        drawnScale = scale.get().floatValue();
-        drawnX = x;
-        drawnY = y;
-        width = layoutW * drawnScale;
-        height = layoutH * drawnScale;
+        float widgetScale = Math.max(0.001f, HudRenderUtil.visibilityScale(visibilityAnim));
+        drawnScale = baseScale * widgetScale;
+        // The entire JS tree and Java ItemStacks use this same pivot and scale.
+        drawnX = x + (width - layoutW * drawnScale) * 0.5f;
+        drawnY = y + (height - layoutH * drawnScale) * 0.5f;
+        if (drawn.isEmpty()) return;
 
         float mx = 0.0f;
         float my = 0.0f;
@@ -287,9 +295,10 @@ public final class Itemizer extends DraggableHudElement {
             if (icon == null || icon.isEmpty()) continue;
             ItemStack stack = icon.copy();
             stack.setCount(1);
-            foregroundItems.add(new ItemTask(stack, drawnX + (entry.x + 3.0f) * drawnScale,
-                    drawnY + (entry.y + 4.0f) * drawnScale, ICON_SCALE * drawnScale,
-                    entry.alpha * (visibleActions.get(entry.id) ? 1.0f : 0.35f)));
+            foregroundItems.add(new ItemTask(stack, drawnX + (entry.renderX + 3.0f * entry.cardScale) * drawnScale,
+                    drawnY + (entry.renderY + 4.0f * entry.cardScale) * drawnScale,
+                    ICON_SCALE * entry.cardScale * drawnScale,
+                    entry.renderAlpha * (visibleActions.get(entry.id) ? 1.0f : 0.35f)));
         }
         foregroundReady = true;
     }
@@ -383,10 +392,12 @@ public final class Itemizer extends DraggableHudElement {
             LinkedHashMap<String, Object> card = new LinkedHashMap<>();
             card.put("key", entry.id);
             card.put("bind", entry.key);
-            card.put("x", entry.x);
-            card.put("y", entry.y);
-            card.put("w", entry.w);
-            card.put("alpha", entry.alpha);
+            card.put("x", entry.renderX);
+            card.put("y", entry.renderY);
+            card.put("w", entry.renderW);
+            card.put("h", entry.renderH);
+            card.put("scale", entry.cardScale);
+            card.put("alpha", entry.renderAlpha);
             card.put("available", state.available());
             card.put("aware", state.aware());
             card.put("heat", entry.heat);
@@ -419,9 +430,10 @@ public final class Itemizer extends DraggableHudElement {
             HudActionRegistry.Snapshot state = entry.snapshot;
             hash = CachedUiScriptRuntime.mix(hash, entry.id);
             hash = CachedUiScriptRuntime.mix(hash, entry.key);
-            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.x * 100.0f));
-            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.y * 100.0f));
-            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.alpha * 255.0f));
+            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.renderX * 100.0f));
+            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.renderY * 100.0f));
+            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.cardScale * 1000.0f));
+            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.renderAlpha * 255.0f));
             hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.heat * 255.0f));
             hash = CachedUiScriptRuntime.mix(hash, Math.round(state.progress() * 100.0f));
             hash = CachedUiScriptRuntime.mix(hash, Math.round(state.cooldown() * 100.0f));
@@ -479,11 +491,83 @@ public final class Itemizer extends DraggableHudElement {
         HudActionRegistry.Snapshot snapshot;
         String key = "";
         float x, y, w;
-        float alpha;
         float heat;
+        float progress;
+        float cardScale;
+        float renderX, renderY, renderW, renderH, renderAlpha;
+        float moveFromX, moveFromY, moveTargetX, moveTargetY;
+        float moveElapsed = MOVE_SECONDS;
         boolean positioned;
         boolean targetVisible;
+
         Entry(String id) { this.id = id; }
+
+        void moveTo(float destX, float destY) {
+            if (!positioned) {
+                x = moveTargetX = destX;
+                y = moveTargetY = destY;
+                positioned = true;
+                return;
+            }
+            if (Math.abs(moveTargetX - destX) < 0.01f && Math.abs(moveTargetY - destY) < 0.01f) return;
+            moveFromX = x;
+            moveFromY = y;
+            moveTargetX = destX;
+            moveTargetY = destY;
+            moveElapsed = 0.0f;
+        }
+
+        void advance(float dt) {
+            progress = AnimationUtility.clamp01(progress + dt / (targetVisible ? ENTER_SECONDS : -EXIT_SECONDS));
+            moveElapsed = Math.min(MOVE_SECONDS, moveElapsed + dt);
+            float move = AnimationUtility.easeInOutCubic(moveElapsed / MOVE_SECONDS);
+            x = AnimationUtility.lerp(moveFromX, moveTargetX, move);
+            y = AnimationUtility.lerp(moveFromY, moveTargetY, move);
+            if (moveElapsed >= MOVE_SECONDS) {
+                x = moveTargetX;
+                y = moveTargetY;
+            }
+        }
+
+        void updateRenderGeometry() {
+            // Overshooting entry scale, shrinking exit scale and vertical travel
+            // share the same progress; Java item icons use these exact bounds.
+            float eased = targetVisible
+                    ? AnimationUtility.easeOutBack(progress, 1.25f)
+                    : AnimationUtility.easeInOutCubic(progress);
+            cardScale = Math.max(0.0f, 0.78f + 0.22f * eased);
+            renderW = w * cardScale;
+            renderH = CARD_HEIGHT * cardScale;
+            renderX = x + (w - renderW) * 0.5f;
+            renderY = y + (CARD_HEIGHT - renderH) * 0.5f
+                    + (1.0f - AnimationUtility.easeOutCubic(progress)) * 7.0f;
+            renderAlpha = AnimationUtility.easeInOutCubic(progress);
+        }
+    }
+
+    private static final class DimensionTween {
+        private float from;
+        private float target;
+        private float current;
+        private float elapsed = MOVE_SECONDS;
+        private boolean initialized;
+
+        float update(float nextTarget, float dt) {
+            if (!initialized) {
+                initialized = true;
+                from = target = current = nextTarget;
+                return current;
+            }
+            if (Math.abs(target - nextTarget) > 0.01f) {
+                from = current;
+                target = nextTarget;
+                elapsed = 0.0f;
+            }
+            elapsed = Math.min(MOVE_SECONDS, elapsed + dt);
+            current = AnimationUtility.lerp(from, target,
+                    AnimationUtility.easeInOutCubic(elapsed / MOVE_SECONDS));
+            return current;
+        }
     }
 
     private static final class Burst {

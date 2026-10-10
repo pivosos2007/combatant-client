@@ -12,6 +12,13 @@ import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
 import combatant.client.render.engine.renderer.ui.draw.UiBlurQuality;
 import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiMaterialCatalog;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassInteraction;
+import combatant.client.render.engine.renderer.ui.draw.UiRect;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
+import combatant.client.render.engine.core.ViewportContext;
+import net.minecraft.client.Minecraft;
+import org.lwjgl.glfw.GLFW;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiProps;
 import combatant.client.render.engine.renderer.ui.runtime.style.UiColor;
 
@@ -23,6 +30,11 @@ final class UiBackdropRuntime {
     }
 
     static void drawLiquidGlass(Renderer2D renderer, UiProps props, Runnable draw) {
+        drawLiquidGlass(renderer, null, null, props, draw);
+    }
+
+    static void drawLiquidGlass(Renderer2D renderer, UiNode node, UiRect bounds,
+                                UiProps props, Runnable draw) {
         if (renderer == null || draw == null) return;
 
         float frostedJitter = props != null ? props.number("glassFrostedJitter", 0.0f) : 0.0f;
@@ -35,15 +47,8 @@ final class UiBackdropRuntime {
         String opticsName = props != null
                 ? props.string("glassOptics", props.string("materialMode", "reactive-refraction"))
                 : "reactive-refraction";
-        UiGlassOpticsSpec baseOptics = switch (opticsName == null
-                ? "liquid"
-                : opticsName.trim().toLowerCase(Locale.ROOT)) {
-            case "fresnel", "fresnel-glass", "fresnel_glass",
-                 "fresnel-frosted", "fresnel_frosted", "mirror-frosted", "mirror_frosted" ->
-                    UiGlassOpticsSpec.FRESNEL_GLASS;
-            default -> UiGlassOpticsSpec.LIQUID;
-        };
-        float interactionStrength = props != null && !props.bool("glassInteraction", true)
+        UiGlassOpticsSpec baseOptics = UiMaterialCatalog.glass(opticsName);
+        float interactionStrength = props == null || !props.bool("glassInteraction", false)
                 ? 0.0f
                 : props != null
                 ? props.number("glassInteractionStrength", baseOptics.interactionStrength())
@@ -56,22 +61,54 @@ final class UiBackdropRuntime {
                 interactionStrength,
                 props != null ? props.number("glassInteractionRadius", baseOptics.interactionRadius()) : baseOptics.interactionRadius(),
                 props != null ? props.number("glassInteractionViscosity", baseOptics.interactionViscosity()) : baseOptics.interactionViscosity(),
-                props != null ? props.number("glassCleanReveal", baseOptics.cleanReveal()) : baseOptics.cleanReveal()
+                props != null ? props.number("glassCleanReveal", baseOptics.cleanReveal()) : baseOptics.cleanReveal(),
+                props != null ? props.number("glassAberration", baseOptics.chromaticAberration()) : baseOptics.chromaticAberration(),
+                props != null ? props.number("glassMagnification", baseOptics.magnification()) : baseOptics.magnification(),
+                props != null && props.bool("glassDeformShape", false),
+                props != null ? props.number("glassTiltX", baseOptics.tiltXDegrees()) : baseOptics.tiltXDegrees(),
+                props != null ? props.number("glassTiltY", baseOptics.tiltYDegrees()) : baseOptics.tiltYDegrees(),
+                props == null || props.bool("glassSpecular", baseOptics.specular())
         );
         UiLiquidGlassMaterial material = new UiLiquidGlassMaterial(
-                optics,
-                frostedJitter,
-                innerGlow,
-                innerGlowSize,
-                innerGlowColor
-        );
+                optics, frostedJitter, innerGlow, innerGlowSize, innerGlowColor);
+        if (node != null && bounds != null && optics.interactionStrength() > 0.0f
+                && optics.mode() != UiGlassOpticsSpec.Mode.FRESNEL_GLASS) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc != null && mc.getWindow() != null && mc.mouseHandler != null) {
+                ViewportContext viewport = ViewportContext.current();
+                float viewportW = viewport != null ? Math.max(1f, viewport.width())
+                        : Math.max(1f, mc.getWindow().getScreenWidth());
+                float viewportH = viewport != null ? Math.max(1f, viewport.height())
+                        : Math.max(1f, mc.getWindow().getScreenHeight());
+                float pointerX = (float) mc.mouseHandler.xpos()
+                        / Math.max(1, mc.getWindow().getScreenWidth()) * viewportW;
+                float pointerY = (float) mc.mouseHandler.ypos()
+                        / Math.max(1, mc.getWindow().getScreenHeight()) * viewportH;
+                boolean pressed = GLFW.glfwGetMouseButton(mc.getWindow().handle(),
+                        GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+                UiGlassInteraction interaction = node.state().materialInteraction().sample(
+                        pointerX, pointerY, pressed,
+                        (float) bounds.x(), (float) bounds.y(),
+                        (float) bounds.width(), (float) bounds.height(),
+                        optics.interactionViscosity(), optics.interactionStrength(), System.nanoTime());
+                material = material.withInteraction(interaction);
+            }
+        }
 
+        final UiLiquidGlassMaterial resolvedMaterial = material;
         String configured = props != null
                 ? props.string("uiUnderlay", props.string("uiBackdropMode", "auto"))
                 : "auto";
         String modeName = configured == null ? "auto" : configured.trim().toLowerCase(Locale.ROOT);
+        Runnable glassDraw = () -> renderer.withLiquidGlassMaterial(resolvedMaterial, draw);
+        if (props != null && props.bool("glassStacked", false)) {
+            // Ordered CURRENT_TARGET snapshot: lower UI/glass layers are refracted, no feedback.
+            Runnable sourceDraw = glassDraw;
+            glassDraw = () -> renderer.withLiquidGlassSceneSource(
+                    UiBackdropRequest.SceneSource.CURRENT_TARGET, sourceDraw);
+        }
         if (modeName.isEmpty() || "auto".equals(modeName)) {
-            renderer.withLiquidGlassMaterial(material, draw);
+            glassDraw.run();
             return;
         }
 
@@ -90,8 +127,8 @@ final class UiBackdropRuntime {
         };
         float offset = props != null ? props.number("uiUnderlayBlurOffset", 0.85f) : 0.85f;
         float mix = props != null ? props.number("uiUnderlayMix", 1.0f) : 1.0f;
-        renderer.withLiquidGlassMaterial(material, () ->
-                renderer.withLiquidGlassUiUnderlay(mode, quality, offset, mix, draw));
+        Runnable finalDraw = glassDraw;
+        renderer.withLiquidGlassUiUnderlay(mode, quality, offset, mix, finalDraw);
     }
 
     private static int materialColor(Object value, int fallback) {

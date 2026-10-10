@@ -245,11 +245,21 @@ export type SolidBrowserProps = SolidStyled & {
   glassTint?: string;
   glassAlpha?: number;
   glassPreset?: string;
-  glassOptics?: "reactive-refraction" | "fresnel-glass" | string;
+  glassOptics?: "reactive-refraction" | "reactive-smoked" | "etched-glass" | "soft-lens" | "mirror-frosted" | "fresnel-glass" | string;
   glassRefraction?: number;
   glassBevelWidth?: number;
   glassBevelDepth?: number;
+  /** Fluid optical response only when explicitly enabled on this surface. */
   glassInteraction?: boolean;
+  /** Optional liquidGL-like SDF deformation; never implied by reactive refraction. */
+  glassDeformShape?: boolean;
+  /** Opt-in ordered snapshot of underlying UI/lenses; incurs an extra capture. */
+  glassStacked?: boolean;
+  glassAberration?: number;
+  glassMagnification?: number;
+  glassTiltX?: number;
+  glassTiltY?: number;
+  glassSpecular?: boolean;
   glassInteractionStrength?: number;
   glassInteractionRadius?: number;
   glassInteractionViscosity?: number;

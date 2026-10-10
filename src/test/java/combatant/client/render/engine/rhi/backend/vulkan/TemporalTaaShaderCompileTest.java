@@ -19,7 +19,9 @@ final class TemporalTaaShaderCompileTest {
     void compilesForVulkan() throws Exception {
         try (VulkanNativeShaderCompiler compiler = new VulkanNativeShaderCompiler()) {
             assertCompiles(compiler, "taa_resolve");
+            assertCompiles(compiler, "taa_resolve_hdr");
             assertCompiles(compiler, "taa_present");
+            assertCompiles(compiler, "taa_present_hdr");
         }
     }
 

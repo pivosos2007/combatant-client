@@ -134,6 +134,41 @@ void main() {
         color = mix(color, accent * 0.32, offPixel);
         color += accent * emitter * (0.16 + bevelStrength * 0.18);
         color *= 1.0 - edge * 0.08;
+    } else if (mode == 4) { // GRAPHITE
+        vec2 localMicro = local * detailScale;
+        vec2 cells = floor(localMicro);
+        float pix = hash21(cells + vec2(5.17, 12.43)) - 0.5;
+        float filtered = 1.0 - smoothstep(0.25, 0.78, length(fwidth(localMicro)));
+        float coarse = hash21(floor(local * 0.075)) - 0.5;
+        color = color * (0.94 + coarse * 0.040)
+                + pix * filtered * (0.045 + 0.020 * roughness);
+        float grazing = clamp(dot(normal, normalize(vec2(-0.30, -0.95))) * 0.5 + 0.5, 0.0, 1.0);
+        color += accent * edge * grazing * bevelStrength * 0.08;
+        color *= 1.0 - edge * (1.0 - grazing) * 0.10;
+    } else if (mode == 5) { // CERAMIC
+        vec2 uv = local / max(v_Rect.zw, vec2(1.0));
+        float glossy = pow(max(0.0, 1.0 - length((uv - vec2(0.24, 0.04)) * vec2(0.72, 1.60))),
+                           mix(1.6, 6.0, roughness));
+        float grazing = clamp(dot(normal, normalize(vec2(-0.45, -0.89))) * 0.5 + 0.5, 0.0, 1.0);
+        color = mix(color, accent, 0.04 + edge * grazing * 0.10);
+        color += vec3(glossy * (1.0 - roughness) * 0.075);
+        color += vec3(edge * pow(grazing, 5.0) * bevelStrength * 0.12);
+        color *= 1.0 - edge * (1.0 - grazing) * 0.13;
+    } else if (mode == 6) { // BRUSHED METAL
+        vec2 uv = local / max(v_Rect.zw, vec2(1.0));
+        float brush = uv.x * 0.92 + uv.y * 0.065;
+        float wave = sin(brush * (160.0 * detailScale) +
+                         sin(uv.y * 19.0) * 0.16);
+        float aliasGate = 1.0 - smoothstep(0.25, 0.64, fwidth(brush) * 160.0 * detailScale);
+        float coarse = hash21(floor(local * 0.18)) - 0.5;
+        color += wave * aliasGate * (0.035 + (1.0 - roughness) * 0.035);
+        color += coarse * 0.018;
+        vec2 dp = (local - (uGlassPointer.zw - v_Rect.xy)) / max(v_Rect.zw, vec2(1.0));
+        float spot = 1.0 - smoothstep(0.06, 0.84, length(dp * vec2(0.60, 1.25)));
+        float grazing = clamp(dot(normal, normalize(vec2(-0.50, -0.87))) * 0.5 + 0.5, 0.0, 1.0);
+        color = mix(color, accent, edge * grazing * 0.14);
+        color += accent * spot * response * (1.0 - roughness * 0.25) * 0.23;
+        color *= 1.0 - edge * (1.0 - grazing) * 0.12;
     }
 
     fragColor = vec4(clamp(color, 0.0, 1.0), v_Color.a * alpha);

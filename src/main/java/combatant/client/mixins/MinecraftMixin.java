@@ -8,6 +8,10 @@
 package combatant.client.mixins;
 
 import com.mojang.blaze3d.systems.GpuSurface;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import net.minecraft.client.KeyMapping;
+import combatant.client.util.player.inventory.InventorySlotLocks;
 import combatant.client.features.module.modules.combat.*;
 import net.minecraft.client.FramerateLimiter;
 import net.minecraft.client.Minecraft;
@@ -120,6 +124,17 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
             // ВАЖНО: гасим сам ввод
             mc.options.keyAttack.setDown(false);
         }
+    }
+
+    @WrapOperation(method = "handleKeybinds",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/KeyMapping;consumeClick()Z"))
+    private boolean combatant$protectOffhandKey(KeyMapping key, Operation<Boolean> original) {
+        if (key == Minecraft.getInstance().options.keySwapOffhand
+                && InventorySlotLocks.isLocked(InventorySlotLocks.OFFHAND)) {
+            original.call(key); // drain the pressed key, but do not send the vanilla swap packet
+            return false;
+        }
+        return original.call(key);
     }
 
     @Inject(method = "handleKeybinds", at = @At("TAIL"))

@@ -9,7 +9,6 @@ package combatant.client.features.gui.clickgui.layout.screen.settings.render;
 
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.material.PrismaticGlassTransition;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.renderer.Renderer2D;
 
@@ -55,10 +54,8 @@ public enum SettingsGlassMaterial {
                                   float prismProgress) {
         float radius = 8f * scale;
         float lifecycleAlpha = AnimationUtility.clamp(opacity, 0f, 1f);
-        float materialAlpha = lifecycleAlpha;
         float blurAlpha = lifecycleAlpha;
         drawBlur(x, y, w, h, radius, blurAlpha);
-        drawLiquidLayer(x, y, w, h, radius, scale, materialAlpha, blurAlpha, true, prismProgress);
         LayoutRender2D.roundedQuad(
                 x, y, w, h, radius,
                 LayoutRender2D.alpha(palette.menuWindowBgLeft(), 0.30f),
@@ -85,35 +82,6 @@ public enum SettingsGlassMaterial {
                 1.0f,
                 blurAlpha,
                 0xFFFFFF
-        );
-    }
-
-    private static void drawLiquidLayer(float x,
-                                        float y,
-                                        float w,
-                                        float h,
-                                        float radius,
-                                        float scale,
-                                        float materialAlpha,
-                                        float blurAlpha,
-                                        boolean panel,
-                                        float transitionProgress) {
-        PrismaticGlassTransition prism = PrismaticGlassTransition.fromProgress(transitionProgress);
-        float distortion = (panel ? 0.190f : 0.155f) * materialAlpha * (1f + prism.strength() * 0.55f);
-        Renderer2D.COLOR.liquidGlassRect(
-                x, y, w, h, radius,
-                (panel ? 15.5f : 12.5f) * scale,
-                0xFFFFFFFF,
-                materialAlpha,
-                blurAlpha,
-                panel ? -18.0f : -16.0f,
-                1.0f,
-                panel ? 0.78f : 0.84f,
-                panel ? 0.52f : 0.48f,
-                distortion,
-                0.0f,
-                prism.strength(),
-                prism.phase()
         );
     }
 
@@ -150,7 +118,10 @@ public enum SettingsGlassMaterial {
         float opacity = Math.max(0f, Math.min(1f, alpha)) * lifecycleAlpha;
         float blurAlpha = AnimationUtility.clamp(opacity * 1.04f, 0f, 1f);
         drawBlur(x, y, w, h, radius, blurAlpha);
-        drawLiquidLayer(x, y, w, h, radius, scale, opacity, blurAlpha, false, 1f);
+        // Existing blur already prepared: do not schedule a second scene capture and glass blur.
+        LayoutRender2D.rounded(x, y, w, h, radius, LayoutRender2D.alpha(palette.contentPlaneTop(), 0.30f * opacity));
+        LayoutRender2D.roundedStroke(x, y, w, h, radius, 0.42f * scale,
+                LayoutRender2D.alpha(palette.glassEdgeSoft(), opacity));
     }
 
     public static void control(float x, float y, float w, float h, float radius, int color, int edge) {

@@ -3355,12 +3355,16 @@ public final class Renderer2D {
                 .vec4(p3x, p3y, p3z, p3w)
                 .vec4(p4x, p4y, p4z, p4w)
                 .vec4(p5x, p5y, p5z, p5w)
-                .vec4(sourceCount, smoothing, 0.0f, shapeMode)
+                .vec4(sourceCount, smoothing, packGlassOpticalFlags(optics), shapeMode)
                 .vec4(materialFrostedJitter(material), materialInnerGlowStrength(material),
                         materialInnerGlowSize(material), packLiquidGlassRgb(materialInnerGlowArgb(material)))
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
+                .vec4(materialInteraction(material).x(), materialInteraction(material).y(),
+                        materialInteraction(material).dx(), materialInteraction(material).dy())
+                .vec4(materialInteraction(material).activity(), materialInteraction(material).press(),
+                        materialInteraction(material).open(), glassMagnificationFlag(optics, materialInteraction(material)))
                 .next();
     }
 
@@ -3461,11 +3465,30 @@ public final class Renderer2D {
         float frostedJitterFramebufferPx = Math.min(4.0f,
                 Math.max(0.0f, materialFrostedJitter(liquidGlassMaterial)));
         UiGlassOpticsSpec optics = materialOptics(liquidGlassMaterial);
-        float liquidReachLogicalPx = optics.mode() == UiGlassOpticsSpec.Mode.LIQUID_REFRACTION
-                ? (Math.abs(optics.refraction()) + Math.abs(optics.bevelDepth())
-                + (optics.interactionRadius() > 0.0f ? 0.12f : 0.0f))
-                * (float) Math.min(bounds.width(), bounds.height())
-                : 0.0f;
+        float liquidReachLogicalPx = 0.0f;
+        if (optics.mode() != UiGlassOpticsSpec.Mode.FRESNEL_GLASS) {
+            float shortSide = (float) Math.min(bounds.width(), bounds.height());
+            // The shader clamps its bevel's framebuffer displacement to 22 pixels.
+            float framebufferToLogical = Math.max(logicalWidth / framebufferWidth,
+                    logicalHeight / framebufferHeight);
+            float bevelReach = Math.min(22.0f,
+                    (Math.abs(optics.refraction()) + Math.abs(optics.bevelDepth())) * shortSide)
+                    * framebufferToLogical;
+            // Lens-local magnification and tilt can sample outside the panel bounds.
+            // They were not included in the regional Kawase blur request, so at high
+            // values the shader could sample untouched source pixels instead of blur.
+            float lensRadius = 0.5f * (float) Math.hypot(bounds.width(), bounds.height());
+            float zoomReach = lensRadius * Math.abs(1.0f / optics.magnification() - 1.0f);
+            float tiltReach = 0.05f * (float) Math.hypot(
+                    Math.tan(Math.toRadians(optics.tiltYDegrees())) * logicalWidth,
+                    Math.tan(Math.toRadians(optics.tiltXDegrees())) * logicalHeight);
+            UiGlassInteraction interaction = materialInteraction(liquidGlassMaterial);
+            float motionReach = interaction.local() && optics.interactionStrength() > 0.0f
+                    ? (float) Math.hypot(interaction.dx() * bounds.width(),
+                    interaction.dy() * bounds.height()) * interaction.activity()
+                    : 0.0f;
+            liquidReachLogicalPx = bevelReach + zoomReach + tiltReach + motionReach;
+        }
         float liquidReachFramebufferPx = liquidReachLogicalPx
                 / Math.max(Math.max(logicalWidth / framebufferWidth, logicalHeight / framebufferHeight), 0.0001f);
         float blurSampleReachFramebufferPx = Math.max(
@@ -3639,12 +3662,16 @@ public final class Renderer2D {
                 .vec4(points[4], points[5], points[6], points[7])
                 .vec4(points[8], points[9], points[10], points[11])
                 .vec4(points[12], points[13], points[14], points[15])
-                .vec4(pointCount, rounding, 0.0f, 1.0f)
+                .vec4(pointCount, rounding, packGlassOpticalFlags(optics), 1.0f)
                 .vec4(materialFrostedJitter(material), materialInnerGlowStrength(material),
                         materialInnerGlowSize(material), packLiquidGlassRgb(materialInnerGlowArgb(material)))
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
+                .vec4(materialInteraction(material).x(), materialInteraction(material).y(),
+                        materialInteraction(material).dx(), materialInteraction(material).dy())
+                .vec4(materialInteraction(material).activity(), materialInteraction(material).press(),
+                        materialInteraction(material).open(), glassMagnificationFlag(optics, materialInteraction(material)))
                 .next();
     }
 
@@ -4120,48 +4147,64 @@ public final class Renderer2D {
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
                 .vec4(thickness, fresnelPower, fa, ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
-                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, packGlassOpticalFlags(optics), 0f)
                 .vec4(materialFrostedJitter(liquidGlassMaterial), materialInnerGlowStrength(liquidGlassMaterial),
                         materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
+                .vec4(materialInteraction(liquidGlassMaterial).x(), materialInteraction(liquidGlassMaterial).y(),
+                        materialInteraction(liquidGlassMaterial).dx(), materialInteraction(liquidGlassMaterial).dy())
+                .vec4(materialInteraction(liquidGlassMaterial).activity(), materialInteraction(liquidGlassMaterial).press(),
+                        materialInteraction(liquidGlassMaterial).open(), glassMagnificationFlag(optics, materialInteraction(liquidGlassMaterial)))
                 .next();
         int i2 = mesh.vec2(x, y + h).raw2(mix, packedDistort).local2(x, y + h).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
                 .vec4(thickness, fresnelPower, fa, ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
-                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, packGlassOpticalFlags(optics), 0f)
                 .vec4(materialFrostedJitter(liquidGlassMaterial), materialInnerGlowStrength(liquidGlassMaterial),
                         materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
+                .vec4(materialInteraction(liquidGlassMaterial).x(), materialInteraction(liquidGlassMaterial).y(),
+                        materialInteraction(liquidGlassMaterial).dx(), materialInteraction(liquidGlassMaterial).dy())
+                .vec4(materialInteraction(liquidGlassMaterial).activity(), materialInteraction(liquidGlassMaterial).press(),
+                        materialInteraction(liquidGlassMaterial).open(), glassMagnificationFlag(optics, materialInteraction(liquidGlassMaterial)))
                 .next();
         int i3 = mesh.vec2(x + w, y + h).raw2(mix, packedDistort).local2(x + w, y + h).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
                 .vec4(thickness, fresnelPower, fa, ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
-                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, packGlassOpticalFlags(optics), 0f)
                 .vec4(materialFrostedJitter(liquidGlassMaterial), materialInnerGlowStrength(liquidGlassMaterial),
                         materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
+                .vec4(materialInteraction(liquidGlassMaterial).x(), materialInteraction(liquidGlassMaterial).y(),
+                        materialInteraction(liquidGlassMaterial).dx(), materialInteraction(liquidGlassMaterial).dy())
+                .vec4(materialInteraction(liquidGlassMaterial).activity(), materialInteraction(liquidGlassMaterial).press(),
+                        materialInteraction(liquidGlassMaterial).open(), glassMagnificationFlag(optics, materialInteraction(liquidGlassMaterial)))
                 .next();
         int i4 = mesh.vec2(x + w, y).raw2(mix, packedDistort).local2(x + w, y).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
                 .vec4(thickness, fresnelPower, fa, ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
-                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
+                .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, packGlassOpticalFlags(optics), 0f)
                 .vec4(materialFrostedJitter(liquidGlassMaterial), materialInnerGlowStrength(liquidGlassMaterial),
                         materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
+                .vec4(materialInteraction(liquidGlassMaterial).x(), materialInteraction(liquidGlassMaterial).y(),
+                        materialInteraction(liquidGlassMaterial).dx(), materialInteraction(liquidGlassMaterial).dy())
+                .vec4(materialInteraction(liquidGlassMaterial).activity(), materialInteraction(liquidGlassMaterial).press(),
+                        materialInteraction(liquidGlassMaterial).open(), glassMagnificationFlag(optics, materialInteraction(liquidGlassMaterial)))
                 .next();
 
         mesh.quad(i1, i2, i3, i4);
@@ -4169,8 +4212,33 @@ public final class Renderer2D {
         endAutoBatch(auto);
     }
 
+    // 24-bit integer is represented exactly by a 32-bit float vertex attribute.
+    // Params6.z is the unused channel for rect/primitive/compound geometries.
+    // bits [0..7] aberration; [8..14] tilt X; [15..21] tilt Y;
+    // [22] shape deformation; [23] directional specular. Keep payload GL3.3/16 attributes.
+    private static float packGlassOpticalFlags(UiGlassOpticsSpec optics) {
+        int aberration = Math.round(optics.chromaticAberration() * (255f / 0.95f));
+        int tiltX = Math.max(0, Math.min(127, Math.round(optics.tiltXDegrees() * 4f) + 64));
+        int tiltY = Math.max(0, Math.min(127, Math.round(optics.tiltYDegrees() * 4f) + 64));
+        int bits = aberration | (tiltX << 8) | (tiltY << 15)
+                | (optics.shapeDeformation() ? (1 << 22) : 0)
+                | (optics.specular() ? (1 << 23) : 0);
+        return bits;
+    }
+
+    // Params11.w was a binary local flag. Sign now encodes ownership and magnitude encodes
+    // zoom, leaving all other 15 attribute locations and all geometry payloads unchanged.
+    private static float glassMagnificationFlag(UiGlassOpticsSpec optics, UiGlassInteraction state) {
+        return (state.local() ? -1.0f : 1.0f) * optics.magnification();
+    }
+
     private static float materialFrostedJitter(UiLiquidGlassMaterial material) {
         return material != null ? material.frostedJitterPx() : 0.0f;
+    }
+
+    private static UiGlassInteraction materialInteraction(UiLiquidGlassMaterial material) {
+        return material != null && material.interaction() != null
+                ? material.interaction() : UiGlassInteraction.FRAME_POINTER;
     }
 
     private static UiGlassOpticsSpec materialOptics(UiLiquidGlassMaterial material) {

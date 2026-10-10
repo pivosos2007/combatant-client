@@ -233,7 +233,6 @@ function fontClass(m, maxWidth, shadow) {
     "font-Iosevka-Regular",
     `font-size-${fmt3(m.fontSize)}`,
     `text-max-${fmt3(maxWidth)}`,
-    "ellipsis",
     shadow ? "shadow-text" : ""
   );
 }
@@ -296,9 +295,8 @@ function renderContent(p, m, colors, width, lineHeight, layout) {
       color: line.color,
       class: cls(
         ui.abs(m.padX, cursorY, contentW, lineHeight),
-        // Never let a render-phase text node use a wider ellipsis budget than its
-        // actual panel content box. Prepared rows normally fit without truncation;
-        // this is the hard safety boundary for rounding/font-metric drift.
+        // Prepared Java rows are wrapped by words before layout. Do not ellipsize
+        // individual rows: the remaining text must be on the next row, not discarded.
         fontClass(m, textWidthLimit, true),
         `text-${line.color}`
       ),

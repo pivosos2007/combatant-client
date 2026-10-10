@@ -20,6 +20,7 @@ import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.mixins.accessors.PlayerInventoryAccessor;
+import combatant.client.util.player.inventory.InventorySlotLocks;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.math.ColorMath;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -231,6 +232,9 @@ public final class CustomHotbar extends AbstractHudElement {
         if (!offhand.isEmpty()) {
             int x = (getOffHandMode() == OffHandMode.MERGED) ? (i - 109) : (i - 111);
             renderHotbarItem(ctx, tickCounter, player, offhand, x, baseY + ITEM_Y_OFFSET, seed++);
+            if (InventorySlotLocks.isLocked(InventorySlotLocks.OFFHAND)) {
+                InventorySlotLocks.renderLockOverlay(ctx, x, baseY + ITEM_Y_OFFSET);
+            }
         }
 
         // 9 slots

@@ -46,7 +46,7 @@ export function buildTemplate(ctx) {
     key: `map-settings:nav:${str(category.id, index.toString())}`,
     selected: str(category.id, "") === selected,
     accent,
-    appearance: "liquid-settings-category",
+    appearance: "settings-category",
     tokens: {
       navItemRadius: 8,
       hoverMotionMs: 240,
@@ -69,16 +69,11 @@ export function buildTemplate(ctx) {
     height,
     layout,
     accent,
-    appearance: "liquid-glass",
-    // Keep the map readable through the liquid material.  The previous tint effectively
-    // turned the browser into an opaque charcoal slab on dark biomes.
-    glassTint: "#3815121B",
-    glassAlpha: 1.0,
+    appearance: "solid",
+    // Settings already has a backdrop blur path. Avoid a second liquid-glass
+    // capture/preparation pass on top of the map's dedicated UI underlay.
+    blur: true,
     blurAlpha: 1.0,
-    glassPreset: "balanced",
-    glassInnerGlow: 0.020,
-    glassInnerGlowSize: 4.0,
-    uiUnderlay: "auto",
     palette: {
       surface: "#5C15121B",
       surfaceWeak: "#2418151D",
@@ -110,7 +105,7 @@ export function buildTemplate(ctx) {
     detailClose: SolidBrowserSurface.closeButton({
       key: "map-settings:close",
       accent,
-      appearance: "liquid-glass",
+      appearance: "solid",
       tokens: { hoverMotionMs: 240, stateMotionMs: 180 },
       icon: svg("map-settings:close-icon", "x"),
     }),

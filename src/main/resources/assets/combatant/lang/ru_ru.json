@@ -1,4 +1,11 @@
 {
+  "combatant.inventory.locked_by": "Слот заблокирован модулем %s",
+  "setting.offhand.fallback_shield_priority": "Приоритет щита",
+  "setting.offhand.fallback_crystal_priority": "Приоритет кристалла",
+  "setting.offhand.fallback_enchanted_priority": "Приоритет зачарованного яблока",
+  "setting.offhand.fallback_gapple_priority": "Приоритет золотого яблока",
+  "setting.offhand.fallback_food_priority": "Приоритет еды",
+
   "clickgui.settings.tab.hud": "HUD",
   "clickgui.settings.tab.ui": "UI",
   "clickgui.settings.tab.themes": "Темы",
@@ -2453,6 +2460,7 @@
   "setting.common.media_player_bg_effect.option.blur": "Блюр",
   "setting.common.media_player_bg_effect.option.glass": "Стекло",
   "setting.common.media_player_bg_effect.option.none": "Нет",
+  "setting.common.media_player_glass_refraction": "Преломление стекла",
   "setting.common.media_player_blur_alpha": "Альфа блюра",
   "setting.common.media_player_gradient": "Градиент",
   "setting.common.media_player_scale": "Масштаб",
@@ -2819,6 +2827,7 @@
   "setting.common.target_bg_effect.option.glass": "Стекло",
   "setting.common.target_bg_effect.option.none": "Нет",
   "setting.common.target_bg_secondary": "Вторичный фон",
+  "setting.common.target_glass_refraction": "Преломление стекла",
   "setting.common.target_blur_alpha": "Альфа блюра",
   "setting.common.target_color_mode": "Режим цвета",
   "setting.common.target_color_mode.option.custom": "Кастом",

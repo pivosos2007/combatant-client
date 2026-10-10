@@ -11,7 +11,9 @@ public record UiHoneycombMaterialSpec(Mode mode,
                                       float cellBlurMix,
                                       float sceneDetail,
                                       float tintAbsorption,
-                                      float highlightCompression) {
+                                      float highlightCompression) implements UiMaterialSpec {
+    @Override public Family family() { return Family.HONEYCOMB; }
+
     public static final UiHoneycombMaterialSpec SMOKED_MACHINED = new UiHoneycombMaterialSpec(
             Mode.SMOKED_MACHINED, 0.32f, 0.20f, 0.36f, 0.72f);
     public static final UiHoneycombMaterialSpec CERAMIC_CELLS = new UiHoneycombMaterialSpec(

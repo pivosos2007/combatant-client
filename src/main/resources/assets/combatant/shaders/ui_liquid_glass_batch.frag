@@ -26,6 +26,8 @@ in vec4 v_Params6;
 in vec4 v_Params7;
 in vec4 v_Params8;
 in vec4 v_Params9;
+in vec4 v_Params10; // normalized local interaction xy, eased deformation zw
+in vec4 v_Params11; // activity, press, opening, use-local flag
 
 out vec4 fragColor;
 
@@ -254,21 +256,18 @@ vec2 warpedLocal(vec4 local) {
 }
 
 vec2 deformGlassPoint(vec2 point, vec2 size, vec2 center, float interactionStrength,
-                      float interactionRadius, float interactionViscosity, float activity) {
+                      float interactionRadius, float interactionViscosity, float activity,
+                      vec2 pointerCenter, vec2 displacement) {
     if (interactionRadius <= 0.0 || interactionStrength <= 0.0 || activity <= 0.0001) {
         return point;
     }
     float viscosity = clamp(interactionViscosity, 0.0, 1.0);
-    vec2 interactionCenter = mix(uGlassPointer.xy, uGlassPointer.zw, viscosity) - center;
+    vec2 interactionCenter = pointerCenter - center;
     float reach = max(interactionRadius * min(size.x, size.y), 0.0001);
     float influence = 1.0 - smoothstep(reach * 0.12, reach, length(point - interactionCenter));
-    float speed = length(uGlassMotion.xy);
-    // Same local displacement principle as liquidGL's deformPoint: move the
-    // lens SDF under the pointer, then derive optical normals from that SDF.
-    float amountPx = min(min(size.x, size.y) * 0.12, speed * 0.045)
-            * interactionStrength * activity * mix(1.0, 0.62, viscosity);
-    vec2 direction = safeNormalize(uGlassMotion.xy, vec2(0.0));
-    return point - direction * amountPx * influence;
+    // liquidGL's displacement is already temporally eased by the per-node CPU state.
+    // Keep the analytic SDF as the only shape mask; never shift an entire rectangular quad.
+    return point - displacement * influence * activity * mix(1.0, 0.78, viscosity);
 }
 
 float fresnelTerm(float signedPower, float edgeGradient) {
@@ -361,9 +360,25 @@ void main() {
     vec2 size = max(v_Rect.zw, vec2(1.0));
     vec2 center = v_Rect.xy + size * 0.5;
     vec2 originalPos = frag - center;
-    bool liquidOptics = v_Params8.x < 0.5;
+    int glassVariant = int(floor(v_Params8.x + 0.5));
+    bool liquidOptics = glassVariant != 1;
+    bool localInteraction = v_Params11.w < 0.0;
+    float magnification = clamp(abs(v_Params11.w), 0.65, 1.8);
+    // Packed flags are exact 24-bit integers in a float attribute. Adding 0.5
+    // rounds odd values to the next EVEN float at this magnitude (ULP=1),
+    // corrupting the low 8-bit chromatic value, including 255 -> 0.
+    uint opticalBits = uint(v_Params6.z);
+    float spectralAberration = float(opticalBits & 255u) * (0.95 / 255.0);
+    vec2 opticalTiltDeg = vec2(float((opticalBits >> 8u) & 127u) - 64.0,
+                               float((opticalBits >> 15u) & 127u) - 64.0) * 0.25;
+    bool shapeDeformation = ((opticalBits >> 22u) & 1u) != 0u;
+    bool specularEnabled = ((opticalBits >> 23u) & 1u) != 0u;
+    vec2 localPointer = v_Rect.xy + v_Params10.xy * size;
+    vec2 pointerPos = localInteraction ? localPointer
+            : mix(uGlassPointer.xy, uGlassPointer.zw, clamp(v_Params9.z, 0.0, 1.0));
     float interactionStrength = clamp(v_Params9.x, 0.0, 5.0);
     float interactionRadius = clamp(v_Params9.y, 0.0, 2.0);
+    vec2 nodeFlow = localInteraction ? v_Params10.zw * size : vec2(0.0);
     vec4 radius = normalizeRadii(v_Params, size);
 
     float cornerSmoothness;
@@ -373,24 +388,27 @@ void main() {
     bool customShape = v_Params6.w > 0.5;
     vec2 halfSize = size * 0.5 - ((squircle || customShape) ? 0.0 : 1.0);
 
-    // A frame has one pointer, but each surface responds ONLY when that pointer
-    // is on/near its own analytic shape. A global motion envelope alone caused
-    // distant glass controls to bend in sync.
+    // Only an explicitly opted-in UI owner can supply a fluid impulse.
+    // Exact SDF gating prevents bounding-box corners from triggering polygon lens motion.
     float hoverInside = 0.0;
     float interactionActivity = 0.0;
     if (liquidOptics && interactionStrength > 0.0 && interactionRadius > 0.0) {
-        float pointerSdf = glassShapeSDF(uGlassPointer.xy - center, halfSize,
+        float pointerSdf = glassShapeSDF(pointerPos - center, halfSize,
                                         radius, cornerSmoothness, squircle);
         float pointerBand = max(2.0, min(size.x, size.y) * 0.055);
         hoverInside = 1.0 - smoothstep(-0.5, pointerBand, pointerSdf);
         float trailing = 1.0 - smoothstep(pointerBand, pointerBand * 3.0, pointerSdf);
-        interactionActivity = max(hoverInside * (uGlassMotion.z + uGlassMotion.w * 0.9),
-                                  trailing * uGlassMotion.z * 0.48);
+        if (localInteraction) {
+            // The node retains the impulse after exit; only this shape reacts.
+            interactionActivity = max(v_Params11.x, max(v_Params11.y, v_Params11.z * 0.58));
+            interactionActivity *= trailing;
+        }
         interactionActivity = clamp(interactionActivity, 0.0, 1.0);
     }
-    vec2 pos = liquidOptics
+    vec2 pos = liquidOptics && localInteraction && shapeDeformation
             ? deformGlassPoint(originalPos, size, center, interactionStrength,
-                               interactionRadius, v_Params9.z, interactionActivity)
+                               interactionRadius, v_Params9.z, interactionActivity,
+                               pointerPos, nodeFlow)
             : originalPos;
 
     float selfDistance = glassShapeSDF(pos, halfSize, radius, cornerSmoothness, squircle);
@@ -427,6 +445,7 @@ void main() {
     float fresnel = edgeActive ? fresnelTerm(v_Params2.y, edgeGradient) : 0.0;
     float wideRim = edgeActive ? smoothstep(0.04, 0.92, edgeGradient) : 0.0;
     float liquidBevelPx = max(v_Params8.z * min(size.x, size.y), 0.001);
+    if (glassVariant == 4) liquidBevelPx *= 1.65; // SOFT_LENS
     float liquidEdge = liquidOptics
             ? 1.0 - smoothstep(0.0, liquidBevelPx, max(-selfDistance, 0.0))
             : 0.0;
@@ -537,22 +556,51 @@ void main() {
     vec2 centerUv;
     float localPulse = 0.0;
     if (liquidOptics) {
-        vec2 pointerPos = mix(uGlassPointer.xy, uGlassPointer.zw, clamp(v_Params9.z, 0.0, 1.0));
         float reach = max(interactionRadius * min(size.x, size.y), 2.0);
         float pointerFalloff = 1.0 - smoothstep(reach * 0.10, reach, length(frag - pointerPos));
         // The local optical crest follows the pointer and velocity, not a screen-wide
         // animated sine. Keep a very small static bevel when there is no interaction.
         localPulse = clamp(pointerFalloff * interactionActivity, 0.0, 1.0);
-        float edgeBend = liquidEdge * v_Params8.y + pow(liquidEdge, 8.0) * v_Params8.w;
-        float centerBlend = smoothstep(0.10, 0.39, length(pos / max(size.y, 1.0)));
-        vec2 bevelOffset = uvNormal * edgeBend * centerBlend * (min(size.x, size.y) / logicalSize);
-        float motionPx = min(min(size.x, size.y) * 0.070, length(uGlassMotion.xy) * 0.008)
-                         * interactionStrength * localPulse;
-        vec2 flowDir = safeNormalize(uGlassMotion.xy, vec2(0.0));
-        vec2 flowOffset = vec2(flowDir.x, -flowDir.y) * motionPx / fbSize;
-        centerUv = clamp(uv + bevelOffset + flowOffset, vec2(0.001), vec2(0.999));
+        // Edge/bevel of liquidGL, transformed into bounded pixel displacement in
+        // Combatant's captured framebuffer. Prevent refraction jumping beyond the
+        // prepared blur border on very large panels.
+        float edgeBend = liquidEdge * v_Params8.y + pow(liquidEdge, 10.0) * v_Params8.w;
+        float centerBlend = smoothstep(0.12, 0.43, length(pos / max(size.y, 1.0)));
+        float bevelPixels = clamp(edgeBend * min(size.x, size.y), -22.0, 22.0);
+        vec2 bevelOffset = uvNormal * (bevelPixels / fbSize) * centerBlend;
+        vec2 motionLogical = localInteraction ? nodeFlow : vec2(0.0);
+        // _updateInteraction already eases and attenuates nodeFlow in Java.
+        // Multiplying by the independent activity envelope again used to square
+        // the decay and made normal mouse movement almost invisible.
+        vec2 flowOffset = vec2(motionLogical.x, -motionLogical.y)
+                * pointerFalloff / logicalSize;
+        // A click without pointer travel has no velocity. Give PRESS its own
+        // local optical impulse, not a deformation of the element's SDF shape.
+        float pressImpulse = localInteraction ? clamp(v_Params11.y, 0.0, 1.0) : 0.0;
+        vec2 clickDirection = safeNormalize(frag - pointerPos,
+                vec2(uvNormal.x, -uvNormal.y));
+        vec2 clickBend = vec2(clickDirection.x, -clickDirection.y)
+                * ((1.7 + 2.8 * liquidEdge) * pressImpulse * pointerFalloff / fbSize);
+        centerUv = clamp(uv + bevelOffset + flowOffset + clickBend,
+                vec2(0.001), vec2(0.999));
     } else {
         centerUv = clamp(uv + uvNormal * (centerDistortPx / fbSize) * edgeRefraction,
+                vec2(0.001), vec2(0.999));
+    }
+
+    // liquidGL optical tilt is an independent refraction offset; never moves the
+    // actual UI geometry, its text, or an SDF clip.
+    if (liquidOptics && (abs(opticalTiltDeg.x) + abs(opticalTiltDeg.y)) > 0.01) {
+        vec2 tiltOffset = vec2(tan(radians(opticalTiltDeg.y)),
+                               -tan(radians(opticalTiltDeg.x))) * 0.05;
+        centerUv = clamp(centerUv - tiltOffset, vec2(0.001), vec2(0.999));
+    }
+
+    // liquidGL magnification remaps lens-local coordinates before background sampling.
+    // Keep display geometry and alpha unchanged: only the optical scene is magnified.
+    if (liquidOptics && abs(magnification - 1.0) > 0.0005) {
+        vec2 delta = (frag - center) * (1.0 / magnification - 1.0);
+        centerUv = clamp(centerUv + vec2(delta.x, -delta.y) / logicalSize,
                 vec2(0.001), vec2(0.999));
     }
 
@@ -573,6 +621,20 @@ void main() {
 #endif
 
     vec3 tint = clamp(v_Color.rgb, 0.0, 1.0);
+    // The old optical profile displaced the scene but displayed almost entirely
+    // the prepared Kawase blur (1.8% clear in the body, ~13% even on the bevel).
+    // A refraction control cannot look responsive if displaced high-frequency
+    // structure is filtered away before compositing. Preserve the frosted body,
+    // but allow a bounded strip at the bevel to transmit displaced clean scene.
+    // The depth term supplies a slight idle facet; the refraction term controls
+    // the actual strength of that facet independently of hover/press.
+    float refractivePower = liquidOptics
+            ? clamp(abs(v_Params8.y) * 7.0 + abs(v_Params8.w) * 1.1, 0.0, 1.0)
+            : 0.0;
+    float opticalFacet = liquidOptics
+            ? pow(clamp(liquidEdge, 0.0, 1.0), 0.83)
+            : 0.0;
+    float facetTransmission = opticalFacet * mix(0.065, 0.60, refractivePower);
     // Local reveal is coupled to refraction but does not alter coverage/alpha.
     // Idle glass stays frosted; only a small segment of the bevel and a nearby
     // patch of the body expose sharper captured-scene details while moving/pressed.
@@ -581,13 +643,50 @@ void main() {
                     + localPulse * localPulse * 0.16 * (1.0 - liquidEdge), 0.0, 1.0)
             : 0.0;
     float clarityMix = liquidOptics
-            ? clamp(0.018 + v_Params9.w * reactiveReveal, 0.0, 0.75)
+            ? clamp(0.018 + facetTransmission * (glassVariant == 3 ? 0.55 : 1.0)
+                    + v_Params9.w * reactiveReveal * (glassVariant == 3 ? 0.45 : 1.0), 0.0, 0.82)
             : clamp(0.004 + fresnelMix * 0.045, 0.0, 0.055);
-    vec3 centerScene = mix(blurColor.rgb, cleanColor.rgb, clarityMix);
+    // Independently tunable liquidGL spectral dispersion. It is constrained to the
+    // bevel, not applied to text/the entire UI, and uses the same ordered source.
+    vec3 blurredScene = blurColor.rgb;
+    vec3 sharpScene = cleanColor.rgb;
+    if (liquidOptics && spectralAberration > 0.001) {
+        // Dispersion follows optical curvature and is sampled from the *sharp*
+        // displaced source. The previous <=4px split was buried by the blur mix.
+        // Keep it confined to the bevel, away from HUD glyphs and the panel body.
+        float dispersionPx = spectralAberration * (4.5 + 5.5 * refractivePower)
+                * opticalFacet;
+        vec2 splitUv = uvNormal * dispersionPx / fbSize;
+        blurredScene = vec3(
+                texture(u_BlurTexture, clamp(centerUv - splitUv, vec2(0.001), vec2(0.999))).r,
+                blurColor.g,
+                texture(u_BlurTexture, clamp(centerUv + splitUv, vec2(0.001), vec2(0.999))).b);
+        sharpScene = vec3(
+                texture(u_Texture, clamp(centerUv - splitUv, vec2(0.001), vec2(0.999))).r,
+                cleanColor.g,
+                texture(u_Texture, clamp(centerUv + splitUv, vec2(0.001), vec2(0.999))).b);
+    }
+    vec3 centerScene = mix(blurredScene, sharpScene, clarityMix);
     float sourceSceneLuma = luminance(centerScene);
     float brightScene = smoothstep(0.48, 0.82, sourceSceneLuma);
     vec3 centerColor = lookupGlassColor(centerScene, tint);
     vec3 finalColor = centerColor;
+    if (liquidOptics) {
+        // Transmission absorption: scene remains readable, surface has optical depth.
+        float body = smoothstep(0.0, max(liquidBevelPx, 1.0), max(-d, 0.0));
+        float lowFrequency = 0.5 + 0.5 * sin(surfaceUv.x * 3.13 + surfaceUv.y * 4.77);
+        float absorption = glassVariant == 2 ? 0.19 : (glassVariant == 3 ? 0.09 : 0.065);
+        float bodyAbsorption = (absorption + 0.014 * lowFrequency) * body;
+        if (glassVariant == 3) {
+            // Etched glass has stable, band-limited correlated optical roughness.
+            float etched = sin(surfaceUv.x * size.x * 0.31)
+                    * sin(surfaceUv.y * size.y * 0.37);
+            float bandwidth = length(fwidth(surfaceUv * size));
+            float filtered = 1.0 - smoothstep(2.0, 4.0, bandwidth);
+            bodyAbsorption += filtered * etched * 0.016 * body;
+        }
+        finalColor *= 1.0 - bodyAbsorption;
+    }
 
     float innerGlowStrength = clamp(v_Params7.y, 0.0, 1.0);
     float innerGlowSizePx = max(v_Params7.z, 0.0);
@@ -652,10 +751,22 @@ void main() {
         finalColor = mix(finalColor, rimHighlight, specMix);
 
     } else if (liquidOptics && liquidEdge > 0.001) {
-        // Clean-scene reveal is restricted to the SDF bevel.
-        float liquidSpec = pow(liquidEdge, 7.0) * reactiveReveal * (0.025 + 0.055 * topLight);
-        liquidSpec *= 1.0 - brightScene * 0.58;
-        finalColor = mix(finalColor, mix(vec3(0.90, 0.97, 1.0), tint, 0.18), liquidSpec);
+        // Glass is visible at rest through a continuous optical facet, not a white
+        // Fresnel stroke. Directional illumination changes with the curved SDF normal.
+        vec2 lightAxis = normalize(vec2(-0.47, -0.88));
+        float faceLighting = clamp(dot(sdfNormal, lightAxis) * 0.5 + 0.5, 0.0, 1.0);
+        float glancing = pow(liquidEdge, 2.6);
+        float specular = glancing * pow(faceLighting, 4.0)
+                * (0.09 + 0.07 * interactionActivity) * (1.0 - brightScene * 0.64);
+        float internalShade = glancing * (1.0 - faceLighting) * 0.15;
+        finalColor *= 1.0 - internalShade;
+        vec3 reflectedHue = mix(tint, vec3(0.78, 0.90, 1.0), 0.57);
+        finalColor = mix(finalColor, reflectedHue, specular * (specularEnabled ? 1.0 : 0.0));
+        // Narrow physical glint is a detail, not the silhouette's primary cue.
+        float rimGlint = pow(liquidEdge, 9.0) * pow(faceLighting, 7.0)
+                * (0.025 + 0.06 * localPulse) * (1.0 - brightScene * 0.73);
+        finalColor = mix(finalColor, vec3(0.89, 0.96, 1.0),
+                rimGlint * (specularEnabled ? 1.0 : 0.0));
     }
 
 #ifndef COMBATANT_LIGHT_GLASS
@@ -704,7 +815,11 @@ void main() {
 
     float fresnelAlpha = clamp(v_Params2.z, 0.0, 1.0);
     float baseAlpha = clamp(v_Params2.w, 0.0, 1.0);
-    baseAlpha = clamp(baseAlpha + brightScene * (0.035 + 0.045 * (1.0 - fresnelMix)), 0.0, 1.0);
+    // New optics must not change surface coverage while the refracted image moves.
+    // Retain the original scene-adaptive alpha behavior only for legacy Fresnel.
+    if (!liquidOptics) {
+        baseAlpha = clamp(baseAlpha + brightScene * (0.035 + 0.045 * (1.0 - fresnelMix)), 0.0, 1.0);
+    }
     float edgeAlpha = liquidOptics
             ? clamp(liquidEdge * 0.09 + hairline * 0.07, 0.0, 0.16)
             : clamp(fresnel * (0.25 + 0.75 * fresnelMix) + hairline * 0.40, 0.0, 1.0);
@@ -721,7 +836,9 @@ void main() {
     // result a second time. Let the SAME prepared scene contribute through both
     // coverage layers in the reactive patch, without changing final alpha.
     float opticalReveal = liquidOptics
-            ? clamp((clarityMix - 0.018) / max(v_Params9.w, 0.001), 0.0, 1.0)
+            ? clamp(facetTransmission * 1.12
+                    + reactiveReveal * clamp(v_Params9.w, 0.0, 1.0) * 0.85,
+                    0.0, 0.88)
             : 0.0;
 #ifdef COMBATANT_UI_UNDERLAY
     // Never wash out the actual UI underlay with a replacement scene sample.

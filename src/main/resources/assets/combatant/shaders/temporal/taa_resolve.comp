@@ -177,7 +177,7 @@ void main() {
         }
 
         if (abs(previousClip.w) > 1e-7) {
-            /the closest-fragment sample is used only
+            //the closest-fragment sample is used only
             // to estimate the motion vector. Applying the closest fragment's reprojected UV
             // directly to the center pixel shifts history by up to two pixels at depth edges.
             vec2 reprojectedClosestUv = (previousClip.xy / previousClip.w) * 0.5 + 0.5;

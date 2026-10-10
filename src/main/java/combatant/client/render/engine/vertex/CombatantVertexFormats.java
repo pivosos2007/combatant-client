@@ -175,6 +175,8 @@ public enum CombatantVertexFormats {
             .addAttribute("Params7", CombatantVertexFormatElements.PARAMS7)
             .addAttribute("Params8", CombatantVertexFormatElements.PARAMS8)
             .addAttribute("Params9", CombatantVertexFormatElements.PARAMS9)
+            .addAttribute("Params10", CombatantVertexFormatElements.PARAMS10)
+            .addAttribute("Params11", CombatantVertexFormatElements.PARAMS11)
             .build();
 
     public static final VertexFormat POS2_TEXTURE_COLOR_RECT_PARAMS2 = VertexFormat.builder(0)

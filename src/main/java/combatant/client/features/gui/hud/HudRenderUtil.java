@@ -12,6 +12,14 @@ import combatant.client.features.theme.Theme;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.core.ViewportContext;
+import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassInteraction;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiMaterialInteractionState;
+import net.minecraft.client.Minecraft;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * Shared helpers for HUD widget visuals.
@@ -70,6 +78,47 @@ public enum HudRenderUtil {
                 x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL,
                 large ? 12.0f : 6.0f, 1.0f,
                 AnimationUtility.clamp(alpha, 0.0f, 1.0f));
+    }
+
+    /**
+     * Deliberate per-widget fluid optics: this state is owned by the HUD element, not
+     * by the shared renderer or the global cursor. The optical profile is explicit.
+     * A stacked lens requests CURRENT_TARGET only where the caller opts in, so most
+     * HUD surfaces still share the cheaper CAPTURED_SCENE blur.
+     */
+    public static void drawReactiveGlass(float x, float y, float w, float h,
+                                         float radius, float scale, boolean large,
+                                         float blurAlpha, float glassAlpha,
+                                         UiMaterialInteractionState owner,
+                                         UiGlassOpticsSpec optics, boolean stacked) {
+        if (w <= 0f || h <= 0f || (blurAlpha <= 0.001f && glassAlpha <= 0.001f)) return;
+        UiGlassOpticsSpec spec = optics != null ? optics : UiGlassOpticsSpec.LIQUID;
+        UiGlassInteraction interaction = new UiGlassInteraction(0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f, true);
+        Minecraft mc = Minecraft.getInstance();
+        if (owner != null && mc != null && mc.getWindow() != null && mc.mouseHandler != null) {
+            float rawWidth = Math.max(1, mc.getWindow().getScreenWidth());
+            float rawHeight = Math.max(1, mc.getWindow().getScreenHeight());
+            ViewportContext viewport = ViewportContext.current();
+            float viewportWidth = viewport != null ? Math.max(1f, viewport.width()) : rawWidth;
+            float viewportHeight = viewport != null ? Math.max(1f, viewport.height()) : rawHeight;
+            float mouseX = (float) mc.mouseHandler.xpos() / rawWidth * viewportWidth;
+            float mouseY = (float) mc.mouseHandler.ypos() / rawHeight * viewportHeight;
+            boolean down = GLFW.glfwGetMouseButton(mc.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_LEFT)
+                    == GLFW.GLFW_PRESS;
+            interaction = owner.sample(mouseX, mouseY, down, x, y, w, h,
+                    spec.interactionViscosity(), spec.interactionStrength(), System.nanoTime());
+        }
+        UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
+                .withOptics(spec).withInteraction(interaction);
+        Runnable draw = () -> drawLiquidGlass(x, y, w, h, radius, scale, large,
+                blurAlpha, glassAlpha);
+        Renderer2D renderer = Renderer2D.COLOR;
+        if (stacked) {
+            renderer.withLiquidGlassSceneSource(UiBackdropRequest.SceneSource.CURRENT_TARGET,
+                    () -> renderer.withLiquidGlassMaterial(material, draw));
+        } else {
+            renderer.withLiquidGlassMaterial(material, draw);
+        }
     }
 
     public static void drawLiquidGlass(float x,

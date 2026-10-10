@@ -12,7 +12,15 @@ public record UiSurfaceMaterialSpec(Mode mode,
                                     float roughness,
                                     float bevelStrength,
                                     float response,
-                                    int accentArgb) {
+                                    int accentArgb) implements UiMaterialSpec {
+    @Override public Family family() { return Family.SOLID; }
+
+    public static final UiSurfaceMaterialSpec GRAPHITE = new UiSurfaceMaterialSpec(
+            Mode.GRAPHITE, 0.36f, 0.88f, 0.24f, 0.0f, 0xFF77838F);
+    public static final UiSurfaceMaterialSpec CERAMIC = new UiSurfaceMaterialSpec(
+            Mode.CERAMIC, 0.22f, 0.22f, 0.65f, 0.0f, 0xFFE2E8E9);
+    public static final UiSurfaceMaterialSpec BRUSHED_METAL = new UiSurfaceMaterialSpec(
+            Mode.BRUSHED_METAL, 0.22f, 0.53f, 0.48f, 0.0f, 0xFFB3C7D2);
     public static final UiSurfaceMaterialSpec SATIN_TITANIUM = new UiSurfaceMaterialSpec(
             Mode.SATIN_TITANIUM, 0.18f, 0.42f, 0.55f, 0.0f, 0xFFDCE7F2);
     public static final UiSurfaceMaterialSpec SOFT_TOUCH = new UiSurfaceMaterialSpec(
@@ -44,7 +52,10 @@ public record UiSurfaceMaterialSpec(Mode mode,
     public enum Mode {
         SATIN_TITANIUM(1),
         SOFT_TOUCH(2),
-        PHOSPHOR_LED(3);
+        PHOSPHOR_LED(3),
+        GRAPHITE(4),
+        CERAMIC(5),
+        BRUSHED_METAL(6);
 
         private final int shaderId;
 

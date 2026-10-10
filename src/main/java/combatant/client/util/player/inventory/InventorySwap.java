@@ -279,6 +279,11 @@ public final class InventorySwap {
         return internalSwapDepth > 0;
     }
 
+    /** Owner identity is set only while an inventory action is actually executing. */
+    public Object executingActionOwner() {
+        return internalSwapDepth > 0 ? inventoryActionOwner : null;
+    }
+
     public boolean hasPendingStrictActions() {
         return !strictQueue.isEmpty();
     }
@@ -610,6 +615,8 @@ public final class InventorySwap {
         AbstractContainerMenu handler = player != null ? player.containerMenu : null;
         if (player == null || interaction == null || handler == null) return false;
         if (!isSwapButton(hotbarButton) || containerSlot < 0) return false;
+        if (InventorySlotLocks.blocks(handler, containerSlot, hotbarButton,
+                ContainerInput.SWAP, player, executingActionOwner())) return false;
 
         beginInternalSwap();
         try {
@@ -627,6 +634,9 @@ public final class InventorySwap {
         AbstractContainerMenu handler = player != null ? player.containerMenu : null;
         if (player == null || interaction == null || handler == null) return false;
         if (slotA < 0 || slotB < 0 || slotA == slotB) return false;
+        if (InventorySlotLocks.blocks(handler, slotA, 0, ContainerInput.PICKUP,
+                player, executingActionOwner()) || InventorySlotLocks.blocks(handler, slotB,
+                0, ContainerInput.PICKUP, player, executingActionOwner())) return false;
 
         beginInternalSwap();
         try {
@@ -676,7 +686,8 @@ public final class InventorySwap {
     }
 
     public boolean swapInventoryToOffhand(int inventorySlot, InventorySwapPolicy policy, Object owner, Runnable afterSwap) {
-        if (inventorySlot < 0 || inventorySlot >= 36) return false;
+        if (inventorySlot < 0 || inventorySlot >= 36 ||
+                InventorySlotLocks.blocks(InventorySlotLocks.OFFHAND, owner)) return false;
         int sourceScreenSlot = mapInventoryToScreenSlot(inventorySlot);
         return command(owner, InventoryActionKind.INVENTORY_CLICK, policy, () -> {
             if (!clickSwap(sourceScreenSlot, OFFHAND_SWAP_BUTTON)) return;

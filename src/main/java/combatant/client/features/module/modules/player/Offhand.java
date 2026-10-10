@@ -27,6 +27,7 @@ import combatant.client.features.relations.CategoryType;
 import combatant.client.mixins.accessors.PlayerInventoryAccessor;
 import combatant.client.util.item.FoodUtil;
 import combatant.client.util.player.inventory.InventorySwap;
+import combatant.client.util.player.inventory.InventorySlotLocks;
 import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.pvp.client.CooldownsState;
@@ -63,6 +64,9 @@ public final class Offhand extends Module {
     private static final String THREAT_PROJECTILES = "projectiles";
     private static final String FALLBACK_SHIELD = "shield";
     private static final String FALLBACK_CRYSTAL = "crystal";
+    private static final String FALLBACK_ENCHANTED = "enchanted_golden_apple";
+    private static final String FALLBACK_GAPPLE = "golden_apple";
+    private static final String FALLBACK_FOOD = "food";
     private static final String PROFILE_TOTEM = "totem";
     private static final String PROFILE_SHIELD = "shield";
     private static final String PROFILE_CRYSTAL = "crystal";
@@ -107,8 +111,28 @@ public final class Offhand extends Module {
             new LinkedHashMap<>() {{
                 put(FALLBACK_SHIELD, true);
                 put(FALLBACK_CRYSTAL, false);
+                put(FALLBACK_ENCHANTED, false);
+                put(FALLBACK_GAPPLE, false);
+                put(FALLBACK_FOOD, false);
             }}
     );
+
+    // Higher number wins; equal priorities use stable safety-oriented order.
+    private final NumberValue<Integer> shieldFallbackPriority = visibleWhen(
+            num("offhand_fallback_shield_priority", "fallback_shield_priority", 10, 1, 10),
+            () -> fallbacks.get(FALLBACK_SHIELD));
+    private final NumberValue<Integer> crystalFallbackPriority = visibleWhen(
+            num("offhand_fallback_crystal_priority", "fallback_crystal_priority", 8, 1, 10),
+            () -> fallbacks.get(FALLBACK_CRYSTAL));
+    private final NumberValue<Integer> enchantedFallbackPriority = visibleWhen(
+            num("offhand_fallback_enchanted_priority", "fallback_enchanted_priority", 7, 1, 10),
+            () -> fallbacks.get(FALLBACK_ENCHANTED));
+    private final NumberValue<Integer> gappleFallbackPriority = visibleWhen(
+            num("offhand_fallback_gapple_priority", "fallback_gapple_priority", 6, 1, 10),
+            () -> fallbacks.get(FALLBACK_GAPPLE));
+    private final NumberValue<Integer> foodFallbackPriority = visibleWhen(
+            num("offhand_fallback_food_priority", "fallback_food_priority", 4, 1, 10),
+            () -> fallbacks.get(FALLBACK_FOOD));
 
     private final BooleanValue passiveSwaps = bool("offhand_passive_swaps", "passive_swaps", false);
     // Crystal in the offhand whenever a totem is not needed, so AutoCrystal places without a hotbar swap.
@@ -229,6 +253,7 @@ public final class Offhand extends Module {
 
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null || mc.gameMode == null || mc.isPaused()) {
+            InventorySlotLocks.release(this);
             resetOffhandSwapState();
             InventorySwap.INSTANCE.cancelQueuedInventoryActions(this);
             InventorySwap.INSTANCE.releaseInventory(this);
@@ -240,6 +265,22 @@ public final class Offhand extends Module {
             return;
         }
 
+        boolean protectiveDanger = shouldHoldTotem(player, effectiveHealth(player));
+        // A selected Totem preset reserves the offhand even while healthy: otherwise the
+        // player can remove the totem and the next queued passive swap silently restores it.
+        // Other presets leave the slot free until the protective policy actually needs it.
+        boolean fixedTotemPreset = passiveSwaps.get()
+                && safeOffhand.get() == SafeOffhand.TOTEM
+                && itemProfiles.get(PROFILE_TOTEM);
+        boolean protectiveReservation = protectiveDanger
+                && (isTotemInOffhand(player) || findTotemSlot(player) >= 0
+                    || findDangerFallbackSlot(player) >= 0 || offhandSwapPending);
+        if (fixedTotemPreset || protectiveReservation) {
+            InventorySlotLocks.claim(this, InventorySlotLocks.OFFHAND, "Offhand");
+        } else {
+            InventorySlotLocks.release(this);
+        }
+
         releaseInventoryLeaseIfDue(player);
         if (restoreInventoryPending || offhandSwapPending) {
             InventorySwap.INSTANCE.leaseInventory(this, 80);
@@ -247,6 +288,7 @@ public final class Offhand extends Module {
         // A queued passive swap must never prevent a new emergency totem request.
         if (offhandSwapPending && offhandSwapIssuedTick < 0
                 && !expectedOffhand.is(Items.TOTEM_OF_UNDYING)
+                && findTotemSlot(player) >= 0
                 && shouldHoldTotem(player, effectiveHealth(player))) {
             InventorySwap.INSTANCE.cancelQueuedInventoryActions(this, InventoryActionKind.INVENTORY_CLICK);
             resetOffhandSwapState();
@@ -320,6 +362,7 @@ public final class Offhand extends Module {
 
     @Override
     public void onDisable() {
+        InventorySlotLocks.release(this);
         LocalPlayer player = mc.player;
         if (player != null) stopAutoUse(player, true);
         resetConsumeState();
@@ -401,19 +444,50 @@ public final class Offhand extends Module {
             return;
         }
 
+        int fallbackSlot = findDangerFallbackSlot(player);
+        if (fallbackSlot >= 0 && fallbackSlot < 36) {
+            ItemStack wanted = player.getInventory().getItem(fallbackSlot);
+            if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), wanted)) {
+                requestOffhandSwap(fallbackSlot, null, true);
+            }
+        }
+    }
+
+    /** Only used when protection is required but there is no usable totem. */
+    private int findDangerFallbackSlot(LocalPlayer player) {
+        int bestSlot = -1;
+        int bestPriority = -1;
         if (itemProfiles.get(PROFILE_SHIELD) && fallbacks.get(FALLBACK_SHIELD)) {
-            int shield = findUsable(player, stack -> stack.is(Items.SHIELD) && shieldHealthy(stack));
-            if (shield != -1) {
-                if (!player.getOffhandItem().is(Items.SHIELD)) requestOffhandSwap(shield, null);
-                return;
+            int slot = findUsableOrHeld(player, stack -> stack.is(Items.SHIELD) && shieldHealthy(stack));
+            if (slot >= 0 && shieldFallbackPriority.get() > bestPriority) {
+                bestSlot = slot; bestPriority = shieldFallbackPriority.get();
             }
         }
         if (itemProfiles.get(PROFILE_CRYSTAL) && fallbacks.get(FALLBACK_CRYSTAL) && isCrystalContext()) {
-            int crystal = findUsable(player, stack -> stack.is(Items.END_CRYSTAL));
-            if (crystal != -1 && !player.getOffhandItem().is(Items.END_CRYSTAL)) {
-                requestOffhandSwap(crystal, null);
+            int slot = findUsableOrHeld(player, stack -> stack.is(Items.END_CRYSTAL));
+            if (slot >= 0 && crystalFallbackPriority.get() > bestPriority) {
+                bestSlot = slot; bestPriority = crystalFallbackPriority.get();
             }
         }
+        if (itemProfiles.get(PROFILE_ENCHANTED) && fallbacks.get(FALLBACK_ENCHANTED)) {
+            int slot = findUsableOrHeld(player, stack -> stack.is(Items.ENCHANTED_GOLDEN_APPLE));
+            if (slot >= 0 && enchantedFallbackPriority.get() > bestPriority) {
+                bestSlot = slot; bestPriority = enchantedFallbackPriority.get();
+            }
+        }
+        if (itemProfiles.get(PROFILE_GAPPLE) && fallbacks.get(FALLBACK_GAPPLE)) {
+            int slot = findUsableOrHeld(player, stack -> stack.is(Items.GOLDEN_APPLE));
+            if (slot >= 0 && gappleFallbackPriority.get() > bestPriority) {
+                bestSlot = slot; bestPriority = gappleFallbackPriority.get();
+            }
+        }
+        if (itemProfiles.get(PROFILE_FOOD) && fallbacks.get(FALLBACK_FOOD)) {
+            int slot = findUsableOrHeld(player, stack -> FoodUtil.isFood(stack) && !isGapple(stack));
+            if (slot >= 0 && foodFallbackPriority.get() > bestPriority) {
+                bestSlot = slot;
+            }
+        }
+        return bestSlot;
     }
 
     private int preferredSafeOffhand(LocalPlayer player) {
@@ -1036,6 +1110,12 @@ public final class Offhand extends Module {
 
     private int findUsable(LocalPlayer player, Predicate<ItemStack> predicate) {
         return find(player, stack -> predicate.test(stack) && isItemUsable(player, stack));
+    }
+
+    private int findUsableOrHeld(LocalPlayer player, Predicate<ItemStack> predicate) {
+        ItemStack held = player.getOffhandItem();
+        if (predicate.test(held) && isItemUsable(player, held)) return InventorySlotLocks.OFFHAND;
+        return findUsable(player, predicate);
     }
 
     private int find(LocalPlayer player, Item item) {

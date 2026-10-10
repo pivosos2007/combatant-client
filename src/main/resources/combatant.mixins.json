@@ -37,7 +37,9 @@
   ],
   "client": [
     "AbstractClientPlayerMixin",
+    "AbstractContainerMenuSlotLockMixin",
     "AbstractContainerScreenMixin",
+    "MultiPlayerGameModeSlotLockMixin",
     "StringDecomposerMixin",
     "accessors.AbstractContainerScreenAccessor",
     "accessors.CountPlacementAccessor",

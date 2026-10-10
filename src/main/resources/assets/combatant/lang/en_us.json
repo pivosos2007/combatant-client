@@ -1,4 +1,11 @@
 {
+  "combatant.inventory.locked_by": "Slot locked by %s",
+  "setting.offhand.fallback_shield_priority": "Shield fallback priority",
+  "setting.offhand.fallback_crystal_priority": "Crystal fallback priority",
+  "setting.offhand.fallback_enchanted_priority": "Enchanted apple priority",
+  "setting.offhand.fallback_gapple_priority": "Golden apple priority",
+  "setting.offhand.fallback_food_priority": "Food fallback priority",
+
   "clickgui.settings.tab.hud": "HUD",
   "clickgui.settings.tab.ui": "UI",
   "clickgui.settings.tab.themes": "Themes",
@@ -2660,6 +2667,7 @@
   "setting.common.media_player_bg_effect.option.blur": "Blur",
   "setting.common.media_player_bg_effect.option.glass": "Glass",
   "setting.common.media_player_bg_effect.option.none": "None",
+  "setting.common.media_player_glass_refraction": "Glass refraction",
   "setting.common.media_player_blur_alpha": "Blur alpha",
   "setting.common.media_player_gradient": "Gradient",
   "setting.common.media_player_scale": "Scale",
@@ -3026,6 +3034,7 @@
   "setting.common.target_bg_effect.option.glass": "Glass",
   "setting.common.target_bg_effect.option.none": "None",
   "setting.common.target_bg_secondary": "Secondary background",
+  "setting.common.target_glass_refraction": "Glass refraction",
   "setting.common.target_blur_alpha": "Blur alpha",
   "setting.common.target_color_mode": "Color mode",
   "setting.common.target_color_mode.option.custom": "Custom",

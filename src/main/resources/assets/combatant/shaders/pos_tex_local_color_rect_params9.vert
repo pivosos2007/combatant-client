@@ -21,6 +21,8 @@ layout (location = 10) in vec4 Params6;
 layout (location = 11) in vec4 Params7;
 layout (location = 12) in vec4 Params8;
 layout (location = 13) in vec4 Params9;
+layout (location = 14) in vec4 Params10;
+layout (location = 15) in vec4 Params11;
 
 layout (std140) uniform MeshData {
     mat4 u_Proj;
@@ -40,6 +42,8 @@ out vec4 v_Params6;
 out vec4 v_Params7;
 out vec4 v_Params8;
 out vec4 v_Params9;
+out vec4 v_Params10;
+out vec4 v_Params11;
 
 void main() {
     gl_Position = u_Proj * u_ModelView * Position;
@@ -56,4 +60,6 @@ void main() {
     v_Params7 = Params7;
     v_Params8 = Params8;
     v_Params9 = Params9;
+    v_Params10 = Params10;
+    v_Params11 = Params11;
 }
