@@ -44,6 +44,7 @@ import combatant.client.render.engine.rhi.resource.RenderResourceManager;
 import combatant.client.render.engine.rhi.state.PipelineStateBackend;
 import combatant.client.render.engine.rhi.shader.AdvancedShaderBackend;
 import combatant.client.render.engine.rhi.upload.DynamicMeshBackend;
+import combatant.client.render.engine.rhi.upload.DynamicMeshWrites;
 import combatant.client.render.engine.rhi.upload.Blaze3dDynamicMeshBackend;
 import combatant.client.render.engine.rhi.upload.Blaze3dPersistentMeshBackend;
 import combatant.client.render.engine.rhi.upload.PersistentMeshBackend;
@@ -54,6 +55,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.List;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 
 /**
@@ -77,6 +79,7 @@ public final class SodiumGlBackend implements CombatantRhi {
     private final RenderResourceManager resources = new RenderResourceManager();
     private final Matrix4f projectionScratch = new Matrix4f();
     private final Matrix4f modelViewScratch = new Matrix4f();
+    private final IdentityHashMap<com.mojang.blaze3d.pipeline.RenderPipeline, Boolean> dynamicTransformsUse = new IdentityHashMap<>();
 
     private static java.util.Optional<Vector4fc> clearColor(OptionalInt clearColor) {
         if (clearColor == null || clearColor.isEmpty()) {
@@ -190,6 +193,8 @@ public final class SodiumGlBackend implements CombatantRhi {
     @Override
     public void drawMeshes(List<RhiDrawCommand> commands) {
         if (commands == null || commands.isEmpty()) return;
+        // Dynamic meshes are written through open mappings; publish them before any draw reads the arenas.
+        DynamicMeshWrites.flushPending();
         try {
             // One Blaze3D encoder owns the whole ordered RHI sequence. Individual render passes still
             // end only on attachment/clear barriers without recreating an encoder wrapper for
@@ -275,7 +280,7 @@ public final class SodiumGlBackend implements CombatantRhi {
     }
 
     private void drawInPass(RenderPass pass, RhiDrawCommand command, boolean bindPipeline, PassBindingCache bindings) {
-        command.mesh.validateForDraw(command.label);
+        // GpuMeshHandle.drawIndexed() validates the range itself; validating here as well doubled the work.
         try (RenderCostProfiler.Scope ignoredCost = RenderCostProfiler.rhiDraw(command.label)) {
             boolean pushMv = command.transform != null || command.applyWorldCameraY;
             float previousLineWidth = RenderState.lineWidth;
@@ -299,7 +304,7 @@ public final class SodiumGlBackend implements CombatantRhi {
     private void drawMultiInPass(RenderPass pass, List<RhiDrawCommand> commands, int start, int end,
                                  boolean bindPipeline, PassBindingCache bindings) {
         RhiDrawCommand first = commands.get(start);
-        String label = first.label + " [multi x" + (end - start) + "]";
+        String label = RenderCostProfiler.isEnabled() ? first.label + " [multi x" + (end - start) + "]" : first.label;
         try (RenderCostProfiler.Scope ignoredCost = RenderCostProfiler.rhiDraw(label);
              MemoryStack stack = MemoryStack.stackPush()) {
             for (int i = start; i < end; i++) {
@@ -369,7 +374,7 @@ public final class SodiumGlBackend implements CombatantRhi {
         // Combatant has already multiplied command.transform into the stack above. Without this
         // binding imported geometry is submitted with whichever stale vanilla transform happened
         // to be bound previously and is normally projected completely out of view.
-        GpuBufferSlice dynamicTransforms = pipelineUsesUniform(command.pipeline, "DynamicTransforms")
+        GpuBufferSlice dynamicTransforms = pipelineUsesDynamicTransforms(command.pipeline)
                 && !command.hasUniform("DynamicTransforms")
                 ? RenderSystem.getDynamicUniforms().writeTransform(RenderSystem.getModelViewMatrixCopy())
                 : null;
@@ -477,6 +482,19 @@ public final class SodiumGlBackend implements CombatantRhi {
                 next.colorAttachments, next.depthAttachment,
                 next.clearDepth.isPresent()
         );
+    }
+
+    /**
+     * Pipeline bind-group layouts are immutable, so the answer is stable per pipeline. Flattening the
+     * layouts allocates a fresh uniform list, which used to happen once per draw command.
+     */
+    private boolean pipelineUsesDynamicTransforms(com.mojang.blaze3d.pipeline.RenderPipeline pipeline) {
+        if (pipeline == null) return false;
+        Boolean cached = dynamicTransformsUse.get(pipeline);
+        if (cached != null) return cached;
+        boolean uses = pipelineUsesUniform(pipeline, "DynamicTransforms");
+        dynamicTransformsUse.put(pipeline, uses);
+        return uses;
     }
 
     private static boolean pipelineUsesUniform(com.mojang.blaze3d.pipeline.RenderPipeline pipeline, String name) {

@@ -55,6 +55,7 @@ import combatant.client.render.helpers.TickDelta;
 import combatant.client.render.engine.uniform.impl.HandGhostingUniforms;
 import combatant.client.render.engine.uniform.impl.HandGlassUniforms;
 import combatant.client.render.engine.uniform.impl.HandMetallicUniforms;
+import combatant.client.render.engine.uniform.impl.HandRiftUniforms;
 import combatant.client.render.engine.uniform.impl.HandSmokeUniforms;
 import combatant.client.render.iris.IrisHandMaskState;
 import combatant.client.render.iris.IrisRuntime;
@@ -99,6 +100,10 @@ public class Chams extends Module {
     private static final String SETTING_METALLIC_BRUSHED_LINES = "metallic_brushed_lines";
     private static final String SETTING_METALLIC_FLAKES = "metallic_flakes";
     private static final String SETTING_METALLIC_PRISM = "metallic_prism";
+    private static final String SETTING_RIFT_DISTORTION = "rift_distortion";
+    private static final String SETTING_RIFT_FIELD_WIDTH = "rift_field_width";
+    private static final String SETTING_RIFT_FLOW_SPEED = "rift_flow_speed";
+    private static final String SETTING_RIFT_CAUSTICS = "rift_caustics";
     private static final String SETTING_GHOSTING = "ghosting";
     private static final String SETTING_GHOSTING_STRENGTH = "ghosting_strength";
     private static final String SETTING_GHOSTING_DURATION = "ghosting_duration";
@@ -112,7 +117,7 @@ public class Chams extends Module {
     private static final String SETTING_GHOSTING_DENSITY = "ghosting_density";
     private final Minecraft mc = Minecraft.getInstance();
     private final ModeValue mode =
-            modeSetting("handChamsMode", SETTING_MODE, "Smoke", "Smoke", "Metallic", "Glass");
+            modeSetting("handChamsMode", SETTING_MODE, "Smoke", "Smoke", "Metallic", "Glass", "Rift");
 
     private final BooleanValue hands =
             bool("chamsHands", SETTING_HANDS, true);
@@ -145,7 +150,7 @@ public class Chams extends Module {
     private final NumberValue<Float> shadowStrength =
             visibleWhen(num("handChamsShadowStrength", SETTING_SHADOW_STRENGTH, 1.0f, 0.0f, 4.0f), this::isShadowVisible);
     private final NumberValue<Float> edgeWidth =
-            visibleWhen(num("handChamsEdgeWidth", SETTING_EDGE_WIDTH, 10.0f, 0.0f, 36.0f), this::isHandEffectMode);
+            visibleWhen(num("handChamsEdgeWidth", SETTING_EDGE_WIDTH, 10.0f, 0.0f, 36.0f), this::isEdgeMaterialMode);
     private final NumberValue<Integer> quality =
             visibleWhen(num("handChamsQuality", SETTING_QUALITY, 2, 1, 4), this::isHandEffectMode);
     private final NumberValue<Integer> smokeOctaves =
@@ -176,6 +181,14 @@ public class Chams extends Module {
             visibleWhen(num("handChamsMetallicFlakes", SETTING_METALLIC_FLAKES, 0.25f, 0.0f, 1.0f), this::isMetallicMode);
     private final NumberValue<Float> metallicPrism =
             visibleWhen(num("handChamsMetallicPrism", SETTING_METALLIC_PRISM, 0.18f, 0.0f, 1.0f), this::isMetallicMode);
+    private final NumberValue<Float> riftDistortion =
+            visibleWhen(num("handChamsRiftDistortion", SETTING_RIFT_DISTORTION, 9.0f, 0.0f, 24.0f), this::isRiftMode);
+    private final NumberValue<Float> riftFieldWidth =
+            visibleWhen(num("handChamsRiftFieldWidth", SETTING_RIFT_FIELD_WIDTH, 30.0f, 6.0f, 72.0f), this::isRiftMode);
+    private final NumberValue<Float> riftFlowSpeed =
+            visibleWhen(num("handChamsRiftFlowSpeed", SETTING_RIFT_FLOW_SPEED, 0.78f, 0.0f, 3.0f), this::isRiftMode);
+    private final NumberValue<Float> riftCaustics =
+            visibleWhen(num("handChamsRiftCaustics", SETTING_RIFT_CAUSTICS, 1.15f, 0.0f, 3.0f), this::isRiftMode);
 
     private final BooleanValue ghosting =
             bool("handChamsGhosting", SETTING_GHOSTING, false);
@@ -765,8 +778,16 @@ public class Chams extends Module {
         return "Metallic".equals(mode.get());
     }
 
-    private boolean isHandEffectMode() {
+    private boolean isRiftMode() {
+        return "Rift".equals(mode.get());
+    }
+
+    private boolean isEdgeMaterialMode() {
         return isSmokeMode() || isMetallicMode();
+    }
+
+    private boolean isHandEffectMode() {
+        return isEdgeMaterialMode() || isRiftMode();
     }
 
     private boolean isGlowVisible() {
@@ -970,6 +991,36 @@ public class Chams extends Module {
                             .sampler("u_Occupancy", occupancyView, getHandMaskSampler())
                             .end();
                 }
+            }
+        } else if ("Rift".equals(mode.get())) {
+            int fillArgb = fillColor.getArgb();
+            int fillRgb = materialFillRgb();
+            int causticRgb = glowRgb(fillRgb);
+            int shadowRgb = shadowRgb(fillRgb);
+
+            float fillA = channel(fillArgb, 24);
+            float causticA = glow.get() ? glowAlpha.get() : 0.0f;
+            float shadowA = shadow.get() ? shadowAlpha.get() : 0.0f;
+            int w = mc.getWindow().getWidth();
+            int h = mc.getWindow().getHeight();
+
+            HandRiftUniforms.update(
+                    channel(fillRgb, 16), channel(fillRgb, 8), channel(fillRgb, 0), fillA,
+                    channel(causticRgb, 16), channel(causticRgb, 8), channel(causticRgb, 0), causticA,
+                    channel(shadowRgb, 16), channel(shadowRgb, 8), channel(shadowRgb, 0), shadowA,
+                    w, h, rawTime, riftFieldWidth.get(),
+                    riftDistortion.get(), riftFlowSpeed.get(), riftCaustics.get(), quality.get(),
+                    glowStrength.get(), shadowStrength.get(), 0.0f, 0.0f
+            );
+
+            try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams:hands_rift")) {
+                FullScreenRenderer.begin("Combatant Hand Rift")
+                        .attachment(dst)
+                        .pipeline(CombatantRenderPipelines.HAND_RIFT)
+                        .uniform("HandRift", HandRiftUniforms.get())
+                        .sampler("u_Src", src, PostProcessManager.getSampler())
+                        .sampler("u_Mask", maskView, getHandMaskSampler())
+                        .end();
             }
         } else {
             int fillArgb = fillColor.getArgb();

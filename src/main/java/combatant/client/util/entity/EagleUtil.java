@@ -21,6 +21,8 @@ public enum EagleUtil {
     private static final double MIN_AXIS_COMPONENT = 0.18;
     private static final double MAX_RESCUE_LOOKAHEAD = 0.42;
     private static final double MIN_TICK_DELTA_LEAD = 0.25;
+    /** Speed a held walking input adds on the ground each tick (0.1 movement speed * 0.216 / 0.546^3 * 0.98). */
+    private static final double GROUND_INPUT_ACCELERATION = 0.13;
     private static final double CENTER_DEAD_ANGLE_COS = 0.34;
     private static final int DIAGONAL_RESCUE_TICKS = 2;
 
@@ -40,6 +42,11 @@ public enum EagleUtil {
 
         Vec3 movementDirection = inputDirection.normalize();
         Vec3 horizontalVelocity = new Vec3(player.getDeltaMovement().x, 0.0, player.getDeltaMovement().z);
+        if (player.onGround()) {
+            // getDeltaMovement() is last tick's velocity after friction; this tick's input adds ground acceleration on
+            // top. Looking ahead with the stale value only noticed the edge once the player was already past it.
+            horizontalVelocity = horizontalVelocity.add(movementDirection.scale(GROUND_INPUT_ACCELERATION));
+        }
         double velocityLength = horizontalVelocity.horizontalDistance();
         double distance = Math.max(0.0, edgeDistance);
         double lookAhead = Math.min(MAX_RESCUE_LOOKAHEAD, distance + velocityLength);
@@ -99,8 +106,11 @@ public enum EagleUtil {
         }
 
         EntityDimensions dimensions = player.getDimensions(player.getPose());
+        // Vanilla keeps a player standing until the whole 0.6 wide box is past the edge (centre 0.3 out). The recovery
+        // stops input but momentum and the next held-key step carry a few hundredths further, so the check has to
+        // fire well before that point or a held forward key creeps the player off the block.
         AABB hitbox = dimensions.makeBoundingBox(position)
-                .inflate(-0.05, 0.0, -0.05)
+                .inflate(-0.1, 0.0, -0.1)
                 .move(0.0, player.fallDistance - STEP_HEIGHT, 0.0);
         return player.level().noCollision(player, hitbox);
     }

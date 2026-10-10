@@ -16,19 +16,24 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
+import combatant.client.features.module.Notifier;
 import combatant.client.features.module.WorldPhase;
+import combatant.client.features.module.modules.combat.surround.BlockPriority;
+import combatant.client.features.module.modules.combat.surround.CrystalClearer;
+import combatant.client.features.module.modules.combat.surround.ShellBlocks;
+import combatant.client.features.module.modules.combat.surround.SurroundPlanner;
+import combatant.client.features.module.modules.combat.surround.SurroundPlanner.Pos;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.block.placer.BlockPlacer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.util.Util;
 import net.minecraft.world.phys.AABB;
 
 import java.util.ArrayList;
@@ -44,21 +49,31 @@ import java.util.Set;
         description = "module.selftrap.description")
 public final class SelfTrap extends Module {
 
-    private static final Set<Block> BLOCKS = Set.of(
-            Blocks.OBSIDIAN,
-            Blocks.CRYING_OBSIDIAN,
-            Blocks.RESPAWN_ANCHOR,
-            Blocks.NETHERITE_BLOCK,
-            Blocks.ENDER_CHEST,
-            Blocks.ANVIL,
-            Blocks.CHIPPED_ANVIL,
-            Blocks.DAMAGED_ANVIL
-    );
+    /** Gap between two "out of blocks" warnings, so a fight does not flood the HUD. */
+    private static final long NO_BLOCKS_WARN_INTERVAL_MS = 3000L;
 
     private final Minecraft mc = Minecraft.getInstance();
     private final EnumValue<Mode> mode = enumSetting("selfTrapMode", "mode", Mode.HEAD, Mode.values());
+    private final EnumValue<BlockPriority> blockPriority = enumSetting(
+            "selfTrapBlockPriority", "block_priority", BlockPriority.ANY, BlockPriority.values());
+    private final NumberValue<Integer> blocksPerTick = num(
+            "selfTrapBlocksPerTick", "blocks_per_tick", 4, 1, 8);
+    private final BooleanValue dynamicHitbox = bool(
+            "selfTrapDynamicHitbox", "dynamic_hitbox", true);
+    private final BooleanValue support = bool(
+            "selfTrapSupport", "support", true);
+    private final BooleanValue attackCrystals = bool(
+            "selfTrapAttackCrystals", "attack_crystals", true);
+    private final NumberValue<Integer> crystalDelay = visibleWhen(
+            num("selfTrapCrystalDelay", "crystal_delay", 0, 0, 10), attackCrystals::get);
+    private final BooleanValue placeWhileUsing = bool(
+            "selfTrapPlaceWhileUsing", "place_while_using", false);
+    private final NumberValue<Integer> swapBackDelay = num(
+            "selfTrapSwapBackDelay", "swap_back_delay", 0, 0, 10);
     private final BooleanValue disableOnJump = bool("selfTrapDisableOnJump", "disable_on_jump", true);
+    private final BooleanValue disableInAir = bool("selfTrapDisableInAir", "disable_in_air", false);
     private final BooleanValue autoDisable = bool("selfTrapAutoDisable", "auto_disable", false);
+    private final BooleanValue warnNoBlocks = bool("selfTrapWarnNoBlocks", "warn_no_blocks", true);
     private final EnumValue<BlockPlacer.RotationMode> rotation = enumSetting(
             "selfTrapRotation", "rotation", BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.values());
     private final EnumValue<MovementCorrection> movementCorrection = enumSetting(
@@ -81,16 +96,21 @@ public final class SelfTrap extends Module {
             wallRange::get,
             delay::get,
             delay::get,
-            () -> 0,
-            () -> 0,
+            swapBackDelay::get,
+            swapBackDelay::get,
             () -> 1,
             () -> false,
             () -> true,
+            placeWhileUsing::get,
             () -> false,
+            blocksPerTick::get,
             rotation::get,
             movementCorrection::get
     );
+    private final CrystalClearer crystalClearer = new CrystalClearer();
     private final List<BlockPos> currentTargets = new ArrayList<>();
+    private final PlacementPreviewRenderer placementPreview = new PlacementPreviewRenderer();
+    private long lastNoBlocksWarningMs;
 
     @Override
     public void onEnable() {
@@ -98,13 +118,18 @@ public final class SelfTrap extends Module {
             setEnabled(false);
             return;
         }
+        crystalClearer.reset();
+        lastNoBlocksWarningMs = 0L;
+        placementPreview.reset();
         blockPlacer.enable();
         updateTargets();
+        if (render.get()) placementPreview.tick(mc.level, currentTargets, previewBlockState(), lineColor.getArgb());
     }
 
     @Override
     public void onDisable() {
         blockPlacer.disable();
+        placementPreview.reset();
         currentTargets.clear();
     }
 
@@ -120,9 +145,32 @@ public final class SelfTrap extends Module {
             setEnabled(false);
             return;
         }
-        blockPlacer.tick();
+        if (disableInAir.get() && !player.onGround()) {
+            setEnabled(false);
+            return;
+        }
+
         updateTargets();
+
+        if (attackCrystals.get()) {
+            crystalClearer.clear(mc, player, currentTargets, range.get(), crystalDelay.get());
+        }
+
+        warnIfOutOfBlocks(player);
+        if (render.get()) placementPreview.tick(mc.level, currentTargets, previewBlockState(), lineColor.getArgb());
+        blockPlacer.tick();
+        if (render.get()) placementPreview.tick(mc.level, currentTargets, previewBlockState(), lineColor.getArgb());
+
         if (autoDisable.get() && currentTargets.isEmpty()) setEnabled(false);
+    }
+
+    private void warnIfOutOfBlocks(LocalPlayer player) {
+        if (!warnNoBlocks.get() || currentTargets.isEmpty()) return;
+        if (ShellBlocks.find(player, blockPriority.get()) != null) return;
+        long now = Util.getMillis();
+        if (now - lastNoBlocksWarningMs < NO_BLOCKS_WARN_INTERVAL_MS) return;
+        lastNoBlocksWarningMs = now;
+        Notifier.warning(I18n.get("notification.selftrap.no_blocks"));
     }
 
     private void updateTargets() {
@@ -133,20 +181,14 @@ public final class SelfTrap extends Module {
             return;
         }
 
-        BlockPos feet = BlockPos.containing(player.getX(), player.getY(), player.getZ());
-        List<BlockPos> candidates = new ArrayList<>();
-        candidates.add(feet.above(2));
-        if (mode.get() == Mode.FULL) {
-            for (Direction direction : Direction.Plane.HORIZONTAL) {
-                candidates.add(feet.above().relative(direction));
-                candidates.add(feet.above(2).relative(direction));
-            }
-        }
+        Mode currentMode = mode.get();
+        Set<Pos> footprint = ShellBlocks.footprint(player, dynamicHitbox.get());
+        List<BlockPos> needed = ShellBlocks.toBlockPos(SurroundPlanner.order(
+                SurroundPlanner.trap(footprint, currentMode != Mode.HEAD, currentMode == Mode.FULL),
+                ShellBlocks.replaceable(mc.level),
+                SurroundPlanner.bodyCells(footprint),
+                support.get()));
 
-        List<BlockPos> needed = new ArrayList<>();
-        for (BlockPos pos : candidates) {
-            if (mc.level.getBlockState(pos).canBeReplaced()) needed.add(pos);
-        }
         currentTargets.clear();
         currentTargets.addAll(needed);
         blockPlacer.update(needed);
@@ -154,20 +196,7 @@ public final class SelfTrap extends Module {
 
     private BlockPlacer.PlacementSlot findPlacementSlot(BlockPos ignored) {
         LocalPlayer player = mc.player;
-        if (player == null) return null;
-        ItemStack offhand = player.getOffhandItem();
-        if (isTargetBlock(offhand)) return new BlockPlacer.PlacementSlot(-1, InteractionHand.OFF_HAND, offhand);
-        for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = player.getInventory().getItem(slot);
-            if (isTargetBlock(stack)) return new BlockPlacer.PlacementSlot(slot, InteractionHand.MAIN_HAND, stack);
-        }
-        return null;
-    }
-
-    private static boolean isTargetBlock(ItemStack stack) {
-        return !stack.isEmpty()
-                && stack.getItem() instanceof BlockItem blockItem
-                && BLOCKS.contains(blockItem.getBlock());
+        return player == null ? null : ShellBlocks.find(player, blockPriority.get());
     }
 
     @Override
@@ -177,16 +206,24 @@ public final class SelfTrap extends Module {
 
     @Override
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
-        if (!isEnabled() || !render.get() || currentTargets.isEmpty()) return;
-        for (BlockPos pos : currentTargets) {
-            AABB box = new AABB(pos);
-            renderer.filledBox(box, fillColor.getArgb());
-            renderer.outlineBox(box, lineColor.getArgb(), lineWidth.get());
-        }
+        if (!isEnabled() || !render.get() || mc.level == null) return;
+        placementPreview.render(renderer, mc.level, currentTargets, previewBlockState(),
+                fillColor.getArgb(), lineColor.getArgb(), lineWidth.get());
     }
 
+    private BlockState previewBlockState() {
+        BlockPlacer.PlacementSlot slot = mc.player == null ? null : ShellBlocks.find(mc.player, blockPriority.get());
+        return slot != null && slot.stack().getItem() instanceof BlockItem item
+                ? item.getBlock().defaultBlockState() : null;
+    }
+
+
     public enum Mode {
+        /** Just the roof over your head. */
         HEAD,
+        /** Roof plus the head-level cells beside you, which stops crystals going off at face height. */
+        FACE,
+        /** Face, plus the roof-level cells beside the roof. */
         FULL
     }
 }

@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.nondraggable.impl.tab;
 
+import combatant.client.features.module.modules.misc.NameProtect;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -60,13 +62,13 @@ final class TabRichTextRenderer {
     static float width(Component component, float size) {
         float out = 0f;
         for (Segment segment : flatten(component)) {
-            out += width(font(segment.style()), segment.text(), size);
+            out += width(font(segment.style()), NameProtect.applyDisplay(segment.text()), size);
         }
         return out;
     }
 
     static float widthPlain(String text, float size) {
-        return width(font(Style.EMPTY), text, size);
+        return width(font(Style.EMPTY), NameProtect.applyDisplay(text), size);
     }
 
     static void drawPlain(Renderer2D renderer,
@@ -77,6 +79,7 @@ final class TabRichTextRenderer {
                           float size,
                           int fallbackColor,
                           float alpha) {
+        text = NameProtect.applyDisplay(text);
         if (text == null || text.isEmpty() || maxWidth <= 0f || alpha <= 0f) return;
         TextRenderer font = font(Style.EMPTY);
         int color = color(Style.EMPTY, fallbackColor, alpha);
@@ -146,8 +149,9 @@ final class TabRichTextRenderer {
             if (segment.text() == null || segment.text().isEmpty()) continue;
             TextRenderer font = font(segment.style());
             int color = color(segment.style(), fallbackColor, alpha);
-            drawString(renderer, font, segment.text(), cursor, y, size, color, true);
-            cursor += width(font, segment.text(), size);
+            String displayText = NameProtect.applyDisplay(segment.text());
+            drawString(renderer, font, displayText, cursor, y, size, color, true);
+            cursor += width(font, displayText, size);
         }
     }
 
@@ -224,9 +228,10 @@ final class TabRichTextRenderer {
             if (segment.text() == null || segment.text().isEmpty()) continue;
             TextRenderer font = font(segment.style());
             int color = color(segment.style(), fallbackColor, alpha);
-            drawStringFadeClipped(renderer, font, segment.text(), cursor, y, size, color, true,
+            String displayText = NameProtect.applyDisplay(segment.text());
+            drawStringFadeClipped(renderer, font, displayText, cursor, y, size, color, true,
                     clipLeft, clipRight, fade);
-            cursor += width(font, segment.text(), size);
+            cursor += width(font, displayText, size);
         }
     }
 

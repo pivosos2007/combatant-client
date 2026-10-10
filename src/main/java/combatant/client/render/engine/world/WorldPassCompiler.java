@@ -20,6 +20,8 @@ import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.RenderFrameContext;
 import combatant.client.render.engine.core.policy.DepthProvider;
 import combatant.client.render.engine.depth.PreTranslucentDepth;
+import combatant.client.render.engine.depth.EntityDepthLayer;
+import combatant.client.render.engine.depth.WorldSceneDepth;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
@@ -40,6 +42,7 @@ public final class WorldPassCompiler {
     private static DepthPolicy effectiveDepthPolicy(Renderer3D.DepthMode mode, RenderPipelineSpec spec) {
         if (mode == Renderer3D.DepthMode.NONE) return DepthPolicy.NONE;
         if (mode == Renderer3D.DepthMode.PRE_DEPTH) return DepthPolicy.PRE_TRANSLUCENT;
+        if (mode == Renderer3D.DepthMode.ENTITY_ONLY) return DepthPolicy.CUSTOM;
         return spec != null ? spec.depthPolicy() : DepthPolicy.MAIN_FRAMEBUFFER;
     }
 
@@ -119,11 +122,13 @@ public final class WorldPassCompiler {
 
             uploaded = CombatantRenderSystem.rhi().dynamicMeshes().upload(drawMesh);
             RenderPipelineSpec spec = RenderPipelineRegistry.global().require(drawPipeline);
+            GpuTextureView depthAttachment = resolveDepthView(ctx, command.depthMode(), spec, framebuffer, colorView);
+            if (command.depthMode() == Renderer3D.DepthMode.ENTITY_ONLY && depthAttachment == null) return null;
             RhiDrawCommand.Builder draw = RhiDrawCommand.builder("Combatant Renderer3D World Command")
                     .pipeline(drawPipeline)
                     .pipelineSpec(spec)
                     .colorAttachment(colorView)
-                    .depthAttachment(resolveDepthView(ctx, command.depthMode(), spec, framebuffer, colorView))
+                    .depthAttachment(depthAttachment)
                     .mesh(uploaded)
                     .transform(transform)
                     .applyWorldCameraY(true)
@@ -178,7 +183,10 @@ public final class WorldPassCompiler {
         }
 
         GpuTextureView depth = null;
-        if (policy == DepthPolicy.PRE_TRANSLUCENT) {
+        if (mode == Renderer3D.DepthMode.ENTITY_ONLY) {
+            depth = EntityDepthLayer.depthView();
+            stats.depthPrePassBinding();
+        } else if (policy == DepthPolicy.PRE_TRANSLUCENT) {
             depth = PreTranslucentDepth.getDepthViewFor(colorView);
             stats.depthPrePassBinding();
         } else {
@@ -191,7 +199,7 @@ public final class WorldPassCompiler {
         if (depth != null && samples(depth) == requiredSamples) {
             return depth;
         }
-        if (policy == DepthPolicy.PRE_TRANSLUCENT) {
+        if (policy == DepthPolicy.PRE_TRANSLUCENT || mode == Renderer3D.DepthMode.ENTITY_ONLY) {
             return null;
         }
         GpuTextureView framebufferDepth = framebuffer != null ? framebuffer.getDepthTextureView() : null;

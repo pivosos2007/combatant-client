@@ -17,7 +17,6 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.RenderState;
-import combatant.client.render.engine.TextureStorage;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
@@ -25,6 +24,7 @@ import combatant.client.render.effects.CurrentTransientEffectBackend;
 import combatant.client.render.effects.EffectBudget;
 import combatant.client.render.effects.kernels.TransientAttackKernels;
 import combatant.client.render.effects.mask.WorldPostProcessMasks;
+import combatant.client.render.effects.surface.CurrentSurfaceWaveRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.util.Mth;
@@ -189,6 +189,13 @@ public class TotemFX extends Module {
     }
 
     private void renderProceduralBursts(Renderer3D renderer, long now, boolean useDepth) {
+        int live = 0;
+        for (BurstVisual burst : activeBursts) {
+            long age = now - burst.spawnMs();
+            if (burst.depthTest() == useDepth && age >= 0L && age < burst.lifetimeMs()) live++;
+        }
+        if (live == 0) return;
+
         var pipeline = useDepth
                 ? CombatantRenderPipelines.WORLD_TOTEM_BURST_DEPTH
                 : CombatantRenderPipelines.WORLD_TOTEM_BURST;
@@ -198,17 +205,10 @@ public class TotemFX extends Module {
         );
         if (mesh == null) return;
 
-        int live = 0;
-        for (BurstVisual burst : activeBursts) {
-            long age = now - burst.spawnMs();
-            if (burst.depthTest() == useDepth && age >= 0L && age < burst.lifetimeMs()) live++;
-        }
-        if (live == 0) return;
-
-        final int lonSegments = 18;
-        final int latSegments = 10;
-        final int quadsPerSphere = lonSegments * latSegments;
-        mesh.ensureCapacity(live * quadsPerSphere * 12, live * quadsPerSphere * 18);
+        final int maxLonSegments = 18;
+        final int maxLatSegments = 10;
+        final int maxQuadsPerSphere = maxLonSegments * maxLatSegments;
+        mesh.ensureCapacity(live * maxQuadsPerSphere * 12, live * maxQuadsPerSphere * 18);
 
         Vec3 cameraPos = RenderState.cameraPos;
         for (BurstVisual burst : activeBursts) {
@@ -220,6 +220,10 @@ public class TotemFX extends Module {
             boolean offensive = burst.kind() == BurstKind.ATTACKED;
             float maxRadius = (offensive ? 3.10f : 2.42f) * burst.scale();
             if (!burstVisible(burst.center(), maxRadius)) continue;
+
+            double cameraDistance = cameraPos != null ? cameraPos.distanceTo(burst.center()) : 0.0;
+            int lonSegments = cameraDistance > 48.0 ? 12 : cameraDistance > 28.0 ? 14 : 18;
+            int latSegments = cameraDistance > 48.0 ? 7 : cameraDistance > 28.0 ? 8 : 10;
 
             float expansion = 1.0f - (float) Math.pow(1.0f - t, offensive ? 2.75 : 2.35);
             float attack = smooth(Mth.clamp(t / 0.075f, 0.0f, 1.0f));
@@ -238,6 +242,31 @@ public class TotemFX extends Module {
                     envelope * (offensive ? 1.24f : 1.02f), 0.0f,
                     lonSegments, latSegments, cameraInsideShell
             );
+
+            // Ground shockwave is authored as its own one-shot expanding pass, projected from the
+            // burst centre onto the contact plane. That keeps the origin visually locked to the
+            // detonation while avoiding the old torso/surface mismatch and multi-flash feel.
+            Vec3 groundOrigin = new Vec3(burst.center().x, burst.base().y, burst.center().z);
+            float waveProgress = smooth(Mth.clamp(t / (offensive ? 0.58f : 0.64f), 0.0f, 1.0f));
+            float waveFade = 1.0f - smooth(Mth.clamp((t - (offensive ? 0.52f : 0.48f)) / (offensive ? 0.30f : 0.34f), 0.0f, 1.0f));
+            float waveOpacity = attack * waveFade * (offensive ? 0.98f : 0.90f);
+            if (waveOpacity > 0.003f) {
+                float waveRadius = maxRadius * (offensive ? (0.18f + waveProgress * 1.08f) : (0.15f + waveProgress * 0.98f));
+                CurrentSurfaceWaveRenderer.renderRadialInteraction(
+                        renderer,
+                        mc.level,
+                        groundOrigin,
+                        waveRadius,
+                        offensive ? 0.16f * burst.scale() : 0.13f * burst.scale(),
+                        offensive ? 0.22f * burst.scale() : 0.18f * burst.scale(),
+                        waveOpacity,
+                        waveProgress,
+                        useDepth,
+                        offensive ? 280 : 220,
+                        angle -> burstPalette(angle, t, offensive),
+                        offensive ? 2.0f : 1.0f
+                );
+            }
 
             float innerRimEnvelope = envelope
                     * smooth(Mth.clamp((t - 0.035f) / 0.11f, 0.0f, 1.0f))
@@ -374,11 +403,6 @@ public class TotemFX extends Module {
             float shockStrength = (burst.kind() == BurstKind.SELF ? 0.44f : 0.70f)
                     * envelope * (0.78f + 0.22f * (float) Math.sin(t * 19.0f + seedPhase));
 
-            submitGroundShock(burst.base(), shockRadius, seedPhase + t * 0.55f,
-                    shockStrength, burst.kind() == BurstKind.SELF ? -0.20f : 0.28f,
-                    envelope * (burst.kind() == BurstKind.SELF ? 0.66f : 0.86f),
-                    burst.depthTest());
-
             float lensRadius = shockRadius * (burst.kind() == BurstKind.SELF ? 0.78f : 0.90f);
             WorldPostProcessMasks.distortionVolumeSphere(
                     burst.center(),
@@ -409,40 +433,44 @@ public class TotemFX extends Module {
         }
     }
 
-    private static void submitGroundShock(Vec3 base,
-                                          float radius,
-                                          float roll,
-                                          float strength,
-                                          float swirl,
-                                          float opacity,
-                                          boolean depthTest) {
-        float c = (float) Math.cos(roll);
-        float s = (float) Math.sin(roll);
-        double rx = radius * c;
-        double rz = radius * s;
-        Vec3 a = base.add(-rx + rz, 0.0, -rz - rx);
-        Vec3 b = base.add( rx + rz, 0.0,  rz - rx);
-        Vec3 c0 = base.add( rx - rz, 0.0,  rz + rx);
-        Vec3 d = base.add(-rx - rz, 0.0, -rz + rx);
-        WorldPostProcessMasks.distortionQuad(
-                TextureStorage.JUMP_CIRCLE,
-                a, b, c0, d,
-                strength, swirl, opacity, depthTest
-        );
-    }
-
     private static boolean burstVisible(Vec3 center, float radius) {
         double extent = Math.max(0.25, radius);
         AABB box = new AABB(
                 center.x - extent, center.y - extent, center.z - extent,
                 center.x + extent, center.y + extent, center.z + extent
         );
-        return Renderer3D.Culling.isInFrustum(box) && Renderer3D.Culling.isSectionVisible(box);
+        return Renderer3D.Culling.isInFrustum(box);
     }
 
     private static float smooth(float value) {
         float t = Mth.clamp(value, 0.0f, 1.0f);
         return t * t * (3.0f - 2.0f * t);
+    }
+
+    private static int burstPalette(int angle, float progress, boolean offensive) {
+        float radians = (float) Math.toRadians(angle);
+        float phase = radians * (offensive ? 1.55f : 1.20f) - progress * (offensive ? 8.8f : 6.6f);
+        float mix = 0.5f + 0.5f * (float) Math.sin(phase);
+        int from = offensive ? IMPACT_CORAL : TOTEM_GOLD;
+        int to = offensive ? IMPACT_HOT : TOTEM_MINT;
+        return mixArgb(from, to, mix);
+    }
+
+    private static int mixArgb(int a, int b, float t) {
+        float clamped = Mth.clamp(t, 0.0f, 1.0f);
+        int aa = (a >>> 24) & 0xFF;
+        int ar = (a >>> 16) & 0xFF;
+        int ag = (a >>> 8) & 0xFF;
+        int ab = a & 0xFF;
+        int ba = (b >>> 24) & 0xFF;
+        int br = (b >>> 16) & 0xFF;
+        int bg = (b >>> 8) & 0xFF;
+        int bb = b & 0xFF;
+        int outA = Math.round(aa + (ba - aa) * clamped);
+        int outR = Math.round(ar + (br - ar) * clamped);
+        int outG = Math.round(ag + (bg - ag) * clamped);
+        int outB = Math.round(ab + (bb - ab) * clamped);
+        return (outA << 24) | (outR << 16) | (outG << 8) | outB;
     }
 
     private void pruneExpiredBursts(long now) {

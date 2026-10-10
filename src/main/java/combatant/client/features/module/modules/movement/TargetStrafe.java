@@ -1,10 +1,8 @@
 /*
  * This file is part of the Combatant Client distribution.
  * Copyright (c) 2026 pivosos2007.
- *
  * Licensed under the GNU General Public License v3.0.
  */
-
 package combatant.client.features.module.modules.movement;
 
 import lombok.Getter;
@@ -26,8 +24,13 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.KillAura;
+import combatant.client.features.module.modules.movement.holesnap.Steering;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.combat.SprintController;
+import combatant.client.util.player.navigation.OrbitNavigator;
+import combatant.client.util.player.navigation.HazardAvoidance;
+
+import java.util.concurrent.ThreadLocalRandom;
 
 @ModuleInfo(
         id = "targetstrafe",
@@ -35,7 +38,6 @@ import combatant.client.util.combat.SprintController;
         category = ModuleCategory.MOVEMENT, subcategory = ModuleSubcategory.RAGE,
         description = "module.targetstrafe.description")
 public final class TargetStrafe extends Module {
-
     private final Minecraft mc = Minecraft.getInstance();
     private final EnumValue<StrafeMode> mode =
             enumMode("mode", StrafeMode.MATRIX, StrafeMode.MATRIX, StrafeMode.GRIM);
@@ -49,279 +51,216 @@ public final class TargetStrafe extends Module {
             visibleWhen(num("radius", 2.5f, 0.1f, 7.0f), this::isMatrixMode);
     private final NumberValue<Float> speed =
             visibleWhen(num("speed", 0.3f, 0.1f, 1.0f), this::isMatrixMode);
-    private final BooleanValue autoJump =
-            bool("auto_jump", true);
-    private final BooleanValue onlyKeyPressed =
-            bool("only_key_pressed", false);
-    private final BooleanValue inFrontOfTarget =
-            bool("in_front_of_target", false);
+    private final BooleanValue autoJump = bool("auto_jump", true);
+    private final BooleanValue onlyKeyPressed = bool("only_key_pressed", false);
+    private final BooleanValue inFrontOfTarget = bool("in_front_of_target", false);
     private final EnumValue<DirectionMode> directionMode =
             enumMode("direction_mode", DirectionMode.CLOCKWISE,
                     DirectionMode.CLOCKWISE, DirectionMode.COUNTERCLOCKWISE, DirectionMode.RANDOM);
-    private int pointIndex;
 
-    private static float resolveControlYaw() {
-        var rotation = RotationManager.INSTANCE.getCurrentRotation();
-        if (rotation != null) {
-            return rotation.yaw();
-        }
-
-        LocalPlayer player = Minecraft.getInstance().player;
-        return player != null ? player.getYRot() : 0.0f;
-    }
-
-    private static void setHorizontalVelocity(LocalPlayer player, float yaw, double speed) {
-        player.setDeltaMovement(
-                -Math.sin(Math.toRadians(yaw)) * speed,
-                player.getDeltaMovement().y,
-                Math.cos(Math.toRadians(yaw)) * speed
-        );
-    }
-
-    private static boolean hasForwardMovement(float angleDiff) {
-        return angleDiff > -67.5f && angleDiff < 67.5f;
-    }
+    private final OrbitNavigator navigator = new OrbitNavigator();
+    private LivingEntity lastDirectionTarget;
+    private DirectionMode lastDirectionMode;
+    private int randomDirection = 1;
 
     @Override
     public void onEnable() {
-        pointIndex = 0;
+        navigator.reset();
+        lastDirectionTarget = null;
+        lastDirectionMode = null;
+    }
+
+    @Override
+    public void onDisable() {
+        navigator.reset();
+        lastDirectionTarget = null;
+    }
+
+    @EventHandler
+    private void onTick(GameTickEvent event) {
+        if (!isEnabled()) return;
+        LocalPlayer player = mc.player;
+        LivingEntity target = currentTarget();
+        if (player == null || mc.level == null || target == null || !target.isAlive()) {
+            navigator.reset();
+            return;
+        }
+        if (onlyKeyPressed.get() && !isAnyMovementKeyPressed()) {
+            navigator.reset();
+            return;
+        }
+
+        PointType type = isMatrixMode() ? matrixPointType.get() : grimPointType.get();
+        if (!isMatrixMode()) return;
+        navigator.update(player, target, radius.get(),
+                resolveDirectionMultiplier(target), inFrontOfTarget.get(),
+                type == PointType.CUBE, type == PointType.CENTER, autoJump.get());
+        Vec3 direction = navigator.direction(player);
+        if (direction == null) {
+            stopHorizontal(player);
+            return;
+        }
+        boolean jump = autoJump.get() && navigator.needsJump(player);
+        boolean trapped = HazardAvoidance.exposure(player.level(), player.getBoundingBox()) > 0;
+        // Preserve the old dynamic hopping on clear ground. On a climb, jump
+        // first and allow the horizontal traversal once the player is airborne.
+        boolean hop = autoJump.get() && player.onGround() && !trapped;
+        if ((jump || hop) && player.onGround()) player.jumpFromGround();
+
+        double velocity = speed.get();
+        Vec3 horizontal = direction.scale(velocity);
+        if (!navigator.safeMotion(player, horizontal)) {
+            // Keep moving at a shorter safe step if the configured Matrix speed
+            // is larger than the clearance in front of us. Never push into a
+            // wall/void, but do not turn a minor speed overshoot into a freeze.
+            if (!jump) {
+                for (int attempt = 0; attempt < 4 && velocity >= 0.11; attempt++) {
+                    velocity *= 0.70;
+                    horizontal = direction.scale(velocity);
+                    if (navigator.safeMotion(player, horizontal)) break;
+                }
+            }
+            if (jump || velocity < 0.11 || !navigator.safeMotion(player, horizontal)) {
+                // A climb starts with vertical velocity. Do not invalidate the
+                // path until the airborne player has a chance to cross the rise.
+                if (!jump) navigator.invalidate();
+                stopHorizontal(player);
+                return;
+            }
+        }
+        player.setDeltaMovement(horizontal.x, player.getDeltaMovement().y, horizontal.z);
+        float yaw = (float) Math.toDegrees(Math.atan2(horizontal.z, horizontal.x)) - 90.0f;
+        float angleDiff = Mth.wrapDegrees(yaw - resolveControlYaw());
+        SprintController.INSTANCE.requestStartSprinting(mc, player,
+                velocity > 0.01 && hasForwardMovement(angleDiff));
     }
 
     @EventHandler
     private void onMovementInput(MovementInputEvent event) {
         if (!isEnabled() || !isGrimMode()) return;
-
         LocalPlayer player = mc.player;
         LivingEntity target = currentTarget();
         if (player == null || mc.level == null || target == null || !target.isAlive()) return;
         if (onlyKeyPressed.get() && !isAnyMovementKeyPressed()) return;
 
-        Vec3 playerPos = player.position();
-        Vec3 targetPos = target.position();
-        double r = grimRadius.get();
-        int directionMultiplier = resolveDirectionMultiplier();
-
-        Vec3 nextPoint;
-        if (inFrontOfTarget.get()) {
-            float targetYaw = target.getYRot();
-            if (grimPointType.get() == PointType.CENTER) {
-                nextPoint = targetPos.add(
-                        -Math.sin(Math.toRadians(targetYaw)) * r * directionMultiplier,
-                        0.0,
-                        Math.cos(Math.toRadians(targetYaw)) * r * directionMultiplier
-                );
-            } else {
-                double offset = Math.cos(System.currentTimeMillis() / 500.0) * r * directionMultiplier;
-                nextPoint = targetPos.add(
-                        -Math.sin(Math.toRadians(targetYaw)) * r + Math.cos(Math.toRadians(targetYaw)) * offset,
-                        0.0,
-                        Math.cos(Math.toRadians(targetYaw)) * r + Math.sin(Math.toRadians(targetYaw)) * offset
-                );
-            }
-        } else {
-            nextPoint = switch (grimPointType.get()) {
-                case CUBE -> nextCubePoint(playerPos, targetPos, r, directionMultiplier);
-                case CIRCLE -> nextCirclePoint(playerPos, targetPos, r, directionMultiplier);
-                case CENTER -> new Vec3(targetPos.x, playerPos.y, targetPos.z);
-            };
+        PointType type = grimPointType.get();
+        navigator.update(player, target, grimRadius.get(), resolveDirectionMultiplier(target),
+                inFrontOfTarget.get(), type == PointType.CUBE,
+                type == PointType.CENTER, autoJump.get());
+        Vec3 direction = navigator.direction(player);
+        if (direction == null) {
+            clearMovement(event);
+            return;
         }
-
-        Vec3 direction = nextPoint.subtract(playerPos);
-        if (direction.lengthSqr() < 1.0E-6) return;
-        direction = direction.normalize();
-
-        float yaw = resolveControlYaw();
-        float movementAngle = (float) Math.toDegrees(Math.atan2(direction.z, direction.x)) - 90.0f;
-        float angleDiff = Mth.wrapDegrees(movementAngle - yaw);
-
-        boolean forward = false;
-        boolean backward = false;
-        boolean left = false;
-        boolean right = false;
-
-        if (angleDiff >= -22.5f && angleDiff < 22.5f) {
-            forward = true;
-        } else if (angleDiff >= 22.5f && angleDiff < 67.5f) {
-            forward = true;
-            right = true;
-        } else if (angleDiff >= 67.5f && angleDiff < 112.5f) {
-            right = true;
-        } else if (angleDiff >= 112.5f && angleDiff < 157.5f) {
-            backward = true;
-            right = true;
-        } else if (angleDiff >= -67.5f && angleDiff < -22.5f) {
-            forward = true;
-            left = true;
-        } else if (angleDiff >= -112.5f && angleDiff < -67.5f) {
-            left = true;
-        } else if (angleDiff >= -157.5f && angleDiff < -112.5f) {
-            backward = true;
-            left = true;
-        } else {
-            backward = true;
+        float controlYaw = resolveControlYaw();
+        int keys = Steering.keysToward(controlYaw, direction.x, direction.z);
+        boolean jump = autoJump.get() && player.onGround() && navigator.needsJump(player);
+        boolean trapped = HazardAvoidance.exposure(player.level(), player.getBoundingBox()) > 0;
+        Vec3 inputMotion = motionFromKeys(controlYaw, keys).scale(0.36);
+        // WASD quantization may cut a corner even when the waypoint path is valid.
+        // Validate the actual input vector against the same collision/edge policy.
+        if (keys != 0 && !navigator.safeMotion(player, inputMotion)) {
+            if (!jump) navigator.invalidate();
+            clearMovement(event);
+            if (jump) event.setJump(true);
+            return;
         }
-
-        event.setForward(forward);
-        event.setBackward(backward);
-        event.setLeft(left);
-        event.setRight(right);
+        // Hop on clear ground as before, but not while escaping webs/lava.
+        boolean hop = autoJump.get() && player.onGround() && !trapped;
+        event.setForward((keys & Steering.FORWARD) != 0);
+        event.setBackward((keys & Steering.BACKWARD) != 0);
+        event.setLeft((keys & Steering.LEFT) != 0);
+        event.setRight((keys & Steering.RIGHT) != 0);
+        event.setJump(event.isJump() || jump || hop);
         event.setSprint(SprintController.INSTANCE.canStartSprinting(player)
-                && hasForwardMovement(angleDiff));
-
-        if (autoJump.get() && player.onGround()) {
-            event.setJump(true);
-        }
+                && (keys & Steering.FORWARD) != 0);
     }
 
-    @EventHandler
-    private void onTick(GameTickEvent event) {
-        if (!isEnabled() || !isMatrixMode()) return;
+    private static Vec3 motionFromKeys(float yaw, int keys) {
+        double forward = ((keys & Steering.FORWARD) != 0 ? 1.0 : 0.0)
+                - ((keys & Steering.BACKWARD) != 0 ? 1.0 : 0.0);
+        double sideways = ((keys & Steering.LEFT) != 0 ? 1.0 : 0.0)
+                - ((keys & Steering.RIGHT) != 0 ? 1.0 : 0.0);
+        double angle = Math.toRadians(yaw);
+        Vec3 vector = new Vec3(-Math.sin(angle) * forward + Math.cos(angle) * sideways,
+                0.0, Math.cos(angle) * forward + Math.sin(angle) * sideways);
+        return vector.lengthSqr() > 1.0e-6 ? vector.normalize() : Vec3.ZERO;
+    }
 
-        LocalPlayer player = mc.player;
-        LivingEntity target = currentTarget();
-        if (player == null || mc.level == null || target == null || !target.isAlive()) return;
-        if (onlyKeyPressed.get() && !isAnyMovementKeyPressed()) return;
+    private static void clearMovement(MovementInputEvent event) {
+        event.setForward(false);
+        event.setBackward(false);
+        event.setLeft(false);
+        event.setRight(false);
+        event.setSprint(false);
+        // Do not clear the user's explicit jump/sneak keys.
+    }
 
-        Vec3 playerPos = player.position();
-        Vec3 targetPos = target.position();
-        double r = radius.get();
-
-        if (autoJump.get() && player.onGround()) {
-            player.jumpFromGround();
-        }
-
-        int directionMultiplier = resolveDirectionMultiplier();
-
-        if (inFrontOfTarget.get()) {
-            float targetYaw = target.getYRot();
-            double x = targetPos.x - Math.sin(Math.toRadians(targetYaw)) * r * directionMultiplier;
-            double z = targetPos.z + Math.cos(Math.toRadians(targetYaw)) * r * directionMultiplier;
-
-            float yaw = (float) Math.toDegrees(Math.atan2(z - playerPos.z, x - playerPos.x)) - 90.0f;
-            setHorizontalVelocity(player, yaw, speed.get());
-            requestSprintForMovementYaw(player, yaw);
-            return;
-        }
-
-        if (matrixPointType.get() == PointType.CUBE) {
-            Vec3 nextPoint = nextCubePoint(playerPos, targetPos, r, directionMultiplier);
-            Vec3 dirVec = nextPoint.subtract(playerPos);
-            if (dirVec.lengthSqr() < 1.0E-6) return;
-            dirVec = dirVec.normalize();
-
-            float yaw = (float) Math.toDegrees(Math.atan2(dirVec.z, dirVec.x)) - 90.0f;
-            setHorizontalVelocity(player, yaw, speed.get());
-            requestSprintForMovementYaw(player, yaw);
-            return;
-        }
-
-        double angle = Math.atan2(playerPos.z - targetPos.z, playerPos.x - targetPos.x);
-        angle += directionMultiplier * speed.get() / Math.max(playerPos.distanceTo(targetPos), r);
-
-        double x = targetPos.x + r * Math.cos(angle);
-        double z = targetPos.z + r * Math.sin(angle);
-        float yaw = (float) Math.toDegrees(Math.atan2(z - playerPos.z, x - playerPos.x)) - 90.0f;
-        setHorizontalVelocity(player, yaw, speed.get());
-        requestSprintForMovementYaw(player, yaw);
+    private static void stopHorizontal(LocalPlayer player) {
+        player.setDeltaMovement(0.0, player.getDeltaMovement().y, 0.0);
     }
 
     private LivingEntity currentTarget() {
-        KillAura killAura = Modules.get(KillAura.class);
-        if (killAura == null || !killAura.isEnabled()) {
-            return null;
-        }
-        return killAura.getCurrentTarget();
+        KillAura aura = Modules.get(KillAura.class);
+        return aura != null && aura.isEnabled() ? aura.getCurrentTarget() : null;
     }
 
     public boolean shouldDisableAuraFreeCorrection() {
         return isEnabled() && isGrimMode() && currentTarget() != null;
     }
 
-    private int resolveDirectionMultiplier() {
-        return switch (directionMode.get()) {
-            case COUNTERCLOCKWISE -> -1;
-            case RANDOM -> ((System.currentTimeMillis() / 3000L) % 2L == 0L) ? 1 : -1;
-            case CLOCKWISE -> 1;
-        };
-    }
-
-    private Vec3 nextCubePoint(Vec3 playerPos, Vec3 targetPos, double radius, int directionMultiplier) {
-        Vec3[] points = new Vec3[]{
-                new Vec3(targetPos.x - radius, playerPos.y, targetPos.z - radius),
-                new Vec3(targetPos.x - radius, playerPos.y, targetPos.z + radius),
-                new Vec3(targetPos.x + radius, playerPos.y, targetPos.z + radius),
-                new Vec3(targetPos.x + radius, playerPos.y, targetPos.z - radius)
-        };
-
-        if (playerPos.distanceTo(points[pointIndex]) < 0.5) {
-            pointIndex = (pointIndex + directionMultiplier + points.length) % points.length;
+    private int resolveDirectionMultiplier(LivingEntity target) {
+        DirectionMode setting = directionMode.get();
+        if (lastDirectionTarget != target || lastDirectionMode != setting) {
+            lastDirectionTarget = target;
+            lastDirectionMode = setting;
+            randomDirection = ThreadLocalRandom.current().nextBoolean() ? 1 : -1;
         }
-
-        return points[pointIndex];
+        return switch (setting) {
+            case CLOCKWISE -> 1;
+            case COUNTERCLOCKWISE -> -1;
+            case RANDOM -> randomDirection;
+        };
     }
 
-    private Vec3 nextCirclePoint(Vec3 playerPos, Vec3 targetPos, double radius, int directionMultiplier) {
-        double baseAngle = (System.currentTimeMillis() % 3600L) / 3600.0 * 4.0 * Math.PI;
-        double angle = directionMultiplier > 0 ? baseAngle : (2.0 * Math.PI - baseAngle);
-        return new Vec3(
-                targetPos.x + Math.cos(angle) * radius,
-                playerPos.y,
-                targetPos.z + Math.sin(angle) * radius
-        );
+    private static float resolveControlYaw() {
+        var rotation = RotationManager.INSTANCE.getCurrentRotation();
+        if (rotation != null) return rotation.yaw();
+        LocalPlayer player = Minecraft.getInstance().player;
+        return player == null ? 0.0f : player.getYRot();
+    }
+
+    private static boolean hasForwardMovement(float angleDiff) {
+        return angleDiff > -67.5f && angleDiff < 67.5f;
     }
 
     private boolean isAnyMovementKeyPressed() {
-        return mc.options != null
-                && (mc.options.keyUp.isDown()
-                || mc.options.keyDown.isDown()
-                || mc.options.keyLeft.isDown()
+        return mc.options != null && (mc.options.keyUp.isDown()
+                || mc.options.keyDown.isDown() || mc.options.keyLeft.isDown()
                 || mc.options.keyRight.isDown());
     }
 
-    private void requestSprintForMovementYaw(LocalPlayer player, float movementYaw) {
-        float controlYaw = resolveControlYaw();
-        float angleDiff = Mth.wrapDegrees(movementYaw - controlYaw);
-        SprintController.INSTANCE.requestStartSprinting(mc, player, hasForwardMovement(angleDiff));
-    }
-
-    private boolean isMatrixMode() {
-        return mode.get() == StrafeMode.MATRIX;
-    }
-
-    private boolean isGrimMode() {
-        return mode.get() == StrafeMode.GRIM;
-    }
-
+    private boolean isMatrixMode() { return mode.get() == StrafeMode.MATRIX; }
+    private boolean isGrimMode() { return mode.get() == StrafeMode.GRIM; }
     private boolean usesGrimRadius() {
-        return isGrimMode() && (grimPointType.get() == PointType.CUBE || grimPointType.get() == PointType.CIRCLE);
+        return isGrimMode() && grimPointType.get() != PointType.CENTER;
     }
 
-    @Getter
-    @RequiredArgsConstructor
+    @Getter @RequiredArgsConstructor
     private enum StrafeMode implements EnumValue.IdProvider {
-        MATRIX("Matrix"),
-        GRIM("Grim");
-
+        MATRIX("Matrix"), GRIM("Grim");
         private final String id;
     }
 
-    @Getter
-    @RequiredArgsConstructor
+    @Getter @RequiredArgsConstructor
     private enum PointType implements EnumValue.IdProvider {
-        CUBE("Cube"),
-        CENTER("Center"),
-        CIRCLE("Circle");
-
+        CUBE("Cube"), CENTER("Center"), CIRCLE("Circle");
         private final String id;
     }
 
-    @Getter
-    @RequiredArgsConstructor
+    @Getter @RequiredArgsConstructor
     private enum DirectionMode implements EnumValue.IdProvider {
-        CLOCKWISE("Clockwise"),
-        COUNTERCLOCKWISE("Counterclockwise"),
-        RANDOM("Random");
-
+        CLOCKWISE("Clockwise"), COUNTERCLOCKWISE("Counterclockwise"), RANDOM("Random");
         private final String id;
     }
 }

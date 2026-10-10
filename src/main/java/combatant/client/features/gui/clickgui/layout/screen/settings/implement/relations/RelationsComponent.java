@@ -93,6 +93,11 @@ public final class RelationsComponent {
     private float listW;
     private float listH;
 
+    private float heuristicsScroll;
+    private float smoothedHeuristicsScroll;
+    private float heuristicsMaxScroll;
+    private Rect heuristicsViewport = Rect.ZERO;
+
     private float modeAnim;
     private float friendsHoverAnim;
     private float enemiesHoverAnim;
@@ -117,6 +122,10 @@ public final class RelationsComponent {
     public void resetScroll() {
         scroll = 0f;
         smoothedScroll = 0f;
+        heuristicsScroll = 0f;
+        smoothedHeuristicsScroll = 0f;
+        heuristicsMaxScroll = 0f;
+        heuristicsViewport = Rect.ZERO;
         draggingScrollbar = false;
         activeField = ActiveField.NONE;
         onlinePicker.close();
@@ -178,6 +187,10 @@ public final class RelationsComponent {
     public void scroll(float mx, float my, double amount) {
         if (onlinePicker.isVisible()) {
             onlinePicker.scroll(mx, my, amount);
+            return;
+        }
+        if (tab == RelationTab.STAFF && heuristicsViewport.contains(mx, my)) {
+            heuristicsScroll += (float) (amount * 22f);
             return;
         }
         if (!ClickGuiMath.insideRect(mx, my, listX, listY, listW, listH)) return;
@@ -248,17 +261,19 @@ public final class RelationsComponent {
                 GuiSound.booleanFeedback(cfg.enabled());
                 return true;
             }
-            if (prefixInputRect.contains(mx, my)) return focusField(ActiveField.PREFIX);
-            if (suffixInputRect.contains(mx, my)) return focusField(ActiveField.SUFFIX);
-            if (containsInputRect.contains(mx, my)) return focusField(ActiveField.CONTAINS);
-            if (prefixAddButton.contains(mx, my)) return commitHeuristic(ActiveField.PREFIX);
-            if (suffixAddButton.contains(mx, my)) return commitHeuristic(ActiveField.SUFFIX);
-            if (containsAddButton.contains(mx, my)) return commitHeuristic(ActiveField.CONTAINS);
+            if (heuristicsViewport.contains(mx, my)) {
+                if (prefixInputRect.contains(mx, my)) return focusField(ActiveField.PREFIX);
+                if (suffixInputRect.contains(mx, my)) return focusField(ActiveField.SUFFIX);
+                if (containsInputRect.contains(mx, my)) return focusField(ActiveField.CONTAINS);
+                if (prefixAddButton.contains(mx, my)) return commitHeuristic(ActiveField.PREFIX);
+                if (suffixAddButton.contains(mx, my)) return commitHeuristic(ActiveField.SUFFIX);
+                if (containsAddButton.contains(mx, my)) return commitHeuristic(ActiveField.CONTAINS);
 
-            for (ChipHit hit : chipHits) {
-                if (!hit.delete().contains(mx, my)) continue;
-                removeHeuristic(hit.kind(), hit.value());
-                return true;
+                for (ChipHit hit : chipHits) {
+                    if (!hit.delete().contains(mx, my)) continue;
+                    removeHeuristic(hit.kind(), hit.value());
+                    return true;
+                }
             }
         }
 
@@ -901,31 +916,99 @@ public final class RelationsComponent {
                 LayoutRender2D.alpha(palette.menuLineLow(), 0.24f)
         );
 
-        float rowsY = y + 33f * scale;
-        float available = Math.max(1f, y + h - pad - rowsY);
-        float rowGap = 4f * scale;
-        float rowH = Math.max(34f * scale, (available - rowGap * 2f) / 3f);
+        float viewportY = y + 32f * scale;
+        float viewportH = Math.max(1f, y + h - pad - viewportY);
+        float scrollbarReserve = 5f * scale;
+        float contentX = x + pad;
+        float contentW = Math.max(1f, w - pad * 2f - scrollbarReserve);
+        heuristicsViewport = new Rect(contentX, viewportY, Math.max(1f, w - pad * 2f), viewportH);
 
-        renderHeuristicRow(
-                ActiveField.PREFIX,
-                tr("heuristics.prefixes", "Prefixes"),
-                cfg.prefixes(),
-                x + pad, rowsY, w - pad * 2f, rowH, mx, my, scale, palette
-        );
-        rowsY += rowH + rowGap;
-        renderHeuristicRow(
-                ActiveField.SUFFIX,
-                tr("heuristics.suffixes", "Suffixes"),
-                cfg.suffixes(),
-                x + pad, rowsY, w - pad * 2f, rowH, mx, my, scale, palette
-        );
-        rowsY += rowH + rowGap;
-        renderHeuristicRow(
-                ActiveField.CONTAINS,
-                tr("heuristics.contains", "Contains"),
-                cfg.contains(),
-                x + pad, rowsY, w - pad * 2f, rowH, mx, my, scale, palette
-        );
+        float rowGap = 4f * scale;
+        float prefixH = heuristicRowHeight(cfg.prefixes(), contentW, scale);
+        float suffixH = heuristicRowHeight(cfg.suffixes(), contentW, scale);
+        float containsH = heuristicRowHeight(cfg.contains(), contentW, scale);
+        float contentH = prefixH + suffixH + containsH + rowGap * 2f;
+        heuristicsMaxScroll = Math.max(0f, contentH - viewportH);
+        heuristicsScroll = ClickGuiMath.clamp(heuristicsScroll, -heuristicsMaxScroll, 0f);
+        smoothedHeuristicsScroll = AnimationUtility.approach(smoothedHeuristicsScroll, heuristicsScroll, 0.24f);
+        smoothedHeuristicsScroll = AnimationUtility.snap(smoothedHeuristicsScroll, heuristicsScroll, 0.05f);
+
+        float rowY = viewportY + smoothedHeuristicsScroll;
+        boolean clipped = ScissorFunction.pushRaw(heuristicsViewport.x(), heuristicsViewport.y(), heuristicsViewport.w(), heuristicsViewport.h());
+        try {
+            renderHeuristicRow(
+                    ActiveField.PREFIX,
+                    tr("heuristics.prefixes", "Prefixes"),
+                    cfg.prefixes(),
+                    contentX, rowY, contentW, prefixH, mx, my, scale, palette
+            );
+            rowY += prefixH + rowGap;
+            renderHeuristicRow(
+                    ActiveField.SUFFIX,
+                    tr("heuristics.suffixes", "Suffixes"),
+                    cfg.suffixes(),
+                    contentX, rowY, contentW, suffixH, mx, my, scale, palette
+            );
+            rowY += suffixH + rowGap;
+            renderHeuristicRow(
+                    ActiveField.CONTAINS,
+                    tr("heuristics.contains", "Contains"),
+                    cfg.contains(),
+                    contentX, rowY, contentW, containsH, mx, my, scale, palette
+            );
+        } finally {
+            if (clipped) ScissorFunction.pop();
+        }
+
+        renderHeuristicsScrollbar(x + w - pad - 2.5f * scale, viewportY, 2.0f * scale, viewportH, scale, palette);
+    }
+
+    private float heuristicRowHeight(Set<String> entries, float w, float scale) {
+        List<String> sortedEntries = sorted(entries);
+        if (sortedEntries.isEmpty()) return 34f * scale;
+
+        float innerPad = 5.5f * scale;
+        float chipGap = 3f * scale;
+        float chipH = 13f * scale;
+        float maxX = Math.max(1f, w - innerPad * 2f);
+        float lineW = 0f;
+        int lines = 1;
+
+        for (String entry : sortedEntries) {
+            float textSize = 5.25f * scale;
+            float maxTextW = Math.max(12f * scale, maxX - 18f * scale);
+            String fitted = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), entry, textSize, maxTextW);
+            float chipW = Math.min(
+                    ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), fitted, textSize) + 18f * scale,
+                    maxX
+            );
+            if (lineW > 0f && lineW + chipGap + chipW > maxX) {
+                lines++;
+                lineW = chipW;
+            } else {
+                lineW += (lineW > 0f ? chipGap : 0f) + chipW;
+            }
+        }
+
+        float lineGap = 2.7f * scale;
+        float chipsH = lines * chipH + Math.max(0, lines - 1) * lineGap;
+        return 34f * scale + chipsH + 4f * scale;
+    }
+
+    private void renderHeuristicsScrollbar(float x,
+                                           float y,
+                                           float w,
+                                           float h,
+                                           float scale,
+                                           SettingsGuiPalette palette) {
+        if (heuristicsMaxScroll <= 0.5f || h <= 1f) return;
+        float thumbH = Math.max(16f * scale, h * (h / (heuristicsMaxScroll + h)));
+        float ratio = heuristicsMaxScroll <= 0f ? 0f : -smoothedHeuristicsScroll / heuristicsMaxScroll;
+        float thumbY = y + (h - thumbH) * AnimationUtility.clamp(ratio, 0f, 1f);
+        int track = SettingsGuiPalette.withAlpha(palette.controlSurfaceHover(), 48);
+        int thumb = SettingsGuiPalette.withAlpha(SettingsGuiPalette.mix(palette.panelMuted(), tab.color(), 0.16f), 132);
+        LayoutRender2D.roundedQuad(x, y, w, h, w * 0.5f, track, track, track, track);
+        LayoutRender2D.roundedQuad(x, thumbY, w, thumbH, w * 0.5f, thumb, thumb, thumb, thumb);
     }
 
     private void renderHeuristicRow(ActiveField kind,
@@ -939,7 +1022,7 @@ public final class RelationsComponent {
                                     float my,
                                     float scale,
                                     SettingsGuiPalette palette) {
-        boolean rowHovered = ClickGuiMath.insideRect(mx, my, x, y, w, h);
+        boolean rowHovered = heuristicsViewport.contains(mx, my) && ClickGuiMath.insideRect(mx, my, x, y, w, h);
         float rowHover = animateMapValue(heuristicRowHoverAnim, kind, rowHovered, 12f);
         int rowA = SettingsGuiPalette.withAlpha(
                 SettingsGuiPalette.mix(palette.controlSurface(), tab.color(), 0.012f + rowHover * 0.035f),
@@ -990,8 +1073,11 @@ public final class RelationsComponent {
         Rect field = new Rect(x + innerPad, fieldY, fieldW, fieldH);
         Rect add = new Rect(field.x() + field.w() + 3.5f * scale, fieldY, addW, fieldH);
         setHeuristicRects(kind, field, add);
-        drawInput("rule:" + kind.name(), field, fieldText(kind), tr("placeholder.rule", "Rule"), activeField == kind, mx, my, scale, palette);
-        float addHover = animateMapValue(heuristicAddHoverAnim, kind, add.contains(mx, my), 14f);
+        boolean pointerInsideViewport = heuristicsViewport.contains(mx, my);
+        float controlMx = pointerInsideViewport ? mx : -100000f;
+        float controlMy = pointerInsideViewport ? my : -100000f;
+        drawInput("rule:" + kind.name(), field, fieldText(kind), tr("placeholder.rule", "Rule"), activeField == kind, controlMx, controlMy, scale, palette);
+        float addHover = animateMapValue(heuristicAddHoverAnim, kind, pointerInsideViewport && add.contains(mx, my), 14f);
         drawSmallAddButton(add, addHover, scale, palette);
 
         List<String> sortedEntries = sorted(entries);
@@ -1003,12 +1089,10 @@ public final class RelationsComponent {
         float chipsY = fieldY + fieldH + 4f * scale;
         float chipX = x + innerPad;
         float maxX = x + w - innerPad;
-        float maxY = y + h - 3.5f * scale;
-        int shown = 0;
 
         for (String entry : sortedEntries) {
             float textSize = 5.25f * scale;
-            float maxTextW = Math.max(12f * scale, w * 0.52f);
+            float maxTextW = Math.max(12f * scale, w - innerPad * 2f - 18f * scale);
             String fitted = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), entry, textSize, maxTextW);
             float chipW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), fitted, textSize) + 18f * scale;
             chipW = Math.min(chipW, w - innerPad * 2f);
@@ -1017,10 +1101,9 @@ public final class RelationsComponent {
                 chipX = x + innerPad;
                 chipsY += chipH + lineGap;
             }
-            if (chipsY + chipH > maxY) break;
 
             Rect chip = new Rect(chipX, chipsY, chipW, chipH);
-            boolean chipHovered = chip.contains(mx, my);
+            boolean chipHovered = heuristicsViewport.contains(mx, my) && chip.contains(mx, my);
             String chipKey = kind.name() + ':' + entry.toLowerCase(Locale.ROOT);
             float chipHover = animateMapValue(chipHoverAnim, chipKey, chipHovered, 15f);
             if (chipHovered) SystemCursor.set(SystemCursor.CursorType.HAND);
@@ -1068,30 +1151,6 @@ public final class RelationsComponent {
 
             chipHits.add(new ChipHit(kind, entry, chip));
             chipX += chipW + chipGap;
-            shown++;
-        }
-
-        if (shown < sortedEntries.size() && chipsY + chipH <= maxY) {
-            String overflow = "+" + (sortedEntries.size() - shown);
-            float overflowSize = 5f * scale;
-            float overflowW = ClickGuiRenderer.textWidth(relationHeaderBold(), overflow, overflowSize) + 9f * scale;
-            if (chipX + overflowW > maxX && chipX > x + innerPad + 0.5f * scale) {
-                chipX = x + innerPad;
-                chipsY += chipH + lineGap;
-            }
-            if (chipsY + chipH <= maxY) {
-                int overflowBg = SettingsGuiPalette.withAlpha(palette.panelPillBase(), 108);
-                LayoutRender2D.roundedQuad(chipX, chipsY, overflowW, chipH, chipH * 0.38f,
-                        overflowBg, overflowBg, overflowBg, overflowBg);
-                ClickGuiRenderer.drawText(
-                        relationHeaderBold(), overflow,
-                        chipX + 4.5f * scale,
-                        chipsY + (chipH - ClickGuiRenderer.textHeight(relationHeaderBold(), overflowSize)) * 0.5f,
-                        overflowSize,
-                        palette.panelMuted(),
-                        false
-                );
-            }
         }
     }
 
@@ -1526,6 +1585,9 @@ public final class RelationsComponent {
             activeField = ActiveField.NONE;
             scroll = 0f;
             smoothedScroll = 0f;
+            heuristicsScroll = 0f;
+            smoothedHeuristicsScroll = 0f;
+            heuristicsMaxScroll = 0f;
             draggingScrollbar = false;
             if (onlinePicker.isVisible()) {
                 onlinePicker.open(tab.pickerMode());
@@ -1805,6 +1867,7 @@ public final class RelationsComponent {
         prefixAddButton = Rect.ZERO;
         suffixAddButton = Rect.ZERO;
         containsAddButton = Rect.ZERO;
+        heuristicsViewport = Rect.ZERO;
     }
 
     private enum ActiveField {

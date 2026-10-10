@@ -55,6 +55,7 @@ layout (std140) uniform RigRibbon {
 out vec2 v_TexCoord;
 out vec4 v_Color;
 out vec3 v_Normal;
+out vec4 v_DeformCoord;
 
 vec3 rotateAroundAxis(vec3 value, vec3 axis, float angle) {
     float c = cos(angle);
@@ -267,4 +268,5 @@ void main() {
     v_TexCoord = UV0;
     v_Color = Color;
     v_Normal = skinnedNormal;
+    v_DeformCoord = DeformCoord;
 }

@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.chat;
 
+import combatant.client.features.module.modules.misc.NameProtect;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import com.mojang.blaze3d.platform.InputConstants;
 import combatant.client.mixins.accessors.SuggestionWindowAccessor;
@@ -2064,6 +2066,7 @@ lastHoverWasOutsideSuggest = false;
     }
 
     private static String fitText(TextRenderer font, String text, float size, float maxWidth) {
+        text = NameProtect.applyDisplay(text);
         if (text == null) return "";
         if (BetterChatTextSupport.width(font, text, size) <= maxWidth) return text;
         String suffix = "...";
@@ -2076,6 +2079,7 @@ lastHoverWasOutsideSuggest = false;
     }
 
      private static void drawText(TextRenderer tr, String text, float x, float y, float size, int argb, boolean shadow) {
+        text = NameProtect.applyDisplay(text);
         if (tr == null || text == null || text.isEmpty()) return;
         if (((argb >>> 24) & 0xFF) <= 0) return;
         float scale = BetterChatTextSupport.scale(size);

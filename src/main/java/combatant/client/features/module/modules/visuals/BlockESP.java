@@ -668,13 +668,30 @@ public class BlockESP extends Module {
         float previousLineWidth = RenderState.lineWidth;
         RenderState.lineWidth = Math.max(0.5f, lineWidth.get());
         try {
+            // Everything below is constant for the frame; the per-target loop used to re-read the eye
+            // position (a Vec3 allocation), both colours (a string parse each) and the shape mode per target.
+            boolean limitDistance = limitDistanceValue.get();
+            double maxDistanceSq = (double) maxDistanceValue.get() * (double) maxDistanceValue.get();
+            Vec3 eye = limitDistance ? mc.player.getEyePosition() : null;
+            int visibleRgb = visibleColor.getArgb() & 0x00FFFFFF;
+            int chunkRgb = chunkColor.getArgb() & 0x00FFFFFF;
+            BlockOutlineShapeMode shapeMode = outlineShapeMode.get();
+            long tick = mc.level.getGameTime();
+
             for (Target target : renderTargets.values()) {
-                if (!withinDistance(target.pos)) {
-                    continue;
+                if (limitDistance) {
+                    double dx = target.pos.getX() + 0.5 - eye.x;
+                    double dy = target.pos.getY() + 0.5 - eye.y;
+                    double dz = target.pos.getZ() + 0.5 - eye.z;
+                    if (dx * dx + dy * dy + dz * dz > maxDistanceSq) {
+                        continue;
+                    }
                 }
 
                 BlockState state = target.state;
-                if (mc.level != null) {
+                // World block updates and the reconcile queue already keep targets in sync; re-reading the
+                // chunk palette for every target on every frame only needs to happen once per game tick.
+                if (target.verifiedTick != tick) {
                     BlockState current = mc.level.getBlockState(target.pos);
                     if (!scanContext.isConfiguredTarget(current)) {
                         removeTargetCandidate(target.pos);
@@ -687,10 +704,11 @@ public class BlockESP extends Module {
                         observedTargetStates.put(target.pos, new ObservedTarget(state, rendered));
                         target.state = state;
                     }
+                    target.verifiedTick = tick;
                 }
 
-                int color = 0xFF000000 | ((target.visible ? visibleColor.getArgb() : chunkColor.getArgb()) & 0x00FFFFFF);
-                BlockOutlineRenderer.render(renderer, mc.level, target.pos, state, outlineShapeMode.get(), color);
+                int color = 0xFF000000 | (target.visible ? visibleRgb : chunkRgb);
+                BlockOutlineRenderer.render(renderer, mc.level, target.pos, state, shapeMode, color);
             }
         } finally {
             RenderState.lineWidth = previousLineWidth;
@@ -853,6 +871,8 @@ public class BlockESP extends Module {
         BlockState state;
         AABB box;
         boolean visible;
+        /** Game tick at which {@code state} was last compared with the live world. */
+        long verifiedTick = Long.MIN_VALUE;
     }
 
     public record DetectionSnapshot(int total, int visible, int hidden, List<BlockDetection> blocks) {

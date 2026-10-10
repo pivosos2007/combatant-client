@@ -85,7 +85,7 @@ public final class LinearAngleSmooth extends FactorAngleSmooth {
             return new float[]{hMin, vMin};
         }
 
-        int entityId = rotationTarget.entity != null ? rotationTarget.entity.getId() : Integer.MIN_VALUE;
+        int entityId = rotationTarget.targetIdentity();
         if (trackedEntityId != entityId) {
             trackedEntityId = entityId;
             currentHorizontalFactor = random(hMin, hMax);

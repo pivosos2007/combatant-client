@@ -67,6 +67,19 @@ public final class SmartAngleSmooth extends AngleSmooth {
         this.decelerateMinFactor = decelerateMinFactor;
     }
 
+    /**
+     * Rebase a smooth pass onto the observed camera rotation when an external
+     * owner (e.g. the player's mouse) may have changed it between updates.
+     *
+     * The ordinary RotationManager path deliberately keeps its virtual state;
+     * only direct-camera consumers explicitly request this synchronization.
+     */
+    public void rebaseToActualRotation(Rotation actualRotation) {
+        if (actualRotation != null) {
+            virtualRotation = actualRotation;
+        }
+    }
+
     private static float smoothStep(float t) {
         return t * t * (3.0f - 2.0f * t);
     }
@@ -82,10 +95,8 @@ public final class SmartAngleSmooth extends AngleSmooth {
 
     @Override
     public Rotation process(RotationTarget rotationTarget, Rotation currentRotation, Rotation targetRotation) {
-        boolean resetting = rotationTarget == null || rotationTarget.entity == null;
-        int entityId = rotationTarget != null && rotationTarget.entity != null
-                ? rotationTarget.entity.getId()
-                : Integer.MIN_VALUE;
+        boolean resetting = rotationTarget == null || rotationTarget.isResetting();
+        int entityId = rotationTarget != null ? rotationTarget.targetIdentity() : Integer.MIN_VALUE;
         if (entityId != trackedEntityId || virtualRotation == null || resetting != wasResetting) {
             trackedEntityId = entityId;
             virtualRotation = currentRotation;
@@ -107,8 +118,8 @@ public final class SmartAngleSmooth extends AngleSmooth {
         float pitchFactor = randomInRange(pitchMin.get(), pitchMax.get());
 
         float distanceScale = 1.0f;
-        if (rotationTarget != null && rotationTarget.entity != null) {
-            double distance = RotationManager.boxedDistanceToPlayer(rotationTarget.entity);
+        if (!resetting && rotationTarget != null) {
+            double distance = rotationTarget.distanceToPlayer();
             distanceScale = Mth.clamp((float) (0.80 + distance * 0.15), 0.80f, 1.55f);
         }
 
@@ -126,7 +137,7 @@ public final class SmartAngleSmooth extends AngleSmooth {
         }
         if (jitterScale > 0.0f) {
             float phase = (float) (System.currentTimeMillis() * 0.015);
-            int jitterEntityId = rotationTarget != null && rotationTarget.entity != null ? rotationTarget.entity.getId() : 0;
+            int jitterEntityId = rotationTarget != null ? rotationTarget.targetIdentity() : 0;
             float seed = jitterEntityId * 0.137f;
             float yawOffset = (float) Math.sin(phase + seed) * jitterYaw.get() * jitterScale;
             float pitchOffset = (float) Math.cos(phase * 1.11f + seed) * jitterPitch.get() * jitterScale;

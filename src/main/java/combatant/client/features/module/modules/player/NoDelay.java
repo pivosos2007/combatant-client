@@ -33,6 +33,7 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.mixins.accessors.LivingEntityAccessor;
 import combatant.client.mixins.accessors.MinecraftAccessor;
 import combatant.client.mixins.accessors.MultiPlayerGameModeAccessor;
+import combatant.client.util.block.interaction.BlockInteractionPipeline;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -322,7 +323,9 @@ public final class NoDelay extends Module {
             return mc.gameMode.useItem(player, ctx.hand);
         }
         if (ctx.target == UseTarget.BONE_MEAL_BLOCK) {
-            return mc.gameMode.useItemOn(player, ctx.hand, ctx.blockHit);
+            return BlockInteractionPipeline.INSTANCE.useOnBlock(
+                    this, player, ctx.hand, -1, 0, ctx.blockHit, false
+            );
         }
         if (ctx.target == UseTarget.ITEM_FRAME) {
             return mc.gameMode.interact(player, ctx.entityHit.getEntity(), ctx.entityHit, ctx.hand);

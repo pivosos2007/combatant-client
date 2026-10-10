@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.features.module.modules.misc.NameProtect;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
 import combatant.client.features.module.Modules;
@@ -479,6 +481,7 @@ public final class Scoreboard extends DraggableHudElement {
     }
 
     private static float measureTextRuns(TextRenderer preferred, float scale, String text) {
+        text = NameProtect.applyMeasure(text);
         if (preferred == null || text == null || text.isEmpty()) return 0.0f;
         TextRenderer current = null;
         float width = 0.0f;
@@ -522,6 +525,7 @@ public final class Scoreboard extends DraggableHudElement {
                                         HudTextEffects.Effect effect,
                                         int effectSpeed,
                                         float timeSec) {
+        text = NameProtect.applyDisplay(text);
         if (preferred == null || text == null || text.isEmpty()) return 0.0f;
         TextRenderer current = null;
         StringBuilder run = new StringBuilder();

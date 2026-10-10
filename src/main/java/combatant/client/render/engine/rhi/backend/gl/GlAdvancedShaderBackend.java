@@ -35,6 +35,7 @@ import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 
 /**
  * Combatant-owned native OpenGL compute/SSBO/tessellation backend.
@@ -526,15 +527,23 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
             validateExpectedFormat(slot, binding.volume().descriptor().format(), binding.binding());
         }
         for (ShaderResourceSlot slot : layout.slots()) {
+            // Runs for every dispatch; plain loops instead of a stream pipeline per slot.
             boolean present = switch (slot.kind()) {
-                case STORAGE_BUFFER -> buffers.stream().anyMatch(b -> b.binding() == slot.binding());
-                case SAMPLED_TEXTURE -> sampled.stream().anyMatch(b -> b.binding() == slot.binding());
-                case SAMPLED_VOLUME -> sampledVolumes.stream().anyMatch(b -> b.binding() == slot.binding());
-                case STORAGE_IMAGE -> images.stream().anyMatch(b -> b.binding() == slot.binding());
-                case STORAGE_VOLUME -> volumes.stream().anyMatch(b -> b.binding() == slot.binding());
+                case STORAGE_BUFFER -> hasBinding(buffers, StorageBinding::binding, slot.binding());
+                case SAMPLED_TEXTURE -> hasBinding(sampled, SampledTextureBinding::binding, slot.binding());
+                case SAMPLED_VOLUME -> hasBinding(sampledVolumes, SampledVolumeBinding::binding, slot.binding());
+                case STORAGE_IMAGE -> hasBinding(images, StorageImageBinding::binding, slot.binding());
+                case STORAGE_VOLUME -> hasBinding(volumes, StorageVolumeBinding::binding, slot.binding());
             };
             if (!present) throw new IllegalArgumentException("Missing " + slot.kind() + " binding " + slot.binding());
         }
+    }
+
+    private static <T> boolean hasBinding(List<T> bindings, ToIntFunction<T> bindingOf, int binding) {
+        for (T candidate : bindings) {
+            if (bindingOf.applyAsInt(candidate) == binding) return true;
+        }
+        return false;
     }
 
     private static void validateUniqueBindings(List<StorageBinding> buffers,
@@ -885,8 +894,15 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
         if (hasBuffers) bits |= GL43C.GL_SHADER_STORAGE_BARRIER_BIT;
         if (hasImages || hasVolumes) bits |= GL42C.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT;
 
-        boolean canBeSampled = barrier.images().stream().anyMatch(image -> image.descriptor().sampled())
-                || barrier.volumes().stream().anyMatch(volume -> volume.descriptor().sampled());
+        boolean canBeSampled = false;
+        boolean renderAttachment = false;
+        for (RhiStorageImage image : barrier.images()) {
+            canBeSampled |= image.descriptor().sampled();
+            renderAttachment |= image.descriptor().renderAttachment();
+        }
+        for (RhiStorageVolume volume : barrier.volumes()) {
+            canBeSampled |= volume.descriptor().sampled();
+        }
         if (barrier.destinationAccess() != RhiResourceBarrier.Access.WRITE && canBeSampled) {
             bits |= GL42C.GL_TEXTURE_FETCH_BARRIER_BIT;
         }
@@ -901,9 +917,7 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
             }
             case GRAPHICS -> {
                 if (canBeSampled) bits |= GL42C.GL_TEXTURE_FETCH_BARRIER_BIT;
-                if (barrier.images().stream().anyMatch(image -> image.descriptor().renderAttachment())) {
-                    bits |= GL42C.GL_FRAMEBUFFER_BARRIER_BIT;
-                }
+                if (renderAttachment) bits |= GL42C.GL_FRAMEBUFFER_BARRIER_BIT;
             }
             case COMPUTE -> { }
             case ALL -> {
@@ -911,9 +925,7 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
                 if (hasBuffers) bits |= GL42C.GL_COMMAND_BARRIER_BIT | GL42C.GL_BUFFER_UPDATE_BARRIER_BIT;
                 if (hasImages || hasVolumes) bits |= GL42C.GL_TEXTURE_UPDATE_BARRIER_BIT;
                 if (canBeSampled) bits |= GL42C.GL_TEXTURE_FETCH_BARRIER_BIT;
-                if (barrier.images().stream().anyMatch(image -> image.descriptor().renderAttachment())) {
-                    bits |= GL42C.GL_FRAMEBUFFER_BARRIER_BIT;
-                }
+                if (renderAttachment) bits |= GL42C.GL_FRAMEBUFFER_BARRIER_BIT;
             }
         }
         return bits;

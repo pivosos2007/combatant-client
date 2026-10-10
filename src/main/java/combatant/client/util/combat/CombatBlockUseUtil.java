@@ -7,6 +7,7 @@
 
 package combatant.client.util.combat;
 
+import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySearchScope;
 import combatant.client.util.player.inventory.InventorySwap;
@@ -59,7 +60,9 @@ public final class CombatBlockUseUtil {
 
     public static boolean useOn(Minecraft mc, InteractionHand hand, BlockHitResult hitResult) {
         if (!canUse(mc, hitResult) || hand == null) return false;
-        InteractionResult result = mc.gameMode.useItemOn(mc.player, hand, hitResult);
+        InteractionResult result = BlockInteractionPipeline.INSTANCE.useOnBlock(
+                CombatBlockUseUtil.class, mc.player, hand, -1, 0, hitResult, false
+        );
         mc.player.swing(hand);
         return result != InteractionResult.FAIL;
     }

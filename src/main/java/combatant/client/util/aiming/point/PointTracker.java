@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Lightweight aim-point tracker for KillAura.
+ * Shared aim-point tracker for combat modules.
  * <p>
  * Adapted from LiquidBounce (https://github.com/CCBlueX/LiquidBounce).
  * Original copyright (c) CCBlueX.
@@ -41,7 +41,9 @@ public final class PointTracker {
     private Vec3 currentOffset = Vec3.ZERO;
     private Vec3 targetOffset = Vec3.ZERO;
     private Vec3 smoothedPoint;
+    private Vec3 smoothedBoxFraction;
     private Vec3 lastSelectedPoint;
+    private Vec3 lastSelectedBoxFraction;
     private Vec3 lastEyes;
     private Vec3 lastAimDirection;
     private Vec3 instabilityOffset = Vec3.ZERO;
@@ -59,6 +61,11 @@ public final class PointTracker {
     private double gaussianPitchFactor;
     private int gaussianChance = 100;
     private double gaussianSpeed = 0.15;
+    // Opt-in point retention and motion variance. Defaults preserve KillAura's
+    // existing candidate selection and motion-instability behavior.
+    private double pointRetention;
+    private double motionInstabilityScale = 1.0;
+    private boolean requireValidCandidate;
 
     private static float scoreCandidate(Vec3 eyes,
                                         Rotation initialRotation,
@@ -106,7 +113,7 @@ public final class PointTracker {
         return out;
     }
 
-    private static Candidate selectWeighted(List<Candidate> candidates, float bestScore) {
+    private static Candidate selectWeighted(List<Candidate> candidates, float bestScore, double retention) {
         if (candidates.size() == 1) {
             return candidates.get(0);
         }
@@ -115,7 +122,7 @@ public final class PointTracker {
         double[] weights = new double[candidates.size()];
         for (int i = 0; i < candidates.size(); i++) {
             double delta = Math.max(0.0, candidates.get(i).score() - bestScore);
-            double weight = 1.0 / (1.0 + delta * delta * 0.08);
+            double weight = 1.0 / (1.0 + delta * delta * (0.08 + retention * 1.2));
             weights[i] = weight;
             total += weight;
         }
@@ -218,6 +225,20 @@ public final class PointTracker {
         );
     }
 
+    private static Vec3 toBoxFraction(Vec3 point, AABB box) {
+        return new Vec3(
+                (point.x - box.minX) / Math.max(1.0E-4, box.getXsize()),
+                (point.y - box.minY) / Math.max(1.0E-4, box.getYsize()),
+                (point.z - box.minZ) / Math.max(1.0E-4, box.getZsize()));
+    }
+
+    private static Vec3 fromBoxFraction(Vec3 fraction, AABB box) {
+        return new Vec3(
+                box.minX + box.getXsize() * fraction.x,
+                box.minY + box.getYsize() * fraction.y,
+                box.minZ + box.getZsize() * fraction.z);
+    }
+
     private static Vec3 getNearestPoint(AABB box, Vec3 eyes) {
         return new Vec3(
                 Mth.clamp(eyes.x, box.minX, box.maxX),
@@ -308,6 +329,18 @@ public final class PointTracker {
         this.gaussianSpeed = Math.max(0.01, Math.min(1.0, gaussianSpeed));
     }
 
+    /**
+     * Per-instance tracking policy. Retention follows an AABB-relative point so
+     * a moving entity does not leave the preferred target point behind in world space.
+     * All options are opt-in; an untouched tracker behaves as before.
+     */
+    public void setTrackingBehavior(double pointRetention, double motionInstabilityScale,
+                                    boolean requireValidCandidate) {
+        this.pointRetention = Mth.clamp(pointRetention, 0.0, 1.0);
+        this.motionInstabilityScale = Mth.clamp(motionInstabilityScale, 0.0, 1.0);
+        this.requireValidCandidate = requireValidCandidate;
+    }
+
     public PointInsideBox findPoint(Vec3 eyes,
                                     Entity entity,
                                     int ticks,
@@ -315,8 +348,6 @@ public final class PointTracker {
                                     double maxDistance,
                                     boolean ignoreWalls) {
         AABB box = PositionExtrapolation.getBestForEntity(entity).getBoxInTicks(ticks);
-        List<Vec3> points = projectPointsOnBox(eyes, box);
-
         if (trackedEntityId != entity.getId()) {
             resetProcessors();
             trackedEntityId = entity.getId();
@@ -324,6 +355,10 @@ public final class PointTracker {
 
         Vec3 bestPoint = selectMultiPoint(eyes, entity, box, initialRotation, maxDistance, ignoreWalls);
         if (bestPoint == null) {
+            if (requireValidCandidate) {
+                return null;
+            }
+            List<Vec3> points = projectPointsOnBox(eyes, box);
             Vec3 anchor = smoothedPoint != null ? clampToBox(smoothedPoint, box) : eyes;
             bestPoint = points.isEmpty() ? getNearestPoint(box, anchor) : points.get(0);
             for (Vec3 point : points) {
@@ -340,6 +375,7 @@ public final class PointTracker {
         point = applyMotionInstability(point, eyes, entity, initialRotation);
         point = applyContinuity(point);
         smoothedPoint = point.pos();
+        smoothedBoxFraction = toBoxFraction(point.pos(), box);
         return new PointInsideBox(clampToBox(point.pos(), box), box);
     }
 
@@ -363,12 +399,21 @@ public final class PointTracker {
         Vec3 aimDir = initialRotation.directionVector().normalize();
         Vec3 movement = entity != null ? entity.getDeltaMovement() : Vec3.ZERO;
         double movementStrength = horizontalLength(movement);
+        Vec3 retainedPoint = pointRetention > 0.0 && lastSelectedBoxFraction != null
+                ? fromBoxFraction(lastSelectedBoxFraction, box) : null;
+        double boxDiagonal = Math.max(1.0E-4,
+                Math.sqrt(box.getXsize() * box.getXsize()
+                        + box.getYsize() * box.getYsize()
+                        + box.getZsize() * box.getZsize()));
 
         Vec3 rayHit = findRayHitPoint(eyes, aimDir, box, maxDistance);
         if (rayHit != null && isValidPoint(eyes, rayHit, maxDistance, ignoreWalls)) {
             Rotation rayRotation = Rotation.lookingAt(rayHit, eyes).normalize();
             float score = scoreCandidate(eyes, initialRotation, rayRotation, rayHit, center, box,
                     aimDir, movement, movementStrength) - 2.0f;
+            if (retainedPoint != null) {
+                score += (float) (rayHit.distanceTo(retainedPoint) / boxDiagonal * pointRetention * 25.0);
+            }
             candidates.add(new Candidate(rayHit, score));
             bestScore = score;
         }
@@ -380,6 +425,9 @@ public final class PointTracker {
             Rotation candidateRotation = Rotation.lookingAt(point, eyes).normalize();
             float score = scoreCandidate(eyes, initialRotation, candidateRotation, point, center, box,
                     aimDir, movement, movementStrength);
+            if (retainedPoint != null) {
+                score += (float) (point.distanceTo(retainedPoint) / boxDiagonal * pointRetention * 25.0);
+            }
             candidates.add(new Candidate(point, score));
             if (score < bestScore) {
                 bestScore = score;
@@ -404,14 +452,19 @@ public final class PointTracker {
             pool = candidates;
         }
 
-        Vec3 reference = lastSelectedPoint != null ? lastSelectedPoint : smoothedPoint;
-        List<Candidate> diversePool = filterDiverse(pool, reference, box, movingTarget);
-        if (!diversePool.isEmpty()) {
-            pool = diversePool;
+        // The legacy selection intentionally explores new points (KillAura).
+        // Retention-enabled consumers instead keep the previous local AABB area.
+        if (pointRetention <= 0.0) {
+            Vec3 reference = lastSelectedPoint != null ? lastSelectedPoint : smoothedPoint;
+            List<Candidate> diversePool = filterDiverse(pool, reference, box, movingTarget);
+            if (!diversePool.isEmpty()) {
+                pool = diversePool;
+            }
         }
 
-        Candidate selected = selectWeighted(pool, bestScore);
+        Candidate selected = selectWeighted(pool, bestScore, pointRetention);
         lastSelectedPoint = selected.point();
+        lastSelectedBoxFraction = toBoxFraction(selected.point(), box);
         return selected.point();
     }
 
@@ -428,7 +481,9 @@ public final class PointTracker {
         currentOffset = Vec3.ZERO;
         targetOffset = Vec3.ZERO;
         smoothedPoint = null;
+        smoothedBoxFraction = null;
         lastSelectedPoint = null;
+        lastSelectedBoxFraction = null;
         lastEyes = null;
         lastAimDirection = null;
         instabilityOffset = Vec3.ZERO;
@@ -529,6 +584,14 @@ public final class PointTracker {
                                                   Entity entity,
                                                   Rotation initialRotation) {
         Vec3 aimDirection = initialRotation.directionVector().normalize();
+        if (motionInstabilityScale <= 0.0) {
+            lastEyes = eyes;
+            lastAimDirection = aimDirection;
+            instabilityOffset = Vec3.ZERO;
+            targetInstabilityOffset = Vec3.ZERO;
+            instabilityRetargetTicks = 0;
+            return point;
+        }
         double angleChange = lastAimDirection != null
                 ? Math.toDegrees(Math.acos(Mth.clamp(lastAimDirection.dot(aimDirection), -1.0, 1.0)))
                 : 0.0;
@@ -543,7 +606,7 @@ public final class PointTracker {
         if (intensity < 0.12) {
             instabilityOffset = instabilityOffset.scale(0.72);
             targetInstabilityOffset = targetInstabilityOffset.scale(0.72);
-            return new PointInsideBox(clampToBox(point.pos().add(instabilityOffset), point.box()), point.box());
+            return new PointInsideBox(clampToBox(point.pos().add(instabilityOffset.scale(motionInstabilityScale)), point.box()), point.box());
         }
 
         instabilityRetargetTicks--;
@@ -559,7 +622,7 @@ public final class PointTracker {
                 Mth.lerp(blend, instabilityOffset.z, targetInstabilityOffset.z)
         );
 
-        return new PointInsideBox(clampToBox(point.pos().add(instabilityOffset), point.box()), point.box());
+        return new PointInsideBox(clampToBox(point.pos().add(instabilityOffset.scale(motionInstabilityScale)), point.box()), point.box());
     }
 
     private PointInsideBox applyContinuity(PointInsideBox point) {
@@ -567,7 +630,9 @@ public final class PointTracker {
             return point;
         }
 
-        Vec3 current = clampToBox(smoothedPoint, point.box());
+        Vec3 current = pointRetention > 0.0 && smoothedBoxFraction != null
+                ? fromBoxFraction(smoothedBoxFraction, point.box())
+                : clampToBox(smoothedPoint, point.box());
         Vec3 target = clampToBox(point.pos(), point.box());
         double distance = current.distanceTo(target);
         if (distance <= 1.0E-4) {

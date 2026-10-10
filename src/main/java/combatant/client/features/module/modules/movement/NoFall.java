@@ -41,6 +41,7 @@ import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
+import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import combatant.client.util.block.scaffold.ScaffoldFacePositionFactory;
 import combatant.client.util.block.scaffold.ScaffoldPlacementTarget;
 import combatant.client.util.block.scaffold.ScaffoldTargetFinder;
@@ -599,7 +600,15 @@ public class NoFall extends Module {
             InteractionResult useResult = interactItemWithRotation(player, plan.hand(), useRotation);
             success = useResult != null && useResult.consumesAction();
         } else {
-            InteractionResult result = client.gameMode.useItemOn(player, plan.hand(), hitResult);
+            InteractionResult result = BlockInteractionPipeline.INSTANCE.useOnBlock(
+                    this,
+                    player,
+                    plan.hand(),
+                    -1,
+                    MLG_HOTBAR_RESET_TICKS,
+                    hitResult,
+                    false
+            );
             success = result != null && result.consumesAction();
 
             if (!success && result == InteractionResult.PASS) {

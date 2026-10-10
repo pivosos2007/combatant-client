@@ -30,6 +30,7 @@ public final class InventoryConfig extends SubsystemConfig {
     private final NumberValue<Integer> inventorySwapLegitWaitTicks = number("inventorySwapLegitWaitTicks", 2, 0, 20);
     private final NumberValue<Integer> inventorySwapStrictInventoryWaitTicks = number("inventorySwapStrictInventoryWaitTicks", 1, 0, 20);
     private final NumberValue<Integer> inventorySwapStrictMovementLockTicks = number("inventorySwapStrictMovementLockTicks", 2, 0, 20);
+    private final BooleanValue multitask = bool("multitask", false);
 
     private InventoryConfig() {
         loadConfig();
@@ -143,9 +144,23 @@ public final class InventoryConfig extends SubsystemConfig {
         return inventorySwapStrictMovementLockTicks;
     }
 
+    public boolean isMultitask() {
+        return multitask.get();
+    }
+
+    public void setMultitask(boolean enabled) {
+        multitask.set(enabled);
+        saveConfig();
+    }
+
+    public BooleanValue multitaskValue() {
+        return multitask;
+    }
+
     @Override
     public List<SettingDef> getSettingDefs() {
         return settings(
+                SettingDef.bool(multitask).common("inventory.multitask"),
                 SettingDef.mode(inventorySwapPolicy).common("inventory.swap_policy"),
                 SettingDef.mode(inventorySwapScope).common("inventory.search_scope"),
                 SettingDef.mode(inventorySwapVisibility).common("inventory.swap_visibility"),

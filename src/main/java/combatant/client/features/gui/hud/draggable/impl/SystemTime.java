@@ -8,6 +8,7 @@
 package combatant.client.features.gui.hud.draggable.impl;
 
 
+import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
@@ -134,9 +135,9 @@ public final class SystemTime extends DraggableHudElement implements ScriptableH
 
     private static String formatTime(LocalTime time, boolean showSeconds) {
         if (showSeconds) {
-            return String.format("%02d:%02d:%02d", time.getHour(), time.getMinute(), time.getSecond());
+            return FastFormat.clock(time.getHour(), time.getMinute(), time.getSecond());
         }
-        return String.format("%02d:%02d", time.getHour(), time.getMinute());
+        return FastFormat.clock(time.getHour(), time.getMinute());
     }
 
     private static float smoothWidth(float current, float target) {

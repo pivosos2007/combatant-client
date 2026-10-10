@@ -8,6 +8,7 @@
 package combatant.client.features.gui.hud.draggable.impl;
 
 
+import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
@@ -590,7 +591,7 @@ public final class Potions extends DraggableHudElement {
         if (minutes > 60) {
             return "**:**";
         }
-        return minutes + ":" + String.format("%02d", (ticks % 1200) / 20);
+        return minutes + ":" + FastFormat.pad2((ticks % 1200) / 20);
     }
 
     private int getBlinkAlpha(Row row, int baseAlpha, int minAlphaFloor) {

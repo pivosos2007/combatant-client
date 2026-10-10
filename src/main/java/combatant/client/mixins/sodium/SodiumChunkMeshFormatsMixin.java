@@ -16,9 +16,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Sodium 0.9.1 routes the vertex format used by the renderer, builder and
- * region arenas through this method. Replacing it here keeps all three users
- * on Combatant's extended terrain layout.
+ * Sodium routes the vertex format used by the renderer and builder through this
+ * method. Replacing it here keeps both on Combatant's extended terrain layout.
+ * Region arenas size themselves from {@code COMPACT} directly in 0.9.2;
+ * {@link SodiumArenaAggregatorStrideMixin} covers that.
  */
 @Mixin(ChunkMeshFormats.class)
 public abstract class SodiumChunkMeshFormatsMixin {

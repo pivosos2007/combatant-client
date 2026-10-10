@@ -20,6 +20,7 @@ import combatant.client.events.impl.*;
 import combatant.client.features.module.*;
 import combatant.client.features.module.Module;
 import combatant.client.util.block.scaffold.*;
+import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -33,6 +34,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -46,17 +48,15 @@ import combatant.client.events.impl.*;
 import combatant.client.features.gui.hud.nondraggable.impl.BetterTooltips;
 import combatant.client.features.module.*;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
-import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.TickDelta;
-import combatant.client.util.aiming.RestrictedSingleUseAction;
 import combatant.client.util.aiming.RotationManager;
-import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.RotationUtil;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
@@ -199,12 +199,8 @@ public class Scaffold extends Module {
             new RGBAColorValue("render_line_color", "#96A0FFFF");
     private final NumberValue<Integer> renderLineWidth =
             new NumberValue<>("render_line_width", 2, 1, 5);
-    private final NumberValue<Double> renderBobAmplitude =
-            new NumberValue<>("render_bob_amplitude", 0.08, 0.0, 0.3);
-    private final NumberValue<Double> renderBobSpeed =
-            new NumberValue<>("render_bob_speed", 2.2, 0.2, 8.0);
     private final NumberValue<Double> renderPlaceAnimTime =
-            new NumberValue<>("render_place_anim_time", 0.22, 0.05, 1.0);
+            new NumberValue<>("render_place_anim_time", 0.55, 0.05, 1.0);
     private final NumberValue<Double> placementIndicatorScale =
             new NumberValue<>("placement_indicator_scale", 1.0, 0.5, 3.0);
     private final NumberValue<Double> placementIndicatorOffsetX =
@@ -329,8 +325,11 @@ public class Scaffold extends Module {
     private float indicatorTextScale;
     private int indicatorCountValue;
     private boolean indicatorRenderItem;
-    private BlockPos lastPlacedRenderPos;
-    private long lastPlacedRenderMillis;
+    private final PlacementPreviewRenderer placementPreview = new PlacementPreviewRenderer();
+    private BlockPos visualTargetPos;
+    private BlockPos visualCandidate;
+    private int visualCandidateTicks;
+    private long visualTargetLastSeen;
     private long debugAttemptCounter;
     private BlockPos debugLastTargetPos;
     private BlockPos debugPendingPlacedPos;
@@ -352,12 +351,6 @@ public class Scaffold extends Module {
             }
         }
         return List.copyOf(list);
-    }
-
-    private static int withAlphaScale(int argb, float scale) {
-        int alpha = (argb >>> 24) & 0xFF;
-        int scaledAlpha = Mth.clamp((int) (alpha * scale), 0, 255);
-        return (argb & 0x00FFFFFF) | (scaledAlpha << 24);
     }
 
     private static int getPillCountColor(int count) {
@@ -394,56 +387,6 @@ public class Scaffold extends Module {
 
     private static int colorWithAlpha(int rgb, int alpha) {
         return (alpha << 24) | (rgb & 0x00FFFFFF);
-    }
-
-    private static void addFilledBox(Renderer3D renderer, AABB box, int argb) {
-        int a = (argb >>> 24) & 0xFF;
-        int r = (argb >>> 16) & 0xFF;
-        int g = (argb >>> 8) & 0xFF;
-        int b = argb & 0xFF;
-
-        double minX = box.minX;
-        double minY = box.minY;
-        double minZ = box.minZ;
-        double maxX = box.maxX;
-        double maxY = box.maxY;
-        double maxZ = box.maxZ;
-
-        renderer.quad(minX, minY, minZ, maxX, minY, minZ, maxX, minY, maxZ, minX, minY, maxZ, r, g, b, a);
-        renderer.quad(minX, maxY, minZ, minX, maxY, maxZ, maxX, maxY, maxZ, maxX, maxY, minZ, r, g, b, a);
-        renderer.quad(minX, minY, maxZ, maxX, minY, maxZ, maxX, maxY, maxZ, minX, maxY, maxZ, r, g, b, a);
-        renderer.quad(minX, minY, minZ, minX, maxY, minZ, maxX, maxY, minZ, maxX, minY, minZ, r, g, b, a);
-        renderer.quad(maxX, minY, minZ, maxX, maxY, minZ, maxX, maxY, maxZ, maxX, minY, maxZ, r, g, b, a);
-        renderer.quad(minX, minY, minZ, minX, minY, maxZ, minX, maxY, maxZ, minX, maxY, minZ, r, g, b, a);
-    }
-
-    private static void addOutlineBox(Renderer3D renderer, AABB box, int argb) {
-        int a = (argb >>> 24) & 0xFF;
-        int r = (argb >>> 16) & 0xFF;
-        int g = (argb >>> 8) & 0xFF;
-        int b = argb & 0xFF;
-
-        double minX = box.minX;
-        double minY = box.minY;
-        double minZ = box.minZ;
-        double maxX = box.maxX;
-        double maxY = box.maxY;
-        double maxZ = box.maxZ;
-
-        renderer.line(minX, minY, minZ, maxX, minY, minZ, r, g, b, a);
-        renderer.line(maxX, minY, minZ, maxX, minY, maxZ, r, g, b, a);
-        renderer.line(maxX, minY, maxZ, minX, minY, maxZ, r, g, b, a);
-        renderer.line(minX, minY, maxZ, minX, minY, minZ, r, g, b, a);
-
-        renderer.line(minX, maxY, minZ, maxX, maxY, minZ, r, g, b, a);
-        renderer.line(maxX, maxY, minZ, maxX, maxY, maxZ, r, g, b, a);
-        renderer.line(maxX, maxY, maxZ, minX, maxY, maxZ, r, g, b, a);
-        renderer.line(minX, maxY, maxZ, minX, maxY, minZ, r, g, b, a);
-
-        renderer.line(minX, minY, minZ, minX, maxY, minZ, r, g, b, a);
-        renderer.line(maxX, minY, minZ, maxX, maxY, minZ, r, g, b, a);
-        renderer.line(maxX, minY, maxZ, maxX, maxY, maxZ, r, g, b, a);
-        renderer.line(minX, minY, maxZ, minX, maxY, maxZ, r, g, b, a);
     }
 
     private static void debugLog(String pattern, Object... args) {
@@ -534,8 +477,8 @@ public class Scaffold extends Module {
         defs.add(SettingDef.color(renderFillColor).visibleWhen(renderPlacement::get));
         defs.add(SettingDef.color(renderLineColor).visibleWhen(renderPlacement::get));
         defs.add(SettingDef.number(renderLineWidth).visibleWhen(renderPlacement::get));
-        defs.add(SettingDef.number(renderBobAmplitude).visibleWhen(renderPlacement::get));
-        defs.add(SettingDef.number(renderBobSpeed).visibleWhen(renderPlacement::get));
+
+
         defs.add(SettingDef.number(renderPlaceAnimTime).visibleWhen(renderPlacement::get));
         defs.add(SettingDef.bool(placementIndicator));
         defs.add(SettingDef.mode(placementIndicatorStyle).visibleWhen(placementIndicator::get));
@@ -611,8 +554,11 @@ public class Scaffold extends Module {
         indicatorCountText = "";
         indicatorCountValue = 0;
         indicatorRenderItem = false;
-        lastPlacedRenderPos = null;
-        lastPlacedRenderMillis = 0L;
+        placementPreview.reset();
+        visualTargetPos = null;
+        visualCandidate = null;
+        visualCandidateTicks = 0;
+        visualTargetLastSeen = 0L;
         debugPendingPlacedPos = null;
         debugPendingPlacedTicks = 0;
         debugPendingPlacedAttempt = 0L;
@@ -639,8 +585,11 @@ public class Scaffold extends Module {
         indicatorCountText = "";
         indicatorCountValue = 0;
         indicatorRenderItem = false;
-        lastPlacedRenderPos = null;
-        lastPlacedRenderMillis = 0L;
+        placementPreview.reset();
+        visualTargetPos = null;
+        visualCandidate = null;
+        visualCandidateTicks = 0;
+        visualTargetLastSeen = 0L;
         debugPendingPlacedPos = null;
         debugPendingPlacedTicks = 0;
         debugPendingPlacedAttempt = 0L;
@@ -656,33 +605,23 @@ public class Scaffold extends Module {
 
     @Override
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
-        if (!renderPlacement.get()) return;
-
+        if (!renderPlacement.get() || !isEnabled()) return;
         LocalPlayer player = player();
         Minecraft mc = Minecraft.getInstance();
         if (player == null || mc.level == null) return;
-
-        RenderPreview preview = getRenderPreview(tickDelta);
-        if (preview == null) return;
-
-        AABB box = animatedRenderBox(preview.pos, preview.progress, tickDelta);
-        int fill = withAlphaScale(renderFillColor.getArgb(), preview.progress);
-        int line = withAlphaScale(renderLineColor.getArgb(), preview.progress);
-
-        float prevWidth = RenderState.lineWidth;
-        RenderState.lineWidth = Math.max(1.0f, renderLineWidth.get());
-        try {
-            addFilledBox(renderer, box, fill);
-            addOutlineBox(renderer, box, line);
-        } finally {
-            RenderState.lineWidth = prevWidth;
-        }
+        placementPreview.render(renderer, mc.level, visualTargets(), previewBlockState(player),
+                renderFillColor.getArgb(), renderLineColor.getArgb(), renderLineWidth.get());
     }
 
     @EventHandler
     private void onGameTick(GameTickEvent event) {
         LocalPlayer player = player();
         if (player == null) return;
+        if (renderPlacement.get()) {
+            updateVisualTarget(player);
+            placementPreview.setConfirmationDuration(renderPlaceAnimTime.get());
+            placementPreview.tick(Minecraft.getInstance().level, visualTargets(), previewBlockState(player), renderLineColor.getArgb());
+        }
 
         if (debugPendingPlacedPos != null) {
             BlockState state = player.level().getBlockState(debugPendingPlacedPos);
@@ -909,24 +848,28 @@ public class Scaffold extends Module {
 
         List<RotationProcessor> processors = buildRotationProcessors();
         ScaffoldPlacementTarget targetSnapshot = currentTarget;
-        RotationTarget target = new RotationTarget(
+        BlockInteractionPipeline.INSTANCE.rotateTo(
+                this,
                 targetSnapshot.getRotation(),
-                null,
-                processors,
-                2,
-                4.0f,
-                considerInventory.get(),
-                movementCorrection.get(),
-                new RestrictedSingleUseAction(() -> executeScheduledNormalPlacement(
+                targetSnapshot.getHitVec(),
+                new BlockInteractionPipeline.RotationPlan(
+                        true,
+                        processors,
+                        2,
+                        4.0f,
+                        considerInventory.get(),
+                        movementCorrection.get(),
+                        100
+                ),
+                () -> executeScheduledNormalPlacement(
                         targetSnapshot,
                         RotationManager.INSTANCE.getCurrentRotation() != null
                                 ? RotationManager.INSTANCE.getCurrentRotation()
                                 : targetSnapshot.getRotation(),
                         preparePlacementHand(player()),
                         resolveNormalScheduledHit(player(), targetSnapshot)
-                ))
+                )
         );
-        RotationManager.INSTANCE.setRotationTarget(target, 100, this);
     }
 
     private void requestNormalStrictMoonwalkRotation(LocalPlayer player) {
@@ -936,17 +879,21 @@ public class Scaffold extends Module {
 
         float movementYaw = getRawMovementDirectionYaw(player, player.getYRot());
         Rotation moonwalkRotation = new Rotation(movementYaw + 180.0f, 75.0f, false).normalize();
-        RotationTarget target = new RotationTarget(
+        BlockInteractionPipeline.INSTANCE.rotateTo(
+                this,
                 moonwalkRotation,
                 null,
-                buildRotationProcessors(),
-                2,
-                4.0f,
-                considerInventory.get(),
-                movementCorrection.get(),
+                new BlockInteractionPipeline.RotationPlan(
+                        true,
+                        buildRotationProcessors(),
+                        2,
+                        4.0f,
+                        considerInventory.get(),
+                        movementCorrection.get(),
+                        100
+                ),
                 null
         );
-        RotationManager.INSTANCE.setRotationTarget(target, 100, this);
     }
 
     @EventHandler
@@ -1308,10 +1255,14 @@ public class Scaffold extends Module {
                 ? movementPrediction.getFallOffPositionOnLine(player, currentOptimalLine)
                 : null;
 
-        InteractionResult result = Minecraft.getInstance().gameMode.useItemOn(
+        InteractionResult result = BlockInteractionPipeline.INSTANCE.useOnBlock(
+                this,
                 player,
                 hand,
-                hitResult
+                -1,
+                autoBlockSlotResetDelay.get(),
+                hitResult,
+                true
         );
         if (result == null || !result.consumesAction()) {
             debugLog(
@@ -1329,7 +1280,6 @@ public class Scaffold extends Module {
             return false;
         }
 
-        player.swing(hand);
         debugLog(
                 "attempt#%d place-ok hit=%s target=%s",
                 debugAttemptCounter,
@@ -1343,8 +1293,7 @@ public class Scaffold extends Module {
         debugPendingPlacedSeenSolid = false;
         movementPlanner.trackPlacedBlock(currentTarget.getPlacedBlockPos());
         movementPrediction.onPlace(currentOptimalLine, previousFallOffPos, player.position());
-        lastPlacedRenderPos = currentTarget.getPlacedBlockPos();
-        lastPlacedRenderMillis = System.currentTimeMillis();
+
         placementGate.recordSuccessfulPlacement(System.nanoTime(), blocksToEagle.get());
         delayLeft = delay.get();
         currentTarget = null;
@@ -1582,43 +1531,46 @@ public class Scaffold extends Module {
         return count;
     }
 
-    private RenderPreview getRenderPreview(float tickDelta) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return null;
-
-        if (currentTarget != null) {
-            BlockPos pos = currentTarget.getPlacedBlockPos();
-            if (mc.level.getBlockState(pos).canBeReplaced()) {
-                return new RenderPreview(pos, 1.0f);
-            }
-        }
-
-        if (lastPlacedRenderPos == null) return null;
-
-        double elapsed = (System.currentTimeMillis() - lastPlacedRenderMillis) / 1000.0;
-        double duration = renderPlaceAnimTime.get();
-        if (elapsed >= duration) {
-            lastPlacedRenderPos = null;
-            return null;
-        }
-
-        float progress = (float) (1.0 - (elapsed / duration));
-        return new RenderPreview(lastPlacedRenderPos, Mth.clamp(progress, 0.0f, 1.0f));
+    private net.minecraft.world.level.block.state.BlockState previewBlockState(LocalPlayer player) {
+        ItemStack stack = peekPlacementIndicatorStack(player);
+        return stack.getItem() instanceof BlockItem item ? item.getBlock().defaultBlockState() : null;
     }
 
-    private AABB animatedRenderBox(BlockPos pos, float progress, float tickDelta) {
-        double time = (System.currentTimeMillis() / 1000.0) * renderBobSpeed.get();
-        double bob = Math.sin((time + tickDelta) * Math.PI) * renderBobAmplitude.get() * progress;
-        double inset = 0.06 * (1.0 - progress);
+    private List<BlockPos> visualTargets() {
+        return visualTargetPos == null ? List.of() : List.of(visualTargetPos);
+    }
 
-        return new AABB(
-                pos.getX() + inset,
-                pos.getY() + inset + bob,
-                pos.getZ() + inset,
-                pos.getX() + 1.0 - inset,
-                pos.getY() + 1.0 - inset + bob,
-                pos.getZ() + 1.0 - inset
-        );
+    private void updateVisualTarget(LocalPlayer player) {
+        long now = System.currentTimeMillis();
+        BlockPos candidate = currentTarget == null ? null : currentTarget.getPlacedBlockPos();
+        if (candidate != null && !player.level().getBlockState(candidate).canBeReplaced()) candidate = null;
+        if (candidate == null) {
+            visualCandidate = null;
+            visualCandidateTicks = 0;
+            if (now - visualTargetLastSeen > 135L || (visualTargetPos != null
+                    && !player.level().getBlockState(visualTargetPos).canBeReplaced())) {
+                visualTargetPos = null;
+            }
+            return;
+        }
+        if (candidate.equals(visualTargetPos)) {
+            visualTargetLastSeen = now;
+            visualCandidate = null;
+            visualCandidateTicks = 0;
+            return;
+        }
+        if (candidate.equals(visualCandidate)) {
+            visualCandidateTicks++;
+        } else {
+            visualCandidate = candidate;
+            visualCandidateTicks = 1;
+        }
+        if (visualTargetPos == null || visualCandidateTicks >= 2) {
+            visualTargetPos = candidate;
+            visualTargetLastSeen = now;
+            visualCandidate = null;
+            visualCandidateTicks = 0;
+        }
     }
 
     private BlockPos getTargetedPosition(LocalPlayer player) {
@@ -2406,8 +2358,6 @@ public class Scaffold extends Module {
         ALL_PLACEABLE
     }
 
-    private record RenderPreview(BlockPos pos, float progress) {
-    }
 
     private record PlacementIndicatorData(ItemStack stack, int count, String countText) {
     }

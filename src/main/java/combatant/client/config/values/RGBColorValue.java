@@ -111,14 +111,29 @@ public class RGBColorValue extends ConfigValue<String> implements ColorValue {
 
     /**
      * Возвращает цвет как ARGB с полной альфой (0xFF).
+     *
+     * <p>Called from render code many times per frame. Re-parsing the hex string (trim/toUpperCase for the
+     * rainbow check, substring + parseUnsignedInt for the value) allocated several strings per call, so
+     * the parsed form is cached per backing string instance; {@link #set} swaps the instance on change.</p>
      */
     public int getArgb() {
-        if (isRainbowValue(value)) {
+        String current = value;
+        Parsed cached = parsed;
+        if (cached == null || cached.source != current) {
+            cached = new Parsed(current, isRainbowValue(current), 0xFF000000 | parseRgb(current));
+            parsed = cached;
+        }
+        if (cached.rainbow) {
             return ColorUtils
                     .rainbow(RAINBOW_SPEED, 0, 1f, 1f, 1f)
                     .getRGB();
         }
-        return 0xFF000000 | parseRgb(value);
+        return cached.argb;
+    }
+
+    private volatile Parsed parsed;
+
+    private record Parsed(String source, boolean rainbow, int argb) {
     }
 
     @Override
@@ -128,7 +143,12 @@ public class RGBColorValue extends ConfigValue<String> implements ColorValue {
 
     @Override
     public boolean isRainbow() {
-        return isRainbowValue(value);
+        String current = value;
+        Parsed cached = parsed;
+        if (cached != null && cached.source == current) {
+            return cached.rainbow;
+        }
+        return isRainbowValue(current);
     }
 
     @Override

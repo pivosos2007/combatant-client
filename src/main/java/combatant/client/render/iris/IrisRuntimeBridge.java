@@ -118,6 +118,10 @@ enum IrisRuntimeBridge {
         }
     }
 
+    static boolean isImportedGeometrySubmission() {
+        return ImmediateState.safeToMultiply;
+    }
+
     static boolean beginNativeShaderBypass() {
         boolean previous = ImmediateState.bypass;
         ImmediateState.bypass = true;

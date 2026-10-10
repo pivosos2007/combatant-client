@@ -13,6 +13,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import combatant.client.config.values.BooleanValue;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -28,6 +29,10 @@ import combatant.client.util.player.inventory.InventorySwap;
         description = "module.clickpearl.description")
 public class ClickPearl extends Module {
     private static final String ACTION_CLICKPEARL = "clickpearl";
+
+    private final BooleanValue useOffhand = bool("clickPearlUseOffhand", "use_offhand", true);
+    private final BooleanValue searchInventory = bool("clickPearlSearchInventory", "search_inventory", true);
+    private final BooleanValue swing = bool("clickPearlSwing", "swing", true);
 
     private final Minecraft client = Minecraft.getInstance();
     private ItemStack previousHeld = ItemStack.EMPTY;
@@ -63,9 +68,9 @@ public class ClickPearl extends Module {
         int originalSlot = inv.combatant$getSelectedSlot();
 
         ItemStack off = player.getOffhandItem();
-        if (isPearl(off)) {
+        if (useOffhand.get() && isPearl(off)) {
             manager.useItem(player, InteractionHand.OFF_HAND);
-            player.swing(InteractionHand.OFF_HAND);
+            swingIfEnabled(player, InteractionHand.OFF_HAND);
             return;
         }
 
@@ -73,11 +78,12 @@ public class ClickPearl extends Module {
         if (hotbarPearl != -1) {
             inv.combatant$setSelectedSlot(hotbarPearl);
             manager.useItem(player, InteractionHand.MAIN_HAND);
-            player.swing(InteractionHand.MAIN_HAND);
+            swingIfEnabled(player, InteractionHand.MAIN_HAND);
             inv.combatant$setSelectedSlot(originalSlot);
             return;
         }
 
+        if (!searchInventory.get()) return;
         int invPearl = findPearlInInventory(player);
         if (invPearl == -1) return;
 
@@ -95,7 +101,7 @@ public class ClickPearl extends Module {
 
                 inv.combatant$setSelectedSlot(emptyHotbar);
                 manager.useItem(player, InteractionHand.MAIN_HAND);
-                player.swing(InteractionHand.MAIN_HAND);
+                swingIfEnabled(player, InteractionHand.MAIN_HAND);
                 inv.combatant$setSelectedSlot(originalSlot);
             } else {
                 int targetScreen = InventorySwap.mapHotbarToScreenSlot(originalSlot);
@@ -107,7 +113,7 @@ public class ClickPearl extends Module {
                 InventorySwap.INSTANCE.swapScreenSlots(pearlScreen, targetScreen);
 
                 manager.useItem(player, InteractionHand.MAIN_HAND);
-                player.swing(InteractionHand.MAIN_HAND);
+                swingIfEnabled(player, InteractionHand.MAIN_HAND);
 
                 if (!previousHeld.isEmpty()) {
                     int restoreSlot = findItemInInventory(player, previousHeld);
@@ -121,6 +127,10 @@ public class ClickPearl extends Module {
                 inv.combatant$setSelectedSlot(originalSlot);
             }
         });
+    }
+
+    private void swingIfEnabled(LocalPlayer player, InteractionHand hand) {
+        if (swing.get()) player.swing(hand);
     }
 
     private boolean isPearl(ItemStack stack) {

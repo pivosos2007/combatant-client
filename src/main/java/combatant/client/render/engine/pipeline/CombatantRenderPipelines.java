@@ -78,6 +78,7 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_ASSET_COMPAT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/asset_compat.frag");
     public static final Identifier SHADER_RIG_ENTITY_CUTOUT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/rig_entity_cutout.frag");
     public static final Identifier SHADER_RIG_ENTITY_TRANSLUCENT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/rig_entity_translucent.frag");
+    public static final Identifier SHADER_RIG_TRAIL_CLASSIC_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/rig_trail_classic.frag");
     public static final Identifier SHADER_GUI_TEXTURE_LOOKUP_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/gui_texture_lookup.frag");
     public static final Identifier SHADER_POS_TEX_COLOR_TINT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_color_tint.frag");
     public static final Identifier SHADER_WORLD_POST_DISTORTION_MASK_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/world_post_distortion_mask.frag");
@@ -86,6 +87,10 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_WORLD_SPHERE_DISTORTION_MASK_SAMPLED_DEPTH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/world_sphere_distortion_mask_sampled_depth.frag");
     public static final Identifier SHADER_WORLD_TOTEM_BURST_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/world_totem_burst.vert");
     public static final Identifier SHADER_WORLD_TOTEM_BURST_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/world_totem_burst.frag");
+    public static final Identifier SHADER_WORLD_TARGET_ORBIT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/world_target_orbit.frag");
+    public static final Identifier SHADER_WORLD_TARGET_RING_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/world_target_ring.frag");
+    public static final Identifier SHADER_WORLD_TARGET_GHOST_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/world_target_ghost.frag");
+    public static final Identifier SHADER_WORLD_TARGET_CRYSTAL_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/world_target_crystal.frag");
     public static final Identifier SHADER_MAP_TILE_LIGHT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/map_tile_light.frag");
     public static final Identifier SHADER_MAP_TILE_OPAQUE_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/map_tile_opaque.frag");
     public static final Identifier SHADER_POS_TEX_LOCAL_COLOR_RECT_PARAMS_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/pos_tex_local_color_rect_params.vert");
@@ -110,6 +115,8 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_WORLD_BILLBOARD_SDF_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/world_billboard_sdf.frag");
     public static final Identifier SHADER_WORLD_BUBBLE_SURFACE_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/world_bubble_surface.vert");
     public static final Identifier SHADER_WORLD_BUBBLE_SURFACE_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/world_bubble_surface.frag");
+    public static final Identifier SHADER_WORLD_SURFACE_SHELL_VERT = Identifier.fromNamespaceAndPath("combatant", "shaders/world_surface_shell.vert");
+    public static final Identifier SHADER_WORLD_SURFACE_SHELL_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/world_surface_shell.frag");
     public static final Identifier SHADER_ROUNDED_RECT_BATCH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/rounded_rect_batch.frag");
     public static final Identifier SHADER_UI_ROUNDED_FILL_SMOKE_BATCH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_rounded_fill_smoke_batch.frag");
     public static final Identifier SHADER_UI_MODULE_CATEGORY_SURFACE_BATCH_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/ui_module_category_surface_batch.frag");
@@ -143,6 +150,7 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_JUMP_SHOCKWAVE_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/jump_shockwave.frag");
     public static final Identifier SHADER_TARGET_LENS_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/target_lens.frag");
     public static final Identifier SHADER_BLAST_SHOCKWAVE_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/blast_shockwave.frag");
+    public static final Identifier SHADER_ORBIT_GRAVITY_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/orbit_gravity.frag");
     public static final Identifier SHADER_MAIN_MENU_TEXTURE_BACKGROUND_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/main_menu_texture_background.frag");
     public static final Identifier SHADER_MENU_BACKGROUND_AURORA_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/menu_background_aurora.frag");
     public static final Identifier SHADER_MENU_BACKGROUND_WAVES_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/menu_background_waves.frag");
@@ -158,6 +166,7 @@ public enum CombatantRenderPipelines {
     public static final Identifier SHADER_PORTAL_RIFT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/portal_rift.frag");
     public static final Identifier SHADER_SLEEP_OVERLAY_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/sleep_overlay.frag");
     public static final Identifier SHADER_HAND_SMOKE_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_smoke.frag");
+    public static final Identifier SHADER_HAND_RIFT_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_rift.frag");
     public static final Identifier SHADER_HAND_METALLIC_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_metallic.frag");
     public static final Identifier SHADER_HAND_MASK_OCCUPANCY_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_mask_occupancy.frag");
     public static final Identifier SHADER_HAND_MASK_OCCUPANCY_DILATE_FRAG = Identifier.fromNamespaceAndPath("combatant", "shaders/hand_mask_occupancy_dilate.frag");
@@ -217,6 +226,13 @@ public enum CombatantRenderPipelines {
     ));
     public static final RenderPipeline RIG_ENTITY_TRANSLUCENT_NO_DEPTH_WRITE_CULL = add(rigEntityPipeline(
             "rig_entity_translucent_no_depth_write_cull", SHADER_RIG_ENTITY_TRANSLUCENT_FRAG, true, false, true
+    ));
+    /** Rig-deformed, untextured procedural trail surfaces. Vertex deformation is shared with entity rigs. */
+    public static final RenderPipeline RIG_TRAIL_CLASSIC_DEPTH = add(rigTrailPipeline(
+            "rig_trail_classic_depth", SHADER_RIG_TRAIL_CLASSIC_FRAG, true, BlendFunction.TRANSLUCENT
+    ));
+    public static final RenderPipeline RIG_TRAIL_CLASSIC = add(rigTrailPipeline(
+            "rig_trail_classic", SHADER_RIG_TRAIL_CLASSIC_FRAG, false, BlendFunction.TRANSLUCENT
     ));
 
     /** Shaderpack-off entity-translucent path for static imported PBR geometry. */
@@ -278,6 +294,35 @@ public enum CombatantRenderPipelines {
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(true)
+            .build()
+    );
+
+    /** Analytic world-surface shell overlay used by HitEffect wave and TotemFX world-contact outlines. */
+    public static final RenderPipeline WORLD_SURFACE_SHELL = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_surface_shell"))
+            .withDomain(PipelineDomain.WORLD)
+            .withVertexFormat(CombatantVertexFormats.POS3_TEXTURE_COLOR_PARAMS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_WORLD_SURFACE_SHELL_VERT)
+            .withFragmentShader(SHADER_WORLD_SURFACE_SHELL_FRAG)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build()
+    );
+
+    /** Depth-tested world-surface shell overlay. Depth bias keeps the analytic shell coplanar-safe. */
+    public static final RenderPipeline WORLD_SURFACE_SHELL_DEPTH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_surface_shell_depth"))
+            .withDomain(PipelineDomain.WORLD)
+            .withVertexFormat(CombatantVertexFormats.POS3_TEXTURE_COLOR_PARAMS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_WORLD_SURFACE_SHELL_VERT)
+            .withFragmentShader(SHADER_WORLD_SURFACE_SHELL_FRAG)
+            .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
+            .withDepthBias(COPLANAR_SURFACE_DEPTH_BIAS_SLOPE, COPLANAR_SURFACE_DEPTH_BIAS_CONSTANT)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
             .build()
     );
 
@@ -355,6 +400,18 @@ public enum CombatantRenderPipelines {
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(true)
+            .build()
+    );
+    public static final RenderPipeline WORLD_TEXTURED_DEPTH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_textured_depth"))
+            .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_POS_TEX_COLOR_VERT)
+            .withFragmentShader(SHADER_POS_TEX_COLOR_FRAG)
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
             .build()
     );
     /**
@@ -665,10 +722,73 @@ public enum CombatantRenderPipelines {
             .withCull(true)
             .build()
     );
+    public static final RenderPipeline WORLD_TARGET_ORBIT_DEPTH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_target_orbit_depth"))
+            .withDomain(PipelineDomain.WORLD)
+            .withVertexFormat(CombatantVertexFormats.POS3_TEXTURE_COLOR_PARAMS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_WORLD_TOTEM_BURST_VERT)
+            .withFragmentShader(SHADER_WORLD_TARGET_ORBIT_FRAG)
+            .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
+            .withCull(false)
+            .build()
+    );
+    public static final RenderPipeline WORLD_TARGET_RING_DEPTH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_target_ring_depth"))
+            .withDomain(PipelineDomain.WORLD)
+            .withVertexFormat(CombatantVertexFormats.POS3_TEXTURE_COLOR_PARAMS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_WORLD_TOTEM_BURST_VERT)
+            .withFragmentShader(SHADER_WORLD_TARGET_RING_FRAG)
+            .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
+            .withCull(false)
+            .build()
+    );
+    public static final RenderPipeline WORLD_TARGET_GHOST_DEPTH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_target_ghost_depth"))
+            .withDomain(PipelineDomain.WORLD)
+            .withVertexFormat(CombatantVertexFormats.POS3_TEXTURE_COLOR_PARAMS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_WORLD_TOTEM_BURST_VERT)
+            .withFragmentShader(SHADER_WORLD_TARGET_GHOST_FRAG)
+            .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
+            .withCull(false)
+            .build()
+    );
 
     /**
      * Depth test (GEQUAL); translucent; lines.
      */
+
+    public static final RenderPipeline WORLD_TARGET_CRYSTAL = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_target_crystal"))
+            .withDomain(PipelineDomain.WORLD)
+            .withVertexFormat(CombatantVertexFormats.POS3_TEXTURE_COLOR_PARAMS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_WORLD_TOTEM_BURST_VERT)
+            .withFragmentShader(SHADER_WORLD_TARGET_CRYSTAL_FRAG)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunctions.ALPHA)
+            .withCull(false)
+            .build()
+    );
+
+    public static final RenderPipeline WORLD_TARGET_CRYSTAL_DEPTH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_target_crystal_depth"))
+            .withDomain(PipelineDomain.WORLD)
+            .withVertexFormat(CombatantVertexFormats.POS3_TEXTURE_COLOR_PARAMS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_WORLD_TOTEM_BURST_VERT)
+            .withFragmentShader(SHADER_WORLD_TARGET_CRYSTAL_FRAG)
+            .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunctions.ALPHA)
+            .withCull(false)
+            .build()
+    );
+
     public static final RenderPipeline WORLD_COLORED_LINES_DEPTH = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLineSmooth()
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_colored_lines_depth"))
@@ -1334,6 +1454,19 @@ public enum CombatantRenderPipelines {
             .withCull(false)
             .build()
     );
+    public static final RenderPipeline POSTPROCESS_ORBIT_GRAVITY = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/postprocess_orbit_gravity"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_ORBIT_GRAVITY_FRAG)
+            .withSampler("u_Texture")
+            .withSampler("u_Depth")
+            .withUniform("JumpShockwave", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .build()
+    );
     /** Full-screen cover-fit texture used by the rewritten main menu. */
     public static final RenderPipeline MAIN_MENU_TEXTURE_BACKGROUND = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/main_menu_texture_background"))
@@ -1562,6 +1695,20 @@ public enum CombatantRenderPipelines {
             .withSampler("u_Src")
             .withSampler("u_Mask")
             .withUniform("HandSmoke", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build()
+    );
+    public static final RenderPipeline HAND_RIFT = add(new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/hand_rift"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(SHADER_DAMAGE_TINT_VERT)
+            .withFragmentShader(SHADER_HAND_RIFT_FRAG)
+            .withSampler("u_Src")
+            .withSampler("u_Mask")
+            .withUniform("HandRift", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)
@@ -2112,6 +2259,25 @@ public enum CombatantRenderPipelines {
                 .withDepthWrite(depthTest)
                 .withBlend(BlendFunction.TRANSLUCENT)
                 .withCull(cull)
+                .build();
+    }
+
+    private static RenderPipeline rigTrailPipeline(String path, Identifier fragmentShader, boolean depthTest) {
+        return rigTrailPipeline(path, fragmentShader, depthTest, BlendFunctions.ALPHA_ADDITIVE);
+    }
+
+    private static RenderPipeline rigTrailPipeline(String path, Identifier fragmentShader, boolean depthTest, BlendFunction blend) {
+        return new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, RIG_UNIFORMS)
+                .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/" + path))
+                .withDomain(PipelineDomain.WORLD)
+                .withVertexFormat(CombatantVertexFormats.RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM,
+                        com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+                .withVertexShader(SHADER_RIG_TEXTURED_VERT)
+                .withFragmentShader(fragmentShader)
+                .withDepthTestFunction(depthTest ? DepthTestFunction.GEQUAL_DEPTH_TEST : DepthTestFunction.NO_DEPTH_TEST)
+                .withDepthWrite(false)
+                .withBlend(blend)
+                .withCull(false)
                 .build();
     }
 

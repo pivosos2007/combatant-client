@@ -20,12 +20,15 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.block.placer.BlockPlacer;
 import combatant.client.util.target.TargetingUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
@@ -101,16 +104,20 @@ public final class AutoTrap extends Module {
             movementCorrection::get
     );
     private final List<BlockPos> currentTargets = new ArrayList<>();
+    private final PlacementPreviewRenderer placementPreview = new PlacementPreviewRenderer();
 
     @Override
     public void onEnable() {
+        placementPreview.reset();
         blockPlacer.enable();
         updateTargets();
+        if (render.get()) placementPreview.tick(mc.level, currentTargets, previewBlockState(), lineColor.getArgb());
     }
 
     @Override
     public void onDisable() {
         blockPlacer.disable();
+        placementPreview.reset();
         currentTargets.clear();
     }
 
@@ -123,6 +130,7 @@ public final class AutoTrap extends Module {
         }
         blockPlacer.tick();
         updateTargets();
+        if (render.get()) placementPreview.tick(mc.level, currentTargets, previewBlockState(), lineColor.getArgb());
         if (autoDisable.get() && currentTargets.isEmpty()) setEnabled(false);
     }
 
@@ -209,13 +217,17 @@ public final class AutoTrap extends Module {
 
     @Override
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
-        if (!isEnabled() || !render.get() || currentTargets.isEmpty()) return;
-        for (BlockPos pos : currentTargets) {
-            AABB box = new AABB(pos);
-            renderer.filledBox(box, fillColor.getArgb());
-            renderer.outlineBox(box, lineColor.getArgb(), lineWidth.get());
-        }
+        if (!isEnabled() || !render.get() || mc.level == null) return;
+        placementPreview.render(renderer, mc.level, currentTargets, previewBlockState(),
+                fillColor.getArgb(), lineColor.getArgb(), lineWidth.get());
     }
+
+    private BlockState previewBlockState() {
+        BlockPlacer.PlacementSlot slot = findPlacementSlot(null);
+        return slot != null && slot.stack().getItem() instanceof BlockItem item
+                ? item.getBlock().defaultBlockState() : null;
+    }
+
 
     public enum TrapMode {
         FULL,

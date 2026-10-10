@@ -33,6 +33,10 @@ final class Blaze3dMeshArena implements AutoCloseable {
 
     private int vertexCursor;
     private int indexCursor;
+    /** Write mappings kept open across uploads; closed (flushed + unmapped) by {@link DynamicMeshWrites}. */
+    private @Nullable GpuBufferSlice.MappedView vertexMapping;
+    private @Nullable GpuBufferSlice.MappedView indexMapping;
+    boolean trackedForFlush;
     private boolean usedThisFrame;
     private @Nullable Blaze3dFrameFence fence;
 
@@ -42,10 +46,13 @@ final class Blaze3dMeshArena implements AutoCloseable {
         this.vertexCapacity = vertexCapacity;
         this.indexCapacity = indexCapacity;
         this.persistentMappedWrites = persistentMappedWrites;
+        // Without persistent mapping (Sodium 0.9.2 turns ARB_buffer_storage off on NVIDIA and old
+        // Intel) uploads go through CommandEncoder.writeToBuffer, which demands USAGE_COPY_DST.
+        int writeUsage = persistentMappedWrites ? GpuBuffer.USAGE_MAP_WRITE : GpuBuffer.USAGE_COPY_DST;
         this.vertexBuffer = RenderSystem.getDevice().createBuffer(named(name, " vertices"),
-                GpuBuffer.USAGE_MAP_WRITE | GpuBuffer.USAGE_VERTEX, vertexCapacity);
+                writeUsage | GpuBuffer.USAGE_VERTEX, vertexCapacity);
         this.indexBuffer = RenderSystem.getDevice().createBuffer(named(name, " indices"),
-                GpuBuffer.USAGE_MAP_WRITE | GpuBuffer.USAGE_INDEX, indexCapacity);
+                writeUsage | GpuBuffer.USAGE_INDEX, indexCapacity);
     }
 
     private static Supplier<String> named(String name, String suffix) {
@@ -206,6 +213,43 @@ final class Blaze3dMeshArena implements AutoCloseable {
         }
     }
 
+    /**
+     * Persistent-mapping upload: copies the mesh straight into the arena's open mapping with a native
+     * memcpy. The mapping stays open until {@link DynamicMeshWrites#flushPending()} runs before a draw,
+     * so N meshes cost one map/flush/unmap per buffer instead of N.
+     */
+    void writeMapped(int vertexOffsetBytes, int vertexBytes, int indexOffsetBytes, int indexBytes,
+                     combatant.client.render.engine.uniform.MeshBuilder mesh) {
+        validateRange("vertex upload", vertexOffsetBytes, vertexBytes, vertexCapacity);
+        validateRange("index upload", indexOffsetBytes, indexBytes, indexCapacity);
+        if (mesh.getVertexBytes() != vertexBytes) {
+            throw new IllegalStateException(name + " vertex upload: source byte count mismatch: expected="
+                    + vertexBytes + ", actual=" + mesh.getVertexBytes());
+        }
+        if (mesh.getIndexBytes() != indexBytes) {
+            throw new IllegalStateException(name + " index upload: source byte count mismatch: expected="
+                    + indexBytes + ", actual=" + mesh.getIndexBytes());
+        }
+        if (vertexMapping == null) vertexMapping = vertexBuffer.slice().map(false, true);
+        if (indexMapping == null) indexMapping = indexBuffer.slice().map(false, true);
+        mesh.copyVerticesTo(vertexMapping.data(), vertexOffsetBytes);
+        mesh.copyIndicesTo(indexMapping.data(), indexOffsetBytes);
+        DynamicMeshWrites.track(this);
+    }
+
+    /** Flushes and unmaps the open write mappings, if any. */
+    void closeMappings() {
+        GpuBufferSlice.MappedView vertices = vertexMapping;
+        GpuBufferSlice.MappedView indices = indexMapping;
+        vertexMapping = null;
+        indexMapping = null;
+        try {
+            if (vertices != null) vertices.close();
+        } finally {
+            if (indices != null) indices.close();
+        }
+    }
+
     void writeAllocation(int vertexOffsetBytes, int vertexBytes, ByteBuffer vertexSrc,
                          int indexOffsetBytes, int indexBytes, ByteBuffer indexSrc) {
         validateRange("vertex upload", vertexOffsetBytes, vertexBytes, vertexCapacity);
@@ -226,6 +270,7 @@ final class Blaze3dMeshArena implements AutoCloseable {
     }
 
     void retire(Blaze3dFrameFence frameFence) {
+        closeMappings();
         if (!usedThisFrame) return;
         if (fence != null) fence.release();
         fence = frameFence;
@@ -233,6 +278,7 @@ final class Blaze3dMeshArena implements AutoCloseable {
 
     @Override
     public void close() {
+        closeMappings();
         if (fence != null) {
             fence.release();
             fence = null;

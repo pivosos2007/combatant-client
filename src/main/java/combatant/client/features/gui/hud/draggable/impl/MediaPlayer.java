@@ -8,6 +8,7 @@
 package combatant.client.features.gui.hud.draggable.impl;
 
 
+import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
@@ -755,7 +756,7 @@ public final class MediaPlayer extends DraggableHudElement {
         long sec = Math.max(0L, seconds);
         long m = sec / 60L;
         long s = sec % 60L;
-        return String.format("%d:%02d", m, s);
+        return FastFormat.minutesSeconds(m, s);
     }
 
     private String safe(String value) {

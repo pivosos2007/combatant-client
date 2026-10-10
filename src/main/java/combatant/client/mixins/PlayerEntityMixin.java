@@ -72,6 +72,13 @@ public abstract class PlayerEntityMixin implements IPlayerAttackCooldown {
         }
     }
 
+    @ModifyReturnValue(method = "getSpeed", at = @At("RETURN"))
+    private float combatant$noStunIgnoreSlowness(float original) {
+        NoStun noStun = Modules.get(NoStun.class);
+        if (noStun == null) return original;
+        return (float) noStun.getMovementSpeedAttributeWithoutSlowness((Player) (Object) this, original);
+    }
+
     @ModifyExpressionValue(
             method = "causeExtraKnockback",
             at = @At(

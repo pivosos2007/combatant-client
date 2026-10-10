@@ -147,16 +147,31 @@ public class RGBAColorValue extends ConfigValue<String> implements ColorValue {
         if (json instanceof String s) value = normalize(s);
     }
 
+    /**
+     * Called from render code many times per frame; the parsed form is cached per backing string
+     * instance (see {@link RGBColorValue#getArgb()}). Rainbow values keep only the fallback opacity.
+     */
     public int getArgb() {
-        if (isRainbowValue(value)) {
-            int fallback = rainbowFallbackArgb(value);
-            int alpha = (fallback >>> 24) & 0xFF;
-            float opacity = alpha / 255.0f;
+        String current = value;
+        Parsed cached = parsed;
+        if (cached == null || cached.source != current) {
+            boolean rainbow = isRainbowValue(current);
+            cached = rainbow
+                    ? new Parsed(current, true, 0, ((rainbowFallbackArgb(current) >>> 24) & 0xFF) / 255.0f)
+                    : new Parsed(current, false, parseToArgb(current), 1.0f);
+            parsed = cached;
+        }
+        if (cached.rainbow) {
             return ColorUtils
-                    .rainbow(RAINBOW_SPEED, 0, 1f, 1f, opacity)
+                    .rainbow(RAINBOW_SPEED, 0, 1f, 1f, cached.rainbowOpacity)
                     .getRGB();
         }
-        return parseToArgb(value);
+        return cached.argb;
+    }
+
+    private volatile Parsed parsed;
+
+    private record Parsed(String source, boolean rainbow, int argb, float rainbowOpacity) {
     }
 
     @Override
@@ -166,7 +181,12 @@ public class RGBAColorValue extends ConfigValue<String> implements ColorValue {
 
     @Override
     public boolean isRainbow() {
-        return isRainbowValue(value);
+        String current = value;
+        Parsed cached = parsed;
+        if (cached != null && cached.source == current) {
+            return cached.rainbow;
+        }
+        return isRainbowValue(current);
     }
 
     @Override

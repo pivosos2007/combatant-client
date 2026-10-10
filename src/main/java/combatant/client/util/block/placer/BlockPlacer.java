@@ -36,12 +36,11 @@ import combatant.client.events.impl.MovementInputEvent;
 import combatant.client.events.impl.PostPlayerUpdateEvent;
 import combatant.client.events.impl.RotationUpdateEvent;
 import combatant.client.features.module.Module;
-import combatant.client.util.aiming.RestrictedSingleUseAction;
 import combatant.client.util.aiming.RotationManager;
-import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.block.scaffold.ScaffoldPlacementTarget;
+import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import combatant.client.util.block.scaffold.ScaffoldTargetFinder;
 import combatant.client.util.player.inventory.InventorySwap;
 
@@ -73,6 +72,7 @@ public final class BlockPlacer {
     private final BooleanSupplier ignoreOpenInventorySupplier;
     private final BooleanSupplier ignoreUsingItemSupplier;
     private final BooleanSupplier ignoreEntityCollisionSupplier;
+    private final IntSupplier blocksPerTickSupplier;
     private final Supplier<RotationMode> rotationModeSupplier;
     private final Supplier<MovementCorrection> movementCorrectionSupplier;
     private final int rotationPriority;
@@ -107,7 +107,7 @@ public final class BlockPlacer {
         this(module, requester, rotationPriority, slotFinder, rangeSupplier, wallRangeSupplier,
                 cooldownMinSupplier, cooldownMaxSupplier, slotResetDelayMinSupplier, slotResetDelayMaxSupplier,
                 sneakTicksSupplier, constructFailResultSupplier, ignoreOpenInventorySupplier,
-                ignoreUsingItemSupplier, () -> false, rotationModeSupplier, movementCorrectionSupplier);
+                ignoreUsingItemSupplier, () -> false, () -> 1, rotationModeSupplier, movementCorrectionSupplier);
     }
 
     public BlockPlacer(
@@ -129,6 +129,32 @@ public final class BlockPlacer {
             Supplier<RotationMode> rotationModeSupplier,
             Supplier<MovementCorrection> movementCorrectionSupplier
     ) {
+        this(module, requester, rotationPriority, slotFinder, rangeSupplier, wallRangeSupplier,
+                cooldownMinSupplier, cooldownMaxSupplier, slotResetDelayMinSupplier, slotResetDelayMaxSupplier,
+                sneakTicksSupplier, constructFailResultSupplier, ignoreOpenInventorySupplier,
+                ignoreUsingItemSupplier, ignoreEntityCollisionSupplier, () -> 1, rotationModeSupplier, movementCorrectionSupplier);
+    }
+
+    public BlockPlacer(
+            Module module,
+            Object requester,
+            int rotationPriority,
+            SlotFinder slotFinder,
+            DoubleSupplier rangeSupplier,
+            DoubleSupplier wallRangeSupplier,
+            IntSupplier cooldownMinSupplier,
+            IntSupplier cooldownMaxSupplier,
+            IntSupplier slotResetDelayMinSupplier,
+            IntSupplier slotResetDelayMaxSupplier,
+            IntSupplier sneakTicksSupplier,
+            BooleanSupplier constructFailResultSupplier,
+            BooleanSupplier ignoreOpenInventorySupplier,
+            BooleanSupplier ignoreUsingItemSupplier,
+            BooleanSupplier ignoreEntityCollisionSupplier,
+            IntSupplier blocksPerTickSupplier,
+            Supplier<RotationMode> rotationModeSupplier,
+            Supplier<MovementCorrection> movementCorrectionSupplier
+    ) {
         this.module = module;
         this.requester = requester;
         this.rotationPriority = rotationPriority;
@@ -144,6 +170,7 @@ public final class BlockPlacer {
         this.ignoreOpenInventorySupplier = ignoreOpenInventorySupplier;
         this.ignoreUsingItemSupplier = ignoreUsingItemSupplier;
         this.ignoreEntityCollisionSupplier = ignoreEntityCollisionSupplier;
+        this.blocksPerTickSupplier = blocksPerTickSupplier;
         this.rotationModeSupplier = rotationModeSupplier;
         this.movementCorrectionSupplier = movementCorrectionSupplier;
     }
@@ -284,15 +311,21 @@ public final class BlockPlacer {
             return;
         }
 
-        RotationTarget rotationTarget = new RotationTarget(
-                currentPlacement.target().getRotation(),
-                player,
-                List.of(),
-                1,
-                4.0f,
-                false,
-                movementCorrectionSupplier.get(),
-                new RestrictedSingleUseAction(() -> {
+        PlacementPlan scheduledPlan = currentPlacement;
+        BlockInteractionPipeline.INSTANCE.rotateTo(
+                requester,
+                scheduledPlan.target().getRotation(),
+                scheduledPlan.target().getHitVec(),
+                new BlockInteractionPipeline.RotationPlan(
+                        true,
+                        List.of(),
+                        1,
+                        4.0f,
+                        false,
+                        movementCorrectionSupplier.get(),
+                        rotationPriority
+                ),
+                () -> {
                     PlacementPlan plan = currentPlacement;
                     LocalPlayer currentPlayer = mc.player;
                     if (plan == null || currentPlayer == null || ticksToWait > 0) {
@@ -314,9 +347,8 @@ public final class BlockPlacer {
                     }
 
                     doPlacement(currentPlayer, plan);
-                })
+                }
         );
-        RotationManager.INSTANCE.setRotationTarget(rotationTarget, rotationPriority, requester);
     }
 
     @EventHandler
@@ -338,11 +370,27 @@ public final class BlockPlacer {
         }
 
         LocalPlayer player = mc.player;
-        if (player == null || mc.level == null || mc.gameMode == null || currentPlacement == null || ticksToWait > 0) {
+        if (player == null || mc.level == null || mc.gameMode == null || ticksToWait > 0) {
             return;
         }
 
-        if (rotationModeSupplier.get() != RotationMode.NORMAL) {
+        if (rotationModeSupplier.get() == RotationMode.NO_ROTATION) {
+            int bpt = Math.max(1, blocksPerTickSupplier != null ? blocksPerTickSupplier.getAsInt() : 1);
+            for (int i = 0; i < bpt; i++) {
+                if (blocks.isEmpty() || ticksToWait > 0) {
+                    break;
+                }
+                PlacementSlot slot = slotFinder.find(null);
+                if (slot == null || slot.stack().isEmpty()) {
+                    break;
+                }
+                PlacementPlan plan = scheduleCurrentPlacement(player, slot.stack());
+                if (plan == null) {
+                    break;
+                }
+                doPlacement(player, plan);
+            }
+        } else if (currentPlacement != null) {
             doPlacement(player, currentPlacement);
         }
     }
@@ -392,7 +440,7 @@ public final class BlockPlacer {
             List<Entity> entities = player.level().getEntities(
                     player,
                     new AABB(pos),
-                    entity -> entity != null && !entity.isRemoved() && !entity.isSpectator()
+                    entity -> entity != null && !entity.isRemoved() && !entity.isSpectator() && entity.isPickable()
             );
             if (!entities.isEmpty()) {
                 inaccessible.add(pos);
@@ -404,9 +452,6 @@ public final class BlockPlacer {
     }
 
     private void doPlacement(LocalPlayer player, PlacementPlan plan) {
-        currentPlacement = null;
-        blocks.remove(plan.pos());
-
         PlacementSlot slot = slotFinder.find(plan.pos());
         if (slot == null) {
             return;
@@ -416,35 +461,43 @@ public final class BlockPlacer {
         // not the raw planned target rotation.
         Rotation verificationRotation = RotationManager.INSTANCE.getServerRotation();
 
-        if (!canReach(player, plan.target().getInteractedBlockPos(), verificationRotation)) {
+        // The queued position is only consumed once the placement is valid. Dropping it first meant a
+        // rotation that had not reached the block yet (smoothing takes ticks, and the server rotation
+        // lags the planned one) lost the entry, so NORMAL rotation mode never placed anything.
+        if (rotationModeSupplier.get() == RotationMode.NORMAL && !canReach(player, plan.target().getInteractedBlockPos(), verificationRotation)) {
             return;
         }
 
         BlockHitResult hitResult = raytraceTarget(
                 player,
                 plan.target().getInteractedBlockPos(),
-                verificationRotation,
+                rotationModeSupplier.get() == RotationMode.NORMAL ? verificationRotation : plan.target().getRotation(),
                 plan.target().getDirection()
         );
+        if (hitResult == null && (constructFailResultSupplier.getAsBoolean() || rotationModeSupplier.get() != RotationMode.NORMAL)) {
+            hitResult = new BlockHitResult(plan.target().getHitVec(), plan.target().getDirection(), plan.target().getInteractedBlockPos(), false);
+        }
         if (hitResult == null) {
             return;
         }
 
-        if (slot.hotbarSlot() >= 0) {
-            InventorySwap.INSTANCE.leaseHotbar(
-                    requester,
-                    slot.hotbarSlot(),
-                    randomBetween(slotResetDelayMinSupplier.getAsInt(), slotResetDelayMaxSupplier.getAsInt())
-            );
-        }
+        currentPlacement = null;
+        blocks.remove(plan.pos());
 
         if (slot.stack().getItem() instanceof BlockItem && !player.level().getBlockState(plan.pos()).canBeReplaced()) {
             return;
         }
 
-        InteractionResult result = mc.gameMode.useItemOn(player, slot.hand(), hitResult);
+        InteractionResult result = BlockInteractionPipeline.INSTANCE.useOnBlock(
+                requester,
+                player,
+                slot.hand(),
+                slot.hotbarSlot(),
+                randomBetween(slotResetDelayMinSupplier.getAsInt(), slotResetDelayMaxSupplier.getAsInt()),
+                hitResult,
+                true
+        );
         if (result != null && result.consumesAction()) {
-            player.swing(slot.hand());
             ranAction = true;
         }
     }
@@ -466,6 +519,11 @@ public final class BlockPlacer {
         double wallRange = wallRangeSupplier.getAsDouble();
         if (Vec3.atCenterOf(interactedPos).distanceToSqr(player.getEyePosition()) <= wallRange * wallRange) {
             return true;
+        }
+
+        if (rotationModeSupplier.get() != RotationMode.NORMAL) {
+            double range = rangeSupplier.getAsDouble();
+            return Vec3.atCenterOf(interactedPos).distanceToSqr(player.getEyePosition()) <= range * range;
         }
 
         BlockHitResult hitResult = traceTarget(player, rotation, rangeSupplier.getAsDouble());

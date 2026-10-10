@@ -1167,6 +1167,11 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     public void onPrepareWorldPostProcess(float tickDelta) {
     }
 
+    /** Requests entity-only depth for world rendering. */
+    public boolean needsEntityOnlyDepth() {
+        return false;
+    }
+
     public HudPhase getHudPhase() {
         return HudPhase.NONE;
     }

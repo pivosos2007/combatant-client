@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.combat;
 
+import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.config.values.*;
 import combatant.client.util.combat.*;
 import lombok.Getter;
@@ -69,6 +70,9 @@ public class KillAura extends Module {
     private static final int MAX_CPS = 100;
     private static final String IGNORE_BOTS = "ignore_bots";
     private final Minecraft mc = Minecraft.getInstance();
+    // custom = the settings below as set; grim = attack reach at most 3.0 and a legit sprint reset;
+    // vanilla = full 6.0 reach, for servers with no anticheat.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final NumberValue<Double> range =
             numCommon(
                     "killauraRange",
@@ -1106,11 +1110,11 @@ public class KillAura extends Module {
     }
 
     public double getRange() {
-        return range.get();
+        return effectiveRange();
     }
 
     public double getAcquireRange() {
-        return range.get() + Math.max(0.0, acquireRangeIncrement.get());
+        return effectiveRange() + Math.max(0.0, acquireRangeIncrement.get());
     }
 
     public boolean usesDynamicReach() {
@@ -1122,7 +1126,7 @@ public class KillAura extends Module {
     }
 
     private double getEffectiveAttackRange(Entity target) {
-        return resolveDynamicReach(target, range.get());
+        return resolveDynamicReach(target, effectiveRange());
     }
 
     private double getEffectiveAcquireRange(Entity target) {
@@ -1171,8 +1175,21 @@ public class KillAura extends Module {
         return smooth.calculateTicks(base, rotation);
     }
 
+    private double effectiveRange() {
+        return anticheat.get().limit(range.get(), 3.0, 6.0);
+    }
+
+    /** GrimAC flags TimerLimit for the default and none resets while the player moves; legit and packet stay clean. */
+    private SprintResetMode effectiveSprintReset() {
+        SprintResetMode chosen = sprintResetMode.get();
+        if (anticheat.get() == AntiCheatPreset.GRIM && (chosen == SprintResetMode.DEFAULT || chosen == SprintResetMode.NONE)) {
+            return SprintResetMode.LEGIT;
+        }
+        return chosen;
+    }
+
     private CombatStrikeController.SprintResetMode resolveStrikeResetMode() {
-        return switch (sprintResetMode.get()) {
+        return switch (effectiveSprintReset()) {
             case DEFAULT -> CombatStrikeController.SprintResetMode.DEFAULT;
             case LEGIT -> CombatStrikeController.SprintResetMode.LEGIT;
             case PACKET -> CombatStrikeController.SprintResetMode.PACKET;

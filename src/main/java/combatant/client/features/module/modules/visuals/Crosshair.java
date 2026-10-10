@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.visuals;
 
+import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.features.module.*;
 import combatant.client.features.module.Module;
@@ -626,7 +627,7 @@ public class Crosshair extends Module {
             return;
         }
 
-        String reachText = String.format(Locale.ROOT, "%.1f", snapshot.displayReach());
+        String reachText = FastFormat.oneDecimal(snapshot.displayReach());
         String hitsText = Integer.toString(snapshot.longHitsRemaining());
 
         TextRenderer font = BuiltinFontCatalog.MONSTERRAT.renderer(fallback);

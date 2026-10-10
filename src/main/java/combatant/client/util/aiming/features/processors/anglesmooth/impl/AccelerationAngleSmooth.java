@@ -130,10 +130,9 @@ public final class AccelerationAngleSmooth extends AngleSmooth {
         RotationDelta prevDiff = prevRotation.rotationDeltaTo(currentRotation);
         RotationDelta diff = currentRotation.rotationDeltaTo(targetRotation);
 
-        double distance = 0.0;
+        double distance = rotationTarget != null ? rotationTarget.distanceToPlayer() : 0.0;
         boolean crosshair = false;
         if (rotationTarget != null && rotationTarget.entity != null) {
-            distance = RotationManager.boxedDistanceToPlayer(rotationTarget.entity);
             crosshair = RaycastUtil.isLookingAtEntity(
                     RotationManager.player(),
                     rotationTarget.entity,

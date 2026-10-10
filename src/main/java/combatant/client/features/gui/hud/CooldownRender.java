@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.hud;
 
+import combatant.client.util.text.FastFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
@@ -22,7 +23,7 @@ public enum CooldownRender {
         // формируем текст
         String textStr = (secondsLeft >= 10)
                 ? ((int) secondsLeft) + "с"
-                : String.format("%.1fс", secondsLeft);
+                : FastFormat.oneDecimal(secondsLeft) + "с";
         Component text = Component.literal(textStr);
 
         int textWidth = mc.font.width(text);

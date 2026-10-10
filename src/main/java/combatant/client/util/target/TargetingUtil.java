@@ -17,6 +17,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import combatant.client.features.module.modules.combat.AntiBot;
 import combatant.client.features.relations.CategoryRules;
 import combatant.client.features.relations.CategoryType;
 import combatant.client.features.relations.EntityFilters;
@@ -68,6 +69,7 @@ public enum TargetingUtil {
         for (Entity e : entities) {
             LivingEntity living = (LivingEntity) e;
             if (!isValidCombatTarget(living)) continue;
+            if (AntiBot.shouldIgnore(living)) continue;
             if (settings.playersOnly() && !(living instanceof Player)) continue;
             if (settings.visibleOnly() && !mc.player.hasLineOfSight(living)) continue;
 

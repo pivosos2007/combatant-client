@@ -39,7 +39,7 @@ void main() {
     offset.x *= clamp(u_InvWidth / max(u_InvHeight, 1.0e-7), 0.25, 4.0);
 
     vec2 uvG = clamp(uv + offset, vec2(0.0), vec2(1.0));
-    float chroma = 0.13 * envelope;
+    float chroma = 0.045 * envelope;
     vec2 chromaOffset = offset * chroma;
     vec2 uvR = clamp(uvG - chromaOffset, vec2(0.0), vec2(1.0));
     vec2 uvB = clamp(uvG + chromaOffset, vec2(0.0), vec2(1.0));

@@ -12,12 +12,16 @@ package combatant.client.mixins;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.BlockCollisions;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.CollisionGetter;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import combatant.client.events.Events;
 import combatant.client.events.impl.EventCollision;
+import combatant.client.events.impl.BlockCollisionShapeEvent;
 
 @Mixin(value = BlockCollisions.class, priority = 800)
 public abstract class BlockCollisionSpliteratorMixin {
@@ -38,4 +42,22 @@ public abstract class BlockCollisionSpliteratorMixin {
         Events.BUS.post(event);
         return event.getState();
     }
+    // CollisionContext is the actual shape provider in Minecraft 26.2.
+    // Use a distinct event: state substitution in EventCollision remains untouched.
+    @Redirect(
+            method = "computeNext",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/world/phys/shapes/CollisionContext;getCollisionShape(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/CollisionGetter;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/shapes/VoxelShape;"
+            )
+    )
+    private VoxelShape combatant$shapeHook(CollisionContext context, BlockState state,
+                                           CollisionGetter collisionGetter, BlockPos pos) {
+        VoxelShape original = context.getCollisionShape(state, collisionGetter, pos);
+        if (!Events.BUS.hasListeners(BlockCollisionShapeEvent.class)) return original;
+        BlockCollisionShapeEvent event = new BlockCollisionShapeEvent(state, pos, original, collisionGetter, context);
+        Events.BUS.post(event);
+        return event.getShape();
+    }
+
 }

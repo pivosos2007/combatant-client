@@ -233,6 +233,34 @@ public final class Renderer3D {
         addLine(mesh, box.minX, box.minY, box.maxZ, box.minX, box.maxY, box.maxZ, r, g, b, a);
     }
 
+    /**
+     * Wireframe box at the ambient {@link RenderState#lineWidth} and main depth mode. Unlike twelve
+     * separate {@link #line} calls it resolves the batch once for the whole box.
+     */
+    public void outlineBoxAmbientWidth(AABB box, int argb) {
+        if (box == null) return;
+        int a = (argb >>> 24) & 255;
+        if (a == 0) return;
+        int r = (argb >>> 16) & 255;
+        int g = (argb >>> 8) & 255;
+        int b = argb & 255;
+        MeshBuilder mesh = lines();
+        if (mesh == null) return;
+
+        addLine(mesh, box.minX, box.minY, box.minZ, box.maxX, box.minY, box.minZ, r, g, b, a);
+        addLine(mesh, box.maxX, box.minY, box.minZ, box.maxX, box.minY, box.maxZ, r, g, b, a);
+        addLine(mesh, box.maxX, box.minY, box.maxZ, box.minX, box.minY, box.maxZ, r, g, b, a);
+        addLine(mesh, box.minX, box.minY, box.maxZ, box.minX, box.minY, box.minZ, r, g, b, a);
+        addLine(mesh, box.minX, box.maxY, box.minZ, box.maxX, box.maxY, box.minZ, r, g, b, a);
+        addLine(mesh, box.maxX, box.maxY, box.minZ, box.maxX, box.maxY, box.maxZ, r, g, b, a);
+        addLine(mesh, box.maxX, box.maxY, box.maxZ, box.minX, box.maxY, box.maxZ, r, g, b, a);
+        addLine(mesh, box.minX, box.maxY, box.maxZ, box.minX, box.maxY, box.minZ, r, g, b, a);
+        addLine(mesh, box.minX, box.minY, box.minZ, box.minX, box.maxY, box.minZ, r, g, b, a);
+        addLine(mesh, box.maxX, box.minY, box.minZ, box.maxX, box.maxY, box.minZ, r, g, b, a);
+        addLine(mesh, box.maxX, box.minY, box.maxZ, box.maxX, box.maxY, box.maxZ, r, g, b, a);
+        addLine(mesh, box.minX, box.minY, box.maxZ, box.minX, box.maxY, box.maxZ, r, g, b, a);
+    }
+
     public void box(AABB box, BoxStyle style) {
         if (style == null) return;
         filledBox(box, style.fillArgb(), style.depthMode());
@@ -285,6 +313,8 @@ public final class Renderer3D {
     public enum DepthMode {
         MAIN,
         PRE_DEPTH,
+        /** Entity depth without terrain depth. */
+        ENTITY_ONLY,
         NONE
     }
 
@@ -415,6 +445,7 @@ public final class Renderer3D {
         }
 
         public boolean compatibleWith(BatchBindings other) {
+            if (other == this) return true;
             if (other == null) return false;
             if (samplers.size() != other.samplers.size() || uniforms.size() != other.uniforms.size()) {
                 return false;

@@ -32,13 +32,14 @@ public abstract class PlayerInventoryMixin {
     @ModifyReturnValue(method = "getSelectedSlot", at = @At("RETURN"))
     private int combatant$silentSelectedSlot(int original) {
         Minecraft mc = Minecraft.getInstance();
-        return player == mc.player ? InventorySwap.INSTANCE.effectiveSelectedSlot() : original;
+        if (player != mc.player || InventorySwap.INSTANCE.isClientView()) return original;
+        return InventorySwap.INSTANCE.effectiveSelectedSlot();
     }
 
     @ModifyReturnValue(method = "getSelectedItem", at = @At("RETURN"))
     private ItemStack combatant$silentSelectedStack(ItemStack original) {
         Minecraft mc = Minecraft.getInstance();
-        if (player == mc.player && InventorySwap.INSTANCE.isHotbarLeased()) {
+        if (player == mc.player && InventorySwap.INSTANCE.isHotbarLeased() && !InventorySwap.INSTANCE.isClientView()) {
             return getItem(InventorySwap.INSTANCE.effectiveSelectedSlot());
         }
 

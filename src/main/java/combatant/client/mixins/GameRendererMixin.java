@@ -623,7 +623,11 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
 
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("3d:world_engine_target");
              TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:world_engine_target")) {
-            MsaaWorldTarget.begin(minecraft, MainConfig.get().getMsaa3dSamples(), false, true);
+            int samples = MainConfig.get().getMsaa3dSamples();
+            if (ModuleManager.needsEntityOnlyDepth()) {
+                samples = 1;
+            }
+            MsaaWorldTarget.begin(minecraft, samples, false, true);
             try {
                 combatant$renderWorldEngine(tickCounter);
                 combatant$renderPostProcessWorld(tickCounter);

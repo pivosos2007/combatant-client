@@ -28,6 +28,7 @@ import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.pvp.client.CooldownsState;
 import combatant.client.util.target.TargetingUtil;
+import combatant.client.util.world.ExplosionDamageUtil;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import net.minecraft.client.Minecraft;
@@ -61,6 +62,11 @@ public final class Offhand extends Module {
     private static final String FALLBACK_CRYSTAL = "crystal";
     private static final int INVENTORY_CONFIRM_TICKS = 2;
     private static final int INVENTORY_TIMEOUT_TICKS = 10;
+    // After a totem was needed, stay on it this long before going back to a crystal, so a fight that
+    // hovers around the threshold does not bounce the offhand every tick.
+    private static final int CRYSTAL_SAFE_HOLD_TICKS = 20;
+    // Explosion damage (power 6) reaches 12 blocks.
+    private static final double CRYSTAL_DAMAGE_RANGE = 12.0;
 
     private final Minecraft mc = Minecraft.getInstance();
 
@@ -94,6 +100,12 @@ public final class Offhand extends Module {
             }}
     );
 
+    // Crystal in the offhand whenever a totem is not needed, so AutoCrystal places without a hotbar swap.
+    private final BooleanValue crystalWhenSafe = bool("offhand_crystal_when_safe", "crystal_when_safe", false);
+    // Health that must be left after the worst crystal already in range goes off.
+    private final NumberValue<Float> crystalSafeHealth = visibleWhen(
+            num("offhand_crystal_safe_health", "crystal_safe_health", 16.0f, 4.0f, 36.0f), crystalWhenSafe::get);
+
     private final BooleanValue autoConsume = bool("offhand_auto_consume", "auto_consume", true);
     private final BooleanValue useGapples = bool("offhand_use_gapples", "use_gapples", true);
     private final NumberValue<Float> gappleHealth = num("offhand_gapple_health", "gapple_health", 16.0f, 1.0f, 40.0f);
@@ -125,6 +137,7 @@ public final class Offhand extends Module {
     private int restoreInventorySlot = -1;
     private int restoreHotbarSlot = -1;
     private boolean restoreInventoryPending;
+    private int crystalUnsafeUntilTick = -1;
 
     @Override
     public String getConfigName() {
@@ -152,6 +165,8 @@ public final class Offhand extends Module {
         if (updatePendingOffhandSwap(player)) return;
 
         boolean danger = shouldHoldTotem(player, effectiveHealth(player));
+        // Crystals nearby always count as danger above; with a crystal offhand that is the point.
+        if (danger && crystalWhenSafe.get() && isSafeForCrystal(player)) danger = false;
         if (danger && player.isUsingItem() && player.getUsedItemHand() == InteractionHand.OFF_HAND) {
             player.releaseUsingItem();
         }
@@ -216,6 +231,15 @@ public final class Offhand extends Module {
     }
 
     private void updateOffhandPolicy(LocalPlayer player, boolean danger) {
+        if (crystalWhenSafe.get() && isSafeForCrystal(player)) {
+            int crystal = findUsable(player, stack -> stack.is(Items.END_CRYSTAL));
+            if (player.getOffhandItem().is(Items.END_CRYSTAL)) return;
+            if (crystal != -1) {
+                requestOffhandSwap(crystal, null);
+                return;
+            }
+        }
+
         int totemSlot = findTotemSlot(player);
         boolean totemUsable = isItemUsable(player, Items.TOTEM_OF_UNDYING.getDefaultInstance());
 
@@ -499,6 +523,43 @@ public final class Offhand extends Module {
         return threats.get(THREAT_PROJECTILES) && hasProjectileThreat(player);
     }
 
+    /**
+     * Safe enough to trade the totem for a crystal. The normal danger check treats any crystal within
+     * a few blocks as a threat, which is every tick of a crystal fight, so this asks how much the
+     * crystals actually there would deal instead. Everything else that forces a totem still does.
+     */
+    private boolean isSafeForCrystal(LocalPlayer player) {
+        if (!isSafeForCrystalNow(player)) {
+            crystalUnsafeUntilTick = player.tickCount + CRYSTAL_SAFE_HOLD_TICKS;
+            return false;
+        }
+        return player.tickCount > crystalUnsafeUntilTick;
+    }
+
+    private boolean isSafeForCrystalNow(LocalPlayer player) {
+        if (player.tickCount <= forcedTotemUntilTick) return false;
+        float health = effectiveHealth(player);
+        if (health <= Math.max(healthThreshold.get(), crystalSafeHealth.get())) return false;
+        if (player.isFallFlying() && health <= elytraHealth.get()) return false;
+        if (fallCheck.get() && player.fallDistance > 3.0f) return false;
+        if (threats.get(THREAT_BROKEN_ARMOR) && hasBrokenArmor(player) && hasNearbyCombatPlayer(player, 10.0)) return false;
+        if (threats.get(THREAT_MACE) && hasMaceThreat(player)) return false;
+        if (threats.get(THREAT_PROJECTILES) && hasProjectileThreat(player)) return false;
+        return health - worstCrystalDamage(player) > crystalSafeHealth.get();
+    }
+
+    private float worstCrystalDamage(LocalPlayer player) {
+        float worst = 0.0f;
+        for (EndCrystal crystal : mc.level.getEntitiesOfClass(
+                EndCrystal.class,
+                player.getBoundingBox().inflate(CRYSTAL_DAMAGE_RANGE),
+                crystal -> crystal != null && !crystal.isRemoved()
+        )) {
+            worst = Math.max(worst, ExplosionDamageUtil.getCrystalDamage(player, crystal.position(), 0, false));
+        }
+        return worst;
+    }
+
     private boolean isItemUsable(LocalPlayer player, ItemStack stack) {
         if (player == null || stack == null || stack.isEmpty()) return false;
         if (player.getCooldowns().isOnCooldown(stack)) return false;
@@ -528,6 +589,7 @@ public final class Offhand extends Module {
         if (off.is(Items.TOTEM_OF_UNDYING) && isItemUsable(player, off)) return;
         if (off.is(Items.SHIELD) && fallbacks.get(FALLBACK_SHIELD) && isPvpContext(player) && shieldHealthy(off) && isItemUsable(player, off)) return;
         if (off.is(Items.END_CRYSTAL) && fallbacks.get(FALLBACK_CRYSTAL) && isCrystalContext() && isItemUsable(player, off)) return;
+        if (off.is(Items.END_CRYSTAL) && crystalWhenSafe.get()) return;
         int empty = find(player, ItemStack::isEmpty);
         if (empty != -1) requestOffhandSwap(empty, null);
     }

@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.clickgui.util;
 
+import combatant.client.features.module.modules.misc.NameProtect;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.render.engine.color.RenderColor;
@@ -45,19 +47,20 @@ public final class ClickGuiRichTextRenderer {
             if (remaining <= 1f) break;
             TextRenderer font = font(segment.style());
             int color = color(segment.style(), fallbackColor, alpha);
-            String text = fit(font, segment.text(), size, remaining);
+            String displaySegment = NameProtect.applyDisplay(segment.text());
+            String text = fit(font, displaySegment, size, remaining);
             drawString(ClickGuiRenderer.currentRenderer(), font, text, cursor, y, size, color, shadow);
             float width = width(font, text, size);
             cursor += width;
             remaining -= width;
-            if (text.length() < segment.text().length()) break;
+            if (text.length() < displaySegment.length()) break;
         }
     }
 
     public static float width(Component component, float size) {
         float out = 0f;
         for (Segment segment : flatten(component)) {
-            out += width(font(segment.style()), segment.text(), size);
+            out += width(font(segment.style()), NameProtect.applyDisplay(segment.text()), size);
         }
         return out;
     }

@@ -28,6 +28,7 @@ import org.jetbrains.annotations.Nullable;
 
 /** Owns the post-process ping-pong targets and frame-local scene context. */
 public final class PostProcessGraphResources implements AutoCloseable {
+    private static final long STORAGE_IDLE_RELEASE_NANOS = 10_000_000_000L;
     private @Nullable RenderTarget mainFramebuffer;
     private @Nullable TextureTarget ping;
     private @Nullable TextureTarget pong;
@@ -35,6 +36,9 @@ public final class PostProcessGraphResources implements AutoCloseable {
     private @Nullable RhiStorageImage pongStorage;
     private @Nullable CombatantRhi storageOwner;
     private boolean storageTargetsFailed;
+    /** True when the current graph run ping-pongs through the storage images instead of framebuffers. */
+    private boolean storageMode;
+    private long storageLastUsedNanos;
     private @Nullable GpuTextureView pingView;
     private @Nullable GpuTextureView pongView;
     private @Nullable PostProcessContext context;
@@ -94,10 +98,12 @@ public final class PostProcessGraphResources implements AutoCloseable {
     }
 
     public @Nullable RhiStorageImage currentSourceStorage() {
+        if (!storageMode) return null;
         return usePingAsSource ? pingStorage : pongStorage;
     }
 
     public @Nullable RhiStorageImage currentDestinationStorage() {
+        if (!storageMode) return null;
         return usePingAsSource ? pongStorage : pingStorage;
     }
 
@@ -123,14 +129,17 @@ public final class PostProcessGraphResources implements AutoCloseable {
             closeStoragePingPong();
             storageTargetsFailed = false;
         }
+        long now = System.nanoTime();
         if (preferStorageTargets && PostProcessExecutionPolicy.useCompute(rhi) && !storageTargetsFailed) {
             try {
-                ping = null;
-                pong = null;
                 ensureStoragePingPong(w, h, rhi);
                 pingView = pingStorage != null ? pingStorage.view() : null;
                 pongView = pongStorage != null ? pongStorage.view() : null;
-                if (pingView != null && pongView != null) return;
+                if (pingView != null && pongView != null) {
+                    storageMode = true;
+                    storageLastUsedNanos = now;
+                    return;
+                }
             } catch (Throwable t) {
                 PostProcessExecutionPolicy.warnRuntimeFallback(
                         "postprocess-storage-targets",
@@ -141,7 +150,14 @@ public final class PostProcessGraphResources implements AutoCloseable {
             }
         }
 
-        closeStoragePingPong();
+        // The graph runs once per phase and consecutive runs can disagree on storage preference (a compute
+        // pass is active in one phase only). Destroying and re-creating two full-resolution textures on
+        // every disagreement showed up as glDeleteTextures stalls every frame, so the storage pair is kept
+        // alive while this run uses framebuffers and only released after it has gone unused for a while.
+        storageMode = false;
+        if ((pingStorage != null || pongStorage != null) && now - storageLastUsedNanos > STORAGE_IDLE_RELEASE_NANOS) {
+            closeStoragePingPong();
+        }
         ping = CombatantRenderSystem.resources().persistentFramebuffer(
                 "combatant-postprocess-graph-ping", w, h, false, "PostProcessGraph");
         pong = CombatantRenderSystem.resources().persistentFramebuffer(
@@ -182,6 +198,7 @@ public final class PostProcessGraphResources implements AutoCloseable {
             pongStorage = null;
         }
         storageOwner = null;
+        storageMode = false;
     }
 
 
@@ -189,6 +206,7 @@ public final class PostProcessGraphResources implements AutoCloseable {
         if (storageOwner == null || owner == null || storageOwner == owner) {
             closeStoragePingPong();
             storageTargetsFailed = false;
+            storageMode = false;
             pingView = ping != null ? ping.getColorTextureView() : null;
             pongView = pong != null ? pong.getColorTextureView() : null;
         }

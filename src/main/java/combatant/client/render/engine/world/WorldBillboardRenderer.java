@@ -26,6 +26,9 @@ import combatant.client.render.helpers.MatteHudStyle;
 public enum WorldBillboardRenderer {
     ;
 
+    /** Shared placeholder for Options.shadowColor when the text has no shadow (never read in that case). */
+    private static final RenderColor SHADOW_UNUSED = new RenderColor(0, 0, 0, 0);
+
     public static Basis currentBasis() {
         // Billboard orientation must never depend on the mutable ambient RenderSystem
         // model-view stack. GuiItemAtlas and other off-screen passes legitimately change
@@ -225,20 +228,18 @@ public enum WorldBillboardRenderer {
         MeshBuilder mesh = renderer.batch(CombatantRenderPipelines.WORLD_COLORED, Renderer3D.DepthMode.NONE);
         if (mesh == null) return;
 
-        Vec3 p0 = point(anchor, basis, x, y, worldScale);
-        Vec3 p1 = point(anchor, basis, x, y + height, worldScale);
-        Vec3 p2 = point(anchor, basis, x + width, y + height, worldScale);
-        Vec3 p3 = point(anchor, basis, x + width, y, worldScale);
+        Vec3 right = basis.right();
+        Vec3 down = basis.down();
         int r = (argb >>> 16) & 0xFF;
         int g = (argb >>> 8) & 0xFF;
         int b = argb & 0xFF;
         int a = (argb >>> 24) & 0xFF;
 
         mesh.ensureQuadCapacity();
-        int i0 = mesh.vec3(p0.x, p0.y, p0.z).color(r, g, b, a).next();
-        int i1 = mesh.vec3(p1.x, p1.y, p1.z).color(r, g, b, a).next();
-        int i2 = mesh.vec3(p2.x, p2.y, p2.z).color(r, g, b, a).next();
-        int i3 = mesh.vec3(p3.x, p3.y, p3.z).color(r, g, b, a).next();
+        int i0 = point(mesh, anchor, right, down, x, y, worldScale).color(r, g, b, a).next();
+        int i1 = point(mesh, anchor, right, down, x, y + height, worldScale).color(r, g, b, a).next();
+        int i2 = point(mesh, anchor, right, down, x + width, y + height, worldScale).color(r, g, b, a).next();
+        int i3 = point(mesh, anchor, right, down, x + width, y, worldScale).color(r, g, b, a).next();
         mesh.quad(i0, i1, i2, i3);
     }
 
@@ -256,15 +257,17 @@ public enum WorldBillboardRenderer {
                             boolean shadow) {
         if (text == null || text.isEmpty() || alpha <= 0.001f) return;
         WorldTextRenderer.drawBillboard(renderer, textRenderer, text, anchor,
-                WorldTextRenderer.Options.defaults()
-                        .withColor(new RenderColor(MatteHudStyle.scaleAlpha(argb, alpha)))
-                        .withShadowColor(new RenderColor(MatteHudStyle.scaleAlpha(0xA0000000, alpha)))
-                        .withScale(textScale)
-                        .withWorldScale(worldScale)
-                        .withOffset(pixelX * worldScale, pixelY * worldScale)
-                        .withCentered(false)
-                        .withShadow(shadow)
-                        .withDepthMode(Renderer3D.DepthMode.NONE),
+                new WorldTextRenderer.Options(
+                        new RenderColor(MatteHudStyle.scaleAlpha(argb, alpha)),
+                        shadow ? new RenderColor(MatteHudStyle.scaleAlpha(0xA0000000, alpha)) : SHADOW_UNUSED,
+                        textScale,
+                        worldScale,
+                        pixelX * worldScale,
+                        pixelY * worldScale,
+                        false,
+                        shadow,
+                        false,
+                        Renderer3D.DepthMode.NONE),
                 basis != null ? basis.right() : null,
                 basis != null ? basis.down() : null);
     }
@@ -300,19 +303,17 @@ public enum WorldBillboardRenderer {
         );
         if (mesh == null) return;
 
-        Vec3 p0 = point(anchor, basis, x, y, worldScale);
-        Vec3 p1 = point(anchor, basis, x, y + height, worldScale);
-        Vec3 p2 = point(anchor, basis, x + width, y + height, worldScale);
-        Vec3 p3 = point(anchor, basis, x + width, y, worldScale);
+        Vec3 right = basis.right();
+        Vec3 down = basis.down();
         int r = (argb >>> 16) & 0xFF;
         int g = (argb >>> 8) & 0xFF;
         int b = argb & 0xFF;
 
         mesh.ensureQuadCapacity();
-        int i0 = mesh.vec3(p0.x, p0.y, p0.z).raw2(u0, v0).color(r, g, b, finalAlpha).next();
-        int i1 = mesh.vec3(p1.x, p1.y, p1.z).raw2(u0, v1).color(r, g, b, finalAlpha).next();
-        int i2 = mesh.vec3(p2.x, p2.y, p2.z).raw2(u1, v1).color(r, g, b, finalAlpha).next();
-        int i3 = mesh.vec3(p3.x, p3.y, p3.z).raw2(u1, v0).color(r, g, b, finalAlpha).next();
+        int i0 = point(mesh, anchor, right, down, x, y, worldScale).raw2(u0, v0).color(r, g, b, finalAlpha).next();
+        int i1 = point(mesh, anchor, right, down, x, y + height, worldScale).raw2(u0, v1).color(r, g, b, finalAlpha).next();
+        int i2 = point(mesh, anchor, right, down, x + width, y + height, worldScale).raw2(u1, v1).color(r, g, b, finalAlpha).next();
+        int i3 = point(mesh, anchor, right, down, x + width, y, worldScale).raw2(u1, v0).color(r, g, b, finalAlpha).next();
         mesh.quad(i0, i1, i2, i3);
     }
 
@@ -339,17 +340,15 @@ public enum WorldBillboardRenderer {
         );
         if (mesh == null) return;
 
-        Vec3 p0 = point(anchor, basis, x, y, worldScale);
-        Vec3 p1 = point(anchor, basis, x, y + size, worldScale);
-        Vec3 p2 = point(anchor, basis, x + size, y + size, worldScale);
-        Vec3 p3 = point(anchor, basis, x + size, y, worldScale);
+        Vec3 right = basis.right();
+        Vec3 down = basis.down();
         int a = Math.max(0, Math.min(255, Math.round(alpha * 255.0f)));
 
         mesh.ensureQuadCapacity();
-        int i0 = mesh.vec3(p0.x, p0.y, p0.z).raw2(sprite.u0(), sprite.v0()).color(a, a, a, a).next();
-        int i1 = mesh.vec3(p1.x, p1.y, p1.z).raw2(sprite.u0(), sprite.v1()).color(a, a, a, a).next();
-        int i2 = mesh.vec3(p2.x, p2.y, p2.z).raw2(sprite.u1(), sprite.v1()).color(a, a, a, a).next();
-        int i3 = mesh.vec3(p3.x, p3.y, p3.z).raw2(sprite.u1(), sprite.v0()).color(a, a, a, a).next();
+        int i0 = point(mesh, anchor, right, down, x, y, worldScale).raw2(sprite.u0(), sprite.v0()).color(a, a, a, a).next();
+        int i1 = point(mesh, anchor, right, down, x, y + size, worldScale).raw2(sprite.u0(), sprite.v1()).color(a, a, a, a).next();
+        int i2 = point(mesh, anchor, right, down, x + size, y + size, worldScale).raw2(sprite.u1(), sprite.v1()).color(a, a, a, a).next();
+        int i3 = point(mesh, anchor, right, down, x + size, y, worldScale).raw2(sprite.u1(), sprite.v0()).color(a, a, a, a).next();
         mesh.quad(i0, i1, i2, i3);
     }
 
@@ -376,34 +375,41 @@ public enum WorldBillboardRenderer {
         double safeRadius = Math.max(0.0, Math.min(radius, Math.min(width, height) * 0.5));
         double safeBlur = Math.max(0.0, blur);
         double padding = safeBlur * 2.0;
-        Vec3 p0 = point(anchor, basis, x - padding, y - padding, worldScale);
-        Vec3 p1 = point(anchor, basis, x - padding, y + height + padding, worldScale);
-        Vec3 p2 = point(anchor, basis, x + width + padding, y + height + padding, worldScale);
-        Vec3 p3 = point(anchor, basis, x + width + padding, y - padding, worldScale);
+        Vec3 right = basis.right();
+        Vec3 down = basis.down();
         int r = (argb >>> 16) & 0xFF;
         int g = (argb >>> 8) & 0xFF;
         int b = argb & 0xFF;
         int a = (argb >>> 24) & 0xFF;
+        float w = (float) width;
+        float h = (float) height;
+        float rad = (float) safeRadius;
+        float blurF = (float) safeBlur;
         mesh.ensureQuadCapacity();
-        int i0 = mesh.vec3(p0.x, p0.y, p0.z).raw2(0.0f, 0.0f).color(r, g, b, a)
-                .vec4((float) width, (float) height, (float) safeRadius, (float) safeBlur)
-                .vec4(mode, secondaryParam, 0.0f, 0.0f).next();
-        int i1 = mesh.vec3(p1.x, p1.y, p1.z).raw2(0.0f, 1.0f).color(r, g, b, a)
-                .vec4((float) width, (float) height, (float) safeRadius, (float) safeBlur)
-                .vec4(mode, secondaryParam, 0.0f, 0.0f).next();
-        int i2 = mesh.vec3(p2.x, p2.y, p2.z).raw2(1.0f, 1.0f).color(r, g, b, a)
-                .vec4((float) width, (float) height, (float) safeRadius, (float) safeBlur)
-                .vec4(mode, secondaryParam, 0.0f, 0.0f).next();
-        int i3 = mesh.vec3(p3.x, p3.y, p3.z).raw2(1.0f, 0.0f).color(r, g, b, a)
-                .vec4((float) width, (float) height, (float) safeRadius, (float) safeBlur)
-                .vec4(mode, secondaryParam, 0.0f, 0.0f).next();
+        int i0 = point(mesh, anchor, right, down, x - padding, y - padding, worldScale)
+                .raw2(0.0f, 0.0f).color(r, g, b, a).vec4(w, h, rad, blurF).vec4(mode, secondaryParam, 0.0f, 0.0f).next();
+        int i1 = point(mesh, anchor, right, down, x - padding, y + height + padding, worldScale)
+                .raw2(0.0f, 1.0f).color(r, g, b, a).vec4(w, h, rad, blurF).vec4(mode, secondaryParam, 0.0f, 0.0f).next();
+        int i2 = point(mesh, anchor, right, down, x + width + padding, y + height + padding, worldScale)
+                .raw2(1.0f, 1.0f).color(r, g, b, a).vec4(w, h, rad, blurF).vec4(mode, secondaryParam, 0.0f, 0.0f).next();
+        int i3 = point(mesh, anchor, right, down, x + width + padding, y - padding, worldScale)
+                .raw2(1.0f, 0.0f).color(r, g, b, a).vec4(w, h, rad, blurF).vec4(mode, secondaryParam, 0.0f, 0.0f).next();
         mesh.quad(i0, i1, i2, i3);
     }
 
-    private static Vec3 point(Vec3 anchor, Basis basis, double x, double y, double worldScale) {
-        return anchor
-                .add(basis.right().scale(x * worldScale))
-                .add(basis.down().scale(y * worldScale));
+    /**
+     * Writes anchor + right*(x*worldScale) + down*(y*worldScale) as the next vertex position without
+     * building intermediate {@link Vec3}s. The addition order matches {@code anchor.add(..).add(..)}
+     * so the emitted floats are bit-identical to the old path.
+     */
+    private static MeshBuilder point(MeshBuilder mesh, Vec3 anchor, Vec3 right, Vec3 down,
+                                     double x, double y, double worldScale) {
+        double sx = x * worldScale;
+        double sy = y * worldScale;
+        return mesh.vec3(
+                (anchor.x + right.x * sx) + down.x * sy,
+                (anchor.y + right.y * sx) + down.y * sy,
+                (anchor.z + right.z * sx) + down.z * sy);
     }
 
     public record Basis(Vec3 right, Vec3 down) {

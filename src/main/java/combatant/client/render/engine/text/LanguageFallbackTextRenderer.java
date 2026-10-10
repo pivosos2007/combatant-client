@@ -7,6 +7,8 @@
 
 package combatant.client.render.engine.text;
 
+import combatant.client.features.module.modules.misc.NameProtect;
+
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 
 import combatant.client.render.engine.color.RenderColor;
@@ -74,9 +76,11 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
     @Override
     public double getWidth(String text, int length, boolean shadow) {
         if (text == null || text.isEmpty() || length <= 0) return 0.0;
-        int end = safeUtf16End(text, length);
-        double width = visitRuns(text, end, (renderer, start, finish) ->
-                withRenderer(renderer, () -> renderer.getWidth(text.substring(start, finish), false)));
+        int rawEnd = safeUtf16End(text, length);
+        String measured = NameProtect.applyMeasure(text.substring(0, rawEnd));
+        int end = measured.length();
+        double width = visitRuns(measured, end, (renderer, start, finish) ->
+                withRenderer(renderer, () -> renderer.getWidth(measured.substring(start, finish), false)));
         return width + (shadow ? 1.0 : 0.0);
     }
 
@@ -96,13 +100,14 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
 
     @Override
     public double render(String text, double x, double y, RenderColor color, boolean shadow) {
-        if (text == null || text.isEmpty()) return x;
+        String displayText = NameProtect.applyDisplay(text);
+        if (displayText == null || displayText.isEmpty()) return x;
         boolean implicitBegin = !building;
         if (implicitBegin) begin();
         try {
             final double[] cursor = {x};
-            visitRuns(text, text.length(), (renderer, start, finish) -> {
-                String run = text.substring(start, finish);
+            visitRuns(displayText, displayText.length(), (renderer, start, finish) -> {
+                String run = displayText.substring(start, finish);
                 withRenderer(renderer, () -> {
                     double advance = renderer.getWidth(run, false);
                     renderer.render(run, cursor[0], y, color, shadow);
@@ -123,14 +128,15 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
                                  double y,
                                  Font.GlyphGradient gradient,
                                  boolean shadow) {
-        if (text == null || text.isEmpty() || gradient == null) return x;
+        String displayText = NameProtect.applyDisplay(text);
+        if (displayText == null || displayText.isEmpty() || gradient == null) return x;
         boolean implicitBegin = !building;
         if (implicitBegin) begin();
         try {
             final double[] cursor = {x};
             final int[] glyphBase = {0};
-            visitRuns(text, text.length(), (renderer, start, finish) -> {
-                String run = text.substring(start, finish);
+            visitRuns(displayText, displayText.length(), (renderer, start, finish) -> {
+                String run = displayText.substring(start, finish);
                 int runGlyphBase = glyphBase[0];
                 withRenderer(renderer, () -> {
                     cursor[0] = renderer.renderGradient(
@@ -158,14 +164,15 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
                                      double y,
                                      Font.GlyphQuadGradient gradient,
                                      boolean shadow) {
-        if (text == null || text.isEmpty() || gradient == null) return x;
+        String displayText = NameProtect.applyDisplay(text);
+        if (displayText == null || displayText.isEmpty() || gradient == null) return x;
         boolean implicitBegin = !building;
         if (implicitBegin) begin();
         try {
             final double[] cursor = {x};
             final int[] glyphBase = {0};
-            visitRuns(text, text.length(), (renderer, start, finish) -> {
-                String run = text.substring(start, finish);
+            visitRuns(displayText, displayText.length(), (renderer, start, finish) -> {
+                String run = displayText.substring(start, finish);
                 int runGlyphBase = glyphBase[0];
                 withRenderer(renderer, () -> {
                     cursor[0] = renderer.renderQuadGradient(
@@ -209,14 +216,15 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
                                                  double boundsWidth,
                                                  double boundsHeight,
                                                  RenderPipeline pipelineOverride) {
-        if (text == null || text.isEmpty() || gradient == null) return x;
+        String displayText = NameProtect.applyDisplay(text);
+        if (displayText == null || displayText.isEmpty() || gradient == null) return x;
         boolean implicitBegin = !building;
         if (implicitBegin) begin();
         try {
             final double[] cursor = {x};
             final int[] glyphBase = {0};
-            visitRuns(text, text.length(), (renderer, start, finish) -> {
-                String run = text.substring(start, finish);
+            visitRuns(displayText, displayText.length(), (renderer, start, finish) -> {
+                String run = displayText.substring(start, finish);
                 int runGlyphBase = glyphBase[0];
                 withRenderer(renderer, () -> {
                     cursor[0] = renderer.renderLiquidGlassQuadGradient(
@@ -253,14 +261,15 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
                                                       double boundsHeight,
                                                       UiBackdropBlendSpec blend,
                                                       UiBackdropRequest backdrop) {
-        if (text == null || text.isEmpty() || gradient == null) return x;
+        String displayText = NameProtect.applyDisplay(text);
+        if (displayText == null || displayText.isEmpty() || gradient == null) return x;
         boolean implicitBegin = !building;
         if (implicitBegin) begin();
         try {
             final double[] cursor = {x};
             final int[] glyphBase = {0};
-            visitRuns(text, text.length(), (renderer, start, finish) -> {
-                String run = text.substring(start, finish);
+            visitRuns(displayText, displayText.length(), (renderer, start, finish) -> {
+                String run = displayText.substring(start, finish);
                 int runGlyphBase = glyphBase[0];
                 withRenderer(renderer, () -> {
                     cursor[0] = renderer.renderLiquidGlassBlendQuadGradient(

@@ -19,19 +19,16 @@ public enum ViewObstructionFadeContext {
             return;
         }
 
-        STACK.get().addLast(new State(
-                state.combatant$isViewObstructionFadeActive(),
-                state.combatant$getViewObstructionFadeAlpha()
-        ));
+        boolean active = state.combatant$isViewObstructionFadeActive();
+        float alpha = state.combatant$getViewObstructionFadeAlpha();
+        STACK.get().addLast(!active && alpha == 1.0f ? State.INACTIVE : new State(active, alpha));
     }
 
     public static void pop() {
         ArrayDeque<State> stack = STACK.get();
+        // Keep the empty deque: removing the ThreadLocal made every entity's push allocate a new one.
         if (!stack.isEmpty()) {
             stack.removeLast();
-        }
-        if (stack.isEmpty()) {
-            STACK.remove();
         }
     }
 

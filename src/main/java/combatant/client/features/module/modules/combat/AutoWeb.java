@@ -20,6 +20,7 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.block.placer.BlockPlacer;
 import combatant.client.util.target.TargetingUtil;
@@ -86,16 +87,20 @@ public final class AutoWeb extends Module {
             () -> MovementCorrection.SILENT
     );
     private final List<BlockPos> currentTargets = new ArrayList<>();
+    private final PlacementPreviewRenderer placementPreview = new PlacementPreviewRenderer();
 
     @Override
     public void onEnable() {
+        placementPreview.reset();
         blockPlacer.enable();
         updateTargets();
+        if (render.get()) placementPreview.tick(mc.level, currentTargets, previewBlockState(), lineColor.getArgb());
     }
 
     @Override
     public void onDisable() {
         blockPlacer.disable();
+        placementPreview.reset();
         currentTargets.clear();
     }
 
@@ -108,6 +113,7 @@ public final class AutoWeb extends Module {
         }
         blockPlacer.tick();
         updateTargets();
+        if (render.get()) placementPreview.tick(mc.level, currentTargets, previewBlockState(), lineColor.getArgb());
         if (autoDisable.get() && currentTargets.isEmpty()) setEnabled(false);
     }
 
@@ -189,11 +195,13 @@ public final class AutoWeb extends Module {
 
     @Override
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
-        if (!isEnabled() || !render.get() || currentTargets.isEmpty()) return;
-        for (BlockPos pos : currentTargets) {
-            AABB box = new AABB(pos);
-            renderer.filledBox(box, fillColor.getArgb());
-            renderer.outlineBox(box, lineColor.getArgb(), lineWidth.get());
-        }
+        if (!isEnabled() || !render.get() || mc.level == null) return;
+        placementPreview.render(renderer, mc.level, currentTargets, previewBlockState(),
+                fillColor.getArgb(), lineColor.getArgb(), lineWidth.get());
     }
+
+    private net.minecraft.world.level.block.state.BlockState previewBlockState() {
+        return Blocks.COBWEB.defaultBlockState();
+    }
+
 }

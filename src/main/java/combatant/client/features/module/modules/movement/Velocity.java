@@ -34,7 +34,6 @@ import net.minecraft.network.protocol.game.*;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResult;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Input;
@@ -64,6 +63,7 @@ import combatant.client.mixins.accessors.ClientboundExplodePacketAccessor;
 import combatant.client.mixins.accessors.ClientboundSetEntityMotionPacketAccessor;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.data.Rotation;
+import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import combatant.client.util.network.BlinkManager;
 import combatant.client.util.network.TransferOrigin;
 import combatant.client.util.player.MovementUtil;
@@ -615,10 +615,15 @@ public final class Velocity extends Module {
             BlinkManager.INSTANCE.flush(TransferOrigin.INCOMING);
 
             if (mc.gameMode != null) {
-                InteractionResult result = mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, grim2371HitResult);
-                if (result.consumesAction()) {
-                    player.swing(InteractionHand.MAIN_HAND);
-                }
+                BlockInteractionPipeline.INSTANCE.useOnBlock(
+                        this,
+                        player,
+                        InteractionHand.MAIN_HAND,
+                        -1,
+                        0,
+                        grim2371HitResult,
+                        true
+                );
             }
 
             sendGrim2371Rotation(player);

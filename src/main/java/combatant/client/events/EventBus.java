@@ -21,6 +21,7 @@ import combatant.client.util.logging.DebugLog;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -136,8 +137,18 @@ public final class EventBus {
         }
     }
 
+    /**
+     * True if posting this event type could reach at least one handler. Hot mixins use this to
+     * skip allocating events (e.g. one EventCollision per block per collision query). Modules
+     * are always registered, so counting disabled ones made every guard pass even when the only
+     * listeners were switched off; posting to them is a no-op anyway, so they are skipped here.
+     */
     public boolean hasListeners(Class<? extends Event> eventType) {
-        return subscribersFor(eventType).length != 0;
+        for (Subscriber sub : subscribersFor(eventType)) {
+            Module gate = sub.gateModule;
+            if (gate == null || gate.isLifecycleEnabled()) return true;
+        }
+        return false;
     }
 
     public <T extends Event> T post(T event) {
@@ -240,8 +251,13 @@ public final class EventBus {
         method.setAccessible(true);
         try {
             MethodHandles.Lookup lookup = MethodHandles.lookup();
-            MethodHandle handle = lookup.unreflect(method).bindTo(listener);
-            return handle::invoke;
+            // Pre-adapt the handle to (Event)void once. A plain MethodHandle.invoke() re-resolves the
+            // caller/callee type adaptation on every call; invokeExact() on the adapted handle does not.
+            MethodHandle handle = lookup.unreflect(method).bindTo(listener)
+                    .asType(MethodType.methodType(void.class, Event.class));
+            return event -> {
+                handle.invokeExact(event);
+            };
         } catch (Throwable t) {
             DebugLog.error("Failed to create MethodHandle event invoker, falling back to reflection: %s", t,
                     listener.getClass().getName() + "#" + method.getName());

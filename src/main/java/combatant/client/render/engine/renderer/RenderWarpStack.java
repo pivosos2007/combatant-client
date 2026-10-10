@@ -14,8 +14,14 @@ public enum RenderWarpStack {
     ;
     private static final int MAX_DEPTH = 16;
     private static final ThreadLocal<State> STATE = ThreadLocal.withInitial(State::new);
+    /**
+     * Pushed warps across all threads. {@link #current()} runs once per emitted 2D vertex, and almost
+     * always with nothing pushed, so it skips the ThreadLocal lookup while this is zero.
+     */
+    private static final java.util.concurrent.atomic.AtomicInteger TOTAL_DEPTH = new java.util.concurrent.atomic.AtomicInteger();
 
     public static RenderWarp current() {
+        if (TOTAL_DEPTH.get() == 0) return RenderWarp.IDENTITY;
         State state = STATE.get();
         return state.depth > 0 ? state.stack[state.depth - 1] : RenderWarp.IDENTITY;
     }
@@ -30,6 +36,7 @@ public enum RenderWarpStack {
             throw new IllegalStateException("Render warp stack overflow");
         }
         state.stack[state.depth++] = warp != null ? warp : RenderWarp.IDENTITY;
+        TOTAL_DEPTH.incrementAndGet();
         return new Scope(state);
     }
 
@@ -39,6 +46,7 @@ public enum RenderWarpStack {
             throw new IllegalStateException("Render warp stack underflow");
         }
         state.stack[--state.depth] = null;
+        TOTAL_DEPTH.decrementAndGet();
     }
 
     private static final class State {
@@ -61,6 +69,7 @@ public enum RenderWarpStack {
                 throw new IllegalStateException("Render warp scope closed after stack was emptied");
             }
             state.stack[--state.depth] = null;
+            TOTAL_DEPTH.decrementAndGet();
             closed = true;
         }
     }

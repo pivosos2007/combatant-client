@@ -25,7 +25,10 @@ public enum TargetLensUniforms {
                               float strength,
                               boolean depthAvailable,
                               int count,
-                              float[] lenses) {
+                              float[] lenses,
+                              float[] colors,
+                              float[] shapes,
+                              float[] meta) {
         DATA.aspect = aspect;
         DATA.strength = strength;
         DATA.depthAvailable = depthAvailable ? 1.0f : 0.0f;
@@ -36,6 +39,24 @@ public enum TargetLensUniforms {
         }
         for (int i = values; i < DATA.lenses.length; i++) {
             DATA.lenses[i] = 0.0f;
+        }
+        for (int i = 0; i < values; i++) {
+            DATA.colors[i] = colors[i];
+        }
+        for (int i = values; i < DATA.colors.length; i++) {
+            DATA.colors[i] = 0.0f;
+        }
+        for (int i = 0; i < values; i++) {
+            DATA.shapes[i] = shapes[i];
+        }
+        for (int i = values; i < DATA.shapes.length; i++) {
+            DATA.shapes[i] = 0.0f;
+        }
+        for (int i = 0; i < values; i++) {
+            DATA.meta[i] = meta[i];
+        }
+        for (int i = values; i < DATA.meta.length; i++) {
+            DATA.meta[i] = 0.0f;
         }
         CombatantRenderSystem.uniforms().write(UNIFORM_NAME, SIZE, 4, DATA);
     }
@@ -49,11 +70,23 @@ public enum TargetLensUniforms {
         for (int i = 0; i < MAX_LENSES; i++) {
             calculator.putVec4();
         }
+        for (int i = 0; i < MAX_LENSES; i++) {
+            calculator.putVec4();
+        }
+        for (int i = 0; i < MAX_LENSES; i++) {
+            calculator.putVec4();
+        }
+        for (int i = 0; i < MAX_LENSES; i++) {
+            calculator.putVec4();
+        }
         return calculator.get();
     }
 
     private static final class Data implements CombatantUniformAllocator.UniformWriter {
         private final float[] lenses = new float[MAX_LENSES * 4];
+        private final float[] colors = new float[MAX_LENSES * 4];
+        private final float[] shapes = new float[MAX_LENSES * 4];
+        private final float[] meta = new float[MAX_LENSES * 4];
         private int count;
         private float aspect;
         private float strength;
@@ -66,6 +99,18 @@ public enum TargetLensUniforms {
             for (int i = 0; i < MAX_LENSES; i++) {
                 int base = i * 4;
                 builder.putVec4(lenses[base], lenses[base + 1], lenses[base + 2], lenses[base + 3]);
+            }
+            for (int i = 0; i < MAX_LENSES; i++) {
+                int base = i * 4;
+                builder.putVec4(colors[base], colors[base + 1], colors[base + 2], colors[base + 3]);
+            }
+            for (int i = 0; i < MAX_LENSES; i++) {
+                int base = i * 4;
+                builder.putVec4(shapes[base], shapes[base + 1], shapes[base + 2], shapes[base + 3]);
+            }
+            for (int i = 0; i < MAX_LENSES; i++) {
+                int base = i * 4;
+                builder.putVec4(meta[base], meta[base + 1], meta[base + 2], meta[base + 3]);
             }
         }
 

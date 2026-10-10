@@ -138,6 +138,18 @@ public final class RotationManager {
         return actualServerRotation;
     }
 
+    /**
+     * True only after this provider's rotation was processed by the manager and is
+     * still the highest-priority active request. Used by synchronous block interactions
+     * instead of inferring readiness from the existence of a rotation callback.
+     */
+    public boolean ownsActiveRotation(Object provider) {
+        return provider != null
+                && rotationTargetHandler.getActiveRequestProvider() == provider
+                && currentRotationProvider == provider
+                && currentRotation != null;
+    }
+
     public Rotation getMovementRotation() {
         LocalPlayer player = player();
         Rotation fallback = player != null

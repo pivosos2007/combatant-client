@@ -71,7 +71,7 @@ public final class WorldJumpShockwaves implements PostProcessPass {
                 center.x - extent, center.y - 0.08, center.z - extent,
                 center.x + extent, center.y + 0.08, center.z + extent
         );
-        if (!Renderer3D.Culling.isInFrustum(bounds) || !Renderer3D.Culling.isSectionVisible(bounds)) return;
+        if (!Renderer3D.Culling.isInFrustum(bounds)) return;
 
         long frameId = currentFrameId();
         if (pendingFrameId != frameId) {
@@ -119,10 +119,7 @@ public final class WorldJumpShockwaves implements PostProcessPass {
                 && depth.getWidth(0) == execution.context().width()
                 && depth.getHeight(0) == execution.context().height();
 
-        List<Request> valid = new ArrayList<>(requests.size());
-        for (Request request : requests) {
-            if (!request.depthTest() || depthUsable) valid.add(request);
-        }
+        List<Request> valid = new ArrayList<>(requests);
         if (valid.isEmpty()) return false;
 
         Matrix4f view = new Matrix4f().rotation(new Quaternionf(RenderState.cameraRotation).conjugate());
@@ -163,6 +160,7 @@ public final class WorldJumpShockwaves implements PostProcessPass {
             }
 
             Vec3 relative = request.center().subtract(camera);
+            boolean useDepth = request.depthTest() && depthUsable;
             JumpShockwaveUniforms.update(
                     inverseViewProjection,
                     relative,
@@ -170,7 +168,7 @@ public final class WorldJumpShockwaves implements PostProcessPass {
                     request.thickness(),
                     request.strength(),
                     request.argb(),
-                    request.depthTest(),
+                    useDepth,
                     zeroToOneDepth
             );
 
@@ -180,7 +178,7 @@ public final class WorldJumpShockwaves implements PostProcessPass {
                             .pipeline(CombatantRenderPipelines.POSTPROCESS_JUMP_SHOCKWAVE)
                             .uniform("JumpShockwave", JumpShockwaveUniforms.get())
                             .sampler("u_Texture", source, linear)
-                            .sampler("u_Depth", request.depthTest() ? depth : source, nearest)
+                            .sampler("u_Depth", useDepth ? depth : source, nearest)
                             .build()
             );
             source = destination;

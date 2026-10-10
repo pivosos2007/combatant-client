@@ -5,6 +5,8 @@
  */
 package combatant.client.features.gui.chat;
 
+import combatant.client.features.module.modules.misc.NameProtect;
+
 import combatant.client.render.engine.text.TextGlyphFallback;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.util.item.IllegalItemUtil;
@@ -55,16 +57,18 @@ final class BetterChatMessageLayout {
     private static List<CachedLine> lines(ChatLine message, float fontSize, float maxWidth) {
         int baseColor = theme().textPrimary();
         CachedMessageLayout cached = CACHE.layout(message);
+        long nameProtectRevision = NameProtect.revision();
         if (cached != null
                 && Math.abs(cached.fontSize() - fontSize) < 0.01f
                 && Math.abs(cached.maxWidth() - maxWidth) < 0.5f
-                && cached.baseColor() == baseColor) {
+                && cached.baseColor() == baseColor
+                && cached.nameProtectRevision() == nameProtectRevision) {
             return cached.lines();
         }
 
         List<Segment> segments = CACHE.segments(message, BetterChatRichMessageFlattener::flatten);
         List<CachedLine> result = buildLines(segments, fontSize, maxWidth, baseColor);
-        CACHE.putLayout(message, new CachedMessageLayout(fontSize, maxWidth, baseColor, result));
+        CACHE.putLayout(message, new CachedMessageLayout(fontSize, maxWidth, baseColor, nameProtectRevision, result));
         return result;
     }
 
@@ -109,18 +113,22 @@ final class BetterChatMessageLayout {
                 }
 
                 String font = BetterChatTextSupport.fontForStyle(style);
-                String text = segment.text();
+                String rawText = segment.text();
+                NameProtect.DisplayMapping display = NameProtect.mapDisplay(rawText);
+                String text = display.text();
+                int rawSegmentStart = charIndex;
                 for (int offset = 0; offset < text.length(); ) {
                     int codePoint = text.codePointAt(offset);
                     int clusterEnd = BetterChatTextSupport.nextClusterEnd(text, offset);
-                    int clusterLength = clusterEnd - offset;
+                    int rawStart = rawSegmentStart + display.rawOffset(offset);
+                    int rawEnd = rawSegmentStart + display.rawOffset(clusterEnd);
                     if (codePoint == '\n') {
                         BetterChatWordWrapper.appendParagraph(
-                                paragraph, paragraphStart, charIndex, maxWidth, lines);
+                                paragraph, paragraphStart, rawStart, maxWidth, lines);
                         paragraph = new ArrayList<>();
-                        charIndex++;
+                        charIndex = Math.max(rawStart + 1, rawEnd);
                         paragraphStart = charIndex;
-                        offset++;
+                        offset = clusterEnd;
                         continue;
                     }
 
@@ -141,12 +149,13 @@ final class BetterChatMessageLayout {
                     float advance = svg
                             ? BetterChatTextSupport.svgGlyphSize(BetterChatTextSupport.renderer(font), fontSize, false)
                             : activeRenderer == null ? 0f : (float) activeRenderer.getWidth(glyphText, false);
-                    paragraph.add(new Glyph(0f, advance, charIndex, charIndex + clusterLength,
+                    paragraph.add(new Glyph(0f, advance, rawStart, Math.max(rawStart, rawEnd),
                             color, hover, resolvedFont,
                             glyphText, style, null));
-                    charIndex += clusterLength;
-                    offset += clusterLength;
+                    charIndex = Math.max(charIndex, rawEnd);
+                    offset = clusterEnd;
                 }
+                charIndex = rawSegmentStart + Math.max(0, segment.logicalLength());
             }
         } finally {
             if (activeRenderer != null) activeRenderer.end();
@@ -199,7 +208,7 @@ final class BetterChatMessageLayout {
 
     record CachedLine(int startChar, int endChar, List<Glyph> glyphs) { }
 
-    record CachedMessageLayout(float fontSize, float maxWidth, int baseColor, List<CachedLine> lines) { }
+    record CachedMessageLayout(float fontSize, float maxWidth, int baseColor, long nameProtectRevision, List<CachedLine> lines) { }
 
     record VisualLine(ChatLine message, int messageIndex, int messageGroup,
                       int startChar, int endChar, List<Glyph> glyphs) { }

@@ -36,6 +36,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.BlockHighlight;
 import combatant.client.features.module.modules.visuals.MotionBlur;
@@ -50,6 +51,7 @@ import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.core.RenderPhaseScope;
 import combatant.client.render.engine.depth.PreTranslucentDepth;
+import combatant.client.render.engine.depth.EntityDepthLayer;
 import combatant.client.render.engine.depth.WorldSceneDepth;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.iris.IrisRuntime;
@@ -166,6 +168,17 @@ public abstract class LevelRendererMixin {
         }
     }
 
+    @Inject(method = "submitFeatures", at = @At("HEAD"))
+    private void combatant$snapshotEntityStates(LevelRenderState state,
+                                                SubmitNodeCollector collector,
+                                                boolean special, CallbackInfo ci) {
+        if (ModuleManager.needsEntityOnlyDepth()) {
+            EntityDepthLayer.snapshotEntities(state.entityRenderStates);
+        } else {
+            EntityDepthLayer.reset();
+        }
+    }
+
     @Inject(
             method = "render",
             at = @At(
@@ -186,10 +199,31 @@ public abstract class LevelRendererMixin {
             CallbackInfo ci,
             @Local FrameGraphBuilder frameGraphBuilder
     ) {
-        if (IrisRuntime.isShaderpackRendererActive()) {
+        if (frameGraphBuilder == null || targets == null || targets.main == null) {
+            EntityDepthLayer.reset();
             return;
         }
-        if (frameGraphBuilder == null || targets == null || targets.main == null) {
+
+        ResourceHandle<RenderTarget> main = targets.main;
+        if (ModuleManager.needsEntityOnlyDepth()) {
+            FramePass entityDepthPass = frameGraphBuilder.addPass("combatant_entity_only_depth");
+            combatant$dependsOn(entityDepthPass, main);
+            entityDepthPass.disableCulling();
+            entityDepthPass.executes(() -> {
+                RenderTarget mainFramebuffer = combatant$getFramebuffer(main);
+                Minecraft client = Minecraft.getInstance();
+                RenderTarget fallbackFramebuffer = client != null ? client.gameRenderer.mainRenderTarget() : null;
+                int width = mainFramebuffer != null ? mainFramebuffer.width : fallbackFramebuffer != null ? fallbackFramebuffer.width : 1;
+                int height = mainFramebuffer != null ? mainFramebuffer.height : fallbackFramebuffer != null ? fallbackFramebuffer.height : 1;
+                LevelRenderState state = ((LevelRendererAccessor) (Object) this).combatant$getWorldRenderState();
+                EntityDepthLayer.capture((LevelRenderer) (Object) this, state, width, height);
+            });
+        } else {
+            EntityDepthLayer.reset();
+        }
+
+        if (IrisRuntime.isShaderpackRendererActive()) {
+            WorldSceneDepth.reset();
             return;
         }
         if (!combatant$needsWorldSceneDepthCapture()) {
@@ -197,7 +231,6 @@ public abstract class LevelRendererMixin {
             return;
         }
 
-        ResourceHandle<RenderTarget> main = targets.main;
         ResourceHandle<RenderTarget> translucent = targets.translucent;
         ResourceHandle<RenderTarget> itemEntity = targets.itemEntity;
         ResourceHandle<RenderTarget> particles = targets.particles;

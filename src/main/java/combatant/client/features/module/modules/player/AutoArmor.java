@@ -26,13 +26,16 @@ import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.item.equipment.Equippable;
+import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.ItemIdSetValue;
+import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
+import combatant.client.features.module.modules.player.autoarmor.ProtectionFocus;
 import combatant.client.util.player.inventory.InventorySwap;
 
 import java.util.Set;
@@ -51,14 +54,34 @@ public class AutoArmor extends Module {
     private final ItemIdSetValue armorItems =
             visibleWhen(itemList("armor_items", SETTING_ARMOR_ITEMS, TextListSetting.PickerMode.EQUIPPABLE_ARMOR),
                     () -> mode.get() == Mode.WHITELIST);
+    private final EnumValue<ProtectionFocus> protectionFocus =
+            enumSetting("autoArmorProtectionFocus", "protection_focus", ProtectionFocus.BALANCED, ProtectionFocus.values());
+    private final NumberValue<Float> minImprovement =
+            num("autoArmorMinImprovement", "min_improvement", 0.0f, 0.0f, 5.0f);
+    private final NumberValue<Integer> brokenPercent =
+            num("autoArmorBrokenPercent", "broken_percent", 98, 50, 100);
+    private final BooleanValue unequipBroken = bool("autoArmorUnequipBroken", "unequip_broken", true);
+    private final NumberValue<Integer> delayTicks = num("autoArmorDelayTicks", "delay_ticks", 0, 0, 20);
+    private final BooleanValue inventoryOnly = bool("autoArmorInventoryOnly", "inventory_only", false);
     private final Minecraft mc = Minecraft.getInstance();
+    private int cooldown;
+
+    @Override
+    public void onEnable() {
+        cooldown = 0;
+    }
 
     @Override
     public void onTick() {
         if (!isEnabled() || mc.player == null || mc.gameMode == null || mc.level == null) return;
         if (ClientScreen.current() != null && !(ClientScreen.current() instanceof InventoryScreen))
             return;
+        if (inventoryOnly.get() && !(ClientScreen.current() instanceof InventoryScreen)) return;
         if (mc.player.inventoryMenu == null) return;
+        if (cooldown > 0) {
+            cooldown--;
+            return;
+        }
 
         int syncId = mc.player.inventoryMenu.containerId;
         for (EquipmentSlot slot : EquipmentSlot.values()) {
@@ -72,6 +95,7 @@ public class AutoArmor extends Module {
                 int from = InventorySwap.mapInventoryToScreenSlot(best.invSlot);
                 int to = armorScreenSlot(slot);
                 InventorySwap.INSTANCE.swapScreenSlots(from, to);
+                cooldown = delayTicks.get();
                 return;
             }
 
@@ -80,11 +104,13 @@ public class AutoArmor extends Module {
                     int from = InventorySwap.mapInventoryToScreenSlot(best.invSlot);
                     int to = armorScreenSlot(slot);
                     InventorySwap.INSTANCE.swapScreenSlots(from, to);
+                    cooldown = delayTicks.get();
                     return;
                 }
                 int armorSlot = armorScreenSlot(slot);
-                if (hasInventorySpace()) {
+                if (unequipBroken.get() && hasInventorySpace()) {
                     mc.gameMode.handleContainerInput(syncId, armorSlot, 0, ContainerInput.QUICK_MOVE, mc.player);
+                    cooldown = delayTicks.get();
                     return;
                 }
             }
@@ -130,7 +156,7 @@ public class AutoArmor extends Module {
         if (candidate == null || candidate.isEmpty()) return false;
         if (current == null || current.isEmpty()) return true;
         if (hasCurseOfBinding(current)) return false;
-        return scoreArmor(candidate, slot) > scoreArmor(current, slot);
+        return scoreArmor(candidate, slot) > scoreArmor(current, slot) + minImprovement.get() * ProtectionFocus.ARMOR_WEIGHT;
     }
 
     private double scoreArmor(ItemStack stack, EquipmentSlot slot) {
@@ -156,15 +182,8 @@ public class AutoArmor extends Module {
         int unbreaking = getEnchantmentLevel(Enchantments.UNBREAKING, stack);
         int mending = getEnchantmentLevel(Enchantments.MENDING, stack);
 
-        return armor[0] * 10.0
-                + toughness[0] * 4.0
-                + kbResist[0] * 2.0
-                + protection * 1.4
-                + blast * 0.6
-                + projectile * 0.4
-                + fire * 0.3
-                + unbreaking * 0.1
-                + mending * 0.2;
+        return protectionFocus.get().score(armor[0], toughness[0], kbResist[0],
+                protection, blast, projectile, fire, unbreaking, mending);
     }
 
     private boolean hasCurseOfBinding(ItemStack stack) {
@@ -186,9 +205,7 @@ public class AutoArmor extends Module {
 
     private boolean isBroken(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
-        int max = stack.getMaxDamage();
-        if (max <= 0) return false;
-        return (double) stack.getDamageValue() / max > 0.98;
+        return ProtectionFocus.isWorn(stack.getDamageValue(), stack.getMaxDamage(), brokenPercent.get());
     }
 
     private boolean hasInventorySpace() {
