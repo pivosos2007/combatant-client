@@ -8,8 +8,6 @@
 package combatant.client.render.engine.uniform.impl;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.buffers.Std140Builder;
-import com.mojang.blaze3d.buffers.Std140SizeCalculator;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
 import combatant.client.render.engine.renderer.ui.clip.UiClipStack;
@@ -19,22 +17,25 @@ import combatant.client.render.engine.renderer.ui.draw.UiCornerRadii;
 import combatant.client.render.engine.renderer.ui.draw.UiRect;
 import combatant.client.render.engine.renderer.ui.draw.UiShape;
 import combatant.client.render.engine.renderer.ui.draw.UiShapeKind;
-import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;
+import combatant.client.render.engine.uniform.ShaderUniformBindings;
 
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 /** Std140 writer for the fixed-size analytic UI clip intersection. */
 public enum UiClipUniforms {
     ;
     private static final int MAX_CLIPS = UiClipStack.MAX_ANALYTIC_PRIMITIVES;
-    public static final int SIZE = new Std140SizeCalculator()
-            .putVec4() // header
-            .putVec4() // kinds
-            .putVec4().putVec4().putVec4().putVec4() // bounds
-            .putVec4().putVec4().putVec4().putVec4() // params0
-            .putVec4().putVec4().putVec4().putVec4() // params1
-            .get();
+    private static final ShaderUniformBindings.Block BLOCK = ShaderUniformBindings.block("UIClip");
+    public static final int SIZE = BLOCK.size();
+    private static final ShaderUniformBindings.Writer WRITER = BLOCK.writer();
+
+    static {
+        if (BLOCK.member("uClipBounds").count() != MAX_CLIPS
+                || BLOCK.member("uClipParams0").count() != MAX_CLIPS
+                || BLOCK.member("uClipParams1").count() != MAX_CLIPS) {
+            throw new IllegalStateException("UIClip shader/CPU array capacity mismatch");
+        }
+    }
     private static final String UNIFORM_NAME = "Combatant - UI Analytic Clip UBO";
     private static final int EXPECTED_WRITES_PER_FRAME = 128;
     private static final Data DATA = new Data();
@@ -44,12 +45,13 @@ public enum UiClipUniforms {
             throw new IllegalArgumentException("Analytic clip uniform requires an active analytic snapshot");
         }
         DATA.set(snapshot);
+        DATA.pack();
         return CombatantRenderSystem.uniforms().write(
-                UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA
+                UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, WRITER
         );
     }
 
-    private static final class Data implements CombatantUniformAllocator.UniformWriter {
+    private static final class Data {
         private final float[] header = new float[4];
         private final float[] kinds = new float[MAX_CLIPS];
         private final float[][] bounds = new float[MAX_CLIPS][4];
@@ -108,19 +110,13 @@ public enum UiClipUniforms {
             target[3] = w;
         }
 
-        @Override
-        public void write(ByteBuffer buffer) {
-            Std140Builder writer = Std140Builder.intoBuffer(buffer)
-                    .putFloat(header[0]).putFloat(header[1]).putFloat(header[2]).putFloat(header[3])
-                    .putFloat(kinds[0]).putFloat(kinds[1]).putFloat(kinds[2]).putFloat(kinds[3]);
-            writeArray(writer, bounds);
-            writeArray(writer, params0);
-            writeArray(writer, params1);
-        }
-
-        private static void writeArray(Std140Builder writer, float[][] values) {
-            for (float[] value : values) {
-                writer.putFloat(value[0]).putFloat(value[1]).putFloat(value[2]).putFloat(value[3]);
+        void pack() {
+            WRITER.vec4("uClipHeader", header[0], header[1], header[2], header[3])
+                    .vec4("uClipKinds", kinds[0], kinds[1], kinds[2], kinds[3]);
+            for (int i = 0; i < MAX_CLIPS; i++) {
+                WRITER.vec4("uClipBounds", i, bounds[i][0], bounds[i][1], bounds[i][2], bounds[i][3]);
+                WRITER.vec4("uClipParams0", i, params0[i][0], params0[i][1], params0[i][2], params0[i][3]);
+                WRITER.vec4("uClipParams1", i, params1[i][0], params1[i][1], params1[i][2], params1[i][3]);
             }
         }
     }

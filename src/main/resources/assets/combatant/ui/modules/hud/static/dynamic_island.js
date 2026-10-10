@@ -19,8 +19,6 @@ function displayShell(p) {
   const cut = num(p.bezelCut, 4.5);
   const alpha = num(p.alpha, 1);
   const nodes = [
-    // Keep the shell on one analytic chamfer primitive. The same `chamfer` value drives
-    // both the backdrop-blur mask and the painted surface, so the two silhouettes cannot drift.
     ui.shape({
       key: "shell:surface",
       shape: "primitive",
@@ -35,6 +33,12 @@ function displayShell(p) {
       startColor: colorAlpha(p.displayBgStart || p.displayBg, alpha),
       endColor: colorAlpha(p.displayBgEnd || p.displayBg, alpha),
       angle: num(p.displayBgAngle, 90),
+      materialMode: ui.str(p.displayMaterial, "phosphor-led"),
+      materialAccent: p.phosphor,
+      materialDetailScale: num(p.pixelPitchPx, 4.0),
+      materialRoughness: num(p.offPixelOpacity, 0.13),
+      materialBevelStrength: num(p.displayBevelStrength, 0.30),
+      materialResponse: ui.clamp(num(p.bodyHover, 0) * 0.42 + num(p.bodyPress, 0) * 0.72, 0, 1),
     }),
     ui.shape({
       key: "shell:interaction",

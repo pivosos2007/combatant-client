@@ -7,33 +7,49 @@
 
 package combatant.client.render.engine.renderer.ui.draw;
 
-/** Optional material modifiers layered onto the existing Combatant liquid-glass model. */
-public record UiLiquidGlassMaterial(float frostedJitterPx,
+/** Material data consumed by Combatant's single shared glass surface pipeline. */
+public record UiLiquidGlassMaterial(UiGlassOpticsSpec optics,
+                                    float frostedJitterPx,
                                     float innerGlowStrength,
                                     float innerGlowSizePx,
                                     int innerGlowArgb) {
-    public static final UiLiquidGlassMaterial DEFAULT = new UiLiquidGlassMaterial(0f, 0f, 0f, 0x00FFFFFF);
+    public static final UiLiquidGlassMaterial DEFAULT = new UiLiquidGlassMaterial(
+            UiGlassOpticsSpec.LIQUID, 0f, 0f, 0f, 0x00FFFFFF);
+    public static final UiLiquidGlassMaterial FRESNEL_GLASS = new UiLiquidGlassMaterial(
+            UiGlassOpticsSpec.FRESNEL_GLASS, 0f, 0f, 0f, 0x00FFFFFF);
+
+    public UiLiquidGlassMaterial(float frostedJitterPx,
+                                 float innerGlowStrength,
+                                 float innerGlowSizePx,
+                                 int innerGlowArgb) {
+        this(UiGlassOpticsSpec.LIQUID, frostedJitterPx, innerGlowStrength, innerGlowSizePx, innerGlowArgb);
+    }
 
     public UiLiquidGlassMaterial {
+        optics = optics != null ? optics : UiGlassOpticsSpec.LIQUID;
         frostedJitterPx = finiteClamp(frostedJitterPx, 0f, 4f);
         innerGlowStrength = finiteClamp(innerGlowStrength, 0f, 1f);
         innerGlowSizePx = finiteClamp(innerGlowSizePx, 0f, 64f);
     }
 
     public static UiLiquidGlassMaterial frosted(float jitterPx) {
-        return new UiLiquidGlassMaterial(jitterPx, 0f, 0f, 0x00FFFFFF);
+        return new UiLiquidGlassMaterial(UiGlassOpticsSpec.LIQUID, jitterPx, 0f, 0f, 0x00FFFFFF);
     }
 
     public static UiLiquidGlassMaterial innerGlow(float strength, float sizePx, int argb) {
-        return new UiLiquidGlassMaterial(0f, strength, sizePx, argb);
+        return new UiLiquidGlassMaterial(UiGlassOpticsSpec.LIQUID, 0f, strength, sizePx, argb);
     }
 
     public UiLiquidGlassMaterial withFrostedJitter(float jitterPx) {
-        return new UiLiquidGlassMaterial(jitterPx, innerGlowStrength, innerGlowSizePx, innerGlowArgb);
+        return new UiLiquidGlassMaterial(optics, jitterPx, innerGlowStrength, innerGlowSizePx, innerGlowArgb);
     }
 
     public UiLiquidGlassMaterial withInnerGlow(float strength, float sizePx, int argb) {
-        return new UiLiquidGlassMaterial(frostedJitterPx, strength, sizePx, argb);
+        return new UiLiquidGlassMaterial(optics, frostedJitterPx, strength, sizePx, argb);
+    }
+
+    public UiLiquidGlassMaterial withOptics(UiGlassOpticsSpec value) {
+        return new UiLiquidGlassMaterial(value, frostedJitterPx, innerGlowStrength, innerGlowSizePx, innerGlowArgb);
     }
 
     public boolean hasFrostedJitter() {

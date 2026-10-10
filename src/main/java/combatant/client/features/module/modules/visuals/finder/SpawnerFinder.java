@@ -72,7 +72,6 @@ public final class SpawnerFinder extends Module {
     private final BooleanValue tracers = bool("tracers", false);
     private final BooleanValue trialSpawners = bool("trial_spawners", true);
     private final BooleanValue chatAlerts = bool("chat_alerts", true);
-    private final BooleanValue soundAlerts = bool("sound_alerts", true);
     private final RGBAColorValue boxColor = color("box_color", "#FFFF5050");
     private final RGBAColorValue ringColor = color("ring_color", "#90FF5050");
     // Shows at a glance which spawners are running because you stand in their range.
@@ -120,7 +119,7 @@ public final class SpawnerFinder extends Module {
                 if (alerted.add(spawner.pos.asLong())) {
                     FinderAlerts.found(getDisplayName(), spawner.type + " spawner",
                             spawner.pos.getX(), spawner.pos.getY(), spawner.pos.getZ(),
-                            chatAlerts.get(), soundAlerts.get());
+                            chatAlerts.get(), false);
                 }
             }
         }

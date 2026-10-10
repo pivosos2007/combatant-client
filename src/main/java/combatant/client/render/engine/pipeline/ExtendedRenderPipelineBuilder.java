@@ -350,6 +350,9 @@ public class ExtendedRenderPipelineBuilder {
             case "shaders/ui_pos_tex_color_fast.vert" -> CombatantVertexFormats.POS2_TEXTURE_COLOR;
             case "shaders/ui_primitive_fast.vert" -> CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS5;
             case "shaders/pos_tex_local_color_rect_params7.vert" -> CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS7;
+            case "shaders/pos_tex_local_color_rect_params9.vert" -> CombatantVertexFormats.POS2_TEXTURE_LOCAL_COLOR_RECT_PARAMS9;
+            case "shaders/pos_local_color_rect_params6_generic.vert" -> CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS6;
+            case "shaders/pos_local_color_rect_params7_generic.vert" -> CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS7;
             case "shaders/rig_textured.vert" -> CombatantVertexFormats.RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM;
             default -> null;
         };

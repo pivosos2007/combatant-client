@@ -8,6 +8,7 @@
 package combatant.client.render.engine.text;
 
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import combatant.client.render.engine.text.backend.*;
@@ -27,9 +28,9 @@ import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
 import combatant.client.render.engine.rhi.resource.GlyphAtlasManager;
 import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.render.engine.uniform.ShaderUniformBindings;
 import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
-import combatant.client.render.engine.uniform.impl.UIBlendUniforms;
 import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 
 import java.util.ArrayList;
@@ -43,6 +44,8 @@ public enum TextRenderSystem {
     private static final TextCommandStats STATS = new TextCommandStats();
     private static final TextCommandBuffer COMMANDS = new TextCommandBuffer(STATS);
     private static final TextBackendRouter ROUTER = new TextBackendRouter(STATS);
+    private static final ShaderUniformBindings.Block UI_BLEND_BLOCK = ShaderUniformBindings.block("UIBlend");
+    private static final ShaderUniformBindings.Writer UI_BLEND = UI_BLEND_BLOCK.writer();
 
     static {
         ROUTER.add(new MsdfTextBackend(STATS));
@@ -386,8 +389,7 @@ public enum TextRenderSystem {
                     .sampler("u_SceneTexture", sceneView, sceneSampler)
                     .sampler("u_BlurTexture", blurView, blurSampler)
                     .uniform("UIBatch", UIBatchUniforms.get())
-                    .uniform("UIBlend", UIBlendUniforms.write(
-                            blend != null ? blend : UiBackdropBlendSpec.NORMAL))
+                    .uniform(UI_BLEND_BLOCK.name(), uploadUiBlend(blend))
                     .uniform("MsdfText", MsdfTextUniforms.get());
 
             commands.add(command.build());
@@ -395,6 +397,25 @@ public enum TextRenderSystem {
         } finally {
             if (handle != null) handle.close();
         }
+    }
+
+    private static GpuBufferSlice uploadUiBlend(UiBackdropBlendSpec requested) {
+        UiBackdropBlendSpec spec = requested != null ? requested : UiBackdropBlendSpec.NORMAL;
+        int tone0 = spec.tone0Argb();
+        int tone1 = spec.tone1Argb();
+        return UI_BLEND
+                .vec4("uBlendParams", spec.mode().shaderId(), spec.strength(), spec.pivot(), spec.softness())
+                .vec4("uBlendTone0",
+                        ((tone0 >>> 16) & 0xFF) / 255.0f,
+                        ((tone0 >>> 8) & 0xFF) / 255.0f,
+                        (tone0 & 0xFF) / 255.0f,
+                        ((tone0 >>> 24) & 0xFF) / 255.0f)
+                .vec4("uBlendTone1",
+                        ((tone1 >>> 16) & 0xFF) / 255.0f,
+                        ((tone1 >>> 8) & 0xFF) / 255.0f,
+                        (tone1 & 0xFF) / 255.0f,
+                        ((tone1 >>> 24) & 0xFF) / 255.0f)
+                .upload(64);
     }
 
     public static RenderPipeline uiPipelineFor(GlyphFont font) {

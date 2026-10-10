@@ -22,9 +22,8 @@ import combatant.client.render.engine.rhi.shader.SampledTextureBinding;
 import combatant.client.render.engine.rhi.shader.ShaderResourceKind;
 import combatant.client.render.engine.rhi.shader.ShaderResourceLayout;
 import combatant.client.render.engine.rhi.shader.ShaderResourceSlot;
+import combatant.client.render.engine.uniform.ShaderUniformBindings;
 import combatant.client.render.engine.rhi.shader.Std430StructLayout;
-import combatant.client.render.engine.rhi.shader.Std430Type;
-import combatant.client.render.engine.rhi.shader.Std430Writer;
 import combatant.client.render.engine.rhi.shader.StorageAccess;
 import combatant.client.render.engine.rhi.shader.StorageBinding;
 import combatant.client.render.engine.rhi.shader.StorageBufferDescriptor;
@@ -41,10 +40,8 @@ import java.util.Map;
 final class UiComputeBlurBackend implements AutoCloseable {
     private static final int LOCAL_SIZE = 8;
     private static final Identifier SHADER = Identifier.fromNamespaceAndPath("combatant", "ui_blur");
-    private static final Std430StructLayout PARAMS_LAYOUT = Std430StructLayout.builder()
-            .member("params", Std430Type.VEC4)
-            .member("region", Std430Type.VEC4)
-            .build();
+    private static final ShaderUniformBindings.Block PARAMS_BLOCK = ShaderUniformBindings.block("UIBlurComputeParams");
+    private static final Std430StructLayout PARAMS_LAYOUT = PARAMS_BLOCK.storageLayout();
     private static final ShaderResourceLayout LAYOUT = new ShaderResourceLayout(List.of(
             new ShaderResourceSlot(0, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(1, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY),
@@ -56,6 +53,8 @@ final class UiComputeBlurBackend implements AutoCloseable {
     private RhiComputePipeline pipeline;
     private RhiStorageBuffer downParams;
     private RhiStorageBuffer upParams;
+    private final ShaderUniformBindings.Writer downParamsWriter = PARAMS_BLOCK.writer();
+    private final ShaderUniformBindings.Writer upParamsWriter = PARAMS_BLOCK.writer();
     private boolean disabledForSession;
 
     @Nullable Result tryBlur(CombatantRhi rhi,
@@ -153,9 +152,9 @@ final class UiComputeBlurBackend implements AutoCloseable {
                           float offsetPx,
                           boolean upPass,
                           UiBlurRegion region) {
-        Std430Writer writer = new Std430Writer(PARAMS_LAYOUT, 1)
-                .putVec4(0, "params", Math.max(0.0f, offsetPx), upPass ? 1.0f : 0.0f, 1.0f, 0.0f)
-                .putVec4(0, "region", region.x(), region.y(), region.width(), region.height());
+        ShaderUniformBindings.Writer writer = upPass ? upParamsWriter : downParamsWriter;
+        writer.vec4("params", Math.max(0.0f, offsetPx), upPass ? 1.0f : 0.0f, 1.0f, 0.0f)
+                .vec4("region", region.x(), region.y(), region.width(), region.height());
         RhiStorageBuffer paramsBuffer = params(upPass);
         paramsBuffer.upload(writer.buffer(), 0L);
 

@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.clickgui;
 
+import combatant.client.util.text.SingleLineTextInput;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.addon.ClickGuiSectionManager;
 import combatant.client.features.gui.clickgui.settings.*;
@@ -135,6 +137,8 @@ public enum ClickGuiRenderer {
     // =========================
     public static void onMouseMove(double x, double y) {
         updateMouse(x, y, false);
+        SingleLineTextInput.mouseMoved(mouseX);
+        TextSetting.dragMouseSelection(mouseX);
         if (picker != null) {
             picker.handleMouseMove(mouseX, mouseY);
         }
@@ -158,6 +162,8 @@ public enum ClickGuiRenderer {
 
     public static void onMouseMoveScaled(double x, double y) {
         updateMouse(x, y, true);
+        SingleLineTextInput.mouseMoved(mouseX);
+        TextSetting.dragMouseSelection(mouseX);
         if (picker != null) {
             picker.handleMouseMove(mouseX, mouseY);
         }
@@ -185,6 +191,10 @@ public enum ClickGuiRenderer {
 
     public static void onEditorMouseButtonScaled(double x, double y, int button, boolean pressed) {
         updateMouse(x, y, true);
+        if (!pressed && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            SingleLineTextInput.mouseReleased();
+            TextSetting.endMouseSelection();
+        }
         if (waitingForKey) {
             if (pressed) addPendingMouseButton(button);
             return;
@@ -229,6 +239,10 @@ public enum ClickGuiRenderer {
     }
 
     private static void handleMouseButton(int button, boolean pressed) {
+        if (!pressed && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            SingleLineTextInput.mouseReleased();
+            TextSetting.endMouseSelection();
+        }
         if (!isInputReady()) return;
         if (waitingForKey) {
             if (pressed) addPendingMouseButton(button);
@@ -384,6 +398,7 @@ public enum ClickGuiRenderer {
                     default -> {
                         if (key == GLFW.GLFW_KEY_V && ctrl) textEditor.pasteFromClipboard();
                         if (key == GLFW.GLFW_KEY_C && ctrl) textEditor.copySelection();
+                        if (key == GLFW.GLFW_KEY_X && ctrl) textEditor.cutSelection();
                         if (key == GLFW.GLFW_KEY_A && ctrl) textEditor.selectAll();
                     }
                 }
@@ -401,9 +416,9 @@ public enum ClickGuiRenderer {
                 switch (key) {
                     case GLFW.GLFW_KEY_ESCAPE -> closePicker();
                     case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> picker.stopListening();
-                    case GLFW.GLFW_KEY_BACKSPACE -> picker.backspace();
                     default -> {
                         if (key == GLFW.GLFW_KEY_F && ctrl) picker.toggleListening();
+                        else picker.keyPressed(key, mods);
                     }
                 }
             }

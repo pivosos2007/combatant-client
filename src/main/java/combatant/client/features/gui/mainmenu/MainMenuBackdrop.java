@@ -21,8 +21,8 @@ final class MainMenuBackdrop {
     static final float CELL_GAP = 0.0f;
     static final float CURSOR_LIGHT_RADIUS = 165f * MENU_SCALE;
     static final float HONEYCOMB_RIM_WIDTH = 0.92f * MENU_SCALE;
-    static final float BACKGROUND_BLUR_QUALITY = 17.0f;
-    static final float BACKGROUND_BLUR_ALPHA = 0.96f;
+    static final float BACKGROUND_BLUR_QUALITY = 9.0f;
+    static final float BACKGROUND_BLUR_ALPHA = 0.34f;
 
     private MainMenuBackdrop() {
     }

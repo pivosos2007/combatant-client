@@ -67,6 +67,9 @@ def combatantDevEnabled = providers.gradleProperty("combatantDev")
         .map { it.toBoolean() }
         .orElse(false)
 def svgMsdfGeneratedResources = layout.buildDirectory.dir("generated/resources/svgMsdf")
+// GLSL block declarations are the sole source of truth for generated UBO/SSBO layouts.
+// The generator uses the JDK source-file launcher; no Python/Groovy plugin or runtime reflection.
+def generatedUniformResources = layout.buildDirectory.dir("generated/resources/combatantUniforms")
 def javetNativeGeneratedResources = layout.buildDirectory.dir("generated/resources/javetNatives")
 def javetVersion = "5.0.9"
 def targetJavaVersion = 25
@@ -74,6 +77,7 @@ def targetJavaVersion = 25
 sourceSets {
     main {
         resources.srcDir(svgMsdfGeneratedResources)
+        resources.srcDir(generatedUniformResources)
     }
     svgMsdfTool {
         java.srcDir("src/svgMsdfTool/java")
@@ -346,12 +350,78 @@ tasks.register("verifyUiApiContract") {
     }
 }
 
+tasks.register("verifyUniformCodegen", Exec) {
+    group = "verification"
+    description = "Checks GLSL std140/std430 packing, arrays, matrix strides and malformed layouts."
+    inputs.file(file("tools/uniform-codegen/UniformCodegen.java"))
+    commandLine "${System.getProperty('java.home')}/bin/java",
+            file("tools/uniform-codegen/UniformCodegen.java"), "test"
+}
+
+tasks.register("verifyGeneratedUniformPacking", Exec) {
+    group = "verification"
+    description = "Compiles generated std140/std430 classes and verifies actual byte-level layouts."
+    dependsOn tasks.named("verifyUniformCodegen")
+    inputs.files(file("tools/uniform-codegen/CodegenSmoke.java"),
+            file("tools/uniform-codegen/UniformCodegen.java"),
+            file("src/main/java/combatant/client/render/engine/rhi/shader/Std430Type.java"),
+            file("src/main/java/combatant/client/render/engine/rhi/shader/Std430StructLayout.java"))
+    commandLine "${System.getProperty('java.home')}/bin/java",
+            file("tools/uniform-codegen/CodegenSmoke.java")
+}
+
+tasks.register("verifyUniformSourceBoundary") {
+    group = "verification"
+    description = "Rejects direct main-source dependencies on verification-only generated uniform classes."
+    inputs.dir(file("src/main/java"))
+    doLast {
+        def offenders = fileTree("src/main/java") {
+            include "**/*.java"
+        }.files.findAll { it.getText("UTF-8").contains("combatant.client.render.engine.uniform.generated") }
+        if (!offenders.isEmpty()) {
+            throw new GradleException("Main sources import generated uniform classes: " +
+                    offenders.collect { project.relativePath(it) }.join(", "))
+        }
+    }
+}
+
+tasks.register("generateUniformBindings", Exec) {
+    group = "build"
+    description = "Discovers GLSL UBO/SSBO declarations and generates runtime layout metadata."
+    inputs.file(file("tools/uniform-codegen/UniformCodegen.java"))
+    inputs.files(fileTree("src/main/resources/assets/combatant/shaders") {
+        include "**/*.vert", "**/*.frag", "**/*.geom", "**/*.comp", "**/*.glsl"
+    })
+    outputs.dir(generatedUniformResources)
+    commandLine "${System.getProperty('java.home')}/bin/java",
+            file("tools/uniform-codegen/UniformCodegen.java"), "discover",
+            file("src/main/resources/assets/combatant/shaders"),
+            generatedUniformResources.get().asFile
+}
+
+tasks.register("verifyUniformBindingContracts", Exec) {
+    group = "verification"
+    description = "Checks Java uniform writers and blocks against every discovered GLSL layout before compilation."
+    dependsOn tasks.named("generateUniformBindings")
+    inputs.file(file("tools/uniform-codegen/UniformCodegen.java"))
+    inputs.dir(file("src/main/java"))
+    inputs.dir(generatedUniformResources)
+    commandLine "${System.getProperty('java.home')}/bin/java",
+            file("tools/uniform-codegen/UniformCodegen.java"), "verify",
+            generatedUniformResources.get().file("combatant/uniform-bindings-v2.tsv").asFile,
+            file("src/main/java")
+}
+
+tasks.named("compileJava") {
+    dependsOn tasks.named("verifyUniformBindingContracts")
+}
+
 tasks.named("compileJava") {
     dependsOn tasks.named("verifyUiApiContract")
 }
 
 tasks.named("processResources") {
-    dependsOn tasks.named("verifyUiApiContract")
+    dependsOn tasks.named("verifyUiApiContract"), tasks.named("generateUniformBindings")
 }
 
 // Packaging is intentionally independent from verification. Tests remain available through

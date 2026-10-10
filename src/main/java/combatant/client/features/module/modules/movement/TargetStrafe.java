@@ -28,7 +28,6 @@ import combatant.client.features.module.modules.movement.holesnap.Steering;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.combat.SprintController;
 import combatant.client.util.player.navigation.OrbitNavigator;
-import combatant.client.util.player.navigation.HazardAvoidance;
 
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -52,7 +51,6 @@ public final class TargetStrafe extends Module {
     private final NumberValue<Float> speed =
             visibleWhen(num("speed", 0.3f, 0.1f, 1.0f), this::isMatrixMode);
     private final BooleanValue autoJump = bool("auto_jump", true);
-    private final BooleanValue onlyKeyPressed = bool("only_key_pressed", false);
     private final BooleanValue inFrontOfTarget = bool("in_front_of_target", false);
     private final EnumValue<DirectionMode> directionMode =
             enumMode("direction_mode", DirectionMode.CLOCKWISE,
@@ -85,7 +83,7 @@ public final class TargetStrafe extends Module {
             navigator.reset();
             return;
         }
-        if (onlyKeyPressed.get() && !isAnyMovementKeyPressed()) {
+        if (isManualControlRequested()) {
             navigator.reset();
             return;
         }
@@ -94,14 +92,15 @@ public final class TargetStrafe extends Module {
         if (!isMatrixMode()) return;
         navigator.update(player, target, radius.get(),
                 resolveDirectionMultiplier(target), inFrontOfTarget.get(),
-                type == PointType.CUBE, type == PointType.CENTER, autoJump.get());
+                type == PointType.CUBE, type == PointType.CENTER, autoJump.get(), speed.get());
         Vec3 direction = navigator.direction(player);
         if (direction == null) {
-            stopHorizontal(player);
+            // No safe automatic command: relinquish control instead of freezing
+            // the player. Vanilla WASD and momentum remain untouched.
             return;
         }
         boolean jump = autoJump.get() && navigator.needsJump(player);
-        boolean trapped = HazardAvoidance.exposure(player.level(), player.getBoundingBox()) > 0;
+        boolean trapped = navigator.isTrapped();
         // Preserve the old dynamic hopping on clear ground. On a climb, jump
         // first and allow the horizontal traversal once the player is airborne.
         boolean hop = autoJump.get() && player.onGround() && !trapped;
@@ -109,25 +108,8 @@ public final class TargetStrafe extends Module {
 
         double velocity = speed.get();
         Vec3 horizontal = direction.scale(velocity);
-        if (!navigator.safeMotion(player, horizontal)) {
-            // Keep moving at a shorter safe step if the configured Matrix speed
-            // is larger than the clearance in front of us. Never push into a
-            // wall/void, but do not turn a minor speed overshoot into a freeze.
-            if (!jump) {
-                for (int attempt = 0; attempt < 4 && velocity >= 0.11; attempt++) {
-                    velocity *= 0.70;
-                    horizontal = direction.scale(velocity);
-                    if (navigator.safeMotion(player, horizontal)) break;
-                }
-            }
-            if (jump || velocity < 0.11 || !navigator.safeMotion(player, horizontal)) {
-                // A climb starts with vertical velocity. Do not invalidate the
-                // path until the airborne player has a chance to cross the rise.
-                if (!jump) navigator.invalidate();
-                stopHorizontal(player);
-                return;
-            }
-        }
+        // The local probe already validates this speed before selecting a
+        // direction. Do not slow or stop a valid orbit based on an A* state.
         player.setDeltaMovement(horizontal.x, player.getDeltaMovement().y, horizontal.z);
         float yaw = (float) Math.toDegrees(Math.atan2(horizontal.z, horizontal.x)) - 90.0f;
         float angleDiff = Mth.wrapDegrees(yaw - resolveControlYaw());
@@ -141,30 +123,34 @@ public final class TargetStrafe extends Module {
         LocalPlayer player = mc.player;
         LivingEntity target = currentTarget();
         if (player == null || mc.level == null || target == null || !target.isAlive()) return;
-        if (onlyKeyPressed.get() && !isAnyMovementKeyPressed()) return;
+        if (isManualControlRequested() || event.isForward() || event.isBackward()
+                || event.isLeft() || event.isRight() || event.isJump() || event.isSneak()) {
+            navigator.reset();
+            return;
+        }
 
         PointType type = grimPointType.get();
         navigator.update(player, target, grimRadius.get(), resolveDirectionMultiplier(target),
                 inFrontOfTarget.get(), type == PointType.CUBE,
-                type == PointType.CENTER, autoJump.get());
+                type == PointType.CENTER, autoJump.get(), 0.42);
         Vec3 direction = navigator.direction(player);
         if (direction == null) {
-            clearMovement(event);
+            // Event starts with actual player keys. Do not overwrite them while
+            // the route is pending, unsafe or impossible.
             return;
         }
         float controlYaw = resolveControlYaw();
         int keys = Steering.keysToward(controlYaw, direction.x, direction.z);
         boolean jump = autoJump.get() && player.onGround() && navigator.needsJump(player);
-        boolean trapped = HazardAvoidance.exposure(player.level(), player.getBoundingBox()) > 0;
-        Vec3 inputMotion = motionFromKeys(controlYaw, keys).scale(0.36);
-        // WASD quantization may cut a corner even when the waypoint path is valid.
-        // Validate the actual input vector against the same collision/edge policy.
-        if (keys != 0 && !navigator.safeMotion(player, inputMotion)) {
-            if (!jump) navigator.invalidate();
-            clearMovement(event);
+        boolean trapped = navigator.isTrapped();
+        // WASD discretization cuts corners on diagonals. Prefer a safe single
+        // axis to refusing all movement when the diagonal is unsafe.
+        int safeKeys = chooseSafeKeys(player, controlYaw, keys, direction);
+        if (safeKeys == 0) {
             if (jump) event.setJump(true);
             return;
         }
+        keys = safeKeys;
         // Hop on clear ground as before, but not while escaping webs/lava.
         boolean hop = autoJump.get() && player.onGround() && !trapped;
         event.setForward((keys & Steering.FORWARD) != 0);
@@ -172,8 +158,32 @@ public final class TargetStrafe extends Module {
         event.setLeft((keys & Steering.LEFT) != 0);
         event.setRight((keys & Steering.RIGHT) != 0);
         event.setJump(event.isJump() || jump || hop);
-        event.setSprint(SprintController.INSTANCE.canStartSprinting(player)
-                && (keys & Steering.FORWARD) != 0);
+        // Synthetic Grim movement has no physical forward key. Let the shared
+        // SprintController apply its actual food/control/sprint-block policy
+        // on the event below, instead of requiring a previous vanilla key.
+        event.setSprint((keys & Steering.FORWARD) != 0
+                && !SprintController.INSTANCE.isSprintBlocked());
+    }
+
+    private int chooseSafeKeys(LocalPlayer player, float yaw, int intended, Vec3 desired) {
+        if (intended == 0) return 0;
+        Vec3 motion = motionFromKeys(yaw, intended);
+        if (navigator.safeMotion(player, motion.scale(0.36))) return intended;
+        // Only check two axis alternatives, not all eight directions each tick.
+        int longitudinal = intended & (Steering.FORWARD | Steering.BACKWARD);
+        int lateral = intended & (Steering.LEFT | Steering.RIGHT);
+        int chosen = 0;
+        double alignment = 0.50;
+        for (int candidate : new int[]{longitudinal, lateral}) {
+            if (candidate == 0 || candidate == intended) continue;
+            Vec3 vector = motionFromKeys(yaw, candidate);
+            double dot = vector.x * desired.x + vector.z * desired.z;
+            if (dot > alignment && navigator.safeMotion(player, vector.scale(0.36))) {
+                alignment = dot;
+                chosen = candidate;
+            }
+        }
+        return chosen;
     }
 
     private static Vec3 motionFromKeys(float yaw, int keys) {
@@ -187,26 +197,14 @@ public final class TargetStrafe extends Module {
         return vector.lengthSqr() > 1.0e-6 ? vector.normalize() : Vec3.ZERO;
     }
 
-    private static void clearMovement(MovementInputEvent event) {
-        event.setForward(false);
-        event.setBackward(false);
-        event.setLeft(false);
-        event.setRight(false);
-        event.setSprint(false);
-        // Do not clear the user's explicit jump/sneak keys.
-    }
-
-    private static void stopHorizontal(LocalPlayer player) {
-        player.setDeltaMovement(0.0, player.getDeltaMovement().y, 0.0);
-    }
-
     private LivingEntity currentTarget() {
         KillAura aura = Modules.get(KillAura.class);
         return aura != null && aura.isEnabled() ? aura.getCurrentTarget() : null;
     }
 
     public boolean shouldDisableAuraFreeCorrection() {
-        return isEnabled() && isGrimMode() && currentTarget() != null;
+        return isEnabled() && isGrimMode() && !isManualControlRequested()
+                && currentTarget() != null && navigator.direction(mc.player) != null;
     }
 
     private int resolveDirectionMultiplier(LivingEntity target) {
@@ -234,10 +232,12 @@ public final class TargetStrafe extends Module {
         return angleDiff > -67.5f && angleDiff < 67.5f;
     }
 
-    private boolean isAnyMovementKeyPressed() {
+    /** Physical keyboard input always takes precedence over automated input. */
+    private boolean isManualControlRequested() {
         return mc.options != null && (mc.options.keyUp.isDown()
                 || mc.options.keyDown.isDown() || mc.options.keyLeft.isDown()
-                || mc.options.keyRight.isDown());
+                || mc.options.keyRight.isDown() || mc.options.keyJump.isDown()
+                || mc.options.keyShift.isDown());
     }
 
     private boolean isMatrixMode() { return mode.get() == StrafeMode.MATRIX; }

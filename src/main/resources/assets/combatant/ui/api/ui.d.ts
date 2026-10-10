@@ -160,6 +160,21 @@ export type UiInlineStyle = {
   blurBrightness?: number;
   blurAlpha?: number;
   liquidGlass?: boolean;
+  materialMode?: string;
+  materialAccent?: string | number;
+  materialDetailScale?: number;
+  materialRoughness?: number;
+  materialBevelStrength?: number;
+  materialResponse?: number;
+  glassOptics?: "reactive-refraction" | "fresnel-glass" | string;
+  glassRefraction?: number;
+  glassBevelWidth?: number;
+  glassBevelDepth?: number;
+  glassInteraction?: boolean;
+  glassInteractionStrength?: number;
+  glassInteractionRadius?: number;
+  glassInteractionViscosity?: number;
+  glassCleanReveal?: number;
   clip?: boolean;
   marquee?: boolean;
 
@@ -596,9 +611,24 @@ export type UiShapeNode = UiNode & {
   /** Enables the existing liquid-glass material on compatible analytic primitives. */
   liquidGlass?: boolean;
   glassPreset?: "light" | "balanced" | "heavy" | "hud-small" | "hud-large" | "health" | string;
+  materialMode?: string;
+  materialAccent?: string | number;
+  materialDetailScale?: number;
+  materialRoughness?: number;
+  materialBevelStrength?: number;
+  materialResponse?: number;
   glassTint?: string | number;
   glassAlpha?: number;
   blurAlpha?: number;
+  glassOptics?: "reactive-refraction" | "fresnel-glass" | string;
+  glassRefraction?: number;
+  glassBevelWidth?: number;
+  glassBevelDepth?: number;
+  glassInteraction?: boolean;
+  glassInteractionStrength?: number;
+  glassInteractionRadius?: number;
+  glassInteractionViscosity?: number;
+  glassCleanReveal?: number;
   /** Enables a stable per-surface frosted refraction jitter. */
   glassFrosted?: boolean;
   /** Frosted jitter amplitude in logical pixels, clamped to 0..4. */

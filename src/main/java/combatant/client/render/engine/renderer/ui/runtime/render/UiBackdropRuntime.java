@@ -11,6 +11,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
 import combatant.client.render.engine.renderer.ui.draw.UiBlurQuality;
 import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiProps;
 import combatant.client.render.engine.renderer.ui.runtime.style.UiColor;
 
@@ -31,7 +32,34 @@ final class UiBackdropRuntime {
         float innerGlow = props != null ? props.number("glassInnerGlow", 0.0f) : 0.0f;
         float innerGlowSize = props != null ? props.number("glassInnerGlowSize", 10.0f) : 10.0f;
         int innerGlowColor = materialColor(props != null ? props.get("glassInnerGlowColor") : null, 0xFFFFFFFF);
+        String opticsName = props != null
+                ? props.string("glassOptics", props.string("materialMode", "reactive-refraction"))
+                : "reactive-refraction";
+        UiGlassOpticsSpec baseOptics = switch (opticsName == null
+                ? "liquid"
+                : opticsName.trim().toLowerCase(Locale.ROOT)) {
+            case "fresnel", "fresnel-glass", "fresnel_glass",
+                 "fresnel-frosted", "fresnel_frosted", "mirror-frosted", "mirror_frosted" ->
+                    UiGlassOpticsSpec.FRESNEL_GLASS;
+            default -> UiGlassOpticsSpec.LIQUID;
+        };
+        float interactionStrength = props != null && !props.bool("glassInteraction", true)
+                ? 0.0f
+                : props != null
+                ? props.number("glassInteractionStrength", baseOptics.interactionStrength())
+                : baseOptics.interactionStrength();
+        UiGlassOpticsSpec optics = new UiGlassOpticsSpec(
+                baseOptics.mode(),
+                props != null ? props.number("glassRefraction", baseOptics.refraction()) : baseOptics.refraction(),
+                props != null ? props.number("glassBevelWidth", baseOptics.bevelWidth()) : baseOptics.bevelWidth(),
+                props != null ? props.number("glassBevelDepth", baseOptics.bevelDepth()) : baseOptics.bevelDepth(),
+                interactionStrength,
+                props != null ? props.number("glassInteractionRadius", baseOptics.interactionRadius()) : baseOptics.interactionRadius(),
+                props != null ? props.number("glassInteractionViscosity", baseOptics.interactionViscosity()) : baseOptics.interactionViscosity(),
+                props != null ? props.number("glassCleanReveal", baseOptics.cleanReveal()) : baseOptics.cleanReveal()
+        );
         UiLiquidGlassMaterial material = new UiLiquidGlassMaterial(
+                optics,
                 frostedJitter,
                 innerGlow,
                 innerGlowSize,

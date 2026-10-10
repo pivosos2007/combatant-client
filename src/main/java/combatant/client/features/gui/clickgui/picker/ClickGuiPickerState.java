@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.clickgui.picker;
 
+import combatant.client.util.text.SingleLineTextInput;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 
 import combatant.client.features.theme.Theme;
@@ -58,7 +60,7 @@ public final class ClickGuiPickerState {
     private final PickerCatalog catalog;
     private final CompletableFuture<List<PickerEntryData>> catalogFuture;
     private final String title;
-    private final StringBuilder search = new StringBuilder();
+    private final SingleLineTextInput search = new SingleLineTextInput(128);
     private final List<PickerEntryData> allEntries = new ArrayList<>();
     private final List<PickerEntryData> visibleAll = new ArrayList<>();
     private final List<PickerEntryData> visibleSelected = new ArrayList<>();
@@ -147,21 +149,27 @@ public final class ClickGuiPickerState {
 
     public void stopListening() {
         listening = false;
+        search.unfocus();
+    }
+
+    public void keyPressed(int keyCode, int modifiers) {
+        if (!listening) return;
+        if (search.keyPressed(keyCode, modifiers)) refreshFiltered(true);
     }
 
     public void insertChar(char c) {
         if (Character.isISOControl(c)) return;
-        search.append(c);
+        search.type(c);
         refreshFiltered(true);
     }
 
     public void backspace() {
-        if (search.length() <= 0) return;
-        search.deleteCharAt(search.length() - 1);
+        search.backspace();
         refreshFiltered(true);
     }
 
     public void handleMouseMove(float mx, float my) {
+        SingleLineTextInput.mouseMoved(mx);
         if (!draggingScrollbar) return;
         layout(ClickGuiRenderer.framebufferWidth(), ClickGuiRenderer.framebufferHeight());
         scrollToPosition(my);
@@ -184,6 +192,10 @@ public final class ClickGuiPickerState {
 
         if (inside(mx, my, searchX, searchY, SEARCH_W, SEARCH_H)) {
             listening = true;
+            TextRenderer textFont = ClickGuiRenderer.getInterRegular();
+            float fontSize = 7.5f * SCALE;
+            search.layout(searchX + 4f * SCALE, SEARCH_W - 19f * SCALE, textFont, fontSize);
+            search.beginDrag(mx, false);
             return;
         }
         listening = false;
@@ -488,15 +500,15 @@ public final class ClickGuiPickerState {
 
         TextRenderer font = ClickGuiRenderer.getInterRegular();
         float textSize = 7.5f * SCALE;
-        boolean empty = search.length() == 0;
-        boolean caret = active && AnimationUtility.blink(500L);
-        String shown = empty && !active ? ClickGuiI18n.tr("clickgui.picker.search", "Search") : search.toString();
-        if (active && caret) shown += "|";
+        boolean empty = search.text().isEmpty();
+        String shown = empty && !active ? ClickGuiI18n.tr("clickgui.picker.search", "Search") : search.text();
         int color = empty && !active ? palette.panelMuted() : palette.panelText();
         float textY = searchY + (SEARCH_H - ClickGuiRenderer.textHeight(font, textSize)) * 0.5f;
         float textX = searchX + 4f * SCALE;
         boolean clipped = ScissorFunction.pushRaw(textX, searchY + SCALE, Math.max(1f, dividerX - textX - 1.5f * SCALE), SEARCH_H - 2f * SCALE);
-        ClickGuiRenderer.drawText(font, shown, textX, textY, textSize, color, false);
+        if (empty && !active) ClickGuiRenderer.drawText(font, shown, textX, textY, textSize, color, false);
+        else search.render(textX, textY, dividerX - textX - 1.5f * SCALE, SEARCH_H, font, textSize,
+                color, SettingsGuiPalette.withAlpha(theme.accent(), 115), active);
         if (clipped) ScissorFunction.pop();
 
         TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(ClickGuiRenderer.getInterRegular());
@@ -802,7 +814,7 @@ public final class ClickGuiPickerState {
     }
 
     private void refreshFiltered(boolean resetScroll) {
-        String needle = search.toString().trim().toLowerCase(Locale.ROOT);
+        String needle = search.text().trim().toLowerCase(Locale.ROOT);
 
         byId.clear();
         for (PickerEntryData entry : allEntries) {

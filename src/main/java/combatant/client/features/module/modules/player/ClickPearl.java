@@ -45,6 +45,15 @@ public class ClickPearl extends Module {
         action(ACTION_CLICKPEARL, "Z");
     }
 
+    @combatant.client.features.gui.hud.actions.HudAction(id = ACTION_CLICKPEARL,
+            label = "Pearl", description = "Throw an ender pearl", icon = "circle-dot")
+    public combatant.client.features.gui.hud.actions.HudActionRegistry.State hudPearl() {
+        var player = client.player;
+        boolean ready = player != null && !player.getCooldowns().isOnCooldown(new ItemStack(Items.ENDER_PEARL));
+        return new combatant.client.features.gui.hud.actions.HudActionRegistry.State(
+                new ItemStack(Items.ENDER_PEARL), ready, false, false, ready ? 0.0f : 1.0f);
+    }
+
     @Override
     public void onTick() {
         if (!isEnabled()) return;

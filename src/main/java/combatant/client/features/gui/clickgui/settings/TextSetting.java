@@ -14,6 +14,16 @@ public class TextSetting extends Setting implements TextEditorOwner {
 
     private final StringValue value;
     private final UiState ui = new UiState();
+    private static TextSetting mouseSelectionOwner;
+
+    static void beginMouseSelection(TextSetting setting) { mouseSelectionOwner = setting; }
+
+    public static void dragMouseSelection(float mouseX) {
+        TextSetting owner = mouseSelectionOwner;
+        if (owner != null && owner.ui.editing) UnifiedSettingRenderer.dragTextSelection(owner, mouseX);
+    }
+
+    public static void endMouseSelection() { mouseSelectionOwner = null; }
 
     public TextSetting(String name, StringValue value) {
         super(name, value);
@@ -38,6 +48,11 @@ public class TextSetting extends Setting implements TextEditorOwner {
     @Override
     public void mouseClicked(double mx, double my, int button) {
         SettingRendererBridge.mouseClicked(this, mx, my, button);
+    }
+
+    @Override
+    public void mouseReleased(double mx, double my, int button) {
+        if (button == 0) endMouseSelection();
     }
 
     @Override

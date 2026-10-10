@@ -24,6 +24,8 @@ import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.block.placer.BlockPlacer;
 import combatant.client.util.target.TargetingUtil;
+import combatant.client.util.target.TargetManager;
+import combatant.client.util.target.CombatTargetProvider;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -40,6 +42,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
+@CombatTargetProvider(value = "autoweb", priority = 15)
 @ModuleInfo(
         id = "autoweb",
         displayName = "AutoWeb",
@@ -86,12 +89,22 @@ public final class AutoWeb extends Module {
             rotation::get,
             () -> MovementCorrection.SILENT
     );
+    public enum State { IDLE, NO_WEBS, SEEKING, PLANNING, PLACING, CONFIRMING, COMPLETE }
+    private State state = State.IDLE;
+    private Player currentTarget;
+    private boolean attemptedPlacement;
+    private boolean placementConfirmed;
+    private final List<BlockPos> requestedPositions = new ArrayList<>();
     private final List<BlockPos> currentTargets = new ArrayList<>();
     private final PlacementPreviewRenderer placementPreview = new PlacementPreviewRenderer();
 
     @Override
     public void onEnable() {
         placementPreview.reset();
+        state = State.IDLE;
+        attemptedPlacement = false;
+        placementConfirmed = false;
+        requestedPositions.clear();
         blockPlacer.enable();
         updateTargets();
         if (render.get()) placementPreview.tick(mc.level, currentTargets, previewBlockState(), lineColor.getArgb());
@@ -102,6 +115,11 @@ public final class AutoWeb extends Module {
         blockPlacer.disable();
         placementPreview.reset();
         currentTargets.clear();
+        requestedPositions.clear();
+        placementConfirmed = false;
+        currentTarget = null;
+        state = State.IDLE;
+        TargetManager.clear(this);
     }
 
     @Override
@@ -111,53 +129,101 @@ public final class AutoWeb extends Module {
             setEnabled(false);
             return;
         }
-        blockPlacer.tick();
         updateTargets();
+        if (state == State.PLANNING || state == State.PLACING || state == State.CONFIRMING) {
+            blockPlacer.tick();
+        }
         if (render.get()) placementPreview.tick(mc.level, currentTargets, previewBlockState(), lineColor.getArgb());
-        if (autoDisable.get() && currentTargets.isEmpty()) setEnabled(false);
+        if (autoDisable.get() && attemptedPlacement && state == State.COMPLETE) setEnabled(false);
     }
 
     private void updateTargets() {
-        Player target = findTarget();
-        if (target == null || mc.level == null) {
-            currentTargets.clear();
-            blockPlacer.clear();
+        if (mc.level == null || mc.player == null) {
+            suspend(State.IDLE);
             return;
         }
-
+        if (findPlacementSlot(BlockPos.ZERO) == null) {
+            suspend(State.NO_WEBS);
+            return;
+        }
+        Player target = findTarget();
+        if (target == null) {
+            suspend(State.SEEKING);
+            return;
+        }
+        if (target != currentTarget) {
+            attemptedPlacement = false;
+            placementConfirmed = false;
+            requestedPositions.clear();
+        }
+        if (attemptedPlacement && !placementConfirmed) {
+            placementConfirmed = requestedPositions.stream()
+                    .anyMatch(pos -> mc.level.getBlockState(pos).is(Blocks.COBWEB));
+        }
+        currentTarget = target;
         Vec3 velocity = target.getDeltaMovement();
         double ticks = predictTicks.get();
         BlockPos feet = BlockPos.containing(
                 target.getX() + velocity.x * ticks,
                 target.getY() + velocity.y * ticks,
                 target.getZ() + velocity.z * ticks);
-
         List<BlockPos> needed = new ArrayList<>(2);
         if (mc.level.getBlockState(feet).canBeReplaced() && !mc.level.getBlockState(feet).is(Blocks.COBWEB)) {
             needed.add(feet);
         }
         BlockPos head = feet.above();
-        if (placeAtHead.get() && mc.level.getBlockState(head).canBeReplaced() && !mc.level.getBlockState(head).is(Blocks.COBWEB)) {
+        if (placeAtHead.get() && mc.level.getBlockState(head).canBeReplaced()
+                && !mc.level.getBlockState(head).is(Blocks.COBWEB)) {
             needed.add(head);
         }
         currentTargets.clear();
         currentTargets.addAll(needed);
-        blockPlacer.update(needed);
+        if (needed.isEmpty()) {
+            blockPlacer.clear();
+            state = placementConfirmed ? State.COMPLETE : State.SEEKING;
+        } else {
+            boolean reachable = needed.stream().anyMatch(pos ->
+                    mc.player.position().distanceToSqr(Vec3.atCenterOf(pos)) <= range.get() * range.get());
+            if (!reachable) {
+                blockPlacer.clear();
+                state = State.PLANNING;
+            } else {
+                blockPlacer.update(needed);
+                attemptedPlacement = true;
+                requestedPositions.clear();
+                requestedPositions.addAll(needed);
+                state = State.PLACING;
+            }
+        }
+        TargetManager.publish(this, target, state.name().toLowerCase(java.util.Locale.ROOT),
+                state == State.PLACING, currentTargets.size());
     }
 
+    private void suspend(State next) {
+        state = next;
+        currentTarget = null;
+        attemptedPlacement = false;
+        placementConfirmed = false;
+        requestedPositions.clear();
+        currentTargets.clear();
+        blockPlacer.clear();
+        TargetManager.clear(this);
+    }
+
+    public State currentState() { return state; }
+
     private Player findTarget() {
-        LivingEntity target = TargetingUtil.findBestTarget(mc, new TargetingUtil.TargetingSettings(
-                enemyRange.get(),
-                180.0F,
-                true,
+        TargetingUtil.TargetingSettings settings = new TargetingUtil.TargetingSettings(
+                enemyRange.get(), 180.0F, true,
                 targetFilters.get(TargetFilters.IGNORE_FRIENDS),
                 targetFilters.get(TargetFilters.IGNORE_STAFF),
                 targetFilters.get(TargetFilters.IGNORE_ENEMIES),
-                targetFilters.get(TargetFilters.IGNORE_NAKED),
-                true,
-                targetFilters.get(TargetFilters.VISIBLE_ONLY),
-                TargetingUtil.TargetPriority.DISTANCE));
-        return target instanceof Player player ? player : null;
+                targetFilters.get(TargetFilters.IGNORE_NAKED), true,
+                targetFilters.get(TargetFilters.VISIBLE_ONLY), TargetingUtil.TargetPriority.DISTANCE);
+        List<LivingEntity> eligible = TargetingUtil.findTargets(mc, settings);
+        LivingEntity shared = TargetManager.getTarget(false);
+        if (shared instanceof Player player && eligible.contains(player)) return player;
+        return eligible.isEmpty() ? null : eligible.get(0) instanceof Player player ? player : null;
     }
 
     private BlockPlacer.PlacementSlot findPlacementSlot(BlockPos ignored) {

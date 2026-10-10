@@ -23,6 +23,7 @@ public enum UiBatchType {
     PATH(CombatantRenderPipelines.UI_PATH_BATCH, CombatantRenderPipelines.UI_PATH_BATCH_ANALYTIC_CLIP, true, false),
     SHAPE(CombatantRenderPipelines.UI_SHAPE_BATCH, CombatantRenderPipelines.UI_SHAPE_BATCH_ANALYTIC_CLIP, true, false),
     PRIMITIVE(CombatantRenderPipelines.UI_PRIMITIVE_BATCH, true, false),
+    MATERIAL_PRIMITIVE(CombatantRenderPipelines.UI_MATERIAL_PRIMITIVE_BATCH, true, false),
     GLOW(CombatantRenderPipelines.UI_GLOW_BATCH, true, false),
     TEXTURED_SHAPE(CombatantRenderPipelines.UI_TEXTURED_SHAPE_BATCH, CombatantRenderPipelines.UI_TEXTURED_SHAPE_BATCH_ANALYTIC_CLIP, true, true),
     BLUR(CombatantRenderPipelines.UI_BLUR_BATCH, CombatantRenderPipelines.UI_BLUR_BATCH_ANALYTIC_CLIP, true, true),

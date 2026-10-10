@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.other;
 
+import combatant.client.util.text.SingleLineTextInput;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
@@ -45,19 +47,13 @@ public final class SearchComponent {
         float th = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), ts);
         float ty = y + (h - th) * 0.5f - 0.5f * scale;
         boolean clipped = ScissorFunction.pushRaw(x + scale, y, w - 16f * scale, h);
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterRegular(),
-                display,
-                tx,
-                ty,
-                ts,
-                typing ? 0xFFFFFFFF : 0xFF878894,
-                false
-        );
-        if (typing && (System.currentTimeMillis() % 1000L < 500L)) {
-            float cw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), text, ts);
-            float caretY = ty + Math.max(0f, (th - 7f * scale) * 0.5f);
-            ClickGuiRenderer.drawRect(tx + cw + 0.5f * scale, caretY, 0.5f * scale, 7f * scale, 0xFFFFFFFF);
+        SingleLineTextInput editor = state.editor();
+        if (editor != null && (!text.isEmpty() || typing)) {
+            editor.render(tx, ty, w - 17f * scale, h, ClickGuiRenderer.getInterRegular(), ts,
+                    0xFFFFFFFF, 0x805D8CFF, typing);
+        } else {
+            ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), display, tx, ty, ts,
+                    typing ? 0xFFFFFFFF : 0xFF878894, false);
         }
         if (clipped) ScissorFunction.pop();
 
@@ -83,8 +79,17 @@ public final class SearchComponent {
         boolean inside = ClickGuiMath.insideRect(mx, my, x, y, w, h);
         if (inside) {
             state.setFocused(true);
+            if (state.editor() != null) {
+                float scale = w / 80f;
+                state.editor().layout(x + 4f * scale, w - 17f * scale, ClickGuiRenderer.getInterRegular(), 12f * scale);
+                var window = net.minecraft.client.Minecraft.getInstance().getWindow();
+                state.editor().beginDrag(mx,
+                        com.mojang.blaze3d.platform.InputConstants.isKeyDown(window, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT)
+                                || com.mojang.blaze3d.platform.InputConstants.isKeyDown(window, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT));
+            }
             return true;
         }
+        if (state.editor() != null) state.editor().unfocus();
         state.setFocused(false);
         return false;
     }
@@ -94,11 +99,13 @@ public final class SearchComponent {
         String text();
         default String placeholder() { return "Search"; }
         void setFocused(boolean focused);
+        default SingleLineTextInput editor() { return null; }
     }
 
     private static final Model CLICK_GUI_MODEL = new Model() {
         @Override public boolean focused() { return ClickGuiSearch.isActive(); }
         @Override public String text() { return ClickGuiSearch.getText(); }
+        @Override public SingleLineTextInput editor() { return ClickGuiSearch.editor(); }
         @Override public void setFocused(boolean focused) {
             if (focused) ClickGuiSearch.setActive(true);
             else ClickGuiSearch.unfocus();

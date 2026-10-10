@@ -27,6 +27,8 @@ import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.EventSync;
 import combatant.client.events.impl.MovementInputEvent;
+import combatant.client.features.gui.hud.actions.HudAction;
+import combatant.client.features.gui.hud.actions.HudActionRegistry;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -82,6 +84,23 @@ public class ElytraHelper extends Module {
         setDefaultBind("LEFT_CTRL+R");
         addAction(ACTION_SWAP_ELYTRA, "R");
         addAction(ACTION_USE_FIREWORK, "F");
+    }
+
+    @HudAction(id = ACTION_SWAP_ELYTRA, label = "Elytra", description = "Swap equipped chest item", icon = "arrow-left-right")
+    public HudActionRegistry.State hudElytra() {
+        LocalPlayer player = client.player;
+        boolean equipped = player != null && player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA);
+        return new HudActionRegistry.State(new ItemStack(Items.ELYTRA), player != null,
+                equipped, player != null && player.isFallFlying() && !equipped, 0.0f);
+    }
+
+    @HudAction(id = ACTION_USE_FIREWORK, label = "Firework", description = "Use rocket while gliding", icon = "rocket")
+    public HudActionRegistry.State hudFirework() {
+        LocalPlayer player = client.player;
+        boolean flying = player != null && player.isFallFlying();
+        boolean cooldown = CooldownsState.MANAGER.isCooling(Items.FIREWORK_ROCKET);
+        return new HudActionRegistry.State(new ItemStack(Items.FIREWORK_ROCKET), flying && !cooldown,
+                pendingFirework || queuedFireworkUse, flying && !cooldown, cooldown ? 1.0f : 0.0f);
     }
 
     private boolean isRecastActive() {

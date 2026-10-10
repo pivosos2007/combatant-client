@@ -334,6 +334,8 @@ public final class ModulesMenuScreen {
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && inside(mouseX, mouseY, searchX, searchY, searchW, searchH)) {
             ClickGuiSearch.setActive(true);
+            ClickGuiSearch.editor().layout(searchX + 8f * scale, searchW - 16f * scale, regular, 8f * scale);
+            ClickGuiSearch.editor().beginDrag(mouseX, false);
             return true;
         }
 
@@ -343,7 +345,7 @@ public final class ModulesMenuScreen {
         }
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && ClickGuiSearch.isActive()) {
-            ClickGuiSearch.setActive(false);
+            ClickGuiSearch.unfocus();
             return true;
         }
 
@@ -353,6 +355,7 @@ public final class ModulesMenuScreen {
     public void mouseReleased(float mouseX, float mouseY, int button) {
         if (!isInteractive()) return;
 
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) combatant.client.util.text.SingleLineTextInput.mouseReleased();
         for (ModulesMenuPanel panel : panels) {
             panel.mouseReleased(mouseX, mouseY, button);
         }
@@ -390,10 +393,8 @@ public final class ModulesMenuScreen {
                 return true;
             }
 
-            if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
-                ClickGuiSearch.backspace();
-                return true;
-            }
+            if (ClickGuiSearch.keyPressed(keyCode, modifiers)) return true;
+            return true;
         }
 
         for (ModulesMenuPanel panel : panels) {
@@ -1475,15 +1476,16 @@ public final class ModulesMenuScreen {
         String draw = text == null || text.isBlank() ? "Search..." : text;
         int color = text == null || text.isBlank() ? withAlpha(ModulesMenuStyle.textFaint(), alpha) : withAlpha(ModulesMenuStyle.text(), alpha);
 
-        ClickGuiRenderer.drawText(
-                regular,
-                draw,
-                searchX + 8.0f * scale,
-                searchY + middle(textHeight(regular, 8.0f * scale), searchH),
-                8.0f * scale,
-                color,
-                false
-        );
+        float tx = searchX + 8.0f * scale;
+        float ty = searchY + middle(textHeight(regular, 8.0f * scale), searchH);
+        boolean clip = ScissorFunction.pushRaw(tx, searchY, searchW - 16f * scale, searchH);
+        if (ClickGuiSearch.getText().isEmpty() && !ClickGuiSearch.isActive()) {
+            ClickGuiRenderer.drawText(regular, draw, tx, ty, 8f * scale, color, false);
+        } else {
+            ClickGuiSearch.editor().render(tx, ty, searchW - 16f * scale, searchH, regular, 8f * scale,
+                    color, withAlpha(0xFF588CEF, alpha * 0.55f), ClickGuiSearch.isActive());
+        }
+        if (clip) ScissorFunction.pop();
     }
 
     private void renderHints() {

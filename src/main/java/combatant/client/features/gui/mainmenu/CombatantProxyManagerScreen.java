@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.mainmenu;
 
+import combatant.client.util.text.SingleLineTextInput;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 
 import combatant.client.features.theme.Theme;
@@ -50,6 +52,11 @@ public final class CombatantProxyManagerScreen extends Screen {
 
     private final Screen parent;
     private final String[] values = {"", "", ""};
+    private final SingleLineTextInput[] editors = {
+            new SingleLineTextInput(96, cp -> cp >= 32 && cp <= 126),
+            new SingleLineTextInput(64, cp -> cp >= 32 && cp <= 126),
+            new SingleLineTextInput(64, cp -> cp >= 32 && cp <= 126)
+    };
     private final float[] fieldHover = new float[FIELD_COUNT];
     private final float[] fieldFocus = new float[FIELD_COUNT];
     private Field focusedField;
@@ -133,12 +140,22 @@ public final class CombatantProxyManagerScreen extends Screen {
     }
 
     @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        SingleLineTextInput.mouseMoved(toFixedX((float) mouseX));
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent click) {
+        if (click.button() == 0) SingleLineTextInput.mouseReleased();
+        return super.mouseReleased(click);
+    }
+
+    @Override
     public boolean keyPressed(KeyEvent input) {
         if (focusedField != null) {
             int key = input.key();
-            if (key == 259) {
-                int index = focusedField.index;
-                if (!values[index].isEmpty()) values[index] = values[index].substring(0, values[index].length() - 1);
+            if (editors[focusedField.index].keyPressed(key, input.modifiers())) {
+                values[focusedField.index] = editors[focusedField.index].text();
                 return true;
             }
             if (key == 258) {
@@ -150,9 +167,11 @@ public final class CombatantProxyManagerScreen extends Screen {
                 return true;
             }
             if (key == 256) {
+                editors[focusedField.index].unfocus();
                 focusedField = null;
                 return true;
             }
+            return true;
         }
 
         if (input.key() == 256) {
@@ -168,9 +187,8 @@ public final class CombatantProxyManagerScreen extends Screen {
         int cp = input.codepoint();
         if (cp < 32 || cp > 126) return true;
         int index = focusedField.index;
-        int max = focusedField == Field.ADDRESS ? 96 : 64;
-        if (values[index].length() >= max) return true;
-        values[index] += Character.toString(cp);
+        if (cp <= Character.MAX_VALUE) editors[index].type((char) cp);
+        values[index] = editors[index].text();
         return true;
     }
 
@@ -237,12 +255,13 @@ public final class CombatantProxyManagerScreen extends Screen {
                     withAlpha(c.accent, Math.round(28f * focusAnim)), withAlpha(c.accentSoft, Math.round(48f * focusAnim)));
         }
 
-        String value = values[i];
-        String display = field == Field.PASSWORD && !value.isEmpty() ? "*".repeat(value.length()) : value;
-        if (display.isEmpty() && !focused) display = placeholder;
-        if (focused && AnimationUtility.blink(500L)) display += "|";
-        int color = values[i].isEmpty() && !focused ? c.mutedLabel : c.title;
-        draw(bodyRenderer, ellipsize(display, FIELD_FONT, w - 8f * SCALE), x + 4f * SCALE, fy + 4.3f * SCALE, FIELD_FONT, color);
+        if (editors[i].text().isEmpty() && !focused) {
+            draw(bodyRenderer, ellipsize(placeholder, FIELD_FONT, w - 8f * SCALE),
+                    x + 4f * SCALE, fy + 4.3f * SCALE, FIELD_FONT, c.mutedLabel);
+        } else {
+            editors[i].render(x + 4f * SCALE, fy + 4.3f * SCALE, w - 8f * SCALE, FIELD_H,
+                    bodyRenderer, FIELD_FONT, c.title, withAlpha(c.accentSoft, 110), focused, field == Field.PASSWORD);
+        }
     }
 
     private void renderTypeToggle(float x, float y, float w, float h, PanelColors c) {
@@ -326,6 +345,9 @@ public final class CombatantProxyManagerScreen extends Screen {
             float y = fieldY + field.index * 27f * SCALE + 9f * SCALE;
             if (inside(mouseX, mouseY, innerX, y, innerW, FIELD_H)) {
                 focusedField = field;
+                editors[field.index].layout(innerX + 4f * SCALE, innerW - 8f * SCALE, bodyRenderer,
+                        FIELD_FONT, field == Field.PASSWORD);
+                editors[field.index].beginDrag(mouseX, false);
                 return true;
             }
         }
@@ -356,6 +378,10 @@ public final class CombatantProxyManagerScreen extends Screen {
         values[Field.ADDRESS.index] = proxy.ipPort();
         values[Field.USERNAME.index] = proxy.username();
         values[Field.PASSWORD.index] = proxy.password();
+        for (int i = 0; i < values.length; i++) {
+            editors[i].setText(values[i]);
+            editors[i].moveToEnd();
+        }
         enabled = ProxyBackend.isEnabled();
         status = "";
     }
@@ -383,6 +409,7 @@ public final class CombatantProxyManagerScreen extends Screen {
         values[0] = "";
         values[1] = "";
         values[2] = "";
+        for (SingleLineTextInput editor : editors) editor.clear();
         enabled = false;
         type = ProxyType.SOCKS5;
         focusedField = null;

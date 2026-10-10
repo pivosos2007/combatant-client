@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.mainmenu;
 
+import combatant.client.util.text.SingleLineTextInput;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 
 import combatant.client.features.theme.Theme;
@@ -112,7 +114,7 @@ public final class CombatantAltManagerScreen extends Screen {
     private final Map<String, Float> deletePressAnims = new HashMap<>();
     private float fixedWidth;
     private float fixedHeight;
-    private String nicknameText = "";
+    private final SingleLineTextInput nicknameInput = new SingleLineTextInput(16, ch -> Character.isLetterOrDigit(ch) || ch == '_');
     private boolean nicknameFieldFocused;
     private float scrollOffset;
     private float targetScrollOffset;
@@ -231,6 +233,17 @@ public final class CombatantAltManagerScreen extends Screen {
     }
 
     @Override
+    public void mouseMoved(double mouseX, double mouseY) {
+        SingleLineTextInput.mouseMoved(toFixedX((float) mouseX));
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent click) {
+        if (click.button() == 0) SingleLineTextInput.mouseReleased();
+        return super.mouseReleased(click);
+    }
+
+    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         float fx = toFixedX((float) mouseX);
         float fy = toFixedY((float) mouseY);
@@ -245,10 +258,7 @@ public final class CombatantAltManagerScreen extends Screen {
     public boolean keyPressed(KeyEvent input) {
         if (nicknameFieldFocused) {
             int key = input.key();
-            if (key == 259) {
-                if (!nicknameText.isEmpty()) nicknameText = nicknameText.substring(0, nicknameText.length() - 1);
-                return true;
-            }
+            if (nicknameInput.keyPressed(key, input.modifiers())) return true;
             if (key == 257 || key == 335) {
                 commitNickname();
                 nicknameFieldFocused = false;
@@ -256,8 +266,10 @@ public final class CombatantAltManagerScreen extends Screen {
             }
             if (key == 256) {
                 nicknameFieldFocused = false;
+                nicknameInput.unfocus();
                 return true;
             }
+            return true;
         }
 
         if (input.key() == 256) {
@@ -271,10 +283,8 @@ public final class CombatantAltManagerScreen extends Screen {
     public boolean charTyped(CharacterEvent input) {
         if (nicknameFieldFocused) {
             int cp = input.codepoint();
-            if ((Character.isLetterOrDigit(cp) || cp == '_') && nicknameText.length() < 16) {
-                nicknameText += Character.toString(cp);
-                return true;
-            }
+            if (cp >= 0 && cp <= Character.MAX_VALUE) nicknameInput.type((char) cp);
+            return true;
         }
         return super.charTyped(input);
     }
@@ -799,9 +809,14 @@ public final class CombatantAltManagerScreen extends Screen {
                     withAlpha(c.accent, Math.round(72f * focusAnim)), 0f, 0f));
         }
 
-        boolean caretOn = nicknameFieldFocused && AnimationUtility.blink(500L, AnimationUtility.Mode.MILLIS);
-        String display = nicknameText.isEmpty() && !nicknameFieldFocused ? tr("screen.combatant.alt_manager.enter_nick") : nicknameText + (caretOn ? "|" : "");
-        draw(bodyRenderer, display, x + 5f * SCALE, y + 4.3f * SCALE, FIELD_FONT, nicknameText.isEmpty() && !nicknameFieldFocused ? c.mutedLabel : c.title);
+        float textX = x + 5f * SCALE;
+        float textY = y + 4.3f * SCALE;
+        if (nicknameInput.text().isEmpty() && !nicknameFieldFocused) {
+            draw(bodyRenderer, tr("screen.combatant.alt_manager.enter_nick"), textX, textY, FIELD_FONT, c.mutedLabel);
+        } else {
+            nicknameInput.render(textX, textY, w - 10f * SCALE, h, bodyRenderer, FIELD_FONT, c.title,
+                    withAlpha(c.accentSoft, 100), nicknameFieldFocused);
+        }
     }
 
     private void renderAddButton(float x, float y, PanelColors c) {
@@ -888,6 +903,8 @@ public final class CombatantAltManagerScreen extends Screen {
         float fieldW = LEFT_W - 10f * SCALE - ADD_SIZE - 3f * SCALE;
         if (!microsoftMode && inside(mouseX, mouseY, fieldX, fieldY, fieldW, FIELD_H)) {
             nicknameFieldFocused = true;
+            nicknameInput.layout(fieldX + 5f * SCALE, fieldW - 10f * SCALE, bodyRenderer, FIELD_FONT);
+            nicknameInput.beginDrag(mouseX, false);
             return true;
         }
         nicknameFieldFocused = false;
@@ -916,7 +933,7 @@ public final class CombatantAltManagerScreen extends Screen {
                 else copyMicrosoftAuthData();
             } else {
                 addAccount(generateRandomNickname());
-                nicknameText = "";
+                nicknameInput.clear();
             }
             return true;
         }
@@ -1138,9 +1155,9 @@ public final class CombatantAltManagerScreen extends Screen {
     }
 
     private void commitNickname() {
-        if (!nicknameText.isBlank()) {
-            addAccount(nicknameText);
-            nicknameText = "";
+        if (!nicknameInput.text().isBlank()) {
+            addAccount(nicknameInput.text());
+            nicknameInput.clear();
         }
     }
 

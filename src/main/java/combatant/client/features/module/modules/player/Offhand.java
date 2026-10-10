@@ -13,6 +13,8 @@ import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.hud.draggable.impl.Itemizer;
+import combatant.client.features.gui.hud.actions.HudAction;
+import combatant.client.features.gui.hud.actions.HudActionRegistry;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -26,6 +28,7 @@ import combatant.client.mixins.accessors.PlayerInventoryAccessor;
 import combatant.client.util.item.FoodUtil;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventorySwapPolicy;
+import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.pvp.client.CooldownsState;
 import combatant.client.util.target.TargetingUtil;
 import combatant.client.util.world.ExplosionDamageUtil;
@@ -60,6 +63,13 @@ public final class Offhand extends Module {
     private static final String THREAT_PROJECTILES = "projectiles";
     private static final String FALLBACK_SHIELD = "shield";
     private static final String FALLBACK_CRYSTAL = "crystal";
+    private static final String PROFILE_TOTEM = "totem";
+    private static final String PROFILE_SHIELD = "shield";
+    private static final String PROFILE_CRYSTAL = "crystal";
+    private static final String PROFILE_GAPPLE = "golden_apple";
+    private static final String PROFILE_ENCHANTED = "enchanted_golden_apple";
+    private static final String PROFILE_FOOD = "food";
+    private static final String ACTION_CONSUME = "consume";
     private static final int INVENTORY_CONFIRM_TICKS = 2;
     private static final int INVENTORY_TIMEOUT_TICKS = 10;
     // After a totem was needed, stay on it this long before going back to a crystal, so a fight that
@@ -100,22 +110,55 @@ public final class Offhand extends Module {
             }}
     );
 
+    private final BooleanValue passiveSwaps = bool("offhand_passive_swaps", "passive_swaps", false);
     // Crystal in the offhand whenever a totem is not needed, so AutoCrystal places without a hotbar swap.
-    private final BooleanValue crystalWhenSafe = bool("offhand_crystal_when_safe", "crystal_when_safe", false);
+    private final BooleanValue crystalWhenSafe = visibleWhen(
+            bool("offhand_crystal_when_safe", "crystal_when_safe", false), passiveSwaps::get);
     // Health that must be left after the worst crystal already in range goes off.
     private final NumberValue<Float> crystalSafeHealth = visibleWhen(
-            num("offhand_crystal_safe_health", "crystal_safe_health", 16.0f, 4.0f, 36.0f), crystalWhenSafe::get);
+            num("offhand_crystal_safe_health", "crystal_safe_health", 16.0f, 4.0f, 36.0f),
+            () -> passiveSwaps.get() && crystalWhenSafe.get());
 
+    private final BooleanMapValue itemProfiles = group("offhand_item_profiles", "item_profiles",
+            new LinkedHashMap<>() {{
+                put(PROFILE_TOTEM, true);
+                put(PROFILE_SHIELD, true);
+                put(PROFILE_CRYSTAL, true);
+                put(PROFILE_GAPPLE, true);
+                put(PROFILE_ENCHANTED, true);
+                put(PROFILE_FOOD, true);
+            }});
+    private final EnumValue<SafeOffhand> safeOffhand = visibleWhen(enumSetting(
+            "offhand_safe_preference", "safe_preference", SafeOffhand.KEEP, SafeOffhand.values()),
+            passiveSwaps::get);
+    private final EnumValue<ConsumeHand> consumeHand = enumSetting("offhand_consume_hand", "consume_hand",
+            ConsumeHand.AUTO, ConsumeHand.values());
+    private final EnumValue<CombatConsume> consumeCombat = enumSetting("offhand_consume_combat", "consume_combat",
+            CombatConsume.OUT_OF_COMBAT, CombatConsume.values());
+    private final NumberValue<Integer> consumeCooldown = num("offhand_consume_cooldown", "consume_cooldown", 80, 10, 240);
     private final BooleanValue autoConsume = bool("offhand_auto_consume", "auto_consume", true);
+    private final EnumValue<ConsumeControl> consumeControl = enumSetting(
+            "offhand_consume_control", "consume_control", ConsumeControl.SEMI, ConsumeControl.values());
     private final BooleanValue useGapples = bool("offhand_use_gapples", "use_gapples", true);
     private final NumberValue<Float> gappleHealth = num("offhand_gapple_health", "gapple_health", 16.0f, 1.0f, 40.0f);
-    private final BooleanValue goldenHearts = bool("offhand_golden_hearts", "golden_hearts", true);
     private final BooleanValue useFood = bool("offhand_use_food", "use_food", true);
     private final NumberValue<Integer> hungerThreshold = num("offhand_hunger_threshold", "hunger_threshold", 16, 1, 19);
     private final NumberValue<Float> foodEmergencyHealth = num("offhand_food_emergency_health", "food_emergency_health", 8.0f, 1.0f, 40.0f);
     private final EnumValue<EatMode> eatMode = enumSetting("offhand_eat_mode", "eat_mode", EatMode.EXACT, EatMode.values());
     private final BooleanValue returnSlot = bool("offhand_return_slot", "return_slot", true);
 
+    {
+        addAction(ACTION_CONSUME, "V");
+    }
+
+    private boolean semiConsumeArmed;
+    private int semiConsumeDeadlineTick = -1;
+    private boolean suggestedReady;
+    private ItemStack suggestedStack = ItemStack.EMPTY;
+    private ItemStack consumingStack = ItemStack.EMPTY;
+    private int consumeRequestTick = -1;
+    private int consumeDisplayUntilTick = -1;
+    private int appleAbsorptionGuardUntilTick = -1;
     private boolean offhandSwapPending;
     private ItemStack expectedOffhand = ItemStack.EMPTY;
     private boolean expectOffhandEmpty;
@@ -131,13 +174,49 @@ public final class Offhand extends Module {
     private int inventoryLeaseReleaseTick = -1;
     private int forcedTotemUntilTick = -1;
     private boolean forcingUse;
-    private boolean useKeyWasDown;
+    private boolean offhandConsumeActive;
+    private boolean useWasObserved;
+    private int consumeLockedUntilTick = -1;
+    private boolean gappleConsumption;
+    private boolean gappleWasEnchanted;
     private int previousSelectedSlot = -1;
     private boolean restoreSelected;
     private int restoreInventorySlot = -1;
     private int restoreHotbarSlot = -1;
     private boolean restoreInventoryPending;
     private int crystalUnsafeUntilTick = -1;
+    // Actual tick scheduling belongs exclusively to InventorySwap.
+    private boolean useActionQueued;
+    private boolean restoreActionQueued;
+
+    @HudAction(id = "totem_priority", label = "Totem", description = "Offhand survival priority", icon = "shield")
+    public HudActionRegistry.State hudTotem() {
+        LocalPlayer player = mc.player;
+        boolean danger = player != null && shouldHoldTotem(player, effectiveHealth(player));
+        return new HudActionRegistry.State(new ItemStack(Items.TOTEM_OF_UNDYING),
+                player != null && findTotemSlot(player) != -1 || player != null && isTotemInOffhand(player),
+                player != null && isTotemInOffhand(player), danger, 0.0f);
+    }
+
+    @HudAction(id = "consume", label = "Consume", description = "Eat suitable food or an apple when offered", icon = "apple")
+    public HudActionRegistry.State hudConsume() {
+        LocalPlayer player = mc.player;
+        boolean ready = player != null && isEnabled() && suggestedReady;
+        boolean inProgress = player != null && (forcingUse || offhandConsumeActive
+                || useActionQueued || restoreActionQueued
+                || semiConsumeArmed && player.tickCount <= semiConsumeDeadlineTick);
+        ItemStack display = inProgress && !consumingStack.isEmpty() ? consumingStack : suggestedStack;
+        boolean linger = player != null && player.tickCount < consumeDisplayUntilTick;
+        if (display.isEmpty() && linger) display = consumingStack;
+        boolean semi = consumeControl.get() == ConsumeControl.SEMI;
+        float cooldown = player == null ? 0.0f
+                : Math.max(0.0f, Math.min(1.0f,
+                    (consumeLockedUntilTick - player.tickCount) / (float) Math.max(1, consumeCooldown.get())));
+        float progress = inProgress && player != null && player.isUsingItem()
+                ? Math.min(1.0f, player.getTicksUsingItem() / 32.0f) : 0.0f;
+        return new HudActionRegistry.State(display, ready || inProgress || linger,
+                inProgress, ready && semi && !inProgress, cooldown, inProgress, progress);
+    }
 
     @Override
     public String getConfigName() {
@@ -151,10 +230,13 @@ public final class Offhand extends Module {
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null || mc.gameMode == null || mc.isPaused()) {
             resetOffhandSwapState();
+            InventorySwap.INSTANCE.cancelQueuedInventoryActions(this);
             InventorySwap.INSTANCE.releaseInventory(this);
             inventoryLeaseReleaseTick = -1;
             forcedTotemUntilTick = -1;
             resetConsumeState();
+            semiConsumeArmed = false;
+            clearSuggestion();
             return;
         }
 
@@ -162,28 +244,77 @@ public final class Offhand extends Module {
         if (restoreInventoryPending || offhandSwapPending) {
             InventorySwap.INSTANCE.leaseInventory(this, 80);
         }
+        // A queued passive swap must never prevent a new emergency totem request.
+        if (offhandSwapPending && offhandSwapIssuedTick < 0
+                && !expectedOffhand.is(Items.TOTEM_OF_UNDYING)
+                && shouldHoldTotem(player, effectiveHealth(player))) {
+            InventorySwap.INSTANCE.cancelQueuedInventoryActions(this, InventoryActionKind.INVENTORY_CLICK);
+            resetOffhandSwapState();
+            if (!restoreInventoryPending) InventorySwap.INSTANCE.releaseInventory(this);
+        }
         if (updatePendingOffhandSwap(player)) return;
 
+        if (useWasObserved && !player.isUsingItem()) {
+            consumeLockedUntilTick = Math.max(consumeLockedUntilTick,
+                    player.tickCount + (gappleWasEnchanted ? Math.max(120, consumeCooldown.get()) : consumeCooldown.get()));
+            if (gappleConsumption) appleAbsorptionGuardUntilTick = Math.max(
+                    appleAbsorptionGuardUntilTick, player.tickCount + (gappleWasEnchanted ? 160 : 80));
+            consumeDisplayUntilTick = Math.max(consumeDisplayUntilTick, player.tickCount + 12);
+            stopAutoUse(player);
+            semiConsumeArmed = false;
+            useWasObserved = false;
+            offhandConsumeActive = false;
+            consumeRequestTick = -1;
+        }
+        if (consumeRequestTick >= 0 && !useWasObserved && !player.isUsingItem()
+                && player.tickCount - consumeRequestTick > 10) {
+            consumeLockedUntilTick = Math.max(consumeLockedUntilTick, player.tickCount + consumeCooldown.get());
+            stopAutoUse(player);
+            semiConsumeArmed = false;
+            consumeRequestTick = -1;
+        }
         boolean danger = shouldHoldTotem(player, effectiveHealth(player));
         // Crystals nearby always count as danger above; with a crystal offhand that is the point.
-        if (danger && crystalWhenSafe.get() && isSafeForCrystal(player)) danger = false;
+        if (danger && passiveSwaps.get() && crystalWhenSafe.get() && isSafeForCrystal(player)) danger = false;
+        if (danger && offhandConsumeActive) {
+            stopAutoUse(player);
+            offhandConsumeActive = false;
+        }
         if (danger && player.isUsingItem() && player.getUsedItemHand() == InteractionHand.OFF_HAND) {
             player.releaseUsingItem();
         }
         if (danger && !isTotemInOffhand(player) && forcingUse) {
             if (player.isUsingItem()) player.releaseUsingItem();
-            if (!useKeyWasDown) mc.options.keyUse.setDown(false);
             forcingUse = false;
-            useKeyWasDown = false;
         }
 
-        updateOffhandPolicy(player, danger);
-        if (offhandSwapPending || player.tickCount <= inventoryQuietUntilTick) return;
+        if (!offhandConsumeActive || danger) updateOffhandPolicy(player, danger);
+        if (offhandSwapPending || player.tickCount <= inventoryQuietUntilTick) {
+            if (!semiConsumeArmed && !forcingUse && !offhandConsumeActive) clearSuggestion();
+            return;
+        }
+        updateSuggestion(player, danger);
 
-        if (autoConsume.get()) {
+        boolean consumptionEnabled = autoConsume.get()
+                && Itemizer.isActionEnabled(name(), ACTION_CONSUME)
+                && consumeControl.get() != ConsumeControl.DISABLED;
+        if (consumptionEnabled && consumeControl.get() == ConsumeControl.SEMI) {
+            if (isActionPressedOnce(ACTION_CONSUME) && canOfferConsumption(player, danger)) {
+                semiConsumeArmed = true;
+                semiConsumeDeadlineTick = player.tickCount + 80;
+            }
+            if (semiConsumeArmed && player.tickCount > semiConsumeDeadlineTick
+                    && !forcingUse && !player.isUsingItem()) semiConsumeArmed = false;
+        }
+        if (consumptionEnabled && (consumeControl.get() == ConsumeControl.AUTO || semiConsumeArmed)) {
             updateConsumption(player, danger);
         } else if (forcingUse || restoreInventoryPending || restoreSelected) {
             stopAutoUse(player);
+        }
+        if (!consumptionEnabled) semiConsumeArmed = false;
+        if (!consumptionEnabled && useActionQueued) {
+            InventorySwap.INSTANCE.cancelQueuedInventoryActions(this, InventoryActionKind.USE_ITEM);
+            useActionQueued = false;
         }
     }
 
@@ -192,6 +323,9 @@ public final class Offhand extends Module {
         LocalPlayer player = mc.player;
         if (player != null) stopAutoUse(player, true);
         resetConsumeState();
+        semiConsumeArmed = false;
+        clearSuggestion();
+        InventorySwap.INSTANCE.cancelQueuedInventoryActions(this);
         resetOffhandSwapState();
         InventorySwap.INSTANCE.releaseInventory(this);
         inventoryLeaseReleaseTick = -1;
@@ -220,10 +354,12 @@ public final class Offhand extends Module {
 
     public boolean ensureTotemForDanger(LocalPlayer player) {
         if (!canProvideTotemNow(player)) return false;
-        forcedTotemUntilTick = Math.max(forcedTotemUntilTick, player.tickCount + 3);
+        forcedTotemUntilTick = Math.max(forcedTotemUntilTick,
+                player.tickCount + InventorySwap.INSTANCE.queuedMaxTicks() + 8);
         if (isTotemInOffhand(player)) return true;
         int slot = findTotemSlot(player);
-        return slot != -1 && requestOffhandSwap(slot, () -> Itemizer.showAutoTotem(player.getOffhandItem().copy()));
+        return slot != -1 && requestOffhandSwap(slot,
+                () -> Itemizer.showAutoTotem(player.getOffhandItem().copy()), true);
     }
 
     public boolean isTotemSwapPending() {
@@ -231,43 +367,111 @@ public final class Offhand extends Module {
     }
 
     private void updateOffhandPolicy(LocalPlayer player, boolean danger) {
-        if (crystalWhenSafe.get() && isSafeForCrystal(player)) {
-            int crystal = findUsable(player, stack -> stack.is(Items.END_CRYSTAL));
-            if (player.getOffhandItem().is(Items.END_CRYSTAL)) return;
-            if (crystal != -1) {
-                requestOffhandSwap(crystal, null);
+        if (!danger) {
+            if (!passiveSwaps.get()) {
                 return;
             }
-        }
-
-        int totemSlot = findTotemSlot(player);
-        boolean totemUsable = isItemUsable(player, Items.TOTEM_OF_UNDYING.getDefaultInstance());
-
-        if (totemUsable && (isTotemInOffhand(player) || totemSlot != -1)) {
-            if (!isTotemInOffhand(player) && totemSlot != -1) {
-                ItemStack display = player.getInventory().getItem(totemSlot).copy();
-                requestOffhandSwap(totemSlot, () -> Itemizer.showAutoTotem(display));
+            int preferred = -1;
+            if (itemProfiles.get(PROFILE_CRYSTAL) && crystalWhenSafe.get() && isSafeForCrystal(player)) {
+                preferred = findUsable(player, stack -> stack.is(Items.END_CRYSTAL));
+            }
+            if (preferred < 0 && safeOffhand.get() == SafeOffhand.TOTEM
+                    && itemProfiles.get(PROFILE_TOTEM)) {
+                preferred = findTotemSlot(player);
+            } else if (preferred < 0 && safeOffhand.get() != SafeOffhand.KEEP
+                    && safeOffhand.get() != SafeOffhand.TOTEM) {
+                preferred = preferredSafeOffhand(player);
+            }
+            if (preferred >= 0) {
+                ItemStack wanted = player.getInventory().getItem(preferred);
+                if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), wanted)) {
+                    requestOffhandSwap(preferred, null);
+                }
             }
             return;
         }
 
-        if (fallbacks.get(FALLBACK_SHIELD) && (danger || isPvpContext(player))) {
+        int totemSlot = findTotemSlot(player);
+        if (isItemUsable(player, Items.TOTEM_OF_UNDYING.getDefaultInstance())
+                && (isTotemInOffhand(player) || totemSlot != -1)) {
+            if (!isTotemInOffhand(player) && totemSlot != -1) {
+                ItemStack display = player.getInventory().getItem(totemSlot).copy();
+                requestOffhandSwap(totemSlot, () -> Itemizer.showAutoTotem(display), true);
+            }
+            return;
+        }
+
+        if (itemProfiles.get(PROFILE_SHIELD) && fallbacks.get(FALLBACK_SHIELD)) {
             int shield = findUsable(player, stack -> stack.is(Items.SHIELD) && shieldHealthy(stack));
             if (shield != -1) {
                 if (!player.getOffhandItem().is(Items.SHIELD)) requestOffhandSwap(shield, null);
                 return;
             }
         }
-
-        if (fallbacks.get(FALLBACK_CRYSTAL) && isCrystalContext()) {
+        if (itemProfiles.get(PROFILE_CRYSTAL) && fallbacks.get(FALLBACK_CRYSTAL) && isCrystalContext()) {
             int crystal = findUsable(player, stack -> stack.is(Items.END_CRYSTAL));
-            if (crystal != -1) {
-                if (!player.getOffhandItem().is(Items.END_CRYSTAL)) requestOffhandSwap(crystal, null);
-                return;
+            if (crystal != -1 && !player.getOffhandItem().is(Items.END_CRYSTAL)) {
+                requestOffhandSwap(crystal, null);
             }
         }
+    }
 
-        clearManagedOffhandIfUseless(player);
+    private int preferredSafeOffhand(LocalPlayer player) {
+        return switch (safeOffhand.get()) {
+            case KEEP, TOTEM -> -1;
+            case SHIELD -> itemProfiles.get(PROFILE_SHIELD)
+                    ? findUsable(player, stack -> stack.is(Items.SHIELD) && shieldHealthy(stack)) : -1;
+            case CRYSTAL -> itemProfiles.get(PROFILE_CRYSTAL) && isSafeForCrystal(player)
+                    ? findUsable(player, stack -> stack.is(Items.END_CRYSTAL)) : -1;
+            case GAPPLE -> {
+                ItemChoice choice = useGapples.get() && effectiveGappleHealth(player) <= gappleHealth.get()
+                        ? findBestGapple(player) : null;
+                yield choice == null ? -1 : choice.slot();
+            }
+            case FOOD -> {
+                ItemChoice choice = player.getFoodData().getFoodLevel() <= hungerThreshold.get()
+                        && itemProfiles.get(PROFILE_FOOD)
+                        ? findBestFood(player, 20 - player.getFoodData().getFoodLevel(), false, true) : null;
+                yield choice == null ? -1 : choice.slot();
+            }
+            case CONTEXTUAL -> {
+                int slot = isCrystalContext() && itemProfiles.get(PROFILE_CRYSTAL)
+                        && isSafeForCrystal(player)
+                        ? findUsable(player, stack -> stack.is(Items.END_CRYSTAL)) : -1;
+                if (slot == -1 && isPvpContext(player) && itemProfiles.get(PROFILE_SHIELD)) {
+                    slot = findUsable(player, stack -> stack.is(Items.SHIELD) && shieldHealthy(stack));
+                }
+                yield slot;
+            }
+        };
+    }
+
+    private void updateSuggestion(LocalPlayer player, boolean danger) {
+        suggestedReady = autoConsume.get() && consumeControl.get() != ConsumeControl.DISABLED
+                && Itemizer.isActionEnabled(name(), ACTION_CONSUME)
+                && canOfferConsumption(player, danger);
+        ItemChoice choice = suggestedReady ? selectConsumable(player, danger) : null;
+        if (choice != null) suggestedStack = choice.stack();
+        else if (!forcingUse && !offhandConsumeActive && !semiConsumeArmed
+                && player.tickCount >= consumeDisplayUntilTick) suggestedStack = ItemStack.EMPTY;
+    }
+
+    private void clearSuggestion() {
+        suggestedReady = false;
+        suggestedStack = ItemStack.EMPTY;
+    }
+
+    private boolean canOfferConsumption(LocalPlayer player, boolean danger) {
+        if (player == null || mc.level == null || mc.gameMode == null || mc.isPaused()
+                || player.isSpectator() || player.getAbilities().instabuild
+                || danger && consumeHand.get() != ConsumeHand.MAIN_HAND
+                || player.tickCount < consumeLockedUntilTick || player.isUsingItem()
+                || offhandSwapPending || restoreInventoryPending) return false;
+        boolean combat = isPvpContext(player);
+        if (combat && (consumeCombat.get() == CombatConsume.OUT_OF_COMBAT
+                || consumeCombat.get() == CombatConsume.EMERGENCY_ONLY
+                && effectiveHealth(player) > foodEmergencyHealth.get())) return false;
+        return selectConsumable(player, danger) != null;
     }
 
     private void updateConsumption(LocalPlayer player, boolean danger) {
@@ -275,53 +479,85 @@ public final class Offhand extends Module {
             stopAutoUse(player);
             return;
         }
-
         if (player.isUsingItem()) {
             if (forcingUse && FoodUtil.isFood(player.getUseItem())) {
+                useWasObserved = true;
                 lastUseObservedTick = player.tickCount;
-                if (!mc.options.keyUse.isDown()) mc.options.keyUse.setDown(true);
                 return;
             }
             if (forcingUse) stopAutoUse(player);
             return;
         }
-
+        if (consumeRequestTick >= 0 && !useWasObserved && player.tickCount - consumeRequestTick <= 10) return;
+        if (useActionQueued) return;
+        if (player.tickCount < consumeLockedUntilTick) {
+            if (forcingUse) stopAutoUse(player);
+            return;
+        }
+        boolean combat = isPvpContext(player);
+        if (combat && (consumeCombat.get() == CombatConsume.OUT_OF_COMBAT
+                || (consumeCombat.get() == CombatConsume.EMERGENCY_ONLY
+                    && effectiveHealth(player) > foodEmergencyHealth.get()))) {
+            if (forcingUse) stopAutoUse(player);
+            return;
+        }
         ItemChoice choice = selectConsumable(player, danger);
         if (choice == null) {
+            if (forcingUse) stopAutoUse(player);
+            offhandConsumeActive = false;
+            semiConsumeArmed = false;
+            return;
+        }
+        if (danger && consumeHand.get() != ConsumeHand.MAIN_HAND) {
+            offhandConsumeActive = false;
+            semiConsumeArmed = false;
+            return;
+        }
+        boolean useOffhand = !danger && (consumeHand.get() == ConsumeHand.OFF_HAND
+                || consumeHand.get() == ConsumeHand.AUTO && !combat);
+        if (useOffhand) {
+            if (!choice.matches(player.getOffhandItem())) {
+                if (!offhandConsumeActive && choice.slot() >= 0) {
+                    offhandConsumeActive = requestOffhandSwap(choice.slot(), null);
+                }
+                return;
+            }
+            offhandConsumeActive = true;
+            if (!isItemUsable(player, player.getOffhandItem())) return;
+            queueUse(player.getOffhandItem().copy(), InteractionHand.OFF_HAND);
+            return;
+        }
+        if (offhandConsumeActive) {
+            offhandConsumeActive = false;
+            return;
+        }
+        if (restoreInventoryPending && expectedMainhand.isEmpty() && !choice.matches(player.getMainHandItem())) {
             stopAutoUse(player);
             return;
         }
-
-        if (restoreInventoryPending
-                && expectedMainhand.isEmpty()
-                && !choice.matches(player.getMainHandItem())) {
-            stopAutoUse(player);
-            return;
-        }
-
         MainhandState mainhandState = ensureMainhand(player, choice.slot(), choice.stack());
         if (mainhandState == MainhandState.PENDING) return;
         if (mainhandState == MainhandState.FAILED) {
             stopAutoUse(player);
             return;
         }
-
         ItemStack active = player.getMainHandItem();
         if (!choice.matches(active) || !isItemUsable(player, active)) {
             stopAutoUse(player);
             return;
         }
-
-        startUse(player, active.copy());
+        queueUse(active.copy(), InteractionHand.MAIN_HAND);
     }
 
     private ItemChoice selectConsumable(LocalPlayer player, boolean danger) {
-        if (useGapples.get() && effectiveGappleHealth(player) <= gappleHealth.get()) {
+        if (useGapples.get() && player.tickCount >= appleAbsorptionGuardUntilTick
+                && effectiveGappleHealth(player) <= gappleHealth.get()
+                && (player.getAbsorptionAmount() < 4.0f || effectiveHealth(player) <= 6.0f)) {
             ItemChoice gapple = findBestGapple(player);
             if (gapple != null) return gapple;
         }
 
-        if (!useFood.get()) return null;
+        if (!useFood.get() || !itemProfiles.get(PROFILE_FOOD)) return null;
         int hunger = player.getFoodData().getFoodLevel();
         boolean emergency = effectiveHealth(player) <= foodEmergencyHealth.get();
         if (hunger > hungerThreshold.get() && !emergency) return null;
@@ -336,7 +572,10 @@ public final class Offhand extends Module {
         for (int i = 0; i < 36; i++) {
             ItemStack stack = player.getInventory().getItem(i);
             if (!isGapple(stack) || !isItemUsable(player, stack)) continue;
-            int score = stack.is(Items.ENCHANTED_GOLDEN_APPLE) ? 200 : 100;
+            if (stack.is(Items.GOLDEN_APPLE) && !itemProfiles.get(PROFILE_GAPPLE)) continue;
+            if (stack.is(Items.ENCHANTED_GOLDEN_APPLE) && !itemProfiles.get(PROFILE_ENCHANTED)) continue;
+            int score = stack.is(Items.ENCHANTED_GOLDEN_APPLE)
+                    ? (effectiveHealth(player) <= 6.0f ? 220 : 80) : 150;
             if (i < 9) score += 10;
             if (score > bestScore) {
                 bestScore = score;
@@ -344,9 +583,19 @@ public final class Offhand extends Module {
             }
         }
         ItemStack main = player.getMainHandItem();
-        if (isGapple(main) && isItemUsable(player, main)) {
-            int score = main.is(Items.ENCHANTED_GOLDEN_APPLE) ? 220 : 120;
+        if (isGapple(main) && isItemUsable(player, main)
+                && (main.is(Items.GOLDEN_APPLE) && itemProfiles.get(PROFILE_GAPPLE)
+                || main.is(Items.ENCHANTED_GOLDEN_APPLE) && itemProfiles.get(PROFILE_ENCHANTED))) {
+            int score = main.is(Items.ENCHANTED_GOLDEN_APPLE)
+                    ? (effectiveHealth(player) <= 6.0f ? 240 : 90) : 160;
             if (score >= bestScore) best = new ItemChoice(selectedSlot(player), main.copy(), ChoiceKind.GAPPLE);
+        }
+        ItemStack offhand = player.getOffhandItem();
+        if (isGapple(offhand) && isItemUsable(player, offhand)) {
+            int score = offhand.is(Items.ENCHANTED_GOLDEN_APPLE) ? 70 : 170;
+            if ((offhand.is(Items.GOLDEN_APPLE) && itemProfiles.get(PROFILE_GAPPLE)
+                    || offhand.is(Items.ENCHANTED_GOLDEN_APPLE) && itemProfiles.get(PROFILE_ENCHANTED))
+                    && score >= bestScore) best = new ItemChoice(-1, offhand.copy(), ChoiceKind.GAPPLE);
         }
         return best;
     }
@@ -447,15 +696,52 @@ public final class Offhand extends Module {
         return MainhandState.PENDING;
     }
 
-    private void startUse(LocalPlayer player, ItemStack display) {
-        if (!forcingUse) useKeyWasDown = mc.options.keyUse.isDown();
-        if (!mc.options.keyUse.isDown()) mc.options.keyUse.setDown(true);
+    private void queueUse(ItemStack display, InteractionHand hand) {
+        if (useActionQueued || display.isEmpty()) return;
+        useActionQueued = true;
+        consumingStack = display.copy();
+        boolean accepted = InventorySwap.INSTANCE.enqueueInventoryAction(this, InventoryActionKind.USE_ITEM,
+                false,
+                () -> {
+                    LocalPlayer player = mc.player;
+                    return isEnabled() && player != null && !player.isUsingItem()
+                            && player.tickCount >= consumeLockedUntilTick
+                            && autoConsume.get() && Itemizer.isActionEnabled(name(), ACTION_CONSUME)
+                            && consumeControl.get() != ConsumeControl.DISABLED
+                            && (consumeControl.get() == ConsumeControl.AUTO || semiConsumeArmed)
+                            && !offhandSwapPending && !restoreInventoryPending
+                            && ItemStack.isSameItemSameComponents(
+                                    hand == InteractionHand.OFF_HAND ? player.getOffhandItem() : player.getMainHandItem(),
+                                    display)
+                            && (!shouldHoldTotem(player, effectiveHealth(player))
+                                || hand == InteractionHand.MAIN_HAND);
+                },
+                () -> {
+                    useActionQueued = false;
+                    LocalPlayer player = mc.player;
+                    if (player != null) startUse(player, display, hand);
+                },
+                () -> useActionQueued = false);
+        if (!accepted) useActionQueued = false;
+    }
+
+    private void startUse(LocalPlayer player, ItemStack display, InteractionHand hand) {
+        if (consumeRequestTick >= 0 && player.tickCount - consumeRequestTick <= 10) return;
         forcingUse = true;
         lastUseObservedTick = player.tickCount;
-        InteractionResult result = InventorySwap.INSTANCE.useItem(InteractionHand.MAIN_HAND);
+        InteractionResult result = InventorySwap.INSTANCE.useItem(hand);
         if (result.consumesAction()) {
-            player.swing(InteractionHand.MAIN_HAND);
+            consumeRequestTick = player.tickCount;
+            consumingStack = display.copy();
+            consumeDisplayUntilTick = player.tickCount + 16;
+            player.swing(hand);
+            gappleConsumption = isGapple(display);
+            gappleWasEnchanted = display.is(Items.ENCHANTED_GOLDEN_APPLE);
+            if (gappleConsumption) appleAbsorptionGuardUntilTick = Math.max(
+                    appleAbsorptionGuardUntilTick, player.tickCount + (gappleWasEnchanted ? 160 : 80));
             Itemizer.showAutoEat(display);
+        } else {
+            stopAutoUse(player);
         }
     }
 
@@ -464,12 +750,35 @@ public final class Offhand extends Module {
     }
 
     private void stopAutoUse(LocalPlayer player, boolean forceRestore) {
-        if (forcingUse && !useKeyWasDown) mc.options.keyUse.setDown(false);
         forcingUse = false;
-        useKeyWasDown = false;
+        if (useActionQueued) {
+            InventorySwap.INSTANCE.cancelQueuedInventoryActions(this, InventoryActionKind.USE_ITEM);
+            useActionQueued = false;
+        }
+        offhandConsumeActive = false;
+
+        if ((restoreInventoryPending || restoreSelected) && !forceRestore) {
+            if (lastUseObservedTick >= 0 && player.tickCount <= lastUseObservedTick + 1) return;
+            if (restoreActionQueued) return;
+            restoreActionQueued = true;
+            boolean accepted = InventorySwap.INSTANCE.enqueueInventoryAction(this,
+                    InventoryActionKind.INVENTORY_CLICK, false,
+                    () -> isEnabled() && mc.player != null,
+                    () -> {
+                        restoreActionQueued = false;
+                        LocalPlayer current = mc.player;
+                        if (current != null) stopAutoUse(current, true);
+                    },
+                    () -> restoreActionQueued = false);
+            if (!accepted) restoreActionQueued = false;
+            return;
+        }
+        if (forceRestore && restoreActionQueued) {
+            InventorySwap.INSTANCE.cancelQueuedInventoryActions(this, InventoryActionKind.INVENTORY_CLICK);
+            restoreActionQueued = false;
+        }
 
         if (restoreInventoryPending) {
-            if (!forceRestore && lastUseObservedTick >= 0 && player.tickCount <= lastUseObservedTick + 1) return;
             int source = InventorySwap.mapInventoryToScreenSlot(restoreInventorySlot);
             int target = InventorySwap.mapHotbarToScreenSlot(restoreHotbarSlot);
             if (source < 0 || target < 0
@@ -497,7 +806,6 @@ public final class Offhand extends Module {
 
     private void resetConsumeState() {
         forcingUse = false;
-        useKeyWasDown = false;
         restoreSelected = false;
         previousSelectedSlot = -1;
         restoreInventoryPending = false;
@@ -507,7 +815,14 @@ public final class Offhand extends Module {
         mainhandReadyTick = -1;
         mainhandDeadlineTick = -1;
         lastUseObservedTick = -1;
+        useActionQueued = false;
+        restoreActionQueued = false;
+        InventorySwap.INSTANCE.cancelQueuedInventoryActions(this);
         autoSelectedSlot = -1;
+        consumeRequestTick = -1;
+        consumingStack = ItemStack.EMPTY;
+        consumeDisplayUntilTick = -1;
+        appleAbsorptionGuardUntilTick = -1;
         if (!offhandSwapPending) InventorySwap.INSTANCE.releaseInventory(this);
         inventoryLeaseReleaseTick = -1;
     }
@@ -595,30 +910,52 @@ public final class Offhand extends Module {
     }
 
     private boolean requestOffhandSwap(int slot, Runnable afterSwap) {
+        return requestOffhandSwap(slot, afterSwap, false);
+    }
+
+    private boolean requestOffhandSwap(int slot, Runnable afterSwap, boolean urgent) {
         if (offhandSwapPending || slot < 0 || slot >= 36 || mc.player == null) return false;
-        if (!InventorySwap.INSTANCE.leaseInventory(this, 16)) return false;
+        if (!InventorySwap.INSTANCE.leaseInventory(this, 24)) return false;
         ItemStack wanted = mc.player.getInventory().getItem(slot);
         if (wanted == null) {
             InventorySwap.INSTANCE.releaseInventory(this);
             return false;
         }
-
         offhandSwapPending = true;
         expectedOffhand = wanted.copy();
         expectOffhandEmpty = wanted.isEmpty();
         offhandSwapIssuedTick = -1;
-        offhandSwapDeadlineTick = mc.player.tickCount + INVENTORY_TIMEOUT_TICKS;
+        offhandSwapDeadlineTick = -1;
         offhandSwapConfirmedAction = afterSwap;
 
-        boolean accepted = InventorySwap.INSTANCE.swapInventoryToOffhand(
-                slot,
-                InventorySwapPolicy.NONE,
-                this,
+        boolean accepted = InventorySwap.INSTANCE.enqueueInventoryAction(this,
+                InventoryActionKind.INVENTORY_CLICK, urgent,
                 () -> {
                     LocalPlayer player = mc.player;
-                    if (player != null) offhandSwapIssuedTick = player.tickCount;
-                }
-        );
+                    return isEnabled() && player != null && offhandSwapPending
+                            && player.getInventory().getItem(slot) != null
+                            && ItemStack.isSameItemSameComponents(player.getInventory().getItem(slot), expectedOffhand)
+                            && (urgent ? shouldHoldTotem(player, effectiveHealth(player))
+                                       : !shouldHoldTotem(player, effectiveHealth(player)));
+                },
+                () -> {
+                    boolean sent = InventorySwap.INSTANCE.swapInventoryToOffhand(
+                            slot, InventorySwapPolicy.NONE, this, null);
+                    LocalPlayer player = mc.player;
+                    if (sent && player != null) {
+                        offhandSwapIssuedTick = player.tickCount;
+                        offhandSwapDeadlineTick = player.tickCount + INVENTORY_TIMEOUT_TICKS;
+                    } else {
+                        resetOffhandSwapState();
+                        if (!restoreInventoryPending) InventorySwap.INSTANCE.releaseInventory(this);
+                    }
+                },
+                () -> {
+                    if (offhandSwapPending && offhandSwapIssuedTick < 0) {
+                        resetOffhandSwapState();
+                        if (!restoreInventoryPending) InventorySwap.INSTANCE.releaseInventory(this);
+                    }
+                });
         if (!accepted) {
             resetOffhandSwapState();
             if (!restoreInventoryPending) InventorySwap.INSTANCE.releaseInventory(this);
@@ -631,6 +968,15 @@ public final class Offhand extends Module {
         if (player == null) {
             resetOffhandSwapState();
             return false;
+        }
+
+        if (offhandSwapIssuedTick < 0) {
+            if (!InventorySwap.INSTANCE.hasQueuedInventoryAction(this, InventoryActionKind.INVENTORY_CLICK)) {
+                resetOffhandSwapState();
+                if (!restoreInventoryPending) InventorySwap.INSTANCE.releaseInventory(this);
+                return false;
+            }
+            return true;
         }
 
         boolean confirmedItem = expectOffhandEmpty
@@ -649,6 +995,7 @@ public final class Offhand extends Module {
 
         if (player.tickCount > offhandSwapDeadlineTick) {
             resetOffhandSwapState();
+            offhandConsumeActive = false;
             inventoryQuietUntilTick = player.tickCount;
             if (!restoreInventoryPending) InventorySwap.INSTANCE.releaseInventory(this);
             return false;
@@ -718,7 +1065,7 @@ public final class Offhand extends Module {
     }
 
     private float effectiveGappleHealth(LocalPlayer player) {
-        return player.getHealth() + (goldenHearts.get() ? player.getAbsorptionAmount() : 0.0f);
+        return player.getHealth() + player.getAbsorptionAmount();
     }
 
     private boolean isGapple(ItemStack stack) {
@@ -792,6 +1139,35 @@ public final class Offhand extends Module {
 
     private boolean isTotemInOffhand(LocalPlayer player) {
         return player != null && player.getOffhandItem().is(Items.TOTEM_OF_UNDYING);
+    }
+
+    private enum SafeOffhand implements EnumValue.IdProvider {
+        KEEP("keep"), TOTEM("totem"), CONTEXTUAL("contextual"), SHIELD("shield"),
+        CRYSTAL("crystal"), GAPPLE("gapple"), FOOD("food");
+        private final String id;
+        SafeOffhand(String id) { this.id = id; }
+        @Override public String id() { return id; }
+    }
+
+    private enum ConsumeControl implements EnumValue.IdProvider {
+        AUTO("auto"), SEMI("semi"), DISABLED("disabled");
+        private final String id;
+        ConsumeControl(String id) { this.id = id; }
+        @Override public String id() { return id; }
+    }
+
+    private enum ConsumeHand implements EnumValue.IdProvider {
+        MAIN_HAND("main_hand"), OFF_HAND("off_hand"), AUTO("auto");
+        private final String id;
+        ConsumeHand(String id) { this.id = id; }
+        @Override public String id() { return id; }
+    }
+
+    private enum CombatConsume implements EnumValue.IdProvider {
+        OUT_OF_COMBAT("out_of_combat"), EMERGENCY_ONLY("emergency_only"), ALLOW("allow");
+        private final String id;
+        CombatConsume(String id) { this.id = id; }
+        @Override public String id() { return id; }
     }
 
     private enum ChoiceKind { GAPPLE, FOOD }

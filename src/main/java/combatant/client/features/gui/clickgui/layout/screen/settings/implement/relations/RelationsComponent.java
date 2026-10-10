@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.relations;
 
+import combatant.client.util.text.SingleLineTextInput;
+
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
@@ -57,6 +59,23 @@ public final class RelationsComponent {
     private String prefixInput = "";
     private String suffixInput = "";
     private String containsInput = "";
+    private final EnumMap<ActiveField, SingleLineTextInput> textInputs = new EnumMap<>(ActiveField.class);
+    private float inputScale = 1f;
+
+    private SingleLineTextInput input(ActiveField field) {
+        return textInputs.computeIfAbsent(field, key -> new SingleLineTextInput(key == ActiveField.PLAYER ? 32 : 48));
+    }
+
+    private void syncTextFromInput(ActiveField field) {
+        String next = input(field).text();
+        switch (field) {
+            case PLAYER -> playerInput = next;
+            case PREFIX -> prefixInput = next;
+            case SUFFIX -> suffixInput = next;
+            case CONTAINS -> containsInput = next;
+            default -> { }
+        }
+    }
     private String statusMessage;
     private long statusUntilMs;
 
@@ -138,6 +157,7 @@ public final class RelationsComponent {
     }
 
     public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my, float scale) {
+        inputScale = scale;
         cardHits.clear();
         chipHits.clear();
         resetTransientRects();
@@ -208,6 +228,9 @@ public final class RelationsComponent {
             if (onlinePicker.isOpen()) {
                 activeField = ActiveField.NONE;
                 onlinePicker.focusSearch();
+                onlinePicker.editor().layout(playerInputRect.x() + 4f * inputScale,
+                        playerInputRect.w() - 9f * inputScale, ClickGuiRenderer.getInterRegular(), 6.3f * inputScale);
+                onlinePicker.editor().beginDrag(mx, false);
                 movementInputBlocked = onlinePicker.blocksMovementInput();
                 clearStatus();
                 return true;
@@ -318,14 +341,7 @@ public final class RelationsComponent {
             else commitHeuristic(activeField);
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
-            setFieldText(activeField, dropLast(fieldText(activeField)));
-            return true;
-        }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_V) {
-            appendToField(activeField, ClipboardUtil.get());
-            return true;
-        }
+        if (input(activeField).keyPressed(keyCode, modifiers)) syncTextFromInput(activeField);
         return true;
     }
 
@@ -335,7 +351,8 @@ public final class RelationsComponent {
             return true;
         }
         if (activeField == ActiveField.NONE) return false;
-        if (chr >= 32 && chr != 127) appendToField(activeField, String.valueOf(chr));
+        input(activeField).type(chr);
+        syncTextFromInput(activeField);
         return true;
     }
 
@@ -1351,35 +1368,26 @@ public final class RelationsComponent {
                         : SettingsGuiPalette.withAlpha(palette.glassEdgeSoft(), Math.round(70f + 38f * hoverAnim))
         );
 
+        SingleLineTextInput editor = switch (animationKey) {
+            case "player" -> onlinePicker.isOpen() ? onlinePicker.editor() : input(ActiveField.PLAYER);
+            case "rule:PREFIX" -> input(ActiveField.PREFIX);
+            case "rule:SUFFIX" -> input(ActiveField.SUFFIX);
+            case "rule:CONTAINS" -> input(ActiveField.CONTAINS);
+            default -> null;
+        };
         boolean empty = value == null || value.isEmpty();
-        String raw = empty ? (active ? "" : placeholder) : value;
-        int color = empty && !active ? palette.panelMuted() : palette.panelText();
         float size = 6.3f * scale;
-        String text = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), raw, size, rect.w() - 9f * scale);
+        float textX = rect.x() + 4f * scale;
         float textY = rect.y() + (rect.h() - ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), size)) * 0.5f;
-
         boolean clipped = ScissorFunction.pushRaw(rect.x(), rect.y(), rect.w(), rect.h());
         try {
-            if (!text.isEmpty()) {
-                ClickGuiRenderer.drawText(
-                        ClickGuiRenderer.getInterRegular(),
-                        text,
-                        rect.x() + 4f * scale,
-                        textY,
-                        size,
-                        color,
-                        false
-                );
-            }
-            if (active && ((System.currentTimeMillis() / 500L) & 1L) == 0L) {
-                float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), text, size);
-                LayoutRender2D.rect(
-                        rect.x() + Math.min(tw + 5f * scale, rect.w() - 2.5f * scale),
-                        rect.y() + 3f * scale,
-                        0.6f * scale,
-                        rect.h() - 6f * scale,
-                        palette.panelText()
-                );
+            if (empty && !active) {
+                ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(),
+                        ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), placeholder, size, rect.w() - 9f * scale),
+                        textX, textY, size, palette.panelMuted(), false);
+            } else if (editor != null) {
+                editor.render(textX, textY, rect.w() - 9f * scale, rect.h(), ClickGuiRenderer.getInterRegular(),
+                        size, palette.panelText(), SettingsGuiPalette.withAlpha(tab.color(), 125), active);
             }
         } finally {
             if (clipped) ScissorFunction.pop();
@@ -1554,6 +1562,19 @@ public final class RelationsComponent {
 
     private boolean focusField(ActiveField field) {
         activeField = field;
+        Rect rect = switch (field) {
+            case PLAYER -> playerInputRect;
+            case PREFIX -> prefixInputRect;
+            case SUFFIX -> suffixInputRect;
+            case CONTAINS -> containsInputRect;
+            default -> Rect.ZERO;
+        };
+        if (rect.w() > 0) {
+            SingleLineTextInput editor = input(field);
+            editor.layout(rect.x() + 4f * inputScale, rect.w() - 9f * inputScale,
+                    ClickGuiRenderer.getInterRegular(), 6.3f * inputScale);
+            editor.beginDrag(ClickGuiRenderer.getMouseX(), false);
+        }
         movementInputBlocked = true;
         clearStatus();
         return true;
@@ -1607,7 +1628,7 @@ public final class RelationsComponent {
         }
 
         if (tab.add(cleaned)) {
-            playerInput = "";
+            setFieldText(ActiveField.PLAYER, "");
             selectedName = cleaned;
             activeField = ActiveField.NONE;
             movementInputBlocked = false;
@@ -1709,6 +1730,7 @@ public final class RelationsComponent {
 
     private void setFieldText(ActiveField field, String value) {
         String next = value == null ? "" : value;
+        if (field != ActiveField.NONE) input(field).setText(next);
         switch (field) {
             case PLAYER -> playerInput = next;
             case PREFIX -> prefixInput = next;

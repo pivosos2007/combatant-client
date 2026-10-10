@@ -10,27 +10,24 @@ package combatant.client.render.engine.uniform.impl;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.buffers.Std140Builder;
-import com.mojang.blaze3d.buffers.Std140SizeCalculator;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;
+import combatant.client.render.engine.uniform.ShaderUniformBindings;
 
 /**
  * Std140 UBO for batched 2D UI shaders.
  * <p>
  * Layout (std140):
- * vec4 screen; // xy = full framebuffer size, zw = full logical size
- * vec4 layer;  // xy = active target logical origin, zw = active target logical extent
+ * vec4 uScreen; // xy = full framebuffer size, zw = full logical size
+ * vec4 uLayer;  // xy = active target logical origin, zw = active target logical extent
  */
 public enum UIBatchUniforms {
     ;
-    public static final int SIZE = new Std140SizeCalculator()
-            .putVec4()
-            .putVec4()
-            .get();
+    private static final ShaderUniformBindings.Block BLOCK = ShaderUniformBindings.block("UIBatch");
+    public static final int SIZE = BLOCK.size();
 
-    private static final Data DATA = new Data();
+    private static final ShaderUniformBindings.Writer DATA = BLOCK.writer();
     private static final String UNIFORM_NAME = "Combatant - UI Batch UBO";
     private static final int EXPECTED_WRITES_PER_FRAME = 16;
     private static long lastFrameId = Long.MIN_VALUE;
@@ -67,11 +64,8 @@ public enum UIBatchUniforms {
             return;
         }
 
-        DATA.screen[0] = safeW;
-        DATA.screen[1] = safeH;
-        DATA.screen[2] = logicalW;
-        DATA.screen[3] = logicalH;
-        System.arraycopy(layer, 0, DATA.layer, 0, 4);
+        DATA.vec4("uScreen", safeW, safeH, logicalW, logicalH)
+                .vec4("uLayer", layer[0], layer[1], layer[2], layer[3]);
 
         allocator.write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
         lastFrameId = frameId;
@@ -87,18 +81,6 @@ public enum UIBatchUniforms {
 
     public static GpuBufferSlice get() {
         return CombatantRenderSystem.uniforms().current(UNIFORM_NAME);
-    }
-
-    private static final class Data implements CombatantUniformAllocator.UniformWriter {
-        private final float[] screen = new float[4];
-        private final float[] layer = new float[4];
-
-        @Override
-        public void write(java.nio.ByteBuffer buffer) {
-            Std140Builder.intoBuffer(buffer)
-                    .putFloat(screen[0]).putFloat(screen[1]).putFloat(screen[2]).putFloat(screen[3])
-                    .putFloat(layer[0]).putFloat(layer[1]).putFloat(layer[2]).putFloat(layer[3]);
-        }
     }
 
 }

@@ -355,6 +355,7 @@ public final class MenuScreen {
 
     public void mouseReleased(float mx, float my, int button) {
         if (!isInteractive()) return;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) combatant.client.util.text.SingleLineTextInput.mouseReleased();
         settingsPanel.mouseReleased(mx, my, button);
         themeComponent.mouseReleased(button);
         mainSettingsComponent.mouseReleased(mx, my, button);
@@ -418,11 +419,7 @@ public final class MenuScreen {
                 return true;
             }
 
-            if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
-                ClickGuiSearch.backspace();
-                return true;
-            }
-
+            ClickGuiSearch.keyPressed(keyCode, modifiers);
             return true;
         }
 

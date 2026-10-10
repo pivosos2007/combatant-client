@@ -20,6 +20,7 @@ import combatant.client.render.helpers.ClipFunction;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.text.ClipboardUtil;
+import combatant.client.util.text.GuiTextCaret;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 
 import java.awt.*;
@@ -353,7 +354,7 @@ enum UnifiedSettingRenderer {
         if (ui.editing && ((int) (ui.cursorBlink * 2f) & 1) == 0) {
             int cursor = Math.max(0, Math.min(ui.editCursor, ui.editBuffer.length()));
             float cx = drawX + UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), valueSize) + m(0.5f, 0.3f);
-            ClickGuiRenderer.drawRect(cx, ui.valueY + m(3f, 1.5f), m(0.75f, 0.45f), ui.valueH - m(6f, 3f), UnifiedSettingsSkin.withAlpha(textCol, 205));
+            GuiTextCaret.draw(cx, textBaseY, font, valueSize, UnifiedSettingsSkin.withAlpha(textCol, 205));
         }
         if (textClip) ScissorFunction.pop();
 
@@ -625,9 +626,7 @@ enum UnifiedSettingRenderer {
         if (ui.editing && ((int) (ui.cursorBlink * 2f) & 1) == 0) {
             int cursor = Math.max(0, Math.min(ui.editCursor, ui.editBuffer.length()));
             float cx = drawX + UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), valueSize);
-            ClickGuiRenderer.drawRect(cx, valueY + UnifiedSettingsSkin.modernMetric(2f, 2f),
-                    Math.max(0.7f, 0.7f * s()), valueH - UnifiedSettingsSkin.modernMetric(4f, 4f),
-                    UnifiedSettingsSkin.modernTextBright());
+            GuiTextCaret.draw(cx, valueTextY, font, valueSize, UnifiedSettingsSkin.modernTextBright());
         }
         if (valueClip) ScissorFunction.pop();
 
@@ -1356,7 +1355,7 @@ enum UnifiedSettingRenderer {
             if (((int) (ui.cursorBlink * 2f) & 1) == 0) {
                 int cursor = Math.max(0, Math.min(ui.editCursor, ui.editBuffer.length()));
                 float cx = drawX + UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), fieldSize) + m(0.5f, 0.3f);
-                ClickGuiRenderer.drawRect(cx, fy + m(3f, 2f), m(0.65f, 0.4f), fh - m(6f, 4f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_PRIMARY, 205));
+                GuiTextCaret.draw(cx, textY, font, fieldSize, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_PRIMARY, 205));
             }
         } else {
             boolean empty = text.isBlank();
@@ -1376,6 +1375,7 @@ enum UnifiedSettingRenderer {
         if (UnifiedSettingsSkin.inside(mx, my, ui.fieldX, ui.fieldY, ui.fieldW, ui.fieldH)) {
             beginTextEdit(setting);
             setTextCursorFromMouse(setting, (float) mx, false);
+            TextSetting.beginMouseSelection(setting);
         } else if (ui.editing) {
             commitTextEdit(setting, true);
         }
@@ -1546,9 +1546,7 @@ enum UnifiedSettingRenderer {
             if (((int) (ui.cursorBlink * 2f) & 1) == 0) {
                 int cursor = Math.max(0, Math.min(ui.editCursor, ui.editBuffer.length()));
                 float cx = drawX + UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), size);
-                ClickGuiRenderer.drawRect(cx, fy + UnifiedSettingsSkin.modernMetric(5f, 5f),
-                        Math.max(0.7f, 0.7f * s()), fieldH - UnifiedSettingsSkin.modernMetric(10f, 10f),
-                        UnifiedSettingsSkin.modernTextBright());
+                GuiTextCaret.draw(cx, textY, font, size, UnifiedSettingsSkin.modernTextBright());
             }
         } else {
             boolean empty = text.isBlank();
@@ -1590,9 +1588,14 @@ enum UnifiedSettingRenderer {
         if (save && setting.getParent() != null) setting.getParent().saveConfig();
     }
 
+    static void dragTextSelection(TextSetting setting, float mx) {
+        if (!setting.ui().editing) return;
+        setTextCursorFromMouse(setting, mx, true);
+    }
+
     private static void setTextCursorFromMouse(TextSetting setting, float mx, boolean shift) {
         TextSetting.UiState ui = setting.ui();
-        TextRenderer font = UnifiedSettingsSkin.fontMedium();
+        TextRenderer font = modern() ? UnifiedSettingsSkin.fontSemibold() : UnifiedSettingsSkin.fontMedium();
         int cursor = caretFromText(font, ui.editBuffer == null ? "" : ui.editBuffer, ui.textSize <= 0f ? m(14f, 6.1f) : ui.textSize, ui.textX, mx);
         setTextCursor(ui, cursor, shift);
     }
@@ -1628,7 +1631,7 @@ enum UnifiedSettingRenderer {
         String safe = text == null ? "" : text;
         int cursor = Math.max(0, Math.min(ui.editCursor, safe.length()));
         float textW = UnifiedSettingsSkin.textWidth(font, safe, size);
-        float caretW = Math.max(0.8f, 0.8f * s());
+        float caretW = GuiTextCaret.width(size);
         float margin = Math.min(modern() ? UnifiedSettingsSkin.modernMetric(6f, 6f) : m(8f, 4f),
                 visibleW * 0.28f);
         // Reserve actual space for the caret at the end of a long value.  textW-visibleW was
@@ -1772,7 +1775,7 @@ enum UnifiedSettingRenderer {
             if (((int) (ui.cursorBlink * 2f) & 1) == 0) {
                 int cursor = Math.max(0, Math.min(ui.editCursor, ui.editBuffer.length()));
                 float cx = textX + UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), fieldSize) + m(0.5f, 0.3f);
-                ClickGuiRenderer.drawRect(cx, fieldY + m(3f, 2f), m(0.65f, 0.4f), fieldH - m(6f, 4f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_PRIMARY, 205));
+                GuiTextCaret.draw(cx, textY, font, fieldSize, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_PRIMARY, 205));
             }
         } else {
             boolean empty = text.isBlank();
@@ -3122,7 +3125,7 @@ enum UnifiedSettingRenderer {
             if (((int) (ui.hexCursorBlink * 2f) & 1) == 0) {
                 int cursor = Math.max(0, Math.min(ui.hexCursor, ui.hexBuffer.length()));
                 float cx = textX + UnifiedSettingsSkin.textWidth(font, prefix + ui.hexBuffer.substring(0, cursor), size) + m(0.5f, 0.3f);
-                ClickGuiRenderer.drawRect(cx, y + m(3f, 2f), m(0.65f, 0.4f), ui.hexH - m(6f, 4f), UnifiedSettingsSkin.withAlpha(textColor, 190));
+                GuiTextCaret.draw(cx, textY, font, size, UnifiedSettingsSkin.withAlpha(textColor, 190));
             }
         } else {
             String display = "#" + UnifiedSettingsSkin.fit(font, text, size, textClipW);

@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.config;
 
+import combatant.client.util.text.SingleLineTextInput;
+
 import combatant.client.config.profile.*;
 import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
@@ -47,8 +49,9 @@ public final class ConfigProfilesComponent {
     private long statusUntilMs;
     private ConfigProfileType editingType;
     private String editingId;
-    private String editingText = "";
+    private final SingleLineTextInput renameInput = new SingleLineTextInput(48);
     private Rect editingTitleRect = Rect.ZERO;
+    private float renameScale = 1f;
 
     private float scroll;
     private float smoothedScroll;
@@ -190,8 +193,14 @@ public final class ConfigProfilesComponent {
         for (CardEntryHit entryHit : hits) {
             CardHit hit = entryHit.hit();
             if (inside(hit.title(), mx, my)) {
-                select(entryHit.meta());
-                beginRename(entryHit.meta(), hit.title());
+                if (isEditing(entryHit.meta())) {
+                    renameInput.beginDrag(mx, false);
+                } else {
+                    select(entryHit.meta());
+                    beginRename(entryHit.meta(), hit.title());
+                    renameInput.layout(hit.title().x(), hit.title().w() - 5f * renameScale,
+                            ClickGuiRenderer.getInterMedium(), 8.8f * renameScale);
+                }
                 return true;
             }
             if (inside(hit.diff(), mx, my)) {
@@ -534,18 +543,13 @@ public final class ConfigProfilesComponent {
             commitRename();
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
-            if (!editingText.isEmpty()) editingText = editingText.substring(0, editingText.length() - 1);
-            return true;
-        }
+        renameInput.keyPressed(keyCode, modifiers);
         return true;
     }
 
     public boolean charTyped(char chr, int modifiers) {
         if (!isRenaming()) return false;
-        if (chr >= 32 && chr != 127 && editingText.length() < 48) {
-            editingText += chr;
-        }
+        renameInput.type(chr);
         return true;
     }
 
@@ -582,7 +586,8 @@ public final class ConfigProfilesComponent {
         if (meta == null) return;
         editingType = meta.type();
         editingId = meta.getId();
-        editingText = meta.name();
+        renameInput.setText(meta.name());
+        renameInput.moveToEnd();
         editingTitleRect = new Rect(titleHit.x(), titleHit.y(), titleHit.w(), titleHit.h());
         clearStatus();
     }
@@ -590,7 +595,7 @@ public final class ConfigProfilesComponent {
     private void cancelRename() {
         editingType = null;
         editingId = null;
-        editingText = "";
+        renameInput.clear();
         editingTitleRect = Rect.ZERO;
     }
 
@@ -604,7 +609,7 @@ public final class ConfigProfilesComponent {
 
     private void commitRename() {
         if (!isRenaming()) return;
-        String next = editingText == null ? "" : editingText.trim();
+        String next = renameInput.text().trim();
         if (next.isBlank()) {
             setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.empty_name", "Name cannot be empty"));
             return;
@@ -624,6 +629,7 @@ public final class ConfigProfilesComponent {
     }
 
     private void renderRenameInput(Rect rect, float scale, SettingsGuiPalette palette) {
+        renameScale = scale;
         float padX = 2f * scale;
         float y = rect.y() - scale;
         float h = rect.h() + 2f * scale;
@@ -638,12 +644,9 @@ public final class ConfigProfilesComponent {
                 SettingsGuiPalette.mix(palette.moduleCardTopStrong(), palette.menuCategorySelectedRight(), 0.22f),
                 SettingsGuiPalette.mix(palette.moduleCardTop(), palette.menuCategorySelectedLeft(), 0.28f)
         );
-        String text = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterMedium(), editingText, 8.8f * scale, rect.w() - 5f * scale);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), text, rect.x(), rect.y(), 8.8f * scale, palette.moduleTitleText(), false);
-        if ((System.currentTimeMillis() / 500L) % 2L == 0L) {
-            float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), text, 8.8f * scale);
-            LayoutRender2D.rect(rect.x() + Math.min(tw + 1.5f * scale, rect.w() - 2f * scale), rect.y() + 1.2f * scale, 0.6f * scale, 8f * scale, palette.moduleTitleText());
-        }
+        renameInput.render(rect.x(), rect.y(), rect.w() - 5f * scale, h,
+                ClickGuiRenderer.getInterMedium(), 8.8f * scale, palette.moduleTitleText(),
+                SettingsGuiPalette.withAlpha(palette.menuCategorySelectedRight(), 145), true);
     }
 
     private void renderStatus(float x, float y, float w, float scale, SettingsGuiPalette palette) {

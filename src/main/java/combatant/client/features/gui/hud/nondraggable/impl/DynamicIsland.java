@@ -797,6 +797,9 @@ public final class DynamicIsland extends AbstractHudElement {
                 "startColor", scaleHexAlpha(stringProp(props, "displayBgStart", "#FF050608"), rootAlpha),
                 "endColor", scaleHexAlpha(stringProp(props, "displayBgEnd", "#FF050608"), rootAlpha),
                 "angle", numberProp(props, "displayBgAngle", 90.0f),
+                "materialAccent", phosphor,
+                "materialResponse", clamp01(numberProp(props, "bodyHover", 0.0f) * 0.42f
+                        + numberProp(props, "bodyPress", 0.0f) * 0.72f),
                 "blurAlpha", surfaceBlurAlpha,
                 "blurBrightness", 1.0f);
         float shellInteraction = numberProp(props, "bodyHover", 0.0f) * 0.025f
@@ -1127,6 +1130,10 @@ public final class DynamicIsland extends AbstractHudElement {
         props.put("displayBgStart", hex(uiDisplayBgStart));
         props.put("displayBgEnd", hex(uiDisplayBgEnd));
         props.put("displayBgAngle", uiDisplayBgAngle);
+        props.put("displayMaterial", "phosphor-led");
+        props.put("pixelPitchPx", 4.0f);
+        props.put("offPixelOpacity", 0.13f);
+        props.put("displayBevelStrength", 0.30f);
         props.put("phosphor", hex(modePhosphor));
         props.put("phosphorDim", hex(modePhosphorDim));
         props.put("matrixOff", hex(modeMatrixOff));

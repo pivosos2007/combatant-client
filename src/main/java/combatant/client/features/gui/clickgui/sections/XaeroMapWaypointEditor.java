@@ -16,6 +16,7 @@ import combatant.client.render.engine.renderer.ui.draw.UiPaint;
 import combatant.client.render.engine.renderer.ui.draw.UiPrimitive;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.helpers.SystemCursor;
+import combatant.client.util.text.GuiTextCaret;
 import net.minecraft.client.resources.language.I18n;
 import org.lwjgl.glfw.GLFW;
 import xaero.map.mods.gui.Waypoint;
@@ -339,7 +340,7 @@ final class XaeroMapWaypointEditor {
         float pulse = 0.40f + 0.60f * (float) Math.abs(Math.sin(System.nanoTime() * 0.0000000045));
         int caret = SettingsGuiPalette.withAlpha(
                 palette.panelText(), Math.round(225.0f * reveal * pulse));
-        renderer.roundedRect(caretX, ty + 1.0f, 1.15f, 15.0f, 0.575f, caret);
+        GuiTextCaret.draw(caretX, ty, ClickGuiRenderer.getOnestMedium(), fontSize, caret);
     }
 
     private void drawColors(Renderer2D renderer, SettingsGuiPalette palette, float reveal) {

@@ -819,14 +819,14 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     }
 
     protected final boolean isActionPressedOnce(String name) {
-        if (!isEnabled()) return false;
+        if (!isEnabled() || !combatant.client.features.gui.hud.draggable.impl.Itemizer.isActionEnabled(name(), name)) return false;
         FunctionBindSetting setting = actions.get(name);
         if (setting == null) return false;
         return KeyManager.wasPressed(setting.getBindingName());
     }
 
     protected final boolean isActionHeld(String name) {
-        if (!isEnabled()) return false;
+        if (!isEnabled() || !combatant.client.features.gui.hud.draggable.impl.Itemizer.isActionEnabled(name(), name)) return false;
         FunctionBindSetting setting = actions.get(name);
         if (setting == null) return false;
         return KeyManager.isHeld(setting.getBindingName());

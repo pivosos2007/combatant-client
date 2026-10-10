@@ -23,6 +23,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiPaint;
 import combatant.client.render.engine.renderer.ui.draw.UiPrimitive;
 import combatant.client.render.engine.renderer.ui.draw.UiStroke;
+import combatant.client.render.engine.renderer.ui.draw.UiSurfaceMaterialSpec;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiTextRenderer;
 import combatant.client.render.engine.renderer.ui.runtime.style.UiStyle;
 import combatant.client.render.engine.svg.SvgRenderOptions;
@@ -52,7 +53,7 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
-/** Image-backed main menu built as one pointy-hex liquid-glass matrix. */
+/** Image-backed main menu built around a pointy-hex material matrix. */
 public final class CombatantMainMenuScreen extends Screen {
     private static final float MENU_SCALE = MainMenuBackdrop.MENU_SCALE;
     private static final float SQRT_3 = MainMenuBackdrop.SQRT_3;
@@ -303,28 +304,21 @@ public final class CombatantMainMenuScreen extends Screen {
 
         UiPrimitive top = pointyHex(centerX, topY, radius, BUTTON_ROUNDING);
         int denseTint = HudRenderUtil.mixColor(accentSoft, 0xFFEAF5FF, 0.14f + hover * 0.05f);
-        Renderer2D.COLOR.liquidGlassPrimitive(
+        Renderer2D.COLOR.materialPrimitive(
                 top,
-                withAlpha(denseTint, 236),
-                opacity * (0.92f - hover * 0.06f),
-                1.0f,
-                (10.6f + hover * 1.2f) * MENU_SCALE,
-                -9.0f,
-                0.98f,
-                0.84f,
-                0.48f,
-                0.038f * MENU_SCALE,
-                0.0f,
-                0.0f,
-                Renderer2D.BlurQuality.ULTRA,
-                2.75f
+                UiPaint.linear(
+                        withAlpha(HudRenderUtil.mixColor(denseTint, 0xFF111923, 0.50f), Math.round(opacity * 242f)),
+                        withAlpha(HudRenderUtil.mixColor(denseTint, 0xFF05080D, 0.68f), Math.round(opacity * 244f)),
+                        105f,
+                        -4.0f * MENU_SCALE
+                ),
+                UiSurfaceMaterialSpec.SATIN_TITANIUM
+                        .withAccent(accent)
+                        .withParameters(0.22f, 0.48f, 0.62f, hover)
         );
 
         int outerRim = withAlpha(accent, Math.round(opacity * (178f + hover * 52f)));
-        int innerRim = withAlpha(HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.68f),
-                Math.round(opacity * (184f + hover * 40f)));
-        Renderer2D.COLOR.primitiveStroke(top, UiPaint.solid(outerRim), UiStroke.of(3.15f * MENU_SCALE));
-        Renderer2D.COLOR.primitiveStroke(top, UiPaint.solid(innerRim), UiStroke.of(0.82f * MENU_SCALE));
+        Renderer2D.COLOR.primitiveStroke(top, UiPaint.solid(outerRim), UiStroke.of(1.35f * MENU_SCALE));
 
         int iconColor = withAlpha(0xFFFFFFFF, Math.round(opacity * 252f));
         int iconShadow = withAlpha(0xFF020408, Math.round(opacity * 150f));

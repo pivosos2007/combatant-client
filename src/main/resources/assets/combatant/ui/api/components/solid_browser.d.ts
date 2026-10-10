@@ -245,6 +245,15 @@ export type SolidBrowserProps = SolidStyled & {
   glassTint?: string;
   glassAlpha?: number;
   glassPreset?: string;
+  glassOptics?: "reactive-refraction" | "fresnel-glass" | string;
+  glassRefraction?: number;
+  glassBevelWidth?: number;
+  glassBevelDepth?: number;
+  glassInteraction?: boolean;
+  glassInteractionStrength?: number;
+  glassInteractionRadius?: number;
+  glassInteractionViscosity?: number;
+  glassCleanReveal?: number;
   glassRounding?: number;
   glassInnerGlow?: number;
   glassInnerGlowSize?: number;

@@ -21,6 +21,7 @@ import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.combat.protocol.CombatProtocolHeuristicSource;
 import combatant.client.util.combat.protocol.CombatProtocolHeuristicsConfig;
 import combatant.client.util.text.ClipboardUtil;
+import combatant.client.util.text.GuiTextCaret;
 import combatant.client.util.text.TextSelection;
 import org.lwjgl.glfw.GLFW;
 
@@ -509,8 +510,7 @@ public final class CombatProtocolHeuristicsEditorState {
                 String line = lines[Math.max(0, Math.min(caretLine, lines.length - 1))];
                 float caretX = viewX + ClickGuiRenderer.textWidth(font, line.substring(0, Math.min(caretCol, line.length())), FONT_SIZE);
                 float caretY = viewY + caretLine * LINE_H;
-                ClickGuiRenderer.drawRoundedRect(caretX, caretY, 0.65f * SCALE, LINE_H,
-                        0.3f * SCALE, theme.accent());
+                GuiTextCaret.draw(caretX, caretY + 0.2f * SCALE, font, FONT_SIZE, theme.accent());
             }
             if (clipped) ScissorFunction.pop();
         }

@@ -8,22 +8,27 @@
 package combatant.client.render.engine.rig.shader;
 
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.buffers.Std140Builder;
-import com.mojang.blaze3d.buffers.Std140SizeCalculator;
 import combatant.client.render.engine.core.CombatantRenderSystem;
-import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;
+import combatant.client.render.engine.uniform.ShaderUniformBindings;
 import combatant.client.render.engine.rig.core.RigInstance;
 import org.joml.Matrix4f;
 
 /** std140 writer for the fixed-size rig skin-matrix palette. */
 public final class RigBonesUniforms {
-    public static final String BLOCK_NAME = "RigBones";
-    public static final int SIZE = calculateSize();
+    private static final ShaderUniformBindings.Block BLOCK = ShaderUniformBindings.block("RigBones");
+    public static final String BLOCK_NAME = BLOCK.name();
+    public static final int SIZE = BLOCK.size();
 
     private static final String STREAM_NAME = "Combatant - RigBones UBO";
     private static final int EXPECTED_WRITES_PER_FRAME = 32;
     private static final Matrix4f IDENTITY = new Matrix4f();
-    private static final Data DATA = new Data();
+    private static final ShaderUniformBindings.Writer DATA = BLOCK.writer();
+
+    static {
+        if (BLOCK.member("u_SkinMatrices").count() != RigShaderLimits.MAX_BONES) {
+            throw new IllegalStateException("Rig shader/CPU bone capacity mismatch");
+        }
+    }
 
     private RigBonesUniforms() {
     }
@@ -35,30 +40,13 @@ public final class RigBonesUniforms {
             throw new IllegalArgumentException("Rig has " + boneCount + " bones, shader capacity is " + RigShaderLimits.MAX_BONES);
         }
         instance.solve();
-        DATA.instance = instance;
-        DATA.boneCount = boneCount;
+        for (int i = 0; i < boneCount; i++) {
+            DATA.mat4("u_SkinMatrices", i, instance.skinMatrixRef(i));
+        }
+        for (int i = boneCount; i < BLOCK.member("u_SkinMatrices").count(); i++) {
+            DATA.mat4("u_SkinMatrices", i, IDENTITY);
+        }
         return CombatantRenderSystem.uniforms().write(STREAM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
     }
 
-    private static int calculateSize() {
-        Std140SizeCalculator size = new Std140SizeCalculator();
-        for (int i = 0; i < RigShaderLimits.MAX_BONES; i++) size.putMat4f();
-        return size.get();
-    }
-
-    private static final class Data implements CombatantUniformAllocator.UniformWriter {
-        private RigInstance instance;
-        private int boneCount;
-
-        @Override
-        public void write(java.nio.ByteBuffer buffer) {
-            Std140Builder out = Std140Builder.intoBuffer(buffer);
-            for (int i = 0; i < boneCount; i++) {
-                out.putMat4f(instance.skinMatrixRef(i));
-            }
-            for (int i = boneCount; i < RigShaderLimits.MAX_BONES; i++) {
-                out.putMat4f(IDENTITY);
-            }
-        }
-    }
 }

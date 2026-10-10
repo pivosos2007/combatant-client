@@ -16,6 +16,9 @@ import combatant.client.events.Events;
 import combatant.client.events.impl.EventTargetChanged;
 
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import combatant.client.features.module.Module;
 
 
 public enum TargetManager {
@@ -23,6 +26,7 @@ public enum TargetManager {
 
     private static final long DEFAULT_ATTACK_HOLD_MS = 700L;
     private static final EnumMap<Source, TargetState> STATES = new EnumMap<>(Source.class);
+    private static final Map<String, ModuleSnapshot> MODULE_STATES = new LinkedHashMap<>();
     private static LivingEntity current;
     private static Source currentSource;
 
@@ -130,6 +134,33 @@ public enum TargetManager {
         refreshCurrent();
     }
 
+    public static void publish(Module module, LivingEntity target, String phase, boolean actionable, int planned) {
+        if (module == null) return;
+        CombatTargetProvider descriptor = module.getClass().getAnnotation(CombatTargetProvider.class);
+        if (descriptor == null) return;
+        String id = descriptor.value();
+        if (!module.isEnabled() || target == null || !TargetingUtil.isValidCombatTarget(target)) {
+            MODULE_STATES.remove(id);
+        } else {
+            MODULE_STATES.put(id, new ModuleSnapshot(id, target, phase == null ? "idle" : phase,
+                    actionable, Math.max(0, planned), descriptor.priority(), System.currentTimeMillis()));
+        }
+        refreshCurrent();
+    }
+
+    public static void clear(Module module) {
+        if (module == null) return;
+        CombatTargetProvider descriptor = module.getClass().getAnnotation(CombatTargetProvider.class);
+        if (descriptor != null && MODULE_STATES.remove(descriptor.value()) != null) refreshCurrent();
+    }
+
+    public static Map<String, ModuleSnapshot> moduleSnapshots() {
+        return Map.copyOf(MODULE_STATES);
+    }
+
+    public record ModuleSnapshot(String id, LivingEntity target, String phase,
+                                 boolean actionable, int planned, int priority, long updatedAtMs) {}
+
     public static void clear(Source source) {
         if (source == null) return;
         STATES.remove(source);
@@ -137,6 +168,7 @@ public enum TargetManager {
 
     public static void clearAll() {
         STATES.clear();
+        MODULE_STATES.clear();
         if (current != null) {
             LivingEntity prev = current;
             Source prevSource = currentSource;
@@ -167,6 +199,9 @@ public enum TargetManager {
 
     private static void purgeInvalids() {
         long now = System.currentTimeMillis();
+        MODULE_STATES.values().removeIf(snapshot ->
+                !TargetingUtil.isValidCombatTarget(snapshot.target())
+                        || now - snapshot.updatedAtMs() > 350L);
         STATES.entrySet().removeIf(entry -> {
             TargetState state = entry.getValue();
             if (state == null || state.entity == null) return true;
@@ -199,6 +234,11 @@ public enum TargetManager {
                 return new TargetSelection(state.entity, source);
             }
         }
+        ModuleSnapshot module = MODULE_STATES.values().stream()
+                .filter(snapshot -> TargetingUtil.isValidCombatTarget(snapshot.target()))
+                .max(java.util.Comparator.comparingInt(ModuleSnapshot::priority))
+                .orElse(null);
+        if (module != null) return new TargetSelection(module.target(), Source.MODULE_STATE);
         return TargetSelection.EMPTY;
     }
 
@@ -211,7 +251,8 @@ public enum TargetManager {
         MODULE,
         PREDICTION,
         ATTACK,
-        CROSSHAIR
+        CROSSHAIR,
+        MODULE_STATE
     }
 
     private record TargetState(LivingEntity entity, long lastSeenMs, long holdMs) {

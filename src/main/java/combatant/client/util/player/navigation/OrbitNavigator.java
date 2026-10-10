@@ -6,289 +6,282 @@
 package combatant.client.util.player.navigation;
 
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.List;
-
 /**
- * A fast continuous orbit controller with bounded local path planning as the fallback.
- * Free ground should never depend on successfully finding an A* goal on a block grid.
+ * Short-range reactive steering for TargetStrafe. No world graph, queue, pathfinder,
+ * background work or deferred commands: either this tick's direction is safe or
+ * the caller leaves the player's movement alone.
  */
 public final class OrbitNavigator {
-    private static final int REPLAN_INTERVAL = 5;
-    private static final int SEARCH_RANGE = 13;
-    private static final int SEARCH_BUDGET = 450;
-    private static final double WAYPOINT_RADIUS = 0.43;
+    private static final double[] AVOID_ANGLES = {40, -40, 80, -80, 120, -120};
+    private static final double MAX_AIR_RISE = 1.65;
+    private static final double MIN_AIR_FALL = -0.40;
 
-    private List<LocalWalkPathfinder.Node> path = List.of();
-    private int waypoint;
-    private int lastPlanTick = -1000;
-    private int ticks;
-    private int stuckTicks;
-    private Vec3 previousPlayerPosition;
-    private double steeringDistance;
-    private Vec3 continuousDirection;
-    private Vec3 lastGroundOrbitDirection;
-    private double lastGroundOrbitY;
     private LivingEntity trackedTarget;
-    private Vec3 plannedTarget = Vec3.ZERO;
-    private int plannedDirection;
-    private double plannedRadius;
-    private boolean plannedFront;
-    private boolean plannedCube;
-    private boolean plannedCenter;
-    private boolean plannedJump;
-    private float plannedTargetYaw;
+    private Vec3 direction;
+    private Vec3 previousPosition;
+    private Vec3 previousDirection;
+    private double takeoffY;
+    private int cubeCorner = -1;
+    private int oldDirection = 1;
+    private int stuckTicks;
+    private int detourTicks;
+    private int detourSide = 1;
+    private int currentExposure;
+    private boolean needsJump;
+    private boolean commandedLastTick;
+    private int tick;
+    private int yieldUntil;
 
-    public void reset() {
-        path = List.of();
-        waypoint = 0;
-        lastPlanTick = -1000;
-        stuckTicks = 0;
-        previousPlayerPosition = null;
-        steeringDistance = 0.0;
-        continuousDirection = null;
-        lastGroundOrbitDirection = null;
-        trackedTarget = null;
+    private record Probe(boolean safe, boolean jump, int exposure) {
+        private static final Probe UNSAFE = new Probe(false, false, Integer.MAX_VALUE);
     }
 
-    public void update(LocalPlayer player, LivingEntity target, double radius, int direction,
-                       boolean front, boolean cube, boolean center, boolean allowJump) {
-        ticks++;
-        if (player == null || target == null || !target.isAlive()) {
-            reset();
+    public void reset() {
+        trackedTarget = null;
+        direction = null;
+        previousPosition = null;
+        previousDirection = null;
+        cubeCorner = -1;
+        oldDirection = 1;
+        stuckTicks = 0;
+        detourTicks = 0;
+        currentExposure = 0;
+        needsJump = false;
+        commandedLastTick = false;
+        tick = 0;
+        yieldUntil = 0;
+    }
+
+    public void update(LocalPlayer player, LivingEntity target, double radius, int orbitalDirection,
+                       boolean front, boolean cube, boolean center, boolean autoJump, double stride) {
+        direction = null;
+        needsJump = false;
+        if (player == null || target == null || !target.isAlive()
+                || player.isPassenger() || player.isFallFlying() || player.isInWater()) {
+            commandedLastTick = false;
             return;
         }
         if (trackedTarget != target) {
             reset();
             trackedTarget = target;
         }
-        Vec3 goalPosition = target.position();
-        double minimumRadius = target.getBbWidth() * 0.5 + player.getBbWidth() * 0.5 + 0.18;
-        double effectiveRadius = center ? Math.max(0.95, minimumRadius) : Math.max(radius, minimumRadius);
-        boolean changed = direction != plannedDirection || Math.abs(plannedRadius - effectiveRadius) > 0.05
-                || front != plannedFront || cube != plannedCube || center != plannedCenter || allowJump != plannedJump;
-        boolean moved = goalPosition.distanceToSqr(plannedTarget) > 0.55 * 0.55;
-        plannedTarget = goalPosition;
-        plannedDirection = direction;
-        plannedRadius = effectiveRadius;
-        plannedFront = front;
-        plannedCube = cube;
-        plannedCenter = center;
-        plannedJump = allowJump;
-        plannedTargetYaw = target.getYRot();
-
-        trackMotion(player);
-        continuousDirection = null;
-        if (HazardAvoidance.exposure(player.level(), player.getBoundingBox()) > 0) {
-            // A player already inside a web/fire must be able to EXIT it; the normal
-            // pathfinder intentionally rejects all hazard-containing standing nodes.
-            continuousDirection = escapeHazard(player);
-        } else if (!player.horizontalCollision || stuckTicks < 4) {
-            continuousDirection = directOrbit(player);
-            if (continuousDirection != null && player.onGround()) {
-                lastGroundOrbitY = player.getY();
-                lastGroundOrbitDirection = continuousDirection;
-            }
+        tick++;
+        if (oldDirection != orbitalDirection) {
+            cubeCorner = -1;
+            oldDirection = orbitalDirection;
+            detourTicks = 0;
         }
-        if (continuousDirection != null) {
-            steeringDistance = 1.0;
-            // The fast path is already validated against collisions and edges.
-            // Do not require a discretized goal to exist before orbiting.
-            path = List.of();
-            waypoint = 0;
+        if (player.onGround()) takeoffY = player.getY();
+        else if (player.getY() > takeoffY + MAX_AIR_RISE || player.getY() < takeoffY + MIN_AIR_FALL) {
+            commandedLastTick = false;
             return;
         }
-        if (!player.onGround() && !changed && waypoint < path.size()) return;
-        advance(player);
-        boolean finished = waypoint >= path.size();
-        if (!finished && !changed && !moved && stuckTicks < 8) return;
-        if (!changed && ticks - lastPlanTick < REPLAN_INTERVAL) return;
-        lastPlanTick = ticks;
-        path = List.of();
-        waypoint = 0;
 
-        double angle = Math.atan2(player.getZ() - goalPosition.z, player.getX() - goalPosition.x);
-        double desired = front
-                ? Math.atan2(Math.cos(Math.toRadians(target.getYRot())),
-                        -Math.sin(Math.toRadians(target.getYRot()))) + direction * 0.35
-                : angle + direction * 0.90;
-        if (cube) desired = Math.round(desired / (Math.PI * 0.5)) * (Math.PI * 0.5);
-        LocalWalkPathfinder.Goal goal = new LocalWalkPathfinder.Goal(
-                goalPosition.x, goalPosition.y, goalPosition.z, effectiveRadius, desired, direction, !center);
-        LocalWalkPathfinder.Node start = new LocalWalkPathfinder.Node(
-                (int) Math.floor(player.getX()), (int) Math.floor(player.getY() + 0.05),
-                (int) Math.floor(player.getZ()));
-        path = LocalWalkPathfinder.search(start, goal, new MinecraftWalkTerrain(player),
-                SEARCH_RANGE, SEARCH_BUDGET, allowJump);
-        waypoint = path.size() > 1 ? 1 : path.size();
-        advance(player);
-    }
-
-    private void trackMotion(LocalPlayer player) {
-        if (previousPlayerPosition != null && player.onGround()) {
-            double dx = player.getX() - previousPlayerPosition.x;
-            double dz = player.getZ() - previousPlayerPosition.z;
+        if (previousPosition != null && commandedLastTick && player.onGround()) {
+            double dx = player.getX() - previousPosition.x;
+            double dz = player.getZ() - previousPosition.z;
             stuckTicks = dx * dx + dz * dz < 0.018 * 0.018 ? stuckTicks + 1 : 0;
-        } else if (!player.onGround()) {
+        } else if (!player.onGround() || !commandedLastTick) {
             stuckTicks = 0;
         }
-        previousPlayerPosition = player.position();
+        previousPosition = player.position();
+        commandedLastTick = false;
+        if (stuckTicks >= 5) {
+            stuckTicks = 0;
+            detourSide = -detourSide;
+            detourTicks = 12;
+            // A repeatedly stuck controller must never monopolize the player.
+            if (yieldUntil > 0 && tick - yieldUntil < 30) yieldUntil = tick + 10;
+            else yieldUntil = tick - 1;
+        }
+        if (tick <= yieldUntil) return;
+
+        double minRadius = (target.getBbWidth() + player.getBbWidth()) * 0.5 + 0.18;
+        double r = center ? 0 : Math.max(radius, minRadius);
+        Vec3 desired = desiredDirection(player, target, r, orbitalDirection, front, cube, center);
+        if (desired == null) return;
+
+        Level level = player.level();
+        int startingHazard = HazardAvoidance.exposure(level, player.getBoundingBox());
+        currentExposure = startingHazard;
+        double distance = Math.max(0.32, Math.min(1.0, stride));
+        Probe straight = probe(player, desired, distance, startingHazard, autoJump);
+        // In open space do not even evaluate alternative headings. In a web,
+        // prefer the direction that actually decreases exposure instead.
+        if (straight.safe && startingHazard == 0 && detourTicks == 0) {
+            select(desired, straight);
+            return;
+        }
+
+        // After a confirmed stall, deliberately choose a detour rather than
+        // issuing the same mathematically safe but physically ineffective step.
+        Vec3 best = straight.safe && detourTicks == 0 ? desired : null;
+        Probe bestProbe = straight;
+        double bestScore = best != null ? score(desired, desired, straight, startingHazard) : -Double.MAX_VALUE;
+        int side = detourTicks > 0 ? detourSide : orbitalDirection;
+        // Max six additional candidates, and only when the usual orbit is
+        // blocked, stuck in a hazard, or a recent detour is being maintained.
+        for (int i = 0; i < AVOID_ANGLES.length; i++) {
+            double offset = AVOID_ANGLES[i] * side;
+            Vec3 candidate = rotate(desired, Math.toRadians(offset));
+            Probe p = probe(player, candidate, distance, startingHazard, autoJump);
+            if (!p.safe) continue;
+            double s = score(desired, candidate, p, startingHazard);
+            if (detourTicks > 0) s += Math.signum(offset) * 0.25;
+            if (previousDirection != null) s += 0.35 * candidate.dot(previousDirection);
+            if (s > bestScore) {
+                bestScore = s;
+                best = candidate;
+                bestProbe = p;
+            }
+        }
+        if (best == null) {
+            // No safe local move. No invented path, no zeroing momentum or WASD.
+            detourTicks = 0;
+            return;
+        }
+        if (detourTicks > 0) detourTicks--;
+        else if (best != desired) {
+            detourSide = side;
+            detourTicks = 6;
+        }
+        select(best, bestProbe);
     }
 
-    private void advance(LocalPlayer player) {
-        while (waypoint < path.size()) {
-            LocalWalkPathfinder.Node next = path.get(waypoint);
-            double distance = Math.hypot(next.centerX() - player.getX(), next.centerZ() - player.getZ());
-            if (distance >= WAYPOINT_RADIUS || Math.abs(player.getY() - next.y()) > 0.85) break;
-            waypoint++;
+    private void select(Vec3 heading, Probe probe) {
+        direction = heading;
+        previousDirection = heading;
+        needsJump = probe.jump;
+        commandedLastTick = true;
+    }
+
+    private Vec3 desiredDirection(LocalPlayer player, LivingEntity target, double radius,
+                                  int side, boolean front, boolean cube, boolean center) {
+        Vec3 current = player.position();
+        Vec3 goal = target.position();
+        double dx = current.x - goal.x;
+        double dz = current.z - goal.z;
+        double dist = Math.hypot(dx, dz);
+        if (dist < 0.01) { dx = 1; dz = 0; dist = 1; }
+        double x;
+        double z;
+        if (front) {
+            double yaw = Math.toRadians(target.getYRot());
+            double angle = Math.atan2(Math.cos(yaw), -Math.sin(yaw))
+                    + (center && side < 0 ? Math.PI : center ? 0 : side * 0.35);
+            x = goal.x + Math.cos(angle) * Math.max(radius, 0.8) - current.x;
+            z = goal.z + Math.sin(angle) * Math.max(radius, 0.8) - current.z;
+        } else if (center) {
+            x = -dx;
+            z = -dz;
+        } else if (cube) {
+            if (cubeCorner < 0) {
+                double a = Math.atan2(dz, dx);
+                double slot = (a - Math.PI / 4) / (Math.PI / 2);
+                cubeCorner = Math.floorMod(side > 0 ? (int) Math.floor(slot) + 1 : (int) Math.ceil(slot) - 1, 4);
+            }
+            double angle = Math.PI / 4 + cubeCorner * Math.PI / 2;
+            double cornerRadius = radius * Math.sqrt(2.0);
+            double gx = goal.x + Math.cos(angle) * cornerRadius;
+            double gz = goal.z + Math.sin(angle) * cornerRadius;
+            if (Math.hypot(current.x - gx, current.z - gz) < 0.60) {
+                cubeCorner = Math.floorMod(cubeCorner + side, 4);
+                angle = Math.PI / 4 + cubeCorner * Math.PI / 2;
+                gx = goal.x + Math.cos(angle) * cornerRadius;
+                gz = goal.z + Math.sin(angle) * cornerRadius;
+            }
+            x = gx - current.x;
+            z = gz - current.z;
+        } else {
+            // Tangential orbit plus a small radial component for target approach.
+            double radial = Math.max(-1.4, Math.min(1.4, (radius - dist) * 1.25));
+            double tangent = dist > radius + 3 ? 0.30 : 1.0;
+            x = -dz / dist * side * tangent + dx / dist * radial;
+            z = dx / dist * side * tangent + dz / dist * radial;
         }
+        double length = Math.hypot(x, z);
+        return length > 0.08 ? new Vec3(x / length, 0, z / length) : null;
+    }
+
+    private static Vec3 rotate(Vec3 v, double angle) {
+        double cos = Math.cos(angle), sin = Math.sin(angle);
+        return new Vec3(v.x * cos - v.z * sin, 0, v.x * sin + v.z * cos);
+    }
+
+    private static double score(Vec3 intended, Vec3 candidate, Probe p, int startingHazard) {
+        return intended.dot(candidate) * 3.0
+                - (p.jump ? 0.65 : 0)
+                - (startingHazard > 0 ? p.exposure * 4.0 : 0);
+    }
+
+    private Probe probe(LocalPlayer player, Vec3 heading, double stride, int startHazard, boolean allowJump) {
+        Level level = player.level();
+        AABB box = player.getBoundingBox();
+        // The first point catches thin obstacles; the second verifies the
+        // actual velocity step. Capped at three samples regardless of speed.
+        int samples = stride > 0.68 ? 3 : 2;
+        boolean requiresJump = false;
+        int endExposure = startHazard;
+        for (int i = 1; i <= samples; i++) {
+            double t = stride * i / samples;
+            AABB moved = box.move(heading.x * t, 0, heading.z * t);
+            if (!loaded(level, moved)) return Probe.UNSAFE;
+            // Always test ground-level hazards even when contemplating a jump.
+            int exposure = HazardAvoidance.exposure(level, moved);
+            if ((startHazard == 0 && exposure > 0) || exposure > startHazard) return Probe.UNSAFE;
+            endExposure = exposure;
+
+            boolean clear = level.noCollision(player, moved);
+            boolean supported = hasSupport(player, moved, player.onGround() ? player.getY() : takeoffY);
+            if (!clear || !supported) {
+                if (!allowJump || !player.onGround() || exposure > 0) return Probe.UNSAFE;
+                // A single-block step is optional. No gap-jumping or forcing a
+                // route into void; the raised position must have real support.
+                AABB raised = moved.move(0, 1.0, 0);
+                if (!level.noCollision(player, raised)
+                        || !level.noCollision(player, box.move(0, 1.0, 0))
+                        || !hasSupport(player, raised, player.getY() + 1.0)) return Probe.UNSAFE;
+                requiresJump = true;
+            }
+        }
+        return new Probe(true, requiresJump, endExposure);
+    }
+
+    private static boolean hasSupport(LocalPlayer player, AABB box, double feetY) {
+        double x = (box.minX + box.maxX) * 0.5;
+        double z = (box.minZ + box.maxZ) * 0.5;
+        AABB feet = new AABB(x - 0.18, feetY - 0.15, z - 0.18,
+                             x + 0.18, feetY - 0.012, z + 0.18);
+        return !player.level().noCollision(player, feet);
+    }
+
+    private static boolean loaded(Level level, AABB box) {
+        int y = (int) Math.floor(box.minY);
+        return level.hasChunkAt(BlockPos.containing(box.minX, y, box.minZ))
+                && level.hasChunkAt(BlockPos.containing(box.maxX, y, box.maxZ))
+                && level.hasChunkAt(BlockPos.containing(box.minX, y, box.maxZ))
+                && level.hasChunkAt(BlockPos.containing(box.maxX, y, box.minZ));
     }
 
     public Vec3 direction(LocalPlayer player) {
-        if (continuousDirection != null) return continuousDirection;
-        steeringDistance = 0.0;
-        if (player == null || waypoint >= path.size()) return null;
-        LocalWalkPathfinder.Node node = path.get(waypoint);
-        double dx = node.centerX() - player.getX();
-        double dz = node.centerZ() - player.getZ();
-        steeringDistance = Math.hypot(dx, dz);
-        return steeringDistance < 0.05 ? null : new Vec3(dx / steeringDistance, 0.0, dz / steeringDistance);
+        return player == null ? null : direction;
     }
 
-    private Vec3 directOrbit(LocalPlayer player) {
-        boolean airborneOrbit = !player.onGround() && lastGroundOrbitDirection != null
-                && player.getY() >= lastGroundOrbitY - 0.25
-                && player.getY() <= lastGroundOrbitY + 1.45;
-        if (!player.onGround() && !airborneOrbit) return null;
-        double dx = player.getX() - plannedTarget.x;
-        double dz = player.getZ() - plannedTarget.z;
-        double distance = Math.hypot(dx, dz);
-        if (distance < 0.01) distance = 0.01;
-        double ux = dx / distance;
-        double uz = dz / distance;
-        Vec3 desired;
-        if (plannedCube || plannedFront || plannedCenter) {
-            double goalX;
-            double goalZ;
-            if (plannedFront) {
-                double front = Math.toRadians(plannedTargetYaw);
-                double angle = Math.atan2(Math.cos(front), -Math.sin(front))
-                        + (plannedCenter ? 0.0 : plannedDirection * 0.35);
-                goalX = plannedTarget.x + Math.cos(angle) * plannedRadius;
-                goalZ = plannedTarget.z + Math.sin(angle) * plannedRadius;
-            } else if (plannedCenter) {
-                goalX = plannedTarget.x;
-                goalZ = plannedTarget.z;
-            } else {
-                double angle = Math.atan2(dz, dx);
-                double quarter = Math.PI * 0.5;
-                double sector = (angle - Math.PI * 0.25) / quarter;
-                int next = plannedDirection > 0
-                        ? (int) Math.floor(sector) + 1
-                        : (int) Math.ceil(sector) - 1;
-                double corner = Math.PI * 0.25 + next * quarter;
-                goalX = plannedTarget.x + Math.copySign(plannedRadius, Math.cos(corner));
-                goalZ = plannedTarget.z + Math.copySign(plannedRadius, Math.sin(corner));
-            }
-            double towardX = goalX - player.getX();
-            double towardZ = goalZ - player.getZ();
-            double length = Math.hypot(towardX, towardZ);
-            if (length < 0.18) return null;
-            desired = new Vec3(towardX / length, 0.0, towardZ / length);
-        } else {
-            // Constant tangential velocity with proportional radial correction.
-            // If farther than the desired ring, converge before resuming the orbit.
-            double radial = Math.max(-1.5, Math.min(1.5,
-                    (plannedRadius - distance) * 1.20));
-            double tangential = distance > plannedRadius + 3.0 ? 0.30 : 1.0;
-            desired = new Vec3(-uz * plannedDirection * tangential + ux * radial, 0.0,
-                    ux * plannedDirection * tangential + uz * radial).normalize();
-        }
-        MinecraftWalkTerrain terrain = new MinecraftWalkTerrain(player);
-        // Look ahead by one to two ticks, not all the way to a grid waypoint.
-        // Longer probes stopped an otherwise valid orbit around a nearby corner.
-        if (!safeMotion(terrain, player, desired.scale(0.60), true)) return null;
-        if (airborneOrbit) {
-            // During a bunny hop, check future LANDING support at the takeoff
-            // height as well as collision clearance at the current flight height.
-            for (double d = 0.15; d <= 0.60; d += 0.15) {
-                if (!terrain.safeMotionPose(player.getX() + desired.x * d,
-                        lastGroundOrbitY, player.getZ() + desired.z * d, true)) return null;
-            }
-        }
-        return desired;
-    }
-
-    private Vec3 escapeHazard(LocalPlayer player) {
-        MinecraftWalkTerrain terrain = new MinecraftWalkTerrain(player);
-        double bestScore = Double.NEGATIVE_INFINITY;
-        Vec3 best = null;
-        double towardX = player.getX() - plannedTarget.x;
-        double towardZ = player.getZ() - plannedTarget.z;
-        double len = Math.hypot(towardX, towardZ);
-        double preferredX = len > 0.01 ? -towardZ / len * plannedDirection : 1.0;
-        double preferredZ = len > 0.01 ? towardX / len * plannedDirection : 0.0;
-        int initial = HazardAvoidance.exposure(player.level(), player.getBoundingBox());
-        for (int i = 0; i < 16; i++) {
-            double angle = i * (Math.PI * 2.0 / 16.0);
-            Vec3 heading = new Vec3(Math.cos(angle), 0.0, Math.sin(angle));
-            if (!safeMotion(terrain, player, heading.scale(0.30), true)) continue;
-            // Prefer headings that leave the hazardous region, not simply directions
-            // toward the target (which can be behind a cobweb or lava).
-            double exposure = 0;
-            boolean canExit = true;
-            for (double d : new double[]{0.40, 0.80, 1.20}) {
-                if (!safeMotion(terrain, player, heading.scale(d), true)) {
-                    canExit = false;
-                    break;
-                }
-                exposure += HazardAvoidance.exposure(player.level(), player.getBoundingBox()
-                        .move(heading.x * d, 0.0, heading.z * d));
-            }
-            if (!canExit) continue;
-            double score = (initial * 3.0 - exposure) * 4.0
-                    + heading.x * preferredX + heading.z * preferredZ;
-            if (score > bestScore) {
-                bestScore = score;
-                best = heading;
-            }
-        }
-        return best;
-    }
-
-    public double waypointDistance(LocalPlayer player) {
-        return steeringDistance;
-    }
+    public boolean isTrapped() { return currentExposure > 0; }
 
     public boolean needsJump(LocalPlayer player) {
-        return player != null && continuousDirection == null && waypoint < path.size()
-                && path.get(waypoint).y() > player.getY() + 0.55;
-    }
-
-    public void invalidate() {
-        path = List.of();
-        waypoint = 0;
-        steeringDistance = 0.0;
-        continuousDirection = null;
-        lastPlanTick = -1000;
+        return player != null && needsJump && player.onGround();
     }
 
     public boolean safeMotion(LocalPlayer player, Vec3 velocity) {
-        return player != null && safeMotion(new MinecraftWalkTerrain(player), player, velocity, false);
-    }
-
-    private boolean safeMotion(MinecraftWalkTerrain terrain, LocalPlayer player, Vec3 velocity, boolean direct) {
-        int samples = Math.max(2, (int) Math.ceil(velocity.horizontalDistance() / 0.12));
-        // The jump happens during the tick; do not try to cross a solid rise at
-        // ground-level before the upward velocity has taken effect.
-        if (!direct && needsJump(player) && player.onGround()) return false;
-        for (int i = 1; i <= samples; i++) {
-            double t = (double) i / samples;
-            if (!terrain.safeMotionPose(player.getX() + velocity.x * t,
-                    player.getY(), player.getZ() + velocity.z * t, player.onGround())) return false;
-        }
-        return true;
+        if (player == null || velocity.horizontalDistanceSqr() < 1.0e-8) return false;
+        return probe(player, velocity.normalize(), Math.min(1.0, velocity.horizontalDistance()),
+                currentExposure, true).safe;
     }
 }

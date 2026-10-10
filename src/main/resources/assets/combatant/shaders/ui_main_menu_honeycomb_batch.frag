@@ -15,6 +15,7 @@ in vec4 v_Params2;
 in vec4 v_Params3;
 in vec4 v_Params4;
 in vec4 v_Params5;
+in vec4 v_Params6;
 
 out vec4 fragColor;
 uniform sampler2D u_Texture;     // clean menu background
@@ -29,8 +30,6 @@ const float SQRT3 = 1.73205080757;
 const float INV_SQRT3 = 0.57735026919;
 const float COS30 = 0.86602540378;
 
-// Blur opacity stays near one. Visual hierarchy is controlled by blur radius,
-// not by making the glass transparent: background < honeycomb < primary buttons.
 const float HONEYCOMB_BLUR_ALPHA = 0.985;
 const float STRUCTURE_RECOVERY = 0.035;
 
@@ -41,6 +40,14 @@ vec2 warpedLocal(vec4 local) {
 
 float saturate(float value) {
     return clamp(value, 0.0, 1.0);
+}
+
+float luminance(vec3 color) {
+    return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+float cellNoise(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
 
 vec2 safeNormalize(vec2 value, vec2 fallback) {
@@ -145,29 +152,79 @@ void main() {
     vec3 blurredScene = texture(u_BlurTexture, refractedUv).rgb;
     vec3 cleanScene = texture(u_Texture, refractedUv).rgb;
 
-    // Recover a controlled amount of high-frequency structure from the source.
-    // This restores mountain/tree/cloud contours without turning the body sharp again.
+    int materialMode = int(floor(v_Params6.x + 0.5));
+    if (materialMode == 2) {
+        vec3 detail = cleanScene - blurredScene;
+        float recovery = STRUCTURE_RECOVERY + edge * 0.010 + cursor * edge * 0.008;
+        vec3 body = clamp(blurredScene + detail * recovery, 0.0, 1.0);
+        vec3 tint = clamp(v_Color.rgb, 0.0, 1.0);
+        body = mix(body, tint, 0.012);
+        vec3 coolRim = mix(tint, vec3(0.96, 0.985, 1.0), 0.82);
+        vec3 warmRim = mix(v_Params3.rgb, vec3(1.0, 0.92, 0.60), 0.15);
+        vec3 rimColor = mix(coolRim, warmRim, cursor * saturate(v_Params3.a));
+        float rimAmount = saturate(wire * (0.16 + cursor * 0.34));
+        vec3 material = mix(body, rimColor, rimAmount);
+        float blurAlpha = HONEYCOMB_BLUR_ALPHA * inside * opacity;
+        float rimAlpha = wire * opacity * (0.10 + cursor * 0.18);
+        float alpha = blurAlpha + rimAlpha * (1.0 - blurAlpha);
+        if (alpha <= 0.001) discard;
+        vec3 composed = (material * blurAlpha
+                + rimColor * rimAlpha * (1.0 - blurAlpha)) / max(alpha, 1e-5);
+        fragColor = vec4(clamp(composed, 0.0, 1.0), alpha);
+        return;
+    }
+
     vec3 detail = cleanScene - blurredScene;
-    float recovery = STRUCTURE_RECOVERY + edge * 0.010 + cursor * edge * 0.008;
-    vec3 body = clamp(blurredScene + detail * recovery, 0.0, 1.0);
+    float blurMix = saturate(v_Params6.y);
+    float sceneDetail = saturate(v_Params6.z);
+    float highlightCompression = saturate(v_Params2.w);
+    float tintAbsorption = saturate(v_Params6.w);
+    vec3 body = mix(cleanScene, blurredScene, blurMix) + detail * sceneDetail;
 
     vec3 tint = clamp(v_Color.rgb, 0.0, 1.0);
-    body = mix(body, tint, 0.012);
+    float ceramic = materialMode == 1 ? 1.0 : 0.0;
+    body = mix(body, tint * mix(0.34, 0.62, ceramic), tintAbsorption);
 
-    vec3 coolRim = mix(tint, vec3(0.96, 0.985, 1.0), 0.82);
-    vec3 warmRim = mix(v_Params3.rgb, vec3(1.0, 0.92, 0.60), 0.15);
-    vec3 rimColor = mix(coolRim, warmRim, cursor * saturate(v_Params3.a));
+    vec2 lightDirection = safeNormalize(vec2(-0.42, -0.90)
+            + safeNormalize(-cursorVector, vec2(0.0)) * cursor * 0.38, vec2(0.0, -1.0));
+    float bevelLight = dot(sdfNormal, lightDirection) * 0.5 + 0.5;
+    // An inset machined cell is a surface, not a thin outline on top of PNG.
+    // Keep the original scene detail but make the SDF bevel/AO and grain visible
+    // even when the backdrop contains high-frequency photographic detail.
+    float insideDistance = max(-d, 0.0);
+    float bevelBand = 1.0 - smoothstep(0.0, edgeWidth * 1.65, insideDistance);
+    float cavityShade = 1.0 - smoothstep(0.0, edgeWidth * 3.5, insideDistance);
+    float signedLight = dot(sdfNormal, lightDirection);
+    float bevelIllumination = bevelBand * signedLight * mix(0.085, 0.055, ceramic);
+    body *= 1.0 - cavityShade * mix(0.14, 0.075, ceramic) + bevelIllumination;
 
-    // Keep the exact lattice line thin. Cursor makes it brighter, not thicker.
-    float rimAmount = saturate(wire * (0.16 + cursor * 0.34));
+    float cellSeed = cellNoise(cellCenter * 0.031 + vec2(5.19, 9.77));
+    float grain = cellNoise(floor((local + cellCenter * 0.17) * mix(0.46, 0.31, ceramic))) - 0.5;
+    float grainAttenuation = 1.0 - smoothstep(1.5, 3.5, fwidth(local.x) + fwidth(local.y));
+    float scratchPhase = local.x * 0.78 + local.y * 0.22 + cellSeed * 6.28318;
+    float scratchFilter = 1.0 - smoothstep(0.55, 1.25, fwidth(scratchPhase));
+    float satinFiber = sin(scratchPhase) * scratchFilter;
+    body *= 1.0 + (cellSeed - 0.5) * mix(0.040, 0.020, ceramic);
+    body += grain * grainAttenuation * mix(0.043, 0.016, ceramic)
+            + satinFiber * mix(0.011, 0.0, ceramic);
+
+    vec3 rimColor = mix(tint, v_Params3.rgb, cursor * saturate(v_Params3.a));
+    float sourceLuma = luminance(cleanScene);
+    float rimLimit = mix(0.78, 0.56, highlightCompression) + sourceLuma * 0.12;
+    rimColor *= min(1.0, rimLimit / max(luminance(rimColor), 0.0001));
+
+    float rimAmount = saturate(wire * (0.06 + cursor * 0.18));
     vec3 material = mix(body, rimColor, rimAmount);
+    float peakLimit = mix(0.97, 0.83, highlightCompression);
+    float materialLuma = luminance(material);
+    material *= min(1.0, peakLimit / max(materialLuma, 0.0001));
 
-    float blurAlpha = HONEYCOMB_BLUR_ALPHA * inside * opacity;
-    float rimAlpha = wire * opacity * (0.10 + cursor * 0.18);
-    float alpha = blurAlpha + rimAlpha * (1.0 - blurAlpha);
+    float bodyAlpha = inside * opacity * mix(0.82, 0.94, ceramic);
+    float rimAlpha = wire * opacity * (0.04 + cursor * 0.10);
+    float alpha = bodyAlpha + rimAlpha * (1.0 - bodyAlpha);
     if (alpha <= 0.001) discard;
 
-    vec3 composed = (material * blurAlpha
-            + rimColor * rimAlpha * (1.0 - blurAlpha)) / max(alpha, 1e-5);
+    vec3 composed = (material * bodyAlpha
+            + rimColor * rimAlpha * (1.0 - bodyAlpha)) / max(alpha, 1e-5);
     fragColor = vec4(clamp(composed, 0.0, 1.0), alpha);
 }

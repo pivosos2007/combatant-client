@@ -10,6 +10,7 @@ package combatant.client.render.engine.renderer.ui;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import combatant.client.render.engine.core.CombatantRenderSystem;
@@ -35,11 +36,10 @@ import combatant.client.render.engine.text.GlyphFont;
 import combatant.client.render.engine.text.TextRenderSystem;
 import combatant.client.render.engine.text.backend.TextPlacementMode;
 import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.render.engine.uniform.ShaderUniformBindings;
+import combatant.client.render.engine.uniform.impl.UiGlassFrameUniforms;
 import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
-import combatant.client.render.engine.uniform.impl.UIBackdropUniforms;
-import combatant.client.render.engine.uniform.impl.UIBlendUniforms;
-import combatant.client.render.engine.uniform.impl.UIBlurUniforms;
 import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
 import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
@@ -57,6 +57,12 @@ import java.util.List;
 /** Records UI drawing operations in submission order. */
 public final class OrderedUiBatcher {
     private static final OrderedUiBatcher LIQUID_GLASS_PREWARMER = new OrderedUiBatcher();
+    private static final ShaderUniformBindings.Block UI_BLUR_BLOCK = ShaderUniformBindings.block("UIBlur");
+    private static final ShaderUniformBindings.Block UI_BLEND_BLOCK = ShaderUniformBindings.block("UIBlend");
+    private static final ShaderUniformBindings.Block UI_BACKDROP_BLOCK = ShaderUniformBindings.block("UIBackdrop");
+    private static final ShaderUniformBindings.Writer UI_BLUR = UI_BLUR_BLOCK.writer();
+    private static final ShaderUniformBindings.Writer UI_BLEND = UI_BLEND_BLOCK.writer();
+    private static final ShaderUniformBindings.Writer UI_BACKDROP = UI_BACKDROP_BLOCK.writer();
     private static final int PREWARM_BATCHES_PER_TYPE = Math.max(1,
             Integer.getInteger("combatant.render.prewarm.uiBatchesPerType", 4));
     private static final int PREWARM_TEXT_BATCHES = Math.max(1,
@@ -792,14 +798,15 @@ public final class OrderedUiBatcher {
                     }
                     directBuilder.uniform("UIBatch", uiBatch);
                     if (batch.type == UiBatchType.LIQUID_GLASS || batch.type == UiBatchType.LIQUID_GLASS_LIGHT) {
-                        directBuilder.uniform("UIBlend", UIBlendUniforms.write(batch.backdropBlend));
+                        directBuilder.uniform(UI_BLEND_BLOCK.name(), uploadUiBlend(batch.backdropBlend));
+                        directBuilder.uniform(UiGlassFrameUniforms.BLOCK_NAME,
+                                UiGlassFrameUniforms.update(mc, screenW, screenH));
                     }
                     bindAnalyticClip(directBuilder, batch);
                     directBuilder.sampler("u_Texture", sourceView, sourceSampler);
                     directBuilder.sampler("u_BlurTexture", liquidBlurView, liquidBlurSampler);
                     if (useUiUnderlay) {
-                        directBuilder.uniform("UIBackdrop", UIBackdropUniforms.write(
-                                batch.backdropRequest.uiMix()));
+                        directBuilder.uniform(UI_BACKDROP_BLOCK.name(), uploadUiBackdrop(batch.backdropRequest.uiMix()));
                         directBuilder.sampler("u_UiUnderlayTexture",
                                 glassUiUnderlayView, glassUiUnderlaySampler);
                     }
@@ -893,6 +900,10 @@ public final class OrderedUiBatcher {
                         uiBatch = UIBatchUniforms.get();
                     }
                     builder.uniform("UIBatch", uiBatch);
+                }
+                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE) {
+                    builder.uniform(UiGlassFrameUniforms.BLOCK_NAME,
+                            UiGlassFrameUniforms.update(mc, screenW, screenH));
                 }
                 bindAnalyticClip(builder, batch);
                 if (batch.type.usesSampler) {
@@ -1042,6 +1053,10 @@ public final class OrderedUiBatcher {
                         uiBatch = UIBatchUniforms.get();
                     }
                     builder.uniform("UIBatch", uiBatch);
+                }
+                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE) {
+                    builder.uniform(UiGlassFrameUniforms.BLOCK_NAME,
+                            UiGlassFrameUniforms.update(mc, screenW, screenH));
                 }
                 bindAnalyticClip(builder, batch);
                 if (batch.type.usesSampler) {
@@ -1618,14 +1633,19 @@ public final class OrderedUiBatcher {
                 && ScissorFunction.suspendAppliedGpuScissor();
         try {
             MeshRenderer.setProjection(orthoProjection(target.width, target.height));
-            UIBlurUniforms.update(sourceW, sourceH, target.width, target.height,
-                    0f, 0f, passOffset, upPass ? 1.0f : 0.0f, 1.0f, 1.0f, 0xFFFFFF);
+            GpuBufferSlice blurUniform = UI_BLUR
+                    .vec4("uInputResolution", sourceW, sourceH, 0.0f, 0.0f)
+                    .vec4("uSize", target.width, target.height, 0.0f, 0.0f)
+                    .vec4("uLocation", 0.0f, 0.0f, 0.0f, 0.0f)
+                    .vec4("uParams", passOffset, upPass ? 1.0f : 0.0f, 1.0f, 1.0f)
+                    .vec4("uColor1", 1.0f, 1.0f, 1.0f, 1.0f)
+                    .upload(64);
             MeshRenderer.begin()
                     .attachments(target)
                     .clearColor(0x00000000)
                     .pipeline(CombatantRenderPipelines.UI_BLUR)
                     .mesh(compositeMesh)
-                    .uniform("UIBlur", UIBlurUniforms.get())
+                    .uniform(UI_BLUR_BLOCK.name(), blurUniform)
                     .sampler("u_Texture", sourceView, sourceSampler)
                     .end();
             return target.getColorTextureView() != null;
@@ -1637,6 +1657,30 @@ public final class OrderedUiBatcher {
             }
             MeshRenderer.setProjection(previousProjection);
         }
+    }
+
+    private static GpuBufferSlice uploadUiBlend(@Nullable UiBackdropBlendSpec requested) {
+        UiBackdropBlendSpec spec = requested != null ? requested : UiBackdropBlendSpec.NORMAL;
+        int tone0 = spec.tone0Argb();
+        int tone1 = spec.tone1Argb();
+        return UI_BLEND
+                .vec4("uBlendParams", spec.mode().shaderId(), spec.strength(), spec.pivot(), spec.softness())
+                .vec4("uBlendTone0",
+                        ((tone0 >>> 16) & 0xFF) / 255.0f,
+                        ((tone0 >>> 8) & 0xFF) / 255.0f,
+                        (tone0 & 0xFF) / 255.0f,
+                        ((tone0 >>> 24) & 0xFF) / 255.0f)
+                .vec4("uBlendTone1",
+                        ((tone1 >>> 16) & 0xFF) / 255.0f,
+                        ((tone1 >>> 8) & 0xFF) / 255.0f,
+                        (tone1 & 0xFF) / 255.0f,
+                        ((tone1 >>> 24) & 0xFF) / 255.0f)
+                .upload(64);
+    }
+
+    private static GpuBufferSlice uploadUiBackdrop(float uiMix) {
+        float safeUiMix = Float.isFinite(uiMix) ? Math.max(0.0f, Math.min(1.0f, uiMix)) : 0.0f;
+        return UI_BACKDROP.vec4("uUiBackdrop", safeUiMix, 0.0f, 0.0f, 0.0f).upload(32);
     }
 
     private static Matrix4f orthoProjection(float width, float height) {

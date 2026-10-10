@@ -7,6 +7,9 @@
 
 package combatant.client.features.gui.clickgui.sections;
 
+import combatant.client.util.text.SingleLineTextInput;
+import combatant.client.util.text.GuiTextCaret;
+
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
@@ -150,6 +153,7 @@ final class XaeroMapSettingsPanel {
     private float contentAnim = 1.0f;
     private boolean searchFocused;
     private String search = "";
+    private final SingleLineTextInput searchInput = new SingleLineTextInput(64);
     private float x;
     private float y;
     private float width;
@@ -187,7 +191,8 @@ final class XaeroMapSettingsPanel {
     private long saveDeadlineNs;
     private final SearchComponent.Model searchModel = new SearchComponent.Model() {
         @Override public boolean focused() { return searchFocused; }
-        @Override public String text() { return search; }
+        @Override public String text() { return searchInput.text(); }
+        @Override public SingleLineTextInput editor() { return searchInput; }
         @Override public String placeholder() { return tr("gui.combatant.map.browser.search", "Search"); }
         @Override public void setFocused(boolean focused) { searchFocused = focused; }
     };
@@ -661,17 +666,19 @@ final class XaeroMapSettingsPanel {
         }
         if (searchFocused) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                if (!search.isEmpty()) {
-                    search = "";
+                if (!searchInput.text().isEmpty()) {
+                    searchInput.clear();
+                    search = searchInput.text();
                 } else searchFocused = false;
                 resetScroll();
                 return true;
             }
-            if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !search.isEmpty()) {
-                search = search.substring(0, search.length() - 1);
+            if (searchInput.keyPressed(keyCode, modifiers)) {
+                search = searchInput.text();
                 resetScroll();
                 return true;
             }
+            return true;
         } else if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             close();
             return true;
@@ -689,8 +696,9 @@ final class XaeroMapSettingsPanel {
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAP_SETTINGS, MAP_SETTING_SCALE, overlayHost)) {
             if (overlayHost.hasActiveOverlay() && overlayHost.charTyped(chr, modifiers)) return true;
         }
-        if (searchFocused && !Character.isISOControl(chr) && search.length() < 64) {
-            search += chr;
+        if (searchFocused) {
+            searchInput.type(chr);
+            search = searchInput.text();
             resetScroll();
             return true;
         }
@@ -1208,6 +1216,7 @@ final class XaeroMapSettingsPanel {
         // editor controls filtered out, which previously made the pencil look completely dead.
         // Always leave search mode and reveal the selected profile's editor in the MapLink section.
         selectedCategory = Category.MAPLINK;
+        searchInput.clear();
         search = "";
         searchFocused = false;
         pendingRevealSetting = mapLinkEditorAnchor;
@@ -2129,7 +2138,7 @@ final class XaeroMapSettingsPanel {
                     && (inputNow - inputFocusedAtMs < 650L || ((inputNow / 500L) & 1L) == 0L);
             if (cursorVisible) {
                 float cursorX = inputX + 10.0f + ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), playerInput, 13.5f) + 1.0f;
-                ClickGuiRenderer.drawRect(cursorX, inputY + 8.0f, 1.0f, 17.0f, Theme.theme().accent());
+                GuiTextCaret.draw(cursorX, inputY + 9.0f, ClickGuiRenderer.getOnestMedium(), 13.5f, Theme.theme().accent());
             }
             if (clipped) ScissorFunction.pop();
 

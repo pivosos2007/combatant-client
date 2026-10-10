@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.relations;
 
+import combatant.client.util.text.SingleLineTextInput;
+
 import com.mojang.authlib.GameProfile;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
@@ -70,6 +72,7 @@ final class OnlineRelationPlayerPickerComponent {
     private boolean searchOpen;
     private boolean searchFocused;
     private String search = "";
+    private final SingleLineTextInput searchInput = new SingleLineTextInput(32);
     private DefineTarget.RelationTargetMode mode = DefineTarget.RelationTargetMode.FRIEND;
 
     private Rect bounds = Rect.ZERO;
@@ -117,6 +120,8 @@ final class OnlineRelationPlayerPickerComponent {
         return openTarget;
     }
 
+    SingleLineTextInput editor() { return searchInput; }
+
     boolean isSearchFocused() {
         return openTarget && searchFocused;
     }
@@ -133,6 +138,7 @@ final class OnlineRelationPlayerPickerComponent {
 
     void clearSearch() {
         if (search == null || search.isEmpty()) return;
+        searchInput.clear();
         search = "";
         resetScroll();
         invalidateFilter();
@@ -151,6 +157,7 @@ final class OnlineRelationPlayerPickerComponent {
         searchFocused = false;
         draggingScrollbar = false;
         if (!search.isEmpty()) {
+            searchInput.clear();
             search = "";
             invalidateFilter();
         }
@@ -449,6 +456,7 @@ final class OnlineRelationPlayerPickerComponent {
         }
         if (searchField.contains(mx, my)) {
             focusSearch();
+            searchInput.beginDrag(mx, false);
             return true;
         }
         for (RowHit hit : rowHits) {
@@ -502,25 +510,20 @@ final class OnlineRelationPlayerPickerComponent {
             searchFocused = false;
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
-            if (!search.isEmpty()) {
-                search = search.substring(0, search.length() - 1);
-                resetScroll();
-                invalidateFilter();
-            }
-            return true;
+        if (searchInput.keyPressed(keyCode, modifiers)) {
+            search = searchInput.text();
+            resetScroll();
+            invalidateFilter();
         }
         return true;
     }
 
     boolean charTyped(char chr, int modifiers) {
         if (!openTarget || !searchFocused) return false;
-        if (chr >= 32 && chr != 127) {
-            search += chr;
-            if (search.length() > 32) search = search.substring(0, 32);
-            resetScroll();
-            invalidateFilter();
-        }
+        searchInput.type(chr);
+        search = searchInput.text();
+        resetScroll();
+        invalidateFilter();
         return true;
     }
 
@@ -768,12 +771,15 @@ final class OnlineRelationPlayerPickerComponent {
                 LayoutRender2D.alpha(palette.panelPillBase(), (hover ? 0.96f : 0.76f) * opacity));
         LayoutRender2D.roundedStroke(rect.x(), rect.y(), rect.w(), rect.h(), 4.8f * scale, 0.55f * scale, LayoutRender2D.alpha(stroke, (searchFocused ? 0.74f : 0.42f) * opacity));
         boolean clipped = ScissorFunction.pushRaw(rect.x(), rect.y(), rect.w(), rect.h());
-        String text = search == null || search.isEmpty() ? tr("search_placeholder", "Search online player") : search;
-        int color = search == null || search.isEmpty() ? palette.panelMuted() : palette.panelText();
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), text, rect.x() + 7f * scale, rect.y() + 5.0f * scale, 6.8f * scale, fade(color, opacity), false);
-        if (searchFocused && ((System.currentTimeMillis() / 520L) & 1L) == 0L && rect.h() > 10f * scale) {
-            float tx = rect.x() + 7f * scale + ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), search, 6.8f * scale) + 1.0f * scale;
-            LayoutRender2D.rect(tx, rect.y() + 4.6f * scale, 0.8f * scale, Math.max(0.5f * scale, rect.h() - 9.2f * scale), LayoutRender2D.alpha(modeColor(), 0.86f * opacity));
+        boolean empty = searchInput.text().isEmpty();
+        float tx = rect.x() + 7f * scale;
+        float ty = rect.y() + 5f * scale;
+        if (empty && !searchFocused) {
+            ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), tr("search_placeholder", "Search online player"),
+                    tx, ty, 6.8f * scale, fade(palette.panelMuted(), opacity), false);
+        } else {
+            searchInput.render(tx, ty, rect.w() - 14f * scale, rect.h(), ClickGuiRenderer.getInterRegular(),
+                    6.8f * scale, fade(palette.panelText(), opacity), fade(LayoutRender2D.alpha(modeColor(), 0.48f), opacity), searchFocused);
         }
         if (clipped) ScissorFunction.pop();
         if (hover || searchFocused) SystemCursor.set(SystemCursor.CursorType.TEXT);

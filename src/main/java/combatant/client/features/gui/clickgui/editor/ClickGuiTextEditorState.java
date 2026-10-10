@@ -20,6 +20,7 @@ import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.util.text.ClipboardUtil;
+import combatant.client.util.text.GuiTextCaret;
 import combatant.client.util.text.TextSelection;
 
 import static combatant.client.features.theme.Theme.theme;
@@ -126,10 +127,10 @@ public final class ClickGuiTextEditorState {
         if (inside(mx, my, textX, textY, textW, textH)) {
             int target = caretFromPoint(mx, my);
             if (isShiftDown()) {
-                if (!selection.appliesToLine(0)) selection.update(0, caret);
+                if (!selection.hasCaret()) selection.begin(0, caret);
                 selection.updateCaret(target);
             } else {
-                selection.clear();
+                selection.begin(0, target);
             }
             caret = target;
             preferredColumn = -1;
@@ -256,7 +257,7 @@ public final class ClickGuiTextEditorState {
     public void copySelection() {
         if (selection.appliesToLine(0) && selection.hasRange()) {
             int start = Math.min(selection.start(), selection.end());
-            int end = Math.max(selection.start(), selection.end()) + 1;
+            int end = Math.max(selection.start(), selection.end());
             start = clamp(start, 0, buffer.length());
             end = clamp(end, 0, buffer.length());
             if (end > start) {
@@ -264,13 +265,18 @@ public final class ClickGuiTextEditorState {
                 return;
             }
         }
-        if (buffer.length() > 0) {
-            ClipboardUtil.copy(buffer.toString());
-        }
+
+    }
+
+    public void cutSelection() {
+        if (!selection.hasRange()) return;
+        copySelection();
+        deleteSelection();
+        ensureCaretVisible();
     }
 
     public void selectAll() {
-        selection.update(0, 0);
+        selection.begin(0, 0);
         selection.updateCaret(buffer.length());
         caret = buffer.length();
         preferredColumn = -1;
@@ -371,7 +377,7 @@ public final class ClickGuiTextEditorState {
             }
             if (selection.appliesToLine(0) && selection.hasRange()) {
                 int selStart = Math.min(selection.start(), selection.end());
-                int selEnd = Math.max(selection.start(), selection.end()) + 1;
+                int selEnd = Math.max(selection.start(), selection.end());
                 int selA = Math.max(globalOffset, selStart);
                 int selB = Math.min(globalOffset + line.length(), selEnd);
                 if (selB > selA) {
@@ -397,8 +403,8 @@ public final class ClickGuiTextEditorState {
         float caretOffsetX = ClickGuiRenderer.textWidth(textFont, safeSubstring(caretLine, 0, caretPos[1]), fontSize);
         float cx = viewX + caretOffsetX;
         if (AnimationUtility.blink(500L)) {
-            LayoutRender2D.rectQuad(cx, caretLineTop + 2f, 1.0f, LINE_H - 4f,
-                    accent, accent, theme().textPrimary(), theme().textPrimary());
+            float drawY = caretLineTop + (LINE_H - ClickGuiRenderer.textHeight(textFont, fontSize)) * 0.5f;
+            GuiTextCaret.draw(cx, drawY, textFont, fontSize, theme().textPrimary());
         }
         if (clipped) ScissorFunction.pop();
 
@@ -558,7 +564,7 @@ public final class ClickGuiTextEditorState {
     private boolean deleteSelection() {
         if (!selection.appliesToLine(0) || !selection.hasRange()) return false;
         int start = Math.min(selection.start(), selection.end());
-        int end = Math.max(selection.start(), selection.end()) + 1;
+        int end = Math.max(selection.start(), selection.end());
         start = clamp(start, 0, buffer.length());
         end = clamp(end, 0, buffer.length());
         if (end <= start) {

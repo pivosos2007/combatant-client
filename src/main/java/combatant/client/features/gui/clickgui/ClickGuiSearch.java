@@ -7,14 +7,15 @@
 
 package combatant.client.features.gui.clickgui;
 
+import combatant.client.util.text.SingleLineTextInput;
+
 import java.util.Locale;
 
 public enum ClickGuiSearch {
     ;
 
     private static boolean active = false;
-    private static String text = "";
-    private static String textLower = "";
+    private static final SingleLineTextInput INPUT = new SingleLineTextInput(64);
 
     public static boolean isActive() {
         return active;
@@ -23,51 +24,46 @@ public enum ClickGuiSearch {
     public static void setActive(boolean v) {
         active = v;
         if (!v) {
-            text = "";
-            textLower = "";
+            INPUT.clear();
         }
     }
 
     /** Removes keyboard focus but keeps the current query/filter intact. */
     public static void unfocus() {
         active = false;
+        INPUT.unfocus();
     }
 
     /** Clears both keyboard focus and the current query. */
     public static void deactivate() {
         active = false;
-        text = "";
-        textLower = "";
+        INPUT.unfocus();
+        INPUT.clear();
     }
 
     public static boolean hasQuery() {
-        return !text.isBlank();
+        return !INPUT.text().isBlank();
     }
 
     public static String getText() {
-        return text;
+        return INPUT.text();
     }
 
-    public static void append(char c) {
-        if (c < 32) return;
-        if (text.length() > 32) return;
-        text += c;
-        textLower = text.toLowerCase(Locale.ROOT);
-    }
+    public static SingleLineTextInput editor() { return INPUT; }
 
-    public static void backspace() {
-        if (text.isEmpty()) return;
-        text = text.substring(0, text.length() - 1);
-        textLower = text.toLowerCase(Locale.ROOT);
-    }
+    public static void append(char c) { INPUT.type(c); }
+
+    public static void backspace() { INPUT.backspace(); }
+
+    public static boolean keyPressed(int keyCode, int modifiers) { return INPUT.keyPressed(keyCode, modifiers); }
 
     public static boolean matches(String moduleName) {
-        if (text.isEmpty()) return true;
+        if (INPUT.text().isEmpty()) return true;
         return matchesCandidate(moduleName);
     }
 
     public static boolean matches(String moduleName, Iterable<String> aliases) {
-        if (text.isEmpty()) return true;
+        if (INPUT.text().isEmpty()) return true;
         if (matchesCandidate(moduleName)) return true;
         return matchingAlias(aliases) != null;
     }
@@ -77,7 +73,7 @@ public enum ClickGuiSearch {
      * The original spelling is preserved for presentation in search results.
      */
     public static String matchingAlias(Iterable<String> aliases) {
-        if (text.isBlank() || aliases == null) return null;
+        if (INPUT.text().isBlank() || aliases == null) return null;
 
         String best = null;
         int bestRank = Integer.MAX_VALUE;
@@ -101,9 +97,10 @@ public enum ClickGuiSearch {
 
         String normalized = candidate.toLowerCase(Locale.ROOT);
         String compactCandidate = compact(normalized);
-        String compactQuery = compact(textLower);
-        if (normalized.equals(textLower) || compactCandidate.equals(compactQuery)) return 0;
-        if (normalized.startsWith(textLower) || compactCandidate.startsWith(compactQuery)) return 1;
+        String query = INPUT.text().toLowerCase(Locale.ROOT);
+        String compactQuery = compact(query);
+        if (normalized.equals(query) || compactCandidate.equals(compactQuery)) return 0;
+        if (normalized.startsWith(query) || compactCandidate.startsWith(compactQuery)) return 1;
         return 2;
     }
 
@@ -112,9 +109,10 @@ public enum ClickGuiSearch {
 
         String normalized = candidate.toLowerCase(Locale.ROOT);
         String compactCandidate = compact(normalized);
-        String compactQuery = compact(textLower);
+        String query = INPUT.text().toLowerCase(Locale.ROOT);
+        String compactQuery = compact(query);
 
-        return normalized.contains(textLower)
+        return normalized.contains(query)
                 || compactCandidate.contains(compactQuery);
     }
 

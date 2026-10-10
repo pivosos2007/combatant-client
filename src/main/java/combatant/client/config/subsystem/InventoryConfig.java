@@ -28,6 +28,8 @@ public final class InventoryConfig extends SubsystemConfig {
     private final BooleanValue inventorySwapRestore = bool("inventorySwapRestore", true);
     private final BooleanValue inventorySwapPreferHotbar = bool("inventorySwapPreferHotbar", true);
     private final NumberValue<Integer> inventorySwapLegitWaitTicks = number("inventorySwapLegitWaitTicks", 2, 0, 20);
+    private final NumberValue<Integer> inventorySwapQueueMinTicks = number("inventorySwapQueueMinTicks", 1, 0, 20);
+    private final NumberValue<Integer> inventorySwapQueueMaxTicks = number("inventorySwapQueueMaxTicks", 4, 0, 20);
     private final NumberValue<Integer> inventorySwapStrictInventoryWaitTicks = number("inventorySwapStrictInventoryWaitTicks", 1, 0, 20);
     private final NumberValue<Integer> inventorySwapStrictMovementLockTicks = number("inventorySwapStrictMovementLockTicks", 2, 0, 20);
     private final BooleanValue multitask = bool("multitask", false);
@@ -167,6 +169,8 @@ public final class InventoryConfig extends SubsystemConfig {
                 SettingDef.bool(inventorySwapRestore).common("inventory.restore_item"),
                 SettingDef.bool(inventorySwapPreferHotbar).common("inventory.prefer_hotbar"),
                 SettingDef.number(inventorySwapLegitWaitTicks).common("inventory.legit_wait_ticks"),
+                SettingDef.number(inventorySwapQueueMinTicks).common("inventory.queued_min_ticks"),
+                SettingDef.number(inventorySwapQueueMaxTicks).common("inventory.queued_max_ticks"),
                 SettingDef.number(inventorySwapStrictInventoryWaitTicks).common("inventory.strict_inventory_wait_ticks"),
                 SettingDef.number(inventorySwapStrictMovementLockTicks).common("inventory.strict_movement_lock_ticks")
         );
@@ -190,6 +194,7 @@ public final class InventoryConfig extends SubsystemConfig {
         swap.setRestoreByDefault(inventorySwapRestore.get());
         swap.setPreferHotbar(inventorySwapPreferHotbar.get());
         swap.setLegitWaitTicks(inventorySwapLegitWaitTicks.get());
+        swap.setQueuedDelayRange(inventorySwapQueueMinTicks.get(), inventorySwapQueueMaxTicks.get());
         swap.setStrictInventoryWaitTicks(inventorySwapStrictInventoryWaitTicks.get());
         swap.setStrictMovementLockTicks(inventorySwapStrictMovementLockTicks.get());
     }

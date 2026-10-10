@@ -8,6 +8,8 @@
 package combatant.client.features.gui.chat;
 
 import combatant.client.features.module.modules.misc.NameProtect;
+import combatant.client.util.text.GuiTextCaret;
+import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -1156,7 +1158,11 @@ lastHoverWasOutsideSuggest = false;
         float caretY = inputY + padY + caretLine * lineHeight;
         boolean blink = (System.currentTimeMillis() / 500L) % 2 == 0;
         if (blink) {
-            drawRoundedRect(caretX, caretY + 1f, 1.35f, Math.max(8f, lineHeight - 2f), 0.8f, withAlpha(theme().textPrimary(), 0xD8));
+            float glyphHeight = tr != null ? ClickGuiRenderer.textHeight(tr, fontSize) : fontSize;
+            float caretHeight = GuiTextCaret.height(fontSize, glyphHeight);
+            drawRect(caretX, caretY + (lineHeight - caretHeight) * 0.5f,
+                    GuiTextCaret.width(fontSize), caretHeight,
+                    withAlpha(theme().textPrimary(), 0xD8));
         }
         if (clipped) ScissorFunction.pop();
 

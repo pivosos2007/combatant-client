@@ -90,6 +90,26 @@ public class WindJump extends Module {
         addAction(ACTION_WINDTHROW, "LEFT_ALT+X");
     }
 
+    @combatant.client.features.gui.hud.actions.HudAction(id = ACTION_WINDJUMP,
+            label = "Wind Jump", description = "Jump using a wind charge", icon = "wind")
+    public combatant.client.features.gui.hud.actions.HudActionRegistry.State hudWindJump() {
+        var player = Minecraft.getInstance().player;
+        boolean ready = player != null && player.tickCount >= nextAllowedUseTick;
+        return new combatant.client.features.gui.hud.actions.HudActionRegistry.State(
+                new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WIND_CHARGE),
+                ready, pendingUse != null, ready && player.fallDistance > 1.0f, ready ? 0.0f : 1.0f);
+    }
+
+    @combatant.client.features.gui.hud.actions.HudAction(id = ACTION_WINDTHROW,
+            label = "Wind Throw", description = "Directional wind charge throw", icon = "wind")
+    public combatant.client.features.gui.hud.actions.HudActionRegistry.State hudWindThrow() {
+        var player = Minecraft.getInstance().player;
+        boolean ready = player != null && player.tickCount >= nextAllowedUseTick;
+        return new combatant.client.features.gui.hud.actions.HudActionRegistry.State(
+                new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WIND_CHARGE),
+                ready, pendingUse != null, false, ready ? 0.0f : 1.0f);
+    }
+
     @Override
     public void onDisable() {
         pendingUse = null;

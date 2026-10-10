@@ -4,18 +4,17 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-
 package combatant.client.features.gui.hud.draggable.impl;
 
-import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
-import combatant.client.util.resources.asset.UiScriptAsset;
+import combatant.client.config.SettingDef;
+import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
-import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.hud.HudAnchorX;
 import combatant.client.features.gui.hud.HudAnchorY;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.hud.actions.HudActionRegistry;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
@@ -23,321 +22,337 @@ import combatant.client.features.module.HudPhase;
 import combatant.client.features.theme.Theme;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.animation.AnimationUtility;
-import combatant.client.render.engine.math.ColorMath;
+import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
 import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
+import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.render.engine.text.TextRenderer;
-import combatant.client.render.helpers.ClipFunction;
+import combatant.client.util.resources.asset.UiScriptAsset;
+import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @HudElementRegister(order = 200)
 @UiScriptAsset("combatant:modules/hud/draggable/itemizer")
 public final class Itemizer extends DraggableHudElement {
-private static final float BASE_ICON_CARD = 24.0f;
-    private static final float BASE_COMPACT_W = 72.0f;
-    private static final float BASE_COMPACT_H = 24.0f;
-    private static final float BASE_GAP = 4.0f;
-    private static final float DEFAULT_DURATION = 1.15f;
-    private static final int MAX_INTERNAL_ENTRIES = 8;
-
+    private static final float CARD_HEIGHT = 16.0f;
+    private static final float ROW_STEP = 22.0f;
+    private static final float ICON_AREA = 16.0f;
+    private static final float ICON_SCALE = 0.5f;
+    private static final float CARD_GAP = 3.0f;
+    private static final float KEY_X = 19.0f;
+    private static final float KEY_FONT_SIZE = 11.0f;
+    private static final float KEY_RIGHT = 7.0f;
+    private static final float FADE_EPSILON = 0.013f;
+    private static final float EVENT_LIFE = 1.8f;
     public static Itemizer INSTANCE;
 
     private final Minecraft mc = Minecraft.getInstance();
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(Itemizer.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
-    private final LinkedHashMap<ItemizerEvent, Entry> entries = new LinkedHashMap<>();
-    private final List<ItemRenderTask> itemTasks = new ArrayList<>(5);
+    private final Map<String, Burst> bursts = new LinkedHashMap<>();
+    private final Map<String, Entry> entries = new LinkedHashMap<>();
+    private final List<Entry> drawn = new ArrayList<>();
+    private final List<ItemTask> foregroundItems = new ArrayList<>();
 
-    private final NumberValue<Double> scale =
-            num("itemizer_scale", "scale", 1.0, 0.5, 3.0);
-    private final EnumValue<ItemizerDisplayMode> displayMode =
-            enumSetting("itemizer_display_mode", "display_mode", ItemizerDisplayMode.ICONS, ItemizerDisplayMode.values());
-    private final EnumValue<ItemizerDirection> direction =
-            enumSetting("itemizer_direction", "direction", ItemizerDirection.HORIZONTAL, ItemizerDirection.values());
-    private final NumberValue<Double> duration =
-            num("itemizer_duration", "duration", (double) DEFAULT_DURATION, 0.25, 3.0);
-    private final NumberValue<Integer> maxEntries =
-            num("itemizer_max_entries", "max_entries", 3, 1, 5);
-    private final BooleanValue showAutoEat =
-            bool("itemizer_auto_eat", "auto_eat", true);
-    private final BooleanValue showAutoTotem =
-            bool("itemizer_auto_totem", "auto_totem", true);
-    private final BooleanValue showElytraSwap =
-            bool("itemizer_elytra_swap", "elytra_swap", true);
-    private final BooleanValue blur =
-            bool("itemizer_blur", "blur", true);
-    private final NumberValue<Integer> bgAlpha =
-            num("itemizer_bg_alpha", "bg_alpha", 168, 0, 255);
+    private final NumberValue<Double> scale = num("itemizer_scale", "scale", 1.0, 0.5, 2.5);
+    private final NumberValue<Integer> columns = num("itemizer_columns", "columns", 5, 1, 6);
+    private final NumberValue<Integer> maxEntries = num("itemizer_max_entries", "max_entries", 10, 1, 12);
+    private final BooleanValue showUnavailable = bool("itemizer_show_unavailable", "show_unavailable", false);
+    private final BooleanValue blur = bool("itemizer_blur", "blur", true);
+    private final NumberValue<Integer> bgAlpha = num("itemizer_bg_alpha", "bg_alpha", 168, 0, 255);
+    private final NumberValue<Integer> themeMix = num("itemizer_theme_mix", "theme_mix", 72, 0, 100);
+    private final ActionToggles visibleActions = declareActions("itemizer_visible_actions", "visible_actions");
+    private final ActionToggles enabledActions = declareActions("itemizer_enabled_actions", "enabled_actions");
 
-    private float visibilityAnim;
-    private float displayWidth = -1.0f;
-    private float displayHeight = -1.0f;
+    private float drawnX;
+    private float drawnY;
+    private float drawnScale;
+    private float layoutW;
+    private float layoutH;
     private boolean foregroundReady;
 
     public Itemizer() {
         super("itemizer", "Itemizer", "hud.draggable.itemizer.description", true);
-        INSTANCE = this;
         defaultLayout(-16.0f, 48.0f, "CENTER", "CENTER");
+        INSTANCE = this;
+    }
+
+    private ActionToggles declareActions(String name, String id) {
+        ActionToggles value = new ActionToggles(name);
+        declareSetting(value, SettingDef.group(id, value));
+        return value;
+    }
+
+    public static boolean isActionEnabled(String module, String action) {
+        Itemizer instance = INSTANCE;
+        return instance == null || instance.enabledActions.get(module + ":" + action);
     }
 
     public static void showAutoEat(ItemStack stack) {
-        show(ItemizerEvent.AUTO_EAT, stack, "Eat");
+        burst("offhand:consume", stack);
     }
 
     public static void showAutoTotem(ItemStack stack) {
-        show(ItemizerEvent.AUTO_TOTEM, stack, "Totem");
+        burst("offhand:totem_priority", stack);
     }
 
     public static void showElytraSwap(ItemStack stack) {
-        show(ItemizerEvent.ELYTRA_SWAP, stack, "Swap");
+        burst("elytrahelper:swap_elytra", stack);
     }
 
     public static void hideElytraSwap() {
-        hide(ItemizerEvent.ELYTRA_SWAP);
+        if (INSTANCE != null) INSTANCE.bursts.remove("elytrahelper:swap_elytra");
     }
 
-    private static void show(ItemizerEvent event, ItemStack stack, String label) {
-        Itemizer itemizer = INSTANCE;
-        if (itemizer == null || event == null || stack == null || stack.isEmpty()) return;
-        itemizer.push(event, stack, label);
+    private static void burst(String id, ItemStack stack) {
+        Itemizer instance = INSTANCE;
+        if (instance == null || stack == null || stack.isEmpty()) return;
+        instance.bursts.put(id, new Burst(stack.copy(), EVENT_LIFE));
     }
 
-    private static void hide(ItemizerEvent event) {
-        Itemizer itemizer = INSTANCE;
-        if (itemizer == null || event == null) return;
-        itemizer.entries.remove(event);
+    private void syncActions() {
+        Set<String> validIds = new LinkedHashSet<>(HudActionRegistry.actionIds());
+        visibleActions.sync(validIds);
+        enabledActions.sync(validIds);
+    }
+
+    @Override
+    public void onTick() {
+        syncActions();
     }
 
     @Override
     public void applyDefaultPosition(int screenW, int screenH) {
-        float w = baseEntryWidth() * scale.get().floatValue();
-        float h = baseEntryHeight() * scale.get().floatValue();
-        this.x = (screenW - w) * 0.5f;
-        this.y = screenH * 0.5f + 48.0f;
-        setAnchors(HudAnchorX.FREE, HudAnchorY.FREE, this.x, this.y);
+        x = (screenW - 140.0f) * 0.5f;
+        y = screenH * 0.5f + 48.0f;
+        setAnchors(HudAnchorX.FREE, HudAnchorY.FREE, x, y);
     }
 
-    @Override
-    public boolean usesEngineRenderer() {
-        return true;
-    }
+    @Override public boolean usesEngineRenderer() { return true; }
+    @Override public HudPhase getHudPhase() { return HudPhase.LAST; }
+    @Override public int getRenderOrder() { return 82; }
 
     @Override
-    public HudPhase getHudPhase() {
-        return HudPhase.LAST;
-    }
-
-    @Override
-    public int getRenderOrder() {
-        return 82;
-    }
-
-    @Override
-    public void renderEngine(Renderer2D renderer,
-                             TextRenderer textRenderer,
-                             GuiGraphicsExtractor ctx,
-                             float tickDelta,
-                             int screenW,
-                             int screenH) {
+    public void renderEngine(Renderer2D renderer, TextRenderer textRenderer, GuiGraphicsExtractor graphics,
+                             float tickDelta, int screenW, int screenH) {
         foregroundReady = false;
-        itemTasks.clear();
-        boolean forceVisible = DraggableHudElementRegistry.isForceVisible();
-        if (!isEnabled() && !forceVisible) {
-            width = 0.0f;
-            height = 0.0f;
+        foregroundItems.clear();
+        drawn.clear();
+        boolean preview = DraggableHudElementRegistry.isForceVisible();
+        if (!isEnabled() && !preview) {
+            width = height = 0.0f;
+            entries.clear();
             return;
         }
 
-        float dt = AnimationUtility.deltaTime();
-        List<Entry> visible = forceVisible && entries.isEmpty()
-                ? previewEntries()
-                : updateEntries(dt);
-        boolean showWidget = !visible.isEmpty();
-        visibilityAnim = HudRenderUtil.animateVisibility(visibilityAnim, showWidget);
-        if (!showWidget && visibilityAnim <= 0.0f) {
-            width = 0.0f;
-            height = 0.0f;
-            return;
+        float dt = Math.min(0.1f, Math.max(0.0f, AnimationUtility.deltaTime()));
+        boolean chat = ClientScreen.current() instanceof ChatScreen;
+        List<HudActionRegistry.Snapshot> states = mc != null && mc.player != null
+                ? HudActionRegistry.snapshots() : List.of();
+        for (Burst burst : bursts.values()) burst.remaining = Math.max(0.0f, burst.remaining - dt);
+        bursts.values().removeIf(burst -> burst.remaining <= 0.0f);
+
+        for (Entry entry : entries.values()) entry.targetVisible = false;
+        int count = 0;
+        for (HudActionRegistry.Snapshot state : states) {
+            if (count >= maxEntries.get()) break;
+            if (!visibleActions.get(state.id()) && !chat && !preview) continue;
+            if (!state.moduleEnabled() && !chat && !preview) continue;
+            if (!state.available() && !state.aware() && !state.active() && !state.inProgress()
+                    && !showUnavailable.get() && !chat && !preview) continue;
+            if (unbound(state.bind()) && !state.aware() && !state.inProgress() && !chat && !preview) continue;
+            Entry entry = entries.computeIfAbsent(state.id(), Entry::new);
+            entry.snapshot = state;
+            entry.targetVisible = true;
+            count++;
+        }
+        if ((preview || chat) && count == 0 && entries.isEmpty() && mc != null && mc.player != null) {
+            HudActionRegistry.Snapshot sample = new HudActionRegistry.Snapshot("preview:elytra", "Elytra", "", "R", "",
+                    new ItemStack(Items.ELYTRA), true, true, false, false, 0.0f);
+            Entry entry = entries.computeIfAbsent(sample.id(), Entry::new);
+            entry.snapshot = sample;
+            entry.targetVisible = true;
         }
 
-        float baseScale = scale.get().floatValue();
-        int count = Math.max(1, visible.size());
-        float entryW = baseEntryWidth() * baseScale;
-        float entryH = baseEntryHeight() * baseScale;
-        float gap = BASE_GAP * baseScale;
-        float targetWidth = direction.get() == ItemizerDirection.HORIZONTAL
-                ? entryW * count + gap * Math.max(0, count - 1)
-                : entryW;
-        float targetHeight = direction.get() == ItemizerDirection.HORIZONTAL
-                ? entryH
-                : entryH * count + gap * Math.max(0, count - 1);
+        TextRenderer font = BuiltinFontCatalog.INTER_REGULAR.renderer(textRenderer != null ? textRenderer : TextRenderer.get());
+        if (font == null) font = TextRenderer.get();
+        font.beginSize(KEY_FONT_SIZE);
+        try {
+            for (Entry entry : entries.values()) {
+                if (entry.snapshot != null) {
+                    String bind = bindLabel(entry.snapshot.bind());
+                    entry.key = bind;
+                    entry.w = Math.max(KEY_X + 8.0f, KEY_X + (float) font.getWidth(bind, false) + KEY_RIGHT);
+                }
+            }
+        } finally {
+            font.end();
+        }
 
-        displayWidth = HudRenderUtil.animateDimension(displayWidth, targetWidth);
-        displayHeight = HudRenderUtil.animateDimension(displayHeight, targetHeight);
-        width = displayWidth;
-        height = displayHeight;
+        List<Entry> active = new ArrayList<>();
+        for (Entry entry : entries.values()) {
+            if (entry.targetVisible) active.add(entry);
+        }
+        int perRow = Math.max(1, columns.get());
+        int rows = (active.size() + perRow - 1) / perRow;
+        float[] rowWidths = new float[rows];
+        for (int i = 0; i < active.size(); i++) {
+            int row = i / perRow;
+            rowWidths[row] += active.get(i).w + (i % perRow == 0 ? 0 : CARD_GAP);
+        }
+        float maxWidth = 0.0f;
+        for (float rowWidth : rowWidths) maxWidth = Math.max(maxWidth, rowWidth);
+        float targetHeight = rows == 0 ? 0.0f : (rows - 1) * ROW_STEP + CARD_HEIGHT;
+        float[] nextX = new float[rows];
+        for (int row = 0; row < rows; row++) nextX[row] = (maxWidth - rowWidths[row]) * 0.5f;
+        for (int i = 0; i < active.size(); i++) {
+            Entry entry = active.get(i);
+            int row = i / perRow;
+            float destX = nextX[row];
+            float destY = row * ROW_STEP;
+            nextX[row] += entry.w + CARD_GAP;
+            if (!entry.positioned) {
+                entry.x = destX;
+                entry.y = destY + 5.0f;
+                entry.positioned = true;
+            }
+            entry.x = AnimationUtility.approach(entry.x, destX, dt, 18.0f);
+            entry.y = AnimationUtility.approach(entry.y, destY, dt, 18.0f);
+        }
+        for (Entry entry : entries.values()) {
+            entry.alpha = AnimationUtility.approach(entry.alpha, entry.targetVisible ? 1.0f : 0.0f,
+                    dt, entry.targetVisible ? 15.0f : 10.0f);
+            boolean hot = entry.targetVisible && entry.snapshot != null
+                    && (entry.snapshot.aware() || entry.snapshot.inProgress());
+            entry.heat = AnimationUtility.approach(entry.heat, hot ? 1.0f : 0.0f, dt, 10.0f);
+        }
+        entries.values().removeIf(entry -> !entry.targetVisible && entry.alpha <= FADE_EPSILON);
+        for (Entry entry : entries.values()) if (entry.snapshot != null && entry.alpha > FADE_EPSILON) drawn.add(entry);
 
-        float drawScale = HudRenderUtil.visibilityScale(visibilityAnim);
-        float drawWidth = displayWidth * drawScale;
-        float drawHeight = displayHeight * drawScale;
-        if (drawWidth <= 0.0f || drawHeight <= 0.0f) return;
+        layoutW = maxWidth;
+        layoutH = targetHeight;
+        for (Entry entry : drawn) {
+            layoutW = Math.max(layoutW, entry.x + entry.w);
+            layoutH = Math.max(layoutH, entry.y + CARD_HEIGHT);
+        }
+        if (drawn.isEmpty()) {
+            width = height = 0.0f;
+            return;
+        }
+        drawnScale = scale.get().floatValue();
+        drawnX = x;
+        drawnY = y;
+        width = layoutW * drawnScale;
+        height = layoutH * drawnScale;
 
-        float drawX = x + (displayWidth - drawWidth) * 0.5f;
-        float drawY = y + (displayHeight - drawHeight) * 0.5f;
-        float drawBaseScale = baseScale * drawScale;
-        drawCards(renderer, visible, drawX, drawY, drawBaseScale, AnimationUtility.clamp01(visibilityAnim));
-
-        UiScriptModule module = ensureModule();
-        if (module == null) return;
-
+        float mx = 0.0f;
+        float my = 0.0f;
+        if (chat && mc.mouseHandler != null) {
+            float uiScale = HudScale.scale(mc.getWindow().getWidth(), mc.getWindow().getHeight());
+            mx = HudScale.toVirtual((float) mc.mouseHandler.xpos(), uiScale);
+            my = HudScale.toVirtual((float) mc.mouseHandler.ypos(), uiScale);
+        }
+        int hovered = chat ? hoveredCard(mx, my) : -1;
+        UiScriptModule script = ensureModule();
+        if (script == null) return;
+        LinkedHashMap<String, Object> props = buildProps(hovered, chat);
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
-        float renderScale = Math.max(0.0001f, drawBaseScale);
-        float logicalWidth = drawWidth / renderScale;
-        float logicalHeight = drawHeight / renderScale;
-        LinkedHashMap<String, Object> props = props(visible, logicalWidth, logicalHeight);
-        long treeSignature = signature(props);
-        UiRuntime baked = runtime.bake(
-                moduleHandle,
-                module,
-                "itemizer",
-                treeSignature,
-                logicalWidth,
-                logicalHeight,
-                fallback,
-                0.0f,
-                0.0f,
-                logicalWidth,
-                logicalHeight,
-                () -> props
-        );
+        UiRuntime baked = runtime.bake(moduleHandle, script, "itemizer", signature(props),
+                layoutW, layoutH, fallback, 0.0f, 0.0f, layoutW, layoutH, () -> props);
         if (baked == null) return;
-        baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT)
-                .at(drawX, drawY, renderScale));
+        baked.render(new UiRenderContext(renderer, fallback, graphics, tickDelta, UiProjectionMode.CURRENT)
+                .at(drawnX, drawnY, drawnScale));
+        for (int i = 0; i < drawn.size(); i++) {
+            Entry entry = drawn.get(i);
+            if (chat && hovered == i) continue;
+            ItemStack icon = entry.snapshot.stack();
+            if ((icon == null || icon.isEmpty()) && bursts.containsKey(entry.id)) icon = bursts.get(entry.id).stack;
+            if (icon == null || icon.isEmpty()) continue;
+            ItemStack stack = icon.copy();
+            stack.setCount(1);
+            foregroundItems.add(new ItemTask(stack, drawnX + (entry.x + 3.0f) * drawnScale,
+                    drawnY + (entry.y + 4.0f) * drawnScale, ICON_SCALE * drawnScale,
+                    entry.alpha * (visibleActions.get(entry.id) ? 1.0f : 0.35f)));
+        }
         foregroundReady = true;
     }
 
     @Override
-    public void renderEngineForeground(Renderer2D renderer,
-                                       TextRenderer textRenderer,
-                                       GuiGraphicsExtractor ctx,
-                                       float tickDelta,
-                                       int screenW,
-                                       int screenH) {
-        if (!foregroundReady || itemTasks.isEmpty()) {
-            itemTasks.clear();
-            return;
+    public void renderEngineForeground(Renderer2D renderer, TextRenderer font, GuiGraphicsExtractor graphics,
+                                       float tickDelta, int screenW, int screenH) {
+        if (foregroundReady) {
+            int seed = 0;
+            for (ItemTask task : foregroundItems) {
+                double prior = renderer.getAlpha();
+                renderer.setAlpha(prior * task.alpha());
+                try {
+                    renderer.item(task.stack(), task.x(), task.y(), task.scale(), seed++, Renderer2D.ITEM_OVERLAY_NONE, null);
+                } finally {
+                    renderer.setAlpha(prior);
+                }
+            }
         }
-        int seed = 0;
-        for (ItemRenderTask task : itemTasks) {
-            drawItem(renderer, task.stack(), task.x(), task.y(), task.scale(), seed++, task.overlayFlags(), task.alpha());
-        }
-        itemTasks.clear();
+        foregroundItems.clear();
         foregroundReady = false;
     }
 
-    private void push(ItemizerEvent event, ItemStack stack, String label) {
-        if (!accepts(event)) return;
-        Entry entry = entries.remove(event);
-        if (entry == null) {
-            entry = new Entry(event);
-        }
-        entry.stack = stack.copy();
-        entry.label = label != null && !label.isBlank() ? label : event.fallbackLabel;
-        entry.life = Math.max(0.1f, duration.get().floatValue());
-        entry.totalLife = entry.life;
-        entry.punch = 1.0f;
-        entries.put(event, entry);
-        trimInternalEntries();
+    @Override
+    public boolean isMouseOverInteractive(float mx, float my) {
+        return ClientScreen.current() instanceof ChatScreen && hoveredCard(mx, my) >= 0;
     }
 
-    private boolean accepts(ItemizerEvent event) {
-        return switch (event) {
-            case AUTO_EAT -> showAutoEat.get();
-            case AUTO_TOTEM -> showAutoTotem.get();
-            case ELYTRA_SWAP -> showElytraSwap.get();
-        };
+    @Override
+    public boolean onMouseClicked(float mx, float my, int button) {
+        if (!(ClientScreen.current() instanceof ChatScreen) || (button != 0 && button != 1)) return false;
+        int index = hoveredCard(mx, my);
+        if (index < 0) return false;
+        Entry entry = drawn.get(index);
+        if (entry.id.startsWith("preview:")) return false;
+        if (button == 0) {
+            if (!hit(mx, my, drawnX + entry.x * drawnScale,
+                    drawnY + entry.y * drawnScale, ICON_AREA * drawnScale, CARD_HEIGHT * drawnScale)) return false;
+            visibleActions.set(entry.id, !visibleActions.get(entry.id));
+        } else if (!"offhand:totem_priority".equals(entry.id)) {
+            enabledActions.set(entry.id, !enabledActions.get(entry.id));
+        }
+        combatant.client.config.ConfigSerializer.requestSave(this);
+        return true;
     }
 
-    private void trimInternalEntries() {
-        while (entries.size() > MAX_INTERNAL_ENTRIES) {
-            ItemizerEvent first = entries.keySet().iterator().next();
-            entries.remove(first);
+    private int hoveredCard(float mx, float my) {
+        for (int i = 0; i < drawn.size(); i++) {
+            Entry entry = drawn.get(i);
+            if (hit(mx, my, drawnX + entry.x * drawnScale, drawnY + entry.y * drawnScale,
+                    entry.w * drawnScale, CARD_HEIGHT * drawnScale)) return i;
         }
+        return -1;
     }
 
-    private List<Entry> updateEntries(float dt) {
-        List<ItemizerEvent> remove = new ArrayList<>();
-        List<Entry> out = new ArrayList<>();
-        for (Map.Entry<ItemizerEvent, Entry> mapEntry : entries.entrySet()) {
-            Entry entry = mapEntry.getValue();
-            entry.life = Math.max(0.0f, entry.life - dt);
-            entry.punch = AnimationUtility.approach(entry.punch, 0.0f, dt, 8.0f);
-            boolean alive = entry.life > 0.0f;
-            entry.anim = AnimationUtility.approach(entry.anim, alive ? 1.0f : 0.0f, dt, 13.0f);
-            entry.anim = AnimationUtility.snap(entry.anim, alive ? 1.0f : 0.0f, 0.002f);
-            if (!alive && entry.anim <= 0.0f) {
-                remove.add(mapEntry.getKey());
-                continue;
-            }
-            if (out.size() < maxEntries.get()) {
-                out.add(entry);
-            }
-        }
-        for (ItemizerEvent event : remove) {
-            entries.remove(event);
-        }
-        return out;
-    }
-
-    private List<Entry> previewEntries() {
-        Entry eat = new Entry(ItemizerEvent.AUTO_EAT);
-        eat.stack = new ItemStack(Items.COOKED_BEEF);
-        eat.label = "Eat";
-        eat.life = 1.0f;
-        eat.totalLife = 1.0f;
-        eat.anim = 1.0f;
-
-        Entry totem = new Entry(ItemizerEvent.AUTO_TOTEM);
-        totem.stack = new ItemStack(Items.TOTEM_OF_UNDYING);
-        totem.label = "Totem";
-        totem.life = 1.0f;
-        totem.totalLife = 1.0f;
-        totem.anim = 1.0f;
-
-        Entry swap = new Entry(ItemizerEvent.ELYTRA_SWAP);
-        swap.stack = new ItemStack(Items.ELYTRA);
-        swap.label = "Swap";
-        swap.life = 1.0f;
-        swap.totalLife = 1.0f;
-        swap.anim = 1.0f;
-
-        List<Entry> list = new ArrayList<>();
-        list.add(eat);
-        list.add(totem);
-        list.add(swap);
-        return list.subList(0, Math.min(maxEntries.get(), list.size()));
+    private static boolean hit(float mx, float my, float x, float y, float w, float h) {
+        return mx >= x && my >= y && mx <= x + w && my <= y + h;
     }
 
     private UiScriptModule ensureModule() {
         if (mc == null || mc.getResourceManager() == null) return null;
         HudScriptLayouts.pollReloadCombo(mc);
-        if (moduleHandle.consumeChanged()) {
-            runtime.reset();
-        }
+        if (moduleHandle.consumeChanged()) runtime.reset();
         if (!moduleHandle.ensureLoaded(mc.getResourceManager())) {
             HudScriptLayouts.reportLoadError(moduleHandle);
             return null;
@@ -346,350 +361,136 @@ private static final float BASE_ICON_CARD = 24.0f;
         return moduleHandle.module();
     }
 
-    private LinkedHashMap<String, Object> props(List<Entry> visible,
-                                                float width,
-                                                float height) {
-        LinkedHashMap<String, Object> out = new LinkedHashMap<>();
-        out.put("id", "itemizer");
-        out.put("width", width);
-        out.put("height", height);
-        out.put("fontSize", 18.0f * 0.78f);
-        out.put("mode", displayMode.get().id());
-        out.put("direction", direction.get().id());
-        out.put("entryWidth", baseEntryWidth());
-        out.put("entryHeight", baseEntryHeight());
-        out.put("gap", BASE_GAP);
-        out.put("blur", blur.get());
-        out.put("palette", paletteProps());
-        List<LinkedHashMap<String, Object>> itemProps = new ArrayList<>();
-        for (Entry entry : visible) {
-            itemProps.add(entryProps(entry));
+    private LinkedHashMap<String, Object> buildProps(int hovered, boolean chat) {
+        LinkedHashMap<String, Object> props = new LinkedHashMap<>();
+        props.put("width", layoutW);
+        props.put("height", layoutH);
+        props.put("blur", blur.get());
+        props.put("chat", chat);
+        props.put("hovered", hovered);
+        Themes.Theme theme = Theme.theme();
+        float mix = themeMix.get() / 100.0f;
+        LinkedHashMap<String, Object> palette = new LinkedHashMap<>();
+        palette.put("bgTop", hex(HudRenderUtil.setAlpha(HudRenderUtil.mixColor(theme.windowBg(), theme.accent(), 0.06f * mix), bgAlpha.get())));
+        palette.put("bgBottom", hex(HudRenderUtil.setAlpha(theme.surface(), bgAlpha.get())));
+        palette.put("stroke", hex(HudRenderUtil.setAlpha(theme.windowStroke(), 160)));
+        palette.put("text", hex(theme.textPrimary()));
+        palette.put("accent", hex(theme.accent()));
+        props.put("palette", palette);
+        ArrayList<Map<String, Object>> cards = new ArrayList<>();
+        for (Entry entry : drawn) {
+            HudActionRegistry.Snapshot state = entry.snapshot;
+            LinkedHashMap<String, Object> card = new LinkedHashMap<>();
+            card.put("key", entry.id);
+            card.put("bind", entry.key);
+            card.put("x", entry.x);
+            card.put("y", entry.y);
+            card.put("w", entry.w);
+            card.put("alpha", entry.alpha);
+            card.put("available", state.available());
+            card.put("aware", state.aware());
+            card.put("heat", entry.heat);
+            card.put("active", state.active());
+            card.put("inProgress", state.inProgress());
+            card.put("progress", state.progress());
+            card.put("cooldown", state.cooldown());
+            card.put("enabled", enabledActions.get(entry.id));
+            card.put("visible", visibleActions.get(entry.id));
+            cards.add(card);
         }
-        out.put("items", itemProps.toArray());
-        return out;
-    }
-
-    private LinkedHashMap<String, Object> paletteProps() {
-        Themes.Theme t = Theme.theme();
-        int alpha = bgAlpha.get();
-        int bg1 = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(t.windowBg(), t.surface(), 0.24f), alpha);
-        int bg2 = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(t.surface(), 0xFF000000, 0.22f), Math.min(255, alpha + 18));
-        int stroke = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(t.windowStroke(), t.accentSoft(), 0.22f), 176);
-        LinkedHashMap<String, Object> out = new LinkedHashMap<>();
-        out.put("bg1", hex(bg1));
-        out.put("bg2", hex(bg2));
-        out.put("stroke", hex(stroke));
-        out.put("text", hex(t.textPrimary()));
-        out.put("muted", hex(t.textMuted()));
-        out.put("accent", hex(t.accent()));
-        out.put("glow", hex(HudRenderUtil.setAlpha(t.accent(), 155)));
-        out.put("blurAlpha", Math.min(1.0f, alpha / 255.0f));
-        return out;
-    }
-
-    private LinkedHashMap<String, Object> entryProps(Entry entry) {
-        ItemStack stack = entry.stack != null ? entry.stack : ItemStack.EMPTY;
-        LinkedHashMap<String, Object> out = new LinkedHashMap<>();
-        out.put("key", entry.event.id());
-        out.put("kind", entry.event.id());
-        out.put("label", entry.label);
-        out.put("stack", stack.copy());
-        out.put("item", stack.isEmpty() ? "" : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
-        out.put("count", stack.isEmpty() ? 1 : stack.getCount());
-        out.put("damage", stack.isEmpty() ? 0 : stack.getDamageValue());
-        out.put("maxDamage", stack.isEmpty() ? 0 : stack.getMaxDamage());
-        out.put("alpha", AnimationUtility.clamp01(entry.anim));
-        out.put("life", entry.totalLife <= 0.0f ? 1.0f : AnimationUtility.clamp01(entry.life / entry.totalLife));
-        out.put("pulse", AnimationUtility.clamp01(entry.punch));
-        out.put("accent", hex(entryAccent(entry.event)));
-        return out;
-    }
-
-    private int entryAccent(ItemizerEvent event) {
-        Themes.Theme t = Theme.theme();
-        int target = switch (event) {
-            case AUTO_EAT -> 0xFF74E083;
-            case AUTO_TOTEM -> 0xFFFFD15C;
-            case ELYTRA_SWAP -> 0xFF77D7FF;
-        };
-        return ColorMath.colorWithAlpha(HudRenderUtil.mixColor(t.accent(), target, 0.72f), 255);
-    }
-
-    private void drawCards(Renderer2D renderer,
-                           List<Entry> visible,
-                           float x,
-                           float y,
-                           float scale,
-                           float globalAlpha) {
-        if (renderer == null || visible == null || visible.isEmpty()) return;
-        float entryW = baseEntryWidth() * scale;
-        float entryH = baseEntryHeight() * scale;
-        float gap = BASE_GAP * scale;
-        for (int i = 0; i < visible.size(); i++) {
-            Entry entry = visible.get(i);
-            float cardX = x;
-            float cardY = y;
-            if (direction.get() == ItemizerDirection.HORIZONTAL) {
-                cardX += i * (entryW + gap);
-            } else {
-                cardY += i * (entryH + gap);
-            }
-
-            float alpha = AnimationUtility.clamp01(globalAlpha * entry.anim);
-            if (alpha <= 0.001f) continue;
-            float radius = Math.max(3.0f * scale, Math.min(entryW, entryH) * 0.24f);
-            drawGlassCard(renderer, cardX, cardY, entryW, entryH, radius, scale, alpha);
-            drawClippedTimeStrip(renderer, entry, cardX, cardY, entryW, entryH, radius, scale, alpha);
-            queueItem(entry, cardX, cardY, entryW, entryH, scale, alpha);
-        }
-    }
-
-    private void drawGlassCard(Renderer2D renderer,
-                               float x,
-                               float y,
-                               float width,
-                               float height,
-                               float radius,
-                               float scale,
-                               float alpha) {
-        if (width <= 0.0f || height <= 0.0f || alpha <= 0.001f) return;
-        float blurStrength = blur.get() ? (bgAlpha.get() / 255.0f) * alpha : 0.0f;
-        HudRenderUtil.drawLiquidGlass(x, y, width, height, radius, Math.max(0.001f, scale), true, blurStrength, alpha);
-        int veil = HudRenderUtil.glassSmallBackground(alpha);
-        renderer.roundedRectCorners(x, y, width, height, radius, radius, radius, radius, 1.0f, veil);
-    }
-
-    private void drawClippedTimeStrip(Renderer2D renderer,
-                                      Entry entry,
-                                      float x,
-                                      float y,
-                                      float width,
-                                      float height,
-                                      float cardRadius,
-                                      float scale,
-                                      float alpha) {
-        boolean clipped = ClipFunction.pushRoundedRect(x, y, width, height, cardRadius);
-        if (!clipped) return;
-        try {
-            drawTimeStrip(renderer, entry, x, y, width, height, cardRadius, scale, alpha);
-        } finally {
-            ClipFunction.pop();
-        }
-    }
-
-    private void drawTimeStrip(Renderer2D renderer,
-                               Entry entry,
-                               float x,
-                               float y,
-                               float width,
-                               float height,
-                               float cardRadius,
-                               float scale,
-                               float alpha) {
-        if (renderer == null || entry == null || width <= 0.0f || height <= 0.0f || alpha <= 0.001f) return;
-        float life = entry.totalLife <= 0.0f ? 1.0f : AnimationUtility.clamp01(entry.life / entry.totalLife);
-        if (life <= 0.001f) return;
-
-        float stripH = Math.max(1.45f * scale, Math.min(3.0f * scale, height * 0.13f));
-        float bleed = Math.max(0.65f, 0.45f * scale);
-        float stripDrawH = stripH + bleed;
-        float stripY = y + height - stripH;
-        float bottomR = Math.min(cardRadius, stripDrawH);
-        int accent = entryAccent(entry.event);
-        int trackTop = HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(0xFF07090D, accent, 0.08f), 0.30f * alpha);
-        int trackBottom = HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(0xFF020305, accent, 0.18f), 0.48f * alpha);
-        renderer.roundedRectCornersQuad(
-                x,
-                stripY,
-                width,
-                stripDrawH,
-                0.0f,
-                0.0f,
-                bottomR,
-                bottomR,
-                0.0f,
-                trackTop,
-                trackTop,
-                trackBottom,
-                trackBottom
-        );
-
-        float fillW = Math.max(0.0f, width * life);
-        if (fillW <= 0.35f) return;
-        float fillRLeft = Math.min(bottomR, fillW * 0.5f);
-        float fillRRight = life >= 0.985f ? bottomR : Math.min(stripDrawH * 0.5f, fillW * 0.5f);
-        int fillTopLeft = HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.28f), 0.92f * alpha);
-        int fillTopRight = HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.10f), 0.84f * alpha);
-        int fillBottomRight = HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(accent, 0xFF05070A, 0.22f), 0.78f * alpha);
-        int fillBottomLeft = HudRenderUtil.scaleAlpha(HudRenderUtil.mixColor(accent, 0xFFFFFFFF, 0.16f), 0.88f * alpha);
-        renderer.roundedRectCornersQuad(
-                x,
-                stripY,
-                fillW,
-                stripDrawH,
-                0.0f,
-                life >= 0.985f ? 0.0f : fillRRight,
-                fillRRight,
-                fillRLeft,
-                0.0f,
-                fillTopLeft,
-                fillTopRight,
-                fillBottomRight,
-                fillBottomLeft
-        );
-    }
-
-    private void queueItem(Entry entry,
-                           float cardX,
-                           float cardY,
-                           float cardW,
-                           float cardH,
-                           float scale,
-                           float alpha) {
-        if (entry == null || entry.stack == null || entry.stack.isEmpty()) return;
-        boolean compact = displayMode.get() == ItemizerDisplayMode.COMPACT;
-        float iconSize = compact
-                ? Math.min(16.0f * scale, cardH - 7.0f * scale)
-                : Math.min(Math.min(16.0f * scale, cardW - 8.0f * scale), cardH - 8.0f * scale);
-        if (iconSize <= 0.0f) return;
-        float iconX = compact ? cardX + 4.5f * scale : cardX + (cardW - iconSize) * 0.5f;
-        float iconY = cardY + (cardH - iconSize) * 0.5f - 0.5f * scale;
-        int overlayFlags = compact ? Renderer2D.ITEM_OVERLAY_ALL : Renderer2D.ITEM_OVERLAY_NONE;
-        itemTasks.add(new ItemRenderTask(entry.stack.copy(), iconX, iconY, Math.max(0.05f, iconSize / 16.0f), overlayFlags, alpha));
-    }
-
-    private void drawItem(Renderer2D renderer,
-                          ItemStack stack,
-                          float x,
-                          float y,
-                          float itemScale,
-                          int seed,
-                          int overlayFlags,
-                          float alpha) {
-        if (renderer == null || stack == null || stack.isEmpty() || alpha <= 0.001f) return;
-        double previousAlpha = renderer.getAlpha();
-        renderer.setAlpha(previousAlpha * AnimationUtility.clamp01(alpha));
-        try {
-            renderer.item(stack, x, y, itemScale, seed, overlayFlags, null);
-        } finally {
-            renderer.setAlpha(previousAlpha);
-        }
+        props.put("items", cards.toArray());
+        return props;
     }
 
     private long signature(Map<String, Object> props) {
-        long h = 0xcbf29ce484222325L;
-        h = CachedUiScriptRuntime.mix(h, displayMode.get().id());
-        h = CachedUiScriptRuntime.mix(h, direction.get().id());
-        h = CachedUiScriptRuntime.mix(h, width);
-        h = CachedUiScriptRuntime.mix(h, height);
-        h = CachedUiScriptRuntime.mix(h, bgAlpha.get());
-        h = CachedUiScriptRuntime.mix(h, blur.get());
-        Object itemsValue = props.get("items");
-        Object[] items = itemsValue instanceof Object[] arr ? arr : new Object[0];
-        h = CachedUiScriptRuntime.mix(h, items.length);
-        for (Object itemValue : items) {
-            if (!(itemValue instanceof Map<?, ?> item)) continue;
-            h = CachedUiScriptRuntime.mix(h, string(item.get("key")));
-            h = CachedUiScriptRuntime.mix(h, string(item.get("label")));
-            h = CachedUiScriptRuntime.mix(h, string(item.get("item")));
-            h = CachedUiScriptRuntime.mix(h, intValue(item.get("count")));
-            h = CachedUiScriptRuntime.mix(h, Math.round(floatValue(item.get("alpha")) * 1000.0f));
-            h = CachedUiScriptRuntime.mix(h, Math.round(floatValue(item.get("life")) * 1000.0f));
-            h = CachedUiScriptRuntime.mix(h, Math.round(floatValue(item.get("pulse")) * 1000.0f));
+        long hash = CachedUiScriptRuntime.mix(0xcbf29ce484222325L, props.get("width").toString());
+        hash = CachedUiScriptRuntime.mix(hash, props.get("height").toString());
+        hash = CachedUiScriptRuntime.mix(hash, props.get("hovered").toString());
+        hash = CachedUiScriptRuntime.mix(hash, (boolean) props.get("chat") ? 1 : 0);
+        hash = CachedUiScriptRuntime.mix(hash, blur.get() ? 1 : 0);
+        hash = CachedUiScriptRuntime.mix(hash, bgAlpha.get());
+        hash = CachedUiScriptRuntime.mix(hash, themeMix.get());
+        Themes.Theme selectedTheme = Theme.theme();
+        hash = CachedUiScriptRuntime.mix(hash, selectedTheme.accent());
+        hash = CachedUiScriptRuntime.mix(hash, selectedTheme.windowBg());
+        hash = CachedUiScriptRuntime.mix(hash, selectedTheme.surface());
+        hash = CachedUiScriptRuntime.mix(hash, selectedTheme.textPrimary());
+        for (Entry entry : drawn) {
+            HudActionRegistry.Snapshot state = entry.snapshot;
+            hash = CachedUiScriptRuntime.mix(hash, entry.id);
+            hash = CachedUiScriptRuntime.mix(hash, entry.key);
+            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.x * 100.0f));
+            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.y * 100.0f));
+            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.alpha * 255.0f));
+            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.heat * 255.0f));
+            hash = CachedUiScriptRuntime.mix(hash, Math.round(state.progress() * 100.0f));
+            hash = CachedUiScriptRuntime.mix(hash, Math.round(state.cooldown() * 100.0f));
+            hash = CachedUiScriptRuntime.mix(hash, state.aware() ? 1 : 0);
+            hash = CachedUiScriptRuntime.mix(hash, state.available() ? 1 : 0);
+            hash = CachedUiScriptRuntime.mix(hash, state.active() ? 1 : 0);
+            hash = CachedUiScriptRuntime.mix(hash, state.inProgress() ? 1 : 0);
+            hash = CachedUiScriptRuntime.mix(hash, visibleActions.get(entry.id) ? 1 : 0);
+            hash = CachedUiScriptRuntime.mix(hash, enabledActions.get(entry.id) ? 1 : 0);
         }
-        return h;
+        return hash;
     }
 
-    private float baseEntryWidth() {
-        return displayMode.get() == ItemizerDisplayMode.COMPACT ? BASE_COMPACT_W : BASE_ICON_CARD;
-    }
+    private static boolean unbound(String bind) { return bind == null || bind.isBlank() || "NONE".equalsIgnoreCase(bind); }
+    private static String bindLabel(String bind) { return unbound(bind) ? "—" : bind; }
+    private static String hex(int rgba) { return UiScriptColor.hex(rgba); }
 
-    private float baseEntryHeight() {
-        return displayMode.get() == ItemizerDisplayMode.COMPACT ? BASE_COMPACT_H : BASE_ICON_CARD;
-    }
+    private static final class ActionToggles extends BooleanMapValue {
+        private final boolean protectTotem;
 
-    private static String hex(int argb) {
-        return UiScriptColor.hex(argb);
-    }
-
-    private static String string(Object value) {
-        return value instanceof String s ? s : "";
-    }
-
-    private static int intValue(Object value) {
-        return value instanceof Number n ? n.intValue() : 0;
-    }
-
-    private static float floatValue(Object value) {
-        return value instanceof Number n ? n.floatValue() : 0.0f;
-    }
-
-    public enum ItemizerEvent implements EnumValue.IdProvider {
-        AUTO_EAT("auto_eat", "Eat"),
-        AUTO_TOTEM("auto_totem", "Totem"),
-        ELYTRA_SWAP("elytra_swap", "Swap");
-
-        private final String id;
-        private final String fallbackLabel;
-
-        ItemizerEvent(String id, String fallbackLabel) {
-            this.id = id;
-            this.fallbackLabel = fallbackLabel;
+        ActionToggles(String name) {
+            super(name, Map.of());
+            protectTotem = name.endsWith("enabled_actions");
         }
 
-        @Override
-        public String id() {
-            return id;
-        }
-    }
-
-    private enum ItemizerDisplayMode implements EnumValue.IdProvider {
-        ICONS("icons"),
-        COMPACT("compact");
-
-        private final String id;
-
-        ItemizerDisplayMode(String id) {
-            this.id = id;
+        void sync(Set<String> ids) {
+            getAll().keySet().retainAll(ids);
+            for (String id : ids) getAll().putIfAbsent(id, true);
+            if (protectTotem && ids.contains("offhand:totem_priority")) getAll().put("offhand:totem_priority", true);
         }
 
-        @Override
-        public String id() {
-            return id;
-        }
-    }
-
-    private enum ItemizerDirection implements EnumValue.IdProvider {
-        HORIZONTAL("horizontal"),
-        VERTICAL("vertical");
-
-        private final String id;
-
-        ItemizerDirection(String id) {
-            this.id = id;
+        @Override public boolean get(String key) {
+            return protectTotem && "offhand:totem_priority".equals(key)
+                    || getAll().getOrDefault(key, true);
         }
 
-        @Override
-        public String id() {
-            return id;
+        @Override public void set(String key, boolean value) {
+            if (protectTotem && "offhand:totem_priority".equals(key)) value = true;
+            super.set(key, value);
+        }
+
+        @Override public void fromJson(Object json) {
+            getAll().clear();
+            if (json instanceof Map<?, ?> map) {
+                for (var item : map.entrySet()) {
+                    if (item.getKey() instanceof String key && key.length() < 160 && key.indexOf(':') > 0
+                            && item.getValue() instanceof Boolean enabled) getAll().put(key, enabled);
+                }
+            }
         }
     }
 
     private static final class Entry {
-        private final ItemizerEvent event;
-        private ItemStack stack = ItemStack.EMPTY;
-        private String label;
-        private float life;
-        private float totalLife;
-        private float anim;
-        private float punch;
-
-        private Entry(ItemizerEvent event) {
-            this.event = event;
-            this.label = event.fallbackLabel;
-        }
+        final String id;
+        HudActionRegistry.Snapshot snapshot;
+        String key = "";
+        float x, y, w;
+        float alpha;
+        float heat;
+        boolean positioned;
+        boolean targetVisible;
+        Entry(String id) { this.id = id; }
     }
 
-    private record ItemRenderTask(ItemStack stack, float x, float y, float scale, int overlayFlags, float alpha) {
+    private static final class Burst {
+        final ItemStack stack;
+        float remaining;
+        Burst(ItemStack stack, float remaining) { this.stack = stack; this.remaining = remaining; }
     }
+
+    private record ItemTask(ItemStack stack, float x, float y, float scale, float alpha) {}
 }

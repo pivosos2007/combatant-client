@@ -51,7 +51,6 @@ public final class ExplosionMarker extends Module {
     private final NumberValue<Integer> minExplosions = num("min_explosions", 1, 1, 50);
     private final BooleanValue tracers = bool("tracers", true);
     private final BooleanValue chatAlerts = bool("chat_alerts", true);
-    private final BooleanValue soundAlerts = bool("sound_alerts", false);
     private final RGBAColorValue fillColor = color("fill_color", "#50FF3C3C");
     private final RGBAColorValue lineColor = color("line_color", "#FFFF3C3C");
 
@@ -114,7 +113,7 @@ public final class ExplosionMarker extends Module {
                     lastAlerts.put(chunk, now);
                     FinderAlerts.found(getDisplayName(), match.count > 1 ? "Explosions x" + match.count : "Explosion",
                             Mth.floor(match.center.x), Mth.floor(match.center.y), Mth.floor(match.center.z),
-                            chatAlerts.get(), soundAlerts.get());
+                            chatAlerts.get(), false);
                 }
             }
         }

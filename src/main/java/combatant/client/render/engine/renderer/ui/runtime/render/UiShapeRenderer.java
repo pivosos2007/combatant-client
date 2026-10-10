@@ -31,6 +31,26 @@ public final class UiShapeRenderer {
         };
     }
 
+    private static UiSurfaceMaterialSpec surfaceMaterial(UiProps props) {
+        if (props == null) return null;
+        String value = props.string("materialMode", "").trim().toLowerCase(Locale.ROOT);
+        UiSurfaceMaterialSpec base = switch (value) {
+            case "satin-titanium", "satin_titanium", "satin" -> UiSurfaceMaterialSpec.SATIN_TITANIUM;
+            case "soft-touch", "soft_touch" -> UiSurfaceMaterialSpec.SOFT_TOUCH;
+            case "phosphor-led", "phosphor_led", "led", "dot-matrix", "dot_matrix" ->
+                    UiSurfaceMaterialSpec.PHOSPHOR_LED;
+            default -> null;
+        };
+        if (base == null) return null;
+        return base.withAccent(resolveColor(props.get("materialAccent"), base.accentArgb(), 1.0f))
+                .withParameters(
+                        props.number("materialDetailScale", base.detailScale()),
+                        props.number("materialRoughness", base.roughness()),
+                        props.number("materialBevelStrength", base.bevelStrength()),
+                        props.number("materialResponse", base.response())
+                );
+    }
+
     private static boolean hasFillCornerColors(UiProps props) {
         return first(props, "topLeftColor", "cTopLeft") != null
                 || first(props, "topRightColor", "cTopRight") != null
@@ -231,7 +251,12 @@ public final class UiShapeRenderer {
             }
             UiPaint fillPaint = buildPaint(props, fill, linearGradient, gradientStart, gradientEnd, gradientAngle, gradientOffset, alpha);
             if ((fillPaint.solidColor() >>> 24) > 0 || linearGradient || hasFillCornerColors(props)) {
-                renderer.primitive(primitive, fillPaint);
+                UiSurfaceMaterialSpec material = surfaceMaterial(props);
+                if (material != null) {
+                    renderer.materialPrimitive(primitive, fillPaint, material);
+                } else {
+                    renderer.primitive(primitive, fillPaint);
+                }
             }
             if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
                 renderer.primitiveStroke(primitive, buildStrokePaint(props, stroke, gradientAngle, gradientOffset, alpha, context),
