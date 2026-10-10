@@ -19,7 +19,7 @@ layout(std430, binding = 7) readonly buffer TaaParams {
 } u_Taa;
 
 float luma(vec3 color) {
-    // Match Photon FXAA 3.11: gamma-aware Rec.709 luma proxy.
+    //Gamma-aware Rec.709 luma proxy.
     return sqrt(max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 0.0));
 }
 
@@ -41,7 +41,7 @@ vec3 applyFxaa(ivec2 texel, vec2 uv, vec2 pixelSize) {
             1.0, 1.0, 1.0, 1.0, 1.0, 1.5,
             2.0, 2.0, 2.0, 2.0, 4.0, 8.0);
 
-    // Photon FXAA 3.11 neighborhood.
+    //FXAA 3.11 neighborhood.
     vec3 a = resolvedTexel(texel + ivec2(-1,  1));
     vec3 b = resolvedTexel(texel + ivec2( 0,  1));
     vec3 c = resolvedTexel(texel + ivec2( 1,  1));
@@ -157,8 +157,7 @@ vec3 applyAdaptiveSharpen(ivec2 texel, float strength) {
     ivec2 p = clamp(texel, ivec2(0), size - ivec2(1));
 
     // FidelityFX CAS filter shape used by Photon. Keep the signal in Combatant's
-    // current post-process color space; unlike Photon final.fsh this pass is not
-    // the display transfer stage, so it must not gamma-convert the framebuffer.
+    // current post-process color space.
     vec3 a = resolvedTexel(p + ivec2(-1, -1));
     vec3 b = resolvedTexel(p + ivec2( 0, -1));
     vec3 c = resolvedTexel(p + ivec2( 1, -1));
