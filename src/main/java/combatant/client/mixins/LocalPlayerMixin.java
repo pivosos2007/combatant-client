@@ -88,6 +88,10 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
     @Unique
     private boolean frozenByFreecam;
     @Unique
+    private boolean freecamNoGravityApplied;
+    @Unique
+    private boolean freecamPreviousNoGravity;
+    @Unique
     private Vec3 savedVelocity = Vec3.ZERO;
     @Unique
     private double savedX, savedY, savedZ;
@@ -638,9 +642,39 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         if (shouldFreecamFreezeNow() && !Modules.enabled(Freeze.class)) {
             frozen = false;
             frozenByFreecam = false;
-            Vec3 velocity = p.getDeltaMovement();
-            p.setDeltaMovement(0.0, velocity.y, 0.0);
+            if (!freecamNoGravityApplied) {
+                freecamPreviousNoGravity = p.isNoGravity();
+                freecamNoGravityApplied = true;
+            }
+            p.setNoGravity(true);
+            p.setDeltaMovement(Vec3.ZERO);
             p.fallDistance = 0.0f;
+            p.setOnGround(true);
+            return;
+        }
+
+        if (freecamNoGravityApplied) {
+            p.setNoGravity(freecamPreviousNoGravity);
+            freecamNoGravityApplied = false;
+            p.setDeltaMovement(Vec3.ZERO);
+            p.fallDistance = 0.0f;
+            p.setOnGround(false);
+        }
+
+        if (Freecam.shouldUseSafeLanding(p.getUUID())) {
+            boolean hasSupport = p.level().getBlockCollisions(
+                    p, p.getBoundingBox().move(0.0, -0.06, 0.0)).iterator().hasNext();
+            if (hasSupport) {
+                p.setDeltaMovement(Vec3.ZERO);
+                p.fallDistance = 0.0f;
+                p.setOnGround(true);
+                Freecam.finishSafeLanding(p.getUUID());
+            } else {
+                double nextY = Math.max(-0.35, p.getDeltaMovement().y - 0.08);
+                p.setDeltaMovement(0.0, nextY, 0.0);
+                p.fallDistance = 0.0f;
+                p.setOnGround(false);
+            }
             return;
         }
 

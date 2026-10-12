@@ -27,10 +27,14 @@ import combatant.client.features.module.Notifier;
 import combatant.client.util.entity.FreecamEntity;
 
 import java.util.Map;
+import java.util.UUID;
 
 @ModuleInfo(id = "freecam", displayName = "Freecam", aliases = {"camera", "spectator"}, category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.COSMETIC,
         description = "module.freecam.description")
 public class Freecam extends Module {
+
+    private static volatile UUID integratedFreezePlayer;
+    private static volatile UUID safeLandingPlayer;
 
     private static final String SETTING_TOGGLES = "toggles";
     private static final String SETTING_HORIZONTAL_SPEED = "horizontal_speed";
@@ -74,6 +78,18 @@ public class Freecam extends Module {
         return cameraInput;
     }
 
+    public static boolean shouldFreezeIntegratedPlayer(UUID playerId) {
+        return playerId != null && playerId.equals(integratedFreezePlayer);
+    }
+
+    public static boolean shouldUseSafeLanding(UUID playerId) {
+        return playerId != null && playerId.equals(safeLandingPlayer);
+    }
+
+    public static void finishSafeLanding(UUID playerId) {
+        if (playerId != null && playerId.equals(safeLandingPlayer)) safeLandingPlayer = null;
+    }
+
 
     @Override
     public void onEnable() {
@@ -96,11 +112,15 @@ public class Freecam extends Module {
         camEntity = new FreecamEntity(mc.level);
         syncCameraEntity(camPos, camPos);
         mc.setCameraEntity(camEntity);
+        syncIntegratedFreezeState();
     }
 
     @Override
     public void onDisable() {
         Minecraft mc = Minecraft.getInstance();
+        UUID frozenPlayer = integratedFreezePlayer;
+        integratedFreezePlayer = null;
+        if (frozenPlayer != null) safeLandingPlayer = frozenPlayer;
         if (prevPerspective != null) {
             mc.options.setCameraType(prevPerspective);
         }
@@ -116,7 +136,20 @@ public class Freecam extends Module {
             cameraInput = !cameraInput;
             notifyInputMode(cameraInput);
         }
+        syncIntegratedFreezeState();
         tickCameraMovement();
+    }
+
+    private void syncIntegratedFreezeState() {
+        Minecraft mc = Minecraft.getInstance();
+        UUID next = isEnabled() && freezePlayer() && cameraInput
+                && mc.hasSingleplayerServer() && mc.player != null
+                ? mc.player.getUUID()
+                : null;
+        UUID previous = integratedFreezePlayer;
+        integratedFreezePlayer = next;
+        if (previous != null && !previous.equals(next)) safeLandingPlayer = previous;
+        if (next != null) safeLandingPlayer = null;
     }
 
     private void notifyInputMode(boolean cameraInput) {
