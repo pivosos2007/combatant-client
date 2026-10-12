@@ -92,10 +92,11 @@ public final class OGChunkFinder extends ChunkFinderModule<OGChunkFinder.Found> 
             super.renderMarker(draw, key, hit, y);
             return;
         }
+        double geodeCenterY = hit.geodeBounds() != null ? hit.geodeBounds().getCenter().y : y;
         if ("Block".equals(amethystMarkerStyle.get()) && hit.geodeBounds() != null) {
             draw.box(hit.geodeBounds(), amethystFillColor.getArgb(), amethystLineColor.getArgb());
         } else {
-            draw.chunkPlate(ChunkPos.getX(key), ChunkPos.getZ(key), y,
+            draw.chunkPlate(ChunkPos.getX(key), ChunkPos.getZ(key), geodeCenterY,
                     amethystFillColor.getArgb(), amethystLineColor.getArgb());
         }
     }
