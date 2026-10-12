@@ -234,7 +234,7 @@ public final class ModulesMenuScreen {
             panel.anim = panelT;
         }
 
-        searchW = 100.0f * scale;
+        searchW = 132.0f * scale;
         searchH = 20.0f * scale;
         searchX = areaX + areaW * 0.5f - searchW * 0.5f;
 
@@ -245,8 +245,7 @@ public final class ModulesMenuScreen {
             visibleSearchY = maxVisibleSearchY;
         }
 
-        float hiddenSearchY = visibleSearchY + 12.0f * scale;
-        searchY = AnimationUtility.lerp(hiddenSearchY, visibleSearchY, searchAnim);
+        searchY = visibleSearchY;
     }
 
     public void render(float mouseX, float mouseY) {
@@ -423,7 +422,15 @@ public final class ModulesMenuScreen {
     }
 
     private float panelAlpha(ModulesMenuPanel panel) {
+        if (ClickGuiSearch.hasQuery() && !panelHasSearchResults(panel)) return 0.0f;
         return easeOutCubic(panel.anim);
+    }
+
+    private boolean panelHasSearchResults(ModulesMenuPanel panel) {
+        for (ModuleComponent.CardEntry entry : ModulesMenuResolver.buildCards(panel.category, null)) {
+            if (ClickGuiSearch.matches(entry.title(), entry.searchAliases())) return true;
+        }
+        return false;
     }
 
     private boolean isInteractive() {
@@ -950,17 +957,11 @@ public final class ModulesMenuScreen {
                 ? Math.max(12.0f * scale, moduleListX - nameX - 5.0f * scale)
                 : Math.max(12.0f * scale, rowW - (nameX - x) - 18.0f * scale);
 
-        String matchedAlias = panel.bindingId == null || !panel.bindingId.equals(entry.getId())
-                ? ClickGuiSearch.matchingAlias(entry.searchAliases())
-                : null;
-        String aliasLabel = matchedAlias == null || matchedAlias.isBlank()
-                ? null
-                : "(aka " + matchedAlias + ")";
-
         if (failed) {
             SettingErrorView.warning(x+rowW-15f*scale,y+5f*scale,9f*scale,alpha);
         }
-        renderModuleSearchTitle(label, aliasLabel, nameX, nameY, nameMaxW, nameSize, nameColor, alpha, hoverAnim);
+        String visibleLabel = ClickGuiRenderer.fitText(regular, label, nameSize, nameMaxW);
+        ClickGuiRenderer.drawText(regular, visibleLabel, nameX, nameY, nameSize, nameColor, false);
 
         if (moduleListEdit) {
             int listColor = entry.shownInModuleList() ? ModulesMenuStyle.MODULE_LIST_ON : ModulesMenuStyle.MODULE_LIST_OFF;
@@ -971,67 +972,6 @@ public final class ModulesMenuScreen {
         LayoutRender2D.rect(x + 3.0f * scale, y + h, Math.max(1f, rowW - 6.0f * scale), 0.5f * scale, divider);
 
         panel.hits.add(new ModulesMenuPanel.ModuleHit(entry.getId(), x, y, rowW, h, entry.hasSettings(), entry.toggleable()));
-    }
-
-    private void renderModuleSearchTitle(
-            String label,
-            String aliasLabel,
-            float x,
-            float y,
-            float maxW,
-            float nameSize,
-            int nameColor,
-            float alpha,
-            float hoverAnim
-    ) {
-        if (label == null) label = "";
-        if (aliasLabel == null || aliasLabel.isBlank() || !ClickGuiSearch.hasQuery()) {
-            String visible = ClickGuiRenderer.fitText(regular, label, nameSize, maxW);
-            ClickGuiRenderer.drawText(regular, visible, x, y, nameSize, nameColor, false);
-            return;
-        }
-
-        float gap = 3.0f * scale;
-        float aliasSize = 6.15f * scale;
-        float fullNameW = ClickGuiRenderer.textWidth(regular, label, nameSize);
-        float fullAliasW = ClickGuiRenderer.textWidth(medium, aliasLabel, aliasSize);
-
-        if (fullNameW + gap + fullAliasW <= maxW) {
-            ClickGuiRenderer.drawText(regular, label, x, y, nameSize, nameColor, false);
-            float aliasY = y + middle(textHeight(medium, aliasSize), textHeight(regular, nameSize)) + 0.15f * scale;
-            int aliasColor = mix(
-                    withAlpha(ModulesMenuStyle.textFaint(), alpha),
-                    withAlpha(ModulesMenuStyle.textMuted(), alpha),
-                    0.28f + 0.30f * hoverAnim
-            );
-            ClickGuiRenderer.drawText(medium, aliasLabel, x + fullNameW + gap, aliasY, aliasSize, aliasColor, false);
-            return;
-        }
-
-        // Preserve the module's primary name first. Alias metadata is search-only and
-        // receives a bounded share of the row so it cannot crowd the normal row affordances.
-        float minNameBudget = Math.min(fullNameW, Math.max(25.0f * scale, maxW * 0.56f));
-        float aliasBudget = Math.min(fullAliasW, Math.min(48.0f * scale, maxW - minNameBudget - gap));
-        float aliasMinUseful = ClickGuiRenderer.textWidth(medium, "(aka x)", aliasSize);
-        if (aliasBudget < aliasMinUseful) {
-            String visible = ClickGuiRenderer.fitText(regular, label, nameSize, maxW);
-            ClickGuiRenderer.drawText(regular, visible, x, y, nameSize, nameColor, false);
-            return;
-        }
-
-        float nameBudget = Math.max(12.0f * scale, maxW - gap - aliasBudget);
-        String visibleName = ClickGuiRenderer.fitText(regular, label, nameSize, nameBudget);
-        String visibleAlias = ClickGuiRenderer.fitText(medium, aliasLabel, aliasSize, aliasBudget);
-        float visibleNameW = ClickGuiRenderer.textWidth(regular, visibleName, nameSize);
-        float aliasY = y + middle(textHeight(medium, aliasSize), textHeight(regular, nameSize)) + 0.15f * scale;
-        int aliasColor = mix(
-                withAlpha(ModulesMenuStyle.textFaint(), alpha),
-                withAlpha(ModulesMenuStyle.textMuted(), alpha),
-                0.28f + 0.30f * hoverAnim
-        );
-
-        ClickGuiRenderer.drawText(regular, visibleName, x, y, nameSize, nameColor, false);
-        ClickGuiRenderer.drawText(medium, visibleAlias, x + visibleNameW + gap, aliasY, aliasSize, aliasColor, false);
     }
 
     private void renderModuleRowCheck(ModulesMenuPanel panel,
@@ -1450,9 +1390,9 @@ public final class ModulesMenuScreen {
     }
 
     private void renderSearch(float mouseX, float mouseY) {
-        if (searchAnim <= 0.001f && !ClickGuiSearch.isActive()) return;
+        if (screenAnim <= 0.001f) return;
 
-        float alpha = easeOutCubic(screenAnim) * searchAnim;
+        float alpha = easeOutCubic(screenAnim);
         if (alpha <= 0.001f) return;
 
         float materialAlpha = alpha >= 0.999f ? 1.0f : alpha;
@@ -1465,15 +1405,15 @@ public final class ModulesMenuScreen {
 
         String text = ClickGuiSearch.getText();
         String draw = text == null || text.isBlank() ? "Search..." : text;
-        int color = text == null || text.isBlank() ? withAlpha(ModulesMenuStyle.textFaint(), alpha) : withAlpha(ModulesMenuStyle.text(), alpha);
+        int color = text == null || text.isBlank() ? withAlpha(ModulesMenuStyle.textMuted(), alpha) : withAlpha(ModulesMenuStyle.text(), alpha);
 
         float tx = searchX + 8.0f * scale;
-        float ty = searchY + middle(textHeight(regular, 8.0f * scale), searchH);
+        float ty = searchY + middle(textHeight(regular, 9.0f * scale), searchH);
         boolean clip = ScissorFunction.pushRaw(tx, searchY, searchW - 16f * scale, searchH);
         if (ClickGuiSearch.getText().isEmpty() && !ClickGuiSearch.isActive()) {
-            ClickGuiRenderer.drawText(regular, draw, tx, ty, 8f * scale, color, false);
+            ClickGuiRenderer.drawText(regular, draw, tx, ty, 9f * scale, color, false);
         } else {
-            ClickGuiSearch.editor().render(tx, ty, searchW - 16f * scale, searchH, regular, 8f * scale,
+            ClickGuiSearch.editor().render(tx, ty, searchW - 16f * scale, searchH, regular, 9f * scale,
                     color, withAlpha(0xFF588CEF, alpha * 0.55f), ClickGuiSearch.isActive());
         }
         if (clip) ScissorFunction.pop();

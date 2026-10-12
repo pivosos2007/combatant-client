@@ -236,20 +236,25 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         if (fc != null && fc.isEnabled()) {
 
             // позиция и направление FREECAM
-            Vec3 start = new Vec3(
-                    Mth.lerp(tickDelta, fc.camPosPrev.x, fc.camPos.x),
-                    Mth.lerp(tickDelta, fc.camPosPrev.y, fc.camPos.y),
-                    Mth.lerp(tickDelta, fc.camPosPrev.z, fc.camPos.z)
-            );
-
-            float yawRad = -fc.camYaw * ((float) Math.PI / 180F);
-            float pitchRad = -fc.camPitch * ((float) Math.PI / 180F);
-
-            Vec3 dir = new Vec3(
+                Vec3 start = fc.allowInteract()
+                    ? mc.player.getEyePosition(tickDelta)
+                    : new Vec3(
+                        Mth.lerp(tickDelta, fc.camPosPrev.x, fc.camPos.x),
+                        Mth.lerp(tickDelta, fc.camPosPrev.y, fc.camPos.y),
+                        Mth.lerp(tickDelta, fc.camPosPrev.z, fc.camPos.z)
+                    );
+                Vec3 dir;
+                if (fc.allowInteract()) {
+                dir = mc.player.getViewVector(tickDelta);
+                } else {
+                float yawRad = -fc.camYaw * ((float) Math.PI / 180F);
+                float pitchRad = -fc.camPitch * ((float) Math.PI / 180F);
+                dir = new Vec3(
                     Mth.sin(yawRad) * Mth.cos(pitchRad),
                     Mth.sin(pitchRad),
                     Mth.cos(yawRad) * Mth.cos(pitchRad)
-            );
+                );
+                }
 
             // ===============================
             // FREECAM + NO INTERACT

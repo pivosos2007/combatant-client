@@ -19,7 +19,10 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.*;
@@ -41,10 +44,10 @@ import java.util.concurrent.ConcurrentHashMap;
         description = "module.blockesp.description")
 public class BlockESP extends Module {
 
-    private static final int SECTION_SCAN_BUDGET_PER_TICK = 10;
-    private static final int SECTION_SCAN_BURST_BUDGET_PER_TICK = 64;
+    private static final int SECTION_SCAN_BUDGET_PER_TICK = 32;
+    private static final int SECTION_SCAN_BURST_BUDGET_PER_TICK = 128;
     private static final int SECTION_SCAN_BURST_TICKS = 4;
-    private static final int SECTION_SCAN_REFRESH_TICKS = 40;
+    private static final int SECTION_SCAN_REFRESH_TICKS = 10;
     private static final int SODIUM_CANDIDATE_DRAIN_BUDGET_PER_TICK = 4096;
     private static final int RECONCILE_BUDGET_PER_TICK = 512;
     private static final int FULL_RECONCILE_REFRESH_TICKS = 20;
@@ -395,12 +398,25 @@ public class BlockESP extends Module {
 
         ObservedTarget observed = observedTargetStates.get(pos);
         boolean visible = observed != null && observed.rendered();
+        if (!visible && modeValue.get() == BlockScanMode.LOS) {
+            visible = hasLineOfSight(pos);
+        }
         if (!acceptsMode(pos, visible)) {
             renderTargets.remove(pos);
             return;
         }
         if (!renderTargets.containsKey(pos) && renderTargets.size() >= maxTargetsValue.get()) {
-            return;
+            Target farthest = null;
+            double farthestDistance = -1.0;
+            for (Target existing : renderTargets.values()) {
+                double distance = distanceToPlayerSqr(existing.pos);
+                if (distance > farthestDistance) {
+                    farthestDistance = distance;
+                    farthest = existing;
+                }
+            }
+            if (farthest == null || distanceToPlayerSqr(pos) >= farthestDistance) return;
+            renderTargets.remove(farthest.pos);
         }
 
         Target target = new Target();
@@ -420,6 +436,20 @@ public class BlockESP extends Module {
                     modeValue.get().getId()
             );
         }
+    }
+
+    private boolean hasLineOfSight(BlockPos target) {
+        if (mc.level == null || mc.player == null) return false;
+        Vec3 eye = mc.player.getEyePosition();
+        Vec3 center = Vec3.atCenterOf(target);
+        BlockHitResult hit = mc.level.clip(new ClipContext(
+                eye, center, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mc.player));
+        return hit.getType() == HitResult.Type.BLOCK && target.equals(hit.getBlockPos());
+    }
+
+    private double distanceToPlayerSqr(BlockPos pos) {
+        if (mc.player == null) return Double.POSITIVE_INFINITY;
+        return mc.player.distanceToSqr(Vec3.atCenterOf(pos));
     }
 
     private void drainSodiumCandidateQueue() {

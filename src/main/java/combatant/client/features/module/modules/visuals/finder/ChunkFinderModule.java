@@ -65,7 +65,7 @@ public abstract class ChunkFinderModule<R extends ChunkFinderModule.Hit> extends
 
     private final LoadedChunkScanner<R> scanner;
     // Chunks currently shown, in the order they were accepted.
-    private final Map<Long, R> accepted = new LinkedHashMap<>();
+    protected final Map<Long, R> accepted = new LinkedHashMap<>();
     // Survives chunk unloads so walking back and forth does not re-alert the same spot.
     private final Set<Long> alerted = new HashSet<>();
     private final Object packetListener = new PacketListener();
@@ -101,6 +101,16 @@ public abstract class ChunkFinderModule<R extends ChunkFinderModule.Hit> extends
 
     protected int lineFor(R hit) {
         return lineColor.getArgb();
+    }
+
+    protected void renderMarker(FinderRender draw, long key, R hit, double y) {
+        int chunkX = ChunkPos.getX(key);
+        int chunkZ = ChunkPos.getZ(key);
+        draw.chunkPlate(chunkX, chunkZ, y, fillFor(hit), lineFor(hit));
+        double centerX = (chunkX << 4) + 8.0;
+        double centerZ = (chunkZ << 4) + 8.0;
+        if (tracers.get()) draw.tracer(new Vec3(centerX, y, centerZ), lineFor(hit));
+        if (beams.get()) draw.beam(centerX, centerZ, y, y + BEAM_HEIGHT, lineFor(hit));
     }
 
     /**
@@ -197,14 +207,7 @@ public abstract class ChunkFinderModule<R extends ChunkFinderModule.Hit> extends
         FinderRender draw = FinderRender.begin(renderer, 1.5f);
         double y = markerY.get();
         for (Map.Entry<Long, R> entry : accepted.entrySet()) {
-            int chunkX = ChunkPos.getX(entry.getKey());
-            int chunkZ = ChunkPos.getZ(entry.getKey());
-            R hit = entry.getValue();
-            draw.chunkPlate(chunkX, chunkZ, y, fillFor(hit), lineFor(hit));
-            double centerX = (chunkX << 4) + 8.0;
-            double centerZ = (chunkZ << 4) + 8.0;
-            if (tracers.get()) draw.tracer(new Vec3(centerX, y, centerZ), lineFor(hit));
-            if (beams.get()) draw.beam(centerX, centerZ, y, y + BEAM_HEIGHT, lineFor(hit));
+            renderMarker(draw, entry.getKey(), entry.getValue(), y);
         }
     }
 

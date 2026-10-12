@@ -11,6 +11,8 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.BeehiveBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -20,13 +22,20 @@ import net.minecraft.world.level.block.entity.BeehiveBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import combatant.client.config.values.BooleanMapValue;
+import combatant.client.config.values.ModeValue;
+import combatant.client.config.values.RGBAColorValue;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.util.finder.ChunkBlocks;
+import combatant.client.util.finder.FinderRender;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 
@@ -54,6 +63,7 @@ public final class OGChunkFinder extends ChunkFinderModule<OGChunkFinder.Found> 
     private static final String SEAGRASS = "grown_seagrass";
     private static final String FLOWERS = "flowers_underground";
     private static final String VINES = "long_vines";
+    private static final String AMETHYST = "growing_amethyst";
 
     // Thresholds from the reference finders; lower values flag natural terrain.
     private static final int POWERED_REPEATER_MIN = 3;
@@ -64,11 +74,30 @@ public final class OGChunkFinder extends ChunkFinderModule<OGChunkFinder.Found> 
     private static final int VINE_MIN = 150;
     private static final int CHEST_MIN = 10;
     private static final int HONEY_FULL = 5;
+    private static final int AMETHYST_CLUSTER_LIGHT = 5;
 
     private final BooleanMapValue signals = group("signals", defaultSignals());
+        private final ModeValue amethystMarkerStyle = modeSetting(
+            "amethystMarkerStyle", "amethyst_marker_style", "Block", "Block", "Plate");
+    private final RGBAColorValue amethystFillColor = color("amethyst_fill_color", "#50FF4FA8");
+    private final RGBAColorValue amethystLineColor = color("amethyst_line_color", "#FFFF72CC");
 
     public OGChunkFinder() {
         super(24, "#4050FF00", "#FF50FF00", 4, 3000L);
+    }
+
+    @Override
+    protected void renderMarker(FinderRender draw, long key, Found hit, double y) {
+        if (!"Growing amethyst".equals(hit.reason())) {
+            super.renderMarker(draw, key, hit, y);
+            return;
+        }
+        if ("Block".equals(amethystMarkerStyle.get()) && hit.geodeBounds() != null) {
+            draw.box(hit.geodeBounds(), amethystFillColor.getArgb(), amethystLineColor.getArgb());
+        } else {
+            draw.chunkPlate(ChunkPos.getX(key), ChunkPos.getZ(key), y,
+                    amethystFillColor.getArgb(), amethystLineColor.getArgb());
+        }
     }
 
     private static Map<String, Boolean> defaultSignals() {
@@ -82,6 +111,7 @@ public final class OGChunkFinder extends ChunkFinderModule<OGChunkFinder.Found> 
         defaults.put(SEAGRASS, true);
         defaults.put(FLOWERS, false);
         defaults.put(VINES, true);
+        defaults.put(AMETHYST, true);
         return defaults;
     }
 
@@ -118,7 +148,65 @@ public final class OGChunkFinder extends ChunkFinderModule<OGChunkFinder.Found> 
                 "Flowers underground")) != null) return hit;
         if (signals.get(VINES) && (hit = countAtLeast(chunk, -64, 320, s -> s.is(Blocks.VINE), VINE_MIN,
                 "Overgrown vines")) != null) return hit;
+        if (signals.get(AMETHYST) && (hit = findGrowingAmethyst(level, chunk)) != null) return hit;
         return null;
+    }
+
+    private static Found findGrowingAmethyst(ClientLevel level, LevelChunk chunk) {
+        List<BlockPos> buddingBlocks = new ArrayList<>();
+        List<BlockPos> growingBlocks = new ArrayList<>();
+        ChunkBlocks.forEach(chunk, -64, 320, state -> state.is(Blocks.BUDDING_AMETHYST), (x, y, z, state) -> {
+            BlockPos budding = new BlockPos(x, y, z);
+            buddingBlocks.add(budding);
+            for (Direction direction : Direction.values()) {
+                BlockPos candidate = budding.relative(direction);
+                BlockState candidateState = level.getBlockState(candidate);
+                if (isGrowingState(candidateState)
+                        || (candidateState.isAir()
+                        && level.getBrightness(LightLayer.BLOCK, candidate) > 0
+                        && level.getBrightness(LightLayer.BLOCK, candidate) <= AMETHYST_CLUSTER_LIGHT)) {
+                    growingBlocks.add(budding);
+                    break;
+                }
+            }
+            return true;
+        });
+        if (growingBlocks.isEmpty()) return null;
+
+        BlockPos evidence = growingBlocks.getFirst();
+        return new Found("Growing amethyst", evidence, geodeBounds(evidence, buddingBlocks));
+    }
+
+    private static boolean isGrowingState(BlockState state) {
+        return state.is(Blocks.SMALL_AMETHYST_BUD)
+                || state.is(Blocks.MEDIUM_AMETHYST_BUD)
+                || state.is(Blocks.LARGE_AMETHYST_BUD)
+                || state.is(Blocks.AMETHYST_CLUSTER);
+    }
+
+    private static AABB geodeBounds(BlockPos seed, List<BlockPos> buddingBlocks) {
+        int minX = seed.getX();
+        int minY = seed.getY();
+        int minZ = seed.getZ();
+        int maxX = seed.getX();
+        int maxY = seed.getY();
+        int maxZ = seed.getZ();
+        for (BlockPos pos : buddingBlocks) {
+            if (pos.distManhattan(seed) > 24) continue;
+            minX = Math.min(minX, pos.getX());
+            minY = Math.min(minY, pos.getY());
+            minZ = Math.min(minZ, pos.getZ());
+            maxX = Math.max(maxX, pos.getX());
+            maxY = Math.max(maxY, pos.getY());
+            maxZ = Math.max(maxZ, pos.getZ());
+        }
+
+        Vec3 center = new AABB(minX, minY, minZ, maxX + 1.0, maxY + 1.0, maxZ + 1.0).getCenter();
+        double sizeX = Math.max(16.0, maxX - minX + 9.0);
+        double sizeY = Math.max(16.0, maxY - minY + 9.0);
+        double sizeZ = Math.max(16.0, maxZ - minZ + 9.0);
+        return new AABB(center.x - sizeX / 2.0, center.y - sizeY / 2.0, center.z - sizeZ / 2.0,
+                center.x + sizeX / 2.0, center.y + sizeY / 2.0, center.z + sizeZ / 2.0);
     }
 
     private static Found countAtLeast(LevelChunk chunk, int minY, int maxY, Predicate<BlockState> match,
@@ -184,6 +272,9 @@ public final class OGChunkFinder extends ChunkFinderModule<OGChunkFinder.Found> 
                 || block == Blocks.PEARLESCENT_FROGLIGHT;
     }
 
-    public record Found(String reason, BlockPos evidence) implements ChunkFinderModule.Hit {
+    public record Found(String reason, BlockPos evidence, AABB geodeBounds) implements ChunkFinderModule.Hit {
+        public Found(String reason, BlockPos evidence) {
+            this(reason, evidence, null);
+        }
     }
 }

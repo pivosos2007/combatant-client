@@ -74,6 +74,9 @@ public class ViewModel extends Module {
     private static final String SETTING_PLAYER_RIG_STYLE = "player_rig_style";
     private static final String SETTING_PLAYER_RIG_STRENGTH = "player_rig_strength";
     public final Minecraft mc = Minecraft.getInstance();
+    private float lastSwingProgress;
+    private long visualSwingStartNanos;
+    private boolean visualSwingActive;
     private final ModeValue mode = modeSetting("mode", SETTING_MODE, MODE_BASIC, MODE_BASIC, MODE_HMI);
     public final NumberValue<Float> liquidOffsetZ =
             visibleWhen(num("liquid_offset_z", SETTING_LIQUID_OFFSET_Z, 0.0f, -2.0f, 2.0f), this::isBasicMode);
@@ -105,11 +108,7 @@ public class ViewModel extends Module {
             "anim_mode",
             SETTING_ANIM_MODE,
             "Smooth",
-            "Back", "Smooth Down", "Block", "Smooth", "Swipe Back", "Block Down",
-            "New", "7", "Forward", "Glide", "Tap", "Blocking", "Touch", "Slant",
-            "Spin", "Helicopter", "Stab", "Circle", "Wave", "360 Swing",
-            "SmoothVanilla", "SwipeBackDown", "Vanilla", "Flip", "Side", "Overhead",
-            "Hammer", "Chop", "Arc", "Double", "Shake", "Shove", "Slash", "Thrust"),
+            "Vanilla", "Smooth", "Swipe Back"),
             () -> isBasicMode() && swingEnabled.get());
     public final NumberValue<Float> animSpeed = visibleWhen(num("anim_speed", SETTING_ANIM_SPEED, 1.0f, 0.1f, 4.0f), () -> isBasicMode() && swingEnabled.get());
     public final NumberValue<Float> animStrength = visibleWhen(num("anim_strength", SETTING_ANIM_STRENGTH, 5.0f, 0.1f, 10.0f), () -> isBasicMode() && swingEnabled.get());
@@ -387,9 +386,31 @@ public class ViewModel extends Module {
 
         float speed = animSpeed.get();
         float progress = Mth.clamp(swingProg, 0.0f, 1.0f);
-        float animProgress = speed >= 1.0f
-                ? Mth.clamp(progress * speed, 0.0f, 1.0f)
-                : progress; // keep full swing so slow speeds don't get cut at cooldown end
+        float animProgress;
+        if (speed >= 1.0f) {
+            visualSwingActive = false;
+            lastSwingProgress = progress;
+            animProgress = Mth.clamp(progress * speed, 0.0f, 1.0f);
+        } else {
+            long now = System.nanoTime();
+            if (!visualSwingActive && progress > 0.01f && lastSwingProgress <= 0.01f) {
+                visualSwingStartNanos = now;
+                visualSwingActive = true;
+            }
+            lastSwingProgress = progress;
+            if (visualSwingActive) {
+                long durationNanos = (long) (300_000_000.0 / speed);
+                long elapsedNanos = now - visualSwingStartNanos;
+                if (elapsedNanos >= durationNanos) {
+                    visualSwingActive = false;
+                    animProgress = 1.0f;
+                } else {
+                    animProgress = elapsedNanos / (float) durationNanos;
+                }
+            } else {
+                animProgress = progress;
+            }
+        }
         float anim = Mth.sin(animProgress * (float) Math.PI);
         float sin1 = Mth.sin(animProgress * animProgress * (float) Math.PI);
         float sin2 = Mth.sin(Mth.sqrt(animProgress) * (float) Math.PI);

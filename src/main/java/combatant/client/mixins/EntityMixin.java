@@ -10,6 +10,7 @@ package combatant.client.mixins;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.entity.vehicle.boat.Boat;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
@@ -25,6 +26,7 @@ import combatant.client.events.impl.PlayerMoveEvent;
 import combatant.client.events.impl.PlayerStepSuccessEvent;
 import combatant.client.events.impl.PlayerVelocityStrafe;
 import combatant.client.features.module.Modules;
+import combatant.client.features.module.modules.movement.BoatFly;
 import combatant.client.features.module.modules.movement.NoPush;
 import combatant.client.features.module.modules.movement.NoStun;
 import combatant.client.mixininterface.IEntity;
@@ -55,6 +57,10 @@ public abstract class EntityMixin implements IEntity {
     private Vec3 combatant$stepRequestedMovement = Vec3.ZERO;
     @Unique
     private boolean combatant$stepWasOnGround = false;
+    @Unique
+    private boolean combatant$restoreBoatNoPhysics;
+    @Unique
+    private boolean combatant$previousBoatNoPhysics;
 
     @Unique
     @Override
@@ -72,6 +78,12 @@ public abstract class EntityMixin implements IEntity {
     private void combatant$cacheMoveType(MoverType type, Vec3 movement, CallbackInfo ci) {
         combatant$lastMoveType = type;
         Entity self = (Entity) (Object) this;
+        combatant$restoreBoatNoPhysics = false;
+        if (self instanceof Boat boat && boat.isVehicle() && BoatFly.shouldApplySingleplayerBoatNoClip()) {
+            combatant$previousBoatNoPhysics = boat.noPhysics;
+            combatant$restoreBoatNoPhysics = true;
+            boat.noPhysics = true;
+        }
         if (self instanceof LocalPlayer) {
             combatant$stepBeforePos = self.position();
             combatant$stepRequestedMovement = movement;
@@ -94,6 +106,10 @@ public abstract class EntityMixin implements IEntity {
     @Inject(method = "move", at = @At("RETURN"))
     private void combatant$onMoveReturn(MoverType type, Vec3 movement, CallbackInfo ci) {
         Entity self = (Entity) (Object) this;
+        if (combatant$restoreBoatNoPhysics && self instanceof Boat boat) {
+            boat.noPhysics = combatant$previousBoatNoPhysics;
+            combatant$restoreBoatNoPhysics = false;
+        }
         if (!(self instanceof LocalPlayer)) return;
         if (!Events.BUS.hasListeners(PlayerStepSuccessEvent.class)) return;
 

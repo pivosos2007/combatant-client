@@ -35,6 +35,7 @@ import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.level.entity.EntityTypeTest;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
@@ -86,9 +87,15 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
     @Unique
     private boolean frozen = false;
     @Unique
+    private boolean frozenByFreecam;
+    @Unique
+    private double freecamFallVelocity;
+    @Unique
     private Vec3 savedVelocity = Vec3.ZERO;
     @Unique
     private double savedX, savedY, savedZ;
+    @Unique
+    private boolean savedOnGround;
     @Unique
     private float savedBodyYaw;
     @Unique
@@ -329,7 +336,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
     @Inject(method = "applyInput", at = @At("HEAD"), cancellable = true)
     private void freecam$blockWASD(CallbackInfo ci) {
         Freecam fc = Modules.get(Freecam.class);
-        if (fc != null && fc.isEnabled() && fc.isCameraInput()) {
+        if (fc != null && fc.isEnabled() && fc.isCameraInput() && fc.freezePlayer()) {
             ci.cancel();
         }
     }
@@ -344,7 +351,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
     )
     private void freecam$afterInputTick(CallbackInfo ci) {
         Freecam fc = Modules.get(Freecam.class);
-        if (fc == null || !fc.isEnabled() || !fc.isCameraInput()) return;
+        if (fc == null || !fc.isEnabled() || !fc.isCameraInput() || !fc.freezePlayer()) return;
 
         ((InputAccessor) this.input).setMovementVector(Vec2.ZERO);
 
@@ -632,18 +639,24 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
 
         if (!shouldFreezeNow()) {
             if (frozen) {
-                p.setDeltaMovement(savedVelocity);
+                p.setDeltaMovement(frozenByFreecam ? Vec3.ZERO : savedVelocity);
                 frozen = false;
+                frozenByFreecam = false;
+                freecamFallVelocity = 0.0;
             }
             return;
         }
 
         if (!frozen) {
             frozen = true;
+            Freecam freecam = Modules.get(Freecam.class);
+            frozenByFreecam = freecam != null && freecam.isEnabled() && freecam.freezePlayer() && freecam.isCameraInput();
             savedX = p.getX();
             savedY = p.getY();
             savedZ = p.getZ();
             savedVelocity = p.getDeltaMovement();
+            savedOnGround = p.onGround();
+            freecamFallVelocity = 0.0;
 
             if (Modules.get(Freecam.class) == null || !Modules.get(Freecam.class).isEnabled()) {
                 savedBodyYaw = p.yBodyRot;
@@ -651,8 +664,41 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
             }
         }
 
+        if (frozenByFreecam) {
+            AABB bounds = p.getBoundingBox();
+            boolean hasSupport = p.level().getBlockCollisions(p, bounds.move(0.0, -0.06, 0.0)).iterator().hasNext();
+            if (hasSupport) {
+                freecamFallVelocity = 0.0;
+                savedOnGround = true;
+            } else {
+                savedOnGround = false;
+                freecamFallVelocity = Math.max(freecamFallVelocity - 0.08, -3.92);
+                AABB fallBounds = bounds.move(0.0, freecamFallVelocity, 0.0);
+                if (p.level().noCollision(p, fallBounds)) {
+                    savedY += freecamFallVelocity;
+                } else {
+                    double clearFall = 0.0;
+                    double blockedFall = freecamFallVelocity;
+                    for (int step = 0; step < 12; step++) {
+                        double candidateFall = (clearFall + blockedFall) * 0.5;
+                        if (p.level().noCollision(p, bounds.move(0.0, candidateFall, 0.0))) {
+                            clearFall = candidateFall;
+                        } else {
+                            blockedFall = candidateFall;
+                        }
+                    }
+                    savedY += clearFall;
+                    freecamFallVelocity = 0.0;
+                    savedOnGround = true;
+                }
+            }
+        }
         p.setDeltaMovement(Vec3.ZERO);
         p.absSnapTo(savedX, savedY, savedZ);
+        if (frozenByFreecam && p.connection != null) {
+            p.connection.send(new ServerboundMovePlayerPacket.Pos(
+                savedX, savedY, savedZ, savedOnGround, p.horizontalCollision));
+        }
 
         if (Modules.get(Freecam.class) == null || !Modules.get(Freecam.class).isEnabled()) {
             p.yBodyRot = savedBodyYaw;
