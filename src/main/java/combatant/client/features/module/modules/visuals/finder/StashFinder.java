@@ -8,6 +8,8 @@
 package combatant.client.features.module.modules.visuals.finder;
 
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.Container;
@@ -20,6 +22,7 @@ import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
@@ -29,9 +32,12 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Notifier;
 import combatant.client.util.finder.ChunkBlocks;
 import combatant.client.util.finder.FinderRender;
+import combatant.client.util.screen.ClientScreen;
 
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,6 +54,8 @@ public final class StashFinder extends ChunkFinderModule<StashFinder.Stash> {
     private static final String FARMS = "farms";
     private static final String REDSTONE = "redstone";
     private static final String PISTONS = "pistons";
+    private static final String ACTION_OPEN_LIST = "open_stash_list";
+    private static final String ACTION_CLEAR_ALL = "clear_all_stashes";
 
     private final NumberValue<Integer> minY = num("min_y", -60, -64, 320);
     private final NumberValue<Integer> maxY = num("max_y", 0, -64, 320);
@@ -59,11 +67,20 @@ public final class StashFinder extends ChunkFinderModule<StashFinder.Stash> {
     private final NumberValue<Integer> minRedstone = num("min_redstone", 12, 2, 512);
     private final NumberValue<Integer> minPistons = num("min_pistons", 4, 1, 128);
     private final NumberValue<Integer> cubeSize = num("cube_size", 32, 16, 64);
+    private final NumberValue<Integer> markerRenderDistance = num("marker_render_distance", 128, 16, 512);
     private final BooleanValue ignoreRaided = bool("ignore_raided", true);
     private final BooleanValue logoutOnEntry = bool("logout_on_entry", false);
     private final BooleanMapValue signals = group("signals", defaultSignals());
     private final Set<Long> entered = ConcurrentHashMap.newKeySet();
     private final Set<Long> logoutHandled = ConcurrentHashMap.newKeySet();
+    private final Set<Long> dismissed = ConcurrentHashMap.newKeySet();
+    private final Map<Long, Stash> discovered = new LinkedHashMap<>();
+    private ClientLevel listLevel;
+
+    {
+        action(ACTION_OPEN_LIST, "NONE");
+        action(ACTION_CLEAR_ALL, "NONE");
+    }
 
     public StashFinder() {
         super(16, "#406A27B0", "#FFB76CFF", 4, 4000L);
@@ -81,8 +98,8 @@ public final class StashFinder extends ChunkFinderModule<StashFinder.Stash> {
     @Override
     protected String analysisSignature() {
         return minStorage.get() + "|" + minChests.get() + "|" + minBarrels.get() + "|" + minShulkers.get()
-            + "|" + minY.get() + "|" + maxY.get() + "|" + minFarmBlocks.get()
-            + "|" + minRedstone.get() + "|" + minPistons.get()
+                + "|" + minY.get() + "|" + maxY.get() + "|" + minFarmBlocks.get()
+                + "|" + minRedstone.get() + "|" + minPistons.get()
                 + "|" + ignoreRaided.get() + "|" + signals.get(STORAGE) + "|" + signals.get(FARMS)
                 + "|" + signals.get(REDSTONE) + "|" + signals.get(PISTONS);
     }
@@ -217,15 +234,12 @@ public final class StashFinder extends ChunkFinderModule<StashFinder.Stash> {
 
     @Override
     public void onEnable() {
-        entered.clear();
-        logoutHandled.clear();
+        if (listLevel == null) listLevel = mc.level;
         super.onEnable();
     }
 
     @Override
     public void onDisable() {
-        entered.clear();
-        logoutHandled.clear();
         super.onDisable();
     }
 
@@ -233,6 +247,17 @@ public final class StashFinder extends ChunkFinderModule<StashFinder.Stash> {
     public void onTick() {
         super.onTick();
         if (mc.player == null || mc.level == null) return;
+
+        if (mc.level != listLevel) {
+            discovered.clear();
+            dismissed.clear();
+            entered.clear();
+            logoutHandled.clear();
+            listLevel = mc.level;
+        }
+        for (Map.Entry<Long, Stash> entry : new LinkedHashMap<>(accepted).entrySet()) {
+            if (!dismissed.contains(entry.getKey())) discovered.put(entry.getKey(), entry.getValue());
+        }
 
         for (Map.Entry<Long, Stash> entry : new LinkedHashMap<>(accepted).entrySet()) {
             long key = entry.getKey();
@@ -243,18 +268,126 @@ public final class StashFinder extends ChunkFinderModule<StashFinder.Stash> {
                 }
                 return;
             }
-            if (!entered.contains(key) && markerBox(entry.getValue()).intersects(mc.player.getBoundingBox())) {
-                entered.add(key);
-                if (!logoutOnEntry.get()) Notifier.info("STASH FOUND!");
+            }
+        entered.retainAll(discovered.keySet());
+
+        if (isActionPressedOnce(ACTION_OPEN_LIST)) openListScreen();
+        if (isActionPressedOnce(ACTION_CLEAR_ALL)) {
+            clearAllStashes();
+            if (ClientScreen.current() instanceof StashListScreen screen) {
+                ClientScreen.show(mc, new StashListScreen(this, screen.parent, 0));
             }
         }
-        entered.retainAll(accepted.keySet());
     }
 
     @Override
     protected void renderMarker(FinderRender draw, long key, Stash hit, double y) {
         if (entered.contains(key)) return;
+        if (mc.player == null || mc.player.distanceToSqr(Vec3.atCenterOf(hit.evidence()))
+                > (double) markerRenderDistance.get() * markerRenderDistance.get()) return;
         draw.box(markerBox(hit), fillFor(hit), lineFor(hit));
+    }
+
+    private void openListScreen() {
+        Screen parent = ClientScreen.current();
+        ClientScreen.show(mc, new StashListScreen(this, parent, 0));
+    }
+
+    private void removeStash(long key) {
+        discovered.remove(key);
+        dismissed.add(key);
+        entered.remove(key);
+        logoutHandled.remove(key);
+    }
+
+    private void clearAllStashes() {
+        dismissed.addAll(discovered.keySet());
+        dismissed.addAll(accepted.keySet());
+        discovered.clear();
+        entered.clear();
+        logoutHandled.clear();
+    }
+
+    private static final class StashListScreen extends Screen {
+        private static final int ROW_HEIGHT = 24;
+        private static final int ROW_GAP = 4;
+
+        private final StashFinder finder;
+        private final Screen parent;
+        private int page;
+        private int pageSize;
+
+        private StashListScreen(StashFinder finder, Screen parent, int page) {
+            super(Component.translatable("screen.combatant.stashfinder.title"));
+            this.finder = finder;
+            this.parent = parent;
+            this.page = page;
+        }
+
+        @Override
+        protected void init() {
+            int margin = 24;
+            int contentWidth = Math.max(180, Math.min(560, width - margin * 2));
+            int left = (width - contentWidth) / 2;
+            int top = 34;
+            pageSize = Math.max(1, (height - 132) / (ROW_HEIGHT + ROW_GAP));
+
+            addRenderableWidget(Button.builder(Component.translatable("screen.combatant.stashfinder.clear_all"), button -> {
+                finder.clearAllStashes();
+                ClientScreen.show(new StashListScreen(finder, parent, 0));
+            }).bounds(left, top, contentWidth, 20).build());
+
+            List<Map.Entry<Long, Stash>> entries = new ArrayList<>(finder.discovered.entrySet());
+            int pages = Math.max(1, (entries.size() + pageSize - 1) / pageSize);
+            page = Math.clamp(page, 0, pages - 1);
+            int first = page * pageSize;
+            int last = Math.min(entries.size(), first + pageSize);
+            int rowY = top + 28;
+            if (entries.isEmpty()) {
+                Button empty = Button.builder(Component.translatable("screen.combatant.stashfinder.empty"), button -> { })
+                        .bounds(left, rowY, contentWidth, ROW_HEIGHT).build();
+                empty.active = false;
+                addRenderableWidget(empty);
+            } else {
+                for (int index = first; index < last; index++) {
+                    Map.Entry<Long, Stash> entry = entries.get(index);
+                    Stash stash = entry.getValue();
+                        Component label = Component.translatable("screen.combatant.stashfinder.entry",
+                            stash.evidence().getX(), stash.evidence().getY(), stash.evidence().getZ(),
+                            stash.storageCount(), stash.redstoneCount(), stash.pistonCount());
+                    long key = entry.getKey();
+                        Button info = Button.builder(label, button -> { })
+                            .bounds(left, rowY, contentWidth - 82, ROW_HEIGHT).build();
+                    info.active = false;
+                    addRenderableWidget(info);
+                    addRenderableWidget(Button.builder(Component.translatable("screen.combatant.stashfinder.remove"), button -> {
+                        finder.removeStash(key);
+                        ClientScreen.show(new StashListScreen(finder, parent, page));
+                    }).bounds(left + contentWidth - 78, rowY, 78, ROW_HEIGHT).build());
+                    rowY += ROW_HEIGHT + ROW_GAP;
+                }
+            }
+
+            int footerY = height - 31;
+            addRenderableWidget(Button.builder(Component.translatable("screen.combatant.stashfinder.previous"), button -> {
+                ClientScreen.show(new StashListScreen(finder, parent, page - 1));
+            }).bounds(left, footerY, Math.max(72, contentWidth / 3), 20).build());
+            addRenderableWidget(Button.builder(Component.translatable("screen.combatant.stashfinder.close"), button -> onClose())
+                    .bounds(left + contentWidth / 3, footerY, Math.max(72, contentWidth / 3), 20).build());
+            addRenderableWidget(Button.builder(Component.translatable("screen.combatant.stashfinder.next"), button -> {
+                ClientScreen.show(new StashListScreen(finder, parent, page + 1));
+            }).bounds(left + contentWidth * 2 / 3, footerY, Math.max(72, contentWidth / 3), 20).build());
+        }
+
+        @Override
+        public boolean isPauseScreen() {
+            return false;
+        }
+
+        @Override
+        public void onClose() {
+            ClientScreen.show(parent);
+        }
     }
 
     private AABB markerBox(Stash hit) {
