@@ -10,6 +10,7 @@ package combatant.client.render.engine.rhi.backend.vulkan;
 import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.mixininterface.IVulkanBackendInfo;
+import combatant.client.mixins.accessors.FrontendGpuDeviceAccessor;
 import org.jetbrains.annotations.Nullable;
 
 public enum VulkanBackendAccess {
@@ -17,6 +18,7 @@ public enum VulkanBackendAccess {
 
     public static @Nullable IVulkanBackendInfo current() {
         GpuDevice device = RenderSystem.tryGetDevice();
-        return device instanceof IVulkanBackendInfo vulkan ? vulkan : null;
+        if (!(device instanceof FrontendGpuDeviceAccessor accessor)) return null;
+        return accessor.combatant$getBackend() instanceof IVulkanBackendInfo vulkan ? vulkan : null;
     }
 }

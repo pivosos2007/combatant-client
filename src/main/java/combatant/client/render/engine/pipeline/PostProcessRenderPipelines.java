@@ -115,6 +115,7 @@ public final class PostProcessRenderPipelines {
             .withUniform("JumpShockwave", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
+            .withoutBlend()
             .withCull(false)
             .build();
 
@@ -129,6 +130,7 @@ public final class PostProcessRenderPipelines {
             .withUniform("TargetLens", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
+            .withoutBlend()
             .withCull(false)
             .build();
 
@@ -143,6 +145,7 @@ public final class PostProcessRenderPipelines {
             .withUniform("JumpShockwave", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
+            .withoutBlend()
             .withCull(false)
             .build();
 
@@ -157,6 +160,7 @@ public final class PostProcessRenderPipelines {
             .withUniform("JumpShockwave", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
+            .withoutBlend()
             .withCull(false)
             .build();
     /** Full-screen cover-fit texture used by the rewritten main menu. */

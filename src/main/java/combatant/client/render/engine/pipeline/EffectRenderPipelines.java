@@ -209,6 +209,7 @@ public final class EffectRenderPipelines {
             .withSampler("u_Mask")
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
+            .withoutBlend()
             .withCull(false)
             .build();
 
@@ -222,6 +223,7 @@ public final class EffectRenderPipelines {
             .withUniform("HandMetallic", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
+            .withoutBlend()
             .withCull(false)
             .build();
 
@@ -236,6 +238,7 @@ public final class EffectRenderPipelines {
             .withUniform("HandGhosting", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
+            .withoutBlend()
             .withCull(false)
             .build();
 
@@ -250,6 +253,7 @@ public final class EffectRenderPipelines {
             .withUniform("HandGhosting", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
+            .withoutBlend()
             .withCull(false)
             .build();
 

@@ -162,6 +162,7 @@
     "accessors.EntityRendererAccessor",
     "accessors.EntityRenderManagerAccessor",
     "accessors.FireworksComponentAccessor",
+    "accessors.FrontendGpuDeviceAccessor",
     "accessors.GameRendererAccessor",
     "accessors.GlTextureInvoker",
     "accessors.InGameOverlayRendererAccessor",
