@@ -2416,31 +2416,8 @@ public class NameTags extends Module {
     }
 
     private ScreenRect projectBoxScreen(AABB box, float tickDelta) {
-        double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY;
-        double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY;
-        boolean any = false;
-        double[] xs = {box.minX, box.maxX};
-        double[] ys = {box.minY, box.maxY};
-        double[] zs = {box.minZ, box.maxZ};
-        for (double x : xs) {
-            for (double y : ys) {
-                for (double z : zs) {
-                    Vec3 screen = ScreenProjection.worldToScreen(new Vec3(x, y, z), tickDelta);
-                    if (screen == null) continue;
-                    any = true;
-                    minX = Math.min(minX, screen.x);
-                    minY = Math.min(minY, screen.y);
-                    maxX = Math.max(maxX, screen.x);
-                    maxY = Math.max(maxY, screen.y);
-                }
-            }
-        }
-        if (!any || maxX <= minX || maxY <= minY) return null;
-        minX = Math.floor(minX);
-        minY = Math.floor(minY);
-        maxX = Math.ceil(maxX);
-        maxY = Math.ceil(maxY);
-        return new ScreenRect(minX, minY, maxX, maxY);
+        ScreenSpaceOverlay2D.ScreenRect r = ScreenSpaceOverlay2D.projectBox(box, tickDelta);
+        return r == null ? null : new ScreenRect(r.minX(), r.minY(), r.maxX(), r.maxY());
     }
 
     private ItemStack[] getEquipmentSlots(Player player) {

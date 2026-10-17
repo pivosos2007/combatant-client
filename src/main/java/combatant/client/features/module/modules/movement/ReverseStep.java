@@ -30,6 +30,7 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
+import combatant.client.util.anticheat.AntiCheatPreset;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -106,6 +107,11 @@ public final class ReverseStep extends Module {
     private static final String STEP_C_EXEMPT_POWDER_SNOW = "powder_snow";
     private static final String STEP_C_EXEMPT_SNOW = "snow";
     private final Minecraft mc = Minecraft.getInstance();
+    // custom and vanilla = the settings below as set; grim = the module does nothing. GrimAC predicts gravity to the
+    // thousandth: every fall quicker than vanilla's is a Simulation flag (accelerator from factor 1.1 up, strict,
+    // instant, plus GroundSpoof for the instant drop), so no setting is both quicker and clean. The accelerator at
+    // its stock factor 1.0 and the vulcan 297 table are clean only because they leave a vanilla fall alone.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final EnumValue<Mode> mode = enumSetting("reverseStepMode", "mode", Mode.INSTANT, Mode.values());
     private final NumberValue<Float> maximumFallDistance =
             num("reverseStepMaximumFallDistance", "maximum_fall_distance", 1.0f, 1.0f, 50.0f);
@@ -186,6 +192,7 @@ public final class ReverseStep extends Module {
     @EventHandler
     private void onGameTick(GameTickEvent event) {
         if (!isEnabled() || mc.player == null || mc.level == null) return;
+        if (anticheat.get() == AntiCheatPreset.GRIM) return;
 
         LocalPlayer player = mc.player;
         decayVulcan297Risk();

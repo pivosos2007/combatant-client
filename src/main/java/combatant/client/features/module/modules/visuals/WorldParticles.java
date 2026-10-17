@@ -58,6 +58,7 @@ public class WorldParticles extends Module {
     // Dense geometry is intentional here: the shell itself owns depth, so the silhouette must not
     // collapse to a visibly faceted low-poly sphere at close range. 16x32 stays cheap enough for
     // the module's default particle counts while keeping world-depth intersections stable.
+    private static final float QUAD_CULL_EXTENT_MULTIPLIER = 7.0f;
     private static final float BUBBLE_CULL_EXTENT_MULTIPLIER = BUBBLE_FILL_SIZE_MULTIPLIER * 1.18f;
     private static final int BUBBLE_SPHERE_STACKS = 16;
     private static final int BUBBLE_SPHERE_SLICES = 32;
@@ -113,6 +114,8 @@ public class WorldParticles extends Module {
     private final Minecraft mc = Minecraft.getInstance();
     private final EnumValue<Mode> mode =
             enumSetting("mode", "mode", Mode.QUADS);
+    private Mode profilerLabelMode;
+    private String profilerLabel;
     private final BooleanValue depthTest =
             boolCommon("depth_test", CommonSettingSchemas.RENDER_DEPTH_TEST, true);
     private final RGBAColorValue color =
@@ -307,17 +310,18 @@ public class WorldParticles extends Module {
         mesh.quad(i1, i2, i3, i4);
     }
 
-    private static void addCube(MeshBuilder mesh, Vec3 pos, Vec3 rotation, float size, int diagonalArgb, int outlineArgb) {
-        Quaternionf quaternion = SCRATCH_QUATERNION.rotationXYZ((float) rotation.x, (float) rotation.y, (float) rotation.z);
+    private static void addCube(MeshBuilder mesh, double px, double py, double pz,
+                                double rotX, double rotY, double rotZ, float size, int diagonalArgb, int outlineArgb) {
+        Quaternionf quaternion = SCRATCH_QUATERNION.rotationXYZ((float) rotX, (float) rotY, (float) rotZ);
         Vector3f[] corners = CUBE_CORNERS;
-        rotatedCorner(corners[0], -0.5f, -0.5f, -0.5f, quaternion, size, pos);
-        rotatedCorner(corners[1], 0.5f, -0.5f, -0.5f, quaternion, size, pos);
-        rotatedCorner(corners[2], 0.5f, 0.5f, -0.5f, quaternion, size, pos);
-        rotatedCorner(corners[3], -0.5f, 0.5f, -0.5f, quaternion, size, pos);
-        rotatedCorner(corners[4], -0.5f, -0.5f, 0.5f, quaternion, size, pos);
-        rotatedCorner(corners[5], 0.5f, -0.5f, 0.5f, quaternion, size, pos);
-        rotatedCorner(corners[6], 0.5f, 0.5f, 0.5f, quaternion, size, pos);
-        rotatedCorner(corners[7], -0.5f, 0.5f, 0.5f, quaternion, size, pos);
+        rotatedCorner(corners[0], -0.5f, -0.5f, -0.5f, quaternion, size, px, py, pz);
+        rotatedCorner(corners[1], 0.5f, -0.5f, -0.5f, quaternion, size, px, py, pz);
+        rotatedCorner(corners[2], 0.5f, 0.5f, -0.5f, quaternion, size, px, py, pz);
+        rotatedCorner(corners[3], -0.5f, 0.5f, -0.5f, quaternion, size, px, py, pz);
+        rotatedCorner(corners[4], -0.5f, -0.5f, 0.5f, quaternion, size, px, py, pz);
+        rotatedCorner(corners[5], 0.5f, -0.5f, 0.5f, quaternion, size, px, py, pz);
+        rotatedCorner(corners[6], 0.5f, 0.5f, 0.5f, quaternion, size, px, py, pz);
+        rotatedCorner(corners[7], -0.5f, 0.5f, 0.5f, quaternion, size, px, py, pz);
 
         for (int[] edge : CUBE_EDGES) {
             addLine(mesh, corners[edge[0]], corners[edge[1]], outlineArgb);
@@ -327,11 +331,11 @@ public class WorldParticles extends Module {
         }
     }
 
-    private static void rotatedCorner(Vector3f out, float x, float y, float z, Quaternionf quaternion, float size, Vec3 pos) {
+    private static void rotatedCorner(Vector3f out, float x, float y, float z, Quaternionf quaternion, float size, double px, double py, double pz) {
         out.set(x, y, z)
                 .rotate(quaternion)
                 .mul(size)
-                .add((float) pos.x, (float) pos.y, (float) pos.z);
+                .add((float) px, (float) py, (float) pz);
     }
 
     private static void addLine(MeshBuilder mesh, Vector3f from, Vector3f to, int argb) {
@@ -475,7 +479,7 @@ public class WorldParticles extends Module {
             return;
         }
 
-        try (RenderCostProfiler.Scope ignored = RenderCostProfiler.worldEffect("world_particles:" + mode.get())) {
+        try (RenderCostProfiler.Scope ignored = RenderCostProfiler.worldEffect(profilerLabel())) {
             if (isFunnelMode()) {
                 renderFunnel(renderer, true, Renderer3D.DepthMode.PRE_DEPTH, tickDelta);
                 return;
@@ -543,16 +547,22 @@ public class WorldParticles extends Module {
                         continue;
                     }
 
-                    Vec3 pos = particle.interpolatePos(tickDelta);
-                    if (bubbleMode && !bubbleInFrustum(particle, pos)) {
+                    if (bubbleMode) {
+                        Vec3 pos = particle.interpolatePos(tickDelta);
+                        if (!bubbleInFrustum(particle, pos)) {
+                            continue;
+                        }
+                        renderAirBubble(bubbleShellMesh, particle, pos, alpha, colorForParticle(particle, i), nowMs);
+                        continue;
+                    }
+
+                    double px = Mth.lerp((double) tickDelta, particle.prevPos.x, particle.pos.x);
+                    double py = Mth.lerp((double) tickDelta, particle.prevPos.y, particle.pos.y);
+                    double pz = Mth.lerp((double) tickDelta, particle.prevPos.z, particle.pos.z);
+                    if (!quadInFrustum(particle, px, py, pz)) {
                         continue;
                     }
                     int baseColor = colorForParticle(particle, i);
-
-                    if (bubbleMode) {
-                        renderAirBubble(bubbleShellMesh, particle, pos, alpha, baseColor, nowMs);
-                        continue;
-                    }
 
                     long ageMs = particle.ageMs(nowMs);
                     float ageSeconds = ageMs * 0.001f;
@@ -563,29 +573,39 @@ public class WorldParticles extends Module {
                             * (1.0f - QUAD_BREATHE_MULTIPLIER * 0.5f + QUAD_BREATHE_MULTIPLIER * pulse);
                     float sway = particle.size * QUAD_SWAY_MULTIPLIER;
                     float orbit = ageSeconds * 0.54f + particle.visualPhase;
-                    pos = pos.add(
-                            Math.cos(orbit) * sway,
-                            Math.sin(ageSeconds * 0.78f + particle.visualPhase) * sway * 0.32f,
-                            Math.sin(orbit) * sway
-                    );
+                    px += Math.cos(orbit) * sway;
+                    py += Math.sin(ageSeconds * 0.78f + particle.visualPhase) * sway * 0.32f;
+                    pz += Math.sin(orbit) * sway;
 
                     if (spriteMesh != null) {
                         int spriteArgb = multiplyAlpha(baseColor, alpha * SPRITE_ALPHA_MULTIPLIER);
                         int spriteArgb2 = multiplyAlpha(gradientColorForParticle(particle, i), alpha * SPRITE_ALPHA_MULTIPLIER);
                         float roll = particle.visualPhase + ageSeconds * QUAD_ROLL_SPEED;
-                        addTexturedBillboardGradient(spriteMesh, pos.x, pos.y, pos.z,
+                        addTexturedBillboardGradient(spriteMesh, px, py, pz,
                                 particle.size * SPRITE_SIZE_MULTIPLIER * visualScale, camRot, roll, spriteArgb, spriteArgb2);
                     }
 
                     if (lineMesh != null) {
-                        Vec3 rotation = particle.interpolateRotation(tickDelta);
                         int diagonalArgb = multiplyAlpha(baseColor, alpha * DIAGONAL_ALPHA_MULTIPLIER);
                         int outlineArgb = multiplyAlpha(baseColor, alpha * OUTLINE_ALPHA_MULTIPLIER);
-                        addCube(lineMesh, pos, rotation, particle.size * visualScale, diagonalArgb, outlineArgb);
+                        addCube(lineMesh, px, py, pz,
+                                Mth.lerp((double) tickDelta, particle.prevRotation.x, particle.rotation.x),
+                                Mth.lerp((double) tickDelta, particle.prevRotation.y, particle.rotation.y),
+                                Mth.lerp((double) tickDelta, particle.prevRotation.z, particle.rotation.z),
+                                particle.size * visualScale, diagonalArgb, outlineArgb);
                     }
                 }
             }
         }
+    }
+
+    private String profilerLabel() {
+        Mode current = mode.get();
+        if (current != profilerLabelMode) {
+            profilerLabelMode = current;
+            profilerLabel = "world_particles:" + current;
+        }
+        return profilerLabel;
     }
 
     private void renderFunnel(Renderer3D renderer, boolean useDepth, Renderer3D.DepthMode depthMode, float tickDelta) {
@@ -759,6 +779,13 @@ public class WorldParticles extends Module {
 
         // Dense shell geometry provides silhouette/depth; the shader adds Fresnel, specular and thin-film motion.
         addSphereShell(shellMesh, pos, sphereRadius, baseColor, alpha, ageSeconds, particle.visualPhase);
+    }
+
+    private static boolean quadInFrustum(Particle particle, double x, double y, double z) {
+        if (RenderState.frustum == null) return true;
+        // Sprite half-diagonal at peak breathe scale plus orbit sway, with margin.
+        double extent = particle.size * QUAD_CULL_EXTENT_MULTIPLIER;
+        return RenderState.frustum.isVisible(new AABB(x - extent, y - extent, z - extent, x + extent, y + extent, z + extent));
     }
 
     private static boolean bubbleInFrustum(Particle particle, Vec3 pos) {

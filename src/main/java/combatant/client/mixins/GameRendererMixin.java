@@ -215,7 +215,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     }
 
     @Inject(method = "extractCamera", at = @At("TAIL"))
-    private void combatant$modifyAspect(DeltaTracker tickCounter, float tickDelta, float fov, CallbackInfo ci) {
+    private void combatant$modifyAspect(DeltaTracker tickCounter, float tickDelta, CallbackInfo ci) {
 
         AspectRatio ar = Modules.get(AspectRatio.class);
         if (ar == null || !ar.isEnabled()) {
@@ -235,13 +235,13 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     }
 
     @Inject(method = "extractCamera", at = @At("TAIL"))
-    private void combatant$captureProjectionFor2DOverlays(DeltaTracker tickCounter, float tickDelta, float fov, CallbackInfo ci) {
+    private void combatant$captureProjectionFor2DOverlays(DeltaTracker tickCounter, float tickDelta, CallbackInfo ci) {
         if (gameRenderState == null || gameRenderState.levelRenderState == null) return;
         CameraRenderState cameraRenderState = gameRenderState.levelRenderState.cameraRenderState;
         if (cameraRenderState == null || cameraRenderState.viewRotationMatrix == null || cameraRenderState.projectionMatrix == null) return;
 
         PoseStack effectMatrices = new PoseStack();
-        Matrix4f renderProjection = combatant$buildWorldProjection(fov, effectMatrices, tickDelta);
+        Matrix4f renderProjection = combatant$buildWorldProjection(mainCamera.getFov(), effectMatrices, tickDelta);
         AspectRatio.applyToProjection(renderProjection);
         Matrix4f screenProjection = new Matrix4f(cameraRenderState.projectionMatrix);
         CombatantWorldMatrices.capture(
@@ -545,7 +545,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     }
 
     @Inject(
-            method = "renderLevel",
+            method = "render3dHud",
             at = @At(
                     value = "INVOKE_STRING",
                     target = "Lnet/minecraft/util/profiling/ProfilerFiller;popPush(Ljava/lang/String;)V",
@@ -553,13 +553,13 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                     shift = At.Shift.AFTER
             )
     )
-    private void combatant$postProcess(DeltaTracker tickCounter, CallbackInfo ci) {
+    private void combatant$postProcess(CallbackInfo ci) {
         if (ClickGuiRenderer.suppressesBackgroundRendering() || VisualPreviewRuntime.isActive()) return;
         if (IrisRuntime.isShaderpackRendererActive()
                 && IrisCompatibilityGuards.deferIrisFinalizationForSecondHandScene()) {
             return;
         }
-        combatant$renderPreHandPostProcess(tickCounter);
+        combatant$renderPreHandPostProcess(minecraft.getDeltaTracker());
     }
 
     @Unique
@@ -645,7 +645,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     }
 
     @Inject(
-            method = "renderLevel",
+            method = "render3dHud",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/GameRenderer;renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V",
@@ -822,6 +822,15 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
         }
     }
 
+    @Unique
+    private PoseStack combatant$handPoseStack;
+
+    @Inject(method = "renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;renderAllFeatures(Lcom/mojang/renderpearl/api/commands/RenderPass;Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;)V"))
+    private void combatant$captureHandPoseStack(CameraRenderState cameraRenderState, PlayerRenderState playerRenderState, GpuTextureView depthTextureView, CallbackInfo ci, @Local(name = "poseStack") PoseStack poseStack) {
+        this.combatant$handPoseStack = poseStack;
+    }
+
     @WrapOperation(
             method = "renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V",
             at = @At(
@@ -834,12 +843,11 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                                                         Operation<Void> original,
                                                         CameraRenderState cameraRenderState,
                                                         PlayerRenderState playerRenderState,
-                                                        GpuTextureView depthTextureView,
-                                                        @Local(ordinal = 0) PoseStack handPoseStack) {
+                                                        GpuTextureView depthTextureView) {
         float tickDelta = cameraRenderState.cameraEntityPartialTicks;
         SubmitNodeStorage storage = this.handAndScreenSubmitNodeStorage;
         boolean nativeIrisHand = IrisCompatibilityGuards.suppressIrisHandRendering()
-                && IrisRuntime.submitNativeHandScene(tickDelta, handPoseStack, storage);
+                && IrisRuntime.submitNativeHandScene(tickDelta, combatant$handPoseStack, storage);
 
         Chams module = Modules.get(Chams.class);
         SubmitNodeStorage snapshot = module != null ? module.snapshotPreparedHandScene(storage) : null;
@@ -857,7 +865,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
         if (minecraft != null && minecraft.gameRenderer != null && cameraRenderState != null) {
             ImportedAssetCompatibilityRenderer.renderHand(
                     minecraft.gameRenderer.mainRenderTarget(),
-                    handPoseStack.last().pose(),
+                    combatant$handPoseStack.last().pose(),
                     cameraRenderState.projectionMatrix);
         }
 

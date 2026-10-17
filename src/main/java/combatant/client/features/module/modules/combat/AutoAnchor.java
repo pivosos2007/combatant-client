@@ -25,6 +25,7 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.text.WorldTextRenderer;
 import combatant.client.render.engine.world.WorldUiPresentationService;
+import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.aiming.RestrictedSingleUseAction;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
@@ -47,6 +48,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -79,6 +81,9 @@ public class AutoAnchor extends Module {
     private static final double TEXT_GAP_SCALE = 1.0;
     private final Minecraft mc = Minecraft.getInstance();
 
+    // custom = the settings below as set; grim = place range at most 4.5, visible-only, no air place,
+    // single interaction per tick and rotations tracing to clicked block; vanilla = 5.5 range, for servers with no anticheat.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final BooleanValue placeEnabled = boolCommon("autoanchorPlace", CommonSettingSchemas.PLACE, true);
     private final BooleanValue explodeEnabled = boolCommon("autoanchorExplode", CommonSettingSchemas.EXPLODE, true);
     private final EnumValue<Timing> timing = enumCommon("autoanchorTiming", "timing", CommonSettingSchemas.TIMING, Timing.NORMAL);
@@ -273,6 +278,7 @@ public class AutoAnchor extends Module {
     private AutoAnchorData pendingAnchorData;
     private PendingAnchorPhase pendingAnchorPhase;
     private long pendingAnchorActionMs;
+    private int lastInteractionTick = Integer.MIN_VALUE;
     private float renderDamage;
     private float renderSelfDamageValue;
     private boolean lowDamageMode;
@@ -368,7 +374,7 @@ public class AutoAnchor extends Module {
                 plannerContext,
                 target,
                 resolvePredictedPosition(target, predictTicks.get()),
-                Mth.ceil(placeRange.get())
+                Mth.ceil(effPlaceRange())
         );
         bestPlace = result.bestPlace();
         bestExplode = result.bestExplode();
@@ -464,6 +470,14 @@ public class AutoAnchor extends Module {
             return;
         }
 
+        if (anticheat.get() == AntiCheatPreset.GRIM) {
+            if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
+            BlockHitResult hit = refreshed.hitResult();
+            if (hit != null) {
+                if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return;
+                if (!isFaceFacingEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection())) return;
+            }
+        }
         boolean placed = AutoAnchorActionUtil.placeAnchor(
                 mc,
                 this,
@@ -473,6 +487,7 @@ public class AutoAnchor extends Module {
                 restoreItem.get()
         );
         if (!placed) return;
+        if (mc.player != null) lastInteractionTick = mc.player.tickCount;
 
         long now = System.currentTimeMillis();
         lastPlaceMs = now;
@@ -651,8 +666,8 @@ public class AutoAnchor extends Module {
                 mc.player,
                 pos,
                 placementMode.get(),
-                placeRange.get(),
-                wallRange.get()
+                effPlaceRange(),
+                effWallRange()
         );
         if (hit == null) {
             return null;
@@ -679,11 +694,16 @@ public class AutoAnchor extends Module {
                 mc.player,
                 data.pos(),
                 placementMode.get(),
-                placeRange.get(),
-                wallRange.get()
+                effPlaceRange(),
+                effWallRange()
         );
         if (anchorHit == null) return;
 
+        if (anticheat.get() == AntiCheatPreset.GRIM) {
+            if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
+            if (!serverRotationHits(new AABB(anchorHit.getBlockPos()), effPlaceRange())) return;
+            if (!isFaceFacingEye(mc.player.getEyePosition(), anchorHit.getBlockPos(), anchorHit.getDirection())) return;
+        }
         boolean charged = AutoAnchorActionUtil.chargeAnchor(
                 mc,
                 anchorHit,
@@ -692,6 +712,7 @@ public class AutoAnchor extends Module {
                 restoreItem.get()
         );
         if (!charged) return;
+        if (mc.player != null) lastInteractionTick = mc.player.tickCount;
 
         long now = System.currentTimeMillis();
         lastExplodeMs = now;
@@ -718,11 +739,16 @@ public class AutoAnchor extends Module {
                 mc.player,
                 data.pos(),
                 placementMode.get(),
-                placeRange.get(),
-                wallRange.get()
+                effPlaceRange(),
+                effWallRange()
         );
         if (anchorHit == null) return;
 
+        if (anticheat.get() == AntiCheatPreset.GRIM) {
+            if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
+            if (!serverRotationHits(new AABB(anchorHit.getBlockPos()), effPlaceRange())) return;
+            if (!isFaceFacingEye(mc.player.getEyePosition(), anchorHit.getBlockPos(), anchorHit.getDirection())) return;
+        }
         boolean detonated = AutoAnchorActionUtil.detonateAnchor(
                 mc,
                 anchorHit,
@@ -731,6 +757,7 @@ public class AutoAnchor extends Module {
                 restoreItem.get()
         );
         if (!detonated) return;
+        if (mc.player != null) lastInteractionTick = mc.player.tickCount;
 
         long now = System.currentTimeMillis();
         lastExplodeMs = now;
@@ -1023,16 +1050,51 @@ public class AutoAnchor extends Module {
                 mc.player,
                 pos,
                 existingAnchor,
-                airPlace.get(),
+                effAirPlace(),
                 placementMode.get(),
-                placeRange.get(),
-                wallRange.get()
+                effPlaceRange(),
+                effWallRange()
         );
     }
 
 
+    private float effPlaceRange() {
+        return anticheat.get().limit(placeRange.get(), (float) AntiCheatPreset.GRIM_BLOCK_RANGE, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
+    }
+
+    private float effWallRange() {
+        return anticheat.get().limit(wallRange.get(), 0.0f, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
+    }
+
+    private boolean effAirPlace() {
+        return anticheat.get().pick(airPlace.get(), false, airPlace.get());
+    }
+
+    private boolean effUsesRotations() {
+        return anticheat.get().pick(CombatRotationModeUtil.usesRotations(attackMode), true, CombatRotationModeUtil.usesRotations(attackMode));
+    }
+
     private boolean usesRotationSettings() {
-        return CombatRotationModeUtil.usesRotations(attackMode);
+        return effUsesRotations();
+    }
+
+    private boolean serverRotationHits(AABB box, double range) {
+        Rotation server = RotationManager.INSTANCE.getServerRotation();
+        if (server == null) return false;
+        Vec3 eye = mc.player.getEyePosition();
+        return box.contains(eye) || box.clip(eye, eye.add(server.directionVector().scale(range))).isPresent();
+    }
+
+    private static boolean isFaceFacingEye(Vec3 eye, BlockPos pos, Direction face) {
+        if (face == null) return true;
+        return switch (face) {
+            case DOWN -> eye.y <= pos.getY();
+            case UP -> eye.y >= pos.getY() + 1.0;
+            case NORTH -> eye.z <= pos.getZ();
+            case SOUTH -> eye.z >= pos.getZ() + 1.0;
+            case WEST -> eye.x <= pos.getX();
+            case EAST -> eye.x >= pos.getX() + 1.0;
+        };
     }
 
     private String buildDamageText() {
@@ -1048,6 +1110,7 @@ public class AutoAnchor extends Module {
         bestExplode = null;
         bestPosition = null;
         clearPendingAnchor();
+        lastInteractionTick = Integer.MIN_VALUE;
         RotationManager.INSTANCE.clear(this);
         lastScanned = 0;
         lastCandidates = 0;
@@ -1068,6 +1131,7 @@ public class AutoAnchor extends Module {
         lastExplodeMs = 0L;
         lastDamageUpdateMs = 0L;
         lastCalcMs = 0L;
+        lastInteractionTick = Integer.MIN_VALUE;
         clearPendingAnchor();
         renderDamage = 0.0f;
         renderSelfDamageValue = 0.0f;
@@ -1142,12 +1206,12 @@ public class AutoAnchor extends Module {
 
         @Override
         public boolean allowAirPlace() {
-            return airPlace.get();
+            return effAirPlace();
         }
 
         @Override
         public float placeRange() {
-            return placeRange.get();
+            return effPlaceRange();
         }
     }
 

@@ -21,7 +21,7 @@ import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ServerboundInteractPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.network.protocol.game.ServerboundAttackPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.util.Mth;
@@ -108,8 +108,8 @@ public final class RotationDebugCommand implements ClientCommand {
                 log("PKTDBG tick=%d type=interact", tick);
             } else if (packet instanceof ServerboundUseItemOnPacket || packet instanceof ServerboundUseItemPacket) {
                 log("PKTDBG tick=%d type=use", tick);
-            } else if (packet instanceof ServerboundSwingPacket) {
-                log("PKTDBG tick=%d type=swing", tick);
+            } else if (packet instanceof ServerboundAttackPacket) {
+                log("PKTDBG tick=%d type=attack", tick);
             }
         }
     }

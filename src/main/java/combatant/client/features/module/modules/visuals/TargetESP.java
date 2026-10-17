@@ -179,6 +179,8 @@ public class TargetESP extends Module {
             visibleWhen(num("targetEspCrystalSize", SETTING_CRYSTAL_SIZE, 1.0f, 0.35f, 2.5f), this::isCrystalsMode);
     private final NumberValue<Float> crystalOrbitRadius =
             visibleWhen(num("targetEspCrystalOrbitRadius", SETTING_CRYSTAL_ORBIT_RADIUS, 1.0f, 0.45f, 2.4f), this::isCrystalsMode);
+    private final BooleanValue glowGhosts =
+            bool("targetEspGlowGhosts", "glow_ghosts", true);
     private final BooleanValue distortion =
             visibleWhen(bool("targetEspDistortion", SETTING_DISTORTION, true), this::isCrystalsMode);
     private final NumberValue<Float> distortionStrength =
@@ -358,9 +360,11 @@ public class TargetESP extends Module {
                                      IntFunction<Integer> palette) {
         if (renderer == null || target == null || palette == null) return;
         Renderer3D.DepthMode depthMode = Renderer3D.DepthMode.ENTITY_ONLY;
-        MeshBuilder mesh = renderer.batchTextured(
-                WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE_DEPTH,
-                TextureStorage.FIRE_FLY, depthMode);
+        MeshBuilder mesh = glowGhosts.get()
+                ? renderer.batch(WorldRenderPipelines.WORLD_GLOW_SPRITE_DEPTH, depthMode)
+                : renderer.batchTextured(
+                        WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE_DEPTH,
+                        TextureStorage.FIRE_FLY, depthMode);
         if (mesh == null) return;
 
         Vec3 base = RenderMath.getLerpedPos(target, tickDelta);

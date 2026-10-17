@@ -35,7 +35,7 @@ public abstract class AbstractContainerScreenMixin {
     @Shadow protected Slot hoveredSlot;
     @Shadow @Final protected AbstractContainerMenu menu;
 
-    @Inject(method = "slotClicked", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "slotClicked(Lnet/minecraft/world/inventory/Slot;IILnet/minecraft/world/inventory/ContainerInput;)V", at = @At("HEAD"), cancellable = true)
     private void combatant$lockedSlotClicked(Slot slot, int slotId, int button,
                                             ContainerInput input, CallbackInfo ci) {
         Minecraft mc = Minecraft.getInstance();

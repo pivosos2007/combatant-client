@@ -17,6 +17,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -127,11 +128,17 @@ public abstract class EntityMixin implements IEntity {
         return event.getVelocity();
     }
 
-    @ModifyVariable(
-            method = "calculateViewVector(FF)Lnet/minecraft/world/phys/Vec3;",
-            at = @At("HEAD"),
-            ordinal = 0,
-            argsOnly = true
+    @ModifyArg(
+            method = {
+                    "getViewVector(F)Lnet/minecraft/world/phys/Vec3;",
+                    "getLookAngle()Lnet/minecraft/world/phys/Vec3;",
+                    "getHeadLookAngle()Lnet/minecraft/world/phys/Vec3;"
+            },
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/world/entity/Entity;calculateViewVector(FF)Lnet/minecraft/world/phys/Vec3;"
+            ),
+            index = 0
     )
     private float combatant$rotationVectorPitch(float pitch) {
         if (!((Object) this instanceof LocalPlayer)) {

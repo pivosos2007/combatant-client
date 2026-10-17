@@ -65,7 +65,14 @@ public final class ScaffoldMovementPrediction {
     }
 
     private static Vec3 findEdgeCollision(LocalPlayer player, Vec3 from, Vec3 to, float allowedDropDown) {
-        List<AABB> boundingBoxes = collectCollisionBoundingBoxes(player, from, to, allowedDropDown);
+        return findEdgeExit(collectCollisionBoundingBoxes(player, from, to, allowedDropDown), from, to);
+    }
+
+    /**
+     * Walks from {@code from} towards {@code to} through the (hitbox-inflated) support boxes and returns where the
+     * last chained box ends, or null when the support reaches all the way to {@code to}. Consumes {@code boundingBoxes}.
+     */
+    static Vec3 findEdgeExit(List<AABB> boundingBoxes, Vec3 from, Vec3 to) {
         Vec3 currentFrom = from;
 
         Vec3 lineVec = to.subtract(from);
@@ -91,8 +98,12 @@ public final class ScaffoldMovementPrediction {
                 }
             }
 
+            // clip() reports where the segment ENTERS the box. Walking along from->to we need where it leaves, so
+            // trace from the far end back towards the player: the first hit of that trace is the exit point. Using
+            // the entry point returned a position behind the player (the "fall-off point" sat at the near face of
+            // the supporting block), so the target was only found once the player was already off the edge.
             Optional<Vec3> next = cache.stream()
-                    .map(box -> box.clip(extendedFrom, extendedTo).orElse(null))
+                    .map(box -> box.clip(extendedTo, extendedFrom).orElse(null))
                     .filter(java.util.Objects::nonNull)
                     .min(Comparator.comparingDouble(hit -> hit.distanceToSqr(to)));
             if (next.isEmpty()) {
@@ -197,8 +208,10 @@ public final class ScaffoldMovementPrediction {
     public Vec3 getFallOffPositionOnLine(LocalPlayer player, ScaffoldLine optimalLine) {
         if (player == null || optimalLine == null) return null;
 
-        Vec3 nearest = optimalLine.getNearestPointTo(player.position());
-        Vec3 fromLine = nearest.add(0.0, -0.1, 0.0);
+        // Walk along the line's direction from where the player actually is. Projecting him onto the line first put
+        // the predicted edge on the line itself, half a block off his real path when he is not held on the line
+        // (diagonal bridging without stabilize movement).
+        Vec3 fromLine = player.position().add(0.0, -0.1, 0.0);
         Vec3 toLine = fromLine.add(optimalLine.direction().normalize().scale(3.0));
 
         Vec3 edgeCollision = findEdgeCollision(player, fromLine, toLine, 0.5f);

@@ -285,7 +285,7 @@ public enum DevGlSyncTracker {
                 || cls.startsWith("org.lwjgl.system.JNI")
                 || cls.equals(DevGlSyncTracker.class.getName())
                 || cls.equals("combatant.client.mixins.GlStateManagerMixin")
-                || (cls.equals("com.mojang.blaze3d.opengl.GlStateManager")
+                || (cls.equals("com.mojang.renderpearl.backend.opengl.GlStateManager")
                 && ("_glFenceSync".equals(method) || "_glClientWaitSync".equals(method)));
     }
 

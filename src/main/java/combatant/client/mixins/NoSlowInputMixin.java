@@ -33,7 +33,10 @@ public class NoSlowInputMixin {
     )
     private float combatant$noSlowNeutralize(float original) {
         NoSlow noSlow = Modules.get(NoSlow.class);
-        if (noSlow != null && noSlow.shouldModifyInput((LocalPlayer) (Object) this)) return 1.0f;
+        LocalPlayer self = (LocalPlayer) (Object) this;
+        if (noSlow != null && noSlow.shouldModifyInput(self)) {
+            return noSlow.getItemUseSpeedMultiplier(original);
+        }
         return original;
     }
 
@@ -42,6 +45,8 @@ public class NoSlowInputMixin {
         NoSlow noSlow = Modules.get(NoSlow.class);
         LocalPlayer self = (LocalPlayer) (Object) this;
         if (noSlow == null || !noSlow.shouldModifyInput(self)) return;
-        cir.setReturnValue(noSlow.getModifiedInput(cir.getReturnValue(), self));
+        if (noSlow.hasCustomMultipliers()) {
+            cir.setReturnValue(noSlow.getModifiedInput(cir.getReturnValue(), self));
+        }
     }
 }

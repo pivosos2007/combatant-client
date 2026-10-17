@@ -12,7 +12,6 @@ import net.minecraft.world.attribute.EnvironmentAttributeMap;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeGenerationSettings;
 import net.minecraft.world.level.biome.BiomeSpecialEffects;
-import net.minecraft.world.level.biome.MobSpawnSettings;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -31,7 +30,6 @@ public abstract class BiomeMixin implements IBiome {
             EnvironmentAttributeMap attributes,
             BiomeSpecialEffects specialEffects,
             BiomeGenerationSettings generationSettings,
-            MobSpawnSettings mobSettings,
             CallbackInfo ci
     ) {
         combatant$downfall = ((BiomeClimateSettingsAccessor) climateSettings).combatant$getDownfall();

@@ -217,7 +217,7 @@ public abstract class CameraMixin {
     }
 
     @Inject(method = "extractRenderState", at = @At("TAIL"))
-    private void combatant$freecamExtractRenderState(CameraRenderState renderState, float tickDelta, CallbackInfo ci) {
+    private void combatant$freecamExtractRenderState(CameraRenderState renderState, DeltaTracker tickDelta, CallbackInfo ci) {
         Freecam fc = Modules.get(Freecam.class);
         if (fc == null || !fc.isEnabled() || fc.camEntity == null) return;
 
@@ -225,7 +225,7 @@ public abstract class CameraMixin {
     }
 
     @Inject(method = "extractRenderState", at = @At("TAIL"))
-    private void combatant$disableInsideBlockSectionOcclusion(CameraRenderState renderState, float tickDelta, CallbackInfo ci) {
+    private void combatant$disableInsideBlockSectionOcclusion(CameraRenderState renderState, DeltaTracker tickDelta, CallbackInfo ci) {
         if (!renderState.smartCull) return;
         if (CameraOcclusionPolicy.shouldDisableSectionOcclusion((Camera) (Object) this)) {
             renderState.smartCull = false;

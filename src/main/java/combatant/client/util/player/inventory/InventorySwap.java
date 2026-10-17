@@ -75,6 +75,10 @@ public final class InventorySwap {
     private boolean lastInputMoving;
     private int movementLockTicks;
     private boolean sendingLockedInput;
+    // True from the tick's flying packet until the next START_CLIENT_TICK. Grim's Post check flags a held-slot change
+    // that arrives in that stretch, so the slot restore of an expired lease waits for the pre-flying window.
+    private boolean flyingSentThisTick;
+    private boolean serverSlotRestorePending;
 
     private InventorySwap() {
     }
@@ -135,6 +139,7 @@ public final class InventorySwap {
             lastServerSelectedSlot = selectedSlot.getSlot();
         } else if (packet instanceof ServerboundMovePlayerPacket || packet instanceof ServerboundClientTickEndPacket) {
             packetTick++;
+            if (packet instanceof ServerboundMovePlayerPacket) flyingSentThisTick = true;
         } else if (packet instanceof ServerboundPlayerInputPacket(Input input)) {
             boolean moving = input.forward() || input.backward() || input.left() || input.right();
             if (isMovementLocked() && !sendingLockedInput && moving && mc.getConnection() != null) {
@@ -180,6 +185,7 @@ public final class InventorySwap {
             mc.execute(() -> {
                 lastServerSelectedSlot = -1;
                 silentSlot = -1;
+                serverSlotRestorePending = false;
                 clearInventoryQueue();
             });
         }
@@ -187,6 +193,8 @@ public final class InventorySwap {
 
     @EventHandler
     private void onGameTick(GameTickEvent event) {
+        flyingSentThisTick = false;
+        flushServerSlotRestore();
         tick();
         if (movementLockTicks > 0) {
             movementLockTicks--;
@@ -1195,10 +1203,21 @@ public final class InventorySwap {
         hotbarLease = null;
         if (!restoreServerSlot) return;
 
-        int currentClientSlot = clientSelectedSlot();
-        if (currentClientSlot != lease.enforcedSlot) {
-            sendSelectedSlotIfNeeded(currentClientSlot);
+        if (clientSelectedSlot() != lease.enforcedSlot) {
+            // A lease runs out in whatever phase first asks about it, usually the end of a tick, after the flying
+            // packet. The restore is a held-slot change, which Grim's Post check flags there; start-of-tick sends it
+            // the way a vanilla client would.
+            serverSlotRestorePending = true;
+            if (!flyingSentThisTick) flushServerSlotRestore();
         }
+    }
+
+    private void flushServerSlotRestore() {
+        if (!serverSlotRestorePending) return;
+        serverSlotRestorePending = false;
+        // A newer lease owns the server slot now; its own expiry restores it later.
+        if (hotbarLease != null || mc.player == null) return;
+        sendSelectedSlotIfNeeded(clientSelectedSlot());
     }
 
     private void beginInternalSwap() {

@@ -18,7 +18,7 @@ import combatant.client.render.iris.IrisSecondHandScene;
 @Mixin(value = GameRenderer.class, priority = 900)
 public abstract class IrisGameRendererInteropMixin {
     @Inject(
-            method = "renderLevel",
+            method = "render3dHud",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/GameRenderer;renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V",

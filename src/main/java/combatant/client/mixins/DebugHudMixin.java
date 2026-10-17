@@ -41,6 +41,7 @@ public abstract class DebugHudMixin {
     private void combatant$captureDebugHudLines(GuiGraphicsExtractor context,
                                                  List<String> lines,
                                                  boolean leftAligned,
+                                                 int y,
                                                  CallbackInfo ci) {
         if (!RuntimeGate.canRunHud() || RuntimeGate.isPanic()) return;
         DebugHudReplacement.captureLines(lines, leftAligned);
@@ -51,7 +52,7 @@ public abstract class DebugHudMixin {
             method = "extractRenderState",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/gui/components/DebugScreenOverlay;extractLines(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Ljava/util/List;Z)V",
+                    target = "Lnet/minecraft/client/gui/components/DebugScreenOverlay;extractLines(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Ljava/util/List;ZI)V",
                     ordinal = 0
             ),
             index = 1

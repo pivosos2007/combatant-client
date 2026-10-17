@@ -43,10 +43,10 @@ public class SilentSwapViewGameRendererMixin {
     }
 
     @WrapMethod(method = "render")
-    private void combatant$clientViewRender(DeltaTracker deltaTracker, boolean advanceGameTime, Operation<Void> original) {
+    private void combatant$clientViewRender(Operation<Void> original) {
         InventorySwap.INSTANCE.beginClientView();
         try {
-            original.call(deltaTracker, advanceGameTime);
+            original.call();
         } finally {
             InventorySwap.INSTANCE.endClientView();
         }

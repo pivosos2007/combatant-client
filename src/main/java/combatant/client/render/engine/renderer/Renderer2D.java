@@ -5329,6 +5329,23 @@ public final class Renderer2D {
             appendGeometryQuad(mesh, x, y, width, height,
                     cTopLeft, cTopRight, cBottomRight, cBottomLeft);
         }
+
+        /** Arbitrary convex quad with per-corner colours, wound either way; for CPU-projected geometry. */
+        public void quad(double x1, double y1, int c1, double x2, double y2, int c2,
+                         double x3, double y3, int c3, double x4, double y4, int c4) {
+            mesh.ensureQuadCapacity();
+            int i1 = appendFlatGeometryVertex(mesh, x1, y1, c1);
+            int i2 = appendFlatGeometryVertex(mesh, x2, y2, c2);
+            int i3 = appendFlatGeometryVertex(mesh, x3, y3, c3);
+            int i4 = appendFlatGeometryVertex(mesh, x4, y4, c4);
+            double area = (x1 * y2 - x2 * y1) + (x2 * y3 - x3 * y2) + (x3 * y4 - x4 * y3) + (x4 * y1 - x1 * y4);
+            // The UI pipeline culls back faces, so keep the winding appendGeometryQuad produces.
+            if (area >= 0.0) {
+                mesh.quad(i1, i4, i3, i2);
+            } else {
+                mesh.quad(i1, i2, i3, i4);
+            }
+        }
     }
 
     public static final class BatchStats extends UiBatchStats {

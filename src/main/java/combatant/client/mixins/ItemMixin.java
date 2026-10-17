@@ -25,7 +25,7 @@ public class ItemMixin {
                     target = "Lnet/minecraft/world/entity/player/Player;calculateViewVector(FF)Lnet/minecraft/world/phys/Vec3;"
             )
     )
-    private static Vec3 combatant$raycastRotation(Player player, float pitch, float yaw) {
+    private static Vec3 combatant$raycastRotation(float pitch, float yaw) {
         return RotationManager.INSTANCE.getMovementRotation().directionVector();
     }
 }

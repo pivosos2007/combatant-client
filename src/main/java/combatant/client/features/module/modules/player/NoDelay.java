@@ -8,6 +8,7 @@
 package combatant.client.features.module.modules.player;
 
 import combatant.client.config.common.CommonSettingSchemas;
+import combatant.client.util.anticheat.AntiCheatPreset;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -66,6 +67,11 @@ public final class NoDelay extends Module {
     private static final String TYPE_FAST_THROW = "Fast throw";
     private static final String TYPE_FAST_INTERACT = "Fast interact";
     private static final String TYPE_SHIELD_COOLDOWN = "Shield Cooldown";
+
+    // custom = the settings below as set; grim = break cooldown removal and fast break disabled
+    // (GrimAC FastBreak flags early STOPs and block break cooldown removal); vanilla = normal fast break
+    // at server 0.7 progress and break cooldown removal on, for servers with no anticheat.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
 
     private final BooleanMapValue types = group("noDelayTypes", SETTING_TYPES, defaultTypes());
     private final BooleanValue useDelay =
@@ -126,30 +132,30 @@ public final class NoDelay extends Module {
             return;
         }
 
-        if (types.get(TYPE_RIGHT_CLICK)) {
+        if (effType(TYPE_RIGHT_CLICK)) {
             ((MinecraftAccessor) mc).combatant$setItemUseCooldown(0);
-        } else if (types.get(TYPE_BLOCK_PLACE)) {
+        } else if (effType(TYPE_BLOCK_PLACE)) {
             applyBlockPlaceCooldown();
         }
 
-        if (types.get(TYPE_BREAK_COOLDOWN) && mc.gameMode instanceof MultiPlayerGameModeAccessor accessor) {
+        if (effType(TYPE_BREAK_COOLDOWN) && mc.gameMode instanceof MultiPlayerGameModeAccessor accessor) {
             accessor.combatant$setBlockBreakingCooldown(0);
         }
 
-        if (types.get(TYPE_FAST_BREAK)) {
+        if (effType(TYPE_FAST_BREAK)) {
             applyFastBreakBoost();
         } else {
             resetBreakBoost();
         }
 
-        if (types.get(TYPE_JUMP)) {
+        if (effType(TYPE_JUMP)) {
             ((LivingEntityAccessor) mc.player).combatant$setJumpingCooldown(0);
         }
     }
 
 
     public boolean shouldDisableShieldCooldown() {
-        return isEnabled() && types.get(TYPE_SHIELD_COOLDOWN);
+        return isEnabled() && effType(TYPE_SHIELD_COOLDOWN);
     }
 
     @Override
@@ -164,7 +170,7 @@ public final class NoDelay extends Module {
     public boolean handleFastUse() {
         if (!isEnabled()) return false;
         if (mc == null || mc.player == null || mc.gameMode == null) return false;
-        if (!types.get(TYPE_FAST_THROW) && !types.get(TYPE_FAST_INTERACT)) return false;
+        if (!effType(TYPE_FAST_THROW) && !effType(TYPE_FAST_INTERACT)) return false;
 
         LocalPlayer player = mc.player;
 
@@ -180,8 +186,8 @@ public final class NoDelay extends Module {
         UseContext ctx = resolveFastUseContext(main, off, hit);
         if (ctx == null) return false;
 
-        if (ctx.target == UseTarget.THROWABLE && !types.get(TYPE_FAST_THROW)) return false;
-        if ((ctx.target == UseTarget.BONE_MEAL_BLOCK || ctx.target == UseTarget.ITEM_FRAME) && !types.get(TYPE_FAST_INTERACT)) {
+        if (ctx.target == UseTarget.THROWABLE && !effType(TYPE_FAST_THROW)) return false;
+        if ((ctx.target == UseTarget.BONE_MEAL_BLOCK || ctx.target == UseTarget.ITEM_FRAME) && !effType(TYPE_FAST_INTERACT)) {
             return false;
         }
 
@@ -250,8 +256,8 @@ public final class NoDelay extends Module {
 
         float progress = accessor.combatant$getCurrentBreakingProgress();
         float requiredProgress = fastBreakMode.get() == FastBreakMode.VULCAN_297
-                ? Math.max(fastBreakProgress.get(), VULCAN_297_MIN_SERVER_ACCEPT_PROGRESS)
-                : fastBreakProgress.get();
+                ? Math.max(effFastBreakProgress(), VULCAN_297_MIN_SERVER_ACCEPT_PROGRESS)
+                : effFastBreakProgress();
         if (progress < requiredProgress) return;
         if (pos.equals(lastBoostedBreakPos)) return;
 
@@ -279,6 +285,27 @@ public final class NoDelay extends Module {
 
     private void resetBreakBoost() {
         lastBoostedBreakPos = null;
+    }
+
+    private boolean effType(String type) {
+        if (anticheat.get() == AntiCheatPreset.GRIM) {
+            if (TYPE_BREAK_COOLDOWN.equals(type) || TYPE_FAST_BREAK.equals(type)) {
+                return false;
+            }
+        } else if (anticheat.get() == AntiCheatPreset.VANILLA) {
+            if (TYPE_BREAK_COOLDOWN.equals(type) || TYPE_FAST_BREAK.equals(type)) {
+                return true;
+            }
+        }
+        return types.get(type);
+    }
+
+    private float effFastBreakProgress() {
+        return anticheat.get().pick(
+                fastBreakProgress.get(),
+                1.0f,
+                0.7f
+        );
     }
 
     private Direction resolveBreakingDirection(BlockPos breakingPos) {

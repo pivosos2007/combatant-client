@@ -42,6 +42,9 @@ import combatant.client.features.maplink.model.MapLinkProfileStatus;
 import combatant.client.features.maplink.model.MapLinkSnapshot;
 import combatant.client.features.maplink.runtime.MapLinkRuntime;
 import net.minecraft.client.Minecraft;
+import combatant.client.runtime.error.FailureBoundary;
+import combatant.client.runtime.error.FailureIsolation;
+import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.world.entity.player.Player;
 
@@ -133,8 +136,8 @@ public final class MapLocationRuntime {
     }
 
     public void shutdown() {
-        reset();
-        MapHistoryStore.get().shutdown();
+        isolateTeardown("reset", this::reset);
+        isolateTeardown("historyStore", () -> MapHistoryStore.get().shutdown());
     }
 
     /** Stops live locator/IPC state while keeping persistent storage resumable after soft panic. */
@@ -530,15 +533,18 @@ public final class MapLocationRuntime {
     private void closeLocationSession() {
         LocationSessionKey previous = activeLocationSession;
         if (previous == null) return;
-        List<PlayerLocationEvent> events = PlayerLocationService.get().clear();
-        persistLocationEvents(previous.serverKey(), events);
-        HeuristicRuntime.get().endSession();
-        persistHeuristicEvents(HeuristicRuntime.get().drainLifecycleEvents());
-        LocatorRuntime.get().clear();
-        PlayerTrackingRangeRuntime.get().clear();
-        lastLocatorSeenAt.clear();
-        activeLocationSession = null;
-        activeConnectionIdentity = null;
+        try {
+            List<PlayerLocationEvent> events = PlayerLocationService.get().clear();
+            isolateTeardown("persistLocationEvents", () -> persistLocationEvents(previous.serverKey(), events));
+            isolateTeardown("heuristicEndSession", () -> HeuristicRuntime.get().endSession());
+            isolateTeardown("persistHeuristicEvents", () -> persistHeuristicEvents(HeuristicRuntime.get().drainLifecycleEvents()));
+            isolateTeardown("locatorClear", () -> LocatorRuntime.get().clear());
+            isolateTeardown("trackingRangeClear", () -> PlayerTrackingRangeRuntime.get().clear());
+        } finally {
+            lastLocatorSeenAt.clear();
+            activeLocationSession = null;
+            activeConnectionIdentity = null;
+        }
     }
 
     private void persistLocationEvents(String server, List<PlayerLocationEvent> events) {
@@ -626,14 +632,36 @@ public final class MapLocationRuntime {
     }
 
     private void reset() {
-        closeLocationSession();
-        HeuristicRuntime.get().setSuppressedTargets(Set.of());
-        duplex.close();
+        isolateTeardown("locationSession", this::closeLocationSession);
+        isolateTeardown("heuristicSuppressedTargets", () -> HeuristicRuntime.get().setSuppressedTargets(Set.of()));
+        isolateTeardown("duplex", duplex::close);
         activeServerFingerprint = "";
         activeWorldFingerprint = "";
         activeDuplexConfigFingerprint = 0;
         lastDuplexRevision.clear();
         lastDuplexSentAt.clear();
+    }
+
+    private void isolateTeardown(String step, Runnable action) {
+        try {
+            action.run();
+        } catch (Throwable t) {
+            Throwable unwrapped = FailureBoundary.unwrap(t);
+            if (unwrapped instanceof VirtualMachineError error) {
+                throw error;
+            }
+            if (unwrapped instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Teardown interrupted: " + step, unwrapped);
+            }
+            DebugLog.error("MapLocationRuntime teardown step '{}' failed", step, unwrapped);
+            try {
+                FailureIsolation.reportComponent(this, "MapLocationRuntime", step, unwrapped);
+            } catch (Throwable ignored) {
+                // FailureIsolation/ErrorHandler re-throws non-recoverable Errors; suppress during teardown
+                // so remaining teardown steps continue to run.
+            }
+        }
     }
 
     private static boolean usable(Minecraft mc) {

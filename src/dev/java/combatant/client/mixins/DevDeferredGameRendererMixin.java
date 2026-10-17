@@ -6,14 +6,13 @@
  */
 package combatant.client.mixins;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import combatant.client.render.engine.deferred.DevDeferredRuntime;
 import combatant.client.render.engine.depth.WorldSceneDepth;
-import net.minecraft.client.DeltaTracker;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
-import org.joml.Matrix4fc;
+import net.minecraft.client.renderer.state.level.PlayerRenderState;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -28,31 +27,33 @@ public abstract class DevDeferredGameRendererMixin {
     @Shadow @Final private Minecraft minecraft;
 
     @Inject(method = "renderLevel", at = @At("HEAD"))
-    private void combatant$devDeferredFrameBoundary(DeltaTracker tickCounter, CallbackInfo ci) {
+    private void combatant$devDeferredFrameBoundary(CallbackInfo ci) {
         DevDeferredRuntime.serviceFrameBoundary();
     }
 
     @Inject(
-            method = "renderLevel",
+            method = "render3dHud",
             at = @At(value = "INVOKE_STRING",
                     target = "Lnet/minecraft/util/profiling/ProfilerFiller;popPush(Ljava/lang/String;)V",
                     args = "ldc=hand", shift = At.Shift.BEFORE)
     )
-    private void combatant$devDeferredBeforePost(DeltaTracker tickCounter, CallbackInfo ci) {
+    private void combatant$devDeferredBeforePost(CallbackInfo ci) {
         combatant$runCameraPost(false);
     }
 
     @Inject(
-            method = "renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;FLorg/joml/Matrix4fc;)V",
+            method = "renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;"
+                    + "Lnet/minecraft/client/renderer/state/level/PlayerRenderState;"
+                    + "Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V",
             at = @At("HEAD")
     )
-    private void combatant$devDeferredAfterPost(CameraRenderState camera, float tickDelta,
-                                                Matrix4fc positionMatrix, CallbackInfo ci) {
+    private void combatant$devDeferredAfterPost(CameraRenderState camera, PlayerRenderState player,
+                                                GpuTextureView depth, CallbackInfo ci) {
         combatant$runCameraPost(true);
     }
 
     @Inject(method = "renderLevel", at = @At("TAIL"))
-    private void combatant$devDeferredFinalComposite(DeltaTracker tickCounter, CallbackInfo ci) {
+    private void combatant$devDeferredFinalComposite(CallbackInfo ci) {
         if (minecraft == null || minecraft.gameRenderer == null) return;
         var main = minecraft.gameRenderer.mainRenderTarget();
         if (main == null) return;

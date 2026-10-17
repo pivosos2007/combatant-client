@@ -16,7 +16,7 @@ import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.render.engine.text.TextRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import org.lwjgl.glfw.GLFW;
+
 
 /**
  * Dev-only, full-size optical calibration board. Each tile renders its own high-contrast
@@ -298,8 +298,8 @@ public final class DevLiquidGlassProbe extends DraggableHudElement {
             float viewH = viewport != null ? Math.max(1f, viewport.height()) : rawH;
             float mx = (float) mc.mouseHandler.xpos() / rawW * viewW;
             float my = (float) mc.mouseHandler.ypos() / rawH * viewH;
-            boolean down = GLFW.glfwGetMouseButton(mc.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_LEFT)
-                    == GLFW.GLFW_PRESS;
+            boolean down = combatant.client.input.CombatantInput.state().isPressed(
+                    combatant.client.input.InputDevice.MOUSE, combatant.client.input.InputKeys.MOUSE_LEFT);
             interaction = owner.sample(mx, my, down, x, y, w, h,
                     optics.interactionViscosity(), optics.interactionStrength(), nowNanos, dismissing);
         }

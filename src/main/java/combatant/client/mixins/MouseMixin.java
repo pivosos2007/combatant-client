@@ -155,7 +155,7 @@ public class MouseMixin {
 
     // ===== Mouse move for ClickGUI =====
     @Inject(method = "onMove", at = @At("HEAD"), cancellable = true)
-    private void clickGuiCursorMove(long window, double x, double y, CallbackInfo ci) {
+    private void clickGuiCursorMove(long window, double x, double y, double dx, double dy, CallbackInfo ci) {
 
         Minecraft mc = Minecraft.getInstance();
 

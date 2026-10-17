@@ -230,16 +230,16 @@ final class DeferredWorldRenderStateSource {
         try {
             EnvironmentAttributeProbe probe = camera.attributeProbe();
             float skyFactor = finite(probe.getValue(EnvironmentAttributes.SKY_LIGHT_FACTOR, partialTick), 0.0f);
-            int skyLight = probe.getValue(EnvironmentAttributes.SKY_LIGHT_COLOR, partialTick);
-            int blockLight = probe.getValue(EnvironmentAttributes.BLOCK_LIGHT_TINT, partialTick);
-            int ambient = probe.getValue(EnvironmentAttributes.AMBIENT_LIGHT_COLOR, partialTick);
-            int skyBackground = probe.getValue(EnvironmentAttributes.SKY_COLOR, partialTick);
+            org.joml.Vector3fc skyLight = probe.getValue(EnvironmentAttributes.SKY_LIGHT_COLOR, partialTick);
+            org.joml.Vector3fc blockLight = probe.getValue(EnvironmentAttributes.BLOCK_LIGHT_TINT, partialTick);
+            org.joml.Vector3fc ambient = probe.getValue(EnvironmentAttributes.AMBIENT_LIGHT_COLOR, partialTick);
+            org.joml.Vector3fc skyBackground = probe.getValue(EnvironmentAttributes.SKY_COLOR, partialTick);
             MinecraftBaselineLightState state = new MinecraftBaselineLightState(
                     true, hasSkyLight, skyFactor, dimensionAmbient,
-                    ARGB.redFloat(skyLight), ARGB.greenFloat(skyLight), ARGB.blueFloat(skyLight),
-                    ARGB.redFloat(blockLight), ARGB.greenFloat(blockLight), ARGB.blueFloat(blockLight),
-                    ARGB.redFloat(ambient), ARGB.greenFloat(ambient), ARGB.blueFloat(ambient),
-                    ARGB.redFloat(skyBackground), ARGB.greenFloat(skyBackground), ARGB.blueFloat(skyBackground)
+                    skyLight.x(), skyLight.y(), skyLight.z(),
+                    blockLight.x(), blockLight.y(), blockLight.z(),
+                    ambient.x(), ambient.y(), ambient.z(),
+                    skyBackground.x(), skyBackground.y(), skyBackground.z()
             );
             lastBaselineFailure = "";
             return new BaselineCapture(state,

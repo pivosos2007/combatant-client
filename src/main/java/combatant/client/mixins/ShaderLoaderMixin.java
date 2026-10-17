@@ -8,6 +8,7 @@
 package combatant.client.mixins;
 
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
+import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.renderpearl.api.pipeline.ShaderType;
 import net.minecraft.client.renderer.PostChainConfig;
 import net.minecraft.client.renderer.ShaderManager;
@@ -18,8 +19,10 @@ import net.minecraft.util.profiling.ProfilerFiller;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.mixins.accessors.ShaderLoaderDefinitionsAccessor;
 import combatant.client.mixins.accessors.ShaderSourceKeyAccessor;
 import combatant.client.render.engine.shader.CombatantShaderSources;
@@ -68,6 +71,19 @@ public abstract class ShaderLoaderMixin {
             if (!canonicalId.equals(resourceId)) {
                 shaderSources.put(combatant$newShaderSourceKey(canonicalId, type), source);
                 added++;
+            }
+
+            if (type == ShaderType.FRAGMENT && !CombatantShaderSources.isAnalyticClipVariant(resourceId)
+                    && !CombatantShaderSources.isUiUnderlayVariant(resourceId)) {
+                Identifier analytic = CombatantShaderSources.analyticClipVariantId(resourceId);
+                Identifier underlay = CombatantShaderSources.uiUnderlayVariantId(analytic);
+                Identifier baseUnderlay = CombatantShaderSources.uiUnderlayVariantId(resourceId);
+                for (Identifier variant : new Identifier[]{analytic, underlay, baseUnderlay}) {
+                    String variantSource = CombatantShaderSources.load(resourceManager, variant, type);
+                    shaderSources.put(combatant$newShaderSourceKey(variant, type), variantSource);
+                    shaderSources.put(combatant$newShaderSourceKey(CombatantShaderSources.canonicalShaderId(variant), type), variantSource);
+                    added += 2;
+                }
             }
         }
 
@@ -166,26 +182,28 @@ public abstract class ShaderLoaderMixin {
         }
     }
 
-    @Inject(method = "apply", at = @At("HEAD"))
-    private void combatant$beforeShaderReload(ShaderManager.Configs definitions,
-                                              ResourceManager resourceManager,
-                                              ProfilerFiller profiler,
-                                              CallbackInfo ci) {
+    @Unique
+    private static volatile ResourceManager combatant$lastResourceManager;
+
+    @Inject(method = "loadConfigs", at = @At("HEAD"))
+    private static void combatant$beforeShaderReload(ResourceManager resourceManager, CallbackInfoReturnable<ShaderManager.Configs> cir) {
+        combatant$lastResourceManager = resourceManager;
         RenderResourceReadiness.markReloading("shader reload");
     }
 
     @Inject(method = "apply", at = @At("TAIL"))
-    private void combatant$afterShaderReload(ShaderManager.Configs definitions,
-                                             ResourceManager resourceManager,
-                                             ProfilerFiller profiler,
+    private void combatant$afterShaderReload(GpuDevice device,
+                                             @Coerce Object results,
                                              CallbackInfo ci) {
-        ResourceReloadHooks.onReload(resourceManager);
+        ResourceManager resourceManager = combatant$lastResourceManager;
+        if (resourceManager != null) {
+            ResourceReloadHooks.onReload(resourceManager);
+        }
     }
 
-    @ModifyReturnValue(method = "prepare", at = @At("RETURN"))
-    private ShaderManager.Configs combatant$extendShaderSources(ShaderManager.Configs definitions,
-                                                                ResourceManager resourceManager,
-                                                                ProfilerFiller profiler) {
+    @ModifyReturnValue(method = "loadConfigs", at = @At("RETURN"))
+    private static ShaderManager.Configs combatant$extendShaderSources(ShaderManager.Configs definitions,
+                                                                       ResourceManager resourceManager) {
         ShaderLoaderDefinitionsAccessor accessor = (ShaderLoaderDefinitionsAccessor) (Object) definitions;
         Map<?, String> shaderSources = accessor.combatant$getShaderSources();
         Map<Object, String> replaced = new LinkedHashMap<>(shaderSources.size() + 64);

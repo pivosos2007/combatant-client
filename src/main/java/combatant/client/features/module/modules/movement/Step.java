@@ -34,6 +34,7 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.util.player.MovementUtil;
 import combatant.client.util.time.TimerController;
+import combatant.client.util.anticheat.AntiCheatPreset;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -90,6 +91,10 @@ public final class Step extends Module {
     private static final double VULCAN_297_JUMP_A_LIMIT = 1.25;
 
     private final Minecraft mc = Minecraft.getInstance();
+    // custom = the settings below as set; grim = legit jump step (GrimAC Simulation flags instant
+    // step heights above 0.6 and timer/packet tricks); vanilla = user mode with max 5.0 height,
+    // for servers with no anticheat.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final EnumValue<Mode> mode = enumSetting("stepMode", "mode", Mode.INSTANT, Mode.values());
     private final NumberValue<Float> height = visibleWhen(num("stepHeight", "height", 1.0f, 0.6f, 5.0f), () -> mode.get() == Mode.INSTANT);
     private final BooleanValue adaptiveOffsets = visibleWhen(bool("stepAdaptiveOffsets", "adaptive_offsets", true), () -> mode.get() == Mode.INSTANT);
@@ -168,9 +173,9 @@ public final class Step extends Module {
         }
         decayVulcan297Risk();
 
-        if (mode.get() == Mode.VULCAN_286) {
+        if (effMode() == Mode.VULCAN_286) {
             tickVulcan286();
-        } else if (mode.get() == Mode.VULCAN_297) {
+        } else if (effMode() == Mode.VULCAN_297) {
             tickVulcan297();
         }
     }
@@ -181,25 +186,25 @@ public final class Step extends Module {
 
         LocalPlayer player = mc.player;
         boolean manualJump = isManualJump(event, player);
-        if (mode.get() == Mode.LEGIT) {
+        if (effMode() == Mode.LEGIT) {
             if (canStep(player, 1.0) && !manualJump) {
                 event.setJump(true);
             }
             return;
         }
 
-        if ((mode.get() != Mode.VULCAN_286 && mode.get() != Mode.VULCAN_297) || vulcanStepping) return;
-        if (mode.get() == Mode.VULCAN_297 && manualJump) return;
-        if (mode.get() == Mode.VULCAN_297 && isVulcan297PredictionRiskHigh()) return;
+        if ((effMode() != Mode.VULCAN_286 && effMode() != Mode.VULCAN_297) || vulcanStepping) return;
+        if (effMode() == Mode.VULCAN_297 && manualJump) return;
+        if (effMode() == Mode.VULCAN_297 && isVulcan297PredictionRiskHigh()) return;
         if (!canStep(player, 1.0)) return;
 
         event.setJump(true);
-        if (mode.get() == Mode.VULCAN_297) {
+        if (effMode() == Mode.VULCAN_297) {
             vulcan297JumpARisk += VULCAN_297_STEP_JUMP_COST;
             vulcan297FlightFRisk += VULCAN_297_STEP_JUMP_COST * 0.5;
         }
         vulcanStepCounter++;
-        vulcan297Aggressive = mode.get() == Mode.VULCAN_297 && isVulcan297FlightExempt(player);
+        vulcan297Aggressive = effMode() == Mode.VULCAN_297 && isVulcan297FlightExempt(player);
         vulcanEvenStep = vulcanStepCounter % 2 == 0;
         vulcanSequenceTicks = 0;
         vulcanStepping = true;
@@ -207,26 +212,26 @@ public final class Step extends Module {
 
     @EventHandler
     private void onPlayerStep(PlayerStepEvent event) {
-        if (!isEnabled() || mode.get() != Mode.INSTANT || ticksWait > 0) return;
+        if (!isEnabled() || effMode() != Mode.INSTANT || ticksWait > 0) return;
         LocalPlayer player = mc.player;
         if (player == null) return;
         if (!player.onGround()) return;
         if (player.isInWater() || player.isInLava() || player.isPassenger() || player.isFallFlying() || player.onClimbable()) return;
         if (!sneak.get() && player.isShiftKeyDown()) return;
 
-        event.setHeight(height.get());
+        event.setHeight(effHeight());
     }
 
     @EventHandler
     private void onPlayerStepSuccess(PlayerStepSuccessEvent event) {
-        if (!isEnabled() || mode.get() != Mode.INSTANT) return;
+        if (!isEnabled() || effMode() != Mode.INSTANT) return;
         if (ticksWait > 0 || mc.player == null || mc.getConnection() == null) return;
 
         LocalPlayer player = mc.player;
         double stepHeight = event.getAdjustedVec().y;
         if (stepHeight <= 0.5) return;
 
-        if (packetMode.get() != PacketMode.NONE) {
+        if (effPacketMode() != PacketMode.NONE) {
             double[] offsets = getOffsets(stepHeight);
             if (offsets.length > 0) {
                 player.awardStat(Stats.JUMP);
@@ -255,7 +260,7 @@ public final class Step extends Module {
             }
         }
 
-        if (useTimer.get()) {
+        if (effUseTimer()) {
             TimerController.requestTimerSpeed(timerSpeed.get(), TimerController.NORMAL, this, timerTicks.get());
         }
 
@@ -550,6 +555,22 @@ public final class Step extends Module {
         vulcanSequenceTicks = 0;
         vulcanEvenStep = false;
         vulcan297Aggressive = false;
+    }
+
+    private Mode effMode() {
+        return anticheat.get().pick(mode.get(), Mode.LEGIT, mode.get());
+    }
+
+    private float effHeight() {
+        return anticheat.get().limit(height.get(), 0.6f, 5.0f);
+    }
+
+    private PacketMode effPacketMode() {
+        return anticheat.get().pick(packetMode.get(), PacketMode.NONE, packetMode.get());
+    }
+
+    private boolean effUseTimer() {
+        return anticheat.get().pick(useTimer.get(), false, useTimer.get());
     }
 
     public enum Mode {

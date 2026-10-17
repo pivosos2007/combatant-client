@@ -144,7 +144,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             method = "submit",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/SubmitNodeCollector;submitModel(Lnet/minecraft/client/model/Model;Ljava/lang/Object;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/rendertype/RenderType;IIILnet/minecraft/client/renderer/texture/TextureAtlasSprite;ILnet/minecraft/client/renderer/feature/ModelFeatureRenderer$CrumblingOverlay;)V"
+                    target = "Lnet/minecraft/client/renderer/SubmitNodeCollector;submitModel(Lnet/minecraft/client/model/Model;Ljava/lang/Object;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/rendertype/RenderType;IIILnet/minecraft/client/renderer/texture/UvMapping;I)V"
             )
     )
     private void combatant$submitAnatomicalPlayer(
@@ -156,9 +156,8 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             int light,
             int overlay,
             int tint,
-            TextureAtlasSprite sprite,
+            net.minecraft.client.renderer.texture.UvMapping sprite,
             int outlineColor,
-            ModelFeatureRenderer.CrumblingOverlay crumbling,
             Operation<Void> original
     ) {
         if (model instanceof PlayerModel playerModel
@@ -166,12 +165,12 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
                 && avatarState instanceof PlayerRigRenderState rigState
                 && PlayerRigCpuRenderer.submitPlayer(
                         collector, playerModel, avatarState, rigState.combatant$getPlayerRig(), matrices,
-                        renderType, light, overlay, tint, sprite, outlineColor, crumbling
+                        renderType, light, overlay, tint, sprite, outlineColor, null
                 )) {
             return;
         }
         original.call(collector, model, modelState, matrices, renderType, light, overlay, tint,
-                sprite, outlineColor, crumbling);
+                sprite, outlineColor);
     }
 
     @ModifyExpressionValue(
