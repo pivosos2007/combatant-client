@@ -120,6 +120,7 @@
     "ParticleManagerMixin",
     "PauseScreenMixin",
     "PistonHeadRendererMixin",
+    "PipelineBuilderMixin",
     "PlayerInfoMixin",
     "PlayerTabOverlayMixin",
     "PowderSnowFogModifierMixin",
