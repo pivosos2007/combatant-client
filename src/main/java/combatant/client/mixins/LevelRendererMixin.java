@@ -17,7 +17,6 @@ import com.mojang.blaze3d.framegraph.FramePass;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import com.mojang.blaze3d.resource.ResourceHandle;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -45,15 +44,8 @@ import combatant.client.features.module.modules.visuals.WorldTweaks;
 import combatant.client.mixins.accessors.GameRendererAccessor;
 import combatant.client.mixins.accessors.LevelRendererAccessor;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
-import combatant.client.render.engine.RenderState;
-import combatant.client.render.engine.asset.gltf.render.ImportedAssetCompatibilityRenderer;
-import combatant.client.render.engine.core.CombatantRenderSystem;
-import combatant.client.render.engine.core.RenderPhase;
-import combatant.client.render.engine.core.RenderPhaseScope;
-import combatant.client.render.engine.depth.PreTranslucentDepth;
 import combatant.client.render.engine.depth.EntityDepthLayer;
 import combatant.client.render.engine.depth.WorldSceneDepth;
-import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.render.sky.CustomSkyboxRenderer;
 
@@ -265,61 +257,4 @@ public abstract class LevelRendererMixin {
         ci.cancel();
     }
 
-    @Inject(
-            method = "executeClassicTransparency",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;renderGroup(Lnet/minecraft/client/renderer/chunk/ChunkSectionLayerGroup;Lcom/mojang/renderpearl/api/commands/RenderPass;Lcom/mojang/renderpearl/api/textures/GpuSampler;Lcom/mojang/renderpearl/api/textures/GpuTextureView;Z)V",
-                    shift = At.Shift.BEFORE
-            )
-    )
-    private void combatant$capturePreWaterScene(
-            CallbackInfo ci
-    ) {
-        if (IrisRuntime.isShaderpackRendererActive()) {
-            return;
-        }
-        Minecraft mc = Minecraft.getInstance();
-        RenderTarget mainFramebuffer = mc != null && mc.gameRenderer != null ? mc.gameRenderer.mainRenderTarget() : null;
-        PreTranslucentDepth.captureFrom(mainFramebuffer);
-    }
-
-    @Inject(
-            method = "executeClassicTransparency",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;executeTranslucent(Lcom/mojang/renderpearl/api/commands/RenderPass;)V",
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void combatant$renderImportedWorldEntities(
-            CallbackInfo ci
-    ) {
-        if (IrisRuntime.isShaderpackRendererActive() || !CombatantWorldMatrices.isValid()) {
-            return;
-        }
-        Minecraft minecraft = Minecraft.getInstance();
-        RenderTarget renderTarget = minecraft != null && minecraft.gameRenderer != null
-                ? minecraft.gameRenderer.mainRenderTarget() : null;
-        org.joml.Matrix4f position = CombatantWorldMatrices.positionMatrix();
-        org.joml.Matrix4f projection = CombatantWorldMatrices.renderProjectionMatrix();
-        if (renderTarget == null || position == null || projection == null) {
-            return;
-        }
-
-        var modelView = RenderSystem.getModelViewStack();
-        boolean previousRendering3D = RenderState.rendering3D;
-        modelView.pushMatrix();
-        try (RenderPhaseScope ignored = CombatantRenderSystem.phase(RenderPhase.WORLD_BEFORE_TRANSLUCENT)) {
-            modelView.identity();
-            modelView.mul(position);
-            RenderState.rendering3D = true;
-            RenderState.worldProjection.set(projection);
-            MeshRenderer.setProjection(projection);
-            ImportedAssetCompatibilityRenderer.renderWorldEntities(renderTarget);
-        } finally {
-            RenderState.rendering3D = previousRendering3D;
-            modelView.popMatrix();
-        }
-    }
 }

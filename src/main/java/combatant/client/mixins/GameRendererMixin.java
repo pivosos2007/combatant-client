@@ -14,6 +14,7 @@ import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.features.gui.preview.VisualPreviewRuntime;
@@ -71,6 +72,7 @@ import combatant.client.render.engine.temporal.TemporalJitterSequence;
 import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.core.RenderPhaseScope;
 import combatant.client.render.engine.depth.WorldSceneDepth;
+import combatant.client.render.engine.depth.PreTranslucentDepth;
 import combatant.client.render.engine.debug.UiClipDebugScene;
 import combatant.client.render.engine.msaa.MsaaWorldTarget;
 import combatant.client.config.MainConfig;
@@ -437,6 +439,11 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                     mv.mul(inverseBob);
                 }
 
+                RenderTarget worldTarget = minecraft != null && minecraft.gameRenderer != null
+                        ? minecraft.gameRenderer.mainRenderTarget()
+                        : null;
+                ImportedAssetCompatibilityRenderer.renderWorldEntities(worldTarget);
+
                 combatant$renderer.begin();
                 combatant$depthRenderer.begin();
 
@@ -529,7 +536,9 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     private void combatant$beginWorldMsaa(CallbackInfo ci) {
         CombatantWorldMatrices.reset();
         if (ClickGuiRenderer.suppressesBackgroundRendering() || VisualPreviewRuntime.isActive()) return;
-        IrisCombatantFrameHooks.beginRenderLevel(minecraft.getDeltaTracker());
+        if (IrisRuntime.isModLoaded()) {
+            IrisCombatantFrameHooks.beginRenderLevel(minecraft.getDeltaTracker());
+        }
         int samples = MainConfig.get().getMsaa3dSamples();
         MsaaWorldTarget.begin(minecraft, samples, combatant$needsResolvedMainDepth());
     }
@@ -537,7 +546,9 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     @Inject(method = "renderLevel", at = @At("RETURN"))
     private void combatant$endIrisFrameHooks(CallbackInfo ci) {
         if (ClickGuiRenderer.suppressesBackgroundRendering() || VisualPreviewRuntime.isActive()) return;
-        IrisCombatantFrameHooks.endRenderLevel(minecraft.getDeltaTracker());
+        if (IrisRuntime.isModLoaded()) {
+            IrisCombatantFrameHooks.endRenderLevel(minecraft.getDeltaTracker());
+        }
     }
 
     @Redirect(
@@ -557,6 +568,9 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                                                       boolean renderTerrain) {
         if (ClickGuiRenderer.suppressesBackgroundRendering() || VisualPreviewRuntime.isActive()) return;
         renderer.render(resources, renderBlockOutline, camera, fog, clearColor, renderSky, renderTerrain);
+        if (!IrisRuntime.isShaderpackRendererActive()) {
+            PreTranslucentDepth.captureFrom(minecraft.gameRenderer.mainRenderTarget());
+        }
     }
 
     @WrapOperation(

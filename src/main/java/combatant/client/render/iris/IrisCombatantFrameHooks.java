@@ -22,6 +22,7 @@ public enum IrisCombatantFrameHooks {
     private static boolean loggedFinalRender;
 
     public static void beginRenderLevel(DeltaTracker tickCounter) {
+        if (!IrisRuntime.isModLoaded()) return;
         currentTickCounter = tickCounter;
         renderedAfterFinalization = false;
         Minecraft minecraft = Minecraft.getInstance();
@@ -41,6 +42,7 @@ public enum IrisCombatantFrameHooks {
     }
 
     public static void endRenderLevel(DeltaTracker tickCounter) {
+        if (!IrisRuntime.isModLoaded()) return;
         if (currentTickCounter == tickCounter) {
             currentTickCounter = null;
         }
@@ -49,10 +51,11 @@ public enum IrisCombatantFrameHooks {
     }
 
     public static boolean isRenderingAfterIrisFinalization() {
-        return rendering;
+        return IrisRuntime.isModLoaded() && rendering;
     }
 
     public static void renderAfterIrisFinalization() {
+        if (!IrisRuntime.isModLoaded()) return;
         if (rendering || renderedAfterFinalization || currentTickCounter == null) {
             if (currentTickCounter == null && !loggedMissingFrame) {
                 loggedMissingFrame = true;
