@@ -27,53 +27,15 @@ public final class EffectRenderPipelines {
     private EffectRenderPipelines() {
     }
 
-    /** The sky is light-accumulated in FP16 and never writes the scene depth buffer. */
     @PipelineRegister
-    public static final RenderPipeline WORLD_SKY_ATMOSPHERE = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_sky_atmosphere"))
+    public static final RenderPipeline WORLD_REIMAGINED_SKYBOX_SHADER = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, FOG_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_reimagined_skybox_shader"))
             .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
             .withVertexShader(shader("damage_tint.vert"))
-            .withFragmentShader(shader("reimagined_atmosphere.frag"))
-            .withUniform("DeferredSky", UniformType.UNIFORM_BUFFER)
-            .withColorTarget(0, com.mojang.renderpearl.api.GpuFormat.RGBA16_FLOAT)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST).withDepthWrite(false)
-            .withCull(false).build();
-
-    @PipelineRegister
-    public static final RenderPipeline WORLD_SKY_CLOUDS = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_sky_clouds"))
-            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("damage_tint.vert"))
-            .withFragmentShader(shader("reimagined_clouds.frag"))
-            .withUniform("DeferredSky", UniformType.UNIFORM_BUFFER)
-            .withColorTarget(0, com.mojang.renderpearl.api.GpuFormat.RGBA16_FLOAT)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST).withDepthWrite(false)
-            .withCull(false).build();
-
-    @PipelineRegister
-    public static final RenderPipeline WORLD_SKY_CLOUD_TEMPORAL = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_sky_cloud_temporal"))
-            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("damage_tint.vert"))
-            .withFragmentShader(shader("reimagined_cloud_temporal.frag"))
-            .withUniform("DeferredSky", UniformType.UNIFORM_BUFFER)
-            .withSampler("u_CurrentClouds").withSampler("u_CloudHistory")
-            .withColorTarget(0, com.mojang.renderpearl.api.GpuFormat.RGBA16_FLOAT)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST).withDepthWrite(false)
-            .withCull(false).build();
-
-    @PipelineRegister
-    public static final RenderPipeline WORLD_SKY_COMPOSITE = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_sky_composite"))
-            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("damage_tint.vert"))
-            .withFragmentShader(shader("reimagined_sky_composite.frag"))
-            .withUniform("DeferredSky", UniformType.UNIFORM_BUFFER)
-            .withSampler("u_Atmosphere").withSampler("u_Clouds")
-            .withSampler("u_LunarAlbedo").withSampler("u_LunarNormal")
+            .withFragmentShader(shader("reimagined_skybox.frag"))
+            .withUniform("SkyboxShader", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST).withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT).withCull(false).build();
-
     /**
      * Fullscreen heat distortion + vignette (pos2).
      */

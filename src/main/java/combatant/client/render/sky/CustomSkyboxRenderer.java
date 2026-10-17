@@ -18,6 +18,7 @@ import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.SkyRenderer;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
+import net.minecraft.util.ARGB;
 import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffects;
 import org.joml.Matrix4f;
@@ -32,10 +33,15 @@ import combatant.client.mixins.accessors.GameRendererAccessor;
 import combatant.client.mixins.accessors.LocalPlayerAccessor;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
+import combatant.client.render.engine.animation.AnimationUtility;
+import combatant.client.render.engine.pipeline.EffectRenderPipelines;
+import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.renderer.MeshRenderer;
+import combatant.client.render.engine.uniform.impl.SkyboxShaderUniforms;
 
 public enum CustomSkyboxRenderer {
     ;
+    private static final float MIN_TWILIGHT_SKYBOX_ALPHA = 0.38f;
     private static float lastSunAngle;
     private static boolean lastSunAngleValid;
 
@@ -47,8 +53,7 @@ public enum CustomSkyboxRenderer {
         return lastSunAngleValid;
     }
 
-    public static void render(Camera camera, GpuBufferSlice fog, SkyRenderState sky, SkyRenderer skyRendering,
-                              com.mojang.blaze3d.pipeline.RenderTarget sceneTarget) {
+    public static void render(Camera camera, GpuBufferSlice fog, SkyRenderState sky, SkyRenderer skyRendering) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.gameRenderer == null || skyRendering == null) return;
         lastSunAngle = sky.sunAngle;
@@ -74,15 +79,94 @@ public enum CustomSkyboxRenderer {
         mv.identity();
         Matrix4f camRot = new Matrix4f().rotation(camera.rotation().conjugate(new Quaternionf()));
         mv.mul(camRot);
+        float twilightFade = getTwilightFade(sky);
+        float skyboxAlpha = Mth.lerp(twilightFade, 1.0f, MIN_TWILIGHT_SKYBOX_ALPHA);
+
         ReimaginedVisual visual = Modules.get(ReimaginedVisual.class);
-        if (visual != null && visual.isShaderSkyboxEnabled()) {
-            DeferredSkyRenderer.render(mc, camera, sky, visual, sceneTarget, fog,
-                    tickDelta, projection);
+        boolean useShaderSkybox = visual != null && visual.isShaderSkyboxEnabled();
+
+        if (useShaderSkybox) {
+            renderShaderSkybox(mc, mc.gameRenderer.mainRenderTarget(), camera, fog, sky, skyboxAlpha, tickDelta, fov, projection);
         }
         mv.popMatrix();
         MeshRenderer.setProjection(previousProjection);
         RenderState.rendering3D = prevRendering3D;
 
+    }
+
+    private static void renderShaderSkybox(Minecraft mc,
+                                           com.mojang.blaze3d.pipeline.RenderTarget framebuffer,
+                                           Camera camera,
+                                           GpuBufferSlice fog,
+                                           SkyRenderState sky,
+                                           float alpha,
+                                           float tickDelta,
+                                           float fov,
+                                           Matrix4f worldProjection) {
+        if (alpha <= 0.001f || fog == null) return;
+        ReimaginedVisual visual = Modules.get(ReimaginedVisual.class);
+        if (visual == null || !visual.isShaderSkyboxEnabled()) return;
+
+        float time = AnimationUtility.time(0.001f);
+        float width = mc.getWindow() != null ? mc.getWindow().getWidth() : 1.0f;
+        float height = mc.getWindow() != null ? mc.getWindow().getHeight() : 1.0f;
+        float yawRad = (float) Math.toRadians(-camera.yRot());
+        float pitchRad = (float) Math.toRadians(camera.xRot());
+        float shaderFov = extractProjectionFov(worldProjection, fov);
+        SkyboxShaderUniforms.update(
+                visual.getShaderSkyboxColor(),
+                ARGB.colorFromVector3f(sky.skyColor) & 0x00FFFFFF,
+                alpha,
+                visual.getSkyboxSkyFogBlend(),
+                time,
+                visual.getSkyboxShaderMotionSpeed(),
+                5.0f,
+                0.01f,
+                width,
+                height,
+                yawRad,
+                pitchRad,
+                shaderFov,
+                visual.isSkyboxShaderAuroraEnabled() ? 1.0f : 0.0f,
+                visual.getSkyboxShaderAuroraIntensity(),
+                visual.getSkyboxShaderAuroraSpeed(),
+                visual.getSkyboxShaderSmallStars(),
+                visual.getSkyboxShaderDustStars(),
+                visual.getSkyboxShaderMediumStars(),
+                visual.getSkyboxShaderLargeStars(),
+                visual.getSkyboxShaderStarBrightness(),
+                visual.getSkyboxShaderTwinkleStrength(),
+                visual.getSkyboxShaderLayerMask()
+        );
+
+        FullScreenRenderer.ensureInit();
+        Matrix4fStack mv = RenderSystem.getModelViewStack();
+        mv.pushMatrix();
+        mv.identity();
+        MeshRenderer.setProjection(new Matrix4f());
+        try {
+            FullScreenRenderer.begin("Combatant Reimagined Shader Sky")
+                    .attachment(framebuffer)
+                    .pipeline(EffectRenderPipelines.WORLD_REIMAGINED_SKYBOX_SHADER)
+                    .uniform("Fog", fog)
+                    .uniform("SkyboxShader", SkyboxShaderUniforms.get())
+                    .end();
+        } finally {
+            MeshRenderer.setProjection(worldProjection);
+            mv.popMatrix();
+        }
+    }
+
+    private static float extractProjectionFov(Matrix4f projection, float fallbackFov) {
+        if (projection == null) {
+            return fallbackFov;
+        }
+        float m11 = Math.abs(projection.m11());
+        if (!Float.isFinite(m11) || m11 <= 1.0e-4f) {
+            return fallbackFov;
+        }
+        float fov = (float) Math.toDegrees(2.0 * Math.atan(1.0 / m11));
+        return Float.isFinite(fov) ? Mth.clamp(fov, 1.0f, 179.0f) : fallbackFov;
     }
 
     private static Matrix4f buildWorldProjection(Minecraft mc, Camera camera, float fov, float tickDelta) {
@@ -145,6 +229,16 @@ public enum CustomSkyboxRenderer {
         projection.rotate(angle, axis);
         projection.scale(1.0f / scale, 1.0f, 1.0f);
         projection.rotate(-angle, axis);
+    }
+
+    private static float smoothstep(float x) {
+        float t = Mth.clamp((x - (float) 0.0), 0.0f, 1.0f);
+        return t * t * (3.0f - 2.0f * t);
+    }
+
+    private static float getTwilightFade(SkyRenderState sky) {
+        float sunriseAlpha = sky.sunriseAndSunsetColor.w();
+        return smoothstep(sunriseAlpha);
     }
 
 }
