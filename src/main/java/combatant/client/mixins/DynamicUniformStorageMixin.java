@@ -7,7 +7,8 @@
 
 package combatant.client.mixins;
 
-import net.minecraft.client.renderer.DynamicUniformStorage;
+import net.minecraft.client.renderer.DynamicGpuDataStorageMapped;
+import net.minecraft.client.renderer.DynamicGpuDataStorageNonMapped;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -16,14 +17,15 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import combatant.client.util.logging.DebugLog;
 
-@Mixin(DynamicUniformStorage.class)
+@Mixin({DynamicGpuDataStorageMapped.class, DynamicGpuDataStorageNonMapped.class})
 public abstract class DynamicUniformStorageMixin {
     @Final
-    @Shadow
+    @Shadow(remap = false)
     private String label;
 
     @Redirect(
-            method = {"writeUniform", "writeUniforms"},
+            require = 0,
+            method = {"writeData", "writeDataBatched", "writeDataBatchedMultiple"},
             at = @At(
                     value = "INVOKE",
                     target = "Lorg/slf4j/Logger;info(Ljava/lang/String;[Ljava/lang/Object;)V"

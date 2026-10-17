@@ -17,7 +17,6 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ChatScreen;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.chat.BetterChatRenderer;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.color.RenderColor;
@@ -27,7 +26,8 @@ import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.render.helpers.SystemCursor;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputScope;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.*;
@@ -445,8 +445,10 @@ public enum DraggableHudElementRegistry {
         float mx = HudScale.toVirtual(fbX, uiScale);
         float my = HudScale.toVirtual(fbY, uiScale);
 
-        boolean left = GLFW.glfwGetMouseButton(mc.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_1) == GLFW.GLFW_PRESS;
-        boolean middle = GLFW.glfwGetMouseButton(mc.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_MIDDLE) == GLFW.GLFW_PRESS;
+        boolean left = combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.MOUSE, combatant.client.input.InputKeys.MOUSE_LEFT);
+        boolean middle = combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.MOUSE, combatant.client.input.InputKeys.MOUSE_MIDDLE);
 
         if (!allowDragging) {
             if (dragging != null) {
@@ -489,7 +491,7 @@ public enum DraggableHudElementRegistry {
                 }
             }
             if (clickTarget != null) {
-                if (clickTarget.mouseClickedSafely(mx, my, GLFW.GLFW_MOUSE_BUTTON_1)) {
+                if (clickTarget.mouseClickedSafely(mx, my, combatant.client.input.InputKeys.MOUSE_LEFT)) {
                     dragging = null;
                     draggingWithLeft = false;
                     clearSnapPreview();
@@ -988,8 +990,8 @@ public enum DraggableHudElementRegistry {
 
 
     private static boolean isWidgetAnchorModifierDown() {
-        return KeyManager.isComboHeldAllowScreen("LEFT_ALT")
-                || KeyManager.isComboHeldAllowScreen("RIGHT_ALT");
+        return CombatantInput.bindings().isChordHeld("LEFT_ALT", InputScope.GLOBAL)
+                || CombatantInput.bindings().isChordHeld("RIGHT_ALT", InputScope.GLOBAL);
     }
 
     private static void detachChildren(DraggableHudElement parent) {

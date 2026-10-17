@@ -160,13 +160,13 @@ public final class BlockInteractionPipeline {
                 miningOwner = owner;
                 miningPos = pos.immutable();
                 miningFace = face;
-                if (plan.swing()) player.swing(InteractionHand.MAIN_HAND);
+                if (plan.swing()) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
             }
             return started;
         }
 
         boolean continued = mc.gameMode.continueDestroyBlock(pos, miningFace != null ? miningFace : face);
-        if (continued && plan.swing()) player.swing(InteractionHand.MAIN_HAND);
+        if (continued && plan.swing()) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
         return continued;
     }
 
@@ -248,7 +248,7 @@ public final class BlockInteractionPipeline {
 
         InteractionResult result = mc.gameMode.useItemOn(player, hand, hitResult);
         if (result != null && result.consumesAction() && swing) {
-            player.swing(hand);
+            player.swing(hand, player.getItemInHand(hand).getInteractAnimation(), false);
         }
         return result;
     }

@@ -6,8 +6,7 @@
  */
 package combatant.client.render.engine.deferred;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.systems.GpuDevice;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
@@ -72,7 +71,7 @@ public enum DeferredRuntimeAssets {
             temporalPresent = new ExtendedRenderPipelineBuilder(CombatantRenderPipelines.meshUniforms())
                     .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/deferred_temporal_present"))
                     .withDomain(PipelineDomain.FULLSCREEN)
-                    .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+                    .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                     .withVertexShader(Identifier.fromNamespaceAndPath("combatant", "shaders/damage_tint.vert"))
                     .withFragmentShader(TEMPORAL_PRESENT_FRAGMENT)
                     .withSampler("u_Source")
@@ -83,12 +82,13 @@ public enum DeferredRuntimeAssets {
                     .build();
             RenderPipelineRegistry.global().registerNative(temporalPresent);
         }
-        GpuDevice device = RenderSystem.getDevice();
-        device.precompilePipeline(temporalPresent, (identifier, shaderType) -> {
+        temporalPresent.getShaders().forEach((shaderType, identifier) -> {
             String source = CombatantShaderSources.load(resources, identifier, shaderType);
             ShaderCostRegistry.analyze(identifier, shaderType, source);
-            return source;
         });
+        if (RenderSystem.getCompiledPipelineNullable(temporalPresent) == null) {
+            throw new IllegalStateException("Failed to compile pipeline " + temporalPresent.getLocation());
+        }
         if (rebuildNativePrograms) DevDeferredRuntime.graph().releaseBackendResources(CombatantRenderSystem.rhi());
         DevDeferredRuntime.graph().prepareBackendResources();
         preparedResourceGeneration = combatant.client.util.resources.RenderResourceReadiness.generation();

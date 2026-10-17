@@ -6,7 +6,7 @@
  */
 package combatant.client.render.engine.rhi.shader;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 
 /** Storage-capable image still owned by Mojang's active graphics device. */
 public interface RhiStorageImage extends AutoCloseable {

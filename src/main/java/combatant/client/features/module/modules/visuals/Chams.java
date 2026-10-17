@@ -9,13 +9,13 @@ package combatant.client.features.module.modules.visuals;
 
 
 import combatant.client.features.theme.Theme;
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.AddressMode;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.AddressMode;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.*;
@@ -384,53 +384,29 @@ public class Chams extends Module {
     }
 
     public boolean renderHandMask(GameRenderer renderer, CameraRenderState cameraRenderState, float tickDelta, Matrix4fc positionMatrix) {
-        if (!isActiveForHandRender() || mc.player == null || mc.level == null) return false;
-        if (mc.gameMode == null) return false;
-        if (!hands.get() || !shouldRenderHand()) return false;
-        if (!isFirstPersonHandContext()) return false;
+        if (!isActiveForHandRender() || mc.player == null || mc.level == null || !hands.get()
+                || !shouldRenderHand() || !isFirstPersonHandContext() || renderer == null
+                || positionMatrix == null) return false;
 
-        maskReady = false;
-        ensureBuffers();
-        if (handMask == null) return false;
-
-        if (mc.gameRenderer.mainRenderTarget() == null) return false;
-
-        var colorTex = handMask.getColorTexture();
-        if (colorTex == null) return false;
-
-        var encoder = RenderSystem.getDevice().createCommandEncoder();
-        encoder.clearColorTexture(colorTex, new org.joml.Vector4f(0.0f, 0.0f, 0.0f, 0.0f));
-
-        var depthTex = handMask.getDepthTexture();
-        if (depthTex != null) {
-            encoder.clearDepthTexture(depthTex, 0.0);
-        }
-
-        GpuTextureView prevColor = RenderSystem.outputColorTextureOverride;
-        GpuTextureView prevDepth = RenderSystem.outputDepthTextureOverride;
-        boolean prevRendering3D = RenderState.rendering3D;
-
-        RenderSystem.outputColorTextureOverride = handMask.getColorTextureView();
-        RenderSystem.outputDepthTextureOverride = handMask.getDepthTextureView();
-        RenderState.rendering3D = true;
-
+        // 26.3 no longer routes render passes through RenderSystem global target overrides.
+        // Submit the exact first-person feature scene into our own mask attachments instead.
+        var playerState = renderer.gameRenderState().levelRenderState.playerRenderState;
+        PoseStack handPose = new PoseStack();
+        handPose.mulPose(positionMatrix);
+        SubmitNodeStorage handStorage = new SubmitNodeStorage();
         ViewModel viewModel = Modules.get(ViewModel.class);
         boolean hmiReplay = viewModel != null && viewModel.beginHmiReplayPass();
-        try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams_hand_mask")) {
-            ((GameRendererAccessor) renderer).invokeRenderHand(cameraRenderState, tickDelta, positionMatrix);
+        try {
+            renderer.firstPersonHandsAndItemsRenderer.submitHandsWithItems(
+                    tickDelta, handPose, handStorage, playerState, playerState.firstPersonHandsAndItems);
+            return renderPreparedHandScene(handStorage);
         } finally {
             if (hmiReplay) viewModel.endHmiReplayPass();
-            RenderState.rendering3D = prevRendering3D;
-            RenderSystem.outputColorTextureOverride = prevColor;
-            RenderSystem.outputDepthTextureOverride = prevDepth;
         }
-
-        markHandMaskReady();
-        return true;
     }
 
     public SubmitNodeStorage snapshotPreparedHandScene(SubmitNodeStorage storage) {
-        // renderAllFeatures() consumes/clears its SubmitNodeStorage in 26.2. Chams must never feed
+        // prepareFrame() consumes/clears its SubmitNodeStorage. Chams must never feed
         // Minecraft's live hand storage into the auxiliary mask dispatcher, otherwise the real
         // vanilla hand pass that follows has no submits left to draw.
         if (IrisRuntime.isShaderpackRendererActive() && !VisualPreviewRuntime.isRenderingSubject()) return null;
@@ -506,23 +482,20 @@ public class Chams extends Module {
         FeatureRenderDispatcher maskDispatcher = getStandaloneHandFeatureDispatcher();
         if (maskDispatcher == null) return false;
 
-        GpuTextureView prevColor = RenderSystem.outputColorTextureOverride;
-        GpuTextureView prevDepth = RenderSystem.outputDepthTextureOverride;
         boolean prevRendering3D = RenderState.rendering3D;
-        RenderSystem.outputColorTextureOverride = handMask.getColorTextureView();
-        RenderSystem.outputDepthTextureOverride = handMask.getDepthTextureView();
         RenderState.rendering3D = true;
         try {
             try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("chams:hand_mask_render");
                  TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams_hand_mask")) {
-                maskDispatcher.renderAllFeatures(storage);
+                combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
+                        "combatant:chams-hand-mask", maskDispatcher, storage,
+                        handMask.getColorTextureView(), handMask.getDepthTextureView(),
+                        combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.ALL);
             }
             markHandMaskReady();
         } finally {
             endStandaloneHandFrame();
             RenderState.rendering3D = prevRendering3D;
-            RenderSystem.outputColorTextureOverride = prevColor;
-            RenderSystem.outputDepthTextureOverride = prevDepth;
         }
 
         return true;
@@ -559,11 +532,7 @@ public class Chams extends Module {
             encoder.clearDepthTexture(handMask.getDepthTexture(), 0.0);
         }
 
-        GpuTextureView prevColor = RenderSystem.outputColorTextureOverride;
-        GpuTextureView prevDepth = RenderSystem.outputDepthTextureOverride;
         boolean prevRendering3D = RenderState.rendering3D;
-        RenderSystem.outputColorTextureOverride = handMask.getColorTextureView();
-        RenderSystem.outputDepthTextureOverride = handMask.getDepthTextureView();
         RenderState.rendering3D = true;
         RenderSystem.backupProjectionMatrix();
         ViewModel viewModel = Modules.get(ViewModel.class);
@@ -576,8 +545,6 @@ public class Chams extends Module {
             ((IrisHandRendererAccessor) HandRenderer.INSTANCE).combatant$setRenderingSolid(false);
             RenderSystem.restoreProjectionMatrix();
             RenderState.rendering3D = prevRendering3D;
-            RenderSystem.outputColorTextureOverride = prevColor;
-            RenderSystem.outputDepthTextureOverride = prevDepth;
         }
 
         markHandMaskReady();
@@ -601,7 +568,7 @@ public class Chams extends Module {
 
         SubmitNodeStorage handSubmits = new SubmitNodeStorage();
         IrisHandMaskState.renderBothPhases(() ->
-                ((ItemInHandInterface) renderer.itemInHandRenderer).iris$renderHandsWithCustomRenderer(
+                ((ItemInHandInterface) renderer.firstPersonHandsAndItemsRenderer).iris$renderHandsWithCustomRenderer(
                         HandRenderer.INSTANCE,
                         tickDelta,
                         new PoseStack(),
@@ -611,7 +578,10 @@ public class Chams extends Module {
                 )
         );
         try {
-            dispatcher.renderAllFeatures(handSubmits);
+            combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
+                    "combatant:iris-hand-mask", dispatcher, handSubmits,
+                    handMask.getColorTextureView(), handMask.getDepthTextureView(),
+                    combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.ALL);
         } finally {
             modelView.popMatrix();
             handMatrices.popPose();
@@ -658,7 +628,7 @@ public class Chams extends Module {
         if (w <= 0 || h <= 0) return;
 
         if (handMask == null) {
-            handMask = new TextureTarget("combatant-hand-mask", w, h, true, GpuFormat.RGBA8_UNORM);
+            handMask = new TextureTarget("combatant-hand-mask", w, h, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
             bufferW = w;
             bufferH = h;
         } else if (w != bufferW || h != bufferH) {
@@ -681,8 +651,8 @@ public class Chams extends Module {
         int historyH = Math.max(1, Math.round(h * historyScale));
 
         if (ghostHistoryRead == null || ghostHistoryWrite == null) {
-            ghostHistoryRead = new TextureTarget("combatant-hand-ghost-history-a", historyW, historyH, false, GpuFormat.RGBA8_UNORM);
-            ghostHistoryWrite = new TextureTarget("combatant-hand-ghost-history-b", historyW, historyH, false, GpuFormat.RGBA8_UNORM);
+            ghostHistoryRead = new TextureTarget("combatant-hand-ghost-history-a", historyW, historyH, GpuFormat.RGBA8_UNORM, null);
+            ghostHistoryWrite = new TextureTarget("combatant-hand-ghost-history-b", historyW, historyH, GpuFormat.RGBA8_UNORM, null);
             ghostBufferW = historyW;
             ghostBufferH = historyH;
             ghostHistoryNeedsClear = true;
@@ -719,9 +689,9 @@ public class Chams extends Module {
             if (metallicOccupancyRaw == null || metallicOccupancyDilated == null) {
                 closeMetallicOccupancyBuffers();
                 metallicOccupancyRaw = new TextureTarget(
-                        "combatant-hand-metallic-occupancy-raw", occupancyW, occupancyH, false, GpuFormat.RGBA8_UNORM);
+                        "combatant-hand-metallic-occupancy-raw", occupancyW, occupancyH, GpuFormat.RGBA8_UNORM, null);
                 metallicOccupancyDilated = new TextureTarget(
-                        "combatant-hand-metallic-occupancy-dilated", occupancyW, occupancyH, false, GpuFormat.RGBA8_UNORM);
+                        "combatant-hand-metallic-occupancy-dilated", occupancyW, occupancyH, GpuFormat.RGBA8_UNORM, null);
                 metallicOccupancyW = occupancyW;
                 metallicOccupancyH = occupancyH;
             } else if (occupancyW != metallicOccupancyW || occupancyH != metallicOccupancyH) {

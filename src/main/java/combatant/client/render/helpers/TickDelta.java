@@ -23,6 +23,7 @@ public enum TickDelta {
     private static final float TICKS_PER_SECOND = 20.0f;
 
     /** @deprecated Use {@link #tickProgress(boolean)}. */
+    @Deprecated
     public static float get() {
         return tickProgress(false);
     }

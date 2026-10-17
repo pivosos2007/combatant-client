@@ -28,9 +28,9 @@ import net.minecraft.world.level.dimension.LevelStem;
 import net.minecraft.world.level.levelgen.WorldGenerationContext;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
-import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
+import net.minecraft.world.level.levelgen.feature.AbstractOreFeature;
 import net.minecraft.world.level.levelgen.feature.Feature;
-import net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration;
+import net.minecraft.world.level.levelgen.feature.ScatteredOreFeature;
 import net.minecraft.world.level.levelgen.heightproviders.HeightProvider;
 import net.minecraft.world.level.levelgen.placement.BiomeFilter;
 import net.minecraft.world.level.levelgen.placement.CountPlacement;
@@ -40,9 +40,6 @@ import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 import net.minecraft.world.level.levelgen.placement.PlacementModifier;
 import net.minecraft.world.level.levelgen.placement.RarityFilter;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
-import combatant.client.mixins.accessors.CountPlacementAccessor;
-import combatant.client.mixins.accessors.HeightRangePlacementAccessor;
-import combatant.client.mixins.accessors.RarityFilterAccessor;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -82,7 +79,7 @@ public final class OreSimulation {
      */
     @SafeVarargs
     public static OreSimulation forNether(ResourceKey<PlacedFeature>... features) {
-        HolderLookup.Provider lookup = VanillaRegistries.createLookup();
+        HolderLookup.Provider lookup = VanillaRegistries.createWorldLookup();
         ChunkGenerator generator = WorldPresets.createNormalWorldDimensions(lookup)
                 .get(LevelStem.NETHER)
                 .orElseThrow(() -> new IllegalStateException("vanilla preset has no nether"))
@@ -98,15 +95,15 @@ public final class OreSimulation {
         List<OreSpec> specs = new ArrayList<>();
         for (ResourceKey<PlacedFeature> key : features) {
             PlacedFeature placed = placedFeatures.getOrThrow(key).value();
-            ConfiguredFeature<?, ?> configured = placed.feature().value();
-            if (!(configured.config() instanceof OreConfiguration ore)) {
+            Feature feature = placed.feature().value();
+            if (!(feature instanceof AbstractOreFeature ore)) {
                 throw new IllegalStateException(key.identifier() + " is not an ore feature");
             }
             int step = findStep(steps, placed);
             if (step < 0) continue; // not generated in this dimension
             specs.add(new OreSpec(key, step, steps.get(step).indexMapping().applyAsInt(placed),
-                    List.copyOf(placed.placement()), ore.size, ore.discardChanceOnAirExposure,
-                    configured.feature() == Feature.SCATTERED_ORE));
+                    List.copyOf(placed.placement()), ore.size(), ore.discardChanceOnAirExposure(),
+                    feature instanceof ScatteredOreFeature));
         }
         return new OreSimulation(List.copyOf(specs), generator);
     }
@@ -167,7 +164,7 @@ public final class OreSimulation {
         int next = modifierIndex + 1;
         if (modifier instanceof CountPlacement count) {
             // Same call vanilla makes; ConstantInt.sample draws nothing from the random.
-            IntProvider provider = ((CountPlacementAccessor) count).combatant$getCount();
+            IntProvider provider = count.count();
             int n = provider.sample(random);
             for (int i = 0; i < n; i++) {
                 if (!apply(level, random, context, spec, next, pos, out)) return false;
@@ -175,7 +172,7 @@ public final class OreSimulation {
             return true;
         }
         if (modifier instanceof RarityFilter rarity) {
-            int chance = ((RarityFilterAccessor) rarity).combatant$getChance();
+            int chance = rarity.chance();
             return random.nextFloat() >= 1.0f / chance || apply(level, random, context, spec, next, pos, out);
         }
         if (modifier instanceof InSquarePlacement) {
@@ -184,7 +181,7 @@ public final class OreSimulation {
             return apply(level, random, context, spec, next, new BlockPos(x, pos.getY(), z), out);
         }
         if (modifier instanceof HeightRangePlacement range) {
-            HeightProvider height = ((HeightRangePlacementAccessor) range).combatant$getHeight();
+            HeightProvider height = range.height();
             int y = height.sample(random, context);
             return apply(level, random, context, spec, next, new BlockPos(pos.getX(), y, pos.getZ()), out);
         }

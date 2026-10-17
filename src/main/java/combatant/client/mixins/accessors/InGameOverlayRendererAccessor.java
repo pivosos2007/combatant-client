@@ -11,6 +11,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.renderer.ScreenEffectRenderer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
@@ -25,7 +26,11 @@ public interface InGameOverlayRendererAccessor {
     }
 
     @Invoker("submitBlockSprite")
-    static void callRenderInWallOverlay(TextureAtlasSprite sprite,
+    static void callRenderInWallOverlay(Identifier atlasLocation,
+                                        float u0,
+                                        float v0,
+                                        float u1,
+                                        float v1,
                                         PoseStack matrices,
                                         SubmitNodeCollector vertexConsumers,
                                         int color) {

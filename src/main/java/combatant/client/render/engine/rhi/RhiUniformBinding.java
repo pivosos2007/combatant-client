@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 
 public record RhiUniformBinding(String name, GpuBufferSlice slice) {
 }

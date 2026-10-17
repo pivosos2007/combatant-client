@@ -7,13 +7,12 @@
 
 package combatant.client.render.engine.uniform.impl;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;
 import combatant.client.render.engine.uniform.ShaderUniformBindings;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
 
 /** Frame pointer dynamics; individual glass shapes gate the response with their own SDF. */
 public enum UiGlassFrameUniforms {
@@ -48,7 +47,7 @@ public enum UiGlassFrameUniforms {
         ViewportContext viewport = ViewportContext.current();
         float logicalW = viewport != null ? Math.max(viewport.width(), 1.0f) : safeFramebufferW;
         float logicalH = viewport != null ? Math.max(viewport.height(), 1.0f) : safeFramebufferH;
-        // GLFW mouse coordinates are window coordinates, not framebuffer pixels (HiDPI).
+        // Platform mouse coordinates are window coordinates, not framebuffer pixels (HiDPI).
         float windowW = mc != null && mc.getWindow() != null
                 ? Math.max(1, mc.getWindow().getScreenWidth()) : safeFramebufferW;
         float windowH = mc != null && mc.getWindow() != null
@@ -63,7 +62,8 @@ public enum UiGlassFrameUniforms {
         float nextRawY = mc != null && mc.mouseHandler != null
                 ? (float) mc.mouseHandler.ypos() / windowH : rawY;
         boolean pressed = mc != null && mc.getWindow() != null
-                && GLFW.glfwGetMouseButton(mc.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+                && combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.MOUSE, combatant.client.input.InputKeys.MOUSE_LEFT);
 
         long now = System.nanoTime();
         if (!initialized) {

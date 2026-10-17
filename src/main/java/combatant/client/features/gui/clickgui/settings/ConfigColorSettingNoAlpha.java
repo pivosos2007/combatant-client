@@ -26,7 +26,7 @@ public class ConfigColorSettingNoAlpha extends ColorSettingNoAlpha {
     @Override
     public void mouseReleased(double mx, double my, int button) {
         super.mouseReleased(mx, my, button);
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         if (owner != null) {
             ConfigSerializer.requestSave(owner);
         }

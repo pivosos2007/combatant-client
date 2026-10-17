@@ -888,7 +888,7 @@ final class BuildMover {
         if (mining == null) selectTool(player, mc.level.getBlockState(pos));
         mining = pos;
         miningFace = hit.getDirection();
-        if (mc.gameMode.continueDestroyBlock(pos, miningFace)) player.swing(InteractionHand.MAIN_HAND);
+        if (mc.gameMode.continueDestroyBlock(pos, miningFace)) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
     }
 
     private void selectTool(LocalPlayer player, BlockState state) {

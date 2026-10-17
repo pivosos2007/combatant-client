@@ -9,9 +9,9 @@ package combatant.client.render.engine.svg;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.textures.AddressMode;
-import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.AddressMode;
+import com.mojang.renderpearl.api.textures.FilterMode;
 import combatant.client.render.engine.Texture;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.util.logging.DebugLog;

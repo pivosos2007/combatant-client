@@ -314,7 +314,7 @@ public class WindJump extends Module {
             player.setXRot(pitch);
             InteractionResult result = manager.useItem(player, use.hand());
             if (!result.consumesAction()) return;
-            player.swing(use.hand());
+            player.swing(use.hand(), player.getItemInHand(use.hand()).getInteractAnimation(), false);
             nextAllowedUseTick = player.tickCount + WIND_CHARGE_COOLDOWN_TICKS;
         } finally {
             player.setYRot(prevYaw);

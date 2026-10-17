@@ -40,7 +40,7 @@ public record RenderPipelineSpec(PipelineKey key,
         return id();
     }
 
-    public com.mojang.blaze3d.PrimitiveTopology primitive() {
+    public com.mojang.renderpearl.api.pipeline.PrimitiveTopology primitive() {
         return vertexLayout.primitive();
     }
 
@@ -51,7 +51,7 @@ public record RenderPipelineSpec(PipelineKey key,
     public static final class Builder {
         private final PipelineKey key;
         private RenderPhase phase = RenderPhase.NONE;
-        private VertexLayoutSpec vertexLayout = VertexLayoutSpec.of("unknown", null, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES);
+        private VertexLayoutSpec vertexLayout = VertexLayoutSpec.of("unknown", null, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES);
         private DepthPolicy depthPolicy = DepthPolicy.NONE;
         private FogPolicy fogPolicy = FogPolicy.NONE;
         private BlendPolicy blendPolicy = BlendPolicy.TRANSLUCENT;
@@ -75,7 +75,7 @@ public record RenderPipelineSpec(PipelineKey key,
             return this;
         }
 
-        public Builder primitive(com.mojang.blaze3d.PrimitiveTopology primitive) {
+        public Builder primitive(com.mojang.renderpearl.api.pipeline.PrimitiveTopology primitive) {
             this.vertexLayout = VertexLayoutSpec.of(vertexLayout.getId(), vertexLayout.nativeFormat(), primitive);
             return this;
         }

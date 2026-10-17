@@ -6,7 +6,7 @@
  */
 package combatant.client.render.engine.postprocess;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.shader.RhiStorageImage;
 import org.jetbrains.annotations.Nullable;

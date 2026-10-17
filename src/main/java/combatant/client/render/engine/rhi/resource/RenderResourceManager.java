@@ -8,7 +8,7 @@
 package combatant.client.render.engine.rhi.resource;
 
 import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import combatant.client.render.engine.msaa.MsaaFramebuffer;
 
 /**

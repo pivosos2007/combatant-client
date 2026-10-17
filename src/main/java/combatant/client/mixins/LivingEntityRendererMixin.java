@@ -30,10 +30,9 @@ import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.entity.state.ArmorStandRenderState;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.renderer.texture.UvMapping;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
@@ -144,7 +143,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             method = "submit",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/SubmitNodeCollector;submitModel(Lnet/minecraft/client/model/Model;Ljava/lang/Object;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/rendertype/RenderType;IIILnet/minecraft/client/renderer/texture/TextureAtlasSprite;ILnet/minecraft/client/renderer/feature/ModelFeatureRenderer$CrumblingOverlay;)V"
+                    target = "Lnet/minecraft/client/renderer/SubmitNodeCollector;submitModel(Lnet/minecraft/client/model/Model;Ljava/lang/Object;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/rendertype/RenderType;IIILnet/minecraft/client/renderer/texture/UvMapping;I)V"
             )
     )
     private void combatant$submitAnatomicalPlayer(
@@ -156,9 +155,8 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             int light,
             int overlay,
             int tint,
-            TextureAtlasSprite sprite,
+            UvMapping sprite,
             int outlineColor,
-            ModelFeatureRenderer.CrumblingOverlay crumbling,
             Operation<Void> original
     ) {
         if (model instanceof PlayerModel playerModel
@@ -166,12 +164,12 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
                 && avatarState instanceof PlayerRigRenderState rigState
                 && PlayerRigCpuRenderer.submitPlayer(
                         collector, playerModel, avatarState, rigState.combatant$getPlayerRig(), matrices,
-                        renderType, light, overlay, tint, sprite, outlineColor, crumbling
+                        renderType, light, overlay, tint, sprite, outlineColor, null
                 )) {
             return;
         }
         original.call(collector, model, modelState, matrices, renderType, light, overlay, tint,
-                sprite, outlineColor, crumbling);
+                sprite, outlineColor);
     }
 
     @ModifyExpressionValue(
@@ -265,13 +263,19 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
         return vanillaTint;
     }
 
-    @Inject(method = "submit", at = @At("HEAD"))
+    @Inject(
+            method = "submit(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
+            at = @At("HEAD")
+    )
     private void combatant$pushViewObstructionFadeContext(S state, com.mojang.blaze3d.vertex.PoseStack matrixStack, net.minecraft.client.renderer.SubmitNodeCollector orderedRenderCommandQueue, net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState, CallbackInfo ci) {
         ViewObstructionFadeContext.push(state instanceof ViewObstructionFadeState fadeState ? fadeState : null);
         PlayerRigRenderContext.push(state);
     }
 
-    @Inject(method = "submit", at = @At("RETURN"))
+    @Inject(
+            method = "submit(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
+            at = @At("RETURN")
+    )
     private void combatant$popViewObstructionFadeContext(S state, com.mojang.blaze3d.vertex.PoseStack matrixStack, net.minecraft.client.renderer.SubmitNodeCollector orderedRenderCommandQueue, net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState, CallbackInfo ci) {
         PlayerRigRenderContext.pop();
         ViewObstructionFadeContext.pop();

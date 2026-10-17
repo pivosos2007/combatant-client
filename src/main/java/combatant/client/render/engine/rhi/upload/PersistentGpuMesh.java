@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.upload;
 
-import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 
 import java.util.Objects;

@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,7 +8,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Texture;
 uniform sampler2D u_Lut;
@@ -23,7 +24,7 @@ layout (std140) uniform PostFX {
     vec4 u_Screen;   // invW, invH, time, padding
 };
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
 float rand(vec2 co) {
     return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);

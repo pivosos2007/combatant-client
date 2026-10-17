@@ -21,7 +21,6 @@ import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptR
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
@@ -117,7 +116,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
     }
 
     private static boolean isHintToggle(int keyCode, int modifiers) {
-        return keyCode == GLFW.GLFW_KEY_H && (modifiers & GLFW.GLFW_MOD_ALT) != 0;
+        return keyCode == combatant.client.input.InputKeys.H && (modifiers & combatant.client.input.InputModifierMask.ALT) != 0;
     }
 
     public void open(String id, String title, List<Setting> source, boolean hudContext) {
@@ -324,7 +323,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         if (openAnim <= 0.01f) return false;
         float panelScale = panelScale(scale);
 
-        if (button == 0 && inside(mx, my, closeX, closeY, closeW, closeH)) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && inside(mx, my, closeX, closeY, closeW, closeH)) {
             close();
             return true;
         }
@@ -333,14 +332,14 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
             return hudContext || editorContext;
         }
 
-        if (button == 0 && inside(mx, my, panelX, panelY, panelW, DROPDOWN_HEADER_H * panelScale)) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && inside(mx, my, panelX, panelY, panelW, DROPDOWN_HEADER_H * panelScale)) {
             dragging = true;
             dragOffsetX = panelX - mx;
             dragOffsetY = panelY - my;
             return true;
         }
 
-        if (hudContext && button == 0 && inside(mx, my, pillX, pillY, pillW, pillH)) {
+        if (hudContext && button == combatant.client.input.InputKeys.MOUSE_LEFT && inside(mx, my, pillX, pillY, pillW, pillH)) {
             float half = pillW * 0.5f;
             hudPreviewMode = (mx < pillX + half) ? HudPreviewMode.ALL_ENABLED : HudPreviewMode.ONLY_CURRENT;
             applyHudPreviewMode();
@@ -378,7 +377,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
 
     public boolean mouseReleased(float mx, float my, int button) {
         if (!isActive()) return false;
-        if (button == 0) dragging = false;
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) dragging = false;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, lastSettingScale)) {
             for (Setting setting : settings) {
                 if (!setting.isAvailable()) continue;
@@ -426,7 +425,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
                 if (setting.keyPressedSafely(keyCode, scanCode, modifiers)) return true;
             }
         }
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+        if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
             close();
             return true;
         }

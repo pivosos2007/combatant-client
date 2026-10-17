@@ -687,8 +687,8 @@ public final class Velocity extends Module {
         if (player == null) return;
 
         if (event.getOrigin() == TransferOrigin.OUTGOING
-                && packet instanceof ServerboundSwingPacket swing
-                && isVulcan297MaceSwing(swing, player)) {
+                && packet instanceof ServerboundPunchPacket
+                && isVulcan297MaceSwing(player)) {
             armVulcan297MaceVelocityWindow();
             return;
         }
@@ -721,8 +721,8 @@ public final class Velocity extends Module {
         vulcan297WindBurstProtectTicks = Math.max(vulcan297WindBurstProtectTicks, VULCAN_297_WIND_BURST_PROTECT_TICKS);
     }
 
-    private boolean isVulcan297MaceSwing(ServerboundSwingPacket packet, LocalPlayer player) {
-        return packet.getHand() == InteractionHand.MAIN_HAND && player.getMainHandItem().is(Items.MACE);
+    private boolean isVulcan297MaceSwing(LocalPlayer player) {
+        return player.getMainHandItem().is(Items.MACE);
     }
 
     private boolean isVulcan297WindBurstMaceAttack(AttackEntityEvent event, LocalPlayer player) {

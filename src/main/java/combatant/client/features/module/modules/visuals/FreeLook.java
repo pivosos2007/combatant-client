@@ -16,7 +16,8 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputScope;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -53,7 +54,7 @@ public final class FreeLook extends Module {
     @Override
     public void onDisable() {
         deactivateCamera();
-        KeyManager.unregisterAll(bindingName());
+        CombatantInput.bindings().unbind(bindingName());
         lastKeyCombo = "NONE";
     }
 
@@ -123,7 +124,7 @@ public final class FreeLook extends Module {
                 && mc.level != null
                 && (freecam == null || !freecam.isEnabled())
                 && !freeLookKey.isNone()
-                && KeyManager.isHeld(bindingName());
+                && CombatantInput.bindings().isHeld(bindingName(), InputScope.GAME);
 
         if (canUse) {
             if (!cameraActive) activateCamera(player);
@@ -145,8 +146,8 @@ public final class FreeLook extends Module {
         if (combo.equalsIgnoreCase(lastKeyCombo)) return;
 
         String name = bindingName();
-        KeyManager.unregisterAll(name);
-        if (!freeLookKey.isNone()) KeyManager.registerCombo(name, combo);
+        CombatantInput.bindings().unbind(name);
+        if (!freeLookKey.isNone()) CombatantInput.bindings().bind(name, combo);
         lastKeyCombo = combo;
     }
 

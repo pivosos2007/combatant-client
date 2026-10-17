@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,7 +8,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 layout (std140) uniform MenuBackground {
     vec4 u_Params;     // x = width, y = height, z = time, w = pad
@@ -15,7 +16,7 @@ layout (std140) uniform MenuBackground {
     vec4 u_Background; // rgb
 };
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
 #define TAU 6.2831853071
 

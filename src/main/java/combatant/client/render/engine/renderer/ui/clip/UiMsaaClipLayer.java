@@ -7,12 +7,12 @@
 
 package combatant.client.render.engine.renderer.ui.clip;
 
-import com.mojang.blaze3d.PrimitiveTopology;
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.msaa.MsaaFramebuffer;

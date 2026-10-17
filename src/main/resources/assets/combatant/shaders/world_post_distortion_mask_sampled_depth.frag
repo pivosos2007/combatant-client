@@ -1,12 +1,13 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /* Iris depth copies are sampled textures, not Blaze3D render attachments. */
 uniform sampler2D u_Texture;
 uniform sampler2D u_Depth;
 
-in vec2 v_TexCoord;
-in vec4 v_Color;
-out vec4 color;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 2) in vec4 v_Color;
+layout(location = 0) out vec4 color;
 
 float sourceShape(vec2 uv) {
     vec4 tex = texture(u_Texture, clamp(uv, vec2(0.0), vec2(1.0)));

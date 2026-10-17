@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.pipeline;
 
-import com.mojang.blaze3d.platform.CompareOp;
+import com.mojang.renderpearl.api.pipeline.CompareOp;
 
 public enum DepthTestFunction {
     NO_DEPTH_TEST(null),

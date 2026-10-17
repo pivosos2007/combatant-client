@@ -5,7 +5,7 @@
  */
 package combatant.client.render.iris.geometry;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.render.engine.asset.gltf.material.GltfMaterialBinding;
 import combatant.client.render.engine.asset.gltf.model.AlphaMode;
@@ -257,8 +257,8 @@ public final class IrisImportedGeometryRenderer {
                                        SceneAssetInstance<?> instance,
                                        GltfSceneInstanceAsset source,
                                        Vec3 camera,
-                                       com.mojang.blaze3d.textures.GpuTextureView color,
-                                       com.mojang.blaze3d.textures.GpuTextureView depth,
+                                       com.mojang.renderpearl.api.textures.GpuTextureView color,
+                                       com.mojang.renderpearl.api.textures.GpuTextureView depth,
                                        Route route) {
         SceneDrawClass drawClass = instance.drawClass();
         if (drawClass == SceneDrawClass.HAND) return;

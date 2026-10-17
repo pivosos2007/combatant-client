@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.core.policy;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import org.jetbrains.annotations.Nullable;
 
 public interface FogProvider {

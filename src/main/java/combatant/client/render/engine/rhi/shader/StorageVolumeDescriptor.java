@@ -6,8 +6,8 @@
  */
 package combatant.client.render.engine.rhi.shader;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 
 /** Generic native three-dimensional image used by compute/volumetric workloads. */
 public record StorageVolumeDescriptor(String label,

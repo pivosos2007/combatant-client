@@ -11,7 +11,6 @@ import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.MainConfig;
 import combatant.client.render.engine.renderer.RenderWarpStack;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.ModuleComponent;
@@ -139,7 +138,8 @@ public final class ModulesMenuScreen {
         if (client == null || client.getWindow() == null || ClickGuiSearch.isActive()) {
             return false;
         }
-        return GLFW.glfwGetKey(client.getWindow().handle(), GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
+        return combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.E);
     }
 
     private static float middle(float child, float parent) {
@@ -325,7 +325,7 @@ public final class ModulesMenuScreen {
     public boolean mousePressed(float mouseX, float mouseY, int button) {
         if (!isInteractive()) return false;
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && inside(mouseX, mouseY, searchX, searchY, searchW, searchH)) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && inside(mouseX, mouseY, searchX, searchY, searchW, searchH)) {
             ClickGuiSearch.setActive(true);
             ClickGuiSearch.editor().layout(searchX + 8f * scale, searchW - 16f * scale, regular, 8f * scale);
             ClickGuiSearch.editor().beginDrag(mouseX, false);
@@ -337,7 +337,7 @@ public final class ModulesMenuScreen {
             return panel.mousePressed(mouseX, mouseY, button);
         }
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && ClickGuiSearch.isActive()) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && ClickGuiSearch.isActive()) {
             ClickGuiSearch.unfocus();
             return true;
         }
@@ -348,7 +348,7 @@ public final class ModulesMenuScreen {
     public void mouseReleased(float mouseX, float mouseY, int button) {
         if (!isInteractive()) return;
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) combatant.client.util.text.SingleLineTextInput.mouseReleased();
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) combatant.client.util.text.SingleLineTextInput.mouseReleased();
         for (ModulesMenuPanel panel : panels) {
             panel.mouseReleased(mouseX, mouseY, button);
         }
@@ -373,20 +373,20 @@ public final class ModulesMenuScreen {
             return true;
         }
 
-        boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
+        boolean shortcut = (modifiers & combatant.client.input.InputModifierMask.SHORTCUT) != 0;
 
-        if (ctrl && keyCode == GLFW.GLFW_KEY_F) {
+        if (shortcut && scanCode == 'f') {
             ClickGuiSearch.setActive(!ClickGuiSearch.isActive());
             return true;
         }
 
         if (ClickGuiSearch.isActive()) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
                 ClickGuiSearch.setActive(false);
                 return true;
             }
 
-            if (ClickGuiSearch.keyPressed(keyCode, modifiers)) return true;
+            if (ClickGuiSearch.keyPressed(keyCode, scanCode, modifiers)) return true;
             return true;
         }
 
@@ -398,7 +398,7 @@ public final class ModulesMenuScreen {
     }
 
     private static boolean isHintToggle(int keyCode, int modifiers) {
-        return keyCode == GLFW.GLFW_KEY_H && (modifiers & GLFW.GLFW_MOD_ALT) != 0;
+        return keyCode == combatant.client.input.InputKeys.H && (modifiers & combatant.client.input.InputModifierMask.ALT) != 0;
     }
 
     public boolean charTyped(char chr, int modifiers) {

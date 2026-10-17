@@ -12,13 +12,14 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.client.renderer.ItemInHandRenderer;
+import net.minecraft.client.renderer.FirstPersonHandsAndItemsRenderer;
+import net.minecraft.client.renderer.state.level.PlayerRenderState;
+import net.minecraft.client.renderer.state.level.FirstPersonHandsAndItemsRenderState;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.HumanoidArm;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -33,7 +34,7 @@ import combatant.client.features.module.modules.visuals.ViewModel;
 import combatant.client.render.iris.IrisRuntime;
 
 @Environment(EnvType.CLIENT)
-@Mixin(value = ItemInHandRenderer.class, priority = 1100)
+@Mixin(value = FirstPersonHandsAndItemsRenderer.class, priority = 1100)
 public abstract class ItemInHandRendererMixin {
 
     @Shadow
@@ -43,27 +44,10 @@ public abstract class ItemInHandRendererMixin {
             int light,
             float equipProgress,
             float swingProgress,
-            HumanoidArm arm
+            HumanoidArm arm,
+            PlayerRenderState playerRenderState
     ) {
         throw new AssertionError();
-    }
-
-    @Shadow
-    public abstract void renderItem(
-            LivingEntity entity,
-            ItemStack stack,
-            ItemDisplayContext context,
-            PoseStack matrices,
-            SubmitNodeCollector queue,
-            int light
-    );
-
-    @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
-    private void combatant$skipTickWithoutPlayer(CallbackInfo ci) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level != null && mc.player == null) {
-            ci.cancel();
-        }
     }
 
     @Inject(
@@ -72,7 +56,8 @@ public abstract class ItemInHandRendererMixin {
             cancellable = true
     )
     private void combatant$applyOffsets(
-            AbstractClientPlayer player,
+            PlayerRenderState playerRenderState,
+            FirstPersonHandsAndItemsRenderState handRenderState,
             float tickDelta,
             float pitch,
             InteractionHand hand,
@@ -84,6 +69,8 @@ public abstract class ItemInHandRendererMixin {
             int light,
             CallbackInfo ci
     ) {
+        AbstractClientPlayer player = Minecraft.getInstance().player;
+        if (player == null || playerRenderState.avatarRenderState == null) return;
         ViewModel viewModel = Modules.get(ViewModel.class);
         if (viewModel == null || !viewModel.isActiveForHandRender()) return;
 
@@ -96,7 +83,7 @@ public abstract class ItemInHandRendererMixin {
 
             // Vanilla also suppresses first-person hands while scoping. Since this branch replaces
             // submitArmWithItem for HMI, cancellation is required here as well.
-            if (player.isScoping()) {
+            if (handRenderState.isScoping) {
                 ci.cancel();
                 return;
             }
@@ -104,9 +91,6 @@ public abstract class ItemInHandRendererMixin {
             HumanoidArm arm = hand == InteractionHand.MAIN_HAND
                     ? player.getMainArm()
                     : player.getMainArm().getOpposite();
-            ItemDisplayContext displayContext = arm == HumanoidArm.RIGHT
-                    ? ItemDisplayContext.FIRST_PERSON_RIGHT_HAND
-                    : ItemDisplayContext.FIRST_PERSON_LEFT_HAND;
 
             // HMI cancels submitArmWithItem and therefore must preserve Iris' own solid/translucent
             // hand filtering itself. Without this, solid swords/tools are submitted again in
@@ -165,7 +149,7 @@ public abstract class ItemInHandRendererMixin {
                     if (renderEmptyHand) {
                         matrices.pushPose();
                         try {
-                            renderPlayerArm(matrices, queue, light, 0.0f, 0.0f, arm);
+                            renderPlayerArm(matrices, queue, light, 0.0f, 0.0f, arm, playerRenderState);
                         } finally {
                             matrices.popPose();
                         }
@@ -174,7 +158,7 @@ public abstract class ItemInHandRendererMixin {
                     if (renderHoldingHand) {
                         matrices.pushPose();
                         try {
-                            renderPlayerArm(matrices, queue, light, 0.0f, 0.0f, arm);
+                            renderPlayerArm(matrices, queue, light, 0.0f, 0.0f, arm, playerRenderState);
                         } finally {
                             matrices.popPose();
                         }
@@ -188,10 +172,15 @@ public abstract class ItemInHandRendererMixin {
                     } else {
                         matrices.pushPose();
                         try {
-                            // renderItem remains the vanilla 26.2 model submission path. The HMI
-                            // item pose + MiniItems layer is injected immediately before
-                            // ItemStackRenderState submission below, inside the active HMI scope.
-                            renderItem(player, item, displayContext, matrices, queue, light);
+                            // 26.3 submits the prepared item render state, rather than calling
+                            // the old ItemInHandRenderer.renderItem method. Preserve HMI and
+                            // MiniItems transforms before submitting that state.
+                            HoldMyItems.applyItemPose(item, matrices);
+                            viewModel.applyMini(matrices, item);
+                            var state = hand == InteractionHand.MAIN_HAND
+                                    ? handRenderState.mainHandRenderState
+                                    : handRenderState.offHandRenderState;
+                            state.submit(matrices, queue, light, OverlayTexture.NO_OVERLAY, 0);
                         } finally {
                             matrices.popPose();
                         }
@@ -225,6 +214,7 @@ public abstract class ItemInHandRendererMixin {
             float equipProgress,
             float swingProgress,
             HumanoidArm arm,
+            PlayerRenderState playerRenderState,
             CallbackInfo ci
     ) {
         ViewModel viewModel = Modules.get(ViewModel.class);
@@ -236,7 +226,7 @@ public abstract class ItemInHandRendererMixin {
             method = "submitArmWithItem",
             at = @At("HEAD"),
             argsOnly = true,
-            index = 7)
+            index = 8)
     private float combatant$scaleEquipProgress(float equipProgress) {
         ViewModel viewModel = Modules.get(ViewModel.class);
         if (viewModel == null || !viewModel.isBasicModeActive()) return equipProgress;
@@ -249,16 +239,21 @@ public abstract class ItemInHandRendererMixin {
     }
 
     @Inject(
-            method = "renderItem(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemDisplayContext;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;I)V",
+            method = "submitArmWithItem",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/item/ItemStackRenderState;submit(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;III)V"
             )
     )
     private void combatant$scaleMiniItems(
-            LivingEntity entity,
+            PlayerRenderState playerRenderState,
+            FirstPersonHandsAndItemsRenderState handRenderState,
+            float tickDelta,
+            float pitch,
+            InteractionHand hand,
+            float swingProgress,
             ItemStack stack,
-            ItemDisplayContext ctx,
+            float equipProgress,
             PoseStack ms,
             SubmitNodeCollector queue,
             int light,
@@ -266,7 +261,6 @@ public abstract class ItemInHandRendererMixin {
     ) {
         ViewModel viewModel = Modules.get(ViewModel.class);
         if (viewModel == null || !viewModel.isActiveForHandRender()) return;
-        if (!ctx.firstPerson()) return;
 
         viewModel.syncHmiBackendForRender();
         if (viewModel.isHmiModeActive()) {

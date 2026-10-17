@@ -13,7 +13,7 @@
 
 package combatant.client.mixins;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import combatant.client.mixininterface.IRenderPipeline;

@@ -158,7 +158,7 @@ public enum ScreenProjection {
 
     private static Matrix4f currentRawCameraProjection(Minecraft mc, Camera camera) {
         CameraRenderState cameraRenderState = new CameraRenderState();
-        camera.extractRenderState(cameraRenderState, camera.getFov());
+        camera.extractRenderState(cameraRenderState, mc.getDeltaTracker());
         Matrix4f projection = new Matrix4f(cameraRenderState.projectionMatrix);
         AspectRatio.applyToProjection(projection);
         return projection;

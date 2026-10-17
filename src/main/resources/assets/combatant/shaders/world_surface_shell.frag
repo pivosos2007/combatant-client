@@ -1,12 +1,13 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
-in vec2 v_TexCoord;
-in vec4 v_Color;
-in vec4 v_Params;
-in vec4 v_Params2;
-in vec3 v_ViewPosition;
-in vec3 v_WorldPosition;
-out vec4 fragColor;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 2) in vec4 v_Color;
+layout(location = 4) in vec4 v_Params;
+layout(location = 5) in vec4 v_Params2;
+layout(location = 6) in vec3 v_ViewPosition;
+layout(location = 7) in vec3 v_WorldPosition;
+layout(location = 0) out vec4 fragColor;
 
 float sat(float x) { return clamp(x, 0.0, 1.0); }
 float hash12(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }

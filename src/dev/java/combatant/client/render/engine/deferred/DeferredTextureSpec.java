@@ -7,8 +7,8 @@
 
 package combatant.client.render.engine.deferred;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import combatant.client.render.engine.framegraph.FrameGraphPhysicalResourceDescriptor;
 import combatant.client.render.engine.framegraph.FrameGraphTextureDescriptor;
 import combatant.client.render.engine.rhi.shader.RhiTextureUsage;

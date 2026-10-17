@@ -6,7 +6,7 @@
  */
 package combatant.client.render.engine.rhi.shader;
 
-import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuSampler;
 
 /** Combined sampler3D binding. The view may expose one mip or a sampled mip range. */
 public record SampledVolumeBinding(int binding,

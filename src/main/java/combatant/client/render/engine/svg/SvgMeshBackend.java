@@ -7,9 +7,9 @@
 
 package combatant.client.render.engine.svg;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.textures.AddressMode;
-import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.AddressMode;
+import com.mojang.renderpearl.api.textures.FilterMode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;

@@ -7,14 +7,15 @@
 
 package combatant.client.render.engine.material;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.pipeline.BindGroupLayout;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.BindGroupLayout;
+import com.mojang.renderpearl.api.pipeline.UniformType;
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.mixins.accessors.SpriteAnimationStateAccessor;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.renderer.texture.SpriteContents;
@@ -49,10 +50,10 @@ public final class MaterialAtlasManager {
     public static final String SPECULAR_SAMPLER = "u_CombatantSpecularAtlas";
 
     public static final BindGroupLayout BIND_GROUP = BindGroupLayout.builder()
-            .withSampler(ALBEDO_SAMPLER)
-            .withSampler(NORMAL_HEIGHT_SAMPLER)
-            .withSampler(SURFACE_SAMPLER)
-            .withSampler(SPECULAR_SAMPLER)
+            .withUniform(ALBEDO_SAMPLER, UniformType.COMBINED_IMAGE_SAMPLER)
+            .withUniform(NORMAL_HEIGHT_SAMPLER, UniformType.COMBINED_IMAGE_SAMPLER)
+            .withUniform(SURFACE_SAMPLER, UniformType.COMBINED_IMAGE_SAMPLER)
+            .withUniform(SPECULAR_SAMPLER, UniformType.COMBINED_IMAGE_SAMPLER)
             .build();
 
     private static final MaterialAtlasManager GLOBAL = new MaterialAtlasManager();
@@ -184,10 +185,10 @@ public final class MaterialAtlasManager {
         GpuTextureView normalView = ready() ? normalHeight.view() : fallback;
         GpuTextureView surfaceView = ready() ? surface.view() : fallback;
         GpuTextureView specularView = ready() ? specular.view() : fallback;
-        pass.bindTexture(ALBEDO_SAMPLER, albedoView, sampler);
-        pass.bindTexture(NORMAL_HEIGHT_SAMPLER, normalView, sampler);
-        pass.bindTexture(SURFACE_SAMPLER, surfaceView, sampler);
-        pass.bindTexture(SPECULAR_SAMPLER, specularView, sampler);
+        pass.setUniform(ALBEDO_SAMPLER, albedoView, sampler);
+        pass.setUniform(NORMAL_HEIGHT_SAMPLER, normalView, sampler);
+        pass.setUniform(SURFACE_SAMPLER, surfaceView, sampler);
+        pass.setUniform(SPECULAR_SAMPLER, specularView, sampler);
     }
 
     public synchronized void release() {

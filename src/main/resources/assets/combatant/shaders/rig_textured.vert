@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -52,10 +53,10 @@ layout (std140) uniform RigRibbon {
     vec4 u_RibbonMeta[MAX_RIG_DEFORMS];
 };
 
-out vec2 v_TexCoord;
-out vec4 v_Color;
-out vec3 v_Normal;
-out vec4 v_DeformCoord;
+layout(location = 0) out vec2 v_TexCoord;
+layout(location = 2) out vec4 v_Color;
+layout(location = 4) out vec3 v_Normal;
+layout(location = 5) out vec4 v_DeformCoord;
 
 vec3 rotateAroundAxis(vec3 value, vec3 axis, float angle) {
     float c = cos(angle);

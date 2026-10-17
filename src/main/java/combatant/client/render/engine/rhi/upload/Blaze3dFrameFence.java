@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.upload;
 
-import com.mojang.blaze3d.buffers.GpuFence;
+import com.mojang.renderpearl.api.commands.GpuFence;
 
 /**
  * Ref-counted frame fence shared by all dynamic mesh arenas retired at the same frame boundary.

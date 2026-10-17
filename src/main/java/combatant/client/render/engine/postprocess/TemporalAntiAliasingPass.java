@@ -12,7 +12,7 @@ import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.shader.RhiStorageImage;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.util.logging.DebugLog;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;

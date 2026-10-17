@@ -30,7 +30,8 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.runtime.error.ErrorHandler;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputScope;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.Minecraft;
@@ -830,14 +831,14 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
         if (!isEnabled()) return false;
         FunctionBindSetting setting = actions.get(name);
         if (setting == null) return false;
-        return KeyManager.wasPressed(setting.getBindingName());
+        return CombatantInput.bindings().consumePress(setting.getBindingName(), InputScope.GAME);
     }
 
     protected final boolean isActionHeld(String name) {
         if (!isEnabled()) return false;
         FunctionBindSetting setting = actions.get(name);
         if (setting == null) return false;
-        return KeyManager.isHeld(setting.getBindingName());
+        return CombatantInput.bindings().isHeld(setting.getBindingName(), InputScope.GAME);
     }
 
     protected final String getActionKey(String name) {

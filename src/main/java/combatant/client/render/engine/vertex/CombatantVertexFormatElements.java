@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.vertex;
 
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 
 public enum CombatantVertexFormatElements {
     ;

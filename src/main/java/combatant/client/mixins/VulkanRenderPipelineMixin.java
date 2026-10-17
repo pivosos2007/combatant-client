@@ -4,218 +4,112 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-
 package combatant.client.mixins;
 
 import com.llamalad7.mixinextras.sugar.Local;
-import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.vulkan.VulkanBindGroupLayout;
-import com.mojang.blaze3d.vulkan.VulkanConst;
-import com.mojang.blaze3d.vulkan.VulkanDevice;
-import com.mojang.blaze3d.vulkan.VulkanRenderPipeline;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
+import com.mojang.renderpearl.backend.vulkan.VulkanConst;
+import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanRenderPipeline;
+import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanPipelineVariants;
+import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateBridge;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkPipelineDepthStencilStateCreateInfo;
-import org.lwjgl.vulkan.VkGraphicsPipelineCreateInfo;
 import org.lwjgl.vulkan.VkPipelineRenderingCreateInfoKHR;
-import org.lwjgl.vulkan.VkAllocationCallbacks;
-import org.lwjgl.vulkan.VkDevice;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateBridge;
-import combatant.client.util.logging.DebugLog;
 
 import java.nio.IntBuffer;
-import java.nio.LongBuffer;
 
-import static com.mojang.blaze3d.GpuFormat.S8_UINT;
 import static org.lwjgl.vulkan.VK12.*;
 
 @Mixin(VulkanRenderPipeline.class)
 public abstract class VulkanRenderPipelineMixin {
-    @Inject(method = "compile", at = @At("HEAD"))
-    private static void combatant$beginCompile(VulkanDevice device,
-                                               VulkanBindGroupLayout layout,
-                                               RenderPipeline pipeline,
-                                               long vertexModule,
-                                               long fragmentModule,
-                                               CallbackInfoReturnable<VulkanRenderPipeline> cir) {
-        if (VulkanRenderStateBridge.vulkanBackendActive()) {
-            VulkanRenderStateBridge.beginPipelineCompile(pipeline);
-        }
-    }
-
     @Inject(method = "compile", at = @At("RETURN"))
-    private static void combatant$endCompile(VulkanDevice device,
-                                             VulkanBindGroupLayout layout,
-                                             RenderPipeline pipeline,
-                                             long vertexModule,
-                                             long fragmentModule,
-                                             CallbackInfoReturnable<VulkanRenderPipeline> cir) {
-        VulkanRenderStateBridge.endPipelineCompile();
+    private static void combatant$rememberOriginalCreateInfo(VulkanDevice device,
+                                                             BackendRenderPipeline.CreateInfo createInfo,
+                                                             CallbackInfoReturnable<VulkanRenderPipeline> cir) {
+        VulkanPipelineVariants.registerBase(cir.getReturnValue(), createInfo);
     }
 
-    @Redirect(
-            method = "compile",
-            at = @At(value = "INVOKE", target = "Lorg/lwjgl/system/MemoryStack;ints(II)Ljava/nio/IntBuffer;")
-    )
-    private static IntBuffer combatant$addDynamicStates(MemoryStack stack, int first, int second) {
-        if (!VulkanRenderStateBridge.vulkanBackendActive()) {
-            return stack.ints(first, second);
-        }
-        if (VulkanRenderStateBridge.currentPipelineUsesDynamicStencilReference()) {
+    @Inject(method = "close", at = @At("HEAD"))
+    private void combatant$closeVariants(CallbackInfo ci) {
+        VulkanPipelineVariants.release((VulkanRenderPipeline) (Object) this);
+    }
+
+    @Redirect(method = "compile", at = @At(value = "INVOKE",
+            target = "Lorg/lwjgl/system/MemoryStack;ints(II)Ljava/nio/IntBuffer;"))
+    private static IntBuffer combatant$dynamicStencilReference(MemoryStack stack, int first, int second) {
+        if (VulkanPipelineVariants.compilingVariant()
+                && VulkanRenderStateBridge.currentPipelineUsesDynamicStencilReference()) {
             return stack.ints(first, second, VK_DYNAMIC_STATE_STENCIL_REFERENCE);
         }
         return stack.ints(first, second);
     }
 
-    @WrapOperation(
-            method = "compile",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lorg/lwjgl/vulkan/VK12;vkCreateGraphicsPipelines(Lorg/lwjgl/vulkan/VkDevice;JLorg/lwjgl/vulkan/VkGraphicsPipelineCreateInfo$Buffer;Lorg/lwjgl/vulkan/VkAllocationCallbacks;Ljava/nio/LongBuffer;)I",
-                    ordinal = 0
-            )
-    )
-    private static int combatant$endCompileScopeOnNativeFailure(VkDevice device,
-                                                                 long pipelineCache,
-                                                                 VkGraphicsPipelineCreateInfo.Buffer createInfos,
-                                                                 VkAllocationCallbacks allocator,
-                                                                 LongBuffer pipelines,
-                                                                 Operation<Integer> original) {
-        int result = original.call(device, pipelineCache, createInfos, allocator, pipelines);
-        if (result != VK_SUCCESS) {
-            RenderPipeline pipeline = VulkanRenderStateBridge.currentCompilingPipeline();
-            if (pipeline != null) {
-                DebugLog.errorOnce(
-                        "vulkan.pipeline.native-create." + pipeline.getLocation() + "." + result,
-                        "[Vulkan/Pipeline] native creation failed: result={} pipeline={} vertex={} fragment={} "
-                                + "defines={} colorTargets={} depthStencil={} samples={} stencilAttachment={} dynamicStencil={}",
-                        result,
-                        pipeline.getLocation(),
-                        pipeline.getVertexShader(),
-                        pipeline.getFragmentShader(),
-                        pipeline.getShaderDefines(),
-                        java.util.Arrays.toString(pipeline.getColorTargetStates()),
-                        pipeline.getDepthStencilState(),
-                        VulkanRenderStateBridge.currentRenderPassSamples(),
-                        VulkanRenderStateBridge.currentRenderPassHasStencilAttachment(),
-                        VulkanRenderStateBridge.currentPipelineUsesDynamicStencilReference()
-                );
-            }
-            long partialPipeline = pipelines.get(0);
-            if (partialPipeline != VK_NULL_HANDLE) {
-                vkDestroyPipeline(device, partialPipeline, allocator);
-                pipelines.put(0, VK_NULL_HANDLE);
-            }
-            long pipelineLayout = createInfos.layout();
-            if (pipelineLayout != VK_NULL_HANDLE) {
-                vkDestroyPipelineLayout(device, pipelineLayout, allocator);
-            }
-            VulkanRenderStateBridge.endPipelineCompile();
-        }
-        return result;
+    @ModifyArg(method = "compile", at = @At(value = "INVOKE",
+            target = "Lorg/lwjgl/vulkan/VkPipelineRasterizationStateCreateInfo;cullMode(I)Lorg/lwjgl/vulkan/VkPipelineRasterizationStateCreateInfo;"))
+    private static int combatant$stencilMaskCull(int original) {
+        return VulkanPipelineVariants.compilingVariant() && VulkanRenderStateBridge.suppressColorWrites()
+                ? VK_CULL_MODE_NONE : original;
     }
 
-    @ModifyArg(
-            method = "compile",
-            at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkPipelineRasterizationStateCreateInfo;depthBiasEnable(Z)Lorg/lwjgl/vulkan/VkPipelineRasterizationStateCreateInfo;"),
-            index = 0
-    )
-    private static boolean combatant$fixDepthBiasEnable(boolean original) {
-        if (!VulkanRenderStateBridge.vulkanBackendActive() || original) {
-            return original;
-        }
-
-        RenderPipeline pipeline = VulkanRenderStateBridge.currentCompilingPipeline();
-        if (pipeline == null || pipeline.getDepthStencilState() == null) {
-            return false;
-        }
-
-        // Mojang's Vulkan path currently enables raster depth bias only when BOTH factors are
-        // non-zero, while the GL path correctly enables it when EITHER factor is non-zero.
-        // WORLD_COLORED_COPLANAR_DEPTH intentionally uses constant-only bias (0, 1), so Vulkan
-        // silently disabled the bias and MSAA sample positions exposed coplanar fighting.
-        var depthState = pipeline.getDepthStencilState();
-        return depthState.depthBiasConstant() != 0.0f || depthState.depthBiasScaleFactor() != 0.0f;
+    @ModifyArg(method = "compile", at = @At(value = "INVOKE",
+            target = "Lorg/lwjgl/vulkan/VkPipelineDepthStencilStateCreateInfo;depthTestEnable(Z)Lorg/lwjgl/vulkan/VkPipelineDepthStencilStateCreateInfo;"))
+    private static boolean combatant$stencilMaskDepthTest(boolean original) {
+        return original && !(VulkanPipelineVariants.compilingVariant() && VulkanRenderStateBridge.suppressColorWrites());
     }
 
-    @ModifyArg(
-            method = "compile",
-            at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkPipelineRasterizationStateCreateInfo;cullMode(I)Lorg/lwjgl/vulkan/VkPipelineRasterizationStateCreateInfo;"),
-            index = 0
-    )
-    private static int combatant$disableCullForStencilMask(int original) {
-        return VulkanRenderStateBridge.vulkanBackendActive() && VulkanRenderStateBridge.suppressColorWrites() ? VK_CULL_MODE_NONE : original;
+    @ModifyArg(method = "compile", at = @At(value = "INVOKE",
+            target = "Lorg/lwjgl/vulkan/VkPipelineDepthStencilStateCreateInfo;depthWriteEnable(Z)Lorg/lwjgl/vulkan/VkPipelineDepthStencilStateCreateInfo;"))
+    private static boolean combatant$stencilMaskDepthWrite(boolean original) {
+        return original && !(VulkanPipelineVariants.compilingVariant() && VulkanRenderStateBridge.suppressColorWrites());
     }
 
-    @ModifyArg(
-            method = "compile",
-            at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkPipelineDepthStencilStateCreateInfo;depthTestEnable(Z)Lorg/lwjgl/vulkan/VkPipelineDepthStencilStateCreateInfo;"),
-            index = 0
-    )
-    private static boolean combatant$disableDepthTestForStencilMask(boolean original) {
-        return (!VulkanRenderStateBridge.vulkanBackendActive() || !VulkanRenderStateBridge.suppressColorWrites()) && original;
+    @ModifyArg(method = "compile", at = @At(value = "INVOKE",
+            target = "Lorg/lwjgl/vulkan/VkPipelineMultisampleStateCreateInfo;rasterizationSamples(I)Lorg/lwjgl/vulkan/VkPipelineMultisampleStateCreateInfo;"))
+    private static int combatant$renderPassSamples(int original) {
+        return VulkanPipelineVariants.compilingVariant()
+                ? VulkanRenderStateBridge.currentVkSampleCount() : original;
     }
 
-    @ModifyArg(
-            method = "compile",
-            at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkPipelineDepthStencilStateCreateInfo;depthWriteEnable(Z)Lorg/lwjgl/vulkan/VkPipelineDepthStencilStateCreateInfo;"),
-            index = 0
-    )
-    private static boolean combatant$disableDepthWriteForStencilMask(boolean original) {
-        return (!VulkanRenderStateBridge.vulkanBackendActive() || !VulkanRenderStateBridge.suppressColorWrites()) && original;
+    @ModifyArg(method = "compile", at = @At(value = "INVOKE",
+            target = "Lorg/lwjgl/vulkan/VkPipelineColorBlendAttachmentState$Buffer;colorWriteMask(I)Lorg/lwjgl/vulkan/VkPipelineColorBlendAttachmentState$Buffer;"))
+    private static int combatant$stencilMaskColorWrites(int original) {
+        return VulkanPipelineVariants.compilingVariant() && VulkanRenderStateBridge.suppressColorWrites()
+                ? 0 : original;
     }
 
-    @ModifyArg(
-            method = "compile",
-            at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkPipelineMultisampleStateCreateInfo;rasterizationSamples(I)Lorg/lwjgl/vulkan/VkPipelineMultisampleStateCreateInfo;"),
-            index = 0
-    )
-    private static int combatant$useCurrentRenderPassSamples(int original) {
-        return VulkanRenderStateBridge.vulkanBackendActive() ? VulkanRenderStateBridge.currentVkSampleCount() : original;
-    }
-
-    @ModifyArg(
-            method = "compile",
-            at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VkPipelineColorBlendAttachmentState$Buffer;colorWriteMask(I)Lorg/lwjgl/vulkan/VkPipelineColorBlendAttachmentState$Buffer;"),
-            index = 0
-    )
-    private static int combatant$suppressColorWritesForStencilMask(int original) {
-        return VulkanRenderStateBridge.vulkanBackendActive() && VulkanRenderStateBridge.suppressColorWrites() ? 0 : original;
-    }
-
-    @Inject(
-            method = "compile",
-            at = @At(value = "INVOKE", target = "Lorg/lwjgl/vulkan/VK12;vkCreateGraphicsPipelines(Lorg/lwjgl/vulkan/VkDevice;JLorg/lwjgl/vulkan/VkGraphicsPipelineCreateInfo$Buffer;Lorg/lwjgl/vulkan/VkAllocationCallbacks;Ljava/nio/LongBuffer;)I", ordinal = 0, shift = At.Shift.BEFORE)
-    )
-    private static void combatant$configureStencilPipeline(VulkanDevice device,
-                                                           VulkanBindGroupLayout layout,
-                                                           RenderPipeline pipeline,
-                                                           long vertexModule,
-                                                           long fragmentModule,
-                                                           CallbackInfoReturnable<VulkanRenderPipeline> cir,
-                                                           @Local VkPipelineRenderingCreateInfoKHR rendering,
-                                                           @Local VkPipelineDepthStencilStateCreateInfo depthStencil) {
-        if (!VulkanRenderStateBridge.vulkanBackendActive()) return;
-        if (!VulkanRenderStateBridge.pipelineNeedsStencilFormat(pipeline)) {
+    @Inject(method = "compile", at = @At(value = "INVOKE",
+            target = "Lorg/lwjgl/vulkan/VK12;vkCreateGraphicsPipelines(Lorg/lwjgl/vulkan/VkDevice;JLorg/lwjgl/vulkan/VkGraphicsPipelineCreateInfo$Buffer;Lorg/lwjgl/vulkan/VkAllocationCallbacks;Ljava/nio/LongBuffer;)I",
+            ordinal = 0, shift = At.Shift.BEFORE))
+    private static void combatant$stencilPipeline(VulkanDevice device,
+                                                 BackendRenderPipeline.CreateInfo createInfo,
+                                                 CallbackInfoReturnable<VulkanRenderPipeline> cir,
+                                                 @Local VkPipelineRenderingCreateInfoKHR rendering,
+                                                 @Local VkPipelineDepthStencilStateCreateInfo depthStencil) {
+        if (!VulkanPipelineVariants.compilingVariant()) return;
+        if (!VulkanRenderStateBridge.currentRenderPassHasStencilAttachment()) {
             depthStencil.stencilTestEnable(false);
             rendering.stencilAttachmentFormat(VK_FORMAT_UNDEFINED);
             return;
         }
-        rendering.stencilAttachmentFormat(VulkanConst.toVk(S8_UINT));
-        configureStencilState(depthStencil, pipeline);
+        rendering.stencilAttachmentFormat(VulkanConst.toVk(GpuFormat.S8_UINT));
+        configureStencilState(depthStencil, VulkanRenderStateBridge.currentCompilingPipeline());
     }
 
     @Unique
     private static void configureStencilState(VkPipelineDepthStencilStateCreateInfo state, RenderPipeline pipeline) {
-        VulkanRenderStateBridge.StencilMode mode = VulkanRenderStateBridge.stencilTestEnabledForCurrentPipeline(pipeline)
+        VulkanRenderStateBridge.StencilMode mode = pipeline != null
+                && VulkanRenderStateBridge.stencilTestEnabledForCurrentPipeline(pipeline)
                 ? VulkanRenderStateBridge.stencilMode()
                 : VulkanRenderStateBridge.StencilMode.DISABLED;
         if (mode == VulkanRenderStateBridge.StencilMode.DISABLED) {
@@ -236,14 +130,13 @@ public abstract class VulkanRenderPipelineMixin {
             }
             case TEST -> {
                 passOp = VK_STENCIL_OP_KEEP;
-                writeMask = 0x00;
+                writeMask = 0;
             }
             default -> {
                 state.stencilTestEnable(false);
                 return;
             }
         }
-
         state.stencilTestEnable(true);
         state.front()
                 .failOp(VK_STENCIL_OP_KEEP)

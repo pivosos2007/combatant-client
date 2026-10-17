@@ -7,9 +7,9 @@
 
 package combatant.client.render.engine.rhi.backend.gl.clip;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.opengl.GlStateManager;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11C;
 import combatant.client.render.engine.rhi.clip.ShapeClipBackend;
@@ -328,11 +328,13 @@ public final class GlStencilShapeClipBackend implements ShapeClipBackend {
 
     private void restorePipelineColorMask() {
         RenderPipeline pipeline = currentPipeline;
-        if (pipeline == null || pipeline.getColorTargetStates().length == 0 || pipeline.getColorTargetState() == null) {
+        if (pipeline == null || pipeline.getColorTargetStates().isEmpty()) {
             GlStateManager._colorMask(15);
             return;
         }
-        GlStateManager._colorMask(pipeline.getColorTargetState().writeMask());
+        for (int target = 0; target < pipeline.getColorTargetStates().size(); target++) {
+            GlStateManager._colorMask(target, pipeline.getColorTargetStates().get(target).writeMask());
+        }
     }
 
     @Override

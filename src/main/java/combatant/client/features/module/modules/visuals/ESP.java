@@ -9,16 +9,16 @@ package combatant.client.features.module.modules.visuals;
 
 
 import combatant.client.util.text.FastFormat;
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.ProjectionType;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.AddressMode;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.AddressMode;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.config.values.*;
 import combatant.client.features.gui.hud.HudRenderSpace;
@@ -1001,9 +1001,9 @@ public class ESP extends Module {
 
         boolean sizeChanged = width != shaderBufferW || height != shaderBufferH;
         if (shaderMask == null) {
-            shaderMask = new TextureTarget("combatant-shader-esp-mask", width, height, true, GpuFormat.RGBA8_UNORM);
-            shaderBlurBuffer = new TextureTarget("combatant-shader-esp-blur", width, height, false, GpuFormat.RGBA8_UNORM);
-            shaderEffectBuffer = new TextureTarget("combatant-shader-esp-effect", width, height, false, GpuFormat.RGBA8_UNORM);
+            shaderMask = new TextureTarget("combatant-shader-esp-mask", width, height, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
+            shaderBlurBuffer = new TextureTarget("combatant-shader-esp-blur", width, height, GpuFormat.RGBA8_UNORM, null);
+            shaderEffectBuffer = new TextureTarget("combatant-shader-esp-effect", width, height, GpuFormat.RGBA8_UNORM, null);
             shaderBufferW = width;
             shaderBufferH = height;
         } else if (sizeChanged) {
@@ -1044,16 +1044,12 @@ public class ESP extends Module {
             encoder.clearDepthTexture(depthTex, 1.0);
         }
 
-        GpuTextureView prevColor = RenderSystem.outputColorTextureOverride;
-        GpuTextureView prevDepth = RenderSystem.outputDepthTextureOverride;
         GpuBufferSlice prevProjection = RenderSystem.getProjectionMatrixBuffer();
         ProjectionType prevProjectionType = RenderSystem.getProjectionType();
         Matrix4f prevMeshProjection = MeshRenderer.projection();
         Matrix4f prevWorldProjection = new Matrix4f(RenderState.worldProjection);
         boolean prevRendering3D = RenderState.rendering3D;
 
-        RenderSystem.outputColorTextureOverride = target.getColorTextureView();
-        RenderSystem.outputDepthTextureOverride = target.getDepthTextureView();
 
         if (shaderEspProjection == null) {
             shaderEspProjection = new ProjectionMatrixBuffer("combatant-shader-esp-projection");
@@ -1130,12 +1126,10 @@ public class ESP extends Module {
             accessor.combatant$invokeSubmitEntities(matrices, temp, shaderEspCommandQueue);
             pushed = true;
             try {
-                try (FeatureRenderDispatcher.PreparedFrame prepared = dispatcher.prepareFrame(shaderEspCommandQueue)) {
-                    if (!prepared.hasAnyOutline()) {
-                        return false;
-                    }
-                    prepared.executeOutline();
-                }
+                if (!combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
+                        "combatant:shader-esp-mask", dispatcher, shaderEspCommandQueue,
+                        target.getColorTextureView(), target.getDepthTextureView(),
+                        combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.OUTLINE)) return false;
             } finally {
                 if (standaloneDispatcher) {
                     shaderEspRenderBuffers.endFrame();
@@ -1149,8 +1143,6 @@ public class ESP extends Module {
             if (prevProjection != null && prevProjectionType != null) {
                 RenderSystem.setProjectionMatrix(prevProjection, prevProjectionType);
             }
-            RenderSystem.outputColorTextureOverride = prevColor;
-            RenderSystem.outputDepthTextureOverride = prevDepth;
             shaderEspCommandQueue.getSubmitsPerOrder().clear();
         }
 

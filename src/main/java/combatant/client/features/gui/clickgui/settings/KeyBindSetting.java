@@ -9,7 +9,7 @@ package combatant.client.features.gui.clickgui.settings;
 
 import combatant.client.config.SettingOwner;
 import combatant.client.config.values.KeyBindValue;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 
 public class KeyBindSetting extends Setting {
@@ -22,7 +22,7 @@ public class KeyBindSetting extends Setting {
         this.value = value;
 
         if (!value.isNone()) {
-            KeyManager.registerCombo(bindingName(), value.get());
+            CombatantInput.bindings().bind(bindingName(), value.get());
         }
     }
 
@@ -42,17 +42,17 @@ public class KeyBindSetting extends Setting {
     public void setParent(SettingOwner owner) {
         super.setParent(owner);
         // re-register under module name once parent is known
-        KeyManager.unregisterAll(value.getName());
+        CombatantInput.bindings().unbind(value.getName());
         if (!value.isNone()) {
-            KeyManager.registerCombo(bindingName(), value.get());
+            CombatantInput.bindings().bind(bindingName(), value.get());
         }
     }
 
     public void setKeyByName(String name) {
         value.set(name);
-        KeyManager.unregisterAll(bindingName());
+        CombatantInput.bindings().unbind(bindingName());
         if (!value.isNone()) {
-            KeyManager.registerCombo(bindingName(), name);
+            CombatantInput.bindings().bind(bindingName(), name);
         }
     }
 
@@ -71,10 +71,10 @@ public class KeyBindSetting extends Setting {
     public void load(Object o) {
         value.fromJson(o);
 
-        KeyManager.unregisterAll(bindingName());
+        CombatantInput.bindings().unbind(bindingName());
 
         if (!value.isNone())
-            KeyManager.registerCombo(bindingName(), value.get());
+            CombatantInput.bindings().bind(bindingName(), value.get());
     }
 
     // =============================== UI ================================ //
@@ -97,14 +97,14 @@ public class KeyBindSetting extends Setting {
     public void onKeySelected(String comboString) {
         String previous = value.get();
         boolean wasBound = previous != null && !previous.equalsIgnoreCase("NONE");
-        KeyManager.unregisterAll(bindingName());
+        CombatantInput.bindings().unbind(bindingName());
 
         if (comboString == null || comboString.equalsIgnoreCase("NONE")) {
             value.set("NONE");
             GuiSound.BINDING_NULL.feedback();
         } else {
             value.set(comboString.toUpperCase());
-            KeyManager.registerCombo(bindingName(), comboString);
+            CombatantInput.bindings().bind(bindingName(), comboString);
             if (wasBound) {
                 GuiSound.BIND_RESET.feedback();
             } else {

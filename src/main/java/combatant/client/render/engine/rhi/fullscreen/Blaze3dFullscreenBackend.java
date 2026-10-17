@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.fullscreen;
 
-import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import org.lwjgl.BufferUtils;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
@@ -41,7 +41,7 @@ public final class Blaze3dFullscreenBackend implements FullscreenBackend {
 
         vertexBuffer = RenderSystem.getDevice().createBuffer(() -> "Combatant Fullscreen Quad VBO", GpuBuffer.USAGE_VERTEX, vertices);
         indexBuffer = RenderSystem.getDevice().createBuffer(() -> "Combatant Fullscreen Quad IBO", GpuBuffer.USAGE_INDEX, indices);
-        quad = new GpuMeshHandle(vertexBuffer, indexBuffer, 0L, 0, 6, com.mojang.blaze3d.IndexType.INT, MeshOwnership.PERSISTENT);
+        quad = new GpuMeshHandle(vertexBuffer, indexBuffer, 0L, 0, 6, com.mojang.renderpearl.api.pipeline.IndexType.INT, MeshOwnership.PERSISTENT);
     }
 
     @Override

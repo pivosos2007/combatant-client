@@ -202,7 +202,7 @@ public final class NoDelay extends Module {
             lastThrow = now;
 
             InteractionResult result = performFastUse(player, ctx);
-            if (result != null && result.consumesAction()) player.swing(ctx.hand);
+            if (result != null && result.consumesAction()) player.swing(ctx.hand, player.getItemInHand(ctx.hand).getInteractAnimation(), false);
             return true;
         }
 
@@ -215,7 +215,7 @@ public final class NoDelay extends Module {
         lastInteract = now;
 
         InteractionResult result = performFastUse(player, ctx);
-        if (result != null && result.consumesAction()) player.swing(ctx.hand);
+        if (result != null && result.consumesAction()) player.swing(ctx.hand, player.getItemInHand(ctx.hand).getInteractAnimation(), false);
         return true;
     }
 

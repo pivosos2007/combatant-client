@@ -8,7 +8,7 @@
 package combatant.client.render.engine.postprocess;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 
 public record PostProcessContext(

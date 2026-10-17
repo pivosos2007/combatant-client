@@ -7,7 +7,7 @@
 
 package combatant.client.features.module.modules.visuals;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.ModeValue;

@@ -7,7 +7,7 @@
 
 package combatant.client.mixins.accessors;
 
-import com.mojang.blaze3d.shaders.ShaderType;
+import com.mojang.renderpearl.api.pipeline.ShaderType;
 import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;

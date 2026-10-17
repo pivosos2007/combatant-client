@@ -27,7 +27,7 @@ public enum EagleUtil {
     private static final int DIAGONAL_RESCUE_TICKS = 2;
 
     public static EdgeCheck checkEdge(LocalPlayer player, MovementInputEvent event, double edgeDistance) {
-        return checkEdge(player, event, edgeDistance, TickDelta.get());
+        return checkEdge(player, event, edgeDistance, TickDelta.tickProgress(false));
     }
 
     public static EdgeCheck checkEdge(LocalPlayer player, MovementInputEvent event, double edgeDistance, double tickDelta) {

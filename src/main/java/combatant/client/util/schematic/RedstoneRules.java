@@ -31,7 +31,7 @@ import net.minecraft.world.level.block.NoteBlock;
 import net.minecraft.world.level.block.ObserverBlock;
 import net.minecraft.world.level.block.PoweredBlock;
 import net.minecraft.world.level.block.PoweredRailBlock;
-import net.minecraft.world.level.block.RedStoneWireBlock;
+import net.minecraft.world.level.block.RedstoneWireBlock;
 import net.minecraft.world.level.block.RedstoneLampBlock;
 import net.minecraft.world.level.block.RedstoneTorchBlock;
 import net.minecraft.world.level.block.RedstoneWallTorchBlock;
@@ -86,7 +86,7 @@ public final class RedstoneRules {
     public static int baseOrder(BlockState state) {
         Block block = state.getBlock();
         if (block instanceof TntBlock || block instanceof SculkSensorBlock) return LATE;
-        if (block instanceof RedStoneWireBlock) return state.getValue(RedStoneWireBlock.POWER) > 0 ? DUST : DUST_OFF;
+        if (block instanceof RedstoneWireBlock) return state.getValue(RedstoneWireBlock.POWER) > 0 ? DUST : DUST_OFF;
         if (block instanceof RedstoneTorchBlock) return state.getValue(RedstoneTorchBlock.LIT) ? POWER : POWER_OFF;
         if (block instanceof PoweredBlock || block instanceof DaylightDetectorBlock) return POWER;
         if (block instanceof PistonBaseBlock || block instanceof DispenserBlock || block instanceof HopperBlock
@@ -115,7 +115,7 @@ public final class RedstoneRules {
         if (block instanceof WallSignBlock) return state.getValue(WallSignBlock.FACING).getOpposite();
         if (block instanceof LanternBlock) return state.getValue(LanternBlock.HANGING) ? Direction.UP : Direction.DOWN;
         if (block instanceof TorchBlock || block instanceof RedstoneTorchBlock || block instanceof DiodeBlock
-                || block instanceof RedStoneWireBlock || block instanceof BasePressurePlateBlock
+                || block instanceof RedstoneWireBlock || block instanceof BasePressurePlateBlock
                 || block instanceof BaseRailBlock || block instanceof CarpetBlock || block instanceof DoorBlock
                 || block instanceof StandingSignBlock) return Direction.DOWN;
         return null;
@@ -191,7 +191,7 @@ public final class RedstoneRules {
     /** Whether the block's state changes with the circuit, so an observer watching it pulses while power goes in. */
     public static boolean changesWithPower(BlockState state) {
         Block block = state.getBlock();
-        return reactsToPower(state) || block instanceof RedStoneWireBlock || block instanceof RedstoneTorchBlock
+        return reactsToPower(state) || block instanceof RedstoneWireBlock || block instanceof RedstoneTorchBlock
                 || block instanceof DiodeBlock || block instanceof ObserverBlock || block instanceof HopperBlock
                 || block instanceof BaseRailBlock || block instanceof DaylightDetectorBlock;
     }

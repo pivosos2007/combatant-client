@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,9 +8,9 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-#moj_import <combatant:shader_esp_palette.glsl>
+#include <combatant:shader_esp_palette.glsl>
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Texture;
 
@@ -21,7 +22,7 @@ layout (std140) uniform ShaderEspGradient {
     vec4 u_PassParams;     // x = dark multiplier, y = custom override flag, z = intensity, w = pass alpha
 };
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
 vec3 createMaskGradient(vec2 coords, vec3 baseColor, float darkMultiplier) {
     // Keep the inexpensive vertical shade, but drop the per-fragment sin() dither.

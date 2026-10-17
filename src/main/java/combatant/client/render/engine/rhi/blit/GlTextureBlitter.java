@@ -7,12 +7,12 @@
 
 package combatant.client.render.engine.rhi.blit;
 
-import com.mojang.blaze3d.opengl.GlTexture;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import combatant.client.render.engine.rhi.RhiCapabilities;
 import combatant.client.render.engine.rhi.RhiStats;
 import combatant.client.render.engine.rhi.backend.gl.GlValidation;
-import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL43C;
 

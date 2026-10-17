@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * Layered spherical TotemFX surface.
@@ -12,13 +13,13 @@
  *   v_Params2.w = layer (0 outer shock shell, 1 hot core, 2 inner energy rim)
  */
 
-in vec2 v_TexCoord;
-in vec4 v_Color;
-in vec4 v_Params;
-in vec4 v_Params2;
-in vec3 v_ViewPosition;
-in vec3 v_ViewNormal;
-out vec4 color;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 2) in vec4 v_Color;
+layout(location = 4) in vec4 v_Params;
+layout(location = 5) in vec4 v_Params2;
+layout(location = 6) in vec3 v_ViewPosition;
+layout(location = 7) in vec3 v_ViewNormal;
+layout(location = 0) out vec4 color;
 
 const float PI = 3.141592653589793;
 const float TAU = 6.283185307179586;

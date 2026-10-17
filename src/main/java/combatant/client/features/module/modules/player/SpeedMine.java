@@ -234,7 +234,7 @@ public final class SpeedMine extends Module {
         // The server's destroyPos moves with this START, so the old rebreak target is gone.
         rebreakTask = null;
         sendAction(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, primary);
-        if (swing.get() && anticheat.get() != AntiCheatPreset.GRIM) player.swing(InteractionHand.MAIN_HAND);
+        if (swing.get() && anticheat.get() != AntiCheatPreset.GRIM) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
         return true;
     }
 
@@ -482,7 +482,7 @@ public final class SpeedMine extends Module {
         if (anticheat.get() == AntiCheatPreset.GRIM
                 && action != ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK
                 && mc.player != null) {
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            mc.player.swing(InteractionHand.MAIN_HAND, mc.player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
         }
     }
 

@@ -248,7 +248,7 @@ public final class TargetPearl extends Module {
     private boolean usePearl(LocalPlayer player, InteractionHand hand) {
         InteractionResult result = InventorySwap.INSTANCE.useItem(hand);
         if (result == null || !result.consumesAction()) return false;
-        player.swing(hand);
+        player.swing(hand, player.getItemInHand(hand).getInteractAnimation(), false);
         return true;
     }
 

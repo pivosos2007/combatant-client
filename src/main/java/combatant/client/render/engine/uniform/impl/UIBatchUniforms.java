@@ -9,7 +9,7 @@ package combatant.client.render.engine.uniform.impl;
 
 import combatant.client.render.engine.core.CombatantRenderSystem;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;

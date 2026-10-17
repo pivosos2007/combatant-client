@@ -7,8 +7,7 @@
 
 package combatant.client.render.engine.shader;
 
-import com.mojang.blaze3d.preprocessor.GlslPreprocessor;
-import com.mojang.blaze3d.shaders.ShaderType;
+import com.mojang.renderpearl.api.pipeline.ShaderType;
 import net.minecraft.IdentifierException;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
@@ -18,6 +17,10 @@ import org.apache.commons.io.IOUtils;
 import combatant.client.util.logging.DebugLog;
 
 import java.io.Reader;
+import java.io.IOException;
+import java.util.HashSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.Optional;
 import java.util.Set;
 
@@ -39,6 +42,7 @@ public enum CombatantShaderSources {
     public static final String UI_UNDERLAY_SUFFIX = "__ui_underlay";
     private static final String ANALYTIC_CLIP_DEFINE = "#define COMBATANT_ANALYTIC_CLIP 1\n";
     private static final String UI_UNDERLAY_DEFINE = "#define COMBATANT_UI_UNDERLAY 1\n";
+    private static final Pattern INCLUDE_DIRECTIVE = Pattern.compile("(?m)^[ \t]*#include[ \t]+([\"<])([^\"<>\r\n]+)[\">][ \t]*(?:\r?\n|$)");
 
     public static boolean isCombatantExtendedSource(Identifier id) {
         return COMBATANT_NAMESPACE.equals(id.getNamespace()) && isExtendedSourcePath(id.getPath());
@@ -141,9 +145,8 @@ public enum CombatantShaderSources {
 
 
     /**
-     * Loads a Combatant-native shader stage through the same Mojang GLSL import preprocessor used
-     * by ordinary graphics shaders. Native stages are intentionally not registered in ShaderManager
-     * because Blaze3D 26.2 has no public compute/tessellation ShaderType.
+     * Loads native compute/tessellation/geometry stages through Combatant's include resolver.
+     * These stages remain outside ShaderManager: RenderPearl handles only vertex/fragment stages.
      */
     public static String loadNativeStage(ResourceManager resourceManager, Identifier id, String extension) {
         if (resourceManager == null) throw new IllegalArgumentException("resourceManager");
@@ -214,12 +217,11 @@ public enum CombatantShaderSources {
 
     private static String load(ResourceManager resourceManager, Identifier requestedId, Identifier sourceId,
                                Resource resource, boolean analyticClip, boolean uiUnderlay) {
-        GlslPreprocessor processor = createImportProcessor(resourceManager, sourceId);
         try (Reader reader = resource.openAsReader()) {
             String raw = IOUtils.toString(reader);
             if (analyticClip) raw = injectDefineAfterVersion(raw, ANALYTIC_CLIP_DEFINE);
             if (uiUnderlay) raw = injectDefineAfterVersion(raw, UI_UNDERLAY_DEFINE);
-            return String.join("", processor.process(raw));
+            return expandIncludes(resourceManager, sourceId, raw, new HashSet<>());
         } catch (Exception e) {
             DebugLog.error("[ShaderSource] failed to read shader source: " + requestedId + " (base " + sourceId + ")", e);
             throw new RuntimeException("Failed to read shader source: " + requestedId + " (base " + sourceId + ")", e);
@@ -245,47 +247,59 @@ public enum CombatantShaderSources {
         return path.endsWith(VERT_EXTENSION) || path.endsWith(FRAG_EXTENSION);
     }
 
-    // Imports are resolved one by one through getResource, which returns the same top-priority
-    // resource listResources would. Listing "shaders/" instead walked every mod jar and resource
-    // pack once per compiled shader: gigabytes of garbage per reload, and one log warning per
-    // stray file (e.g. a pack's .DS_Store) per shader.
-    private static GlslPreprocessor createImportProcessor(ResourceManager resourceManager, Identifier id) {
-        final Identifier baseId = id.withPath(FileUtil::getFullResourcePath);
-        return new GlslPreprocessor() {
-            private final Set<Identifier> processed = new it.unimi.dsi.fastutil.objects.ObjectArraySet<>();
-
-            @Override
-            public String applyImport(boolean inline, String name) {
-                Identifier importId;
-                try {
-                    if (inline) {
-                        importId = baseId.withPath(path -> FileUtil.normalizeResourcePath(path + name));
-                    } else {
-                        importId = Identifier.parse(name).withPrefix("shaders/include/");
-                    }
-                } catch (IdentifierException e) {
-                    return "#error " + e.getMessage();
+    /**
+     * Deterministic expansion for Combatant shader variants and native stages. Resolve directly
+     * through ResourceManager to preserve pack priority. RenderPearl/ShaderC owns final VS/FS
+     * compilation; this layer only resolves Combatant includes and injected feature defines.
+     *
+     * Only GLSL #include is supported; paths resolve from the active ResourceManager.
+     */
+    private static String expandIncludes(ResourceManager resources, Identifier sourceId,
+                                         String source, Set<Identifier> included) throws IOException {
+        Matcher matches = INCLUDE_DIRECTIVE.matcher(source);
+        StringBuilder output = new StringBuilder(source.length());
+        int cursor = 0;
+        int currentLine = 1;
+        while (matches.find()) {
+            output.append(source, cursor, matches.start());
+            currentLine += countNewlines(source, cursor, matches.start());
+            boolean relative = "\"".equals(matches.group(1));
+            String name = matches.group(2).trim();
+            Identifier includeId;
+            try {
+                if (relative) {
+                    Identifier parent = sourceId.withPath(FileUtil::getFullResourcePath);
+                    includeId = parent.withPath(path -> FileUtil.normalizeResourcePath(path + name));
+                } else {
+                    includeId = Identifier.parse(name).withPrefix("shaders/include/");
                 }
-
-                if (!processed.add(importId)) {
-                    return null;
-                }
-
-                // Same filter the old listing applied: only shader sources and includes import.
-                Resource imported = isShaderSourceOrInclude(importId)
-                        ? resourceManager.getResource(importId).orElse(null)
-                        : null;
-                if (imported == null) {
-                    return "#error Missing import " + importId;
-                }
-
-                try (Reader reader = imported.openAsReader()) {
-                    return IOUtils.toString(reader);
-                } catch (Exception e) {
-                    return "#error " + e.getMessage();
-                }
+            } catch (IdentifierException error) {
+                throw new IOException("Invalid shader include '" + name + "' in " + sourceId, error);
             }
-        };
+            if (!isShaderSourceOrInclude(includeId)) {
+                throw new IOException("Unsupported shader include " + includeId + " in " + sourceId);
+            }
+            if (included.add(includeId)) {
+                Resource include = resources.getResource(includeId)
+                        .orElseThrow(() -> new IOException("Missing shader include " + includeId + " in " + sourceId));
+                try (Reader reader = include.openAsReader()) {
+                    String content = IOUtils.toString(reader);
+                    output.append("\n#line 1\n");
+                    output.append(expandIncludes(resources, includeId, content, included));
+                    output.append("\n#line ").append(currentLine + 1).append('\n');
+                }
+            } else {
+                output.append('\n'); // Deduplicate common include dependencies within the same shader stage.
+            }
+            currentLine += countNewlines(source, matches.start(), matches.end());
+            cursor = matches.end();
+        }
+        return output.append(source, cursor, source.length()).toString();
     }
 
+    private static int countNewlines(String value, int start, int end) {
+        int result = 0;
+        for (int i = start; i < end; i++) if (value.charAt(i) == '\n') result++;
+        return result;
+    }
 }

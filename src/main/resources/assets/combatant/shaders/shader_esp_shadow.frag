@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,7 +8,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Texture;
 uniform sampler2D u_Mask;
@@ -17,7 +18,7 @@ layout (std140) uniform ShaderEspBlur {
     vec4 u_Direction;   // xy = blur direction
 };
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
 const float CENTER_WEIGHT = 0.2270270270;
 const float INNER_WEIGHT = 0.3162162162;

@@ -7,8 +7,8 @@
 
 package combatant.client.mixininterface;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 
 @Deprecated
 public interface IMsaaDevice {

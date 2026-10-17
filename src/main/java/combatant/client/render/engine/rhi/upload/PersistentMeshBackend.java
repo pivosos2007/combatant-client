@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.upload;
 
-import com.mojang.blaze3d.IndexType;
+import com.mojang.renderpearl.api.pipeline.IndexType;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
 import java.nio.ByteBuffer;

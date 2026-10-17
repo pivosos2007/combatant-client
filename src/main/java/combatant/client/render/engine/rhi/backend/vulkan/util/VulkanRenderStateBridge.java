@@ -7,9 +7,9 @@
 
 package combatant.client.render.engine.rhi.backend.vulkan.util;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.systems.RenderPassDescriptor;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 import combatant.client.mixininterface.IMsaaTexture;
 import combatant.client.mixininterface.IRenderPipeline;

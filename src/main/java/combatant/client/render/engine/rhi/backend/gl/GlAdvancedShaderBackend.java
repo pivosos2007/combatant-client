@@ -7,15 +7,14 @@
 
 package combatant.client.render.engine.rhi.backend.gl;
 
-import com.mojang.blaze3d.IndexType;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.opengl.FrameBufferAttachment;
-import com.mojang.blaze3d.opengl.GlBuffer;
-import com.mojang.blaze3d.opengl.GlStateManager;
-import com.mojang.blaze3d.opengl.GlSampler;
-import com.mojang.blaze3d.opengl.GlConst;
-import com.mojang.blaze3d.opengl.GlTextureView;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.pipeline.IndexType;
+import com.mojang.renderpearl.backend.opengl.FrameBufferAttachment;
+import com.mojang.renderpearl.backend.opengl.GlBuffer;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
+import com.mojang.renderpearl.backend.opengl.GlSampler;
+import com.mojang.renderpearl.backend.opengl.GlConst;
+import com.mojang.renderpearl.backend.opengl.GlTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.mixininterface.IMsaaTexture;
 import combatant.client.mixininterface.IGlBackendInfo;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
@@ -237,7 +236,7 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
 
         var rm = Minecraft.getInstance().getResourceManager();
         int vs = compileStage(GL20C.GL_VERTEX_SHADER,
-                CombatantShaderSources.load(rm, descriptor.vertexShader(), com.mojang.blaze3d.shaders.ShaderType.VERTEX),
+                CombatantShaderSources.load(rm, descriptor.vertexShader(), com.mojang.renderpearl.api.pipeline.ShaderType.VERTEX),
                 descriptor.vertexShader());
         int tcs = compileStage(GL40C.GL_TESS_CONTROL_SHADER,
                 CombatantShaderSources.loadNativeStage(rm, descriptor.tessControlShader(), CombatantShaderSources.TESS_CONTROL_EXTENSION),
@@ -255,7 +254,7 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
                         descriptor.geometryShader());
             }
             fs = compileStage(GL20C.GL_FRAGMENT_SHADER,
-                    CombatantShaderSources.load(rm, descriptor.fragmentShader(), com.mojang.blaze3d.shaders.ShaderType.FRAGMENT),
+                    CombatantShaderSources.load(rm, descriptor.fragmentShader(), com.mojang.renderpearl.api.pipeline.ShaderType.FRAGMENT),
                     descriptor.fragmentShader());
             program = linkProgram(descriptor.label(), vs, tcs, tes, gs, fs);
             return new GlPatchPipeline(descriptor, program);
@@ -412,22 +411,46 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
             bindSampledVolumes(command.sampledVolumes());
             bindStorageImages(command.storageImages());
 
-            // Match the ordinary RHI path: bind the arena buffer at byte offset zero and use
-            // baseVertex for the mesh range. Binding vertexOffsetBytes here as well would double-apply it.
-            GpuBufferSlice vertexSlice = new GpuBufferSlice(vertex, 0L, vertex.size());
-            backend.combatant$vertexArrayCache().bindVertexArray(
-                    new com.mojang.blaze3d.vertex.VertexFormat[]{format},
-                    new GpuBufferSlice[]{vertexSlice},
-                    null);
-            GlStateManager._glBindBuffer(GL15C.GL_ELEMENT_ARRAY_BUFFER, index.handle());
-            GL40C.glPatchParameteri(GL40C.GL_PATCH_VERTICES, pipeline.controlPoints());
-            GL32C.glDrawElementsBaseVertex(
-                    GL40C.GL_PATCHES,
-                    mesh.indexCount(),
-                    glIndexType(mesh.indexType()),
-                    (long) mesh.firstIndex() * mesh.indexType().bytes,
-                    mesh.baseVertex());
-            stats.drawCall();
+            // The old VertexArrayCache no longer exists in RenderPearl 26.3. Native tessellation
+            // owns its VAO independently of RenderPearl ordinary graphics pipelines.
+            int previousVao = GL11C.glGetInteger(GL30C.GL_VERTEX_ARRAY_BINDING);
+            int previousArrayBuffer = GL11C.glGetInteger(GL15C.GL_ARRAY_BUFFER_BINDING);
+            try {
+                GL30C.glBindVertexArray(pipeline.vao);
+                GL15C.glBindBuffer(GL15C.GL_ARRAY_BUFFER, vertex.handle());
+                GL15C.glBindBuffer(GL15C.GL_ELEMENT_ARRAY_BUFFER, index.handle());
+                for (var element : format.getElements()) {
+                    int location = GL20C.glGetAttribLocation(pipeline.program, element.name());
+                    if (location < 0) continue; // Compiler removed an unused attribute.
+                    var gpuFormat = element.format();
+                    var type = gpuFormat.componentType();
+                    if (type == com.mojang.renderpearl.api.GpuFormat.ComponentType.UINT_8
+                            || type == com.mojang.renderpearl.api.GpuFormat.ComponentType.SINT_8
+                            || type == com.mojang.renderpearl.api.GpuFormat.ComponentType.UINT_16
+                            || type == com.mojang.renderpearl.api.GpuFormat.ComponentType.SINT_16
+                            || type == com.mojang.renderpearl.api.GpuFormat.ComponentType.UINT_32
+                            || type == com.mojang.renderpearl.api.GpuFormat.ComponentType.SINT_32) {
+                        GL30C.glVertexAttribIPointer(location, gpuFormat.componentCount(),
+                                GlConst.toGlType(gpuFormat), format.getVertexSize(), element.offset());
+                    } else {
+                        GL20C.glVertexAttribPointer(location, gpuFormat.componentCount(),
+                                GlConst.toGlType(gpuFormat), GlConst.isFormatNormalized(gpuFormat),
+                                format.getVertexSize(), element.offset());
+                    }
+                    GL20C.glEnableVertexAttribArray(location);
+                }
+                GL40C.glPatchParameteri(GL40C.GL_PATCH_VERTICES, pipeline.controlPoints());
+                GL32C.glDrawElementsBaseVertex(
+                        GL40C.GL_PATCHES,
+                        mesh.indexCount(),
+                        glIndexType(mesh.indexType()),
+                        (long) mesh.firstIndex() * mesh.indexType().bytes,
+                        mesh.baseVertex());
+                stats.drawCall();
+            } finally {
+                GL30C.glBindVertexArray(previousVao);
+                GL15C.glBindBuffer(GL15C.GL_ARRAY_BUFFER, previousArrayBuffer);
+            }
         } finally {
             unbindStorage(command.storageBindings());
             restoreSampledVolumeState(sampledVolumeState);
@@ -572,7 +595,7 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
         }
     }
 
-    private static void validateExpectedFormat(ShaderResourceSlot slot, com.mojang.blaze3d.GpuFormat actual, int binding) {
+    private static void validateExpectedFormat(ShaderResourceSlot slot, com.mojang.renderpearl.api.GpuFormat actual, int binding) {
         if (slot.format() != null && slot.format() != actual) {
             throw new IllegalArgumentException("Binding " + binding + " format " + actual
                     + " does not match declared shader image format " + slot.format());
@@ -689,7 +712,7 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
         }
     }
 
-    private static void validateClearKind(com.mojang.blaze3d.GpuFormat format, VolumeClearValue value) {
+    private static void validateClearKind(com.mojang.renderpearl.api.GpuFormat format, VolumeClearValue value) {
         VolumeClearValue.Kind expected = switch (format.componentType()) {
             case UINT_8, UINT_16, UINT_32 -> VolumeClearValue.Kind.UNSIGNED_INT;
             case SINT_8, SINT_16, SINT_32 -> VolumeClearValue.Kind.SIGNED_INT;
@@ -1018,11 +1041,13 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
     private static final class GlPatchPipeline implements RhiPatchPipeline {
         private final PatchPipelineDescriptor descriptor;
         private final int program;
+        private final int vao;
         private boolean closed;
 
         private GlPatchPipeline(PatchPipelineDescriptor descriptor, int program) {
             this.descriptor = descriptor;
             this.program = program;
+            this.vao = GL30C.glGenVertexArrays();
         }
 
         @Override public String label() { return descriptor.label(); }
@@ -1033,6 +1058,7 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
         public void close() {
             if (closed) return;
             closed = true;
+            GL30C.glDeleteVertexArrays(vao);
             GL20C.glDeleteProgram(program);
         }
     }

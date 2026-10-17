@@ -9,7 +9,6 @@ package combatant.client.features.gui.clickgui.settings;
 
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.svg.SvgRenderOptions;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.config.values.BindMode;
 import combatant.client.config.values.ColorValue;
 import combatant.client.config.values.NumberValue;
@@ -152,7 +151,7 @@ enum UnifiedSettingRenderer {
     }
 
     static void mouseClicked(BooleanSetting setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         BooleanSetting.UiState ui = setting.ui();
         if (modern()) {
             if (!UnifiedSettingsSkin.inside(mx, my, ui.lastX, ui.lastY, ui.lastW, ui.lastH)) return;
@@ -378,7 +377,7 @@ enum UnifiedSettingRenderer {
     // ------------------------------------------------------------
 
     static <N extends Number> void mouseClicked(SliderSetting<N> setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         SliderSetting.UiState ui = setting.ui();
         if (ui.editing) {
             if (UnifiedSettingsSkin.inside(mx, my, ui.valueX, ui.valueY, ui.valueW, ui.valueH)) {
@@ -412,13 +411,13 @@ enum UnifiedSettingRenderer {
     }
 
     static <N extends Number> void mouseReleased(SliderSetting<N> setting, double mx, double my, int button) {
-        if (button != 0 || !setting.ui().dragging) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT || !setting.ui().dragging) return;
         setting.ui().dragging = false;
         if (setting.getParent() != null) setting.getParent().saveConfig();
     }
 
     static <N extends Number> void mouseClickedOutside(SliderSetting<N> setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         SliderSetting.UiState ui = setting.ui();
         if (!ui.editing) return;
         commitSliderEdit(setting, true);
@@ -427,35 +426,35 @@ enum UnifiedSettingRenderer {
     static <N extends Number> boolean keyPressed(SliderSetting<N> setting, int keyCode, int scanCode, int modifiers) {
         SliderSetting.UiState ui = setting.ui();
         if (!ui.editing) return false;
-        boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
-        boolean shift = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        if (ctrl && keyCode == GLFW.GLFW_KEY_A) {
+        boolean shortcut = (modifiers & combatant.client.input.InputModifierMask.SHORTCUT) != 0;
+        boolean shift = (modifiers & combatant.client.input.InputModifierMask.SHIFT) != 0;
+        if (shortcut && scanCode == 'a') {
             selectAllSliderText(ui);
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_C) {
+        if (shortcut && scanCode == 'c') {
             ClipboardUtil.copy(selectedOrAllSliderText(ui));
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_V) {
+        if (shortcut && scanCode == 'v') {
             insertSliderText(setting, ClipboardUtil.get());
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_X) {
+        if (shortcut && scanCode == 'x') {
             ClipboardUtil.copy(selectedOrAllSliderText(ui));
             deleteSliderSelection(ui);
             return true;
         }
         switch (keyCode) {
-            case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+            case combatant.client.input.InputKeys.ENTER, combatant.client.input.InputKeys.KP_ENTER -> {
                 commitSliderEdit(setting, true);
                 return true;
             }
-            case GLFW.GLFW_KEY_ESCAPE -> {
+            case combatant.client.input.InputKeys.ESCAPE -> {
                 cancelSliderEdit(setting);
                 return true;
             }
-            case GLFW.GLFW_KEY_BACKSPACE -> {
+            case combatant.client.input.InputKeys.BACKSPACE -> {
                 if (!deleteSliderSelection(ui) && ui.editCursor > 0) {
                     ui.editBuffer = ui.editBuffer.substring(0, ui.editCursor - 1) + ui.editBuffer.substring(ui.editCursor);
                     ui.editCursor--;
@@ -463,26 +462,26 @@ enum UnifiedSettingRenderer {
                 validateSliderLive(setting, ui);
                 return true;
             }
-            case GLFW.GLFW_KEY_DELETE -> {
+            case combatant.client.input.InputKeys.DELETE -> {
                 if (!deleteSliderSelection(ui) && ui.editCursor < ui.editBuffer.length()) {
                     ui.editBuffer = ui.editBuffer.substring(0, ui.editCursor) + ui.editBuffer.substring(ui.editCursor + 1);
                 }
                 validateSliderLive(setting, ui);
                 return true;
             }
-            case GLFW.GLFW_KEY_LEFT -> {
+            case combatant.client.input.InputKeys.LEFT -> {
                 moveSliderCursor(ui, -1, shift);
                 return true;
             }
-            case GLFW.GLFW_KEY_RIGHT -> {
+            case combatant.client.input.InputKeys.RIGHT -> {
                 moveSliderCursor(ui, 1, shift);
                 return true;
             }
-            case GLFW.GLFW_KEY_HOME -> {
+            case combatant.client.input.InputKeys.HOME -> {
                 setSliderCursor(ui, 0, shift);
                 return true;
             }
-            case GLFW.GLFW_KEY_END -> {
+            case combatant.client.input.InputKeys.END -> {
                 setSliderCursor(ui, ui.editBuffer.length(), shift);
                 return true;
             }
@@ -884,7 +883,7 @@ enum UnifiedSettingRenderer {
     // ------------------------------------------------------------
 
     static void mouseClicked(ModeSetting setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         ModeSetting.UiState ui = setting.ui();
         if (modern()) {
             if (!UnifiedSettingsSkin.inside(mx, my, ui.selectX, ui.selectY, ui.selectW, ui.selectH)) return;
@@ -1067,7 +1066,7 @@ enum UnifiedSettingRenderer {
     }
 
     static void mouseClicked(GroupSetting setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         GroupSetting.UiState ui = setting.ui();
         if (modern()) {
             if (!UnifiedSettingsSkin.inside(mx, my, ui.selectX, ui.selectY, ui.selectW, ui.selectH)) return;
@@ -1370,7 +1369,7 @@ enum UnifiedSettingRenderer {
     // ------------------------------------------------------------
 
     static void mouseClicked(TextSetting setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         TextSetting.UiState ui = setting.ui();
         if (UnifiedSettingsSkin.inside(mx, my, ui.fieldX, ui.fieldY, ui.fieldW, ui.fieldH)) {
             beginTextEdit(setting);
@@ -1382,66 +1381,66 @@ enum UnifiedSettingRenderer {
     }
 
     static void mouseClickedOutside(TextSetting setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         if (setting.ui().editing) commitTextEdit(setting, true);
     }
 
     static boolean keyPressed(TextSetting setting, int keyCode, int scanCode, int modifiers) {
         TextSetting.UiState ui = setting.ui();
         if (!ui.editing) return false;
-        boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
-        boolean shift = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        if (ctrl && keyCode == GLFW.GLFW_KEY_A) {
+        boolean shortcut = (modifiers & combatant.client.input.InputModifierMask.SHORTCUT) != 0;
+        boolean shift = (modifiers & combatant.client.input.InputModifierMask.SHIFT) != 0;
+        if (shortcut && scanCode == 'a') {
             selectAllText(ui);
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_C) {
+        if (shortcut && scanCode == 'c') {
             ClipboardUtil.copy(selectedOrAllText(ui));
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_V) {
+        if (shortcut && scanCode == 'v') {
             insertTextText(setting, ClipboardUtil.get());
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_X) {
+        if (shortcut && scanCode == 'x') {
             ClipboardUtil.copy(selectedOrAllText(ui));
             deleteTextSelection(ui);
             return true;
         }
         switch (keyCode) {
-            case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+            case combatant.client.input.InputKeys.ENTER, combatant.client.input.InputKeys.KP_ENTER -> {
                 commitTextEdit(setting, true);
                 return true;
             }
-            case GLFW.GLFW_KEY_ESCAPE -> {
+            case combatant.client.input.InputKeys.ESCAPE -> {
                 cancelTextEdit(setting);
                 return true;
             }
-            case GLFW.GLFW_KEY_BACKSPACE -> {
+            case combatant.client.input.InputKeys.BACKSPACE -> {
                 if (!deleteTextSelection(ui) && ui.editCursor > 0) {
                     ui.editBuffer = ui.editBuffer.substring(0, ui.editCursor - 1) + ui.editBuffer.substring(ui.editCursor);
                     ui.editCursor--;
                 }
                 return true;
             }
-            case GLFW.GLFW_KEY_DELETE -> {
+            case combatant.client.input.InputKeys.DELETE -> {
                 if (!deleteTextSelection(ui) && ui.editCursor < ui.editBuffer.length())
                     ui.editBuffer = ui.editBuffer.substring(0, ui.editCursor) + ui.editBuffer.substring(ui.editCursor + 1);
                 return true;
             }
-            case GLFW.GLFW_KEY_LEFT -> {
+            case combatant.client.input.InputKeys.LEFT -> {
                 setTextCursor(ui, ui.editCursor - 1, shift);
                 return true;
             }
-            case GLFW.GLFW_KEY_RIGHT -> {
+            case combatant.client.input.InputKeys.RIGHT -> {
                 setTextCursor(ui, ui.editCursor + 1, shift);
                 return true;
             }
-            case GLFW.GLFW_KEY_HOME -> {
+            case combatant.client.input.InputKeys.HOME -> {
                 setTextCursor(ui, 0, shift);
                 return true;
             }
-            case GLFW.GLFW_KEY_END -> {
+            case combatant.client.input.InputKeys.END -> {
                 setTextCursor(ui, ui.editBuffer.length(), shift);
                 return true;
             }
@@ -1786,7 +1785,7 @@ enum UnifiedSettingRenderer {
     }
 
     static void mouseClicked(TextListSetting setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         TextListSetting.UiState ui = setting.ui();
         if (isInlineTextList(setting)) {
             if (UnifiedSettingsSkin.inside(mx, my, ui.fieldX, ui.fieldY, ui.fieldW, ui.fieldH)) {
@@ -1806,7 +1805,7 @@ enum UnifiedSettingRenderer {
     }
 
     static void mouseClickedOutside(TextListSetting setting, double mx, double my, int button) {
-        if (button != 0 || !isInlineTextList(setting)) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT || !isInlineTextList(setting)) return;
         if (setting.ui().editing) commitTextListEdit(setting, true);
     }
 
@@ -1814,59 +1813,59 @@ enum UnifiedSettingRenderer {
         if (!isInlineTextList(setting)) return false;
         TextListSetting.UiState ui = setting.ui();
         if (!ui.editing) return false;
-        boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
-        boolean shift = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        if (ctrl && keyCode == GLFW.GLFW_KEY_A) {
+        boolean shortcut = (modifiers & combatant.client.input.InputModifierMask.SHORTCUT) != 0;
+        boolean shift = (modifiers & combatant.client.input.InputModifierMask.SHIFT) != 0;
+        if (shortcut && scanCode == 'a') {
             selectAllTextList(ui);
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_C) {
+        if (shortcut && scanCode == 'c') {
             ClipboardUtil.copy(selectedOrAllTextList(ui));
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_V) {
+        if (shortcut && scanCode == 'v') {
             insertTextListText(setting, ClipboardUtil.get());
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_X) {
+        if (shortcut && scanCode == 'x') {
             ClipboardUtil.copy(selectedOrAllTextList(ui));
             deleteTextListSelection(ui);
             return true;
         }
         switch (keyCode) {
-            case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+            case combatant.client.input.InputKeys.ENTER, combatant.client.input.InputKeys.KP_ENTER -> {
                 commitTextListEdit(setting, true);
                 return true;
             }
-            case GLFW.GLFW_KEY_ESCAPE -> {
+            case combatant.client.input.InputKeys.ESCAPE -> {
                 cancelTextListEdit(setting);
                 return true;
             }
-            case GLFW.GLFW_KEY_BACKSPACE -> {
+            case combatant.client.input.InputKeys.BACKSPACE -> {
                 if (!deleteTextListSelection(ui) && ui.editCursor > 0) {
                     ui.editBuffer = ui.editBuffer.substring(0, ui.editCursor - 1) + ui.editBuffer.substring(ui.editCursor);
                     ui.editCursor--;
                 }
                 return true;
             }
-            case GLFW.GLFW_KEY_DELETE -> {
+            case combatant.client.input.InputKeys.DELETE -> {
                 if (!deleteTextListSelection(ui) && ui.editCursor < ui.editBuffer.length())
                     ui.editBuffer = ui.editBuffer.substring(0, ui.editCursor) + ui.editBuffer.substring(ui.editCursor + 1);
                 return true;
             }
-            case GLFW.GLFW_KEY_LEFT -> {
+            case combatant.client.input.InputKeys.LEFT -> {
                 setTextListCursor(ui, ui.editCursor - 1, shift);
                 return true;
             }
-            case GLFW.GLFW_KEY_RIGHT -> {
+            case combatant.client.input.InputKeys.RIGHT -> {
                 setTextListCursor(ui, ui.editCursor + 1, shift);
                 return true;
             }
-            case GLFW.GLFW_KEY_HOME -> {
+            case combatant.client.input.InputKeys.HOME -> {
                 setTextListCursor(ui, 0, shift);
                 return true;
             }
-            case GLFW.GLFW_KEY_END -> {
+            case combatant.client.input.InputKeys.END -> {
                 setTextListCursor(ui, ui.editBuffer.length(), shift);
                 return true;
             }
@@ -2108,7 +2107,7 @@ enum UnifiedSettingRenderer {
     // ------------------------------------------------------------
 
     static void mouseClicked(KeyBindSetting setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         KeyBindSetting.UiState ui = setting.ui();
         if (!UnifiedSettingsSkin.inside(mx, my, ui.lastBx, ui.lastBy, ui.lastBw, ui.lastBh)) return;
         ui.waiting = true;
@@ -2134,7 +2133,7 @@ enum UnifiedSettingRenderer {
     }
 
     static void mouseClicked(FunctionBindSetting setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         FunctionBindSetting.UiState ui = setting.ui();
         if (!UnifiedSettingsSkin.inside(mx, my, ui.lastBx, ui.lastBy, ui.lastBw, ui.lastBh)) return;
         ui.waiting = true;
@@ -2470,11 +2469,11 @@ enum UnifiedSettingRenderer {
     // ------------------------------------------------------------
 
     static void mouseClicked(ColorSetting setting, double mx, double my, int button) {
-        if (button != 0 && button != 1 && button != 2) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT && button != combatant.client.input.InputKeys.MOUSE_RIGHT && button != combatant.client.input.InputKeys.MOUSE_MIDDLE) return;
         ColorSetting.UiState ui = setting.ui();
         ColorValue value = setting.value();
         if (modern()) {
-            if (button != 0 || !UnifiedSettingsSkin.inside(mx, my, ui.swatchX, ui.swatchY, ui.swatchW, ui.swatchH)) return;
+            if (button != combatant.client.input.InputKeys.MOUSE_LEFT || !UnifiedSettingsSkin.inside(mx, my, ui.swatchX, ui.swatchY, ui.swatchW, ui.swatchH)) return;
             SettingOverlayHost host = overlayHost();
             if (host != null) host.toggle(setting, ui.swatchX, ui.swatchY, ui.swatchW, ui.swatchH);
             return;
@@ -2486,7 +2485,7 @@ enum UnifiedSettingRenderer {
         float py = ui.lastY + (colorHeaderH() - ph) * 0.5f;
         boolean previewHit = UnifiedSettingsSkin.inside(mx, my, px, py, pw, ph);
         boolean headerHit = UnifiedSettingsSkin.inside(mx, my, ui.lastX, ui.lastY, ui.lastW, colorHeaderH());
-        if (button == 0 && headerHit) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && headerHit) {
             ui.editing = !ui.editing;
             clearColorFocus(ui);
             if (ui.editing) GuiSound.COLOR_OPEN.feedback();
@@ -2495,7 +2494,7 @@ enum UnifiedSettingRenderer {
         if (!ui.editing) return;
         layoutColor(ui, ui.lastX, ui.lastY, ui.lastW, hasAlpha);
         if (handleColorPresetClick(setting, value, ui, mx, my, button)) return;
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         if (UnifiedSettingsSkin.inside(mx, my, ui.hexX, ui.hexY, ui.hexW, ui.hexH)) {
             beginHexEdit(ui, value);
             setHexCursorFromMouse(ui, (float) mx, false);
@@ -2550,7 +2549,7 @@ enum UnifiedSettingRenderer {
     }
 
     static void mouseReleased(ColorSetting setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         ColorSetting.UiState ui = setting.ui();
         boolean changed = ui.sbFocused || ui.hFocused || ui.aFocused || ui.rFocused || ui.gFocused || ui.bFocused || ui.aRgbFocused;
         ui.presetsScrollbarDragging = false;
@@ -2562,7 +2561,7 @@ enum UnifiedSettingRenderer {
     }
 
     static void mouseClickedOutside(ColorSetting setting, double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         ColorSetting.UiState ui = setting.ui();
         if (ui.hexFocused) {
             commitHexEdit(setting, setting.value(), ui, true);
@@ -2575,59 +2574,59 @@ enum UnifiedSettingRenderer {
         ColorSetting.UiState ui = setting.ui();
         if (!ui.hexFocused) return false;
         ColorValue value = setting.value();
-        boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
-        if (ctrl && keyCode == GLFW.GLFW_KEY_A) {
+        boolean shortcut = (modifiers & combatant.client.input.InputModifierMask.SHORTCUT) != 0;
+        if (shortcut && scanCode == 'a') {
             selectAllHex(ui);
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_C) {
+        if (shortcut && scanCode == 'c') {
             ClipboardUtil.copy("#" + selectedOrAllHex(ui));
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_V) {
+        if (shortcut && scanCode == 'v') {
             insertHexText(ui, ClipboardUtil.get());
             return true;
         }
-        if (ctrl && keyCode == GLFW.GLFW_KEY_X) {
+        if (shortcut && scanCode == 'x') {
             ClipboardUtil.copy("#" + selectedOrAllHex(ui));
             deleteHexSelection(ui);
             return true;
         }
         switch (keyCode) {
-            case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+            case combatant.client.input.InputKeys.ENTER, combatant.client.input.InputKeys.KP_ENTER -> {
                 commitHexEdit(setting, value, ui, true);
                 return true;
             }
-            case GLFW.GLFW_KEY_ESCAPE -> {
+            case combatant.client.input.InputKeys.ESCAPE -> {
                 cancelHexEdit(ui, value);
                 return true;
             }
-            case GLFW.GLFW_KEY_BACKSPACE -> {
+            case combatant.client.input.InputKeys.BACKSPACE -> {
                 if (!deleteHexSelection(ui) && ui.hexCursor > 0) {
                     ui.hexBuffer = ui.hexBuffer.substring(0, ui.hexCursor - 1) + ui.hexBuffer.substring(ui.hexCursor);
                     ui.hexCursor--;
                 }
                 return true;
             }
-            case GLFW.GLFW_KEY_DELETE -> {
+            case combatant.client.input.InputKeys.DELETE -> {
                 if (!deleteHexSelection(ui) && ui.hexCursor < ui.hexBuffer.length())
                     ui.hexBuffer = ui.hexBuffer.substring(0, ui.hexCursor) + ui.hexBuffer.substring(ui.hexCursor + 1);
                 return true;
             }
-            case GLFW.GLFW_KEY_LEFT -> {
-                moveHexCursor(ui, -1, (modifiers & GLFW.GLFW_MOD_SHIFT) != 0);
+            case combatant.client.input.InputKeys.LEFT -> {
+                moveHexCursor(ui, -1, (modifiers & combatant.client.input.InputModifierMask.SHIFT) != 0);
                 return true;
             }
-            case GLFW.GLFW_KEY_RIGHT -> {
-                moveHexCursor(ui, 1, (modifiers & GLFW.GLFW_MOD_SHIFT) != 0);
+            case combatant.client.input.InputKeys.RIGHT -> {
+                moveHexCursor(ui, 1, (modifiers & combatant.client.input.InputModifierMask.SHIFT) != 0);
                 return true;
             }
-            case GLFW.GLFW_KEY_HOME -> {
-                setHexCursor(ui, 0, (modifiers & GLFW.GLFW_MOD_SHIFT) != 0);
+            case combatant.client.input.InputKeys.HOME -> {
+                setHexCursor(ui, 0, (modifiers & combatant.client.input.InputModifierMask.SHIFT) != 0);
                 return true;
             }
-            case GLFW.GLFW_KEY_END -> {
-                setHexCursor(ui, ui.hexBuffer.length(), (modifiers & GLFW.GLFW_MOD_SHIFT) != 0);
+            case combatant.client.input.InputKeys.END -> {
+                setHexCursor(ui, ui.hexBuffer.length(), (modifiers & combatant.client.input.InputModifierMask.SHIFT) != 0);
                 return true;
             }
         }
@@ -3165,7 +3164,7 @@ enum UnifiedSettingRenderer {
     }
 
     private static boolean handleColorPresetClick(ColorSetting setting, ColorValue value, ColorSetting.UiState ui, double mx, double my, int button) {
-        if (button != 0 && button != 1) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT && button != combatant.client.input.InputKeys.MOUSE_RIGHT) return false;
         float slide = (1f - colorReveal(ui)) * m(8f, 8f);
         float rowY = ui.presetY + slide;
         float swatch = m(12f, 8f);
@@ -3178,7 +3177,7 @@ enum UnifiedSettingRenderer {
             float px = sx + i * (swatch + gap);
             if (!UnifiedSettingsSkin.inside(mx, my, px, rowY + (ui.presetH - swatch) * 0.5f, swatch, swatch)) continue;
             int color = presets.get(i);
-            if (button == 1) {
+            if (button == combatant.client.input.InputKeys.MOUSE_RIGHT) {
                 ColorPresetStore.removeExact(color);
                 GuiSound.BUTTON.feedback(0.65);
             } else {
@@ -3189,17 +3188,17 @@ enum UnifiedSettingRenderer {
             if (setting.getParent() != null) setting.getParent().saveConfig();
             return true;
         }
-        if (button == 0 && UnifiedSettingsSkin.inside(mx, my, ui.presetToggleX, rowY, ui.presetToggleW, ui.presetToggleH)) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && UnifiedSettingsSkin.inside(mx, my, ui.presetToggleX, rowY, ui.presetToggleW, ui.presetToggleH)) {
             ui.presetsExpanded = !ui.presetsExpanded;
             GuiSound.BUTTON.feedback(0.50);
             return true;
         }
-        if (button == 0 && UnifiedSettingsSkin.inside(mx, my, ui.savePresetX, rowY, ui.savePresetW, ui.savePresetH)) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && UnifiedSettingsSkin.inside(mx, my, ui.savePresetX, rowY, ui.savePresetW, ui.savePresetH)) {
             ColorPresetStore.add(value.getArgb());
             GuiSound.BUTTON_YES.feedback(0.85);
             return true;
         }
-        if (button == 0 && UnifiedSettingsSkin.inside(mx, my, ui.deletePresetX, rowY, ui.deletePresetW, ui.deletePresetH)) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && UnifiedSettingsSkin.inside(mx, my, ui.deletePresetX, rowY, ui.deletePresetW, ui.deletePresetH)) {
             ColorPresetStore.removeClosest(value.getArgb());
             GuiSound.BUTTON.feedback(0.65);
             return true;
@@ -3207,7 +3206,7 @@ enum UnifiedSettingRenderer {
 
         if (ui.presetsExpanded && ui.presetsExpandAnim > 0.05f) {
             float listY = ui.presetListY + slide;
-            if (button == 0 && ui.presetsMaxScroll > 0.5f && UnifiedSettingsSkin.inside(mx, my, ui.presetScrollbarX - m(3f, 2f), ui.presetScrollbarY, ui.presetScrollbarW + m(6f, 4f), ui.presetScrollbarH)) {
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT && ui.presetsMaxScroll > 0.5f && UnifiedSettingsSkin.inside(mx, my, ui.presetScrollbarX - m(3f, 2f), ui.presetScrollbarY, ui.presetScrollbarW + m(6f, 4f), ui.presetScrollbarH)) {
                 ui.presetsScrollbarDragging = true;
                 ui.presetsScrollbarDragOffset = (float) my - ui.presetScrollbarHandleY;
                 updatePresetScrollbarDrag(ui, (float) my);
@@ -3230,7 +3229,7 @@ enum UnifiedSettingRenderer {
                         int index = row * cols + col;
                         if (index >= 0 && index < presets.size()) {
                             int color = presets.get(index);
-                            if (button == 1) {
+                            if (button == combatant.client.input.InputKeys.MOUSE_RIGHT) {
                                 ColorPresetStore.removeExact(color);
                                 GuiSound.BUTTON.feedback(0.65);
                             } else {
@@ -3966,7 +3965,7 @@ enum UnifiedSettingRenderer {
 
     private static boolean modernPresetStripClicked(ColorSetting setting, ColorValue value, ColorSetting.UiState ui,
                                                      double mx, double my, int button) {
-        if (button != 0) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         java.util.List<Integer> presets = ColorPresetStore.presets();
         if (presets.isEmpty()) return false;
         float icon = UnifiedSettingsSkin.modernMetric(12f, 12f);
@@ -4083,7 +4082,7 @@ enum UnifiedSettingRenderer {
     }
 
     private static boolean modeOverlayClicked(ModeSetting setting, SettingOverlayHost host, double mx, double my, int button) {
-        if (button != 0) return true;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return true;
         ModeSetting.UiState ui = setting.ui();
         float itemH = UnifiedSettingsSkin.popupItemHeight();
         if (!UnifiedSettingsSkin.inside(mx, my, host.popupX(), ui.popupContentY, host.popupW(), ui.popupContentH)) return true;
@@ -4100,7 +4099,7 @@ enum UnifiedSettingRenderer {
     }
 
     private static boolean groupOverlayClicked(GroupSetting setting, double mx, double my, int button) {
-        if (button != 0) return true;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return true;
         GroupSetting.UiState ui = setting.ui();
         float itemH = UnifiedSettingsSkin.popupItemHeight();
         java.util.List<String> visible = new java.util.ArrayList<>();
@@ -4115,13 +4114,13 @@ enum UnifiedSettingRenderer {
     }
 
     private static boolean colorOverlayClicked(ColorSetting setting, double mx, double my, int button) {
-        if (button != 0 && button != 1 && button != 2) return true;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT && button != combatant.client.input.InputKeys.MOUSE_RIGHT && button != combatant.client.input.InputKeys.MOUSE_MIDDLE) return true;
         ColorSetting.UiState ui = setting.ui();
         ColorValue value = setting.value();
         boolean hasAlpha = value.supportsAlpha();
 
         if (modernPresetStripClicked(setting, value, ui, mx, my, button)) return true;
-        if (button != 0) return true;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return true;
 
         if (UnifiedSettingsSkin.inside(mx, my, ui.hexX, ui.hexY, ui.hexW, ui.hexH)) {
             beginHexEdit(ui, value);

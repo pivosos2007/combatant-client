@@ -127,7 +127,7 @@ public final class AntiAFK extends Module {
     private void perform(LocalPlayer player, Action action) {
         switch (action) {
             case JUMP -> jumpTicks = 1;
-            case SWING -> player.swing(InteractionHand.MAIN_HAND);
+            case SWING -> player.swing(InteractionHand.MAIN_HAND, net.minecraft.world.item.component.SwingAnimation.DEFAULT, false);
             case LOOK -> lookAround(player);
             case STRAFE -> {
                 strafeDirection = -strafeDirection;

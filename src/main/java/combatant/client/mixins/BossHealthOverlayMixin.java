@@ -40,37 +40,6 @@ public class BossHealthOverlayMixin {
                 Events.BUS.post(new CombatProtocolBossbarEvent(names));
             }
         }
-
-        // PvP bossbar detection disabled: bossbar no longer reliable.
-        /*
-        BossBarHud hud = (BossBarHud) (Object) this;
-
-        Map<UUID, ClientBossBar> bars =
-                ((BossHealthOverlayAccessor) hud).getBars();
-
-        boolean pvpActive = false;
-
-        // проверяем только боссбары
-        for (ClientBossBar bar : bars.values()) {
-
-            String name = bar.getName().getString();
-
-            if (name.startsWith("Режим PVP -")) {
-                pvpActive = true;
-                break;
-            }
-        }
-
-        // === только тут меняем состояние PvP ===
-
-        if (pvpActive && !CooldownsState.MANAGER.isInPvp()) {
-            CooldownsState.MANAGER.enterPvp();
-        }
-
-        if (!pvpActive && CooldownsState.MANAGER.isInPvp()) {
-            CooldownsState.MANAGER.exitPvp();
-        }
-        */
     }
 }
 

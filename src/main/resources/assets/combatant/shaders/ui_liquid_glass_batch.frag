@@ -1,6 +1,7 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <combatant:ui_geometry.glsl>
+#include <combatant:ui_geometry.glsl>
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -13,23 +14,23 @@
  * Copyright (c) NaughtyDuk, MIT. See THIRD_PARTY_LICENSES/liquidGL-MIT.txt.
  */
 
-in vec2 v_TexCoord;
-in vec4 v_Local;
-in vec4 v_Color;
-in vec4 v_Rect;
-in vec4 v_Params;
-in vec4 v_Params2;
-in vec4 v_Params3;
-in vec4 v_Params4;
-in vec4 v_Params5;
-flat in vec4 v_Params6;
-in vec4 v_Params7;
-in vec4 v_Params8;
-in vec4 v_Params9;
-in vec4 v_Params10;
-in vec4 v_Params11;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 1) in vec4 v_Local;
+layout(location = 2) in vec4 v_Color;
+layout(location = 3) in vec4 v_Rect;
+layout(location = 4) in vec4 v_Params;
+layout(location = 5) in vec4 v_Params2;
+layout(location = 6) in vec4 v_Params3;
+layout(location = 7) in vec4 v_Params4;
+layout(location = 8) in vec4 v_Params5;
+layout(location = 9) flat in vec4 v_Params6;
+layout(location = 10) in vec4 v_Params7;
+layout(location = 11) in vec4 v_Params8;
+layout(location = 12) in vec4 v_Params9;
+layout(location = 13) in vec4 v_Params10;
+layout(location = 14) in vec4 v_Params11;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 uniform sampler2D u_Texture;
 uniform sampler2D u_BlurTexture;
@@ -88,10 +89,10 @@ vec4 sampleLiquidScene(vec2 sampleUv, vec2 logicalSize) {
     return lower + background * (1.0 - lower.a);
 }
 
-#moj_import <combatant:ui_backdrop_blend.glsl>
+#include <combatant:ui_backdrop_blend.glsl>
 
 #ifdef COMBATANT_ANALYTIC_CLIP
-#moj_import <combatant:ui_clip.glsl>
+#include <combatant:ui_clip.glsl>
 #endif
 
 float roundedBoxSDF(vec2 p, vec2 halfSize, vec4 r, float smoothness) {

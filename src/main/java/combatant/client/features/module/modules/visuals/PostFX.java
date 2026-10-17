@@ -7,7 +7,7 @@
 
 package combatant.client.features.module.modules.visuals;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;

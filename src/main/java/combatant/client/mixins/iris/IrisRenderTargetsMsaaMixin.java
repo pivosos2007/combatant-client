@@ -6,7 +6,7 @@
 package combatant.client.mixins.iris;
 
 import com.google.common.collect.ImmutableSet;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import combatant.client.render.iris.IrisShaderpackMsaaIntegration;
 import net.irisshaders.iris.gl.framebuffer.GlFramebuffer;
 import net.irisshaders.iris.targets.RenderTargets;

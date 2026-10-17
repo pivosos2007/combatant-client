@@ -14,6 +14,12 @@ import combatant.client.features.gui.clickgui.settings.ProtocolHeuristicsSetting
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.theme.Theme;
 import combatant.client.features.theme.Themes;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputAction;
+import combatant.client.input.InputDevice;
+import combatant.client.input.InputKey;
+import combatant.client.input.InputKeys;
+import combatant.client.input.InputModifiers;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ScissorFunction;
@@ -23,7 +29,6 @@ import combatant.client.util.combat.protocol.CombatProtocolHeuristicsConfig;
 import combatant.client.util.text.ClipboardUtil;
 import combatant.client.util.text.GuiTextCaret;
 import combatant.client.util.text.TextSelection;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -85,7 +90,7 @@ public final class CombatProtocolHeuristicsEditorState {
     }
 
     public void handleMouseDown(float mx, float my, int button) {
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT && button != GLFW.GLFW_MOUSE_BUTTON_RIGHT) return;
+        if (button != InputKeys.MOUSE_LEFT && button != InputKeys.MOUSE_RIGHT) return;
         if (!inside(mx, my, windowX, windowY, WINDOW_W, WINDOW_H) || close.contains(mx, my)) {
             ClickGuiRenderer.closeProtocolHeuristicsEditor();
             return;
@@ -96,7 +101,7 @@ public final class CombatProtocolHeuristicsEditorState {
             blurEditor();
             selected = hit.source();
             boolean enabled = sourceEnabled(hit.source());
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (button == InputKeys.MOUSE_LEFT) {
                 owner.setSourceEnabled(hit.source().key(), !enabled);
             }
             return;
@@ -113,13 +118,13 @@ public final class CombatProtocolHeuristicsEditorState {
             return;
         }
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && reset.contains(mx, my)) {
+        if (button == InputKeys.MOUSE_LEFT && reset.contains(mx, my)) {
             blurEditor();
             CombatProtocolHeuristicsConfig.get().reset(selected);
             reloadEditors(selected);
             return;
         }
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) blurEditor();
+        if (button == InputKeys.MOUSE_LEFT) blurEditor();
     }
 
     public void handleMouseUp(float mx, float my, int button) {
@@ -139,16 +144,17 @@ public final class CombatProtocolHeuristicsEditorState {
         return focusedEditor != null && focusedEditor.charTyped(chr);
     }
 
-    public boolean keyPressed(int key, int scancode, int action, int modifiers) {
-        if (action != GLFW.GLFW_PRESS && action != GLFW.GLFW_REPEAT) return focusedEditor != null;
+    public boolean keyPressed(InputKey inputKey, InputAction action, InputModifiers modifiers) {
+        if (!action.isDown()) return focusedEditor != null;
+        int key = inputKey.physicalKey();
         if (focusedEditor != null) {
-            if (key == GLFW.GLFW_KEY_ESCAPE) {
+            if (key == InputKeys.ESCAPE) {
                 blurEditor();
                 return true;
             }
-            return focusedEditor.keyPressed(key, modifiers);
+            return focusedEditor.keyPressed(inputKey, modifiers);
         }
-        if (key == GLFW.GLFW_KEY_ESCAPE) {
+        if (key == InputKeys.ESCAPE) {
             ClickGuiRenderer.closeProtocolHeuristicsEditor();
             return true;
         }
@@ -516,7 +522,7 @@ public final class CombatProtocolHeuristicsEditorState {
         }
 
         boolean mousePressed(float mx, float my, int button) {
-            if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT || !textArea.contains(mx, my)) return false;
+            if (button != InputKeys.MOUSE_LEFT || !textArea.contains(mx, my)) return false;
             int target = caretFromPoint(mx, my);
             boolean shift = shiftDown();
             if (shift) {
@@ -546,7 +552,7 @@ public final class CombatProtocolHeuristicsEditorState {
         }
 
         void mouseReleased(int button) {
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) dragging = false;
+            if (button == InputKeys.MOUSE_LEFT) dragging = false;
         }
 
         boolean scroll(float mx, float my, double delta) {
@@ -562,16 +568,17 @@ public final class CombatProtocolHeuristicsEditorState {
             return true;
         }
 
-        boolean keyPressed(int key, int modifiers) {
+        boolean keyPressed(InputKey inputKey, InputModifiers modifiers) {
             if (!focused) return false;
-            boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
-            boolean shift = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-            if (ctrl) {
-                switch (key) {
-                    case GLFW.GLFW_KEY_A -> selectAll();
-                    case GLFW.GLFW_KEY_C -> copy();
-                    case GLFW.GLFW_KEY_X -> cut();
-                    case GLFW.GLFW_KEY_V -> insertText(ClipboardUtil.get());
+            int key = inputKey.physicalKey();
+            boolean shortcut = modifiers.shortcut();
+            boolean shift = modifiers.shift();
+            if (shortcut) {
+                switch (inputKey.shortcutKey()) {
+                    case 'a' -> selectAll();
+                    case 'c' -> copy();
+                    case 'x' -> cut();
+                    case 'v' -> insertText(ClipboardUtil.get());
                     default -> {
                         return true;
                     }
@@ -579,15 +586,15 @@ public final class CombatProtocolHeuristicsEditorState {
                 return true;
             }
             switch (key) {
-                case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> insertText("\n");
-                case GLFW.GLFW_KEY_BACKSPACE -> backspace();
-                case GLFW.GLFW_KEY_DELETE -> deleteForward();
-                case GLFW.GLFW_KEY_LEFT -> moveHorizontal(-1, shift);
-                case GLFW.GLFW_KEY_RIGHT -> moveHorizontal(1, shift);
-                case GLFW.GLFW_KEY_UP -> moveVertical(-1, shift);
-                case GLFW.GLFW_KEY_DOWN -> moveVertical(1, shift);
-                case GLFW.GLFW_KEY_HOME -> moveLineBoundary(false, shift);
-                case GLFW.GLFW_KEY_END -> moveLineBoundary(true, shift);
+                case InputKeys.ENTER, InputKeys.KP_ENTER -> insertText("\n");
+                case InputKeys.BACKSPACE -> backspace();
+                case InputKeys.DELETE -> deleteForward();
+                case InputKeys.LEFT -> moveHorizontal(-1, shift);
+                case InputKeys.RIGHT -> moveHorizontal(1, shift);
+                case InputKeys.UP -> moveVertical(-1, shift);
+                case InputKeys.DOWN -> moveVertical(1, shift);
+                case InputKeys.HOME -> moveLineBoundary(false, shift);
+                case InputKeys.END -> moveLineBoundary(true, shift);
                 default -> {
                     return true;
                 }
@@ -889,9 +896,8 @@ public final class CombatProtocolHeuristicsEditorState {
     }
 
     private static boolean shiftDown() {
-        long window = net.minecraft.client.Minecraft.getInstance().getWindow().handle();
-        return GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS
-                || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
+        return CombatantInput.state().isPressed(InputDevice.KEYBOARD, InputKeys.LEFT_SHIFT)
+                || CombatantInput.state().isPressed(InputDevice.KEYBOARD, InputKeys.RIGHT_SHIFT);
     }
 
     private static LineColumn lineColumn(int index, String[] lines) {

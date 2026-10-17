@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,7 +8,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Texture;
 
@@ -21,12 +22,12 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
-#moj_import <combatant:ui_geometry.glsl>
-#moj_import <combatant:ui_clip.glsl>
+#include <combatant:ui_geometry.glsl>
+#include <combatant:ui_clip.glsl>
 #endif
 
-in vec2 v_TexCoord;
-in vec4 v_Color;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 2) in vec4 v_Color;
 
 float median(float r, float g, float b) {
     return max(min(r, g), min(max(r, g), b));

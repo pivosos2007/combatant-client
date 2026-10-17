@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.backend.vulkan.state;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import combatant.client.mixininterface.IRenderPipeline;
 import combatant.client.render.engine.rhi.clip.ShapeClipBackend;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;

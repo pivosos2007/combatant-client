@@ -7,9 +7,9 @@
 
 package combatant.client.render.engine.rhi.backend.vulkan;
 
-import com.mojang.blaze3d.vulkan.Destroyable;
-import com.mojang.blaze3d.vulkan.VulkanDevice;
-import com.mojang.blaze3d.vulkan.VulkanCommandEncoder;
+import com.mojang.renderpearl.backend.vulkan.Destroyable;
+import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
 import combatant.client.mixininterface.IVulkanBackendInfo;
 import combatant.client.mixininterface.IVulkanCommandEncoderAccess;
 import combatant.client.render.engine.rhi.RhiStats;

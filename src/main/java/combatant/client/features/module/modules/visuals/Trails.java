@@ -7,8 +7,8 @@
 
 package combatant.client.features.module.modules.visuals;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import combatant.client.config.values.*;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;

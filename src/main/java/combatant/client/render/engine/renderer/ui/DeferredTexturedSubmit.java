@@ -7,9 +7,9 @@
 
 package combatant.client.render.engine.renderer.ui;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.Renderer2D.Deferred2DLayer;

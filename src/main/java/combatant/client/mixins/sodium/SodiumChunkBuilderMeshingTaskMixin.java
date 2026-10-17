@@ -9,15 +9,43 @@ package combatant.client.mixins.sodium;
 
 import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.world.level.block.state.BlockState;
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkBuildContext;
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
+import net.caffeinemc.mods.sodium.client.render.chunk.compile.tasks.ChunkBuilderTask;
+import net.caffeinemc.mods.sodium.client.util.task.CancellationToken;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.util.block.BlockObservationHub;
+import combatant.client.render.sodium.fluid.FluidSurfaceMetadataCapture;
 
 @Pseudo
 @Mixin(targets = "net.caffeinemc.mods.sodium.client.render.chunk.compile.tasks.ChunkBuilderMeshingTask")
 public abstract class SodiumChunkBuilderMeshingTaskMixin {
+
+    @Inject(
+            method = "execute(Lnet/caffeinemc/mods/sodium/client/render/chunk/compile/ChunkBuildContext;Lnet/caffeinemc/mods/sodium/client/util/task/CancellationToken;)Lnet/caffeinemc/mods/sodium/client/render/chunk/compile/ChunkBuildOutput;",
+            at = @At("HEAD"), remap = false
+    )
+    private void combatant$beginFluidMetadata(ChunkBuildContext context,
+                                               CancellationToken cancellationToken,
+                                               CallbackInfoReturnable<ChunkBuildOutput> cir) {
+        ChunkBuilderTask<?> task = (ChunkBuilderTask<?>) (Object) this;
+        FluidSurfaceMetadataCapture.beginSection(task.getRenderSection().getPosition().asLong());
+    }
+
+    @Inject(
+            method = "execute(Lnet/caffeinemc/mods/sodium/client/render/chunk/compile/ChunkBuildContext;Lnet/caffeinemc/mods/sodium/client/util/task/CancellationToken;)Lnet/caffeinemc/mods/sodium/client/render/chunk/compile/ChunkBuildOutput;",
+            at = @At("RETURN"), remap = false
+    )
+    private void combatant$finishFluidMetadata(ChunkBuildContext context,
+                                                CancellationToken cancellationToken,
+                                                CallbackInfoReturnable<ChunkBuildOutput> cir) {
+        FluidSurfaceMetadataCapture.finishSection(cir.getReturnValue());
+    }
 
     @ModifyVariable(
             method = "execute(Lnet/caffeinemc/mods/sodium/client/render/chunk/compile/ChunkBuildContext;Lnet/caffeinemc/mods/sodium/client/util/task/CancellationToken;)Lnet/caffeinemc/mods/sodium/client/render/chunk/compile/ChunkBuildOutput;",

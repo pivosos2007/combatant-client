@@ -8,8 +8,8 @@
 package combatant.client.render.engine.rhi.blit;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.rhi.RhiStats;
 
 public final class Blaze3dTextureBlitter implements TextureBlitter {

@@ -1,11 +1,12 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * Resolves the frame-invariant center autofocus distance once. The main DoF pass reads this
  * single texel instead of repeating five multi-layer depth probes for every screen fragment.
  */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 uniform sampler2D u_MainDepth;
 uniform sampler2D u_TranslucentDepth;
@@ -24,7 +25,7 @@ layout (std140) uniform DepthOfField {
     vec4 u_DepthB;
 };
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
 const float DEPTH_NEAR_EPS = 0.000001;
 const float DEPTH_FAR_EPS = 0.999999;

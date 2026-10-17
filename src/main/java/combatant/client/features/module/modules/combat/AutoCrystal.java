@@ -1102,7 +1102,7 @@ public class AutoCrystal extends Module {
 
         debugLog("break-attempt id=%d pos=%.2f %.2f %.2f", crystal.getId(), crystal.getX(), crystal.getY(), crystal.getZ());
         mc.gameMode.attack(player, crystal);
-        player.swing(InteractionHand.MAIN_HAND);
+        player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
         lastBreakMs = System.currentTimeMillis();
         crystalTracker.onCrystalAttack(mc, crystal);
         crystalTracker.markNearbyCrystalsDead(mc.level, crystal);

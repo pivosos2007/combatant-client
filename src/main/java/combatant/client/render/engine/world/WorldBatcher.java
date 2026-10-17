@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.world;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
@@ -32,10 +32,10 @@ public final class WorldBatcher {
     private WorldDrawCommand lastCommand;
 
     private static boolean isLineMode(RenderPipeline pipeline) {
-        com.mojang.blaze3d.PrimitiveTopology mode = pipeline.getPrimitiveTopology();
-        return mode == com.mojang.blaze3d.PrimitiveTopology.LINES
-                || mode == com.mojang.blaze3d.PrimitiveTopology.DEBUG_LINES
-                || mode == com.mojang.blaze3d.PrimitiveTopology.DEBUG_LINE_STRIP;
+        com.mojang.renderpearl.api.pipeline.PrimitiveTopology mode = pipeline.getPrimitiveTopology();
+        return mode == com.mojang.renderpearl.api.pipeline.PrimitiveTopology.LINES
+                || mode == com.mojang.renderpearl.api.pipeline.PrimitiveTopology.DEBUG_LINES
+                || mode == com.mojang.renderpearl.api.pipeline.PrimitiveTopology.DEBUG_LINE_STRIP;
     }
 
     public void beginFrame() {

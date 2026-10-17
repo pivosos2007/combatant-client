@@ -8,7 +8,6 @@
 /* HoldMyItems Recode; original project by sapling, CC0-1.0. */
 package combatant.client.features.hmi_recode;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -69,7 +68,8 @@ final class HmiContextFactory {
                         motion.movementStrength(), motion.lookStrength(), motion.switchStrength(),
                         motion.useStrength(), motion.impactStrength(), motion.replaceSwing(), motion.swingStyle()
                 },
-                minecraft.getWindow() != null && InputConstants.isKeyDown(minecraft.getWindow(), 74)
+                minecraft.getWindow() != null && combatant.client.input.CombatantInput.state().isPressed(
+                        combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.J)
         };
     }
 

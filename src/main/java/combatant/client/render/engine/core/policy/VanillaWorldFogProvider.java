@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.core.policy;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.fog.FogRenderer;
 import org.jetbrains.annotations.Nullable;

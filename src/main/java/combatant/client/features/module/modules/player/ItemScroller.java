@@ -7,13 +7,11 @@
 
 package combatant.client.features.module.modules.player;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
@@ -81,10 +79,10 @@ public final class ItemScroller extends Module {
     }
 
     private boolean isDragging() {
-        var window = mc.getWindow();
-        boolean shift = InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_SHIFT)
-                || InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_SHIFT);
-        return shift && GLFW.glfwGetMouseButton(window.handle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+        combatant.client.input.InputState state = combatant.client.input.CombatantInput.state();
+        boolean shift = state.isPressed(combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.LEFT_SHIFT)
+                || state.isPressed(combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.RIGHT_SHIFT);
+        return shift && state.isPressed(combatant.client.input.InputDevice.MOUSE, combatant.client.input.InputKeys.MOUSE_LEFT);
     }
 
     private void resetDrag() {

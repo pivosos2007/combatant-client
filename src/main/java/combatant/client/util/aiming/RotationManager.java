@@ -380,7 +380,7 @@ public final class RotationManager {
             if (!move.hasRotation()) return;
             rot = new Rotation(move.getYRot(0.0f), move.getXRot(0.0f), true);
         } else if (packet instanceof ServerboundUseItemPacket use) {
-            rot = new Rotation(use.getYRot(), use.getXRot(), true);
+            rot = new Rotation(use.yRot(), use.xRot(), true);
         }
 
         if (rot != null) {

@@ -7,7 +7,7 @@
 
 package combatant.client.mixins;
 
-import com.mojang.blaze3d.systems.GpuSurface;
+import com.mojang.renderpearl.api.device.GpuSurface;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import net.minecraft.client.KeyMapping;
@@ -415,7 +415,7 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
             return;
         }
 
-        int refreshRate = mc.getWindow().getRefreshRate();
+        int refreshRate = Math.round(mc.getWindow().getActiveVideoMode().getRefreshRate());
         int targetFps = combatant$immediatePacingTarget(refreshRate);
         FramerateLimiter.limitDisplayFPS(targetFps);
     }

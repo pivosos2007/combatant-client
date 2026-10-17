@@ -7,17 +7,17 @@
 
 package combatant.client.render.engine.rhi.backend.vulkan;
 
-import com.mojang.blaze3d.IndexType;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.vulkan.Destroyable;
-import com.mojang.blaze3d.vulkan.VulkanCommandEncoder;
-import com.mojang.blaze3d.vulkan.VulkanConst;
-import com.mojang.blaze3d.vulkan.VulkanDevice;
-import com.mojang.blaze3d.vulkan.VulkanGpuBuffer;
-import com.mojang.blaze3d.vulkan.VulkanGpuSampler;
-import com.mojang.blaze3d.vulkan.VulkanGpuTexture;
-import com.mojang.blaze3d.vulkan.VulkanGpuTextureView;
+import com.mojang.renderpearl.api.pipeline.IndexType;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.renderpearl.backend.vulkan.Destroyable;
+import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
+import com.mojang.renderpearl.backend.vulkan.VulkanConst;
+import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuBuffer;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuSampler;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuTexture;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView;
 import combatant.client.mixininterface.IMsaaTexture;
 import combatant.client.mixininterface.IVulkanBackendInfo;
 import combatant.client.mixininterface.IVulkanCommandEncoderAccess;
@@ -671,10 +671,10 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
         String source;
         if (CombatantShaderSources.VERT_EXTENSION.equals(extension)) {
             source = CombatantShaderSources.load(Minecraft.getInstance().getResourceManager(), shader,
-                    com.mojang.blaze3d.shaders.ShaderType.VERTEX);
+                    com.mojang.renderpearl.api.pipeline.ShaderType.VERTEX);
         } else if (CombatantShaderSources.FRAG_EXTENSION.equals(extension)) {
             source = CombatantShaderSources.load(Minecraft.getInstance().getResourceManager(), shader,
-                    com.mojang.blaze3d.shaders.ShaderType.FRAGMENT);
+                    com.mojang.renderpearl.api.pipeline.ShaderType.FRAGMENT);
         } else {
             source = CombatantShaderSources.loadNativeStage(Minecraft.getInstance().getResourceManager(), shader, extension);
         }
@@ -1040,7 +1040,7 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
         }
     }
 
-    private static void validateExpectedFormat(ShaderResourceSlot slot, com.mojang.blaze3d.GpuFormat actual, int binding) {
+    private static void validateExpectedFormat(ShaderResourceSlot slot, com.mojang.renderpearl.api.GpuFormat actual, int binding) {
         if (slot.format() != null && slot.format() != actual) {
             throw new IllegalArgumentException("Binding " + binding + " format " + actual
                     + " does not match declared shader image format " + slot.format());

@@ -9,7 +9,7 @@ package combatant.client.features.module.modules.visuals;
 
 import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.features.module.*;
 import combatant.client.features.module.Module;

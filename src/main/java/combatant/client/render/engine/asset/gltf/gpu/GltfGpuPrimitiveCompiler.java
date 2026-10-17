@@ -5,8 +5,8 @@
  */
 package combatant.client.render.engine.asset.gltf.gpu;
 
-import com.mojang.blaze3d.IndexType;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.pipeline.IndexType;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import combatant.client.render.engine.asset.gltf.geometry.GltfCompiledPrimitive;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.upload.PersistentGpuMesh;

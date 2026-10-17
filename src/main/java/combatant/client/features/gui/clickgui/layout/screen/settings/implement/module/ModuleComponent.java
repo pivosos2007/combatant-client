@@ -181,7 +181,7 @@ public final class ModuleComponent {
     }
 
     public boolean mousePressedScrollbar(float mx, float my, int button) {
-        if (button != 0) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         if (!isScrollbarHovered(mx, my)) return false;
         draggingScrollbar = true;
         scrollbarDragOffset = ClickGuiMath.insideRect(mx, my, scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH)
@@ -192,7 +192,7 @@ public final class ModuleComponent {
     }
 
     public void mouseReleased(int button) {
-        if (button == 0) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
             draggingScrollbar = false;
         }
     }
@@ -201,11 +201,11 @@ public final class ModuleComponent {
         if (isScrollbarHovered(mx, my)) return null;
         for (CardHit hit : hits) {
             if (!ClickGuiMath.insideRect(mx, my, hit.x(), hit.y(), hit.w(), hit.h())) continue;
-            if (button == 1 && !hit.hasSettings()) continue;
+            if (button == combatant.client.input.InputKeys.MOUSE_RIGHT && !hit.hasSettings()) continue;
             return new CardAction(
                     hit.getId(),
-                    button == 0,
-                    button == 1,
+                    button == combatant.client.input.InputKeys.MOUSE_LEFT,
+                    button == combatant.client.input.InputKeys.MOUSE_RIGHT,
                     hit.statusHit(mx, my),
                     hit.bindHit(mx, my),
                     hit.toggleable()

@@ -13,11 +13,11 @@
 
 package combatant.client.render.engine.pipeline;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.pipeline.*;
-import com.mojang.blaze3d.platform.BlendFactor;
-import com.mojang.blaze3d.shaders.UniformType;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.*;
+import com.mojang.renderpearl.api.pipeline.BlendFactor;
+import com.mojang.renderpearl.api.pipeline.UniformType;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import combatant.client.mixininterface.IRenderPipeline;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
 import combatant.client.render.engine.rhi.pipeline.DepthPolicy;
@@ -56,7 +56,7 @@ public class ExtendedRenderPipelineBuilder {
     private boolean bindGroupLayoutApplied;
     private RenderPipelineContract contract = RenderPipelineContract.EXTENDED;
     private VertexFormat vertexFormat;
-    private com.mojang.blaze3d.PrimitiveTopology primitiveTopology = com.mojang.blaze3d.PrimitiveTopology.TRIANGLES;
+    private com.mojang.renderpearl.api.pipeline.PrimitiveTopology primitiveTopology = com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES;
     private PipelineDomain metadataDomain;
     private TransformPolicy transformPolicy;
     private String shapeFamily;
@@ -80,9 +80,9 @@ public class ExtendedRenderPipelineBuilder {
         return this;
     }
 
-    public ExtendedRenderPipelineBuilder withVertexFormat(VertexFormat format, com.mojang.blaze3d.PrimitiveTopology mode) {
+    public ExtendedRenderPipelineBuilder withVertexFormat(VertexFormat format, com.mojang.renderpearl.api.pipeline.PrimitiveTopology mode) {
         this.vertexFormat = format;
-        this.primitiveTopology = mode != null ? mode : com.mojang.blaze3d.PrimitiveTopology.TRIANGLES;
+        this.primitiveTopology = mode != null ? mode : com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES;
         delegate.withVertexBinding(0, format);
         delegate.withPrimitiveTopology(mode);
         return this;
@@ -127,7 +127,7 @@ public class ExtendedRenderPipelineBuilder {
 
     /**
      * Declares one ordinary graphics color target. This is the MRT path used by the world G-buffer;
-     * it lowers through Mojang 26.2 RenderPipeline on both OpenGL and Vulkan.
+     * it lowers through RenderPearl on both OpenGL and Vulkan.
      */
     public ExtendedRenderPipelineBuilder withColorTarget(int index,
                                                          GpuFormat format,
@@ -292,9 +292,9 @@ public class ExtendedRenderPipelineBuilder {
         boolean effect = domain == PipelineDomain.FULLSCREEN || domain == PipelineDomain.POSTPROCESS
                 || path.contains("liquid") || path.contains("blur") || path.contains("glow")
                 || path.contains("shadow") || path.contains("smoke") || path.contains("postprocess");
-        boolean lineMode = primitiveTopology == com.mojang.blaze3d.PrimitiveTopology.LINES
-                || primitiveTopology == com.mojang.blaze3d.PrimitiveTopology.DEBUG_LINES
-                || primitiveTopology == com.mojang.blaze3d.PrimitiveTopology.DEBUG_LINE_STRIP;
+        boolean lineMode = primitiveTopology == com.mojang.renderpearl.api.pipeline.PrimitiveTopology.LINES
+                || primitiveTopology == com.mojang.renderpearl.api.pipeline.PrimitiveTopology.DEBUG_LINES
+                || primitiveTopology == com.mojang.renderpearl.api.pipeline.PrimitiveTopology.DEBUG_LINE_STRIP;
 
         PipelineMetadata.Builder metadata = PipelineMetadata.builder(domain)
                 .fullscreen(domain == PipelineDomain.FULLSCREEN || domain == PipelineDomain.POSTPROCESS)
@@ -379,7 +379,7 @@ public class ExtendedRenderPipelineBuilder {
         }
         BindGroupLayout.Builder layout = BindGroupLayout.builder();
         for (String sampler : samplers) {
-            layout.withSampler(sampler);
+            layout.withUniform(sampler, UniformType.COMBINED_IMAGE_SAMPLER);
         }
         for (UniformSpec uniform : uniforms) {
             layout.withUniform(uniform.name(), uniform.type());

@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 uniform sampler2D u_Texture;
 uniform sampler2D u_Depth;
@@ -11,8 +12,8 @@ layout (std140) uniform TargetLens {
     vec4 u_LensMeta[18];
 };
 
-in vec2 v_TexCoord;
-out vec4 color;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 0) out vec4 color;
 
 float sat(float x) { return clamp(x, 0.0, 1.0); }
 

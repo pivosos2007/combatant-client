@@ -10,7 +10,8 @@ package combatant.client.features.gui.clickgui.settings;
 import combatant.client.config.SettingOwner;
 import combatant.client.config.values.BindMode;
 import combatant.client.config.values.KeyBindValue;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputScope;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 
 import java.util.function.BooleanSupplier;
@@ -51,7 +52,7 @@ public class FunctionBindSetting extends Setting {
     }
 
     public boolean isPressed() {
-        return KeyManager.wasPressed(bindingName());
+        return CombatantInput.bindings().consumePress(bindingName(), InputScope.GAME);
     }
 
     /**
@@ -59,7 +60,7 @@ public class FunctionBindSetting extends Setting {
      * Intended for UI/HUD actions such as BetterChat controls.
      */
     public boolean isPressedAllowScreen() {
-        return KeyManager.wasPressedAllowScreen(bindingName());
+        return CombatantInput.bindings().consumePress(bindingName(), InputScope.GLOBAL);
     }
 
     BindMode mode() {
@@ -110,7 +111,7 @@ public class FunctionBindSetting extends Setting {
     }
 
     public boolean isHeldForHud() {
-        return KeyManager.isHeldAllowScreen(bindingName());
+        return CombatantInput.bindings().isHeld(bindingName(), InputScope.GLOBAL);
     }
 
     public boolean isHudToggleActive() {
@@ -202,16 +203,16 @@ public class FunctionBindSetting extends Setting {
         unregister();
         if (!value.isNone()) {
             registeredName = bindingName();
-            KeyManager.registerCombo(registeredName, value.get());
+            CombatantInput.bindings().bind(registeredName, value.get());
         }
     }
 
     private void unregister() {
         if (registeredName != null) {
-            KeyManager.unregisterAll(registeredName);
+            CombatantInput.bindings().unbind(registeredName);
         } else {
             // In case it was registered before parent was set, try using current binding name
-            KeyManager.unregisterAll(bindingName());
+            CombatantInput.bindings().unbind(bindingName());
         }
         registeredName = null;
     }

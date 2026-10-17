@@ -7,8 +7,8 @@
 
 package combatant.client.render.engine.command;
 
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.renderer.ui.draw.UiPaint;
 import combatant.client.render.engine.renderer.ui.draw.UiShape;
 

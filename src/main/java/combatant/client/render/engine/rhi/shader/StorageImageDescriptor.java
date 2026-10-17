@@ -6,7 +6,7 @@
  */
 package combatant.client.render.engine.rhi.shader;
 
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 
 /** Description of a 2D image that can participate in native image load/store. */
 public record StorageImageDescriptor(String label,

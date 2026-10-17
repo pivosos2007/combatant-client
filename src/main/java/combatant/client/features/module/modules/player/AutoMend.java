@@ -155,7 +155,7 @@ public final class AutoMend extends Module {
         for (int i = 0; i < count; i++) {
             InteractionResult result = InventorySwap.INSTANCE.useItem(InteractionHand.MAIN_HAND);
             if (result == null || !result.consumesAction()) break;
-            player.swing(InteractionHand.MAIN_HAND);
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
         }
     }
 

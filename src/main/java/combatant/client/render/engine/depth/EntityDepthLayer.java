@@ -8,10 +8,10 @@
 package combatant.client.render.engine.depth;
 
 import com.mojang.blaze3d.ProjectionType;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.mixins.accessors.LevelRendererAccessor;
 import combatant.client.render.engine.RenderState;
@@ -98,8 +98,6 @@ public final class EntityDepthLayer {
             return true;
         }
 
-        GpuTextureView previousColor = RenderSystem.outputColorTextureOverride;
-        GpuTextureView previousDepth = RenderSystem.outputDepthTextureOverride;
         GpuBufferSlice previousProjection = RenderSystem.getProjectionMatrixBuffer();
         ProjectionType previousProjectionType = RenderSystem.getProjectionType();
         Matrix4f previousMeshProjection = MeshRenderer.projection();
@@ -114,8 +112,6 @@ public final class EntityDepthLayer {
             projectionBuffer = new ProjectionMatrixBuffer("combatant-entity-depth-projection");
         }
 
-        RenderSystem.outputColorTextureOverride = target.getColorTextureView();
-        RenderSystem.outputDepthTextureOverride = target.getDepthTextureView();
         RenderSystem.setProjectionMatrix(projectionBuffer.getBuffer(projection), ProjectionType.PERSPECTIVE);
         MeshRenderer.setProjection(projection);
         RenderState.worldProjection.set(projection);
@@ -142,10 +138,11 @@ public final class EntityDepthLayer {
                 state.entityRenderStates.clear();
                 capturedEntities = List.of();
             }
-            try (FeatureRenderDispatcher.PreparedFrame prepared = renderDispatcher.prepareFrame(COMMANDS)) {
-                prepared.executeSolid();
-                prepared.executeTranslucent();
-                prepared.executeTranslucentAfterTerrain();
+            try {
+                combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
+                        "combatant:entity-depth", renderDispatcher, COMMANDS,
+                        target.getColorTextureView(), target.getDepthTextureView(),
+                        combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.DEPTH);
             } finally {
                 renderBuffers.endFrame();
             }
@@ -166,8 +163,6 @@ public final class EntityDepthLayer {
             if (previousProjection != null && previousProjectionType != null) {
                 RenderSystem.setProjectionMatrix(previousProjection, previousProjectionType);
             }
-            RenderSystem.outputColorTextureOverride = previousColor;
-            RenderSystem.outputDepthTextureOverride = previousDepth;
         }
     }
 

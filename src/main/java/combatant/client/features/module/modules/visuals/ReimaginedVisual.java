@@ -9,9 +9,9 @@ package combatant.client.features.module.modules.visuals;
 
 
 import combatant.client.features.theme.Theme;
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.config.values.*;
 import combatant.client.features.module.*;
 import combatant.client.features.module.Module;
@@ -430,7 +430,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
         if (!dofFocusResolveSupported) return false;
         try {
             if (dofFocusTarget == null) {
-                dofFocusTarget = new TextureTarget("combatant-depth-of-field-focus", 1, 1, false, GpuFormat.RGBA8_UNORM);
+                dofFocusTarget = new TextureTarget("combatant-depth-of-field-focus", 1, 1, GpuFormat.RGBA8_UNORM, null);
             }
             return dofFocusTarget.getColorTextureView() != null;
         } catch (Throwable t) {

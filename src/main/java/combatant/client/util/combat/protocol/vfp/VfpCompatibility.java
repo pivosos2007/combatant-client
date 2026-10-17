@@ -38,7 +38,7 @@ public enum VfpCompatibility {
 
     public ClientProtocolVersion unsafeGetProtocolVersion() {
         try {
-            ProtocolVersion version = ViaFabricPlus.getImpl().getTargetVersion();
+            ProtocolVersion version = targetVersion();
             return new ClientProtocolVersion(version.getName(), version.getVersion());
         } catch (Throwable t) {
             DebugLog.error("Failed to get protocol version", t);
@@ -72,7 +72,7 @@ public enum VfpCompatibility {
             if (currentScreen == null) {
                 currentScreen = new TitleScreen();
             }
-            ViaFabricPlus.getImpl().openProtocolSelectionScreen(currentScreen);
+            ViaFabricPlus.api().screens().openViaFabricPlusScreen(currentScreen);
         } catch (Throwable t) {
             DebugLog.error("Failed to open ViaFabricPlus screen", t);
         }
@@ -84,7 +84,7 @@ public enum VfpCompatibility {
                 throw new IllegalArgumentException("Protocol version is not registered");
             }
             ProtocolVersion version = ProtocolVersion.getProtocol(protocolId);
-            ViaFabricPlus.getImpl().setTargetVersion(version);
+            ViaFabricPlus.api().protocolTranslation().setTargetVersion(version);
         } catch (Throwable t) {
             DebugLog.error("Failed to select protocol version", t);
         }
@@ -92,7 +92,7 @@ public enum VfpCompatibility {
 
     public boolean isEqual1_8() {
         try {
-            var version = ViaFabricPlus.getImpl().getTargetVersion();
+            var version = targetVersion();
             return version.equalTo(ProtocolVersion.v1_8);
         } catch (Throwable t) {
             DebugLog.error("Failed to check if protocol is 1.8", t);
@@ -102,7 +102,7 @@ public enum VfpCompatibility {
 
     public boolean isOlderThanOrEqual1_8() {
         try {
-            var version = ViaFabricPlus.getImpl().getTargetVersion();
+            var version = targetVersion();
             return version.olderThanOrEqualTo(ProtocolVersion.v1_8);
         } catch (Throwable t) {
             DebugLog.error("Failed to check if protocol is <= 1.8", t);
@@ -112,7 +112,7 @@ public enum VfpCompatibility {
 
     public boolean isOlderThanOrEqual1_7_10() {
         try {
-            var version = ViaFabricPlus.getImpl().getTargetVersion();
+            var version = targetVersion();
             return version.olderThanOrEqualTo(ProtocolVersion.v1_7_6);
         } catch (Throwable t) {
             DebugLog.error("Failed to check if protocol is <= 1.7.10", t);
@@ -122,7 +122,7 @@ public enum VfpCompatibility {
 
     public boolean isNewerThanOrEqual1_16() {
         try {
-            var version = ViaFabricPlus.getImpl().getTargetVersion();
+            var version = targetVersion();
             return version.newerThanOrEqualTo(ProtocolVersion.v1_16);
         } catch (Throwable t) {
             DebugLog.error("Failed to check if protocol is >= 1.16", t);
@@ -132,7 +132,7 @@ public enum VfpCompatibility {
 
     public boolean isNewerThanOrEqual1_21_5() {
         try {
-            var version = ViaFabricPlus.getImpl().getTargetVersion();
+            var version = targetVersion();
             return version.newerThanOrEqualTo(ProtocolVersion.v1_21_5);
         } catch (Throwable t) {
             DebugLog.error("Failed to check if protocol is >= 1.21.5", t);
@@ -142,7 +142,7 @@ public enum VfpCompatibility {
 
     public boolean isNewerThanOrEqual1_21_6() {
         try {
-            var version = ViaFabricPlus.getImpl().getTargetVersion();
+            var version = targetVersion();
             return version.newerThanOrEqualTo(ProtocolVersion.v1_21_6);
         } catch (Throwable t) {
             DebugLog.error("Failed to check if protocol is >= 1.21.6", t);
@@ -152,7 +152,7 @@ public enum VfpCompatibility {
 
     public boolean isNewerThanOrEqual1_21_9() {
         try {
-            var version = ViaFabricPlus.getImpl().getTargetVersion();
+            var version = targetVersion();
             return version.newerThanOrEqualTo(ProtocolVersion.v1_21_9);
         } catch (Throwable t) {
             DebugLog.error("Failed to check if protocol is >= 1.21.9", t);
@@ -162,11 +162,15 @@ public enum VfpCompatibility {
 
     public boolean isOlderThanOrEqual1_11_1() {
         try {
-            var version = ViaFabricPlus.getImpl().getTargetVersion();
+            var version = targetVersion();
             return version.olderThanOrEqualTo(ProtocolVersion.v1_11_1);
         } catch (Throwable t) {
             DebugLog.error("Failed to check if protocol is <= 1.11.1", t);
             return false;
         }
+    }
+
+    private ProtocolVersion targetVersion() {
+        return ViaFabricPlus.api().protocolTranslation().targetVersion();
     }
 }

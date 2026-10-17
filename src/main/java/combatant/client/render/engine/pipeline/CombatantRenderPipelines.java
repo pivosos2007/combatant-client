@@ -13,9 +13,9 @@
 
 package combatant.client.render.engine.pipeline;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.shaders.UniformType;
-import com.mojang.blaze3d.systems.GpuDevice;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.UniformType;
+import com.mojang.renderpearl.api.pipeline.ShaderType;
 import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.mixininterface.IRenderPipeline;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
@@ -96,10 +96,10 @@ public enum CombatantRenderPipelines {
     public static void precompile(ResourceManager resources) {
         List<RenderPipeline> pipelines = all();
 
-        final GpuDevice device;
-        try {
-            device = RenderSystem.getDevice();
-        } catch (Throwable t) {
+        // In 26.3 the active PipelineCache owns compiled ordinary graphics pipelines.
+        // Do not create a second private cache via GpuDevice.compilePipeline(): those
+        // compiled objects would not be visible to Minecraft's render passes.
+        if (RenderSystem.tryGetDevice() == null) {
             DebugLog.warn("[Combatant] RenderSystem not ready in precompile(ResourceManager)");
             return;
         }
@@ -109,17 +109,22 @@ public enum CombatantRenderPipelines {
 
         for (RenderPipeline pipeline : pipelines) {
             DebugLog.renderThread("[Combatant] -> pipeline " + pipeline.getLocation());
-            DebugLog.renderThread("   VS = " + pipeline.getVertexShader());
-            DebugLog.renderThread("   FS = " + pipeline.getFragmentShader());
+            DebugLog.renderThread("   VS = " + pipeline.getShaders().get(ShaderType.VERTEX));
+            DebugLog.renderThread("   FS = " + pipeline.getShaders().get(ShaderType.FRAGMENT));
             DebugLog.renderThread("   VF = " + pipeline.getVertexFormatBinding(0));
             DebugLog.renderThread("   MODE = " + pipeline.getPrimitiveTopology());
 
-            Runnable compile = () -> device.precompilePipeline(pipeline, (identifier, shaderType) -> {
-                DebugLog.renderThread("[Combatant]   loading " + shaderType + " " + identifier);
-                String source = CombatantShaderSources.load(resources, identifier, shaderType);
-                ShaderCostRegistry.analyze(identifier, shaderType, source);
-                return source;
+            // Source analysis remains independent from GPU compilation. 26.3 compiles
+            // ordinary VS/FS through RenderPearl/ShaderC and ShaderManager's cache.
+            pipeline.getShaders().forEach((type, identifier) -> {
+                String source = CombatantShaderSources.load(resources, identifier, type);
+                ShaderCostRegistry.analyze(identifier, type, source);
             });
+            Runnable compile = () -> {
+                if (RenderSystem.getCompiledPipelineNullable(pipeline) == null) {
+                    throw new IllegalStateException("Failed to compile pipeline " + pipeline.getLocation());
+                }
+            };
             if (isRigPipeline(pipeline)) {
                 IrisRuntime.runWithNativeShaderBypass(compile);
             } else {

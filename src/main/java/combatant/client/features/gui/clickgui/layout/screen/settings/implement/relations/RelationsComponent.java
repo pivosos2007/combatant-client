@@ -30,7 +30,6 @@ import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.text.ChatNameUtil;
 import combatant.client.util.text.ClipboardUtil;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -190,7 +189,7 @@ public final class RelationsComponent {
 
     public boolean mousePressedScrollbar(float mx, float my, int button) {
         if (onlinePicker.isVisible()) return onlinePicker.mousePressedScrollbar(mx, my, button);
-        if (button != 0 || !isScrollbarHovered(mx, my)) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT || !isScrollbarHovered(mx, my)) return false;
         draggingScrollbar = true;
         scrollbarDragOffset = ClickGuiMath.insideRect(mx, my, scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH)
                 ? my - scrollbarThumbY
@@ -201,7 +200,7 @@ public final class RelationsComponent {
 
     public void mouseReleased(int button) {
         onlinePicker.mouseReleased(button);
-        if (button == 0) draggingScrollbar = false;
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) draggingScrollbar = false;
     }
 
     public void scroll(float mx, float my, double amount) {
@@ -218,7 +217,7 @@ public final class RelationsComponent {
     }
 
     public boolean click(float mx, float my, int button) {
-        if (button != 0) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
 
         if (friendsPill.contains(mx, my)) return switchTab(RelationTab.FRIENDS);
         if (enemiesPill.contains(mx, my)) return switchTab(RelationTab.ENEMIES);
@@ -330,18 +329,17 @@ public final class RelationsComponent {
         }
         if (activeField == ActiveField.NONE) return false;
 
-        boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+        if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
             activeField = ActiveField.NONE;
             movementInputBlocked = false;
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+        if (keyCode == combatant.client.input.InputKeys.ENTER || keyCode == combatant.client.input.InputKeys.KP_ENTER) {
             if (activeField == ActiveField.PLAYER) commitPlayerInput();
             else commitHeuristic(activeField);
             return true;
         }
-        if (input(activeField).keyPressed(keyCode, modifiers)) syncTextFromInput(activeField);
+        if (input(activeField).keyPressed(keyCode, scanCode, modifiers)) syncTextFromInput(activeField);
         return true;
     }
 

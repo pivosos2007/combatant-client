@@ -13,8 +13,8 @@
 
 package combatant.client.render.engine.uniform;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
@@ -79,13 +79,13 @@ public final class MeshBuilder implements AutoCloseable {
         this(Objects.requireNonNull(pipeline.getVertexFormatBinding(0)), pipeline.getPrimitiveTopology());
     }
 
-    public MeshBuilder(VertexFormat format, com.mojang.blaze3d.PrimitiveTopology drawMode) {
+    public MeshBuilder(VertexFormat format, com.mojang.renderpearl.api.pipeline.PrimitiveTopology drawMode) {
         this.format = format;
         this.vertexStride = format.getVertexSize();
         this.primitiveIndicesCount = drawMode.primitiveLength;
     }
 
-    public MeshBuilder(VertexFormat format, com.mojang.blaze3d.PrimitiveTopology drawMode, int vertexCount, int indexCount) {
+    public MeshBuilder(VertexFormat format, com.mojang.renderpearl.api.pipeline.PrimitiveTopology drawMode, int vertexCount, int indexCount) {
         this(format, drawMode);
         reserve(vertexCount, indexCount);
     }
@@ -654,9 +654,9 @@ public final class MeshBuilder implements AutoCloseable {
     }
 
 
-    public com.mojang.blaze3d.IndexType getIndexType() {
+    public com.mojang.renderpearl.api.pipeline.IndexType getIndexType() {
         // indices() stores 32-bit values.
-        return com.mojang.blaze3d.IndexType.INT;
+        return com.mojang.renderpearl.api.pipeline.IndexType.INT;
     }
 
     public int getIndicesCount() {

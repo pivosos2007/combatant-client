@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.postprocess.graph;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.postprocess.PostProcessBackendResourceOwner;
 import combatant.client.render.engine.postprocess.PostProcessExecutionContext;
 import combatant.client.render.engine.postprocess.PostProcessPass;

@@ -7,9 +7,9 @@
 
 package combatant.client.mixins;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.vulkan.VulkanDevice;
-import com.mojang.blaze3d.vulkan.VulkanGpuTexture;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuTexture;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -36,11 +36,11 @@ public abstract class VulkanGpuTextureMixin implements IMsaaTexture {
      */
     @Redirect(
             method = "<init>",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/vulkan/VulkanConst;textureUsageToVk(ILcom/mojang/blaze3d/GpuFormat;)I")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/vulkan/VulkanConst;textureUsageToVk(ILcom/mojang/renderpearl/api/GpuFormat;)I")
     )
     private int combatant$stencilAttachmentUsage(int usage, GpuFormat format) {
-        int vkUsage = com.mojang.blaze3d.vulkan.VulkanConst.textureUsageToVk(usage, format);
-        if (format != null && format.hasStencilAspect() && (usage & com.mojang.blaze3d.textures.GpuTexture.USAGE_RENDER_ATTACHMENT) != 0) {
+        int vkUsage = com.mojang.renderpearl.backend.vulkan.VulkanConst.textureUsageToVk(usage, format);
+        if (format != null && format.hasStencilAspect() && (usage & com.mojang.renderpearl.api.textures.GpuTexture.USAGE_RENDER_ATTACHMENT) != 0) {
             vkUsage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
         }
         if ((usage & RhiTextureUsage.STORAGE_IMAGE) != 0) {

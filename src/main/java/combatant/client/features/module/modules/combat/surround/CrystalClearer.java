@@ -51,7 +51,7 @@ public final class CrystalClearer {
 
         for (EndCrystal crystal : blocking) {
             mc.gameMode.attack(player, crystal);
-            player.swing(InteractionHand.MAIN_HAND);
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
         }
         cooldown = delayTicks;
     }

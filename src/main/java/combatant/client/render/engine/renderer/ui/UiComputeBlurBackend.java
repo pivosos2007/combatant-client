@@ -6,9 +6,9 @@
  */
 package combatant.client.render.engine.renderer.ui;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.postprocess.PostProcessExecutionPolicy;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.rhi.CombatantRhi;

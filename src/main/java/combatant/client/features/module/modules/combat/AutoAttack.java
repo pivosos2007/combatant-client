@@ -387,7 +387,7 @@ public class AutoAttack extends Module {
                     return;
                 }
                 case MISS_SWING -> {
-                    mc.player.swing(InteractionHand.MAIN_HAND);
+                    mc.player.swing(InteractionHand.MAIN_HAND, mc.player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
                     return;
                 }
                 case MISS -> {
@@ -510,7 +510,7 @@ public class AutoAttack extends Module {
 
         if (objective.get() == ObjectiveType.BLOCK) {
             for (int i = 0; i < clickCount; i++) {
-                player.swing(InteractionHand.MAIN_HAND);
+                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
                 if (legacyProtocol) {
                     ResetAttackCooldown.resetAttackCooldown(player);
                 }

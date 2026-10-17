@@ -13,7 +13,7 @@
 
 package combatant.client.render.engine.text;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.RenderWarpStack;

@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * Analytic world-space spherical post-process mask.
@@ -17,13 +18,13 @@
  *   RG = encoded signed screen flow, B = local strength, A = coverage.
  */
 
-in vec2 v_TexCoord;
-in vec4 v_Color;
-in vec4 v_Params;
-in vec4 v_Params2;
-in vec3 v_ViewPosition;
-in vec3 v_ViewNormal;
-out vec4 color;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 2) in vec4 v_Color;
+layout(location = 4) in vec4 v_Params;
+layout(location = 5) in vec4 v_Params2;
+layout(location = 6) in vec3 v_ViewPosition;
+layout(location = 7) in vec3 v_ViewNormal;
+layout(location = 0) out vec4 color;
 
 const float TAU = 6.283185307179586;
 

@@ -9,7 +9,7 @@ package combatant.client.util.click;
 
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.network.protocol.game.ServerboundPunchPacket;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Items;
 import combatant.client.events.EventHandler;
@@ -85,7 +85,7 @@ public final class AttackPressing {
             return;
         }
 
-        if (event.getPacket() instanceof ServerboundSwingPacket
+        if (event.getPacket() instanceof ServerboundPunchPacket
                 || event.getPacket() instanceof ServerboundSetCarriedItemPacket) {
             recalculate();
         }

@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
 
@@ -13,7 +14,7 @@ This implementation has since been substantially modified for Combatant.
 Licensed under the GNU General Public License v3.0.
 */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 layout (std140) uniform MenuBackground {
     vec4 u_Params;     // x = width, y = height, z = time, w = pad
@@ -21,7 +22,7 @@ layout (std140) uniform MenuBackground {
     vec4 u_Background; // rgb
 };
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
 void main() {
     vec2 res = u_Params.xy;

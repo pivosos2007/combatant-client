@@ -6,10 +6,10 @@
  */
 package combatant.client.render.engine.rhi.backend.vulkan;
 
-import com.mojang.blaze3d.vulkan.Destroyable;
-import com.mojang.blaze3d.vulkan.VulkanConst;
-import com.mojang.blaze3d.vulkan.VulkanDevice;
-import com.mojang.blaze3d.vulkan.VulkanPhysicalDevice;
+import com.mojang.renderpearl.backend.vulkan.Destroyable;
+import com.mojang.renderpearl.backend.vulkan.VulkanConst;
+import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanPhysicalDevice;
 import combatant.client.mixininterface.IVulkanBackendInfo;
 import combatant.client.render.engine.rhi.RhiStats;
 import combatant.client.render.engine.rhi.shader.RhiFeatureSupport;

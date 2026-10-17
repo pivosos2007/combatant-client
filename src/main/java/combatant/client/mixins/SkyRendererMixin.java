@@ -9,6 +9,9 @@ package combatant.client.mixins;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import org.joml.Vector3fc;
+import org.joml.Vector4fc;
 import net.minecraft.client.renderer.SkyRenderer;
 import net.minecraft.world.level.MoonPhase;
 import org.objectweb.asm.Opcodes;
@@ -31,16 +34,7 @@ public abstract class SkyRendererMixin {
     private RenderTarget renderTarget;
 
     @Redirect(
-            method = {
-                    "renderSkyDisc",
-                    "renderDarkDisc",
-                    "renderSun",
-                    "renderMoon",
-                    "renderStars",
-                    "renderSunriseAndSunset",
-                    "renderEndSky",
-                    "renderEndFlash"
-            },
+            method = "render",
             at = @At(
                     value = "FIELD",
                     target = "Lnet/minecraft/client/renderer/SkyRenderer;renderTarget:Lcom/mojang/blaze3d/pipeline/RenderTarget;",
@@ -59,32 +53,32 @@ public abstract class SkyRendererMixin {
     }
 
     @Inject(method = "renderSkyDisc", at = @At("HEAD"), cancellable = true)
-    private void combatant$noRenderSkyDisc(int color, CallbackInfo ci) {
+    private void combatant$noRenderSkyDisc(RenderPass pass, Vector3fc color, CallbackInfo ci) {
         if (combatant$noRenderOff("sky")) ci.cancel();
     }
 
     @Inject(method = "renderEndSky", at = @At("HEAD"), cancellable = true)
-    private void combatant$noRenderEndSky(CallbackInfo ci) {
+    private void combatant$noRenderEndSky(RenderPass pass, CallbackInfo ci) {
         if (combatant$noRenderOff("sky")) ci.cancel();
     }
 
     @Inject(method = "renderSun", at = @At("HEAD"), cancellable = true)
-    private void combatant$noRenderSun(float alpha, PoseStack poseStack, CallbackInfo ci) {
+    private void combatant$noRenderSun(RenderPass pass, float alpha, PoseStack poseStack, CallbackInfo ci) {
         if (combatant$noRenderOff("sun")) ci.cancel();
     }
 
     @Inject(method = "renderMoon", at = @At("HEAD"), cancellable = true)
-    private void combatant$noRenderMoon(MoonPhase moonPhase, float alpha, PoseStack poseStack, CallbackInfo ci) {
+    private void combatant$noRenderMoon(RenderPass pass, MoonPhase moonPhase, float alpha, PoseStack poseStack, CallbackInfo ci) {
         if (combatant$noRenderOff("moon")) ci.cancel();
     }
 
     @Inject(method = "renderStars", at = @At("HEAD"), cancellable = true)
-    private void combatant$noRenderStars(float alpha, PoseStack poseStack, CallbackInfo ci) {
+    private void combatant$noRenderStars(RenderPass pass, float alpha, PoseStack poseStack, CallbackInfo ci) {
         if (combatant$noRenderOff("stars")) ci.cancel();
     }
 
     @Inject(method = "renderSunriseAndSunset", at = @At("HEAD"), cancellable = true)
-    private void combatant$noRenderSunrise(PoseStack poseStack, float angle, int color, CallbackInfo ci) {
+    private void combatant$noRenderSunrise(RenderPass pass, PoseStack poseStack, float angle, Vector4fc color, CallbackInfo ci) {
         if (combatant$noRenderOff("sun")) ci.cancel();
     }
 }

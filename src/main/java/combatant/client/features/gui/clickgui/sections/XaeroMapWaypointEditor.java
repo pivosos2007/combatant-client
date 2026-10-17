@@ -18,7 +18,6 @@ import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.text.GuiTextCaret;
 import net.minecraft.client.resources.language.I18n;
-import org.lwjgl.glfw.GLFW;
 import xaero.map.mods.gui.Waypoint;
 
 /**
@@ -421,7 +420,7 @@ final class XaeroMapWaypointEditor {
     }
 
     boolean mousePressed(float mouseX, float mouseY, int button) {
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return true;
         if (closeRequested) return true;
         if (!inside(mouseX, mouseY, x, y, width, height)) {
             requestClose();
@@ -460,7 +459,7 @@ final class XaeroMapWaypointEditor {
     }
 
     void mouseReleased(float mouseX, float mouseY, int button) {
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         int released = pressedAction;
         pressedAction = 0;
         if (closeRequested) return;
@@ -471,21 +470,21 @@ final class XaeroMapWaypointEditor {
         }
     }
 
-    boolean keyPressed(int keyCode, int modifiers) {
+    boolean keyPressed(int keyCode, int shortcutKey, int modifiers) {
         if (closeRequested) return true;
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+        if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
             requestClose();
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_TAB) {
+        if (keyCode == combatant.client.input.InputKeys.TAB) {
             focusedField = focusedField == 1 ? 2 : 1;
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+        if (keyCode == combatant.client.input.InputKeys.ENTER || keyCode == combatant.client.input.InputKeys.KP_ENTER) {
             save();
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_BACKSPACE && focusedField != 0) {
+        if (keyCode == combatant.client.input.InputKeys.BACKSPACE && focusedField != 0) {
             if (focusedField == 1 && !name.isEmpty()) name = name.substring(0, name.length() - 1);
             if (focusedField == 2 && !symbol.isEmpty()) symbol = symbol.substring(0, symbol.length() - 1);
             return true;

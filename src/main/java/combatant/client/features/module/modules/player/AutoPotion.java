@@ -26,7 +26,8 @@ import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputScope;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySearchScope;
 import combatant.client.util.player.inventory.InventorySwap;
@@ -130,7 +131,7 @@ public final class AutoPotion extends Module {
     @Override
     public void onDisable() {
         resetState(true);
-        KeyManager.unregisterAll(semiBindingName());
+        CombatantInput.bindings().unbind(semiBindingName());
         lastSemiCombo = "NONE";
     }
 
@@ -150,7 +151,7 @@ public final class AutoPotion extends Module {
             updateWarnings(player);
         }
 
-        if (mode.get() == Mode.SEMI_AUTO && KeyManager.wasPressed(semiBindingName())) {
+        if (mode.get() == Mode.SEMI_AUTO && CombatantInput.bindings().consumePress(semiBindingName(), InputScope.GAME)) {
             manualRequestTicks = MANUAL_REQUEST_TIMEOUT;
         }
 
@@ -577,7 +578,7 @@ public final class AutoPotion extends Module {
 
     private void usePotion(LocalPlayer player) {
         InteractionResult result = InventorySwap.INSTANCE.useItem(InteractionHand.MAIN_HAND);
-        if (result != null && result.consumesAction()) player.swing(InteractionHand.MAIN_HAND);
+        if (result != null && result.consumesAction()) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
     }
 
     private String semiBindingName() {
@@ -590,8 +591,8 @@ public final class AutoPotion extends Module {
         if (combo.equalsIgnoreCase(lastSemiCombo)) return;
 
         String name = semiBindingName();
-        KeyManager.unregisterAll(name);
-        if (!semiKey.isNone() && mode.get() == Mode.SEMI_AUTO) KeyManager.registerCombo(name, combo);
+        CombatantInput.bindings().unbind(name);
+        if (!semiKey.isNone() && mode.get() == Mode.SEMI_AUTO) CombatantInput.bindings().bind(name, combo);
         lastSemiCombo = combo;
     }
 

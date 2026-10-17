@@ -7,13 +7,13 @@
 
 package combatant.client.render.engine.rhi.upload;
 
-import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.render.engine.profiler.RenderCostProfiler;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.MeshOwnership;
 import combatant.client.render.engine.rhi.RhiStats;
-import com.mojang.blaze3d.IndexType;
+import com.mojang.renderpearl.api.pipeline.IndexType;
 
 import java.nio.ByteBuffer;
 import java.util.Collections;

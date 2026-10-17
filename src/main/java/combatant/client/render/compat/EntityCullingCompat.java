@@ -7,7 +7,7 @@
 
 package combatant.client.render.compat;
 
-import dev.tr7zw.entityculling.versionless.access.Cullable;
+import dev.tr7zw.entityculling.access.Cullable;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.world.entity.Entity;
 

@@ -8,10 +8,10 @@
 package combatant.client.render.engine.rhi.backend.vulkan.msaa;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.systems.RenderPassDescriptor;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.vulkan.VulkanGpuTextureView;
+import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView;
 import org.lwjgl.vulkan.VkRenderingAttachmentInfo;
 import org.lwjgl.vulkan.VkRenderingInfo;
 import combatant.client.mixininterface.IMsaaTexture;

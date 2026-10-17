@@ -7,16 +7,13 @@
 
 package combatant.client.mixininterface;
 
-import com.mojang.blaze3d.opengl.DirectStateAccess;
-import com.mojang.blaze3d.opengl.FrameBufferCache;
-import com.mojang.blaze3d.opengl.VertexArrayCache;
+import com.mojang.renderpearl.backend.opengl.DirectStateAccess;
+import com.mojang.renderpearl.backend.opengl.FrameBufferCache;
 
 public interface IGlBackendInfo {
     DirectStateAccess combatant$directStateAccess();
 
     FrameBufferCache combatant$frameBufferCache();
-
-    VertexArrayCache combatant$vertexArrayCache();
 
     /** Mojang-resolved GlDevice policy; do not re-probe ARB_direct_state_access in Combatant. */
     boolean combatant$nativeDirectStateAccess();

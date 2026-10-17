@@ -1,16 +1,17 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * Dedicated aiming decal for Predictions.
  * The marker is intentionally line-dominant: concentric rings, directional sectors and broken calibration arcs.
  */
 
-in vec2 v_TexCoord;
-in vec4 v_Color;
-in vec4 v_Params;
-in vec4 v_Params2;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 2) in vec4 v_Color;
+layout(location = 4) in vec4 v_Params;
+layout(location = 5) in vec4 v_Params2;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 const float PI = 3.14159265358979323846;
 const float TAU = 6.28318530717958647692;

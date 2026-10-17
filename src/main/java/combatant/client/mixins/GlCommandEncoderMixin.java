@@ -9,37 +9,34 @@ package combatant.client.mixins;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import combatant.client.util.logging.DebugLog;
+import com.mojang.renderpearl.backend.opengl.GlRenderPipeline;
 import combatant.client.render.engine.rhi.backend.gl.GlNativeStateTracker;
 import combatant.client.render.iris.IrisRuntime;
-import com.mojang.blaze3d.opengl.DirectStateAccess;
-import net.minecraft.resources.Identifier;
-import org.slf4j.Logger;
+import com.mojang.renderpearl.backend.opengl.DirectStateAccess;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * GlCommandEncoder is package-private in Mojang's OpenGL backend, so this mixin
  * intentionally targets it by binary name instead of importing the class.
  */
-@Mixin(targets = "com.mojang.blaze3d.opengl.GlCommandEncoder")
+@Mixin(targets = "com.mojang.renderpearl.backend.opengl.GlCommandEncoder")
 public abstract class GlCommandEncoderMixin {
     @Shadow
-    private RenderPipeline lastPipeline;
+    private GlRenderPipeline lastPipeline;
 
     /**
-     * Iris unlocks its deferred depth/color masks at the head of trySetup. Blaze3D normally
+     * Iris unlocks its deferred depth/color masks before drawing. RenderPearl normally
      * reapplies the pipeline immediately afterwards, but skips that work when its cached pipeline
      * identity is unchanged. Imported geometry uses a persistent pipeline and a fresh render pass,
      * so this cache hit could inherit depth-test/depth-write state from the preceding shaderpack
      * pass. safeToMultiply is scoped specifically around Combatant's Iris geometry submission.
      */
-    @Inject(method = "trySetup", at = @At("HEAD"))
-    private void combatant$reapplyImportedIrisPipelineState(CallbackInfoReturnable<Boolean> cir) {
+    @Inject(method = "setupDraw", at = @At("HEAD"))
+    private void combatant$reapplyImportedIrisPipelineState(CallbackInfo ci) {
         // Mod-loaded check first: this mixin applies with or without Iris installed.
         if (IrisRuntime.isImportedGeometrySubmission() && IrisRuntime.isShaderpackRendererActive()) {
             lastPipeline = null;
@@ -47,48 +44,23 @@ public abstract class GlCommandEncoderMixin {
     }
 
     /**
-     * trySetup is shared by ordinary draws, direct multi-draw and indirect draws. At RETURN the
+     * setupDraw is shared by ordinary draws, direct multi-draw and indirect draws. At RETURN the
      * concrete Iris/Blaze3D program is selected. ExtendedShader also has a dedicated RETURN hook
      * so injection ordering cannot leave its later custom-uniform push as the final writer.
      */
-    @Inject(method = "trySetup", at = @At("RETURN"))
-    private void combatant$applyImportedGeometryDrawUniforms(CallbackInfoReturnable<Boolean> cir) {
-        if (Boolean.TRUE.equals(cir.getReturnValue())) {
-            IrisRuntime.applyImportedGeometryDrawUniforms();
-        }
+    @Inject(method = "setupDraw", at = @At("RETURN"))
+    private void combatant$applyImportedGeometryDrawUniforms(CallbackInfo ci) {
+        IrisRuntime.applyImportedGeometryDrawUniforms();
     }
 
     @WrapOperation(
-            method = "trySetup",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lcom/mojang/blaze3d/opengl/GlStateManager;_glUseProgram(I)V"
-            )
+            method = "setupDraw",
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/opengl/GlRenderPipeline;bind()V")
     )
-    private void combatant$trackBlaze3dProgram(int program, Operation<Void> original) {
-        original.call(program);
-        GlNativeStateTracker.recordBlaze3dProgram(program);
+    private void combatant$trackNativeProgram(GlRenderPipeline pipeline, Operation<Void> original) {
+        original.call(pipeline);
+        GlNativeStateTracker.recordBlaze3dProgram(pipeline.program().getProgramId());
     }
-
-    @WrapOperation(
-            method = "trySetup",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lorg/slf4j/Logger;warn(Ljava/lang/String;Ljava/lang/Object;)V"
-            )
-    )
-    private void combatant$wrapPipelineWarning(Logger logger,
-                                                 String format,
-                                                 Object pipelineId,
-                                                 Operation<Void> original) {
-        if (pipelineId instanceof Identifier id && "combatant".equals(id.getNamespace())) {
-            DebugLog.warn("[RenderPipeline] Render pipeline %s wants a depth texture but none was provided - this is probably a bug", id);
-            return;
-        }
-
-        original.call(logger, format, pipelineId);
-    }
-
 
     /**
      * Blaze3D exposes copyTextureToTexture in origin + extent form, while the OpenGL blit call
@@ -99,7 +71,7 @@ public abstract class GlCommandEncoderMixin {
             method = "copyTextureToTexture",
             at = @At(
                     value = "INVOKE",
-                    target = "Lcom/mojang/blaze3d/opengl/DirectStateAccess;blitFrameBuffers(IIIIIIIIIIII)V"
+                    target = "Lcom/mojang/renderpearl/backend/opengl/DirectStateAccess;blitFrameBuffers(IIIIIIIIIIII)V"
             )
     )
     private void combatant$fixTextureCopyRectangles(

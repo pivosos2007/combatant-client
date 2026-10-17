@@ -7,7 +7,7 @@
 
 package combatant.client.mixininterface;
 
-import com.mojang.blaze3d.vulkan.VulkanPhysicalDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanPhysicalDevice;
 import org.lwjgl.vulkan.VkDevice;
 
 /**

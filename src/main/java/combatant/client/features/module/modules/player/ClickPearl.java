@@ -142,7 +142,7 @@ public class ClickPearl extends Module {
     }
 
     private void swingIfEnabled(LocalPlayer player, InteractionHand hand) {
-        if (swing.get()) player.swing(hand);
+        if (swing.get()) player.swing(hand, player.getItemInHand(hand).getInteractAnimation(), false);
     }
 
     private boolean isPearl(ItemStack stack) {

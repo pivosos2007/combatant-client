@@ -6,7 +6,7 @@
  */
 package combatant.client.render.engine.rhi.shader;
 
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 
 /** Lightweight immutable debug snapshot for a native 3D resource. */
 public record RhiVolumeDebugInfo(String backend,

@@ -7,9 +7,7 @@
 
 package combatant.client.features.gui.clickgui.editor;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -105,7 +103,7 @@ public final class ClickGuiTextEditorState {
     }
 
     public void handleMouseDown(float mx, float my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
 
         layout(ClickGuiRenderer.framebufferWidth(), ClickGuiRenderer.framebufferHeight());
 
@@ -143,7 +141,7 @@ public final class ClickGuiTextEditorState {
     }
 
     public void handleMouseUp(float mx, float my, int button) {
-        if (button == 0) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
             dragging = false;
         }
     }
@@ -492,9 +490,10 @@ public final class ClickGuiTextEditorState {
     }
 
     private boolean isShiftDown() {
-        var window = Minecraft.getInstance().getWindow();
-        return InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_SHIFT) ||
-                InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_SHIFT);
+        return combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.LEFT_SHIFT)
+                || combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.RIGHT_SHIFT);
     }
 
     private int caretFromPoint(float mx, float my) {

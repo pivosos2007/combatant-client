@@ -8,7 +8,7 @@
 package combatant.client.features.gui.preview.render;
 
 import com.mojang.blaze3d.ProjectionType;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import combatant.client.features.gui.preview.VisualPreviewSceneContext;

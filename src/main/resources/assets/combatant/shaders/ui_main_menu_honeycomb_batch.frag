@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,17 +8,17 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-in vec4 v_Local;
-in vec4 v_Color;
-in vec4 v_Rect;
-in vec4 v_Params;
-in vec4 v_Params2;
-in vec4 v_Params3;
-in vec4 v_Params4;
-in vec4 v_Params5;
-in vec4 v_Params6;
+layout(location = 1) in vec4 v_Local;
+layout(location = 2) in vec4 v_Color;
+layout(location = 3) in vec4 v_Rect;
+layout(location = 4) in vec4 v_Params;
+layout(location = 5) in vec4 v_Params2;
+layout(location = 6) in vec4 v_Params3;
+layout(location = 7) in vec4 v_Params4;
+layout(location = 8) in vec4 v_Params5;
+layout(location = 9) in vec4 v_Params6;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 uniform sampler2D u_Texture;     // clean menu background
 uniform sampler2D u_BlurTexture; // prepared Dual Kawase blur
 

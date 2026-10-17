@@ -248,7 +248,11 @@ public class VanillaTextRenderer implements TextRenderer {
             return;
         }
         if (!textSubmits.getSubmitsPerOrder().isEmpty()) {
-            getFeatureDispatcher().renderAllFeatures(textSubmits);
+            var target = getInstance().gameRenderer.mainRenderTarget();
+            combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
+                    "combatant:vanilla-text", getFeatureDispatcher(), textSubmits,
+                    target.getColorTextureView(), target.getDepthTextureView(),
+                    combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.ALL);
             textSubmits = new SubmitNodeStorage();
         }
         drawing = false;

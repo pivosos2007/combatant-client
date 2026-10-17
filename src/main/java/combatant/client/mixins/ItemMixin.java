@@ -9,6 +9,8 @@ package combatant.client.mixins;
 
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -25,7 +27,8 @@ public class ItemMixin {
                     target = "Lnet/minecraft/world/entity/player/Player;calculateViewVector(FF)Lnet/minecraft/world/phys/Vec3;"
             )
     )
-    private static Vec3 combatant$raycastRotation(Player player, float pitch, float yaw) {
+    private static Vec3 combatant$raycastRotation(float pitch, float yaw, Level level,
+                                                   Player player, ClipContext.Fluid fluid) {
         return RotationManager.INSTANCE.getMovementRotation().directionVector();
     }
 }

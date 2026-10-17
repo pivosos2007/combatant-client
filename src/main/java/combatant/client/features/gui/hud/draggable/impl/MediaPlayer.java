@@ -286,7 +286,7 @@ public final class MediaPlayer extends DraggableHudElement {
     public boolean onMouseClicked(float mx, float my, int button) {
         if (!(ClientScreen.current() instanceof ChatScreen)) return false;
         if (currentSnapshot == null || !currentSnapshot.hasSession()) return false;
-        if (button != 0) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
 
         boolean consumed = false;
         try {

@@ -8,11 +8,11 @@
 package combatant.client.features.gui.preview.render;
 
 import com.mojang.blaze3d.ProjectionType;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.ScissorState;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import combatant.client.features.gui.preview.VisualPreviewRuntime;
@@ -69,7 +69,11 @@ public final class VisualPreviewItemRenderer {
             SubmitNodeStorage storage = new SubmitNodeStorage();
             PoseStack pose = createSubjectPose(mc, context);
             state.submit(pose, storage, FULL_BRIGHT, OverlayTexture.NO_OVERLAY, 0);
-            dispatcher.renderAllFeatures(storage);
+            combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
+                    "combatant:visual-preview-item", dispatcher, storage,
+                    mc.gameRenderer.mainRenderTarget().getColorTextureView(),
+                    mc.gameRenderer.mainRenderTarget().getDepthTextureView(),
+                    combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.ALL);
             renderBuffers.endFrame();
         } catch (RuntimeException failure) {
             resetRenderer();
@@ -125,10 +129,10 @@ public final class VisualPreviewItemRenderer {
                 ndcY * halfHeight - context.screen().cameraY(),
                 -distance
         );
-        pose.mulPose(Axis.XP.rotationDegrees(-context.screen().cameraPitch()));
-        pose.mulPose(Axis.YP.rotationDegrees(-context.screen().cameraYaw()));
-        pose.mulPose(Axis.XP.rotationDegrees(context.screen().pitch()));
-        pose.mulPose(Axis.YP.rotationDegrees(context.screen().yaw()));
+        pose.rotateDegrees(Axis.XP, -context.screen().cameraPitch());
+        pose.rotateDegrees(Axis.YP, -context.screen().cameraYaw());
+        pose.rotateDegrees(Axis.XP, context.screen().pitch());
+        pose.rotateDegrees(Axis.YP, context.screen().yaw());
         float modelScale = 2.25f * context.screen().zoom();
         pose.scale(modelScale, modelScale, modelScale);
         return pose;
@@ -136,8 +140,6 @@ public final class VisualPreviewItemRenderer {
 
     private static void enterPreviewState(Minecraft mc, TrackingItemStackRenderState state) {
         RenderState.rendering3D = true;
-        RenderSystem.outputColorTextureOverride = mc.gameRenderer.mainRenderTarget().getColorTextureView();
-        RenderSystem.outputDepthTextureOverride = mc.gameRenderer.mainRenderTarget().getDepthTextureView();
         RenderSystem.getDevice().createCommandEncoder()
                 .clearDepthTexture(mc.gameRenderer.mainRenderTarget().getDepthTexture(), 0.0D);
 
@@ -185,8 +187,6 @@ public final class VisualPreviewItemRenderer {
     }
 
     private record PreviewRenderState(
-            GpuTextureView outputColor,
-            GpuTextureView outputDepth,
             GpuBufferSlice projection,
             ProjectionType projectionType,
             Matrix4f modelView,
@@ -197,8 +197,6 @@ public final class VisualPreviewItemRenderer {
     ) {
         static PreviewRenderState capture() {
             return new PreviewRenderState(
-                    RenderSystem.outputColorTextureOverride,
-                    RenderSystem.outputDepthTextureOverride,
                     RenderSystem.getProjectionMatrixBuffer(),
                     RenderSystem.getProjectionType(),
                     RenderSystem.getModelViewMatrixCopy(),
@@ -214,8 +212,6 @@ public final class VisualPreviewItemRenderer {
             if (projection != null && projectionType != null) {
                 RenderSystem.setProjectionMatrix(projection, projectionType);
             }
-            RenderSystem.outputColorTextureOverride = outputColor;
-            RenderSystem.outputDepthTextureOverride = outputDepth;
             RenderSystem.setShaderLights(shaderLights);
             RenderSystem.setShaderFog(shaderFog);
             RenderSystem.getScissorStateForRenderTypeDraws().setFrom(scissor);

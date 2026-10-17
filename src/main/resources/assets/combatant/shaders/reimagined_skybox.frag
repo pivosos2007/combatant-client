@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -29,7 +30,7 @@ layout (std140) uniform SkyboxShader {
 };
 
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 const float PI = 3.14159265359;
 const float TAU = 6.28318530718;

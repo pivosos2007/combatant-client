@@ -8,6 +8,13 @@
 package combatant.client.features.gui.clickgui;
 
 import combatant.client.util.text.SingleLineTextInput;
+import combatant.client.input.InputAction;
+import combatant.client.input.InputKey;
+import combatant.client.input.InputKeyCatalog;
+import combatant.client.input.InputKeys;
+import combatant.client.input.InputModifiers;
+import combatant.client.input.minecraft.CombatantTextInputBridge;
+import combatant.client.input.minecraft.CombatantTextInputTarget;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.addon.ClickGuiSectionManager;
@@ -19,7 +26,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.util.StringUtil;
 import net.minecraft.world.item.ItemStack;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.config.ConfigSerializer;
 import combatant.client.features.gui.clickgui.editor.ClickGuiTextEditorState;
 import combatant.client.features.gui.clickgui.picker.ClickGuiPickerState;
@@ -29,6 +35,7 @@ import combatant.client.features.gui.clickgui.sections.settings.SettingsTabRunti
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.gui.hud.nondraggable.impl.DynamicIsland;
 import combatant.client.features.module.ModuleManager;
+import combatant.client.features.module.modules.misc.ClickGui;
 import combatant.client.mixininterface.IGuiGraphics;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.color.RenderColor;
@@ -46,7 +53,6 @@ import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
-import combatant.client.util.input.KeyUtil;
 import combatant.client.util.text.ClipboardUtil;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 
@@ -60,6 +66,16 @@ public enum ClickGuiRenderer {
     ;
 
     private static final Minecraft MC = Minecraft.getInstance();
+    private static final CombatantTextInputTarget TEXT_INPUT_TARGET = text -> {
+        if (text == null || text.isEmpty()) return false;
+        boolean handled = false;
+        for (int offset = 0; offset < text.length(); ) {
+            int codePoint = text.codePointAt(offset);
+            offset += Character.charCount(codePoint);
+            if (Character.isBmpCodePoint(codePoint)) handled |= onCharTyped((char) codePoint);
+        }
+        return handled;
+    };
     private static final String MODULES_TAB_ID = "combatant:modules";
     private static final String SETTINGS_TAB_ID = "combatant:settings";
     private static final String MAP_TAB_ID = "combatant:map";
@@ -73,7 +89,7 @@ public enum ClickGuiRenderer {
     private static final float LIFECYCLE_OPEN_SPEED = 9.5f;
     private static final float LIFECYCLE_CLOSE_SPEED = 8.0f;
     private static final float INPUT_READY_PROGRESS = 0.72f;
-    private static final Set<Integer> pendingBindKeys = new LinkedHashSet<>();
+    private static final Set<InputKey> pendingBindKeys = new LinkedHashSet<>();
     private static final List<PickerIcon> pickerIcons = new ArrayList<>();
     private static final java.util.ArrayList<TextBatchItem> TEXT_BATCH = new java.util.ArrayList<>();
     private static final int TEXT_WIDTH_CACHE_LIMIT = 4096;
@@ -191,7 +207,7 @@ public enum ClickGuiRenderer {
 
     public static void onEditorMouseButtonScaled(double x, double y, int button, boolean pressed) {
         updateMouse(x, y, true);
-        if (!pressed && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (!pressed && button == combatant.client.input.InputKeys.MOUSE_LEFT) {
             SingleLineTextInput.mouseReleased();
             TextSetting.endMouseSelection();
         }
@@ -230,8 +246,8 @@ public enum ClickGuiRenderer {
         return onCharTyped(c);
     }
 
-    public static boolean onEditorKey(int key, int scancode, int action, int mods) {
-        return onKey(key, scancode, action, mods);
+    public static boolean onEditorKey(InputKey key, InputAction action, InputModifiers modifiers) {
+        return onKey(key, action, modifiers);
     }
 
     public static void closeGuiEditor() {
@@ -239,7 +255,7 @@ public enum ClickGuiRenderer {
     }
 
     private static void handleMouseButton(int button, boolean pressed) {
-        if (!pressed && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (!pressed && button == combatant.client.input.InputKeys.MOUSE_LEFT) {
             SingleLineTextInput.mouseReleased();
             TextSetting.endMouseSelection();
         }
@@ -377,29 +393,32 @@ public enum ClickGuiRenderer {
         return getActiveSection().onFilesDrop(paths);
     }
 
-    public static boolean onKey(int key, int scancode, int action, int mods) {
+    public static boolean onKey(InputKey inputKey, InputAction action, InputModifiers modifiers) {
         if (!ModuleManager.isEnabled("clickgui")) return false;
+        int key = inputKey.physicalKey();
+        int shortcutKey = inputKey.shortcutKey();
+        int modifiersMask = modifiers.mask();
 
         if (textEditor != null) {
-            if (action == GLFW.GLFW_PRESS || action == GLFW.GLFW_REPEAT) {
-                boolean shift = (mods & GLFW.GLFW_MOD_SHIFT) != 0;
-                boolean ctrl = (mods & GLFW.GLFW_MOD_CONTROL) != 0;
+            if (action.isDown()) {
+                boolean shift = modifiers.shift();
+                boolean shortcut = modifiers.shortcut();
                 switch (key) {
-                    case GLFW.GLFW_KEY_ESCAPE -> closeTextEditor(false);
-                    case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> textEditor.insertNewline();
-                    case GLFW.GLFW_KEY_BACKSPACE -> textEditor.backspace();
-                    case GLFW.GLFW_KEY_DELETE -> textEditor.deleteForward();
-                    case GLFW.GLFW_KEY_LEFT -> textEditor.moveCaret(-1, shift);
-                    case GLFW.GLFW_KEY_RIGHT -> textEditor.moveCaret(1, shift);
-                    case GLFW.GLFW_KEY_UP -> textEditor.moveCaretVertical(-1, shift);
-                    case GLFW.GLFW_KEY_DOWN -> textEditor.moveCaretVertical(1, shift);
-                    case GLFW.GLFW_KEY_HOME -> textEditor.moveCaretToStart(shift);
-                    case GLFW.GLFW_KEY_END -> textEditor.moveCaretToEnd(shift);
+                    case InputKeys.ESCAPE -> closeTextEditor(false);
+                    case InputKeys.ENTER, InputKeys.KP_ENTER -> textEditor.insertNewline();
+                    case InputKeys.BACKSPACE -> textEditor.backspace();
+                    case InputKeys.DELETE -> textEditor.deleteForward();
+                    case InputKeys.LEFT -> textEditor.moveCaret(-1, shift);
+                    case InputKeys.RIGHT -> textEditor.moveCaret(1, shift);
+                    case InputKeys.UP -> textEditor.moveCaretVertical(-1, shift);
+                    case InputKeys.DOWN -> textEditor.moveCaretVertical(1, shift);
+                    case InputKeys.HOME -> textEditor.moveCaretToStart(shift);
+                    case InputKeys.END -> textEditor.moveCaretToEnd(shift);
                     default -> {
-                        if (key == GLFW.GLFW_KEY_V && ctrl) textEditor.pasteFromClipboard();
-                        if (key == GLFW.GLFW_KEY_C && ctrl) textEditor.copySelection();
-                        if (key == GLFW.GLFW_KEY_X && ctrl) textEditor.cutSelection();
-                        if (key == GLFW.GLFW_KEY_A && ctrl) textEditor.selectAll();
+                        if (shortcutKey == 'v' && shortcut) textEditor.pasteFromClipboard();
+                        if (shortcutKey == 'c' && shortcut) textEditor.copySelection();
+                        if (shortcutKey == 'x' && shortcut) textEditor.cutSelection();
+                        if (shortcutKey == 'a' && shortcut) textEditor.selectAll();
                     }
                 }
             }
@@ -407,18 +426,17 @@ public enum ClickGuiRenderer {
         }
 
         if (protocolHeuristicsEditor != null) {
-            return protocolHeuristicsEditor.keyPressed(key, scancode, action, mods);
+            return protocolHeuristicsEditor.keyPressed(inputKey, action, modifiers);
         }
 
         if (picker != null) {
-            if (action == GLFW.GLFW_PRESS || action == GLFW.GLFW_REPEAT) {
-                boolean ctrl = (mods & GLFW.GLFW_MOD_CONTROL) != 0;
+            if (action.isDown()) {
                 switch (key) {
-                    case GLFW.GLFW_KEY_ESCAPE -> closePicker();
-                    case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> picker.stopListening();
+                    case InputKeys.ESCAPE -> closePicker();
+                    case InputKeys.ENTER, InputKeys.KP_ENTER -> picker.stopListening();
                     default -> {
-                        if (key == GLFW.GLFW_KEY_F && ctrl) picker.toggleListening();
-                        else picker.keyPressed(key, mods);
+                        if (shortcutKey == 'f' && modifiers.shortcut()) picker.toggleListening();
+                        else picker.keyPressed(key, shortcutKey, modifiersMask);
                     }
                 }
             }
@@ -426,14 +444,13 @@ public enum ClickGuiRenderer {
         }
 
         if (inlineTextOwner != null && inlineTextBuffer != null) {
-            if (action == GLFW.GLFW_PRESS || action == GLFW.GLFW_REPEAT) {
-                boolean ctrl = (mods & GLFW.GLFW_MOD_CONTROL) != 0;
+            if (action.isDown()) {
                 switch (key) {
-                    case GLFW.GLFW_KEY_ESCAPE -> finishInlineText(false);
-                    case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> finishInlineText(true);
-                    case GLFW.GLFW_KEY_BACKSPACE, GLFW.GLFW_KEY_DELETE -> inlineBackspace();
+                    case InputKeys.ESCAPE -> finishInlineText(false);
+                    case InputKeys.ENTER, InputKeys.KP_ENTER -> finishInlineText(true);
+                    case InputKeys.BACKSPACE, InputKeys.DELETE -> inlineBackspace();
                     default -> {
-                        if (key == GLFW.GLFW_KEY_V && ctrl) inlinePaste();
+                        if (shortcutKey == 'v' && modifiers.shortcut()) inlinePaste();
                     }
                 }
             }
@@ -442,27 +459,27 @@ public enum ClickGuiRenderer {
 
         if (waitingForKey) {
 
-            if (key == GLFW.GLFW_KEY_ESCAPE) {
+            if (key == InputKeys.ESCAPE) {
                 submitKeySelection((String) null);
                 finishKeyBind();
                 return true;
             }
 
-            if (action == GLFW.GLFW_PRESS) {
-                if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+            if (action == InputAction.PRESS) {
+                if (key == InputKeys.ENTER || key == InputKeys.KP_ENTER) {
                     submitKeySelection(pendingBindKeys);
                     finishKeyBind();
                     return true;
                 }
 
-                addPendingKey(key, scancode);
+                addPendingKey(inputKey);
             }
 
             return true;
         }
 
-        if (action == GLFW.GLFW_PRESS || action == GLFW.GLFW_REPEAT) {
-            return getActiveSection().keyPressed(key, scancode, mods);
+        if (action.isDown()) {
+            return getActiveSection().keyPressed(key, shortcutKey, modifiersMask);
         }
         return false;
     }
@@ -563,10 +580,11 @@ public enum ClickGuiRenderer {
     }
 
     public static void onClose() {
+        combatant.client.input.minecraft.CombatantTextInputBridge.clear();
         if (!cursorShown) return;
-        long handle = MC.getWindow().handle();
-
-        GLFW.glfwSetInputMode(handle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
+        if (!ClickGui.isSuppressScreenClose()) {
+            MC.mouseHandler.grabMouse();
+        }
         SystemCursor.invalidate();
         cursorShown = false;
         DraggableHudElementRegistry.setForceVisible(false);
@@ -585,11 +603,10 @@ public enum ClickGuiRenderer {
                 MC.mouseHandler.grabMouse();
                 SystemCursor.invalidate();
             } catch (Throwable ignored) {
-                GLFW.glfwSetInputMode(MC.getWindow().handle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
                 SystemCursor.invalidate();
             }
         } else {
-            GLFW.glfwSetInputMode(MC.getWindow().handle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
+            MC.mouseHandler.grabMouse();
             SystemCursor.invalidate();
         }
         cursorShown = false;
@@ -599,11 +616,7 @@ public enum ClickGuiRenderer {
     public static void ensureCursorShown() {
         if (cursorShown) return;
         if (MC == null || MC.getWindow() == null) return;
-        GLFW.glfwSetInputMode(
-                MC.getWindow().handle(),
-                GLFW.GLFW_CURSOR,
-                GLFW.GLFW_CURSOR_NORMAL
-        );
+        MC.mouseHandler.releaseMouse();
         SystemCursor.invalidate();
         cursorShown = true;
     }
@@ -639,11 +652,7 @@ public enum ClickGuiRenderer {
             SystemCursor.beginFrame(ctx);
             try {
                 if (enabled && !closingForExit && !cursorShown) {
-                    GLFW.glfwSetInputMode(
-                            MC.getWindow().handle(),
-                            GLFW.GLFW_CURSOR,
-                            GLFW.GLFW_CURSOR_NORMAL
-                    );
+                    MC.mouseHandler.releaseMouse();
                     SystemCursor.invalidate();
                     cursorShown = true;
                 }
@@ -651,6 +660,10 @@ public enum ClickGuiRenderer {
                 int fbh = MC.getWindow().getHeight();
                 int vw = Math.max(1, Math.round(HudScale.virtualWidth(fbw, fbh)));
                 int vh = Math.max(1, Math.round(HudScale.virtualHeight(fbw, fbh)));
+                if (!CombatantTextInputBridge.hasOwner() || CombatantTextInputBridge.owns(TEXT_INPUT_TARGET)) {
+                    CombatantTextInputBridge.focus(TEXT_INPUT_TARGET,
+                            Math.round(mouseX), Math.round(mouseY), Math.round(mouseX + 1f), Math.round(mouseY + 16f));
+                }
                 fbWidth = vw;
                 fbHeight = vh;
 
@@ -1723,23 +1736,22 @@ public enum ClickGuiRenderer {
         pendingBindKeys.clear();
     }
 
-    private static void addPendingKey(int keyCode, int scancode) {
-        int code = KeyUtil.fromKeyInput(keyCode, scancode);
-        if (code == KeyUtil.NONE) return;
-        pendingBindKeys.add(code);
+    private static void addPendingKey(InputKey key) {
+        if (key == null || key.physicalKey() == InputKeys.UNKNOWN) return;
+        pendingBindKeys.add(key);
     }
 
     private static void addPendingMouseButton(int button) {
-        if (button < GLFW.GLFW_MOUSE_BUTTON_1 || button > GLFW.GLFW_MOUSE_BUTTON_LAST) return;
-        pendingBindKeys.add(KeyUtil.mouseButtonToCode(button));
+        if (button < InputKeys.MOUSE_FIRST || button > InputKeys.MOUSE_LAST) return;
+        pendingBindKeys.add(InputKeyCatalog.mouseEvent(button));
     }
 
-    private static void submitKeySelection(Set<Integer> keys) {
+    private static void submitKeySelection(Set<InputKey> keys) {
         if (keys == null || keys.isEmpty()) {
             submitKeySelection((String) null);
             return;
         }
-        submitKeySelection(KeyUtil.comboToString(keys));
+        submitKeySelection(InputKeyCatalog.serializeChord(keys));
     }
 
     private static void submitKeySelection(String combo) {
@@ -1752,7 +1764,7 @@ public enum ClickGuiRenderer {
 
     public static String getPendingBindDisplay() {
         if (!waitingForKey) return null;
-        return pendingBindKeys.isEmpty() ? "..." : KeyUtil.comboToString(pendingBindKeys);
+        return pendingBindKeys.isEmpty() ? "..." : InputKeyCatalog.serializeChord(pendingBindKeys);
     }
 
     public static void openTextEditor(TextEditorOwner owner, String title, String seedText, float anchorX, float anchorY, float anchorW) {

@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 uniform sampler2D u_BaseColor;
 uniform sampler2D u_MetallicRoughness;
@@ -15,13 +16,13 @@ layout (std140) uniform AssetMaterial {
     vec4 u_UvTransformY[5];
 };
 
-in vec2 v_UV0;
-in vec2 v_UV1;
-in vec4 v_Color;
-in vec3 v_Normal;
-in vec4 v_Tangent;
+layout(location = 0) in vec2 v_UV0;
+layout(location = 1) in vec2 v_UV1;
+layout(location = 2) in vec4 v_Color;
+layout(location = 4) in vec3 v_Normal;
+layout(location = 5) in vec4 v_Tangent;
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
 
 const uint TEX_BASE = 1u << 0u;
 const uint TEX_MR = 1u << 1u;

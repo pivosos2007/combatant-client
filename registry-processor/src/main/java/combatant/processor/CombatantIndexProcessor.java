@@ -53,7 +53,7 @@ public final class CombatantIndexProcessor extends AbstractProcessor {
     private static final String CONFIG_OBJECT = "combatant.client.config.ConfigObject";
     private static final String PIPELINE_REGISTER =
             "combatant.client.render.engine.pipeline.PipelineRegister";
-    private static final String RENDER_PIPELINE = "com.mojang.blaze3d.pipeline.RenderPipeline";
+    private static final String RENDER_PIPELINE = "com.mojang.renderpearl.api.pipeline.RenderPipeline";
 
     private final Map<String, Set<String>> entries = new TreeMap<>();
     private boolean written;

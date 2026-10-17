@@ -8,11 +8,11 @@
 package combatant.client.features.gui.preview.render;
 
 import com.mojang.blaze3d.ProjectionType;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.ScissorState;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.features.gui.preview.VisualPreviewRuntime;
 import combatant.client.features.gui.preview.VisualPreviewSceneContext;
@@ -61,12 +61,10 @@ public enum VisualPreviewHandRenderer {
 
             SubmitNodeStorage subject = new SubmitNodeStorage();
             PoseStack subjectPose = new PoseStack();
-            mc.gameRenderer.itemInHandRenderer.submitHandsWithItems(
-                    context.tickDelta(),
-                    subjectPose,
-                    subject,
-                    mc.player,
-                    mc.getEntityRenderDispatcher().getPackedLightCoords(mc.player, context.tickDelta())
+            var playerRenderState = mc.gameRenderer.gameRenderState().levelRenderState.playerRenderState;
+            mc.gameRenderer.firstPersonHandsAndItemsRenderer.submitHandsWithItems(
+                    context.tickDelta(), subjectPose, subject, playerRenderState,
+                    playerRenderState.firstPersonHandsAndItems
             );
 
             // An empty hotbar must not produce an empty preview. The fallback is submitted into the
@@ -77,7 +75,11 @@ public enum VisualPreviewHandRenderer {
 
             Chams chams = Modules.get(Chams.class);
             SubmitNodeStorage maskSubject = chams == null ? null : chams.snapshotPreparedHandScene(subject);
-            dispatcher.renderAllFeatures(subject);
+            combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
+                    "combatant:visual-preview-hand", dispatcher, subject,
+                    mc.gameRenderer.mainRenderTarget().getColorTextureView(),
+                    mc.gameRenderer.mainRenderTarget().getDepthTextureView(),
+                    combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.ALL);
             renderBuffers.endFrame();
 
             if (chams != null && maskSubject != null && chams.renderPreparedHandScene(maskSubject)) {
@@ -94,8 +96,6 @@ public enum VisualPreviewHandRenderer {
     private static void enterPreviewState(Minecraft mc,
                                           VisualPreviewSceneContext context) {
         RenderState.rendering3D = true;
-        RenderSystem.outputColorTextureOverride = mc.gameRenderer.mainRenderTarget().getColorTextureView();
-        RenderSystem.outputDepthTextureOverride = mc.gameRenderer.mainRenderTarget().getDepthTextureView();
         RenderSystem.getDevice().createCommandEncoder()
                 .clearDepthTexture(mc.gameRenderer.mainRenderTarget().getDepthTexture(), 0.0D);
 
@@ -191,8 +191,6 @@ public enum VisualPreviewHandRenderer {
     }
 
     private record PreviewRenderState(
-            GpuTextureView outputColor,
-            GpuTextureView outputDepth,
             GpuBufferSlice projection,
             ProjectionType projectionType,
             Matrix4f modelView,
@@ -203,8 +201,6 @@ public enum VisualPreviewHandRenderer {
     ) {
         static PreviewRenderState capture() {
             return new PreviewRenderState(
-                    RenderSystem.outputColorTextureOverride,
-                    RenderSystem.outputDepthTextureOverride,
                     RenderSystem.getProjectionMatrixBuffer(),
                     RenderSystem.getProjectionType(),
                     RenderSystem.getModelViewMatrixCopy(),
@@ -220,8 +216,6 @@ public enum VisualPreviewHandRenderer {
             if (projection != null && projectionType != null) {
                 RenderSystem.setProjectionMatrix(projection, projectionType);
             }
-            RenderSystem.outputColorTextureOverride = outputColor;
-            RenderSystem.outputDepthTextureOverride = outputDepth;
             RenderSystem.setShaderLights(shaderLights);
             RenderSystem.setShaderFog(shaderFog);
             RenderSystem.getScissorStateForRenderTypeDraws().setFrom(scissor);

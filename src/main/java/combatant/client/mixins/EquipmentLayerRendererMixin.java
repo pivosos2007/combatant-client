@@ -16,11 +16,10 @@ import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.renderer.OrderedSubmitNodeCollector;
-import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
 import net.minecraft.client.renderer.entity.layers.EquipmentLayerRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.renderer.texture.UvMapping;
 import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -34,7 +33,7 @@ public abstract class EquipmentLayerRendererMixin {
             method = "renderLayers(Lnet/minecraft/client/resources/model/EquipmentClientInfo$LayerType;Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/client/model/Model;Ljava/lang/Object;Lnet/minecraft/world/item/ItemStack;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ILnet/minecraft/resources/Identifier;II)V",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/OrderedSubmitNodeCollector;submitModel(Lnet/minecraft/client/model/Model;Ljava/lang/Object;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/rendertype/RenderType;IIILnet/minecraft/client/renderer/texture/TextureAtlasSprite;ILnet/minecraft/client/renderer/feature/ModelFeatureRenderer$CrumblingOverlay;)V"
+                    target = "Lnet/minecraft/client/renderer/OrderedSubmitNodeCollector;submitModel(Lnet/minecraft/client/model/Model;Ljava/lang/Object;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/rendertype/RenderType;IIILnet/minecraft/client/renderer/texture/UvMapping;I)V"
             )
     )
     private void combatant$submitRiggedArmor(
@@ -46,21 +45,20 @@ public abstract class EquipmentLayerRendererMixin {
             int light,
             int overlay,
             int tint,
-            TextureAtlasSprite sprite,
+            UvMapping uvMapping,
             int outlineColor,
-            ModelFeatureRenderer.CrumblingOverlay crumbling,
             Operation<Void> original
     ) {
         PlayerRigInstance rig = PlayerRigRenderContext.current();
         if (rig != null && model instanceof HumanoidModel<?> humanoid
                 && PlayerRigCpuRenderer.submitArmor(
-                        collector, humanoid, rig, matrices, renderType, light, overlay, tint, sprite,
-                        outlineColor, crumbling
+                        collector, humanoid, rig, matrices, renderType, light, overlay, tint, uvMapping,
+                        outlineColor, null
                 )) {
             return;
         }
         original.call(collector, model, modelState, matrices, renderType, light, overlay, tint,
-                sprite, outlineColor, crumbling);
+                uvMapping, outlineColor);
     }
 
     @Redirect(
@@ -72,7 +70,7 @@ public abstract class EquipmentLayerRendererMixin {
             return RenderTypes.armorCutoutNoCull(texture);
         }
         if (ViewObstructionFadeContext.isActive() && ViewObstructionFadeContext.alpha() < 0.99f) {
-            return RenderTypes.armorTranslucent(texture);
+            return RenderTypes.entityTranslucent(texture);
         }
         return RenderTypes.armorCutoutNoCull(texture);
     }

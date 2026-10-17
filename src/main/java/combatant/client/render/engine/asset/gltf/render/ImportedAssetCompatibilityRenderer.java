@@ -5,7 +5,7 @@
  */
 package combatant.client.render.engine.asset.gltf.render;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.render.engine.asset.gltf.gpu.GltfGpuAssetResidency;
@@ -153,8 +153,8 @@ public final class ImportedAssetCompatibilityRenderer {
     private static void submitHandInstance(ArrayList<RhiDrawCommand> commands,
                                            SceneAssetInstance<?> instance,
                                            GltfSceneInstanceAsset source,
-                                           com.mojang.blaze3d.textures.GpuTextureView color,
-                                           com.mojang.blaze3d.textures.GpuTextureView depth) {
+                                           com.mojang.renderpearl.api.textures.GpuTextureView color,
+                                           com.mojang.renderpearl.api.textures.GpuTextureView depth) {
         GltfGpuAssetResidency residency = GltfGpuResidencyManager.global().acquire(
                 CombatantRenderSystem.rhi(), source.asset());
         Matrix4f handLocal = new Matrix4f(instance.currentWorldTransform());
@@ -198,8 +198,8 @@ public final class ImportedAssetCompatibilityRenderer {
                                        SceneAssetInstance<?> instance,
                                        GltfSceneInstanceAsset source,
                                        Vec3 camera,
-                                       com.mojang.blaze3d.textures.GpuTextureView color,
-                                       com.mojang.blaze3d.textures.GpuTextureView depth,
+                                       com.mojang.renderpearl.api.textures.GpuTextureView color,
+                                       com.mojang.renderpearl.api.textures.GpuTextureView depth,
                                        int[] counters) {
         GltfGpuAssetResidency residency = GltfGpuResidencyManager.global().acquire(
                 CombatantRenderSystem.rhi(), source.asset());

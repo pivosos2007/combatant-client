@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.pipeline;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import net.minecraft.resources.Identifier;
 
 /**

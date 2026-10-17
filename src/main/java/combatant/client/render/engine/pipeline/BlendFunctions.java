@@ -7,16 +7,16 @@
 
 package combatant.client.render.engine.pipeline;
 
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.platform.BlendFactor;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.BlendFactor;
 
 import java.util.Objects;
 
 /**
- * Typed blend helpers backed directly by Blaze3D's pipeline state.
+ * Typed blend helpers backed directly by RenderPearl pipeline state.
  *
  * <p>Renderer and feature code should use Mojang {@link BlendFactor} values instead of
- * OpenGL/Vulkan constants. Blaze3D is then responsible for lowering the same
+ * OpenGL/Vulkan constants. RenderPearl is then responsible for lowering the same
  * {@link BlendFunction} to the active graphics backend.</p>
  */
 public final class BlendFunctions {

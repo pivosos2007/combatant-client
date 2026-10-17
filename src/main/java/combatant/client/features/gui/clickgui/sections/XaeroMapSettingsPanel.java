@@ -91,7 +91,6 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import org.lwjgl.glfw.GLFW;
 import xaero.lib.client.config.ClientConfigManager;
 import xaero.lib.common.config.Config;
 import xaero.lib.common.config.option.BooleanConfigOption;
@@ -593,7 +592,7 @@ final class XaeroMapSettingsPanel {
             close();
             return true;
         }
-        if (!overlayHost.hasActiveOverlay() && button == GLFW.GLFW_MOUSE_BUTTON_LEFT && scrollbarVisible
+        if (!overlayHost.hasActiveOverlay() && button == combatant.client.input.InputKeys.MOUSE_LEFT && scrollbarVisible
                 && inside(mouseX, mouseY, scrollbarX - 4.0f, scrollbarY,
                 scrollbarW + 8.0f, scrollbarH)) {
             scrollbarDragging = true;
@@ -603,14 +602,14 @@ final class XaeroMapSettingsPanel {
             scrollToMouse(mouseY);
             return true;
         }
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && inside(mouseX, mouseY, closeX, closeY, closeW, closeH)) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && inside(mouseX, mouseY, closeX, closeY, closeW, closeH)) {
             close();
             return true;
         }
         if (searchComponent.click(searchX, searchY, searchW, searchH, mouseX, mouseY, button, searchModel)) {
             return true;
         }
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
             for (CategoryHit hit : categoryHits) {
                 if (!hit.contains(mouseX, mouseY)) continue;
                 if (selectedCategory != hit.category) {
@@ -635,7 +634,7 @@ final class XaeroMapSettingsPanel {
 
     void mouseReleased(float mouseX, float mouseY, int button) {
         if (!open) return;
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) scrollbarDragging = false;
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) scrollbarDragging = false;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAP_SETTINGS, MAP_SETTING_SCALE, overlayHost)) {
             if (overlayHost.hasActiveOverlay()) {
                 overlayHost.mouseReleased(mouseX, mouseY, button);
@@ -665,7 +664,7 @@ final class XaeroMapSettingsPanel {
             if (overlayHost.hasActiveOverlay() && overlayHost.keyPressed(keyCode, scanCode, modifiers)) return true;
         }
         if (searchFocused) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
                 if (!searchInput.text().isEmpty()) {
                     searchInput.clear();
                     search = searchInput.text();
@@ -673,13 +672,13 @@ final class XaeroMapSettingsPanel {
                 resetScroll();
                 return true;
             }
-            if (searchInput.keyPressed(keyCode, modifiers)) {
+            if (searchInput.keyPressed(keyCode, scanCode, modifiers)) {
                 search = searchInput.text();
                 resetScroll();
                 return true;
             }
             return true;
-        } else if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+        } else if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
             close();
             return true;
         }
@@ -2003,7 +2002,7 @@ final class XaeroMapSettingsPanel {
 
         @Override
         public void mouseClicked(double mx, double my, int button) {
-            if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return;
+            if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
             for (ModeHit hit : modeHits) {
                 if (!inside((float) mx, (float) my, hit.x, hit.y, hit.w, hit.h)) continue;
                 MapTriangulationConfig.get().setMode(hit.mode);
@@ -2241,7 +2240,7 @@ final class XaeroMapSettingsPanel {
 
         @Override
         public void mouseClicked(double mx, double my, int button) {
-            if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return;
+            if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
             if (inside((float) mx, (float) my, inputX, inputY, inputW, inputH)) {
                 searchFocused = false;
                 inputFocused = true;
@@ -2270,26 +2269,26 @@ final class XaeroMapSettingsPanel {
 
         @Override
         public void mouseClickedOutside(double mx, double my, int button) {
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) inputFocused = false;
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT) inputFocused = false;
         }
 
         @Override
         public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
             if (!inputFocused) return false;
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
                 inputFocused = false;
                 return true;
             }
-            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+            if (keyCode == combatant.client.input.InputKeys.ENTER || keyCode == combatant.client.input.InputKeys.KP_ENTER) {
                 commitInput();
                 return true;
             }
-            if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !playerInput.isEmpty()) {
+            if (keyCode == combatant.client.input.InputKeys.BACKSPACE && !playerInput.isEmpty()) {
                 playerInput = playerInput.substring(0, playerInput.length() - 1);
                 inputFocusedAtMs = System.currentTimeMillis();
                 return true;
             }
-            if ((modifiers & GLFW.GLFW_MOD_CONTROL) != 0 && keyCode == GLFW.GLFW_KEY_V) {
+            if ((modifiers & combatant.client.input.InputModifierMask.SHORTCUT) != 0 && scanCode == 'v') {
                 String clip = ClipboardUtil.get();
                 if (clip != null && !clip.isBlank()) {
                     playerInput = ChatNameUtil.normalizeNickCandidate(clip);
@@ -2995,7 +2994,7 @@ final class XaeroMapSettingsPanel {
 
         @Override
         public void mouseClicked(double mx, double my, int button) {
-            if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return;
+            if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
             if (inside((float) mx, (float) my, createX, createY, createW, createH)) {
                 createPressAnim = 1.0f;
                 createMapLinkProfile();

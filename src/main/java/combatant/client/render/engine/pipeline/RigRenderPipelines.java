@@ -13,9 +13,9 @@
 
 package combatant.client.render.engine.pipeline;
 
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.shaders.UniformType;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.UniformType;
 import combatant.client.render.engine.rhi.pipeline.PipelineDomain;
 import combatant.client.render.engine.vertex.CombatantVertexFormats;
 import net.minecraft.resources.Identifier;
@@ -92,7 +92,7 @@ public final class RigRenderPipelines {
                 .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/" + path))
                 .withDomain(PipelineDomain.WORLD)
                 .withVertexFormat(CombatantVertexFormats.ASSET_PBR_STATIC,
-                        com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+                        com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                 .withVertexShader(shader("asset_compat.vert"))
                 .withFragmentShader(shader("asset_compat.frag"))
                 .withSampler("u_BaseColor")
@@ -118,7 +118,7 @@ public final class RigRenderPipelines {
                 .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/" + path))
                 .withDomain(PipelineDomain.WORLD)
                 .withVertexFormat(CombatantVertexFormats.RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM,
-                        com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+                        com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                 .withVertexShader(shader("rig_textured.vert"))
                 .withFragmentShader(fragmentShader)
                 .withDepthTestFunction(depthTest ? DepthTestFunction.GEQUAL_DEPTH_TEST : DepthTestFunction.NO_DEPTH_TEST)
@@ -134,7 +134,7 @@ public final class RigRenderPipelines {
                 .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/" + path))
                 .withDomain(PipelineDomain.WORLD)
                 .withVertexFormat(CombatantVertexFormats.RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM,
-                        com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+                        com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                 .withVertexShader(shader("rig_textured.vert"))
                 .withFragmentShader(fragmentShader)
                 .withSampler("u_Texture")

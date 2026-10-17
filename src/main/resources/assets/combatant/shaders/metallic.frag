@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,7 +8,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Src;
 uniform sampler2D u_Mask;
@@ -19,7 +20,7 @@ layout (std140) uniform Metallic {
     vec4 u_Params1; // time, sweepSpeed, sweepScale, padding
 };
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
 void main() {
     vec4 base = texture(u_Src, v_TexCoord);

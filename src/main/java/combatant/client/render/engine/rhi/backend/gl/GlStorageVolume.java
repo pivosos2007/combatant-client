@@ -6,7 +6,7 @@
  */
 package combatant.client.render.engine.rhi.backend.gl;
 
-import com.mojang.blaze3d.opengl.GlConst;
+import com.mojang.renderpearl.backend.opengl.GlConst;
 import combatant.client.render.engine.rhi.RhiStats;
 import combatant.client.render.engine.rhi.shader.RhiFeatureSupport;
 import combatant.client.render.engine.rhi.shader.RhiStorageVolume;

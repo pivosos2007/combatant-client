@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -13,16 +14,16 @@
  * - Crystal hover uses a lightweight continuous faceted surface inspired by Xenolith-style crystal glazing.
  */
 
-in vec4 v_Local;
-in vec4 v_Color;
-in vec4 v_Rect;
-in vec4 v_CornerModes;
-in vec4 v_CornerExtentX;
-in vec4 v_CornerExtentY;
-in vec4 v_EdgeModes;
-in vec4 v_EdgeData;
+layout(location = 1) in vec4 v_Local;
+layout(location = 2) in vec4 v_Color;
+layout(location = 3) in vec4 v_Rect;
+layout(location = 4) in vec4 v_CornerModes;
+layout(location = 5) in vec4 v_CornerExtentX;
+layout(location = 6) in vec4 v_CornerExtentY;
+layout(location = 7) in vec4 v_EdgeModes;
+layout(location = 8) in vec4 v_EdgeData;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen;
@@ -266,9 +267,9 @@ vec4 flameSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1
     return vec4(color, saturate(alpha));
 }
 
-#moj_import <combatant:ui_module_hover_movement.glsl>
-#moj_import <combatant:ui_module_hover_crystal.glsl>
-#moj_import <combatant:ui_module_hover_water.glsl>
+#include <combatant:ui_module_hover_movement.glsl>
+#include <combatant:ui_module_hover_crystal.glsl>
+#include <combatant:ui_module_hover_water.glsl>
 
 vec4 plasmaSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1, vec3 hi) {
     vec2 q = p * vec2(0.92, 2.4);

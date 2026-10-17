@@ -8,6 +8,7 @@
 package combatant.client.features.gui.mainmenu;
 
 import combatant.client.util.text.SingleLineTextInput;
+import combatant.client.input.minecraft.MinecraftInputAdapter;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 
@@ -135,7 +136,7 @@ public final class CombatantProxyManagerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-        if (click.button() != 0) return true;
+        if (click.button() != combatant.client.input.InputKeys.MOUSE_LEFT) return true;
         return handleClick(toFixedX((float) click.x()), toFixedY((float) click.y()));
     }
 
@@ -146,7 +147,7 @@ public final class CombatantProxyManagerScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent click) {
-        if (click.button() == 0) SingleLineTextInput.mouseReleased();
+        if (click.button() == combatant.client.input.InputKeys.MOUSE_LEFT) SingleLineTextInput.mouseReleased();
         return super.mouseReleased(click);
     }
 
@@ -154,7 +155,8 @@ public final class CombatantProxyManagerScreen extends Screen {
     public boolean keyPressed(KeyEvent input) {
         if (focusedField != null) {
             int key = input.key();
-            if (editors[focusedField.index].keyPressed(key, input.modifiers())) {
+            if (editors[focusedField.index].keyPressed(
+                    MinecraftInputAdapter.key(input), MinecraftInputAdapter.modifiers(input))) {
                 values[focusedField.index] = editors[focusedField.index].text();
                 return true;
             }
@@ -162,11 +164,11 @@ public final class CombatantProxyManagerScreen extends Screen {
                 focusedField = focusedField.next();
                 return true;
             }
-            if (key == 257 || key == 335) {
+            if (key == combatant.client.input.InputKeys.ENTER || key == combatant.client.input.InputKeys.KP_ENTER) {
                 saveProxy();
                 return true;
             }
-            if (key == 256) {
+            if (key == combatant.client.input.InputKeys.ESCAPE) {
                 editors[focusedField.index].unfocus();
                 focusedField = null;
                 return true;
@@ -174,7 +176,7 @@ public final class CombatantProxyManagerScreen extends Screen {
             return true;
         }
 
-        if (input.key() == 256) {
+        if (input.key() == combatant.client.input.InputKeys.ESCAPE) {
             closeToParent();
             return true;
         }

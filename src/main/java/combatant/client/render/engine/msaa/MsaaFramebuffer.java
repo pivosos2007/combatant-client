@@ -7,10 +7,10 @@
 
 package combatant.client.render.engine.msaa;
 
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import combatant.client.mixininterface.IMsaaTexture;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import lombok.Getter;
@@ -20,7 +20,7 @@ public final class MsaaFramebuffer extends RenderTarget {
     private int samples;
 
     public MsaaFramebuffer(String name, int width, int height, boolean useDepthAttachment, int samples) {
-        super(name, useDepthAttachment, GpuFormat.RGBA8_UNORM);
+        super(name, GpuFormat.RGBA8_UNORM, useDepthAttachment ? GpuFormat.D32_FLOAT : null);
         this.samples = samples;
         RenderSystem.assertOnRenderThread();
         this.resize(width, height);
@@ -46,7 +46,7 @@ public final class MsaaFramebuffer extends RenderTarget {
                 | GpuTexture.USAGE_RENDER_ATTACHMENT;
 
         try {
-            if (this.useDepth) {
+            if (this.depthFormat != null) {
                 this.depthTexture = CombatantRenderSystem.rhi().msaa().createTexture(
                         this.label + " / Depth",
                         usage,

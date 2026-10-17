@@ -31,7 +31,6 @@ public abstract class BiomeMixin implements IBiome {
             EnvironmentAttributeMap attributes,
             BiomeSpecialEffects specialEffects,
             BiomeGenerationSettings generationSettings,
-            MobSpawnSettings mobSettings,
             CallbackInfo ci
     ) {
         combatant$downfall = ((BiomeClimateSettingsAccessor) climateSettings).combatant$getDownfall();

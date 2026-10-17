@@ -7,12 +7,12 @@
 
 package combatant.client.render.engine.rhi.backend.gl.clip;
 
-import com.mojang.blaze3d.opengl.FrameBufferAttachment;
-import com.mojang.blaze3d.opengl.GlConst;
-import com.mojang.blaze3d.opengl.GlStateManager;
-import com.mojang.blaze3d.opengl.GlTextureView;
+import com.mojang.renderpearl.backend.opengl.FrameBufferAttachment;
+import com.mojang.renderpearl.backend.opengl.GlConst;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
+import com.mojang.renderpearl.backend.opengl.GlTextureView;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.*;

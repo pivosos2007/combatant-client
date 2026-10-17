@@ -21,8 +21,8 @@ import combatant.client.render.engine.uniform.impl.MenuTextureTransitionUniforms
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
 import combatant.client.runtime.RuntimeGate;
 import com.mojang.blaze3d.ProjectionType;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;

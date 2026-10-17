@@ -7,11 +7,11 @@
 
 package combatant.client.render.engine.rhi.backend.vulkan.clip;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.systems.RenderPassDescriptor;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateBridge;
 import combatant.client.util.logging.DebugLog;

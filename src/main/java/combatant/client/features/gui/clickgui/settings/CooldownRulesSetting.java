@@ -208,7 +208,7 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
 
     @Override
     public boolean mouseClickedPickerDetails(float mouseX, float mouseY, int button) {
-        if (button != 0) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
 
         for (ActionHit hit : new ArrayList<>(ui.actionHits)) {
             if (!inside(mouseX, mouseY, hit.x, hit.y, hit.w, hit.h)) continue;

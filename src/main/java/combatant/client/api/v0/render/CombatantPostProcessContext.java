@@ -7,7 +7,7 @@
 
 package combatant.client.api.v0.render;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.postprocess.PostProcessPass;
 import net.minecraft.client.Minecraft;
 

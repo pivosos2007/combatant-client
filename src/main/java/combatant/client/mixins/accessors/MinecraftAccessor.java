@@ -8,9 +8,9 @@
 package combatant.client.mixins.accessors;
 
 import com.mojang.authlib.minecraft.UserApiService;
-import com.mojang.authlib.yggdrasil.FriendsService;
-import com.mojang.authlib.yggdrasil.ProfileResult;
-import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
+import com.mojang.authlib.services.FriendsService;
+import com.mojang.authlib.services.ProfileResult;
+import com.mojang.authlib.services.MinecraftServicesDiscoveryService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.User;
 import net.minecraft.client.gui.screens.social.PlayerSocialManager;
@@ -80,7 +80,7 @@ public interface MinecraftAccessor {
     void combatant$setReportingContext(ReportingContext reportingContext);
 
     @Invoker("createUserApiService")
-    static UserApiService combatant$createUserApiService(YggdrasilAuthenticationService service, GameConfig config) {
+    static UserApiService combatant$createUserApiService(MinecraftServicesDiscoveryService service, GameConfig config) {
         throw new AssertionError();
     }
 }

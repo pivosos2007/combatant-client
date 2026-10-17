@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,7 +8,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Src;
 uniform sampler2D u_Mask;
@@ -21,7 +22,7 @@ layout (std140) uniform HandRift {
     vec4 u_Effects;  // x = glow strength, y = shadow strength, zw reserved
 };
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
 const vec3 RIFT_LUMA = vec3(0.2126, 0.7152, 0.0722);
 const vec2 RIFT_EDGE_START_8[4] = vec2[](

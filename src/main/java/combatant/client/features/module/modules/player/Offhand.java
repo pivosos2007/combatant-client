@@ -796,7 +796,7 @@ public final class Offhand extends Module {
             consumeRequestTick = player.tickCount;
             consumingStack = display.copy();
             consumeDisplayUntilTick = player.tickCount + 16;
-            player.swing(hand);
+            player.swing(hand, player.getItemInHand(hand).getInteractAnimation(), false);
             gappleConsumption = isGapple(display);
             gappleWasEnchanted = display.is(Items.ENCHANTED_GOLDEN_APPLE);
             if (gappleConsumption) appleAbsorptionGuardUntilTick = Math.max(

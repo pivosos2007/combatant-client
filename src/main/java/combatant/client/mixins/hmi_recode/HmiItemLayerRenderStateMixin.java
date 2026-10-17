@@ -11,14 +11,15 @@ package combatant.client.mixins.hmi_recode;
 import combatant.client.features.hmi_recode.HoldMyItems;
 import combatant.client.features.hmi_recode.render.HmiModelCommand;
 import combatant.client.features.hmi_recode.render.HmiModelQuadList;
-import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.client.resources.model.geometry.ItemQuads;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
 import java.util.List;
 
-@Mixin(targets = "net.minecraft.client.renderer.item.ItemStackRenderState$LayerRenderState")
+@Mixin(ItemStackRenderState.LayerRenderState.class)
 public abstract class HmiItemLayerRenderStateMixin {
     /**
      * Do not redirect SubmitNodeCollector.submitItem here. Fabric Renderer API redirects the exact
@@ -32,16 +33,16 @@ public abstract class HmiItemLayerRenderStateMixin {
             method = "submit",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/SubmitNodeCollector;submitItem(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemDisplayContext;III[ILjava/util/List;Lnet/minecraft/client/renderer/item/ItemStackRenderState$FoilType;)V"
+                    target = "Lnet/minecraft/client/renderer/SubmitNodeCollector;submitItem(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemDisplayContext;III[ILnet/minecraft/client/resources/model/geometry/ItemQuads;Lnet/minecraft/client/renderer/item/ItemStackRenderState$FoilType;)V"
             ),
             index = 6
     )
-    private List<BakedQuad> combatant$hmi$attachModelPose(List<BakedQuad> quads) {
+    private ItemQuads combatant$hmi$attachModelPose(ItemQuads quads) {
         if (quads.isEmpty()) return quads;
 
         List<HmiModelCommand> commands = HoldMyItems.snapshotModelCommands();
         if (commands.isEmpty()) return quads;
 
-        return new HmiModelQuadList(quads, commands);
+        return HmiModelQuadList.wrap(quads, commands);
     }
 }

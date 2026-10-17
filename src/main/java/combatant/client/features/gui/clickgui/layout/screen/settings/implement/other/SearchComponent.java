@@ -74,7 +74,7 @@ public final class SearchComponent {
 
     public boolean click(float x, float y, float w, float h,
                          float mx, float my, int button, Model model) {
-        if (button != 0) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         Model state = model != null ? model : CLICK_GUI_MODEL;
         boolean inside = ClickGuiMath.insideRect(mx, my, x, y, w, h);
         if (inside) {
@@ -84,8 +84,10 @@ public final class SearchComponent {
                 state.editor().layout(x + 4f * scale, w - 17f * scale, ClickGuiRenderer.getInterRegular(), 12f * scale);
                 var window = net.minecraft.client.Minecraft.getInstance().getWindow();
                 state.editor().beginDrag(mx,
-                        com.mojang.blaze3d.platform.InputConstants.isKeyDown(window, org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT)
-                                || com.mojang.blaze3d.platform.InputConstants.isKeyDown(window, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT));
+                combatant.client.input.CombatantInput.state().isPressed(
+                        combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.LEFT_SHIFT)
+                                || combatant.client.input.CombatantInput.state().isPressed(
+                        combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.RIGHT_SHIFT));
             }
             return true;
         }

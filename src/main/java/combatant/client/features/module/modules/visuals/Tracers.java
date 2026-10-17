@@ -7,8 +7,8 @@
 
 package combatant.client.features.module.modules.visuals;
 
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.features.module.*;
 import combatant.client.features.module.Module;
 import combatant.client.util.screen.ClientScreen;

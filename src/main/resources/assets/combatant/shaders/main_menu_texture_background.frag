@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -8,8 +9,8 @@
  * Material and layout direction: pivosos2007.
  */
 
-out vec4 color;
-in vec2 v_TexCoord;
+layout(location = 0) out vec4 color;
+layout(location = 0) in vec2 v_TexCoord;
 uniform sampler2D u_PreviousTexture;
 uniform sampler2D u_Texture;
 

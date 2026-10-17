@@ -1,12 +1,13 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
-in vec4 v_Local;
-in vec2 v_TexCoord;
-in vec4 v_Color;
-in vec4 v_Rect;
-in vec4 v_Params; // radius, softness, mask mode, reserved
+layout(location = 1) in vec4 v_Local;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 2) in vec4 v_Color;
+layout(location = 3) in vec4 v_Rect;
+layout(location = 4) in vec4 v_Params; // radius, softness, mask mode, reserved
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 uniform sampler2D u_Texture;
 
@@ -15,10 +16,10 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
-#moj_import <combatant:ui_aa.glsl>
-#moj_import <combatant:ui_geometry.glsl>
+#include <combatant:ui_aa.glsl>
+#include <combatant:ui_geometry.glsl>
 #ifdef COMBATANT_ANALYTIC_CLIP
-#moj_import <combatant:ui_clip.glsl>
+#include <combatant:ui_clip.glsl>
 #endif
 
 vec2 warpedLocal(vec4 local) {

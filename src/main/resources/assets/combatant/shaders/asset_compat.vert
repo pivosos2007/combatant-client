@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 layout (location = 0) in vec3 Position;
 layout (location = 1) in vec2 UV0;
@@ -12,11 +13,11 @@ layout (std140) uniform MeshData {
     mat4 u_ModelView;
 };
 
-out vec2 v_UV0;
-out vec2 v_UV1;
-out vec4 v_Color;
-out vec3 v_Normal;
-out vec4 v_Tangent;
+layout(location = 0) out vec2 v_UV0;
+layout(location = 1) out vec2 v_UV1;
+layout(location = 2) out vec4 v_Color;
+layout(location = 4) out vec3 v_Normal;
+layout(location = 5) out vec4 v_Tangent;
 
 void main() {
     vec4 viewPosition = u_ModelView * vec4(Position, 1.0);

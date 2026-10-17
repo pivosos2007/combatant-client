@@ -12,7 +12,7 @@ import combatant.client.features.command.CommandContext;
 import combatant.client.features.command.CommandInfo;
 import combatant.client.features.command.CommandOutput;
 import combatant.client.features.module.Module;
-import combatant.client.util.input.KeyUtil;
+import combatant.client.input.InputKeyCatalog;
 
 import java.util.List;
 import java.util.Locale;
@@ -42,13 +42,14 @@ public final class BindCommand implements ClientCommand {
             return true;
         }
         String normalized = key.trim().toUpperCase(Locale.ROOT);
-        if (!normalized.equals("NONE") && KeyUtil.stringToCombo(normalized).isEmpty()) {
+        if (!InputKeyCatalog.isValidChord(normalized)) {
             CommandOutput.error("Unknown key or combo: " + key);
             return true;
         }
-        module.getKeyBindSetting().setKeyByName(normalized);
+        String serialized = InputKeyCatalog.serializeChord(InputKeyCatalog.parseChord(normalized).keys());
+        module.getKeyBindSetting().setKeyByName(serialized);
         module.saveConfig();
-        CommandOutput.success(module.getDisplayName() + " bound to " + normalized);
+        CommandOutput.success(module.getDisplayName() + " bound to " + serialized);
         return true;
     }
 

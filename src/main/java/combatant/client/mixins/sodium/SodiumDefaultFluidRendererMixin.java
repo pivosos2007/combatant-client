@@ -9,14 +9,22 @@ import combatant.client.render.engine.material.MaterialClassification;
 import combatant.client.render.engine.material.MaterialRegistry;
 import combatant.client.render.engine.material.MaterialSurfaceDescriptor;
 import combatant.client.render.sodium.terrain.CombatantChunkVertexExtension;
+import combatant.client.render.sodium.fluid.FluidSurfaceContext;
+import combatant.client.render.sodium.fluid.FluidSurfaceData;
+import combatant.client.render.sodium.fluid.FluidSurfaceMetadataCapture;
+import net.caffeinemc.mods.sodium.client.model.color.ColorProvider;
 import net.caffeinemc.mods.sodium.client.model.quad.ModelQuadView;
 import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.buffers.ChunkModelBuilder;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.material.Material;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.TranslucentGeometryCollector;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEncoder;
+import net.caffeinemc.mods.sodium.client.world.LevelSlice;
+import net.minecraft.client.renderer.block.FluidModel;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -32,6 +40,36 @@ public abstract class SodiumDefaultFluidRendererMixin {
     @Shadow(remap = false)
     @Final
     private ChunkVertexEncoder.Vertex[] vertices;
+
+    @Inject(method = "render", at = @At("HEAD"), remap = false)
+    private void combatant$pushFluidMetadata(LevelSlice level,
+                                              BlockState blockState,
+                                              FluidState fluidState,
+                                              BlockPos worldPos,
+                                              BlockPos renderOrigin,
+                                              TranslucentGeometryCollector collector,
+                                              ChunkModelBuilder builder,
+                                              Material material,
+                                              ColorProvider<FluidState> colorProvider,
+                                              FluidModel model,
+                                              CallbackInfo ci) {
+        FluidSurfaceContext.push(level, blockState, fluidState, worldPos, renderOrigin);
+    }
+
+    @Inject(method = "render", at = @At("RETURN"), remap = false)
+    private void combatant$popFluidMetadata(LevelSlice level,
+                                             BlockState blockState,
+                                             FluidState fluidState,
+                                             BlockPos worldPos,
+                                             BlockPos renderOrigin,
+                                             TranslucentGeometryCollector collector,
+                                             ChunkModelBuilder builder,
+                                             Material material,
+                                             ColorProvider<FluidState> colorProvider,
+                                             FluidModel model,
+                                             CallbackInfo ci) {
+        FluidSurfaceContext.pop();
+    }
 
     @Inject(
             method = "writeQuad",
@@ -53,20 +91,19 @@ public abstract class SodiumDefaultFluidRendererMixin {
         combatant.client.render.sodium.fluid.FluidSurfaceContext.Entry context = combatant.client.render.sodium.fluid.FluidSurfaceContext.current();
         if (context == null || quad == null) return;
 
-        // The material producer and Combatant's vertex encoder form one contract. Iris owns the
-        // Sodium terrain format while its pipeline is active, so ordinary Sodium vertices do not
-        // carry this extension. Keep this boundary fail-safe in case another renderer changes the
-        // mixin composition independently of CombatantMixinPlugin.
-        for (ChunkVertexEncoder.Vertex vertex : vertices) {
-            if (!(vertex instanceof CombatantChunkVertexExtension)) return;
-        }
-
         TextureAtlasSprite sprite = quad.getSprite();
         MaterialClassification classification = context.classification();
         MaterialSurfaceDescriptor descriptor = MaterialRegistry.global().resolve(sprite, classification);
         int mapMask = MaterialRegistry.global().gpuPresenceMask(descriptor);
         int featureMask = descriptor.gpuFeatureMask16();
         int packedSurface = descriptor.packScalarSurface();
+        FluidSurfaceData surface = FluidSurfaceData.fromCurrent(
+                quad, facing, reversed, descriptor, vertices, mapMask, featureMask, packedSurface
+        );
+        FluidSurfaceMetadataCapture.capture(surface);
+        for (ChunkVertexEncoder.Vertex vertex : vertices) {
+            if (!(vertex instanceof CombatantChunkVertexExtension)) return;
+        }
         for (ChunkVertexEncoder.Vertex vertex : vertices) {
             CombatantChunkVertexExtension extension = (CombatantChunkVertexExtension) vertex;
             extension.combatant$setSurfaceFlags(0);

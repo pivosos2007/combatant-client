@@ -544,7 +544,7 @@ public final class SchematicBuilder extends Module {
         InteractionResult result = useWithRotation(player, new BlockHitResult(hit.getLocation(), plan.face(),
                 plan.support(), false), facingRotation);
         if (result != null && result.consumesAction()) {
-            player.swing(InteractionHand.MAIN_HAND);
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
             placed++;
             lastPlaceTick = ticks;
             if (!exact) {
@@ -621,7 +621,7 @@ public final class SchematicBuilder extends Module {
         InteractionResult result = mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND,
                 new BlockHitResult(hit.getLocation(), plan.face(), plan.support(), false));
         if (result != null && result.consumesAction()) {
-            player.swing(InteractionHand.MAIN_HAND);
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
             mover.onHelperPlaced(plan.target(), work.expected.getBlock());
         }
         cooldown = nextDelay();
@@ -808,7 +808,7 @@ public final class SchematicBuilder extends Module {
         }
         InteractionResult result = mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
         if (result != null && result.consumesAction()) {
-            player.swing(InteractionHand.MAIN_HAND);
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
             adjusted++;
             lastPlaceTick = ticks;
         }

@@ -51,7 +51,6 @@ import net.minecraft.client.gui.navigation.ScreenRectangle;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
-import org.lwjgl.glfw.GLFW;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -190,7 +189,7 @@ public final class IrisGraphicsGuiRenderer {
         }
 
         if (guiHidden) {
-            if (f.hideButton != null && f.hideButton.contains(mx, my) && event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (f.hideButton != null && f.hideButton.contains(mx, my) && event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 if (toggleHidden != null) toggleHidden.run();
             }
             // Native Iris widgets are still alive while their rendering is replaced. Consume
@@ -198,55 +197,55 @@ public final class IrisGraphicsGuiRenderer {
             return true;
         }
 
-        if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
             state.packScroll.dragging = false;
             state.optionScroll.dragging = false;
         }
 
         if (f.hideButton != null && f.hideButton.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT && toggleHidden != null) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT && toggleHidden != null) {
                 pressed(ControlId.HIDE);
                 toggleHidden.run();
             }
             return true;
         }
         if (f.gridButton != null && f.gridButton.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 state.gridView = true;
                 pressed(ControlId.GRID);
             }
             return true;
         }
         if (f.listButton != null && f.listButton.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 state.gridView = false;
                 pressed(ControlId.LIST);
             }
             return true;
         }
         if (openFolderButton != null && f.folderButton != null && f.folderButton.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 pressed(ControlId.FOLDER);
                 clickNativeButton(openFolderButton, event, doubleClick);
             }
             return true;
         }
         if (screenSwitchButton != null && f.switchButton != null && f.switchButton.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 pressed(ControlId.OPTIONS);
                 clickNativeButton(screenSwitchButton, event, doubleClick);
             }
             return true;
         }
         if (f.shaderToggle != null && f.shaderToggle.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT && packList.getTopButtonRow() != null) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT && packList.getTopButtonRow() != null) {
                 pressed(packList.getTopButtonRow());
                 packList.getTopButtonRow().mouseClicked(event, doubleClick);
             }
             return true;
         }
         if (f.downloadButton != null && f.downloadButton.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT && f.downloadAction != null) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT && f.downloadAction != null) {
                 pressed(ControlId.DOWNLOAD);
                 f.downloadAction.mouseClicked(event, doubleClick);
             }
@@ -254,7 +253,7 @@ public final class IrisGraphicsGuiRenderer {
         }
 
         if (f.scrollbar != null && f.scrollbar.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 ScrollState scroll = optionMenuOpen ? state.optionScroll : state.packScroll;
                 beginScrollbarDrag(scroll, my, f.scrollbar, f.contentHeight, f.viewport.h);
             }
@@ -264,7 +263,7 @@ public final class IrisGraphicsGuiRenderer {
         if (optionMenuOpen) {
             for (HeaderAction action : f.headerActions) {
                 if (!action.rect.contains(mx, my)) continue;
-                if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT && action.listener != null) {
+                if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT && action.listener != null) {
                     pressed(action.listener);
                     action.listener.mouseClicked(event, doubleClick);
                 }
@@ -273,18 +272,18 @@ public final class IrisGraphicsGuiRenderer {
             for (OptionSlot slot : f.optionSlots) {
                 if (!slot.rect.contains(mx, my)) continue;
                 if (slot.widget == null) return true;
-                if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                     pressed(slot.widget);
                     state.focusedOption = slot.widget;
                 }
-                if (slot.widget instanceof SliderElementWidget slider && event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                if (slot.widget instanceof SliderElementWidget slider && event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                     slider.bounds = new ScreenRectangle(0, 0, 100, 22);
                     slider.mouseClicked(new MouseButtonEvent(50.0, 11.0, event.buttonInfo()), doubleClick);
                     state.activeSlider = new ActiveSlider(slider, slot.rect);
                     updateSlider(slider, slot.rect, mx);
                     return true;
                 }
-                if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                     if (slot.widget instanceof StringElementWidget string
                             && !(slot.widget instanceof SliderElementWidget)
                             && openStringPopup(state, string, slot.rect, f.viewport)) {
@@ -303,7 +302,7 @@ public final class IrisGraphicsGuiRenderer {
         } else {
             for (PackSlot slot : f.packSlots) {
                 if (!slot.rect.contains(mx, my)) continue;
-                if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                     pressed(slot.entry);
                     slot.entry.mouseClicked(event, doubleClick);
                     state.selectedPackName = slot.entry.getPackName();
@@ -313,21 +312,21 @@ public final class IrisGraphicsGuiRenderer {
         }
 
         if (f.cancelButton != null && f.cancelButton.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 pressed(ControlId.CANCEL);
                 clickCancel(screen, event, doubleClick);
             }
             return true;
         }
         if (f.applyButton != null && f.applyButton.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 pressed(ControlId.APPLY);
                 screen.applyChanges();
             }
             return true;
         }
         if (f.doneButton != null && f.doneButton.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 pressed(ControlId.DONE);
                 screen.onClose();
             }
@@ -450,7 +449,7 @@ public final class IrisGraphicsGuiRenderer {
         SelectPopup popup = state.selectPopup;
         if (popup == null) return false;
         if (popup.closing) return true;
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return true;
 
         Rect visible = popup.animatedBounds();
         if (!visible.contains(mx, my)) {
@@ -1472,7 +1471,8 @@ public final class IrisGraphicsGuiRenderer {
     private static boolean isLeftMouseDown() {
         Minecraft mc = Minecraft.getInstance();
         return mc != null && mc.getWindow() != null
-                && GLFW.glfwGetMouseButton(mc.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+                && combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.MOUSE, combatant.client.input.InputKeys.MOUSE_LEFT);
     }
 
     private static void clickNativeButton(Button button, MouseButtonEvent source, boolean doubleClick) {

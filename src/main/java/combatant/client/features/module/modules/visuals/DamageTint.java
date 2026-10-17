@@ -7,7 +7,7 @@
 
 package combatant.client.features.module.modules.visuals;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;

@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,7 +8,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Texture;      // MSDF glyph atlas
 uniform sampler2D u_SceneTexture; // aptured scene
@@ -28,10 +29,10 @@ layout (std140) uniform UIBlend {
     vec4 uBlendTone1;
 };
 
-#moj_import <combatant:ui_backdrop_blend.glsl>
+#include <combatant:ui_backdrop_blend.glsl>
 
-in vec2 v_TexCoord;
-in vec4 v_Color;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 2) in vec4 v_Color;
 
 float median(float r, float g, float b) {
     return max(min(r, g), min(max(r, g), b));

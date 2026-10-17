@@ -8,7 +8,7 @@
 package combatant.client.compat.xaero;
 
 import combatant.client.util.logging.DebugLog;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;

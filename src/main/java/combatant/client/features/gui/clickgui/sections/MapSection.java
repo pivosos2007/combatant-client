@@ -19,7 +19,6 @@ import combatant.client.runtime.error.FailureBoundary;
 import combatant.client.runtime.error.FailureExecution;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.resources.language.I18n;
-import org.lwjgl.glfw.GLFW;
 
 @ClickGuiSectionInfo(id = "combatant:map", label = "Map", order = 200, requiredMods = "xaeroworldmap")
 public final class MapSection implements ClickGuiSection {
@@ -98,7 +97,7 @@ public final class MapSection implements ClickGuiSection {
         return guardInput("keyPressed", () -> {
             if (surface == null) return false;
             if (surface.keyPressed(keyCode, scanCode, modifiers)) return true;
-            if (keyCode == GLFW.GLFW_KEY_R) {
+            if (keyCode == combatant.client.input.InputKeys.R) {
                 surface.recenter();
                 return true;
             }

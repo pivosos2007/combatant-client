@@ -8,13 +8,15 @@
 package combatant.client.mixins;
 
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
-import com.mojang.blaze3d.shaders.ShaderType;
+import com.mojang.renderpearl.api.device.GpuDevice;
+import com.mojang.renderpearl.api.pipeline.ShaderType;
 import net.minecraft.client.renderer.PostChainConfig;
 import net.minecraft.client.renderer.ShaderManager;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
-import net.minecraft.util.profiling.ProfilerFiller;
+import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -167,25 +169,23 @@ public abstract class ShaderLoaderMixin {
     }
 
     @Inject(method = "apply", at = @At("HEAD"))
-    private void combatant$beforeShaderReload(ShaderManager.Configs definitions,
-                                              ResourceManager resourceManager,
-                                              ProfilerFiller profiler,
+    private void combatant$beforeShaderReload(GpuDevice device,
+                                              @Coerce Object pendingResults,
                                               CallbackInfo ci) {
         RenderResourceReadiness.markReloading("shader reload");
     }
 
     @Inject(method = "apply", at = @At("TAIL"))
-    private void combatant$afterShaderReload(ShaderManager.Configs definitions,
-                                             ResourceManager resourceManager,
-                                             ProfilerFiller profiler,
+    private void combatant$afterShaderReload(GpuDevice device,
+                                             @Coerce Object pendingResults,
                                              CallbackInfo ci) {
-        ResourceReloadHooks.onReload(resourceManager);
+        Minecraft minecraft = Minecraft.getInstance();
+        ResourceReloadHooks.onReload(minecraft != null ? minecraft.getResourceManager() : null);
     }
 
-    @ModifyReturnValue(method = "prepare", at = @At("RETURN"))
-    private ShaderManager.Configs combatant$extendShaderSources(ShaderManager.Configs definitions,
-                                                                ResourceManager resourceManager,
-                                                                ProfilerFiller profiler) {
+    @ModifyReturnValue(method = "loadConfigs", at = @At("RETURN"))
+    private static ShaderManager.Configs combatant$extendShaderSources(ShaderManager.Configs definitions,
+                                                                       ResourceManager resourceManager) {
         ShaderLoaderDefinitionsAccessor accessor = (ShaderLoaderDefinitionsAccessor) (Object) definitions;
         Map<?, String> shaderSources = accessor.combatant$getShaderSources();
         Map<Object, String> replaced = new LinkedHashMap<>(shaderSources.size() + 64);
@@ -202,7 +202,7 @@ public abstract class ShaderLoaderMixin {
 
         Map<Identifier, PostChainConfig> postChains = accessor.combatant$getPostChains();
         @SuppressWarnings({"rawtypes", "unchecked"})
-        ShaderManager.Configs updated = new ShaderManager.Configs((Map) replaced, postChains);
+        ShaderManager.Configs updated = new ShaderManager.Configs((Map) replaced, definitions.includeSources(), postChains);
         return updated;
     }
 }

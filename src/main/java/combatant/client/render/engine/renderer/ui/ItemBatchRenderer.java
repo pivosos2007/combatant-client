@@ -8,13 +8,13 @@
 package combatant.client.render.engine.renderer.ui;
 
 import com.mojang.blaze3d.ProjectionType;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.ScissorState;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -230,8 +230,6 @@ public final class ItemBatchRenderer {
      * atlas directly, so every touched global has to be restored here.
      */
     private static final class GuiAtlasRenderState {
-        private final GpuTextureView outputColor;
-        private final GpuTextureView outputDepth;
         private final GpuBufferSlice projection;
         private final ProjectionType projectionType;
         private final Matrix4f modelView;
@@ -240,17 +238,13 @@ public final class ItemBatchRenderer {
         private final ScissorState scissor;
         private final boolean rendering3D;
 
-        private GuiAtlasRenderState(GpuTextureView outputColor,
-                                    GpuTextureView outputDepth,
-                                    GpuBufferSlice projection,
+        private GuiAtlasRenderState(GpuBufferSlice projection,
                                     ProjectionType projectionType,
                                     Matrix4f modelView,
                                     GpuBufferSlice shaderLights,
                                     GpuBufferSlice shaderFog,
                                     ScissorState scissor,
                                     boolean rendering3D) {
-            this.outputColor = outputColor;
-            this.outputDepth = outputDepth;
             this.projection = projection;
             this.projectionType = projectionType;
             this.modelView = modelView;
@@ -262,8 +256,6 @@ public final class ItemBatchRenderer {
 
         static GuiAtlasRenderState capture() {
             return new GuiAtlasRenderState(
-                    RenderSystem.outputColorTextureOverride,
-                    RenderSystem.outputDepthTextureOverride,
                     RenderSystem.getProjectionMatrixBuffer(),
                     RenderSystem.getProjectionType(),
                     RenderSystem.getModelViewMatrixCopy(),
@@ -299,8 +291,6 @@ public final class ItemBatchRenderer {
             if (projection != null && projectionType != null) {
                 RenderSystem.setProjectionMatrix(projection, projectionType);
             }
-            RenderSystem.outputColorTextureOverride = outputColor;
-            RenderSystem.outputDepthTextureOverride = outputDepth;
             RenderSystem.setShaderLights(shaderLights);
             RenderSystem.setShaderFog(shaderFog);
             RenderSystem.getScissorStateForRenderTypeDraws().setFrom(scissor);

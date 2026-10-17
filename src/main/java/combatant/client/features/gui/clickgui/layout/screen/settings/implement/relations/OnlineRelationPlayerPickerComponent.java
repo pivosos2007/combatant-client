@@ -37,7 +37,6 @@ import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.GameType;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -445,7 +444,7 @@ final class OnlineRelationPlayerPickerComponent {
     }
 
     boolean click(float mx, float my, int button) {
-        if (!openTarget || button != 0) return false;
+        if (!openTarget || button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         if (closeButton.contains(mx, my)) {
             close();
             return true;
@@ -472,7 +471,7 @@ final class OnlineRelationPlayerPickerComponent {
     }
 
     boolean mousePressedScrollbar(float mx, float my, int button) {
-        if (!openTarget || button != 0 || !isScrollbarHovered(mx, my)) return false;
+        if (!openTarget || button != combatant.client.input.InputKeys.MOUSE_LEFT || !isScrollbarHovered(mx, my)) return false;
         draggingScrollbar = true;
         scrollbarDragOffset = ClickGuiMath.insideRect(mx, my, scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH)
                 ? my - scrollbarThumbY
@@ -482,7 +481,7 @@ final class OnlineRelationPlayerPickerComponent {
     }
 
     void mouseReleased(int button) {
-        if (button == 0) draggingScrollbar = false;
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) draggingScrollbar = false;
     }
 
     void scroll(float mx, float my, double amount) {
@@ -492,12 +491,12 @@ final class OnlineRelationPlayerPickerComponent {
 
     boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (!openTarget) return false;
-        boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
-        if (ctrl && keyCode == GLFW.GLFW_KEY_F) {
+        boolean shortcut = (modifiers & combatant.client.input.InputModifierMask.SHORTCUT) != 0;
+        if (shortcut && scanCode == 'f') {
             focusSearch();
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+        if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
             if (searchFocused) {
                 searchFocused = false;
                 return true;
@@ -506,11 +505,11 @@ final class OnlineRelationPlayerPickerComponent {
             return true;
         }
         if (!searchFocused) return false;
-        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+        if (keyCode == combatant.client.input.InputKeys.ENTER || keyCode == combatant.client.input.InputKeys.KP_ENTER) {
             searchFocused = false;
             return true;
         }
-        if (searchInput.keyPressed(keyCode, modifiers)) {
+        if (searchInput.keyPressed(keyCode, scanCode, modifiers)) {
             search = searchInput.text();
             resetScroll();
             invalidateFilter();

@@ -8,8 +8,8 @@
 package combatant.client.render.iris;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.irisshaders.iris.targets.RenderTargets;
 
 /** Managed views of Iris scene depth shared by imported geometry and Combatant postprocess. */

@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,7 +8,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Texture;
 uniform sampler2D u_FocusTexture;
@@ -28,7 +29,7 @@ layout (std140) uniform DepthOfField {
     vec4 u_DepthB;       // weather, clouds, reserved, reserved availability
 };
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
 const float DEPTH_NEAR_EPS = 0.000001;
 const float DEPTH_FAR_EPS = 0.999999;

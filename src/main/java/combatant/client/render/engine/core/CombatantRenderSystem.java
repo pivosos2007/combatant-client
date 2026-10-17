@@ -32,7 +32,7 @@ import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.RhiCapabilities;
 import combatant.client.render.engine.rhi.RhiStatsSnapshot;
-import combatant.client.render.engine.rhi.backend.SodiumGlBackend;
+import combatant.client.render.engine.rhi.backend.gl.CombatantGlBackend;
 import combatant.client.render.engine.rhi.backend.vulkan.CombatantVulkanBackend;
 import combatant.client.render.engine.rhi.resource.RenderResourceManager;
 import combatant.client.render.engine.rhi.resource.RenderResourceStatsSnapshot;
@@ -115,7 +115,7 @@ public enum CombatantRenderSystem {
         if (kind == BackendKind.VULKAN) {
             return new CombatantVulkanBackend();
         }
-        return new SodiumGlBackend();
+        return new CombatantGlBackend();
     }
 
     private static void ensureBackendMatchesDevice() {
@@ -228,7 +228,7 @@ public enum CombatantRenderSystem {
     private static BackendKind detectBackendKindUncached(Object deviceObject) {
         String backendName = null;
         try {
-            if (deviceObject instanceof com.mojang.blaze3d.systems.GpuDevice device && device.getDeviceInfo() != null) {
+            if (deviceObject instanceof com.mojang.renderpearl.api.device.GpuDevice device && device.getDeviceInfo() != null) {
                 backendName = device.getDeviceInfo().backendName();
             }
         } catch (Throwable ignored) {

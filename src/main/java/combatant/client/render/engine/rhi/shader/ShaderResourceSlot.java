@@ -6,7 +6,7 @@
  */
 package combatant.client.render.engine.rhi.shader;
 
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 
 /** Backend-neutral descriptor/binding slot. Format is optional until shader reflection supplies it. */
 public record ShaderResourceSlot(int binding,

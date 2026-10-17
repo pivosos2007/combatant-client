@@ -70,7 +70,7 @@ public enum VfpCompatibility1_8 {
             throw new IllegalStateException("Not on 1.8 protocol");
         }
 
-        var packet = PacketWrapper.create(packetType, ViaFabricPlus.getImpl().getPlayNetworkUserConnection());
+        var packet = PacketWrapper.create(packetType, ViaFabricPlus.api().protocolTranslation().userConnection());
         writer.accept(packet);
         packet.sendToServerRaw();
     }

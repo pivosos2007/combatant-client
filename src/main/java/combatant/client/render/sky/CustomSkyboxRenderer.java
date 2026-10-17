@@ -7,7 +7,7 @@
 
 package combatant.client.render.sky;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
@@ -60,7 +60,8 @@ public enum CustomSkyboxRenderer {
         lastSunAngleValid = true;
 
         RenderSystem.setShaderFog(fog);
-        skyRendering.renderSkyDisc(sky.skyColor);
+        // RenderPearl 26.3 owns the sky RenderPass; individual draws are no longer public.
+        skyRendering.render(fog, sky);
 
         DeltaTracker tickCounter = mc.getDeltaTracker();
         float tickDelta = tickCounter != null ? tickCounter.getGameTimeDeltaPartialTick(true) : 0.0f;
@@ -91,11 +92,6 @@ public enum CustomSkyboxRenderer {
         MeshRenderer.setProjection(previousProjection);
         RenderState.rendering3D = prevRendering3D;
 
-        PoseStack skyMatrices = new PoseStack();
-        skyRendering.renderSunriseAndSunset(skyMatrices, sky.sunAngle, sky.sunriseAndSunsetColor);
-        if (sky.shouldRenderDarkDisc) {
-            skyRendering.renderDarkDisc();
-        }
     }
 
     private static void renderShaderSkybox(Minecraft mc,
@@ -119,7 +115,7 @@ public enum CustomSkyboxRenderer {
         float shaderFov = extractProjectionFov(worldProjection, fov);
         SkyboxShaderUniforms.update(
                 visual.getShaderSkyboxColor(),
-                sky.skyColor & 0x00FFFFFF,
+                ARGB.colorFromVector3f(sky.skyColor) & 0x00FFFFFF,
                 alpha,
                 visual.getSkyboxSkyFogBlend(),
                 time,
@@ -182,7 +178,7 @@ public enum CustomSkyboxRenderer {
         GameRenderer renderer = mc.gameRenderer;
         GameRendererAccessor accessor = (GameRendererAccessor) renderer;
         CameraRenderState cameraRenderState = new CameraRenderState();
-        camera.extractRenderState(cameraRenderState, fov);
+        camera.extractRenderState(cameraRenderState, mc.getDeltaTracker());
         Matrix4f projection = new Matrix4f(cameraRenderState.projectionMatrix);
 
         PoseStack viewEffects = new PoseStack();
@@ -229,8 +225,7 @@ public enum CustomSkyboxRenderer {
         float scale = 5.0f / (strength * strength + 5.0f) - strength * 0.04f;
         scale *= scale;
         Vector3f axis = new Vector3f(0.0f, Mth.SQRT_OF_TWO / 2.0f, Mth.SQRT_OF_TWO / 2.0f);
-        float angle = (accessor.combatant$getNauseaEffectTime() + tickDelta * accessor.combatant$getNauseaEffectSpeed())
-                * Mth.DEG_TO_RAD;
+        float angle = player.getSpinningEffectAngle(tickDelta) * Mth.DEG_TO_RAD;
         projection.rotate(angle, axis);
         projection.scale(1.0f / scale, 1.0f, 1.0f);
         projection.rotate(-angle, axis);
@@ -242,7 +237,7 @@ public enum CustomSkyboxRenderer {
     }
 
     private static float getTwilightFade(SkyRenderState sky) {
-        float sunriseAlpha = ARGB.alphaFloat(sky.sunriseAndSunsetColor);
+        float sunriseAlpha = sky.sunriseAndSunsetColor.w();
         return smoothstep(sunriseAlpha);
     }
 

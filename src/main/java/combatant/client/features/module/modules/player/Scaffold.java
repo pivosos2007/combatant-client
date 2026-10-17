@@ -2426,7 +2426,7 @@ public class Scaffold extends Module {
 
     private Vec3 getTickDeltaDiagonalPlacementPos(LocalPlayer player) {
         Vec3 velocity = new Vec3(player.getDeltaMovement().x, 0.0, player.getDeltaMovement().z);
-        double tickDelta = TickDelta.get();
+        double tickDelta = TickDelta.tickProgress(false);
         double lead = Math.max(0.35, Math.min(1.35, tickDelta + 0.45));
         Vec3 projected = player.position().add(velocity.scale(lead));
 

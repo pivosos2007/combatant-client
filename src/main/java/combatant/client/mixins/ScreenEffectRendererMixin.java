@@ -12,6 +12,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ScreenEffectRenderer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Player;
 import org.spongepowered.asm.mixin.Mixin;
@@ -63,11 +64,15 @@ public abstract class ScreenEffectRendererMixin {
             at = @At(
                     value = "INVOKE",
                     target =
-                            "Lnet/minecraft/client/renderer/ScreenEffectRenderer;submitBlockSprite(Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;I)V"
+                            "Lnet/minecraft/client/renderer/ScreenEffectRenderer;submitBlockSprite(Lnet/minecraft/resources/Identifier;FFFFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;I)V"
             )
     )
     private static void combatant$maybeRenderBlockOverlay(
-            TextureAtlasSprite sprite,
+            Identifier atlasLocation,
+            float u0,
+            float v0,
+            float u1,
+            float v1,
             PoseStack matrices,
             SubmitNodeCollector vertexConsumers,
             int color
@@ -77,7 +82,8 @@ public abstract class ScreenEffectRendererMixin {
             return;
         }
 
-        InGameOverlayRendererAccessor.callRenderInWallOverlay(sprite, matrices, vertexConsumers, color);
+        InGameOverlayRendererAccessor.callRenderInWallOverlay(
+                atlasLocation, u0, v0, u1, v1, matrices, vertexConsumers, color);
     }
 }
 

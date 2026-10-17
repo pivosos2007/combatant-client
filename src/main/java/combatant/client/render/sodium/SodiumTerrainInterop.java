@@ -7,7 +7,7 @@
 
 package combatant.client.render.sodium;
 
-import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuSampler;
 import combatant.client.render.engine.material.MaterialDomain;
 import combatant.client.render.engine.scene.SceneDrawClass;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;

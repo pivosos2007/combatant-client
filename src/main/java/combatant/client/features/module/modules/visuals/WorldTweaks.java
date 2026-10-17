@@ -271,11 +271,14 @@ public class WorldTweaks extends Module {
         if (sky == null || !isEnabled()) return;
 
         if (skyToggles.get("Sky color")) {
-            sky.skyColor = ARGB.color(ARGB.alpha(sky.skyColor), skyColor.getArgb());
+            int rgb = skyColor.getArgb();
+            sky.skyColor = new org.joml.Vector3f(ARGB.redFloat(rgb), ARGB.greenFloat(rgb), ARGB.blueFloat(rgb));
         }
 
         if (skyToggles.get("Sky gradient")) {
-            sky.sunriseAndSunsetColor = ARGB.color(ARGB.alpha(sky.sunriseAndSunsetColor), skyGradientColor.getArgb());
+            int rgb = skyGradientColor.getArgb();
+            float alpha = sky.sunriseAndSunsetColor != null ? sky.sunriseAndSunsetColor.w() : ARGB.alphaFloat(rgb);
+            sky.sunriseAndSunsetColor = new org.joml.Vector4f(ARGB.redFloat(rgb), ARGB.greenFloat(rgb), ARGB.blueFloat(rgb), alpha);
         }
     }
 

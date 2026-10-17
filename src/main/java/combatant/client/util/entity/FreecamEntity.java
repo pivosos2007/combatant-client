@@ -23,7 +23,7 @@ public class FreecamEntity extends RemotePlayer {
         this.setId(allocateFreecamEntityId(world));
         this.noPhysics = true;
         this.setInvisible(true);
-        this.setInvulnerable(true);
+        this.setPermanentlyInvulnerable(true);
     }
 
     private static int allocateFreecamEntityId(ClientLevel world) {

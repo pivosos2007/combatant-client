@@ -9,10 +9,9 @@ package combatant.client.mixins;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.mojang.blaze3d.opengl.GlProgram;
-import com.mojang.blaze3d.opengl.GlShaderModule;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import net.minecraft.resources.Identifier;
+import com.mojang.renderpearl.backend.opengl.GlProgram;
+import com.mojang.renderpearl.backend.opengl.GlShaderModule;
+import java.util.List;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -28,42 +27,19 @@ public abstract class GlProgramMixin {
             method = "link",
             at = @At(
                     value = "INVOKE",
-                    target = "Lorg/slf4j/Logger;info(Ljava/lang/String;[Ljava/lang/Object;)V"
+                    target = "Lorg/slf4j/Logger;info(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V"
             )
     )
     private static void combatant$wrapProgramLinkInfo(Logger logger,
                                                        String format,
-                                                       Object[] args,
+                                                       Object first,
+                                                       Object second,
                                                        Operation<Void> original,
-                                                       GlShaderModule vertexShader,
-                                                       GlShaderModule fragmentShader,
-                                                       VertexFormat[] vertexFormats,
+                                                       List<GlShaderModule> shaders,
                                                        String debugLabel) {
-        if (combatant$isCombatantShader(vertexShader)
-                || combatant$isCombatantShader(fragmentShader)
-                || combatant$isCombatantLabel(debugLabel)) {
-            DebugLog.renderThread("[RenderPipeline] %s", combatant$formatSlf4j(format, args));
-            return;
-        }
-
-        original.call(logger, format, args);
-    }
-
-    @WrapOperation(
-            method = "setupBindGroupLayouts",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lorg/slf4j/Logger;warn(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V"
-            )
-    )
-    private void combatant$wrapPipelineWarning(Logger logger,
-                                                 String format,
-                                                 Object first,
-                                                 Object second,
-                                                 Operation<Void> original) {
-        String debugLabel = ((GlProgram) (Object) this).getDebugLabel();
-        if (combatant$isCombatantLabel(debugLabel)) {
-            DebugLog.warn("[RenderPipeline] %s", combatant$formatSlf4j(format, first, second));
+        if (combatant$isCombatantLabel(debugLabel)
+                || shaders.stream().anyMatch(GlProgramMixin::combatant$isCombatantShader)) {
+            DebugLog.renderThread("[RenderPipeline] %s", combatant$formatSlf4j(format, first, second));
             return;
         }
 
@@ -72,12 +48,7 @@ public abstract class GlProgramMixin {
 
     @Unique
     private static boolean combatant$isCombatantShader(GlShaderModule shader) {
-        return shader != null && combatant$isCombatantId(shader.getId());
-    }
-
-    @Unique
-    private static boolean combatant$isCombatantId(Identifier id) {
-        return id != null && combatant$namespace.equals(id.getNamespace());
+        return shader != null && combatant$isCombatantLabel(shader.getLabel());
     }
 
     @Unique

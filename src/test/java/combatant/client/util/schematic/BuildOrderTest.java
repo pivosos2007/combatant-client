@@ -14,7 +14,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.HopperBlock;
 import net.minecraft.world.level.block.LeverBlock;
 import net.minecraft.world.level.block.ObserverBlock;
-import net.minecraft.world.level.block.RedStoneWireBlock;
+import net.minecraft.world.level.block.RedstoneWireBlock;
 import net.minecraft.world.level.block.RepeaterBlock;
 import net.minecraft.world.level.block.piston.PistonBaseBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -91,7 +91,7 @@ class BuildOrderTest {
         b.set(4, 1, 0, Blocks.STICKY_PISTON.defaultBlockState().setValue(PistonBaseBlock.FACING, Direction.SOUTH));
         b.set(4, 1, 1, stone);
         b.set(5, 1, 0, Blocks.REDSTONE_TORCH.defaultBlockState());
-        b.set(6, 1, 0, Blocks.REDSTONE_WIRE.defaultBlockState().setValue(RedStoneWireBlock.POWER, 15));
+        b.set(6, 1, 0, Blocks.REDSTONE_WIRE.defaultBlockState().setValue(RedstoneWireBlock.POWER, 15));
         b.set(6, 1, 1, Blocks.REDSTONE_WIRE.defaultBlockState());
         b.set(3, 1, 2, Blocks.REPEATER.defaultBlockState().setValue(RepeaterBlock.DELAY, 4));
         b.set(4, 1, 2, stone);

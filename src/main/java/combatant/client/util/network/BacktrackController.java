@@ -373,11 +373,7 @@ public final class BacktrackController {
         }
 
         if (packet instanceof ClientboundMoveEntityPacket entityPacket && isTargetEntityPacket(entityPacket, target, mc) && entityPacket.hasPosition()) {
-            Vec3 pos = delayedPosition.decode(
-                    entityPacket.getXa(),
-                    entityPacket.getYa(),
-                    entityPacket.getZa()
-            );
+            Vec3 pos = entityPacket.getPositionDelta().decode(delayedPosition).endPosition();
             delayedPosition.setBase(pos);
             return pos;
         }
@@ -393,7 +389,7 @@ public final class BacktrackController {
             return pos;
         }
         if (packet instanceof ClientboundEntityPositionSyncPacket syncPacket && syncPacket.id() == target.getId()) {
-            Vec3 pos = syncPacket.values().position();
+            Vec3 pos = syncPacket.position().endPosition();
             delayedPosition.setBase(pos);
             return pos;
         }

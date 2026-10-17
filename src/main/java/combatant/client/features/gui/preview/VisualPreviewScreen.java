@@ -21,12 +21,22 @@ import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
-import org.lwjgl.glfw.GLFW;
 
 public final class VisualPreviewScreen extends Screen {
     private final Screen parent;
     private final VisualPreviewProvider provider;
     private final SettingsPanelComponent settingsPanel = new SettingsPanelComponent(SettingRenderSurface.MODULES);
+    private boolean settingsVisible = true;
+    private final combatant.client.input.minecraft.CombatantTextInputTarget textInputTarget = text -> {
+        if (!settingsVisible || text == null || text.isEmpty()) return false;
+        boolean handled = false;
+        for (int offset = 0; offset < text.length(); ) {
+            int codePoint = text.codePointAt(offset);
+            offset += Character.charCount(codePoint);
+            if (Character.isBmpCodePoint(codePoint)) handled |= settingsPanel.charTyped((char) codePoint, 0);
+        }
+        return handled;
+    };
 
     private float mouseX;
     private float mouseY;
@@ -59,7 +69,6 @@ public final class VisualPreviewScreen extends Screen {
     private float dragMouseX;
     private float dragMouseY;
     private boolean closing;
-    private boolean settingsVisible = true;
 
     public VisualPreviewScreen(Screen parent, VisualPreviewProvider provider) {
         super(Component.literal(provider == null ? "Visual Preview" : provider.title()));
@@ -108,16 +117,16 @@ public final class VisualPreviewScreen extends Screen {
         VisualPreviewInteractionProfile profile = provider.interactionProfile();
         float sensitivity = mouseSensitivityScale();
         boolean subjectDrag = profile.subjectMode() == VisualPreviewSubjectMode.ROTATE
-                && ((profile.middleSubjectDrag() && dragButton == GLFW.GLFW_MOUSE_BUTTON_MIDDLE)
-                || (!profile.middleSubjectDrag() && dragButton == GLFW.GLFW_MOUSE_BUTTON_LEFT));
+                && ((profile.middleSubjectDrag() && dragButton == combatant.client.input.InputKeys.MOUSE_MIDDLE)
+                || (!profile.middleSubjectDrag() && dragButton == combatant.client.input.InputKeys.MOUSE_LEFT));
         if (subjectDrag) {
             targetYaw += dx * profile.subjectSensitivity() * sensitivity;
             targetPitch = Mth.clamp(targetPitch + dy * profile.subjectSensitivity() * sensitivity, -89.0f, 89.0f);
             return;
         }
 
-        boolean cameraDrag = (profile.primaryCameraDrag() && dragButton == GLFW.GLFW_MOUSE_BUTTON_LEFT)
-                || (profile.secondaryCameraDrag() && dragButton == GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+        boolean cameraDrag = (profile.primaryCameraDrag() && dragButton == combatant.client.input.InputKeys.MOUSE_LEFT)
+                || (profile.secondaryCameraDrag() && dragButton == combatant.client.input.InputKeys.MOUSE_RIGHT);
         if (!cameraDrag) return;
         switch (profile.cameraMode()) {
             case ORBIT, FREE_FLY -> {
@@ -149,10 +158,10 @@ public final class VisualPreviewScreen extends Screen {
 
         VisualPreviewInteractionProfile profile = provider.interactionProfile();
         boolean subjectDrag = profile.subjectMode() == VisualPreviewSubjectMode.ROTATE
-                && ((profile.middleSubjectDrag() && click.button() == GLFW.GLFW_MOUSE_BUTTON_MIDDLE)
-                || (!profile.middleSubjectDrag() && click.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT));
-        boolean cameraDrag = (profile.primaryCameraDrag() && click.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT)
-                || (profile.secondaryCameraDrag() && click.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+                && ((profile.middleSubjectDrag() && click.button() == combatant.client.input.InputKeys.MOUSE_MIDDLE)
+                || (!profile.middleSubjectDrag() && click.button() == combatant.client.input.InputKeys.MOUSE_LEFT));
+        boolean cameraDrag = (profile.primaryCameraDrag() && click.button() == combatant.client.input.InputKeys.MOUSE_LEFT)
+                || (profile.secondaryCameraDrag() && click.button() == combatant.client.input.InputKeys.MOUSE_RIGHT);
         if (insideSubject(vx, vy) && (subjectDrag || cameraDrag)) {
             dragging = true;
             dragButton = click.button();
@@ -200,19 +209,23 @@ public final class VisualPreviewScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent input) {
-        if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+        combatant.client.input.InputKey combatantKey =
+                combatant.client.input.minecraft.MinecraftInputAdapter.key(input);
+        combatant.client.input.InputModifiers combatantModifiers =
+                combatant.client.input.minecraft.MinecraftInputAdapter.modifiers(input);
+        if (input.key() == combatant.client.input.InputKeys.ESCAPE) {
             onClose();
             return true;
         }
-        if (input.key() == GLFW.GLFW_KEY_S && (input.modifiers() & GLFW.GLFW_MOD_ALT) != 0) {
+        if (combatantKey.physicalKey() == combatant.client.input.InputKeys.S && combatantModifiers.alt()) {
             settingsVisible = !settingsVisible;
             return true;
         }
         if (settingsVisible && settingsPanel.isActive()
-                && settingsPanel.keyPressed(input.key(), input.scancode(), input.modifiers())) {
+                && settingsPanel.keyPressed(combatantKey.physicalKey(), combatantKey.shortcutKey(), combatantModifiers.mask())) {
             return true;
         }
-        if (input.key() == GLFW.GLFW_KEY_R
+        if (input.key() == combatant.client.input.InputKeys.R
                 && !provider.interactionProfile().equals(VisualPreviewInteractionProfile.FIXED)) {
             resetTransform(false);
             return true;
@@ -236,6 +249,7 @@ public final class VisualPreviewScreen extends Screen {
     public void onClose() {
         if (closing) return;
         closing = true;
+        combatant.client.input.minecraft.CombatantTextInputBridge.blur(textInputTarget);
         dragging = false;
         dragButton = -1;
         Minecraft mc = Minecraft.getInstance();
@@ -314,7 +328,12 @@ public final class VisualPreviewScreen extends Screen {
     }
 
     void renderSettings(float width, float height) {
-        if (!settingsVisible || !settingsPanel.isActive()) return;
+        if (!settingsVisible || !settingsPanel.isActive()) {
+            combatant.client.input.minecraft.CombatantTextInputBridge.blur(textInputTarget);
+            return;
+        }
+        combatant.client.input.minecraft.CombatantTextInputBridge.focus(
+                textInputTarget, Math.round(mouseX), Math.round(mouseY), Math.round(mouseX + 1f), Math.round(mouseY + 16f));
         float inputScale = sceneUiScale();
         float panelScale = Mth.clamp(inputScale * 1.5f, 2.55f, 3.0f);
         float expectedPanelW = 115.0f * panelScale;
@@ -355,10 +374,9 @@ public final class VisualPreviewScreen extends Screen {
         if (provider.interactionProfile().cameraMode() != VisualPreviewCameraMode.FREE_FLY) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return;
-        long window = mc.getWindow().handle();
-        float forward = keyAxis(window, GLFW.GLFW_KEY_W, GLFW.GLFW_KEY_S);
-        float side = keyAxis(window, GLFW.GLFW_KEY_D, GLFW.GLFW_KEY_A);
-        float vertical = keyAxis(window, GLFW.GLFW_KEY_SPACE, GLFW.GLFW_KEY_LEFT_SHIFT);
+        float forward = keyAxis(combatant.client.input.InputKeys.W, combatant.client.input.InputKeys.S);
+        float side = keyAxis(combatant.client.input.InputKeys.D, combatant.client.input.InputKeys.A);
+        float vertical = keyAxis(combatant.client.input.InputKeys.SPACE, combatant.client.input.InputKeys.LEFT_SHIFT);
         if (forward == 0.0f && side == 0.0f && vertical == 0.0f) return;
         float distance = flySpeed * dt * 2.6f;
         float yawRadians = (float) Math.toRadians(targetCameraYaw);
@@ -369,9 +387,11 @@ public final class VisualPreviewScreen extends Screen {
         targetCameraY += vertical * distance;
     }
 
-    private static float keyAxis(long window, int positive, int negative) {
-        float value = GLFW.glfwGetKey(window, positive) == GLFW.GLFW_PRESS ? 1.0f : 0.0f;
-        if (GLFW.glfwGetKey(window, negative) == GLFW.GLFW_PRESS) value -= 1.0f;
+    private static float keyAxis(int positive, int negative) {
+        float value = combatant.client.input.CombatantInput.state()
+                .isPressed(combatant.client.input.InputDevice.KEYBOARD, positive) ? 1.0f : 0.0f;
+        if (combatant.client.input.CombatantInput.state()
+                .isPressed(combatant.client.input.InputDevice.KEYBOARD, negative)) value -= 1.0f;
         return value;
     }
 

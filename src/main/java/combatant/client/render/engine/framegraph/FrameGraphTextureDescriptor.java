@@ -6,8 +6,8 @@
  */
 package combatant.client.render.engine.framegraph;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import combatant.client.render.engine.rhi.shader.RhiTextureUsage;
 import combatant.client.render.engine.rhi.shader.StorageAccess;
 

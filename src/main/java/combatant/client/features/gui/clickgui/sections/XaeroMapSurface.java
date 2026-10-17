@@ -44,11 +44,9 @@ import combatant.client.render.helpers.ClipFunction;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.text.ClipboardUtil;
 import combatant.client.util.text.LegacyTextUtil;
-import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.resources.language.I18n;
-import org.lwjgl.glfw.GLFW;
 import xaero.lib.client.graphics.GpuTextureAndView;
 import xaero.lib.client.config.ClientConfigManager;
 import xaero.lib.common.config.option.ConfigOption;
@@ -252,7 +250,8 @@ final class XaeroMapSurface {
         drawFootprints(processor, dimension, viewport);
         Minecraft minecraft = Minecraft.getInstance();
         boolean tabDown = minecraft != null && minecraft.getWindow() != null
-                && InputConstants.isKeyDown(minecraft.getWindow(), GLFW.GLFW_KEY_TAB);
+                && combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.TAB);
         elements.setTabDown(tabDown);
         elementSnapshot = elements.collect(processor, dimension, userScale);
         boolean elementPointerActive = (settings == null || !settings.isVisible())
@@ -292,7 +291,7 @@ final class XaeroMapSurface {
         helpOpen = false;
         contextOpen = false;
         deleteArmed = false;
-        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+        if (button == combatant.client.input.InputKeys.MOUSE_RIGHT) {
             rightSelecting = true;
             rightClickLocationMarker = hoveredLocationMarker;
             rightClickElement = rightClickLocationMarker == null ? hoveredElement : null;
@@ -328,7 +327,7 @@ final class XaeroMapSurface {
             }
             return true;
         }
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         if (hoveredLocationMarker != null) {
             centerX = hoveredLocationMarker.location().x();
             centerZ = hoveredLocationMarker.location().z();
@@ -353,11 +352,11 @@ final class XaeroMapSurface {
             waypointEditor.mouseReleased(mouseX, mouseY, button);
             if (waypointEditor.isClosed()) waypointEditor = null;
         }
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
             dragging = false;
             pressedUiAction = null;
         }
-        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && rightSelecting) {
+        if (button == combatant.client.input.InputKeys.MOUSE_RIGHT && rightSelecting) {
             rightSelecting = false;
             updateContextScreenAnchor();
             contextOpen = true;
@@ -375,12 +374,12 @@ final class XaeroMapSurface {
 
     boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (waypointEditor != null) {
-            boolean consumed = waypointEditor.keyPressed(keyCode, modifiers);
+            boolean consumed = waypointEditor.keyPressed(keyCode, scanCode, modifiers);
             if (waypointEditor.isClosed()) waypointEditor = null;
             if (consumed) return true;
         }
         if (settings != null && settings.keyPressed(keyCode, scanCode, modifiers)) return true;
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+        if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
             if (helpOpen) {
                 helpOpen = false;
                 return true;
@@ -393,11 +392,11 @@ final class XaeroMapSurface {
             }
             return false;
         }
-        if (keyCode == GLFW.GLFW_KEY_EQUAL || keyCode == GLFW.GLFW_KEY_KP_ADD) {
+        if (keyCode == combatant.client.input.InputKeys.EQUAL || keyCode == combatant.client.input.InputKeys.KP_ADD) {
             changeZoom(1.0, areaX + areaWidth * 0.5f, areaY + areaHeight * 0.5f, false);
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_MINUS || keyCode == GLFW.GLFW_KEY_KP_SUBTRACT) {
+        if (keyCode == combatant.client.input.InputKeys.MINUS || keyCode == combatant.client.input.InputKeys.KP_SUBTRACT) {
             changeZoom(-1.0, areaX + areaWidth * 0.5f, areaY + areaHeight * 0.5f, false);
             return true;
         }
@@ -431,11 +430,11 @@ final class XaeroMapSurface {
                 return true;
             }
         }
-        if (hoveredElement != null && keyCode == GLFW.GLFW_KEY_T) {
+        if (hoveredElement != null && keyCode == combatant.client.input.InputKeys.T) {
             runElementTeleport(hoveredElement);
             return true;
         }
-        if (hoveredElement != null && keyCode == GLFW.GLFW_KEY_E
+        if (hoveredElement != null && keyCode == combatant.client.input.InputKeys.E
                 && hoveredElement.handle() instanceof Waypoint waypoint) {
             openWaypointDraft(waypoint);
             return true;
@@ -1294,7 +1293,7 @@ final class XaeroMapSurface {
     }
 
     private boolean clickUiButton(float mouseX, float mouseY, int button) {
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         for (UiButton uiButton : uiButtons) {
             if (!uiButton.contains(mouseX, mouseY)) continue;
             if (!uiButton.enabled()) return true;
@@ -1337,10 +1336,10 @@ final class XaeroMapSurface {
             if (!hit.contains(mouseX, mouseY)) continue;
             PlayerLocationSnapshot location = hit.target().location();
             if (location == null || !location.hasPosition()) return true;
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && hit.teleportable()) {
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT && hit.teleportable()) {
                 if (teleportTarget(location)) return true;
             }
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT || button == combatant.client.input.InputKeys.MOUSE_RIGHT) {
                 centerX = location.x();
                 centerZ = location.z();
                 centered = true;
@@ -1349,7 +1348,7 @@ final class XaeroMapSurface {
         }
         for (ElementHit hit : drawerHits) {
             if (!hit.contains(mouseX, mouseY)) continue;
-            if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            if (button == combatant.client.input.InputKeys.MOUSE_RIGHT) {
                 rightClickLocationMarker = null;
                 rightClickElement = hit.element();
                 contextWorldX = hit.element().worldX();
@@ -1359,7 +1358,7 @@ final class XaeroMapSurface {
                 contextBounds = null;
                 deleteArmed = false;
                 rebuildContextEntries();
-            } else if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            } else if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 centerX = hit.element().worldX();
                 centerZ = hit.element().worldZ();
                 centered = true;
@@ -1370,7 +1369,7 @@ final class XaeroMapSurface {
     }
 
     private boolean clickContext(float mouseX, float mouseY, int button) {
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return true;
         XaeroMapUiRenderer.ContextBounds bounds = contextBounds != null
                 ? contextBounds
                 : XaeroMapUiRenderer.contextBounds(
@@ -1696,8 +1695,10 @@ final class XaeroMapSurface {
         if (activeProcessor == null || activeProcessor.getMapWorld() == null) return;
         Minecraft minecraft = Minecraft.getInstance();
         boolean shift = minecraft != null && minecraft.getWindow() != null
-                && (InputConstants.isKeyDown(minecraft.getWindow(), GLFW.GLFW_KEY_LEFT_SHIFT)
-                || InputConstants.isKeyDown(minecraft.getWindow(), GLFW.GLFW_KEY_RIGHT_SHIFT));
+                && (combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.LEFT_SHIFT)
+                || combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.RIGHT_SHIFT));
         activeProcessor.getMapWorld().toggleDimension(!shift);
         activeProcessor.updateCaveStart();
         centered = false;

@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.scissor;
 
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.commands.RenderPass;
 
 /**
  * Backend-neutral pending scissor for Combatant immediate/RHI submissions.

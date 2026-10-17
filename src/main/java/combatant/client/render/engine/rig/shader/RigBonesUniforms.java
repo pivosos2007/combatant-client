@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rig.shader;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.uniform.ShaderUniformBindings;
 import combatant.client.render.engine.rig.core.RigInstance;

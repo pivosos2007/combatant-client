@@ -149,7 +149,7 @@ public final class SettingOverlayHost {
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (active == null) return false;
-        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+        if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
             requestClose();
             return true;
         }

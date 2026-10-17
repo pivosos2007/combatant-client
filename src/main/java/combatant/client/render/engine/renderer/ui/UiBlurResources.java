@@ -10,8 +10,8 @@ package combatant.client.render.engine.renderer.ui;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.RenderFrameContext;
 import combatant.client.render.engine.core.RenderPhase;
@@ -356,7 +356,7 @@ public final class UiBlurResources {
 
         MeshBuilder mesh = new MeshBuilder(
                 CombatantVertexFormats.POS2_TEXTURE_COLOR,
-                com.mojang.blaze3d.PrimitiveTopology.TRIANGLES,
+                com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES,
                 4,
                 6
         );
@@ -389,7 +389,7 @@ public final class UiBlurResources {
         if (mesh == null) {
             mesh = new MeshBuilder(
                     CombatantVertexFormats.POS2_TEXTURE_COLOR,
-                    com.mojang.blaze3d.PrimitiveTopology.TRIANGLES,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES,
                     4,
                     6
             );

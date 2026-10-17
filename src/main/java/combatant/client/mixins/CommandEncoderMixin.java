@@ -7,17 +7,17 @@
 
 package combatant.client.mixins;
 
-import com.mojang.blaze3d.systems.CommandEncoder;
-import com.mojang.blaze3d.systems.CommandEncoderBackend;
-import com.mojang.blaze3d.systems.RenderPassBackend;
-import com.mojang.blaze3d.systems.RenderPass;
-import com.mojang.blaze3d.systems.RenderPassDescriptor;
+import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
+import com.mojang.renderpearl.backend.api.CommandEncoderBackend;
+import com.mojang.renderpearl.backend.api.RenderPassBackend;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.buffers.GpuFence;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.commands.GpuFence;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector4fc;
 import org.spongepowered.asm.mixin.Mixin;
@@ -38,7 +38,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.function.Supplier;
 
-@Mixin(CommandEncoder.class)
+@Mixin(FrontendCommandEncoder.class)
 public abstract class CommandEncoderMixin {
     @Unique
     private static String combatant$label(Supplier<String> label) {
@@ -83,7 +83,7 @@ public abstract class CommandEncoderMixin {
         }
     }
 
-    @Inject(method = "createRenderPass(Lcom/mojang/blaze3d/systems/RenderPassDescriptor;)Lcom/mojang/blaze3d/systems/RenderPass;", at = @At("RETURN"))
+    @Inject(method = "createRenderPass(Lcom/mojang/renderpearl/api/commands/RenderPassDescriptor;)Lcom/mojang/renderpearl/api/commands/RenderPass;", at = @At("RETURN"))
     private void combatant$onCreateRenderPass(
             RenderPassDescriptor descriptor,
             CallbackInfoReturnable<RenderPass> cir
@@ -100,7 +100,7 @@ public abstract class CommandEncoderMixin {
             DebugLog.error("[RHI] render pass native-state boundary hook failed for %s", t, combatant$label(descriptor.label()));
         }
         try {
-            GlobalScissorState.applyTo(pass, descriptor.renderArea);
+            GlobalScissorState.applyTo(pass, descriptor.renderArea());
         } catch (Throwable t) {
             DebugLog.error("[Scissor] render pass scissor hook failed for %s", t, combatant$label(descriptor.label()));
         }
@@ -144,7 +144,7 @@ public abstract class CommandEncoderMixin {
 
     @Redirect(
             method = "submit",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/CommandEncoderBackend;submit()V")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;submit()V")
     )
     private void combatant$profileCommandSubmit(CommandEncoderBackend backend) {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("gpu_api:submit")) {
@@ -153,8 +153,8 @@ public abstract class CommandEncoderMixin {
     }
 
     @Redirect(
-            method = "createRenderPass(Lcom/mojang/blaze3d/systems/RenderPassDescriptor;)Lcom/mojang/blaze3d/systems/RenderPass;",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/CommandEncoderBackend;createRenderPass(Lcom/mojang/blaze3d/systems/RenderPassDescriptor;)Lcom/mojang/blaze3d/systems/RenderPassBackend;")
+            method = "createRenderPass(Lcom/mojang/renderpearl/api/commands/RenderPassDescriptor;)Lcom/mojang/renderpearl/api/commands/RenderPass;",
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;createRenderPass(Lcom/mojang/renderpearl/api/commands/RenderPassDescriptor;)Lcom/mojang/renderpearl/backend/api/RenderPassBackend;")
     )
     private RenderPassBackend combatant$profileCreateRenderPass(CommandEncoderBackend backend, RenderPassDescriptor descriptor) {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("gpu_api:create_render_pass")) {
@@ -164,7 +164,7 @@ public abstract class CommandEncoderMixin {
 
     @Redirect(
             method = "submitRenderPass",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/CommandEncoderBackend;submitRenderPass()V")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;submitRenderPass()V")
     )
     private void combatant$profileSubmitRenderPass(CommandEncoderBackend backend) {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("gpu_api:submit_render_pass")) {
@@ -174,7 +174,7 @@ public abstract class CommandEncoderMixin {
 
     @Redirect(
             method = "writeToBuffer",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/CommandEncoderBackend;writeToBuffer(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;Ljava/nio/ByteBuffer;)V")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;writeToBuffer(Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;Ljava/nio/ByteBuffer;)V")
     )
     private void combatant$profileWriteBuffer(CommandEncoderBackend backend, GpuBufferSlice buffer, ByteBuffer data) {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("gpu_api:write_buffer")) {
@@ -184,7 +184,7 @@ public abstract class CommandEncoderMixin {
 
     @Redirect(
             method = "copyToBuffer",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/CommandEncoderBackend;copyToBuffer(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;Lcom/mojang/blaze3d/buffers/GpuBufferSlice;)V")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;copyToBuffer(Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;)V")
     )
     private void combatant$profileCopyBuffer(CommandEncoderBackend backend, GpuBufferSlice source, GpuBufferSlice target) {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("gpu_api:copy_buffer")) {
@@ -193,8 +193,8 @@ public abstract class CommandEncoderMixin {
     }
 
     @Redirect(
-            method = "writeToTexture(Lcom/mojang/blaze3d/textures/GpuTexture;Ljava/nio/ByteBuffer;IIIIII)V",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/CommandEncoderBackend;writeToTexture(Lcom/mojang/blaze3d/textures/GpuTexture;Ljava/nio/ByteBuffer;IIIIII)V")
+            method = "writeToTexture(Lcom/mojang/renderpearl/api/textures/GpuTexture;Ljava/nio/ByteBuffer;IIIIII)V",
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;writeToTexture(Lcom/mojang/renderpearl/api/textures/GpuTexture;Ljava/nio/ByteBuffer;IIIIII)V")
     )
     private void combatant$profileWriteTexture(CommandEncoderBackend backend,
                                                 GpuTexture texture,
@@ -212,7 +212,7 @@ public abstract class CommandEncoderMixin {
 
     @Redirect(
             method = "copyBufferToTexture",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/CommandEncoderBackend;copyBufferToTexture(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;IIIILcom/mojang/blaze3d/textures/GpuTexture;IIIIII)V")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;copyBufferToTexture(Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;IIIILcom/mojang/renderpearl/api/textures/GpuTexture;IIIIII)V")
     )
     private void combatant$profileCopyBufferToTexture(CommandEncoderBackend backend,
                                                        GpuBufferSlice source,
@@ -234,8 +234,8 @@ public abstract class CommandEncoderMixin {
     }
 
     @Redirect(
-            method = "copyTextureToBuffer(Lcom/mojang/blaze3d/textures/GpuTexture;Lcom/mojang/blaze3d/buffers/GpuBuffer;JLjava/lang/Runnable;I)V",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/CommandEncoderBackend;copyTextureToBuffer(Lcom/mojang/blaze3d/textures/GpuTexture;Lcom/mojang/blaze3d/buffers/GpuBuffer;JLjava/lang/Runnable;I)V")
+            method = "copyTextureToBuffer(Lcom/mojang/renderpearl/api/textures/GpuTexture;Lcom/mojang/renderpearl/api/buffers/GpuBuffer;JLjava/lang/Runnable;I)V",
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;copyTextureToBuffer(Lcom/mojang/renderpearl/api/textures/GpuTexture;Lcom/mojang/renderpearl/api/buffers/GpuBuffer;JLjava/lang/Runnable;I)V")
     )
     private void combatant$profileCopyTextureToBuffer(CommandEncoderBackend backend,
                                                        GpuTexture source,
@@ -249,8 +249,8 @@ public abstract class CommandEncoderMixin {
     }
 
     @Redirect(
-            method = "copyTextureToBuffer(Lcom/mojang/blaze3d/textures/GpuTexture;Lcom/mojang/blaze3d/buffers/GpuBuffer;JLjava/lang/Runnable;IIIII)V",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/CommandEncoderBackend;copyTextureToBuffer(Lcom/mojang/blaze3d/textures/GpuTexture;Lcom/mojang/blaze3d/buffers/GpuBuffer;JLjava/lang/Runnable;IIIII)V")
+            method = "copyTextureToBuffer(Lcom/mojang/renderpearl/api/textures/GpuTexture;Lcom/mojang/renderpearl/api/buffers/GpuBuffer;JLjava/lang/Runnable;IIIII)V",
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;copyTextureToBuffer(Lcom/mojang/renderpearl/api/textures/GpuTexture;Lcom/mojang/renderpearl/api/buffers/GpuBuffer;JLjava/lang/Runnable;IIIII)V")
     )
     private void combatant$profileCopyTextureRegionToBuffer(CommandEncoderBackend backend,
                                                              GpuTexture source,
@@ -269,7 +269,7 @@ public abstract class CommandEncoderMixin {
 
     @Redirect(
             method = "copyTextureToTexture",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/CommandEncoderBackend;copyTextureToTexture(Lcom/mojang/blaze3d/textures/GpuTexture;Lcom/mojang/blaze3d/textures/GpuTexture;IIIIIII)V")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;copyTextureToTexture(Lcom/mojang/renderpearl/api/textures/GpuTexture;Lcom/mojang/renderpearl/api/textures/GpuTexture;IIIIIII)V")
     )
     private void combatant$profileCopyTexture(CommandEncoderBackend backend,
                                                GpuTexture source,
@@ -288,7 +288,7 @@ public abstract class CommandEncoderMixin {
 
     @Redirect(
             method = "createFence",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/CommandEncoderBackend;createFence()Lcom/mojang/blaze3d/buffers/GpuFence;")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;createFence()Lcom/mojang/renderpearl/api/commands/GpuFence;")
     )
     private GpuFence combatant$profileCreateFence(CommandEncoderBackend backend) {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("gpu_api:create_fence")) {

@@ -30,7 +30,6 @@ import combatant.client.util.schematic.SchematicMaterials;
 import combatant.client.util.schematic.SchematicPlacement;
 import combatant.client.util.schematic.SchematicState;
 import combatant.client.util.screen.ClientScreen;
-import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.ChatScreen;
@@ -48,7 +47,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.state.BlockState;
-import org.lwjgl.glfw.GLFW;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputDevice;
+import combatant.client.input.InputKeys;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -1102,7 +1103,7 @@ public final class SchematicScreen extends Screen {
             case CLOSE -> closeToParent();
             case REFRESH -> library.refresh();
             case LOAD -> SchematicActions.load(selectedPath);
-            case OPEN_FOLDER -> Util.getPlatform().openPath(library.directory());
+            case OPEN_FOLDER -> com.mojang.blaze3d.Blaze3D.openUri(library.directory().toUri());
             case ORIGIN_HERE -> SchematicActions.setOriginHere();
             case ORIGIN_LOOK -> SchematicActions.setOriginLooked();
             case ROTATE -> state.rotateClockwise();
@@ -1213,29 +1214,29 @@ public final class SchematicScreen extends Screen {
     public boolean keyPressed(KeyEvent input) {
         int key = input.key();
         if (searchFocused) {
-            if (key == GLFW.GLFW_KEY_BACKSPACE) {
+            if (key == InputKeys.BACKSPACE) {
                 if (!search.isEmpty()) search = search.substring(0, search.length() - 1);
                 return true;
             }
-            if (key == GLFW.GLFW_KEY_ESCAPE || key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+            if (key == InputKeys.ESCAPE || key == InputKeys.ENTER || key == InputKeys.KP_ENTER) {
                 searchFocused = false;
                 return true;
             }
             return true;
         }
         switch (key) {
-            case GLFW.GLFW_KEY_ESCAPE -> closeToParent();
-            case GLFW.GLFW_KEY_UP -> state.stepLayer(1);
-            case GLFW.GLFW_KEY_DOWN -> state.stepLayer(-1);
-            case GLFW.GLFW_KEY_PAGE_UP -> state.stepLayer(10);
-            case GLFW.GLFW_KEY_PAGE_DOWN -> state.stepLayer(-10);
-            case GLFW.GLFW_KEY_HOME -> state.setLayer(0);
-            case GLFW.GLFW_KEY_END -> state.setLayer(state.layerCount() - 1);
-            case GLFW.GLFW_KEY_SPACE -> togglePlay();
-            case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> SchematicActions.load(selectedPath);
-            case GLFW.GLFW_KEY_R -> viewport.resetCamera();
-            case GLFW.GLFW_KEY_T -> setView3d(!view3d);
-            case GLFW.GLFW_KEY_E -> viewport.cycleMode();
+            case InputKeys.ESCAPE -> closeToParent();
+            case InputKeys.UP -> state.stepLayer(1);
+            case InputKeys.DOWN -> state.stepLayer(-1);
+            case InputKeys.PAGE_UP -> state.stepLayer(10);
+            case InputKeys.PAGE_DOWN -> state.stepLayer(-10);
+            case InputKeys.HOME -> state.setLayer(0);
+            case InputKeys.END -> state.setLayer(state.layerCount() - 1);
+            case InputKeys.SPACE -> togglePlay();
+            case InputKeys.ENTER, InputKeys.KP_ENTER -> SchematicActions.load(selectedPath);
+            case InputKeys.R -> viewport.resetCamera();
+            case InputKeys.T -> setView3d(!view3d);
+            case InputKeys.E -> viewport.cycleMode();
             default -> {
                 return super.keyPressed(input);
             }
@@ -1263,15 +1264,15 @@ public final class SchematicScreen extends Screen {
     }
 
     private boolean shiftDown() {
-        return keyDown(GLFW.GLFW_KEY_LEFT_SHIFT) || keyDown(GLFW.GLFW_KEY_RIGHT_SHIFT);
+        return keyDown(InputKeys.LEFT_SHIFT) || keyDown(InputKeys.RIGHT_SHIFT);
     }
 
     private boolean ctrlDown() {
-        return keyDown(GLFW.GLFW_KEY_LEFT_CONTROL) || keyDown(GLFW.GLFW_KEY_RIGHT_CONTROL);
+        return keyDown(InputKeys.LEFT_CONTROL) || keyDown(InputKeys.RIGHT_CONTROL);
     }
 
     private boolean keyDown(int key) {
-        return minecraft != null && InputConstants.isKeyDown(minecraft.getWindow(), key);
+        return CombatantInput.state().isPressed(InputDevice.KEYBOARD, key);
     }
 
     // ---------------------------------------------------------------- metrics

@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.resource;
 
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 
 import java.util.*;
@@ -59,7 +59,7 @@ public final class FramebufferPool implements AutoCloseable {
         String key = descriptor.poolKey();
         TextureTarget fb = persistent.get(key);
         if (fb == null) {
-            fb = new TextureTarget(descriptor.name(), descriptor.width(), descriptor.height(), descriptor.depth(), GpuFormat.RGBA8_UNORM);
+            fb = new TextureTarget(descriptor.name(), descriptor.width(), descriptor.height(), GpuFormat.RGBA8_UNORM, descriptor.depth() ? GpuFormat.D32_FLOAT : null);
             persistent.put(key, fb);
             leakTracker.register(fb);
             creates++;
@@ -81,7 +81,7 @@ public final class FramebufferPool implements AutoCloseable {
         Queue<TextureTarget> queue = temporary.computeIfAbsent(key, ignored -> new ArrayDeque<>());
         TextureTarget fb = queue.poll();
         if (fb == null) {
-            fb = new TextureTarget(descriptor.name(), descriptor.width(), descriptor.height(), descriptor.depth(), GpuFormat.RGBA8_UNORM);
+            fb = new TextureTarget(descriptor.name(), descriptor.width(), descriptor.height(), GpuFormat.RGBA8_UNORM, descriptor.depth() ? GpuFormat.D32_FLOAT : null);
             leakTracker.register(fb);
             creates++;
         } else if (fb.width != descriptor.width() || fb.height != descriptor.height()) {
@@ -144,8 +144,8 @@ public final class FramebufferPool implements AutoCloseable {
         TextureTarget target = compatible.poll();
         if (target == null) {
             target = new TextureTarget(
-                    descriptor.logicalName(), descriptor.width(), descriptor.height(), descriptor.depth(),
-                    descriptor.colorFormat()
+                    descriptor.logicalName(), descriptor.width(), descriptor.height(), descriptor.colorFormat(),
+                    descriptor.depth() ? GpuFormat.D32_FLOAT : null
             );
             leakTracker.register(target);
             creates++;

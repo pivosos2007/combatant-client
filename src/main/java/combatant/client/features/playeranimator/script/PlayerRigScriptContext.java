@@ -125,9 +125,12 @@ public final class PlayerRigScriptContext {
                 horizontalSpeed,                                   // 57
                 state.ageInTicks / 20.0,                             // 58 interpolated render clock, seconds
                 state.ticksUsingItem,                               // 59 interpolated vanilla use ticks
-                state.attackArm != null ? state.attackArm.getSerializedName() : player.getMainArm().getSerializedName(), // 60
-                state.swingAnimationType != null ? state.swingAnimationType.getSerializedName() : "none", // 61
-                state.attackTime,                                   // 62 vanilla interpolated attack progress
+                state.currentSwing != null
+                        ? (state.currentSwing.hand() == InteractionHand.MAIN_HAND
+                            ? player.getMainArm() : player.getMainArm().getOpposite()).getSerializedName()
+                        : player.getMainArm().getSerializedName(), // 60
+                state.currentSwing != null ? state.currentSwing.animation().type().getSerializedName() : "none", // 61
+                state.swingAnimation,                              // 62 vanilla interpolated swing progress
                 state.x,                                            // 63 interpolated render X
                 state.y,                                            // 64 interpolated render Y
                 state.z,                                            // 65 interpolated render Z

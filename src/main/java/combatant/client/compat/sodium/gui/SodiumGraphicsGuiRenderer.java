@@ -7,8 +7,8 @@
 package combatant.client.compat.sodium.gui;
 
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.config.subsystem.VisualConfig;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
@@ -63,7 +63,6 @@ import net.minecraft.network.chat.TextColor;
 import net.minecraft.resources.Identifier;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
-import org.lwjgl.glfw.GLFW;
 
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -227,7 +226,7 @@ public final class SodiumGraphicsGuiRenderer {
         float mx = frame.canvas.mouseX;
         float my = frame.canvas.mouseY;
 
-        if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
             ACTIVE_INTEGER_DRAG.remove(screen);
         }
 
@@ -250,7 +249,7 @@ public final class SodiumGraphicsGuiRenderer {
 
         Screen vanillaScreen = screen;
         if (frame.search.contains(mx, my)) {
-            if (event.button() != 0) return true;
+            if (event.button() != combatant.client.input.InputKeys.MOUSE_LEFT) return true;
             String query = ((SodiumSearchWidgetAccess) searchWidget).combatant$getQuery();
             Rect clear = frame.searchClear;
             if (query != null && !query.isBlank() && clear.contains(mx, my)) {
@@ -268,7 +267,7 @@ public final class SodiumGraphicsGuiRenderer {
             blurSearch(vanillaScreen, searchWidget);
         }
 
-        if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT && externalInfoAction(frame).contains(mx, my)) {
+        if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT && externalInfoAction(frame).contains(mx, my)) {
             Option externalOption = INFO_OPTION.get(screen);
             if (externalOption instanceof ExternalButtonOption external && external.isEnabled()) {
                 external.getCurrentScreenConsumer().accept(screen);
@@ -277,7 +276,7 @@ public final class SodiumGraphicsGuiRenderer {
         }
 
         if (frame.pageScrollbar.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 beginScrollbarDrag(frame.pageScroll, my, frame.pageScrollbar, frame.pageContentHeight, NAV_H);
                 syncNativeScrollbar(pageList, frame.pageScroll, frame.pageContentHeight, NAV_H);
             }
@@ -299,7 +298,7 @@ public final class SodiumGraphicsGuiRenderer {
         }
 
         if (frame.optionScrollbar.contains(mx, my)) {
-            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (event.button() == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 beginScrollbarDrag(frame.optionScroll, my, frame.optionScrollbar, frame.optionContentHeight, OPTIONS_H);
                 syncNativeScrollbar(optionList, frame.optionScroll, frame.optionContentHeight, OPTIONS_H);
                 updateNativeSectionFocus(optionList);
@@ -1417,7 +1416,7 @@ public final class SodiumGraphicsGuiRenderer {
         ControlElement control = slot.control;
         Option option = control.getOption();
         if (option == null || !option.isEnabled()) return true;
-        if (event.button() != 0) return true;
+        if (event.button() != combatant.client.input.InputKeys.MOUSE_LEFT) return true;
 
         if (control instanceof StatefulControlElement stateful && stateful.isResetOverlayActive()) {
             if (slot.resetRect != null && slot.resetRect.contains(mx, my)) {
@@ -1535,7 +1534,7 @@ public final class SodiumGraphicsGuiRenderer {
     private static boolean clickEnumPopup(EnumPopup popup, float mx, float my, int button) {
         if (popup == null) return false;
         if (popup.closing) return popup.bounds.contains(mx, my);
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return popup.bounds.contains(mx, my);
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return popup.bounds.contains(mx, my);
 
         Rect visibleBounds = popup.animatedBounds();
         if (!visibleBounds.contains(mx, my)) return false;
@@ -1662,7 +1661,8 @@ public final class SodiumGraphicsGuiRenderer {
         Minecraft mc = Minecraft.getInstance();
         return mc != null
                 && mc.getWindow() != null
-                && GLFW.glfwGetMouseButton(mc.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+                && combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.MOUSE, combatant.client.input.InputKeys.MOUSE_LEFT);
     }
 
     private static float scrollbarHandleHeight(Rect track, float contentHeight, float viewportHeight) {

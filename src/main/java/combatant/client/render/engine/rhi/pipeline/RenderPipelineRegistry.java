@@ -7,8 +7,9 @@
 
 package combatant.client.render.engine.rhi.pipeline;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.ShaderType;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import combatant.client.mixininterface.IRenderPipeline;
 import combatant.client.render.engine.rhi.clip.ShapeClipRenderPassContract;
 import net.minecraft.resources.Identifier;
@@ -33,13 +34,13 @@ public final class RenderPipelineRegistry {
 
     private static RenderPipelineSpec specFromNative(RenderPipeline pipeline) {
         PipelineKey key = PipelineKey.of(pipeline);
-        com.mojang.blaze3d.PrimitiveTopology primitive = pipeline != null
+        com.mojang.renderpearl.api.pipeline.PrimitiveTopology primitive = pipeline != null
                 ? pipeline.getPrimitiveTopology()
-                : com.mojang.blaze3d.PrimitiveTopology.TRIANGLES;
+                : com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES;
         VertexFormat format = pipeline != null ? pipeline.getVertexFormatBinding(0) : null;
-        boolean lineMode = primitive == com.mojang.blaze3d.PrimitiveTopology.LINES
-                || primitive == com.mojang.blaze3d.PrimitiveTopology.DEBUG_LINES
-                || primitive == com.mojang.blaze3d.PrimitiveTopology.DEBUG_LINE_STRIP;
+        boolean lineMode = primitive == com.mojang.renderpearl.api.pipeline.PrimitiveTopology.LINES
+                || primitive == com.mojang.renderpearl.api.pipeline.PrimitiveTopology.DEBUG_LINES
+                || primitive == com.mojang.renderpearl.api.pipeline.PrimitiveTopology.DEBUG_LINE_STRIP;
         PipelineMetadata metadata = pipeline instanceof IRenderPipeline combatantPipeline
                 ? combatantPipeline.combatant$getMetadata()
                 : PipelineMetadata.builder(PipelineDomain.UNKNOWN).build();
@@ -62,8 +63,8 @@ public final class RenderPipelineRegistry {
         return RenderPipelineSpec.builder(key)
                 .vertexLayout(VertexLayoutSpec.of(metadata.vertexLayoutId(), format, primitive))
                 .depth(depth)
-                .vertexShader(id(pipeline != null ? pipeline.getVertexShader() : null))
-                .fragmentShader(id(pipeline != null ? pipeline.getFragmentShader() : null))
+                .vertexShader(id(pipeline != null ? pipeline.getShaders().get(ShaderType.VERTEX) : null))
+                .fragmentShader(id(pipeline != null ? pipeline.getShaders().get(ShaderType.FRAGMENT) : null))
                 .uniforms(uniforms.build())
                 .metadata(metadata)
                 .build();
@@ -113,6 +114,15 @@ public final class RenderPipelineRegistry {
         spec = byId.get(PipelineKey.of(pipeline).getId());
         if (spec != null) byNativePipeline.put(pipeline, spec);
         return spec;
+    }
+
+    /** Resolves backend CreateInfo.name() to the logical pipeline's extension metadata. */
+    public RenderPipeline nativeById(String id) {
+        if (id == null) return null;
+        for (RenderPipeline pipeline : byNativePipeline.keySet()) {
+            if (pipeline != null && id.equals(pipeline.getLocation().toString())) return pipeline;
+        }
+        return null;
     }
 
     public RenderPipelineSpec require(RenderPipeline pipeline) {

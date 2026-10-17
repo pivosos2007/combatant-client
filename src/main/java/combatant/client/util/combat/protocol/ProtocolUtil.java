@@ -18,7 +18,6 @@ package combatant.client.util.combat.protocol;
  * Copyright (c) 2015 - 2026 CCBlueX
  */
 
-import com.viaversion.viafabricplus.ViaFabricPlus;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.Minecraft;
@@ -38,31 +37,22 @@ public enum ProtocolUtil {
     public static final ClientProtocolVersion DEFAULT_PROTOCOL_VERSION =
             new ClientProtocolVersion(SharedConstants.getCurrentVersion().name(), SharedConstants.getProtocolVersion());
     private static final Minecraft MC = Minecraft.getInstance();
-    public static final boolean USES_VIAFABRICPLUS = detectViaFabricPlus();
-
-    private static boolean detectViaFabricPlus() {
-        boolean loaded = FabricLoader.getInstance().isModLoaded("viafabricplus");
-        if (!loaded) {
-            return false;
-        }
-
-        try {
-            ViaFabricPlus.getImpl().registerOnChangeProtocolVersionCallback((oldVer, newVer) -> {
-                // Update the window title if available
-                MC.execute(MC::updateTitle);
-            });
-        } catch (Throwable t) {
-            DebugLog.error("Failed to register ViaFabricPlus protocol callback", t);
-        }
-
-        return true;
-    }
+    public static final boolean USES_VIAFABRICPLUS = FabricLoader.getInstance().isModLoaded("viafabricplus");
+    private static volatile ClientProtocolVersion lastObservedVersion;
 
     public static ClientProtocolVersion getProtocolVersion() {
         if (USES_VIAFABRICPLUS) {
             try {
                 ClientProtocolVersion version = VfpCompatibility.INSTANCE.unsafeGetProtocolVersion();
-                return version != null ? version : DEFAULT_PROTOCOL_VERSION;
+                if (version != null) {
+                    ClientProtocolVersion old = lastObservedVersion;
+                    lastObservedVersion = version;
+                    if (old != null && !old.equals(version) && MC != null) {
+                        MC.execute(MC::updateTitle);
+                    }
+                    return version;
+                }
+                return DEFAULT_PROTOCOL_VERSION;
             } catch (Throwable t) {
                 DebugLog.error("Failed to get protocol version", t);
             }

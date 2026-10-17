@@ -7,12 +7,18 @@
 package combatant.client.util.text;
 
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.input.InputKey;
+import combatant.client.input.InputKeys;
+import combatant.client.input.InputModifierMask;
+import combatant.client.input.InputModifiers;
+import combatant.client.input.event.TextCompositionEvent;
+import combatant.client.input.minecraft.CombatantTextInputBridge;
+import combatant.client.input.minecraft.CombatantTextInputTarget;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ScissorFunction;
-import org.lwjgl.glfw.GLFW;
 
 /** Shared single-line editing, selection and horizontal viewport for custom GUI fields. */
-public final class SingleLineTextInput {
+public final class SingleLineTextInput implements CombatantTextInputTarget {
     private static SingleLineTextInput mouseCapture;
     private final int limit;
     private final java.util.function.IntPredicate allowed;
@@ -26,6 +32,8 @@ public final class SingleLineTextInput {
     private TextRenderer font;
     private long lastClickMs;
     private int lastClickIndex = -1;
+    private String composition = "";
+    private int compositionCaret;
 
     public SingleLineTextInput(int limit) {
         this(limit, ch -> !Character.isISOControl(ch));
@@ -52,7 +60,11 @@ public final class SingleLineTextInput {
 
     public void clear() { setText(""); cursor = anchor = 0; }
     public void moveToEnd() { cursor = anchor = value.length(); }
-    public void unfocus() { if (mouseCapture == this) mouseCapture = null; }
+    public void unfocus() {
+        if (mouseCapture == this) mouseCapture = null;
+        composition = "";
+        CombatantTextInputBridge.blur(this);
+    }
 
     private static String normalize(String s) {
         return s == null ? "" : s.replace('\r', ' ').replace('\n', ' ');
@@ -69,6 +81,7 @@ public final class SingleLineTextInput {
     }
 
     public void insert(String text) {
+        composition = "";
         String normalized = filter(normalize(text));
         if (normalized.isEmpty()) return;
         int from = selectionStart(), to = selectionEnd();
@@ -77,6 +90,18 @@ public final class SingleLineTextInput {
         if (normalized.length() > available) normalized = normalized.substring(0, available);
         value = value.substring(0, from) + normalized + value.substring(to);
         cursor = anchor = from + normalized.length();
+    }
+
+    @Override
+    public boolean insertText(String text) {
+        insert(text);
+        return true;
+    }
+
+    @Override
+    public void updateComposition(TextCompositionEvent event) {
+        composition = filter(normalize(event.text()));
+        compositionCaret = Math.max(0, Math.min(composition.length(), event.caretPosition()));
     }
 
     public void backspace() {
@@ -129,31 +154,35 @@ public final class SingleLineTextInput {
     }
 
     /** Returns true for keys owned by a focused text field (including unrecognized shortcuts). */
-    public boolean keyPressed(int key, int modifiers) {
-        boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
-        boolean shift = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
-        if (ctrl) {
-            switch (key) {
-                case GLFW.GLFW_KEY_A -> selectAll();
-                case GLFW.GLFW_KEY_C -> copy();
-                case GLFW.GLFW_KEY_X -> cut();
-                case GLFW.GLFW_KEY_V -> insert(ClipboardUtil.get());
-                case GLFW.GLFW_KEY_LEFT -> move(wordBoundary(cursor, -1), shift);
-                case GLFW.GLFW_KEY_RIGHT -> move(wordBoundary(cursor, 1), shift);
-                case GLFW.GLFW_KEY_BACKSPACE -> { if (!hasSelection()) move(wordBoundary(cursor, -1), true); eraseSelection(); }
-                case GLFW.GLFW_KEY_DELETE -> { if (!hasSelection()) move(wordBoundary(cursor, 1), true); eraseSelection(); }
-                case GLFW.GLFW_KEY_HOME -> move(0, shift);
-                case GLFW.GLFW_KEY_END -> move(value.length(), shift);
+    public boolean keyPressed(InputKey inputKey, InputModifiers modifiers) {
+        return keyPressed(inputKey.physicalKey(), inputKey.shortcutKey(), modifiers.mask());
+    }
+
+    public boolean keyPressed(int key, int shortcutKey, int modifiers) {
+        boolean shortcut = InputModifierMask.has(modifiers, InputModifierMask.SHORTCUT);
+        boolean shift = InputModifierMask.has(modifiers, InputModifierMask.SHIFT);
+        if (shortcut) {
+            switch (shortcutKey) {
+                case 'a' -> selectAll();
+                case 'c' -> copy();
+                case 'x' -> cut();
+                case 'v' -> insert(ClipboardUtil.get());
+                case InputKeys.LEFT -> move(wordBoundary(cursor, -1), shift);
+                case InputKeys.RIGHT -> move(wordBoundary(cursor, 1), shift);
+                case InputKeys.BACKSPACE -> { if (!hasSelection()) move(wordBoundary(cursor, -1), true); eraseSelection(); }
+                case InputKeys.DELETE -> { if (!hasSelection()) move(wordBoundary(cursor, 1), true); eraseSelection(); }
+                case InputKeys.HOME -> move(0, shift);
+                case InputKeys.END -> move(value.length(), shift);
             }
             return true;
         }
         switch (key) {
-            case GLFW.GLFW_KEY_BACKSPACE -> backspace();
-            case GLFW.GLFW_KEY_DELETE -> delete();
-            case GLFW.GLFW_KEY_LEFT -> move(!shift && hasSelection() ? selectionStart() : cursor - 1, shift);
-            case GLFW.GLFW_KEY_RIGHT -> move(!shift && hasSelection() ? selectionEnd() : cursor + 1, shift);
-            case GLFW.GLFW_KEY_HOME -> move(0, shift);
-            case GLFW.GLFW_KEY_END -> move(value.length(), shift);
+            case InputKeys.BACKSPACE -> backspace();
+            case InputKeys.DELETE -> delete();
+            case InputKeys.LEFT -> move(!shift && hasSelection() ? selectionStart() : cursor - 1, shift);
+            case InputKeys.RIGHT -> move(!shift && hasSelection() ? selectionEnd() : cursor + 1, shift);
+            case InputKeys.HOME -> move(0, shift);
+            case InputKeys.END -> move(value.length(), shift);
             default -> { return false; }
         }
         return true;
@@ -228,6 +257,12 @@ public final class SingleLineTextInput {
     public void render(float x, float y, float w, float h, TextRenderer textFont, float size,
                        int color, int selectionColor, boolean focused, boolean mask) {
         layout(x, w, textFont, size, mask);
+        if (focused) {
+            CombatantTextInputBridge.focus(this, Math.round(x), Math.round(y - h * 0.35f),
+                    Math.round(x + w), Math.round(y + h * 1.35f));
+        } else {
+            CombatantTextInputBridge.blur(this);
+        }
         float drawX = x - offset;
         boolean clipped = ScissorFunction.pushRaw(x, y - h * 0.35f, Math.max(1f, w), Math.max(1f, h * 1.7f));
         if (focused && hasSelection()) {
@@ -236,8 +271,16 @@ public final class SingleLineTextInput {
             ClickGuiRenderer.drawRect(left, y - h * 0.12f, Math.max(0f, right - left), h * 0.95f, selectionColor);
         }
         ClickGuiRenderer.drawText(textFont, displayed(), drawX, y, size, color, false);
-        if (focused && (System.currentTimeMillis() / 500L) % 2 == 0) {
-            GuiTextCaret.draw(drawX + pos(cursor), y, textFont, size, color);
+        float caretX = drawX + pos(cursor);
+        if (focused && !composition.isEmpty()) {
+            String visibleComposition = mask ? "*".repeat(composition.length()) : composition;
+            ClickGuiRenderer.drawText(textFont, visibleComposition, caretX, y, size, color, false);
+            float compositionWidth = width(visibleComposition);
+            ClickGuiRenderer.drawRect(caretX, y + h * 0.88f, Math.max(1f, compositionWidth), 1f, color);
+            String beforeCaret = visibleComposition.substring(0, Math.min(compositionCaret, visibleComposition.length()));
+            GuiTextCaret.draw(caretX + width(beforeCaret), y, textFont, size, color);
+        } else if (focused && (System.currentTimeMillis() / 500L) % 2 == 0) {
+            GuiTextCaret.draw(caretX, y, textFont, size, color);
         }
         if (clipped) ScissorFunction.pop();
     }

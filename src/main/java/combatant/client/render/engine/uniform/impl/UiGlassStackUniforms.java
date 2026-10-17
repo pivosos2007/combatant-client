@@ -5,7 +5,7 @@
  */
 package combatant.client.render.engine.uniform.impl;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassStackRegions;
 import combatant.client.render.engine.renderer.ui.draw.UiRect;
 import combatant.client.render.engine.uniform.ShaderUniformBindings;

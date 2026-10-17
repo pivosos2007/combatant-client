@@ -7,11 +7,11 @@
 
 package combatant.client.render.engine.rhi.backend.vulkan;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.systems.RenderPass;
-import com.mojang.blaze3d.systems.RenderPassDescriptor;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.systems.CommandEncoder;
+import com.mojang.renderpearl.api.commands.CommandEncoder;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.rhi.*;
 import net.minecraft.client.Minecraft;
@@ -208,8 +208,9 @@ public final class CombatantVulkanBackend implements CombatantRhi {
         RhiDrawCommand first = commands.get(start);
         stats.renderPass(first.colorAttachments, first.depthAttachment);
         try (RenderPass pass = createPass(encoder, first.label, first.colorAttachments, first.depthAttachment, first.clearDepth)) {
+            RenderSystem.bindDefaultUniforms(pass);
             PassBindingCache bindings = new PassBindingCache();
-            com.mojang.blaze3d.pipeline.RenderPipeline activePipeline = null;
+            com.mojang.renderpearl.api.pipeline.RenderPipeline activePipeline = null;
             for (int i = start; i < end; i++) {
                 RhiDrawCommand command = commands.get(i);
                 boolean bindPipeline = command.pipeline != activePipeline;
@@ -247,7 +248,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
                 }
 
                 if (command.pipelineSpec == null) pipelines.require(command.pipeline);
-                if (bindPipeline) pass.setPipeline(command.pipeline);
+                if (bindPipeline) pass.setPipeline(RenderSystem.getCompiledPipeline(command.pipeline));
                 int uniformBinds = 0;
                 int samplerBinds = 0;
                 if (meshData != null && bindings.bindUniform(pass, "MeshData", meshData)) uniformBinds++;
@@ -295,17 +296,17 @@ public final class CombatantVulkanBackend implements CombatantRhi {
         return pipeline != null && pipeline.metadata().requiresUniform("UIBatch");
     }
 
-    private record SamplerState(com.mojang.blaze3d.textures.GpuTextureView view,
-                                com.mojang.blaze3d.textures.GpuSampler sampler) {
+    private record SamplerState(com.mojang.renderpearl.api.textures.GpuTextureView view,
+                                com.mojang.renderpearl.api.textures.GpuSampler sampler) {
     }
 
     /** Avoids descriptor/buffer setter churn inside one compatible Vulkan dynamic-rendering scope. */
     private static final class PassBindingCache {
         private final Map<String, GpuBufferSlice> uniforms = new HashMap<>();
         private final Map<String, SamplerState> samplers = new HashMap<>();
-        private com.mojang.blaze3d.buffers.GpuBuffer vertexBuffer;
-        private com.mojang.blaze3d.buffers.GpuBuffer indexBuffer;
-        private com.mojang.blaze3d.IndexType indexType;
+        private com.mojang.renderpearl.api.buffers.GpuBuffer vertexBuffer;
+        private com.mojang.renderpearl.api.buffers.GpuBuffer indexBuffer;
+        private com.mojang.renderpearl.api.pipeline.IndexType indexType;
 
         boolean bindUniform(RenderPass pass, String name, GpuBufferSlice slice) {
             if (slice.equals(uniforms.get(name))) return false;
@@ -317,7 +318,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
         boolean bindSampler(RenderPass pass, RhiSamplerBinding binding) {
             SamplerState next = new SamplerState(binding.view(), binding.sampler());
             if (next.equals(samplers.get(binding.name()))) return false;
-            pass.bindTexture(binding.name(), binding.view(), binding.sampler());
+            pass.setUniform(binding.name(), binding.view(), binding.sampler());
             samplers.put(binding.name(), next);
             return true;
         }
@@ -352,7 +353,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
             );
             GpuBufferSlice meshData = MeshUniforms.get();
 
-            RenderPassDescriptor descriptor = RenderPassDescriptor.create(() -> command.label)
+            RenderPassDescriptor.Builder descriptor = RenderPassDescriptor.builder(() -> command.label)
                     .withColorAttachment(command.colorAttachment, clearColor(command.clearColor))
                     .withRenderArea(new RenderPass.RenderArea(
                             0, 0, command.colorAttachment.getWidth(0), command.colorAttachment.getHeight(0)
@@ -361,17 +362,18 @@ public final class CombatantVulkanBackend implements CombatantRhi {
                 descriptor.withDepthAttachment(command.depthAttachment, command.clearDepth);
             }
             stats.renderPass(command.colorAttachment, command.depthAttachment);
-            try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(descriptor)) {
+            try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(descriptor.build())) {
+                RenderSystem.bindDefaultUniforms(pass);
                 if (command.pipelineSpec == null) pipelines.require(command.pipeline);
                 stats.pipelineUse(command.pipeline, command.pipelineSpec,
                         command.uniforms.size() + 1, command.samplers.size(), true);
-                pass.setPipeline(command.pipeline);
+                pass.setPipeline(RenderSystem.getCompiledPipeline(command.pipeline));
                 pass.setUniform("MeshData", meshData);
                 for (RhiUniformBinding uniform : command.uniforms) {
                     pass.setUniform(uniform.name(), uniform.slice());
                 }
                 for (RhiSamplerBinding sampler : command.samplers) {
-                    pass.bindTexture(sampler.name(), sampler.view(), sampler.sampler());
+                    pass.setUniform(sampler.name(), sampler.view(), sampler.sampler());
                 }
                 GpuMeshHandle quad = fullscreen.quad();
                 pass.setVertexBuffer(0, quad.vertexBuffer().slice());
@@ -386,9 +388,9 @@ public final class CombatantVulkanBackend implements CombatantRhi {
     private RenderPass createPass(CommandEncoder encoder,
                                   String label,
                                   List<RhiColorAttachment> colors,
-                                  com.mojang.blaze3d.textures.GpuTextureView depth,
+                                  com.mojang.renderpearl.api.textures.GpuTextureView depth,
                                   OptionalDouble clearDepth) {
-        RenderPassDescriptor descriptor = RenderPassDescriptor.create(() -> label);
+        RenderPassDescriptor.Builder descriptor = RenderPassDescriptor.builder(() -> label);
         int width = -1;
         int height = -1;
         for (RhiColorAttachment color : colors) {
@@ -430,7 +432,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
             throw new IllegalArgumentException("Render pass requires at least one non-empty attachment: " + label);
         }
         descriptor.withRenderArea(new RenderPass.RenderArea(0, 0, width, height));
-        return encoder.createRenderPass(descriptor);
+        return encoder.createRenderPass(descriptor.build());
     }
 
     @Override

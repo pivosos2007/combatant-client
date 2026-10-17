@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,13 +8,13 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-in vec4 v_Color;
-in vec3 v_ViewNormal;
-in vec3 v_ViewPosition;
-in vec2 v_AgePhase;
-in float v_Membrane;
+layout(location = 2) in vec4 v_Color;
+layout(location = 7) in vec3 v_ViewNormal;
+layout(location = 6) in vec3 v_ViewPosition;
+layout(location = 8) in vec2 v_AgePhase;
+layout(location = 9) in float v_Membrane;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     vec3 normal = normalize(v_ViewNormal);

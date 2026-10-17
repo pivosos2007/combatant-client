@@ -13,10 +13,9 @@ import combatant.client.util.logging.DebugLog;
 /**
  * Sodium shader override/workaround registry.
  * <p>
- * Sodium 26.2 compiles terrain through Mojang RenderPipeline, so Combatant must
- * redirect shader identifiers and let vanilla ShaderManager load/preprocess the
- * .vsh/.fsh resources. Do not read shader source manually here; that bypasses
- * vanilla defines/import handling and breaks Vulkan parity.
+ * Sodium 0.9.2 for Minecraft 26.3 compiles terrain through RenderPearl.
+ * Redirect only the shader identifier, retaining Sodium/ShaderManager define handling,
+ * #include resolution, OIT permutations and the MDI vertex contract.
  */
 public final class SodiumShaderWorkarounds {
     private static final Identifier SODIUM_BLOCK_LAYER_OPAQUE = Identifier.fromNamespaceAndPath("sodium", "blocks/block_layer_opaque");

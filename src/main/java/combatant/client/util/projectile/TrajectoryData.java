@@ -44,10 +44,8 @@ public enum TrajectoryData {
         if (stack.is(Items.CROSSBOW)) {
             ChargedProjectiles charged = stack.get(DataComponents.CHARGED_PROJECTILES);
             if (charged != null) {
-                for (ItemStack projectile : charged.itemCopies()) {
-                    if (projectile.is(Items.FIREWORK_ROCKET)) {
-                        return TrajectoryInfo.FIREBALL.typed(TrajectoryType.FIREBALL);
-                    }
+                if (charged.itemCopies().anyMatch(projectile -> projectile.is(Items.FIREWORK_ROCKET))) {
+                    return TrajectoryInfo.FIREBALL.typed(TrajectoryType.FIREBALL);
                 }
             }
             return TrajectoryInfo.BOW_FULL_PULL.typed(TrajectoryType.ARROW);

@@ -16,7 +16,6 @@ import combatant.client.util.resources.asset.AssetLoadPhase;
 import combatant.client.util.resources.asset.UiScriptAsset;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.packs.resources.ResourceManager;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.hud.draggable.impl.HudNotifier;
 import combatant.client.features.gui.hud.BaseHudElement;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
@@ -144,12 +143,12 @@ public enum HudScriptLayouts {
 
     public static void pollReloadCombo(Minecraft mc) {
         if (mc == null || mc.getWindow() == null) return;
-        long window = mc.getWindow().handle();
-        boolean ctrl = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
-                || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
-        boolean shift = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS
-                || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
-        boolean key = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_R) == GLFW.GLFW_PRESS;
+        combatant.client.input.InputState state = combatant.client.input.CombatantInput.state();
+        boolean ctrl = state.isPressed(combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.LEFT_CONTROL)
+                || state.isPressed(combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.RIGHT_CONTROL);
+        boolean shift = state.isPressed(combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.LEFT_SHIFT)
+                || state.isPressed(combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.RIGHT_SHIFT);
+        boolean key = state.isPressed(combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.R);
         boolean down = ctrl && shift && key;
         if (down && !reloadComboDown) {
             reloadChanged(mc);

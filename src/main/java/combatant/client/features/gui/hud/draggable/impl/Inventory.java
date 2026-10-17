@@ -27,7 +27,8 @@ import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.TextRenderer;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputScope;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -218,7 +219,7 @@ public final class Inventory extends DraggableHudElement {
             return;
         }
 
-        boolean pressed = ClientScreen.current() == null && KeyManager.isComboHeldAllowScreen(combo);
+        boolean pressed = ClientScreen.current() == null && CombatantInput.bindings().isChordHeld(combo, InputScope.GLOBAL);
         if (!pressed) {
             toggleArmed = true;
             return;
@@ -553,7 +554,7 @@ public final class Inventory extends DraggableHudElement {
         String combo = toggleBind.get();
         if (combo != null && !combo.isBlank() && !"NONE".equalsIgnoreCase(combo)
                 && mc != null && ClientScreen.current() == null
-                && KeyManager.isComboHeldAllowScreen(combo)) {
+                && CombatantInput.bindings().isChordHeld(combo, InputScope.GLOBAL)) {
             toggleArmed = false;
         }
     }

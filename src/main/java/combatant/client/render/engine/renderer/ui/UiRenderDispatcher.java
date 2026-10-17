@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.renderer.ui;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import combatant.client.render.engine.command.UiCommand;
 import combatant.client.render.engine.command.UiStatsSnapshot;
 import combatant.client.render.engine.core.CombatantRenderSystem;

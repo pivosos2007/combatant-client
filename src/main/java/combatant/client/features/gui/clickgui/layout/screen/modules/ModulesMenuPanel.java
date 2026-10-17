@@ -7,7 +7,6 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.modules;
 
-import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.gui.clickgui.settings.SettingErrorView;
@@ -259,12 +258,12 @@ final class ModulesMenuPanel {
             float backY = y + 28.0f * ModulesMenuScreen.computePortScale();
             float backH = 20.0f * ModulesMenuScreen.computePortScale();
 
-            if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && ModulesMenuScreen.inside(mx, my, x, backY, w, backH)) {
+            if (button == combatant.client.input.InputKeys.MOUSE_RIGHT && ModulesMenuScreen.inside(mx, my, x, backY, w, backH)) {
                 closeSettings();
                 return true;
             }
 
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT
                     && previewW > 0.0f
                     && ModulesMenuScreen.inside(mx, my, previewX, previewY, previewW, previewH)) {
                 return ModulesMenuResolver.openPreview(selected);
@@ -288,7 +287,7 @@ final class ModulesMenuPanel {
                 }
             }
 
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && settingsScrollbarHit(mx, my)) {
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT && settingsScrollbarHit(mx, my)) {
                 settingsScrollbarDragging = true;
                 settingsScrollbarDragOffset = my - settingsScrollbarHandleY;
                 updateSettingsScrollbarDrag(my);
@@ -298,7 +297,7 @@ final class ModulesMenuPanel {
             return true;
         }
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT
                 && ModulesMenuScreen.inside(mx, my, subcategoryViewportX, subcategoryViewportY,
                 subcategoryViewportW, subcategoryViewportH)) {
             for (SubcategoryHit hit : subcategoryHits) {
@@ -308,7 +307,7 @@ final class ModulesMenuPanel {
             }
         }
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && modulesScrollbarHit(mx, my)) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && modulesScrollbarHit(mx, my)) {
             modulesScrollbarDragging = true;
             modulesScrollbarDragOffset = my - modulesScrollbarHandleY;
             updateModulesScrollbarDrag(my);
@@ -320,23 +319,23 @@ final class ModulesMenuPanel {
 
             if (ModulesMenuScreen.isModuleListEditHeld()
                     && hit.toggleable
-                    && (button == GLFW.GLFW_MOUSE_BUTTON_LEFT || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+                    && (button == combatant.client.input.InputKeys.MOUSE_LEFT || button == combatant.client.input.InputKeys.MOUSE_RIGHT)) {
                 ModulesMenuResolver.toggleModuleListVisibility(hit.id);
                 return true;
             }
 
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && hit.toggleable) {
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT && hit.toggleable) {
                 ModulesMenuResolver.toggleEntry(hit.id);
                 return true;
             }
 
-            if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
+            if (button == combatant.client.input.InputKeys.MOUSE_MIDDLE) {
                 bindingId = hit.id;
                 ModulesMenuResolver.beginBind(hit.id);
                 return true;
             }
 
-            if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            if (button == combatant.client.input.InputKeys.MOUSE_RIGHT) {
                 ModulesMenuResolver.ResolvedSettings resolved = ModulesMenuResolver.resolveSettings(hit.id);
                 if (resolved == null) return true;
 
@@ -356,7 +355,7 @@ final class ModulesMenuPanel {
     }
 
     void mouseReleased(float mx, float my, int button) {
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
             modulesScrollbarDragging = false;
             settingsScrollbarDragging = false;
         }
@@ -394,12 +393,12 @@ final class ModulesMenuPanel {
 
     boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (selected == null) {
-            if (keyCode == GLFW.GLFW_KEY_UP) {
+            if (keyCode == combatant.client.input.InputKeys.UP) {
                 modulesScroll = AnimationUtility.clamp(modulesScroll - 20.0f * ModulesMenuScreen.computePortScale(), 0.0f, maxModulesScroll);
                 return true;
             }
 
-            if (keyCode == GLFW.GLFW_KEY_DOWN) {
+            if (keyCode == combatant.client.input.InputKeys.DOWN) {
                 modulesScroll = AnimationUtility.clamp(modulesScroll + 20.0f * ModulesMenuScreen.computePortScale(), 0.0f, maxModulesScroll);
                 return true;
             }
@@ -417,17 +416,17 @@ final class ModulesMenuPanel {
             }
         }
 
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+        if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
             closeSettings();
             return true;
         }
 
-        if (keyCode == GLFW.GLFW_KEY_UP) {
+        if (keyCode == combatant.client.input.InputKeys.UP) {
             settingsScroll = AnimationUtility.clamp(settingsScroll - 20.0f * ModulesMenuScreen.computePortScale(), 0.0f, maxSettingsScroll);
             return true;
         }
 
-        if (keyCode == GLFW.GLFW_KEY_DOWN) {
+        if (keyCode == combatant.client.input.InputKeys.DOWN) {
             settingsScroll = AnimationUtility.clamp(settingsScroll + 20.0f * ModulesMenuScreen.computePortScale(), 0.0f, maxSettingsScroll);
             return true;
         }

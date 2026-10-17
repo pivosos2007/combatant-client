@@ -38,12 +38,19 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity,
         super(ctx);
     }
 
-    @Inject(method = "extractRenderState", at = @At("TAIL"))
+    @Inject(
+            method = "extractRenderState(Lnet/minecraft/world/entity/item/ItemEntity;Lnet/minecraft/client/renderer/entity/state/ItemEntityRenderState;F)V",
+            at = @At("TAIL")
+    )
     private void combatant$captureOnGround(ItemEntity itemEntity, ItemEntityRenderState state, float tickDelta, CallbackInfo ci) {
         ((IItemEntityRenderState) state).combatant$setOnGround(itemEntity.onGround());
     }
 
-    @Inject(method = "submit", at = @At("HEAD"), cancellable = true)
+    @Inject(
+            method = "submit(Lnet/minecraft/client/renderer/entity/state/ItemEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
+            at = @At("HEAD"),
+            cancellable = true
+    )
     private void combatant$renderItemPhysics(
             ItemEntityRenderState state,
             PoseStack matrices,
@@ -62,10 +69,10 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity,
         matrices.translate(0.0F, baseY, 0.0F);
 
         if (((IItemEntityRenderState) state).combatant$isOnGround()) {
-            matrices.mulPose(Axis.XP.rotationDegrees(90.0F));
+            matrices.rotateDegrees(Axis.XP, 90.0F);
         } else {
             float rotation = ItemEntity.getSpin(state.ageInTicks, state.bobOffset);
-            matrices.mulPose(Axis.XP.rotationDegrees(rotation * 300.0F));
+            matrices.rotateDegrees(Axis.XP, rotation * 300.0F);
         }
 
         ItemEntityRenderer.submitMultipleFromCount(matrices, queue, state.lightCoords, state, this.random, box);

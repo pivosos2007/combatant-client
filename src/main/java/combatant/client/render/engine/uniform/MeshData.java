@@ -13,12 +13,11 @@
 
 package combatant.client.render.engine.uniform;
 
-import net.minecraft.client.renderer.DynamicUniformStorage;
 import org.joml.Matrix4f;
 
 import java.nio.ByteBuffer;
 
-public final class MeshData implements DynamicUniformStorage.DynamicUniform {
+public final class MeshData {
 
     private final Matrix4f proj;
     private final Matrix4f modelView;
@@ -28,7 +27,6 @@ public final class MeshData implements DynamicUniformStorage.DynamicUniform {
         this.modelView = new Matrix4f(modelView);
     }
 
-    @Override
     public void write(ByteBuffer buffer) {
         // std140: mat4 = 16 floats, column-major
         proj.get(buffer);

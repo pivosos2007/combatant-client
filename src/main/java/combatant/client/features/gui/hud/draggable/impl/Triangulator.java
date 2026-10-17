@@ -384,7 +384,7 @@ public final class Triangulator extends DraggableHudElement {
 
     @Override
     public boolean onMouseClicked(float mx, float my, int button) {
-        if (button != 0) {
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) {
             return false;
         }
         SolveResult copyResult = currentCopyResult();

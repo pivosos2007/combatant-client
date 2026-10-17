@@ -7,7 +7,7 @@
 
 package combatant.client.render.iris;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.mixins.iris.IrisHandRendererAccessor;
@@ -101,17 +101,17 @@ enum IrisRuntimeBridge {
         HandRenderer handRenderer = HandRenderer.INSTANCE;
         IrisHandRendererAccessor accessor = (IrisHandRendererAccessor) handRenderer;
         boolean previousSolid = handRenderer.isRenderingSolid();
-        int light = client.getEntityRenderDispatcher().getPackedLightCoords(client.player, tickDelta);
+        var playerState = client.gameRenderer.gameRenderState().levelRenderState.playerRenderState;
         try {
             // Iris normally submits these into two Photon phases. Build both subsets into one
             // vanilla storage instead; the existing Iris item filter still selects each subset,
             // while no draw occurs until the native post-world pass.
             accessor.combatant$setRenderingSolid(true);
-            client.gameRenderer.itemInHandRenderer.submitHandsWithItems(
-                    tickDelta, poseStack, storage, client.player, light);
+            client.gameRenderer.firstPersonHandsAndItemsRenderer.submitHandsWithItems(
+                    tickDelta, poseStack, storage, playerState, playerState.firstPersonHandsAndItems);
             accessor.combatant$setRenderingSolid(false);
-            client.gameRenderer.itemInHandRenderer.submitHandsWithItems(
-                    tickDelta, poseStack, storage, client.player, light);
+            client.gameRenderer.firstPersonHandsAndItemsRenderer.submitHandsWithItems(
+                    tickDelta, poseStack, storage, playerState, playerState.firstPersonHandsAndItems);
             return true;
         } finally {
             accessor.combatant$setRenderingSolid(previousSolid);

@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * Protean clouds by nimitz (twitter: @stormoid)
@@ -8,8 +9,8 @@
  * This adapted shader remains subject to the upstream CC BY-NC-SA 3.0 license stated above.
  */
 
-out vec4 color;
-in vec2 v_TexCoord;
+layout(location = 0) out vec4 color;
+layout(location = 0) in vec2 v_TexCoord;
 
 layout (std140) uniform VisualPreviewBackground {
     vec4 u_Viewport;   // width, height, time, pad

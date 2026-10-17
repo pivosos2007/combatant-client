@@ -6,8 +6,8 @@
  */
 package combatant.client.render.engine.rhi.shader;
 
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 
 /** Combined sampled image/sampler binding for native shader stages. */
 public record SampledTextureBinding(int binding,

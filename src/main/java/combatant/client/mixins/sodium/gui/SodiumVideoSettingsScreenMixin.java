@@ -29,7 +29,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
@@ -74,8 +73,8 @@ public abstract class SodiumVideoSettingsScreenMixin {
         // this same Sodium screen before that physical key is released. Sodium normally closes
         // itself from keyReleased(ESC), so without this one-shot guard the return immediately
         // falls through one more screen. Only arm while ESC is physically held during re-init.
-        combatant$suppressEscapeRelease = GLFW.glfwGetKey(
-                client.getWindow().handle(), GLFW.GLFW_KEY_ESCAPE) == GLFW.GLFW_PRESS;
+        combatant$suppressEscapeRelease = combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.ESCAPE);
     }
 
     @Inject(method = "rebuild", at = @At("TAIL"), remap = false)
@@ -135,12 +134,13 @@ public abstract class SodiumVideoSettingsScreenMixin {
         // SearchWidget consumes ESC on key-press by clearing/unfocusing itself. Sodium also has
         // an ESC close path on key-release, so remember that this physical key belongs to the
         // search state and consume only its matching release below.
-        if (event.key() == GLFW.GLFW_KEY_ESCAPE && searchWidget != null && searchWidget.isSearching()) {
+        if (event.key() == combatant.client.input.InputKeys.ESCAPE && searchWidget != null && searchWidget.isSearching()) {
             combatant$suppressEscapeRelease = true;
         }
 
-        boolean control = (event.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0;
-        if (control && event.key() == GLFW.GLFW_KEY_F
+        combatant.client.input.InputModifiers modifiers =
+                combatant.client.input.minecraft.MinecraftInputAdapter.modifiers(event);
+        if (modifiers.shortcut() && event.shortcutKey() == 'f'
                 && SodiumGraphicsGuiRenderer.focusSearch((VideoSettingsScreen) (Object) this, searchWidget)) {
             cir.setReturnValue(true);
         }
@@ -149,7 +149,7 @@ public abstract class SodiumVideoSettingsScreenMixin {
     @Inject(method = "keyReleased", at = @At("HEAD"), cancellable = true, remap = false)
     private void combatant$consumeOwnedEscapeRelease(KeyEvent event, CallbackInfoReturnable<Boolean> cir) {
         if (!SodiumGraphicsGuiRenderer.shouldUseModernUi() || event == null) return;
-        if (event.key() != GLFW.GLFW_KEY_ESCAPE || !combatant$suppressEscapeRelease) return;
+        if (event.key() != combatant.client.input.InputKeys.ESCAPE || !combatant$suppressEscapeRelease) return;
 
         combatant$suppressEscapeRelease = false;
         cir.setReturnValue(true);

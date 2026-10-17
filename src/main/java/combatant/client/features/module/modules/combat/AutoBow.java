@@ -203,7 +203,7 @@ public class AutoBow extends Module {
     public void onTick() {
         if (!isEnabled()) return;
 
-        Snapshot snapshot = getSnapshot(TickDelta.get());
+        Snapshot snapshot = getSnapshot(TickDelta.tickProgress(false));
         boolean canRotate = canRotateForWeaponState(mc.player, snapshot.weapon());
         boolean inside = snapshot.insideRadius();
         forceHoldUse = shouldHoldUseForFullAuto(snapshot);
@@ -237,7 +237,7 @@ public class AutoBow extends Module {
             return true;
         }
 
-        Snapshot snapshot = getSnapshot(TickDelta.get());
+        Snapshot snapshot = getSnapshot(TickDelta.tickProgress(false));
         ActiveWeapon weapon = snapshot.weapon();
         return weapon != null
                 && weapon.type() == WeaponType.CROSSBOW
@@ -337,7 +337,7 @@ public class AutoBow extends Module {
 
         if (!isEnabled()) return;
 
-        Snapshot snapshot = getSnapshot(TickDelta.get());
+        Snapshot snapshot = getSnapshot(TickDelta.tickProgress(false));
         boolean canRotate = canRotateForWeaponState(mc.player, snapshot.weapon());
         boolean inside = snapshot.insideRadius();
         TargetManager.setModuleTarget(inside ? snapshot.target() : null);

@@ -7,8 +7,10 @@
 
 package combatant.client.mixins;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.vulkan.VulkanRenderPass;
+import com.mojang.renderpearl.backend.api.BackendRenderPipeline;
+import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanPipelineVariants;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
+import com.mojang.renderpearl.backend.vulkan.VulkanRenderPass;
 import org.lwjgl.vulkan.VK12;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -37,8 +39,13 @@ public abstract class VulkanRenderPassMixin {
         ci.cancel();
     }
 
+    @ModifyVariable(method = "setPipeline", at = @At("HEAD"), argsOnly = true)
+    private BackendRenderPipeline combatant$selectVariant(BackendRenderPipeline pipeline) {
+        return VulkanPipelineVariants.select(pipeline);
+    }
+
     @Inject(method = "setPipeline", at = @At("TAIL"))
-    private void combatant$applyDynamicPipelineState(RenderPipeline pipeline, CallbackInfo ci) {
+    private void combatant$applyDynamicPipelineState(BackendRenderPipeline pipeline, CallbackInfo ci) {
         if (!VulkanRenderStateBridge.vulkanBackendActive()) return;
         VkCommandBuffer commandBuffer = combatant$commandBuffer();
         if (!VulkanRenderStateBridge.forceDisableStencil() && VulkanRenderStateBridge.currentRenderPassHasStencilAttachment()) {

@@ -7,8 +7,8 @@
 
 package combatant.client.render.engine.rhi.backend.vulkan.clip;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateBridge;
 import combatant.client.render.engine.rhi.clip.ShapeClipBackend;

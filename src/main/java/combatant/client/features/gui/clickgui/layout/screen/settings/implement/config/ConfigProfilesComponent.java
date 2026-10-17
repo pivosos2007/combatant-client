@@ -10,7 +10,6 @@ package combatant.client.features.gui.clickgui.layout.screen.settings.implement.
 import combatant.client.util.text.SingleLineTextInput;
 
 import combatant.client.config.profile.*;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
@@ -129,7 +128,7 @@ public final class ConfigProfilesComponent {
     }
 
     public boolean mousePressedScrollbar(float mx, float my, int button) {
-        if (button != 0) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         if (diffPanelComponent.mousePressedScrollbar(mx, my, button)) return true;
         if (!isScrollbarHovered(mx, my)) return false;
         draggingScrollbar = true;
@@ -142,7 +141,7 @@ public final class ConfigProfilesComponent {
 
     public void mouseReleased(int button) {
         diffPanelComponent.mouseReleased(button);
-        if (button == 0) draggingScrollbar = false;
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) draggingScrollbar = false;
     }
 
     public void scroll(float mx, float my, float menuX, float menuY, float menuW, float menuH, double amount, float scale) {
@@ -157,7 +156,7 @@ public final class ConfigProfilesComponent {
     }
 
     public boolean click(float mx, float my, int button) {
-        if (button != 0) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
 
         if (selectedDiff != null || diffError != null) {
             ConfigDiffPanelComponent.HeaderAction diffAction = diffPanelComponent.headerAction(mx, my, button);
@@ -535,15 +534,15 @@ public final class ConfigProfilesComponent {
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (!isRenaming()) return false;
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+        if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
             cancelRename();
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+        if (keyCode == combatant.client.input.InputKeys.ENTER || keyCode == combatant.client.input.InputKeys.KP_ENTER) {
             commitRename();
             return true;
         }
-        renameInput.keyPressed(keyCode, modifiers);
+        renameInput.keyPressed(keyCode, scanCode, modifiers);
         return true;
     }
 

@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,7 +8,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Texture;
 
@@ -17,7 +18,7 @@ layout (std140) uniform DamageTint {
     vec4 u_Direction; // xy screen direction, z directional flag, w distortion
 };
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
 float safeEdge(vec2 centered) {
     return smoothstep(0.34, 0.73, length(centered));

@@ -7,7 +7,7 @@
 
 package combatant.client.mixins.accessors;
 
-import com.mojang.blaze3d.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuSampler;
 import net.minecraft.client.renderer.*;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import net.minecraft.client.renderer.state.level.LevelRenderState;

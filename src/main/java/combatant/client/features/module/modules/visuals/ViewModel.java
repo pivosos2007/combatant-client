@@ -409,15 +409,15 @@ public class ViewModel extends Module {
             case "SmoothVanilla": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, -0.2f * anim, 0.0);
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f * anim));
+                ms.rotateDegrees(Axis.XP, -90.0f * anim);
                 break;
             }
 
             case "SwipeBackDown": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, 0.1, -0.1);
-                ms.mulPose(Axis.YP.rotationDegrees(60.0f));
-                ms.mulPose(Axis.ZP.rotationDegrees(-60.0f));
+                ms.rotateDegrees(Axis.YP, 60.0f);
+                ms.rotateDegrees(Axis.ZP, -60.0f);
                 ms.translate(0.0, -0.3f * anim, 0.0);
                 break;
             }
@@ -425,24 +425,24 @@ public class ViewModel extends Module {
             case "Swipe Back": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, 0.1, -0.1);
-                ms.mulPose(Axis.YP.rotationDegrees(60.0f));
-                ms.mulPose(Axis.ZP.rotationDegrees(-60.0f));
-                ms.mulPose(Axis.YP.rotationDegrees(sin2 * sin1 * -5.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(-10.0f - power * 10.0f * anim));
-                ms.mulPose(Axis.XP.rotationDegrees(-60.0f));
+                ms.rotateDegrees(Axis.YP, 60.0f);
+                ms.rotateDegrees(Axis.ZP, -60.0f);
+                ms.rotateDegrees(Axis.YP, sin2 * sin1 * -5.0f);
+                ms.rotateDegrees(Axis.XP, -10.0f - power * 10.0f * anim);
+                ms.rotateDegrees(Axis.XP, -60.0f);
                 break;
             }
 
             case "New": {
                 ms.scale(scale * (1.0f + 0.1f * sin2), scale, scale);
                 ms.translate(0.2, 0.1, -0.2);
-                ms.mulPose(Axis.XP.rotationDegrees(60.0f));
+                ms.rotateDegrees(Axis.XP, 60.0f);
                 float swingAngle = -120.0f - power * 10.0f * anim;
-                ms.mulPose(Axis.XP.rotationDegrees(swingAngle));
-                ms.mulPose(Axis.YP.rotationDegrees(30.0f * sin2));
-                ms.mulPose(Axis.ZP.rotationDegrees(15.0f * sin2));
+                ms.rotateDegrees(Axis.XP, swingAngle);
+                ms.rotateDegrees(Axis.YP, 30.0f * sin2);
+                ms.rotateDegrees(Axis.ZP, 15.0f * sin2);
                 if (progress > 0.8f) {
-                    ms.mulPose(Axis.XP.rotationDegrees(10.0f * (progress - 0.8f) * 5.0f));
+                    ms.rotateDegrees(Axis.XP, 10.0f * (progress - 0.8f) * 5.0f);
                 }
                 break;
             }
@@ -451,78 +451,78 @@ public class ViewModel extends Module {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, 0.1, -0.1);
                 ms.translate(0.5, -0.1, 0.0);
-                ms.mulPose(Axis.XP.rotationDegrees(sin2 * -9.0f));
+                ms.rotateDegrees(Axis.XP, sin2 * -9.0f);
                 ms.translate(-0.5, 0.1, 0.0);
                 ms.translate(0.5, -0.1, 0.0);
-                ms.mulPose(Axis.YP.rotationDegrees(sin2 * -18.0f));
+                ms.rotateDegrees(Axis.YP, sin2 * -18.0f);
                 ms.translate(-0.5, 0.1, 0.0);
-                ms.mulPose(Axis.YP.rotationDegrees(50.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f));
-                ms.mulPose(Axis.YP.rotationDegrees(50.0f));
+                ms.rotateDegrees(Axis.YP, 50.0f);
+                ms.rotateDegrees(Axis.XP, -90.0f);
+                ms.rotateDegrees(Axis.YP, 50.0f);
                 break;
             }
 
             case "Back": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.4, 0.1, -0.5);
-                ms.mulPose(Axis.YP.rotationDegrees(90.0f));
-                ms.mulPose(Axis.ZP.rotationDegrees(-60.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f - power * 10.0f * anim));
+                ms.rotateDegrees(Axis.YP, 90.0f);
+                ms.rotateDegrees(Axis.ZP, -60.0f);
+                ms.rotateDegrees(Axis.XP, -90.0f - power * 10.0f * anim);
                 break;
             }
 
             case "7": {
                 ms.scale(scale, scale, scale);
-                ms.mulPose(Axis.YP.rotationDegrees(15.0f * anim));
-                ms.mulPose(Axis.ZP.rotationDegrees(-50.0f * anim));
-                ms.mulPose(Axis.XP.rotationDegrees((-10.0f - power) * anim));
+                ms.rotateDegrees(Axis.YP, 15.0f * anim);
+                ms.rotateDegrees(Axis.ZP, -50.0f * anim);
+                ms.rotateDegrees(Axis.XP, (-10.0f - power) * anim);
                 break;
             }
 
             case "Block": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.4, 0.0, -0.5);
-                ms.mulPose(Axis.YP.rotationDegrees(90.0f));
-                ms.mulPose(Axis.ZP.rotationDegrees(-30.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f - power * 10.0f * anim));
+                ms.rotateDegrees(Axis.YP, 90.0f);
+                ms.rotateDegrees(Axis.ZP, -30.0f);
+                ms.rotateDegrees(Axis.XP, -90.0f - power * 10.0f * anim);
                 break;
             }
 
             case "Forward": {
                 ms.scale(scale, scale, scale);
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f));
-                ms.mulPose(Axis.ZP.rotationDegrees(90.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(-1.35f));
-                ms.mulPose(Axis.YP.rotationDegrees(90.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(50.0f));
-                ms.mulPose(Axis.YP.rotationDegrees(-30.0f));
+                ms.rotateDegrees(Axis.XP, -90.0f);
+                ms.rotateDegrees(Axis.ZP, 90.0f);
+                ms.rotateDegrees(Axis.XP, -1.35f);
+                ms.rotateDegrees(Axis.YP, 90.0f);
+                ms.rotateDegrees(Axis.XP, 50.0f);
+                ms.rotateDegrees(Axis.YP, -30.0f);
                 ms.translate(0.2, 0.5, 1.3);
                 ms.translate(0.9f * anim, 0.2f + 0.35f * anim, 0.3f * anim);
-                ms.mulPose(Axis.YP.rotationDegrees(anim * 50.0f));
-                ms.mulPose(Axis.ZP.rotationDegrees(anim * -20.0f));
+                ms.rotateDegrees(Axis.YP, anim * 50.0f);
+                ms.rotateDegrees(Axis.ZP, anim * -20.0f);
                 break;
             }
 
             case "Glide": {
                 ms.scale(scale, scale, scale);
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f));
-                ms.mulPose(Axis.ZP.rotationDegrees(90.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(-1.35f));
-                ms.mulPose(Axis.YP.rotationDegrees(90.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(50.0f));
-                ms.mulPose(Axis.YP.rotationDegrees(-30.0f));
+                ms.rotateDegrees(Axis.XP, -90.0f);
+                ms.rotateDegrees(Axis.ZP, 90.0f);
+                ms.rotateDegrees(Axis.XP, -1.35f);
+                ms.rotateDegrees(Axis.YP, 90.0f);
+                ms.rotateDegrees(Axis.XP, 50.0f);
+                ms.rotateDegrees(Axis.YP, -30.0f);
                 ms.translate(0.2, 0.5, 1.3);
                 ms.translate(0.0, 0.7f * anim + 0.2, -0.7f * anim);
-                ms.mulPose(Axis.XP.rotationDegrees(anim * -70.0f));
+                ms.rotateDegrees(Axis.XP, anim * -70.0f);
                 break;
             }
 
             case "Tap": {
                 ms.scale(scale, scale, scale);
-                ms.mulPose(Axis.XP.rotationDegrees(-60.0f));
-                ms.mulPose(Axis.ZP.rotationDegrees(60.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(-0.9f));
-                ms.mulPose(Axis.YP.rotationDegrees(60.0f));
+                ms.rotateDegrees(Axis.XP, -60.0f);
+                ms.rotateDegrees(Axis.ZP, 60.0f);
+                ms.rotateDegrees(Axis.XP, -0.9f);
+                ms.rotateDegrees(Axis.YP, 60.0f);
                 ms.translate(0.6, 0.0, 1.0);
                 ms.translate(0.4f * anim, 0.0, 0.0);
                 break;
@@ -530,25 +530,25 @@ public class ViewModel extends Module {
 
             case "Blocking": {
                 ms.scale(scale, scale, scale);
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f));
-                ms.mulPose(Axis.ZP.rotationDegrees(90.0f));
-                ms.mulPose(Axis.YP.rotationDegrees(40.0f));
-                ms.mulPose(Axis.ZP.rotationDegrees(-20.0f));
+                ms.rotateDegrees(Axis.XP, -90.0f);
+                ms.rotateDegrees(Axis.ZP, 90.0f);
+                ms.rotateDegrees(Axis.YP, 40.0f);
+                ms.rotateDegrees(Axis.ZP, -20.0f);
                 ms.translate(0.0, 0.3, 0.9);
                 ms.translate(0.0, 0.6f * anim, -0.6f * anim);
-                ms.mulPose(Axis.XP.rotationDegrees(anim * -45.0f));
+                ms.rotateDegrees(Axis.XP, anim * -45.0f);
                 break;
             }
 
             case "Touch": {
                 ms.scale(scale, scale, scale);
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f));
-                ms.mulPose(Axis.ZP.rotationDegrees(90.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(-1.35f));
-                ms.mulPose(Axis.YP.rotationDegrees(90.0f));
+                ms.rotateDegrees(Axis.XP, -90.0f);
+                ms.rotateDegrees(Axis.ZP, 90.0f);
+                ms.rotateDegrees(Axis.XP, -1.35f);
+                ms.rotateDegrees(Axis.YP, 90.0f);
                 ms.translate(-0.3, 0.0, 1.3);
                 ms.translate(0.0, 0.0, 0.2f * anim);
-                ms.mulPose(Axis.XP.rotationDegrees(anim * 15.0f));
+                ms.rotateDegrees(Axis.XP, anim * 15.0f);
                 break;
             }
 
@@ -556,16 +556,16 @@ public class ViewModel extends Module {
                 ms.scale(scale, scale, scale);
                 float rotate = 35.0f;
                 ms.translate(0.0, 0.0, -0.3f * anim);
-                ms.mulPose(Axis.XP.rotationDegrees(anim * -rotate));
-                ms.mulPose(Axis.ZP.rotationDegrees(anim * rotate));
+                ms.rotateDegrees(Axis.XP, anim * -rotate);
+                ms.rotateDegrees(Axis.ZP, anim * rotate);
                 break;
             }
 
             case "Spin": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, 0.1, -0.2);
-                ms.mulPose(Axis.YP.rotationDegrees(anim * 360.0f * power));
-                ms.mulPose(Axis.XP.rotationDegrees(45.0f));
+                ms.rotateDegrees(Axis.YP, anim * 360.0f * power);
+                ms.rotateDegrees(Axis.XP, 45.0f);
                 break;
             }
 
@@ -573,7 +573,7 @@ public class ViewModel extends Module {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, -0.2, 0.0);
                 float rotation = (System.currentTimeMillis() % 2000L) / 2000.0f * 360.0f * power;
-                ms.mulPose(Axis.ZP.rotationDegrees(rotation));
+                ms.rotateDegrees(Axis.ZP, rotation);
                 ms.translate(0.0, 0.3, 0.0);
                 break;
             }
@@ -581,7 +581,7 @@ public class ViewModel extends Module {
             case "Stab": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, 0.0, -0.5f * anim * power);
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f));
+                ms.rotateDegrees(Axis.XP, -90.0f);
                 break;
             }
 
@@ -589,34 +589,34 @@ public class ViewModel extends Module {
                 ms.scale(scale, scale, scale);
                 float circleProgress = progress * 2.0f * (float) Math.PI;
                 ms.translate(Math.sin(circleProgress) * 0.5f * power, Math.cos(circleProgress) * 0.3 * power, 0.0);
-                ms.mulPose(Axis.ZP.rotationDegrees(anim * 180.0f));
+                ms.rotateDegrees(Axis.ZP, anim * 180.0f);
                 break;
             }
 
             case "Wave": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, Math.sin(progress * Math.PI * 2.0f) * 0.3 * power, 0.0);
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f + anim * 45.0f * power));
+                ms.rotateDegrees(Axis.XP, -90.0f + anim * 45.0f * power);
                 break;
             }
 
             case "360 Swing": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, 0.1, -0.1);
-                ms.mulPose(Axis.XP.rotationDegrees(anim * 360.0f * power));
+                ms.rotateDegrees(Axis.XP, anim * 360.0f * power);
                 break;
             }
 
             case "Vanilla": {
                 ms.scale(scale, scale, scale);
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f * anim));
+                ms.rotateDegrees(Axis.XP, -90.0f * anim);
                 break;
             }
 
             case "Flip": {
                 ms.scale(scale, scale, scale);
                 float angle = anim * 180.0f * power;
-                ms.mulPose(Axis.ZP.rotationDegrees(angle));
+                ms.rotateDegrees(Axis.ZP, angle);
                 ms.translate(0.0, 0.0, -0.3f * anim);
                 break;
             }
@@ -624,51 +624,51 @@ public class ViewModel extends Module {
             case "Side": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.4f * anim, 0.0, -0.2f * anim);
-                ms.mulPose(Axis.YP.rotationDegrees(-60.0f * anim));
+                ms.rotateDegrees(Axis.YP, -60.0f * anim);
                 break;
             }
 
             case "Overhead": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, 0.5, 0.0);
-                ms.mulPose(Axis.XP.rotationDegrees(-150.0f * anim));
+                ms.rotateDegrees(Axis.XP, -150.0f * anim);
                 break;
             }
 
             case "Hammer": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.3, 0.3, -0.3);
-                ms.mulPose(Axis.ZP.rotationDegrees(30.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(-120.0f * anim));
+                ms.rotateDegrees(Axis.ZP, 30.0f);
+                ms.rotateDegrees(Axis.XP, -120.0f * anim);
                 break;
             }
 
             case "Chop": {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, -0.2f * anim, -0.3f * anim);
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f * anim));
+                ms.rotateDegrees(Axis.XP, -90.0f * anim);
                 break;
             }
 
             case "Arc": {
                 ms.scale(scale, scale, scale);
                 float a = anim * 90.0f;
-                ms.mulPose(Axis.YP.rotationDegrees(a));
-                ms.mulPose(Axis.XP.rotationDegrees(-a));
+                ms.rotateDegrees(Axis.YP, a);
+                ms.rotateDegrees(Axis.XP, -a);
                 break;
             }
 
             case "Double": {
                 ms.scale(scale, scale, scale);
                 float d = anim * 720.0f;
-                ms.mulPose(Axis.XP.rotationDegrees(d));
+                ms.rotateDegrees(Axis.XP, d);
                 break;
             }
 
             case "Shake": {
                 ms.scale(scale, scale, scale);
                 float s = (float) Math.sin((System.currentTimeMillis() % 200L) / 200.0f * Math.PI * 2.0f) * 5.0f;
-                ms.mulPose(Axis.ZP.rotationDegrees(s));
+                ms.rotateDegrees(Axis.ZP, s);
                 break;
             }
 
@@ -680,8 +680,8 @@ public class ViewModel extends Module {
 
             case "Slash": {
                 ms.scale(scale, scale, scale);
-                ms.mulPose(Axis.YP.rotationDegrees(90.0f));
-                ms.mulPose(Axis.XP.rotationDegrees(-120.0f * anim));
+                ms.rotateDegrees(Axis.YP, 90.0f);
+                ms.rotateDegrees(Axis.XP, -120.0f * anim);
                 break;
             }
 
@@ -695,7 +695,7 @@ public class ViewModel extends Module {
                 ms.scale(scale, scale, scale);
                 ms.translate(0.0, -0.1f * anim, 0.0);
                 float down = Mth.sin(progress * (float) Math.PI) * -65.0f * power;
-                ms.mulPose(Axis.XP.rotationDegrees(down));
+                ms.rotateDegrees(Axis.XP, down);
                 break;
             }
 
@@ -704,21 +704,21 @@ public class ViewModel extends Module {
                 float s = Mth.sqrt(progress);
                 float back = Mth.sin(s * (float) Math.PI) * 25.0f * power;
                 float down = Mth.sin(progress * (float) Math.PI) * -55.0f * power;
-                ms.mulPose(Axis.XP.rotationDegrees(back + down));
+                ms.rotateDegrees(Axis.XP, back + down);
                 break;
             }
 
             default: {
                 ms.scale(scale, scale, scale);
-                ms.mulPose(Axis.XP.rotationDegrees(-90.0f * anim * power * 0.35f));
+                ms.rotateDegrees(Axis.XP, -90.0f * anim * power * 0.35f);
             }
         }
 
         if (applySpin) {
             switch (spinAxis.get()) {
-                case "X" -> ms.mulPose(Axis.XP.rotationDegrees(currentSpin));
-                case "Z" -> ms.mulPose(Axis.ZP.rotationDegrees(currentSpin));
-                default -> ms.mulPose(Axis.YP.rotationDegrees(currentSpin));
+                case "X" -> ms.rotateDegrees(Axis.XP, currentSpin);
+                case "Z" -> ms.rotateDegrees(Axis.ZP, currentSpin);
+                default -> ms.rotateDegrees(Axis.YP, currentSpin);
             }
         }
     }

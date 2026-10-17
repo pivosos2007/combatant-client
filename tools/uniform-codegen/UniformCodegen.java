@@ -37,7 +37,7 @@ public final class UniformCodegen {
     private static final Pattern MEMBER = Pattern.compile("^(\\w+)\\s+(\\w+)\\s*(?:\\[\\s*([^]]+)\\s*])?$");
     private static final Pattern DEFINE = Pattern.compile("(?m)^\\s*#define\\s+(\\w+)\\s+([^\\r\\n]+)");
     private static final Pattern INTEGER_CONSTANT = Pattern.compile("\\bconst\\s+int\\s+(\\w+)\\s*=\\s*([^;]+);");
-    private static final Pattern LOCAL_IMPORT = Pattern.compile("(?m)^\\s*#moj_import\\s+<combatant:([A-Za-z0-9_./-]+)>[ \t]*$");
+    private static final Pattern LOCAL_IMPORT = Pattern.compile("(?m)^\\s*#include\\s+<combatant:([A-Za-z0-9_./-]+)>[ \t]*$");
     private static final Pattern CLASS_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_]*");
 
     private UniformCodegen() { }
@@ -155,7 +155,7 @@ public final class UniformCodegen {
         System.out.println("Discovered " + byName.size() + " uniform layouts");
     }
 
-    /** Expands local Mojang shader imports for declaration analysis, including array constants. */
+    /** Expands Combatant GLSL #include directives for declaration analysis, including array constants. */
     private static String readShader(Path shader, Path root, Set<Path> visiting) throws IOException {
         shader = shader.toAbsolutePath().normalize();
         if (!shader.startsWith(root) || !Files.isRegularFile(shader)) {

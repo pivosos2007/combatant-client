@@ -21,8 +21,8 @@ public enum WorldTextRenderer {
     ;
 
     private static Renderer3D.BatchBindings cachedBindings;
-    private static com.mojang.blaze3d.textures.GpuTextureView cachedView;
-    private static com.mojang.blaze3d.textures.GpuSampler cachedSampler;
+    private static com.mojang.renderpearl.api.textures.GpuTextureView cachedView;
+    private static com.mojang.renderpearl.api.textures.GpuSampler cachedSampler;
     private static boolean cachedMsdf;
     private static float cachedPxRange;
     private static int cachedAtlasWidth;

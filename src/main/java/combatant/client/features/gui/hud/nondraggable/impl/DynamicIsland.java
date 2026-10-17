@@ -19,7 +19,6 @@ import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.config.SettingDef;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
@@ -483,7 +482,7 @@ public final class DynamicIsland extends AbstractHudElement {
     public boolean onMouseClicked(float mx, float my, int button) {
         if (mc == null || !isInteractiveScreen(ClientScreen.current())) return false;
         if (!contains(mx, my)) return false;
-        if (currentMode != IslandMode.MUSIC || button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+        if (currentMode != IslandMode.MUSIC || button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
 
         if (expandAnim > 0.01f) {
             if (progressW > 1.0f && currentSnapshot != null && currentSnapshot.supportsSeek()

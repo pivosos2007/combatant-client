@@ -222,7 +222,7 @@ public class AirPlace extends Module {
                 new ServerboundUseItemOnPacket(InteractionHand.MAIN_HAND, hit, sequence++)
         );
 
-        player.swing(InteractionHand.MAIN_HAND);
+        player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
 
     }
 

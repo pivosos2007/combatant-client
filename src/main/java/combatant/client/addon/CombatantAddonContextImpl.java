@@ -14,7 +14,7 @@ import combatant.client.api.v0.module.CombatantModuleExtension;
 import combatant.client.api.v0.render.CombatantPostProcessCallback;
 import combatant.client.api.v0.render.CombatantRenderCallback;
 import combatant.client.api.v0.render.CombatantRenderStage;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import combatant.client.features.command.ClientCommand;
 import combatant.client.features.command.CommandManager;
 import combatant.client.features.gui.hud.AbstractHudElement;

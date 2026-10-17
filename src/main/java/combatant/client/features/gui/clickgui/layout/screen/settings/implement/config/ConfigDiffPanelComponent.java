@@ -157,7 +157,7 @@ public final class ConfigDiffPanelComponent {
 
     public HeaderAction headerAction(float mx, float my, int button) {
         if (!openTarget || openAnim <= 0.01f) return HeaderAction.NONE;
-        if (button != 0) return HeaderAction.NONE;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return HeaderAction.NONE;
         if (ClickGuiMath.insideRect(mx, my, closeX, closeY, closeW, closeH)) return HeaderAction.CLOSE;
         if (ClickGuiMath.insideRect(mx, my, saveX, saveY, saveW, saveH)) return HeaderAction.SAVE;
         return HeaderAction.NONE;
@@ -165,7 +165,7 @@ public final class ConfigDiffPanelComponent {
 
     public boolean mousePressedScrollbar(float mx, float my, int button) {
         if (!openTarget || openAnim <= 0.01f) return false;
-        if (button != 0) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         if (!isScrollbarHovered(mx, my)) return false;
         draggingScrollbar = true;
         scrollbarDragOffset = ClickGuiMath.insideRect(mx, my, scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH)
@@ -176,7 +176,7 @@ public final class ConfigDiffPanelComponent {
     }
 
     public void mouseReleased(int button) {
-        if (button == 0) draggingScrollbar = false;
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) draggingScrollbar = false;
     }
 
     public boolean scroll(float mx, float my, double amount) {

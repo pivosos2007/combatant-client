@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.blit;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 
 public interface TextureBlitter {
     /** Attempts the selected non-shader path and reports whether it was submitted. */

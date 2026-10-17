@@ -474,7 +474,7 @@ public final class ProjectilePuncher extends Module {
                 break;
             }
             mc.gameMode.attack(mc.player, target);
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            mc.player.swing(InteractionHand.MAIN_HAND, mc.player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
         }
     }
 

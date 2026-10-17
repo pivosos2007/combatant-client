@@ -9,7 +9,7 @@ package combatant.client.render.engine.text;
 
 import combatant.client.features.module.modules.misc.NameProtect;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.renderer.ui.blend.UiBackdropBlendSpec;

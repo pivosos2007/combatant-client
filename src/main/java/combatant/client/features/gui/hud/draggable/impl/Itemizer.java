@@ -317,7 +317,7 @@ public final class Itemizer extends DraggableHudElement {
 
     @Override
     public boolean onMouseClicked(float mx, float my, int button) {
-        if (!(ClientScreen.current() instanceof ChatScreen) || button != 0) return false;
+        if (!(ClientScreen.current() instanceof ChatScreen) || button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         int index = hoveredCard(mx, my);
         if (index < 0) return false;
         Entry entry = drawn.get(index);

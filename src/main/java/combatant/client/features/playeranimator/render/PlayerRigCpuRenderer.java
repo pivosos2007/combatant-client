@@ -9,7 +9,7 @@ package combatant.client.features.playeranimator.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import combatant.client.features.playeranimator.PlayerRigInstance;
 import combatant.client.render.ViewObstructionFadeContext;
 import combatant.client.render.engine.msaa.MsaaWorldTarget;
@@ -25,7 +25,7 @@ import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.renderer.texture.UvMapping;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.util.ARGB;
 import org.joml.Matrix4fc;
@@ -49,7 +49,7 @@ public final class PlayerRigCpuRenderer {
     public static boolean submitPlayer(SubmitNodeCollector collector, HumanoidModel<?> model,
                                        AvatarRenderState state, PlayerRigInstance rig, PoseStack matrices,
                                        RenderType renderType, int light, int overlay, int tint,
-                                       TextureAtlasSprite sprite, int outlineColor,
+                                       UvMapping sprite, int outlineColor,
                                        ModelFeatureRenderer.CrumblingOverlay crumbling) {
         if (collector == null || model == null || state == null || rig == null || renderType == null) return false;
         if (crumbling != null) return false;
@@ -66,7 +66,7 @@ public final class PlayerRigCpuRenderer {
 
     public static boolean submitArmor(OrderedSubmitNodeCollector collector, HumanoidModel<?> model,
                                       PlayerRigInstance rig, PoseStack matrices, RenderType renderType,
-                                      int light, int overlay, int tint, TextureAtlasSprite sprite,
+                                      int light, int overlay, int tint, UvMapping sprite,
                                       int outlineColor,
                                       ModelFeatureRenderer.CrumblingOverlay crumbling) {
         if (collector == null || model == null || rig == null || renderType == null) return false;
@@ -95,7 +95,7 @@ public final class PlayerRigCpuRenderer {
 
     private static void submit(OrderedSubmitNodeCollector collector, RigMeshData mesh, PlayerRigInstance rig,
                                PoseStack matrices, RenderType renderType, int light, int overlay, int tint,
-                               TextureAtlasSprite sprite, Predicate<String> visiblePart) {
+                               UvMapping sprite, Predicate<String> visiblePart) {
         collector.submitCustomGeometry(matrices, renderType,
                 (pose, consumer) -> render(mesh, rig, pose, consumer, light, overlay, tint, sprite,
                         visiblePart, renderType.primitiveTopology()));
@@ -103,7 +103,7 @@ public final class PlayerRigCpuRenderer {
 
     private static void submitWithOutline(OrderedSubmitNodeCollector collector, RigMeshData mesh,
                                           PlayerRigInstance rig, PoseStack matrices, RenderType renderType,
-                                          int light, int overlay, int tint, TextureAtlasSprite sprite,
+                                          int light, int overlay, int tint, UvMapping sprite,
                                           int outlineColor, Predicate<String> visiblePart) {
         if (renderType.isOutline()) {
             submit(collector, mesh, rig, matrices, renderType, 15728880, OverlayTexture.NO_OVERLAY,
@@ -121,7 +121,7 @@ public final class PlayerRigCpuRenderer {
 
     private static void render(RigMeshData mesh, PlayerRigInstance rig, PoseStack.Pose pose,
                                VertexConsumer rawConsumer, int light, int overlay, int tint,
-                               TextureAtlasSprite sprite, Predicate<String> visiblePart,
+                               UvMapping sprite, Predicate<String> visiblePart,
                                PrimitiveTopology topology) {
         VertexConsumer consumer = sprite != null ? sprite.wrap(rawConsumer) : rawConsumer;
         SkinScratch scratch = new SkinScratch();
@@ -155,7 +155,7 @@ public final class PlayerRigCpuRenderer {
         deform(vertex, deform, scratch);
         skin(vertex, rig, scratch);
         int color = ARGB.multiply(tint, vertex.colorArgb());
-        // Do not use a fluent chain here. TextureAtlasSprite.wrap(...) returns a
+        // Do not use a fluent chain here. UvMapping.wrap(...) may return a
         // SpriteCoordinateExpander, whose addVertex(...) forwards to and returns the delegate.
         // Chaining setUv(...) from that return value therefore bypasses sprite UV expansion and
         // makes trim passes sample the whole armor-trims atlas. Keep every attribute write on the

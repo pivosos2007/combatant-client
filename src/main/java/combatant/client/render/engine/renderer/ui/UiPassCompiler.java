@@ -7,9 +7,9 @@
 
 package combatant.client.render.engine.renderer.ui;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.command.UiCommand;
 import combatant.client.render.engine.command.UiSemanticCommandBuffer;
 import combatant.client.render.engine.command.UiCommandKind;
@@ -564,7 +564,7 @@ public final class UiPassCompiler {
         }
     }
 
-    private static com.mojang.blaze3d.pipeline.RenderPipeline pipelineFor(DrawBatch batch) {
+    private static com.mojang.renderpearl.api.pipeline.RenderPipeline pipelineFor(DrawBatch batch) {
         if (batch.clipSnapshot.usesAnalyticPipeline() && !batch.type.supportsAnalyticClip()) {
             throw new IllegalStateException("UI batch " + batch.type
                     + " has no ANALYTIC_CLIP pipeline for clip snapshot " + batch.clipSnapshot.id());

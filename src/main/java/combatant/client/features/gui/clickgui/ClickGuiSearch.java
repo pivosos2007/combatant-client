@@ -55,7 +55,9 @@ public enum ClickGuiSearch {
 
     public static void backspace() { INPUT.backspace(); }
 
-    public static boolean keyPressed(int keyCode, int modifiers) { return INPUT.keyPressed(keyCode, modifiers); }
+    public static boolean keyPressed(int keyCode, int shortcutKey, int modifiers) {
+        return INPUT.keyPressed(keyCode, shortcutKey, modifiers);
+    }
 
     public static boolean matches(String moduleName) {
         if (INPUT.text().isEmpty()) return true;

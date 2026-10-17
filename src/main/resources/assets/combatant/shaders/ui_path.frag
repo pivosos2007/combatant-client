@@ -1,13 +1,14 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * Continuous UI path coverage. The CPU tessellator emits a narrow outer fringe;
  * x is distance from the solid boundary and y is the fringe width in logical pixels.
  */
 
-in vec4 v_Color;
-in vec4 v_Path;
-out vec4 fragColor;
+layout(location = 2) in vec4 v_Color;
+layout(location = 4) in vec4 v_Path;
+layout(location = 0) out vec4 fragColor;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen;
@@ -15,8 +16,8 @@ layout (std140) uniform UIBatch {
 };
 
 #ifdef COMBATANT_ANALYTIC_CLIP
-#moj_import <combatant:ui_geometry.glsl>
-#moj_import <combatant:ui_clip.glsl>
+#include <combatant:ui_geometry.glsl>
+#include <combatant:ui_clip.glsl>
 #endif
 
 void main() {

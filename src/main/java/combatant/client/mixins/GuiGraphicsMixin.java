@@ -131,13 +131,18 @@ public abstract class GuiGraphicsMixin implements IGuiGraphics {
         combatant$tooltipStackContext = ItemStack.EMPTY;
     }
 
-    @Inject(method = "setTooltipForNextFrameInternal", at = @At("HEAD"), cancellable = true)
+    @Inject(
+            method = "setTooltipForNextFrameInternal(Lnet/minecraft/client/gui/Font;Ljava/util/List;IILnet/minecraft/client/gui/screens/inventory/tooltip/ClientTooltipPositioner;Lnet/minecraft/resources/Identifier;ZZ)V",
+            at = @At("HEAD"),
+            cancellable = true
+    )
     private void combatant$captureTooltipGlobally(net.minecraft.client.gui.Font font,
                                                   java.util.List<ClientTooltipComponent> components,
                                                   int x, int y,
                                                   ClientTooltipPositioner positioner,
                                                   net.minecraft.resources.Identifier style,
                                                   boolean replaceExisting,
+                                                  boolean vanillaTooltipPositionFlag,
                                                   CallbackInfo ci) {
         ItemStack stack = combatant$tooltipStackContext;
         if (stack == null || stack.isEmpty()) {

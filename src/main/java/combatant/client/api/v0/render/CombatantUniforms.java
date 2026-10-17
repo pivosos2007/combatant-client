@@ -7,7 +7,7 @@
 
 package combatant.client.api.v0.render;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 
 import java.nio.ByteBuffer;

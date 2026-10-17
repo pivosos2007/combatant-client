@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 
-@Mixin(targets = "com.mojang.blaze3d.opengl.DirectStateAccess$Emulated")
+@Mixin(targets = "com.mojang.renderpearl.backend.opengl.DirectStateAccess$Emulated")
 public abstract class BufferManagerDefaultBufferManagerMixin {
     @Inject(method = "bindFrameBufferTextures", at = @At("HEAD"), cancellable = true)
     private void combatant$setupFramebuffer(int framebuffer,

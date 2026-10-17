@@ -221,7 +221,7 @@ public final class FakeLagController {
             return switch (this) {
                 case ENTITY_INTERACT -> packet instanceof ServerboundAttackPacket
                         || packet instanceof ServerboundInteractPacket
-                        || packet instanceof ServerboundSwingPacket;
+                        || packet instanceof ServerboundPunchPacket;
                 case BLOCK_INTERACT -> packet instanceof ServerboundUseItemOnPacket
                         || packet instanceof ServerboundSignUpdatePacket;
                 case ACTION -> packet instanceof ServerboundPlayerActionPacket;

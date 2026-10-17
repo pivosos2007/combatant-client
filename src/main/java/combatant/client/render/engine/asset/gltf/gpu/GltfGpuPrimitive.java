@@ -5,7 +5,7 @@
  */
 package combatant.client.render.engine.asset.gltf.gpu;
 
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import combatant.client.render.engine.asset.gltf.model.GltfBounds;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.upload.PersistentGpuMesh;

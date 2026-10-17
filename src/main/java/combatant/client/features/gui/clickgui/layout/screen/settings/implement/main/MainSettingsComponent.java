@@ -142,7 +142,7 @@ public final class MainSettingsComponent {
 
     public boolean mousePressedScrollbar(float mx, float my, int button) {
         if (overlayHost.hasActiveOverlay()) return false;
-        if (button != 0 || !isScrollbarHovered(mx, my)) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT || !isScrollbarHovered(mx, my)) return false;
         draggingScrollbar = true;
         scrollbarDragOffset = ClickGuiMath.insideRect(mx, my, scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH)
                 ? my - scrollbarThumbY
@@ -152,7 +152,7 @@ public final class MainSettingsComponent {
     }
 
     public boolean mouseClicked(float mx, float my, int button) {
-        if (button != 0 && button != 1) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT && button != combatant.client.input.InputKeys.MOUSE_RIGHT) return false;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, lastSettingScale, overlayHost)) {
             if (overlayHost.hasActiveOverlay() && overlayHost.mouseClicked(mx, my, button)) return true;
         }
@@ -186,7 +186,7 @@ public final class MainSettingsComponent {
     }
 
     public void mouseReleased(float mx, float my, int button) {
-        if (button == 0) draggingScrollbar = false;
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) draggingScrollbar = false;
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, lastSettingScale, overlayHost)) {
             if (overlayHost.hasActiveOverlay()) {
                 overlayHost.mouseReleased(mx, my, button);

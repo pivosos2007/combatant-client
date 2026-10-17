@@ -12,7 +12,6 @@ import combatant.client.util.text.GuiTextCaret;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
-import com.mojang.blaze3d.platform.InputConstants;
 import combatant.client.mixins.accessors.SuggestionWindowAccessor;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
@@ -30,7 +29,6 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.minecraft.util.Util;
 import net.minecraft.world.item.ItemStack;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.features.command.CommandManager;
 import combatant.client.features.command.CommandOutput;
 import combatant.client.features.gui.chat.actions.ChatMessageActions;
@@ -82,8 +80,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
-import static org.lwjgl.glfw.GLFW.glfwGetKey;
 import static combatant.client.features.theme.Theme.theme;
 
 public enum BetterChatRenderer {
@@ -1017,14 +1013,13 @@ lastHoverWasOutsideSuggest = false;
             return;
         }
 
-        long handle = mc.getWindow().handle();
+        boolean ctrl = combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.LEFT_CONTROL)
+                || combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.RIGHT_CONTROL);
 
-        boolean ctrl =
-                glfwGetKey(handle, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
-                        glfwGetKey(handle, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
-
-        boolean f =
-                glfwGetKey(handle, GLFW.GLFW_KEY_F) == GLFW_PRESS;
+        boolean f = combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.F);
 
         boolean down = ctrl && f;
 
@@ -1327,11 +1322,11 @@ lastHoverWasOutsideSuggest = false;
         MousePos mouse = resolveMouse(mx, my);
         double fx = mouse.fx();
         double fy = mouse.fy();
-        boolean leftUp = button == GLFW.GLFW_MOUSE_BUTTON_LEFT && !pressed;
+        boolean leftUp = button == combatant.client.input.InputKeys.MOUSE_LEFT && !pressed;
 
         boolean overSuggestWindow = isInsideSuggestWindow(fx, fy, mouse.rawX(), mouse.rawY());
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && sbEnabled && isScrollbarHovered(fx, fy)) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && sbEnabled && isScrollbarHovered(fx, fy)) {
             if (pressed) {
                 draggingScrollbar = true;
                 sbDragOffset = (fy >= sbThumbY && fy <= sbThumbY + sbThumbH)
@@ -1357,7 +1352,7 @@ lastHoverWasOutsideSuggest = false;
         }
 
         if (suggestHasScrollbar && isInsideSuggestScrollbar(fx, fy)) {
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 if (pressed) {
                     suggestDraggingScrollbar = true;
                     scrollSuggestToPosition(fy);
@@ -1367,7 +1362,7 @@ lastHoverWasOutsideSuggest = false;
         }
 
         if (overSuggestRows) {
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && pressed) {
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT && pressed) {
                 int row = (int) ((fy - sTop) / suggestItemH);
                 row = Mth.clamp(row, 0, Math.max(0, suggestVisible - 1));
                 int idx = Mth.clamp(suggestStart + row, 0, Math.max(0, suggestTotal - 1));
@@ -1384,18 +1379,18 @@ lastHoverWasOutsideSuggest = false;
 
         if (searchHit) {
             boolean inside = fx >= searchRectX && fx <= searchRectX + searchRectW && fy >= searchRectY && fy <= searchRectY + searchRectH;
-            if (inside && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (inside && button == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 if (pressed) {
                     toggleSearchMode();
                 }
                 return true;
             }
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && pressed) {
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT && pressed) {
                 BetterChatSearch.setActive(false);
             }
         }
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && hasInputBox && !inputSearchSnapshot) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT && hasInputBox && !inputSearchSnapshot) {
             boolean insideInputText = isInsideInputText(fx, fy);
             if (pressed && insideInputText) {
                 if (ClientScreen.current() instanceof ChatScreen chatScreen) {
@@ -1403,8 +1398,10 @@ lastHoverWasOutsideSuggest = false;
                     if (field != null) {
                         int caret = inputCaretIndexAt(fx, fy);
                         boolean extendSelection =
-                                InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_LEFT_SHIFT)
-                                        || InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_RIGHT_SHIFT);
+                                combatant.client.input.CombatantInput.state().isPressed(
+                                        combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.LEFT_SHIFT)
+                                        || combatant.client.input.CombatantInput.state().isPressed(
+                                        combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.RIGHT_SHIFT);
                         field.moveCursorTo(caret, extendSelection);
                         inputCaretDragging = true;
                         contextMenu = ContextMenu.closed();
@@ -1422,7 +1419,7 @@ lastHoverWasOutsideSuggest = false;
         }
 
         if (contextMenu.open) {
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 if (pressed && contextMenu.contains(fx, fy)) {
                     ContextMenu.MenuEntry entry = contextMenu.pick(fy);
                     if (entry != null) entry.action().run();
@@ -1432,25 +1429,27 @@ lastHoverWasOutsideSuggest = false;
             }
         }
 
-        boolean contextPress = button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && pressed;
+        boolean contextPress = button == combatant.client.input.InputKeys.MOUSE_RIGHT && pressed;
         PickResult pick = contextPress ? frame.pickContext(fx, fy) : frame.pick(fx, fy);
         if (pick == null) {
-            if (pressed && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (pressed && button == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 selection.clear();
                 selecting = false;
                 leftPending = false;
             }
-            if (!pressed && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (!pressed && button == combatant.client.input.InputKeys.MOUSE_LEFT) {
                 selecting = false;
             }
             contextMenu = ContextMenu.closed();
             return false;
         }
 
-        boolean ctrlDown = InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_LEFT_CONTROL)
-                || InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_RIGHT_CONTROL);
+        boolean ctrlDown = combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.LEFT_CONTROL)
+                || combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.RIGHT_CONTROL);
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
             if (pressed) {
                 // Кандидат на клик/выделение. Выделение начнём только при drag.
                 leftPending = true;
@@ -1482,7 +1481,7 @@ lastHoverWasOutsideSuggest = false;
                     return true; // блокируем ванильную обработку кликов по чату
                 }
             }
-        } else if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+        } else if (button == combatant.client.input.InputKeys.MOUSE_RIGHT) {
             if (pressed) {
                 openContextMenu(pick, mx, my, isExactGlyphHit(pick, fx, fy));
                 return true;
@@ -1841,13 +1840,15 @@ lastHoverWasOutsideSuggest = false;
         try {
             if (evt instanceof ClickEvent.OpenUrl || evt instanceof ClickEvent.OpenFile) {
                 Minecraft mc = Minecraft.getInstance();
+                java.net.URI uri = evt instanceof ClickEvent.OpenFile
+                        ? java.nio.file.Path.of(val).toUri() : java.net.URI.create(val);
                 if (ClientScreen.current() instanceof ChatScreen chat) {
                     ClientScreen.show(mc, new ConfirmLinkScreen(confirm -> {
-                        if (confirm) Util.getPlatform().openUri(val);
+                        if (confirm) com.mojang.blaze3d.Blaze3D.openUri(uri);
                         ClientScreen.show(mc, chat);
-                    }, val, false));
+                    }, uri, false));
                 } else {
-                    Util.getPlatform().openUri(val);
+                    com.mojang.blaze3d.Blaze3D.openUri(uri);
                 }
                 return true;
             } else if (evt instanceof ClickEvent.CopyToClipboard) {

@@ -1,4 +1,5 @@
-#version 330 core
+#version 460 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,27 +8,28 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-#moj_import <sodium:globals.glsl>
-#moj_import <sodium:fog.glsl>
-#moj_import <sodium:chunk_material.glsl>
+#include <sodium:globals.glsl>
+#include <sodium:fog.glsl>
+#include <sodium:chunk_material.glsl>
+#include <minecraft:oit.glsl>
 
-in vec4 v_Color;
-in vec2 v_TexCoord;
-in vec2 v_FragDistance;
-in float fadeFactor;
-in float v_ViewDistance;
-flat in uint v_CombatantSurfaceFlags;
+layout(location = 0) in vec4 v_Color;
+layout(location = 1) in vec2 v_TexCoord;
+layout(location = 2) in vec2 v_FragDistance;
+layout(location = 3) in float fadeFactor;
+layout(location = 4) in float v_ViewDistance;
+layout(location = 5) flat in uint v_CombatantSurfaceFlags;
 
 #ifdef COMBATANT_DEFERRED_GBUFFER
-in vec4 v_CombatantBaseColor;
-in vec2 v_CombatantLightCoord;
-in vec3 v_CombatantViewPosition;
-in float v_CombatantVertexAo;
-flat in uint v_CombatantMaterialParams;
-flat in uint v_CombatantMaterialId;
-flat in uint v_CombatantMaterialMeta;
-flat in uint v_CombatantMaterialSurface;
-flat in vec4 v_CombatantTangent;
+layout(location = 6) in vec4 v_CombatantBaseColor;
+layout(location = 7) in vec2 v_CombatantLightCoord;
+layout(location = 8) in vec3 v_CombatantViewPosition;
+layout(location = 9) in float v_CombatantVertexAo;
+layout(location = 10) flat in uint v_CombatantMaterialParams;
+layout(location = 11) flat in uint v_CombatantMaterialId;
+layout(location = 12) flat in uint v_CombatantMaterialMeta;
+layout(location = 13) flat in uint v_CombatantMaterialSurface;
+layout(location = 14) flat in vec4 v_CombatantTangent;
 #endif
 
 uniform sampler2D u_BlockTex;
@@ -39,9 +41,11 @@ uniform sampler2D u_CombatantSurfaceAtlas;
 uniform sampler2D u_CombatantSpecularAtlas;
 #endif
 
+#ifndef OIT_ALPHA_ONLY
 layout(location = 0) out vec4 fragColor;
+#endif
 
-#ifdef COMBATANT_DEFERRED_GBUFFER
+#if defined(COMBATANT_DEFERRED_GBUFFER) && !defined(OIT)
 layout(location = 1) out vec4 combatantGbufferSurface;
 layout(location = 2) out vec4 combatantGbufferGeometry;
 layout(location = 3) out vec4 combatantGbufferAuxiliary;
@@ -130,7 +134,7 @@ bool combatant_has_map(uint mask, uint bit) {
 #endif
 
 void main() {
-#ifdef COMBATANT_SHADOW_PASS
+#if defined(COMBATANT_SHADOW_PASS) && !defined(OIT_ALPHA_ONLY)
 #ifdef ALPHA_CUTOUT
     vec4 shadowTexel = texture(u_BlockTex, v_TexCoord) * v_Color;
     if (shadowTexel.a < ALPHA_CUTOUT) {
@@ -165,9 +169,19 @@ void main() {
     }
 #endif
 
-    fragColor = _linearFog(color, v_FragDistance, u_FogColor, u_EnvironmentFog, u_RenderFog, fadeFactor);
+#ifdef OIT_ALPHA_ONLY
+    executeAlphaOnlyPhase(gl_FragCoord.z, color.a);
+#else
+#ifdef OIT_ACCUMULATE
+    color = sampleColorForAccumulation(color);
+    vec4 fogColor = vec4(u_FogColor.rgb * color.a, u_FogColor.a);
+#else
+    vec4 fogColor = u_FogColor;
+#endif
+    fragColor = _linearFog(color, v_FragDistance, fogColor, u_EnvironmentFog, u_RenderFog, fadeFactor);
+#endif
 
-#ifdef COMBATANT_DEFERRED_GBUFFER
+#if defined(COMBATANT_DEFERRED_GBUFFER) && !defined(OIT)
     vec3 geometricNormal = normalize(cross(dFdx(v_CombatantViewPosition), dFdy(v_CombatantViewPosition)));
     if (!gl_FrontFacing) {
         geometricNormal = -geometricNormal;

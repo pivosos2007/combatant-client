@@ -203,7 +203,7 @@ public class Phase extends Module {
                     new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, target, face, id));
             InteractionUtil.sendSequencedPacket(id ->
                     new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, target, face, id));
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            mc.player.swing(InteractionHand.MAIN_HAND, mc.player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
             if (silent.get()) InventorySwap.INSTANCE.selectHotbar(prevItem);
         }
 
@@ -261,7 +261,7 @@ public class Phase extends Module {
                     InventorySwap.INSTANCE.selectHotbar(epSlot);
                     InteractionUtil.sendSequencedPacket(id ->
                             new ServerboundUseItemPacket(InteractionHand.MAIN_HAND, id, mc.player.getYRot(), mc.player.getXRot()));
-                    sendPacket(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+                    sendPacket(ServerboundPunchPacket.INSTANCE);
                     InventorySwap.INSTANCE.selectHotbar(prevItem);
                     if (autoDisable.get()) {
                         setEnabled(false);

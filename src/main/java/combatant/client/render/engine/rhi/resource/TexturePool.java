@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.resource;
 
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 
 import java.util.ArrayDeque;
 import java.util.Queue;

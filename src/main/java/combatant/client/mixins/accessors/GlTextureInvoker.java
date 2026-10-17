@@ -7,9 +7,9 @@
 
 package combatant.client.mixins.accessors;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.opengl.FrameBufferCache;
-import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.backend.opengl.FrameBufferCache;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 

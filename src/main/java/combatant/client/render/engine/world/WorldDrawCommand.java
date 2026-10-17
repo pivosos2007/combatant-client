@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.world;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
 

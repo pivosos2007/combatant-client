@@ -9,7 +9,7 @@ package combatant.client.mixins.iris;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import net.irisshaders.iris.IrisLogging;
 import net.irisshaders.iris.pipeline.programs.ShaderKey;
 import net.irisshaders.iris.shaderpack.loading.ProgramId;

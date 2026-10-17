@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -13,9 +14,9 @@
  * See THIRD_PARTY_NOTICES.md for details.
  */
 
-out vec4 color;
+layout(location = 0) out vec4 color;
 
-in vec4 v_Color;
+layout(location = 2) in vec4 v_Color;
 
 void main() {
     color = v_Color;

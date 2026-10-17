@@ -7,10 +7,10 @@
 
 package combatant.client.render.engine.rhi;
 
-import com.mojang.blaze3d.systems.DeviceFeatures;
-import com.mojang.blaze3d.systems.DeviceInfo;
-import com.mojang.blaze3d.systems.DeviceLimits;
-import com.mojang.blaze3d.systems.GpuDevice;
+import com.mojang.renderpearl.api.device.DeviceFeatures;
+import com.mojang.renderpearl.api.device.DeviceInfo;
+import com.mojang.renderpearl.api.device.DeviceLimits;
+import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.mixininterface.IGlBackendInfo;
 import combatant.client.render.engine.rhi.backend.gl.GlBackendAccess;

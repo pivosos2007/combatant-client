@@ -63,7 +63,7 @@ public final class CombatBlockUseUtil {
         InteractionResult result = BlockInteractionPipeline.INSTANCE.useOnBlock(
                 CombatBlockUseUtil.class, mc.player, hand, -1, 0, hitResult, false
         );
-        mc.player.swing(hand);
+        mc.player.swing(hand, mc.player.getItemInHand(hand).getInteractAnimation(), false);
         return result != InteractionResult.FAIL;
     }
 

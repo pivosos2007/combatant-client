@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.core.policy;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 
 @FunctionalInterface

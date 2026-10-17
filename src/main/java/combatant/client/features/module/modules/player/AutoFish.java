@@ -211,7 +211,7 @@ public final class AutoFish extends Module {
 
     private void useRod(LocalPlayer player, InteractionHand hand) {
         InteractionResult result = InventorySwap.INSTANCE.useItem(hand);
-        if (result != null && result.consumesAction()) player.swing(hand);
+        if (result != null && result.consumesAction()) player.swing(hand, player.getItemInHand(hand).getInteractAnimation(), false);
     }
 
     private void resetState() {

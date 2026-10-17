@@ -136,7 +136,7 @@ public final class LoadedChunkScanner<R> {
             // The new chunk may be the last missing neighbour of chunks that were waiting on it.
             for (int dx = -neighborRadius; dx <= neighborRadius; dx++) {
                 for (int dz = -neighborRadius; dz <= neighborRadius; dz++) {
-                    markDirty(chunk.getX() + dx, chunk.getZ() + dz);
+                    markDirty(chunk.x() + dx, chunk.z() + dz);
                 }
             }
         }

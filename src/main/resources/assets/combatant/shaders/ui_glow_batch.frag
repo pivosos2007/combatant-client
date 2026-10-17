@@ -1,12 +1,13 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
-in vec4 v_Local;
-in vec4 v_Color;
-in vec4 v_Rect;
-in vec4 v_Params;  // kind, radius, softness, glow radius
-in vec4 v_Params2; // glow center xy
+layout(location = 1) in vec4 v_Local;
+layout(location = 2) in vec4 v_Color;
+layout(location = 3) in vec4 v_Rect;
+layout(location = 4) in vec4 v_Params;  // kind, radius, softness, glow radius
+layout(location = 5) in vec4 v_Params2; // glow center xy
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen;

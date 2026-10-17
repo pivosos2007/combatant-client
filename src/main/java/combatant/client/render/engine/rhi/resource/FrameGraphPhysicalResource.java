@@ -6,7 +6,7 @@
  */
 package combatant.client.render.engine.rhi.resource;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.framegraph.FrameGraphPhysicalResourceDescriptor;
 import combatant.client.render.engine.rhi.shader.RhiStorageBuffer;
 import combatant.client.render.engine.rhi.shader.RhiStorageImage;

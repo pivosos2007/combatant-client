@@ -75,7 +75,7 @@ public record HmiTransformCommand(String op, double[] args) {
         if (args.length >= 4) {
             stack.rotateAround(axis.rotationDegrees((float) args[0]), (float) args[1], (float) args[2], (float) args[3]);
         } else if (args.length >= 1) {
-            stack.mulPose(axis.rotationDegrees((float) args[0]));
+            stack.rotateDegrees(axis, (float) args[0]);
         }
     }
 

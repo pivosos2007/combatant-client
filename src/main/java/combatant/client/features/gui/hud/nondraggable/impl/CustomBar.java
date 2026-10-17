@@ -45,7 +45,8 @@ import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.MatteHudStyle;
 import combatant.client.render.helpers.PlayerHeadRenderer;
 import combatant.client.runtime.RuntimeGate;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputScope;
 import combatant.client.util.player.PlayerSkinResolver;
 
 import java.awt.*;
@@ -1322,7 +1323,7 @@ public final class CustomBar extends AbstractHudElement {
 
     @Override
     public void onTick() {
-        if (KeyManager.wasPressed(bindingName(locatorBarToggle))) {
+        if (CombatantInput.bindings().consumePress(bindingName(locatorBarToggle), InputScope.GAME)) {
             BarMode mode = barMode.get();
             if (mode != BarMode.AUTO) {
                 barMode.set(mode == BarMode.LOCATOR ? BarMode.LEVEL : BarMode.LOCATOR);
@@ -1461,9 +1462,9 @@ public final class CustomBar extends AbstractHudElement {
 
     private void registerBind(KeyBindValue value) {
         String name = bindingName(value);
-        KeyManager.unregisterAll(name);
+        CombatantInput.bindings().unbind(name);
         if (!value.isNone()) {
-            KeyManager.registerCombo(name, value.get());
+            CombatantInput.bindings().bind(name, value.get());
         }
     }
 

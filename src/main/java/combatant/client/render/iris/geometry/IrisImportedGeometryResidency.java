@@ -5,7 +5,7 @@
  */
 package combatant.client.render.iris.geometry;
 
-import com.mojang.blaze3d.IndexType;
+import com.mojang.renderpearl.api.pipeline.IndexType;
 import combatant.client.render.engine.asset.gltf.GltfRuntimeAsset;
 import combatant.client.render.engine.asset.gltf.GltfAssetRepository;
 import combatant.client.render.engine.asset.gltf.geometry.GltfCompiledPrimitive;

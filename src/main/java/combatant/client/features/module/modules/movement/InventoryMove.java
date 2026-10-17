@@ -13,7 +13,6 @@
 
 package combatant.client.features.module.modules.movement;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -474,8 +473,7 @@ public class InventoryMove extends Module {
     }
 
     private boolean isPhysicallyPressed(KeyMapping key) {
-        InputConstants.Key boundKey = InputConstants.getKey(key.saveString());
-        return InputConstants.isKeyDown(mc.getWindow(), boundKey.getValue());
+        return combatant.client.input.minecraft.MinecraftInputAdapter.isPressed(key);
     }
 
     private boolean hasPhysicalMovementInput() {

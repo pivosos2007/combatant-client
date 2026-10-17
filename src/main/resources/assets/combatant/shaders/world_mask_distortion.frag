@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 uniform sampler2D u_Texture;
 uniform sampler2D u_Mask;
@@ -10,8 +11,8 @@ layout (std140) uniform WorldMaskedPost {
     float u_GlobalStrength;
 };
 
-in vec2 v_TexCoord;
-out vec4 color;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 0) out vec4 color;
 
 void main() {
     vec2 uv = v_TexCoord;

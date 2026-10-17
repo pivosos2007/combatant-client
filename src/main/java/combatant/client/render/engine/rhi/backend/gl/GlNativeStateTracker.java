@@ -9,7 +9,7 @@ package combatant.client.render.engine.rhi.backend.gl;
 
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL13C;
-import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
 
 /**
  * Differential tracker for GL state that Combatant owns outside Blaze3D's {@code GlStateManager}.

@@ -52,7 +52,7 @@ public class TextSetting extends Setting implements TextEditorOwner {
 
     @Override
     public void mouseReleased(double mx, double my, int button) {
-        if (button == 0) endMouseSelection();
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) endMouseSelection();
     }
 
     @Override

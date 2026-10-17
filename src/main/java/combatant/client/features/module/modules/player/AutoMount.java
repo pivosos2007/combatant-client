@@ -99,7 +99,7 @@ public final class AutoMount extends Module {
 
         InteractionResult result = mc.gameMode.interact(player, best, new EntityHitResult(best), InteractionHand.MAIN_HAND);
         if (result != null && result.consumesAction()) {
-            player.swing(InteractionHand.MAIN_HAND);
+            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
             cooldown = delayTicks.get();
         }
     }

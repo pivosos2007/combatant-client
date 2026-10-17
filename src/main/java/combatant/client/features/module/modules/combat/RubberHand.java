@@ -120,7 +120,7 @@ public class RubberHand extends Module {
 
     private void performAttack(LocalPlayer player, Entity target) {
         mc.gameMode.attack(player, target);
-        player.swing(InteractionHand.MAIN_HAND);
+        player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
         didAttackThisHold = true;
     }
 }

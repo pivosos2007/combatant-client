@@ -5,8 +5,8 @@
  */
 package combatant.client.render.iris;
 
-import com.mojang.blaze3d.opengl.GlTexture;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import combatant.client.config.MainConfig;
 import combatant.client.render.iris.patch.ShaderPatchEngine;
 import combatant.client.util.logging.DebugLog;

@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,12 +8,12 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-in vec4 v_Local;
-in vec4 v_Color;
-in vec4 v_Rect;
-in vec4 v_Params;
+layout(location = 1) in vec4 v_Local;
+layout(location = 2) in vec4 v_Color;
+layout(location = 3) in vec4 v_Rect;
+layout(location = 4) in vec4 v_Params;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 uniform sampler2D u_Texture;
 
@@ -21,10 +22,10 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
-#moj_import <combatant:ui_aa.glsl>
+#include <combatant:ui_aa.glsl>
 
 #ifdef COMBATANT_ANALYTIC_CLIP
-#moj_import <combatant:ui_clip.glsl>
+#include <combatant:ui_clip.glsl>
 #endif
 
 float roundedBoxSDF(vec2 center, vec2 size, float radius) {

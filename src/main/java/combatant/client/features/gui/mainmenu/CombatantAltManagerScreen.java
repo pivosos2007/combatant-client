@@ -8,6 +8,7 @@
 package combatant.client.features.gui.mainmenu;
 
 import combatant.client.util.text.SingleLineTextInput;
+import combatant.client.input.minecraft.MinecraftInputAdapter;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 
@@ -228,7 +229,7 @@ public final class CombatantAltManagerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-        if (click.button() != 0) return true;
+        if (click.button() != combatant.client.input.InputKeys.MOUSE_LEFT) return true;
         return handleClick(toFixedX((float) click.x()), toFixedY((float) click.y()));
     }
 
@@ -239,7 +240,7 @@ public final class CombatantAltManagerScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent click) {
-        if (click.button() == 0) SingleLineTextInput.mouseReleased();
+        if (click.button() == combatant.client.input.InputKeys.MOUSE_LEFT) SingleLineTextInput.mouseReleased();
         return super.mouseReleased(click);
     }
 
@@ -258,13 +259,14 @@ public final class CombatantAltManagerScreen extends Screen {
     public boolean keyPressed(KeyEvent input) {
         if (nicknameFieldFocused) {
             int key = input.key();
-            if (nicknameInput.keyPressed(key, input.modifiers())) return true;
-            if (key == 257 || key == 335) {
+            if (nicknameInput.keyPressed(
+                    MinecraftInputAdapter.key(input), MinecraftInputAdapter.modifiers(input))) return true;
+            if (key == combatant.client.input.InputKeys.ENTER || key == combatant.client.input.InputKeys.KP_ENTER) {
                 commitNickname();
                 nicknameFieldFocused = false;
                 return true;
             }
-            if (key == 256) {
+            if (key == combatant.client.input.InputKeys.ESCAPE) {
                 nicknameFieldFocused = false;
                 nicknameInput.unfocus();
                 return true;
@@ -272,7 +274,7 @@ public final class CombatantAltManagerScreen extends Screen {
             return true;
         }
 
-        if (input.key() == 256) {
+        if (input.key() == combatant.client.input.InputKeys.ESCAPE) {
             closeToParent();
             return true;
         }
@@ -1247,7 +1249,7 @@ public final class CombatantAltManagerScreen extends Screen {
 
     private void openMicrosoftLoginSite() {
         String target = microsoftVerificationUrl.isBlank() ? "https://www.microsoft.com/link" : microsoftVerificationUrl;
-        Util.getPlatform().openUri(target);
+        com.mojang.blaze3d.Blaze3D.openUri(java.net.URI.create(target));
     }
 
     private void dispatchToClient(Runnable runnable) {

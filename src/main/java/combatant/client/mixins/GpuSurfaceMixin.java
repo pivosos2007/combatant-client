@@ -7,12 +7,13 @@
 
 package combatant.client.mixins;
 
-import com.mojang.blaze3d.systems.CommandEncoder;
-import com.mojang.blaze3d.systems.CommandEncoderBackend;
-import com.mojang.blaze3d.systems.GpuSurface;
-import com.mojang.blaze3d.systems.GpuSurfaceBackend;
-import com.mojang.blaze3d.systems.SurfaceException;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.commands.CommandEncoder;
+import com.mojang.renderpearl.backend.api.CommandEncoderBackend;
+import com.mojang.renderpearl.api.device.GpuSurface;
+import com.mojang.renderpearl.frontend.FrontendGpuSurface;
+import com.mojang.renderpearl.backend.api.GpuSurfaceBackend;
+import com.mojang.renderpearl.api.device.SurfaceException;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.profiler.ProfilerPhase;
@@ -26,7 +27,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(GpuSurface.class)
+@Mixin(FrontendGpuSurface.class)
 public abstract class GpuSurfaceMixin {
     /**
      * Last safe point before Minecraft copies the main render target into the
@@ -45,7 +46,7 @@ public abstract class GpuSurfaceMixin {
 
     @Redirect(
             method = "configure",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/GpuSurfaceBackend;configure(Lcom/mojang/blaze3d/systems/GpuSurface$Configuration;)V")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/GpuSurfaceBackend;configure(Lcom/mojang/renderpearl/api/device/GpuSurface$Configuration;)V")
     )
     private void combatant$profileSurfaceConfigure(GpuSurfaceBackend backend, GpuSurface.Configuration configuration) throws SurfaceException {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("surface:configure")) {
@@ -55,7 +56,7 @@ public abstract class GpuSurfaceMixin {
 
     @Redirect(
             method = "acquireNextTexture",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/GpuSurfaceBackend;acquireNextTexture()V")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/GpuSurfaceBackend;acquireNextTexture()V")
     )
     private void combatant$profileSurfaceAcquire(GpuSurfaceBackend backend) throws SurfaceException {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("surface:acquire")) {
@@ -65,7 +66,7 @@ public abstract class GpuSurfaceMixin {
 
     @Redirect(
             method = "blitFromTexture",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/GpuSurfaceBackend;blitFromTexture(Lcom/mojang/blaze3d/systems/CommandEncoderBackend;Lcom/mojang/blaze3d/textures/GpuTextureView;)V")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/GpuSurfaceBackend;blitFromTexture(Lcom/mojang/renderpearl/backend/api/CommandEncoderBackend;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V")
     )
     private void combatant$profileSurfaceBlit(GpuSurfaceBackend backend, CommandEncoderBackend encoder, GpuTextureView textureView) {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("surface:blit")) {
@@ -80,7 +81,7 @@ public abstract class GpuSurfaceMixin {
 
     @Redirect(
             method = "present",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/GpuSurfaceBackend;present()V")
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/api/GpuSurfaceBackend;present()V")
     )
     private void combatant$profileSurfacePresent(GpuSurfaceBackend backend) {
         try {

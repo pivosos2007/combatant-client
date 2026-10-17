@@ -34,7 +34,8 @@ import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.runtime.RuntimeShutdownContext;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputScope;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.*;
@@ -419,7 +420,7 @@ public enum ModuleManager {
             Module[] snapshot = modulesSnapshot;
             for (Module m : snapshot) {
                 if (m instanceof RuntimeControlModule) continue;
-                if (KeyManager.wasPressed(m.name())) {
+                if (CombatantInput.bindings().consumePress(m.name(), InputScope.GAME)) {
                     setSuppressToggleSound(soundSuppressedThisPass);
                     try { m.toggleFromKeybind(); }
                     catch (RuntimeException e) { FailureIsolation.reportModule(m, "keybind", e); }

@@ -16,11 +16,12 @@ package combatant.client.features.module.modules.movement;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.config.values.EnumValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.GameTickEvent;
-import combatant.client.events.impl.KeyInputEvent;
+import combatant.client.input.InputAction;
+import combatant.client.input.event.KeyboardInputEvent;
+import combatant.client.input.minecraft.MinecraftInputAdapter;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -54,18 +55,18 @@ public class AirJump extends Module {
     }
 
     @EventHandler
-    private void onKeyInput(KeyInputEvent event) {
+    private void onKeyInput(KeyboardInputEvent event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null || mc.options == null) return;
-        if (event.getAction() != GLFW.GLFW_PRESS) return;
+        if (event.action() != InputAction.PRESS) return;
         if (anticheat.get() == AntiCheatPreset.GRIM) return;
         if (ClientScreen.current() != null || mc.player.onGround() || isFreecamActive()) return;
 
-        if (mc.options.keyJump.matches(event.getInput())) {
+        if (MinecraftInputAdapter.matches(mc.options.keyJump, event.key())) {
             level = mc.player.blockPosition().getY();
             maintainLevelReady = false;
             jumpVanillaClamped(mc.player);
-        } else if (mc.options.keyShift.matches(event.getInput())) {
+        } else if (MinecraftInputAdapter.matches(mc.options.keyShift, event.key())) {
             level--;
             maintainLevelReady = false;
         }

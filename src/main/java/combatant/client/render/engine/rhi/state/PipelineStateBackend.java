@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.state;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 
 /**
  * RHI-owned out-of-band render state applied around Mojang RenderPipeline binds.

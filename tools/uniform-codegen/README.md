@@ -1,6 +1,6 @@
 # GLSL std140 / std430 bindings
 
-The source of truth for layout names, field names, sizes, offsets, and strides is the actual GLSL under `src/main/resources/assets/combatant/shaders`. The normal Gradle build runs `generateUniformBindings` and **then `verifyUniformBindingContracts` before `compileJava`**. The generator scans every `.vert`, `.frag`, `.geom`, `.comp`, and `.glsl`, including local `#moj_import <combatant:...>` dependencies. There is no hand-maintained list for runtime discovery.
+The source of truth for layout names, field names, sizes, offsets, and strides is the actual GLSL under `src/main/resources/assets/combatant/shaders`. The normal Gradle build runs `generateUniformBindings` and **then `verifyUniformBindingContracts` before `compileJava`**. The generator scans every `.vert`, `.frag`, `.geom`, `.comp`, and `.glsl`, including local `#include <combatant:...>` dependencies. There is no hand-maintained list for runtime discovery.
 
 The runtime resource is generated as `build/generated/resources/combatantUniforms/combatant/uniform-bindings-v2.tsv`. `ShaderUniformBindings` reads version 2 of this file and fails fast if the metadata is missing, malformed, or from an incompatible generator. Older `v1` resources are removed from the generator output folder. The runtime does not parse GLSL or use reflection. **Rebuild after changing GLSL contracts; shader hot reload cannot regenerate Java-side bindings.**
 

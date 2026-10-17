@@ -36,7 +36,7 @@ public final class ProtocolHeuristicsSetting extends TextListSetting {
 
     @Override
     public void mouseClicked(double mx, double my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
         UiState ui = ui();
         if (!UnifiedSettingsSkin.inside(mx, my, ui.lastButtonX, ui.lastButtonY, ui.lastButtonW, ui.lastButtonH)) {
             return;

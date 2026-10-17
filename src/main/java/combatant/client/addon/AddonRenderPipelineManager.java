@@ -7,7 +7,7 @@
 
 package combatant.client.addon;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.api.v0.render.CombatantPostProcessCallback;
 import combatant.client.api.v0.render.CombatantPostProcessContext;

@@ -19,7 +19,6 @@ import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
 import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiMaterialInteractionState;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * Shared helpers for HUD widget visuals.
@@ -118,8 +117,8 @@ public enum HudRenderUtil {
             float viewportHeight = viewport != null ? Math.max(1f, viewport.height()) : rawHeight;
             float mouseX = (float) mc.mouseHandler.xpos() / rawWidth * viewportWidth;
             float mouseY = (float) mc.mouseHandler.ypos() / rawHeight * viewportHeight;
-            boolean down = GLFW.glfwGetMouseButton(mc.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_LEFT)
-                    == GLFW.GLFW_PRESS;
+            boolean down = combatant.client.input.CombatantInput.state().isPressed(
+                    combatant.client.input.InputDevice.MOUSE, combatant.client.input.InputKeys.MOUSE_LEFT);
             interaction = owner.sample(mouseX, mouseY, down, x, y, w, h,
                     spec.interactionViscosity(), spec.interactionStrength(), System.nanoTime());
         }

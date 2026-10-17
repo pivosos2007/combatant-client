@@ -8,9 +8,9 @@
 package combatant.client.util.session;
 
 import com.mojang.authlib.minecraft.UserApiService;
-import com.mojang.authlib.yggdrasil.FriendsService;
-import com.mojang.authlib.yggdrasil.ProfileResult;
-import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
+import com.mojang.authlib.services.FriendsService;
+import com.mojang.authlib.services.ProfileResult;
+import com.mojang.authlib.services.MinecraftServicesDiscoveryService;
 import combatant.client.mixins.accessors.MinecraftAccessor;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.Minecraft;
@@ -188,9 +188,8 @@ public enum SessionChanger {
     private static void flushSession(Minecraft client, SessionLoginData data, User user) {
         try {
             MinecraftAccessor accessor = (MinecraftAccessor) client;
-            YggdrasilAuthenticationService authService = data.online()
-                    ? new YggdrasilAuthenticationService(client.getProxy())
-                    : YggdrasilAuthenticationService.createOffline(client.getProxy());
+            MinecraftServicesDiscoveryService authService =
+                    MinecraftServicesDiscoveryService.create(client.getProxy(), data.online());
 
             Services services = Services.create(authService, client.gameDirectory);
             GameConfig original = client instanceof MinecraftGameConfigHolder holder ? holder.combatant$getGameConfig() : null;

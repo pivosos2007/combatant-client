@@ -18,7 +18,6 @@ import combatant.client.render.engine.renderer.ui.draw.UiRect;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
 import combatant.client.render.engine.core.ViewportContext;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiProps;
 import combatant.client.render.engine.renderer.ui.runtime.style.UiColor;
 
@@ -83,8 +82,8 @@ final class UiBackdropRuntime {
                         / Math.max(1, mc.getWindow().getScreenWidth()) * viewportW;
                 float pointerY = (float) mc.mouseHandler.ypos()
                         / Math.max(1, mc.getWindow().getScreenHeight()) * viewportH;
-                boolean pressed = GLFW.glfwGetMouseButton(mc.getWindow().handle(),
-                        GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+                boolean pressed = combatant.client.input.CombatantInput.state().isPressed(
+                        combatant.client.input.InputDevice.MOUSE, combatant.client.input.InputKeys.MOUSE_LEFT);
                 UiGlassInteraction interaction = node.state().materialInteraction().sample(
                         pointerX, pointerY, pressed,
                         (float) bounds.x(), (float) bounds.y(),

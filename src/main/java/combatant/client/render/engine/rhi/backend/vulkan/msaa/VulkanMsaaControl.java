@@ -7,14 +7,14 @@
 
 package combatant.client.render.engine.rhi.backend.vulkan.msaa;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.systems.RenderPass;
-import com.mojang.blaze3d.systems.RenderPassDescriptor;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.mixininterface.IMsaaTexture;
 import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateBridge;
 import combatant.client.render.engine.rhi.msaa.MsaaControl;
@@ -108,10 +108,10 @@ public final class VulkanMsaaControl implements MsaaControl {
             VulkanMsaaResolveBridge.beginTransientColorSnapshot(
                     src.getColorTextureView(), dst.getColorTextureView()
             );
-            RenderPassDescriptor descriptor = RenderPassDescriptor.create(() -> "Combatant transient MSAA color resolve")
+            RenderPassDescriptor.Builder descriptor = RenderPassDescriptor.builder(() -> "Combatant transient MSAA color resolve")
                     .withColorAttachment(src.getColorTextureView())
                     .withRenderArea(new RenderPass.RenderArea(0, 0, src.width, src.height));
-            try (RenderPass ignored = RenderSystem.getDevice().createCommandEncoder().createRenderPass(descriptor)) {
+            try (RenderPass ignored = RenderSystem.getDevice().createCommandEncoder().createRenderPass(descriptor.build())) {
                 // Dynamic-rendering resolve; source storeOp is DONT_CARE.
             }
             boolean resolved = VulkanMsaaResolveBridge.completeColorSnapshot(
@@ -151,10 +151,10 @@ public final class VulkanMsaaControl implements MsaaControl {
 
         try {
             VulkanMsaaResolveBridge.beginDepthSnapshot(src, dst);
-            RenderPassDescriptor descriptor = RenderPassDescriptor.create(() -> "Combatant MSAA depth snapshot resolve")
+            RenderPassDescriptor.Builder descriptor = RenderPassDescriptor.builder(() -> "Combatant MSAA depth snapshot resolve")
                     .withDepthAttachment(src)
                     .withRenderArea(new RenderPass.RenderArea(0, 0, src.getWidth(0), src.getHeight(0)));
-            try (RenderPass ignored = RenderSystem.getDevice().createCommandEncoder().createRenderPass(descriptor)) {
+            try (RenderPass ignored = RenderSystem.getDevice().createCommandEncoder().createRenderPass(descriptor.build())) {
                 // Ending an otherwise empty dynamic-rendering scope performs the depth resolve.
             }
             return VulkanMsaaResolveBridge.completeDepthSnapshot(src, dst);
@@ -175,10 +175,10 @@ public final class VulkanMsaaControl implements MsaaControl {
         if (!validSnapshotPair(src, dst)) return false;
         try {
             VulkanMsaaResolveBridge.beginColorSnapshot(src, dst);
-            RenderPassDescriptor descriptor = RenderPassDescriptor.create(() -> "Combatant MSAA color snapshot resolve")
+            RenderPassDescriptor.Builder descriptor = RenderPassDescriptor.builder(() -> "Combatant MSAA color snapshot resolve")
                     .withColorAttachment(src)
                     .withRenderArea(new RenderPass.RenderArea(0, 0, src.getWidth(0), src.getHeight(0)));
-            try (RenderPass ignored = RenderSystem.getDevice().createCommandEncoder().createRenderPass(descriptor)) {
+            try (RenderPass ignored = RenderSystem.getDevice().createCommandEncoder().createRenderPass(descriptor.build())) {
                 // Ending an otherwise empty dynamic-rendering scope performs the color resolve.
             }
             return VulkanMsaaResolveBridge.completeColorSnapshot(src, dst);

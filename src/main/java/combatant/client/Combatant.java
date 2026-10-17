@@ -50,6 +50,10 @@ import combatant.client.features.module.HudPhase;
 import combatant.client.features.module.ModuleAutoLoader;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.WorldPhase;
+import combatant.client.input.ModuleBindInputHandler;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.minecraft.CombatantTextInputBridge;
+import combatant.client.input.minecraft.MinecraftInputAdapter;
 import combatant.client.mixininterface.IGuiGraphics;
 import combatant.client.render.effects.NetherPortalRiftPass;
 import combatant.client.render.effects.SleepOverlayPass;
@@ -563,6 +567,7 @@ public class Combatant implements ClientModInitializer {
         ModuleAutoLoader.load("combatant.client.features.module.modules");
         AddonManager.init();
         ModuleManager.loadAllModuleConfigs();
+        Events.BUS.register(ModuleBindInputHandler.INSTANCE);
         AddonManager.notifyClientReady();
         HudElements.init();
         StaticHudElementBootstrap.init(); // init vanilla HUD elements config
@@ -594,6 +599,11 @@ public class Combatant implements ClientModInitializer {
 
 
         ClientTickEvents.START_CLIENT_TICK.register(client -> {
+            MinecraftInputAdapter.refreshFocus();
+            if (!client.isWindowActive()) {
+                CombatantInput.clearState();
+                CombatantTextInputBridge.clear();
+            }
             if (client.player == null) return;
             if (!RuntimeGate.canRunClientLogic()) return;
             try (ProfilerPhase.Scope tickScope = ProfilerPhase.scope("combatant:client_tick:start")) {
@@ -608,9 +618,6 @@ public class Combatant implements ClientModInitializer {
             if (!ProfilerPhase.isActive()) {
                 ModuleManager.tickRuntimeControllers();
                 if (!RuntimeGate.canRunClientLogic()) return;
-                if (!ClickGuiRenderer.isBlockingModuleKeybinds()) {
-                    ModuleManager.handleModuleKeybinds();
-                }
                 TargetManager.tick();
                 ModuleManager.tickAll();
                 DraggableHudElementRegistry.tickAll();
@@ -624,11 +631,6 @@ public class Combatant implements ClientModInitializer {
                 }
                 if (!RuntimeGate.canRunClientLogic()) return;
 
-                if (!ClickGuiRenderer.isBlockingModuleKeybinds()) {
-                    try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("module_keybinds")) {
-                        ModuleManager.handleModuleKeybinds();
-                    }
-                }
                 try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("target_manager")) {
                     TargetManager.tick();
                 }

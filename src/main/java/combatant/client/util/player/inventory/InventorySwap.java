@@ -158,7 +158,7 @@ public final class InventorySwap {
             lastInputMoving = moving;
         } else if (packet instanceof ServerboundUseItemPacket) {
             lastUseItemTick = packetTick;
-        } else if (packet instanceof ServerboundSwingPacket) {
+        } else if (packet instanceof ServerboundPunchPacket) {
             // MultiActionsE checks animation while using item; the safety gate uses player.isUsingItem().
         } else if (packet instanceof ServerboundAttackPacket || packet instanceof ServerboundInteractPacket) {
             lastEntityActionTick = packetTick;
@@ -915,7 +915,7 @@ public final class InventorySwap {
         return withFoundSlot(predicate, mode, () -> {
             InteractionResult result = useItem(hand);
             if (swing && result.consumesAction() && mc.player != null) {
-                mc.player.swing(hand);
+                mc.player.swing(hand, mc.player.getItemInHand(hand).getInteractAnimation(), false);
             }
         });
     }
@@ -932,7 +932,7 @@ public final class InventorySwap {
 
     public boolean swingHand(InteractionHand hand, InventorySwapPolicy policy) {
         if (mc.player == null || hand == null) return false;
-        Runnable swing = () -> mc.player.swing(hand);
+        Runnable swing = () -> mc.player.swing(hand, mc.player.getItemInHand(hand).getInteractAnimation(), false);
         if (policy == null || policy == InventorySwapPolicy.NONE || isSafeFor(InventoryActionKind.SWING, policy)) {
             runGuarded(swing);
             return true;

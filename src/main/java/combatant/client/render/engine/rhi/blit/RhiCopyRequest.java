@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.blit;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 
 /** Complete copy intent; backend selection must not infer scaling or conversion accidentally. */
 public record RhiCopyRequest(

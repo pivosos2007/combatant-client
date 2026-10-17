@@ -101,7 +101,7 @@ public final class ThemeComponent {
     }
 
     public boolean mousePressedScrollbar(float mx, float my, int button) {
-        if (button != 0) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         if (!isScrollbarHovered(mx, my)) return false;
         draggingScrollbar = true;
         scrollbarDragOffset = ClickGuiMath.insideRect(mx, my, scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH)
@@ -112,21 +112,21 @@ public final class ThemeComponent {
     }
 
     public void mouseReleased(int button) {
-        if (button == 0) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
             draggingScrollbar = false;
         }
     }
 
     public ThemeAction click(float mx, float my, int button) {
         if (isScrollbarHovered(mx, my)) return null;
-        if (button != 0 && button != 1) return null;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT && button != combatant.client.input.InputKeys.MOUSE_RIGHT) return null;
         for (Hit hit : hits) {
             if (!ClickGuiMath.insideRect(mx, my, hit.x(), hit.y(), hit.w(), hit.h())) continue;
-            if (hit.deleteButton()) return button == 0 && hit.custom() ? new ThemeAction(ThemeActionType.DELETE, hit.themeId()) : null;
-            if (hit.addCard()) return button == 0 ? new ThemeAction(ThemeActionType.ADD, null) : null;
+            if (hit.deleteButton()) return button == combatant.client.input.InputKeys.MOUSE_LEFT && hit.custom() ? new ThemeAction(ThemeActionType.DELETE, hit.themeId()) : null;
+            if (hit.addCard()) return button == combatant.client.input.InputKeys.MOUSE_LEFT ? new ThemeAction(ThemeActionType.ADD, null) : null;
             if (hit.themeId() == null || hit.themeId().isBlank()) return null;
-            if (button == 1 && hit.custom()) return new ThemeAction(ThemeActionType.EDIT, hit.themeId());
-            if (button == 0) return new ThemeAction(ThemeActionType.SELECT, hit.themeId());
+            if (button == combatant.client.input.InputKeys.MOUSE_RIGHT && hit.custom()) return new ThemeAction(ThemeActionType.EDIT, hit.themeId());
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT) return new ThemeAction(ThemeActionType.SELECT, hit.themeId());
         }
         return null;
     }

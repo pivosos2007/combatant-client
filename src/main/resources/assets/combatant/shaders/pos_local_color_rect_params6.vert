@@ -1,11 +1,12 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * Combatant widget material vertex contract.
  * Params6 carries material direction/intensity controls explicitly rather than packing them into color alpha.
  */
 
-layout (location = 0) in vec4 Position;
+layout (location = 0) in vec2 Position;
 layout (location = 1) in vec4 Local;
 layout (location = 2) in vec4 Color;
 layout (location = 3) in vec4 Rect;
@@ -21,18 +22,18 @@ layout (std140) uniform MeshData {
     mat4 u_ModelView;
 };
 
-out vec4 v_Local;
-out vec4 v_Color;
-out vec4 v_Rect;
-out vec4 v_CornerModes;
-out vec4 v_CornerExtentX;
-out vec4 v_CornerExtentY;
-out vec4 v_EdgeModes;
-out vec4 v_EdgeData;
-out vec4 v_MaterialData;
+layout(location = 1) out vec4 v_Local;
+layout(location = 2) out vec4 v_Color;
+layout(location = 3) out vec4 v_Rect;
+layout(location = 4) out vec4 v_CornerModes;
+layout(location = 5) out vec4 v_CornerExtentX;
+layout(location = 6) out vec4 v_CornerExtentY;
+layout(location = 7) out vec4 v_EdgeModes;
+layout(location = 8) out vec4 v_EdgeData;
+layout(location = 9) out vec4 v_MaterialData;
 
 void main() {
-    gl_Position = u_Proj * u_ModelView * Position;
+    gl_Position = u_Proj * u_ModelView * vec4(Position, 0.0, 1.0);
     v_Local = Local;
     v_Color = Color;
     v_Rect = Rect;

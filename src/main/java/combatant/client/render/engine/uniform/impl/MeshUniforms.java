@@ -15,7 +15,7 @@ package combatant.client.render.engine.uniform.impl;
 
 import combatant.client.render.engine.core.CombatantRenderSystem;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.buffers.Std140Builder;
 import com.mojang.blaze3d.buffers.Std140SizeCalculator;
 import org.joml.Matrix4f;

@@ -7,8 +7,8 @@
 
 package combatant.client.render.iris;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.renderer.SubmitNodeStorage;
@@ -142,7 +142,7 @@ public enum IrisRuntime {
     public static void setNativePipeline(RenderPass pass, RenderPipeline pipeline) {
         if (pass == null || pipeline == null) return;
         if (!MOD_LOADED) {
-            pass.setPipeline(pipeline);
+            pass.setPipeline(com.mojang.blaze3d.systems.RenderSystem.getCompiledPipeline(pipeline));
             return;
         }
 
@@ -150,12 +150,12 @@ public enum IrisRuntime {
         try {
             previous = IrisRuntimeBridge.beginNativeShaderBypass();
         } catch (LinkageError | RuntimeException ignored) {
-            pass.setPipeline(pipeline);
+            pass.setPipeline(com.mojang.blaze3d.systems.RenderSystem.getCompiledPipeline(pipeline));
             return;
         }
 
         try {
-            pass.setPipeline(pipeline);
+            pass.setPipeline(com.mojang.blaze3d.systems.RenderSystem.getCompiledPipeline(pipeline));
         } finally {
             try {
                 IrisRuntimeBridge.restoreNativeShaderBypass(previous);

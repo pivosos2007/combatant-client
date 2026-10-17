@@ -35,7 +35,8 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputScope;
 import combatant.client.mixins.accessors.ClientTextTooltipAccessor;
 import combatant.client.util.item.TopEnchantUtil;
 
@@ -772,7 +773,7 @@ public final class BetterTooltips extends AbstractHudElement {
 
     public boolean isShulkerPreviewHeld() {
         if (RuntimeGate.isPanic()) return false;
-        return KeyManager.isHeldAllowScreen(bindingName(shulkerPreviewHold));
+        return CombatantInput.bindings().isHeld(bindingName(shulkerPreviewHold), InputScope.GLOBAL);
     }
 
     public String getShulkerPreviewBind() {
@@ -840,9 +841,9 @@ public final class BetterTooltips extends AbstractHudElement {
 
     private void registerBind(KeyBindValue value) {
         String name = bindingName(value);
-        KeyManager.unregisterAll(name);
+        CombatantInput.bindings().unbind(name);
         if (!value.isNone()) {
-            KeyManager.registerCombo(name, value.get());
+            CombatantInput.bindings().bind(name, value.get());
         }
     }
 

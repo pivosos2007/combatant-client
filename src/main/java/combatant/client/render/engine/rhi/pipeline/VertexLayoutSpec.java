@@ -7,16 +7,16 @@
 
 package combatant.client.render.engine.rhi.pipeline;
 
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 
 /**
  * Backend-agnostic description of the native vertex layout currently used by a pipeline.
  */
 public record VertexLayoutSpec(String id,
                                VertexFormat nativeFormat,
-                               com.mojang.blaze3d.PrimitiveTopology primitive) {
-    public static VertexLayoutSpec of(String id, VertexFormat format, com.mojang.blaze3d.PrimitiveTopology primitive) {
-        return new VertexLayoutSpec(id != null ? id : "unknown", format, primitive != null ? primitive : com.mojang.blaze3d.PrimitiveTopology.TRIANGLES);
+                               com.mojang.renderpearl.api.pipeline.PrimitiveTopology primitive) {
+    public static VertexLayoutSpec of(String id, VertexFormat format, com.mojang.renderpearl.api.pipeline.PrimitiveTopology primitive) {
+        return new VertexLayoutSpec(id != null ? id : "unknown", format, primitive != null ? primitive : com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES);
     }
 
     public String getId() {

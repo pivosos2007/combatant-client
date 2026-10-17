@@ -13,8 +13,8 @@
 
 package combatant.client.render.engine.text;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.FilterMode;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.stb.*;

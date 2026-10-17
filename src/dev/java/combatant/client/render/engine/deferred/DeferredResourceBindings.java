@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.deferred;
 
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.framegraph.FrameGraphAccess;
 import combatant.client.render.engine.framegraph.FrameGraphPhysicalPlan;
 import combatant.client.render.engine.framegraph.FrameGraphResourceKind;

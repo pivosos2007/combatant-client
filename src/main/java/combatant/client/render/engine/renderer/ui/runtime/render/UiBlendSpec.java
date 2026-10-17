@@ -7,8 +7,8 @@
 
 package combatant.client.render.engine.renderer.ui.runtime.render;
 
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.platform.BlendFactor;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.BlendFactor;
 import combatant.client.render.engine.pipeline.BlendFunctions;
 
 import java.util.Locale;

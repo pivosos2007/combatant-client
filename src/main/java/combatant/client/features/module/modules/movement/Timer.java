@@ -24,7 +24,8 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputScope;
 import combatant.client.util.player.MovementUtil;
 
 @ModuleInfo(
@@ -415,9 +416,9 @@ public class Timer extends Module {
         if (combo.equalsIgnoreCase(lastBoostCombo)) return;
 
         String name = boostBindingName();
-        KeyManager.unregisterAll(name);
+        CombatantInput.bindings().unbind(name);
         if (!boostKey.isNone()) {
-            KeyManager.registerCombo(name, combo);
+            CombatantInput.bindings().bind(name, combo);
         }
         lastBoostCombo = combo;
     }
@@ -425,7 +426,7 @@ public class Timer extends Module {
     private boolean isBoostHeld() {
         String combo = boostKey.get();
         if (combo == null || combo.equalsIgnoreCase("NONE")) return false;
-        return KeyManager.isHeld(boostBindingName());
+        return CombatantInput.bindings().isHeld(boostBindingName(), InputScope.GAME);
     }
 
     public enum Mode {

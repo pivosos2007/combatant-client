@@ -50,8 +50,8 @@ public enum PlayerAnimator {
         }
 
         float frameSeconds = Float.isFinite(deltaSeconds) ? Mth.clamp(deltaSeconds, 0f, 0.1f) : 0f;
-        // AvatarRenderState.attackTime is already interpolated for this render submission.
-        float attack = state.attackTime;
+        // Vanilla 26.3 exposes interpolated swing progress via ArmedEntityRenderState.
+        float attack = state.swingAnimation;
         MotionState motion = MOTION.computeIfAbsent(player, ignored -> new MotionState());
         float continuousSeconds = state.ageInTicks / 20.0f;
         float attackCooldownSeconds = Mth.clamp(player.getCurrentItemAttackStrengthDelay() / 20.0f, 0.05f, 4.0f);

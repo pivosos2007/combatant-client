@@ -17,6 +17,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import org.spongepowered.asm.mixin.Mixin;
@@ -39,10 +40,30 @@ import combatant.client.features.module.modules.visuals.Freecam;
 import combatant.client.features.module.modules.visuals.HitEffect;
 import combatant.client.mixins.accessors.WorldAccessor;
 import combatant.client.util.player.inventory.InventorySwap;
+import combatant.client.util.player.inventory.InventorySlotLocks;
+import combatant.client.util.player.inventory.InventoryComponentMap;
 import combatant.client.util.target.TargetManager;
 
 @Mixin(MultiPlayerGameMode.class)
 public class MultiPlayerGameModeMixin {
+
+    @Inject(method = "handleContainerInput", at = @At("HEAD"), cancellable = true)
+    private void combatant$guardModuleLockedSlots(int containerId, int slot, int button,
+                                                  ContainerInput input, Player player, CallbackInfo ci) {
+        if (player == null || player.containerMenu == null || player.containerMenu.containerId != containerId) return;
+        if (InventorySlotLocks.blocks(player.containerMenu, slot, button, input, player,
+                InventorySwap.INSTANCE.executingActionOwner())) ci.cancel();
+    }
+
+    @Inject(method = "handleCreativeModeItemAdd", at = @At("HEAD"), cancellable = true)
+    private void combatant$guardCreativeItemWrite(ItemStack stack, int inventoryMenuSlot, CallbackInfo ci) {
+        Player player = Minecraft.getInstance().player;
+        if (player == null) return;
+        int inventoryIndex = InventoryComponentMap.playerInventoryIndex(
+                player.inventoryMenu, inventoryMenuSlot, player);
+        if (inventoryIndex >= 0 && InventorySlotLocks.blocks(
+                inventoryIndex, InventorySwap.INSTANCE.executingActionOwner())) ci.cancel();
+    }
 
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void combatant$skipTickWithoutPlayer(CallbackInfo ci) {

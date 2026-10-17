@@ -8,11 +8,11 @@
 package combatant.client.mixins;
 
 import com.llamalad7.mixinextras.sugar.Local;
-import com.mojang.blaze3d.systems.RenderPassBackend;
-import com.mojang.blaze3d.systems.RenderPassDescriptor;
-import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.vulkan.VulkanCommandEncoder;
-import com.mojang.blaze3d.vulkan.VulkanGpuTextureView;
+import com.mojang.renderpearl.backend.api.RenderPassBackend;
+import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.spongepowered.asm.mixin.gen.Invoker;
 import org.spongepowered.asm.mixin.gen.Accessor;

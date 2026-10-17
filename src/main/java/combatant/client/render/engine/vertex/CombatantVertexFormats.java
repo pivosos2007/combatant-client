@@ -13,7 +13,7 @@
 
 package combatant.client.render.engine.vertex;
 
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 
 public enum CombatantVertexFormats {
     ;

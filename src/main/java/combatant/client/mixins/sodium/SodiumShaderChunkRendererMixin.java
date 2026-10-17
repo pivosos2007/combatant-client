@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 
 /**
- * Sodium 26.2 builds terrain shaders as Mojang RenderPipeline objects.
+ * Sodium 26.3 builds terrain shaders as Mojang RenderPipeline objects.
  * The old ShaderLoader/DefaultShaderInterface/GlUniform path no longer exists,
  * so Combatant overrides the pipeline shader ids and keeps the shader resources
  * in vanilla .vsh/.fsh form.
@@ -27,7 +27,7 @@ public abstract class SodiumShaderChunkRendererMixin {
             method = "createShader",
             at = @At(
                     value = "INVOKE",
-                    target = "Lcom/mojang/blaze3d/pipeline/RenderPipeline$Builder;withVertexShader(Lnet/minecraft/resources/Identifier;)Lcom/mojang/blaze3d/pipeline/RenderPipeline$Builder;"
+                    target = "Lcom/mojang/renderpearl/api/pipeline/RenderPipeline$Builder;withVertexShader(Lnet/minecraft/resources/Identifier;)Lcom/mojang/renderpearl/api/pipeline/RenderPipeline$Builder;"
             ),
             index = 0
     )
@@ -39,7 +39,7 @@ public abstract class SodiumShaderChunkRendererMixin {
             method = "createShader",
             at = @At(
                     value = "INVOKE",
-                    target = "Lcom/mojang/blaze3d/pipeline/RenderPipeline$Builder;withFragmentShader(Lnet/minecraft/resources/Identifier;)Lcom/mojang/blaze3d/pipeline/RenderPipeline$Builder;"
+                    target = "Lcom/mojang/renderpearl/api/pipeline/RenderPipeline$Builder;withFragmentShader(Lnet/minecraft/resources/Identifier;)Lcom/mojang/renderpearl/api/pipeline/RenderPipeline$Builder;"
             ),
             index = 0
     )

@@ -7,12 +7,12 @@
 
 package combatant.client.render;
 
-import com.mojang.blaze3d.PrimitiveTopology;
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.DepthStencilState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.CompareOp;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.DepthStencilState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.CompareOp;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import net.minecraft.client.renderer.BindGroupLayouts;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
@@ -30,7 +30,8 @@ public enum CombatantEntityRenderTypes {
     private static final RenderPipeline ENTITY_TRANSLUCENT_NO_DEPTH_WRITE = RenderPipeline.builder()
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/entity_translucent_no_depth_write"))
             .withBindGroupLayout(BindGroupLayouts.GLOBALS)
-            .withBindGroupLayout(BindGroupLayouts.MATRICES_PROJECTION)
+            .withBindGroupLayout(BindGroupLayouts.PROJECTION)
+            .withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
             .withBindGroupLayout(BindGroupLayouts.FOG)
             .withBindGroupLayout(BindGroupLayouts.LIGHTING)
             .withBindGroupLayout(BindGroupLayouts.SAMPLER0_SAMPLER1_SAMPLER2)
@@ -47,7 +48,8 @@ public enum CombatantEntityRenderTypes {
     private static final RenderPipeline ENTITY_TRANSLUCENT_NO_DEPTH_WRITE_NO_CULL = RenderPipeline.builder()
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/entity_translucent_no_depth_write_no_cull"))
             .withBindGroupLayout(BindGroupLayouts.GLOBALS)
-            .withBindGroupLayout(BindGroupLayouts.MATRICES_PROJECTION)
+            .withBindGroupLayout(BindGroupLayouts.PROJECTION)
+            .withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
             .withBindGroupLayout(BindGroupLayouts.FOG)
             .withBindGroupLayout(BindGroupLayouts.LIGHTING)
             .withBindGroupLayout(BindGroupLayouts.SAMPLER0_SAMPLER1_SAMPLER2)

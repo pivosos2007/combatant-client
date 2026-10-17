@@ -19,9 +19,14 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public enum BetterChatSearch {
     ;
+    private static boolean active = false;
+    private static final combatant.client.input.minecraft.CombatantTextInputTarget INPUT_TARGET = value -> {
+        if (!active || value == null || value.isEmpty()) return false;
+        append(value);
+        return true;
+    };
     private static final AtomicLong REQUEST = new AtomicLong(0);
     private static final int MAX_QUERY_CHARS = 256;
-    private static boolean active = false;
     private static String text = "";
     private static volatile boolean busy = false;
     private static volatile List<ChatLine> results = null;
@@ -32,10 +37,20 @@ public enum BetterChatSearch {
 
     public static void setActive(boolean v) {
         active = v;
+        if (v) {
+            net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
+            if (minecraft != null && minecraft.getWindow() != null) {
+                combatant.client.input.minecraft.CombatantTextInputBridge.focus(
+                        INPUT_TARGET, 0, 0, minecraft.getWindow().getScreenWidth(), minecraft.getWindow().getScreenHeight());
+            }
+        } else {
+            combatant.client.input.minecraft.CombatantTextInputBridge.blur(INPUT_TARGET);
+        }
     }
 
     public static void deactivate() {
         active = false;
+        combatant.client.input.minecraft.CombatantTextInputBridge.blur(INPUT_TARGET);
         reset();
     }
 

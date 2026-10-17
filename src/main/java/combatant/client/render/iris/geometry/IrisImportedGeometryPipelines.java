@@ -5,8 +5,8 @@
  */
 package combatant.client.render.iris.geometry;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
 import combatant.client.render.engine.pipeline.CombatantRenderPipelines;
 import combatant.client.render.engine.pipeline.DepthTestFunction;
 import combatant.client.render.engine.pipeline.ExtendedRenderPipelineBuilder;
@@ -48,7 +48,7 @@ public final class IrisImportedGeometryPipelines {
         RenderPipeline pipeline = entityBuilder()
                 .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/" + path))
                 .withDomain(PipelineDomain.WORLD)
-                .withVertexFormat(IrisVertexFormats.ENTITY, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+                .withVertexFormat(IrisVertexFormats.ENTITY, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                 .withVertexShader(Identifier.withDefaultNamespace("core/entity"))
                 .withFragmentShader(Identifier.withDefaultNamespace("core/entity"))
                 .withDepthTestFunction(shadow
@@ -65,7 +65,7 @@ public final class IrisImportedGeometryPipelines {
         RenderPipeline pipeline = entityBuilder()
                 .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/" + path))
                 .withDomain(PipelineDomain.WORLD)
-                .withVertexFormat(IrisVertexFormats.ENTITY, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+                .withVertexFormat(IrisVertexFormats.ENTITY, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                 .withVertexShader(Identifier.withDefaultNamespace("core/entity"))
                 .withFragmentShader(Identifier.withDefaultNamespace("core/entity"))
                 .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
@@ -80,7 +80,7 @@ public final class IrisImportedGeometryPipelines {
         RenderPipeline pipeline = entityBuilder()
                 .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/" + path))
                 .withDomain(PipelineDomain.WORLD)
-                .withVertexFormat(IrisVertexFormats.ENTITY, com.mojang.blaze3d.PrimitiveTopology.TRIANGLES)
+                .withVertexFormat(IrisVertexFormats.ENTITY, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                 .withVertexShader(Identifier.withDefaultNamespace("core/entity"))
                 .withFragmentShader(Identifier.withDefaultNamespace("core/entity"))
                 .withDepthTestFunction(depthTest
@@ -96,7 +96,8 @@ public final class IrisImportedGeometryPipelines {
     private static ExtendedRenderPipelineBuilder entityBuilder() {
         return new ExtendedRenderPipelineBuilder()
                 .withExternalBindGroupLayout(BindGroupLayouts.GLOBALS)
-                .withExternalBindGroupLayout(BindGroupLayouts.MATRICES_PROJECTION)
+                .withExternalBindGroupLayout(BindGroupLayouts.PROJECTION)
+                .withExternalBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
                 .withExternalBindGroupLayout(BindGroupLayouts.FOG)
                 .withExternalBindGroupLayout(BindGroupLayouts.LIGHTING)
                 .withExternalBindGroupLayout(BindGroupLayouts.SAMPLER0_SAMPLER1_SAMPLER2)

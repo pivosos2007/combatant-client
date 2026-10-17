@@ -9,7 +9,7 @@ package combatant.client.render.engine.renderer.ui;
 
 import java.util.Objects;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import combatant.client.render.engine.text.GlyphFont;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.backend.TextPlacementMode;

@@ -242,7 +242,7 @@ public final class SettingErrorView {
     }
 
     public static boolean click(Object owner, Failure failure,float x,float y,float w,double mx,double my,int button) {
-        if(failure==null || button!=0) return false;
+        if(failure==null || button!=combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         float s = SettingRenderContext.scale();
         float cardX = x + 2f * s;
         float cardW = Math.max(1f, w - 4f * s);

@@ -7,11 +7,9 @@
 
 package combatant.client.mixins;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import combatant.client.features.gui.clickgui.*;
 import combatant.client.features.gui.preview.VisualPreviewScreen;
 import combatant.client.util.screen.ClientScreen;
-import net.minecraft.client.KeyMapping;
 import net.minecraft.client.KeyboardHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
@@ -20,14 +18,11 @@ import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
-import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import combatant.client.events.Events;
-import combatant.client.events.impl.KeyInputEvent;
 import combatant.client.features.gui.chat.BetterChatRenderer;
 import combatant.client.features.gui.chat.BetterChatSearch;
 import combatant.client.features.gui.chat.BetterChatStoreManager;
@@ -37,26 +32,19 @@ import combatant.client.features.module.ModuleManager;
 import combatant.client.mixins.accessors.ChatScreenAccessor;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.NarratorBlocker;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputAction;
+import combatant.client.input.InputDevice;
+import combatant.client.input.InputKeys;
+import combatant.client.input.event.KeyboardInputEvent;
+import combatant.client.input.minecraft.MinecraftInputAdapter;
 import combatant.client.util.text.ClipboardUtil;
+import net.minecraft.client.input.PreeditEvent;
+import org.jspecify.annotations.Nullable;
 
 @Mixin(KeyboardHandler.class)
 public class KeyboardMixin {
 
-
-    @Unique
-    private static void forwardMovementKeys(Options options, KeyEvent input, boolean pressed) {
-        if (options.keyUp.matches(input)
-                || options.keyDown.matches(input)
-                || options.keyLeft.matches(input)
-                || options.keyRight.matches(input)
-                || options.keyJump.matches(input)
-                || options.keyShift.matches(input)
-                || options.keySprint.matches(input)) {
-            InputConstants.Key key = InputConstants.getKey(input);
-            KeyMapping.set(key, pressed);
-        }
-    }
 
     @Unique
     private static void releaseMovementKeys(Options options) {
@@ -72,6 +60,10 @@ public class KeyboardMixin {
     // ===== CHAR TYPING =====
     @Inject(method = "charTyped", at = @At("HEAD"), cancellable = true)
     private void combatant$onChar(long window, CharacterEvent input, CallbackInfo ci) {
+        if (MinecraftInputAdapter.text(new String(Character.toChars(input.codepoint()))).isCancelled()) {
+            ci.cancel();
+            return;
+        }
         Minecraft mc = Minecraft.getInstance();
         if (RuntimeGate.canRunHud()
                 && ClientScreen.current() instanceof ChatScreen
@@ -116,18 +108,31 @@ public class KeyboardMixin {
     // ===== KEY DOWN =====
     @Inject(method = "keyPress", at = @At("HEAD"), cancellable = true)
     private void combatant$onKey(long window, int action, KeyEvent input, CallbackInfo ci) {
-        KeyManager.handleKeyEvent(input.key(), input.scancode(), action);
+        KeyboardInputEvent event = MinecraftInputAdapter.keyboard(action, input);
+        if (event.isCancelled()) {
+            ci.cancel();
+            return;
+        }
 
         // Preserve low-level key state above, then leave the event entirely to the active preview
         // Screen. In particular, do this before addon events and the global ClickGui Esc handler.
         if (ClientScreen.current() instanceof VisualPreviewScreen) return;
 
         Minecraft mc = Minecraft.getInstance();
-        KeyInputEvent event = new KeyInputEvent(action, input);
-        Events.BUS.post(event);
-        if (event.isCancelled()) {
-            ci.cancel();
-            return;
+        if (event.action() == InputAction.PRESS
+                && ClientScreen.current() instanceof ChatScreen
+                && RuntimeGate.canRunHud()
+                && BetterChat.isActive()
+                && event.modifiers().shortcut()
+                && event.key().shortcutKey() == 'c') {
+            BetterChatRenderer.copySelectionToClipboard();
+        }
+        if (event.action() == InputAction.PRESS
+                && event.key().physicalKey() == InputKeys.D
+                && RuntimeGate.canRunHud()
+                && CombatantInput.state().isPressed(InputDevice.KEYBOARD, InputKeys.F3)) {
+            BetterChatStoreManager.clearActive();
+            BetterChatRenderer.resetScroll();
         }
 
         if (RuntimeGate.canRunHud()
@@ -135,7 +140,7 @@ public class KeyboardMixin {
                 && BetterChat.isActive()) {
             BetterChat betterChat = BetterChat.get();
             if (betterChat != null && betterChat.consumePasswordRevealToggle()) {
-                if (action != GLFW.GLFW_RELEASE) {
+                if (event.action().isDown()) {
                     BetterChatRenderer.togglePasswordRevealFromBind();
                     ci.cancel();
                     return;
@@ -150,9 +155,9 @@ public class KeyboardMixin {
         if (RuntimeGate.canRunClientLogic()
                 && NarratorBlocker.isBlocked()
                 && narratorHotkeyContext
-                && action != GLFW.GLFW_RELEASE
-                && input.hasControlDownWithQuirk()
-                && input.key() == GLFW.GLFW_KEY_B) {
+                && event.action().isDown()
+                && event.modifiers().shortcut()
+                && event.key().shortcutKey() == 'b') {
             NarratorBlocker.enforce(mc);
             ci.cancel();
             return;
@@ -167,36 +172,37 @@ public class KeyboardMixin {
             if (ClickGuiRenderer.isBlockingModuleKeybinds()) {
                 releaseMovementKeys(mc.options);
             } else {
-                forwardMovementKeys(mc.options, input, action != GLFW.GLFW_RELEASE);
+                MinecraftInputAdapter.forwardMovementKey(mc.options, input, event.action() != InputAction.RELEASE);
             }
         }
         if (RuntimeGate.canRunHud()
                 && ClientScreen.current() instanceof ChatScreen
                 && BetterChat.isActive()
                 && BetterChatSearch.isActive()) {
-            int key = input.key();
-            if (action == GLFW.GLFW_PRESS || action == GLFW.GLFW_REPEAT) {
-                boolean ctrlOrCmd = input.hasControlDownWithQuirk();
+            int key = event.key().physicalKey();
+            if (event.action().isDown()) {
+                boolean ctrlOrCmd = event.modifiers().shortcut();
+                int shortcutKey = event.key().shortcutKey();
 
-                if (ctrlOrCmd && key == GLFW.GLFW_KEY_V) {
+                if (ctrlOrCmd && shortcutKey == 'v') {
                     BetterChatSearch.append(ClipboardUtil.get());
                     ci.cancel();
                     return;
                 }
 
-                if (ctrlOrCmd && key == GLFW.GLFW_KEY_A) {
+                if (ctrlOrCmd && shortcutKey == 'a') {
                     BetterChatSearch.clearText();
                     ci.cancel();
                     return;
                 }
 
-                if (key == GLFW.GLFW_KEY_BACKSPACE) {
+                if (key == InputKeys.BACKSPACE) {
                     BetterChatSearch.backspace();
                     ci.cancel();
                     return;
                 }
 
-                if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                if (key == InputKeys.ENTER || key == InputKeys.KP_ENTER) {
                     BetterChatRenderer.resetScroll();
                     BetterChatSearch.startSearch(BetterChatStoreManager.getActiveStore(mc));
                     BetterChatSearch.setActive(false);
@@ -204,7 +210,7 @@ public class KeyboardMixin {
                     return;
                 }
 
-                if (key == GLFW.GLFW_KEY_ESCAPE) {
+                if (key == InputKeys.ESCAPE) {
                     BetterChatSearch.deactivate();
                     ci.cancel();
                     return;
@@ -215,9 +221,9 @@ public class KeyboardMixin {
                 && ClientScreen.current() instanceof ChatScreen
                 && BetterChat.isActive()
                 && !BetterChatSearch.isActive()) {
-            if (action == 1) { // press
-                int key = input.key();
-                if (key == 257 || key == 335) { // enter
+            if (event.action() == InputAction.PRESS) {
+                int key = event.key().physicalKey();
+                if (key == InputKeys.ENTER || key == InputKeys.KP_ENTER) {
                     EditBox field = ((ChatScreenAccessor) ClientScreen.current()).getChatField();
                     BetterChatRenderer.applyAutoPrefixIfNeeded(field);
                 }
@@ -230,13 +236,11 @@ public class KeyboardMixin {
                 || activeScreen instanceof ClickGuiEditorScreen
                 || activeScreen instanceof VisualPreviewScreen)) return;
 
-        int key = input.key();
-        int scancode = input.scancode();
-        int modifiers = input.modifiers();
+        int key = event.key().physicalKey();
 
         // ESC вЂ” Р·Р°РєСЂС‹С‚СЊ GUI
-        if (key == GLFW.GLFW_KEY_ESCAPE && action == GLFW.GLFW_PRESS) {
-            if (ClickGuiRenderer.onKey(GLFW.GLFW_KEY_ESCAPE, scancode, GLFW.GLFW_PRESS, modifiers)) {
+        if (key == InputKeys.ESCAPE && event.action() == InputAction.PRESS) {
+            if (ClickGuiRenderer.onKey(event.key(), event.action(), event.modifiers())) {
                 ci.cancel();
                 return;
             }
@@ -252,42 +256,25 @@ public class KeyboardMixin {
 
         // РџРѕРёСЃРє РІ GUI
         if (ClickGuiSearch.isActive()) {
-            ClickGuiRenderer.onKey(key, scancode, action, modifiers);
+            ClickGuiRenderer.onKey(event.key(), event.action(), event.modifiers());
             ci.cancel();
             return;
         }
 
         // РћР±С‹С‡РЅРѕРµ СЃРѕР±С‹С‚РёРµ РєР»Р°РІРёС€Рё
-        if (ClickGuiRenderer.onKey(key, scancode, action, modifiers)) {
+        if (ClickGuiRenderer.onKey(event.key(), event.action(), event.modifiers())) {
             ci.cancel();
         }
     }
 
-    @Inject(method = "keyPress", at = @At("HEAD"))
-    private void combatant$betterChatCopy(long window, int action, KeyEvent input, CallbackInfo ci) {
-        if (action != 1) return; // GLFW_PRESS
-        Minecraft mc = Minecraft.getInstance();
-        if (!(ClientScreen.current() instanceof ChatScreen)) return;
-        if (!RuntimeGate.canRunHud()) return;
-        if (!BetterChat.isActive()) return;
-        if ((input.modifiers() & GLFW.GLFW_MOD_CONTROL) == 0) return;
-        if (input.key() == GLFW.GLFW_KEY_C) {
-            BetterChatRenderer.copySelectionToClipboard();
-        }
+    @Inject(method = "textInput", at = @At("HEAD"), cancellable = true)
+    private void combatant$textInput(long window, String text, CallbackInfo ci) {
+        if (MinecraftInputAdapter.text(text).isCancelled()) ci.cancel();
     }
 
-    @Inject(method = "keyPress", at = @At("HEAD"))
-    private void combatant$betterChat$clearOnDebug(long window, int action, KeyEvent input, CallbackInfo ci) {
-        if (action != GLFW.GLFW_PRESS) return;
-        if (input.key() != GLFW.GLFW_KEY_D) return;
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null) return;
-        if (!RuntimeGate.canRunHud()) return;
-        // F3 + D clears vanilla chat; mirror it for BetterChat
-        if (InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_F3)) {
-            BetterChatStoreManager.clearActive();
-            BetterChatRenderer.resetScroll();
-        }
+    @Inject(method = "textEditing", at = @At("HEAD"), cancellable = true)
+    private void combatant$textEditing(long window, @Nullable PreeditEvent event, CallbackInfo ci) {
+        if (MinecraftInputAdapter.composition(event).isCancelled()) ci.cancel();
     }
 }
 

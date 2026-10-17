@@ -17,7 +17,7 @@ import net.minecraft.world.level.block.HopperBlock;
 import net.minecraft.world.level.block.LeverBlock;
 import net.minecraft.world.level.block.NoteBlock;
 import net.minecraft.world.level.block.ObserverBlock;
-import net.minecraft.world.level.block.RedStoneWireBlock;
+import net.minecraft.world.level.block.RedstoneWireBlock;
 import net.minecraft.world.level.block.RedstoneTorchBlock;
 import net.minecraft.world.level.block.RepeaterBlock;
 import net.minecraft.world.level.block.TrapDoorBlock;
@@ -83,8 +83,8 @@ class StateComparisonTest {
     @Test
     void dustAndStringConnectionsAreAutoComputed() {
         BlockState dust = Blocks.REDSTONE_WIRE.defaultBlockState();
-        BlockState wired = dust.setValue(RedStoneWireBlock.POWER, 15).setValue(RedStoneWireBlock.NORTH, RedstoneSide.UP)
-                .setValue(RedStoneWireBlock.EAST, RedstoneSide.NONE);
+        BlockState wired = dust.setValue(RedstoneWireBlock.POWER, 15).setValue(RedstoneWireBlock.NORTH, RedstoneSide.UP)
+                .setValue(RedstoneWireBlock.EAST, RedstoneSide.NONE);
         assertTrue(StateComparison.matches(wired, dust));
 
         BlockState string = Blocks.TRIPWIRE.defaultBlockState();

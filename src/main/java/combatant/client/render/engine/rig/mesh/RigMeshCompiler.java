@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rig.mesh;
 
-import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.uniform.MeshBuilder;

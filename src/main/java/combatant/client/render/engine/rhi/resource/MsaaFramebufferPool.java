@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.resource;
 
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 import combatant.client.render.engine.msaa.MsaaFramebuffer;
 
 import java.util.ArrayDeque;

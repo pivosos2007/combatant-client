@@ -7,12 +7,12 @@
 
 package combatant.client.render.engine.renderer.ui;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.helpers.ScissorFunction;
@@ -497,7 +497,7 @@ public final class OrderedUiBatcher {
             float screenH = mc.getWindow().getHeight();
             float uiScale = ViewportContext.getUiScale();
             if (uiScale <= 0.0f) uiScale = 1.0f;
-            com.mojang.blaze3d.buffers.GpuBufferSlice uiBatch = null;
+            com.mojang.renderpearl.api.buffers.GpuBufferSlice uiBatch = null;
             resetSharedBlur();
 
             boolean hasCapturedSceneBackdrop = false;
@@ -1078,7 +1078,7 @@ public final class OrderedUiBatcher {
 
             float screenW = mc.getWindow().getWidth();
             float screenH = mc.getWindow().getHeight();
-            com.mojang.blaze3d.buffers.GpuBufferSlice uiBatch = null;
+            com.mojang.renderpearl.api.buffers.GpuBufferSlice uiBatch = null;
             int drawCalls = 0;
             int vertices = 0;
             int indices = 0;

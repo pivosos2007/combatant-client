@@ -152,9 +152,9 @@ public final class ClickGuiPickerState {
         search.unfocus();
     }
 
-    public void keyPressed(int keyCode, int modifiers) {
+    public void keyPressed(int keyCode, int shortcutKey, int modifiers) {
         if (!listening) return;
-        if (search.keyPressed(keyCode, modifiers)) refreshFiltered(true);
+        if (search.keyPressed(keyCode, shortcutKey, modifiers)) refreshFiltered(true);
     }
 
     public void insertChar(char c) {
@@ -176,7 +176,7 @@ public final class ClickGuiPickerState {
     }
 
     public void handleMouseDown(float mx, float my, int button) {
-        if (button != 0) return;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
 
         layout(ClickGuiRenderer.framebufferWidth(), ClickGuiRenderer.framebufferHeight());
 
@@ -238,7 +238,7 @@ public final class ClickGuiPickerState {
         if (detailOwner != null) {
             detailOwner.mouseReleasedPickerDetails(mx, my, button);
         }
-        if (button == 0) {
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
             draggingScrollbar = false;
         }
     }

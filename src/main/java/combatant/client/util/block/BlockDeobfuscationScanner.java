@@ -9,7 +9,7 @@ package combatant.client.util.block;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.network.protocol.game.ServerboundPunchPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -97,7 +97,7 @@ public final class BlockDeobfuscationScanner {
         client.gameMode.startDestroyBlock(pos, client.player.getDirection());
         client.gameMode.stopDestroyBlock();
         if (client.getConnection() != null) {
-            client.getConnection().send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+            client.getConnection().send(ServerboundPunchPacket.INSTANCE);
         }
 
         checked.add(new CheckedBlock(pos));

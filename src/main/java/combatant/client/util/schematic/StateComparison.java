@@ -14,7 +14,7 @@ import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.LeverBlock;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.NoteBlock;
-import net.minecraft.world.level.block.RedStoneWireBlock;
+import net.minecraft.world.level.block.RedstoneWireBlock;
 import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.TripWireBlock;
 import net.minecraft.world.level.block.TripWireHookBlock;
@@ -115,11 +115,11 @@ public final class StateComparison {
         List<Property<?>> out = new ArrayList<>(List.of(ALWAYS_IGNORED));
         // A lever's position is the player's choice; everywhere else powered follows the circuit.
         if (!(block instanceof LeverBlock)) out.add(BlockStateProperties.POWERED);
-        if (block instanceof RedStoneWireBlock) {
-            out.add(RedStoneWireBlock.NORTH);
-            out.add(RedStoneWireBlock.EAST);
-            out.add(RedStoneWireBlock.SOUTH);
-            out.add(RedStoneWireBlock.WEST);
+        if (block instanceof RedstoneWireBlock) {
+            out.add(RedstoneWireBlock.NORTH);
+            out.add(RedstoneWireBlock.EAST);
+            out.add(RedstoneWireBlock.SOUTH);
+            out.add(RedstoneWireBlock.WEST);
         }
         if (block instanceof TripWireBlock) {
             out.add(TripWireBlock.ATTACHED);

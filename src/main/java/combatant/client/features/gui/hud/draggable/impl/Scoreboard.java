@@ -41,7 +41,8 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.TextGlyphFallback;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.text.VanillaTextRenderer;
-import combatant.client.util.input.KeyManager;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputScope;
 import combatant.client.util.logging.ServerDumpUtil;
 import combatant.client.util.text.LegacyTextUtil;
 import combatant.client.util.text.TextRenderUtil;
@@ -710,7 +711,7 @@ public final class Scoreboard extends DraggableHudElement {
             return;
         }
 
-        boolean pressed = ClientScreen.current() == null && KeyManager.isComboHeldAllowScreen(combo);
+        boolean pressed = ClientScreen.current() == null && CombatantInput.bindings().isChordHeld(combo, InputScope.GLOBAL);
         if (!pressed) {
             toggleArmed = true;
             return;
@@ -1007,7 +1008,7 @@ public final class Scoreboard extends DraggableHudElement {
         String combo = toggleBind.get();
         if (combo != null && !combo.isBlank() && !"NONE".equalsIgnoreCase(combo)
                 && mc != null && ClientScreen.current() == null
-                && KeyManager.isComboHeldAllowScreen(combo)) {
+                && CombatantInput.bindings().isChordHeld(combo, InputScope.GLOBAL)) {
             toggleArmed = false;
         }
     }

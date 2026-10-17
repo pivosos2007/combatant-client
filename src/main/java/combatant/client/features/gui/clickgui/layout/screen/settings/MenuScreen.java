@@ -14,7 +14,6 @@ import combatant.client.config.MainConfig;
 import combatant.client.render.engine.renderer.RenderWarpStack;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.svg.SvgRenderOptions;
-import org.lwjgl.glfw.GLFW;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
@@ -270,12 +269,12 @@ public final class MenuScreen {
     }
 
     private static boolean isHintToggle(int keyCode, int modifiers) {
-        return keyCode == GLFW.GLFW_KEY_H && (modifiers & GLFW.GLFW_MOD_ALT) != 0;
+        return keyCode == combatant.client.input.InputKeys.H && (modifiers & combatant.client.input.InputModifierMask.ALT) != 0;
     }
 
     public boolean mouseClicked(float mx, float my, int button) {
         if (!isInteractive()) return false;
-        if (button != 0 && button != 1) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT && button != combatant.client.input.InputKeys.MOUSE_RIGHT) return false;
 
         if (activeThemeEditor != null && themeEditorPreview.mouseClicked(activeThemeEditor, mx, my, button)) {
             settingsPanel.close();
@@ -355,7 +354,7 @@ public final class MenuScreen {
 
     public void mouseReleased(float mx, float my, int button) {
         if (!isInteractive()) return;
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) combatant.client.util.text.SingleLineTextInput.mouseReleased();
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT) combatant.client.util.text.SingleLineTextInput.mouseReleased();
         settingsPanel.mouseReleased(mx, my, button);
         themeComponent.mouseReleased(button);
         mainSettingsComponent.mouseReleased(mx, my, button);
@@ -406,20 +405,20 @@ public final class MenuScreen {
             return true;
         }
 
-        boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
+        boolean shortcut = (modifiers & combatant.client.input.InputModifierMask.SHORTCUT) != 0;
 
-        if (ctrl && keyCode == GLFW.GLFW_KEY_F) {
+        if (shortcut && scanCode == 'f') {
             ClickGuiSearch.setActive(true);
             return true;
         }
 
         if (ClickGuiSearch.isActive()) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
                 ClickGuiSearch.deactivate();
                 return true;
             }
 
-            ClickGuiSearch.keyPressed(keyCode, modifiers);
+            ClickGuiSearch.keyPressed(keyCode, scanCode, modifiers);
             return true;
         }
 
