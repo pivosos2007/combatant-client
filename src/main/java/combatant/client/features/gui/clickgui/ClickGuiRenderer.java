@@ -35,6 +35,7 @@ import combatant.client.features.gui.clickgui.sections.settings.SettingsTabRunti
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.gui.hud.nondraggable.impl.DynamicIsland;
 import combatant.client.features.module.ModuleManager;
+import combatant.client.features.module.modules.misc.ClickGui;
 import combatant.client.mixininterface.IGuiGraphics;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.color.RenderColor;
@@ -581,7 +582,9 @@ public enum ClickGuiRenderer {
     public static void onClose() {
         combatant.client.input.minecraft.CombatantTextInputBridge.clear();
         if (!cursorShown) return;
-        MC.mouseHandler.grabMouse();
+        if (!ClickGui.isSuppressScreenClose()) {
+            MC.mouseHandler.grabMouse();
+        }
         SystemCursor.invalidate();
         cursorShown = false;
         DraggableHudElementRegistry.setForceVisible(false);

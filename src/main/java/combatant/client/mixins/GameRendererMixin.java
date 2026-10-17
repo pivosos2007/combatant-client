@@ -98,6 +98,8 @@ import combatant.client.util.player.inventory.InventorySwap;
 
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
+    @Unique
+    private SubmitNodeStorage combatant$pendingChamsHandSnapshot;
 
     @WrapMethod(method = "tick")
     private void combatant$clientViewTick(Operation<Void> original) {
@@ -157,7 +159,24 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                                                    GpuTextureView depthTextureView,
                                                    CallbackInfo ci,
                                                    @Local(ordinal = 0) PoseStack handPoseStack) {
-        if (!IrisRuntime.isShaderpackRendererActive()) return;
+        SubmitNodeStorage chamsSnapshot = combatant$pendingChamsHandSnapshot;
+        combatant$pendingChamsHandSnapshot = null;
+
+        if (minecraft != null && minecraft.gameRenderer != null && cameraRenderState != null) {
+            ImportedAssetCompatibilityRenderer.renderHand(
+                    minecraft.gameRenderer.mainRenderTarget(),
+                    handPoseStack.last().pose(),
+                    cameraRenderState.projectionMatrix);
+        }
+
+        Chams chams = Modules.get(Chams.class);
+        if (!IrisRuntime.isShaderpackRendererActive()) {
+            if (chams != null && chamsSnapshot != null) {
+                chams.renderPreparedHandScene(chamsSnapshot);
+            }
+            return;
+        }
+
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || client.gameMode == null
                 || cameraRenderState == null
@@ -167,7 +186,6 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                 || !client.options.getCameraType().isFirstPerson()
                 || client.gameMode.getPlayerMode() == GameType.SPECTATOR) return;
 
-        Chams chams = Modules.get(Chams.class);
         if (chams == null || !chams.isActive()) return;
         chams.renderIrisHandMask((GameRenderer) (Object) this, cameraRenderState,
                 handPoseStack.last().pose(), cameraRenderState.cameraEntityPartialTicks);
@@ -904,6 +922,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
 
     @Inject(method = "renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V", at = @At("HEAD"), cancellable = true)
     private void freecam$hand(CameraRenderState cameraRenderState, PlayerRenderState playerRenderState, GpuTextureView depthTextureView, CallbackInfo ci) {
+        combatant$pendingChamsHandSnapshot = null;
         if (ClickGuiRenderer.suppressesBackgroundRendering() || VisualPreviewRuntime.isActive()) {
             ci.cancel();
             return;
@@ -921,41 +940,26 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                     target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;renderAllFeatures(Lcom/mojang/renderpearl/api/commands/RenderPass;Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;)V"
             )
     )
-    private void combatant$renderChamsHandPreparedFrame(RenderPass renderPass,
-                                                        FeatureRenderDispatcher.PreparedFrame frame,
-                                                        Operation<Void> original,
-                                                        CameraRenderState cameraRenderState,
-                                                        PlayerRenderState playerRenderState,
-                                                        GpuTextureView depthTextureView,
-                                                        @Local(ordinal = 0) PoseStack handPoseStack) {
+    private void combatant$snapshotChamsHandPreparedFrame(RenderPass renderPass,
+                                                          FeatureRenderDispatcher.PreparedFrame frame,
+                                                          Operation<Void> original,
+                                                          CameraRenderState cameraRenderState,
+                                                          PlayerRenderState playerRenderState,
+                                                          GpuTextureView depthTextureView,
+                                                          @Local(ordinal = 0) PoseStack handPoseStack) {
         float tickDelta = cameraRenderState.cameraEntityPartialTicks;
         SubmitNodeStorage storage = this.handAndScreenSubmitNodeStorage;
         boolean nativeIrisHand = IrisCompatibilityGuards.suppressIrisHandRendering()
                 && IrisRuntime.submitNativeHandScene(tickDelta, handPoseStack, storage);
 
         Chams module = Modules.get(Chams.class);
-        SubmitNodeStorage snapshot = module != null ? module.snapshotPreparedHandScene(storage) : null;
+        combatant$pendingChamsHandSnapshot = module != null ? module.snapshotPreparedHandScene(storage) : null;
 
-        // Render Minecraft's live hand storage first. renderAllFeatures() consumes it in 26.2.
+        // renderAllFeatures() consumes the live hand storage, so only the isolated snapshot survives this call.
         if (nativeIrisHand) {
             IrisRuntime.runWithNativeShaderBypass(() -> original.call(renderPass, frame));
         } else {
             original.call(renderPass, frame);
-        }
-
-        // Imported HAND scenes share the actual first-person phase. They are deliberately submitted
-        // after the world/post chain (and after the vanilla hand storage draw) so they can be used as
-        // first-person model replacements/overlays without ever leaking into the world instance pass.
-        if (minecraft != null && minecraft.gameRenderer != null && cameraRenderState != null) {
-            ImportedAssetCompatibilityRenderer.renderHand(
-                    minecraft.gameRenderer.mainRenderTarget(),
-                    handPoseStack.last().pose(),
-                    cameraRenderState.projectionMatrix);
-        }
-
-        // Chams renders only the isolated snapshot afterwards; it must never consume the live storage.
-        if (module != null && snapshot != null) {
-            module.renderPreparedHandScene(snapshot);
         }
     }
 
