@@ -30,7 +30,6 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.TextureStorage;
 import combatant.client.render.engine.animation.AnimatedRenderColors;
-import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.math.ColorMath;
 import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer3D;
@@ -65,6 +64,8 @@ public class JumpCircles extends Module {
             "jumpCirclesPulseLifetime", "pulse_lifetime", 1000, 500, 5000
     ), this::isPulseMode);
     private final BooleanValue onlySelf = bool("jumpCirclesOnlySelf", "only_self", false);
+    private final BooleanValue glowRing = visibleWhen(
+            bool("jumpCirclesGlowRing", "glow_ring", true), () -> !isShockwaveMode());
     private final BooleanValue depthTest = common(
             bool("jumpCirclesDepthTest", "depth_test", true),
             CommonSettingSchemas.RENDER_DEPTH_TEST.commonI18nKey()
@@ -222,11 +223,16 @@ public class JumpCircles extends Module {
         if (!isEnabled() || mc.level == null || mc.player == null || circles.isEmpty() || isShockwaveMode()) return;
 
         boolean useDepth = depthTest.get();
-        RenderPipeline pipeline = useDepth
-                ? WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE_LIQUID_IGNORE
-                : WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE;
+        boolean glow = glowRing.get();
+        RenderPipeline pipeline = glow
+                ? (useDepth ? WorldRenderPipelines.WORLD_GLOW_RING_DEPTH : WorldRenderPipelines.WORLD_GLOW_RING)
+                : (useDepth
+                        ? WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE_LIQUID_IGNORE
+                        : WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE);
         Renderer3D.DepthMode depthMode = useDepth ? Renderer3D.DepthMode.PRE_DEPTH : Renderer3D.DepthMode.NONE;
-        MeshBuilder mesh = renderer.batchTextured(pipeline, resolveTexture(), depthMode);
+        MeshBuilder mesh = glow
+                ? renderer.batch(pipeline, depthMode)
+                : renderer.batchTextured(pipeline, resolveTexture(), depthMode);
         if (mesh == null) return;
 
         for (int i = circles.size() - 1; i >= 0; i--) {
@@ -265,24 +271,22 @@ public class JumpCircles extends Module {
         float cos = (float) Math.cos(radians);
         float sin = (float) Math.sin(radians);
 
-        Vec3 right = new Vec3(cos, 0.0, -sin);
-        Vec3 forward = new Vec3(sin, 0.0, cos);
-
         int c1 = ColorMath.scaleAlpha(getColorArgb(270), alpha);
         int c2 = ColorMath.scaleAlpha(getColorArgb(0), alpha);
         int c3 = ColorMath.scaleAlpha(getColorArgb(180), alpha);
         int c4 = ColorMath.scaleAlpha(getColorArgb(90), alpha);
 
-        Vec3 p1 = center.add(right.scale(-half)).add(forward.scale(half));
-        Vec3 p2 = center.add(right.scale(half)).add(forward.scale(half));
-        Vec3 p3 = center.add(right.scale(half)).add(forward.scale(-half));
-        Vec3 p4 = center.add(right.scale(-half)).add(forward.scale(-half));
+        // right = (cos, 0, -sin), forward = (sin, 0, cos); corners are expanded by hand so a frame with
+        // many circles allocates no Vec3/RenderColor temporaries.
+        double rx = cos * half, rz = -sin * half;
+        double fx = sin * half, fz = cos * half;
+        double cx = center.x, cy = center.y, cz = center.z;
 
         mesh.ensureQuadCapacity();
-        int i1 = mesh.vec3(p1.x, p1.y, p1.z).vec2(0, 1).color(new RenderColor(c1)).next();
-        int i2 = mesh.vec3(p2.x, p2.y, p2.z).vec2(1, 1).color(new RenderColor(c2)).next();
-        int i3 = mesh.vec3(p3.x, p3.y, p3.z).vec2(1, 0).color(new RenderColor(c3)).next();
-        int i4 = mesh.vec3(p4.x, p4.y, p4.z).vec2(0, 0).color(new RenderColor(c4)).next();
+        int i1 = mesh.vec3(cx - rx + fx, cy, cz - rz + fz).vec2(0, 1).colorArgb(c1).next();
+        int i2 = mesh.vec3(cx + rx + fx, cy, cz + rz + fz).vec2(1, 1).colorArgb(c2).next();
+        int i3 = mesh.vec3(cx + rx - fx, cy, cz + rz - fz).vec2(1, 0).colorArgb(c3).next();
+        int i4 = mesh.vec3(cx - rx - fx, cy, cz - rz - fz).vec2(0, 0).colorArgb(c4).next();
         mesh.quad(i1, i2, i3, i4);
     }
 

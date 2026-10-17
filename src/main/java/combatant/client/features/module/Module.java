@@ -349,6 +349,9 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     protected final ItemIdSetValue itemList(String configName) {
         return itemList(configName, settingIdFromConfigName(configName), TextListSetting.PickerMode.ITEMS);
     }
+    protected final ItemIdSetValue itemList(String configName, java.util.Set<String> defaults) {
+        return itemList(configName, settingIdFromConfigName(configName), TextListSetting.PickerMode.ITEMS, defaults);
+    }
 
     protected final ItemIdSetValue itemList(String configName, TextListSetting.PickerMode pickerMode) {
         return itemList(configName, settingIdFromConfigName(configName), pickerMode);
@@ -356,6 +359,11 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
 
     protected final ItemIdSetValue itemList(String configName, String settingId, TextListSetting.PickerMode pickerMode) {
         ItemIdSetValue value = new ItemIdSetValue(configName);
+        declare(value, SettingDef.textList(settingId, value, pickerMode));
+        return value;
+    }
+    protected final ItemIdSetValue itemList(String configName, String settingId, TextListSetting.PickerMode pickerMode, java.util.Set<String> defaults) {
+        ItemIdSetValue value = new ItemIdSetValue(configName, defaults);
         declare(value, SettingDef.textList(settingId, value, pickerMode));
         return value;
     }

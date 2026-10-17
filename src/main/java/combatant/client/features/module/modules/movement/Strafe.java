@@ -36,6 +36,7 @@ import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
+import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.player.MovementUtil;
 
 import java.util.List;
@@ -50,6 +51,9 @@ public final class Strafe extends Module {
     private static final int ROTATION_PRIORITY = 15;
 
     private final Minecraft mc = Minecraft.getInstance();
+    // custom = the mode below as set; grim = the Grim mode (matrix sets the velocity directly and trips GrimAC's
+    // Simulation check on every tick); vanilla = matrix, for servers with no anticheat.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final EnumValue<Mode> mode = enumMode("mode", Mode.MATRIX);
     private final NumberValue<Float> speed =
             visibleWhen(num("speed", 0.42f, 0.0f, 1.0f), this::isMatrixMode);
@@ -230,12 +234,16 @@ public final class Strafe extends Module {
         return yaw + delta;
     }
 
+    private Mode effectiveMode() {
+        return anticheat.get().pick(mode.get(), Mode.GRIM, Mode.MATRIX);
+    }
+
     private boolean isMatrixMode() {
-        return mode.get() == Mode.MATRIX;
+        return effectiveMode() == Mode.MATRIX;
     }
 
     private boolean isGrimMode() {
-        return mode.get() == Mode.GRIM;
+        return effectiveMode() == Mode.GRIM;
     }
 
     private boolean canOperate(LocalPlayer player) {

@@ -33,7 +33,6 @@ import net.minecraft.world.phys.Vec3;
 import combatant.client.events.EventHandler;
 import combatant.client.events.Events;
 import combatant.client.events.impl.MovementInputEvent;
-import combatant.client.events.impl.PostPlayerUpdateEvent;
 import combatant.client.events.impl.RotationUpdateEvent;
 import combatant.client.features.module.Module;
 import combatant.client.util.aiming.RotationManager;
@@ -363,8 +362,16 @@ public final class BlockPlacer {
         }
     }
 
-    @EventHandler
-    private void onPostPlayerUpdate(PostPlayerUpdateEvent event) {
+    /**
+     * Placements that did not fire from the rotation action go out here: still at the head of the tick, before the
+     * movement packet. They used to wait for PostPlayerUpdateEvent, which lands after that packet, and Grim's Post
+     * check flags every held-slot change and block placement that arrives behind the tick's flying packet.
+     */
+    @EventHandler(priority = -20)
+    private void onRotationUpdatePost(RotationUpdateEvent event) {
+        if (event.getType() != RotationUpdateEvent.Type.POST) {
+            return;
+        }
         if (!registered || !module.isEnabled()) {
             return;
         }
@@ -457,9 +464,9 @@ public final class BlockPlacer {
             return;
         }
 
-        // LB verifies normal placements against the rotation that actually got sent to the server,
-        // not the raw planned target rotation.
-        Rotation verificationRotation = RotationManager.INSTANCE.getServerRotation();
+        // The rotation this tick's movement packet will carry: what the server checks the click against. The click
+        // itself goes out before that packet, like a vanilla client's, so the last rotation sent says nothing here.
+        Rotation verificationRotation = rotationOfThisTick(player);
 
         // The queued position is only consumed once the placement is valid. Dropping it first meant a
         // rotation that had not reached the block yet (smoothing takes ticks, and the server rotation
@@ -500,6 +507,11 @@ public final class BlockPlacer {
         if (result != null && result.consumesAction()) {
             ranAction = true;
         }
+    }
+
+    private static Rotation rotationOfThisTick(LocalPlayer player) {
+        Rotation current = RotationManager.INSTANCE.getCurrentRotation();
+        return current != null ? current : new Rotation(player.getYRot(), player.getXRot(), true);
     }
 
     private BlockHitResult raytraceTarget(LocalPlayer player, BlockPos interactedPos, Rotation rotation, net.minecraft.core.Direction direction) {

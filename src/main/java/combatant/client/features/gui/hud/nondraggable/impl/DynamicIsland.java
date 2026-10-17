@@ -858,9 +858,14 @@ public final class DynamicIsland extends AbstractHudElement {
                 patchShape(patches, "wave:1", "fill", scaleHexAlpha(phosphor, 0.74f * compactVisible));
                 patchShape(patches, "wave:2", "fill", scaleHexAlpha(phosphor, 0.84f * compactVisible));
             }
-            patchImage(patches, "artwork:compact", stringProp(props, "artworkTexture", ""), scaleHexAlpha("#FFFFFFFF", compactVisible));
-            patchShape(patches, "artwork:compact:fallback",
-                    "fill", scaleHexAlpha(phosphorDim, 0.72f * compactVisible));
+            String artworkTexture = stringProp(props, "artworkTexture", "");
+            boolean hasArtwork = !artworkTexture.isEmpty();
+            if (hasArtwork) {
+                patchImage(patches, "artwork:compact", artworkTexture, scaleHexAlpha("#FFFFFFFF", compactVisible));
+            } else {
+                patchShape(patches, "artwork:compact:fallback",
+                        "fill", scaleHexAlpha(phosphorDim, 0.72f * compactVisible));
+            }
         }
 
         if (musicMode) {
@@ -887,9 +892,14 @@ public final class DynamicIsland extends AbstractHudElement {
                     scaleHexAlpha(phosphor, expandedVisible), scaleHexAlpha(phosphor, expandedVisible), 1.5f, 0.14f);
             patchShape(patches, "artwork:expanded:frame",
                     "fill", scaleHexAlpha(phosphorDim, 0.16f * expandedVisible));
-            patchImage(patches, "artwork:expanded", stringProp(props, "artworkTexture", ""), scaleHexAlpha("#FFFFFFFF", expandedVisible));
-            patchShape(patches, "artwork:expanded:fallback",
-                    "fill", scaleHexAlpha(phosphorDim, 0.72f * expandedVisible));
+            String artworkTexture = stringProp(props, "artworkTexture", "");
+            boolean hasArtwork = !artworkTexture.isEmpty();
+            if (hasArtwork) {
+                patchImage(patches, "artwork:expanded", artworkTexture, scaleHexAlpha("#FFFFFFFF", expandedVisible));
+            } else {
+                patchShape(patches, "artwork:expanded:fallback",
+                        "fill", scaleHexAlpha(phosphorDim, 0.72f * expandedVisible));
+            }
             boolean shuffleActive = boolProp(props, "shuffleActive", false);
             boolean repeatActive = boolProp(props, "repeatActive", false);
             if (boolProp(props, "showShuffle", false)) {
@@ -973,8 +983,12 @@ public final class DynamicIsland extends AbstractHudElement {
                                        float width) {
         putBounds(patches, "music:clock:compact", rootX + mainX + 9.0f, rootY + 10.3f, 40.0f, 14.0f);
         putBounds(patches, "music:divider", rootX + mainX + 52.0f, rootY + 8.0f, 0.75f, 19.0f);
-        putBounds(patches, "artwork:compact", rootX + mainX + 58.0f, rootY + 8.5f, 18.0f, 18.0f);
-        putBounds(patches, "artwork:compact:fallback", rootX + mainX + 58.0f, rootY + 8.5f, 18.0f, 18.0f);
+        boolean hasArtwork = !stringProp(props, "artworkTexture", "").isEmpty();
+        if (hasArtwork) {
+            putBounds(patches, "artwork:compact", rootX + mainX + 58.0f, rootY + 8.5f, 18.0f, 18.0f);
+        } else {
+            putBounds(patches, "artwork:compact:fallback", rootX + mainX + 58.0f, rootY + 8.5f, 18.0f, 18.0f);
+        }
         float statusW = boolProp(props, "pvpActive", false) ? 50.0f : 24.0f;
         float titleW = Math.max(0.0f, width - 82.0f - statusW - 7.0f);
         putBounds(patches, "music:title:compact:clip", rootX + mainX + 82.0f, rootY + 8.7f, titleW, 18.0f);
@@ -1006,8 +1020,12 @@ public final class DynamicIsland extends AbstractHudElement {
         putBounds(patches, "music:label:expanded", rootX + mainX + 13.0f, rootY + 7.0f, 90.0f, 12.0f);
         putBounds(patches, "music:elapsed:header", rootX + mainX + width - 61.0f, rootY + 7.0f, 48.0f, 12.0f);
         putBounds(patches, "artwork:expanded:frame", rootX + mainX + 12.0f, rootY + 23.0f, 30.0f, 30.0f);
-        putBounds(patches, "artwork:expanded", rootX + mainX + 14.0f, rootY + 25.0f, 26.0f, 26.0f);
-        putBounds(patches, "artwork:expanded:fallback", rootX + mainX + 14.0f, rootY + 25.0f, 26.0f, 26.0f);
+        boolean hasArtwork = !stringProp(props, "artworkTexture", "").isEmpty();
+        if (hasArtwork) {
+            putBounds(patches, "artwork:expanded", rootX + mainX + 14.0f, rootY + 25.0f, 26.0f, 26.0f);
+        } else {
+            putBounds(patches, "artwork:expanded:fallback", rootX + mainX + 14.0f, rootY + 25.0f, 26.0f, 26.0f);
+        }
         float titleW = Math.max(0.0f, width - 63.0f);
         putBounds(patches, "music:title:expanded:clip", rootX + mainX + 50.0f, rootY + 22.5f, titleW, 16.0f);
         putBounds(patches, "music:title:expanded", rootX + mainX + 50.0f, rootY + 22.5f, titleW, 16.0f);

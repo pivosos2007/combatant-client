@@ -23,6 +23,7 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
+import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.input.KeyManager;
 import combatant.client.util.player.MovementUtil;
 
@@ -71,6 +72,12 @@ public class Timer extends Module {
     private static double prevPosZ;
     private static float tickTimer = 1f;
     private static float externalTickTimer = 1f;
+    // grim: GrimAC 2.3.74 lets the Timer balance trail the confirmed clock by about 100 ms and no more. Bursts of 2
+    // to 12 ticks at 2x from a steady client were flagged in 20 of 21 runs, a steady 2x gets Timer x320 in 240
+    // ticks, and the energy modes that hold pongs back trip TransactionOrder (skipped transactions). The client
+    // cannot see how much of the balance is left, so the preset never runs faster than 1x and never holds pings
+    // back. Slowing down is left alone (0.5x and 0.8x for 240 ticks drew no flag).
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final EnumValue<Mode> mode =
             enumMode("mode", Mode.NORMAL, Mode.values());
     private final BooleanValue old =
@@ -153,6 +160,15 @@ public class Timer extends Module {
 
     @Override
     public void onTick() {
+        tickModes();
+        if (grimPreset()) tickTimer = Math.min(tickTimer, 1f);
+    }
+
+    private boolean grimPreset() {
+        return anticheat.get() == AntiCheatPreset.GRIM;
+    }
+
+    private void tickModes() {
         ensureBoostBind();
 
         switch (mode.get()) {
@@ -237,7 +253,7 @@ public class Timer extends Module {
 
     @EventHandler
     public void onPacketReceive(PacketEvent.Receive e) {
-        if (mode.get() == Mode.GRIM) {
+        if (mode.get() == Mode.GRIM && !grimPreset()) {
             if (e.getPacket() instanceof ClientboundPingPacket && getSetbackAge() > 2000L) {
                 if (System.currentTimeMillis() - cancelTime > 25000L) {
                     cancelTime = System.currentTimeMillis();
@@ -252,7 +268,7 @@ public class Timer extends Module {
                 e.cancel();
             }
         }
-        if (mode.get() == Mode.GRIM_CONCEPT) {
+        if (mode.get() == Mode.GRIM_CONCEPT && !grimPreset()) {
             if (e.getPacket() instanceof ClientboundPingPacket && getSetbackAge() > 2000L) {
                 long now = System.currentTimeMillis();
                 if (now - cancelTime > 25000L) {
@@ -325,7 +341,8 @@ public class Timer extends Module {
     public void onPostPlayerUpdate(PostPlayerUpdateEvent event) {
         if (mode.get() != Mode.SHIFT) return;
 
-        if (energy < 0.9f) {
+        // the shifted ticks are tick packets Grim counts against one 50 ms of wall clock
+        if (grimPreset() || energy < 0.9f) {
             setEnabled(false);
             return;
         }

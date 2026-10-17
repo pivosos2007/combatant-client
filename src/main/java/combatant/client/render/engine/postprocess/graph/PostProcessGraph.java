@@ -18,23 +18,27 @@ import combatant.client.render.engine.rhi.CombatantRhi;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Predicate;
 
 /** Ordered ping-pong executor for registered post-process passes. */
 public final class PostProcessGraph implements AutoCloseable {
-    private final List<PostProcessPass> passes = new ArrayList<>();
-    private final List<PostProcessPass> activePasses = new ArrayList<>();
+    private static final Comparator<PostProcessPass> PASS_COMPARATOR = Comparator
+            .comparingInt(PostProcessPass::getPriority)
+            .thenComparing(passEntry -> passEntry.getClass().getName());
+    private final CopyOnWriteArrayList<PostProcessPass> passes = new CopyOnWriteArrayList<>();
     private final PostProcessGraphResources resources = new PostProcessGraphResources();
 
-    public void add(PostProcessPass pass) {
+    public synchronized void add(PostProcessPass pass) {
         if (pass == null) return;
         for (PostProcessPass existing : passes) {
             if (existing == pass) return;
         }
-        passes.add(pass);
-        passes.sort(Comparator
-                .comparingInt(PostProcessPass::getPriority)
-                .thenComparing(passEntry -> passEntry.getClass().getName()));
+        int index = 0;
+        while (index < passes.size() && PASS_COMPARATOR.compare(passes.get(index), pass) <= 0) {
+            index++;
+        }
+        passes.add(index, pass);
     }
 
     public boolean execute(PostProcessPass.Phase phase,
@@ -49,7 +53,7 @@ public final class PostProcessGraph implements AutoCloseable {
                            CombatantRhi rhi,
                            GraphCopy copy,
                            Predicate<? super PostProcessPass> selector) {
-        activePasses.clear();
+        List<PostProcessPass> activePasses = new ArrayList<>();
         for (PostProcessPass pass : passes) {
             if (pass.getPhase() == phase && selector.test(pass) && pass.isActive()) activePasses.add(pass);
         }
@@ -101,8 +105,6 @@ public final class PostProcessGraph implements AutoCloseable {
             GpuTextureView finalColor = resources.finalColor();
             if (finalColor != null) copy.copy(finalColor, mainColor);
             return true;
-        } finally {
-            activePasses.clear();
         }
     }
 

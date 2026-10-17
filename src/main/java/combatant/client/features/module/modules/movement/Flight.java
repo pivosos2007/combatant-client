@@ -44,8 +44,9 @@ public class Flight extends Module {
 
     private final EnumValue<Mode> mode =
             enumMode("mode", Mode.ABILITIES, Mode.values());
+    // Min speed is 0.01 because 0.0 freezes the player mid-air in VELOCITY and disables flight movement in ABILITIES.
     private final NumberValue<Double> speed =
-            visibleWhen(num("speed", 0.1, 0.0, 5.0), this::usesSpeed);
+            visibleWhen(num("speed", 0.1, 0.01, 5.0), this::usesSpeed);
     private final BooleanValue verticalSpeedMatch =
             visibleWhen(bool("vertical_speed_match", false), () -> mode.get() == Mode.VELOCITY);
     private final BooleanValue noSneak =

@@ -670,10 +670,23 @@ public class KillAura extends Module {
                 true,
                 breakShields.get()
         );
+
+        if (rotationTiming.get() == RotationTiming.SNAP) {
+            clearRotationState(true);
+        }
     }
 
-    public boolean willAttackInTicks(int ticks) {
-        if (!isEnabled()) {
+
+    public boolean willAttackInTicks(LivingEntity target, int ticks) {
+        return willAttackInTicks(target, ticks, true);
+    }
+
+    /**
+     * @param requireCrit when false, a pending Criticals wait does not count as "not attacking";
+     *                    used by SNAP so the rotation is held while only the crit check fails.
+     */
+    private boolean willAttackInTicks(LivingEntity target, int ticks, boolean requireCrit) {
+        if (!isEnabled() || mc.player == null) {
             return false;
         }
 
@@ -682,7 +695,17 @@ public class KillAura extends Module {
             return clicker.willClickAt(safeTicks);
         }
 
-        return AttackPressing.INSTANCE.willCooldownComplete(mc.player, currentTarget, false, safeTicks);
+        LivingEntity candidate = target != null ? target : currentTarget;
+        boolean cooldownReady = AttackPressing.INSTANCE.willCooldownComplete(mc.player, candidate, false, safeTicks);
+        if (!cooldownReady) {
+            return false;
+        }
+
+        return !requireCrit || safeTicks != 0 || criticalHitAllowed(candidate);
+    }
+
+    public boolean willAttackInTicks(int ticks) {
+        return willAttackInTicks(currentTarget, ticks);
     }
 
     public ClickScheduler getClickScheduler() {
@@ -886,6 +909,19 @@ public class KillAura extends Module {
                     rotation = rot.rotation();
                 }
             }
+        } else if (timing == RotationTiming.SNAP) {
+            Rotation current = RotationManager.INSTANCE.getCurrentRotation();
+            if (current != null) {
+                rotation = current;
+            } else {
+                RotationWithVector rot = findAttackRotation(target);
+                if (rot != null) {
+                    rotation = rot.rotation();
+                } else {
+                    Rotation server = RotationManager.INSTANCE.getServerRotation();
+                    rotation = server != null ? server : new Rotation(mc.player.getYRot(), mc.player.getXRot(), true);
+                }
+            }
         } else {
             Rotation current = RotationManager.INSTANCE.getCurrentRotation();
             if (current != null) {
@@ -909,7 +945,6 @@ public class KillAura extends Module {
                 }
             }
         }
-
         return rotation != null ? rotation.normalize() : null;
     }
 
@@ -918,6 +953,17 @@ public class KillAura extends Module {
         double targetWallRange = getEffectiveWallRange(target, targetRange);
         RotationWithVector rotation = findRotation(target, (float) targetRange, (float) targetWallRange);
         if (rotation == null) return false;
+
+        KillAura.RotationTiming timing = rotationTiming.get();
+        if (timing == RotationTiming.SNAP) {
+            int rotTicks = calculateTicks(rotation.rotation());
+            if (!isInRange(target) || !willAttackInTicks(target, Math.max(0, rotTicks), false)) {
+                RotationManager.INSTANCE.clear(this);
+                lastRotation = null;
+                lastRotationTick = -1;
+                return true;
+            }
+        }
 
         lastRotation = rotation.rotation();
         lastRotationTick = mc.player != null ? mc.player.tickCount : -1;
@@ -1092,7 +1138,7 @@ public class KillAura extends Module {
                 rotation,
                 target,
                 processors,
-                rotationResetTicks.get(),
+                rotationTiming.get() == RotationTiming.SNAP ? 1 : rotationResetTicks.get(),
                 rotationResetThreshold.get(),
                 true,
                 movementCorrection,
@@ -1154,7 +1200,7 @@ public class KillAura extends Module {
         if (mc.player.isFallFlying()) return true;
 
         Criticals criticals = Modules.get(Criticals.class);
-        if (criticals == null) return true;
+        if (criticals == null || !criticals.isEnabled()) return true;
         ClickScheduler gateClicker = isLegacyAttackProtocol() ? clicker : null;
         CombatStrikeController.SprintResetMode resolvedSprintReset =
                 CombatStrikeController.INSTANCE.resolveSprintResetMode(resolveStrikeResetMode());
@@ -1176,7 +1222,7 @@ public class KillAura extends Module {
     }
 
     private double effectiveRange() {
-        return anticheat.get().limit(range.get(), 3.0, 6.0);
+        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
     }
 
     /** GrimAC flags TimerLimit for the default and none resets while the player moves; legit and packet stay clean. */

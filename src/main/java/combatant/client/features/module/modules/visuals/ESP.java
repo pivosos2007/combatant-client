@@ -673,11 +673,31 @@ public class ESP extends Module {
         List<RenderEntry> entries = new ArrayList<>();
         if (!renderEntities.get()) return entries;
 
+        // Matching entities only change on spawn/despawn or when the id list is edited, so scan once per tick.
+        Set<String> selected = searchEntities.get();
+        long tick = mc.level.getGameTime();
+        int selectionHash = selected.hashCode();
+        if (searchMatchLevel != mc.level || searchMatchTick != tick || searchMatchSelectionHash != selectionHash) {
+            searchMatchLevel = mc.level;
+            searchMatchTick = tick;
+            searchMatchSelectionHash = selectionHash;
+            searchMatches.clear();
+            searchMatchNames.clear();
+            for (Entity entity : mc.level.entitiesForRendering()) {
+                if (!shouldRenderEntity(entity)) continue;
+                searchMatches.add(entity);
+                searchMatchNames.add(entity.getDisplayName() != null
+                        ? entity.getDisplayName().getString()
+                        : entity.getName().getString());
+            }
+        }
+        if (searchMatches.isEmpty()) return entries;
+
         int color = entityColor.getArgb();
-        for (Entity entity : mc.level.entitiesForRendering()) {
-            if (!shouldRenderEntity(entity)) continue;
-            double distSq = entity.distanceToSqr(camPos);
-            entries.add(new RenderEntry(entity, color, distSq));
+        for (int i = 0, size = searchMatches.size(); i < size; i++) {
+            Entity entity = searchMatches.get(i);
+            if (entity.isRemoved()) continue;
+            entries.add(new RenderEntry(entity, color, entity.distanceToSqr(camPos), searchMatchNames.get(i)));
         }
 
         return entries;
@@ -834,6 +854,11 @@ public class ESP extends Module {
     private long chamsMatchTick = Long.MIN_VALUE;
     private int chamsMatchSelectionHash;
     private final List<Entity> chamsMatches = new ArrayList<>();
+    private final List<Entity> searchMatches = new ArrayList<>();
+    private final List<String> searchMatchNames = new ArrayList<>();
+    private net.minecraft.client.multiplayer.ClientLevel searchMatchLevel;
+    private long searchMatchTick = Long.MIN_VALUE;
+    private int searchMatchSelectionHash;
 
     private boolean renderShaderColorPass(GpuTextureView dst, int width, int height) {
         if (shaderMask.getColorTextureView() == null) {
@@ -977,8 +1002,8 @@ public class ESP extends Module {
         boolean sizeChanged = width != shaderBufferW || height != shaderBufferH;
         if (shaderMask == null) {
             shaderMask = new TextureTarget("combatant-shader-esp-mask", width, height, true, GpuFormat.RGBA8_UNORM);
-            shaderBlurBuffer = new TextureTarget("combatant-shader-esp-blur", width, height, false, GpuFormat.RGBA8_UNORM);
-            shaderEffectBuffer = new TextureTarget("combatant-shader-esp-effect", width, height, false, GpuFormat.RGBA8_UNORM);
+            shaderBlurBuffer = createShaderBuffer("combatant-shader-esp-blur", width, height);
+            shaderEffectBuffer = createShaderBuffer("combatant-shader-esp-effect", width, height);
             shaderBufferW = width;
             shaderBufferH = height;
         } else if (sizeChanged) {
@@ -989,6 +1014,15 @@ public class ESP extends Module {
             shaderBufferH = height;
         }
 
+    }
+
+    /** Half-float target so blurs and glow gradients do not band; falls back to 8-bit if the device refuses it. */
+    private static TextureTarget createShaderBuffer(String name, int width, int height) {
+        try {
+            return new TextureTarget(name, width, height, false, GpuFormat.RGBA16_FLOAT);
+        } catch (Throwable t) {
+            return new TextureTarget(name, width, height, false, GpuFormat.RGBA8_UNORM);
+        }
     }
 
     private boolean renderShaderEntityMask(List<RenderEntry> entries, float tickDelta) {
@@ -1183,7 +1217,7 @@ public class ESP extends Module {
             ScreenSpaceOverlay2D.ScreenRect rect = ScreenSpaceOverlay2D.projectBox(box, tickDelta);
             if (rect == null) continue;
 
-            ScreenSpaceOverlay2D.LabelEntry label = createSearchEntityLabel(labelRenderer, entity, entry.color(), rect);
+            ScreenSpaceOverlay2D.LabelEntry label = createSearchEntityLabel(labelRenderer, entity, entry.name(), entry.color(), rect);
             labels.add(new SearchLabelEntry(entry.entity(), entry.distSq(), rect, entry.color(), label));
         }
 
@@ -1225,9 +1259,8 @@ public class ESP extends Module {
     }
 
     private ScreenSpaceOverlay2D.LabelEntry createSearchEntityLabel(TextRenderer labelRenderer, Entity entity,
-                                                                    int baseColor,
+                                                                    String name, int baseColor,
                                                                     ScreenSpaceOverlay2D.ScreenRect rect) {
-        String name = entity.getDisplayName() != null ? entity.getDisplayName().getString() : entity.getName().getString();
         if (entity instanceof LivingEntity living) {
             PlayerHealthResolver.HealthSnapshot health = PlayerHealthResolver.resolve(living);
             float max = health.maxHealth();
@@ -1275,42 +1308,8 @@ public class ESP extends Module {
     }
 
     private ScreenBox project(AABB box, float tickDelta) {
-        Vec3[] pts = new Vec3[]{
-                new Vec3(box.minX, box.minY, box.minZ),
-                new Vec3(box.minX, box.minY, box.maxZ),
-                new Vec3(box.minX, box.maxY, box.minZ),
-                new Vec3(box.minX, box.maxY, box.maxZ),
-                new Vec3(box.maxX, box.minY, box.minZ),
-                new Vec3(box.maxX, box.minY, box.maxZ),
-                new Vec3(box.maxX, box.maxY, box.minZ),
-                new Vec3(box.maxX, box.maxY, box.maxZ)
-        };
-
-        double minX = Double.POSITIVE_INFINITY;
-        double minY = Double.POSITIVE_INFINITY;
-        double maxX = Double.NEGATIVE_INFINITY;
-        double maxY = Double.NEGATIVE_INFINITY;
-
-        for (Vec3 p : pts) {
-            Vec3 screen = ScreenProjection.worldToScreen(p, tickDelta);
-            if (screen == null) continue;
-            minX = Math.min(minX, screen.x);
-            minY = Math.min(minY, screen.y);
-            maxX = Math.max(maxX, screen.x);
-            maxY = Math.max(maxY, screen.y);
-        }
-
-        if (minX == Double.POSITIVE_INFINITY) return null;
-        if (maxX <= minX || maxY <= minY) return null;
-
-        if (PIXEL_SNAP) {
-            minX = Math.floor(minX);
-            minY = Math.floor(minY);
-            maxX = Math.ceil(maxX);
-            maxY = Math.ceil(maxY);
-        }
-
-        return new ScreenBox(minX, minY, maxX, maxY);
+        ScreenSpaceOverlay2D.ScreenRect r = ScreenSpaceOverlay2D.projectBox(box, tickDelta);
+        return r == null ? null : new ScreenBox(r.minX(), r.minY(), r.maxX(), r.maxY());
     }
 
     private void drawBoxESP(Renderer2D renderer, double minX, double minY, double maxX, double maxY, int baseColor) {
@@ -1587,7 +1586,10 @@ public class ESP extends Module {
         int colorAt(double x, double y, double boxX1, double boxY1, double boxX2, double boxY2);
     }
 
-    private record RenderEntry(Entity entity, int color, double distSq) {
+    private record RenderEntry(Entity entity, int color, double distSq, String name) {
+        RenderEntry(Entity entity, int color, double distSq) {
+            this(entity, color, distSq, null);
+        }
     }
 
     private record SearchLabelEntry(Entity entity, double distSq, ScreenSpaceOverlay2D.ScreenRect rect, int color,

@@ -96,7 +96,7 @@ public class ElytraFly extends Module {
     private final NumberValue<Float> vanillaPitchLift =
             visibleWhen(num("elytrafly_vanilla_pitch_lift", 4.5f, 0.0f, 30.0f), () -> mode.get() == Mode.VANILLA);
     private final NumberValue<Float> boostSpeed =
-            visibleWhen(num("elytrafly_boost_speed", 0.018f, 0.0f, 2.0f), () -> mode.get() == Mode.BOOST);
+            visibleWhen(num("elytrafly_boost_speed", 0.018f, 0.001f, 2.0f), () -> mode.get() == Mode.BOOST);
     private final NumberValue<Float> boostAcceleration =
             visibleWhen(num("elytrafly_boost_acceleration", 0.018f, 0.001f, 0.1f), () -> mode.get() == Mode.BOOST);
     private final BooleanValue boostAutoBoost =
@@ -635,10 +635,17 @@ public class ElytraFly extends Module {
     }
 
     private void handleBoostAcceleration(boolean shouldBoost) {
-        if (shouldBoost && currentAcceleration < boostSpeed.get()) {
+        float maxSpeed = boostSpeed.get();
+        // Guard against zero or negative boost speed to prevent division by zero resulting in NaN/Infinity motion.
+        if (maxSpeed <= 0.0f) {
+            currentAcceleration = 0.0f;
+            return;
+        }
+
+        if (shouldBoost && currentAcceleration < maxSpeed) {
             currentAcceleration = Math.min(
-                    currentAcceleration + boostAcceleration.get() * (1.0f - currentAcceleration / boostSpeed.get()),
-                    boostSpeed.get()
+                    currentAcceleration + boostAcceleration.get() * (1.0f - currentAcceleration / maxSpeed),
+                    maxSpeed
             );
             return;
         }

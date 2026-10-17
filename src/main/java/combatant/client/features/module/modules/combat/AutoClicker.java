@@ -58,7 +58,9 @@ public final class AutoClicker extends Module {
     private final BooleanValue weaponOnly = bool("autoClickerWeaponOnly", "weapon_only", false);
     private final BooleanValue ignoreFriends = bool("autoClickerIgnoreFriends", "ignore_friends", true);
 
-    private final ClickScheduler clicker = new ClickScheduler(minCps.get(), maxCps.get());
+    // Ordered at initialization to prevent constructing the scheduler with min > max.
+    private final ClickScheduler clicker =
+            new ClickScheduler(Math.min(minCps.get(), maxCps.get()), Math.max(minCps.get(), maxCps.get()));
     private int appliedMin = -1;
     private int appliedMax = -1;
 
@@ -82,8 +84,9 @@ public final class AutoClicker extends Module {
         if (ClientScreen.current() != null || player.isUsingItem() || player.isSpectator()) return;
 
         // setCps refills the click pattern, so only call it when a setting actually changed.
-        int min = minCps.get();
-        int max = Math.max(min, maxCps.get());
+        // Effective values are kept ordered (min <= max) without modifying saved user settings.
+        int min = Math.min(minCps.get(), maxCps.get());
+        int max = Math.max(minCps.get(), maxCps.get());
         if (min != appliedMin || max != appliedMax) {
             clicker.setCps(min, max);
             appliedMin = min;

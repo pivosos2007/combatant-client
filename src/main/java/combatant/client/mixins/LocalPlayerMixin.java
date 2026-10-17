@@ -60,6 +60,7 @@ import combatant.client.mixins.accessors.LocalPlayerAccessor;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.data.Rotation;
+import combatant.client.util.aiming.RotationUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -542,7 +543,15 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         if (event != null && event.hasRotationOverride()) return event.getYaw();
 
         Rotation rotation = RotationManager.INSTANCE.getCurrentRotation();
-        return rotation != null ? rotation.yaw() : original;
+        float targetYaw = rotation != null ? rotation.yaw() : original;
+        // Rotation targets are normalised to [-180, 180] while the player's own yaw is unbounded: sending either one
+        // as-is makes the yaw jump by a multiple of 360 when a target takes over or lets go, which vanilla never
+        // does. Send the same direction as the shortest turn from the last sent yaw instead.
+        Rotation server = RotationManager.INSTANCE.getServerRotation();
+        if (server != null && server != Rotation.ZERO) {
+            return server.yaw() + RotationUtil.angleDifference(targetYaw, server.yaw());
+        }
+        return targetYaw;
     }
 
     @ModifyExpressionValue(

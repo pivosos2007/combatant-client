@@ -107,7 +107,8 @@ public class AutoCrystal extends Module {
     private final BooleanValue renderSelfDamage = boolCommon("autocrystalRenderSelfDamage", CommonSettingSchemas.RENDER_SELF_DAMAGE, true);
     private final BooleanValue drawDamage = boolCommon("autocrystalRenderDamage", CommonSettingSchemas.RENDER_DAMAGE, true);
     // custom = the settings below as set; grim = place range 4.5 and hit range 3.0, the limits GrimAC enforces
-    // (FarPlace, Reach); vanilla = 6.0 everywhere with instant place/break, for servers with no anticheat.
+    // (FarPlace, Reach), and no instant place/break (see effInstantBreak); vanilla = 6.0 everywhere with instant
+    // place/break, for servers with no anticheat.
     private final EnumValue<AntiCheatPreset> anticheat = enumCommon("anticheat_mode", CommonSettingSchemas.ANTICHEAT_MODE, AntiCheatPreset.CUSTOM);
     private final BooleanValue placeEnabled = boolCommon("autocrystalPlace", CommonSettingSchemas.PLACE, true);
     private final NumberValue<Integer> placeDelay =
@@ -346,27 +347,32 @@ public class AutoCrystal extends Module {
     }
 
     private float effPlaceRange() {
-        return anticheat.get().limit(placeRange.get(), 4.5f, 6.0f);
+        return anticheat.get().limit(placeRange.get(), (float) AntiCheatPreset.GRIM_BLOCK_RANGE, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
     }
 
     private float effWallRange() {
-        return anticheat.get().limit(wallRange.get(), 3.0f, 6.0f);
+        return anticheat.get().limit(wallRange.get(), 3.0f, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
     }
 
     private float effBreakRange() {
-        return anticheat.get().limit(breakRange.get(), 3.0f, 6.0f);
+        return anticheat.get().limit(breakRange.get(), (float) AntiCheatPreset.GRIM_ENTITY_RANGE, (float) AntiCheatPreset.VANILLA_ENTITY_RANGE);
     }
 
     private float effBreakWallRange() {
-        return anticheat.get().limit(breakWallRange.get(), 3.0f, 6.0f);
+        return anticheat.get().limit(breakWallRange.get(), (float) AntiCheatPreset.GRIM_ENTITY_RANGE, (float) AntiCheatPreset.VANILLA_ENTITY_RANGE);
     }
 
+    // The instant paths run from AutoCrystalPacketMixin whenever the client applies a crystal spawn or removal, which
+    // is between two ticks: the attack or placement leaves after the previous tick's movement packet and ahead of a
+    // pong. GrimAC's Post check flags that order, and RotationPlace judges the placement against the next tick's
+    // rotation rather than the one the rotation check above used. The tick loop does the same job a tick later from
+    // the rotation action, ahead of the movement packet, so the grim preset leaves it to the loop.
     private boolean effInstantBreak() {
-        return anticheat.get().pick(instantBreak.get(), instantBreak.get(), true);
+        return anticheat.get().pick(instantBreak.get(), false, true);
     }
 
     private boolean effInstantPlace() {
-        return anticheat.get().pick(instantPlace.get(), instantPlace.get(), true);
+        return anticheat.get().pick(instantPlace.get(), false, true);
     }
 
     @Override
@@ -1029,6 +1035,10 @@ public class AutoCrystal extends Module {
             return;
         }
 
+        if (!serverRotationClicks(refreshed.hitResult())) {
+            return;
+        }
+
         if (hand.hotbarSlot() >= 0) {
             InventorySwap.INSTANCE.leaseHotbar(this, hand.hotbarSlot(), BASE_HOTBAR_RESET_TICKS);
         }
@@ -1075,6 +1085,11 @@ public class AutoCrystal extends Module {
         BlockHitResult hitResult = placeData.bhr();
         debugLog("place-attempt pos=%s hand=%s slot=%d hit=%s side=%s",
                 pos, hand.hand(), hand.hotbarSlot(), hitResult.getBlockPos(), hitResult.getDirection());
+
+        if (!serverRotationClicks(hitResult)) {
+            debugLog("place-skip reason=rotation-not-sent pos=%s", pos);
+            return;
+        }
 
         if (hand.hotbarSlot() >= 0) {
             InventorySwap.INSTANCE.leaseHotbar(this, hand.hotbarSlot(), HOTBAR_RESET_TICKS);
@@ -1127,6 +1142,18 @@ public class AutoCrystal extends Module {
         if (usesRotationSettings() && !serverRotationHits(new AABB(candidate.pos()), effPlaceRange())) return;
         // tryPlaceCrystal re-validates the spot and damage against the world as it is now.
         tryPlaceCrystal(candidate.pos());
+    }
+
+    // GrimAC's RotationPlace raytraces the placement from the rotation the server saw before it. A placement made in
+    // the tick its rotation changes leaves ahead of the flying packet that carries it, so under the grim preset it
+    // waits a tick; the rotation target is rebuilt every tick and the next one places against the sent rotation.
+    private boolean serverRotationClicks(BlockHitResult hit) {
+        if (!usesRotationSettings() || !anticheat.get().pick(false, true, false)) return true;
+        Rotation server = RotationManager.INSTANCE.getServerRotation();
+        if (server == null || hit == null || mc.player == null) return false;
+        return AutoCrystalInteractionUtil.rayEntersFace(
+                mc.player.getEyePosition(), server.directionVector(), hit.getBlockPos(), hit.getDirection(),
+                effPlaceRange() + 1.0);
     }
 
     private boolean serverRotationHits(AABB box, double range) {

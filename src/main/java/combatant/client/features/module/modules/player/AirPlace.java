@@ -23,6 +23,8 @@ import net.minecraft.world.phys.Vec3;
 import combatant.client.config.values.BindMode;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.GameTickEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -111,8 +113,12 @@ public class AirPlace extends Module {
         renderer.line(minX, minY, maxZ, minX, maxY, maxZ, r, g, b, a);
     }
 
-    @Override
-    public void onTick() {
+    /**
+     * Places from the start-of-tick hook. {@code onTick} runs after the tick's last packet, so the placement went
+     * out behind it; a vanilla client sends its click first, and Grim's Post check flags the other order.
+     */
+    @EventHandler
+    private void onGameTick(GameTickEvent event) {
         if (!isEnabled() || mc == null || mc.player == null) return;
 
         LocalPlayer player = mc.player;

@@ -47,3 +47,5 @@ export_cache/
 /gradle/.idea/gradle.xml
 /gradle/.idea/misc.xml
 /gradle/.idea/vcs.xml
+/fabric.mod.json
+/test server with grim/

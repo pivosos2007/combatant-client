@@ -20,6 +20,18 @@ public enum AntiCheatPreset implements EnumValue.IdProvider {
     GRIM("grim"),
     VANILLA("vanilla");
 
+    /** GrimAC Reach: the entity_interaction_range attribute, 3.0 in survival. */
+    public static final double GRIM_ENTITY_RANGE = 3.0;
+    /**
+     * GrimAC FarPlace/FarBreak/RotationPlace: the block_interaction_range attribute, 4.5 in survival, measured from
+     * the eye to the nearest point of the clicked block.
+     */
+    public static final double GRIM_BLOCK_RANGE = 4.5;
+    /** Vanilla server: entity interactions within entity_interaction_range + 3.0 of the target's box. */
+    public static final double VANILLA_ENTITY_RANGE = 6.0;
+    /** Vanilla server: use-item-on and dig actions within block_interaction_range + 1.0 of the block's box. */
+    public static final double VANILLA_BLOCK_RANGE = 5.5;
+
     private final String id;
 
     AntiCheatPreset(String id) {
@@ -42,6 +54,14 @@ public enum AntiCheatPreset implements EnumValue.IdProvider {
 
     public float limit(float user, float grimMax, float vanillaValue) {
         return (float) limit((double) user, (double) grimMax, (double) vanillaValue);
+    }
+
+    public int limit(int user, int grimMax, int vanillaValue) {
+        return switch (this) {
+            case CUSTOM -> user;
+            case GRIM -> Math.min(user, grimMax);
+            case VANILLA -> vanillaValue;
+        };
     }
 
     /** One value per preset. */

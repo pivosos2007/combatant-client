@@ -22,8 +22,10 @@ public enum CombatantWorldMatrices {
     private static final Vector2f JITTER_PIXELS = new Vector2f();
     private static Vec3 CAMERA_POS;
     private static boolean valid;
+    private static int version;
 
     public static void reset() {
+        version++;
         valid = false;
     }
 
@@ -58,10 +60,15 @@ public enum CombatantWorldMatrices {
         if (!valid || positionMatrix == null) {
             return;
         }
+        version++;
         POSITION.set(positionMatrix);
         if (cameraPos != null) {
             CAMERA_POS = cameraPos;
         }
+    }
+
+    public static int version() {
+        return version;
     }
 
     public static boolean isValid() {

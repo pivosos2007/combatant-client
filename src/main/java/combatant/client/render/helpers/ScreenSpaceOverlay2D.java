@@ -63,31 +63,16 @@ public enum ScreenSpaceOverlay2D {
         return projectBox(box, tickDelta);
     }
 
+    private static final double[] BOUNDS = new double[4];
+
     public static ScreenRect projectBox(AABB box, float tickDelta) {
-        double minX = Double.POSITIVE_INFINITY;
-        double minY = Double.POSITIVE_INFINITY;
-        double maxX = Double.NEGATIVE_INFINITY;
-        double maxY = Double.NEGATIVE_INFINITY;
-        boolean any = false;
+        return projectBox(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
+    }
 
-        double[] xs = {box.minX, box.maxX};
-        double[] ys = {box.minY, box.maxY};
-        double[] zs = {box.minZ, box.maxZ};
-        for (double x : xs) {
-            for (double y : ys) {
-                for (double z : zs) {
-                    Vec3 screen = ScreenProjection.worldToScreen(new Vec3(x, y, z), tickDelta);
-                    if (screen == null) continue;
-                    any = true;
-                    minX = Math.min(minX, screen.x);
-                    minY = Math.min(minY, screen.y);
-                    maxX = Math.max(maxX, screen.x);
-                    maxY = Math.max(maxY, screen.y);
-                }
-            }
-        }
-
-        if (!any || maxX <= minX || maxY <= minY) return null;
+    public static ScreenRect projectBox(double x0, double y0, double z0, double x1, double y1, double z1) {
+        double[] b = BOUNDS;
+        if (!ScreenProjection.projectBounds(x0, y0, z0, x1, y1, z1, b)) return null;
+        double minX = b[0], minY = b[1], maxX = b[2], maxY = b[3];
         if (PIXEL_SNAP) {
             minX = Math.floor(minX);
             minY = Math.floor(minY);

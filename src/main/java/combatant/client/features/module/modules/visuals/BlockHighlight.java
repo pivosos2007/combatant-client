@@ -33,6 +33,7 @@ import combatant.client.mixins.accessors.MultiPlayerGameModeAccessor;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.pipeline.WorldRenderPipelines;
+import combatant.client.render.engine.renderer.GlowSurfaces;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
@@ -120,6 +121,11 @@ public class BlockHighlight extends Module {
             visibleWhen(color(
                     "breaking_color",
                     "#66FFFFFF"
+            ), breakingEnabled::get);
+    private final BooleanValue breakingGlow =
+            visibleWhen(bool(
+                    "breaking_glow",
+                    true
             ), breakingEnabled::get);
     private final RGBAColorValue breakingColor2 =
             visibleWhen(color(
@@ -468,7 +474,12 @@ public class BlockHighlight extends Module {
         shape.move(pos.getX(), pos.getY(), pos.getZ()).forAllBoxes((minX, minY, minZ, maxX, maxY, maxZ) -> {
             AABB box = animateBox(new AABB(minX, minY, minZ, maxX, maxY, maxZ), clamped);
             if (isRenderable(box)) {
-                addFilledBox(renderer, box, argb);
+                if (breakingGlow.get()) {
+                    float rim = Mth.clamp(alpha(argb) / 255.0f * 2.0f, 0.25f, 1.0f);
+                    GlowSurfaces.box(renderer, box, argb, argb, rim, 1.0f, false, true, false);
+                } else {
+                    addFilledBox(renderer, box, argb);
+                }
             }
         });
     }

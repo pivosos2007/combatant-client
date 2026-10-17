@@ -178,10 +178,10 @@ public class KillEffect extends Module implements PostProcessPass {
         double p4z = cz - right.z() + up.z();
 
         mesh.ensureQuadCapacity();
-        int i1 = mesh.vec3(p1x, p1y, p1z).vec2(0, 1).color(new RenderColor(argb)).next();
-        int i2 = mesh.vec3(p2x, p2y, p2z).vec2(1, 1).color(new RenderColor(argb)).next();
-        int i3 = mesh.vec3(p3x, p3y, p3z).vec2(1, 0).color(new RenderColor(argb)).next();
-        int i4 = mesh.vec3(p4x, p4y, p4z).vec2(0, 0).color(new RenderColor(argb)).next();
+        int i1 = mesh.vec3(p1x, p1y, p1z).vec2(0, 1).colorArgb(argb).next();
+        int i2 = mesh.vec3(p2x, p2y, p2z).vec2(1, 1).colorArgb(argb).next();
+        int i3 = mesh.vec3(p3x, p3y, p3z).vec2(1, 0).colorArgb(argb).next();
+        int i4 = mesh.vec3(p4x, p4y, p4z).vec2(0, 0).colorArgb(argb).next();
         mesh.quad(i1, i2, i3, i4);
     }
 
@@ -199,10 +199,10 @@ public class KillEffect extends Module implements PostProcessPass {
         Vec3 p4 = center.add(right.scale(-size)).add(forward.scale(-size));
 
         mesh.ensureQuadCapacity();
-        int i1 = mesh.vec3(p1.x, p1.y, p1.z).vec2(0, 1).color(new RenderColor(argb)).next();
-        int i2 = mesh.vec3(p2.x, p2.y, p2.z).vec2(1, 1).color(new RenderColor(argb)).next();
-        int i3 = mesh.vec3(p3.x, p3.y, p3.z).vec2(1, 0).color(new RenderColor(argb)).next();
-        int i4 = mesh.vec3(p4.x, p4.y, p4.z).vec2(0, 0).color(new RenderColor(argb)).next();
+        int i1 = mesh.vec3(p1.x, p1.y, p1.z).vec2(0, 1).colorArgb(argb).next();
+        int i2 = mesh.vec3(p2.x, p2.y, p2.z).vec2(1, 1).colorArgb(argb).next();
+        int i3 = mesh.vec3(p3.x, p3.y, p3.z).vec2(1, 0).colorArgb(argb).next();
+        int i4 = mesh.vec3(p4.x, p4.y, p4.z).vec2(0, 0).colorArgb(argb).next();
         mesh.quad(i1, i2, i3, i4);
     }
 

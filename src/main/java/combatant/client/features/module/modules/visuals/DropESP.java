@@ -274,12 +274,13 @@ public class DropESP extends Module {
             int sortPriority = info.sortPriority;
 
             if (overlayMode) {
-                AABB overlayBox = item.getBoundingBox().move(
-                        pos.x - item.getX(),
-                        pos.y - item.getY(),
-                        pos.z - item.getZ()
-                ).inflate(0.1);
-                ScreenSpaceOverlay2D.ScreenRect rect = ScreenSpaceOverlay2D.projectBox(overlayBox, tickDelta);
+                AABB bb = item.getBoundingBox();
+                double dx = pos.x - item.getX();
+                double dy = pos.y - item.getY();
+                double dz = pos.z - item.getZ();
+                ScreenSpaceOverlay2D.ScreenRect rect = ScreenSpaceOverlay2D.projectBox(
+                        bb.minX + dx - 0.1, bb.minY + dy - 0.1, bb.minZ + dz - 0.1,
+                        bb.maxX + dx + 0.1, bb.maxY + dy + 0.1, bb.maxZ + dz + 0.1);
                 if (rect == null) continue;
 
                 DropLabelEntry matteLabel = null;
@@ -295,23 +296,19 @@ public class DropESP extends Module {
                 overlayEntries.add(new DropOverlayEntry(
                         sortPriority, distSq, rect, color, matteLabel, label, presentationAlpha));
             } else {
-                AABB box = item.getBoundingBox().move(
-                        pos.x - item.getX(),
-                        pos.y - item.getY(),
-                        pos.z - item.getZ()
-                );
+                AABB box = item.getBoundingBox();
+                double dx = pos.x - item.getX();
+                double dy = pos.y - item.getY();
+                double dz = pos.z - item.getZ();
+                if (!ScreenProjection.project(
+                        (box.minX + box.maxX) * 0.5 + dx,
+                        box.minY + dy + (box.maxY - box.minY) * 0.6,
+                        (box.minZ + box.maxZ) * 0.5 + dz,
+                        SCREEN_SCRATCH)) continue;
+                double[] screen = SCREEN_SCRATCH;
 
-                Vec3 center = new Vec3(
-                        (box.minX + box.maxX) * 0.5,
-                        box.minY + (box.maxY - box.minY) * 0.6,
-                        (box.minZ + box.maxZ) * 0.5
-                );
-
-                Vec3 screen = ScreenProjection.worldToScreen(center, tickDelta);
-                if (screen == null) continue;
-
-                double x = screen.x - (labelRenderer.getWidth(info.plainText, false) / 2.0);
-                double y = screen.y;
+                double x = screen[0] - (plainTextWidth(labelRenderer, info) / 2.0);
+                double y = screen[1];
                 vanillaEntries.add(new DropVanillaEntry(
                         sortPriority, distSq, ScreenSpaceOverlay2D.labelAt(info.plainText, x, y, color), presentationAlpha));
             }
@@ -426,6 +423,14 @@ public class DropESP extends Module {
         double textX = x + MATTE_LABEL_PAD_X + iconBlock;
         double textY = y + (height - measuredTextHeight) * 0.5;
         return new DropLabelEntry(stack, info, x, y, width, height, icon, iconX, iconY, textX, textY, info.color);
+    }
+
+    private static double plainTextWidth(TextRenderer renderer, DropInfo info) {
+        if (info.plainWidthRenderer == renderer) return info.plainWidth;
+        double width = renderer.getWidth(info.plainText, false);
+        info.plainWidthRenderer = renderer;
+        info.plainWidth = width;
+        return width;
     }
 
     /** Width of the styled label in the on-screen overlay, measured once per (info, renderer). */
@@ -643,6 +648,7 @@ public class DropESP extends Module {
 
         Component text = formatReferenceItemLabel(stack);
         info.plainText = text.getString();
+        info.plainWidthRenderer = null;
         java.util.List<TextRenderUtil.Part> parts = TextRenderUtil.flattenStyled(text, info.color);
         info.safeParts = new String[parts.size()];
         info.partColors = new int[parts.size()];
@@ -732,6 +738,8 @@ public class DropESP extends Module {
     }
 
     /** Cached per-stack presentation data; see {@link #infoFor}. Only touched on the render thread. */
+    private static final double[] SCREEN_SCRATCH = new double[3];
+
     private static final class DropInfo {
         ItemStack stack;
         int count;
@@ -750,5 +758,7 @@ public class DropESP extends Module {
         TextRenderer worldWidthRenderer;
         double screenTextWidth;
         TextRenderer screenWidthRenderer;
+        double plainWidth;
+        TextRenderer plainWidthRenderer;
     }
 }
