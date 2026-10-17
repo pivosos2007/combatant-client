@@ -25,20 +25,16 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
     private static final Set<String> OPTIONAL_SODIUM_MIXINS = Set.of(
             "combatant.client.mixins.sodium.SodiumArenaAggregatorStrideMixin",
             "combatant.client.mixins.sodium.SodiumBlockRendererMixin",
-            "combatant.client.mixins.sodium.SodiumBlockMetadataCaptureMixin",
-            "combatant.client.mixins.sodium.SodiumBlockVisibilityMixin",
             "combatant.client.mixins.sodium.SodiumChunkMeshFormatsMixin",
             "combatant.client.mixins.sodium.SodiumChunkBuilderMeshingTaskMixin",
             "combatant.client.mixins.sodium.SodiumChunkVertexMixin",
             "combatant.client.mixins.sodium.SodiumDefaultFluidRendererMixin",
-            "combatant.client.mixins.sodium.SodiumFluidMetadataCaptureMixin",
-            "combatant.client.mixins.sodium.SodiumFluidMetadataMeshingTaskMixin",
-            "combatant.client.mixins.sodium.SodiumRenderRegionFluidMetadataMixin",
+            "combatant.client.mixins.sodium.SodiumRenderRegionManagerMixin",
             "combatant.client.mixins.sodium.SodiumRenderSectionSurfaceMixin",
             "combatant.client.mixins.sodium.SodiumDefaultChunkRendererMixin",
             "combatant.client.mixins.sodium.SodiumQueuedSectionStorageMixin",
             "combatant.client.mixins.sodium.SodiumRenderSectionManagerAccessor",
-            "combatant.client.mixins.sodium.SodiumRenderSectionManagerOcclusionMixin",
+            "combatant.client.mixins.sodium.SodiumWorldRendererMixin",
             "combatant.client.mixins.sodium.SodiumSortedRenderListsInvoker",
             "combatant.client.mixins.sodium.SodiumShaderChunkRendererMixin",
             "combatant.client.mixins.sodium.SodiumVertexConsumerTrackerMixin",
@@ -62,7 +58,6 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
             "combatant.client.mixins.iris.IrisCompositePassMixin",
             "combatant.client.mixins.iris.IrisCompositeRendererMixin",
             "combatant.client.mixins.iris.IrisExtendedShaderGeometryMixin",
-            "combatant.client.mixins.iris.IrisGameRendererInteropMixin",
             "combatant.client.mixins.iris.IrisGlFramebufferMsaaMixin",
             "combatant.client.mixins.iris.IrisHandRendererAccessor",
             "combatant.client.mixins.iris.IrisHandRendererMixin",
@@ -81,8 +76,7 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
             "combatant.client.mixins.iris.IrisRenderTargetsMsaaMixin",
             "combatant.client.mixins.iris.IrisShaderPackLoadMixin",
             "combatant.client.mixins.iris.IrisRenderingPipelineFinalizeMixin",
-            "combatant.client.mixins.iris.IrisShaderKeyMixin",
-            "combatant.client.mixins.iris.IrisVanillaHandInteropMixin"
+            "combatant.client.mixins.iris.IrisShaderKeyMixin"
     );
     private static final Set<String> DISABLED_WITH_IRIS_MIXINS = Set.of(
             "combatant.client.mixins.sodium.SodiumArenaAggregatorStrideMixin",

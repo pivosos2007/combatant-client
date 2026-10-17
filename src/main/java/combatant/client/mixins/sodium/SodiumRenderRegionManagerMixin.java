@@ -21,7 +21,7 @@ import java.util.Collection;
 /** Publishes staged fluid metadata only after Sodium installs the matching section build result. */
 @Pseudo
 @Mixin(targets = "net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegionManager", remap = false)
-public abstract class SodiumRenderRegionFluidMetadataMixin {
+public abstract class SodiumRenderRegionManagerMixin {
     @Inject(
             method = "uploadResults(Ljava/util/Collection;Lnet/caffeinemc/mods/sodium/client/render/chunk/UniformBufferManager;)V",
             at = @At("RETURN"),

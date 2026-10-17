@@ -4,6 +4,9 @@ import combatant.client.features.gui.hud.HudElementInfo;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputDevice;
+import combatant.client.input.InputKeys;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -16,7 +19,6 @@ import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.render.engine.text.TextRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * Dev-only, full-size optical calibration board. Each tile renders its own high-contrast
@@ -298,8 +300,7 @@ public final class DevLiquidGlassProbe extends DraggableHudElement {
             float viewH = viewport != null ? Math.max(1f, viewport.height()) : rawH;
             float mx = (float) mc.mouseHandler.xpos() / rawW * viewW;
             float my = (float) mc.mouseHandler.ypos() / rawH * viewH;
-            boolean down = GLFW.glfwGetMouseButton(mc.getWindow().handle(), GLFW.GLFW_MOUSE_BUTTON_LEFT)
-                    == GLFW.GLFW_PRESS;
+            boolean down = CombatantInput.state().isPressed(InputDevice.MOUSE, InputKeys.MOUSE_LEFT);
             interaction = owner.sample(mx, my, down, x, y, w, h,
                     optics.interactionViscosity(), optics.interactionStrength(), nowNanos, dismissing);
         }

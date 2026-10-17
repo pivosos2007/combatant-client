@@ -1,3 +1,10 @@
+import groovy.json.JsonSlurper
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.Opcodes
+import org.objectweb.asm.Type
+import org.objectweb.asm.tree.AnnotationNode
+import org.objectweb.asm.tree.ClassNode
+
 plugins {
     id 'net.fabricmc.fabric-loom' version '1.17.12'
     id 'maven-publish'
@@ -425,11 +432,439 @@ tasks.named("compileJava") {
     dependsOn tasks.named("verifyUiApiContract")
 }
 
+def validateMixinStructure = tasks.register("validateMixinStructure") {
+    group = "verification"
+    description = "Validates Mixin config membership, target ownership and static handlers."
+    def roots = [
+            [source: file("src/main/java"), config: file("src/main/resources/combatant.mixins.json")],
+            [source: file("src/dev/java"), config: file("src/dev/resources/combatant-dev.mixins.json")]
+    ]
+    inputs.files(roots.collect { it.config })
+    inputs.files(roots.collect { fileTree(it.source) { include "**/*.java" } })
+
+    doLast {
+        def failures = []
+        def allSources = [:]
+        def configuredByRoot = [:]
+
+        roots.each { root ->
+            def parsed = new JsonSlurper().parse(root.config)
+            def prefix = parsed.package + "."
+            def entries = []
+            [parsed.mixins, parsed.client, parsed.server].findAll { it instanceof Collection }.each {
+                entries.addAll(it.collect { name -> prefix + name })
+            }
+            def duplicateEntries = entries.groupBy { it }.findAll { key, values -> values.size() > 1 }.keySet()
+            duplicateEntries.each { failures.add("${root.config}: duplicate Mixin entry ${it}") }
+            configuredByRoot[root.source.absolutePath] = entries as Set
+
+            fileTree(root.source) { include "**/*.java" }.files.each { source ->
+                def text = source.getText("UTF-8")
+                if (!(text =~ /@Mixin\s*\(/).find()) return
+                def packageMatch = text =~ /(?m)^package\s+([\w.]+)\s*;/
+                def typeMatch = text =~ /(?m)^public\s+(?:abstract\s+|final\s+)?(class|interface)\s+(\w+)/
+                if (!packageMatch.find() || !typeMatch.find()) {
+                    failures.add("${source}: cannot resolve Mixin class declaration")
+                    return
+                }
+                def mixinClass = packageMatch.group(1) + "." + typeMatch.group(2)
+                def target = null
+                def classTarget = text =~ /@Mixin\s*\(\s*(?:value\s*=\s*)?(?:\{\s*)?([\w.$]+)\.class/
+                if (classTarget.find()) {
+                    def written = classTarget.group(1)
+                    def first = written.tokenize('.')[0]
+                    def importMatch = text =~ /(?m)^import\s+([\w.$]+\.${java.util.regex.Pattern.quote(first)})\s*;/
+                    target = importMatch.find()
+                            ? importMatch.group(1) + written.substring(first.length())
+                            : written
+                } else {
+                    def stringTarget = text =~ /@Mixin\s*\([^)]*targets\s*=\s*"([^"]+)"/
+                    if (stringTarget.find()) target = stringTarget.group(1)
+                }
+                if (target == null) failures.add("${source}: cannot resolve @Mixin target")
+                def injectionOwner = (text =~ /@(Inject|Redirect|ModifyVariable|ModifyArg|ModifyArgs|ModifyConstant|WrapOperation|WrapMethod|Overwrite)\b/).find()
+                allSources[mixinClass] = [file: source, target: target, kind: typeMatch.group(1), text: text,
+                                          injectionOwner: injectionOwner, root: root.source.absolutePath]
+            }
+        }
+
+        allSources.each { mixinClass, source ->
+            if (!configuredByRoot[source.root].contains(mixinClass)) {
+                failures.add("${source.file}: Mixin ${mixinClass} is absent from its mixin config")
+            }
+        }
+        configuredByRoot.each { rootPath, configured ->
+            configured.each { mixinClass ->
+                if (!allSources.containsKey(mixinClass)) {
+                    failures.add("Mixin config references missing class ${mixinClass}")
+                }
+            }
+        }
+
+        def mainConfigured = configuredByRoot[file("src/main/java").absolutePath]
+        def devConfigured = configuredByRoot[file("src/dev/java").absolutePath]
+        def activeMixins = (mainConfigured + devConfigured).findAll { allSources.containsKey(it) }
+        configuredByRoot.each { rootPath, configured ->
+            def injectionMixins = configured.findAll {
+                allSources.containsKey(it) && allSources[it].injectionOwner
+            }
+            injectionMixins.groupBy { allSources[it].target }
+                    .findAll { target, owners -> target != null && owners.size() > 1 }
+                    .each { target, owners ->
+                        failures.add("Mixin config for ${rootPath} gives target ${target} multiple owners: ${owners.sort().join(', ')}")
+                    }
+        }
+
+        def classpath = sourceSets.dev.compileClasspath.files.findAll { it.exists() }
+        def zipFiles = [:]
+        def accessCache = [:]
+        def targetAccess = { String target ->
+            if (accessCache.containsKey(target)) return accessCache[target]
+            String entryName = target.replace('.', '/') + ".class"
+            Integer access = null
+            for (File path : classpath) {
+                byte[] bytes = null
+                if (path.isDirectory()) {
+                    File candidate = new File(path, entryName)
+                    if (candidate.isFile()) bytes = candidate.bytes
+                } else if (path.name.endsWith(".jar")) {
+                    def zip = zipFiles.computeIfAbsent(path) { new java.util.zip.ZipFile(path) }
+                    def entry = zip.getEntry(entryName)
+                    if (entry != null) bytes = zip.getInputStream(entry).withCloseable { it.bytes }
+                }
+                if (bytes != null) {
+                    access = new ClassReader(bytes).access
+                    break
+                }
+            }
+            accessCache[target] = access
+            return access
+        }
+
+        try {
+            activeMixins.each { mixinClass ->
+                def source = allSources[mixinClass]
+                Integer access = source.target != null ? targetAccess(source.target as String) : null
+                if (access != null && (access & Opcodes.ACC_INTERFACE) != 0 && source.kind == "class") {
+                    failures.add("${source.file}: class Mixin ${mixinClass} targets interface ${source.target}")
+                }
+
+                def injection = source.text =~ /(?s)@(Inject|Redirect|ModifyVariable|ModifyArg|ModifyArgs|ModifyConstant|WrapOperation|WrapMethod)\s*\((.*?)\)\s*(?:\r?\n\s*@\w+(?:\([^)]*\))?\s*)*(?:private|protected|public)\s+(static\s+)?[\w<>?,.\[\] @$]+\s+\w+\s*\(/
+                while (injection.find()) {
+                    def annotation = injection.group(2)
+                    def methodMatch = annotation =~ /method\s*=\s*"([^"]+)"/
+                    if (!methodMatch.find() || source.target == null) continue
+                    def targetMethod = methodMatch.group(1).replaceFirst(/\(.*$/, "")
+                    if (targetMethod == "<init>" || targetMethod == "<clinit>") continue
+                    def methodAccesses = []
+                    String entryName = source.target.replace('.', '/') + ".class"
+                    for (File path : classpath) {
+                        byte[] bytes = null
+                        if (path.isDirectory()) {
+                            File candidate = new File(path, entryName)
+                            if (candidate.isFile()) bytes = candidate.bytes
+                        } else if (path.name.endsWith(".jar")) {
+                            def zip = zipFiles.computeIfAbsent(path) { new java.util.zip.ZipFile(path) }
+                            def entry = zip.getEntry(entryName)
+                            if (entry != null) bytes = zip.getInputStream(entry).withCloseable { it.bytes }
+                        }
+                        if (bytes != null) {
+                            new ClassReader(bytes).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9) {
+                                @Override
+                                org.objectweb.asm.MethodVisitor visitMethod(int methodAccess, String name, String descriptor,
+                                                                           String signature, String[] exceptions) {
+                                    if (name == targetMethod) methodAccesses.add(methodAccess)
+                                    return null
+                                }
+                            }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES)
+                            break
+                        }
+                    }
+                    if (methodAccesses && methodAccesses.every { (it & Opcodes.ACC_STATIC) != 0 }
+                            && injection.group(3) == null) {
+                        failures.add("${source.file}: handler for static target method ${source.target}.${targetMethod} must be static")
+                    }
+                }
+            }
+        } finally {
+            zipFiles.values().each { it.close() }
+        }
+
+        if (!failures.isEmpty()) {
+            failures.sort().each { logger.error("[Mixin validation] ${it}") }
+            throw new GradleException("Mixin structure validation failed with ${failures.size()} error(s)")
+        }
+    }
+}
+
+if (mixinValidationEnabled.get()) {
+    tasks.named("compileJava") {
+        dependsOn validateMixinStructure
+    }
+    tasks.named("compileDevJava") {
+        dependsOn validateMixinStructure
+    }
+}
+
+def validateMixinSignatures = tasks.register("validateMixinSignatures") {
+    group = "verification"
+    description = "Validates compiled @Inject handler descriptors against target bytecode."
+    dependsOn tasks.named("compileJava"), tasks.named("compileDevJava")
+    inputs.files(sourceSets.main.output.classesDirs, sourceSets.dev.output.classesDirs)
+    inputs.files(sourceSets.dev.compileClasspath)
+    inputs.files(file("src/main/resources/combatant.mixins.json"), file("src/dev/resources/combatant-dev.mixins.json"))
+
+    doLast {
+        def failures = []
+        def configured = []
+        [file("src/main/resources/combatant.mixins.json"), file("src/dev/resources/combatant-dev.mixins.json")].each { config ->
+            def parsed = new JsonSlurper().parse(config)
+            def prefix = parsed.package + "."
+            [parsed.mixins, parsed.client, parsed.server].findAll { it instanceof Collection }.each { entries ->
+                configured.addAll(entries.collect { prefix + it })
+            }
+        }
+
+        def outputDirs = (sourceSets.main.output.classesDirs.files + sourceSets.dev.output.classesDirs.files)
+                .findAll { it.exists() }
+        def classpath = (sourceSets.dev.compileClasspath.files + outputDirs).findAll { it.exists() }
+        def zipFiles = [:]
+        def classCache = [:]
+        def readClass = { String className ->
+            if (classCache.containsKey(className)) return classCache[className]
+            String entryName = className.replace('.', '/') + ".class"
+            byte[] bytes = null
+            for (File path : classpath) {
+                if (path.isDirectory()) {
+                    File candidate = new File(path, entryName)
+                    if (candidate.isFile()) bytes = candidate.bytes
+                } else if (path.name.endsWith(".jar")) {
+                    def zip = zipFiles.computeIfAbsent(path) { new java.util.zip.ZipFile(path) }
+                    def entry = zip.getEntry(entryName)
+                    if (entry != null) bytes = zip.getInputStream(entry).withCloseable { it.bytes }
+                }
+                if (bytes != null) break
+            }
+            ClassNode node = null
+            if (bytes != null) {
+                node = new ClassNode(Opcodes.ASM9)
+                new ClassReader(bytes).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES)
+            }
+            classCache[className] = node
+            return node
+        }
+        def annotationValue = { AnnotationNode annotation, String key ->
+            if (annotation?.values == null) return null
+            for (int index = 0; index < annotation.values.size(); index += 2) {
+                if (annotation.values[index] == key) return annotation.values[index + 1]
+            }
+            return null
+        }
+        def allAnnotations = { node ->
+            def annotations = []
+            if (node.visibleAnnotations != null) annotations.addAll(node.visibleAnnotations)
+            if (node.invisibleAnnotations != null) annotations.addAll(node.invisibleAnnotations)
+            return annotations
+        }
+
+        try {
+            configured.unique().each { mixinClass ->
+                ClassNode mixin = readClass(mixinClass)
+                if (mixin == null) {
+                    failures.add("Cannot read compiled Mixin class ${mixinClass}")
+                    return
+                }
+                AnnotationNode mixinAnnotation = allAnnotations(mixin).find {
+                    it.desc == "Lorg/spongepowered/asm/mixin/Mixin;"
+                }
+                if (mixinAnnotation == null) return
+
+                def targets = []
+                def typedTargets = annotationValue(mixinAnnotation, "value")
+                if (typedTargets instanceof Collection) {
+                    typedTargets.each { value ->
+                        if (value instanceof Type) targets.add(value.className)
+                    }
+                }
+                def stringTargets = annotationValue(mixinAnnotation, "targets")
+                if (stringTargets instanceof Collection) targets.addAll(stringTargets)
+
+                mixin.methods.each { handler ->
+                    def handlerAnnotations = allAnnotations(handler)
+                    def injectorDescriptors = [
+                            "Lorg/spongepowered/asm/mixin/injection/Inject;",
+                            "Lorg/spongepowered/asm/mixin/injection/Redirect;",
+                            "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;",
+                            "Lorg/spongepowered/asm/mixin/injection/ModifyArg;",
+                            "Lorg/spongepowered/asm/mixin/injection/ModifyArgs;",
+                            "Lorg/spongepowered/asm/mixin/injection/ModifyConstant;",
+                            "Lcom/llamalad7/mixinextras/injector/ModifyExpressionValue;",
+                            "Lcom/llamalad7/mixinextras/injector/ModifyReturnValue;",
+                            "Lcom/llamalad7/mixinextras/injector/wrapmethod/WrapMethod;",
+                            "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;"
+                    ] as Set
+                    handlerAnnotations.findAll { injectorDescriptors.contains(it.desc) }.each { injector ->
+                        if ((handler.access & Opcodes.ACC_PRIVATE) == 0) {
+                            failures.add("${mixinClass}.${handler.name}${handler.desc}: injector handler must be private")
+                        }
+                        def injectorSelectors = annotationValue(injector, "method")
+                        if (injectorSelectors instanceof String) injectorSelectors = [injectorSelectors]
+                        if (!(injectorSelectors instanceof Collection)) return
+                        targets.each { targetClass ->
+                            ClassNode target = readClass(targetClass as String)
+                            if (target == null) return
+                            injectorSelectors.each { rawSelector ->
+                                String selector = rawSelector as String
+                                int descriptorStart = selector.indexOf('(')
+                                String targetName = descriptorStart >= 0 ? selector.substring(0, descriptorStart) : selector
+                                String explicitDescriptor = descriptorStart >= 0 ? selector.substring(descriptorStart) : null
+                                if (targetName.contains(';')) targetName = targetName.substring(targetName.lastIndexOf(';') + 1)
+                                String namePattern = targetName.split("\\*", -1)
+                                        .collect { java.util.regex.Pattern.quote(it) }
+                                        .join(".*")
+                                boolean exists = target.methods.any { method ->
+                                    method.name ==~ namePattern && (explicitDescriptor == null || method.desc == explicitDescriptor)
+                                }
+                                if (!exists) {
+                                    failures.add("${mixinClass}.${handler.name}${handler.desc}: injector target ${targetClass}.${selector} does not exist")
+                                    return
+                                }
+
+                                def atValue = annotationValue(injector, "at")
+                                def atAnnotations = atValue instanceof Collection ? atValue : atValue instanceof AnnotationNode ? [atValue] : []
+                                atAnnotations.each { AnnotationNode at ->
+                                    String atKind = annotationValue(at, "value") as String
+                                    String instructionTarget = annotationValue(at, "target") as String
+                                    if (instructionTarget == null || instructionTarget.isEmpty()) return
+                                    def member = instructionTarget =~ /^L([^;]+);([^(:]+)(\(.*|:.*)$/
+                                    if (!member.matches()) return
+                                    String owner = member.group(1)
+                                    String memberName = member.group(2)
+                                    String memberDescriptor = member.group(3)
+                                    boolean instructionExists = target.methods.findAll { method ->
+                                        method.name ==~ namePattern && (explicitDescriptor == null || method.desc == explicitDescriptor)
+                                    }.any { targetMethod ->
+                                        for (def instruction = targetMethod.instructions?.first; instruction != null; instruction = instruction.next) {
+                                            if (memberDescriptor.startsWith("(")
+                                                    && instruction instanceof org.objectweb.asm.tree.MethodInsnNode
+                                                    && instruction.owner == owner
+                                                    && instruction.name == memberName
+                                                    && instruction.desc == memberDescriptor) return true
+                                            if (memberDescriptor.startsWith(":")
+                                                    && instruction instanceof org.objectweb.asm.tree.FieldInsnNode
+                                                    && instruction.owner == owner
+                                                    && instruction.name == memberName
+                                                    && instruction.desc == memberDescriptor.substring(1)) return true
+                                        }
+                                        return false
+                                    }
+                                    if (!instructionExists) {
+                                        failures.add("${mixinClass}.${handler.name}${handler.desc}: @At(${atKind}) target ${instructionTarget} is absent from ${targetClass}.${selector}")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    AnnotationNode inject = handlerAnnotations.find {
+                        it.desc == "Lorg/spongepowered/asm/mixin/injection/Inject;"
+                    }
+                    if (inject == null) return
+                    def selectors = annotationValue(inject, "method")
+                    if (selectors instanceof String) selectors = [selectors]
+                    if (!(selectors instanceof Collection) || selectors.isEmpty()) {
+                        failures.add("${mixinClass}.${handler.name}${handler.desc}: @Inject has no method selector")
+                        return
+                    }
+
+                    Type[] handlerArguments = Type.getArgumentTypes(handler.desc)
+                    int callbackIndex = -1
+                    for (int index = 0; index < handlerArguments.length; index++) {
+                        String internalName = handlerArguments[index].sort == Type.OBJECT
+                                ? handlerArguments[index].internalName : ""
+                        if (internalName == "org/spongepowered/asm/mixin/injection/callback/CallbackInfo"
+                                || internalName == "org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable") {
+                            callbackIndex = index
+                            break
+                        }
+                    }
+                    if (callbackIndex < 0) {
+                        failures.add("${mixinClass}.${handler.name}${handler.desc}: @Inject handler has no CallbackInfo parameter")
+                        return
+                    }
+                    Type[] capturedArguments = handlerArguments.take(callbackIndex) as Type[]
+
+                    targets.each { targetClass ->
+                        ClassNode target = readClass(targetClass as String)
+                        if (target == null) {
+                            return
+                        }
+                        selectors.each { rawSelector ->
+                            String selector = rawSelector as String
+                            int descriptorStart = selector.indexOf('(')
+                            String targetName = descriptorStart >= 0 ? selector.substring(0, descriptorStart) : selector
+                            String explicitDescriptor = descriptorStart >= 0 ? selector.substring(descriptorStart) : null
+                            if (targetName.contains(';')) targetName = targetName.substring(targetName.lastIndexOf(';') + 1)
+                            String namePattern = targetName.split("\\*", -1)
+                                    .collect { java.util.regex.Pattern.quote(it) }
+                                    .join(".*")
+                            def candidates = target.methods.findAll { method ->
+                                method.name ==~ namePattern && (explicitDescriptor == null || method.desc == explicitDescriptor)
+                            }
+                            if (candidates.isEmpty()) {
+                                failures.add("${mixinClass}.${handler.name}${handler.desc}: target ${targetClass}.${selector} does not exist")
+                                return
+                            }
+
+                            def matching = candidates.findAll { targetMethod ->
+                                Type[] targetArguments = Type.getArgumentTypes(targetMethod.desc)
+                                boolean argumentsMatch = capturedArguments.length == 0 ||
+                                        (capturedArguments.length == targetArguments.length
+                                                && capturedArguments.indices.every { argumentIndex ->
+                                                    boolean coerced = handler.invisibleParameterAnnotations != null
+                                                            && argumentIndex < handler.invisibleParameterAnnotations.length
+                                                            && handler.invisibleParameterAnnotations[argumentIndex]?.any {
+                                                                it.desc == "Lorg/spongepowered/asm/mixin/injection/Coerce;"
+                                                            }
+                                                    coerced = coerced || (handler.visibleParameterAnnotations != null
+                                                            && argumentIndex < handler.visibleParameterAnnotations.length
+                                                            && handler.visibleParameterAnnotations[argumentIndex]?.any {
+                                                                it.desc == "Lorg/spongepowered/asm/mixin/injection/Coerce;"
+                                                            })
+                                                    coerced || capturedArguments[argumentIndex] == targetArguments[argumentIndex]
+                                                })
+                                boolean callbackMatches = Type.getReturnType(targetMethod.desc).sort == Type.VOID
+                                        ? handlerArguments[callbackIndex].internalName == "org/spongepowered/asm/mixin/injection/callback/CallbackInfo"
+                                        : handlerArguments[callbackIndex].internalName == "org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable"
+                                boolean staticMatches = (targetMethod.access & Opcodes.ACC_STATIC) == 0 ||
+                                        (handler.access & Opcodes.ACC_STATIC) != 0
+                                return argumentsMatch && callbackMatches && staticMatches
+                            }
+                            if (matching.isEmpty()) {
+                                def expected = candidates.collect { it.name + it.desc }.join(" or ")
+                                failures.add("${mixinClass}.${handler.name}${handler.desc}: handler signature does not match ${targetClass} ${expected}")
+                            }
+                        }
+                    }
+                }
+            }
+        } finally {
+            zipFiles.values().each { it.close() }
+        }
+
+        if (!failures.isEmpty()) {
+            failures.unique().sort().each { logger.error("[Mixin signature validation] ${it}") }
+            throw new GradleException("Mixin signature validation failed with ${failures.unique().size()} error(s)")
+        }
+    }
+}
+
 def validateMixins = tasks.register("validateMixins", JavaCompile) {
     group = "verification"
     description = "Validates Mixin targets and hooks with the SpongePowered annotation processor."
-    source = sourceSets.main.java
-    classpath = sourceSets.main.compileClasspath
+    dependsOn validateMixinStructure, validateMixinSignatures
+    source = sourceSets.main.java + sourceSets.dev.java
+    classpath = sourceSets.dev.compileClasspath
     destinationDirectory = layout.buildDirectory.dir("mixin-validation/classes")
     javaCompiler = javaToolchains.compilerFor {
         languageVersion = JavaLanguageVersion.of(targetJavaVersion)
@@ -756,6 +1191,9 @@ tasks.register("buildDev") {
     group = "build"
     description = "Builds Combatant with development source set and dev metadata enabled."
     dependsOn "build"
+    if (mixinValidationEnabled.get()) {
+        dependsOn validateMixins
+    }
 }
 
 // configure the maven publication

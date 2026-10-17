@@ -15,8 +15,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
- * Sodium 0.9.2 sizes its geometry arena from {@code ChunkMeshFormats.COMPACT} instead of
- * {@code getCurrent()}. With Combatant's wider terrain vertex the region upload then dies with
+ * Sodium 0.9.2 sizes its geometry arena from {@code ChunkMeshFormats.getCurrent()}. With Combatant's wider terrain vertex the region upload then dies with
  * "Unsupported stride: 44", so the arena has to learn the extended stride. Sodium 0.9.1 has no
  * ArenaAggregator, hence {@link Pseudo}.
  */
@@ -25,7 +24,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 public abstract class SodiumArenaAggregatorStrideMixin {
     @Redirect(
             method = "<init>",
-            at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/vertex/VertexFormat;getVertexSize()I"),
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/api/vertex/VertexFormat;getVertexSize()I"),
             remap = false
     )
     private int combatant$extendedGeometryStride(VertexFormat compactFormat) {

@@ -67,6 +67,24 @@ import java.util.List;
 @Mixin(LocalPlayer.class)
 public abstract class LocalPlayerMixin implements ILocalPlayer {
 
+    @ModifyExpressionValue(
+            method = "modifyInput",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;itemUseSpeedMultiplier()F")
+    )
+    private float combatant$noSlowNeutralize(float original) {
+        NoSlow noSlow = Modules.get(NoSlow.class);
+        if (noSlow != null && noSlow.shouldModifyInput((LocalPlayer) (Object) this)) return 1.0f;
+        return original;
+    }
+
+    @Inject(method = "modifyInput", at = @At("RETURN"), cancellable = true)
+    private void combatant$noSlowApply(Vec2 input, CallbackInfoReturnable<Vec2> cir) {
+        NoSlow noSlow = Modules.get(NoSlow.class);
+        LocalPlayer self = (LocalPlayer) (Object) this;
+        if (noSlow == null || !noSlow.shouldModifyInput(self)) return;
+        cir.setReturnValue(noSlow.getModifiedInput(cir.getReturnValue(), self));
+    }
+
     @Shadow
     public ClientInput input;
     @Unique
@@ -561,7 +579,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
     }
 
     @ModifyExpressionValue(
-            method = "tick",
+            method = "applyInput",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/player/LocalPlayer;getYRot()F"
@@ -575,7 +593,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
     }
 
     @ModifyExpressionValue(
-            method = "tick",
+            method = "applyInput",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/player/LocalPlayer;getXRot()F"
@@ -587,7 +605,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
     }
 
     @Inject(
-            method = "tick",
+            method = "sendChanges",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/player/LocalPlayer;sendPosition()V",

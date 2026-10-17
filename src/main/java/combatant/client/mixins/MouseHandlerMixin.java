@@ -8,6 +8,8 @@
 package combatant.client.mixins;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import combatant.client.features.gui.mainmenu.CombatantProxyManagerScreen;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
@@ -43,9 +45,20 @@ import combatant.client.input.event.MouseInputEvent;
 import combatant.client.input.event.ScrollInputEvent;
 import combatant.client.input.minecraft.MinecraftInputAdapter;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.util.player.inventory.InventorySwap;
 
 @Mixin(MouseHandler.class)
-public class MouseMixin {
+public class MouseHandlerMixin {
+
+    @WrapMethod(method = "onScroll")
+    private void combatant$clientViewScroll(long window, double xOffset, double yOffset, Operation<Void> original) {
+        InventorySwap.INSTANCE.beginClientView();
+        try {
+            original.call(window, xOffset, yOffset);
+        } finally {
+            InventorySwap.INSTANCE.endClientView();
+        }
+    }
 
 
     @Unique
@@ -63,7 +76,7 @@ public class MouseMixin {
 
     // ===== Mouse scroll for ClickGUI =====
     @Inject(method = "onScroll", at = @At("HEAD"), cancellable = true)
-    public void onMouseScroll(long window, double horizontal, double vertical, CallbackInfo ci) {
+    private void onMouseScroll(long window, double horizontal, double vertical, CallbackInfo ci) {
         ScrollInputEvent event = MinecraftInputAdapter.scroll(lastX, lastY, horizontal, vertical);
         if (event.isCancelled()) {
             ci.cancel();
@@ -155,7 +168,7 @@ public class MouseMixin {
 
     // ===== Mouse move for ClickGUI =====
     @Inject(method = "onMove", at = @At("HEAD"), cancellable = true)
-    private void clickGuiCursorMove(long window, double x, double y, CallbackInfo ci) {
+    private void clickGuiCursorMove(long window, double x, double y, double deltaX, double deltaY, CallbackInfo ci) {
 
         Minecraft mc = Minecraft.getInstance();
 

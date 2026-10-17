@@ -20,6 +20,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.events.Events;
 import combatant.client.events.impl.PlayerMoveEvent;
 import combatant.client.events.impl.PlayerStepSuccessEvent;
@@ -127,20 +128,12 @@ public abstract class EntityMixin implements IEntity {
         return event.getVelocity();
     }
 
-    @ModifyVariable(
-            method = "calculateViewVector(FF)Lnet/minecraft/world/phys/Vec3;",
-            at = @At("HEAD"),
-            ordinal = 0,
-            argsOnly = true
-    )
-    private float combatant$rotationVectorPitch(float pitch) {
-        if (!((Object) this instanceof LocalPlayer)) {
-            return pitch;
+    @Inject(method = "getViewXRot", at = @At("RETURN"), cancellable = true)
+    private void combatant$rotationVectorPitch(float partialTick, CallbackInfoReturnable<Float> cir) {
+        if (!((Object) this instanceof LocalPlayer)) return;
+        if (RotationManager.INSTANCE.getCurrentRotation() != null) {
+            cir.setReturnValue(RotationManager.INSTANCE.getCurrentRotation().pitch());
         }
-
-        return RotationManager.INSTANCE.getCurrentRotation() != null
-                ? RotationManager.INSTANCE.getCurrentRotation().pitch()
-                : pitch;
     }
 
     @Redirect(

@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.deferred;
 
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 import combatant.client.render.engine.framegraph.FrameGraphResourceKey;
 
 import static combatant.client.render.engine.deferred.DeferredTextureSpec.SamplePolicy.MATCH_SCENE;

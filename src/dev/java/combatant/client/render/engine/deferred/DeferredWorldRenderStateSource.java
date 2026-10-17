@@ -29,11 +29,11 @@ import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.resources.Identifier;
-import net.minecraft.util.ARGB;
 import net.minecraft.world.attribute.EnvironmentAttributeProbe;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3fc;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -230,16 +230,16 @@ final class DeferredWorldRenderStateSource {
         try {
             EnvironmentAttributeProbe probe = camera.attributeProbe();
             float skyFactor = finite(probe.getValue(EnvironmentAttributes.SKY_LIGHT_FACTOR, partialTick), 0.0f);
-            int skyLight = probe.getValue(EnvironmentAttributes.SKY_LIGHT_COLOR, partialTick);
-            int blockLight = probe.getValue(EnvironmentAttributes.BLOCK_LIGHT_TINT, partialTick);
-            int ambient = probe.getValue(EnvironmentAttributes.AMBIENT_LIGHT_COLOR, partialTick);
-            int skyBackground = probe.getValue(EnvironmentAttributes.SKY_COLOR, partialTick);
+            Vector3fc skyLight = probe.getValue(EnvironmentAttributes.SKY_LIGHT_COLOR, partialTick);
+            Vector3fc blockLight = probe.getValue(EnvironmentAttributes.BLOCK_LIGHT_TINT, partialTick);
+            Vector3fc ambient = probe.getValue(EnvironmentAttributes.AMBIENT_LIGHT_COLOR, partialTick);
+            Vector3fc skyBackground = probe.getValue(EnvironmentAttributes.SKY_COLOR, partialTick);
             MinecraftBaselineLightState state = new MinecraftBaselineLightState(
                     true, hasSkyLight, skyFactor, dimensionAmbient,
-                    ARGB.redFloat(skyLight), ARGB.greenFloat(skyLight), ARGB.blueFloat(skyLight),
-                    ARGB.redFloat(blockLight), ARGB.greenFloat(blockLight), ARGB.blueFloat(blockLight),
-                    ARGB.redFloat(ambient), ARGB.greenFloat(ambient), ARGB.blueFloat(ambient),
-                    ARGB.redFloat(skyBackground), ARGB.greenFloat(skyBackground), ARGB.blueFloat(skyBackground)
+                    finite(skyLight.x(), 1.0f), finite(skyLight.y(), 1.0f), finite(skyLight.z(), 1.0f),
+                    finite(blockLight.x(), 1.0f), finite(blockLight.y(), 1.0f), finite(blockLight.z(), 1.0f),
+                    finite(ambient.x(), dimensionAmbient), finite(ambient.y(), dimensionAmbient), finite(ambient.z(), dimensionAmbient),
+                    finite(skyBackground.x(), 0.0f), finite(skyBackground.y(), 0.0f), finite(skyBackground.z(), 0.0f)
             );
             lastBaselineFailure = "";
             return new BaselineCapture(state,

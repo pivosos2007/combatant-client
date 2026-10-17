@@ -5,6 +5,9 @@
   "package": "combatant.client.mixins",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "DevDeferredClientPacketListenerMixin",
+    "DevDeferredGameRendererMixin",
+    "DevDeferredLevelRendererMixin",
     "ProfilersMixin"
   ],
   "injectors": {

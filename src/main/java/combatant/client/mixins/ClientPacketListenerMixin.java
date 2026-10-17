@@ -13,6 +13,8 @@ import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.*;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
@@ -48,6 +50,41 @@ import java.util.regex.Pattern;
 
 @Mixin(ClientPacketListener.class)
 public abstract class ClientPacketListenerMixin {
+
+    @Unique
+    private static boolean combatant$removingCrystal;
+
+    @Inject(method = "handleAddEntity", at = @At("TAIL"))
+    private void combatant$autoCrystalSpawn(ClientboundAddEntityPacket packet, CallbackInfo ci) {
+        if (packet.getType() != EntityTypes.END_CRYSTAL) return;
+        ClientLevel level = Minecraft.getInstance().level;
+        var autoCrystal = Modules.get(combatant.client.features.module.modules.combat.AutoCrystal.class);
+        if (level == null || autoCrystal == null) return;
+        if (level.getEntity(packet.getId()) instanceof EndCrystal crystal) autoCrystal.onCrystalSpawned(crystal);
+    }
+
+    @Inject(method = "handleRemoveEntities", at = @At("HEAD"))
+    private void combatant$autoCrystalRemoveHead(ClientboundRemoveEntitiesPacket packet, CallbackInfo ci) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!minecraft.isSameThread()) return;
+        combatant$removingCrystal = false;
+        ClientLevel level = minecraft.level;
+        if (level == null) return;
+        for (int id : packet.entityIds()) {
+            if (level.getEntity(id) instanceof EndCrystal) {
+                combatant$removingCrystal = true;
+                return;
+            }
+        }
+    }
+
+    @Inject(method = "handleRemoveEntities", at = @At("TAIL"))
+    private void combatant$autoCrystalRemoveTail(ClientboundRemoveEntitiesPacket packet, CallbackInfo ci) {
+        if (!combatant$removingCrystal) return;
+        combatant$removingCrystal = false;
+        var autoCrystal = Modules.get(combatant.client.features.module.modules.combat.AutoCrystal.class);
+        if (autoCrystal != null) autoCrystal.onCrystalsRemoved();
+    }
 
     @Unique
     private boolean combatant$restoreServerRotation;

@@ -6,12 +6,11 @@
  */
 package combatant.client.mixins;
 
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.deferred.DevDeferredRuntime;
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.LevelRenderer;
 import org.joml.Matrix4fc;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,15 +18,15 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Primary-view and cloud ownership hooks for the dev deferred renderer. */
 @Mixin(LevelRenderer.class)
 public abstract class DevDeferredLevelRendererMixin {
     @Inject(method = "render", at = @At("HEAD"))
     private void combatant$devDeferredPrimaryView(
-            GraphicsResourceAllocator allocator, DeltaTracker tickCounter, boolean renderBlockOutline,
+            GraphicsResourceAllocator allocator, boolean renderBlockOutline,
             net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState,
-            Matrix4fc positionMatrix, GpuBufferSlice fogBuffer, org.joml.Vector4f fogColor,
-            boolean renderSky, CallbackInfo ci) {
+            GpuBufferSlice fogBuffer, org.joml.Vector4f fogColor,
+            boolean renderSky, boolean consistentDepthRequired, CallbackInfo ci) {
+        Matrix4fc positionMatrix = cameraRenderState != null ? cameraRenderState.viewRotationMatrix : null;
         if (cameraRenderState == null || cameraRenderState.pos == null || positionMatrix == null) return;
         var frame = CombatantRenderSystem.ensureFrameContext();
         var projection = CombatantWorldMatrices.renderProjectionMatrix();

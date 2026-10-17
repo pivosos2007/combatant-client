@@ -9,15 +9,24 @@ package combatant.client.mixins.sodium;
 
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.commands.RenderPass;
+import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.client.renderer.oit.OitStage;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.postprocess.TemporalAntiAliasingPass;
+import combatant.client.render.sodium.SodiumWorldVisibilityView;
+import combatant.client.util.render.CameraOcclusionPolicy;
+import combatant.client.features.module.Modules;
+import combatant.client.features.module.modules.visuals.Freecam;
 import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import net.caffeinemc.mods.sodium.client.util.FogParameters;
+import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
+import net.minecraft.client.Camera;
+import net.minecraft.world.phys.AABB;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
@@ -28,7 +37,42 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * as vanilla/entity feature rendering without cancelling or replacing the production draw.
  */
 @Mixin(value = SodiumWorldRenderer.class, remap = false)
-public abstract class SodiumWorldRendererTerrainMixin {
+public abstract class SodiumWorldRendererMixin implements SodiumWorldVisibilityView {
+    @Shadow(remap = false)
+    public abstract boolean isBoxVisible(double minX, double minY, double minZ,
+                                         double maxX, double maxY, double maxZ);
+
+    @Override
+    public boolean combatant$isBoxVisible(AABB box) {
+        return isBoxVisible(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
+    }
+
+    @ModifyVariable(
+            method = "setupTerrain(Lnet/minecraft/client/Camera;Lnet/caffeinemc/mods/sodium/client/render/viewport/Viewport;Lnet/caffeinemc/mods/sodium/client/util/FogParameters;ZZLorg/joml/Matrix4f;)V",
+            at = @At("HEAD"),
+            argsOnly = true,
+            ordinal = 0
+    )
+    private boolean combatant$sectionOcclusion(boolean useOcclusionCulling,
+                                                @Local(argsOnly = true) Camera camera) {
+        if (!useOcclusionCulling || CameraOcclusionPolicy.shouldDisableSectionOcclusion(camera)) return false;
+        Freecam freecam = Modules.get(Freecam.class);
+        return freecam == null || !freecam.isEnabled() || freecam.camEntity == null;
+    }
+
+    @Inject(method = "setupTerrain(Lnet/minecraft/client/Camera;Lnet/caffeinemc/mods/sodium/client/render/viewport/Viewport;Lnet/caffeinemc/mods/sodium/client/util/FogParameters;ZZLorg/joml/Matrix4f;)V", at = @At("HEAD"), remap = false)
+    private void combatant$primaryVisibilityPending(Camera camera, Viewport viewport, FogParameters fog,
+                                                    boolean useOcclusionCulling, boolean updateChunksImmediately,
+                                                    org.joml.Matrix4f projection, CallbackInfo ci) {
+        CombatantRenderSystem.sodium().markPrimaryVisibilityPending();
+    }
+
+    @Inject(method = "setupTerrain(Lnet/minecraft/client/Camera;Lnet/caffeinemc/mods/sodium/client/render/viewport/Viewport;Lnet/caffeinemc/mods/sodium/client/util/FogParameters;ZZLorg/joml/Matrix4f;)V", at = @At("RETURN"), remap = false)
+    private void combatant$primaryVisibilityReady(Camera camera, Viewport viewport, FogParameters fog,
+                                                  boolean useOcclusionCulling, boolean updateChunksImmediately,
+                                                  org.joml.Matrix4f projection, CallbackInfo ci) {
+        CombatantRenderSystem.sodium().markPrimaryVisibilityReady();
+    }
     /**
      * Sodium snapshots the projection in its own GameRenderer mixin and later passes that
      * snapshot through ChunkRenderMatrices. Combatant jitters the RenderSystem projection at
