@@ -32,7 +32,6 @@ import combatant.client.mixininterface.IEntity;
 import combatant.client.mixins.accessors.EntityAccessor;
 import combatant.client.mixins.accessors.EntityInvoker;
 import combatant.client.render.helpers.TrailPoint;
-import combatant.client.util.aiming.RotationManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -126,14 +125,6 @@ public abstract class EntityMixin implements IEntity {
         PlayerVelocityStrafe event = new PlayerVelocityStrafe(movementInput, speed, yaw, vanilla);
         Events.BUS.post(event);
         return event.getVelocity();
-    }
-
-    @Inject(method = "getViewXRot", at = @At("RETURN"), cancellable = true)
-    private void combatant$rotationVectorPitch(float partialTick, CallbackInfoReturnable<Float> cir) {
-        if (!((Object) this instanceof LocalPlayer)) return;
-        if (RotationManager.INSTANCE.getCurrentRotation() != null) {
-            cir.setReturnValue(RotationManager.INSTANCE.getCurrentRotation().pitch());
-        }
     }
 
     @Redirect(

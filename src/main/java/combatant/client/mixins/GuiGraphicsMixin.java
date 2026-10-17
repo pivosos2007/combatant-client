@@ -132,7 +132,7 @@ public abstract class GuiGraphicsMixin implements IGuiGraphics {
     }
 
     @Inject(
-            method = "setTooltipForNextFrameInternal(Lnet/minecraft/client/gui/Font;Ljava/util/List;IILnet/minecraft/client/gui/screens/inventory/tooltip/ClientTooltipPositioner;Lnet/minecraft/resources/Identifier;Z)V",
+            method = "setTooltipForNextFrameInternal(Lnet/minecraft/client/gui/Font;Ljava/util/List;IILnet/minecraft/client/gui/screens/inventory/tooltip/ClientTooltipPositioner;Lnet/minecraft/resources/Identifier;ZZ)V",
             at = @At("HEAD"),
             cancellable = true
     )
@@ -142,6 +142,7 @@ public abstract class GuiGraphicsMixin implements IGuiGraphics {
                                                   ClientTooltipPositioner positioner,
                                                   net.minecraft.resources.Identifier style,
                                                   boolean replaceExisting,
+                                                  boolean vanillaTooltipPositionFlag,
                                                   CallbackInfo ci) {
         ItemStack stack = combatant$tooltipStackContext;
         if (stack == null || stack.isEmpty()) {

@@ -100,6 +100,8 @@ import combatant.client.util.player.inventory.InventorySwap;
 public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     @Unique
     private SubmitNodeStorage combatant$pendingChamsHandSnapshot;
+    @Unique
+    private boolean combatant$nativeIrisHandPrepared;
 
     @WrapMethod(method = "tick")
     private void combatant$clientViewTick(Operation<Void> original) {
@@ -923,6 +925,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     @Inject(method = "renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V", at = @At("HEAD"), cancellable = true)
     private void freecam$hand(CameraRenderState cameraRenderState, PlayerRenderState playerRenderState, GpuTextureView depthTextureView, CallbackInfo ci) {
         combatant$pendingChamsHandSnapshot = null;
+        combatant$nativeIrisHandPrepared = false;
         if (ClickGuiRenderer.suppressesBackgroundRendering() || VisualPreviewRuntime.isActive()) {
             ci.cancel();
             return;
@@ -937,25 +940,40 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             method = "renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V",
             at = @At(
                     value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;prepareFrame(Lnet/minecraft/client/renderer/SubmitNodeStorage;)Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;"
+            )
+    )
+    private FeatureRenderDispatcher.PreparedFrame combatant$prepareHandFrame(
+            FeatureRenderDispatcher dispatcher,
+            SubmitNodeStorage storage,
+            Operation<FeatureRenderDispatcher.PreparedFrame> original,
+            CameraRenderState cameraRenderState,
+            PlayerRenderState playerRenderState,
+            GpuTextureView depthTextureView,
+            @Local(ordinal = 0) PoseStack handPoseStack) {
+        combatant$nativeIrisHandPrepared = IrisCompatibilityGuards.suppressIrisHandRendering()
+                && IrisRuntime.submitNativeHandScene(
+                        cameraRenderState.cameraEntityPartialTicks, handPoseStack, storage);
+
+        Chams module = Modules.get(Chams.class);
+        combatant$pendingChamsHandSnapshot = module != null
+                ? module.snapshotPreparedHandScene(storage)
+                : null;
+        return original.call(dispatcher, storage);
+    }
+
+    @WrapOperation(
+            method = "renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V",
+            at = @At(
+                    value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;renderAllFeatures(Lcom/mojang/renderpearl/api/commands/RenderPass;Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;)V"
             )
     )
-    private void combatant$snapshotChamsHandPreparedFrame(RenderPass renderPass,
-                                                          FeatureRenderDispatcher.PreparedFrame frame,
-                                                          Operation<Void> original,
-                                                          CameraRenderState cameraRenderState,
-                                                          PlayerRenderState playerRenderState,
-                                                          GpuTextureView depthTextureView,
-                                                          @Local(ordinal = 0) PoseStack handPoseStack) {
-        float tickDelta = cameraRenderState.cameraEntityPartialTicks;
-        SubmitNodeStorage storage = this.handAndScreenSubmitNodeStorage;
-        boolean nativeIrisHand = IrisCompatibilityGuards.suppressIrisHandRendering()
-                && IrisRuntime.submitNativeHandScene(tickDelta, handPoseStack, storage);
-
-        Chams module = Modules.get(Chams.class);
-        combatant$pendingChamsHandSnapshot = module != null ? module.snapshotPreparedHandScene(storage) : null;
-
-        // renderAllFeatures() consumes the live hand storage, so only the isolated snapshot survives this call.
+    private void combatant$renderPreparedHandFrame(RenderPass renderPass,
+                                                   FeatureRenderDispatcher.PreparedFrame frame,
+                                                   Operation<Void> original) {
+        boolean nativeIrisHand = combatant$nativeIrisHandPrepared;
+        combatant$nativeIrisHandPrepared = false;
         if (nativeIrisHand) {
             IrisRuntime.runWithNativeShaderBypass(() -> original.call(renderPass, frame));
         } else {

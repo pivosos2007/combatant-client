@@ -406,7 +406,7 @@ public class Chams extends Module {
     }
 
     public SubmitNodeStorage snapshotPreparedHandScene(SubmitNodeStorage storage) {
-        // renderAllFeatures() consumes/clears its SubmitNodeStorage in 26.2. Chams must never feed
+        // prepareFrame() consumes/clears its SubmitNodeStorage. Chams must never feed
         // Minecraft's live hand storage into the auxiliary mask dispatcher, otherwise the real
         // vanilla hand pass that follows has no submits left to draw.
         if (IrisRuntime.isShaderpackRendererActive() && !VisualPreviewRuntime.isRenderingSubject()) return null;
