@@ -22,6 +22,7 @@ import combatant.client.events.impl.PostPlayerUpdateEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
+import combatant.client.features.module.ModuleListInfoProvider;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.input.CombatantInput;
 import combatant.client.input.InputScope;
@@ -385,6 +386,18 @@ public class Timer extends Module {
         vulcanWindow[vulcanWindowHead] = fast;
         if (fast) vulcanFastCount++;
         vulcanWindowHead = (vulcanWindowHead + 1) % VULCAN_WINDOW_SIZE;
+    }
+
+    @ModuleListInfoProvider
+    private String moduleListDetail() {
+        return switch (mode.get()) {
+            case NORMAL -> "Normal";
+            case MATRIX -> "Matrix";
+            case SHIFT -> "Shift";
+            case GRIM -> "Grim";
+            case GRIM_CONCEPT -> "Grim Concept";
+            case VULCAN -> "Vulcan";
+        };
     }
 
     public Mode getMode() {

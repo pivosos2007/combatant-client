@@ -54,7 +54,7 @@ public final class MsdfTextBackend implements TextBackend {
     public void draw(TextDrawCommand command, TextPlacementTransform placement, RenderFrameContext context, CombatantRhi rhi) {
         TextRenderer renderer = command.renderer() != null ? command.renderer() : TextRenderer.get();
         boolean wasBuilding = renderer.isBuilding();
-        if (!wasBuilding) renderer.begin(command.size(), false, command.big());
+        if (!wasBuilding) renderer.begin(command.size(), false, command.big(), command.preference());
         try {
             renderer.render(command.text(), command.x(), command.y(), command.color(), command.shadow());
         } finally {
@@ -68,7 +68,7 @@ public final class MsdfTextBackend implements TextBackend {
         TextDrawCommand first = commands.get(start);
         TextRenderer renderer = first.renderer() != null ? first.renderer() : TextRenderer.get();
         boolean wasBuilding = renderer.isBuilding();
-        if (!wasBuilding) renderer.begin(first.size(), false, first.big());
+        if (!wasBuilding) renderer.begin(first.size(), false, first.big(), first.preference());
         try {
             for (int i = start; i < end && i < commands.size(); i++) {
                 TextDrawCommand command = commands.get(i);

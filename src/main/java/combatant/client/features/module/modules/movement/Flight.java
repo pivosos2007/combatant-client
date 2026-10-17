@@ -30,6 +30,7 @@ import combatant.client.events.impl.*;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
+import combatant.client.features.module.ModuleListInfoProvider;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.mixins.accessors.LocalPlayerAccessor;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
@@ -66,6 +67,21 @@ public class Flight extends Module {
     private int vulcanFlags;
     private boolean vulcanWait;
     private int grimTicks;
+
+    @ModuleListInfoProvider
+    private String moduleListDetail() {
+        String detail = switch (mode.get()) {
+            case ABILITIES -> "Abilities";
+            case VELOCITY -> "Velocity";
+            case AIRWALK -> "Airwalk";
+            case SPARTAN_524 -> "Spartan 5.24";
+            case VULCAN_277 -> "Vulcan 2.77";
+            case VULCAN_286_113 -> "Vulcan 2.86 1.13+";
+            case VULCAN_286_18 -> "Vulcan 2.86 1.8";
+            case GRIM_2859_V -> "Grim";
+        };
+        return detail;
+    }
 
     @Override
     public void onEnable() {

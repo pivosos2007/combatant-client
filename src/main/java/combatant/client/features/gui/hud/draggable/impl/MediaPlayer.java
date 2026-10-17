@@ -66,9 +66,6 @@ public final class MediaPlayer extends DraggableHudElement {
     private static final float BASE_TITLE_SCROLL_GAP = 14f;
     private static final float BASE_TITLE_FADE = 12f;
     private static final float TITLE_SCROLL_PAUSE_SEC = 0.8f;
-    private static final String EFFECT_NONE = "None";
-    private static final String EFFECT_BLUR = "Blur";
-    private static final String EFFECT_GLASS = "Glass";
 
     private static final float BASE_CONTENT_W = 170f;
 
@@ -80,19 +77,24 @@ public final class MediaPlayer extends DraggableHudElement {
 
     private final UiMaterialInteractionState glassFluid = new UiMaterialInteractionState();
     private static final UiGlassOpticsSpec MEDIA_GLASS = UiGlassOpticsSpec.LIQUID
-            .withRefraction(0.022f).withBevel(0.22f, 0.130f)
+            .withRefraction(0.011f).withBevel(0.25f, 0.046f)
             .withFluid(0.68f, 0.78f).withCleanReveal(0.76f)
-            .withInteractionStrength(0.52f).withChromaticAberration(0.75f)
-            .withMagnification(1.012f).withShapeDeformation(false).withSpecular(false)
+            .withInteractionStrength(0.52f).withChromaticAberration(0.52f)
+            .withMagnification(1.005f).withShapeDeformation(false).withSpecular(false)
             .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.FLOW);
+    // Preserve a visibly dispersive rim when playback is stopped; FLOW is additive.
+    private static final UiGlassOpticsSpec MEDIA_IDLE_GLASS = MEDIA_GLASS
+            .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.STATIC);
     private static final UiGlassOpticsSpec MEDIA_TIME_GLASS = MEDIA_GLASS
             .withRefraction(0.006f).withBevel(0.24f, 0.030f)
             .withFluid(0.55f, 0.82f).withInteractionStrength(0.30f)
-            .withChromaticAberration(0.24f).withMagnification(1.008f);
+            .withChromaticAberration(0.24f).withMagnification(1.008f)
+            .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.STATIC);
     private static final UiGlassOpticsSpec MEDIA_HOVER_GLASS = MEDIA_GLASS
             .withRefraction(0.007f).withBevel(0.28f, 0.034f)
             .withFluid(0.72f, 0.72f).withInteractionStrength(0.42f)
-            .withChromaticAberration(0.28f).withMagnification(1.010f);
+            .withChromaticAberration(0.28f).withMagnification(1.010f)
+            .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.STATIC);
 
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
@@ -134,10 +136,6 @@ public final class MediaPlayer extends DraggableHudElement {
             new NumberValue<>("media_player_shadow_alpha", 96, 0, 255);
     private final RGBColorValue text =
             new RGBColorValue("media_player_text", "#FFFFFF");
-    private final ModeValue bgEffect =
-            new ModeValue("media_player_bg_effect", "None", EFFECT_NONE, EFFECT_BLUR, EFFECT_GLASS);
-    private final NumberValue<Integer> blurAlpha =
-            new NumberValue<>("media_player_blur_alpha", 255, 0, 255);
     private final BooleanValue gradient =
             new BooleanValue("media_player_gradient", true);
     private float anim = 0f;
@@ -235,13 +233,8 @@ public final class MediaPlayer extends DraggableHudElement {
         defs.add(SettingDef.mode(panelStyle).visibleWhen(syncTheme::get));
         defs.add(SettingDef.number(themeMix).visibleWhen(syncTheme::get));
         defs.add(SettingDef.number(themeGradientStrength).visibleWhen(this::isGradientPanelStyle));
-        defs.add(SettingDef.color(bg).visibleWhen(() -> !syncTheme.get() && !isGlassEffect()));
-        defs.add(SettingDef.number(bgAlpha).visibleWhen(() -> syncTheme.get() && !isGlassEffect()));
         defs.add(SettingDef.colorNoAlpha(accent).visibleWhen(() -> !syncTheme.get()));
         defs.add(SettingDef.colorNoAlpha(text).visibleWhen(() -> !syncTheme.get()));
-        defs.add(SettingDef.mode(bgEffect));
-        defs.add(SettingDef.number(blurAlpha).visibleWhen(this::isBlurEffect));
-        defs.add(SettingDef.bool(gradient).visibleWhen(() -> syncTheme.get() && !isGlassEffect()));
         defs.add(SettingDef.bool(strokeEnabled));
         defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(() -> strokeEnabled.get() && !syncTheme.get()));
         defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
@@ -425,8 +418,7 @@ public final class MediaPlayer extends DraggableHudElement {
         boolean accentPanel = useSyncTheme && HudRenderUtil.PANEL_STYLE_ACCENT.equals(panelStyle.get());
         boolean gradientPanel = isGradientPanelStyle();
         float themeBlend = themeMix.get() / 100.0f;
-        boolean blurEnabled = isBlurEffect();
-        boolean glassEnabled = isGlassEffect();
+        boolean glassEnabled = true;
         int baseRgb = glassEnabled ? HudRenderUtil.glassBackgroundRgb()
                 : (useSyncTheme ? (theme().windowBg() & 0x00FFFFFF) : (bg.getArgb() & 0x00FFFFFF));
         int bgAlpha = getBgAlpha();
@@ -452,11 +444,7 @@ public final class MediaPlayer extends DraggableHudElement {
             );
         }
 
-        if (glassEnabled) {
-            drawGlass(drawX, drawY, boxW * scale, boxH * scale, radius * scale, baseScale * scale, uiAccentSoft);
-        } else if (blurEnabled) {
-            drawBlur(drawX, drawY, boxW * scale, boxH * scale, radius * scale, bg);
-        }
+        drawGlass(drawX, drawY, boxW * scale, boxH * scale, radius * scale, baseScale * scale, uiAccentSoft);
 
         int bgScaled = glassEnabled
                 ? HudRenderUtil.glassPanelBackground(scale)
@@ -946,16 +934,10 @@ public final class MediaPlayer extends DraggableHudElement {
         }
     }
 
-    private void drawBlur(float x, float y, float w, float h, float radius, int tintRgb) {
-        float quality = hud.getBlurRadius();
-        float brightness = 1.0f;
-        float alpha = blurAlpha.get() / 255f;
-        Renderer2D.COLOR.blurRect(x, y, w, h, radius, quality, brightness, alpha, 0xFFFFFF);
-    }
-
     private void drawGlass(float x, float y, float w, float h, float radius, float scale, int accentSoft) {
+        UiGlassOpticsSpec optics = currentSnapshot.isPlaying() ? MEDIA_GLASS : MEDIA_IDLE_GLASS;
         HudRenderUtil.drawReactiveGlass(x, y, w, h, radius, scale, true,
-                1f, anim, glassFluid, MEDIA_GLASS, false, 0f, 0.55f);
+                1f, anim, glassFluid, optics, false, 0f, 0.55f);
         if (isGradientPanelStyle()) {
             float strength = (themeGradientStrength.get() / 100.0f) * (themeMix.get() / 100.0f);
             HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(Math.round(34.0f * strength * anim));
@@ -973,16 +955,8 @@ public final class MediaPlayer extends DraggableHudElement {
         }
     }
 
-    private boolean hasEffect() {
-        return !EFFECT_NONE.equals(bgEffect.get());
-    }
-
-    private boolean isBlurEffect() {
-        return EFFECT_BLUR.equals(bgEffect.get());
-    }
-
     private boolean isGlassEffect() {
-        return EFFECT_GLASS.equals(bgEffect.get());
+        return true;
     }
 
     private boolean isGradientPanelStyle() {

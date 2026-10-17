@@ -239,21 +239,23 @@ public abstract class LevelRendererMixin {
     private void combatant$renderSky(FrameGraphBuilder frameGraphBuilder,
                                      net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState,
                                      GpuBufferSlice fog, CallbackInfo ci) {
-        if (IrisRuntime.isModLoaded() || shouldSkipSky(cameraRenderState)) return;
+        if (IrisRuntime.isShaderpackRendererActive() || shouldSkipSky(cameraRenderState)) return;
         LevelRendererAccessor accessor = (LevelRendererAccessor) this;
         SkyRenderState sky = accessor.combatant$getWorldRenderState().skyRenderState;
-        if (sky == null || sky.skybox != DimensionType.Skybox.OVERWORLD) return;
+        if (sky == null) return;
         WorldTweaks worldTweaks = Modules.get(WorldTweaks.class);
         if (worldTweaks != null) worldTweaks.applySkyOverrides(sky);
         ReimaginedVisual visual = Modules.get(ReimaginedVisual.class);
-        if (visual == null || !visual.isEnabled()) return;
+        if (visual == null || !visual.isShaderSkyboxEnabled()) return;
         Minecraft client = Minecraft.getInstance();
         net.minecraft.client.Camera camera = client != null && client.gameRenderer != null
                 ? client.gameRenderer.mainCamera() : null;
         if (camera == null) return;
         FramePass pass = frameGraphBuilder.addPass("combatant_sky");
         targets.main = pass.readsAndWrites(targets.main);
-        pass.executes(() -> CustomSkyboxRenderer.render(camera, fog, sky, accessor.combatant$getSkyRendering()));
+        ResourceHandle<RenderTarget> skyTarget = targets.main;
+        pass.executes(() -> CustomSkyboxRenderer.render(camera, fog, sky,
+                accessor.combatant$getSkyRendering(), combatant$getFramebuffer(skyTarget)));
         ci.cancel();
     }
 

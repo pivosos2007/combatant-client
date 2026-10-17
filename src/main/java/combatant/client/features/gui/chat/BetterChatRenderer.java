@@ -1980,15 +1980,13 @@ lastHoverWasOutsideSuggest = false;
     private static void drawLiquidHoverPill(float x, float y, float w, float h, float radius, float alpha) {
         if (renderer == null || w <= 0f || h <= 0f || alpha <= 0.001f) return;
         flushRenderer();
-        renderer.liquidGlassRect(
-                x, y, w, h,
-                Math.max(1.0f, radius),
-                withAlpha(theme().accentSoft(), 0x24),
-                Mth.clamp(alpha, 0.0f, 1.0f),
-                1.0f,
-                Renderer2D.LiquidGlassPreset.HUD_SMALL,
-                1.2f
-        );
+        renderer.withLiquidGlassBlurProfile(
+                Renderer2D.BlurQuality.LIQUID_GLASS, HudRenderUtil.HUD_GLASS_KAWASE_OFFSET_PX,
+                () -> renderer.liquidGlassRect(
+                        x, y, w, h, Math.max(1.0f, radius),
+                        withAlpha(theme().accentSoft(), 0x24),
+                        Mth.clamp(alpha, 0.0f, 1.0f), 1.0f,
+                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL, 1.0f));
         drawRoundedRect(x, y, w, h, radius, withAlpha(theme().surfaceHover(), 0x32));
         drawRoundedRectStrokeGradient(x, y, w, h, radius, 0.55f,
                 withAlpha(theme().accentSoft(), 0x50),
@@ -2035,19 +2033,16 @@ lastHoverWasOutsideSuggest = false;
         float materialAlpha = drawAlpha;
         float glassRadius = Math.max(2f, radius);
         Renderer2D.LiquidGlassPreset preset = softPanel
-                ? Renderer2D.LiquidGlassPreset.HUD_LARGE
-                : Renderer2D.LiquidGlassPreset.HUD_SMALL;
+                ? Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE
+                : Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL;
 
         flushRenderer();
-        renderer.liquidGlassRect(
-                x, y, w, h,
-                glassRadius,
-                withAlpha(theme().accent(), Math.round(configuredAlpha * (softPanel ? 32f : 22f))),
-                materialAlpha,
-                1.0f,
-                preset,
-                softPanel ? 2.65f : 2.25f
-        );
+        renderer.withLiquidGlassBlurProfile(
+                Renderer2D.BlurQuality.LIQUID_GLASS, HudRenderUtil.HUD_GLASS_KAWASE_OFFSET_PX,
+                () -> renderer.liquidGlassRect(
+                        x, y, w, h, glassRadius,
+                        withAlpha(theme().accent(), Math.round(configuredAlpha * (softPanel ? 32f : 22f))),
+                        materialAlpha, 1.0f, preset, softPanel ? 1.05f : 1.0f));
 
         int veilAlpha = Math.round((softPanel ? 0x16 : 0x0C) * drawAlpha);
         if (veilAlpha > 0) {

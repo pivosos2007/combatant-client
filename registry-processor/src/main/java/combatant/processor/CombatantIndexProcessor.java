@@ -15,6 +15,7 @@ import javax.annotation.processing.SupportedOptions;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
@@ -50,6 +51,9 @@ public final class CombatantIndexProcessor extends AbstractProcessor {
             Map.entry("combatant.client.util.resources.asset.UiScriptAsset", "UI_SCRIPT")
     );
     private static final String ASSET_LOAD = "combatant.client.util.resources.asset.AssetLoad";
+    private static final String MODULE_LIST_INFO_PROVIDER =
+            "combatant.client.features.module.ModuleListInfoProvider";
+    private static final String MODULE_CLASS = "combatant.client.features.module.Module";
     private static final String CONFIG_OBJECT = "combatant.client.config.ConfigObject";
     private static final String PIPELINE_REGISTER =
             "combatant.client.render.engine.pipeline.PipelineRegister";
@@ -86,7 +90,14 @@ public final class CombatantIndexProcessor extends AbstractProcessor {
         }
 
         boolean hasAssetHook = false;
+        ExecutableElement infoProvider = null;
+        int infoProviderCount = 0;
         for (Element enclosed : type.getEnclosedElements()) {
+            if (enclosed instanceof ExecutableElement method
+                    && hasAnnotation(method, MODULE_LIST_INFO_PROVIDER)) {
+                infoProviderCount++;
+                if (validateModuleListInfoProvider(type, method)) infoProvider = method;
+            }
             if (enclosed.getKind() == ElementKind.METHOD && hasAnnotation(enclosed, ASSET_LOAD)) {
                 hasAssetHook = true;
             }
@@ -96,7 +107,37 @@ public final class CombatantIndexProcessor extends AbstractProcessor {
             if (enclosed instanceof TypeElement nested) collect(nested);
         }
         if (hasAssetHook) add("ASSET_HOOK", binaryName);
+        if (infoProviderCount > 1) {
+            processingEnv.getMessager().printMessage(
+                    Diagnostic.Kind.ERROR,
+                    "Only one @ModuleListInfoProvider method is allowed per module class",
+                    type
+            );
+        } else if (infoProvider != null) {
+            add("MODULE_LIST_INFO_PROVIDER", binaryName + "#" + infoProvider.getSimpleName());
+        }
         if (declaresConfigSingleton(type)) add("CONFIG", binaryName);
+    }
+
+    private boolean validateModuleListInfoProvider(TypeElement owner, ExecutableElement method) {
+        TypeElement module = processingEnv.getElementUtils().getTypeElement(MODULE_CLASS);
+        TypeElement string = processingEnv.getElementUtils().getTypeElement("java.lang.String");
+        boolean moduleOwner = module != null && processingEnv.getTypeUtils().isAssignable(
+                processingEnv.getTypeUtils().erasure(owner.asType()),
+                processingEnv.getTypeUtils().erasure(module.asType()));
+        boolean valid = moduleOwner && method.getParameters().isEmpty()
+                && !method.getModifiers().contains(Modifier.STATIC)
+                && !method.getModifiers().contains(Modifier.ABSTRACT)
+                && string != null && processingEnv.getTypeUtils().isSameType(
+                        method.getReturnType(), string.asType());
+        if (!valid) {
+            processingEnv.getMessager().printMessage(
+                    Diagnostic.Kind.ERROR,
+                    "@ModuleListInfoProvider requires a non-static, zero-argument String method on a Module",
+                    method
+            );
+        }
+        return valid;
     }
 
     private void collectPipeline(String binaryName, VariableElement field) {

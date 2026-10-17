@@ -35,14 +35,11 @@ import static combatant.client.features.theme.Theme.theme;
 public final class CustomHotbar extends AbstractHudElement {
 
     public static final CustomHotbar INSTANCE = new CustomHotbar();
-    private static final int BG_ALPHA = 0xAA;
     private static final float RADIUS = 6.0f;
     private static final UiGlassOpticsSpec HOTBAR_GLASS = UiGlassOpticsSpec.LIQUID
-            .withRefraction(0.008f).withBevel(0.11f, 0.038f)
+            .withRefraction(0.0045f).withBevel(0.12f, 0.023f)
             .withInteractionStrength(0f).withChromaticAberration(0f)
             .withCleanReveal(0.76f).withShapeDeformation(false);
-    private static final float HOTBAR_SOFTNESS = 0.0f;
-    private static final float BLUR_QUALITY = 16.0f;
     private static final float DIVIDER_WIDTH_PX = 1.05f;
     private static final float DIVIDER_HEIGHT = 11.0f;
     private static final float SELECT_STROKE_PX = 1.45f;
@@ -54,23 +51,12 @@ public final class CustomHotbar extends AbstractHudElement {
     private static final float SELECT_SLOT_STEP = SLOT_STEP;
     private static final float SELECT_ANIMATION_MS = 145.0f;
     private static final float SELECT_ANIMATION_MIN_PROGRESS = 0.015f;
-    private static final String EFFECT_NONE = "None";
-    private static final String EFFECT_BLUR = "Blur";
-    private static final String EFFECT_GLASS = "Glass";
-    private static final String COLOR_THEME = "Theme";
-    private static final String COLOR_CUSTOM = "Custom";
     private static int animatedSelectedSlot = -1;
     private static float selectionStartSlot = 0.0f;
     private static float selectionTargetSlot = 0.0f;
     private static long selectionAnimStartMs = 0L;
     private final EnumValue<OffHandMode> offHandMode =
             new EnumValue<>("offhand_mode", OffHandMode.MERGED, OffHandMode.values());
-    private final ModeValue colorMode =
-            new ModeValue("hotbar_color_mode", "Custom", COLOR_THEME, COLOR_CUSTOM);
-    private final RGBAColorValue bgColor =
-            new RGBAColorValue("bg_color", "#7A191414");
-    private final NumberValue<Integer> bgAlpha =
-            new NumberValue<>("hotbar_bg_alpha", 167, 0, 255);
     private final RGBColorValue selectColor =
             new RGBColorValue("select_color", "#2F6277");
     private final RGBColorValue dividerColor =
@@ -81,10 +67,6 @@ public final class CustomHotbar extends AbstractHudElement {
             new BooleanValue("custom_divider_color", false);
     private final NumberValue<Integer> accentAlpha =
             new NumberValue<>("accent_alpha", 255, 0, 255);
-    private final ModeValue bgEffect =
-            new ModeValue("bg_effect", "Glass", EFFECT_NONE, EFFECT_BLUR, EFFECT_GLASS);
-    private final NumberValue<Integer> blurAlpha =
-            new NumberValue<>("blur_alpha", 255, 20, 255);
     private CustomHotbar() {
         super("vanilla_hotbar", "Hotbar", "hud.static.vanilla_hotbar.description", true);
     }
@@ -112,50 +94,20 @@ public final class CustomHotbar extends AbstractHudElement {
 
         float baseY = h - 22f;
 
-        boolean blur = shouldBlur(bm);
-        boolean glass = shouldGlass(bm);
-        int bgRgb = glass ? HudRenderUtil.glassBackgroundRgb() : bm.getHotbarBgRgb();
-        int bgAlpha = bm != null ? bm.getHotbarBgAlpha() : BG_ALPHA;
-        int bg = glass ? 0 : ColorMath.premultiplyAlpha(bgRgb, bgAlpha);
-        int bgColor = bg;
         int accentAlpha = bm.getHotbarAccentAlpha();
         int dividerColor = ColorMath.premultiplyAlpha(bm.getHotbarDividerRgb(), accentAlpha);
         SelectionGradient selectionGradient = bm.getHotbarSelectionGradient(accentAlpha);
 
-        if (glass) {
-            if (!hasOffhand) {
-                drawGlass((i - 90f) * s, baseY * s, 180f * s, 20f * s, RADIUS * s);
-            } else if (getOffHandMode() == OffHandMode.MERGED) {
-                drawGlass((i - 111f) * s, baseY * s, 201f * s, 20f * s, RADIUS * s);
-            } else {
-                drawGlass((i - 90f) * s, baseY * s, 180f * s, 20f * s, RADIUS * s);
-                drawGlass((i - 112.5f) * s, baseY * s, 20f * s, 20f * s, RADIUS * s);
-            }
-        } else if (blur) {
-            if (!hasOffhand) {
-                drawBlur((i - 90f) * s, baseY * s, 180f * s, 20f * s, RADIUS * s, bgRgb);
-            } else if (getOffHandMode() == OffHandMode.MERGED) {
-                drawBlur((i - 111f) * s, baseY * s, 201f * s, 20f * s, RADIUS * s, bgRgb);
-            } else {
-                drawBlur((i - 90f) * s, baseY * s, 180f * s, 20f * s, RADIUS * s, bgRgb);
-                drawBlur((i - 112.5f) * s, baseY * s, 20f * s, 20f * s, RADIUS * s, bgRgb);
-            }
-        }
-
-
         if (!hasOffhand) {
-            drawBase(r2d, (i - 90f) * s, baseY * s, 180f * s, 20f * s, bgColor, s);
+            drawGlass((i - 90f) * s, baseY * s, 180f * s, 20f * s, RADIUS * s);
+        } else if (getOffHandMode() == OffHandMode.MERGED) {
+            drawGlass((i - 111f) * s, baseY * s, 201f * s, 20f * s, RADIUS * s);
+            float divX = (i - 91f) * s;
+            float divY = (baseY + (20f - DIVIDER_HEIGHT) * 0.5f) * s;
+            r2d.quad(divX, divY, DIVIDER_WIDTH_PX, DIVIDER_HEIGHT * s, dividerColor);
         } else {
-            if (getOffHandMode() == OffHandMode.MERGED) {
-                drawBase(r2d, (i - 111f) * s, baseY * s, 201f * s, 20f * s, bgColor, s);
-
-                float divX = (i - 91f) * s;
-                float divY = (baseY + (20f - DIVIDER_HEIGHT) * 0.5f) * s;
-                r2d.quad(divX, divY, DIVIDER_WIDTH_PX, DIVIDER_HEIGHT * s, dividerColor);
-            } else { // SEPARATELY
-                drawBase(r2d, (i - 90f) * s, baseY * s, 180f * s, 20f * s, bgColor, s);
-                drawBase(r2d, (i - 112.5f) * s, baseY * s, 20f * s, 20f * s, bgColor, s);
-            }
+            drawGlass((i - 90f) * s, baseY * s, 180f * s, 20f * s, RADIUS * s);
+            drawGlass((i - 112.5f) * s, baseY * s, 20f * s, 20f * s, RADIUS * s);
         }
 
         float selX = (i - 88f + selection.visualSlot() * SELECT_SLOT_STEP) * s;
@@ -171,15 +123,6 @@ public final class CustomHotbar extends AbstractHudElement {
                 selectionGradient.endArgb(),
                 selectionGradient.angleDeg()
         );
-    }
-
-    private static void drawBase(Renderer2D r2d, float x, float y, float w, float h, int argb, float scale) {
-        if ((argb >>> 24) == 0) return;
-        if (RADIUS <= 0.0f) {
-            r2d.quad(x, y, w, h, argb);
-            return;
-        }
-        r2d.roundedRect(x, y, w, h, RADIUS * scale, HOTBAR_SOFTNESS * scale, argb);
     }
 
     private static void drawSelectionStroke(Renderer2D r2d,
@@ -340,22 +283,6 @@ public final class CustomHotbar extends AbstractHudElement {
         return bm.getHotbarOffHandMode();
     }
 
-    private static boolean shouldBlur(CustomHotbar bm) {
-        return bm != null && bm.isHudHotbarEnabled() && bm.isHotbarBlurEnabled();
-    }
-
-    private static boolean shouldGlass(CustomHotbar bm) {
-        return bm != null && bm.isHudHotbarEnabled() && bm.isHotbarGlassEnabled();
-    }
-
-    private static void drawBlur(float x, float y, float w, float h, float radius, int tintRgb) {
-        CustomHotbar bm = CustomHotbar.get();
-        float quality = BLUR_QUALITY;
-        float brightness = 1.0f;
-        float alpha = bm != null ? bm.getHotbarBlurAlpha() / 255f : 0.5f;
-        Renderer2D.COLOR.blurRect(x, y, w, h, radius, quality, brightness, alpha, 0xFFFFFF);
-    }
-
     private static void drawGlass(float x, float y, float w, float h, float radius) {
         float glassScale = RADIUS <= 0.0f ? 1.0f : radius / RADIUS;
         HudRenderUtil.drawReactiveGlass(x, y, w, h, radius, glassScale, false,
@@ -381,16 +308,11 @@ public final class CustomHotbar extends AbstractHudElement {
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.mode(offHandMode));
-        defs.add(SettingDef.mode(colorMode));
-        defs.add(SettingDef.color(bgColor).visibleWhen(() -> isCustomMode() && !isGlassEffect()));
-        defs.add(SettingDef.number(bgAlpha).visibleWhen(() -> isThemeMode() && !isGlassEffect()));
         defs.add(SettingDef.bool(customSelectColor));
         defs.add(SettingDef.colorNoAlpha(selectColor).visibleWhen(customSelectColor::get));
         defs.add(SettingDef.bool(customDividerColor));
         defs.add(SettingDef.colorNoAlpha(dividerColor).visibleWhen(customDividerColor::get));
         defs.add(SettingDef.number(accentAlpha));
-        defs.add(SettingDef.mode(bgEffect));
-        defs.add(SettingDef.number(blurAlpha).visibleWhen(this::isBlurEffect));
     }
 
     public boolean isHudHotbarEnabled() {
@@ -401,22 +323,17 @@ public final class CustomHotbar extends AbstractHudElement {
         return offHandMode.get();
     }
 
+    /** Compatibility accessors: the hotbar body is always a glass surface. */
     public int getHotbarBgArgb() {
-        return ColorMath.premultiplyAlpha(getHotbarBgRgb(), getHotbarBgAlpha());
+        return HudRenderUtil.glassBackground();
     }
 
     public int getHotbarBgRgb() {
-        if (isThemeMode()) {
-            return theme().windowBg() & 0x00FFFFFF;
-        }
-        return bgColor.getArgb() & 0x00FFFFFF;
+        return HudRenderUtil.glassBackgroundRgb();
     }
 
     public int getHotbarBgAlpha() {
-        if (isThemeMode()) {
-            return bgAlpha.get();
-        }
-        return (bgColor.getArgb() >>> 24) & 0xFF;
+        return (HudRenderUtil.glassBackground() >>> 24) & 0xFF;
     }
 
     public int getHotbarSelectRgb() {
@@ -452,15 +369,15 @@ public final class CustomHotbar extends AbstractHudElement {
     }
 
     public boolean isHotbarBlurEnabled() {
-        return !RuntimeGate.isPanic() && isBlurEffect();
+        return false;
     }
 
     public boolean isHotbarGlassEnabled() {
-        return !RuntimeGate.isPanic() && isGlassEffect();
+        return isHudHotbarEnabled();
     }
 
     public int getHotbarBlurAlpha() {
-        return blurAlpha.get();
+        return 255;
     }
 
     private SelectionGradient getHotbarSelectionGradient(int alpha) {
@@ -477,26 +394,6 @@ public final class CustomHotbar extends AbstractHudElement {
                 premultiply(gradient.end()),
                 gradient.angleDeg()
         );
-    }
-
-    private boolean hasEffect() {
-        return !EFFECT_NONE.equals(bgEffect.get());
-    }
-
-    private boolean isThemeMode() {
-        return COLOR_THEME.equals(colorMode.get());
-    }
-
-    private boolean isCustomMode() {
-        return COLOR_CUSTOM.equals(colorMode.get());
-    }
-
-    private boolean isBlurEffect() {
-        return EFFECT_BLUR.equals(bgEffect.get());
-    }
-
-    private boolean isGlassEffect() {
-        return EFFECT_GLASS.equals(bgEffect.get());
     }
 
     public enum OffHandMode implements EnumValue.IdProvider {

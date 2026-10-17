@@ -76,6 +76,24 @@ final class LanguageFallbackTextRendererTest {
     }
 
     @Test
+    void prefixWidthsNeverSplitUnicodeGraphemeClusters() {
+        String combining = "a\u0304b";
+        assertEquals(0, LanguageFallbackTextRenderer.safeUtf16End(combining, 1));
+        assertEquals(2, LanguageFallbackTextRenderer.safeUtf16End(combining, 2));
+        assertEquals(3, LanguageFallbackTextRenderer.safeUtf16End(combining, 3));
+
+        String zwj = "A\uD83D\uDC69\u200D\uD83D\uDCBBB"; // A + woman technologist + B
+        assertEquals(1, LanguageFallbackTextRenderer.safeUtf16End(zwj, 2));
+        assertEquals(1, LanguageFallbackTextRenderer.safeUtf16End(zwj, 3));
+        assertEquals(1, LanguageFallbackTextRenderer.safeUtf16End(zwj, 4));
+        assertEquals(1, LanguageFallbackTextRenderer.safeUtf16End(zwj, 5));
+        assertEquals(6, LanguageFallbackTextRenderer.safeUtf16End(zwj, 6));
+        assertEquals(7, LanguageFallbackTextRenderer.safeUtf16End(zwj, 7));
+
+        assertEquals(2, LanguageFallbackTextRenderer.safeUtf16End("hello", 2));
+    }
+
+    @Test
     void preservesNativeVertexGradientsAcrossLanguageRuns() {
         FakeRenderer primary = new FakeRenderer(cp -> cp < 0x80, 1.0, 10.0);
         FakeRenderer fallback = new FakeRenderer(cp -> true, 2.0, 12.0);

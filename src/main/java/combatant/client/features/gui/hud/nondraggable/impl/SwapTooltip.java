@@ -207,17 +207,11 @@ public final class SwapTooltip extends AbstractHudElement {
 
     private static void drawGlass(float x, float y, float w, float h, float radius, float alpha) {
         if (alpha <= 0.001f || w <= 0.0f || h <= 0.0f) return;
-        Renderer2D.COLOR.liquidGlassRect(
-                x,
-                y,
-                w,
-                h,
-                radius,
-                GLASS_TINT,
-                alpha,
-                1.0f,
-                Renderer2D.LiquidGlassPreset.HUD_SMALL
-        );
+        Renderer2D.COLOR.withLiquidGlassBlurProfile(
+                Renderer2D.BlurQuality.LIQUID_GLASS, HudRenderUtil.HUD_GLASS_KAWASE_OFFSET_PX,
+                () -> Renderer2D.COLOR.liquidGlassRect(
+                        x, y, w, h, radius, GLASS_TINT, alpha, 1.0f,
+                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL));
     }
 
     private static void resetState() {

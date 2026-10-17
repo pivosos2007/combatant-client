@@ -134,6 +134,7 @@
     "ServerboundUseItemPacketMixin",
     "ShaderLoaderMixin",
     "SkyRendererMixin",
+    "CloudRendererMixin",
     "SoundEngineLifecycleMixin",
     "SpriteIconButtonCenteredIconMixin",
     "SpriteIconButtonTextAndIconMixin",

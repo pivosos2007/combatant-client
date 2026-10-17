@@ -22,8 +22,10 @@ import combatant.client.features.gui.hud.HudGlobalConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.module.Module;
+import combatant.client.features.module.ModuleListInfoResolver;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.render.engine.animation.AnimatedRenderColors;
+import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.TextRenderer;
@@ -42,6 +44,8 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
     private static final float BASE_TEXT_X = 3f;
     private static final float BASE_TEXT_X_REV = 2f;
     private static final float BASE_STRING_PAD = 3f;
+    private static final float BASE_DETAIL_GAP = 3.1f;
+    private static final float BASE_BRACKET_INSET = 0.85f;
     private static final float BASE_RECT_EXTRA = 1f;
     private static final float BASE_RADIUS = 2f;
     private static final float BASE_SOFTNESS = 0.55f;
@@ -52,7 +56,7 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
     private final EnumValue<ColorMode> colorMode =
             new EnumValue<>("module_list_color_mode", ColorMode.CUSTOM, ColorMode.THEME, ColorMode.CUSTOM);
     private final EnumValue<BgEffect> bgEffect =
-            new EnumValue<>("module_list_bg_effect", BgEffect.BLUR, BgEffect.NONE, BgEffect.BLUR, BgEffect.GLASS);
+            new EnumValue<>("module_list_bg_effect", BgEffect.BLUR, BgEffect.NONE, BgEffect.BLUR);
     private final NumberValue<Integer> bgAlpha =
             new NumberValue<>("module_list_bg_alpha", 226, 0, 255);
     private final NumberValue<Integer> blurAlpha =
@@ -65,6 +69,14 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
             new RGBColorValue("module_list_text", "RNB#E87171");
     private final RGBColorValue textBottomColor =
             new RGBColorValue("module_list_text_secondary", "#93118C");
+    // Detail colors belong to ModuleList; source modules expose only text.
+    private final EnumValue<InfoColorMode> infoColorMode =
+            new EnumValue<>("module_list_info_color_mode",
+                    InfoColorMode.AUTO, InfoColorMode.AUTO, InfoColorMode.CUSTOM);
+    private final RGBColorValue infoTopColor =
+            new RGBColorValue("module_list_info_primary", "#E1E8F0");
+    private final RGBColorValue infoBottomColor =
+            new RGBColorValue("module_list_info_secondary", "#B3C0D0");
     private final EnumValue<AnimatedRenderColors.Mode> textGradientMode =
             new EnumValue<>("module_list_text_gradient_mode",
                     AnimatedRenderColors.Mode.RAINBOW,
@@ -84,11 +96,14 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
             new NumberValue<>("module_list_text_effect_speed", 30, 1, 60);
     private final List<Row> rows = new ArrayList<>();
     private final List<Module> enabledModules = new ArrayList<>();
+    private final List<String> enabledLabels = new ArrayList<>();
+    private final List<String> enabledDetails = new ArrayList<>();
     private float renderX;
     private float renderY;
     private int cachedModulesHash;
     private int cachedModulesCount;
     private float cachedTextScale = -1f;
+    private int cachedScreenWidth = -1;
     public ModuleList() {
         super("module_list", "ModuleList", "hud.draggable.module_list.description", false);
     }
@@ -110,11 +125,14 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
         defs.add(SettingDef.mode(colorMode));
         defs.add(SettingDef.mode(bgEffect));
         defs.add(SettingDef.number(bgAlpha).visibleWhen(this::isThemeMode));
-        defs.add(SettingDef.number(blurAlpha).visibleWhen(this::hasEffect));
+        defs.add(SettingDef.number(blurAlpha).visibleWhen(this::isBlurEffect));
         defs.add(SettingDef.color(bgTopColor).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.color(bgBottomColor).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(textTopColor).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(textBottomColor).visibleWhen(this::isCustomMode));
+        defs.add(SettingDef.mode(infoColorMode));
+        defs.add(SettingDef.colorNoAlpha(infoTopColor).visibleWhen(this::isCustomInfoColors));
+        defs.add(SettingDef.colorNoAlpha(infoBottomColor).visibleWhen(this::isCustomInfoColors));
         defs.add(SettingDef.mode(textGradientMode));
         defs.add(SettingDef.number(textGradientSpeed).visibleWhen(this::hasAnimatedTextGradient));
         defs.add(SettingDef.mode(textEffect));
@@ -146,7 +164,8 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
             return;
         }
 
-        TextRenderer listRenderer = BuiltinFontCatalog.COMFORTAA.renderer(TextRenderer.get());
+        TextRenderer listRenderer = BuiltinFontCatalog.COMFORTAA_SEMIBOLD.renderer(
+                BuiltinFontCatalog.COMFORTAA.renderer(TextRenderer.get()));
         if (listRenderer == null) {
             listRenderer = textRenderer;
         }
@@ -157,6 +176,8 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
         float textOffsetX = BASE_TEXT_X * baseScale;
         float textOffsetXRev = BASE_TEXT_X_REV * baseScale;
         float stringPad = BASE_STRING_PAD * baseScale;
+        float detailGap = BASE_DETAIL_GAP * baseScale;
+        float bracketInset = BASE_BRACKET_INSET * baseScale;
         float rectExtra = BASE_RECT_EXTRA * baseScale;
         float radius = BASE_RADIUS * baseScale;
         float softness = BASE_SOFTNESS * baseScale;
@@ -166,13 +187,20 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
         float textScale = Math.max(0.2f, targetTextHeight / fontHeight);
 
         enabledModules.clear();
+        enabledLabels.clear();
+        enabledDetails.clear();
         int modulesHash = 1;
         for (Module module : ModuleManager.getModules()) {
             if (module != null && module.isEnabled() && module.isShownInModuleList()) {
-                enabledModules.add(module);
                 String label = module.getDisplayName();
+                String detail = ModuleListInfoResolver.query(module);
+                if (detail != null && detail.isEmpty()) detail = null;
+                enabledModules.add(module);
+                enabledLabels.add(label != null ? label : "");
+                enabledDetails.add(detail);
                 modulesHash = 31 * modulesHash + System.identityHashCode(module);
                 modulesHash = 31 * modulesHash + (label != null ? label.hashCode() : 0);
+                modulesHash = 31 * modulesHash + (detail != null ? detail.hashCode() : 0);
             }
         }
 
@@ -185,14 +213,41 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
 
         boolean layoutChanged = modulesHash != cachedModulesHash
                 || enabledModules.size() != cachedModulesCount
-                || Math.abs(textScale - cachedTextScale) > 0.0001f;
+                || Math.abs(textScale - cachedTextScale) > 0.0001f
+                || cachedScreenWidth != screenW;
 
         if (layoutChanged) {
             rows.clear();
             listRenderer.begin(textScale, false, false);
-            for (Module module : enabledModules) {
-                Row row = new Row(module, module.getDisplayName());
-                row.textWidth = (float) listRenderer.getWidth(row.label, false);
+            float openWidth = (float) listRenderer.getWidth("[", false);
+            float closeWidth = (float) listRenderer.getWidth("]", false);
+            for (int i = 0; i < enabledModules.size(); i++) {
+                String label = enabledLabels.get(i);
+                float labelWidth = (float) listRenderer.getWidth(label, false);
+                String detail = enabledDetails.get(i);
+                float detailWidth = 0f;
+                if (detail != null) {
+                    float detailBudget = Math.max(0f, screenW - labelWidth - detailGap
+                            - openWidth - closeWidth - 2f * bracketInset
+                            - stringPad - rectExtra - 5f * baseScale);
+                    String fitted = fitDetail(listRenderer, detail, detailBudget);
+                    if (fitted.isEmpty()) {
+                        detail = null;
+                    } else {
+                        detail = fitted;
+                        detailWidth = (float) listRenderer.getWidth(detail, false);
+                    }
+                }
+                Row row = new Row(label, detail);
+                row.labelWidth = labelWidth;
+                if (detail != null) {
+                    row.detailWidth = detailWidth;
+                    row.detailStart = labelWidth + detailGap + openWidth + bracketInset;
+                    row.closeBracketStart = row.detailStart + detailWidth + bracketInset;
+                    row.textWidth = row.closeBracketStart + closeWidth;
+                } else {
+                    row.textWidth = labelWidth;
+                }
                 rows.add(row);
             }
             listRenderer.end();
@@ -200,6 +255,7 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
             cachedModulesHash = modulesHash;
             cachedModulesCount = enabledModules.size();
             cachedTextScale = textScale;
+            cachedScreenWidth = screenW;
         }
 
         float maxWidth = 0f;
@@ -207,6 +263,10 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
             maxWidth = Math.max(maxWidth, row.textWidth + stringPad + rectExtra);
         }
 
+        // Changing live detail must not move the right edge of a right-docked list.
+        if (x > screenW * 0.5f && width > 0f && Math.abs(width - maxWidth) > 0.001f) {
+            x += width - maxWidth;
+        }
         float maxX = Math.max(0f, screenW - maxWidth);
         if (x > maxX) x = maxX;
         if (x < 0f) x = 0f;
@@ -226,7 +286,6 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
         int textTop = resolveTextTop();
         int textBottom = resolveTextBottom();
         boolean blur = isBlurEffect();
-        boolean glass = isGlassEffect();
         boolean shimmer = textEffect.get() == TextEffect.SHIMMER;
         float time = (float) (Util.getMillis() / 1000.0);
         float blurQuality = hud != null ? hud.getBlurRadius() : 12.0f;
@@ -252,29 +311,18 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
                     for (int i = 0; i < rows.size(); i++) {
                         Row row = rows.get(i);
                         int tint = HudRenderUtil.mixColor(row.fillTop, row.fillBottom, 0.5f) & 0x00FFFFFF;
-                        composite.roundedRect(row.x, row.y, row.w, lineH, radius, blurQuality, 1.0f, blurAlpha.get() / 255f, tint);
+                        composite.roundedRect(row.x, row.y, row.w, lineH, radius, blurQuality, 1.0f,
+                                blurAlpha.get() / 255f, tint);
                     }
                 });
-            } else if (glass) {
-                for (int i = 0; i < rows.size(); i++) {
-                    Row row = rows.get(i);
-                    drawGlass(row.x, row.y, row.w, lineH, radius);
-                }
             }
 
             for (int i = 0; i < rows.size(); i++) {
                 Row row = rows.get(i);
-                if (glass) {
-                    int glassTop = HudRenderUtil.scaleAlpha(row.fillTop, 0.22f);
-                    int glassBottom = HudRenderUtil.scaleAlpha(row.fillBottom, 0.18f);
-                    renderer.roundedRectGradientQuad(row.x, row.y, row.w, lineH, radius, softness,
-                            glassTop, glassTop, glassBottom, glassBottom);
-                } else {
-                    int drawTop = blur ? HudRenderUtil.scaleAlpha(row.fillTop, 0.42f) : row.fillTop;
-                    int drawBottom = blur ? HudRenderUtil.scaleAlpha(row.fillBottom, 0.42f) : row.fillBottom;
-                    renderer.roundedRectGradientQuad(row.x, row.y, row.w, lineH, radius, softness,
-                            drawTop, drawTop, drawBottom, drawBottom);
-                }
+                int drawTop = blur ? HudRenderUtil.scaleAlpha(row.fillTop, 0.42f) : row.fillTop;
+                int drawBottom = blur ? HudRenderUtil.scaleAlpha(row.fillBottom, 0.42f) : row.fillBottom;
+                renderer.roundedRectGradientQuad(row.x, row.y, row.w, lineH, radius, softness,
+                        drawTop, drawTop, drawBottom, drawBottom);
             }
         } finally {
             if (autoBatch) renderer.render();
@@ -282,6 +330,12 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
 
         int gradientTop = resolveTextGradientTop();
         int gradientBottom = resolveTextGradientBottom();
+        int infoTop = isCustomInfoColors()
+                ? infoTopColor.getArgb()
+                : HudRenderUtil.mixColor(gradientTop, 0xFFE1E8F0, 0.73f);
+        int infoBottom = isCustomInfoColors()
+                ? infoBottomColor.getArgb()
+                : HudRenderUtil.mixColor(gradientBottom, 0xFFB3C0D0, 0.72f);
         boolean topRainbow = isCustomMode() && textTopColor.isRainbow();
         boolean bottomRainbow = isCustomMode() && textBottomColor.isRainbow();
         AnimatedRenderColors.Mode gradientMode = textGradientMode.get();
@@ -311,6 +365,24 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
                             shimmer,
                             out
                     ), false);
+
+            if (row.detail != null) {
+                float detailX = textX + row.detailStart;
+                float bracketX = textX + row.labelWidth + detailGap;
+                float closeX = textX + row.closeBracketStart;
+                int bracketColor = HudRenderUtil.mixColor(
+                        HudRenderUtil.mixColor(gradientTop, gradientBottom, 0.5f),
+                        0xFFA5AFBB, 0.78f);
+                listRenderer.render("[", bracketX, textY, new RenderColor(bracketColor), false);
+
+                listRenderer.renderQuadGradient(row.detail, detailX, textY, (idx, cp, x0, y0, x1, y1, out) -> {
+                    out[0] = infoTop;
+                    out[1] = infoBottom;
+                    out[2] = infoBottom;
+                    out[3] = infoTop;
+                }, false);
+                listRenderer.render("]", closeX, textY, new RenderColor(bracketColor), false);
+            }
         }
         listRenderer.end();
     }
@@ -319,6 +391,27 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
     public boolean contains(float mx, float my) {
         return mx >= renderX && mx <= renderX + width
                 && my >= renderY && my <= renderY + height;
+    }
+
+    /** Clip untrusted/variable module detail without ever cutting a UTF-16 surrogate pair. */
+    private static String fitDetail(TextRenderer renderer, String detail, float availableWidth) {
+        if (detail == null || detail.isEmpty()) return "";
+        if (renderer.getWidth(detail, false) <= availableWidth) return detail;
+        String ellipsis = "…";
+        if (renderer.getWidth(ellipsis, false) > availableWidth) return "";
+        int count = detail.codePointCount(0, detail.length());
+        int low = 0;
+        int high = count;
+        while (low < high) {
+            int mid = (low + high + 1) >>> 1;
+            int end = detail.offsetByCodePoints(0, mid);
+            if (renderer.getWidth(detail.substring(0, end) + ellipsis, false) <= availableWidth) {
+                low = mid;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return detail.substring(0, detail.offsetByCodePoints(0, low)) + ellipsis;
     }
 
     private int resolveBgTop() {
@@ -389,23 +482,6 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
         return (rgb & 0x00FFFFFF) | (alpha << 24);
     }
 
-    private void drawBlur(float x, float y, float w, float h, float radius, int tintArgb, float quality) {
-        float alpha = blurAlpha.get() / 255f;
-        Renderer2D.COLOR.blurRect(x, y, w, h, radius, quality, 1.0f, alpha, 0xFFFFFF);
-    }
-
-    private void drawGlass(float x, float y, float w, float h, float radius) {
-        float blurStrength = blurAlpha.get() / 255f;
-        if (blurStrength <= 0.001f) return;
-        Renderer2D.COLOR.liquidGlassRect(
-                x, y, w, h, radius,
-                0xFFFFFFFF,
-                1.0f,
-                blurStrength,
-                Renderer2D.LiquidGlassPreset.BALANCED
-        );
-    }
-
     private boolean isThemeMode() {
         return colorMode.get() == ColorMode.THEME;
     }
@@ -418,12 +494,8 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
         return bgEffect.get() == BgEffect.BLUR;
     }
 
-    private boolean isGlassEffect() {
-        return bgEffect.get() == BgEffect.GLASS;
-    }
-
-    private boolean hasEffect() {
-        return bgEffect.get() != BgEffect.NONE;
+    private boolean isCustomInfoColors() {
+        return infoColorMode.get() == InfoColorMode.CUSTOM;
     }
 
     private boolean hasAnimatedTextGradient() {
@@ -447,10 +519,25 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
         }
     }
 
+    private enum InfoColorMode implements EnumValue.IdProvider {
+        AUTO("Auto"),
+        CUSTOM("Custom");
+
+        private final String id;
+
+        InfoColorMode(String id) {
+            this.id = id;
+        }
+
+        @Override
+        public String id() {
+            return id;
+        }
+    }
+
     private enum BgEffect implements EnumValue.IdProvider {
         NONE("None"),
-        BLUR("Blur"),
-        GLASS("Glass");
+        BLUR("Blur");
 
         private final String id;
 
@@ -481,8 +568,12 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
     }
 
     private static final class Row {
-        private final Module module;
         private final String label;
+        private final String detail;
+        private float labelWidth;
+        private float detailWidth;
+        private float detailStart;
+        private float closeBracketStart;
         private float textWidth;
         private float x;
         private float y;
@@ -490,9 +581,9 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
         private int fillTop;
         private int fillBottom;
 
-        private Row(Module module, String label) {
-            this.module = module;
+        private Row(String label, String detail) {
             this.label = label;
+            this.detail = detail;
         }
     }
 }

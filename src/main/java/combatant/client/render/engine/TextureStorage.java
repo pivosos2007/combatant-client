@@ -47,6 +47,12 @@ public enum TextureStorage {
             Identifier.fromNamespaceAndPath("combatant", "textures/particles/p11.png"),
             Identifier.fromNamespaceAndPath("combatant", "textures/particles/p12.png")
     };
+    // Celestial maps are part of the global @TextureCatalog. The existing
+    // TextureStorage.preload() @AssetLoad hook registers them on resource reload.
+    public static final Identifier SKY_MOON_ALBEDO =
+            Identifier.fromNamespaceAndPath("combatant", "textures/sky/moon_albedo.png");
+    public static final Identifier SKY_MOON_NORMAL =
+            Identifier.fromNamespaceAndPath("combatant", "textures/sky/moon_normal.png");
     public static final Identifier CAPTURE =
             Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/capture.png");
 

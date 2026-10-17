@@ -14,6 +14,7 @@ import com.google.gson.JsonParser;
 import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.textures.FilterMode;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.Long2FloatOpenHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -56,7 +57,7 @@ public final class MsdfFont implements GlyphFont {
 
     public static GlyphFont[] tryCreate(FontFace face) {
         if (!(face instanceof BuiltinFontFace)) return null;
-        MsdfAtlas atlas = MsdfAtlas.load(face.info);
+        MsdfAtlas atlas = MsdfAtlas.load(face);
         if (atlas == null) return null;
 
         GlyphFont[] fonts = new GlyphFont[FONT_SIZES];
@@ -96,10 +97,16 @@ public final class MsdfFont implements GlyphFont {
         return atlas.texture != null && atlas.texture.isReady();
     }
 
+    private OpenTypeShaper.ShapedRun shaped(String text) {
+        return atlas.shape(text);
+    }
+
     @Override
     public double getWidth(String string, int length) {
         if (string == null || string.isEmpty() || length <= 0) return 0.0;
         int safeLength = Math.min(length, string.length());
+        if (safeLength > 0 && safeLength < string.length() && Character.isHighSurrogate(string.charAt(safeLength - 1))
+                && Character.isLowSurrogate(string.charAt(safeLength))) safeLength--;
         int hash = string.hashCode();
         int slot = ((hash ^ (hash >>> 16)) + safeLength * 0x9E3779B1) & (WIDTH_CACHE_SLOTS - 1);
         WidthEntry cached = widthCache[slot];
@@ -107,12 +114,25 @@ public final class MsdfFont implements GlyphFont {
             return cached.width;
         }
 
+        // Use GSUB/GPOS advances only if every positioned glyph exists in this
+        // atlas. Otherwise retain the old Unicode path without missing quads.
+        OpenTypeShaper.ShapedRun run = shaped(string.substring(0, safeLength));
+        if (run != null) {
+            double width = run.advance() * pixelScale;
+            widthCache[slot] = new WidthEntry(string, safeLength, width);
+            return width;
+        }
         double width = 0;
+        int previous = -1;
         for (int i = 0; i < safeLength; ) {
             int cp = string.codePointAt(i);
-            Glyph g = atlas.glyphs.get(cp);
+            Glyph g = atlas.glyphForCodePoint(cp);
+            int resolved = g != null ? cp : -1;
             if (g == null) g = atlas.fallback;
-            if (g != null) width += g.advance * pixelScale;
+            if (g != null) {
+                width += (g.advance + atlas.kerning(previous, resolved)) * pixelScale;
+            }
+            previous = resolved;
             i += Character.charCount(cp);
         }
         widthCache[slot] = new WidthEntry(string, safeLength, width);
@@ -126,20 +146,28 @@ public final class MsdfFont implements GlyphFont {
 
     @Override
     public double render(MeshBuilder mesh, String string, double x, double y, RenderColor color, double scale) {
+        OpenTypeShaper.ShapedRun run = shaped(string);
+        if (run != null) return renderShaped(mesh, run, x, y, color, scale, null, null);
+
         double baseline = y + atlas.ascender * pixelScale * scale;
 
         int length = string.length();
         mesh.ensureCapacity(length * 4, length * 6);
+        int previous = -1;
 
         for (int i = 0; i < length; ) {
             int cp = string.codePointAt(i);
-            Glyph g = atlas.glyphs.get(cp);
+            Glyph g = atlas.glyphForCodePoint(cp);
+            int resolved = g != null ? cp : -1;
             if (g == null) g = atlas.fallback;
             if (g == null) {
+                previous = -1;
                 i += Character.charCount(cp);
                 continue;
             }
 
+            x += atlas.kerning(previous, resolved) * pixelScale * scale;
+            previous = resolved;
             if (g.visible) {
                 double scalePx = pixelScale * scale;
                 double x0 = x + g.left * scalePx;
@@ -164,18 +192,26 @@ public final class MsdfFont implements GlyphFont {
 
     @Override
     public double emitGlyphs(String string, double x, double y, double scale, GlyphConsumer consumer) {
+        OpenTypeShaper.ShapedRun run = shaped(string);
+        if (run != null) return emitShaped(run, x, y, scale, consumer);
+
         double baseline = y + atlas.ascender * pixelScale * scale;
 
         int length = string.length();
+        int previous = -1;
         for (int i = 0; i < length; ) {
             int cp = string.codePointAt(i);
-            Glyph g = atlas.glyphs.get(cp);
+            Glyph g = atlas.glyphForCodePoint(cp);
+            int resolved = g != null ? cp : -1;
             if (g == null) g = atlas.fallback;
             if (g == null) {
+                previous = -1;
                 i += Character.charCount(cp);
                 continue;
             }
 
+            x += atlas.kerning(previous, resolved) * pixelScale * scale;
+            previous = resolved;
             if (g.visible) {
                 double scalePx = pixelScale * scale;
                 double x0 = x + g.left * scalePx;
@@ -193,19 +229,77 @@ public final class MsdfFont implements GlyphFont {
         return x;
     }
 
+    private double emitShaped(OpenTypeShaper.ShapedRun run, double x, double y,
+                              double scale, GlyphConsumer consumer) {
+        double factor = pixelScale * scale;
+        double baseline = y + atlas.ascender * factor;
+        for (OpenTypeShaper.PositionedGlyph slot : run.glyphs()) {
+            Glyph g = atlas.glyphIds.get(slot.glyphId());
+            if (g == null || !g.visible) continue;
+            double gx = x + slot.x() * factor;
+            double gy = baseline + slot.y() * factor;
+            consumer.accept(gx + g.left * factor, gy + g.top * factor,
+                    gx + g.right * factor, gy + g.bottom * factor,
+                    g.u0, g.v0, g.u1, g.v1);
+        }
+        return x + run.advance() * factor;
+    }
+
+    private double renderShaped(MeshBuilder mesh, OpenTypeShaper.ShapedRun run,
+                                double x, double y, RenderColor color, double scale,
+                                Font.GlyphGradient gradient, Font.GlyphQuadGradient quadGradient) {
+        mesh.ensureCapacity(run.glyphs().length * 4, run.glyphs().length * 6);
+        double factor = pixelScale * scale;
+        double baseline = y + atlas.ascender * factor;
+        int[] pair = gradient == null ? null : new int[2];
+        int[] quad = quadGradient == null ? null : new int[4];
+        int ordinal = 0;
+        for (OpenTypeShaper.PositionedGlyph slot : run.glyphs()) {
+            Glyph g = atlas.glyphIds.get(slot.glyphId());
+            if (g != null && g.visible) {
+                double gx = x + slot.x() * factor;
+                double gy = baseline + slot.y() * factor;
+                double x0 = gx + g.left * factor;
+                double x1 = gx + g.right * factor;
+                double y0 = gy + g.top * factor;
+                double y1 = gy + g.bottom * factor;
+                int tl, bl, br, tr;
+                if (quad != null) {
+                    quadGradient.colors(ordinal, slot.codePoint(), x0, y0, x1, y1, quad);
+                    tl = quad[0]; bl = quad[1]; br = quad[2]; tr = quad[3];
+                } else if (pair != null) {
+                    gradient.colors(ordinal, slot.codePoint(), gx, pair);
+                    tl = bl = pair[0]; br = tr = pair[1];
+                } else {
+                    tl = bl = br = tr = ((color.a & 255) << 24) | ((color.r & 255) << 16) | ((color.g & 255) << 8) | (color.b & 255);
+                }
+                int i1 = mesh.vec2(x0, y0).raw2(g.u0, g.v0).color(red(tl), green(tl), blue(tl), alpha(tl)).next();
+                int i2 = mesh.vec2(x0, y1).raw2(g.u0, g.v1).color(red(bl), green(bl), blue(bl), alpha(bl)).next();
+                int i3 = mesh.vec2(x1, y1).raw2(g.u1, g.v1).color(red(br), green(br), blue(br), alpha(br)).next();
+                int i4 = mesh.vec2(x1, y0).raw2(g.u1, g.v0).color(red(tr), green(tr), blue(tr), alpha(tr)).next();
+                mesh.quad(i1, i2, i3, i4);
+            }
+            ordinal++;
+        }
+        return x + run.advance() * factor;
+    }
+
     @Override
     public boolean hasGlyph(int codePoint) {
-        return atlas.glyphs.containsKey(codePoint);
+        return atlas.glyphForCodePoint(codePoint) != null;
     }
 
     @Override
     public double getAdvance(int codePoint) {
-        Glyph g = atlas.glyphs.get(codePoint);
+        Glyph g = atlas.glyphForCodePoint(codePoint);
         return g != null ? g.advance * pixelScale : 0.0;
     }
 
     @Override
     public double renderGradient(MeshBuilder mesh, String string, double x, double y, double scale, Font.GlyphGradient gradient) {
+        OpenTypeShaper.ShapedRun run = shaped(string);
+        if (run != null) return renderShaped(mesh, run, x, y, null, scale, gradient, null);
+
         double baseline = y + atlas.ascender * pixelScale * scale;
 
         int length = string.length();
@@ -213,16 +307,21 @@ public final class MsdfFont implements GlyphFont {
 
         int[] colors = new int[2];
         int glyphIndex = 0;
+        int previous = -1;
         for (int i = 0; i < length; ) {
             int cp = string.codePointAt(i);
-            Glyph g = atlas.glyphs.get(cp);
+            Glyph g = atlas.glyphForCodePoint(cp);
+            int resolved = g != null ? cp : -1;
             if (g == null) g = atlas.fallback;
             if (g == null) {
+                previous = -1;
                 i += Character.charCount(cp);
                 glyphIndex++;
                 continue;
             }
 
+            x += atlas.kerning(previous, resolved) * pixelScale * scale;
+            previous = resolved;
             gradient.colors(glyphIndex, cp, x, colors);
             int leftArgb = colors[0];
             int rightArgb = colors[1];
@@ -262,6 +361,9 @@ public final class MsdfFont implements GlyphFont {
 
     @Override
     public double renderQuadGradient(MeshBuilder mesh, String string, double x, double y, double scale, Font.GlyphQuadGradient gradient) {
+        OpenTypeShaper.ShapedRun run = shaped(string);
+        if (run != null) return renderShaped(mesh, run, x, y, null, scale, null, gradient);
+
         double baseline = y + atlas.ascender * pixelScale * scale;
 
         int length = string.length();
@@ -269,16 +371,21 @@ public final class MsdfFont implements GlyphFont {
 
         int[] colors = new int[4];
         int glyphIndex = 0;
+        int previous = -1;
         for (int i = 0; i < length; ) {
             int cp = string.codePointAt(i);
-            Glyph g = atlas.glyphs.get(cp);
+            Glyph g = atlas.glyphForCodePoint(cp);
+            int resolved = g != null ? cp : -1;
             if (g == null) g = atlas.fallback;
             if (g == null) {
+                previous = -1;
                 i += Character.charCount(cp);
                 glyphIndex++;
                 continue;
             }
 
+            x += atlas.kerning(previous, resolved) * pixelScale * scale;
+            previous = resolved;
             if (g.visible) {
                 double scalePx = pixelScale * scale;
                 double x0 = x + g.left * scalePx;
@@ -361,6 +468,9 @@ public final class MsdfFont implements GlyphFont {
         private final float lineHeight;
         private final float ascender;
         private final Int2ObjectOpenHashMap<Glyph> glyphs;
+        private final Int2ObjectOpenHashMap<Glyph> glyphIds;
+        private final OpenTypeShaper shaper;
+        private final Long2FloatOpenHashMap kerningPairs;
         private final Glyph fallback;
         private int refs;
 
@@ -371,6 +481,9 @@ public final class MsdfFont implements GlyphFont {
                           float lineHeight,
                           float ascender,
                           Int2ObjectOpenHashMap<Glyph> glyphs,
+                          Int2ObjectOpenHashMap<Glyph> glyphIds,
+                          OpenTypeShaper shaper,
+                          Long2FloatOpenHashMap kerningPairs,
                           Glyph fallback) {
             this.texture = texture;
             this.distanceRange = distanceRange;
@@ -379,10 +492,39 @@ public final class MsdfFont implements GlyphFont {
             this.lineHeight = lineHeight;
             this.ascender = ascender;
             this.glyphs = glyphs;
+            this.glyphIds = glyphIds;
+            this.shaper = shaper;
+            this.kerningPairs = kerningPairs;
             this.fallback = fallback;
         }
 
-        private static MsdfAtlas load(FontInfo info) {
+        private static long pairKey(int left, int right) {
+            return ((long) left << 32) | (right & 0xFFFFFFFFL);
+        }
+
+        private float kerning(int previous, int current) {
+            return previous < 0 || current < 0 ? 0f : kerningPairs.get(pairKey(previous, current));
+        }
+
+        private Glyph glyphForCodePoint(int cp) {
+            Glyph glyph = glyphs.get(cp);
+            if (glyph != null || shaper == null) return glyph;
+            int id = shaper.glyphId(cp);
+            return id < 0 ? null : glyphIds.get(id);
+        }
+
+        /** Only shaped runs whose complete glyph-ID set is present may be emitted. */
+        private OpenTypeShaper.ShapedRun shape(String text) {
+            if (shaper == null || glyphIds.isEmpty()) return null;
+            OpenTypeShaper.ShapedRun run = shaper.shape(text);
+            for (OpenTypeShaper.PositionedGlyph g : run.glyphs()) {
+                if (!glyphIds.containsKey(g.glyphId())) return null;
+            }
+            return run;
+        }
+
+        private static MsdfAtlas load(FontFace face) {
+            FontInfo info = face.info;
             Minecraft mc = Minecraft.getInstance();
             if (mc == null) {
                 setLastError("mc null");
@@ -467,7 +609,16 @@ public final class MsdfFont implements GlyphFont {
             }
             if (ascender < 0f) ascender = -ascender;
 
+            OpenTypeShaper shaper = null;
+            if (!face.isAtlasOnly()) {
+                try {
+                    shaper = OpenTypeShaper.load(face.toStream());
+                } catch (Exception ignored) {
+                    // A legacy Unicode atlas remains usable without a TTF source.
+                }
+            }
             Int2ObjectOpenHashMap<Glyph> glyphs = new Int2ObjectOpenHashMap<>();
+            Int2ObjectOpenHashMap<Glyph> glyphIds = new Int2ObjectOpenHashMap<>();
             JsonArray glyphArray = getArray(root, "glyphs");
             int missingUnicode = 0;
             int duplicateUnicode = 0;
@@ -483,7 +634,8 @@ public final class MsdfFont implements GlyphFont {
                     JsonObject g = el.getAsJsonObject();
 
                     int codePoint = readUnicode(g.get("unicode"));
-                    if (!isUnicodeScalar(codePoint)) {
+                    int index = getInt(g, "index", -1);
+                    if (!isUnicodeScalar(codePoint) && index < 0) {
                         missingUnicode++;
                         continue;
                     }
@@ -493,29 +645,58 @@ public final class MsdfFont implements GlyphFont {
                     Bounds atlas = readBounds(getObject(g, "atlasBounds"));
 
                     Glyph glyph = Glyph.from(advance, plane, atlas, yOriginBottom, atlasWidth, atlasHeight, invW, invH);
-                    if (glyphs.put(codePoint, glyph) != null) duplicateUnicode++;
+                    if (isUnicodeScalar(codePoint)) {
+                        if (glyphs.put(codePoint, glyph) != null) duplicateUnicode++;
+                        // Unicode atlases may also be shaped when all resulting IDs
+                        // happen to be present; never assume all ligatures are packed.
+                        if (shaper != null) {
+                            int id = shaper.glyphId(codePoint);
+                            if (id >= 0) glyphIds.putIfAbsent(id, glyph);
+                        }
+                    }
+                    if (index >= 0) glyphIds.put(index, glyph);
                 }
             }
 
             if (missingUnicode > 0) {
                 warnBadAtlas(jsonId, "unicode", "ignored " + missingUnicode
-                        + " glyph entries without a valid Unicode mapping; do not generate runtime atlases with -allglyphs");
+                        + " glyph entries without a valid Unicode or glyph-index mapping");
             }
             if (duplicateUnicode > 0) {
                 warnBadAtlas(jsonId, "unicode-duplicate", "contains " + duplicateUnicode
                         + " duplicate Unicode mappings");
             }
 
-            if (glyphs.isEmpty()) {
-                setLastError("msdf glyphs empty: " + jsonId);
+            if (glyphs.isEmpty() && (shaper == null || glyphIds.isEmpty())) {
+                setLastError("msdf glyphs empty/unresolvable: " + jsonId);
                 warnBadAtlas(jsonId, "glyphs-empty", glyphArray == null
                         ? "glyphs array is missing"
-                        : "no loadable Unicode-mapped glyphs were found");
+                        : "no loadable Unicode mappings or resolvable glyph IDs were found");
                 return null;
             }
 
-            Glyph fallback = glyphs.get(32);
-            if (fallback == null) fallback = glyphs.get('?');
+            // msdf-atlas-gen stores pair advances in em units, just like glyph advances.
+            // Old atlases without a kerning array remain valid; they simply retain legacy spacing.
+            Long2FloatOpenHashMap kerningPairs = new Long2FloatOpenHashMap();
+            JsonArray kerningArray = getArray(root, "kerning");
+            if (kerningArray != null) {
+                for (JsonElement element : kerningArray) {
+                    if (!element.isJsonObject()) continue;
+                    JsonObject entry = element.getAsJsonObject();
+                    int left = readUnicode(entry.get("unicode1"));
+                    int right = readUnicode(entry.get("unicode2"));
+                    if (!isUnicodeScalar(left) || !isUnicodeScalar(right)
+                            || !glyphs.containsKey(left) || !glyphs.containsKey(right)) continue;
+                    float advance = getFloat(entry, "advance", 0f);
+                    if (Float.isFinite(advance) && advance != 0f) {
+                        kerningPairs.put(pairKey(left, right), advance);
+                    }
+                }
+            }
+
+            Glyph fallback = glyphs.get('?');
+            if (fallback == null) fallback = glyphs.get(32);
+            if (fallback == null && shaper != null) fallback = glyphIds.get(shaper.glyphId('?'));
 
             Texture texture = uploadTexture(image);
             if (texture == null) {
@@ -527,7 +708,8 @@ public final class MsdfFont implements GlyphFont {
             setLastError("");
             TextRenderSystem.glyphAtlases().registerPage("msdf:" + jsonId, texture, atlasWidth, atlasHeight, true);
             TextRenderSystem.glyphAtlases().onDirtyRectUpload(glyphs.size(), atlasWidth * atlasHeight * 4);
-            return new MsdfAtlas(texture, distanceRange, atlasWidth, atlasHeight, lineHeight, ascender, glyphs, fallback);
+            return new MsdfAtlas(texture, distanceRange, atlasWidth, atlasHeight, lineHeight, ascender,
+                    glyphs, glyphIds, shaper, kerningPairs, fallback);
         }
 
         private static Texture uploadTexture(BufferedImage image) {

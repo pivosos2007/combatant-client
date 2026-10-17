@@ -14,6 +14,8 @@ import combatant.client.util.resources.asset.FontCatalog;
 public enum BuiltinFontCatalog {
     @FontAsset(value = "comfortaa.ttf", family = "Comfortaa", primary = true, prewarm = true, order = 0)
     COMFORTAA,
+    @FontAsset(value = "comfortaa_semibold.ttf", family = "ComfortaaSemibold", prewarm = true, order = 1)
+    COMFORTAA_SEMIBOLD,
     @FontAsset(value = "inter_regular.ttf", family = "Inter", type = FontInfo.Type.Regular, prewarm = true, order = 10)
     INTER_REGULAR,
     @FontAsset(value = "inter_bold.ttf", family = "Inter", type = FontInfo.Type.Bold, prewarm = true, order = 11)

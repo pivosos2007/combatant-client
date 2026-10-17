@@ -1,6 +1,7 @@
 param(
     [string]$FontRoot = "src/main/resources/assets/combatant/font",
-    [string]$OutputRoot = "src/main/resources/assets/combatant/font/msdf"
+    [string]$OutputRoot = "src/main/resources/assets/combatant/font/msdf",
+    [switch]$GlyphIdAtlas
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,18 +43,21 @@ foreach ($entry in $fonts) {
     $png = Join-Path $OutputRoot "$base.png"
     $json = Join-Path $OutputRoot "$base.json"
 
+    # The default Unicode atlas remains compatible with atlas-only distributions.
+    # -GlyphIdAtlas is an explicit opt-in: it includes unencoded GSUB output glyphs
+    # and writes "index" metadata needed by the positioned-glyph renderer.
+    $selection = if ($GlyphIdAtlas) { @("-allglyphs") } else { @("-chars", $entry.Chars) }
     $previousErrorAction = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     & $generator `
         -font $font `
-        -chars $entry.Chars `
+        @selection `
         -type msdf `
         -format png `
         -size 48 `
         -pxrange 6 `
         -potr `
         -yorigin top `
-        -nokerning `
         -threads 0 `
         -imageout $png `
         -json $json
@@ -66,8 +70,12 @@ foreach ($entry in $fonts) {
     }
 
     $metadata = Get-Content -LiteralPath $json -Raw | ConvertFrom-Json
-    $unicodeGlyphs = @($metadata.glyphs | Where-Object { $null -ne $_.unicode })
-    if ($unicodeGlyphs.Count -eq 0) {
-        throw "MSDF generation produced no Unicode-mapped glyphs for $fontFile"
+    $validGlyphs = if ($GlyphIdAtlas) {
+        @($metadata.glyphs | Where-Object { $null -ne $_.index })
+    } else {
+        @($metadata.glyphs | Where-Object { $null -ne $_.unicode })
+    }
+    if ($validGlyphs.Count -eq 0) {
+        throw "MSDF generation produced no resolvable glyphs for $fontFile"
     }
 }

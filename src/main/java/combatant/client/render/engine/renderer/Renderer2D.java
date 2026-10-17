@@ -3232,8 +3232,12 @@ public final class Renderer2D {
         if (w <= 0.0 || h <= 0.0) return;
 
         float effectiveDistort = safe.distortPx * clamp01(glassAlpha);
+        BlurQuality preparedBlurQuality = liquidGlassBlurQualityOverride != null
+                ? liquidGlassBlurQualityOverride : DEFAULT_LIQUID_GLASS_BLUR_QUALITY;
+        float preparedBlurOffset = Float.isFinite(liquidGlassBlurOffsetOverridePx)
+                ? Math.max(0.0f, liquidGlassBlurOffsetOverridePx) : LIQUID_GLASS_KAWASE_OFFSET_PX;
         UiBackdropRequest backdrop = liquidGlassBackdrop(
-                bounds, UiBlurQuality.LIQUID_GLASS, LIQUID_GLASS_KAWASE_OFFSET_PX,
+                bounds, UiBlurQuality.fromRenderer(preparedBlurQuality), preparedBlurOffset,
                 safe.thicknessPx, effectiveDistort, 0.0f);
         // The effect command needs the capture bounds; the exact implicit mask is evaluated by the
         // liquid-glass batch itself and intentionally stays backend-local.
@@ -3288,7 +3292,7 @@ public final class Renderer2D {
 
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
-                DEFAULT_LIQUID_GLASS_BLUR_QUALITY, LIQUID_GLASS_KAWASE_OFFSET_PX, backdrop,
+                preparedBlurQuality, preparedBlurOffset, backdrop,
                 backdropBlend);
         if (batch != null) batch.includeGlassBounds(bounds);
         if (batch == null) {
@@ -3499,7 +3503,11 @@ public final class Renderer2D {
         LiquidGlassPreset safe = preset != null ? preset : LiquidGlassPreset.BALANCED;
         liquidGlassPrimitive(primitive, tintArgb, glassAlpha, blurAlpha,
                 safe.thicknessPx, safe.fresnelPower, safe.fresnelAlpha,
-                safe.baseAlpha, safe.fresnelMix, safe.distortPx, 0.0f, 0.0f);
+                safe.baseAlpha, safe.fresnelMix, safe.distortPx, 0.0f, 0.0f,
+                liquidGlassBlurQualityOverride != null
+                        ? liquidGlassBlurQualityOverride : DEFAULT_LIQUID_GLASS_BLUR_QUALITY,
+                Float.isFinite(liquidGlassBlurOffsetOverridePx)
+                        ? liquidGlassBlurOffsetOverridePx : LIQUID_GLASS_KAWASE_OFFSET_PX);
     }
 
     private void liquidGlassPrimitive(UiPrimitive primitive,
@@ -5233,7 +5241,12 @@ public final class Renderer2D {
         HEAVY(15.0f, -9.00f, 0.86f, 0.62f, 0.48f, 0.052f),
         HUD_SMALL(11.0f, -12.00f, 0.84f, 0.78f, 0.22f, 0.055f),
         HUD_LARGE(13.5f, -14.00f, 0.88f, 0.72f, 0.20f, 0.060f),
-        HEALTH_BAR(3.25f, -18.00f, 0.52f, 0.96f, 0.055f, 0.0030f);
+        HEALTH_BAR(3.25f, -18.00f, 0.52f, 0.96f, 0.055f, 0.0030f),
+        // Same four-pass prepared Kawase quality as ordinary glass, but HUD glass uses
+        // less lens thickness / distortion. Blur footprint is controlled by the
+        // caller's separate offset profile, never by alpha or render resolution.
+        HUD_SURFACE_SMALL(6.5f, -11.0f, 0.74f, 0.68f, 0.14f, 0.018f),
+        HUD_SURFACE_LARGE(8.0f, -12.0f, 0.78f, 0.66f, 0.14f, 0.022f);
 
         private final float thicknessPx;
         private final float fresnelPower;

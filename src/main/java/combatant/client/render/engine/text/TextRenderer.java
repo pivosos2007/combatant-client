@@ -65,6 +65,11 @@ public interface TextRenderer {
 
     void begin(double scale, boolean scaleOnly, boolean big);
 
+    /** A requested rasterizer must reach the glyph source, not just the router. */
+    default void begin(double scale, boolean scaleOnly, boolean big, TextBackendPreference preference) {
+        begin(scale, scaleOnly, big);
+    }
+
     default void begin(double scale) {
         begin(scale, false, false);
     }

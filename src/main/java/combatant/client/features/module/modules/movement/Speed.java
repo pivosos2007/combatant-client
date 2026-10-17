@@ -24,6 +24,7 @@ import combatant.client.events.impl.PlayerMoveEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
+import combatant.client.features.module.ModuleListInfoProvider;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.modules.movement.speed.BhopInput;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
@@ -46,6 +47,18 @@ public final class Speed extends Module {
     private final EnumValue<Mode> mode = enumMode("mode", Mode.NCP);
     private boolean lastOnGround = true;
     private int airTicks;
+
+    @ModuleListInfoProvider
+    private String moduleListDetail() {
+        return switch (mode.get()) {
+            case NCP -> "NCP";
+            case VULCAN_286 -> "Vulcan 2.86";
+            case VULCAN_288 -> "Vulcan 2.88";
+            case VULCAN_GROUND_286 -> "Vulcan Ground";
+            case MATRIX_7 -> "Matrix 7";
+            case BHOP -> "BHop";
+        };
+    }
 
     @Override
     public void onEnable() {

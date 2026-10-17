@@ -22,6 +22,7 @@ import combatant.client.events.impl.GameTickEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
+import combatant.client.features.module.ModuleListInfoProvider;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.item.FoodUtil;
@@ -68,6 +69,16 @@ public final class NoSlow extends Module {
     );
 
     private int grimTicks;
+
+    @ModuleListInfoProvider
+    private String moduleListDetail() {
+        return switch (mode.get()) {
+            case VANILLA -> "Vanilla";
+            case GRIM -> "Grim";
+            case GRIM_TICK -> "Grim Tick";
+            case CUSTOM -> "Custom";
+        };
+    }
 
     @EventHandler
     private void onGameTick(GameTickEvent event) {

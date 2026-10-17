@@ -8,7 +8,6 @@
 package combatant.client.features.module.modules.visuals;
 
 
-import combatant.client.features.theme.Theme;
 import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
@@ -33,8 +32,8 @@ import combatant.client.render.iris.IrisSceneDepth;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.util.logging.DebugLog;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.LinkedHashMap;
 
 @ModuleInfo(id = "reimaginedvisual", displayName = "ReimaginedVisual", category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.COSMETIC,
         description = "module.reimaginedvisual.description")
@@ -43,20 +42,10 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     private static final String SETTING_EFFECTS = "effects";
     private static final String EFFECT_SHADER_SKY = "shader_sky";
     private static final String EFFECT_DEPTH_OF_FIELD = "depth_of_field";
-    private static final String SETTING_SKYBOX_SHADER_SYNC_THEME = "skybox_shader_sync_theme";
-    private static final String SETTING_SKYBOX_SHADER_COLOR = "skybox_shader_color";
-    private static final String SETTING_SKYBOX_SHADER_MOTION_SPEED = "skybox_shader_motion_speed";
-    private static final String SETTING_SKYBOX_SHADER_AURORA_ENABLED = "skybox_shader_aurora_enabled";
-    private static final String SETTING_SKYBOX_SHADER_AURORA_INTENSITY = "skybox_shader_aurora_intensity";
-    private static final String SETTING_SKYBOX_SHADER_AURORA_SPEED = "skybox_shader_aurora_speed";
-    private static final String SETTING_SKYBOX_SHADER_SMALL_STARS = "skybox_shader_small_stars";
-    private static final String SETTING_SKYBOX_SHADER_DUST_STARS = "skybox_shader_dust_stars";
-    private static final String SETTING_SKYBOX_SHADER_MEDIUM_STARS = "skybox_shader_medium_stars";
-    private static final String SETTING_SKYBOX_SHADER_LARGE_STARS = "skybox_shader_large_stars";
-    private static final String SETTING_SKYBOX_SHADER_STAR_BRIGHTNESS = "skybox_shader_star_brightness";
-    private static final String SETTING_SKYBOX_SHADER_TWINKLE_STRENGTH = "skybox_shader_twinkle_strength";
-    private static final String SETTING_SKYBOX_SHADER_LAYERS = "skybox_shader_layers";
-    private static final String SETTING_SKYBOX_SKY_FOG_BLEND = "skybox_sky_fog_blend";
+    private static final String SETTING_SKY_CLOUD_COVERAGE = "sky_cloud_coverage";
+    private static final String SETTING_SKY_CLOUD_QUALITY = "sky_cloud_quality";
+    private static final String SETTING_SKY_WIND_SPEED = "sky_wind_speed";
+    private static final String SETTING_SKY_STARS = "sky_stars";
     private static final String SETTING_DOF_DEPTH_SOURCE = "dof_depth_source";
     private static final String SETTING_DOF_FAR_START = "dof_far_start";
     private static final String SETTING_DOF_FAR_TRANSITION = "dof_far_transition";
@@ -65,11 +54,10 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     private static final String SETTING_DOF_QUALITY = "dof_quality";
     private static final String SETTING_DOF_DEBUG_COC = "dof_debug_coc";
     private static final String IRIS_SHADER_SKYBOX_REASON_KEY = "setting.reimaginedvisual.skybox_shader.iris_blocked";
-    private static final String IRIS_SHADER_SKYBOX_REASON_FALLBACK = "Iris is loaded; ReimaginedVisual shader skybox is not used.";
+    private static final String IRIS_SHADER_SKYBOX_REASON_FALLBACK = "Iris shaderpack pipeline is active.";
     private static final String IRIS_DOF_REASON_KEY = "setting.reimaginedvisual.depth_of_field.iris_blocked";
     private static final String IRIS_DOF_REASON_FALLBACK = "Iris shaderpack pipeline is active.";
     private static final Map<String, Boolean> DEFAULT_EFFECTS = createDefaultEffects();
-    private static final Map<String, Boolean> DEFAULT_SKYBOX_SHADER_LAYERS = createDefaultSkyboxShaderLayers();
     private final Matrix4f dofProjection = new Matrix4f();
     private TextureTarget dofFocusTarget;
     private final DepthOfFieldComputeBackend dofComputeBackend = new DepthOfFieldComputeBackend();
@@ -78,50 +66,18 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
             SETTING_EFFECTS,
             DEFAULT_EFFECTS
     );
-    private final BooleanValue skyboxShaderSyncTheme =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(bool("reimaginedVisualSkyboxShaderSyncTheme", SETTING_SKYBOX_SHADER_SYNC_THEME, true),
+    private final NumberValue<Float> skyCloudCoverage = shaderSkyboxNotAppliedWithIris(
+            visibleWhen(num("reimaginedVisualSkyCloudCoverage", SETTING_SKY_CLOUD_COVERAGE, 0.54f, 0.0f, 1.0f),
                     this::isShaderSkyboxSettingsVisible));
-    private final RGBColorValue skyboxShaderColor =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(colorNoAlpha("reimaginedVisualSkyboxShaderColor", SETTING_SKYBOX_SHADER_COLOR, "#78A7FF"),
-                    () -> isShaderSkyboxSettingsVisible() && !skyboxShaderSyncTheme.get()));
-    private final NumberValue<Float> skyboxShaderMotionSpeed =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderMotionSpeed", SETTING_SKYBOX_SHADER_MOTION_SPEED, 0.45f, 0.0f, 2.0f),
+    private final NumberValue<Integer> skyCloudQuality = shaderSkyboxNotAppliedWithIris(
+            visibleWhen(num("reimaginedVisualSkyCloudQuality", SETTING_SKY_CLOUD_QUALITY, 2, 1, 3),
                     this::isShaderSkyboxSettingsVisible));
-    private final BooleanValue skyboxShaderAuroraEnabled =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(bool("reimaginedVisualSkyboxShaderAuroraEnabled", SETTING_SKYBOX_SHADER_AURORA_ENABLED, false),
+    private final NumberValue<Float> skyWindSpeed = shaderSkyboxNotAppliedWithIris(
+            visibleWhen(num("reimaginedVisualSkyWindSpeed", SETTING_SKY_WIND_SPEED, 0.50f, 0.0f, 3.0f),
                     this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderAuroraIntensity =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderAuroraIntensity", SETTING_SKYBOX_SHADER_AURORA_INTENSITY, 0.70f, 0.0f, 1.5f),
-                    () -> isShaderSkyboxSettingsVisible() && skyboxShaderAuroraEnabled.get()));
-    private final NumberValue<Float> skyboxShaderAuroraSpeed =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderAuroraSpeed", SETTING_SKYBOX_SHADER_AURORA_SPEED, 0.38f, 0.0f, 2.0f),
-                    () -> isShaderSkyboxSettingsVisible() && skyboxShaderAuroraEnabled.get()));
-    private final NumberValue<Float> skyboxShaderSmallStars =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderSmallStars", SETTING_SKYBOX_SHADER_SMALL_STARS, 1.60f, 0.0f, 10.0f),
+    private final NumberValue<Float> skyStars = shaderSkyboxNotAppliedWithIris(
+            visibleWhen(num("reimaginedVisualSkyStars", SETTING_SKY_STARS, 1.0f, 0.0f, 2.0f),
                     this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderDustStars =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderDustStars", SETTING_SKYBOX_SHADER_DUST_STARS, 1.40f, 0.0f, 10.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderMediumStars =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderMediumStars", SETTING_SKYBOX_SHADER_MEDIUM_STARS, 1.30f, 0.0f, 10.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderLargeStars =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderLargeStars", SETTING_SKYBOX_SHADER_LARGE_STARS, 1.15f, 0.0f, 10.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderStarBrightness =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderStarBrightness", SETTING_SKYBOX_SHADER_STAR_BRIGHTNESS, 1.35f, 0.0f, 3.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderTwinkleStrength =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderTwinkleStrength", SETTING_SKYBOX_SHADER_TWINKLE_STRENGTH, 1.35f, 0.0f, 3.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final BooleanMapValue skyboxShaderLayers =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(group("reimaginedVisualSkyboxShaderLayers", SETTING_SKYBOX_SHADER_LAYERS, DEFAULT_SKYBOX_SHADER_LAYERS),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxSkyFogBlend =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(
-                    num("reimaginedVisualSkyboxSkyFogBlend", SETTING_SKYBOX_SKY_FOG_BLEND, 0.35f, 0.0f, 1.0f),
-                    this::isShaderSkyboxSettingsVisible
-            ));
     private final Minecraft mc = Minecraft.getInstance();
     private final NumberValue<Float> dofFarStart =
             depthOfFieldNotAppliedWithIris(visibleWhen(num("reimaginedVisualDofFarStart", SETTING_DOF_FAR_START, 4.0f, 0.0f, 512.0f),
@@ -149,37 +105,11 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
         PostProcessManager.register(this);
     }
 
-    private static float clampStarAmount(float value) {
-        return Math.max(0.0f, Math.min(10.0f, value));
-    }
-
     private static Map<String, Boolean> createDefaultEffects() {
-        LinkedHashMap<String, Boolean> defaults = new LinkedHashMap<>();
-        defaults.put(EFFECT_SHADER_SKY, true);
-        defaults.put(EFFECT_DEPTH_OF_FIELD, false);
-        return defaults;
-    }
-
-    private static Map<String, Boolean> createDefaultSkyboxShaderLayers() {
-        LinkedHashMap<String, Boolean> defaults = new LinkedHashMap<>();
-        defaults.put("waves", true);
-        defaults.put("ribbons", true);
-        defaults.put("sweeps", true);
-        defaults.put("veil", true);
-        defaults.put("nebula", true);
-        defaults.put("detail_curtains", true);
-        defaults.put("polar_arc", true);
-        defaults.put("bursts", true);
-        defaults.put("water_veil", true);
-        defaults.put("caustics", true);
-        defaults.put("refracted_aurora", true);
-        defaults.put("northern_aurora", true);
-        defaults.put("small_stars", true);
-        defaults.put("dust_stars", true);
-        defaults.put("medium_stars", true);
-        defaults.put("large_stars", true);
-        defaults.put("detail_stars", true);
-        return defaults;
+        LinkedHashMap<String, Boolean> effects = new LinkedHashMap<>();
+        effects.put(EFFECT_SHADER_SKY, true);
+        effects.put(EFFECT_DEPTH_OF_FIELD, false);
+        return effects;
     }
 
     private static ReimaginedVisual module() {
@@ -187,70 +117,23 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     }
 
     public boolean isShaderSkyboxEnabled() {
-        return isEnabled() && isEffectSelected(EFFECT_SHADER_SKY);
+        return isEnabled() && isEffectSelected(EFFECT_SHADER_SKY) && !IrisRuntime.isShaderpackRendererActive();
     }
 
-    public int getShaderSkyboxColor() {
-        if (skyboxShaderSyncTheme.get()) {
-            return Theme.theme().accent() & 0x00FFFFFF;
-        }
-        return skyboxShaderColor.getArgb() & 0x00FFFFFF;
+    public float getSkyCloudCoverage() {
+        return skyCloudCoverage.get();
     }
 
-    public float getSkyboxSkyFogBlend() {
-        return Math.max(0.0f, Math.min(1.0f, skyboxSkyFogBlend.get()));
+    public int getSkyCloudQuality() {
+        return skyCloudQuality.get();
     }
 
-    public float getSkyboxShaderMotionSpeed() {
-        return Math.max(0.0f, Math.min(2.0f, skyboxShaderMotionSpeed.get()));
+    public float getSkyWindSpeed() {
+        return skyWindSpeed.get();
     }
 
-    public boolean isSkyboxShaderAuroraEnabled() {
-        return skyboxShaderAuroraEnabled.get();
-    }
-
-    public float getSkyboxShaderAuroraIntensity() {
-        return skyboxShaderAuroraEnabled.get() ? Math.max(0.0f, Math.min(1.5f, skyboxShaderAuroraIntensity.get())) : 0.0f;
-    }
-
-    public float getSkyboxShaderAuroraSpeed() {
-        return Math.max(0.0f, Math.min(2.0f, skyboxShaderAuroraSpeed.get()));
-    }
-
-    public float getSkyboxShaderSmallStars() {
-        return clampStarAmount(skyboxShaderSmallStars.get());
-    }
-
-    public float getSkyboxShaderDustStars() {
-        return clampStarAmount(skyboxShaderDustStars.get());
-    }
-
-    public float getSkyboxShaderMediumStars() {
-        return clampStarAmount(skyboxShaderMediumStars.get());
-    }
-
-    public float getSkyboxShaderLargeStars() {
-        return clampStarAmount(skyboxShaderLargeStars.get());
-    }
-
-    public float getSkyboxShaderStarBrightness() {
-        return Math.max(0.0f, Math.min(3.0f, skyboxShaderStarBrightness.get()));
-    }
-
-    public float getSkyboxShaderTwinkleStrength() {
-        return Math.max(0.0f, Math.min(3.0f, skyboxShaderTwinkleStrength.get()));
-    }
-
-    public int getSkyboxShaderLayerMask() {
-        int mask = 0;
-        int bit = 0;
-        for (String key : DEFAULT_SKYBOX_SHADER_LAYERS.keySet()) {
-            if (skyboxShaderLayers.get(key)) {
-                mask |= 1 << bit;
-            }
-            bit++;
-        }
-        return mask;
+    public float getSkyStars() {
+        return skyStars.get();
     }
 
     @Override
@@ -467,12 +350,14 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
 
     @Override
     public void onDisable() {
+        combatant.client.render.sky.DeferredSkyRenderer.close();
         closeDofFocusTarget();
         dofComputeBackend.close();
     }
 
     @Override
     public void releaseBackendResources(CombatantRhi owner) {
+        combatant.client.render.sky.DeferredSkyRenderer.close();
         dofComputeBackend.release(owner);
         closeDofFocusTarget();
         dofComputeSupported = true;
@@ -513,7 +398,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     }
 
     private boolean isShaderSkyboxBlockedByIris() {
-        return isEffectSelected(EFFECT_SHADER_SKY) && IrisRuntime.isModLoaded();
+        return isEffectSelected(EFFECT_SHADER_SKY) && IrisRuntime.isShaderpackRendererActive();
     }
 
     private String shaderSkyboxIrisReason() {

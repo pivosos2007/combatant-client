@@ -30,6 +30,8 @@ public enum HudRenderUtil {
     public static final int GLASS_BG = 0x660C0C0C;
     public static final float GLASS_PANEL_FILL_ALPHA = 0.165f;
     public static final float GLASS_SMALL_FILL_ALPHA = 0.212f;
+    // High quality is intentionally retained; only the Kawase sampling offset is reduced.
+    public static final float HUD_GLASS_KAWASE_OFFSET_PX = 0.38f;
 
     public static int glassBackground() {
         return GLASS_BG;
@@ -134,7 +136,9 @@ public enum HudRenderUtil {
         Runnable draw = () -> drawLiquidGlass(x, y, w, h, radius, scale, large,
                 blurAlpha, glassAlpha);
         Renderer2D renderer = Renderer2D.COLOR;
-        Runnable materialDraw = () -> renderer.withLiquidGlassMaterial(material, draw);
+        Runnable materialDraw = () -> renderer.withLiquidGlassBlurProfile(
+                Renderer2D.BlurQuality.LIQUID_GLASS, HUD_GLASS_KAWASE_OFFSET_PX,
+                () -> renderer.withLiquidGlassMaterial(material, draw));
         if (stacked) {
             renderer.withLiquidGlassSceneSource(
                     UiBackdropRequest.SceneSource.STACKED_LENSES, materialDraw);
@@ -169,19 +173,14 @@ public enum HudRenderUtil {
         float safeScale = Math.max(0.001f, scale);
         if (materialAlpha <= 0.001f) return;
         Renderer2D.LiquidGlassPreset preset = large
-                ? Renderer2D.LiquidGlassPreset.HUD_LARGE
-                : Renderer2D.LiquidGlassPreset.HUD_SMALL;
+                ? Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE
+                : Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL;
 
-        Renderer2D.COLOR.liquidGlassRect(
-                x, y, w, h,
-                radius,
-                0xFFFFFFFF,
-                materialAlpha,
-                1.0f,
-                preset,
-                safeScale,
-                0.0f
-        );
+        Renderer2D.COLOR.withLiquidGlassBlurProfile(
+                Renderer2D.BlurQuality.LIQUID_GLASS, HUD_GLASS_KAWASE_OFFSET_PX,
+                () -> Renderer2D.COLOR.liquidGlassRect(
+                        x, y, w, h, radius, 0xFFFFFFFF, materialAlpha, 1.0f,
+                        preset, safeScale, 0.0f));
     }
 
 
@@ -246,19 +245,14 @@ public enum HudRenderUtil {
         float safeScale = Math.max(0.001f, scale);
         if (materialAlpha <= 0.001f) return;
         Renderer2D.LiquidGlassPreset preset = large
-                ? Renderer2D.LiquidGlassPreset.HUD_LARGE
-                : Renderer2D.LiquidGlassPreset.HUD_SMALL;
+                ? Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE
+                : Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL;
 
-        Renderer2D.COLOR.liquidGlassRectCorners(
-                x, y, w, h,
-                radiusTL, radiusTR, radiusBR, radiusBL,
-                tintArgb,
-                materialAlpha,
-                1.0f,
-                preset,
-                safeScale,
-                0.0f
-        );
+        Renderer2D.COLOR.withLiquidGlassBlurProfile(
+                Renderer2D.BlurQuality.LIQUID_GLASS, HUD_GLASS_KAWASE_OFFSET_PX,
+                () -> Renderer2D.COLOR.liquidGlassRectCorners(
+                        x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL,
+                        tintArgb, materialAlpha, 1.0f, preset, safeScale, 0.0f));
     }
 
     public static final String PANEL_STYLE_DEFAULT = "Default";
