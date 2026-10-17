@@ -94,17 +94,17 @@ public enum AttackUtil {
             }
 
             if (usingShield) {
-                if (!rhEnabled || !rh.canAttackWhileShield()) {
-                    return false;
+                if (rhEnabled && rh.canAttackWhileShield()) {
+                    boolean usePressed = mc.options.keyUse.isDown();
+                    player.releaseUsingItem();
+                    mc.options.keyUse.setDown(false);
+                    boolean result = performAttack(mc, player, target, keepSprint);
+                    if (usePressed) {
+                        mc.options.keyUse.setDown(true);
+                    }
+                    return result;
                 }
-                boolean usePressed = mc.options.keyUse.isDown();
-                player.releaseUsingItem();
-                mc.options.keyUse.setDown(false);
-                boolean result = performAttack(mc, player, target, keepSprint);
-                if (usePressed) {
-                    mc.options.keyUse.setDown(true);
-                }
-                return result;
+                return false;
             }
 
             return false;

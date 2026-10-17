@@ -25,6 +25,7 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.text.WorldTextRenderer;
 import combatant.client.render.engine.world.WorldUiPresentationService;
+import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.aiming.RestrictedSingleUseAction;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
@@ -79,6 +80,9 @@ public class AutoBed extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
+    // custom = the settings below as set; grim = place range at most 4.5, visible-only, no instant explode,
+    // single interaction per tick and rotations tracing to clicked block; vanilla = 5.5 range with instant explode, for servers with no anticheat.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final BooleanValue placeEnabled = boolCommon("autobedPlace", "place", CommonSettingSchemas.PLACE, true);
     private final BooleanValue explodeEnabled = boolCommon("autobedExplode", "explode", CommonSettingSchemas.EXPLODE, true);
     private final BooleanValue instantExplode = bool("autobedInstantExplode", "instant_explode", true);
@@ -276,6 +280,7 @@ public class AutoBed extends Module {
     private boolean pendingBedPlaceSent;
     private boolean pendingBedExplodeSent;
     private long pendingBedExplodeSentMs;
+    private int lastInteractionTick = Integer.MIN_VALUE;
     private float renderDamage;
     private float renderSelfDamageValue;
     private boolean lowDamageMode;
@@ -385,7 +390,7 @@ public class AutoBed extends Module {
                 plannerContext,
                 target,
                 resolvePredictedPosition(target, predictTicks.get()),
-                Mth.ceil(placeRange.get())
+                Mth.ceil(effPlaceRange())
         );
         bestPlace = result.bestPlace();
         bestExplode = result.bestExplode();
@@ -479,6 +484,14 @@ public class AutoBed extends Module {
         }
 
         setPendingBed(refreshed, true);
+        if (anticheat.get() == AntiCheatPreset.GRIM) {
+            if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
+            BlockHitResult hit = refreshed.placeHitResult();
+            if (hit != null) {
+                if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return;
+                if (!isFaceFacingEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection())) return;
+            }
+        }
         boolean placed = AutoBedActionUtil.placeBed(
                 mc,
                 this,
@@ -491,6 +504,7 @@ public class AutoBed extends Module {
             clearPendingBedIfMatches(refreshed);
             return;
         }
+        if (mc.player != null) lastInteractionTick = mc.player.tickCount;
 
         lastPlaceMs = System.currentTimeMillis();
         pendingBedSinceMs = lastPlaceMs;
@@ -505,6 +519,14 @@ public class AutoBed extends Module {
             return;
         }
 
+        if (anticheat.get() == AntiCheatPreset.GRIM) {
+            if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
+            BlockHitResult hit = refreshed.explodeHitResult();
+            if (hit != null) {
+                if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return;
+                if (!isFaceFacingEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection())) return;
+            }
+        }
         setPendingBed(refreshed, false);
         detonatePendingBed(refreshed);
     }
@@ -576,6 +598,14 @@ public class AutoBed extends Module {
     private void detonatePendingBed(AutoBedData data) {
         if (data == null || data.explodeHitResult() == null || !hasPendingExplodeDelayElapsed() || shouldPause()) return;
 
+        if (anticheat.get() == AntiCheatPreset.GRIM) {
+            if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
+            BlockHitResult hit = data.explodeHitResult();
+            if (hit != null) {
+                if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return;
+                if (!isFaceFacingEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection())) return;
+            }
+        }
         boolean exploded = AutoBedActionUtil.explodeBed(
                 mc,
                 this,
@@ -585,6 +615,7 @@ public class AutoBed extends Module {
                 restoreItem.get()
         );
         if (!exploded) return;
+        if (mc.player != null) lastInteractionTick = mc.player.tickCount;
 
         lastExplodeMs = System.currentTimeMillis();
         pendingBedExplodeSent = true;
@@ -763,6 +794,7 @@ public class AutoBed extends Module {
         pendingBedPlaceSent = false;
         pendingBedExplodeSent = false;
         pendingBedExplodeSentMs = 0L;
+        lastInteractionTick = Integer.MIN_VALUE;
     }
 
     private boolean shouldPause() {
@@ -793,7 +825,7 @@ public class AutoBed extends Module {
     }
 
     private boolean hasPendingExplodeDelayElapsed() {
-        return (pendingBedPlaceSent && instantExplode.get()) || hasExplodeDelayElapsed();
+        return (pendingBedPlaceSent && effInstantExplode()) || hasExplodeDelayElapsed();
     }
 
     private long getPlaceDelayRemainingMs() {
@@ -805,7 +837,7 @@ public class AutoBed extends Module {
     }
 
     private long getPendingExplodeDelayRemainingMs() {
-        if (pendingBedPlaceSent && instantExplode.get()) return 0L;
+        if (pendingBedPlaceSent && effInstantExplode()) return 0L;
         return getExplodeDelayRemainingMs();
     }
 
@@ -1059,8 +1091,8 @@ public class AutoBed extends Module {
                 footPos,
                 headPos,
                 placementMode.get(),
-                placeRange.get(),
-                wallRange.get()
+                effPlaceRange(),
+                effWallRange()
         );
     }
 
@@ -1070,13 +1102,48 @@ public class AutoBed extends Module {
                 mc.player,
                 pos,
                 placementMode.get(),
-                placeRange.get(),
-                wallRange.get()
+                effPlaceRange(),
+                effWallRange()
         );
     }
 
+    private float effPlaceRange() {
+        return anticheat.get().limit(placeRange.get(), (float) AntiCheatPreset.GRIM_BLOCK_RANGE, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
+    }
+
+    private float effWallRange() {
+        return anticheat.get().limit(wallRange.get(), 0.0f, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
+    }
+
+    private boolean effInstantExplode() {
+        return anticheat.get().pick(instantExplode.get(), false, true);
+    }
+
+    private boolean effUsesRotations() {
+        return anticheat.get().pick(CombatRotationModeUtil.usesRotations(attackMode), true, CombatRotationModeUtil.usesRotations(attackMode));
+    }
+
     private boolean usesRotationSettings() {
-        return CombatRotationModeUtil.usesRotations(attackMode);
+        return effUsesRotations();
+    }
+
+    private boolean serverRotationHits(AABB box, double range) {
+        Rotation server = RotationManager.INSTANCE.getServerRotation();
+        if (server == null) return false;
+        Vec3 eye = mc.player.getEyePosition();
+        return box.contains(eye) || box.clip(eye, eye.add(server.directionVector().scale(range))).isPresent();
+    }
+
+    private static boolean isFaceFacingEye(Vec3 eye, BlockPos pos, Direction face) {
+        if (face == null) return true;
+        return switch (face) {
+            case DOWN -> eye.y <= pos.getY();
+            case UP -> eye.y >= pos.getY() + 1.0;
+            case NORTH -> eye.z <= pos.getZ();
+            case SOUTH -> eye.z >= pos.getZ() + 1.0;
+            case WEST -> eye.x <= pos.getX();
+            case EAST -> eye.x >= pos.getX() + 1.0;
+        };
     }
 
     private String buildDamageText() {
@@ -1201,7 +1268,7 @@ public class AutoBed extends Module {
 
         @Override
         public float placeRange() {
-            return placeRange.get();
+            return effPlaceRange();
         }
     }
 

@@ -22,6 +22,7 @@ import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
+import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.block.placer.BlockPlacer;
 import combatant.client.util.target.TargetingUtil;
 import net.minecraft.client.Minecraft;
@@ -66,6 +67,9 @@ public final class AutoTrap extends Module {
     );
 
     private final Minecraft mc = Minecraft.getInstance();
+    // custom = the settings below as set; grim = place range <= 4.5, wall range 0, rotation NORMAL, 1 block/tick;
+    // vanilla = 5.5 range/wall range, NO_ROTATION.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final NumberValue<Double> range = numCommon(
             "autoTrapRange", "range", CommonSettingSchemas.COMBAT_RANGE, 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = numCommon(
@@ -90,17 +94,17 @@ public final class AutoTrap extends Module {
     private final BlockPlacer blockPlacer = new BlockPlacer(
             this, this, 10,
             this::findPlacementSlot,
-            range::get,
-            wallRange::get,
+            this::effPlaceRange,
+            this::effWallRange,
             delay::get,
             delay::get,
             () -> 0,
             () -> 0,
             () -> 1,
-            () -> false,
+            this::effConstructFailResult,
             () -> true,
             () -> false,
-            rotation::get,
+            this::effRotation,
             movementCorrection::get
     );
     private final List<BlockPos> currentTargets = new ArrayList<>();
@@ -192,6 +196,22 @@ public final class AutoTrap extends Module {
             if (isTargetBlock(stack)) return new BlockPlacer.PlacementSlot(slot, InteractionHand.MAIN_HAND, stack);
         }
         return null;
+    }
+
+    private double effPlaceRange() {
+        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE);
+    }
+
+    private double effWallRange() {
+        return anticheat.get().limit(wallRange.get(), 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE);
+    }
+
+    private BlockPlacer.RotationMode effRotation() {
+        return anticheat.get().pick(rotation.get(), BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.NO_ROTATION);
+    }
+
+    private boolean effConstructFailResult() {
+        return effRotation() == BlockPlacer.RotationMode.NO_ROTATION;
     }
 
     private static boolean isTargetBlock(ItemStack stack) {

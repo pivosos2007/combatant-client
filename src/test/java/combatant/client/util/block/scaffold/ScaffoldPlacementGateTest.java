@@ -10,6 +10,7 @@ package combatant.client.util.block.scaffold;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -67,13 +68,19 @@ final class ScaffoldPlacementGateTest {
         assertFalse(consumeEligiblePulse(gate));
     }
 
-    @Test
-    void sixBlocksPerSecondUsesAnExactNanosecondGate() {
+    @ParameterizedTest(name = "{0} blocks/s waits {1} ticks")
+    @CsvSource({"20.0,1", "10.0,2", "6.0,4", "5.0,4", "3.8,6", "1.0,20"})
+    void cadenceIsTheFewestWholeTicksThatStayUnderTheRate(double blocksPerSecond, long ticks) {
         ScaffoldPlacementGate gate = new ScaffoldPlacementGate();
         gate.recordSuccessfulPlacement(START, 0);
 
-        assertFalse(gate.isPlacementReady(START + 166_666_666L, 6.0, 0));
-        assertTrue(gate.isPlacementReady(START + 166_666_667L, 6.0, 0));
+        assertFalse(gate.isPlacementReady(START + ticks - 1, blocksPerSecond, 0));
+        assertTrue(gate.isPlacementReady(START + ticks, blocksPerSecond, 0));
+    }
+
+    @Test
+    void theFirstPlacementIsNeverHeldBack() {
+        assertTrue(new ScaffoldPlacementGate().isPlacementReady(0L, 1.0, 0));
     }
 
     @Test
@@ -81,8 +88,8 @@ final class ScaffoldPlacementGateTest {
         ScaffoldPlacementGate gate = new ScaffoldPlacementGate();
         gate.recordSuccessfulPlacement(START, 0);
 
-        assertFalse(gate.isPlacementReady(START + 1_000_000_000L, 6.0, 1));
-        assertTrue(gate.isPlacementReady(START + 1_000_000_000L, 6.0, 0));
+        assertFalse(gate.isPlacementReady(START + 20, 6.0, 1));
+        assertTrue(gate.isPlacementReady(START + 20, 6.0, 0));
     }
 
     @Test

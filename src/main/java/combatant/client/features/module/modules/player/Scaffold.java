@@ -41,6 +41,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import combatant.client.config.SettingDef;
 import combatant.client.config.values.*;
 import combatant.client.events.EventHandler;
@@ -79,6 +80,14 @@ import java.util.List;
         description = "module.scaffold.description")
 public class Scaffold extends Module {
     private static final boolean DEBUG_LOGS = true;
+    /**
+     * How far behind the player along the bridging line (in blocks) a candidate block may be centred and still count.
+     * Strict geometry waits until the eye is past the block edge, and on a diagonal line the two cells that can be
+     * placed there are by then about 0.2 behind the player's projection onto the line.
+     */
+    private static final double MIN_CANDIDATE_PROGRESS = -0.45;
+    private static final double JUMP_IMPULSE = 0.42;
+    private static final double JUMP_SPRINT_BOOST = 0.2;
     private static final List<BlockPos> NORMAL_OFFSETS = commonOffsets(0, -1, 1);
     private static final List<BlockPos> DOWN_OFFSETS = commonOffsets(0, -1, 1, -2, 2);
     private final EnumValue<RotationTiming> rotationTiming =
@@ -119,6 +128,8 @@ public class Scaffold extends Module {
             new BooleanValue("auto_block_always", false);
     private final BooleanValue prediction =
             new BooleanValue("prediction", true);
+    private final BooleanValue strictGeometry =
+            new BooleanValue("strict_geometry", true);
     private final BooleanValue considerInventory =
             new BooleanValue("consider_inventory", false);
     private final BooleanValue down =
@@ -128,7 +139,7 @@ public class Scaffold extends Module {
     private final BooleanValue eagleOnlyOnGround =
             new BooleanValue("eagle_only_on_ground", true);
     private final NumberValue<Double> placementSpeed =
-            new NumberValue<>("placement_speed", 6.0, 1.0, 20.0);
+            new NumberValue<>("placement_speed", 20.0, 1.0, 20.0);
     private final NumberValue<Integer> delay =
             new NumberValue<>("delay", 0, 0, 20);
     private final NumberValue<Integer> autoBlockSlotResetDelay =
@@ -303,6 +314,8 @@ public class Scaffold extends Module {
     private ScaffoldPlacementTarget currentTarget;
     private int placementY;
     private int delayLeft;
+    /** Counts client ticks while the module runs; the placement cadence is measured in these. */
+    private long clientTick;
     private boolean wasPlaced;
     private int towerAirTicks;
     private double towerJumpBaseY = Double.NaN;
@@ -310,6 +323,7 @@ public class Scaffold extends Module {
     private boolean rawBackward;
     private boolean rawLeft;
     private boolean rawRight;
+    private float rawInputBaseYaw = Float.NaN;
     private int strafeMoveTicks;
     private int ticksUntilTellyJump;
     private int tellyJumpTicks;
@@ -492,6 +506,7 @@ public class Scaffold extends Module {
         defs.add(SettingDef.number(autoBlockSlotResetDelay).visibleWhen(autoBlock::get));
         defs.add(SettingDef.number(autoBlockDoNotUseBelowCount).visibleWhen(autoBlock::get));
         defs.add(SettingDef.bool(prediction));
+        defs.add(SettingDef.bool(strictGeometry));
         defs.add(SettingDef.bool(considerInventory).visibleWhen(() -> rotationTiming.get() == RotationTiming.NORMAL));
         defs.add(SettingDef.number(placementSpeed).common(CommonSettingSchemas.PLACEMENT_SPEED));
         defs.add(SettingDef.number(delay));
@@ -664,6 +679,7 @@ public class Scaffold extends Module {
             }
         }
 
+        clientTick++;
         if (delayLeft > 0) delayLeft--;
         InventorySwap.INSTANCE.tick();
         if (player.onGround()) {
@@ -839,18 +855,27 @@ public class Scaffold extends Module {
 
         LocalPlayer player = player();
         boolean hasTarget = refreshCurrentTarget(player);
-        if (rotationTiming.get() != RotationTiming.NORMAL) return;
+        boolean onTick = rotationTiming.get() == RotationTiming.ON_TICK;
+        // Legacy on-tick placement rotates with extra look packets around the click (see executeOnTickPlacement).
+        if (onTick && !strictGeometry.get()) return;
 
         if (!hasTarget) {
-            requestNormalStrictMoonwalkRotation(player);
+            if (!onTick) {
+                requestNormalStrictMoonwalkRotation(player);
+            }
             return;
         }
 
-        List<RotationProcessor> processors = buildRotationProcessors();
+        // Strict on-tick snaps to the aim for the placement tick through that tick's own movement packet instead of
+        // sending extra ones: a second or third movement packet in a tick is a Timer violation on its own.
+        List<RotationProcessor> processors = onTick || smoothingCannotArriveInTime(player, currentTarget)
+                ? List.of()
+                : buildRotationProcessors();
+        MovementCorrection correction = onTick ? MovementCorrection.SILENT : movementCorrection.get();
         ScaffoldPlacementTarget targetSnapshot = currentTarget;
         BlockInteractionPipeline.INSTANCE.rotateTo(
                 this,
-                targetSnapshot.getRotation(),
+                desiredPlacementRotation(player, targetSnapshot),
                 targetSnapshot.getHitVec(),
                 new BlockInteractionPipeline.RotationPlan(
                         true,
@@ -858,7 +883,7 @@ public class Scaffold extends Module {
                         2,
                         4.0f,
                         considerInventory.get(),
-                        movementCorrection.get(),
+                        correction,
                         100
                 ),
                 () -> executeScheduledNormalPlacement(
@@ -870,6 +895,20 @@ public class Scaffold extends Module {
                         resolveNormalScheduledHit(player(), targetSnapshot)
                 )
         );
+    }
+
+    /**
+     * With strict geometry the target's rotation is the aim that keeps the ray on the support block from the eye now
+     * and one tick of movement later. Looking at the click point from the current eye is a different ray whenever the
+     * aim enters the block through its top (the usual case while falling past the edge): it hits the click point now
+     * and passes in front of the block a tick later, so the strict check refuses every click until the player has
+     * fallen past the block.
+     */
+    private Rotation desiredPlacementRotation(LocalPlayer player, ScaffoldPlacementTarget target) {
+        if (strictGeometry.get() && target.getRotation() != null) {
+            return target.getRotation();
+        }
+        return Rotation.lookingAt(target.getHitVec(), player.getEyePosition()).normalize();
     }
 
     private void requestNormalStrictMoonwalkRotation(LocalPlayer player) {
@@ -901,10 +940,30 @@ public class Scaffold extends Module {
         LocalPlayer player = player();
         if (!canOperate(player)) return;
 
-        rawForward = event.isForward();
-        rawBackward = event.isBackward();
-        rawLeft = event.isLeft();
-        rawRight = event.isRight();
+        // The event already carries the silent movement correction (KeyboardInput applies it when the input is
+        // read), expressed relative to the SENT yaw. Reading it as if it were relative to the player's yaw turned a
+        // plain "walk forward" into a direction that changed with every step of the rotation smoothing, so the line
+        // to bridge along, the predicted edge and the chosen face all wandered while the aim was turning. The keys
+        // are what the player means; input that does not come from the keys (AutoWalk and friends write it into the
+        // event) is read against the yaw the movement is actually corrected to.
+        var options = Minecraft.getInstance().options;
+        boolean fromKeys = options.keyUp.isDown() || options.keyDown.isDown() || options.keyLeft.isDown() || options.keyRight.isDown();
+        if (fromKeys) {
+            rawForward = options.keyUp.isDown();
+            rawBackward = options.keyDown.isDown();
+            rawLeft = options.keyLeft.isDown();
+            rawRight = options.keyRight.isDown();
+            rawInputBaseYaw = Float.NaN;
+        } else {
+            rawForward = event.isForward();
+            rawBackward = event.isBackward();
+            rawLeft = event.isLeft();
+            rawRight = event.isRight();
+            var activeTarget = RotationManager.INSTANCE.getActiveRotationTarget();
+            rawInputBaseYaw = activeTarget != null && activeTarget.movementCorrection == MovementCorrection.SILENT && activeTarget.freeCorrection
+                    ? RotationManager.INSTANCE.getMovementRotation().yaw()
+                    : Float.NaN;
+        }
         currentOptimalLine = hasRawInput()
                 ? movementPlanner.getOptimalMovementLine(player, getRawMovementDirectionYaw(player, player.getYRot()))
                 : null;
@@ -964,13 +1023,16 @@ public class Scaffold extends Module {
     @EventHandler
     private void onPostPlayerUpdate(PostPlayerUpdateEvent event) {
         LocalPlayer player = player();
-        if (!canOperate(player) || rotationTiming.get() != RotationTiming.ON_TICK) return;
+        if (!canOperate(player) || rotationTiming.get() != RotationTiming.ON_TICK || strictGeometry.get()) return;
         executeOnTickPlacement(player);
     }
 
     private boolean handleNormalOnTickPlacement(LocalPlayer player, MovementInputEvent event) {
         if (player == null || event == null) return false;
         if (technique.get() != Technique.NORMAL || rotationTiming.get() != RotationTiming.ON_TICK) return false;
+        // Strict geometry places from the rotation update at the start of the tick, and cannot place before the eye
+        // is past the edge, so holding the player back here would leave him standing short of it forever.
+        if (strictGeometry.get()) return false;
         if (shouldGoDown(player) || player.getAbilities().flying) return false;
         if (!normalOnTickPlacementRequired(player)) return false;
 
@@ -1293,8 +1355,7 @@ public class Scaffold extends Module {
         debugPendingPlacedSeenSolid = false;
         movementPlanner.trackPlacedBlock(currentTarget.getPlacedBlockPos());
         movementPrediction.onPlace(currentOptimalLine, previousFallOffPos, player.position());
-
-        placementGate.recordSuccessfulPlacement(System.nanoTime(), blocksToEagle.get());
+        placementGate.recordSuccessfulPlacement(clientTick, blocksToEagle.get());
         delayLeft = delay.get();
         currentTarget = null;
         return true;
@@ -1306,6 +1367,14 @@ public class Scaffold extends Module {
             Rotation currentRotation
     ) {
         if (player == null || target == null || currentRotation == null) return null;
+
+        if (strictGeometry.get()) {
+            BlockHitResult strictHit = resolveStrictHit(player, target, currentRotation);
+            if (strictHit != null) {
+                return strictHit;
+            }
+            return shouldGoDown(player) ? target.toHitResult() : null;
+        }
 
         BlockHitResult crosshairTarget = traceScaffoldTarget(player, currentRotation);
         if (target.matches(crosshairTarget)) {
@@ -1321,6 +1390,10 @@ public class Scaffold extends Module {
             Rotation currentRotation
     ) {
         if (player == null || target == null || currentRotation == null) return null;
+
+        if (strictGeometry.get() && technique.get() == Technique.EXPAND) {
+            return resolveStrictHit(player, target, currentRotation);
+        }
 
         BlockHitResult crosshairTarget = traceScaffoldTarget(player, currentRotation);
         if (target.matches(crosshairTarget)) {
@@ -1379,6 +1452,9 @@ public class Scaffold extends Module {
             return null;
         }
         if (target.getDirection().getAxis() == Direction.Axis.Y) {
+            return null;
+        }
+        if (strictGeometry.get()) {
             return null;
         }
 
@@ -1717,7 +1793,7 @@ public class Scaffold extends Module {
             return null;
         }
 
-        return findNormalPlacementTargetAt(
+        return refineStrictTarget(player, findNormalPlacementTargetAt(
                 player,
                 stack,
                 targetedPos,
@@ -1725,7 +1801,137 @@ public class Scaffold extends Module {
                 comparator,
                 facePositionFactory,
                 placementEyePos
-        );
+        ), placementEyePos);
+    }
+
+    /**
+     * With strict geometry the rotation and click point come from {@link ScaffoldPlacementGeometry}: an aim whose
+     * ray keeps hitting the supporting block from the eye now and from the eye after this tick's movement, which is
+     * where a ray-checking anticheat measures the sent rotation. Before the eye is on the outer side of the face
+     * (the player is still walking towards the edge) the aim is computed for the predicted placement position, so the
+     * rotation smoothing has time to arrive.
+     */
+    private ScaffoldPlacementTarget refineStrictTarget(LocalPlayer player, ScaffoldPlacementTarget target, Vec3 predictedEye) {
+        if (!strictGeometry.get() || target == null || player == null) return target;
+
+        AABB shape = supportShape(player, target);
+        if (shape == null) return target;
+
+        Direction face = target.getDirection();
+        Vec3 now = player.getEyePosition();
+        if (ScaffoldPlacementGeometry.outwardDistance(now, face, shape) < ScaffoldPlacementGeometry.FACE_MARGIN) {
+            now = predictedEye;
+        }
+        if (now == null || ScaffoldPlacementGeometry.outwardDistance(now, face, shape) < ScaffoldPlacementGeometry.FACE_MARGIN) {
+            return target;
+        }
+
+        BlockPos supportPos = target.getInteractedBlockPos();
+        Vec3 next = now.add(predictedStep(player));
+        Rotation serverRotation = RotationManager.INSTANCE.getServerRotation();
+        // Silent movement correction only keeps the walking direction for yaws a multiple of 45 degrees from the
+        // player's own, so aim from those first and only leave them when the block cannot be seen that way.
+        boolean silentCorrection = (rotationTiming.get() == RotationTiming.ON_TICK ? MovementCorrection.SILENT : movementCorrection.get())
+                == MovementCorrection.SILENT;
+        Rotation rotation = silentCorrection
+                ? ScaffoldPlacementGeometry.chooseRotation(now, next, supportPos, face, serverRotation, player.getYRot())
+                : null;
+        if (rotation == null) {
+            rotation = ScaffoldPlacementGeometry.chooseRotation(now, next, supportPos, face, serverRotation);
+        }
+        if (rotation == null) return target;
+
+        Rotation aim = ScaffoldPlacementGeometry.avoidHalfTurn(rotation, player.getYRot(), serverRotation).normalize();
+        return target.withAim(ScaffoldPlacementGeometry.clickPoint(now, aim, supportPos, face, shape), aim);
+    }
+
+    /**
+     * The angle smoothing has to be done turning by the tick the eye passes the face plane, or the click waits for it
+     * while the player walks off the block. The estimate is the smoothing's own, so a slow setting or a standing start
+     * (the smoothing eases in from zero) simply turns the head in one step at the moment it is needed and not before.
+     */
+    private boolean smoothingCannotArriveInTime(LocalPlayer player, ScaffoldPlacementTarget target) {
+        if (!strictGeometry.get() || player == null || target == null) return false;
+
+        AngleSmooth smooth = selectAngleSmooth();
+        AABB shape = supportShape(player, target);
+        if (smooth == null || shape == null || target.getRotation() == null) return false;
+
+        Rotation from = RotationManager.INSTANCE.getCurrentRotation();
+        if (from == null) {
+            from = new Rotation(player.getYRot(), player.getXRot(), true);
+        }
+        int ticksToTurn = smooth.calculateTicks(from, target.getRotation());
+        if (ticksToTurn <= 0) return false;
+
+        Direction face = target.getDirection();
+        double outward = ScaffoldPlacementGeometry.outwardDistance(player.getEyePosition(), face, shape);
+        if (outward >= ScaffoldPlacementGeometry.FACE_MARGIN) return true;
+
+        Vec3 step = predictedStep(player);
+        double approach = step.x * face.getStepX() + step.y * face.getStepY() + step.z * face.getStepZ();
+        if (approach <= 1.0E-3) return false;
+        int ticksToFace = (int) Math.ceil((ScaffoldPlacementGeometry.FACE_MARGIN - outward) / approach);
+        return ticksToTurn >= ticksToFace;
+    }
+
+    private BlockHitResult resolveStrictHit(LocalPlayer player, ScaffoldPlacementTarget target, Rotation rotation) {
+        if (player == null || target == null || rotation == null) return null;
+
+        AABB shape = supportShape(player, target);
+        if (shape == null) return null;
+
+        Vec3 eye = player.getEyePosition();
+        Vec3 next = eye.add(predictedStep(player));
+        BlockPos supportPos = target.getInteractedBlockPos();
+        Direction face = target.getDirection();
+        if (!ScaffoldPlacementGeometry.isSafe(eye, next, rotation, supportPos, face, shape)) {
+            return null;
+        }
+
+        return new BlockHitResult(ScaffoldPlacementGeometry.clickPoint(eye, rotation, supportPos, face, shape), face, supportPos, false);
+    }
+
+    private AABB supportShape(LocalPlayer player, ScaffoldPlacementTarget target) {
+        if (player == null || player.level() == null || target == null) return null;
+        BlockPos pos = target.getInteractedBlockPos();
+        var shape = player.level().getBlockState(pos).getShape(player.level(), pos, CollisionContext.of(player));
+        return shape.isEmpty() ? null : shape.bounds().move(pos);
+    }
+
+    /**
+     * Where the eye moves during the tick that is about to be simulated. At the start of a tick the delta movement
+     * is last tick's velocity after friction, and the movement keys add one more acceleration before the move. A jump
+     * adds its own impulse (and the sprint boost along the walking direction) to a tick that starts on the ground:
+     * the player rises 0.42 in that single tick, which is the difference between a ray that still hits the block
+     * afterwards and one that passes over it.
+     */
+    private Vec3 predictedStep(LocalPlayer player) {
+        Vec3 velocity = player.getDeltaMovement();
+        double dx = velocity.x;
+        double dz = velocity.z;
+        boolean jumping = jumpsThisTick(player);
+        if (hasRawInput()) {
+            double acceleration = (player.onGround() ? player.getSpeed() : (player.isSprinting() ? 0.026 : 0.02)) * 0.98;
+            double yaw = Math.toRadians(getRawMovementDirectionYaw(player, player.getYRot()));
+            if (jumping && player.isSprinting()) {
+                acceleration += JUMP_SPRINT_BOOST;
+            }
+            dx -= Math.sin(yaw) * acceleration;
+            dz += Math.cos(yaw) * acceleration;
+        }
+        return new Vec3(dx, jumping ? JUMP_IMPULSE : (player.onGround() ? 0.0 : velocity.y), dz);
+    }
+
+    /** Whether the player leaves the ground in the tick about to run: the jump key, or telly's own jump. */
+    private boolean jumpsThisTick(LocalPlayer player) {
+        if (!player.onGround()) return false;
+        if (Minecraft.getInstance().options.keyJump.isDown()) return true;
+        if (!telly.get() || technique.get() != Technique.NORMAL || !isMoving(player) || blockCount(player) <= 0) return false;
+        return switch (tellyResetMode.get()) {
+            case REVERSE -> true;
+            case RESET -> shouldTellyJumpNow(player);
+        };
     }
 
     private List<BlockPos> movementAlignedNormalOffsets(LocalPlayer player, BlockPos targetedPos, List<BlockPos> offsets) {
@@ -1743,7 +1949,7 @@ public class Scaffold extends Module {
         for (BlockPos offset : offsets) {
             BlockPos candidate = targetedPos.offset(offset);
             double progress = Vec3.atCenterOf(candidate).subtract(reference).dot(direction);
-            if (progress >= -0.15) {
+            if (progress >= MIN_CANDIDATE_PROGRESS) {
                 aligned.add(offset);
             }
         }
@@ -1795,7 +2001,7 @@ public class Scaffold extends Module {
             if (target == null) continue;
             Vec3 blockCenter = Vec3.atCenterOf(target.getPlacedBlockPos());
             Rotation rotation = Rotation.lookingAt(blockCenter, placementEyePos);
-            return target.withRotation(rotation);
+            return refineStrictTarget(player, target.withRotation(rotation), placementEyePos);
         }
         return null;
     }
@@ -1904,7 +2110,7 @@ public class Scaffold extends Module {
     }
 
     private boolean isPlacementCadenceReady() {
-        return placementGate.isPlacementReady(System.nanoTime(), placementSpeed.get(), delayLeft);
+        return placementGate.isPlacementReady(clientTick, placementSpeed.get(), delayLeft);
     }
 
     private void handleTower(LocalPlayer player) {
@@ -2122,7 +2328,7 @@ public class Scaffold extends Module {
 
         if (!forwards && !backwards && !left && !right) return fallbackYaw;
 
-        float actualYaw = fallbackYaw;
+        float actualYaw = Float.isNaN(rawInputBaseYaw) ? fallbackYaw : rawInputBaseYaw;
         float forward = 1.0f;
 
         if (backwards) {
@@ -2244,7 +2450,9 @@ public class Scaffold extends Module {
             projected = projected.add(direction.scale(0.18 + tickDelta * 0.12));
         }
 
-        return currentOptimalLine.getNearestPointTo(projected);
+        // Only a player held on the line (stabilize movement) will actually be there; otherwise snapping to the line
+        // puts the predicted position up to half a block off the path he really walks.
+        return stabilizeMovement.get() ? currentOptimalLine.getNearestPointTo(projected) : projected;
     }
 
     private boolean isBlockBelow(LocalPlayer player) {

@@ -177,6 +177,11 @@ public class Predictions extends Module {
 
     private ItemStack tntTimerIcon = ItemStack.EMPTY;
     private final List<TimerPlate> timerPlates = new ArrayList<>();
+    private final List<PrimedTnt> cachedTnt = new ArrayList<>();
+    private ClientLevel cachedTntLevel;
+    private long cachedTntTick = Long.MIN_VALUE;
+    private static final double[] TNT_SCREEN = new double[3];
+    private static final String[] TIME_CACHE = new String[6000];
     private ClientLevel cachedProjectileLevel;
     private long cachedProjectileTick = Long.MIN_VALUE;
     private List<TrajectoryResult> cachedProjectileResults = Collections.emptyList();
@@ -215,8 +220,8 @@ public class Predictions extends Module {
     private static void addGradientLine(MeshBuilder mesh, Vec3 from, Vec3 to, int startColor, int endColor) {
         if (mesh == null || from == null || to == null) return;
         mesh.ensureLineCapacity();
-        int i1 = mesh.vec3(from.x, from.y, from.z).color(new RenderColor(startColor)).next();
-        int i2 = mesh.vec3(to.x, to.y, to.z).color(new RenderColor(endColor)).next();
+        int i1 = mesh.vec3(from.x, from.y, from.z).colorArgb(startColor).next();
+        int i2 = mesh.vec3(to.x, to.y, to.z).colorArgb(endColor).next();
         mesh.line(i1, i2);
     }
 
@@ -303,7 +308,7 @@ public class Predictions extends Module {
                                       float q0, float q1, float q2, float q3) {
         return mesh.vec3(pos.x, pos.y, pos.z)
                 .vec2(u, v)
-                .color(new RenderColor(argb))
+                .colorArgb(argb)
                 .vec4(p0, p1, p2, p3)
                 .vec4(q0, q1, q2, q3)
                 .next();
@@ -381,10 +386,10 @@ public class Predictions extends Module {
         double p4z = cz - right.z() + up.z();
 
         mesh.ensureQuadCapacity();
-        int i1 = mesh.vec3(p1x, p1y, p1z).vec2(0.0, 1.0).color(new RenderColor(argb)).next();
-        int i2 = mesh.vec3(p2x, p2y, p2z).vec2(1.0, 1.0).color(new RenderColor(argb)).next();
-        int i3 = mesh.vec3(p3x, p3y, p3z).vec2(1.0, 0.0).color(new RenderColor(argb)).next();
-        int i4 = mesh.vec3(p4x, p4y, p4z).vec2(0.0, 0.0).color(new RenderColor(argb)).next();
+        int i1 = mesh.vec3(p1x, p1y, p1z).vec2(0.0, 1.0).colorArgb(argb).next();
+        int i2 = mesh.vec3(p2x, p2y, p2z).vec2(1.0, 1.0).colorArgb(argb).next();
+        int i3 = mesh.vec3(p3x, p3y, p3z).vec2(1.0, 0.0).colorArgb(argb).next();
+        int i4 = mesh.vec3(p4x, p4y, p4z).vec2(0.0, 0.0).colorArgb(argb).next();
         mesh.quad(i1, i2, i3, i4);
     }
 
@@ -572,8 +577,9 @@ public class Predictions extends Module {
         if (!plates.isEmpty()) {
             TextRenderer tr = BuiltinFontCatalog.ONEST_MEDIUM.renderer(textRenderer);
             tr.begin(PLATE_TEXT_SCALE);
+            RenderColor white = new RenderColor(0xFFFFFFFF);
             for (TimerPlate plate : plates) {
-                tr.render(plate.text(), plate.textX(), plate.textY(), new RenderColor(0xFFFFFFFF), false);
+                tr.render(plate.text(), plate.textX(), plate.textY(), white, false);
             }
             tr.end();
         }
@@ -1103,24 +1109,38 @@ public class Predictions extends Module {
         ClientLevel world = mc.level;
         if (world == null) return;
 
+        long tick = world.getGameTime();
+        if (world != cachedTntLevel || tick != cachedTntTick) {
+            cachedTnt.clear();
+            for (Entity entity : world.entitiesForRendering()) {
+                if (entity instanceof PrimedTnt tnt) cachedTnt.add(tnt);
+            }
+            cachedTntLevel = world;
+            cachedTntTick = tick;
+        }
+        if (cachedTnt.isEmpty()) return;
+
         int plateColor = tntColorValue.getArgb();
-        for (Entity entity : world.entitiesForRendering()) {
-            if (!(entity instanceof PrimedTnt tnt) || !tnt.isAlive() || tnt.isRemoved()) continue;
+        double[] screen = TNT_SCREEN;
+        for (int i = 0, n = cachedTnt.size(); i < n; i++) {
+            PrimedTnt tnt = cachedTnt.get(i);
+            if (!tnt.isAlive() || tnt.isRemoved()) continue;
 
             int fuse = tnt.getFuse();
             if (fuse < 0) continue;
 
-            Vec3 anchor = tnt.getPosition(tickDelta).add(0.0, tnt.getBbHeight() + 0.5, 0.0);
-            Vec3 screen = ScreenProjection.worldToScreen(anchor, tickDelta);
-            if (screen == null) continue;
+            double lx = Mth.lerp((double) tickDelta, tnt.xo, tnt.getX());
+            double ly = Mth.lerp((double) tickDelta, tnt.yo, tnt.getY());
+            double lz = Mth.lerp((double) tickDelta, tnt.zo, tnt.getZ());
+            if (!ScreenProjection.project(lx, ly + tnt.getBbHeight() + 0.5, lz, screen)) continue;
 
             double seconds = Math.max(0.0, (fuse - tickDelta) / 20.0);
             drawTimerPlate(
                     renderer,
                     textRenderer,
                     formatTime(seconds),
-                    (float) screen.x,
-                    (float) screen.y,
+                    (float) screen[0],
+                    (float) screen[1],
                     plateColor,
                     tntTimerIcon(),
                     null
@@ -1343,9 +1363,16 @@ public class Predictions extends Module {
     }
 
     private String formatTime(double seconds) {
-        String s = FastFormat.oneDecimal(seconds);
-        s = s.replace('.', ',');
-        return s + " s";
+        long tenths = Math.round(seconds * 10.0);
+        if (seconds >= 0.0 && tenths < TIME_CACHE.length) {
+            String cached = TIME_CACHE[(int) tenths];
+            if (cached == null) {
+                cached = FastFormat.oneDecimal(seconds).replace('.', ',') + " s";
+                TIME_CACHE[(int) tenths] = cached;
+            }
+            return cached;
+        }
+        return FastFormat.oneDecimal(seconds).replace('.', ',') + " s";
     }
 
     private void renderGlowTrajectories(Renderer3D renderer, List<TrajectoryResult> results, int baseColor) {

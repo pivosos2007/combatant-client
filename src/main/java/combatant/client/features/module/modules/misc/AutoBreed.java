@@ -8,6 +8,8 @@
 package combatant.client.features.module.modules.misc;
 
 import combatant.client.config.values.NumberValue;
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.GameTickEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -60,8 +62,12 @@ public final class AutoBreed extends Module {
         fedAt.clear();
     }
 
-    @Override
-    public void onTick() {
+    /**
+     * Feeds from the start-of-tick hook: the interact packet has to precede the tick's movement packet, which a
+     * vanilla client's click does and {@code onTick} (end of tick) does not; Grim's Post check flags the latter.
+     */
+    @EventHandler
+    private void onGameTick(GameTickEvent event) {
         if (!isEnabled()) return;
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null || mc.gameMode == null) {

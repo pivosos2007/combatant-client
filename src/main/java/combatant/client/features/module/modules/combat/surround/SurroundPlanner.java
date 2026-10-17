@@ -169,26 +169,35 @@ public final class SurroundPlanner {
         return false;
     }
 
+    /** Longest run of support blocks: a pillar from the ground up to a roof two above the head needs three. */
+    static final int MAX_SUPPORT_CHAIN = 3;
+
     /**
-     * Extra blocks to place before {@code pos}, anchored end first; empty when none can be found. A chain
-     * is one block, or two (a bridge beside the position and a pillar under or beside that): longer chains
-     * mean the player is floating far from anything solid and a placement module is the wrong tool.
+     * Extra blocks to place before {@code pos}, anchored end first; empty when none can be found. The shortest chain
+     * wins (one block, two, up to {@link #MAX_SUPPORT_CHAIN}); each link touches the one before it, going below or
+     * beside. Longer chains mean the player is floating far from anything solid and a placement module is the wrong
+     * tool.
      */
     private static List<Pos> supportChain(Pos pos, Predicate<Pos> replaceable, Set<Pos> planned,
                                           Set<Pos> forbidden) {
-        for (Pos first : neighbours(pos, false)) {
-            if (usable(first, replaceable, forbidden) && anchored(first, replaceable, planned)) {
-                return List.of(first);
-            }
-        }
-        for (Pos bridge : neighbours(pos, false)) {
-            if (!usable(bridge, replaceable, forbidden)) continue;
-            for (Pos pillar : neighbours(bridge, false)) {
-                if (!pillar.equals(pos) && usable(pillar, replaceable, forbidden)
-                        && anchored(pillar, replaceable, planned)) {
-                    return List.of(pillar, bridge);
+        List<List<Pos>> frontier = new ArrayList<>();
+        frontier.add(List.of());
+        for (int length = 1; length <= MAX_SUPPORT_CHAIN; length++) {
+            List<List<Pos>> next = new ArrayList<>();
+            for (List<Pos> path : frontier) {
+                Pos from = path.isEmpty() ? pos : path.get(path.size() - 1);
+                for (Pos cell : neighbours(from, false)) {
+                    if (cell.equals(pos) || path.contains(cell) || !usable(cell, replaceable, forbidden)) continue;
+                    List<Pos> extended = new ArrayList<>(path);
+                    extended.add(cell);
+                    if (anchored(cell, replaceable, planned)) {
+                        java.util.Collections.reverse(extended);
+                        return extended;
+                    }
+                    next.add(extended);
                 }
             }
+            frontier = next;
         }
         return List.of();
     }

@@ -108,6 +108,7 @@ public final class SprintController {
         return player.getFoodData().getFoodLevel() > 6.0F || player.getAbilities().mayfly;
     }
 
+
     /**
      * Compatibility for old callers.
      * Does not call setSprinting(true). It requests sprint input instead.
@@ -189,6 +190,13 @@ public final class SprintController {
                 return original;
             }
             if (player.input.hasForwardImpulse()) {
+                return true;
+            }
+        }
+
+        NoSlow noSlow = Modules.get(NoSlow.class);
+        if (noSlow != null && noSlow.shouldAllowSprint(player)) {
+            if (original && player.input.hasForwardImpulse()) {
                 return true;
             }
         }

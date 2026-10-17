@@ -207,6 +207,19 @@ class SurroundPlannerTest {
     }
 
     @Test
+    void roofOnlyTrapInOpenGroundGetsAThreeBlockPillar() {
+        // SelfTrap `head` with no ring: the roof two above the feet touches nothing, so it needs a pillar
+        // beside the player (feet, head) and a bridge on top before the roof can go in.
+        World world = new World();
+        Set<Pos> footprint = single(0, 64, 0);
+        List<Pos> plan = SurroundPlanner.order(
+                SurroundPlanner.trap(footprint, false, false), world, SurroundPlanner.bodyCells(footprint), true);
+        assertEquals(4, plan.size());
+        assertEquals(new Pos(0, 66, 0), plan.get(3));
+        assertPlaceableInOrder(plan, world);
+    }
+
+    @Test
     void roofChainNeverEntersThePlayersBody() {
         Set<Pos> footprint = single(0, 64, 0);
         List<Pos> plan = plan(footprint, false, false, true, new World(), true);

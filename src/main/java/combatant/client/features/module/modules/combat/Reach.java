@@ -24,6 +24,7 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
 import combatant.client.util.combat.VulcanReachController;
 
+import combatant.client.util.anticheat.AntiCheatPreset;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,6 +35,9 @@ import java.util.Optional;
         description = "module.reach.description")
 public class Reach extends Module {
 
+    // custom = the settings below as set; grim = distance and wallDistance capped at 3.0 (GrimAC Reach);
+    // vanilla = 6.0 reach for both distance and wallDistance, for servers with no anticheat.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     public final EnumValue<KillAura.RaycastMode> raycast =
             enumCommon(
                     "reachContext",
@@ -92,9 +96,9 @@ public class Reach extends Module {
         if (!isEnabled()) return null;
         if (player == null || mc.level == null) return null;
 
-        double visibleRange = distance.get();
+        double visibleRange = effectiveDistance();
         double throughWallsRange = raycast.get() == KillAura.RaycastMode.THROUGH_WALLS
-                ? wallDistance.get()
+                ? effectiveWallDistance()
                 : 0.0;
         double searchRange = Math.max(visibleRange, throughWallsRange);
 
@@ -119,9 +123,9 @@ public class Reach extends Module {
         if (!isEnabled()) return null;
         if (player == null || mc.level == null) return null;
 
-        double visibleRange = distance.get();
+        double visibleRange = effectiveDistance();
         double throughWallsRange = raycast.get() == KillAura.RaycastMode.THROUGH_WALLS
-                ? wallDistance.get()
+                ? effectiveWallDistance()
                 : 0.0;
         double searchRange = Math.max(visibleRange, throughWallsRange);
 
@@ -199,7 +203,15 @@ public class Reach extends Module {
     }
 
     public double getConfiguredDistance() {
-        return distance.get();
+        return effectiveDistance();
+    }
+
+    private double effectiveDistance() {
+        return anticheat.get().limit(distance.get(), AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
+    }
+
+    private double effectiveWallDistance() {
+        return anticheat.get().limit(wallDistance.get(), AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
     }
 
     private double resolveBlockLimitSq(LocalPlayer player,

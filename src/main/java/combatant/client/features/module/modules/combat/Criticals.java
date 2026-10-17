@@ -38,6 +38,7 @@ import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.movement.Flight;
 import combatant.client.features.module.modules.movement.Timer;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
+import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.click.ClickScheduler;
 import combatant.client.util.target.TargetManager;
 
@@ -53,6 +54,12 @@ public final class Criticals extends Module {
     private static final int VULCAN_297_JUMP_RECOVERY_TICKS = 8;
     private static final int VULCAN_297_LANDING_RECOVERY_TICKS = 2;
     private final Minecraft mc = Minecraft.getInstance();
+    // grim: every packet trick (NCP/vanilla/falling/low/down/blocksmc offsets, the airborne 1e-6 dip, NoGround, Vulcan
+    // 2.9.7) is answered by GrimAC 2.3.74 with GroundSpoof, Simulation, Timer and TickTimer flags (an extra movement
+    // packet in a tick counts as a second tick), and the cancelled attacks cut the damage dealt to a tenth. A jump
+    // crit is a real one, so the packet modes turn into Jump; Jump and Timer stay as chosen. A jump_height below the
+    // stock 0.42 is a Simulation flag on every jump (x129 in 200 ticks), so the preset jumps at the stock height.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final EnumValue<Mode> mode =
             enumMode(
                     "mode",
@@ -225,7 +232,7 @@ public final class Criticals extends Module {
         if (!isEnabled() || getMode() != Mode.JUMP) return;
 
         if (adjustNextJump && Math.abs(event.getMotion() - VANILLA_JUMP_MOTION) < 1.0E-4f) {
-            event.setMotion(jumpHeight.get());
+            event.setMotion(anticheat.get().pick(jumpHeight.get(), VANILLA_JUMP_MOTION, jumpHeight.get()));
         }
         adjustNextJump = false;
     }
@@ -320,6 +327,7 @@ public final class Criticals extends Module {
                                            Entity target,
                                            SelectionMode selectionOverride,
                                            boolean ignoreSprintAfterReset) {
+        if (!isEnabled()) return true;
         if (target == null) return false;
         LocalPlayer player = currentPlayer();
         if (player == null) return false;
@@ -582,7 +590,16 @@ public final class Criticals extends Module {
     }
 
     private Mode getMode() {
-        return killAuraModeOverride != null ? killAuraModeOverride : mode.get();
+        Mode chosen = killAuraModeOverride != null ? killAuraModeOverride : mode.get();
+        return anticheat.get() == AntiCheatPreset.GRIM ? grimSafeMode(chosen) : chosen;
+    }
+
+    /** The mode GrimAC tolerates in place of {@code chosen}. */
+    static Mode grimSafeMode(Mode chosen) {
+        return switch (chosen) {
+            case PACKET, NO_GROUND, VULCAN_297 -> Mode.JUMP;
+            default -> chosen;
+        };
     }
 
     private SelectionMode getSelectionMode() {
@@ -621,9 +638,9 @@ public final class Criticals extends Module {
             }
             case DOWN -> sendCriticalPacket(player, -1.0E-9, false);
             case GRIM -> {
-                if (!player.onGround()) {
-                    sendCriticalPacket(player, -1.0E-6, false);
-                }
+                // GrimAC 2.3.74 monitors packet rates per client tick (TickTimer/Timer) and full physics
+                // simulation. Do not inject extra out-of-order movement packets before attacks; airborne crits
+                // are naturally critical while falling.
             }
             case BLOCKSMC -> {
                 if (player.tickCount % 4 == 0) {

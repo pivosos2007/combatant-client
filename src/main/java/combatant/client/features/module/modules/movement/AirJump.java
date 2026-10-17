@@ -28,6 +28,7 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.Freecam;
+import combatant.client.util.anticheat.AntiCheatPreset;
 
 @ModuleInfo(
         id = "airjump",
@@ -36,6 +37,10 @@ import combatant.client.features.module.modules.visuals.Freecam;
         description = "module.airjump.description")
 public class AirJump extends Module {
 
+    // custom and vanilla = as set; grim = no jump away from the ground. GrimAC only allows a jump on the tick the
+    // player leaves the ground (and only with the jump bit of the input packet set), so a jump in mid-air is a
+    // Simulation flag every time and there is no setting of this module that avoids it.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final EnumValue<Mode> mode =
             enumMode("mode", Mode.NORMAL, Mode.values());
     private int level;
@@ -54,6 +59,7 @@ public class AirJump extends Module {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null || mc.options == null) return;
         if (event.action() != InputAction.PRESS) return;
+        if (anticheat.get() == AntiCheatPreset.GRIM) return;
         if (ClientScreen.current() != null || mc.player.onGround() || isFreecamActive()) return;
 
         if (MinecraftInputAdapter.matches(mc.options.keyJump, event.key())) {
@@ -70,6 +76,7 @@ public class AirJump extends Module {
     private void onGameTick(GameTickEvent event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null || mc.options == null) return;
+        if (anticheat.get() == AntiCheatPreset.GRIM) return;
         if (mc.player.onGround()) {
             maintainLevelReady = false;
             return;
@@ -97,6 +104,7 @@ public class AirJump extends Module {
     public boolean performNoFallJump() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null || isFreecamActive()) return false;
+        if (anticheat.get() == AntiCheatPreset.GRIM) return false;
 
         level = mc.player.blockPosition().getY();
         maintainLevelReady = false;

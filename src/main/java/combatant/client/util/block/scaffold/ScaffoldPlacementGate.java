@@ -10,11 +10,16 @@ package combatant.client.util.block.scaffold;
 /**
  * Owns the two independent pieces of Scaffold timing state.
  * Placement cadence must never extend or re-arm an Eagle sneak pulse.
+ *
+ * <p>The cadence is counted in client ticks. Placements only ever happen on a tick, and the wall-clock interval
+ * between two ticks wanders around 50 ms: a gate on elapsed nanoseconds turned a nominal one block per tick (20
+ * blocks per second) into a coin flip between one and two ticks, which is exactly the pace a diagonal bridge needs.
  */
 public final class ScaffoldPlacementGate {
-    private static final long NANOS_PER_SECOND = 1_000_000_000L;
+    private static final double TICKS_PER_SECOND = 20.0;
 
-    private long lastSuccessfulPlacementNanos;
+    private long lastSuccessfulPlacementTick;
+    private boolean hasPlaced;
     private int placementsSinceEaglePulse;
     private boolean eaglePulseArmed;
 
@@ -23,20 +28,22 @@ public final class ScaffoldPlacementGate {
     }
 
     public void reset() {
-        lastSuccessfulPlacementNanos = 0L;
+        lastSuccessfulPlacementTick = 0L;
+        hasPlaced = false;
         placementsSinceEaglePulse = 0;
         eaglePulseArmed = true;
     }
 
-    public boolean isPlacementReady(long nowNanos, double blocksPerSecond, int extraDelayTicksLeft) {
+    public boolean isPlacementReady(long nowTick, double blocksPerSecond, int extraDelayTicksLeft) {
         if (extraDelayTicksLeft > 0) return false;
-        if (lastSuccessfulPlacementNanos == 0L) return true;
+        if (!hasPlaced) return true;
 
-        return nowNanos - lastSuccessfulPlacementNanos >= placementIntervalNanos(blocksPerSecond);
+        return nowTick - lastSuccessfulPlacementTick >= placementIntervalTicks(blocksPerSecond);
     }
 
-    public void recordSuccessfulPlacement(long nowNanos, int blocksToEagle) {
-        lastSuccessfulPlacementNanos = nowNanos;
+    public void recordSuccessfulPlacement(long nowTick, int blocksToEagle) {
+        lastSuccessfulPlacementTick = nowTick;
+        hasPlaced = true;
         placementsSinceEaglePulse++;
 
         if (placementsSinceEaglePulse > Math.max(0, blocksToEagle)) {
@@ -82,8 +89,9 @@ public final class ScaffoldPlacementGate {
                 && hasBlocks;
     }
 
-    static long placementIntervalNanos(double blocksPerSecond) {
+    /** Fewest whole ticks between two placements that keeps the rate at or under {@code blocksPerSecond}. */
+    static long placementIntervalTicks(double blocksPerSecond) {
         double safeBlocksPerSecond = Math.max(0.1, blocksPerSecond);
-        return (long) Math.ceil(NANOS_PER_SECOND / safeBlocksPerSecond);
+        return Math.max(1L, (long) Math.ceil(TICKS_PER_SECOND / safeBlocksPerSecond - 1.0E-9));
     }
 }

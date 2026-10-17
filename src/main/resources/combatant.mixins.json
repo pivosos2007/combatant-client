@@ -114,6 +114,7 @@
     "MultiPlayerGameModeMixin",
     "MutableComponentMixin",
     "NarratorManagerMixin",
+    "NoSlowInputMixin",
     "OptionsMixin",
     "PaintingRendererMixin",
     "PanoramaMixin",

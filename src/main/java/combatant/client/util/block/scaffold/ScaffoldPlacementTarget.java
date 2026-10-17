@@ -75,6 +75,17 @@ public final class ScaffoldPlacementTarget {
         );
     }
 
+    public ScaffoldPlacementTarget withAim(Vec3 newHitVec, Rotation newRotation) {
+        return new ScaffoldPlacementTarget(
+                interactedBlockPos,
+                placedBlockPos,
+                direction,
+                newHitVec,
+                minPlacementY,
+                newRotation
+        );
+    }
+
     public BlockHitResult toHitResult() {
         return new BlockHitResult(hitVec, direction, interactedBlockPos, false);
     }

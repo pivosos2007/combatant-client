@@ -29,7 +29,6 @@ import combatant.client.features.module.*;
 import combatant.client.features.relations.CategoryService;
 import combatant.client.mixininterface.IEntity;
 import combatant.client.render.engine.animation.AnimationUtility;
-import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.pipeline.UiRenderPipelines;
 import combatant.client.render.engine.renderer.MeshRenderer;
@@ -69,6 +68,11 @@ public class Tracers extends Module {
     private static final float ARROW_RADIUS_MAX_FACTOR = 1.0f;
     private static final MeshBuilder ARROW_MESH =
             new MeshBuilder(UiRenderPipelines.UI_TEXTURED_ADDITIVE_TRANSFORMED);
+    private static final Matrix4f IDENTITY = new Matrix4f();
+    private static final int ARROW_STRIDE = 4;
+    private static float[] arrowData = new float[64 * ARROW_STRIDE];
+    private static int[] arrowArgb = new int[64];
+    private static int arrowCount;
     private final Minecraft mc = Minecraft.getInstance();
     private final BooleanValue traceFriendsValue = bool("tracersTraceFriends", SETTING_TRACE_FRIENDS, false);
     private final ModeValue tracersMode =
@@ -117,22 +121,26 @@ public class Tracers extends Module {
         return Mth.lerp(t, ARROW_RADIUS_MIN_FACTOR, ARROW_RADIUS_MAX_FACTOR);
     }
 
-    private static void renderArrow(Identifier textureId,
-                                    double x,
-                                    double y,
-                                    float angleRad,
-                                    int argb,
-                                    float scale) {
-        if (textureId == null) return;
-        Renderer2D.deferRenderThreadAction(() -> renderArrowImmediate(textureId, x, y, angleRad, argb, scale));
+    private static void queueArrow(double x, double y, float angleRad, int argb, float scale) {
+        if (arrowCount == arrowData.length) {
+            arrowData = java.util.Arrays.copyOf(arrowData, arrowData.length * 2);
+            arrowArgb = java.util.Arrays.copyOf(arrowArgb, arrowArgb.length * 2);
+        }
+        int base = arrowCount * ARROW_STRIDE;
+        arrowData[base] = (float) x;
+        arrowData[base + 1] = (float) y;
+        arrowData[base + 2] = angleRad;
+        arrowData[base + 3] = scale;
+        arrowArgb[arrowCount++] = argb;
     }
 
-    private static void renderArrowImmediate(Identifier textureId,
-                                             double x,
-                                             double y,
-                                             float angleRad,
-                                             int argb,
-                                             float scale) {
+    /** Draws every queued arrow of this frame as one mesh and one draw call. */
+    private static void flushArrows(Identifier textureId, int count) {
+        if (textureId == null || count <= 0) return;
+        Renderer2D.deferRenderThreadAction(() -> drawArrows(textureId, count));
+    }
+
+    private static void drawArrows(Identifier textureId, int count) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.gameRenderer == null || mc.gameRenderer.mainRenderTarget() == null) return;
         AbstractTexture tex = mc.getTextureManager().getTexture(textureId);
@@ -141,29 +149,37 @@ public class Tracers extends Module {
         GpuSampler sampler = tex.getSampler();
         if (view == null || sampler == null) return;
 
-        RenderColor c = new RenderColor(argb);
         ARROW_MESH.begin();
-        ARROW_MESH.ensureQuadCapacity();
-        int i1 = ARROW_MESH.vec2(ARROW_OFFSET_X * scale, ARROW_OFFSET_Y * scale)
-                .vec2(0, 0).color(c.r, c.g, c.b, c.a).next();
-        int i2 = ARROW_MESH.vec2(ARROW_OFFSET_X * scale, (ARROW_OFFSET_Y + ARROW_H) * scale)
-                .vec2(0, 1).color(c.r, c.g, c.b, c.a).next();
-        int i3 = ARROW_MESH.vec2((ARROW_OFFSET_X + ARROW_W) * scale, (ARROW_OFFSET_Y + ARROW_H) * scale)
-                .vec2(1, 1).color(c.r, c.g, c.b, c.a).next();
-        int i4 = ARROW_MESH.vec2((ARROW_OFFSET_X + ARROW_W) * scale, ARROW_OFFSET_Y * scale)
-                .vec2(1, 0).color(c.r, c.g, c.b, c.a).next();
-        ARROW_MESH.quad(i1, i2, i3, i4);
+        for (int n = 0; n < count; n++) {
+            int base = n * ARROW_STRIDE;
+            float cx = arrowData[base];
+            float cy = arrowData[base + 1];
+            float cos = Mth.cos(arrowData[base + 2]);
+            float sin = Mth.sin(arrowData[base + 2]);
+            float scale = arrowData[base + 3];
+            int argb = arrowArgb[n];
+            float x0 = ARROW_OFFSET_X * scale;
+            float y0 = ARROW_OFFSET_Y * scale;
+            float x1 = (ARROW_OFFSET_X + ARROW_W) * scale;
+            float y1 = (ARROW_OFFSET_Y + ARROW_H) * scale;
+            ARROW_MESH.ensureQuadCapacity();
+            int i1 = ARROW_MESH.vec2(cx + x0 * cos - y0 * sin, cy + x0 * sin + y0 * cos)
+                    .vec2(0, 0).colorArgb(argb).next();
+            int i2 = ARROW_MESH.vec2(cx + x0 * cos - y1 * sin, cy + x0 * sin + y1 * cos)
+                    .vec2(0, 1).colorArgb(argb).next();
+            int i3 = ARROW_MESH.vec2(cx + x1 * cos - y1 * sin, cy + x1 * sin + y1 * cos)
+                    .vec2(1, 1).colorArgb(argb).next();
+            int i4 = ARROW_MESH.vec2(cx + x1 * cos - y0 * sin, cy + x1 * sin + y0 * cos)
+                    .vec2(1, 0).colorArgb(argb).next();
+            ARROW_MESH.quad(i1, i2, i3, i4);
+        }
         ARROW_MESH.end();
-
-        Matrix4f transform = new Matrix4f()
-                .translation((float) x, (float) y, 0.0f)
-                .rotateZ(angleRad);
 
         MeshRenderer.begin()
                 .attachments(mc.gameRenderer.mainRenderTarget())
                 .pipeline(UiRenderPipelines.UI_TEXTURED_ADDITIVE_TRANSFORMED)
                 .mesh(ARROW_MESH)
-                .transform(transform)
+                .transform(IDENTITY)
                 .sampler("u_Texture", view, sampler)
                 .end();
     }
@@ -236,6 +252,7 @@ public class Tracers extends Module {
 
         Vec3 camPos = getActiveCameraPos(tickDelta);
         Identifier textureId = resolveArrowTexture();
+        arrowCount = 0;
         for (Player player : mc.level.players()) {
             if (player == mc.player) continue;
             if (!traceFriendsValue.get() && CategoryService.isFriend(player)) continue;
@@ -259,8 +276,9 @@ public class Tracers extends Module {
 
             int color = withAlpha(resolveColor(player), ARROW_ALPHA);
             float rotRad = (float) Math.toRadians(angleDeg + ARROW_ROTATION_OFFSET_DEG);
-            renderArrow(textureId, x2, y2, rotRad, color, scale * arrowSize.get());
+            queueArrow(x2, y2, rotRad, color, scale * arrowSize.get());
         }
+        flushArrows(textureId, arrowCount);
     }
 
     private Vec3 getActiveCameraPos(float tickDelta) {
