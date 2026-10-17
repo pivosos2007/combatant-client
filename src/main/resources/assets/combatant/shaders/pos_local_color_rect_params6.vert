@@ -6,7 +6,7 @@
  * Params6 carries material direction/intensity controls explicitly rather than packing them into color alpha.
  */
 
-layout (location = 0) in vec4 Position;
+layout (location = 0) in vec2 Position;
 layout (location = 1) in vec4 Local;
 layout (location = 2) in vec4 Color;
 layout (location = 3) in vec4 Rect;
@@ -33,7 +33,7 @@ layout(location = 8) out vec4 v_EdgeData;
 layout(location = 9) out vec4 v_MaterialData;
 
 void main() {
-    gl_Position = u_Proj * u_ModelView * Position;
+    gl_Position = u_Proj * u_ModelView * vec4(Position, 0.0, 1.0);
     v_Local = Local;
     v_Color = Color;
     v_Rect = Rect;

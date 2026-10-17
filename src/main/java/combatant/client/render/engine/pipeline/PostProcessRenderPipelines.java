@@ -32,7 +32,7 @@ public final class PostProcessRenderPipelines {
     public static final RenderPipeline UI_BLUR = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_blur"))
             .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("pos_tex_color.vert"))
+            .withVertexShader(shader("pos2_tex_color.vert"))
             .withFragmentShader(shader("ui_blur.frag"))
             .withSampler("u_Texture")
             .withUniform(UI_BLUR_BLOCK, UniformType.UNIFORM_BUFFER)

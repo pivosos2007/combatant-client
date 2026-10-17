@@ -8,7 +8,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-layout (location = 0) in vec4 Position;
+layout (location = 0) in vec2 Position;
 layout (location = 1) in vec4 Color;
 
 #include <combatant:ui_batch.glsl>

@@ -1,7 +1,7 @@
 #version 330 core
 #extension GL_ARB_separate_shader_objects : require
 
-layout (location = 0) in vec4 Position;
+layout (location = 0) in vec3 Position;
 layout (location = 1) in vec2 UV0;
 layout (location = 2) in vec4 Color;
 layout (location = 3) in vec4 Params;
@@ -20,7 +20,7 @@ layout(location = 6) out vec3 v_ViewPosition;
 layout(location = 7) out vec3 v_WorldPosition;
 
 void main() {
-    vec4 view = u_ModelView * Position;
+    vec4 view = u_ModelView * vec4(Position, 1.0);
     gl_Position = u_Proj * view;
     v_TexCoord = UV0;
     v_Color = Color;

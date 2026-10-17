@@ -38,12 +38,19 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity,
         super(ctx);
     }
 
-    @Inject(method = "extractRenderState", at = @At("TAIL"))
+    @Inject(
+            method = "extractRenderState(Lnet/minecraft/world/entity/item/ItemEntity;Lnet/minecraft/client/renderer/entity/state/ItemEntityRenderState;F)V",
+            at = @At("TAIL")
+    )
     private void combatant$captureOnGround(ItemEntity itemEntity, ItemEntityRenderState state, float tickDelta, CallbackInfo ci) {
         ((IItemEntityRenderState) state).combatant$setOnGround(itemEntity.onGround());
     }
 
-    @Inject(method = "submit", at = @At("HEAD"), cancellable = true)
+    @Inject(
+            method = "submit(Lnet/minecraft/client/renderer/entity/state/ItemEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
+            at = @At("HEAD"),
+            cancellable = true
+    )
     private void combatant$renderItemPhysics(
             ItemEntityRenderState state,
             PoseStack matrices,

@@ -20,7 +20,7 @@ import combatant.client.util.logging.DebugLog;
 @Mixin({DynamicGpuDataStorageMapped.class, DynamicGpuDataStorageNonMapped.class})
 public abstract class DynamicUniformStorageMixin {
     @Final
-    @Shadow
+    @Shadow(remap = false)
     private String label;
 
     @Redirect(

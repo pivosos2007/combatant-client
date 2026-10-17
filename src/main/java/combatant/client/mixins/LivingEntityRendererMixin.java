@@ -263,13 +263,19 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
         return vanillaTint;
     }
 
-    @Inject(method = "submit", at = @At("HEAD"))
+    @Inject(
+            method = "submit(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
+            at = @At("HEAD")
+    )
     private void combatant$pushViewObstructionFadeContext(S state, com.mojang.blaze3d.vertex.PoseStack matrixStack, net.minecraft.client.renderer.SubmitNodeCollector orderedRenderCommandQueue, net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState, CallbackInfo ci) {
         ViewObstructionFadeContext.push(state instanceof ViewObstructionFadeState fadeState ? fadeState : null);
         PlayerRigRenderContext.push(state);
     }
 
-    @Inject(method = "submit", at = @At("RETURN"))
+    @Inject(
+            method = "submit(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
+            at = @At("RETURN")
+    )
     private void combatant$popViewObstructionFadeContext(S state, com.mojang.blaze3d.vertex.PoseStack matrixStack, net.minecraft.client.renderer.SubmitNodeCollector orderedRenderCommandQueue, net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState, CallbackInfo ci) {
         PlayerRigRenderContext.pop();
         ViewObstructionFadeContext.pop();

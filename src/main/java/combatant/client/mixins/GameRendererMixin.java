@@ -623,7 +623,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     }
 
     @Inject(
-            method = "renderLevel",
+            method = "render3dHud",
             at = @At(
                     value = "INVOKE_STRING",
                     target = "Lnet/minecraft/util/profiling/ProfilerFiller;popPush(Ljava/lang/String;)V",

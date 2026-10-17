@@ -36,7 +36,10 @@ public final class WaypointRenderProviderMixin {
     @Unique
     private boolean combatant$originalHadNext;
 
-    @Inject(method = "begin*", at = @At("HEAD"))
+    @Inject(
+            method = "begin(Lxaero/map/element/render/ElementRenderLocation;Lxaero/map/mods/gui/WaypointRenderContext;)V",
+            at = @At("HEAD")
+    )
     private void combatant$begin(ElementRenderLocation location,
                                  WaypointRenderContext context,
                                  CallbackInfo ci) {
@@ -45,7 +48,11 @@ public final class WaypointRenderProviderMixin {
         combatant$originalHadNext = false;
     }
 
-    @Inject(method = "hasNext*", at = @At("RETURN"), cancellable = true)
+    @Inject(
+            method = "hasNext(Lxaero/map/element/render/ElementRenderLocation;Lxaero/map/mods/gui/WaypointRenderContext;)Z",
+            at = @At("RETURN"),
+            cancellable = true
+    )
     private void combatant$hasNext(ElementRenderLocation location,
                                    WaypointRenderContext context,
                                    CallbackInfoReturnable<Boolean> cir) {
@@ -54,7 +61,11 @@ public final class WaypointRenderProviderMixin {
                 || (combatant$pendingWaypoints != null && !combatant$pendingWaypoints.isEmpty()));
     }
 
-    @Inject(method = "getNext*", at = @At("HEAD"), cancellable = true)
+    @Inject(
+            method = "getNext(Lxaero/map/element/render/ElementRenderLocation;Lxaero/map/mods/gui/WaypointRenderContext;)Lxaero/map/mods/gui/Waypoint;",
+            at = @At("HEAD"),
+            cancellable = true
+    )
     private void combatant$getNext(ElementRenderLocation location,
                                    WaypointRenderContext context,
                                    CallbackInfoReturnable<Waypoint> cir) {
@@ -67,7 +78,10 @@ public final class WaypointRenderProviderMixin {
         }
     }
 
-    @Inject(method = "end*", at = @At("HEAD"))
+    @Inject(
+            method = "end(Lxaero/map/element/render/ElementRenderLocation;Lxaero/map/mods/gui/WaypointRenderContext;)V",
+            at = @At("HEAD")
+    )
     private void combatant$end(ElementRenderLocation location,
                                WaypointRenderContext context,
                                CallbackInfo ci) {

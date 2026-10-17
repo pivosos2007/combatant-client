@@ -4,6 +4,7 @@ import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 import org.objectweb.asm.tree.AnnotationNode
 import org.objectweb.asm.tree.ClassNode
+import org.objectweb.asm.tree.MethodNode
 
 plugins {
     id 'net.fabricmc.fabric-loom' version '1.17.12'
@@ -608,7 +609,7 @@ if (mixinValidationEnabled.get()) {
 
 def validateMixinSignatures = tasks.register("validateMixinSignatures") {
     group = "verification"
-    description = "Validates compiled @Inject handler descriptors against target bytecode."
+    description = "Validates compiled Mixin handlers and instruction targets against target bytecode."
     dependsOn tasks.named("compileJava"), tasks.named("compileDevJava")
     inputs.files(sourceSets.main.output.classesDirs, sourceSets.dev.output.classesDirs)
     inputs.files(sourceSets.dev.compileClasspath)
@@ -689,6 +690,17 @@ def validateMixinSignatures = tasks.register("validateMixinSignatures") {
                 def stringTargets = annotationValue(mixinAnnotation, "targets")
                 if (stringTargets instanceof Collection) targets.addAll(stringTargets)
 
+                if (targets.size() > 1) {
+                    (mixin.fields + mixin.methods).each { member ->
+                        AnnotationNode shadow = allAnnotations(member).find {
+                            it.desc == "Lorg/spongepowered/asm/mixin/Shadow;"
+                        }
+                        if (shadow != null && annotationValue(shadow, "remap") != false) {
+                            failures.add("${mixinClass}.${member.name}${member instanceof MethodNode ? member.desc : ':' + member.desc}: multi-target @Shadow must declare remap = false")
+                        }
+                    }
+                }
+
                 mixin.methods.each { handler ->
                     def handlerAnnotations = allAnnotations(handler)
                     def injectorDescriptors = [
@@ -741,25 +753,72 @@ def validateMixinSignatures = tasks.register("validateMixinSignatures") {
                                     String owner = member.group(1)
                                     String memberName = member.group(2)
                                     String memberDescriptor = member.group(3)
-                                    boolean instructionExists = target.methods.findAll { method ->
+                                    def selectedTargetMethods = target.methods.findAll { method ->
                                         method.name ==~ namePattern && (explicitDescriptor == null || method.desc == explicitDescriptor)
-                                    }.any { targetMethod ->
+                                    }
+                                    def matchingInstructions = []
+                                    selectedTargetMethods.each { targetMethod ->
                                         for (def instruction = targetMethod.instructions?.first; instruction != null; instruction = instruction.next) {
                                             if (memberDescriptor.startsWith("(")
                                                     && instruction instanceof org.objectweb.asm.tree.MethodInsnNode
                                                     && instruction.owner == owner
                                                     && instruction.name == memberName
-                                                    && instruction.desc == memberDescriptor) return true
+                                                    && instruction.desc == memberDescriptor) {
+                                                matchingInstructions.add([targetMethod, instruction])
+                                            }
                                             if (memberDescriptor.startsWith(":")
                                                     && instruction instanceof org.objectweb.asm.tree.FieldInsnNode
                                                     && instruction.owner == owner
                                                     && instruction.name == memberName
-                                                    && instruction.desc == memberDescriptor.substring(1)) return true
+                                                    && instruction.desc == memberDescriptor.substring(1)) {
+                                                matchingInstructions.add([targetMethod, instruction])
+                                            }
                                         }
-                                        return false
                                     }
-                                    if (!instructionExists) {
+                                    if (atKind == "INVOKE_STRING") {
+                                        def atArgs = annotationValue(at, "args")
+                                        if (atArgs instanceof String) atArgs = [atArgs]
+                                        String requiredConstant = atArgs instanceof Collection
+                                                ? atArgs.find { it instanceof String && it.startsWith("ldc=") }
+                                                : null
+                                        if (requiredConstant != null) {
+                                            requiredConstant = requiredConstant.substring("ldc=".length())
+                                            matchingInstructions = matchingInstructions.findAll { match ->
+                                                def previous = match[1].previous
+                                                while (previous instanceof org.objectweb.asm.tree.LabelNode
+                                                        || previous instanceof org.objectweb.asm.tree.LineNumberNode
+                                                        || previous instanceof org.objectweb.asm.tree.FrameNode) {
+                                                    previous = previous.previous
+                                                }
+                                                previous instanceof org.objectweb.asm.tree.LdcInsnNode
+                                                        && previous.cst == requiredConstant
+                                            }
+                                        }
+                                    }
+                                    if (matchingInstructions.isEmpty()) {
                                         failures.add("${mixinClass}.${handler.name}${handler.desc}: @At(${atKind}) target ${instructionTarget} is absent from ${targetClass}.${selector}")
+                                        return
+                                    }
+                                    if (injector.desc == "Lorg/spongepowered/asm/mixin/injection/Redirect;"
+                                            && memberDescriptor.startsWith("(")) {
+                                        matchingInstructions.each { match ->
+                                            def targetMethod = match[0]
+                                            def instruction = match[1] as org.objectweb.asm.tree.MethodInsnNode
+                                            def redirectArguments = Type.getArgumentTypes(instruction.desc).toList()
+                                            if (instruction.opcode != Opcodes.INVOKESTATIC) {
+                                                redirectArguments.add(0, Type.getObjectType(instruction.owner))
+                                            }
+                                            Type redirectReturn = Type.getReturnType(instruction.desc)
+                                            String directDescriptor = Type.getMethodDescriptor(
+                                                    redirectReturn, redirectArguments as Type[])
+                                            def capturedArguments = new ArrayList<Type>(redirectArguments)
+                                            capturedArguments.addAll(Type.getArgumentTypes(targetMethod.desc).toList())
+                                            String capturedDescriptor = Type.getMethodDescriptor(
+                                                    redirectReturn, capturedArguments as Type[])
+                                            if (handler.desc != directDescriptor && handler.desc != capturedDescriptor) {
+                                                failures.add("${mixinClass}.${handler.name}${handler.desc}: @Redirect signature must be ${directDescriptor} or ${capturedDescriptor}")
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -816,7 +875,7 @@ def validateMixinSignatures = tasks.register("validateMixinSignatures") {
                                 return
                             }
 
-                            def matching = candidates.findAll { targetMethod ->
+                            def nonMatching = candidates.findAll { targetMethod ->
                                 Type[] targetArguments = Type.getArgumentTypes(targetMethod.desc)
                                 boolean argumentsMatch = capturedArguments.length == 0 ||
                                         (capturedArguments.length == targetArguments.length
@@ -838,10 +897,10 @@ def validateMixinSignatures = tasks.register("validateMixinSignatures") {
                                         : handlerArguments[callbackIndex].internalName == "org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable"
                                 boolean staticMatches = (targetMethod.access & Opcodes.ACC_STATIC) == 0 ||
                                         (handler.access & Opcodes.ACC_STATIC) != 0
-                                return argumentsMatch && callbackMatches && staticMatches
+                                return !(argumentsMatch && callbackMatches && staticMatches)
                             }
-                            if (matching.isEmpty()) {
-                                def expected = candidates.collect { it.name + it.desc }.join(" or ")
+                            if (!nonMatching.isEmpty()) {
+                                def expected = nonMatching.collect { it.name + it.desc }.join(" and ")
                                 failures.add("${mixinClass}.${handler.name}${handler.desc}: handler signature does not match ${targetClass} ${expected}")
                             }
                         }
