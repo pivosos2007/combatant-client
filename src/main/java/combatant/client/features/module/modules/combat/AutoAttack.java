@@ -541,7 +541,8 @@ public class AutoAttack extends Module {
 
     private boolean canAttackNow(LocalPlayer player, LivingEntity target) {
         if (player == null) return false;
-        return AttackPressing.INSTANCE.isCooldownComplete(player, target, isLegacyAttackProtocol(), 0);
+        int lookahead = isLegacyAttackProtocol() ? 0 : AttackPressing.ATTACK_LOOKAHEAD_TICKS;
+        return AttackPressing.INSTANCE.isCooldownComplete(player, target, isLegacyAttackProtocol(), lookahead);
     }
 
     private boolean isLegacyAttackProtocol() {

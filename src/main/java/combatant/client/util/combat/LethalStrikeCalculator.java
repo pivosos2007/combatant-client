@@ -42,6 +42,11 @@ public enum LethalStrikeCalculator {
     private static final float LETHAL_MARGIN = 1.25f;
 
     public static boolean canKillNow(Player attacker, LivingEntity target, int cooldownTicks) {
+        return canKillNow(attacker, target, cooldownTicks, true);
+    }
+
+    public static boolean canKillNow(Player attacker, LivingEntity target, int cooldownTicks,
+                                     boolean includeCriticalDamage) {
         if (attacker == null || target == null || !target.isAlive() || target.isRemoved()) {
             return false;
         }
@@ -52,16 +57,19 @@ public enum LethalStrikeCalculator {
             return false;
         }
 
-        float damage = estimateFinalDamage(attacker, target, Math.max(0, cooldownTicks));
+        float damage = estimateFinalDamage(attacker, target, Math.max(0, cooldownTicks), includeCriticalDamage);
         float effectiveHealth = PlayerHealthResolver.resolve(target).totalHealth();
         return damage >= effectiveHealth + LETHAL_MARGIN;
     }
 
-    private static float estimateFinalDamage(Player attacker, LivingEntity target, int cooldownTicks) {
+    private static float estimateFinalDamage(Player attacker, LivingEntity target, int cooldownTicks,
+                                             boolean includeCriticalDamage) {
         ItemStack weapon = attacker.getMainHandItem();
         DamageSource source = getDamageSource(attacker, weapon);
 
-        float cooldown = attacker.getAttackStrengthScale(cooldownTicks + 0.5f);
+        // Use exactly the tick lookahead approved by the attack gate.
+        // An extra half-tick here led to lethal damage being overestimated.
+        float cooldown = attacker.getAttackStrengthScale(cooldownTicks);
         float cooldownScale = 0.2f + cooldown * cooldown * 0.8f;
 
         float baseDamage = (float) attacker.getAttributeValue(Attributes.ATTACK_DAMAGE);
@@ -82,7 +90,7 @@ public enum LethalStrikeCalculator {
             damage += getClientMaceDensityBonus(attacker, target, weapon, source);
         }
 
-        if (cooldown > FULL_STRENGTH_THRESHOLD && isCriticalHit(attacker, target)) {
+        if (includeCriticalDamage && cooldown > FULL_STRENGTH_THRESHOLD && isCriticalHit(attacker, target)) {
             damage *= 1.5f;
         }
 

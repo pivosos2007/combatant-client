@@ -242,7 +242,6 @@ public class Font implements GlyphFont {
         // Upload the atlas once for the entire run, not once per missing glyph.
         // Layout/measurement may run off-thread; atlas mutations must not.
         if (!RenderSystem.isOnRenderThread()) return run;
-        boolean dirty = false;
         boolean complete = true;
         for (OpenTypeShaper.PositionedGlyph g : run.glyphs()) {
             int id = g.glyphId();
@@ -250,13 +249,13 @@ public class Font implements GlyphFont {
                 complete = false;
                 continue;
             }
-            if (!glyphIds.containsKey(id)) {
-                if (packGlyphById(id)) dirty = true;
-                else complete = false;
+            if (!glyphIds.containsKey(id) && !packGlyphById(id)) {
+                complete = false;
             }
         }
-        if (dirty) {
-            GlyphAtlasAllocator.Region region = extraGlyphs.takeDirty();
+        // Empty glyphs enter the cache without allocating atlas pixels.
+        GlyphAtlasAllocator.Region region = extraGlyphs.takeDirty();
+        if (region != null) {
             texture.uploadAtlasRegion(atlasPixels, 1, SIZE, SIZE - dynamicRows,
                     region.x(), region.y(), region.width(), region.height());
         }

@@ -28,7 +28,6 @@ import combatant.client.features.module.ModuleListInfoProvider;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.modules.movement.speed.BhopInput;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
-import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.player.MovementUtil;
 
 @ModuleInfo(
@@ -41,9 +40,6 @@ public final class Speed extends Module {
     public final NumberValue<Float> legitMultiplier = num("legit_multiplier", 1.20f, 1.15f, 1.50f);
     public final NumberValue<Float> jumpAcceleration = num("jump_acceleration", 1.30f, 1.00f, 1.60f);
     public final NumberValue<Float> entityBoostStrength = num("entity_boost_strength", 0.20f, 0.05f, 0.40f);
-    // custom = the mode below as set; grim = bhop (every other mode writes velocities GrimAC's movement prediction
-    // does not allow); vanilla = the mode as set, there is no faster server-side limit to switch to.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final EnumValue<Mode> mode = enumMode("mode", Mode.NCP);
     private boolean lastOnGround = true;
     private int airTicks;
@@ -329,7 +325,7 @@ public final class Speed extends Module {
     }
 
     private Mode effectiveMode() {
-        return anticheat.get().pick(mode.get(), Mode.BHOP, mode.get());
+        return mode.get();
     }
 
     private void resetState() {

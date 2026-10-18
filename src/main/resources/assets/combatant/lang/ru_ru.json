@@ -1,4 +1,12 @@
 {
+  "setting.common.strict_interactions": "Строгая проверка взаимодействий",
+  "setting.common.strict_geometry": "Строгая геометрия",
+  "setting.common.module_list_info_color_mode": "Цвет сведений",
+  "setting.common.module_list_info_color_mode.option.auto": "Автоматически",
+  "setting.common.module_list_info_color_mode.option.custom": "Свой цвет",
+  "setting.common.module_list_info_primary": "Основной цвет сведений",
+  "setting.common.module_list_info_secondary": "Дополнительный цвет сведений",
+  "setting.common.mode.option.bhop": "BHop",
   "combatant.inventory.locked_by": "Слот заблокирован модулем %s",
   "setting.offhand.fallback_shield_priority": "Приоритет щита",
   "setting.offhand.fallback_crystal_priority": "Приоритет кристалла",

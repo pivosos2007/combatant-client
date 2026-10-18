@@ -7,7 +7,6 @@
 
 package combatant.client.features.module.modules.combat;
 
-import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
 import combatant.client.features.module.modules.combat.autocrystal.*;
@@ -87,6 +86,7 @@ public class AutoCrystal extends Module {
     private static final double TEXT_GAP_SCALE = 1.0;
     private static final double TARGET_SEARCH_RANGE = 12.0;
 
+    private final BooleanValue strictInteractions = boolCommon("strict_interactions", CommonSettingSchemas.STRICT_INTERACTIONS, false);
     private final Minecraft mc = Minecraft.getInstance();
 
     private final BooleanValue renderEnabled =
@@ -106,10 +106,6 @@ public class AutoCrystal extends Module {
             );
     private final BooleanValue renderSelfDamage = boolCommon("autocrystalRenderSelfDamage", CommonSettingSchemas.RENDER_SELF_DAMAGE, true);
     private final BooleanValue drawDamage = boolCommon("autocrystalRenderDamage", CommonSettingSchemas.RENDER_DAMAGE, true);
-    // custom = the settings below as set; grim = place range 4.5 and hit range 3.0, the limits GrimAC enforces
-    // (FarPlace, Reach), and no instant place/break (see effInstantBreak); vanilla = 6.0 everywhere with instant
-    // place/break, for servers with no anticheat.
-    private final EnumValue<AntiCheatPreset> anticheat = enumCommon("anticheat_mode", CommonSettingSchemas.ANTICHEAT_MODE, AntiCheatPreset.CUSTOM);
     private final BooleanValue placeEnabled = boolCommon("autocrystalPlace", CommonSettingSchemas.PLACE, true);
     private final NumberValue<Integer> placeDelay =
             visibleWhen(numCommon(
@@ -347,32 +343,29 @@ public class AutoCrystal extends Module {
     }
 
     private float effPlaceRange() {
-        return anticheat.get().limit(placeRange.get(), (float) AntiCheatPreset.GRIM_BLOCK_RANGE, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
+        return placeRange.get();
     }
 
     private float effWallRange() {
-        return anticheat.get().limit(wallRange.get(), 3.0f, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
+        return wallRange.get();
     }
 
     private float effBreakRange() {
-        return anticheat.get().limit(breakRange.get(), (float) AntiCheatPreset.GRIM_ENTITY_RANGE, (float) AntiCheatPreset.VANILLA_ENTITY_RANGE);
+        return breakRange.get();
     }
 
     private float effBreakWallRange() {
-        return anticheat.get().limit(breakWallRange.get(), (float) AntiCheatPreset.GRIM_ENTITY_RANGE, (float) AntiCheatPreset.VANILLA_ENTITY_RANGE);
+        return breakWallRange.get();
     }
 
-    // The instant paths run from AutoCrystalPacketMixin whenever the client applies a crystal spawn or removal, which
-    // is between two ticks: the attack or placement leaves after the previous tick's movement packet and ahead of a
-    // pong. GrimAC's Post check flags that order, and RotationPlace judges the placement against the next tick's
-    // rotation rather than the one the rotation check above used. The tick loop does the same job a tick later from
-    // the rotation action, ahead of the movement packet, so the grim preset leaves it to the loop.
+    // Instant packet callbacks run between ticks. The user explicitly controls whether
+    // they are enabled; strict interaction checks separately validate sent rotations.
     private boolean effInstantBreak() {
-        return anticheat.get().pick(instantBreak.get(), false, true);
+        return instantBreak.get();
     }
 
     private boolean effInstantPlace() {
-        return anticheat.get().pick(instantPlace.get(), false, true);
+        return instantPlace.get();
     }
 
     @Override
@@ -1145,10 +1138,10 @@ public class AutoCrystal extends Module {
     }
 
     // GrimAC's RotationPlace raytraces the placement from the rotation the server saw before it. A placement made in
-    // the tick its rotation changes leaves ahead of the flying packet that carries it, so under the grim preset it
+    // the tick its rotation changes leaves ahead of the flying packet that carries it, so with strict interactions enabled it
     // waits a tick; the rotation target is rebuilt every tick and the next one places against the sent rotation.
     private boolean serverRotationClicks(BlockHitResult hit) {
-        if (!usesRotationSettings() || !anticheat.get().pick(false, true, false)) return true;
+        if (!usesRotationSettings() || !strictInteractions.get()) return true;
         Rotation server = RotationManager.INSTANCE.getServerRotation();
         if (server == null || hit == null || mc.player == null) return false;
         return AutoCrystalInteractionUtil.rayEntersFace(

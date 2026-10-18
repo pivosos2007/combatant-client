@@ -27,6 +27,17 @@ public final class CombatStrikeController {
 
     public static final CombatStrikeController INSTANCE = new CombatStrikeController();
 
+    private LocalPlayer lastAttacker;
+    private int lastModernAttackAge = -1;
+    // Avoid repeatedly sending undercharged finishers before server feedback.
+    private static final int FINISHER_RETRY_TICKS = 4;
+    private LocalPlayer lastFinisherAttacker;
+    private LivingEntity lastFinisherTarget;
+    private int lastFinisherAttackAge = -1;
+    private float lastFinisherTargetHealth;
+
+    private enum StrikeDecision { NONE, NORMAL, FINISHER }
+
     private CombatStrikeController() {
     }
 
@@ -40,9 +51,7 @@ public final class CombatStrikeController {
         if (criticalGate != null && !criticalGate.getAsBoolean()) {
             return false;
         }
-        int cooldownTicks = legacyProtocol ? 0 : 1;
-        return AttackPressing.INSTANCE.isCooldownComplete(player, target, legacyProtocol, cooldownTicks)
-                || (!legacyProtocol && AttributeSwap.shouldBypassAuraCooldownFor(player, target));
+        return resolveStrike(player, target, legacyProtocol) != StrikeDecision.NONE;
     }
 
     public boolean tryAttack(Minecraft mc,
@@ -56,9 +65,8 @@ public final class CombatStrikeController {
             return false;
         }
 
-        int cooldownTicks = legacyProtocol ? 0 : 1;
-        boolean attributeSwapBypass = !legacyProtocol && AttributeSwap.shouldBypassAuraCooldownFor(mc.player, target);
-        if (!attributeSwapBypass && !AttackPressing.INSTANCE.isCooldownComplete(mc.player, target, legacyProtocol, cooldownTicks)) {
+        StrikeDecision decision = resolveStrike(mc.player, target, legacyProtocol);
+        if (decision == StrikeDecision.NONE) {
             return false;
         }
 
@@ -75,10 +83,61 @@ public final class CombatStrikeController {
         }
 
         boolean attacked = executeAttacksInternal(mc, target, clickCount, legacyProtocol, false);
+        if (attacked && !legacyProtocol) {
+            lastAttacker = mc.player;
+            lastModernAttackAge = mc.player.tickCount;
+            if (decision == StrikeDecision.FINISHER) {
+                lastFinisherAttacker = mc.player;
+                lastFinisherTarget = target;
+                lastFinisherAttackAge = mc.player.tickCount;
+                lastFinisherTargetHealth = target.getHealth() + target.getAbsorptionAmount();
+            }
+        }
         if (shouldReset) {
             restoreSprintAfterAttack(mc, resolvedMode, true);
         }
         return attacked;
+    }
+
+    private StrikeDecision resolveStrike(LocalPlayer player, LivingEntity target, boolean legacyProtocol) {
+        if (player == null || target == null || !target.isAlive() || target.isRemoved()) {
+            return StrikeDecision.NONE;
+        }
+        if (legacyProtocol) return StrikeDecision.NORMAL;
+
+        // One modern attack per tick, regardless of which module requested it.
+        if (lastAttacker == player && lastModernAttackAge == player.tickCount) {
+            return StrikeDecision.NONE;
+        }
+
+        int lookahead = AttackPressing.ATTACK_LOOKAHEAD_TICKS;
+        if (!AttackPressing.INSTANCE.canHitTarget(target, lookahead)) {
+            return StrikeDecision.NONE;
+        }
+        AttackPressing.StrikeReadiness readiness = AttackPressing.INSTANCE.getStrikeReadiness(
+                player, target, lookahead);
+
+        if (readiness == AttackPressing.StrikeReadiness.WAIT) {
+            return AttributeSwap.shouldBypassAuraCooldownFor(player, target)
+                    ? StrikeDecision.NORMAL : StrikeDecision.NONE;
+        }
+        if (readiness != AttackPressing.StrikeReadiness.FINISHER) {
+            return StrikeDecision.NORMAL;
+        }
+
+        // A predicted kill is a single deliberate attempt, not permission to
+        // spam one attack packet every tick while the server processes it.
+        if (lastFinisherAttacker == player && lastFinisherTarget == target && lastFinisherAttackAge >= 0) {
+            // No confirmed health change: the previous early finisher may have
+            // missed, been blocked or is still awaiting server confirmation.
+            // Wait for a normally charged attack instead of retrying guesses.
+            float health = target.getHealth() + target.getAbsorptionAmount();
+            if (Math.abs(health - lastFinisherTargetHealth) < 0.01f
+                    || player.tickCount - lastFinisherAttackAge < FINISHER_RETRY_TICKS) {
+                return StrikeDecision.NONE;
+            }
+        }
+        return StrikeDecision.FINISHER;
     }
 
     public int resolveClickCount(ClickScheduler clicker, boolean legacyProtocol) {

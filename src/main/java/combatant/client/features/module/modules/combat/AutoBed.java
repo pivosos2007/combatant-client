@@ -25,7 +25,6 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.text.WorldTextRenderer;
 import combatant.client.render.engine.world.WorldUiPresentationService;
-import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.aiming.RestrictedSingleUseAction;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
@@ -78,11 +77,9 @@ public class AutoBed extends Module {
     private static final double TEXT_SCALE = 1.0;
     private static final double TEXT_GAP_SCALE = 1.0;
 
+    private final BooleanValue strictInteractions = boolCommon("strict_interactions", CommonSettingSchemas.STRICT_INTERACTIONS, false);
     private final Minecraft mc = Minecraft.getInstance();
 
-    // custom = the settings below as set; grim = place range at most 4.5, visible-only, no instant explode,
-    // single interaction per tick and rotations tracing to clicked block; vanilla = 5.5 range with instant explode, for servers with no anticheat.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final BooleanValue placeEnabled = boolCommon("autobedPlace", "place", CommonSettingSchemas.PLACE, true);
     private final BooleanValue explodeEnabled = boolCommon("autobedExplode", "explode", CommonSettingSchemas.EXPLODE, true);
     private final BooleanValue instantExplode = bool("autobedInstantExplode", "instant_explode", true);
@@ -484,7 +481,7 @@ public class AutoBed extends Module {
         }
 
         setPendingBed(refreshed, true);
-        if (anticheat.get() == AntiCheatPreset.GRIM) {
+        if (strictInteractions.get()) {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             BlockHitResult hit = refreshed.placeHitResult();
             if (hit != null) {
@@ -519,7 +516,7 @@ public class AutoBed extends Module {
             return;
         }
 
-        if (anticheat.get() == AntiCheatPreset.GRIM) {
+        if (strictInteractions.get()) {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             BlockHitResult hit = refreshed.explodeHitResult();
             if (hit != null) {
@@ -598,7 +595,7 @@ public class AutoBed extends Module {
     private void detonatePendingBed(AutoBedData data) {
         if (data == null || data.explodeHitResult() == null || !hasPendingExplodeDelayElapsed() || shouldPause()) return;
 
-        if (anticheat.get() == AntiCheatPreset.GRIM) {
+        if (strictInteractions.get()) {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             BlockHitResult hit = data.explodeHitResult();
             if (hit != null) {
@@ -1108,19 +1105,19 @@ public class AutoBed extends Module {
     }
 
     private float effPlaceRange() {
-        return anticheat.get().limit(placeRange.get(), (float) AntiCheatPreset.GRIM_BLOCK_RANGE, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
+        return placeRange.get();
     }
 
     private float effWallRange() {
-        return anticheat.get().limit(wallRange.get(), 0.0f, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
+        return wallRange.get();
     }
 
     private boolean effInstantExplode() {
-        return anticheat.get().pick(instantExplode.get(), false, true);
+        return instantExplode.get();
     }
 
     private boolean effUsesRotations() {
-        return anticheat.get().pick(CombatRotationModeUtil.usesRotations(attackMode), true, CombatRotationModeUtil.usesRotations(attackMode));
+        return CombatRotationModeUtil.usesRotations(attackMode);
     }
 
     private boolean usesRotationSettings() {

@@ -51,6 +51,7 @@ public enum CommonSettingSchemas {
     public static final CommonSettingSchema SLIDE_DELAY = key("slide_delay");
     public static final CommonSettingSchema FADE_TIME = key("fade_time");
     public static final CommonSettingSchema MODE = key("mode");
+    public static final CommonSettingSchema VELOCITY_MODE = key("velocity_mode", "mode");
 
     // Shared placement controls used by Surround and SelfTrap.
     public static final CommonSettingSchema SHELL_BLOCK_PRIORITY = key("shell.block_priority");
@@ -212,7 +213,11 @@ public enum CommonSettingSchemas {
     public static final CommonSettingSchema FAIL_STRENGTH_VERTICAL_MAX = key("rotation.fail.strength_vertical_max");
     public static final CommonSettingSchema FAIL_TRANSITION_MIN = key("rotation.fail.transition_min");
     public static final CommonSettingSchema FAIL_TRANSITION_MAX = key("rotation.fail.transition_max");
-    public static final CommonSettingSchema ANTICHEAT_MODE = key("anticheat.mode");
+    public static final CommonSettingSchema STRICT_INTERACTIONS = key("strict_interactions");
+    public static final CommonSettingSchema STRICT_GEOMETRY = key("strict_geometry");
+    public static final CommonSettingSchema MODULE_LIST_INFO_COLOR_MODE = key("module_list_info_color_mode");
+    public static final CommonSettingSchema MODULE_LIST_INFO_PRIMARY = key("module_list_info_primary");
+    public static final CommonSettingSchema MODULE_LIST_INFO_SECONDARY = key("module_list_info_secondary");
     public static final CommonSettingSchema RENDER_COLOR_MODE = key("render.color_mode", "color_mode");
     public static final CommonSettingSchema RENDER_COLOR_SPEED = key("render.color_speed", "color_speed");
     public static final CommonSettingSchema RENDER_PRIMARY_COLOR = key("render.primary_color", "primary_color");

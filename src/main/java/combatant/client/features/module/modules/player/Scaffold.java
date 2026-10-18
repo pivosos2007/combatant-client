@@ -506,7 +506,7 @@ public class Scaffold extends Module {
         defs.add(SettingDef.number(autoBlockSlotResetDelay).visibleWhen(autoBlock::get));
         defs.add(SettingDef.number(autoBlockDoNotUseBelowCount).visibleWhen(autoBlock::get));
         defs.add(SettingDef.bool(prediction));
-        defs.add(SettingDef.bool(strictGeometry));
+        defs.add(SettingDef.bool(strictGeometry).common(CommonSettingSchemas.STRICT_GEOMETRY.commonI18nKey()));
         defs.add(SettingDef.bool(considerInventory).visibleWhen(() -> rotationTiming.get() == RotationTiming.NORMAL));
         defs.add(SettingDef.number(placementSpeed).common(CommonSettingSchemas.PLACEMENT_SPEED));
         defs.add(SettingDef.number(delay));

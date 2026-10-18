@@ -15,8 +15,6 @@ import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
 import net.minecraft.network.protocol.game.ClientboundExplodePacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.tags.FluidTags;
-import net.minecraft.world.effect.MobEffects;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec2;
@@ -38,7 +36,6 @@ import combatant.client.features.module.modules.visuals.Freecam;
 import combatant.client.util.combat.CombatStrikeController;
 import combatant.client.util.combat.SprintController;
 import combatant.client.util.player.MovementUtil;
-import combatant.client.util.anticheat.AntiCheatPreset;
 
 @ModuleInfo(
         id = "sprint",
@@ -54,10 +51,6 @@ public final class Sprint extends Module {
     private static final int VULCAN_SPRINT_A_RESET_TICKS = 3;
     private static final int VULCAN_SPRINT_A_JUMP_GRACE_TICKS = 4;
     private static final int VULCAN_EXTERNAL_SPRINT_SUPPRESS_TICKS = 30;
-    // custom = the settings below as set; grim = omni-directional sprint off and no forced sprint
-    // when GrimAC flags (SprintA hunger, SprintD blindness, SprintE horizontal collision, SprintG shallow water,
-    // plus vanilla canStartSprinting conditions); vanilla = identical to custom (vanilla has no sprint checks).
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final EnumValue<ResetMode> defaultResetMode =
             enumMode("default_reset_mode", ResetMode.LEGIT, ResetMode.values());
     private final BooleanValue omniDirectional =
@@ -151,10 +144,6 @@ public final class Sprint extends Module {
         }
 
         if (shouldAvoidForceSprintForSwimStart(player)) {
-            return;
-        }
-
-        if (isGrimSprintBlocked(player)) {
             return;
         }
 
@@ -395,62 +384,11 @@ public final class Sprint extends Module {
     }
 
     private boolean effOmniDirectional() {
-        return anticheat.get().pick(omniDirectional.get(), false, omniDirectional.get());
+        return omniDirectional.get();
     }
 
     private ResetMode effDefaultResetMode() {
-        ResetMode chosen = defaultResetMode.get();
-        if (anticheat.get() == AntiCheatPreset.GRIM && chosen == ResetMode.FORCE) {
-            return ResetMode.LEGIT;
-        }
-        return chosen;
-    }
-
-    private boolean isGrimSprintBlocked(LocalPlayer player) {
-        if (anticheat.get() != AntiCheatPreset.GRIM || player == null) {
-            return false;
-        }
-
-        if (player.getFoodData().getFoodLevel() <= 6.0F && !player.getAbilities().mayfly) {
-            return true;
-        }
-
-        if (player.hasEffect(MobEffects.BLINDNESS)) {
-            return true;
-        }
-
-        if (player.horizontalCollision && !player.minorHorizontalCollision) {
-            return true;
-        }
-
-        if (player.isInWater() && !player.isUnderWater() && !player.isSwimming()) {
-            return true;
-        }
-
-        if (player.isUsingItem()) {
-            NoSlow noSlow = Modules.get(NoSlow.class);
-            if (noSlow != null && noSlow.shouldAllowSprint(player)) {
-                return false;
-            }
-            return true;
-        }
-
-        if ((player.isMovingSlowly() || player.isShiftKeyDown() || player.isCrouching()) && !player.isUnderWater()) {
-            return true;
-        }
-
-        if (player.isFallFlying() && !player.isUnderWater()) {
-            return true;
-        }
-
-        if (player.isPassenger()) {
-            Entity vehicle = player.getVehicle();
-            if (vehicle == null || !vehicle.canSprint()) {
-                return true;
-            }
-        }
-
-        return false;
+        return defaultResetMode.get();
     }
 
     private boolean hasMovementInput(LocalPlayer player) {

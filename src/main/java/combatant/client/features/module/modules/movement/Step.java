@@ -34,7 +34,6 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.util.player.MovementUtil;
 import combatant.client.util.time.TimerController;
-import combatant.client.util.anticheat.AntiCheatPreset;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -91,10 +90,6 @@ public final class Step extends Module {
     private static final double VULCAN_297_JUMP_A_LIMIT = 1.25;
 
     private final Minecraft mc = Minecraft.getInstance();
-    // custom = the settings below as set; grim = legit jump step (GrimAC Simulation flags instant
-    // step heights above 0.6 and timer/packet tricks); vanilla = user mode with max 5.0 height,
-    // for servers with no anticheat.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final EnumValue<Mode> mode = enumSetting("stepMode", "mode", Mode.INSTANT, Mode.values());
     private final NumberValue<Float> height = visibleWhen(num("stepHeight", "height", 1.0f, 0.6f, 5.0f), () -> mode.get() == Mode.INSTANT);
     private final BooleanValue adaptiveOffsets = visibleWhen(bool("stepAdaptiveOffsets", "adaptive_offsets", true), () -> mode.get() == Mode.INSTANT);
@@ -558,19 +553,19 @@ public final class Step extends Module {
     }
 
     private Mode effMode() {
-        return anticheat.get().pick(mode.get(), Mode.LEGIT, mode.get());
+        return mode.get();
     }
 
     private float effHeight() {
-        return anticheat.get().limit(height.get(), 0.6f, 5.0f);
+        return height.get();
     }
 
     private PacketMode effPacketMode() {
-        return anticheat.get().pick(packetMode.get(), PacketMode.NONE, packetMode.get());
+        return packetMode.get();
     }
 
     private boolean effUseTimer() {
-        return anticheat.get().pick(useTimer.get(), false, useTimer.get());
+        return useTimer.get();
     }
 
     public enum Mode {

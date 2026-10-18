@@ -28,7 +28,6 @@ import combatant.client.features.module.modules.combat.surround.SurroundPlanner.
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
-import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.block.placer.BlockPlacer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -58,9 +57,6 @@ public final class Surround extends Module {
     private static final long NO_BLOCKS_WARN_INTERVAL_MS = 3000L;
 
     private final Minecraft mc = Minecraft.getInstance();
-    // custom = the settings below as set; grim = place range <= 4.5, wall range 0, rotation NORMAL, 1 block/tick;
-    // vanilla = 5.5 range/wall range, NO_ROTATION, max blocks/tick, 6.0 crystal clear reach.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final EnumValue<Mode> mode = enumSetting("surroundMode", "mode", Mode.FEET, Mode.values());
     private final EnumValue<CenterMode> center = enumSetting("surroundCenter", "center", CenterMode.NONE, CenterMode.values());
     private final EnumValue<BlockPriority> blockPriority = enumCommon(
@@ -290,19 +286,19 @@ public final class Surround extends Module {
     }
 
     private double effPlaceRange() {
-        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE);
+        return range.get();
     }
 
     private double effWallRange() {
-        return anticheat.get().limit(wallRange.get(), 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE);
+        return wallRange.get();
     }
 
     private double effCrystalRange() {
-        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
+        return range.get();
     }
 
     private BlockPlacer.RotationMode effRotation() {
-        return anticheat.get().pick(rotation.get(), BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.NO_ROTATION);
+        return rotation.get();
     }
 
     private boolean effConstructFailResult() {
@@ -310,7 +306,7 @@ public final class Surround extends Module {
     }
 
     private int effBlocksPerTick() {
-        return anticheat.get().limit(blocksPerTick.get(), 1, blocksPerTick.getMax());
+        return blocksPerTick.get();
     }
 
     @Override

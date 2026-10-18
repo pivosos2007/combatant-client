@@ -22,7 +22,6 @@ import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
-import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.block.placer.BlockPlacer;
 import combatant.client.util.target.TargetingUtil;
 import combatant.client.util.target.TargetManager;
@@ -54,9 +53,6 @@ import java.util.List;
 public final class AutoWeb extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
-    // custom = the settings below as set; grim = place range <= 4.5, wall range 0, rotation NORMAL, 1 block/tick;
-    // vanilla = 5.5 range/wall range, NO_ROTATION.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final NumberValue<Double> range = numCommon(
             "autoWebRange", "range", CommonSettingSchemas.COMBAT_RANGE, 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = numCommon(
@@ -243,15 +239,15 @@ public final class AutoWeb extends Module {
     }
 
     private double effPlaceRange() {
-        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE);
+        return range.get();
     }
 
     private double effWallRange() {
-        return anticheat.get().limit(wallRange.get(), 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE);
+        return wallRange.get();
     }
 
     private BlockPlacer.RotationMode effRotation() {
-        return anticheat.get().pick(rotation.get(), BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.NO_ROTATION);
+        return rotation.get();
     }
 
     private boolean effConstructFailResult() {

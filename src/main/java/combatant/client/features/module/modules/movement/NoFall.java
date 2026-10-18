@@ -41,7 +41,6 @@ import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
-import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import combatant.client.util.block.scaffold.ScaffoldFacePositionFactory;
 import combatant.client.util.block.scaffold.ScaffoldPlacementTarget;
@@ -84,26 +83,22 @@ public class NoFall extends Module {
         NORMAL_MLG_ITEMS = Set.copyOf(items);
     }
 
-    // custom = the mode below as set; grim = packet jump (the ground-flag modes claim a ground GrimAC's prediction does
-    // not have: GroundSpoof, NoFall and Simulation flag them); vanilla = ground spoof, which a server with no
-    // anticheat takes at its word.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     private final EnumValue<Mode> mode =
             enumSetting("mode", "mode", Mode.GROUD_SPOOF, Mode.values());
     private final NumberValue<Float> packetJumpFallDistance =
-            visibleWhen(num("packet_jump_fall_distance", 3.0f, 0.0f, 20.0f), () -> effectiveMode() == Mode.PACKET_JUMP);
+            visibleWhen(num("packet_jump_fall_distance", 3.0f, 0.0f, 20.0f), () -> mode.get() == Mode.PACKET_JUMP);
     private final EnumValue<PacketJumpTiming> packetJumpTiming =
             visibleWhen(enumSetting("packet_jump_timing", "packet_jump_timing", PacketJumpTiming.LANDING, PacketJumpTiming.values()),
-                    () -> effectiveMode() == Mode.PACKET_JUMP);
+                    () -> mode.get() == Mode.PACKET_JUMP);
     private final BooleanValue packetJumpResetFallDistance =
             visibleWhen(bool("packet_jump_reset_fall_distance", true),
-                    () -> effectiveMode() == Mode.PACKET_JUMP && packetJumpTiming.get() == PacketJumpTiming.FALLING);
+                    () -> mode.get() == Mode.PACKET_JUMP && packetJumpTiming.get() == PacketJumpTiming.FALLING);
     private final NumberValue<Float> vulcanFallDistance =
-            visibleWhen(num("vulcan_fall_distance", 7.0f, 3.0f, 40.0f), () -> effectiveMode() == Mode.VULCAN);
+            visibleWhen(num("vulcan_fall_distance", 7.0f, 3.0f, 40.0f), () -> mode.get() == Mode.VULCAN);
     private final NumberValue<Float> mlgMinFallDistance =
-            visibleWhen(num("mlg_min_fall_distance", 4.0f, 3.0f, 50.0f), () -> effectiveMode() == Mode.MLG);
+            visibleWhen(num("mlg_min_fall_distance", 4.0f, 3.0f, 50.0f), () -> mode.get() == Mode.MLG);
     private final BooleanValue mlgNoRotations =
-            visibleWhen(bool("mlg_no_rotations", false), () -> effectiveMode() == Mode.MLG);
+            visibleWhen(bool("mlg_no_rotations", false), () -> mode.get() == Mode.MLG);
     private final List<PlacedWater> lastWaterPlacements = new ArrayList<>();
     private boolean packetJumpFalling;
     private boolean packetJumpInternalSend;
@@ -134,7 +129,7 @@ public class NoFall extends Module {
         if (client == null || client.player == null || client.getConnection() == null) return;
 
         LocalPlayer player = client.player;
-        if (effectiveMode() == Mode.MLG) {
+        if (mode.get() == Mode.MLG) {
             tickMlg(client, player);
             return;
         }
@@ -144,7 +139,7 @@ public class NoFall extends Module {
         }
         if (player.isShiftKeyDown()) return;
 
-        switch (effectiveMode()) {
+        switch (mode.get()) {
             case GROUD_SPOOF -> {
                 if (isDangerousFall(player)) {
                     client.getConnection().send(
@@ -175,7 +170,7 @@ public class NoFall extends Module {
             return;
         }
 
-        if (effectiveMode() != Mode.MLG) {
+        if (mode.get() != Mode.MLG) {
             currentMlgPlan = null;
             return;
         }
@@ -206,7 +201,7 @@ public class NoFall extends Module {
 
     @EventHandler
     private void onMovementInput(MovementInputEvent event) {
-        if (effectiveMode() != Mode.MLG || mlgSneakTicks <= 0) {
+        if (mode.get() != Mode.MLG || mlgSneakTicks <= 0) {
             return;
         }
 
@@ -228,7 +223,7 @@ public class NoFall extends Module {
             return;
         }
 
-        switch (effectiveMode()) {
+        switch (mode.get()) {
             case PACKET_JUMP -> {
                 packetJumpFalling = !player.onGround() && player.fallDistance > packetJumpFallDistance.get();
                 if (packetJumpTiming.get() == PacketJumpTiming.LANDING
@@ -682,12 +677,6 @@ public class NoFall extends Module {
         }
         resultHolder[0] = result;
         return resultHolder[0];
-    }
-
-    private Mode effectiveMode() {
-        // MLG is a bucket and a block placement like any player could make: no preset swaps it out
-        if (mode.get() == Mode.MLG) return Mode.MLG;
-        return anticheat.get().pick(mode.get(), Mode.PACKET_JUMP, Mode.GROUD_SPOOF);
     }
 
     public enum Mode {

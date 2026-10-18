@@ -550,7 +550,6 @@ public final class MsdfFont implements GlyphFont {
             // Measure uses OpenType metrics without requiring a render context.
             // Upload new glyphs only from the actual render thread.
             if (!RenderSystem.isOnRenderThread()) return run;
-            boolean dirty = false;
             boolean complete = true;
             for (OpenTypeShaper.PositionedGlyph slot : run.glyphs()) {
                 int id = slot.glyphId();
@@ -558,13 +557,13 @@ public final class MsdfFont implements GlyphFont {
                     complete = false;
                     continue;
                 }
-                if (!glyphIds.containsKey(id)) {
-                    if (packGlyphById(id)) dirty = true;
-                    else complete = false;
+                if (!glyphIds.containsKey(id) && !packGlyphById(id)) {
+                    complete = false;
                 }
             }
-            if (dirty) {
-                GlyphAtlasAllocator.Region region = extraGlyphs.takeDirty();
+            // Empty glyphs enter the cache without allocating atlas pixels.
+            GlyphAtlasAllocator.Region region = extraGlyphs != null ? extraGlyphs.takeDirty() : null;
+            if (region != null) {
                 texture.uploadAtlasRegion(uploadPixels, 4, width, dynamicStartY,
                         region.x(), region.y(), region.width(), region.height());
             }

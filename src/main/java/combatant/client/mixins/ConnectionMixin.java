@@ -8,11 +8,13 @@
 package combatant.client.mixins;
 
 import io.netty.channel.ChannelPipeline;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.Connection;
 import net.minecraft.network.PacketListener;
+import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
-import net.minecraft.server.RunningOnDifferentThreadException;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -34,17 +36,42 @@ public class ConnectionMixin {
 
     @Inject(method = "genericsFtw", at = @At("HEAD"), cancellable = true)
     private static <T extends PacketListener> void combatant$onHandlePacket(Packet<T> packet, PacketListener listener, CallbackInfo ci) {
-        if (BlinkManager.isSilentlyHandlingPackets()) return;
-        if (!Events.BUS.hasListeners(PacketEvent.Receive.class)) return;
+        // This hook runs for both the client connection and the integrated server.
+        // Client packet events must never be dispatched for server-side listeners.
+        if (!(listener instanceof ClientPacketListener) || BlinkManager.isSilentlyHandlingPackets()) return;
+
+        boolean hasPreListeners = Events.BUS.hasListeners(PacketEvent.Receive.class);
+        boolean hasPostListeners = Events.BUS.hasListeners(PacketEvent.ReceivePost.class);
+        if (!hasPreListeners && !hasPostListeners) return;
+
+        // Connection.genericsFtw is invoked by Netty before vanilla's
+        // PacketUtils.ensureRunningOnSameThread call inside Packet.handle().
+        // Dispatch pre-events (and any Blink flush/replay they cause) on the game
+        // thread *before* applying the packet, so cancellation remains effective.
+        Minecraft client = Minecraft.getInstance();
+        if (!client.isSameThread()) {
+            ci.cancel();
+            ClientPacketListener playListener = (ClientPacketListener) listener;
+            Connection packetConnection = playListener.getConnection();
+            client.execute(() -> {
+                // Do not process packets from a closed or replaced connection.
+                // getConnection() can still be null during initial world setup;
+                // in that case the listener's own connection is authoritative.
+                if (!packetConnection.isConnected()
+                        || packetConnection.getPacketListener() != listener) return;
+                ClientPacketListener active = client.getConnection();
+                if (active != null && active != listener) return;
+                combatant$handlePacketUnchecked(packet, listener);
+            });
+            return;
+        }
+
         if (packet instanceof ClientboundBundlePacket packs) {
             ci.cancel();
             for (Packet<?> p : packs.subPackets()) {
-                try {
-                    combatant$handlePacketUnchecked(p, listener);
-                } catch (RunningOnDifferentThreadException ignored) {
-                }
+                combatant$handlePacketUnchecked(p, listener);
             }
-        } else {
+        } else if (hasPreListeners) {
             PacketEvent.Receive event = new PacketEvent.Receive(packet);
             Events.BUS.post(event);
             if (event.isCancelled()) {
@@ -61,7 +88,11 @@ public class ConnectionMixin {
 
     @Inject(method = "genericsFtw", at = @At("TAIL"))
     private static <T extends PacketListener> void combatant$onHandlePacketPost(Packet<T> packet, PacketListener listener, CallbackInfo ci) {
-        if (BlinkManager.isSilentlyHandlingPackets()) return;
+        if (!(listener instanceof ClientPacketListener) || BlinkManager.isSilentlyHandlingPackets()) return;
+        // The HEAD injection schedules subscribed packets onto this thread.
+        // Do not accidentally emit post-events from Netty when subscriptions
+        // change while an unsubscribed packet is being processed there.
+        if (!Minecraft.getInstance().isSameThread()) return;
         if (!Events.BUS.hasListeners(PacketEvent.ReceivePost.class)) return;
         if (packet instanceof ClientboundBundlePacket packs) {
             for (Packet<?> p : packs.subPackets()) {
@@ -76,7 +107,8 @@ public class ConnectionMixin {
 
     @Inject(method = "send(Lnet/minecraft/network/protocol/Packet;)V", at = @At("HEAD"), cancellable = true)
     private void combatant$onSendPacketPre(Packet<?> packet, CallbackInfo ci) {
-        if (BlinkManager.isSilentlyHandlingPackets()) return;
+        if (((Connection) (Object) this).getReceiving() != PacketFlow.CLIENTBOUND
+                || BlinkManager.isSilentlyHandlingPackets()) return;
         if (!Events.BUS.hasListeners(PacketEvent.Send.class)) return;
         PacketEvent.Send event = new PacketEvent.Send(packet);
         Events.BUS.post(event);
@@ -87,7 +119,8 @@ public class ConnectionMixin {
 
     @Inject(method = "send(Lnet/minecraft/network/protocol/Packet;)V", at = @At("RETURN"))
     private void combatant$onSendPacketPost(Packet<?> packet, CallbackInfo ci) {
-        if (BlinkManager.isSilentlyHandlingPackets()) return;
+        if (((Connection) (Object) this).getReceiving() != PacketFlow.CLIENTBOUND
+                || BlinkManager.isSilentlyHandlingPackets()) return;
         if (!Events.BUS.hasListeners(PacketEvent.SendPost.class)) return;
         PacketEvent.SendPost event = new PacketEvent.SendPost(packet);
         Events.BUS.post(event);

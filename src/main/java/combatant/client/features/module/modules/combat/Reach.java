@@ -24,7 +24,6 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
 import combatant.client.util.combat.VulcanReachController;
 
-import combatant.client.util.anticheat.AntiCheatPreset;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,9 +34,6 @@ import java.util.Optional;
         description = "module.reach.description")
 public class Reach extends Module {
 
-    // custom = the settings below as set; grim = distance and wallDistance capped at 3.0 (GrimAC Reach);
-    // vanilla = 6.0 reach for both distance and wallDistance, for servers with no anticheat.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
     public final EnumValue<KillAura.RaycastMode> raycast =
             enumCommon(
                     "reachContext",
@@ -52,7 +48,7 @@ public class Reach extends Module {
             enumCommon(
                     "reachMode",
                     "mode",
-                    CommonSettingSchemas.ANTICHEAT_MODE,
+                    CommonSettingSchemas.MODE,
                     Mode.NORMAL,
                     Mode.values()
             );
@@ -207,11 +203,11 @@ public class Reach extends Module {
     }
 
     private double effectiveDistance() {
-        return anticheat.get().limit(distance.get(), AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
+        return distance.get();
     }
 
     private double effectiveWallDistance() {
-        return anticheat.get().limit(wallDistance.get(), AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
+        return wallDistance.get();
     }
 
     private double resolveBlockLimitSq(LocalPlayer player,
