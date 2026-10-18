@@ -13,6 +13,7 @@
 
 package combatant.client.render.engine.text;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.textures.FilterMode;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -36,6 +37,14 @@ public class Font implements GlyphFont {
     private final float ascent;
     private final Int2ObjectOpenHashMap<CharData> charMap = new Int2ObjectOpenHashMap<>();
     private final Int2ObjectOpenHashMap<CharData> glyphIds = new Int2ObjectOpenHashMap<>();
+    // STB's fixed Unicode ranges do not contain unencoded GSUB output glyphs.
+    // Reserve a bounded part of the SAME R8 texture for glyph-index rasterization.
+    // No extra texture bindings, pipeline changes or second renderer are needed.
+    private final int dynamicRows;
+    private final ByteBuffer atlasPixels;
+    private final it.unimi.dsi.fastutil.ints.IntOpenHashSet unpackableGlyphIds = new it.unimi.dsi.fastutil.ints.IntOpenHashSet();
+    private final GlyphAtlasAllocator extraGlyphs;
+    private boolean closed;
     private OpenTypeShaper shaper;
     private boolean shaperLoaded;
     private double shapedEmScale;
@@ -48,16 +57,21 @@ public class Font implements GlyphFont {
 
     public Font(ByteBuffer buffer, int height) {
         this.height = height;
+        this.dynamicRows = height >= 68 ? 256 : height >= 41 ? 384 : 768;
+        this.extraGlyphs = new GlyphAtlasAllocator(SIZE, SIZE, SIZE - dynamicRows);
 
         fontData = MemoryUtil.memAlloc(buffer.remaining());
         fontData.put(buffer.duplicate()).flip();
         fontInfo = STBTTFontinfo.create();
         if (!STBTruetype.stbtt_InitFont(fontInfo, fontData)) {
+            fontInfo.free();
             MemoryUtil.memFree(fontData);
             throw new IllegalArgumentException("Invalid TrueType font");
         }
 
-        ByteBuffer bitmap = MemoryUtil.memAlloc(SIZE * SIZE);
+        // Keep the upload pixels until close(), since shaped glyphs are appended
+        // on demand. A zero-filled atlas also prevents sampling uninitialized pixels.
+        ByteBuffer bitmap = MemoryUtil.memCalloc(SIZE * SIZE);
         try {
         STBTTPackedchar.Buffer[] cdata = {
                 STBTTPackedchar.create(95),    // 32..126
@@ -92,7 +106,7 @@ public class Font implements GlyphFont {
         };
 
         STBTTPackContext packContext = STBTTPackContext.create();
-        if (!STBTruetype.stbtt_PackBegin(packContext, bitmap, SIZE, SIZE, 0, 1)) {
+        if (!STBTruetype.stbtt_PackBegin(packContext, bitmap, SIZE, SIZE - dynamicRows, SIZE, 1)) {
             throw new IllegalStateException("Failed to start bitmap glyph packing");
         }
         // True subpixel oversampling rather than setting unused oversample fields in PackRange.
@@ -187,6 +201,9 @@ public class Font implements GlyphFont {
             }
         }
         TextRenderSystem.glyphAtlases().onDirtyRectUpload(registeredGlyphs, SIZE * SIZE);
+        // Retain only the reserved rows, not another 16 MiB CPU copy of the
+        // whole atlas. GPU writes target those rows directly by destination Y.
+        atlasPixels = MemoryUtil.memCalloc(SIZE * dynamicRows);
         } finally {
             MemoryUtil.memFree(bitmap);
         }
@@ -220,10 +237,75 @@ public class Font implements GlyphFont {
         OpenTypeShaper engine = shaper();
         if (engine == null) return null;
         OpenTypeShaper.ShapedRun run = engine.shape(text);
+        // Ensure every glyph in the positioned run has an image, including
+        // ligatures and context-dependent Arabic/Indic forms that have no Unicode.
+        // Upload the atlas once for the entire run, not once per missing glyph.
+        // Layout/measurement may run off-thread; atlas mutations must not.
+        if (!RenderSystem.isOnRenderThread()) return run;
+        boolean dirty = false;
+        boolean complete = true;
         for (OpenTypeShaper.PositionedGlyph g : run.glyphs()) {
-            if (!glyphIds.containsKey(g.glyphId())) return null;
+            int id = g.glyphId();
+            if (id <= 0 || unpackableGlyphIds.contains(id)) {
+                complete = false;
+                continue;
+            }
+            if (!glyphIds.containsKey(id)) {
+                if (packGlyphById(id)) dirty = true;
+                else complete = false;
+            }
         }
-        return run;
+        if (dirty) {
+            GlyphAtlasAllocator.Region region = extraGlyphs.takeDirty();
+            texture.uploadAtlasRegion(atlasPixels, 1, SIZE, SIZE - dynamicRows,
+                    region.x(), region.y(), region.width(), region.height());
+        }
+        return complete ? run : null;
+    }
+
+    /** Append a raster by glyph ID (not by codepoint) into reserved atlas rows. */
+    private boolean packGlyphById(int id) {
+        if (closed || unpackableGlyphIds.contains(id)) return false;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer width = stack.mallocInt(1);
+            IntBuffer height = stack.mallocInt(1);
+            IntBuffer xoff = stack.mallocInt(1);
+            IntBuffer yoff = stack.mallocInt(1);
+            ByteBuffer glyphBitmap = STBTruetype.stbtt_GetGlyphBitmap(fontInfo, scale, scale,
+                    id, width, height, xoff, yoff);
+            int w = width.get(0);
+            int h = height.get(0);
+            try {
+                if (w == 0 || h == 0) {
+                    glyphIds.put(id, new CharData(0, 0, 0, 0, 0, 0, 0, 0, 0, false));
+                    return true;
+                }
+                if (glyphBitmap == null || w < 0 || h < 0 || w > SIZE - 2
+                        || h > dynamicRows - 2) {
+                    unpackableGlyphIds.add(id);
+                    return false;
+                }
+                GlyphAtlasAllocator.Rect rect = extraGlyphs.place(w, h);
+                if (rect == null) {
+                    unpackableGlyphIds.add(id);
+                    return false;
+                }
+                int px = rect.x(), py = rect.y();
+                for (int y = 0; y < h; y++) {
+                    int start = y * w;
+                    for (int x = 0; x < w; x++) {
+                        atlasPixels.put((py + y - (SIZE - dynamicRows)) * SIZE + px + x,
+                                glyphBitmap.get(start + x));
+                    }
+                }
+                glyphIds.put(id, new CharData(xoff.get(0), yoff.get(0), xoff.get(0) + w,
+                        yoff.get(0) + h, (float) px / SIZE, (float) py / SIZE,
+                        (float) (px + w) / SIZE, (float) (py + h) / SIZE, 0, true));
+                return true;
+            } finally {
+                if (glyphBitmap != null) STBTruetype.stbtt_FreeBitmap(glyphBitmap);
+            }
+        }
     }
 
     private float kerning(int previous, int current) {
@@ -482,7 +564,6 @@ public class Font implements GlyphFont {
         double baseline = y + ascent * this.scale * scale;
         int[] pair = gradient == null ? null : new int[2];
         int[] quad = quadGradient == null ? null : new int[4];
-        int ordinal = 0;
         for (OpenTypeShaper.PositionedGlyph slot : run.glyphs()) {
             CharData c = glyphIds.get(slot.glyphId());
             if (c != null && c.visible) {
@@ -494,10 +575,10 @@ public class Font implements GlyphFont {
                 double y1 = gy + c.y1 * scale;
                 int tl, bl, br, tr;
                 if (quad != null) {
-                    quadGradient.colors(ordinal, slot.codePoint(), x0, y0, x1, y1, quad);
+                    quadGradient.colors(slot.codePointIndex(), slot.codePoint(), x0, y0, x1, y1, quad);
                     tl = quad[0]; bl = quad[1]; br = quad[2]; tr = quad[3];
                 } else if (pair != null) {
-                    gradient.colors(ordinal, slot.codePoint(), gx, pair);
+                    gradient.colors(slot.codePointIndex(), slot.codePoint(), gx, pair);
                     tl = bl = pair[0]; br = tr = pair[1];
                 } else {
                     tl = bl = br = tr = color.argb();
@@ -508,21 +589,29 @@ public class Font implements GlyphFont {
                 int i4 = mesh.vec2(x1, y0).raw2(c.u1, c.v0).color(red(tr), green(tr), blue(tr), alpha(tr)).next();
                 mesh.quad(i1, i2, i3, i4);
             }
-            ordinal++;
         }
         return x + run.advance() * factor;
     }
 
     @Override
+    public boolean canShape(String text) {
+        return text != null && shaped(text) != null;
+    }
+
+    @Override
     public boolean hasGlyph(int codePoint) {
-        return charMap.containsKey(codePoint);
+        if (charMap.containsKey(codePoint)) return true;
+        OpenTypeShaper engine = shaper();
+        return engine != null && engine.canDisplay(codePoint);
     }
 
     @Override
     public double getAdvance(int codePoint) {
         CharData c = charMap.get(codePoint);
-        if (c == null) return 0.0;
-        return c.xAdvance;
+        if (c != null) return c.xAdvance;
+        OpenTypeShaper engine = shaper();
+        if (engine == null || !engine.canDisplay(codePoint)) return 0.0;
+        return engine.shape(new String(Character.toChars(codePoint))).advance() * shapedEmScale;
     }
 
     @Override
@@ -537,8 +626,12 @@ public class Font implements GlyphFont {
 
     @Override
     public void close() {
+        if (closed) return;
+        closed = true;
         if (texture != null) texture.close();
+        fontInfo.free();
         MemoryUtil.memFree(fontData);
+        MemoryUtil.memFree(atlasPixels);
         shaper = null;
         kerningCache.clear();
     }

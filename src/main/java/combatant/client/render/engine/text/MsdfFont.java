@@ -11,6 +11,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.textures.FilterMode;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -27,6 +28,11 @@ import combatant.client.util.logging.DebugLog;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
+import java.io.ByteArrayInputStream;
+import org.lwjgl.stb.STBTTFontinfo;
+import org.lwjgl.stb.STBTruetype;
+import java.nio.IntBuffer;
+import org.lwjgl.system.MemoryStack;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -99,6 +105,11 @@ public final class MsdfFont implements GlyphFont {
 
     private OpenTypeShaper.ShapedRun shaped(String text) {
         return atlas.shape(text);
+    }
+
+    @Override
+    public boolean canShape(String text) {
+        return text != null && shaped(text) != null;
     }
 
     @Override
@@ -253,7 +264,6 @@ public final class MsdfFont implements GlyphFont {
         double baseline = y + atlas.ascender * factor;
         int[] pair = gradient == null ? null : new int[2];
         int[] quad = quadGradient == null ? null : new int[4];
-        int ordinal = 0;
         for (OpenTypeShaper.PositionedGlyph slot : run.glyphs()) {
             Glyph g = atlas.glyphIds.get(slot.glyphId());
             if (g != null && g.visible) {
@@ -265,10 +275,10 @@ public final class MsdfFont implements GlyphFont {
                 double y1 = gy + g.bottom * factor;
                 int tl, bl, br, tr;
                 if (quad != null) {
-                    quadGradient.colors(ordinal, slot.codePoint(), x0, y0, x1, y1, quad);
+                    quadGradient.colors(slot.codePointIndex(), slot.codePoint(), x0, y0, x1, y1, quad);
                     tl = quad[0]; bl = quad[1]; br = quad[2]; tr = quad[3];
                 } else if (pair != null) {
-                    gradient.colors(ordinal, slot.codePoint(), gx, pair);
+                    gradient.colors(slot.codePointIndex(), slot.codePoint(), gx, pair);
                     tl = bl = pair[0]; br = tr = pair[1];
                 } else {
                     tl = bl = br = tr = ((color.a & 255) << 24) | ((color.r & 255) << 16) | ((color.g & 255) << 8) | (color.b & 255);
@@ -279,14 +289,14 @@ public final class MsdfFont implements GlyphFont {
                 int i4 = mesh.vec2(x1, y0).raw2(g.u1, g.v0).color(red(tr), green(tr), blue(tr), alpha(tr)).next();
                 mesh.quad(i1, i2, i3, i4);
             }
-            ordinal++;
         }
         return x + run.advance() * factor;
     }
 
     @Override
     public boolean hasGlyph(int codePoint) {
-        return atlas.glyphForCodePoint(codePoint) != null;
+        return atlas.glyphForCodePoint(codePoint) != null
+                || (atlas.shaper != null && atlas.shaper.canDisplay(codePoint) && atlas.nativeFont != null);
     }
 
     @Override
@@ -472,7 +482,16 @@ public final class MsdfFont implements GlyphFont {
         private final OpenTypeShaper shaper;
         private final Long2FloatOpenHashMap kerningPairs;
         private final Glyph fallback;
+        private final STBTTFontinfo nativeFont;
+        private final ByteBuffer nativeFontData;
+        private final ByteBuffer uploadPixels;
+        private final float sdfEmScale;
+        private final float sdfAtlasSize;
+        private final GlyphAtlasAllocator extraGlyphs;
+        private final int dynamicStartY;
+        private final it.unimi.dsi.fastutil.ints.IntOpenHashSet unpackableIds = new it.unimi.dsi.fastutil.ints.IntOpenHashSet();
         private int refs;
+        private boolean released;
 
         private MsdfAtlas(Texture texture,
                           float distanceRange,
@@ -484,7 +503,10 @@ public final class MsdfFont implements GlyphFont {
                           Int2ObjectOpenHashMap<Glyph> glyphIds,
                           OpenTypeShaper shaper,
                           Long2FloatOpenHashMap kerningPairs,
-                          Glyph fallback) {
+                          Glyph fallback,
+                          STBTTFontinfo nativeFont, ByteBuffer nativeFontData,
+                          ByteBuffer uploadPixels, float sdfEmScale, float sdfAtlasSize,
+                          int dynamicStartY) {
             this.texture = texture;
             this.distanceRange = distanceRange;
             this.width = width;
@@ -496,6 +518,14 @@ public final class MsdfFont implements GlyphFont {
             this.shaper = shaper;
             this.kerningPairs = kerningPairs;
             this.fallback = fallback;
+            this.nativeFont = nativeFont;
+            this.nativeFontData = nativeFontData;
+            this.uploadPixels = uploadPixels;
+            this.sdfEmScale = sdfEmScale;
+            this.sdfAtlasSize = sdfAtlasSize;
+            this.dynamicStartY = dynamicStartY;
+            this.extraGlyphs = uploadPixels != null
+                    ? new GlyphAtlasAllocator(width, height, dynamicStartY) : null;
         }
 
         private static long pairKey(int left, int right) {
@@ -513,14 +543,85 @@ public final class MsdfFont implements GlyphFont {
             return id < 0 ? null : glyphIds.get(id);
         }
 
-        /** Only shaped runs whose complete glyph-ID set is present may be emitted. */
+        /** Materialize unencoded GSUB/GPOS outputs as single-channel distance fields. */
         private OpenTypeShaper.ShapedRun shape(String text) {
-            if (shaper == null || glyphIds.isEmpty()) return null;
+            if (shaper == null) return null;
             OpenTypeShaper.ShapedRun run = shaper.shape(text);
-            for (OpenTypeShaper.PositionedGlyph g : run.glyphs()) {
-                if (!glyphIds.containsKey(g.glyphId())) return null;
+            // Measure uses OpenType metrics without requiring a render context.
+            // Upload new glyphs only from the actual render thread.
+            if (!RenderSystem.isOnRenderThread()) return run;
+            boolean dirty = false;
+            boolean complete = true;
+            for (OpenTypeShaper.PositionedGlyph slot : run.glyphs()) {
+                int id = slot.glyphId();
+                if (id <= 0 || unpackableIds.contains(id)) {
+                    complete = false;
+                    continue;
+                }
+                if (!glyphIds.containsKey(id)) {
+                    if (packGlyphById(id)) dirty = true;
+                    else complete = false;
+                }
             }
-            return run;
+            if (dirty) {
+                GlyphAtlasAllocator.Region region = extraGlyphs.takeDirty();
+                texture.uploadAtlasRegion(uploadPixels, 4, width, dynamicStartY,
+                        region.x(), region.y(), region.width(), region.height());
+            }
+            return complete ? run : null;
+        }
+
+        private boolean packGlyphById(int id) {
+            if (nativeFont == null || uploadPixels == null) return false;
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                IntBuffer wOut = stack.mallocInt(1);
+                IntBuffer hOut = stack.mallocInt(1);
+                IntBuffer xOut = stack.mallocInt(1);
+                IntBuffer yOut = stack.mallocInt(1);
+                int padding = Math.max(2, (int) Math.ceil(distanceRange) + 1);
+                // The MSDF shader uses median(R,G,B). Replicating a genuine SDF
+                // in RGB yields the same signed-distance coverage for glyphs not
+                // present in the pre-generated RGB MSDF asset.
+                ByteBuffer sdf = STBTruetype.stbtt_GetGlyphSDF(nativeFont, sdfEmScale, id,
+                        padding, (byte) 128, 128.0f / distanceRange,
+                        wOut, hOut, xOut, yOut);
+                int w = wOut.get(0), h = hOut.get(0);
+                try {
+                    if (sdf == null || w <= 0 || h <= 0) {
+                        // Space / zero-area glyph: valid advance without geometry.
+                        glyphIds.put(id, new Glyph(0, 0, 0, 0, 0, 0, 0, 0, 0, false));
+                        return true;
+                    }
+                    GlyphAtlasAllocator.Rect rect = extraGlyphs.place(w, h);
+                    if (rect == null) {
+                        unpackableIds.add(id);
+                        return false;
+                    }
+                    int x = rect.x(), y = rect.y();
+                    for (int j = 0; j < h; j++) {
+                        for (int i = 0; i < w; i++) {
+                            byte coverage = sdf.get(j * w + i);
+                            int out = ((y + j - dynamicStartY) * width + x + i) * 4;
+                            uploadPixels.put(out, coverage);
+                            uploadPixels.put(out + 1, coverage);
+                            uploadPixels.put(out + 2, coverage);
+                            uploadPixels.put(out + 3, (byte) 0xff);
+                        }
+                    }
+                    float x0 = (float) xOut.get(0) / sdfAtlasSize;
+                    float y0 = (float) yOut.get(0) / sdfAtlasSize;
+                    float x1 = (float) (xOut.get(0) + w) / sdfAtlasSize;
+                    float y1 = (float) (yOut.get(0) + h) / sdfAtlasSize;
+                    // Shaper's positions already supply the advance. The SDF bitmap
+                    // includes the padding in its plane bounds.
+                    glyphIds.put(id, new Glyph(0, x0, y1, x1, y0,
+                            (float) x / width, (float) y / height,
+                            (float) (x + w) / width, (float) (y + h) / height, true));
+                    return true;
+                } finally {
+                    if (sdf != null) STBTruetype.stbtt_FreeSDF(sdf);
+                }
+            }
         }
 
         private static MsdfAtlas load(FontFace face) {
@@ -610,13 +711,34 @@ public final class MsdfFont implements GlyphFont {
             if (ascender < 0f) ascender = -ascender;
 
             OpenTypeShaper shaper = null;
+            ByteBuffer nativeFontData = null;
+            STBTTFontinfo nativeFont = null;
+            float sdfEmScale = 0f;
+            float sdfAtlasSize = getFloat(atlasObj, "size", 48f);
+            int extraRows = 0;
             if (!face.isAtlasOnly()) {
-                try {
-                    shaper = OpenTypeShaper.load(face.toStream());
+                try (InputStream source = face.toStream()) {
+                    byte[] bytes = source.readAllBytes();
+                    shaper = OpenTypeShaper.load(new ByteArrayInputStream(bytes));
+                    if (shaper != null && atlasHeight < 4096) {
+                        ByteBuffer data = MemoryUtil.memAlloc(bytes.length);
+                        data.put(bytes).flip();
+                        STBTTFontinfo info2 = STBTTFontinfo.create();
+                        if (STBTruetype.stbtt_InitFont(info2, data)) {
+                            nativeFontData = data;
+                            nativeFont = info2;
+                            sdfEmScale = STBTruetype.stbtt_ScaleForMappingEmToPixels(info2, sdfAtlasSize);
+                            extraRows = Math.min(768, 4096 - atlasHeight);
+                        } else {
+                            info2.free();
+                            MemoryUtil.memFree(data);
+                        }
+                    }
                 } catch (Exception ignored) {
-                    // A legacy Unicode atlas remains usable without a TTF source.
+                    // Atlas-only or inaccessible sources continue using the MSDF asset.
                 }
             }
+            int outputHeight = atlasHeight + extraRows;
             Int2ObjectOpenHashMap<Glyph> glyphs = new Int2ObjectOpenHashMap<>();
             Int2ObjectOpenHashMap<Glyph> glyphIds = new Int2ObjectOpenHashMap<>();
             JsonArray glyphArray = getArray(root, "glyphs");
@@ -624,7 +746,7 @@ public final class MsdfFont implements GlyphFont {
             int duplicateUnicode = 0;
             if (glyphArray != null) {
                 float invW = 1f / atlasWidth;
-                float invH = 1f / atlasHeight;
+                float invH = 1f / outputHeight;
 
                 for (JsonElement el : glyphArray) {
                     if (!el.isJsonObject()) {
@@ -668,6 +790,8 @@ public final class MsdfFont implements GlyphFont {
             }
 
             if (glyphs.isEmpty() && (shaper == null || glyphIds.isEmpty())) {
+                if (nativeFont != null) nativeFont.free();
+                if (nativeFontData != null) MemoryUtil.memFree(nativeFontData);
                 setLastError("msdf glyphs empty/unresolvable: " + jsonId);
                 warnBadAtlas(jsonId, "glyphs-empty", glyphArray == null
                         ? "glyphs array is missing"
@@ -698,25 +822,29 @@ public final class MsdfFont implements GlyphFont {
             if (fallback == null) fallback = glyphs.get(32);
             if (fallback == null && shaper != null) fallback = glyphIds.get(shaper.glyphId('?'));
 
-            Texture texture = uploadTexture(image);
+            ByteBuffer[] uploadBacking = new ByteBuffer[1];
+            Texture texture = uploadTexture(image, extraRows, uploadBacking);
             if (texture == null) {
+                if (nativeFont != null) nativeFont.free();
+                if (nativeFontData != null) MemoryUtil.memFree(nativeFontData);
                 setLastError("msdf texture upload failed: " + pngId);
                 warnBadAtlas(jsonId, "texture-upload", "texture " + pngId + " could not be uploaded to the GPU");
                 return null;
             }
 
             setLastError("");
-            TextRenderSystem.glyphAtlases().registerPage("msdf:" + jsonId, texture, atlasWidth, atlasHeight, true);
-            TextRenderSystem.glyphAtlases().onDirtyRectUpload(glyphs.size(), atlasWidth * atlasHeight * 4);
-            return new MsdfAtlas(texture, distanceRange, atlasWidth, atlasHeight, lineHeight, ascender,
-                    glyphs, glyphIds, shaper, kerningPairs, fallback);
+            TextRenderSystem.glyphAtlases().registerPage("msdf:" + jsonId, texture, atlasWidth, outputHeight, true);
+            TextRenderSystem.glyphAtlases().onDirtyRectUpload(glyphs.size(), atlasWidth * outputHeight * 4);
+            return new MsdfAtlas(texture, distanceRange, atlasWidth, outputHeight, lineHeight, ascender,
+                    glyphs, glyphIds, shaper, kerningPairs, fallback,
+                    nativeFont, nativeFontData, uploadBacking[0], sdfEmScale, sdfAtlasSize, atlasHeight);
         }
 
-        private static Texture uploadTexture(BufferedImage image) {
+        private static Texture uploadTexture(BufferedImage image, int extraRows, ByteBuffer[] backing) {
             int w = image.getWidth();
             int h = image.getHeight();
 
-            ByteBuffer buffer = MemoryUtil.memAlloc(w * h * 4);
+            ByteBuffer buffer = MemoryUtil.memCalloc(w * (h + extraRows) * 4);
             try {
                 if (!copyInterleavedBytes(image, buffer)) {
                     // Generic path: getRGB converts every pixel through the ColorModel, which
@@ -730,12 +858,18 @@ public final class MsdfFont implements GlyphFont {
                         buffer.put((byte) ((argb >> 24) & 0xFF));
                     }
                 }
-                buffer.flip();
+                buffer.position(0);
+                buffer.limit(buffer.capacity());
 
-                Texture texture = new Texture(w, h, GpuFormat.RGBA8_UNORM, FilterMode.LINEAR, FilterMode.LINEAR);
-                texture.upload(buffer);
+                Texture texture = new Texture(w, h + extraRows, GpuFormat.RGBA8_UNORM, FilterMode.LINEAR, FilterMode.LINEAR);
+                texture.upload(buffer.duplicate());
+                // The initial atlas is already on the GPU. Only newly appended
+                // rows need CPU backing; keep no copy of the original PNG pixels.
+                backing[0] = extraRows > 0 ? MemoryUtil.memCalloc(w * extraRows * 4) : null;
                 return texture;
             } catch (Exception ignored) {
+                if (backing[0] != null) MemoryUtil.memFree(backing[0]);
+                backing[0] = null;
                 return null;
             } finally {
                 MemoryUtil.memFree(buffer);
@@ -860,8 +994,12 @@ public final class MsdfFont implements GlyphFont {
 
         private void release() {
             refs--;
-            if (refs <= 0 && texture != null) {
-                texture.close();
+            if (refs <= 0 && !released) {
+                released = true;
+                if (texture != null) texture.close();
+                if (uploadPixels != null) MemoryUtil.memFree(uploadPixels);
+                if (nativeFont != null) nativeFont.free();
+                if (nativeFontData != null) MemoryUtil.memFree(nativeFontData);
             }
         }
     }

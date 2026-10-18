@@ -36,6 +36,8 @@ public class CustomTextRenderer implements TextRenderer {
     private final MeshBuilder liquidGlassMesh = new MeshBuilder(UiRenderPipelines.UI_TEXT_MSDF_GLASS_FAST);
     private GlyphFont[] fonts;
     private GlyphFont font;
+    /** Source selected by scale/preference before per-run glyph coverage. */
+    private GlyphFont baseFont;
     private int fontIndex;
     /** One optional, lazily created bitmap atlas per MSDF face. */
     private GlyphFont smallBitmapFont;
@@ -138,6 +140,7 @@ public class CustomTextRenderer implements TextRenderer {
         if (oldSmall != null) oldSmall.close();
         int index = Math.max(0, Math.min(fontIndex, fresh.length - 1));
         this.font = fresh[index];
+        this.baseFont = this.font;
 
         if (old != null) {
             for (GlyphFont f : old) {
@@ -179,10 +182,37 @@ public class CustomTextRenderer implements TextRenderer {
             GlyphFont bitmap = smallBitmapFont();
             if (bitmap != null && bitmap.isReady()) this.font = bitmap;
         }
+        baseFont = font;
         this.fontScale = font.height() / 27.0;
         this.scale = 1 + (requestedScale - fontScale) / fontScale;
         double glyphScale = this.scale / 1.5;
         return new GlyphSelection(font, glyphScale, fontScale * glyphScale);
+    }
+
+    /**
+     * One font per draw run; a missing MSDF glyph ID is rendered through the
+     * same face's glyph-ID bitmap rasterizer, never silently unshaped as text.
+     * Atlas-only distributions retain their MSDF/vanilla fallback path.
+     */
+    private GlyphFont sourceFor(String text) {
+        GlyphFont selected = baseFont != null ? baseFont : fonts[0];
+        if (text == null || text.isEmpty() || !selected.isMsdf() || selected.canShape(text)
+                || fontFace.isAtlasOnly()) return selected;
+        GlyphFont bitmap = smallBitmapFont();
+        return bitmap != null && bitmap.canShape(text) ? bitmap : selected;
+    }
+
+    boolean canShapeCluster(String cluster) {
+        return sourceFor(cluster).canShape(cluster);
+    }
+
+    private void prepareTextSource(String text) {
+        GlyphFont next = sourceFor(text);
+        if (next == font) return;
+        flushActiveMesh();
+        font = next;
+        fontScale = font.height() / 27.0;
+        scale = requestedScale / fontScale;
     }
 
     private GlyphFont smallBitmapFont() {
@@ -267,15 +297,11 @@ public class CustomTextRenderer implements TextRenderer {
     @Override
     public double getWidth(String text, int length, boolean shadow) {
         if (text == null || text.isEmpty()) return 0;
-        GlyphFont activeFont = building ? this.font : fonts[0];
-        if (!building && smallBitmapFont != null && smallBitmapFont.isReady()
-                && FontRasterSelection.preferSmallBitmap(1.0,
-                    FontRasterSelection.activePixelDensity(), false, RenderWarpStack.active())) {
-            activeFont = smallBitmapFont;
-        }
+        GlyphFont activeFont = sourceFor(text.substring(0, Math.max(0, Math.min(length, text.length()))));
         double nominalScale = activeFont.height() / 27.0;
-        return activeFont.getWidth(text, length) * scale / 1.5
-                + (shadow ? nominalScale * scale / 1.5 : 0.0);
+        double glyphScale = (building ? requestedScale : 1.0) / nominalScale / 1.5;
+        return activeFont.getWidth(text, length) * glyphScale
+                + (shadow ? (building ? requestedScale : 1.0) / 1.5 : 0.0);
     }
 
     @Override
@@ -294,6 +320,7 @@ public class CustomTextRenderer implements TextRenderer {
     public double render(String text, double x, double y, RenderColor color, boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
+        prepareTextSource(text);
         ensureMeshStarted();
 
         double width;
@@ -316,6 +343,7 @@ public class CustomTextRenderer implements TextRenderer {
     public double renderGradient(String text, double x, double y, Font.GlyphGradient gradient, boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
+        prepareTextSource(text);
         ensureMeshStarted();
 
         double width;
@@ -339,6 +367,7 @@ public class CustomTextRenderer implements TextRenderer {
     public double renderQuadGradient(String text, double x, double y, Font.GlyphQuadGradient gradient, boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
+        prepareTextSource(text);
         ensureMeshStarted();
 
         double width;
@@ -487,6 +516,7 @@ public class CustomTextRenderer implements TextRenderer {
                                        boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
+        prepareTextSource(text);
         ensureMeshStarted();
 
         double glyphScale = scale / 1.5;

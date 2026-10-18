@@ -74,6 +74,40 @@ public class Texture extends AbstractTexture {
         image.close();
     }
 
+    /**
+     * Upload only the dirty glyph rectangle instead of retransferring the full
+     * atlas (up to 64 MiB). RenderPearl 26.3 supports offset texture writes in
+     * both OpenGL and Vulkan command encoders.
+     */
+    public void uploadAtlasRegion(ByteBuffer atlas, int bytesPerPixel,
+                                  int sourceStride, int sourceFirstRow,
+                                  int x, int y, int width, int height) {
+        if (atlas == null || width <= 0 || height <= 0) return;
+        int textureWidth = getWidth();
+        int textureHeight = getHeight();
+        if ((bytesPerPixel != 1 && bytesPerPixel != 4) || x < 0 || y < 0
+                || (long) x + width > textureWidth || (long) y + height > textureHeight
+                || sourceStride < x + width || y < sourceFirstRow
+                || ((long) y - sourceFirstRow + height) * sourceStride * bytesPerPixel > atlas.capacity())
+            throw new IllegalArgumentException("Invalid glyph atlas upload region");
+        int rowBytes = Math.multiplyExact(width, bytesPerPixel);
+        ByteBuffer staging = MemoryUtil.memAlloc(Math.multiplyExact(rowBytes, height));
+        try {
+            long source = MemoryUtil.memAddress(atlas);
+            long destination = MemoryUtil.memAddress(staging);
+            long stride = (long) sourceStride * bytesPerPixel;
+            for (int row = 0; row < height; row++) {
+                long sourceOffset = ((long) y - sourceFirstRow + row) * stride + (long) x * bytesPerPixel;
+                MemoryUtil.memCopy(source + sourceOffset,
+                        destination + (long) row * rowBytes, rowBytes);
+            }
+            RenderSystem.getDevice().createCommandEncoder().writeToTexture(
+                    texture, staging, 0, 0, x, y, width, height);
+        } finally {
+            MemoryUtil.memFree(staging);
+        }
+    }
+
     public boolean isReady() {
         return texture != null && textureView != null && sampler != null;
     }

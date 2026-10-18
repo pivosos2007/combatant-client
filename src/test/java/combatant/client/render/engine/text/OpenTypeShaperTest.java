@@ -41,6 +41,29 @@ class OpenTypeShaperTest {
     }
 
     @Test
+    void bidiPositionsReferToDistinctLogicalClusters() {
+        String text = "abc \u05e9\u05dc\u05d5\u05dd xyz";
+        var run = SHAPER.shape(text);
+        java.util.Set<Integer> logicalOffsets = new java.util.HashSet<>();
+        for (var glyph : run.glyphs()) {
+            if (glyph.cluster() >= 4 && glyph.cluster() < 8) {
+                logicalOffsets.add(glyph.cluster());
+                assertEquals(text.codePointCount(0, glyph.cluster()), glyph.codePointIndex());
+                assertEquals(text.codePointAt(glyph.cluster()), glyph.codePoint());
+            }
+        }
+        assertTrue(logicalOffsets.size() >= 2, "visual RTL glyph indices must not all map to the first character");
+    }
+
+    @Test
+    void ligatureColorsTrackLogicalCodepointIndices() {
+        var layout = SHAPER.shape("office");
+        for (var glyph : layout.glyphs()) {
+            assertEquals("office".codePointCount(0, glyph.cluster()), glyph.codePointIndex());
+        }
+    }
+
+    @Test
     void repeatedTextReturnsCachedImmutableLayout() {
         assertSame(SHAPER.shape("same string"), SHAPER.shape("same string"));
         assertEquals(0.0, SHAPER.shape("").advance());

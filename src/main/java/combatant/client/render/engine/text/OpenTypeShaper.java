@@ -88,6 +88,16 @@ public final class OpenTypeShaper {
 
     private ShapedRun layout(String text) {
         char[] chars = text.toCharArray();
+        // Logical code-point indices are stable across ligatures, multiple
+        // glyphs per combining cluster, and reordered bidi visual runs.
+        int[] cpOrdinal = new int[chars.length + 1];
+        for (int i = 0, cpIndex = 0; i < chars.length; ) {
+            int size = Character.charCount(Character.codePointAt(chars, i));
+            for (int j = 0; j < size; j++) cpOrdinal[i + j] = cpIndex;
+            i += size;
+            cpIndex++;
+            cpOrdinal[i] = cpIndex;
+        }
         Bidi bidi = new Bidi(text, Bidi.DIRECTION_DEFAULT_LEFT_TO_RIGHT);
         int count = bidi.getRunCount();
         VisualRun[] runs = new VisualRun[count];
@@ -113,7 +123,7 @@ public final class OpenTypeShaper {
                 Point2D position = vector.getGlyphPosition(i);
                 result[written++] = new PositionedGlyph(vector.getGlyphCode(i),
                         chars.length == 0 ? -1 : Character.codePointAt(chars, at),
-                        at, cursor + position.getX() / EM_SIZE, position.getY() / EM_SIZE);
+                        at, cpOrdinal[at], cursor + position.getX() / EM_SIZE, position.getY() / EM_SIZE);
             }
             cursor += vector.getGlyphPosition(n).getX() / EM_SIZE;
         }
@@ -122,7 +132,8 @@ public final class OpenTypeShaper {
 
     private record VisualRun(int start, int end, boolean rtl) { }
 
-    public record PositionedGlyph(int glyphId, int codePoint, int cluster, double x, double y) { }
+    public record PositionedGlyph(int glyphId, int codePoint, int cluster, int codePointIndex,
+                                  double x, double y) { }
 
     public record ShapedRun(PositionedGlyph[] glyphs, double advance) { }
 }

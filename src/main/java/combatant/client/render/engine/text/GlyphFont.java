@@ -56,6 +56,11 @@ public interface GlyphFont {
         return texture != null ? texture.getHeight() : 0;
     }
 
+    /** Can this atlas render every positioned glyph produced for this run? */
+    default boolean canShape(String text) {
+        return false;
+    }
+
     default boolean hasGlyph(int codePoint) {
         return false;
     }

@@ -450,12 +450,23 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
     }
 
     private TextRenderer rendererForCluster(String text, int start, int end) {
-        // STB's packed-glyph and MSDF paths apply pair kerning, not OpenType
-        // shaping. Never split a multi-codepoint grapheme between atlases or
-        // render it as independent custom glyphs; delegate the entire cluster
-        // to Minecraft's font provider instead.
+        // Extended graphemes are indivisible font runs. The custom renderer now
+        // supports GSUB/GPOS and dynamic glyph-ID rasterization, so combining
+        // marks and contextual forms stay with the selected font when available.
+        // Keep emoji ZWJ sequences with Minecraft's provider: mere glyph coverage
+        // does not imply a valid multi-color emoji composition in a R8 atlas.
         int first = text.codePointAt(start);
-        if (start + Character.charCount(first) != end) return fallback;
+        if (start + Character.charCount(first) != end) {
+            if (text.substring(start, end).indexOf('\u200d') >= 0) return fallback;
+            for (int i = start; i < end; ) {
+                int cp = text.codePointAt(i);
+                if (!primary.hasGlyph(cp)) return fallback;
+                i += Character.charCount(cp);
+            }
+            if (primary instanceof CustomTextRenderer custom
+                    && custom.canShapeCluster(text.substring(start, end))) return primary;
+            return fallback;
+        }
         return primary.hasGlyph(first) ? primary : fallback;
     }
 
