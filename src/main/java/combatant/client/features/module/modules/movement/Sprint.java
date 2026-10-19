@@ -140,9 +140,12 @@ public final class Sprint extends Module {
             return;
         }
 
-        boolean allow = shouldUseOmniDirectional(player)
-                || (isEnabled() && canOperate(player) && !shouldSuppressExternalVulcanSprint(player) && event.getForward() > 1.0E-5f);
+        NoSlow noSlow = Modules.get(NoSlow.class);
+        boolean noSlowAllow = noSlow != null && noSlow.shouldAllowSprint(player);
 
+        boolean allow = shouldUseOmniDirectional(player)
+                || (isEnabled() && canOperate(player) && !shouldSuppressExternalVulcanSprint(player) && event.getForward() > 1.0E-5F)
+                || noSlowAllow;
         if (!allow) {
             return;
         }
@@ -425,6 +428,10 @@ public final class Sprint extends Module {
         }
 
         if (player.isUsingItem()) {
+            NoSlow noSlow = Modules.get(NoSlow.class);
+            if (noSlow != null && noSlow.shouldAllowSprint(player)) {
+                return false;
+            }
             return true;
         }
 

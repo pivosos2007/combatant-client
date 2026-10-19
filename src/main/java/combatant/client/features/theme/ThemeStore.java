@@ -10,6 +10,8 @@ package combatant.client.features.theme;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
 import com.google.gson.*;
 import combatant.client.config.ConfigPaths;
+import combatant.client.config.ConfigSerializer;
+import combatant.client.config.persist.AtomicFileStore;
 import combatant.client.config.profile.ConfigProfileStorage;
 import combatant.client.util.logging.DebugLog;
 
@@ -223,7 +225,10 @@ final class ThemeStore {
         boolean removed = customThemes.removeIf(entry -> entry.getId().equals(key));
         if (!removed) return false;
         try {
-            Files.deleteIfExists(customFile(key));
+            Path file = customFile(key);
+            ConfigSerializer.discardPendingWrite(file);
+            Files.deleteIfExists(file);
+            Files.deleteIfExists(AtomicFileStore.backupOf(file));
         } catch (IOException e) {
             DebugLog.error("ClickGuiThemeStore: delete custom theme failed", e);
         }
@@ -246,9 +251,10 @@ final class ThemeStore {
     }
 
     private String loadCurrentId() {
-        if (Files.exists(STATE_FILE)) {
+        String stateText = ConfigSerializer.readJsonRecovering(STATE_FILE);
+        if (stateText != null) {
             try {
-                JsonElement parsed = JsonParser.parseString(Files.readString(STATE_FILE));
+                JsonElement parsed = JsonParser.parseString(stateText);
                 if (parsed != null && parsed.isJsonObject()) {
                     String current = getString(parsed.getAsJsonObject(), "current", null);
                     if (current != null && !current.isBlank()) return normalizeId(current);
@@ -278,7 +284,8 @@ final class ThemeStore {
                     .sorted()
                     .forEach(path -> {
                         try {
-                            JsonElement parsed = JsonParser.parseString(Files.readString(path));
+                            String text = ConfigSerializer.readJsonRecovering(path);
+                            JsonElement parsed = text == null ? null : JsonParser.parseString(text);
                             if (parsed == null || !parsed.isJsonObject()) return;
                             Themes.ThemeEntry entry = parseEntry(parsed.getAsJsonObject(), false);
                             if (entry == null) return;
@@ -443,23 +450,13 @@ final class ThemeStore {
     }
 
     private void saveState() {
-        try {
-            Files.createDirectories(THEME_ROOT);
-            JsonObject root = new JsonObject();
-            root.addProperty("current", currentId);
-            Files.writeString(STATE_FILE, GSON.toJson(root) + "\n");
-        } catch (IOException e) {
-            DebugLog.error("ClickGuiThemeStore: state save failed", e);
-        }
+        JsonObject root = new JsonObject();
+        root.addProperty("current", currentId);
+        ConfigSerializer.requestJsonWrite(STATE_FILE, GSON.toJson(root) + "\n");
     }
 
     private void saveCustomFile(Themes.ThemeEntry entry) {
-        try {
-            Files.createDirectories(CUSTOM_DIR);
-            Files.writeString(customFile(entry.getId()), GSON.toJson(entryToJson(entry)) + "\n");
-        } catch (IOException e) {
-            DebugLog.error("ClickGuiThemeStore: custom theme save failed", e);
-        }
+        ConfigSerializer.requestJsonWrite(customFile(entry.getId()), GSON.toJson(entryToJson(entry)) + "\n");
     }
 
     private Path customFile(String id) {

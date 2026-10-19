@@ -7,12 +7,14 @@
 
 package combatant.client.mixins;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.ClientInput;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.features.module.Modules;
+import combatant.client.features.module.modules.movement.NoSlow;
 import combatant.client.features.module.modules.movement.Sprint;
 
 @Mixin(ClientInput.class)
@@ -21,13 +23,19 @@ public abstract class InputMixin {
     @Inject(method = "hasForwardImpulse", at = @At("HEAD"), cancellable = true)
     private void allowAllDirections(CallbackInfoReturnable<Boolean> cir) {
         Sprint module = Modules.get(Sprint.class);
-        if (module == null || !module.shouldAllowDirectionalSprint()) return;
+        boolean sprintAllow = module != null && module.shouldAllowDirectionalSprint();
+
+        NoSlow noSlow = Modules.get(NoSlow.class);
+        Minecraft mc = Minecraft.getInstance();
+        boolean noSlowAllow = noSlow != null && noSlow.shouldAllowSprint(mc != null ? mc.player : null);
+
+        if (!sprintAllow && !noSlowAllow) return;
 
         ClientInput input = (ClientInput) (Object) this;
-        if (input.keyPresses.forward()
+        if (input.keyPresses != null && (input.keyPresses.forward()
                 || input.keyPresses.backward()
                 || input.keyPresses.left()
-                || input.keyPresses.right()) {
+                || input.keyPresses.right())) {
             cir.setReturnValue(true);
         }
     }

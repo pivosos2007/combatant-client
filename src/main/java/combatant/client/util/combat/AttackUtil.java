@@ -94,17 +94,29 @@ public enum AttackUtil {
             }
 
             if (usingShield) {
-                if (!rhEnabled || !rh.canAttackWhileShield()) {
-                    return false;
+                if (rhEnabled && rh.canAttackWhileShield()) {
+                    boolean usePressed = mc.options.keyUse.isDown();
+                    player.releaseUsingItem();
+                    mc.options.keyUse.setDown(false);
+                    boolean result = performAttack(mc, player, target, keepSprint);
+                    if (usePressed) {
+                        mc.options.keyUse.setDown(true);
+                    }
+                    return result;
                 }
-                boolean usePressed = mc.options.keyUse.isDown();
-                player.releaseUsingItem();
-                mc.options.keyUse.setDown(false);
-                boolean result = performAttack(mc, player, target, keepSprint);
-                if (usePressed) {
-                    mc.options.keyUse.setDown(true);
+                if (player.getUsedItemHand() == net.minecraft.world.InteractionHand.OFF_HAND
+                        && !player.getMainHandItem().is(Items.SHIELD)) {
+                    return performAttack(mc, player, target, keepSprint);
                 }
-                return result;
+                return false;
+            }
+
+            combatant.client.features.module.modules.movement.NoSlow noSlow =
+                    combatant.client.features.module.Modules.get(combatant.client.features.module.modules.movement.NoSlow.class);
+            if (noSlow != null && noSlow.shouldModifyInput(player)) {
+                if (player.getUsedItemHand() == net.minecraft.world.InteractionHand.OFF_HAND) {
+                    return performAttack(mc, player, target, keepSprint);
+                }
             }
 
             return false;

@@ -79,7 +79,7 @@ public final class NoSlow extends Module {
             grimTicks = 0;
             return;
         }
-        if (mc.player.isUsingItem()) {
+        if (shouldModifyInput(mc.player)) {
             grimTicks++;
         } else {
             grimTicks = 0;

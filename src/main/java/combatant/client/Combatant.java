@@ -30,6 +30,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.resources.Identifier;
+import combatant.client.automation.AutomationRuntime;
 import combatant.client.addon.AddonManager;
 import combatant.client.addon.AddonRenderPipelineManager;
 import combatant.client.api.v0.render.CombatantRenderStage;
@@ -168,6 +169,7 @@ public class Combatant implements ClientModInitializer {
                 ModuleManager.restoreAfterSoftPanic(reason);
             }
         });
+        ClientRuntime.registerParticipant(AutomationRuntime.INSTANCE.shutdownParticipant());
         ClientRuntime.registerParticipant(new RuntimeShutdownParticipant() {
             @Override
             public String id() {
@@ -229,6 +231,17 @@ public class Combatant implements ClientModInitializer {
                     PostProcessManager.shutdownForRuntime();
                     CombatantRenderSystem.shutdown();
                 }
+            }
+        });
+        ClientRuntime.registerParticipant(new RuntimeShutdownParticipant() {
+            @Override
+            public String id() {
+                return "config-flush";
+            }
+
+            @Override
+            public void shutdown(RuntimeShutdownContext context) {
+                combatant.client.config.ConfigSerializer.flushPending();
             }
         });
     }
@@ -552,6 +565,7 @@ public class Combatant implements ClientModInitializer {
             // Stop all Combatant callbacks before native-backed subsystems begin one-way shutdown.
             // Minecraft can still extract one final GUI frame while disconnecting.
             ClientRuntime.beginShutdown("client stopping");
+            combatant.client.config.ConfigSerializer.flushPending();
             // Restore process-level security state before subsystem shutdown.
             NativeMemoryGuard.shutdown();
             MediaSessionService.get().shutdown();
@@ -592,6 +606,9 @@ public class Combatant implements ClientModInitializer {
         Events.BUS.register(FakeLagController.INSTANCE);
         Events.BUS.register(BacktrackController.INSTANCE);
         Events.BUS.register(TimerController.INSTANCE);
+        Events.BUS.register(AutomationRuntime.INSTANCE);
+        AutomationRuntime.INSTANCE.install();
+        Events.BUS.register(combatant.client.automation.placement.PlacementTracker.INSTANCE);
 
         // -------- КЛЮЧЕВЫЕ ИВЕНТЫ --------
 

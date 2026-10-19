@@ -98,7 +98,7 @@ public final class SprintController {
 
         NoSlow noSlow = Modules.get(NoSlow.class);
         if (noSlow != null && noSlow.shouldAllowSprint(player)) {
-            return !player.isSprinting() && player.input != null && player.input.hasForwardImpulse() && hasFoodForSprint(player);
+            return !player.isSprinting() && hasMovementMotion(player) && hasFoodForSprint(player);
         }
 
         return ((LocalPlayerAccessor) player).combatant$canStartSprinting();
@@ -107,6 +107,18 @@ public final class SprintController {
     private boolean hasFoodForSprint(LocalPlayer player) {
         return player.getFoodData().getFoodLevel() > 6.0F || player.getAbilities().mayfly;
     }
+    private boolean hasMovementMotion(LocalPlayer player) {
+        if (player == null || player.input == null) return false;
+        if (player.input.hasForwardImpulse()) return true;
+        if (player.input.keyPresses != null) {
+            return player.input.keyPresses.forward()
+                    || player.input.keyPresses.backward()
+                    || player.input.keyPresses.left()
+                    || player.input.keyPresses.right();
+        }
+        return player.input.getMoveVector().lengthSquared() > 1.0E-5f;
+    }
+
 
     /**
      * Compatibility for old callers.
@@ -193,6 +205,13 @@ public final class SprintController {
             }
         }
 
+        NoSlow noSlow = Modules.get(NoSlow.class);
+        if (noSlow != null && noSlow.shouldAllowSprint(player)) {
+            if (hasMovementMotion(player)) {
+                return true;
+            }
+        }
+
         if (isSprintInputRequested(player) && player.input.hasForwardImpulse()) {
             return true;
         }
@@ -222,9 +241,9 @@ public final class SprintController {
         NoSlow noSlow = Modules.get(NoSlow.class);
         if (noSlow != null && noSlow.shouldAllowSprint(player)) {
             if (player.isSwimming()) {
-                return !player.input.hasForwardImpulse() || !player.isInWater();
+                return !hasMovementMotion(player) || !player.isInWater();
             }
-            return !player.input.hasForwardImpulse() || !hasFoodForSprint(player);
+            return !hasMovementMotion(player) || !hasFoodForSprint(player);
         }
 
         LocalPlayerAccessor accessor = (LocalPlayerAccessor) player;

@@ -15,11 +15,17 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
+import combatant.client.automation.AutomationRuntime;
+import combatant.client.automation.AutomationTask;
+import combatant.client.automation.ActionPriority;
+import combatant.client.automation.ActionResource;
+import combatant.client.automation.ActionResult;
+import combatant.client.automation.FailureReason;
+import combatant.client.automation.actions.MoveAction;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
-import combatant.client.events.EventHandler;
-import combatant.client.events.impl.MovementInputEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -28,15 +34,16 @@ import combatant.client.features.module.Notifier;
 import combatant.client.features.module.modules.movement.holesnap.HoleLocator;
 import combatant.client.features.module.modules.movement.holesnap.HoleLocator.Cell;
 import combatant.client.features.module.modules.movement.holesnap.HoleLocator.Hole;
-import combatant.client.features.module.modules.movement.holesnap.Steering;
 
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * Walks you to the nearest safe hole (bedrock or blast-proof floor and walls, three blocks of
- * headroom) and switches itself off once you stand in it. It presses the same keys you would, picked
- * from your current facing, so there is no velocity change and no view rotation; if no hole is in range
+ * headroom) and switches itself off once you stand in it. It submits a movement task that presses the
+ * same keys you would, picked from your current facing, so there is no velocity change and no view
+ * rotation; pressing a movement key yourself hands control back and stops it. If no hole is in range
  * it tells you and stops. The hole shape matches what HoleESP draws.
  */
 @ModuleInfo(
@@ -51,8 +58,9 @@ public final class HoleSnap extends Module {
     private static final String TYPE_BEDROCK = "bedrock";
     private static final String TYPE_BLAST_PROOF = "blast_proof";
     private static final int RESCAN_TICKS = 4;
-    private static final double ARRIVE_DISTANCE_SQ = 0.12 * 0.12;
-    private static final double SPRINT_DISTANCE_SQ = 2.5 * 2.5;
+    private static final double ARRIVE_RADIUS = 0.12;
+    private static final double SPRINT_DISTANCE = 2.5;
+    private static final int STALL_TICKS = 30;
 
     private final Minecraft mc = Minecraft.getInstance();
     private final BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
@@ -67,12 +75,16 @@ public final class HoleSnap extends Module {
     private final NumberValue<Integer> timeoutTicks = num("holeSnapTimeoutTicks", "timeout_ticks", 120, 20, 400);
 
     private Hole target;
+    private Vec3 targetPoint;
+    private AutomationTask task;
     private int ticks;
     private int rescanIn;
 
     @Override
     public void onEnable() {
         target = null;
+        targetPoint = null;
+        task = null;
         ticks = 0;
         rescanIn = 0;
     }
@@ -80,6 +92,8 @@ public final class HoleSnap extends Module {
     @Override
     public void onDisable() {
         target = null;
+        targetPoint = null;
+        task = null;
     }
 
     @Override
@@ -101,11 +115,13 @@ public final class HoleSnap extends Module {
                     range.get(), maxDrop.get(), maxRise.get(),
                     types.get(TYPE_BEDROCK), types.get(TYPE_BLAST_PROOF));
             rescanIn = RESCAN_TICKS;
+            targetPoint = target == null ? null : new Vec3(target.centerX(), player.getY(), target.centerZ());
         }
         if (target == null) {
             finish("notification.holesnap.no_hole", true);
             return;
         }
+        if (task == null) startTask();
 
         BlockPos feet = player.blockPosition();
         if (feet.getX() == target.x() && feet.getY() == target.y() && feet.getZ() == target.z()) {
@@ -113,24 +129,31 @@ public final class HoleSnap extends Module {
         }
     }
 
-    @EventHandler
-    private void onMovementInput(MovementInputEvent event) {
-        LocalPlayer player = mc.player;
-        if (!isEnabled() || player == null || target == null) return;
+    private void startTask() {
+        MoveAction.Settings settings = new MoveAction.Settings(ARRIVE_RADIUS, sprint.get(), SPRINT_DISTANCE,
+                jumpObstacles.get(), STALL_TICKS, 0.02);
+        task = AutomationRuntime.INSTANCE.submit(AutomationTask
+                .builder(this, "HoleSnap", new MoveAction(() -> targetPoint, settings))
+                .priority(ActionPriority.UTILITY)
+                .yieldToManualInput(EnumSet.of(ActionResource.MOVEMENT, ActionResource.JUMP))
+                .onFinish(this::onTaskFinished)
+                .build());
+    }
 
-        double dx = target.centerX() - player.getX();
-        double dz = target.centerZ() - player.getZ();
-        double distanceSq = dx * dx + dz * dz;
-        int keys = distanceSq < ARRIVE_DISTANCE_SQ ? 0 : Steering.keysToward(player.getYRot(), dx, dz);
+    private void onTaskFinished(AutomationTask finished) {
+        if (finished != task) return;
+        task = null;
+        if (!isEnabled()) return;
 
-        // Direct input replaces the player's own keys while the module walks them to the hole.
-        event.setForward((keys & Steering.FORWARD) != 0);
-        event.setBackward((keys & Steering.BACKWARD) != 0);
-        event.setLeft((keys & Steering.LEFT) != 0);
-        event.setRight((keys & Steering.RIGHT) != 0);
-        event.setSneak(false);
-        event.setSprint(sprint.get() && (keys & Steering.FORWARD) != 0 && distanceSq > SPRINT_DISTANCE_SQ);
-        event.setJump(jumpObstacles.get() && keys != 0 && player.horizontalCollision && player.onGround());
+        ActionResult result = finished.result();
+        if (result.isSuccess()) {
+            finish("notification.holesnap.arrived", false);
+        } else if (result.reason() == FailureReason.UNREACHABLE || result.reason() == FailureReason.TIMEOUT) {
+            finish("notification.holesnap.timeout", true);
+        } else {
+            // The player took the keys back, or something more important claimed them: stop quietly.
+            setEnabled(false);
+        }
     }
 
     private Cell cellAt(int x, int y, int z) {

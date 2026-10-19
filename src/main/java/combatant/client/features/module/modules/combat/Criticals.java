@@ -327,6 +327,7 @@ public final class Criticals extends Module {
                                            Entity target,
                                            SelectionMode selectionOverride,
                                            boolean ignoreSprintAfterReset) {
+        if (!isEnabled()) return true;
         if (target == null) return false;
         LocalPlayer player = currentPlayer();
         if (player == null) return false;

@@ -14,6 +14,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
 import combatant.client.config.ConfigPaths;
+import combatant.client.config.ConfigSerializer;
 import combatant.client.util.logging.DebugLog;
 
 import java.io.IOException;
@@ -60,7 +61,7 @@ public final class ProxyConfig {
                 return;
             }
 
-            String text = Files.readString(file, StandardCharsets.UTF_8);
+            String text = ConfigSerializer.readJsonRecovering(file);
             if (text == null || text.isBlank()) {
                 loaded = true;
                 save();
@@ -104,8 +105,8 @@ public final class ProxyConfig {
             JsonElement accountsJson = GSON.toJsonTree(accounts, ACCOUNTS_TYPE);
             json.add("accounts", accountsJson);
 
-            Files.writeString(file, GSON.toJson(json), StandardCharsets.UTF_8);
-        } catch (IOException e) {
+            ConfigSerializer.requestJsonWrite(file, GSON.toJson(json));
+        } catch (IOException | RuntimeException e) {
             DebugLog.warn("Failed to save proxy config: %s", file.toAbsolutePath());
             DebugLog.error("Proxy config save error", e);
         }

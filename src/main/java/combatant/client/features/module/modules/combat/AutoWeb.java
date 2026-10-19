@@ -23,6 +23,9 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.automation.placement.PlacementConstraints;
+import combatant.client.automation.placement.PlacementRotationMode;
+import combatant.client.automation.placement.PlacementSlot;
 import combatant.client.util.block.placer.BlockPlacer;
 import combatant.client.util.target.TargetingUtil;
 import combatant.client.util.target.TargetManager;
@@ -30,7 +33,6 @@ import combatant.client.util.target.CombatTargetProvider;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
@@ -67,8 +69,8 @@ public final class AutoWeb extends Module {
     private final NumberValue<Double> predictTicks = num("autoWebPredictTicks", "predict_ticks", 1.0D, 0.0D, 5.0D);
     private final BooleanValue placeAtHead = bool("autoWebPlaceAtHead", "place_at_head", true);
     private final BooleanValue autoDisable = bool("autoWebAutoDisable", "auto_disable", false);
-    private final EnumValue<BlockPlacer.RotationMode> rotation = enumSetting(
-            "autoWebRotation", "rotation", BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.values());
+    private final EnumValue<PlacementRotationMode> rotation = enumSetting(
+            "autoWebRotation", "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
     private final NumberValue<Integer> delay = num("autoWebDelay", "delay", 0, 0, 10);
     private final BooleanValue render = bool("autoWebRender", "render", true);
     private final RGBAColorValue fillColor = color("autoWebFillColor", "fill_color", "#FFFFFF44");
@@ -77,21 +79,14 @@ public final class AutoWeb extends Module {
             "autoWebLineWidth", "line_width", CommonSettingSchemas.LINE_WIDTH, 2.0F, 1.0F, 6.0F);
 
     private final BlockPlacer blockPlacer = new BlockPlacer(
-            this, this, 10,
+            this, 10,
             this::findPlacementSlot,
-            this::effPlaceRange,
-            this::effWallRange,
+            this::placementConstraints,
             delay::get,
             delay::get,
-            () -> 0,
-            () -> 0,
             () -> 1,
-            this::effConstructFailResult,
             () -> true,
-            () -> false,
-            () -> true,
-            this::effRotation,
-            () -> MovementCorrection.SILENT
+            () -> false
     );
     public enum State { IDLE, NO_WEBS, SEEKING, PLANNING, PLACING, CONFIRMING, COMPLETE }
     private State state = State.IDLE;
@@ -230,16 +225,8 @@ public final class AutoWeb extends Module {
         return eligible.isEmpty() ? null : eligible.get(0) instanceof Player player ? player : null;
     }
 
-    private BlockPlacer.PlacementSlot findPlacementSlot(BlockPos ignored) {
-        LocalPlayer player = mc.player;
-        if (player == null) return null;
-        ItemStack offhand = player.getOffhandItem();
-        if (isWeb(offhand)) return new BlockPlacer.PlacementSlot(-1, InteractionHand.OFF_HAND, offhand);
-        for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = player.getInventory().getItem(slot);
-            if (isWeb(stack)) return new BlockPlacer.PlacementSlot(slot, InteractionHand.MAIN_HAND, stack);
-        }
-        return null;
+    private PlacementSlot findPlacementSlot(BlockPos ignored) {
+        return PlacementSlot.find(mc.player, AutoWeb::isWeb);
     }
 
     private double effPlaceRange() {
@@ -250,12 +237,18 @@ public final class AutoWeb extends Module {
         return anticheat.get().limit(wallRange.get(), 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE);
     }
 
-    private BlockPlacer.RotationMode effRotation() {
-        return anticheat.get().pick(rotation.get(), BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.NO_ROTATION);
+    private PlacementRotationMode effRotation() {
+        return anticheat.get().pick(rotation.get(), PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
     }
 
     private boolean effConstructFailResult() {
-        return effRotation() == BlockPlacer.RotationMode.NO_ROTATION;
+        return effRotation() == PlacementRotationMode.NO_ROTATION;
+    }
+
+    private PlacementConstraints placementConstraints() {
+        return new PlacementConstraints(
+                effPlaceRange(), effWallRange(), effRotation(), MovementCorrection.SILENT,
+                effConstructFailResult(), true, 1, 0, 0, true, 0);
     }
 
     private static boolean isWeb(ItemStack stack) {

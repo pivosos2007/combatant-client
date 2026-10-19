@@ -50,6 +50,10 @@ public final class ConfigProfileBinaryCodec {
             ConfigProfileValueCodec.writeVarInt(out, payloadBytes.length);
             out.write(payloadBytes);
             out.writeInt((int) crc.getValue());
+            // Optional trailer after the CRC: readers of older builds stop at the CRC and ignore it.
+            if (!meta.combatantVersion().isEmpty()) {
+                ConfigProfileValueCodec.writeString(out, meta.combatantVersion());
+            }
         }
         return fileRaw.toByteArray();
     }
@@ -57,7 +61,25 @@ public final class ConfigProfileBinaryCodec {
     public ConfigProfileMeta readMeta(byte[] bytes) throws IOException {
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes))) {
             Header header = readHeader(in);
-            return header.meta();
+            ConfigProfileMeta meta = header.meta();
+            try {
+                in.skipNBytes(header.payloadLength() + 4L); // payload + CRC
+            } catch (EOFException truncated) {
+                return meta;
+            }
+            String savedBy = readOptionalTrailer(in);
+            return savedBy.isEmpty() ? meta : meta.withCombatantVersion(savedBy);
+        }
+    }
+
+    /** Reads the optional saving-version trailer; empty when absent (old profiles) or unreadable. */
+    private static String readOptionalTrailer(DataInputStream in) {
+        try {
+            if (in.available() <= 0) return "";
+            String value = ConfigProfileValueCodec.readString(in);
+            return value == null ? "" : value;
+        } catch (IOException | RuntimeException e) {
+            return "";
         }
     }
 
@@ -77,7 +99,10 @@ public final class ConfigProfileBinaryCodec {
             try (DataInputStream payloadIn = new DataInputStream(new ByteArrayInputStream(rawPayload))) {
                 entries = readPayload(payloadIn);
             }
-            return new ConfigProfileSnapshot(header.meta(), entries);
+            ConfigProfileMeta meta = header.meta();
+            String savedBy = readOptionalTrailer(in);
+            if (!savedBy.isEmpty()) meta = meta.withCombatantVersion(savedBy);
+            return new ConfigProfileSnapshot(meta, entries);
         }
     }
 

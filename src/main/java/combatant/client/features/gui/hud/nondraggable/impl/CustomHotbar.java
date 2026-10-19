@@ -247,6 +247,9 @@ public final class CustomHotbar extends AbstractHudElement {
 
             ItemStack stack = player.getInventory().getItem(slot);
             renderHotbarItem(ctx, tickCounter, player, stack, x, y, seed++);
+            if (InventorySlotLocks.isLocked(slot)) {
+                InventorySlotLocks.renderLockOverlay(ctx, (int) Math.round(x), (int) Math.round(y));
+            }
         }
     }
 

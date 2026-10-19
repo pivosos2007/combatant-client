@@ -22,6 +22,9 @@ import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.automation.placement.PlacementConstraints;
+import combatant.client.automation.placement.PlacementRotationMode;
+import combatant.client.automation.placement.PlacementSlot;
 import combatant.client.util.block.placer.BlockPlacer;
 import combatant.client.util.target.TargetingUtil;
 import net.minecraft.client.Minecraft;
@@ -29,7 +32,6 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
@@ -81,8 +83,8 @@ public final class HoleFill extends Module {
     private final NumberValue<Integer> maxHoles = num("holeFillMaxHoles", "max_holes", 8, 1, 32);
     private final NumberValue<Integer> scanInterval = num("holeFillScanInterval", "scan_interval_ticks", 2, 1, 10);
     private final BooleanValue autoDisable = bool("holeFillAutoDisable", "auto_disable", false);
-    private final EnumValue<BlockPlacer.RotationMode> rotation = enumSetting(
-            "holeFillRotation", "rotation", BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.values());
+    private final EnumValue<PlacementRotationMode> rotation = enumSetting(
+            "holeFillRotation", "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
     private final NumberValue<Integer> delay = num("holeFillDelay", "delay", 0, 0, 10);
     private final BooleanValue render = bool("holeFillRender", "render", true);
     private final RGBAColorValue fillColor = color("holeFillFillColor", "fill_color", "#285A9C44");
@@ -91,20 +93,14 @@ public final class HoleFill extends Module {
             "holeFillLineWidth", "line_width", CommonSettingSchemas.LINE_WIDTH, 2.0F, 1.0F, 6.0F);
 
     private final BlockPlacer blockPlacer = new BlockPlacer(
-            this, this, 10,
+            this, 10,
             this::findPlacementSlot,
-            this::effPlaceRange,
-            this::effWallRange,
+            this::placementConstraints,
             delay::get,
             delay::get,
-            () -> 0,
-            () -> 0,
             () -> 1,
-            this::effConstructFailResult,
             () -> true,
-            () -> false,
-            this::effRotation,
-            () -> MovementCorrection.SILENT
+            () -> false
     );
     private final List<BlockPos> currentTargets = new ArrayList<>();
     private int scanTicker;
@@ -224,16 +220,8 @@ public final class HoleFill extends Module {
         return SAFE_BLOCKS.contains(level.getBlockState(pos).getBlock());
     }
 
-    private BlockPlacer.PlacementSlot findPlacementSlot(BlockPos ignored) {
-        LocalPlayer player = mc.player;
-        if (player == null) return null;
-        ItemStack offhand = player.getOffhandItem();
-        if (isTargetItem(offhand)) return new BlockPlacer.PlacementSlot(-1, InteractionHand.OFF_HAND, offhand);
-        for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = player.getInventory().getItem(slot);
-            if (isTargetItem(stack)) return new BlockPlacer.PlacementSlot(slot, InteractionHand.MAIN_HAND, stack);
-        }
-        return null;
+    private PlacementSlot findPlacementSlot(BlockPos ignored) {
+        return PlacementSlot.find(mc.player, this::isTargetItem);
     }
 
     private double effPlaceRange() {
@@ -244,12 +232,18 @@ public final class HoleFill extends Module {
         return anticheat.get().limit(wallRange.get(), 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE);
     }
 
-    private BlockPlacer.RotationMode effRotation() {
-        return anticheat.get().pick(rotation.get(), BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.NO_ROTATION);
+    private PlacementRotationMode effRotation() {
+        return anticheat.get().pick(rotation.get(), PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
     }
 
     private boolean effConstructFailResult() {
-        return effRotation() == BlockPlacer.RotationMode.NO_ROTATION;
+        return effRotation() == PlacementRotationMode.NO_ROTATION;
+    }
+
+    private PlacementConstraints placementConstraints() {
+        return new PlacementConstraints(
+                effPlaceRange(), effWallRange(), effRotation(), MovementCorrection.SILENT,
+                effConstructFailResult(), false, 1, 0, 0, true, 0);
     }
 
     private boolean isTargetItem(ItemStack stack) {

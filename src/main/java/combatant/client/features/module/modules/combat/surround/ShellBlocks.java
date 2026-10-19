@@ -8,11 +8,10 @@
 package combatant.client.features.module.modules.combat.surround;
 
 import combatant.client.features.module.modules.combat.surround.SurroundPlanner.Pos;
-import combatant.client.util.block.placer.BlockPlacer;
+import combatant.client.automation.placement.PlacementSlot;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
@@ -65,20 +64,10 @@ public final class ShellBlocks {
     }
 
     /** Offhand first, then the hotbar left to right; null when nothing fits the priority. */
-    public static BlockPlacer.PlacementSlot find(LocalPlayer player, BlockPriority priority) {
-        BlockPlacer.PlacementSlot preferred = find(player, priority::matches);
+    public static PlacementSlot find(LocalPlayer player, BlockPriority priority) {
+        PlacementSlot preferred = PlacementSlot.find(player, stack -> isBlockOf(stack, priority::matches));
         if (preferred != null || !priority.fallsBack()) return preferred;
-        return find(player, BlockPriority.ANY::matches);
-    }
-
-    private static BlockPlacer.PlacementSlot find(LocalPlayer player, Predicate<Block> accepts) {
-        ItemStack offhand = player.getOffhandItem();
-        if (isBlockOf(offhand, accepts)) return new BlockPlacer.PlacementSlot(-1, InteractionHand.OFF_HAND, offhand);
-        for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = player.getInventory().getItem(slot);
-            if (isBlockOf(stack, accepts)) return new BlockPlacer.PlacementSlot(slot, InteractionHand.MAIN_HAND, stack);
-        }
-        return null;
+        return PlacementSlot.find(player, stack -> isBlockOf(stack, BlockPriority.ANY::matches));
     }
 
     private static boolean isBlockOf(ItemStack stack, Predicate<Block> accepts) {

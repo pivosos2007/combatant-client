@@ -9,6 +9,7 @@ package combatant.client.features.gui.clickgui.settings;
 
 import com.google.gson.*;
 import combatant.client.config.ConfigPaths;
+import combatant.client.config.ConfigSerializer;
 import combatant.client.util.logging.DebugLog;
 
 import java.nio.file.Files;
@@ -81,7 +82,8 @@ enum ColorPresetStore {
             return;
         }
         try {
-            String text = Files.readString(FILE);
+            String text = ConfigSerializer.readJsonRecovering(FILE);
+            if (text == null) return;
             JsonElement root = JsonParser.parseString(text);
             JsonArray arr = root.isJsonArray() ? root.getAsJsonArray()
                     : root.isJsonObject() && root.getAsJsonObject().has("presets") ? root.getAsJsonObject().getAsJsonArray("presets")
@@ -102,18 +104,13 @@ enum ColorPresetStore {
     }
 
     private static void save() {
-        try {
-            Files.createDirectories(FILE.getParent());
-            JsonObject root = new JsonObject();
-            JsonArray arr = new JsonArray();
-            for (int color : PRESETS) {
-                arr.add(String.format("#%08X", color));
-            }
-            root.add("presets", arr);
-            Files.writeString(FILE, GSON.toJson(root));
-        } catch (Throwable t) {
-            DebugLog.warn("[Combatant][ColorPresets] Failed to save %s: %s", FILE, t.getMessage());
+        JsonObject root = new JsonObject();
+        JsonArray arr = new JsonArray();
+        for (int color : PRESETS) {
+            arr.add(String.format("#%08X", color));
         }
+        root.add("presets", arr);
+        ConfigSerializer.requestJsonWrite(FILE, GSON.toJson(root));
     }
 
     private static Integer parseColor(String raw) {

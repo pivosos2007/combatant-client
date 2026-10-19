@@ -513,7 +513,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
 
     @Unique
     private boolean shouldFreezeNow() {
-        boolean freezeModule = Modules.enabled(Freeze.class);
+        boolean freezeModule = Freeze.isActive();
         Freecam freecam = Modules.get(Freecam.class);
         boolean freecamFreeze = freecam != null && freecam.freezePlayer() && freecam.isCameraInput();
         return freezeModule || freecamFreeze;
@@ -648,7 +648,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
 
     @Inject(method = "sendPosition", at = @At("HEAD"), cancellable = true)
     private void cancelPackets(CallbackInfo ci) {
-        if (Modules.enabled(Freeze.class)) {
+        if (Freeze.isActive()) {
             ci.cancel();
         }
     }

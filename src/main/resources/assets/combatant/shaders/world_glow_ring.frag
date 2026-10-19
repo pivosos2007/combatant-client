@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -10,10 +11,10 @@
 // Procedural ground ring: bright main ring with halo, a dashed outer rim whose dashes rotate with
 // the quad, and a faint inner disc. Vertex colours stay per-corner so animated palettes still show.
 
-in vec2 v_TexCoord;
-in vec4 v_Color;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 2) in vec4 v_Color;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 const float TAU = 6.28318530718;
 

@@ -12,6 +12,7 @@ import combatant.client.config.values.NumberValue;
 import combatant.client.features.command.CommandOutput;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
+import combatant.client.features.module.Modules;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.util.screen.ClientScreen;
@@ -56,7 +57,9 @@ public final class AutoRespawn extends Module {
             return;
         }
 
-        if (!reported && chatCoordinates.get()) {
+        DeathCoordinates deathCoordinates = Modules.get(DeathCoordinates.class);
+        boolean handledElsewhere = deathCoordinates != null && deathCoordinates.isEnabled();
+        if (!reported && chatCoordinates.get() && !handledElsewhere) {
             BlockPos pos = player.blockPosition();
             CommandOutput.warning(I18n.get(
                     "notification.autorespawn.death_coordinates",

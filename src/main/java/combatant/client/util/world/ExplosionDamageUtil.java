@@ -412,6 +412,26 @@ public enum ExplosionDamageUtil {
         return Mth.lerp(t, min, max);
     }
 
+    /** Cell treated as air by {@link #raycast}; set only around {@link #getExplosionDamageThroughClearedCell}. */
+    private static BlockPos clearedCell;
+
+    /**
+     * Explosion damage as if the block at {@code clearedCell} were already gone (a respawn anchor removes itself
+     * before it explodes, so it never shields anyone from its own blast).
+     */
+    public static float getExplosionDamageThroughClearedCell(LivingEntity entity,
+                                                             Vec3 explosionPos,
+                                                             float power,
+                                                             int predictedTicks,
+                                                             BlockPos cleared) {
+        clearedCell = cleared;
+        try {
+            return getExplosionDamage(entity, explosionPos, power, predictedTicks, false);
+        } finally {
+            clearedCell = null;
+        }
+    }
+
     private static BlockHitResult raycast(ClipContext context, Float maxBlastResistance, BlockPos ghostObsidianPos) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.level == null) {
@@ -420,10 +440,12 @@ public enum ExplosionDamageUtil {
 
         return BlockGetter.traverseBlocks(context.getFrom(), context.getTo(), context, (innerContext, blockPos) -> {
             boolean ghostBlock = ghostObsidianPos != null && blockPos.equals(ghostObsidianPos);
+            boolean cleared = clearedCell != null && blockPos.equals(clearedCell);
             var state = ghostBlock
                     ? net.minecraft.world.level.block.Blocks.OBSIDIAN.defaultBlockState()
+                    : cleared ? net.minecraft.world.level.block.Blocks.AIR.defaultBlockState()
                     : mc.level.getBlockState(blockPos);
-            var fluidState = ghostBlock
+            var fluidState = ghostBlock || cleared
                     ? Fluids.EMPTY.defaultFluidState()
                     : mc.level.getFluidState(blockPos);
             if (maxBlastResistance != null && state.getBlock().getExplosionResistance() < maxBlastResistance) {

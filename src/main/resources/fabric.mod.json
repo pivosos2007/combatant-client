@@ -27,6 +27,7 @@
     "iris": "1.11.7+mc26.3",
     "immediatelyfast": "*",
     "viafabricplus": "*",
-    "sodium-extra": "*"
+    "sodium-extra": "*",
+    "litematica": ">=0.29.1"
   }
 }

@@ -38,6 +38,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.events.Events;
 import combatant.client.events.impl.CrosshairTargetUpdateEvent;
+import combatant.client.events.impl.WorldChangeEvent;
 import combatant.client.features.gui.chat.BetterChatStoreManager;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.Modules;
@@ -129,9 +130,16 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
     @WrapOperation(method = "handleKeybinds",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/KeyMapping;consumeClick()Z"))
     private boolean combatant$protectOffhandKey(KeyMapping key, Operation<Boolean> original) {
-        if (key == Minecraft.getInstance().options.keySwapOffhand
+        Minecraft mc = Minecraft.getInstance();
+        if (key == mc.options.keySwapOffhand
                 && InventorySlotLocks.isLocked(InventorySlotLocks.OFFHAND)) {
             original.call(key); // drain the pressed key, but do not send the vanilla swap packet
+            return false;
+        }
+        // Drop and offhand swap both move the selected hotbar stack out of its slot.
+        if ((key == mc.options.keyDrop || key == mc.options.keySwapOffhand) && mc.player != null
+                && InventorySlotLocks.blocks(mc.player.getInventory().getSelectedSlot(), null)) {
+            original.call(key);
             return false;
         }
         return original.call(key);
@@ -350,6 +358,7 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         if (fc != null && fc.isEnabled()) {
             fc.toggle();
         }
+        Events.BUS.post(new WorldChangeEvent(WorldChangeEvent.Reason.DISCONNECT, null));
     }
 
     @Inject(method = "setLevel", at = @At("HEAD"))
@@ -358,6 +367,7 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         if (fc != null && fc.isEnabled()) {
             fc.toggle();
         }
+        Events.BUS.post(new WorldChangeEvent(WorldChangeEvent.Reason.LEVEL_CHANGE, world));
     }
 
     @Inject(method = "setLevel", at = @At("TAIL"))

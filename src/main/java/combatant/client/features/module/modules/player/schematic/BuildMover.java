@@ -9,7 +9,7 @@ package combatant.client.features.module.modules.player.schematic;
 
 import combatant.client.events.impl.MovementInputEvent;
 import combatant.client.features.module.Notifier;
-import combatant.client.features.module.modules.movement.holesnap.Steering;
+import combatant.client.automation.actions.MovementKeys;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.player.inventory.InventorySwap;
@@ -924,27 +924,27 @@ final class BuildMover {
         if (!holdStill && follower.active() && !replanPending) {
             Vec3 pos = player.position();
             if (!follower.coast()) {
-                keys = keysToward(RotationManager.INSTANCE.getMovementRotation().yaw(), follower.aimX() - pos.x,
+                keys = MovementKeys.keysTowardPrecise(RotationManager.INSTANCE.getMovementRotation().yaw(), follower.aimX() - pos.x,
                         follower.aimZ() - pos.z);
             }
             jump = follower.jump() && player.onGround() || follower.climb();
             descending = follower.descending();
-            sprint = follower.sprint() && keys == Steering.FORWARD && !jump && canSprint(player);
+            sprint = follower.sprint() && keys == MovementKeys.FORWARD && !jump && canSprint(player);
         } else if (mode == Mode.PILLARING && pillar != null && !follower.active() && player.onGround()) {
             // Centre on the column before the jump; the pillar is one block wide.
             Vec3 pos = player.position();
             double dx = pillar.x() + 0.5 - pos.x;
             double dz = pillar.z() + 0.5 - pos.z;
             if (Math.hypot(dx, dz) > CENTER_DISTANCE * 0.5) {
-                keys = Steering.keysToward(RotationManager.INSTANCE.getMovementRotation().yaw(), dx, dz);
+                keys = MovementKeys.keysTowardPrecise(RotationManager.INSTANCE.getMovementRotation().yaw(), dx, dz);
             }
         }
         if (jumpThisTick && player.onGround()) jump = true;
         if (!sprint && player.isSprinting()) player.setSprinting(false);
-        event.setForward((keys & Steering.FORWARD) != 0);
-        event.setBackward((keys & Steering.BACKWARD) != 0);
-        event.setLeft((keys & Steering.LEFT) != 0);
-        event.setRight((keys & Steering.RIGHT) != 0);
+        event.setForward((keys & MovementKeys.FORWARD) != 0);
+        event.setBackward((keys & MovementKeys.BACKWARD) != 0);
+        event.setLeft((keys & MovementKeys.LEFT) != 0);
+        event.setRight((keys & MovementKeys.RIGHT) != 0);
         event.setJump(jump);
         event.setSprint(sprint);
         event.setSneak(!descending && !sprint && player.onGround() && aboutToFall(player));
@@ -955,25 +955,6 @@ final class BuildMover {
     private static boolean canSprint(LocalPlayer player) {
         return (player.getFoodData().getFoodLevel() > 6 || player.getAbilities().mayfly)
                 && !player.isInWater() && !player.isUsingItem() && !player.isShiftKeyDown();
-    }
-
-    /**
-     * Movement keys toward an offset. Far away only a clear sideways offset adds a strafe key; close to the target
-     * a small one does too, so the body lines up with a one-wide gap instead of rubbing along its corner.
-     */
-    static int keysToward(float yawDegrees, double dx, double dz) {
-        double length = Math.hypot(dx, dz);
-        if (length < 1.0e-6) return 0;
-        double yaw = Math.toRadians(yawDegrees);
-        double forward = -Math.sin(yaw) * dx + Math.cos(yaw) * dz;
-        double left = Math.cos(yaw) * dx + Math.sin(yaw) * dz;
-        double threshold = Math.min(0.08 + 0.1 * length, 0.38 * length);
-        int keys = 0;
-        if (forward > threshold) keys |= Steering.FORWARD;
-        else if (forward < -threshold) keys |= Steering.BACKWARD;
-        if (left > threshold) keys |= Steering.LEFT;
-        else if (left < -threshold) keys |= Steering.RIGHT;
-        return keys;
     }
 
     /**

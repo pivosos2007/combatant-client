@@ -18,6 +18,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.Hitbox;
+import combatant.client.features.module.modules.combat.StaticHitboxes;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,6 +71,8 @@ public class ProjectileUtilMixin {
                                                  double maxDistance) {
         Hitbox hb = Modules.get(Hitbox.class);
         AABB bb = target.getBoundingBox();
+        StaticHitboxes staticHitboxes = Modules.get(StaticHitboxes.class);
+        if (staticHitboxes != null) bb = staticHitboxes.adjust(target, bb);
         if (hb == null || !hb.shouldExpandFor(target)) {
             return bb;
         }

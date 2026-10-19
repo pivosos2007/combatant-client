@@ -27,6 +27,9 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.automation.placement.PlacementConstraints;
+import combatant.client.automation.placement.PlacementRotationMode;
+import combatant.client.automation.placement.PlacementSlot;
 import combatant.client.util.block.placer.BlockPlacer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -82,8 +85,8 @@ public final class SelfTrap extends Module {
     private final BooleanValue autoDisable = bool("selfTrapAutoDisable", "auto_disable", false);
     private final BooleanValue warnNoBlocks = boolCommon(
             "selfTrapWarnNoBlocks", "warn_no_blocks", CommonSettingSchemas.SHELL_WARN_NO_BLOCKS, true);
-    private final EnumValue<BlockPlacer.RotationMode> rotation = enumSetting(
-            "selfTrapRotation", "rotation", BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.values());
+    private final EnumValue<PlacementRotationMode> rotation = enumSetting(
+            "selfTrapRotation", "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
     private final EnumValue<MovementCorrection> movementCorrection = enumSetting(
             "selfTrapMovementCorrection", "movement_correction", MovementCorrection.SILENT, MovementCorrection.values());
     private final NumberValue<Double> range = numCommon(
@@ -98,22 +101,14 @@ public final class SelfTrap extends Module {
             "selfTrapLineWidth", "line_width", CommonSettingSchemas.LINE_WIDTH, 2.0F, 1.0F, 6.0F);
 
     private final BlockPlacer blockPlacer = new BlockPlacer(
-            this, this, 10,
+            this, 10,
             this::findPlacementSlot,
-            this::effPlaceRange,
-            this::effWallRange,
+            this::placementConstraints,
             delay::get,
             delay::get,
-            swapBackDelay::get,
-            swapBackDelay::get,
-            () -> 1,
-            this::effConstructFailResult,
-            () -> true,
-            placeWhileUsing::get,
-            () -> false,
             this::effBlocksPerTick,
-            this::effRotation,
-            movementCorrection::get
+            () -> true,
+            placeWhileUsing::get
     );
     private final CrystalClearer crystalClearer = new CrystalClearer();
     private final List<BlockPos> currentTargets = new ArrayList<>();
@@ -202,7 +197,7 @@ public final class SelfTrap extends Module {
         blockPlacer.update(needed);
     }
 
-    private BlockPlacer.PlacementSlot findPlacementSlot(BlockPos ignored) {
+    private PlacementSlot findPlacementSlot(BlockPos ignored) {
         LocalPlayer player = mc.player;
         return player == null ? null : ShellBlocks.find(player, blockPriority.get());
     }
@@ -219,12 +214,18 @@ public final class SelfTrap extends Module {
         return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
     }
 
-    private BlockPlacer.RotationMode effRotation() {
-        return anticheat.get().pick(rotation.get(), BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.NO_ROTATION);
+    private PlacementRotationMode effRotation() {
+        return anticheat.get().pick(rotation.get(), PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
     }
 
     private boolean effConstructFailResult() {
-        return effRotation() == BlockPlacer.RotationMode.NO_ROTATION;
+        return effRotation() == PlacementRotationMode.NO_ROTATION;
+    }
+
+    private PlacementConstraints placementConstraints() {
+        return new PlacementConstraints(
+                effPlaceRange(), effWallRange(), effRotation(), movementCorrection.get(),
+                effConstructFailResult(), false, 1, swapBackDelay.get(), swapBackDelay.get(), true, 0);
     }
 
     private int effBlocksPerTick() {
@@ -244,7 +245,7 @@ public final class SelfTrap extends Module {
     }
 
     private BlockState previewBlockState() {
-        BlockPlacer.PlacementSlot slot = mc.player == null ? null : ShellBlocks.find(mc.player, blockPriority.get());
+        PlacementSlot slot = mc.player == null ? null : ShellBlocks.find(mc.player, blockPriority.get());
         return slot != null && slot.stack().getItem() instanceof BlockItem item
                 ? item.getBlock().defaultBlockState() : null;
     }

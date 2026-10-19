@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -10,10 +11,10 @@
 // Procedural soft glow sprite: hot core, wide halo, and a tiny cross flare. Replaces the baked
 // firefly texture so large sprites stay smooth instead of showing texel steps.
 
-in vec2 v_TexCoord;
-in vec4 v_Color;
+layout(location = 0) in vec2 v_TexCoord;
+layout(location = 2) in vec4 v_Color;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     vec2 p = v_TexCoord * 2.0 - 1.0;

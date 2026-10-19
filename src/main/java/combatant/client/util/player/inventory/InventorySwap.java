@@ -630,6 +630,26 @@ public final class InventorySwap {
         }
     }
 
+    /** Throws the whole stack of a container screen slot out (Ctrl+Q); must run inside {@link #command}. */
+    public boolean throwSlot(int slotId) {
+        if (!inventoryAccessAllowed(inventoryActionOwner)) return false;
+        LocalPlayer player = mc.player;
+        MultiPlayerGameMode interaction = mc.gameMode;
+        AbstractContainerMenu handler = player != null ? player.containerMenu : null;
+        if (player == null || interaction == null || handler == null) return false;
+        if (slotId < 0 || slotId >= handler.slots.size()) return false;
+        if (InventorySlotLocks.blocks(handler, slotId, 1, ContainerInput.THROW,
+                player, executingActionOwner())) return false;
+
+        beginInternalSwap();
+        try {
+            interaction.handleContainerInput(handler.containerId, slotId, 1, ContainerInput.THROW, player);
+            return true;
+        } finally {
+            endInternalSwap();
+        }
+    }
+
     public boolean swapScreenSlots(int slotA, int slotB) {
         return swapScreenSlots(slotA, slotB, defaultPolicy);
     }

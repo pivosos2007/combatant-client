@@ -24,6 +24,7 @@ import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
 import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.render.engine.uniform.impl.UiGlassFrameUniforms;
 import net.minecraft.client.Minecraft;
 
 import java.util.ArrayList;
@@ -215,6 +216,10 @@ public final class UiPassCompiler {
                         uiBatch = UIBatchUniforms.get();
                     }
                     builder.uniform("UIBatch", uiBatch);
+                }
+                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE) {
+                    builder.uniform(UiGlassFrameUniforms.BLOCK_NAME,
+                            UiGlassFrameUniforms.update(mc, screenW, screenH));
                 }
                 if (batch.clipSnapshot.usesAnalyticPipeline()) {
                     builder.uniform("UIClip", UiClipUniforms.write(batch.clipSnapshot));

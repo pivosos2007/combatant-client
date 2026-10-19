@@ -24,7 +24,7 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.KillAura;
-import combatant.client.features.module.modules.movement.holesnap.Steering;
+import combatant.client.automation.actions.MovementKeys;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.combat.SprintController;
@@ -144,7 +144,7 @@ public final class TargetStrafe extends Module {
             return;
         }
         float controlYaw = resolveControlYaw();
-        int keys = Steering.keysToward(controlYaw, direction.x, direction.z);
+        int keys = MovementKeys.keysToward(controlYaw, direction.x, direction.z);
         boolean jump = autoJump.get() && player.onGround() && navigator.needsJump(player);
         boolean trapped = navigator.isTrapped();
         // WASD discretization cuts corners on diagonals. Prefer a safe single
@@ -157,15 +157,15 @@ public final class TargetStrafe extends Module {
         keys = safeKeys;
         // Hop on clear ground as before, but not while escaping webs/lava.
         boolean hop = autoJump.get() && player.onGround() && !trapped;
-        event.setForward((keys & Steering.FORWARD) != 0);
-        event.setBackward((keys & Steering.BACKWARD) != 0);
-        event.setLeft((keys & Steering.LEFT) != 0);
-        event.setRight((keys & Steering.RIGHT) != 0);
+        event.setForward((keys & MovementKeys.FORWARD) != 0);
+        event.setBackward((keys & MovementKeys.BACKWARD) != 0);
+        event.setLeft((keys & MovementKeys.LEFT) != 0);
+        event.setRight((keys & MovementKeys.RIGHT) != 0);
         event.setJump(event.isJump() || jump || hop);
         // Synthetic Grim movement has no physical forward key. Let the shared
         // SprintController apply its actual food/control/sprint-block policy
         // on the event below, instead of requiring a previous vanilla key.
-        event.setSprint((keys & Steering.FORWARD) != 0
+        event.setSprint((keys & MovementKeys.FORWARD) != 0
                 && !SprintController.INSTANCE.isSprintBlocked());
     }
 
@@ -174,8 +174,8 @@ public final class TargetStrafe extends Module {
         Vec3 motion = motionFromKeys(yaw, intended);
         if (navigator.safeMotion(player, motion.scale(0.36))) return intended;
         // Only check two axis alternatives, not all eight directions each tick.
-        int longitudinal = intended & (Steering.FORWARD | Steering.BACKWARD);
-        int lateral = intended & (Steering.LEFT | Steering.RIGHT);
+        int longitudinal = intended & (MovementKeys.FORWARD | MovementKeys.BACKWARD);
+        int lateral = intended & (MovementKeys.LEFT | MovementKeys.RIGHT);
         int chosen = 0;
         double alignment = 0.50;
         for (int candidate : new int[]{longitudinal, lateral}) {
@@ -191,10 +191,10 @@ public final class TargetStrafe extends Module {
     }
 
     private static Vec3 motionFromKeys(float yaw, int keys) {
-        double forward = ((keys & Steering.FORWARD) != 0 ? 1.0 : 0.0)
-                - ((keys & Steering.BACKWARD) != 0 ? 1.0 : 0.0);
-        double sideways = ((keys & Steering.LEFT) != 0 ? 1.0 : 0.0)
-                - ((keys & Steering.RIGHT) != 0 ? 1.0 : 0.0);
+        double forward = ((keys & MovementKeys.FORWARD) != 0 ? 1.0 : 0.0)
+                - ((keys & MovementKeys.BACKWARD) != 0 ? 1.0 : 0.0);
+        double sideways = ((keys & MovementKeys.LEFT) != 0 ? 1.0 : 0.0)
+                - ((keys & MovementKeys.RIGHT) != 0 ? 1.0 : 0.0);
         double angle = Math.toRadians(yaw);
         Vec3 vector = new Vec3(-Math.sin(angle) * forward + Math.cos(angle) * sideways,
                 0.0, Math.cos(angle) * forward + Math.sin(angle) * sideways);

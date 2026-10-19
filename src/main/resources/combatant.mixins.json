@@ -42,7 +42,7 @@
   "client": [
     "AbstractClientPlayerMixin",
     "AbstractContainerScreenMixin",
-    "SpeedMineGameModeMixin",
+
     "AbstractSelectionListMixin",
     "AbstractSliderButtonMixin",
     "AbstractWidgetSoundMixin",
@@ -61,8 +61,10 @@
     "ChatScreenMixin",
     "ClientClockManagerMixin",
     "ClientCommonPacketListenerImplMixin",
+    "ResourcePackSpoofMixin",
     "ClientLevelMixin",
     "ClientPacketListenerMixin",
+    "PlacementAckMixin",
     "CommandEncoderMixin",
     "ContextualBarMixin",
     "CreativeModeInventorySlotLockMixin",
@@ -167,7 +169,6 @@
     "accessors.FrontendGpuDeviceAccessor",
     "accessors.GameRendererAccessor",
     "accessors.GlTextureInvoker",
-    "accessors.InGameOverlayRendererAccessor",
     "accessors.InputAccessor",
     "accessors.ItemCooldownManagerAccessor",
     "accessors.LevelExtractorAccessor",

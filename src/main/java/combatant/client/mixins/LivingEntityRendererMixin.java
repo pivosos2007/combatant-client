@@ -16,6 +16,7 @@ import combatant.client.features.module.modules.visuals.ViewModel;
 import combatant.client.util.screen.ClientScreen;
 import combatant.client.features.playeranimator.PlayerRigRenderContext;
 import combatant.client.features.playeranimator.PlayerRigRenderState;
+import combatant.client.render.helpers.PlayerPoseCapture;
 import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.model.HumanoidModel;
@@ -159,6 +160,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             int outlineColor,
             Operation<Void> original
     ) {
+        PlayerPoseCapture.capture(model, modelState, matrices);
         if (model instanceof PlayerModel playerModel
                 && modelState instanceof AvatarRenderState avatarState
                 && avatarState instanceof PlayerRigRenderState rigState

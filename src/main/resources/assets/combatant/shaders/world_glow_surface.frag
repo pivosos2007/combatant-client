@@ -1,4 +1,5 @@
 #version 330 core
+#extension GL_ARB_separate_shader_objects : require
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -7,14 +8,14 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-in vec4 v_Color;
-in vec2 v_UV;
-in vec3 v_ViewNormal;
-in vec3 v_ViewPosition;
-in vec4 v_Fx;
-in float v_Rim;
+layout(location = 0) in vec4 v_Color;
+layout(location = 1) in vec2 v_UV;
+layout(location = 2) in vec3 v_ViewNormal;
+layout(location = 3) in vec3 v_ViewPosition;
+layout(location = 4) in vec4 v_Fx;
+layout(location = 5) in float v_Rim;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     float fade = clamp(v_Fx.x, 0.0, 1.0);

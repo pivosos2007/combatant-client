@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.0 — in progress] - 2026-10-17
+
+### Platform
+- Synced with upstream `origin/26.3`: Combatant now targets **Minecraft 26.3**. Local shaders declare explicit SPIR-V interface locations; the UI material-primitive batch binds its `UIGlassFrame` uniform (fixed a first-frame crash).
+
+### Unified Automation Runtime (`combatant.client.automation`)
+- **Control leases**: `ActionCoordinator` arbitrates rotation, movement keys, jump, sneak, sprint, hotbar, inventory and interaction by named priority tiers (`ActionPriority`, same scale as `RotationManager`). Preemption notifies the loser; ties keep the current holder; slot leases taken directly through `InventorySwap` are respected.
+- **Tasks and actions**: `AutomationTask` + composable actions (`Sequence`, `Selector`, `Parallel`, `Retry`, `Timeout`, `Guard`) and primitives (`Rotate`, `Move`, `Jump`, `Sneak`, `PlaceBlock`, `BreakBlock`, `UseItem`, `InteractEntity`, `Inventory`, `Navigate`). Actions run before the movement packet and release every backend on cancel.
+- **Lifecycle**: tasks are cancelled on module disable, world change, disconnect, respawn and panic/unhook (new `WorldChangeEvent`). Player WASD/jump/sneak and physical mouse look take control back from tasks that yield to manual input.
+- **Placement**: `BlockPlacer` now plans with `PlacementPlanner` and places through `PlaceBlockAction`; a position is only dropped once the server acknowledges the prediction sequence and the block is there (`PlacementTracker`, `PlacementAckMixin`). Rejected cells retry with backoff. Surround, SelfTrap, AutoTrap, HoleFill and AutoWeb build their own `PlacementConstraints` from their per-module anticheat settings.
+- **Navigation**: `NavigationProvider` API with the built-in walker (A*/route follower) and an optional Baritone adapter loaded only when Baritone is installed.
+- **Migrated**: HoleSnap (runtime `MoveAction`), AutoTool (hotbar lease instead of raw slot selection), shared `MovementKeys` replaces three WASD helpers.
+
+### Printer (optional Litematica)
+- New `Printer` module builds the active Litematica placements through the shared runtime (placement, restock, optional navigation, orientation rules, block-model preview). Litematica is an optional dependency and is never loaded when absent.
+
+### Config Persistence
+- Hot configs are written atomically (temp file + move) with a `.bak` of the last valid file, corrupt files are quarantined and recovered, writes are coalesced, unknown keys are preserved, and pending writes flush on shutdown and panic.
+- `.cbcfg` profiles record the Combatant version that saved them; older profiles load unchanged.
+
+### New Modules
+- **Combat**: `StaticHitboxes` (standing-size ray-cast boxes), `HoverTotem` (hover a totem in an inventory to equip it), `ShiftTap` (W-tap / sneak-tap after hits via runtime leases), `AnchorMacro` and `DoubleAnchor` (place, charge and detonate anchors with self-damage safety, built from runtime actions; new `InteractBlockAction` and `Actions.defer`). Anchor self-damage prediction (AnchorMacro and `AutoAnchor` on existing anchors) no longer lets the anchor shield the player from its own blast.
+- **Movement**: `AutoJump`, `Spider` (vanilla/jump), `NoWeb` (off under Grim), `LongJump` (boost/damage; off under Grim). `Parkour` gains `EdgeJump` aliases; `Freeze` gains `AirStuck` alias, hold-key mode and anticheat preset.
+- **Player**: `Nuker` (filtered, ordered breaking through `BreakBlockAction`), `LockSlots` (blocks drop/move/swap of locked slots, hotbar tint), `ClickThrough`, `NoEntityTrace`, `QuickUse` (keybind item use with swap-back), `EnderChestPlus` (cached contents in tooltip and `@echest`), `AutoInvTotem` (strict open-inventory totem refill), `ShulkerDropper`, `TunnelBaseFinder` (1x2 tunnel with hazard pauses and storage/spawner alerts).
+- **Misc**: `AutoLeave`, `AutoAccept`, `AutoAuth`, `ServerRPSpoofer`, `DeathCoordinates` (chat + Xaero waypoint), `AntiCheatDetect` (ping-pattern heuristic), `AntiVanish`, `AutoRtp`, `AutoTpa`, `CordSnapper`.
+- **Visuals**: `Skeleton`, `PopChams`, `BedrockEsp`, `BlockNotifier`. `Tracers` arrows gain distance colouring; item physics gains random heading and tumble speed; `LightFinder` gains a strict below-Y=0 mode.
+
+### Removed
+- `SpeedMine` and `SpeedMineGameModeMixin` (`NoDelay` covers fast breaking).
+
 ## [Unreleased / Latest Krypton Updates] - 2026-10-09
 
 ### Anticheat Compatibility & Presets (GrimAC 2.3.74 & Vanilla Baseline)
@@ -48,7 +78,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Pre-Tick Placement Dispatch**:
   - `BlockPlacer`: Relocated block placement dispatch to before the movement packet (`start-of-tick` hook).
   - `InventorySwap`: Hotbar lease restoration now sends at the start of the tick, eliminating `Post` interaction flags.
-  - `SpeedMine`: Relocated to pre-tick hook, paced block breaks, and ensured required hand swing packets are sent before break completion.
   - `AirPlace`, `AutoMount`, and `AutoBreed`: Moved to start-of-tick hooks.
 - **AutoBreed**: Now feeds all nearby breedable animals in one pass instead of stopping at the first.
 - **AutoMine**: New module for automated block mining.
