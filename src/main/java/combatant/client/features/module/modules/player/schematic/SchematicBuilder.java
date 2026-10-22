@@ -25,6 +25,7 @@ import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.aiming.features.processors.anglesmooth.impl.LinearAngleSmooth;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.schematic.RedstoneRules;
 import combatant.client.util.schematic.Schematic;
@@ -151,7 +152,13 @@ public final class SchematicBuilder extends Module {
     private final BooleanValue removeHelpers =
             visibleWhen(bool("remove_helpers", true), () -> autoWalk.get() && autoJumpPillar.get());
     private final BooleanValue donutSmpSafe = bool("donutsmp_safe", true);
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
+
+    {
+        AntiCheatPresetDefaults.bind(anticheat)
+                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .setGrim(rotate, true);
+    }
 
     private final Minecraft mc = Minecraft.getInstance();
     private final SchematicState state = SchematicState.INSTANCE;
@@ -268,7 +275,7 @@ public final class SchematicBuilder extends Module {
     }
 
     private double effectiveRange() {
-        double value = anticheat.get().limit((double) range.get(), AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE);
+        double value = range.get();
         return donutRules() ? Math.min(value, DONUT_RANGE) : value;
     }
 
@@ -284,7 +291,7 @@ public final class SchematicBuilder extends Module {
     }
 
     private boolean effectiveRotate() {
-        return rotate.get() || donutRules() || anticheat.get() == AntiCheatPreset.GRIM;
+        return rotate.get() || donutRules();
     }
 
     @Override

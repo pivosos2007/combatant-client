@@ -64,7 +64,7 @@ public class ModeSetting extends Setting {
         if (modeValue != null) {
             modeValue.fromJson(id);
         } else {
-            enumValue.setById(id);
+            enumValue.select(id);
         }
     }
 

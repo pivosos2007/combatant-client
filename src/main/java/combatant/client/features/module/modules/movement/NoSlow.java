@@ -26,6 +26,7 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.item.FoodUtil;
 import combatant.client.util.player.InteractionUtil;
 
@@ -45,11 +46,15 @@ public final class NoSlow extends Module {
         CUSTOM
     }
 
-    // custom = the mode below as set; grim = GRIM_TICK whatever the mode says (GrimAC 2.3.74 flags every other
-    // mode: it closed the offhand use-item trick behind GRIM and predicts a slowed player on all other ticks);
-    // vanilla = no slowdown at all, for servers with no anticheat.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    // picking grim sets GRIM_TICK (GrimAC 2.3.74 flags every other mode: it closed the offhand use-item trick
+    // behind GRIM and predicts a slowed player on all other ticks); picking vanilla sets no slowdown at all, for
+    // servers with no anticheat. The mode is used as set afterwards.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode = enumMode("mode", Mode.VANILLA, Mode.values());
+
+    {
+        AntiCheatPresetDefaults.bind(anticheat).set(mode, Mode.GRIM_TICK, Mode.VANILLA);
+    }
 
     private final BooleanValue food = bool("food", true);
     private final BooleanValue bow = bool("bow", true);
@@ -122,12 +127,8 @@ public final class NoSlow extends Module {
         return isEnabled() && allowSprint.get() && shouldModifyInput(player);
     }
 
-    private Mode modeNow() {
-        return anticheat.get().pick(mode.get(), Mode.GRIM_TICK, Mode.VANILLA);
-    }
-
     public Vec2 getModifiedInput(Vec2 input, LocalPlayer player) {
-        Mode currentMode = modeNow();
+        Mode currentMode = mode.get();
         if (currentMode == Mode.GRIM) {
             if (input.x != 0.0f || input.y != 0.0f) {
                 handleGrimBypass(player);

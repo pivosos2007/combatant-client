@@ -87,6 +87,8 @@ def targetJavaVersion = 25
 
 sourceSets {
     main {
+        // SpearAssist depends on util/combat/SpearKinetics.java, which is missing from the tree.
+        java.exclude("combatant/client/features/module/modules/combat/SpearAssist.java")
         resources.srcDir(svgMsdfGeneratedResources)
         resources.srcDir(generatedUniformResources)
     }

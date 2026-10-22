@@ -26,6 +26,7 @@ import combatant.client.features.module.modules.combat.anchormacro.AnchorSlotPic
 import combatant.client.input.CombatantInput;
 import combatant.client.input.InputScope;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.aiming.features.MovementCorrection;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -58,7 +59,9 @@ public abstract class AnchorSequenceModule extends Module {
 
     protected final Minecraft mc = Minecraft.getInstance();
 
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    // grim preset: range <= 4.5, wall range 0, rotation NORMAL; vanilla preset: 5.5 range/wall range, NO_ROTATION.
+    // Picked once, then every setting stays as the player sets it.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Trigger> trigger = enumMode("trigger", Trigger.KEY, Trigger.values());
     private final KeyBindValue key = visibleWhen(bind("key", "NONE", BindMode.HOLD),
             () -> trigger.get() == Trigger.KEY);
@@ -66,10 +69,17 @@ public abstract class AnchorSequenceModule extends Module {
     private final NumberValue<Double> wallRange = num("wall_range", 0.0D, 0.0D, 6.0D);
     private final EnumValue<PlacementRotationMode> rotation = enumMode(
             "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
+
+    {
+        AntiCheatPresetDefaults.bind(anticheat)
+                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .set(rotation, PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
+    }
+
     private final EnumValue<MovementCorrection> movementCorrection = visibleWhen(enumMode(
             "movement_correction", MovementCorrection.SILENT, MovementCorrection.values()),
-            () -> anticheat.get().pick(rotation.get(), PlacementRotationMode.NORMAL,
-                    PlacementRotationMode.NO_ROTATION) == PlacementRotationMode.NORMAL);
+            () -> rotation.get() == PlacementRotationMode.NORMAL);
     private final NumberValue<Integer> stepDelay = num("step_delay", 1, 0, 10);
     private final NumberValue<Integer> charges = num("charges", 1, 1, 4);
     private final EnumValue<DetonatorPreference> detonator = enumMode(
@@ -170,11 +180,9 @@ public abstract class AnchorSequenceModule extends Module {
     }
 
     private AnchorSteps.Config stepsConfig() {
-        double reach = anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_BLOCK_RANGE,
-                AntiCheatPreset.VANILLA_BLOCK_RANGE);
-        double wall = anticheat.get().limit(wallRange.get(), 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE);
-        PlacementRotationMode mode = anticheat.get().pick(
-                rotation.get(), PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
+        double reach = range.get();
+        double wall = wallRange.get();
+        PlacementRotationMode mode = rotation.get();
         // The swapped slot stays selected until the next step took over.
         int slotReset = stepDelay.get() + 2;
         PlacementConstraints placement = new PlacementConstraints(reach, wall, mode, movementCorrection.get(),
@@ -186,8 +194,7 @@ public abstract class AnchorSequenceModule extends Module {
     }
 
     protected final double effectiveRange() {
-        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_BLOCK_RANGE,
-                AntiCheatPreset.VANILLA_BLOCK_RANGE);
+        return range.get();
     }
 
     protected final void warn(String key) {

@@ -32,7 +32,7 @@ import combatant.client.util.anticheat.AntiCheatPreset;
         description = "module.freeze.description")
 public final class Freeze extends Module {
 
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final KeyBindValue holdKey = bind("hold_key", "NONE", BindMode.HOLD);
 
     private String boundCombo = "NONE";

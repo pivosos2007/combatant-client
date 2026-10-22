@@ -34,7 +34,7 @@ import net.minecraft.world.phys.Vec3;
         description = "module.noweb.description")
 public final class NoWeb extends Module {
 
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode = enumMode("mode", Mode.CANCEL);
     private final NumberValue<Double> reduction = visibleWhen(
             num("reduction", 0.6D, 0.0D, 1.0D), () -> mode.get() == Mode.REDUCE);

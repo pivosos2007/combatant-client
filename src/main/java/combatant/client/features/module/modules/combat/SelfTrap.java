@@ -27,6 +27,7 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.automation.placement.PlacementConstraints;
 import combatant.client.automation.placement.PlacementRotationMode;
 import combatant.client.automation.placement.PlacementSlot;
@@ -57,9 +58,9 @@ public final class SelfTrap extends Module {
     private static final long NO_BLOCKS_WARN_INTERVAL_MS = 3000L;
 
     private final Minecraft mc = Minecraft.getInstance();
-    // custom = the settings below as set; grim = place range <= 4.5, wall range 0, rotation NORMAL, 1 block/tick;
-    // vanilla = 5.5 range/wall range, NO_ROTATION, max blocks/tick, 6.0 crystal clear reach.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    // grim preset: place range <= 4.5, wall range 0, rotation NORMAL, 1 block/tick;
+    // vanilla preset: 5.5 range/wall range, NO_ROTATION, max blocks/tick. Picked once, then every setting stays as the player sets it.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode = enumSetting("selfTrapMode", "mode", Mode.HEAD, Mode.values());
     private final EnumValue<BlockPriority> blockPriority = enumCommon(
             "selfTrapBlockPriority", "block_priority",
@@ -93,6 +94,15 @@ public final class SelfTrap extends Module {
             "selfTrapRange", "range", CommonSettingSchemas.COMBAT_RANGE, 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = numCommon(
             "selfTrapWallRange", "wall_range", CommonSettingSchemas.COMBAT_WALL_RANGE, 3.0D, 0.0D, 6.0D);
+
+    {
+        AntiCheatPresetDefaults.bind(anticheat)
+                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .set(rotation, PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION)
+                .cap(blocksPerTick, 1, blocksPerTick.getMax());
+    }
+
     private final NumberValue<Integer> delay = num("selfTrapDelay", "delay", 0, 0, 10);
     private final BooleanValue render = bool("selfTrapRender", "render", true);
     private final RGBAColorValue fillColor = color("selfTrapFillColor", "fill_color", "#285A9C44");
@@ -106,7 +116,7 @@ public final class SelfTrap extends Module {
             this::placementConstraints,
             delay::get,
             delay::get,
-            this::effBlocksPerTick,
+            blocksPerTick::get,
             () -> true,
             placeWhileUsing::get
     );
@@ -156,7 +166,10 @@ public final class SelfTrap extends Module {
         updateTargets();
 
         if (attackCrystals.get()) {
-            crystalClearer.clear(mc, player, currentTargets, effCrystalRange(), crystalDelay.get());
+            // Crystals are entities: under GRIM, attack them only within Grim's entity reach, not the block range.
+            double crystalRange = anticheat.get() == AntiCheatPreset.GRIM
+                    ? Math.min(range.get(), AntiCheatPreset.GRIM_ENTITY_RANGE) : range.get();
+            crystalClearer.clear(mc, player, currentTargets, crystalRange, crystalDelay.get());
         }
 
         warnIfOutOfBlocks(player);
@@ -202,34 +215,14 @@ public final class SelfTrap extends Module {
         return player == null ? null : ShellBlocks.find(player, blockPriority.get());
     }
 
-    private double effPlaceRange() {
-        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private double effWallRange() {
-        return anticheat.get().limit(wallRange.get(), 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private double effCrystalRange() {
-        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
-    }
-
-    private PlacementRotationMode effRotation() {
-        return anticheat.get().pick(rotation.get(), PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
-    }
-
     private boolean effConstructFailResult() {
-        return effRotation() == PlacementRotationMode.NO_ROTATION;
+        return rotation.get() == PlacementRotationMode.NO_ROTATION;
     }
 
     private PlacementConstraints placementConstraints() {
         return new PlacementConstraints(
-                effPlaceRange(), effWallRange(), effRotation(), movementCorrection.get(),
+                range.get(), wallRange.get(), rotation.get(), movementCorrection.get(),
                 effConstructFailResult(), false, 1, swapBackDelay.get(), swapBackDelay.get(), true, 0);
-    }
-
-    private int effBlocksPerTick() {
-        return anticheat.get().limit(blocksPerTick.get(), 1, blocksPerTick.getMax());
     }
 
     @Override

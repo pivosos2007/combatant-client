@@ -23,6 +23,7 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.automation.placement.PlacementConstraints;
 import combatant.client.automation.placement.PlacementRotationMode;
 import combatant.client.automation.placement.PlacementSlot;
@@ -69,9 +70,9 @@ public final class AutoTrap extends Module {
     );
 
     private final Minecraft mc = Minecraft.getInstance();
-    // custom = the settings below as set; grim = place range <= 4.5, wall range 0, rotation NORMAL, 1 block/tick;
-    // vanilla = 5.5 range/wall range, NO_ROTATION.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    // grim preset: place range <= 4.5, wall range 0, rotation NORMAL;
+    // vanilla preset: 5.5 range/wall range, NO_ROTATION. Picked once, then every setting stays as the player sets it.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final NumberValue<Double> range = numCommon(
             "autoTrapRange", "range", CommonSettingSchemas.COMBAT_RANGE, 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = numCommon(
@@ -84,6 +85,14 @@ public final class AutoTrap extends Module {
     private final BooleanValue autoDisable = bool("autoTrapAutoDisable", "auto_disable", false);
     private final EnumValue<PlacementRotationMode> rotation = enumSetting(
             "autoTrapRotation", "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
+
+    {
+        AntiCheatPresetDefaults.bind(anticheat)
+                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .set(rotation, PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
+    }
+
     private final EnumValue<MovementCorrection> movementCorrection = enumSetting(
             "autoTrapMovementCorrection", "movement_correction", MovementCorrection.SILENT, MovementCorrection.values());
     private final NumberValue<Integer> delay = num("autoTrapDelay", "delay", 0, 0, 10);
@@ -186,25 +195,13 @@ public final class AutoTrap extends Module {
         return PlacementSlot.find(mc.player, AutoTrap::isTargetBlock);
     }
 
-    private double effPlaceRange() {
-        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private double effWallRange() {
-        return anticheat.get().limit(wallRange.get(), 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private PlacementRotationMode effRotation() {
-        return anticheat.get().pick(rotation.get(), PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
-    }
-
     private boolean effConstructFailResult() {
-        return effRotation() == PlacementRotationMode.NO_ROTATION;
+        return rotation.get() == PlacementRotationMode.NO_ROTATION;
     }
 
     private PlacementConstraints placementConstraints() {
         return new PlacementConstraints(
-                effPlaceRange(), effWallRange(), effRotation(), movementCorrection.get(),
+                range.get(), wallRange.get(), rotation.get(), movementCorrection.get(),
                 effConstructFailResult(), false, 1, 0, 0, true, 0);
     }
 

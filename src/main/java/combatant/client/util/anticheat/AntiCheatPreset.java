@@ -9,14 +9,16 @@ package combatant.client.util.anticheat;
 
 import combatant.client.config.values.EnumValue;
 
+import java.util.List;
+
 /**
- * Per-module preset for the anticheat on the server. {@link #CUSTOM} leaves every setting as the player set it.
- * {@link #GRIM} caps the settings that GrimAC measures at vanilla limits (they were checked against GrimAC
- * 2.3.74 on a local server). {@link #VANILLA} is for servers with no anticheat beyond vanilla's own checks:
- * reach, range and packet tricks go to their maximum.
+ * Per-module preset for the anticheat on the server. Picking a preset in the GUI writes its recommended values into
+ * the module's settings once (see {@link AntiCheatPresetDefaults}); after that every setting is the player's and is
+ * used as set, even past the preset's recommendation. {@link #GRIM} additionally keeps the timing and packet
+ * behaviour GrimAC accepts (checked against GrimAC 2.3.74 on a local server). {@link #VANILLA} is for servers with no
+ * anticheat beyond vanilla's own checks.
  */
-public enum AntiCheatPreset implements EnumValue.IdProvider {
-    CUSTOM("custom"),
+public enum AntiCheatPreset implements EnumValue.IdProvider, EnumValue.AliasProvider {
     GRIM("grim"),
     VANILLA("vanilla");
 
@@ -43,33 +45,9 @@ public enum AntiCheatPreset implements EnumValue.IdProvider {
         return id;
     }
 
-    /** The player's value, never above {@code grimMax} under GRIM, and {@code vanillaValue} under VANILLA. */
-    public double limit(double user, double grimMax, double vanillaValue) {
-        return switch (this) {
-            case CUSTOM -> user;
-            case GRIM -> Math.min(user, grimMax);
-            case VANILLA -> vanillaValue;
-        };
-    }
-
-    public float limit(float user, float grimMax, float vanillaValue) {
-        return (float) limit((double) user, (double) grimMax, (double) vanillaValue);
-    }
-
-    public int limit(int user, int grimMax, int vanillaValue) {
-        return switch (this) {
-            case CUSTOM -> user;
-            case GRIM -> Math.min(user, grimMax);
-            case VANILLA -> vanillaValue;
-        };
-    }
-
-    /** One value per preset. */
-    public <T> T pick(T user, T grim, T vanilla) {
-        return switch (this) {
-            case CUSTOM -> user;
-            case GRIM -> grim;
-            case VANILLA -> vanilla;
-        };
+    /** Configs saved before the custom preset was removed: it applied no anticheat behaviour, like vanilla. */
+    @Override
+    public List<String> aliases() {
+        return this == VANILLA ? List.of("custom") : List.of();
     }
 }

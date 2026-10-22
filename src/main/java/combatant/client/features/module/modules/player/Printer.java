@@ -40,6 +40,7 @@ import combatant.client.features.module.modules.player.printer.PrinterTargets;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.block.scaffold.ScaffoldPlacementTarget;
 import combatant.client.util.player.inventory.InventorySwap;
@@ -93,9 +94,10 @@ public final class Printer extends Module {
     private final Minecraft mc = Minecraft.getInstance();
     private final BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
 
-    // custom = settings as set; grim = range <= 4.5, wall range 0, rotation NORMAL, 1 block per batch;
-    // vanilla = 5.5 range, NO_ROTATION where the state does not depend on the look, max blocks per batch.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    // Picking a preset writes its recommended values into the settings once: grim = range <= 4.5, wall range 0,
+    // rotation NORMAL, 1 block per batch; vanilla = 5.5 range, NO_ROTATION where the state does not depend on the
+    // look, max blocks per batch. Afterwards the settings are used exactly as set.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final NumberValue<Double> range = num("printerRange", "range", 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = num("printerWallRange", "wall_range", 0.0D, 0.0D, 6.0D);
     private final EnumValue<PlacementRotationMode> rotation = enumSetting(
@@ -103,6 +105,13 @@ public final class Printer extends Module {
     private final EnumValue<MovementCorrection> movementCorrection = enumSetting(
             "printerMovementCorrection", "movement_correction", MovementCorrection.SILENT, MovementCorrection.values());
     private final NumberValue<Integer> blocksPerTick = num("printerBlocksPerTick", "blocks_per_tick", 1, 1, 6);
+    {
+        AntiCheatPresetDefaults.bind(anticheat)
+                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .set(rotation, PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION)
+                .cap(blocksPerTick, 1, blocksPerTick.getMax());
+    }
     private final NumberValue<Integer> delay = num("printerDelay", "delay", 1, 0, 20);
     private final NumberValue<Integer> swapBackDelay = num("printerSwapBackDelay", "swap_back_delay", 2, 0, 10);
     private final NumberValue<Integer> scanInterval = num("printerScanInterval", "scan_interval", 4, 1, 40);
@@ -202,7 +211,7 @@ public final class Printer extends Module {
     }
 
     private void step(LocalPlayer player, ClientLevel level) {
-        double reach = Math.max(effRange(), effWallRange());
+        double reach = Math.max(range.get(), wallRange.get());
         double radius = navigate.get() ? Math.max(searchRadius.get(), reach + 1.0) : reach + 1.0;
         var eyes = player.getEyePosition();
         skippedCurrent = 0;
@@ -283,9 +292,9 @@ public final class Printer extends Module {
         BlockState wanted = cell.expected();
         Requirement need = requirement(wanted);
         boolean forcedRotation = need.rotationDecides();
-        boolean aim = forcedRotation || effRotation() == PlacementRotationMode.NORMAL;
+        boolean aim = forcedRotation || rotation.get() == PlacementRotationMode.NORMAL;
         ScaffoldPlacementTarget click = PrinterClickPlanner.find(player, level, pos, wanted, stack, need, aim,
-                effRange());
+                range.get());
         if (click == null) return null;
         boolean constrained = forcedRotation || need.half() != null || need.clickFace() != null
                 || need.clickAxis() != null;
@@ -297,11 +306,11 @@ public final class Printer extends Module {
     }
 
     private void submitBatch(List<Planned> planned) {
-        List<Planned> batch = PrinterTargets.batch(planned, Planned::key, effBlocksPerTick());
+        List<Planned> batch = PrinterTargets.batch(planned, Planned::key, blocksPerTick.get());
         Key key = batch.get(0).key();
         List<PlacementTarget> targets = new ArrayList<>();
         for (Planned p : batch) targets.add(p.target());
-        PlaceBlockAction action = new PlaceBlockAction(this, targets, constraints(key.rotate()), effBlocksPerTick());
+        PlaceBlockAction action = new PlaceBlockAction(this, targets, constraints(key.rotate()), blocksPerTick.get());
         submit("Printer", action, finished -> onBatchFinished(action, batch));
     }
 
@@ -353,7 +362,7 @@ public final class Printer extends Module {
 
     private void navigateTo(BlockPos pos) {
         NavigateAction walk = new NavigateAction(
-                NavigationRequest.reach(pos.getX(), pos.getY(), pos.getZ(), Math.max(1.5, effRange() - 0.75)));
+                NavigationRequest.reach(pos.getX(), pos.getY(), pos.getZ(), Math.max(1.5, range.get() - 0.75)));
         submit("PrinterNavigate", walk, finished -> {
             task = null;
             nextBatch = ticks + delay.get();
@@ -377,26 +386,10 @@ public final class Printer extends Module {
         Notifier.info(I18n.get("notification.printer.skipped", skippedLast));
     }
 
-    private double effRange() {
-        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private double effWallRange() {
-        return anticheat.get().limit(wallRange.get(), 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private PlacementRotationMode effRotation() {
-        return anticheat.get().pick(rotation.get(), PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
-    }
-
-    private int effBlocksPerTick() {
-        return anticheat.get().limit(blocksPerTick.get(), 1, blocksPerTick.getMax());
-    }
-
     /** Blocks whose state follows the look always rotate, whatever the rotation setting says. */
     private PlacementConstraints constraints(boolean forceRotate) {
-        PlacementRotationMode mode = forceRotate ? PlacementRotationMode.NORMAL : effRotation();
-        return new PlacementConstraints(effRange(), effWallRange(), mode, movementCorrection.get(),
+        PlacementRotationMode mode = forceRotate ? PlacementRotationMode.NORMAL : rotation.get();
+        return new PlacementConstraints(range.get(), wallRange.get(), mode, movementCorrection.get(),
                 mode == PlacementRotationMode.NO_ROTATION, false, 1, swapBackDelay.get(), swapBackDelay.get(), true, 0);
     }
 

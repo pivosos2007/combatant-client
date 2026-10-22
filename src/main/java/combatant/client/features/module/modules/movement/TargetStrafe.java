@@ -27,6 +27,7 @@ import combatant.client.features.module.modules.combat.KillAura;
 import combatant.client.automation.actions.MovementKeys;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.combat.SprintController;
 import combatant.client.util.player.navigation.OrbitNavigator;
 
@@ -39,11 +40,16 @@ import java.util.concurrent.ThreadLocalRandom;
         description = "module.targetstrafe.description")
 public final class TargetStrafe extends Module {
     private final Minecraft mc = Minecraft.getInstance();
-    // custom = the mode below as set; grim = the Grim mode (matrix writes the velocity directly: GrimAC Simulation
-    // and GroundSpoof flag it every tick); vanilla = matrix, for servers with no anticheat.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    // picking grim sets the Grim mode (matrix writes the velocity directly: GrimAC Simulation and GroundSpoof flag
+    // it every tick); picking vanilla sets matrix, for servers with no anticheat. The mode is used as set afterwards.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<StrafeMode> mode =
             enumMode("mode", StrafeMode.MATRIX, StrafeMode.MATRIX, StrafeMode.GRIM);
+
+    {
+        AntiCheatPresetDefaults.bind(anticheat).set(mode, StrafeMode.GRIM, StrafeMode.MATRIX);
+    }
+
     private final EnumValue<PointType> grimPointType =
             visibleWhen(enumMode("grim_point_type", PointType.CUBE, PointType.CUBE, PointType.CENTER, PointType.CIRCLE), this::isGrimMode);
     private final NumberValue<Float> grimRadius =
@@ -244,12 +250,8 @@ public final class TargetStrafe extends Module {
                 || mc.options.keyShift.isDown());
     }
 
-    private StrafeMode effectiveMode() {
-        return anticheat.get().pick(mode.get(), StrafeMode.GRIM, StrafeMode.MATRIX);
-    }
-
-    private boolean isMatrixMode() { return effectiveMode() == StrafeMode.MATRIX; }
-    private boolean isGrimMode() { return effectiveMode() == StrafeMode.GRIM; }
+    private boolean isMatrixMode() { return mode.get() == StrafeMode.MATRIX; }
+    private boolean isGrimMode() { return mode.get() == StrafeMode.GRIM; }
     private boolean usesGrimRadius() {
         return isGrimMode() && grimPointType.get() != PointType.CENTER;
     }

@@ -25,6 +25,7 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.util.aiming.features.MovementCorrection;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.block.NukerTargeting;
 import combatant.client.util.block.NukerTargeting.Candidate;
@@ -67,8 +68,9 @@ public final class Nuker extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    // custom = as set; grim = range <= 4.5, no wall range, always rotates; vanilla = range 5.5, no rotation.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    // Picking a preset writes its recommended range, wall range and rotation into the settings once: grim = range <= 4.5,
+    // no wall range, rotates; vanilla = range 5.5, no rotation. Afterwards the settings are used exactly as set.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final NumberValue<Double> range = num("nukerRange", "range", 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = num("nukerWallRange", "wall_range", 0.0D, 0.0D, 6.0D);
     private final EnumValue<NukerTargeting.Shape> shape = enumSetting(
@@ -86,6 +88,12 @@ public final class Nuker extends Module {
     private final BooleanValue onlyExposed = bool("nukerOnlyExposed", "only_exposed", true);
     private final EnumValue<PlacementRotationMode> rotation = enumSetting(
             "nukerRotation", "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
+    {
+        AntiCheatPresetDefaults.bind(anticheat)
+                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .set(rotation, PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
+    }
     private final BooleanValue autoTool = bool("nukerAutoTool", "auto_tool", true);
     private final BooleanValue requireSuitableTool = visibleWhen(
             bool("nukerRequireSuitableTool", "require_suitable_tool", true), autoTool::get);
@@ -133,7 +141,7 @@ public final class Nuker extends Module {
     }
 
     private List<Candidate> scan(LocalPlayer player, ClientLevel level) {
-        double reach = effRange();
+        double reach = range.get();
         Vec3 eyes = player.getEyePosition();
         BlockPos origin = BlockPos.containing(eyes);
         int radius = (int) Math.ceil(reach);
@@ -212,25 +220,13 @@ public final class Nuker extends Module {
     }
 
     private MiningPlan miningPlan() {
-        boolean rotate = effRotation() == PlacementRotationMode.NORMAL;
+        boolean rotate = rotation.get() == PlacementRotationMode.NORMAL;
         RotationPlan rotationPlan = rotate
                 ? new RotationPlan(true, List.of(), 2, 4.0f, false, MovementCorrection.SILENT, ActionPriority.BUILD)
                 : RotationPlan.disabled();
         return new MiningPlan(
-                effRange(), effWallRange(), swing.get(), autoTool.get(), TOOL_LEASE_TICKS, rotationPlan,
+                range.get(), wallRange.get(), swing.get(), autoTool.get(), TOOL_LEASE_TICKS, rotationPlan,
                 false, false, autoTool.get() && requireSuitableTool.get());
-    }
-
-    private double effRange() {
-        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private double effWallRange() {
-        return anticheat.get().limit(wallRange.get(), 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private PlacementRotationMode effRotation() {
-        return anticheat.get().pick(rotation.get(), PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
     }
 
     private int effMaxTargets() {

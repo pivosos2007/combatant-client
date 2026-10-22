@@ -22,6 +22,7 @@ import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.automation.placement.PlacementConstraints;
 import combatant.client.automation.placement.PlacementRotationMode;
 import combatant.client.automation.placement.PlacementSlot;
@@ -68,9 +69,9 @@ public final class HoleFill extends Module {
     );
 
     private final Minecraft mc = Minecraft.getInstance();
-    // custom = the settings below as set; grim = place range <= 4.5, wall range 0, rotation NORMAL, 1 block/tick;
-    // vanilla = 5.5 range/wall range, NO_ROTATION.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    // grim preset: place range <= 4.5, wall range 0, rotation NORMAL;
+    // vanilla preset: 5.5 range/wall range, NO_ROTATION. Picked once, then every setting stays as the player sets it.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final NumberValue<Double> range = numCommon(
             "holeFillRange", "range", CommonSettingSchemas.COMBAT_RANGE, 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = numCommon(
@@ -85,6 +86,14 @@ public final class HoleFill extends Module {
     private final BooleanValue autoDisable = bool("holeFillAutoDisable", "auto_disable", false);
     private final EnumValue<PlacementRotationMode> rotation = enumSetting(
             "holeFillRotation", "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
+
+    {
+        AntiCheatPresetDefaults.bind(anticheat)
+                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .set(rotation, PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
+    }
+
     private final NumberValue<Integer> delay = num("holeFillDelay", "delay", 0, 0, 10);
     private final BooleanValue render = bool("holeFillRender", "render", true);
     private final RGBAColorValue fillColor = color("holeFillFillColor", "fill_color", "#285A9C44");
@@ -151,8 +160,8 @@ public final class HoleFill extends Module {
         }
 
         BlockPos origin = player.blockPosition();
-        int radius = (int) Math.ceil(effPlaceRange());
-        double placementRangeSq = effPlaceRange() * effPlaceRange();
+        int radius = (int) Math.ceil(range.get());
+        double placementRangeSq = range.get() * range.get();
         double enemyRangeSq = enemyRange.get() * enemyRange.get();
         List<HoleCandidate> candidates = new ArrayList<>();
 
@@ -186,7 +195,7 @@ public final class HoleFill extends Module {
     }
 
     private List<Player> findOpponents() {
-        double searchRange = enemyRange.get() + effPlaceRange();
+        double searchRange = enemyRange.get() + range.get();
         List<LivingEntity> targets = TargetingUtil.findTargets(mc, new TargetingUtil.TargetingSettings(
                 searchRange,
                 180.0F,
@@ -224,25 +233,13 @@ public final class HoleFill extends Module {
         return PlacementSlot.find(mc.player, this::isTargetItem);
     }
 
-    private double effPlaceRange() {
-        return anticheat.get().limit(range.get(), AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private double effWallRange() {
-        return anticheat.get().limit(wallRange.get(), 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private PlacementRotationMode effRotation() {
-        return anticheat.get().pick(rotation.get(), PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
-    }
-
     private boolean effConstructFailResult() {
-        return effRotation() == PlacementRotationMode.NO_ROTATION;
+        return rotation.get() == PlacementRotationMode.NO_ROTATION;
     }
 
     private PlacementConstraints placementConstraints() {
         return new PlacementConstraints(
-                effPlaceRange(), effWallRange(), effRotation(), MovementCorrection.SILENT,
+                range.get(), wallRange.get(), rotation.get(), MovementCorrection.SILENT,
                 effConstructFailResult(), false, 1, 0, 0, true, 0);
     }
 

@@ -37,10 +37,10 @@ import combatant.client.util.anticheat.AntiCheatPreset;
         description = "module.airjump.description")
 public class AirJump extends Module {
 
-    // custom and vanilla = as set; grim = no jump away from the ground. GrimAC only allows a jump on the tick the
+    // vanilla = as set; grim = no jump away from the ground. GrimAC only allows a jump on the tick the
     // player leaves the ground (and only with the jump bit of the input packet set), so a jump in mid-air is a
     // Simulation flag every time and there is no setting of this module that avoids it.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode =
             enumMode("mode", Mode.NORMAL, Mode.values());
     private int level;

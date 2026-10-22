@@ -45,7 +45,7 @@ public final class LongJump extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode = enumMode("mode", Mode.BOOST);
     private final NumberValue<Double> boost = num("boost", 1.8D, 1.0D, 4.0D);
     private final NumberValue<Integer> duration = num("duration", 10, 2, 30);

@@ -8,6 +8,7 @@
 package combatant.client.features.module.modules.player;
 
 import combatant.client.config.common.CommonSettingSchemas;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.anticheat.AntiCheatPreset;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -68,10 +69,10 @@ public final class NoDelay extends Module {
     private static final String TYPE_FAST_INTERACT = "Fast interact";
     private static final String TYPE_SHIELD_COOLDOWN = "Shield Cooldown";
 
-    // custom = the settings below as set; grim = break cooldown removal and fast break disabled
-    // (GrimAC FastBreak flags early STOPs and block break cooldown removal); vanilla = normal fast break
-    // at server 0.7 progress and break cooldown removal on, for servers with no anticheat.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    // grim = break cooldown removal and fast break switched off when picked (GrimAC FastBreak flags early STOPs
+    // and block break cooldown removal); vanilla = break cooldown removal and fast break switched on with
+    // server 0.7 progress, for servers with no anticheat. The settings below stay as the player sets them.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
 
     private final BooleanMapValue types = group("noDelayTypes", SETTING_TYPES, defaultTypes());
     private final BooleanValue useDelay =
@@ -123,6 +124,15 @@ public final class NoDelay extends Module {
         defaults.put(TYPE_FAST_INTERACT, true);
         defaults.put(TYPE_SHIELD_COOLDOWN, true);
         return defaults;
+    }
+
+    {
+        AntiCheatPresetDefaults.bind(anticheat).setVanilla(fastBreakProgress, 0.7f);
+        anticheat.onSelect(preset -> {
+            boolean enabled = preset != AntiCheatPreset.GRIM;
+            types.set(TYPE_BREAK_COOLDOWN, enabled);
+            types.set(TYPE_FAST_BREAK, enabled);
+        });
     }
 
     @Override
@@ -288,24 +298,11 @@ public final class NoDelay extends Module {
     }
 
     private boolean effType(String type) {
-        if (anticheat.get() == AntiCheatPreset.GRIM) {
-            if (TYPE_BREAK_COOLDOWN.equals(type) || TYPE_FAST_BREAK.equals(type)) {
-                return false;
-            }
-        } else if (anticheat.get() == AntiCheatPreset.VANILLA) {
-            if (TYPE_BREAK_COOLDOWN.equals(type) || TYPE_FAST_BREAK.equals(type)) {
-                return true;
-            }
-        }
         return types.get(type);
     }
 
     private float effFastBreakProgress() {
-        return anticheat.get().pick(
-                fastBreakProgress.get(),
-                1.0f,
-                0.7f
-        );
+        return fastBreakProgress.get();
     }
 
     private Direction resolveBreakingDirection(BlockPos breakingPos) {

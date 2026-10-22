@@ -78,7 +78,7 @@ public class Timer extends Module {
     // ticks, and the energy modes that hold pongs back trip TransactionOrder (skipped transactions). The client
     // cannot see how much of the balance is left, so the preset never runs faster than 1x and never holds pings
     // back. Slowing down is left alone (0.5x and 0.8x for 240 ticks drew no flag).
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode =
             enumMode("mode", Mode.NORMAL, Mode.values());
     private final BooleanValue old =

@@ -25,6 +25,7 @@ import combatant.client.features.module.Modules;
 import combatant.client.util.combat.VulcanReachController;
 
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,9 +36,9 @@ import java.util.Optional;
         description = "module.reach.description")
 public class Reach extends Module {
 
-    // custom = the settings below as set; grim = distance and wallDistance capped at 3.0 (GrimAC Reach);
-    // vanilla = 6.0 reach for both distance and wallDistance, for servers with no anticheat.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    // grim preset: distance and wallDistance at most 3.0 (GrimAC Reach); vanilla preset: 6.0 for both.
+    // Picked once, then every setting stays as the player sets it.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     public final EnumValue<KillAura.RaycastMode> raycast =
             enumCommon(
                     "reachContext",
@@ -76,6 +77,12 @@ public class Reach extends Module {
                     6.0
             ), () -> raycast.get() == KillAura.RaycastMode.THROUGH_WALLS);
 
+    {
+        AntiCheatPresetDefaults.bind(anticheat)
+                .cap(distance, AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE)
+                .cap(wallDistance, AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
+    }
+
     private static double boxDistanceSq(AABB box, Vec3 p) {
         double dx = 0.0;
         if (p.x < box.minX) dx = box.minX - p.x;
@@ -96,9 +103,9 @@ public class Reach extends Module {
         if (!isEnabled()) return null;
         if (player == null || mc.level == null) return null;
 
-        double visibleRange = effectiveDistance();
+        double visibleRange = distance.get();
         double throughWallsRange = raycast.get() == KillAura.RaycastMode.THROUGH_WALLS
-                ? effectiveWallDistance()
+                ? wallDistance.get()
                 : 0.0;
         double searchRange = Math.max(visibleRange, throughWallsRange);
 
@@ -123,9 +130,9 @@ public class Reach extends Module {
         if (!isEnabled()) return null;
         if (player == null || mc.level == null) return null;
 
-        double visibleRange = effectiveDistance();
+        double visibleRange = distance.get();
         double throughWallsRange = raycast.get() == KillAura.RaycastMode.THROUGH_WALLS
-                ? effectiveWallDistance()
+                ? wallDistance.get()
                 : 0.0;
         double searchRange = Math.max(visibleRange, throughWallsRange);
 
@@ -203,15 +210,7 @@ public class Reach extends Module {
     }
 
     public double getConfiguredDistance() {
-        return effectiveDistance();
-    }
-
-    private double effectiveDistance() {
-        return anticheat.get().limit(distance.get(), AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
-    }
-
-    private double effectiveWallDistance() {
-        return anticheat.get().limit(wallDistance.get(), AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
+        return distance.get();
     }
 
     private double resolveBlockLimitSq(LocalPlayer player,

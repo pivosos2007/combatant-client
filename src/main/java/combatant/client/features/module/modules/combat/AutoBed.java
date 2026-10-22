@@ -26,6 +26,7 @@ import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.text.WorldTextRenderer;
 import combatant.client.render.engine.world.WorldUiPresentationService;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.aiming.RestrictedSingleUseAction;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
@@ -80,9 +81,9 @@ public class AutoBed extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    // custom = the settings below as set; grim = place range at most 4.5, visible-only, no instant explode,
-    // single interaction per tick and rotations tracing to clicked block; vanilla = 5.5 range with instant explode, for servers with no anticheat.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    // grim preset: place range <= 4.5, visible-only, no instant explode and rotations; vanilla preset: 5.5 range with instant explode.
+    // Picked once, then every setting stays as the player sets it. GRIM additionally allows one interaction per tick.
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final BooleanValue placeEnabled = boolCommon("autobedPlace", "place", CommonSettingSchemas.PLACE, true);
     private final BooleanValue explodeEnabled = boolCommon("autobedExplode", "explode", CommonSettingSchemas.EXPLODE, true);
     private final BooleanValue instantExplode = bool("autobedInstantExplode", "instant_explode", true);
@@ -199,6 +200,15 @@ public class AutoBed extends Module {
             CombatRotationModeUtil.MODE_ROTATIONS,
             CombatRotationModeUtil.MODE_NO_ROTATIONS
     );
+
+    {
+        AntiCheatPresetDefaults.bind(anticheat)
+                .cap(placeRange, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
+                .set(instantExplode, false, true)
+                .setGrim(attackMode, CombatRotationModeUtil.MODE_ROTATIONS);
+    }
+
     private final EnumValue<MovementCorrection> movementCorrection = visibleWhen(enumCommon(
             "autobedMovementCorrection",
             "movement_correction",
@@ -390,7 +400,7 @@ public class AutoBed extends Module {
                 plannerContext,
                 target,
                 resolvePredictedPosition(target, predictTicks.get()),
-                Mth.ceil(effPlaceRange())
+                Mth.ceil(placeRange.get())
         );
         bestPlace = result.bestPlace();
         bestExplode = result.bestExplode();
@@ -488,7 +498,7 @@ public class AutoBed extends Module {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             BlockHitResult hit = refreshed.placeHitResult();
             if (hit != null) {
-                if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return;
+                if (!serverRotationHits(new AABB(hit.getBlockPos()), placeRange.get())) return;
                 if (!isFaceFacingEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection())) return;
             }
         }
@@ -523,7 +533,7 @@ public class AutoBed extends Module {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             BlockHitResult hit = refreshed.explodeHitResult();
             if (hit != null) {
-                if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return;
+                if (!serverRotationHits(new AABB(hit.getBlockPos()), placeRange.get())) return;
                 if (!isFaceFacingEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection())) return;
             }
         }
@@ -602,7 +612,7 @@ public class AutoBed extends Module {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             BlockHitResult hit = data.explodeHitResult();
             if (hit != null) {
-                if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return;
+                if (!serverRotationHits(new AABB(hit.getBlockPos()), placeRange.get())) return;
                 if (!isFaceFacingEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection())) return;
             }
         }
@@ -825,7 +835,7 @@ public class AutoBed extends Module {
     }
 
     private boolean hasPendingExplodeDelayElapsed() {
-        return (pendingBedPlaceSent && effInstantExplode()) || hasExplodeDelayElapsed();
+        return (pendingBedPlaceSent && instantExplode.get()) || hasExplodeDelayElapsed();
     }
 
     private long getPlaceDelayRemainingMs() {
@@ -837,7 +847,7 @@ public class AutoBed extends Module {
     }
 
     private long getPendingExplodeDelayRemainingMs() {
-        if (pendingBedPlaceSent && effInstantExplode()) return 0L;
+        if (pendingBedPlaceSent && instantExplode.get()) return 0L;
         return getExplodeDelayRemainingMs();
     }
 
@@ -1091,8 +1101,8 @@ public class AutoBed extends Module {
                 footPos,
                 headPos,
                 placementMode.get(),
-                effPlaceRange(),
-                effWallRange()
+                placeRange.get(),
+                wallRange.get()
         );
     }
 
@@ -1102,29 +1112,13 @@ public class AutoBed extends Module {
                 mc.player,
                 pos,
                 placementMode.get(),
-                effPlaceRange(),
-                effWallRange()
+                placeRange.get(),
+                wallRange.get()
         );
     }
 
-    private float effPlaceRange() {
-        return anticheat.get().limit(placeRange.get(), (float) AntiCheatPreset.GRIM_BLOCK_RANGE, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private float effWallRange() {
-        return anticheat.get().limit(wallRange.get(), 0.0f, (float) AntiCheatPreset.VANILLA_BLOCK_RANGE);
-    }
-
-    private boolean effInstantExplode() {
-        return anticheat.get().pick(instantExplode.get(), false, true);
-    }
-
-    private boolean effUsesRotations() {
-        return anticheat.get().pick(CombatRotationModeUtil.usesRotations(attackMode), true, CombatRotationModeUtil.usesRotations(attackMode));
-    }
-
     private boolean usesRotationSettings() {
-        return effUsesRotations();
+        return CombatRotationModeUtil.usesRotations(attackMode);
     }
 
     private boolean serverRotationHits(AABB box, double range) {
@@ -1268,7 +1262,7 @@ public class AutoBed extends Module {
 
         @Override
         public float placeRange() {
-            return effPlaceRange();
+            return placeRange.get();
         }
     }
 

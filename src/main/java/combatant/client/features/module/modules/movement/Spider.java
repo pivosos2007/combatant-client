@@ -21,6 +21,7 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.modules.movement.rules.MovementRules;
 import combatant.client.util.anticheat.AntiCheatPreset;
+import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.player.MovementUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -44,10 +45,15 @@ public final class Spider extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.CUSTOM);
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode = enumMode("mode", Mode.VANILLA);
+
+    {
+        AntiCheatPresetDefaults.bind(anticheat).setGrim(mode, Mode.JUMP);
+    }
+
     private final NumberValue<Double> climbSpeed = visibleWhen(
-            num("climb_speed", 0.2D, 0.05D, 0.6D), () -> effectiveMode() == Mode.VANILLA);
+            num("climb_speed", 0.2D, 0.05D, 0.6D), () -> mode.get() == Mode.VANILLA);
 
     @Override
     public void onDisable() {
@@ -56,7 +62,7 @@ public final class Spider extends Module {
 
     @Override
     public void onTick() {
-        boolean wantTask = effectiveMode() == Mode.JUMP;
+        boolean wantTask = mode.get() == Mode.JUMP;
         boolean hasTask = AutomationRuntime.INSTANCE.hasTasks(this);
         if (wantTask && !hasTask) {
             AutomationRuntime.INSTANCE.submit(AutomationTask.builder(this, "SpiderJump",
@@ -73,7 +79,7 @@ public final class Spider extends Module {
     private void onMove(PlayerMoveEvent event) {
         LocalPlayer player = mc.player;
         if (!isEnabled() || player == null || event.getType() != MoverType.SELF) return;
-        if (effectiveMode() != Mode.VANILLA || !canClimb(player)) return;
+        if (mode.get() != Mode.VANILLA || !canClimb(player)) return;
 
         Vec3 movement = event.getMovement();
         double y = MovementRules.spiderVelocity(player.horizontalCollision, MovementUtil.isMoving(),
@@ -95,10 +101,6 @@ public final class Spider extends Module {
     private boolean canClimb(LocalPlayer player) {
         return !player.isInWater() && !player.isInLava() && !player.onClimbable()
                 && !player.isPassenger() && !player.isFallFlying() && !player.isSpectator();
-    }
-
-    private Mode effectiveMode() {
-        return anticheat.get().pick(mode.get(), Mode.JUMP, mode.get());
     }
 
     public enum Mode {

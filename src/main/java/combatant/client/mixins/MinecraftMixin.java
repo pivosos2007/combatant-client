@@ -24,7 +24,6 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -101,29 +100,6 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         AutoBow autoBow = Modules.get(AutoBow.class);
         if (autoBow != null && autoBow.shouldCancelVanillaDoItemUse()) {
             ci.cancel();
-        }
-    }
-
-    @Inject(
-            method = "handleKeybinds",
-            at = @At("HEAD")
-    )
-    private void spearassist$blockAttackInput(CallbackInfo ci) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-
-        SpearAssist assist = Modules.get(SpearAssist.class);
-        if (assist == null || !assist.isEnabled() || !assist.respectCooldownEnabled()) {
-            return;
-        }
-
-        ItemStack stack = mc.player.getMainHandItem();
-        if (!SpearAssist.isSpear(stack)) return;
-
-        float cooldown = mc.player.getAttackStrengthScale(0.0F);
-        if (cooldown < 0.99F) {
-            // ВАЖНО: гасим сам ввод
-            mc.options.keyAttack.setDown(false);
         }
     }
 

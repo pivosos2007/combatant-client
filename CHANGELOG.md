@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Placement**: `BlockPlacer` now plans with `PlacementPlanner` and places through `PlaceBlockAction`; a position is only dropped once the server acknowledges the prediction sequence and the block is there (`PlacementTracker`, `PlacementAckMixin`). Rejected cells retry with backoff. Surround, SelfTrap, AutoTrap, HoleFill and AutoWeb build their own `PlacementConstraints` from their per-module anticheat settings.
 - **Navigation**: `NavigationProvider` API with the built-in walker (A*/route follower) and an optional Baritone adapter loaded only when Baritone is installed.
 - **Migrated**: HoleSnap (runtime `MoveAction`), AutoTool (hotbar lease instead of raw slot selection), shared `MovementKeys` replaces three WASD helpers.
+- **SpearAssist**: vanilla already refuses a jab below full charge (`Minecraft.startAttack` -> `cannotAttackWithItem(stack, 0)`), so the redundant `respect_cooldown` toggle and its `MinecraftMixin` hook were removed. New: charge HUD (charge-up bar, Dismount/Knockback/Damage windows with remaining time, predicted stab damage), reach band marker (too close / in range / too far, creative-aware) and optional auto re-charge through the vanilla release path. Rules live in the tested `SpearKinetics`.
 
 ### Printer (optional Litematica)
 - New `Printer` module builds the active Litematica placements through the shared runtime (placement, restock, optional navigation, orientation rules, block-model preview). Litematica is an optional dependency and is never loaded when absent.
@@ -25,6 +26,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Config Persistence
 - Hot configs are written atomically (temp file + move) with a `.bak` of the last valid file, corrupt files are quarantined and recovered, writes are coalesced, unknown keys are preserved, and pending writes flush on shutdown and panic.
 - `.cbcfg` profiles record the Combatant version that saved them; older profiles load unchanged.
+
+### Anticheat Presets
+- The `Custom` anticheat preset is removed; only `Grim` and `Vanilla` remain (a saved `custom` loads as `Vanilla`).
+- Presets no longer clamp or override settings at runtime. Picking a preset in the ClickGUI writes its recommended values (ranges, rotation, rates) into the module's settings once, and the player can change any of them afterwards, e.g. a KillAura reach above 3.0 under Grim. Loading a config never rewrites settings.
 
 ### New Modules
 - **Combat**: `StaticHitboxes` (standing-size ray-cast boxes), `HoverTotem` (hover a totem in an inventory to equip it), `ShiftTap` (W-tap / sneak-tap after hits via runtime leases), `AnchorMacro` and `DoubleAnchor` (place, charge and detonate anchors with self-damage safety, built from runtime actions; new `InteractBlockAction` and `Actions.defer`). Anchor self-damage prediction (AnchorMacro and `AutoAnchor` on existing anchors) no longer lets the anchor shield the player from its own blast.
