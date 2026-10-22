@@ -15,6 +15,9 @@ import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.renderer.ui.blend.UiBackdropBlendSpec;
 import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 /**
  * Keeps the selected Combatant font for glyphs it owns and delegates missing
  * Unicode runs to Minecraft's lazy font provider. The vanilla provider creates
@@ -22,6 +25,10 @@ import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
  * custom UI font permanently reserve a full Unicode atlas on the GPU.
  */
 public final class LanguageFallbackTextRenderer implements TextRenderer {
+    // JDK's extended grapheme cluster matcher follows Unicode text boundaries,
+    // including ZWJ emoji, regional-indicator flags and combining marks.
+    private static final Pattern GRAPHEME_CLUSTER = Pattern.compile("\\X");
+
     private final TextRenderer primary;
     private final TextRenderer fallback;
 
@@ -32,6 +39,8 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
     private double alpha = 1.0;
     private TextRenderer activeRenderer;
     private boolean ownsActiveRenderer;
+    private boolean primedPrimary;
+    private TextBackendPreference backendPreference = TextBackendPreference.AUTO;
 
     public LanguageFallbackTextRenderer(TextRenderer primary) {
         this(primary, VanillaTextRenderer.INSTANCE);
@@ -64,13 +73,31 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
 
     @Override
     public void begin(double scale, boolean scaleOnly, boolean big) {
+        begin(scale, scaleOnly, big, TextBackendPreference.AUTO);
+    }
+
+    @Override
+    public void begin(double scale, boolean scaleOnly, boolean big, TextBackendPreference preference) {
         if (building) throw new IllegalStateException("LanguageFallbackTextRenderer.begin() called twice");
         this.scale = scale;
         this.scaleOnly = scaleOnly;
         this.big = big;
+        this.backendPreference = preference != null ? preference : TextBackendPreference.AUTO;
         this.activeRenderer = null;
         this.ownsActiveRenderer = false;
+        this.primedPrimary = false;
         this.building = true;
+        // Resolve bitmap/MSDF coverage before splitting Unicode into font runs.
+        if (primary instanceof CustomTextRenderer && !primary.isBuilding()) {
+            try {
+                primary.setAlpha(alpha);
+                primary.begin(scale, scaleOnly, big, backendPreference);
+                primedPrimary = true;
+            } catch (RuntimeException failure) {
+                building = false;
+                throw failure;
+            }
+        }
     }
 
     @Override
@@ -78,17 +105,31 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
         if (text == null || text.isEmpty() || length <= 0) return 0.0;
         int rawEnd = safeUtf16End(text, length);
         String measured = NameProtect.applyMeasure(text.substring(0, rawEnd));
+        boolean implicitBegin = !building;
+        if (implicitBegin) begin(scale, true, big);
+        try {
+            return measureRuns(measured, shadow);
+        } finally {
+            if (implicitBegin) end();
+        }
+    }
+
+    private double measureRuns(String measured, boolean shadow) {
         int end = measured.length();
         double width = visitRuns(measured, end, (renderer, start, finish) ->
-                withRenderer(renderer, () -> renderer.getWidth(measured.substring(start, finish), false)));
-        return width + (shadow ? 1.0 : 0.0);
+                measureWithRenderer(renderer, () -> renderer.getWidth(measured.substring(start, finish), false)));
+        if (!shadow) return width;
+        // The primary font owns line metrics, including its scaled shadow offset.
+        // A fixed +1 is incorrect for both unscaledLogical and non-default font scales.
+        return width + measureWithRenderer(primary, () ->
+                primary.getWidth(" ", true) - primary.getWidth(" ", false));
     }
 
     @Override
     public double getHeight(boolean shadow) {
         // Preserve the selected family's layout metrics. Fallback glyphs are
         // baseline-aligned during rendering and must not make HUD rows jump.
-        return withRenderer(primary, () -> primary.getHeight(shadow));
+        return measureWithRenderer(primary, () -> primary.getHeight(shadow));
     }
 
     @Override
@@ -320,11 +361,19 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
     @Override
     public void end() {
         if (!building) throw new IllegalStateException("LanguageFallbackTextRenderer.end() called without begin()");
-        closeActiveRenderer();
+        try {
+            closeActiveRenderer();
+        } finally {
+            if (primedPrimary) {
+                primedPrimary = false;
+                if (primary.isBuilding()) primary.end();
+            }
+        }
         building = false;
         scale = 1.0;
         scaleOnly = false;
         big = false;
+        backendPreference = TextBackendPreference.AUTO;
     }
 
     public void destroy() {
@@ -336,22 +385,46 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
     }
 
     private double visitRuns(String text, int end, RunVisitor visitor) {
+        if (end <= 0) return 0.0;
         if (VanillaTextRenderer.containsRightToLeftCodePoint(text.substring(0, end))) {
             return visitor.visit(fallback, 0, end);
         }
 
+        // Simple code-point runs (including Cyrillic, Latin extensions and CJK)
+        // do not require regex segmentation or per-frame Matcher allocations.
+        // Only complex grapheme sequences take the Unicode segmentation path.
+        if (!mayContainMultiCodepointGraphemes(text, end)) {
+            double result = 0.0;
+            int runStart = 0;
+            TextRenderer runRenderer = null;
+            for (int offset = 0; offset < end; ) {
+                int codePoint = text.codePointAt(offset);
+                TextRenderer renderer = primary.hasGlyph(codePoint) ? primary : fallback;
+                if (runRenderer != null && runRenderer != renderer) {
+                    result += visitor.visit(runRenderer, runStart, offset);
+                    runStart = offset;
+                }
+                runRenderer = renderer;
+                offset += Character.charCount(codePoint);
+            }
+            if (runRenderer != null && runStart < end) result += visitor.visit(runRenderer, runStart, end);
+            return result;
+        }
+
+        Matcher matcher = GRAPHEME_CLUSTER.matcher(text);
+        matcher.region(0, end);
         double result = 0.0;
         int runStart = 0;
         TextRenderer runRenderer = null;
-        for (int offset = 0; offset < end; ) {
-            int clusterEnd = nextClusterEnd(text, offset, end);
-            TextRenderer renderer = rendererForCluster(text, offset, clusterEnd);
+        while (matcher.find()) {
+            int clusterStart = matcher.start();
+            int clusterEnd = matcher.end();
+            TextRenderer renderer = rendererForCluster(text, clusterStart, clusterEnd);
             if (runRenderer != null && renderer != runRenderer) {
-                result += visitor.visit(runRenderer, runStart, offset);
-                runStart = offset;
+                result += visitor.visit(runRenderer, runStart, clusterStart);
+                runStart = clusterStart;
             }
             runRenderer = renderer;
-            offset = clusterEnd;
         }
         if (runRenderer != null && runStart < end) {
             result += visitor.visit(runRenderer, runStart, end);
@@ -359,41 +432,54 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
         return result;
     }
 
-    private TextRenderer rendererForCluster(String text, int start, int end) {
-        for (int offset = start; offset < end; ) {
-            int codePoint = text.codePointAt(offset);
-            if (!primary.hasGlyph(codePoint)) return fallback;
-            offset += Character.charCount(codePoint);
+    private static boolean mayContainMultiCodepointGraphemes(String text, int end) {
+        for (int i = 0; i < end; ) {
+            int cp = text.codePointAt(i);
+            int type = Character.getType(cp);
+            if (type == Character.NON_SPACING_MARK || type == Character.COMBINING_SPACING_MARK
+                    || type == Character.ENCLOSING_MARK || cp == 0x200C || cp == 0x200D
+                    || (cp >= 0x1F1E6 && cp <= 0x1F1FF)
+                    || (cp >= 0x1F3FB && cp <= 0x1F3FF)
+                    || (cp >= 0x1100 && cp <= 0x11FF)
+                    || (cp >= 0xFE00 && cp <= 0xFE0F)
+                    || (cp >= 0xE0020 && cp <= 0xE007F)
+                    || (cp >= 0xE0100 && cp <= 0xE01EF)) return true;
+            i += Character.charCount(cp);
         }
-        return primary;
+        return false;
     }
 
-    private static int nextClusterEnd(String text, int start, int limit) {
-        int offset = start + Character.charCount(text.codePointAt(start));
-        boolean afterJoiner = false;
-        while (offset < limit) {
-            int codePoint = text.codePointAt(offset);
-            if (afterJoiner) {
-                offset += Character.charCount(codePoint);
-                afterJoiner = false;
-                continue;
+    private TextRenderer rendererForCluster(String text, int start, int end) {
+        // Extended graphemes are indivisible font runs. The custom renderer now
+        // supports GSUB/GPOS and dynamic glyph-ID rasterization, so combining
+        // marks and contextual forms stay with the selected font when available.
+        // Keep emoji ZWJ sequences with Minecraft's provider: mere glyph coverage
+        // does not imply a valid multi-color emoji composition in a R8 atlas.
+        int first = text.codePointAt(start);
+        if (start + Character.charCount(first) != end) {
+            if (text.substring(start, end).indexOf('\u200d') >= 0) return fallback;
+            for (int i = start; i < end; ) {
+                int cp = text.codePointAt(i);
+                if (!primary.hasGlyph(cp)) return fallback;
+                i += Character.charCount(cp);
             }
-            if (codePoint == 0x200D) {
-                offset += Character.charCount(codePoint);
-                afterJoiner = true;
-                continue;
-            }
-            int type = Character.getType(codePoint);
-            boolean combining = type == Character.NON_SPACING_MARK
-                    || type == Character.COMBINING_SPACING_MARK
-                    || type == Character.ENCLOSING_MARK;
-            boolean variationSelector = codePoint >= 0xFE00 && codePoint <= 0xFE0F
-                    || codePoint >= 0xE0100 && codePoint <= 0xE01EF;
-            boolean emojiModifier = codePoint >= 0x1F3FB && codePoint <= 0x1F3FF;
-            if (!combining && !variationSelector && !emojiModifier) break;
-            offset += Character.charCount(codePoint);
+            if (primary instanceof CustomTextRenderer custom
+                    && custom.canShapeCluster(text.substring(start, end))) return primary;
+            return fallback;
         }
-        return offset;
+        return primary.hasGlyph(first) ? primary : fallback;
+    }
+
+    /** Measurement never changes the active draw run or forces a pending glyph batch to flush. */
+    private double measureWithRenderer(TextRenderer renderer, DoubleSupplier action) {
+        if (renderer.isBuilding()) return action.getAsDouble();
+        renderer.setAlpha(alpha);
+        renderer.begin(scale, true, big, backendPreference);
+        try {
+            return action.getAsDouble();
+        } finally {
+            renderer.end();
+        }
     }
 
     private double withRenderer(TextRenderer renderer, DoubleSupplier action) {
@@ -401,7 +487,7 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
             boolean alreadyBuilding = renderer.isBuilding();
             if (!alreadyBuilding) {
                 renderer.setAlpha(alpha);
-                renderer.begin(scale, scaleOnly, big);
+                renderer.begin(scale, scaleOnly, big, backendPreference);
             }
             try {
                 return action.getAsDouble();
@@ -416,28 +502,46 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
             ownsActiveRenderer = !renderer.isBuilding();
             if (ownsActiveRenderer) {
                 renderer.setAlpha(alpha);
-                renderer.begin(scale, scaleOnly, big);
+                renderer.begin(scale, scaleOnly, big, backendPreference);
             }
         }
         return action.getAsDouble();
     }
 
     private void closeActiveRenderer() {
-        if (activeRenderer != null && ownsActiveRenderer) {
-            activeRenderer.end();
+        if (activeRenderer != null) {
+            if (ownsActiveRenderer) {
+                activeRenderer.end();
+            } else if (activeRenderer == primary && primedPrimary) {
+                // Primary was primed in begin() for coverage detection. It still
+                // owns its draw batch: submit it before a fallback run is drawn,
+                // otherwise Latin glyphs can appear above later Unicode glyphs.
+                primary.end();
+                primedPrimary = false;
+            }
         }
         activeRenderer = null;
         ownsActiveRenderer = false;
     }
 
-    private static int safeUtf16End(String text, int requestedLength) {
+    static int safeUtf16End(String text, int requestedLength) {
         int end = Math.max(0, Math.min(requestedLength, text.length()));
-        if (end > 0 && end < text.length()
-                && Character.isHighSurrogate(text.charAt(end - 1))
-                && Character.isLowSurrogate(text.charAt(end))) {
-            end--;
+        if (end == 0 || end == text.length()) return end;
+        if (Character.isHighSurrogate(text.charAt(end - 1))
+                && Character.isLowSurrogate(text.charAt(end))) end--;
+
+        // A prefix width is also used for caret positioning. Stopping between
+        // a base letter and its combining mark, or in the middle of a ZWJ emoji,
+        // must not create half a grapheme that the renderer would never draw.
+        // Keep simple Latin/Cyrillic prefixes on the allocation-free fast path.
+        if (!mayContainMultiCodepointGraphemes(text, text.length())) return end;
+        Matcher matcher = GRAPHEME_CLUSTER.matcher(text);
+        int boundary = 0;
+        while (matcher.find()) {
+            if (matcher.end() > end) break;
+            boundary = matcher.end();
         }
-        return end;
+        return boundary;
     }
 
     @FunctionalInterface

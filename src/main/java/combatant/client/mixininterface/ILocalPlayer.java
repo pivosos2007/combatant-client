@@ -15,4 +15,9 @@ public interface ILocalPlayer {
     void combatant$setLastYaw(float yaw);
 
     void combatant$setLastPitch(float pitch);
+
+    /** Silent body orientation for third-person rendering only. */
+    boolean combatant$hasSilentVisualBodyYaw();
+
+    float combatant$getSilentVisualBodyYaw(float tickDelta);
 }

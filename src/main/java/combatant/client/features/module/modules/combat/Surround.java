@@ -12,6 +12,8 @@ import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.GameTickEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -183,12 +185,6 @@ public final class Surround extends Module {
 
         updateTargets();
 
-        if (attackCrystals.get()) {
-            // Crystals are entities: under GRIM, attack them only within Grim's entity reach, not the block range.
-            double crystalRange = anticheat.get() == AntiCheatPreset.GRIM
-                    ? Math.min(range.get(), AntiCheatPreset.GRIM_ENTITY_RANGE) : range.get();
-            crystalClearer.clear(mc, player, currentTargets, crystalRange, crystalDelay.get());
-        }
 
         warnIfOutOfBlocks(player);
         if (render.get()) placementPreview.tick(mc.level, currentTargets, previewBlockState(), lineColor.getArgb());
@@ -198,6 +194,18 @@ public final class Surround extends Module {
         if (autoDisable.get() && currentTargets.isEmpty()) {
             setEnabled(false);
         }
+    }
+
+    /**
+     * Breaks crystals standing in a wall cell from the start-of-tick hook. {@code onTick} runs after the movement
+     * packet, so the attack went out behind that tick's flying packet and Grim's Post check flagged it.
+     */
+    @EventHandler
+    private void onGameTick(GameTickEvent event) {
+        if (!isEnabled() || !attackCrystals.get()) return;
+        LocalPlayer player = mc.player;
+        if (player == null || mc.level == null) return;
+        crystalClearer.clear(mc, player, currentTargets, effCrystalRange(), crystalDelay.get());
     }
 
     private void applyCentering(LocalPlayer player) {
@@ -295,6 +303,12 @@ public final class Surround extends Module {
         return new PlacementConstraints(
                 range.get(), wallRange.get(), rotation.get(), movementCorrection.get(),
                 effConstructFailResult(), false, 1, swapBackDelay.get(), swapBackDelay.get(), true, 0);
+    }
+
+    /** Crystals are entities: under GRIM, attack them only within Grim's entity reach, not the block range. */
+    private double effCrystalRange() {
+        return anticheat.get() == AntiCheatPreset.GRIM
+                ? Math.min(range.get(), AntiCheatPreset.GRIM_ENTITY_RANGE) : range.get();
     }
 
     @Override

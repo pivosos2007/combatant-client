@@ -147,14 +147,14 @@ final class XaeroMapWaypointEditor {
                 .withInnerGlow(0.010f * eased, 3.0f, inner);
 
         // One optical surface; no extra drop shadow and no nested glass inputs/previews.
-        renderer.withLiquidGlassMaterial(material, () ->
+        XaeroMapGlass.withMaterial(renderer, material, () ->
                 drawLiquidGlassPrimitive(
                         renderer,
                         panel,
                         panelTint,
                         1.0f * eased,
                         1.0f * eased,
-                        Renderer2D.LiquidGlassPreset.BALANCED));
+                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE));
 
         drawAnchorMarker(renderer, areaX, areaY, areaWidth, areaHeight, eased);
         drawHeader(renderer, palette, eased);

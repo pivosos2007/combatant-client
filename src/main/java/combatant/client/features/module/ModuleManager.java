@@ -117,6 +117,7 @@ public enum ModuleManager {
         cacheWorldPhase(module);
         rebuildSnapshots();
         Events.BUS.register(module);
+        ModuleListInfoResolver.prepare(module);
     }
 
     private static boolean hasModuleMetadata(Class<? extends Module> type) {

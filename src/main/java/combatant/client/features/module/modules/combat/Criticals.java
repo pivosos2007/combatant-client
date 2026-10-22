@@ -646,9 +646,9 @@ public final class Criticals extends Module {
             }
             case DOWN -> sendCriticalPacket(player, -1.0E-9, false);
             case GRIM -> {
-                if (!player.onGround()) {
-                    sendCriticalPacket(player, -1.0E-6, false);
-                }
+                // GrimAC 2.3.74 monitors packet rates per client tick (TickTimer/Timer) and full physics
+                // simulation. Do not inject extra out-of-order movement packets before attacks; airborne crits
+                // are naturally critical while falling.
             }
             case BLOCKSMC -> {
                 if (player.tickCount % 4 == 0) {

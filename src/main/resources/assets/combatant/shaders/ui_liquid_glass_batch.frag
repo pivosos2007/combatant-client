@@ -449,23 +449,34 @@ void main() {
             * tanh(rawStaticSplitPx / max(splitLimitPx, 0.001));
     vec2 chroma = refractAxis * resolvedStaticSplitPx / fbSize;
     float chromaCoverage = spectralAberration > 0.001 ? 1.0 : 0.0;
+    // STATIC chroma always remains on the bevel, including while FLOW is active.
+    // Media playback adds another, independent, animated dispersion pass.
+    float flowActivity = 0.0;
+    float flowPhase = 0.0;
+    vec2 flowChroma = vec2(0.0);
+    float flowCoverage = 0.0;
     if (chromaticMotion == 1) {
         float time = uGlassClock.x;
-        float playbackImpulse = clamp(max(v_Params11.x, v_Params11.y), 0.0, 1.0);
-        float activity = smoothstep(0.02, 0.32, playbackImpulse);
+        // Only the additive traveling component responds to transport activity.
+        flowActivity = smoothstep(0.02, 0.28,
+                clamp(max(v_Params11.x, v_Params11.y), 0.0, 1.0));
         float primaryWave = sin(time * 1.36 + lensUv.x * 8.0 - lensUv.y * 4.5);
         float secondaryWave = sin(time * 0.83 - lensUv.x * 3.5 + lensUv.y * 6.0 + 1.2);
         vec2 direction = safeNormalize(vec2(
                 cos(time * 0.91 + lensUv.y * 5.2 + primaryWave * 0.42),
                 sin(time * 1.07 - lensUv.x * 4.6 + secondaryWave * 0.38)),
                 refractAxis);
-        float waveScale = mix(0.68, 1.32,
-                0.5 + 0.5 * sin(time * 1.08 + lensUv.x * 6.2 + lensUv.y * 3.7));
+        flowPhase = sin(time * 1.08 + lensUv.x * 9.0 - lensUv.y * 5.0
+                + secondaryWave * 0.65);
+        float waveScale = mix(0.68, 1.32, 0.5 + 0.5 * flowPhase);
+        // Bounded in framebuffer pixels: large bevels must not become a giant RGB smear.
+        float flowLimitPx = min(lensSplitLimitPx, 5.5 / minLogicalScale);
         float splitPx = min(
                 bevelWidthFramebufferPx * spectralAberration * waveScale,
-                lensSplitLimitPx) * activity;
-        chroma = direction * splitPx / fbSize;
-        chromaCoverage = mix(0.62, 1.0, edgeFocus) * activity;
+                flowLimitPx);
+        flowChroma = direction * splitPx / fbSize;
+        // Body waves remain visible, but the resting rim does not disappear on play.
+        flowCoverage = mix(0.82, 0.35, edgeFocus) * flowActivity;
     } else if (chromaticMotion == 2) {
         float activity = clamp(max(v_Params11.x, v_Params11.y), 0.0, 1.0);
         float impactLimitPx = min(
@@ -537,6 +548,37 @@ void main() {
                 blendBackdrop, clamp(dispersedColor, 0.0, 1.0), tint,
                 uBlendParams, uBlendTone0, uBlendTone1);
         finalColor = mix(finalColor, dispersedColor, clamp(chromaCoverage, 0.0, 1.0));
+    }
+    if (flowCoverage > 0.001 && dot(flowChroma, flowChroma) > 1e-12) {
+        vec3 flowScene = vec3(
+                sampleLiquidScene(centerUv - flowChroma, logicalSize).r,
+                centerScene.g,
+                sampleLiquidScene(centerUv + flowChroma, logicalSize).b);
+        // Preserve blurred transmission, but restore the missing RGB displacement
+        // contrast from the sharp scene. Keep stacked glass out of this path.
+        vec2 sharpCenterUv = clamp(centerUv, vec2(0.001), vec2(0.999));
+        vec3 sharpCenter = texture(u_Texture, sharpCenterUv).rgb;
+        vec3 sharpSeparated = vec3(
+                texture(u_Texture, clamp(centerUv - flowChroma, vec2(0.001), vec2(0.999))).r,
+                sharpCenter.g,
+                texture(u_Texture, clamp(centerUv + flowChroma, vec2(0.001), vec2(0.999))).b);
+        float sceneOnly = 1.0 - stackRegionMask(sharpCenterUv, logicalSize);
+        flowScene += (sharpSeparated - sharpCenter) * (0.85 * sceneOnly);
+
+        // Chromatic ripple on otherwise flat imagery; no caustic / luminous overlay.
+        float sceneLuma = dot(centerScene, vec3(0.2126, 0.7152, 0.0722));
+        float spectralShift = flowPhase * spectralAberration
+                * (0.035 + 0.055 * sqrt(clamp(sceneLuma, 0.0, 1.0)));
+        flowScene += vec3(spectralShift, 0.0, -spectralShift);
+        vec3 flowColor = mix(flowScene, flowScene * tint, tintStrength)
+                * surfaceTransmission;
+        if (stackedContactShadow > 0.001) {
+            flowColor *= 1.0 - stackedContactShadow;
+        }
+        flowColor = combatantResolveBackdropBlend(
+                blendBackdrop, clamp(flowColor, 0.0, 1.0), tint,
+                uBlendParams, uBlendTone0, uBlendTone1);
+        finalColor = mix(finalColor, flowColor, clamp(flowCoverage, 0.0, 1.0));
     }
     fragColor = vec4(clamp(finalColor, 0.0, 1.0), finalAlpha);
 }

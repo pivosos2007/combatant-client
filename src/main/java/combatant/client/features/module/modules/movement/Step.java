@@ -183,9 +183,9 @@ public final class Step extends Module {
         }
         decayVulcan297Risk();
 
-        if (mode.get() == Mode.VULCAN_286) {
+        if (effMode() == Mode.VULCAN_286) {
             tickVulcan286();
-        } else if (mode.get() == Mode.VULCAN_297) {
+        } else if (effMode() == Mode.VULCAN_297) {
             tickVulcan297();
         }
     }
@@ -196,25 +196,25 @@ public final class Step extends Module {
 
         LocalPlayer player = mc.player;
         boolean manualJump = isManualJump(event, player);
-        if (mode.get() == Mode.LEGIT) {
+        if (effMode() == Mode.LEGIT) {
             if (canStep(player, 1.0) && !manualJump) {
                 event.setJump(true);
             }
             return;
         }
 
-        if ((mode.get() != Mode.VULCAN_286 && mode.get() != Mode.VULCAN_297) || vulcanStepping) return;
-        if (mode.get() == Mode.VULCAN_297 && manualJump) return;
-        if (mode.get() == Mode.VULCAN_297 && isVulcan297PredictionRiskHigh()) return;
+        if ((effMode() != Mode.VULCAN_286 && effMode() != Mode.VULCAN_297) || vulcanStepping) return;
+        if (effMode() == Mode.VULCAN_297 && manualJump) return;
+        if (effMode() == Mode.VULCAN_297 && isVulcan297PredictionRiskHigh()) return;
         if (!canStep(player, 1.0)) return;
 
         event.setJump(true);
-        if (mode.get() == Mode.VULCAN_297) {
+        if (effMode() == Mode.VULCAN_297) {
             vulcan297JumpARisk += VULCAN_297_STEP_JUMP_COST;
             vulcan297FlightFRisk += VULCAN_297_STEP_JUMP_COST * 0.5;
         }
         vulcanStepCounter++;
-        vulcan297Aggressive = mode.get() == Mode.VULCAN_297 && isVulcan297FlightExempt(player);
+        vulcan297Aggressive = effMode() == Mode.VULCAN_297 && isVulcan297FlightExempt(player);
         vulcanEvenStep = vulcanStepCounter % 2 == 0;
         vulcanSequenceTicks = 0;
         vulcanStepping = true;
@@ -222,26 +222,26 @@ public final class Step extends Module {
 
     @EventHandler
     private void onPlayerStep(PlayerStepEvent event) {
-        if (!isEnabled() || mode.get() != Mode.INSTANT || ticksWait > 0) return;
+        if (!isEnabled() || effMode() != Mode.INSTANT || ticksWait > 0) return;
         LocalPlayer player = mc.player;
         if (player == null) return;
         if (!player.onGround()) return;
         if (player.isInWater() || player.isInLava() || player.isPassenger() || player.isFallFlying() || player.onClimbable()) return;
         if (!sneak.get() && player.isShiftKeyDown()) return;
 
-        event.setHeight(height.get());
+        event.setHeight(effHeight());
     }
 
     @EventHandler
     private void onPlayerStepSuccess(PlayerStepSuccessEvent event) {
-        if (!isEnabled() || mode.get() != Mode.INSTANT) return;
+        if (!isEnabled() || effMode() != Mode.INSTANT) return;
         if (ticksWait > 0 || mc.player == null || mc.getConnection() == null) return;
 
         LocalPlayer player = mc.player;
         double stepHeight = event.getAdjustedVec().y;
         if (stepHeight <= 0.5) return;
 
-        if (packetMode.get() != PacketMode.NONE) {
+        if (effPacketMode() != PacketMode.NONE) {
             double[] offsets = getOffsets(stepHeight);
             if (offsets.length > 0) {
                 player.awardStat(Stats.JUMP);
@@ -270,7 +270,7 @@ public final class Step extends Module {
             }
         }
 
-        if (useTimer.get()) {
+        if (effUseTimer()) {
             TimerController.requestTimerSpeed(timerSpeed.get(), TimerController.NORMAL, this, timerTicks.get());
         }
 
@@ -565,6 +565,22 @@ public final class Step extends Module {
         vulcanSequenceTicks = 0;
         vulcanEvenStep = false;
         vulcan297Aggressive = false;
+    }
+
+    private Mode effMode() {
+        return mode.get();
+    }
+
+    private float effHeight() {
+        return height.get();
+    }
+
+    private PacketMode effPacketMode() {
+        return packetMode.get();
+    }
+
+    private boolean effUseTimer() {
+        return useTimer.get();
     }
 
     public enum Mode {

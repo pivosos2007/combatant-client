@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.combat;
 
+import combatant.client.config.values.EnumValue;
 import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
@@ -88,6 +89,7 @@ public class AutoCrystal extends Module {
     private static final double TEXT_GAP_SCALE = 1.0;
     private static final double TARGET_SEARCH_RANGE = 12.0;
 
+    private final BooleanValue strictInteractions = boolCommon("strict_interactions", CommonSettingSchemas.STRICT_INTERACTIONS, false);
     private final Minecraft mc = Minecraft.getInstance();
 
     private final BooleanValue renderEnabled =
@@ -109,7 +111,7 @@ public class AutoCrystal extends Module {
     private final BooleanValue drawDamage = boolCommon("autocrystalRenderDamage", CommonSettingSchemas.RENDER_DAMAGE, true);
     // grim preset: place range 4.5 and hit range 3.0, the limits GrimAC enforces (FarPlace, Reach);
     // vanilla preset: 6.0 hit range, 5.5 place range, instant place/break. Picked once, then every setting stays as the player sets it.
-    private final EnumValue<AntiCheatPreset> anticheat = enumCommon("anticheat_mode", CommonSettingSchemas.ANTICHEAT_MODE, AntiCheatPreset.VANILLA);
+    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final BooleanValue placeEnabled = boolCommon("autocrystalPlace", CommonSettingSchemas.PLACE, true);
     private final NumberValue<Integer> placeDelay =
             visibleWhen(numCommon(
@@ -357,6 +359,31 @@ public class AutoCrystal extends Module {
         // }
     }
 
+    private float effPlaceRange() {
+        return placeRange.get();
+    }
+
+    private float effWallRange() {
+        return wallRange.get();
+    }
+
+    private float effBreakRange() {
+        return breakRange.get();
+    }
+
+    private float effBreakWallRange() {
+        return breakWallRange.get();
+    }
+
+    // Instant packet callbacks run between ticks. The user explicitly controls whether
+    // they are enabled; strict interaction checks separately validate sent rotations.
+    private boolean effInstantBreak() {
+        return instantBreak.get();
+    }
+
+    private boolean effInstantPlace() {
+        return instantPlace.get();
+    }
     @Override
     public WorldPhase getWorldPhase() {
         return WorldPhase.AFTER_POST_PROCESS;
@@ -1017,6 +1044,10 @@ public class AutoCrystal extends Module {
             return;
         }
 
+        if (!serverRotationClicks(refreshed.hitResult())) {
+            return;
+        }
+
         if (hand.hotbarSlot() >= 0) {
             InventorySwap.INSTANCE.leaseHotbar(this, hand.hotbarSlot(), BASE_HOTBAR_RESET_TICKS);
         }
@@ -1063,6 +1094,11 @@ public class AutoCrystal extends Module {
         BlockHitResult hitResult = placeData.bhr();
         debugLog("place-attempt pos=%s hand=%s slot=%d hit=%s side=%s",
                 pos, hand.hand(), hand.hotbarSlot(), hitResult.getBlockPos(), hitResult.getDirection());
+
+        if (!serverRotationClicks(hitResult)) {
+            debugLog("place-skip reason=rotation-not-sent pos=%s", pos);
+            return;
+        }
 
         if (hand.hotbarSlot() >= 0) {
             InventorySwap.INSTANCE.leaseHotbar(this, hand.hotbarSlot(), HOTBAR_RESET_TICKS);
@@ -1115,6 +1151,18 @@ public class AutoCrystal extends Module {
         if (usesRotationSettings() && !serverRotationHits(new AABB(candidate.pos()), placeRange.get())) return;
         // tryPlaceCrystal re-validates the spot and damage against the world as it is now.
         tryPlaceCrystal(candidate.pos());
+    }
+
+    // GrimAC's RotationPlace raytraces the placement from the rotation the server saw before it. A placement made in
+    // the tick its rotation changes leaves ahead of the flying packet that carries it, so with strict interactions enabled it
+    // waits a tick; the rotation target is rebuilt every tick and the next one places against the sent rotation.
+    private boolean serverRotationClicks(BlockHitResult hit) {
+        if (!usesRotationSettings() || !strictInteractions.get()) return true;
+        Rotation server = RotationManager.INSTANCE.getServerRotation();
+        if (server == null || hit == null || mc.player == null) return false;
+        return AutoCrystalInteractionUtil.rayEntersFace(
+                mc.player.getEyePosition(), server.directionVector(), hit.getBlockPos(), hit.getDirection(),
+                effPlaceRange() + 1.0);
     }
 
     private boolean serverRotationHits(AABB box, double range) {

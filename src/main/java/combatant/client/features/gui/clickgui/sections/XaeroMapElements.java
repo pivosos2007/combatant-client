@@ -527,12 +527,12 @@ final class XaeroMapElements {
                     4.8f + 1.2f * highlight,
                     withAlpha(element.color(), alpha * (0.72f + 0.23f * highlight))
             );
-            renderer.withLiquidGlassMaterial(material, () -> renderer.liquidGlassRect(
+            XaeroMapGlass.withMaterial(renderer, material, () -> renderer.liquidGlassRect(
                     x, y, badgeWidth, badgeHeight, radius,
                     withAlpha(element.color(), 0.10f + 0.08f * highlight),
                     glassAlpha,
                     blurAlpha,
-                    Renderer2D.LiquidGlassPreset.BALANCED,
+                    Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE,
                     0.72f,
                     0.0f
             ));
@@ -771,12 +771,12 @@ final class XaeroMapElements {
                     hover ? 5.0f : 4.0f,
                     withAlpha(accent, hover ? 0.82f : 0.48f)
             );
-            Renderer2D.COLOR.withLiquidGlassMaterial(material, () -> Renderer2D.COLOR.liquidGlassRect(
+            XaeroMapGlass.withMaterial(Renderer2D.COLOR, material, () -> Renderer2D.COLOR.liquidGlassRect(
                     boxX, boxY, boxWidth, boxHeight, radius,
                     withAlpha(accent, hover ? 0.56f : 0.055f),
                     glassAlpha,
                     blurAlpha,
-                    Renderer2D.LiquidGlassPreset.BALANCED,
+                    Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE,
                     hover ? 0.78f : 0.68f,
                     0.0f
             ));

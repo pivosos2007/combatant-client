@@ -86,7 +86,12 @@ public class VanillaTextRenderer implements TextRenderer {
     @Override
     public double getWidth(String text, int length, boolean shadow) {
         if (text.isEmpty()) return 0;
-        if (length != text.length()) text = text.substring(0, length);
+        int end = Math.max(0, Math.min(length, text.length()));
+        if (end > 0 && end < text.length()
+                && Character.isHighSurrogate(text.charAt(end - 1))
+                && Character.isLowSurrogate(text.charAt(end))) end--;
+        if (end == 0) return 0.0;
+        if (end != text.length()) text = text.substring(0, end);
         return (getInstance().font.width(unicodeSequence(text)) + (shadow ? 1 : 0)) * scale;
     }
 
@@ -114,6 +119,7 @@ public class VanillaTextRenderer implements TextRenderer {
         if (!wasBuilding) begin();
         ensureDrawingStarted();
 
+        double startX = x;
         x += 0.5 * scale;
         y += 0.5 * scale;
 
@@ -137,12 +143,12 @@ public class VanillaTextRenderer implements TextRenderer {
                 0
         );
         matrices.popPose();
-        double x2 = (x / scale) + getInstance().font.width(sequence);
+        double endX = startX + getInstance().font.width(sequence) * scale;
 
         color.a = preA;
 
         if (!wasBuilding) end();
-        return (x2 - 1) * scale;
+        return endX;
     }
 
     @Override
@@ -162,7 +168,8 @@ public class VanillaTextRenderer implements TextRenderer {
                 gradient.colors(glyphIndex, cp, cursorX, colors);
                 applyArgb(color, colors[0]);
                 render(glyph, cursorX, y, color, shadow);
-                cursorX += getWidth(glyph, shadow);
+                // Shadows extend the painted bounds, not the next glyph's advance.
+                cursorX += getWidth(glyph, false);
                 i += Character.charCount(cp);
                 glyphIndex++;
             }

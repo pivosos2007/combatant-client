@@ -1,4 +1,12 @@
 {
+  "setting.common.strict_interactions": "Strict interactions",
+  "setting.common.strict_geometry": "Strict geometry",
+  "setting.common.module_list_info_color_mode": "Info color mode",
+  "setting.common.module_list_info_color_mode.option.auto": "Automatic",
+  "setting.common.module_list_info_color_mode.option.custom": "Custom",
+  "setting.common.module_list_info_primary": "Info primary color",
+  "setting.common.module_list_info_secondary": "Info secondary color",
+  "setting.common.mode.option.bhop": "BHop",
   "combatant.inventory.locked_by": "Slot locked by %s",
   "setting.offhand.fallback_shield_priority": "Shield fallback priority",
   "setting.offhand.fallback_crystal_priority": "Crystal fallback priority",

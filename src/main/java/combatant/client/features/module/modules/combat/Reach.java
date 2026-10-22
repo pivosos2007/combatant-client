@@ -53,7 +53,7 @@ public class Reach extends Module {
             enumCommon(
                     "reachMode",
                     "mode",
-                    CommonSettingSchemas.ANTICHEAT_MODE,
+                    CommonSettingSchemas.MODE,
                     Mode.NORMAL,
                     Mode.values()
             );
@@ -103,9 +103,9 @@ public class Reach extends Module {
         if (!isEnabled()) return null;
         if (player == null || mc.level == null) return null;
 
-        double visibleRange = distance.get();
+        double visibleRange = effectiveDistance();
         double throughWallsRange = raycast.get() == KillAura.RaycastMode.THROUGH_WALLS
-                ? wallDistance.get()
+                ? effectiveWallDistance()
                 : 0.0;
         double searchRange = Math.max(visibleRange, throughWallsRange);
 
@@ -130,9 +130,9 @@ public class Reach extends Module {
         if (!isEnabled()) return null;
         if (player == null || mc.level == null) return null;
 
-        double visibleRange = distance.get();
+        double visibleRange = effectiveDistance();
         double throughWallsRange = raycast.get() == KillAura.RaycastMode.THROUGH_WALLS
-                ? wallDistance.get()
+                ? effectiveWallDistance()
                 : 0.0;
         double searchRange = Math.max(visibleRange, throughWallsRange);
 
@@ -210,7 +210,15 @@ public class Reach extends Module {
     }
 
     public double getConfiguredDistance() {
+        return effectiveDistance();
+    }
+
+    private double effectiveDistance() {
         return distance.get();
+    }
+
+    private double effectiveWallDistance() {
+        return wallDistance.get();
     }
 
     private double resolveBlockLimitSq(LocalPlayer player,

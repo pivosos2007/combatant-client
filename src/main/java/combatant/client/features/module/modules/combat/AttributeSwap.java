@@ -30,6 +30,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.MaceItem;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
@@ -59,6 +60,7 @@ import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.movement.NoFall;
 import combatant.client.features.module.modules.player.Offhand;
 import combatant.client.mixins.accessors.PlayerInventoryAccessor;
+import combatant.client.util.click.AttackPressing;
 import combatant.client.util.combat.AttackUtil;
 import combatant.client.util.combat.protocol.CombatProtocolHeuristics;
 import combatant.client.util.logging.DebugLog;
@@ -1011,6 +1013,11 @@ public class AttributeSwap extends Module {
         if (player.isUsingItem()) return false;
         if (maceSlot < 0 || maceSlot >= 9) return false;
         if (isBlockingShieldTarget(target)) return false;
+        // Fast swap attacks are only meaningful in the descending smash window.
+        // Do not turn an available mace into a global cooldown bypass.
+        if (!MaceItem.canSmashAttack(player) || player.getDeltaMovement().y >= 0.0) return false;
+        if (player.getAttackStrengthScale(AttackPressing.ATTACK_LOOKAHEAD_TICKS) < 0.9f
+                || target.hurtTime > AttackPressing.ATTACK_LOOKAHEAD_TICKS) return false;
         if (System.currentTimeMillis() - lastFastAuraMaceAttackMs < nextFastAuraMaceDelayMs) return false;
         return !player.getMainHandItem().is(Items.MACE)
                 || ((PlayerInventoryAccessor) player.getInventory()).combatant$getSelectedSlot() != maceSlot;
@@ -1019,7 +1026,8 @@ public class AttributeSwap extends Module {
     private boolean canAttackNow(LocalPlayer player) {
         if (player == null) return false;
         if (player.isUsingItem()) return false;
-        return player.getAttackStrengthScale(0.5f) >= 1.0f;
+        return AttackPressing.INSTANCE.isCooldownComplete(
+                player, false, AttackPressing.ATTACK_LOOKAHEAD_TICKS);
     }
 
     private boolean canUseBestDamageWeaponNow(LocalPlayer player) {

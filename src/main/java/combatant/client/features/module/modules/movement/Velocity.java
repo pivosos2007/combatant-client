@@ -105,7 +105,7 @@ public final class Velocity extends Module {
     private static final String VULCAN_EXEMPT_NETHERITE_ARMOR = "netherite_armor";
     private final Minecraft mc = Minecraft.getInstance();
     private final EnumValue<Mode> mode =
-            enumCommon("velocityMode", "velocity_mode", CommonSettingSchemas.ANTICHEAT_MODE, Mode.MODIFY, Mode.values());
+            enumCommon("velocityMode", "velocity_mode", CommonSettingSchemas.VELOCITY_MODE, Mode.MODIFY, Mode.values());
     private final NumberValue<Integer> delay = visibleWhen(num("velocityDelay", "delay", 0, 0, 40), this::supportsIncomingVelocity);
     private final NumberValue<Integer> pauseOnFlag = num("velocityPauseOnFlag", "pause_on_flag", 0, 0, 20);
     private final NumberValue<Float> modifyHorizontal = visibleWhen(num("velocityModifyHorizontal", "modify_horizontal", 0.0f, -1.0f, 1.0f), () -> mode.get() == Mode.MODIFY);

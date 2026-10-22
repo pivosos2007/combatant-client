@@ -160,8 +160,8 @@ public final class HoleFill extends Module {
         }
 
         BlockPos origin = player.blockPosition();
-        int radius = (int) Math.ceil(range.get());
-        double placementRangeSq = range.get() * range.get();
+        int radius = (int) Math.ceil(effPlaceRange());
+        double placementRangeSq = effPlaceRange() * effPlaceRange();
         double enemyRangeSq = enemyRange.get() * enemyRange.get();
         List<HoleCandidate> candidates = new ArrayList<>();
 
@@ -195,7 +195,7 @@ public final class HoleFill extends Module {
     }
 
     private List<Player> findOpponents() {
-        double searchRange = enemyRange.get() + range.get();
+        double searchRange = enemyRange.get() + effPlaceRange();
         List<LivingEntity> targets = TargetingUtil.findTargets(mc, new TargetingUtil.TargetingSettings(
                 searchRange,
                 180.0F,
@@ -241,6 +241,10 @@ public final class HoleFill extends Module {
         return new PlacementConstraints(
                 range.get(), wallRange.get(), rotation.get(), MovementCorrection.SILENT,
                 effConstructFailResult(), false, 1, 0, 0, true, 0);
+    }
+
+    private double effPlaceRange() {
+        return range.get();
     }
 
     private boolean isTargetItem(ItemStack stack) {

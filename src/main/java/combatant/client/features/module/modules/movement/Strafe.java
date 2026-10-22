@@ -240,12 +240,16 @@ public final class Strafe extends Module {
         return yaw + delta;
     }
 
+    private Mode effectiveMode() {
+        return mode.get();
+    }
+
     private boolean isMatrixMode() {
-        return mode.get() == Mode.MATRIX;
+        return effectiveMode() == Mode.MATRIX;
     }
 
     private boolean isGrimMode() {
-        return mode.get() == Mode.GRIM;
+        return effectiveMode() == Mode.GRIM;
     }
 
     private boolean canOperate(LocalPlayer player) {

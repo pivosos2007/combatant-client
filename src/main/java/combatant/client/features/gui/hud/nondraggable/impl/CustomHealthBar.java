@@ -225,18 +225,13 @@ private static final float HEALTH_BAR_WIDTH = 81f;
         float roundFb = radius * scale;
 
         float glassScale = HEALTH_BAR_RADIUS <= 0.0f ? 1.0f : roundFb / HEALTH_BAR_RADIUS;
-        Renderer2D.COLOR.liquidGlassRect(
-                xFb,
-                yFb,
-                wFb,
-                hFb,
-                roundFb,
-                0xFFFFFFFF,
-                bm.getHudHealthAlphaFactor(),
-                Renderer2D.LiquidGlassPreset.HEALTH_BAR,
-                glassScale,
-                0.0f
-        );
+        Renderer2D.COLOR.withLiquidGlassBlurProfile(
+                Renderer2D.BlurQuality.LIQUID_GLASS,
+                combatant.client.features.gui.hud.HudRenderUtil.HUD_GLASS_KAWASE_OFFSET_PX,
+                () -> Renderer2D.COLOR.liquidGlassRect(
+                        xFb, yFb, wFb, hFb, roundFb, 0xFFFFFFFF,
+                        bm.getHudHealthAlphaFactor(),
+                        Renderer2D.LiquidGlassPreset.HEALTH_BAR, glassScale, 0.0f));
         bm.renderScriptedBar(r2d, xFb, yFb, wFb, hFb, roundFb, baseRatio, absorbRatio);
     }
 

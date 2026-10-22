@@ -1,7 +1,7 @@
 package combatant.client.features.module.modules.movement;
 
 import combatant.client.config.values.EnumValue;
-import net.minecraft.world.phys.Vec2;
+
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -10,51 +10,54 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class NoSlowGrimTickTest {
 
-    @Test
+    private static final float VANILLA_USE_SLOWDOWN = 0.2f;
+
     @SuppressWarnings("unchecked")
-    void grimTickAlternatesEquallyOnAllAxes() throws Exception {
+    private static NoSlow noSlow(NoSlow.Mode mode) throws Exception {
         NoSlow noSlow = new NoSlow();
         Field modeField = NoSlow.class.getDeclaredField("mode");
         modeField.setAccessible(true);
-        ((EnumValue<NoSlow.Mode>) modeField.get(noSlow)).set(NoSlow.Mode.GRIM_TICK);
+        ((EnumValue<NoSlow.Mode>) modeField.get(noSlow)).set(mode);
+        return noSlow;
+    }
 
-        Field ticksField = NoSlow.class.getDeclaredField("grimTicks");
-        ticksField.setAccessible(true);
+    private static Field grimTicks() throws Exception {
+        Field ticks = NoSlow.class.getDeclaredField("grimTicks");
+        ticks.setAccessible(true);
+        return ticks;
+    }
 
-        Vec2 forward = new Vec2(0.0f, 1.0f);   // W
-        Vec2 backward = new Vec2(0.0f, -1.0f); // S
-        Vec2 left = new Vec2(1.0f, 0.0f);      // A
-        Vec2 right = new Vec2(-1.0f, 0.0f);    // D
-        Vec2 diagonal = new Vec2(0.707f, 0.707f); // W + A
+    @Test
+    void grimTickKeepsTheSlowdownOnOneTickAndLiftsItOnTheNext() throws Exception {
+        NoSlow noSlow = noSlow(NoSlow.Mode.GRIM_TICK);
+        Field ticks = grimTicks();
 
-        // Tick 1: slowed tick (grimTicks = 1, < 2) -> scales by 0.2f
-        ticksField.setInt(noSlow, 1);
-        assertEquals(0.2f, noSlow.getModifiedInput(forward, null).y, 1e-4f);
-        assertEquals(-0.2f, noSlow.getModifiedInput(backward, null).y, 1e-4f);
-        assertEquals(0.2f, noSlow.getModifiedInput(left, null).x, 1e-4f);
-        assertEquals(-0.2f, noSlow.getModifiedInput(right, null).x, 1e-4f);
-        assertEquals(0.707f * 0.2f, noSlow.getModifiedInput(diagonal, null).x, 1e-4f);
-        assertEquals(0.707f * 0.2f, noSlow.getModifiedInput(diagonal, null).y, 1e-4f);
+        ticks.setInt(noSlow, 1);
+        assertEquals(VANILLA_USE_SLOWDOWN, noSlow.getItemUseSpeedMultiplier(VANILLA_USE_SLOWDOWN), 1e-6f);
+        assertEquals(1, ticks.getInt(noSlow));
 
-        // Tick 2: unslowed tick (grimTicks = 2, >= 2) -> full unscaled input and reset to 0
-        ticksField.setInt(noSlow, 2);
-        Vec2 fRes = noSlow.getModifiedInput(forward, null);
-        assertEquals(1.0f, fRes.y, 1e-4f);
-        assertEquals(0, ticksField.getInt(noSlow));
+        ticks.setInt(noSlow, 2);
+        assertEquals(1.0f, noSlow.getItemUseSpeedMultiplier(VANILLA_USE_SLOWDOWN), 1e-6f);
+        assertEquals(0, ticks.getInt(noSlow));
+    }
 
-        ticksField.setInt(noSlow, 2);
-        Vec2 bRes = noSlow.getModifiedInput(backward, null);
-        assertEquals(-1.0f, bRes.y, 1e-4f);
-        assertEquals(0, ticksField.getInt(noSlow));
+    @Test
+    void legacyGrimModePlaysAsGrimTick() throws Exception {
+        NoSlow noSlow = noSlow(NoSlow.Mode.GRIM);
+        Field ticks = grimTicks();
 
-        ticksField.setInt(noSlow, 2);
-        Vec2 lRes = noSlow.getModifiedInput(left, null);
-        assertEquals(1.0f, lRes.x, 1e-4f);
-        assertEquals(0, ticksField.getInt(noSlow));
+        ticks.setInt(noSlow, 1);
+        assertEquals(VANILLA_USE_SLOWDOWN, noSlow.getItemUseSpeedMultiplier(VANILLA_USE_SLOWDOWN), 1e-6f);
+        ticks.setInt(noSlow, 2);
+        assertEquals(1.0f, noSlow.getItemUseSpeedMultiplier(VANILLA_USE_SLOWDOWN), 1e-6f);
+    }
 
-        ticksField.setInt(noSlow, 2);
-        Vec2 rRes = noSlow.getModifiedInput(right, null);
-        assertEquals(-1.0f, rRes.x, 1e-4f);
-        assertEquals(0, ticksField.getInt(noSlow));
+    @Test
+    void vanillaAndCustomLiftTheSlowdownEveryTick() throws Exception {
+        for (NoSlow.Mode mode : new NoSlow.Mode[] {NoSlow.Mode.VANILLA, NoSlow.Mode.CUSTOM}) {
+            NoSlow noSlow = noSlow(mode);
+            grimTicks().setInt(noSlow, 1);
+            assertEquals(1.0f, noSlow.getItemUseSpeedMultiplier(VANILLA_USE_SLOWDOWN), 1e-6f, mode.name());
+        }
     }
 }

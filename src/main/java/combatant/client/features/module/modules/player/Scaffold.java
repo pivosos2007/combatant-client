@@ -506,7 +506,7 @@ public class Scaffold extends Module {
         defs.add(SettingDef.number(autoBlockSlotResetDelay).visibleWhen(autoBlock::get));
         defs.add(SettingDef.number(autoBlockDoNotUseBelowCount).visibleWhen(autoBlock::get));
         defs.add(SettingDef.bool(prediction));
-        defs.add(SettingDef.bool(strictGeometry));
+        defs.add(SettingDef.bool(strictGeometry).common(CommonSettingSchemas.STRICT_GEOMETRY.commonI18nKey()));
         defs.add(SettingDef.bool(considerInventory).visibleWhen(() -> rotationTiming.get() == RotationTiming.NORMAL));
         defs.add(SettingDef.number(placementSpeed).common(CommonSettingSchemas.PLACEMENT_SPEED));
         defs.add(SettingDef.number(delay));
@@ -875,6 +875,7 @@ public class Scaffold extends Module {
         ScaffoldPlacementTarget targetSnapshot = currentTarget;
         BlockInteractionPipeline.INSTANCE.rotateTo(
                 this,
+                desiredPlacementRotation(player, targetSnapshot),
                 targetSnapshot.getHitVec(),
                 new BlockInteractionPipeline.RotationPlan(
                         true,
@@ -894,6 +895,20 @@ public class Scaffold extends Module {
                         resolveNormalScheduledHit(player(), targetSnapshot)
                 )
         );
+    }
+
+    /**
+     * With strict geometry the target's rotation is the aim that keeps the ray on the support block from the eye now
+     * and one tick of movement later. Looking at the click point from the current eye is a different ray whenever the
+     * aim enters the block through its top (the usual case while falling past the edge): it hits the click point now
+     * and passes in front of the block a tick later, so the strict check refuses every click until the player has
+     * fallen past the block.
+     */
+    private Rotation desiredPlacementRotation(LocalPlayer player, ScaffoldPlacementTarget target) {
+        if (strictGeometry.get() && target.getRotation() != null) {
+            return target.getRotation();
+        }
+        return Rotation.lookingAt(target.getHitVec(), player.getEyePosition()).normalize();
     }
 
     private void requestNormalStrictMoonwalkRotation(LocalPlayer player) {

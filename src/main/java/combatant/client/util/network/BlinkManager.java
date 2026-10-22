@@ -77,13 +77,27 @@ public final class BlinkManager {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static void handlePacketSilently(Packet<?> packet) {
-        Connection connection = connection();
-        PacketListener listener = connection != null ? connection.getPacketListener() : null;
-        if (listener == null) {
+        Minecraft client = Minecraft.getInstance();
+        Connection currentConnection = connection();
+        if (currentConnection == null || !currentConnection.isConnected()) {
             return;
         }
 
-        ((Packet) packet).handle(listener);
+        if (!client.isSameThread()) {
+            // flush() is public; callers outside the game thread must never replay
+            // clientbound packets on Netty (PacketUtils would reschedule and throw).
+            client.execute(() -> {
+                if (connection() == currentConnection) {
+                    runSilently(() -> handlePacketSilently(packet));
+                }
+            });
+            return;
+        }
+
+        PacketListener listener = currentConnection.getPacketListener();
+        if (listener != null && connection() == currentConnection) {
+            ((Packet) packet).handle(listener);
+        }
     }
 
     private static Connection connection() {
@@ -174,7 +188,10 @@ public final class BlinkManager {
 
     @EventHandler(priority = -10000)
     public void onPacket(PacketEvent event) {
-        if (event == null || event.isCancelled() || !event.isOriginal()) {
+        // PacketEvent is also the base class of SendPost/ReceivePost. Those packets
+        // have already been processed and must never be queued or replayed again.
+        if (event == null || event.isCancelled() || !event.isOriginal()
+                || !(event instanceof PacketEvent.Send || event instanceof PacketEvent.Receive)) {
             return;
         }
 

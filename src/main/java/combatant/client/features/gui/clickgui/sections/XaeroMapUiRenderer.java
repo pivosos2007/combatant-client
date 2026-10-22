@@ -213,7 +213,7 @@ final class XaeroMapUiRenderer {
         float glassAlpha = 1.0f;
         float blurAlpha = 1.0f;
 
-        renderer.withLiquidGlassMaterial(material, () -> {
+        XaeroMapGlass.withMaterial(renderer, material, () -> {
             if (b != null) {
                 // The idle neck is restrained. Hover/press adds mass so the transition is
                 // geometric rather than merely a color change.
@@ -224,7 +224,7 @@ final class XaeroMapUiRenderer {
                         smoothing
                 );
                 renderer.liquidGlassCompound(field, glassTint, glassAlpha, blurAlpha,
-                        Renderer2D.LiquidGlassPreset.HUD_SMALL);
+                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE);
             } else {
                 // Use the explicit whole-box squircle path. Passing a positive squircle
                 // exponent to liquidGlassRect is rounded-rect smoothness and radius=0 therefore
@@ -232,7 +232,7 @@ final class XaeroMapUiRenderer {
                 renderer.liquidGlassSquircle(
                         UiBoxShape.squircle(a.x, a.y, a.size, a.size, CONTROL_SQUIRCLE_EXPONENT),
                         glassTint, glassAlpha, blurAlpha,
-                        Renderer2D.LiquidGlassPreset.HUD_SMALL);
+                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE);
             }
         });
 
@@ -541,12 +541,12 @@ final class XaeroMapUiRenderer {
                 Math.round((anchor.enabled() ? 30.0f : 12.0f) * eased));
         UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
                 .withInnerGlow(0.045f * eased, 4.4f, inner);
-        renderer.withLiquidGlassMaterial(material, () ->
+        XaeroMapGlass.withMaterial(renderer, material, () ->
                 drawLiquidGlassPrimitive(renderer,
                         tooltipShape, tint,
                         1.0f * eased,
                         1.0f * eased,
-                        Renderer2D.LiquidGlassPreset.HUD_SMALL));
+                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE));
 
         // A very small directional gleam at the body-side edge makes the pointer shape read
         // against both ocean and terrain without adding a conventional border.
@@ -697,10 +697,10 @@ final class XaeroMapUiRenderer {
         int inner = SettingsGuiPalette.withAlpha(palette.panelText(), Math.round(18.0f * eased));
         UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
                 .withInnerGlow(0.022f * eased, 4.2f, inner);
-        renderer.withLiquidGlassMaterial(material, () ->
+        XaeroMapGlass.withMaterial(renderer, material, () ->
                 drawLiquidGlassPrimitive(renderer, shell, tint,
                         1.0f * eased, 1.0f * eased,
-                        Renderer2D.LiquidGlassPreset.BALANCED));
+                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE));
 
         float contentRight = x + bodyWidth;
         float headerX = x + 17.0f;
@@ -952,10 +952,10 @@ final class XaeroMapUiRenderer {
         int inner = SettingsGuiPalette.withAlpha(palette.panelText(), Math.round(18.0f * eased));
         UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
                 .withInnerGlow(0.020f * eased, 4.0f, inner);
-        renderer.withLiquidGlassMaterial(material, () ->
+        XaeroMapGlass.withMaterial(renderer, material, () ->
                 drawLiquidGlassPrimitive(renderer, shell, tint,
                         1.0f * eased, 1.0f * eased,
-                        Renderer2D.LiquidGlassPreset.BALANCED));
+                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE));
 
         float bodyX = opensLeft ? x : x + tip;
         float bodyW = width - tip;
@@ -1052,10 +1052,10 @@ final class XaeroMapUiRenderer {
         int inner = SettingsGuiPalette.withAlpha(palette.panelText(), Math.round(17.0f * eased));
         UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
                 .withInnerGlow(0.020f * eased, 4.1f, inner);
-        renderer.withLiquidGlassMaterial(material, () ->
+        XaeroMapGlass.withMaterial(renderer, material, () ->
                 drawLiquidGlassPrimitive(renderer, shell, tint,
                         1.0f * eased, 1.0f * eased,
-                        Renderer2D.LiquidGlassPreset.BALANCED));
+                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE));
 
         int titleColor = SettingsGuiPalette.withAlpha(
                 palette.panelText(), Math.round(255.0f * eased));

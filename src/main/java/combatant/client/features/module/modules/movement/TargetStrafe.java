@@ -250,8 +250,12 @@ public final class TargetStrafe extends Module {
                 || mc.options.keyShift.isDown());
     }
 
-    private boolean isMatrixMode() { return mode.get() == StrafeMode.MATRIX; }
-    private boolean isGrimMode() { return mode.get() == StrafeMode.GRIM; }
+    private StrafeMode effectiveMode() {
+        return mode.get();
+    }
+
+    private boolean isMatrixMode() { return effectiveMode() == StrafeMode.MATRIX; }
+    private boolean isGrimMode() { return effectiveMode() == StrafeMode.GRIM; }
     private boolean usesGrimRadius() {
         return isGrimMode() && grimPointType.get() != PointType.CENTER;
     }

@@ -103,6 +103,7 @@ public enum CombatantIndex {
 
     public enum Kind {
         MODULE,
+        MODULE_LIST_INFO_PROVIDER,
         HUD,
         COMMAND,
         CLICK_GUI,

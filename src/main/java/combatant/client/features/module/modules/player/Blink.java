@@ -156,6 +156,9 @@ public final class Blink extends Module {
         if (!isEnabled() || mc.player == null) return;
         List<Vec3> positions = BlinkManager.INSTANCE.getQueuedMovePositions();
         Vec3 serverPos = startPos;
+        // The queued packet positions are tick snapshots; only the live player
+        // endpoint has a render-frame position. Never join the trail to getX/Y/Z.
+        Vec3 playerPos = mc.player.getPosition(tickDelta);
         if (serverPos == null) return;
 
         if (renderGhost.get()) {
@@ -170,12 +173,26 @@ public final class Blink extends Module {
             int r = argb >>> 16 & 0xFF;
             int g = argb >>> 8 & 0xFF;
             int b = argb & 0xFF;
+            // If the last packet describes this tick's player position,
+            // replace that vertex with the fractional render position. Drawing
+            // it first would create a backtracking segment every frame.
+            int lastIndex = positions.size();
+            while (lastIndex > 0 && positions.get(lastIndex - 1).distanceToSqr(mc.player.position()) < 1.0e-6) {
+                lastIndex--;
+            }
+
             Vec3 prev = serverPos;
-            for (Vec3 pos : positions) {
-                renderer.line(prev.x, prev.y + 0.1, prev.z, pos.x, pos.y + 0.1, pos.z, r, g, b, a);
+            for (int i = 0; i < lastIndex; i++) {
+                Vec3 pos = positions.get(i);
+                if (prev.distanceToSqr(pos) > 1.0e-8) {
+                    renderer.line(prev.x, prev.y + 0.1, prev.z, pos.x, pos.y + 0.1, pos.z, r, g, b, a);
+                }
                 prev = pos;
             }
-            renderer.line(prev.x, prev.y + 0.1, prev.z, mc.player.getX(), mc.player.getY() + 0.1, mc.player.getZ(), r, g, b, a);
+            if (prev.distanceToSqr(playerPos) > 1.0e-8) {
+                renderer.line(prev.x, prev.y + 0.1, prev.z,
+                        playerPos.x, playerPos.y + 0.1, playerPos.z, r, g, b, a);
+            }
         }
     }
 

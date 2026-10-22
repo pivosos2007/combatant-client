@@ -491,4 +491,3 @@ void main() {
 
     color = vec4(finalColor, u_Color.a);
 }
-

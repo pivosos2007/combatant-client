@@ -24,6 +24,7 @@ import combatant.client.events.impl.PlayerMoveEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
+import combatant.client.features.module.ModuleListInfoProvider;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.modules.movement.speed.BhopInput;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
@@ -53,6 +54,18 @@ public final class Speed extends Module {
     private boolean lastOnGround = true;
     private int airTicks;
 
+    @ModuleListInfoProvider
+    private String moduleListDetail() {
+        return switch (mode.get()) {
+            case NCP -> "NCP";
+            case VULCAN_286 -> "Vulcan 2.86";
+            case VULCAN_288 -> "Vulcan 2.88";
+            case VULCAN_GROUND_286 -> "Vulcan Ground";
+            case MATRIX_7 -> "Matrix 7";
+            case BHOP -> "BHop";
+        };
+    }
+
     @Override
     public void onEnable() {
         resetState();
@@ -71,7 +84,7 @@ public final class Speed extends Module {
         LocalPlayer player = mc.player;
         updateAirTicks(player);
 
-        switch (mode.get()) {
+        switch (effectiveMode()) {
             case NCP -> handleNcp(player);
             case VULCAN_286 -> handleVulcan286(player);
             case VULCAN_288 -> handleVulcan288(player);
@@ -88,7 +101,7 @@ public final class Speed extends Module {
      */
     @EventHandler
     private void onMovementInput(MovementInputEvent event) {
-        if (!isEnabled() || mode.get() != Mode.BHOP) return;
+        if (!isEnabled() || effectiveMode() != Mode.BHOP) return;
 
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc == null ? null : mc.player;
@@ -105,7 +118,7 @@ public final class Speed extends Module {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null) return;
         if (event.getType() != MoverType.SELF) return;
-        if (mode.get() != Mode.NCP) return;
+        if (effectiveMode() != Mode.NCP) return;
 
         LocalPlayer player = mc.player;
         if (!canSpeed(player) || !MovementUtil.isMoving() || player.onGround()) return;
@@ -126,7 +139,7 @@ public final class Speed extends Module {
         LocalPlayer player = mc.player;
         if (!canSpeed(player)) return;
 
-        switch (mode.get()) {
+        switch (effectiveMode()) {
             case VULCAN_288 -> {
                 if (player.getDeltaMovement().y < 0.0) {
                     ((ServerboundMovePlayerPacketAccessor) packet).combatant$setOnGround(true);
@@ -319,6 +332,10 @@ public final class Speed extends Module {
         }
 
         return false;
+    }
+
+    private Mode effectiveMode() {
+        return mode.get();
     }
 
     private void resetState() {

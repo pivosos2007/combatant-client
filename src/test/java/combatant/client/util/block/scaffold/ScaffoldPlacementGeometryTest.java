@@ -66,6 +66,24 @@ final class ScaffoldPlacementGeometryTest {
         assertFalse(ScaffoldPlacementGeometry.isSafe(now, next, atFaceCentre, SUPPORT, Direction.SOUTH, SHAPE));
     }
 
+    @Test
+    void aTellyJumpsAimIsNotTheSameRayAsLookingAtItsClickPoint() {
+        // Grim trace, sx_telly: past the block edge, falling at 0.3 blocks per tick while moving 0.245 forward. The safe
+        // aim enters the block through its top, so its click point sits on the face's top edge and looking at that point
+        // from the eye is steeper and passes in front of the block a tick later.
+        BlockPos support = new BlockPos(0, -51, 5);
+        AABB shape = new AABB(support);
+        Vec3 now = new Vec3(0.5, -49.203 + EYE_HEIGHT, 6.161);
+        Vec3 next = now.add(0.0, -0.302, 0.245);
+
+        Rotation aim = ScaffoldPlacementGeometry.chooseRotation(now, next, support, Direction.SOUTH, null);
+
+        assertNotNull(aim);
+        assertTrue(ScaffoldPlacementGeometry.isSafe(now, next, aim, support, Direction.SOUTH, shape));
+        Vec3 click = ScaffoldPlacementGeometry.clickPoint(now, aim, support, Direction.SOUTH, shape);
+        Rotation atClick = Rotation.lookingAt(click, now);
+        assertFalse(ScaffoldPlacementGeometry.isSafe(now, next, atClick, support, Direction.SOUTH, shape));
+    }
     @ParameterizedTest
     @ValueSource(doubles = {0.0, 0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.8})
     void theChosenAimHitsTheBlockBeforeAndAfterTheTicksMovement(double beyondEdge) {

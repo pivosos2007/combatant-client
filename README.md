@@ -25,6 +25,7 @@ Combatant is already usable, but it is not feature-complete. Some areas still ne
 - [`Configs and HUD Guide`](CONFIGS_AND_HUD.md) - config profiles, `.cbcfg` files, loading profiles, and HUD element setup.
 - [`Client Commands`](CLIENT_COMMANDS.md) - command syntax, aliases, descriptions, and optional mod requirements.
 - [`Changelog`](CHANGELOG.md) - history of client updates, anticheat presets, modules, and performance improvements.
+- [`UI Design Pipeline`](UI_DESIGN_PIPELINE.md) - briefs for OpenPencil's internal chat, mockup polish, transfer to existing Java/JS UI APIs, and visual comparison.
 
 ## Logo wanted
 

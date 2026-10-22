@@ -107,7 +107,7 @@ public final class Sprint extends Module {
     @EventHandler
     private void onPacketReceive(PacketEvent.Receive event) {
         LocalPlayer player = mc.player;
-        if (!isEnabled() || !omniDirectional.get() || !vulcanBypass.get() || player == null || mc.level == null) {
+        if (!isEnabled() || !effOmniDirectional() || !vulcanBypass.get() || player == null || mc.level == null) {
             return;
         }
 
@@ -154,7 +154,7 @@ public final class Sprint extends Module {
 
         boolean allow = shouldUseOmniDirectional(player)
                 || (isEnabled() && canOperate(player) && !shouldSuppressExternalVulcanSprint(player) && event.getForward() > 1.0E-5F)
-                || noSlowAllow;
+                || (noSlowAllow && event.getForward() > 1.0E-5F && event.shouldSprint());
         if (!allow) {
             return;
         }
@@ -171,7 +171,7 @@ public final class Sprint extends Module {
     }
 
     public CombatStrikeController.SprintResetMode resolveCombatResetMode() {
-        return switch (defaultResetMode.get()) {
+        return switch (effDefaultResetMode()) {
             case LEGIT -> CombatStrikeController.SprintResetMode.LEGIT;
             case PACKET -> CombatStrikeController.SprintResetMode.PACKET;
             case FORCE -> CombatStrikeController.SprintResetMode.NONE;
@@ -179,7 +179,7 @@ public final class Sprint extends Module {
     }
 
     public boolean isLegitResetMode() {
-        return defaultResetMode.get() == ResetMode.LEGIT;
+        return effDefaultResetMode() == ResetMode.LEGIT;
     }
 
     public boolean shouldAllowDirectionalSprint() {
@@ -203,7 +203,7 @@ public final class Sprint extends Module {
 
     private boolean shouldUseOmniDirectional(LocalPlayer player) {
         return isEnabled()
-                && omniDirectional.get()
+                && effOmniDirectional()
                 && canOperate(player)
                 && !shouldSuppressOmniDirectionalSprint(player)
                 && hasMovementInput(player);
@@ -211,7 +211,7 @@ public final class Sprint extends Module {
 
     private boolean shouldHardSuppressSprint() {
         return isEnabled()
-                && omniDirectional.get()
+                && effOmniDirectional()
                 && vulcanBypass.get()
                 && (shouldSuppressScaffoldDirectionalSprint()
                 || vulcanSprintSuppressTicks > 0);
@@ -227,7 +227,7 @@ public final class Sprint extends Module {
     }
 
     private void updateVulcanSprintAGuard(LocalPlayer player) {
-        if (!isEnabled() || !omniDirectional.get() || !vulcanBypass.get() || !canOperate(player)) {
+        if (!isEnabled() || !effOmniDirectional() || !vulcanBypass.get() || !canOperate(player)) {
             resetVulcanSprintAGuard();
             return;
         }
@@ -266,7 +266,7 @@ public final class Sprint extends Module {
     }
 
     private void updateVulcanExternalSprintSuppress(LocalPlayer player) {
-        if (!isEnabled() || !omniDirectional.get() || !vulcanBypass.get() || !canOperate(player)) {
+        if (!isEnabled() || !effOmniDirectional() || !vulcanBypass.get() || !canOperate(player)) {
             vulcanExternalSprintSuppressTicks = 0;
             return;
         }
@@ -335,7 +335,7 @@ public final class Sprint extends Module {
     }
 
     private void markVulcanSprintAJumpWindow() {
-        if (!isEnabled() || !omniDirectional.get() || !vulcanBypass.get()) {
+        if (!isEnabled() || !effOmniDirectional() || !vulcanBypass.get()) {
             return;
         }
 
@@ -448,6 +448,14 @@ public final class Sprint extends Module {
         }
 
         return false;
+    }
+
+    private boolean effOmniDirectional() {
+        return omniDirectional.get();
+    }
+
+    private ResetMode effDefaultResetMode() {
+        return defaultResetMode.get();
     }
 
     private boolean hasMovementInput(LocalPlayer player) {

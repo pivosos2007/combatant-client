@@ -33,7 +33,6 @@ import net.minecraft.world.item.Items;
 import combatant.client.config.SettingDef;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.features.gui.hud.HudElementRegister;
-import combatant.client.features.gui.hud.HudGlobalConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
@@ -83,10 +82,10 @@ public final class TargetHud extends DraggableHudElement {
     private float glassHitLevel;
     private static final float GLASS_HIT_DECAY_SECONDS = 0.13f;
     private static final UiGlassOpticsSpec TARGET_GLASS = UiGlassOpticsSpec.LIQUID
-            .withRefraction(0.022f).withBevel(0.22f, 0.130f)
+            .withRefraction(0.009f).withBevel(0.20f, 0.048f)
             .withFluid(0.37f, 0.54f).withCleanReveal(0.72f)
             .withInteractionStrength(0.92f).withChromaticAberration(0.75f)
-            .withMagnification(1.018f).withShapeDeformation(false).withSpecular(false)
+            .withMagnification(1.006f).withShapeDeformation(false).withSpecular(false)
             .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.IMPACT_EDGE);
 
     private static final float BASE_WIDTH = 112.0f;
@@ -173,9 +172,6 @@ public final class TargetHud extends DraggableHudElement {
 
     private static final String COLOR_THEME = "Theme";
     private static final String COLOR_CUSTOM = "Custom";
-    private static final String EFFECT_NONE = "None";
-    private static final String EFFECT_BLUR = "Blur";
-    private static final String EFFECT_GLASS = "Glass";
     private static final String EFFECTS_OFF = "Off";
     private static final String EFFECTS_COMPACT = "Compact";
     private static final String EQUIPMENT_OFF = "Off";
@@ -186,7 +182,6 @@ public final class TargetHud extends DraggableHudElement {
     private static final ConcurrentHashMap<Integer, Long> HIT_FLASH_MS_BY_ID = new ConcurrentHashMap<>();
 
     private final Minecraft mc = Minecraft.getInstance();
-    private final HudGlobalConfig hud = HudGlobalConfig.get();
 
     private final NumberValue<Double> scale =
             new NumberValue<>("target_scale", 3.28, 0.5, 4.0);
@@ -239,8 +234,6 @@ public final class TargetHud extends DraggableHudElement {
             new RGBAColorValue("target_bg_secondary", "#F7161616");
     private final RGBColorValue stroke =
             new RGBColorValue("target_stroke", "#5A5A5A");
-    private final NumberValue<Integer> blurAlpha =
-            new NumberValue<>("target_blur_alpha", 255, 0, 255);
     private final NumberValue<Integer> bgAlpha =
             new NumberValue<>("target_bg_alpha", 162, 0, 255);
     private final RGBColorValue text =
@@ -263,8 +256,6 @@ public final class TargetHud extends DraggableHudElement {
             new RGBColorValue("target_hit_outer", "#FF5A5A");
     private final RGBColorValue hitInner =
             new RGBColorValue("target_hit_inner", "#FF7373");
-    private final ModeValue bgEffect =
-            new ModeValue("target_bg_effect", "Glass", EFFECT_NONE, EFFECT_BLUR, EFFECT_GLASS);
     private final BooleanValue hitAnim =
             new BooleanValue("target_hit_anim", true);
     private final NumberValue<Double> hitPulse =
@@ -466,9 +457,6 @@ public final class TargetHud extends DraggableHudElement {
         defs.add(SettingDef.mode(colorMode));
         defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));
         defs.add(SettingDef.number(themeGradientStrength).visibleWhen(this::isGradientPanelStyle));
-        defs.add(SettingDef.color(bg).visibleWhen(() -> isCustomMode() && !isGlassEffect()));
-        defs.add(SettingDef.color(bg2).visibleWhen(() -> isCustomMode() && !isGlassEffect()));
-        defs.add(SettingDef.number(bgAlpha).visibleWhen(() -> isThemeMode() && !isGlassEffect()));
         defs.add(SettingDef.bool(strokeEnabled));
         defs.add(SettingDef.colorNoAlpha(stroke).visibleWhen(() -> strokeEnabled.get() && isCustomMode()));
         defs.add(SettingDef.number(strokeAlpha).visibleWhen(strokeEnabled::get));
@@ -487,10 +475,7 @@ public final class TargetHud extends DraggableHudElement {
         defs.add(SettingDef.colorNoAlpha(absorptionEnd).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(hitOuter).visibleWhen(this::isCustomMode));
         defs.add(SettingDef.colorNoAlpha(hitInner).visibleWhen(this::isCustomMode));
-        defs.add(SettingDef.mode(bgEffect));
-        defs.add(SettingDef.number(blurAlpha).visibleWhen(this::isBlurEffect));
         defs.add(SettingDef.bool(hitAnim));
-        defs.add(SettingDef.number(hitPulse).visibleWhen(() -> hitAnim.get() && !isGlassEffect()));
     }
 
     @Override
@@ -584,8 +569,7 @@ public final class TargetHud extends DraggableHudElement {
             float panelH = panelDrawH - PANEL_INSET * 2f * scaleFactor;
             float panelRadius = PANEL_RADIUS * scaleFactor;
 
-            boolean glassEnabled = isGlassEffect();
-            boolean blurEnabled = isBlurEffect();
+            boolean glassEnabled = true;
             TotemPopSnapshot totemPopSnapshot = resolveTotemPopSnapshot(displayTarget);
             updateTotemPopAnimation(displayTarget, totemPopSnapshot, dt);
 
@@ -598,11 +582,7 @@ public final class TargetHud extends DraggableHudElement {
                 );
             }
 
-            if (glassEnabled) {
-                drawGlass(panelX, panelY, panelW, panelH, panelRadius, alphaFactor);
-            } else if (blurEnabled) {
-                drawBlur(panelX, panelY, panelW, panelH, panelRadius, uiBgPrimary, alphaFactor);
-            }
+            drawGlass(panelX, panelY, panelW, panelH, panelRadius, alphaFactor);
 
             drawBackground(renderer, panelX, panelY, panelW, panelH, panelRadius, alphaFactor, glassEnabled);
             if (strokeEnabled.get()) {
@@ -1509,14 +1489,6 @@ public final class TargetHud extends DraggableHudElement {
         renderer.roundedRectStroke(x, y, width, height, radius, 1.0f, 0.9f + scaledPulse, innerColor);
     }
 
-    private void drawBlur(float x, float y, float width, float height, float radius, int tintRgb, float alphaFactor) {
-        if (!hasEffect() || width <= 0.0f || height <= 0.0f) return;
-        float quality = hud.getBlurRadius();
-        float brightness = 1.0f;
-        float alpha = (blurAlpha.get() / 255.0f) * alphaFactor;
-        Renderer2D.COLOR.blurRect(x, y, width, height, radius, quality, brightness, alpha, 0xFFFFFF);
-    }
-
     private void updateGlassHitReaction(LivingEntity target, long now, float deltaSeconds) {
         if (!isGlassEffect()) {
             glassHitLevel = 0f;
@@ -1549,9 +1521,9 @@ public final class TargetHud extends DraggableHudElement {
         }
         UiGlassOpticsSpec optics = hit > 0.0f
                 ? TARGET_GLASS
-                        .withRefraction(AnimationUtility.lerp(TARGET_GLASS.refraction(), 0.080f, hit))
-                        .withBevel(AnimationUtility.lerp(TARGET_GLASS.bevelWidth(), 0.306f, hit),
-                                AnimationUtility.lerp(TARGET_GLASS.bevelDepth(), 0.150f, hit))
+                        .withRefraction(AnimationUtility.lerp(TARGET_GLASS.refraction(), 0.032f, hit))
+                        .withBevel(AnimationUtility.lerp(TARGET_GLASS.bevelWidth(), 0.29f, hit),
+                                AnimationUtility.lerp(TARGET_GLASS.bevelDepth(), 0.092f, hit))
                 : TARGET_GLASS;
         HudRenderUtil.drawReactiveGlass(x, y, width, height, radius, glassScale, true,
                 alphaFactor, alphaFactor,
@@ -1584,7 +1556,7 @@ public final class TargetHud extends DraggableHudElement {
                                float scaleFactor,
                                float alphaFactor) {
         UiGlassOpticsSpec chipOptics = TARGET_GLASS
-                .withRefraction(0.016f).withBevel(0.22f, 0.060f)
+                .withRefraction(0.005f).withBevel(0.18f, 0.028f)
                 .withInteractionStrength(0f).withChromaticAberration(0.38f);
         HudRenderUtil.drawReactiveGlass(x, y, width, height, radius, scaleFactor, true,
                 alphaFactor, alphaFactor,
@@ -1833,16 +1805,8 @@ public final class TargetHud extends DraggableHudElement {
         return COLOR_CUSTOM.equals(colorMode.get());
     }
 
-    private boolean hasEffect() {
-        return !EFFECT_NONE.equals(bgEffect.get());
-    }
-
-    private boolean isBlurEffect() {
-        return EFFECT_BLUR.equals(bgEffect.get());
-    }
-
     private boolean isGlassEffect() {
-        return EFFECT_GLASS.equals(bgEffect.get());
+        return true;
     }
 
     private boolean isEffectsEnabled() {

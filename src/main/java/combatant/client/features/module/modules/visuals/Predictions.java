@@ -220,8 +220,8 @@ public class Predictions extends Module {
     private static void addGradientLine(MeshBuilder mesh, Vec3 from, Vec3 to, int startColor, int endColor) {
         if (mesh == null || from == null || to == null) return;
         mesh.ensureLineCapacity();
-        int i1 = mesh.vec3(from.x, from.y, from.z).color(new RenderColor(startColor)).next();
-        int i2 = mesh.vec3(to.x, to.y, to.z).color(new RenderColor(endColor)).next();
+        int i1 = mesh.vec3(from.x, from.y, from.z).colorArgb(startColor).next();
+        int i2 = mesh.vec3(to.x, to.y, to.z).colorArgb(endColor).next();
         mesh.line(i1, i2);
     }
 
@@ -308,7 +308,7 @@ public class Predictions extends Module {
                                       float q0, float q1, float q2, float q3) {
         return mesh.vec3(pos.x, pos.y, pos.z)
                 .vec2(u, v)
-                .color(new RenderColor(argb))
+                .colorArgb(argb)
                 .vec4(p0, p1, p2, p3)
                 .vec4(q0, q1, q2, q3)
                 .next();
@@ -386,10 +386,10 @@ public class Predictions extends Module {
         double p4z = cz - right.z() + up.z();
 
         mesh.ensureQuadCapacity();
-        int i1 = mesh.vec3(p1x, p1y, p1z).vec2(0.0, 1.0).color(new RenderColor(argb)).next();
-        int i2 = mesh.vec3(p2x, p2y, p2z).vec2(1.0, 1.0).color(new RenderColor(argb)).next();
-        int i3 = mesh.vec3(p3x, p3y, p3z).vec2(1.0, 0.0).color(new RenderColor(argb)).next();
-        int i4 = mesh.vec3(p4x, p4y, p4z).vec2(0.0, 0.0).color(new RenderColor(argb)).next();
+        int i1 = mesh.vec3(p1x, p1y, p1z).vec2(0.0, 1.0).colorArgb(argb).next();
+        int i2 = mesh.vec3(p2x, p2y, p2z).vec2(1.0, 1.0).colorArgb(argb).next();
+        int i3 = mesh.vec3(p3x, p3y, p3z).vec2(1.0, 0.0).colorArgb(argb).next();
+        int i4 = mesh.vec3(p4x, p4y, p4z).vec2(0.0, 0.0).colorArgb(argb).next();
         mesh.quad(i1, i2, i3, i4);
     }
 
