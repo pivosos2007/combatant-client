@@ -86,6 +86,19 @@ final class BuildPlanner {
                 boolean exact, double distanceSq, boolean sneak) {
     }
 
+    /**
+     * Whether any neighbour of {@code target} is a block a click can land on. A cell with none cannot be planned
+     * from anywhere, so the builder skips it without spending one of its plan attempts.
+     */
+    static boolean hasSupport(Level level, BlockPos target) {
+        for (Direction toSupport : Direction.values()) {
+            BlockPos support = target.relative(toSupport);
+            BlockState state = level.getBlockState(support);
+            if (!state.canBeReplaced() && !state.getShape(level, support).isEmpty()) return true;
+        }
+        return false;
+    }
+
     static Plan plan(LocalPlayer player, Level level, BlockPos target, BlockState desired, ItemStack stack,
                      double range, boolean aimAtHit) {
         if (!(stack.getItem() instanceof BlockItem)) return null;
@@ -320,9 +333,14 @@ final class BuildPlanner {
     }
 
     static BlockHitResult trace(LocalPlayer player, Vec3 eyes, Rotation rotation, double range) {
+        return trace(player.level(), CollisionContext.of(player), eyes, rotation, range);
+    }
+
+    static BlockHitResult trace(net.minecraft.world.level.BlockGetter level, CollisionContext context, Vec3 eyes,
+                                Rotation rotation, double range) {
         if (rotation == null) return null;
         Vec3 end = eyes.add(rotation.directionVector().scale(range));
-        HitResult hit = player.level().clip(new ClipContext(eyes, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
+        HitResult hit = level.clip(new ClipContext(eyes, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, context));
         return hit instanceof BlockHitResult blockHit && hit.getType() == HitResult.Type.BLOCK ? blockHit : null;
     }
 

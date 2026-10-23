@@ -794,12 +794,17 @@ public final class SchematicBuilder extends Module {
         sortCandidates(count);
         double reach = effectiveRange();
         boolean aim = effectiveRotate();
-        for (int i = 0; i < Math.min(count, MAX_PLAN_ATTEMPTS); i++) {
+        int attempts = 0;
+        for (int i = 0; i < count && attempts < MAX_PLAN_ATTEMPTS; i++) {
             int cell = candidateCells[i];
             BlockState expected = diff.expectedState(cell);
             Item item = SchematicMaterials.itemFor(expected);
             int hotbar = hotbarSlotFor(player, item);
             BlockPos target = diff.worldPos(cell, scratch).immutable();
+            // A cell with nothing to click against anywhere around it is not a plan attempt: it waits for a
+            // neighbour, and must not crowd the cells that can be placed out of the attempt budget.
+            if (!BuildPlanner.hasSupport(mc.level, target)) continue;
+            attempts++;
             // Plan before restocking: swapping in the item for a cell that cannot be clicked from here makes the
             // next candidate swap its own item back over it, every tick, and nothing gets placed.
             ItemStack stack = hotbar >= 0 ? player.getInventory().getItem(hotbar) : new ItemStack(item);
