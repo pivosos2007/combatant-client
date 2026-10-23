@@ -28,8 +28,6 @@ import combatant.client.features.module.modules.combat.surround.SurroundPlanner.
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.automation.placement.PlacementConstraints;
 import combatant.client.automation.placement.PlacementRotationMode;
 import combatant.client.automation.placement.PlacementSlot;
@@ -60,9 +58,6 @@ public final class SelfTrap extends Module {
     private static final long NO_BLOCKS_WARN_INTERVAL_MS = 3000L;
 
     private final Minecraft mc = Minecraft.getInstance();
-    // grim preset: place range <= 4.5, wall range 0, rotation NORMAL, 1 block/tick;
-    // vanilla preset: 5.5 range/wall range, NO_ROTATION, max blocks/tick. Picked once, then every setting stays as the player sets it.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode = enumSetting("selfTrapMode", "mode", Mode.HEAD, Mode.values());
     private final EnumValue<BlockPriority> blockPriority = enumCommon(
             "selfTrapBlockPriority", "block_priority",
@@ -96,15 +91,6 @@ public final class SelfTrap extends Module {
             "selfTrapRange", "range", CommonSettingSchemas.COMBAT_RANGE, 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = numCommon(
             "selfTrapWallRange", "wall_range", CommonSettingSchemas.COMBAT_WALL_RANGE, 3.0D, 0.0D, 6.0D);
-
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .set(rotation, PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION)
-                .cap(blocksPerTick, 1, blocksPerTick.getMax());
-    }
-
     private final NumberValue<Integer> delay = num("selfTrapDelay", "delay", 0, 0, 10);
     private final BooleanValue render = bool("selfTrapRender", "render", true);
     private final RGBAColorValue fillColor = color("selfTrapFillColor", "fill_color", "#285A9C44");
@@ -185,7 +171,7 @@ public final class SelfTrap extends Module {
         if (!isEnabled() || !attackCrystals.get()) return;
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null) return;
-        crystalClearer.clear(mc, player, currentTargets, effCrystalRange(), crystalDelay.get());
+        crystalClearer.clear(mc, player, currentTargets, range.get(), crystalDelay.get());
     }
 
     private void warnIfOutOfBlocks(LocalPlayer player) {
@@ -231,12 +217,6 @@ public final class SelfTrap extends Module {
         return new PlacementConstraints(
                 range.get(), wallRange.get(), rotation.get(), movementCorrection.get(),
                 effConstructFailResult(), false, 1, swapBackDelay.get(), swapBackDelay.get(), true, 0);
-    }
-
-    /** Crystals are entities: under GRIM, attack them only within Grim's entity reach, not the block range. */
-    private double effCrystalRange() {
-        return anticheat.get() == AntiCheatPreset.GRIM
-                ? Math.min(range.get(), AntiCheatPreset.GRIM_ENTITY_RANGE) : range.get();
     }
 
     @Override

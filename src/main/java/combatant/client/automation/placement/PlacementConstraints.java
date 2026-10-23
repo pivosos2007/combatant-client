@@ -12,8 +12,8 @@ import combatant.client.util.aiming.features.MovementCorrection;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Policy for one placement, built by the owning module from its own settings and
- * {@code AntiCheatPreset}; placement code never reads global settings.
+ * Policy for one placement, built by the owning module from its own settings; placement code never reads global
+ * settings.
  *
  * @param range                reach to the support face, blocks
  * @param wallRange            reach through walls: supports closer than this need no line of sight

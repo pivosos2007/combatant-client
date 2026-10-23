@@ -38,8 +38,6 @@ import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.movement.Flight;
 import combatant.client.features.module.modules.movement.Timer;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.click.ClickScheduler;
 import combatant.client.util.target.TargetManager;
 
@@ -55,13 +53,6 @@ public final class Criticals extends Module {
     private static final int VULCAN_297_JUMP_RECOVERY_TICKS = 8;
     private static final int VULCAN_297_LANDING_RECOVERY_TICKS = 2;
     private final Minecraft mc = Minecraft.getInstance();
-    // grim: every packet trick (NCP/vanilla/falling/low/down/blocksmc offsets, the airborne 1e-6 dip, NoGround, Vulcan
-    // 2.9.7) is answered by GrimAC 2.3.74 with GroundSpoof, Simulation, Timer and TickTimer flags (an extra movement
-    // packet in a tick counts as a second tick), and the cancelled attacks cut the damage dealt to a tenth. A jump
-    // crit is a real one, so picking the preset turns the packet modes into Jump; Jump and Timer stay as chosen. A
-    // jump_height below the stock 0.42 is a Simulation flag on every jump (x129 in 200 ticks), so picking the preset
-    // sets the stock height. The settings are only written when the preset is picked, never overridden at runtime.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode =
             enumMode(
                     "mode",
@@ -99,13 +90,6 @@ public final class Criticals extends Module {
                     0.1f,
                     0.42f
             ), () -> mode.get() == Mode.JUMP);
-
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .replaceOnGrim(mode, chosen -> grimSafeMode(chosen) != chosen, Mode.JUMP)
-                .setGrim(jumpHeight, VANILLA_JUMP_MOTION);
-    }
-
     private final NumberValue<Float> jumpRange =
             visibleWhen(numCommon(
                     "jump_range",
@@ -600,14 +584,6 @@ public final class Criticals extends Module {
 
     private Mode getMode() {
         return killAuraModeOverride != null ? killAuraModeOverride : mode.get();
-    }
-
-    /** The mode the GRIM preset switches {@code chosen} to: GrimAC tolerates it, unlike the packet modes. */
-    static Mode grimSafeMode(Mode chosen) {
-        return switch (chosen) {
-            case PACKET, NO_GROUND, VULCAN_297 -> Mode.JUMP;
-            default -> chosen;
-        };
     }
 
     private SelectionMode getSelectionMode() {

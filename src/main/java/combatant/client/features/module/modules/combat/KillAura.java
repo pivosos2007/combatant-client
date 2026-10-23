@@ -8,8 +8,6 @@
 package combatant.client.features.module.modules.combat;
 
 import combatant.client.config.values.EnumValue;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.config.values.*;
 import combatant.client.util.combat.*;
 import lombok.Getter;
@@ -72,9 +70,6 @@ public class KillAura extends Module {
     private static final int MAX_CPS = 100;
     private static final String IGNORE_BOTS = "ignore_bots";
     private final Minecraft mc = Minecraft.getInstance();
-    // grim preset: attack reach at most 3.0 and a legit sprint reset; vanilla preset: 6.0 reach.
-    // Picked once, then every setting stays as the player sets it.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final NumberValue<Double> range =
             numCommon(
                     "killauraRange",
@@ -206,14 +201,6 @@ public class KillAura extends Module {
                     SprintResetMode.DEFAULT,
                     SprintResetMode.values()
             );
-
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .cap(range, AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE)
-                // GrimAC flags TimerLimit for the default and none resets while the player moves; legit and packet stay clean.
-                .replaceOnGrim(sprintResetMode, mode -> mode == SprintResetMode.DEFAULT || mode == SprintResetMode.NONE,
-                        SprintResetMode.LEGIT);
-    }
 
     private final EnumValue<Criticals.SelectionMode> criticalsSelection =
             visibleWhen(enumCommon(

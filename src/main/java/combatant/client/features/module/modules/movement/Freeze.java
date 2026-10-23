@@ -8,7 +8,6 @@
 package combatant.client.features.module.modules.movement;
 
 import combatant.client.config.values.BindMode;
-import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.KeyBindValue;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
@@ -17,12 +16,10 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
 import combatant.client.input.CombatantInput;
 import combatant.client.input.InputScope;
-import combatant.client.util.anticheat.AntiCheatPreset;
 
 /**
  * Freezes the local player in place and stops the position packets (AirStuck). With a hold key set it only freezes
- * while that key is down; without one it freezes for as long as the module is on. The Grim preset turns it off: a
- * client that stops sending movement is a Timer/Simulation flag there.
+ * while that key is down; without one it freezes for as long as the module is on.
  */
 @ModuleInfo(
         id = "freeze",
@@ -32,7 +29,6 @@ import combatant.client.util.anticheat.AntiCheatPreset;
         description = "module.freeze.description")
 public final class Freeze extends Module {
 
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final KeyBindValue holdKey = bind("hold_key", "NONE", BindMode.HOLD);
 
     private String boundCombo = "NONE";
@@ -48,7 +44,7 @@ public final class Freeze extends Module {
     }
 
     private boolean frozenNow() {
-        if (!isEnabled() || anticheat.get() == AntiCheatPreset.GRIM) return false;
+        if (!isEnabled()) return false;
         return holdKey.isNone() || isHoldKeyDown();
     }
 

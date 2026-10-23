@@ -25,8 +25,6 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.util.aiming.features.MovementCorrection;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
-import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.block.NukerTargeting;
 import combatant.client.util.block.NukerTargeting.Candidate;
 import combatant.client.util.block.interaction.BlockInteractionPipeline;
@@ -68,9 +66,6 @@ public final class Nuker extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    // Picking a preset writes its recommended range, wall range and rotation into the settings once: grim = range <= 4.5,
-    // no wall range, rotates; vanilla = range 5.5, no rotation. Afterwards the settings are used exactly as set.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final NumberValue<Double> range = num("nukerRange", "range", 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = num("nukerWallRange", "wall_range", 0.0D, 0.0D, 6.0D);
     private final EnumValue<NukerTargeting.Shape> shape = enumSetting(
@@ -88,12 +83,6 @@ public final class Nuker extends Module {
     private final BooleanValue onlyExposed = bool("nukerOnlyExposed", "only_exposed", true);
     private final EnumValue<PlacementRotationMode> rotation = enumSetting(
             "nukerRotation", "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .set(rotation, PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
-    }
     private final BooleanValue autoTool = bool("nukerAutoTool", "auto_tool", true);
     private final BooleanValue requireSuitableTool = visibleWhen(
             bool("nukerRequireSuitableTool", "require_suitable_tool", true), autoTool::get);

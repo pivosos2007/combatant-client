@@ -14,7 +14,6 @@ public class EnumValue<E extends Enum<E>> extends ConfigValue<E> {
     private final List<E> options;
     private final List<String> optionIds;
     private final Map<String, E> lookup;
-    private final List<java.util.function.Consumer<E>> selectListeners = new ArrayList<>(1);
     public EnumValue(String name, E def, Class<E> enumClass) {
         this(name, def, enumClass.getEnumConstants());
     }
@@ -63,25 +62,6 @@ public class EnumValue<E extends Enum<E>> extends ConfigValue<E> {
         E resolved = lookup.get(normalize(id));
         if (resolved != null) {
             value = resolved;
-        }
-    }
-
-    /** Runs {@code listener} with the new option each time the player picks a different option in the GUI. */
-    public EnumValue<E> onSelect(java.util.function.Consumer<E> listener) {
-        selectListeners.add(Objects.requireNonNull(listener));
-        return this;
-    }
-
-    /**
-     * The player picked {@code id}. Unlike {@link #setById} and {@link #fromJson}, which also restore saved configs,
-     * this notifies {@link #onSelect} listeners when the option changes.
-     */
-    public void select(String id) {
-        E before = value;
-        setById(id);
-        if (value == before) return;
-        for (java.util.function.Consumer<E> listener : selectListeners) {
-            listener.accept(value);
         }
     }
 

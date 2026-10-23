@@ -22,8 +22,6 @@ import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.automation.placement.PlacementConstraints;
 import combatant.client.automation.placement.PlacementRotationMode;
 import combatant.client.automation.placement.PlacementSlot;
@@ -57,9 +55,6 @@ import java.util.List;
 public final class AutoWeb extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
-    // grim preset: place range <= 4.5, wall range 0, rotation NORMAL;
-    // vanilla preset: 5.5 range/wall range, NO_ROTATION. Picked once, then every setting stays as the player sets it.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final NumberValue<Double> range = numCommon(
             "autoWebRange", "range", CommonSettingSchemas.COMBAT_RANGE, 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = numCommon(
@@ -72,14 +67,6 @@ public final class AutoWeb extends Module {
     private final BooleanValue autoDisable = bool("autoWebAutoDisable", "auto_disable", false);
     private final EnumValue<PlacementRotationMode> rotation = enumSetting(
             "autoWebRotation", "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
-
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .set(rotation, PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
-    }
-
     private final NumberValue<Integer> delay = num("autoWebDelay", "delay", 0, 0, 10);
     private final BooleanValue render = bool("autoWebRender", "render", true);
     private final RGBAColorValue fillColor = color("autoWebFillColor", "fill_color", "#FFFFFF44");

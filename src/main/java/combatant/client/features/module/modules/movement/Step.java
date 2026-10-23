@@ -34,8 +34,6 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.util.player.MovementUtil;
 import combatant.client.util.time.TimerController;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -92,10 +90,6 @@ public final class Step extends Module {
     private static final double VULCAN_297_JUMP_A_LIMIT = 1.25;
 
     private final Minecraft mc = Minecraft.getInstance();
-    // picking grim sets the legit jump step, no packets and no timer, and lowers the height to 0.6 (GrimAC Simulation
-    // flags instant step heights above 0.6 and timer/packet tricks); picking vanilla sets the height to 5.0, for
-    // servers with no anticheat. The settings are used as set afterwards.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode = enumSetting("stepMode", "mode", Mode.INSTANT, Mode.values());
     private final NumberValue<Float> height = visibleWhen(num("stepHeight", "height", 1.0f, 0.6f, 5.0f), () -> mode.get() == Mode.INSTANT);
     private final BooleanValue adaptiveOffsets = visibleWhen(bool("stepAdaptiveOffsets", "adaptive_offsets", true), () -> mode.get() == Mode.INSTANT);
@@ -111,14 +105,6 @@ public final class Step extends Module {
     private final EnumValue<PacketMode> packetMode =
             visibleWhen(enumSetting("stepPacketMode", "packet_mode", PacketMode.FULL, PacketMode.values()), () -> mode.get() == Mode.INSTANT);
     private final BooleanValue useTimer = visibleWhen(bool("stepUseTimer", "use_timer", false), () -> mode.get() == Mode.INSTANT);
-
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .setGrim(mode, Mode.LEGIT)
-                .cap(height, 0.6, 5.0)
-                .setGrim(packetMode, PacketMode.NONE)
-                .setGrim(useTimer, false);
-    }
 
     private final NumberValue<Float> timerSpeed =
             visibleWhen(num("stepTimerSpeed", "timer_speed", 0.6f, 0.1f, 1.0f), () -> mode.get() == Mode.INSTANT && useTimer.get());

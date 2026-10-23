@@ -25,8 +25,6 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Notifier;
 import combatant.client.util.aiming.features.MovementCorrection;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.block.interaction.BlockInteractionPipeline.MiningPlan;
 import combatant.client.util.block.interaction.BlockInteractionPipeline.RotationPlan;
 import combatant.client.util.finder.FinderAlerts;
@@ -89,17 +87,11 @@ public final class TunnelBaseFinder extends Module {
     private final LevelWalkTerrain levelTerrain = new LevelWalkTerrain();
     private final WalkTerrain terrain = levelTerrain::cell;
 
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Direction> direction =
             enumSetting("tunnelDirection", "direction", Direction.FACING, Direction.values());
     private final NumberValue<Integer> maxLength = num("tunnelMaxLength", "max_length", 0, 0, 10000);
     private final NumberValue<Double> range = num("tunnelRange", "range", 4.5D, 1.0D, 6.0D);
     private final BooleanValue rotate = bool("tunnelRotate", "rotate", true);
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .set(rotate, true, false);
-    }
     private final NumberValue<Integer> maxDrop = num("tunnelMaxDrop", "max_drop", 1, 0, 4);
     private final BooleanValue scanStorage = bool("tunnelScanStorage", "scan_storage", true);
     private final NumberValue<Integer> scanInterval = num("tunnelScanInterval", "scan_interval", 40, 10, 200);

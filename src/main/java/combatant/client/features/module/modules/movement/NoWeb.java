@@ -15,15 +15,12 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.movement.rules.MovementRules;
-import combatant.client.util.anticheat.AntiCheatPreset;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Removes the cobweb slowdown. CANCEL ignores the web entirely; REDUCE removes only part of the slowdown. GrimAC
- * simulates the cobweb multiplier exactly, so the Grim preset leaves the physics alone (the module does nothing
- * there) instead of flagging every web.
+ * Removes the cobweb slowdown. CANCEL ignores the web entirely; REDUCE removes only part of the slowdown.
  */
 @ModuleInfo(
         id = "noweb",
@@ -34,7 +31,6 @@ import net.minecraft.world.phys.Vec3;
         description = "module.noweb.description")
 public final class NoWeb extends Module {
 
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode = enumMode("mode", Mode.CANCEL);
     private final NumberValue<Double> reduction = visibleWhen(
             num("reduction", 0.6D, 0.0D, 1.0D), () -> mode.get() == Mode.REDUCE);
@@ -46,7 +42,6 @@ public final class NoWeb extends Module {
     public static Vec3 stuckOverride(BlockState state, Vec3 multiplier) {
         NoWeb module = Modules.get(NoWeb.class);
         if (module == null || !module.isEnabled() || !state.is(Blocks.COBWEB)) return null;
-        if (module.anticheat.get() == AntiCheatPreset.GRIM) return null;
         double r = module.mode.get() == Mode.CANCEL ? 1.0 : module.reduction.get();
         return new Vec3(
                 MovementRules.reducedStuckMultiplier(multiplier.x, r),

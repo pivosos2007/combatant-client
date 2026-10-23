@@ -15,20 +15,16 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
-import combatant.client.features.module.Notifier;
 import combatant.client.features.module.modules.movement.rules.MovementRules;
-import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.player.MovementUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.resources.language.I18n;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.phys.Vec3;
 
 /**
  * Boosts horizontal speed for a few ticks and lets it fade back to normal. BOOST starts when you jump while walking;
- * DAMAGE starts when you take damage. Both change the horizontal motion beyond what vanilla physics allows, so the
- * Grim preset turns the module off.
+ * DAMAGE starts when you take damage.
  */
 @ModuleInfo(
         id = "longjump",
@@ -45,7 +41,6 @@ public final class LongJump extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode = enumMode("mode", Mode.BOOST);
     private final NumberValue<Double> boost = num("boost", 1.8D, 1.0D, 4.0D);
     private final NumberValue<Integer> duration = num("duration", 10, 2, 30);
@@ -59,7 +54,6 @@ public final class LongJump extends Module {
     public void onEnable() {
         stopBoost();
         lastHurtTime = 0;
-        if (anticheat.get() == AntiCheatPreset.GRIM) Notifier.info(I18n.get("notification.longjump.grim"));
     }
 
     @Override
@@ -74,7 +68,7 @@ public final class LongJump extends Module {
         int hurt = player.hurtTime;
         boolean newlyHurt = hurt > lastHurtTime;
         lastHurtTime = hurt;
-        if (newlyHurt && active() && mode.get() == Mode.DAMAGE && MovementUtil.isMoving()) {
+        if (newlyHurt && mode.get() == Mode.DAMAGE && MovementUtil.isMoving()) {
             startBoost(horizontalSpeed(player.getDeltaMovement()));
         }
     }
@@ -83,7 +77,7 @@ public final class LongJump extends Module {
     private void onMove(PlayerMoveEvent event) {
         LocalPlayer player = mc.player;
         if (player == null || event.getType() != MoverType.SELF) return;
-        if (!active() || player.isInWater() || player.isInLava() || player.onClimbable()
+        if (player.isInWater() || player.isInLava() || player.onClimbable()
                 || player.isPassenger() || player.isFallFlying()) {
             stopBoost();
             return;
@@ -112,10 +106,6 @@ public final class LongJump extends Module {
         if (length < 1.0E-6) return;
         event.setMovement(new Vec3(direction[0] / length * speed, movement.y, direction[1] / length * speed));
         boostTick++;
-    }
-
-    private boolean active() {
-        return anticheat.get() != AntiCheatPreset.GRIM;
     }
 
     private void startBoost(double speed) {

@@ -25,8 +25,6 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.text.WorldTextRenderer;
 import combatant.client.render.engine.world.WorldUiPresentationService;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.aiming.RestrictedSingleUseAction;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
@@ -83,9 +81,6 @@ public class AutoAnchor extends Module {
     private final BooleanValue strictInteractions = boolCommon("strict_interactions", CommonSettingSchemas.STRICT_INTERACTIONS, false);
     private final Minecraft mc = Minecraft.getInstance();
 
-    // grim preset: place range <= 4.5, visible-only, no air place and rotations; vanilla preset: 5.5 range.
-    // Picked once, then every setting stays as the player sets it. GRIM additionally allows one interaction per tick.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final BooleanValue placeEnabled = boolCommon("autoanchorPlace", CommonSettingSchemas.PLACE, true);
     private final BooleanValue explodeEnabled = boolCommon("autoanchorExplode", CommonSettingSchemas.EXPLODE, true);
     private final EnumValue<Timing> timing = enumCommon("autoanchorTiming", "timing", CommonSettingSchemas.TIMING, Timing.NORMAL);
@@ -203,14 +198,6 @@ public class AutoAnchor extends Module {
             CombatRotationModeUtil.MODE_ROTATIONS,
             CombatRotationModeUtil.MODE_NO_ROTATIONS
     );
-
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .cap(placeRange, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .setGrim(airPlace, false)
-                .setGrim(attackMode, CombatRotationModeUtil.MODE_ROTATIONS);
-    }
 
     private final EnumValue<MovementCorrection> movementCorrection = visibleWhen(enumCommon(
             "autoanchorMovementCorrection",
@@ -481,7 +468,7 @@ public class AutoAnchor extends Module {
             return;
         }
 
-        if (anticheat.get() == AntiCheatPreset.GRIM || strictInteractions.get()) {
+        if (strictInteractions.get()) {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             BlockHitResult hit = refreshed.hitResult();
             if (hit != null) {
@@ -710,7 +697,7 @@ public class AutoAnchor extends Module {
         );
         if (anchorHit == null) return;
 
-        if (anticheat.get() == AntiCheatPreset.GRIM || strictInteractions.get()) {
+        if (strictInteractions.get()) {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             if (!serverRotationHits(new AABB(anchorHit.getBlockPos()), effPlaceRange())) return;
             if (!isFaceFacingEye(mc.player.getEyePosition(), anchorHit.getBlockPos(), anchorHit.getDirection())) return;
@@ -755,7 +742,7 @@ public class AutoAnchor extends Module {
         );
         if (anchorHit == null) return;
 
-        if (anticheat.get() == AntiCheatPreset.GRIM || strictInteractions.get()) {
+        if (strictInteractions.get()) {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             if (!serverRotationHits(new AABB(anchorHit.getBlockPos()), effPlaceRange())) return;
             if (!isFaceFacingEye(mc.player.getEyePosition(), anchorHit.getBlockPos(), anchorHit.getDirection())) return;

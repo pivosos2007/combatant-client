@@ -20,7 +20,6 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
-import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.player.inventory.InventorySwapMode;
 import combatant.client.util.player.inventory.InventorySwapPolicy;
 import net.minecraft.client.Minecraft;
@@ -47,8 +46,6 @@ public final class QuickUse extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    // grim = strict swap policy; vanilla = plain swaps.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final ItemIdSetValue items = itemList(
             "quickUseItems", "items", TextListSetting.PickerMode.ITEMS, Set.of("minecraft:ender_pearl"));
     private final EnumValue<InventorySwapMode> swapMode = enumSetting(
@@ -80,8 +77,7 @@ public final class QuickUse extends Module {
 
         Set<String> ids = items.get();
         if (ids.isEmpty()) return;
-        InventorySwapPolicy policy = anticheat.get() == AntiCheatPreset.GRIM
-                ? InventorySwapPolicy.GRIM_STRICT : InventorySwapPolicy.NONE;
+        InventorySwapPolicy policy = InventorySwapPolicy.NONE;
         UseItemAction use = UseItemAction.builder(stack -> matches(stack, ids))
                 .mode(swapMode.get())
                 .policy(policy)

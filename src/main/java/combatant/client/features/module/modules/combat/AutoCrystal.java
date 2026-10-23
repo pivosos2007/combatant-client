@@ -8,8 +8,6 @@
 package combatant.client.features.module.modules.combat;
 
 import combatant.client.config.values.EnumValue;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
 import combatant.client.features.module.modules.combat.autocrystal.*;
@@ -109,9 +107,6 @@ public class AutoCrystal extends Module {
             );
     private final BooleanValue renderSelfDamage = boolCommon("autocrystalRenderSelfDamage", CommonSettingSchemas.RENDER_SELF_DAMAGE, true);
     private final BooleanValue drawDamage = boolCommon("autocrystalRenderDamage", CommonSettingSchemas.RENDER_DAMAGE, true);
-    // grim preset: place range 4.5 and hit range 3.0, the limits GrimAC enforces (FarPlace, Reach);
-    // vanilla preset: 6.0 hit range, 5.5 place range, instant place/break. Picked once, then every setting stays as the player sets it.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final BooleanValue placeEnabled = boolCommon("autocrystalPlace", CommonSettingSchemas.PLACE, true);
     private final NumberValue<Integer> placeDelay =
             visibleWhen(numCommon(
@@ -183,16 +178,6 @@ public class AutoCrystal extends Module {
                     0.0f,
                     6.0f
             );
-
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .cap(placeRange, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .cap(wallRange, 3.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .cap(breakRange, AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE)
-                .cap(breakWallRange, AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE)
-                .setVanilla(instantBreak, true)
-                .setVanilla(instantPlace, true);
-    }
 
     private final BooleanMapValue targetToggles = groupCommon(
             "autocrystalTargets",

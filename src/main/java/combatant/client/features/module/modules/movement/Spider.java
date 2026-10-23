@@ -20,8 +20,6 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.modules.movement.rules.MovementRules;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.player.MovementUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -31,8 +29,7 @@ import net.minecraft.world.phys.Vec3;
 /**
  * Climbs walls you walk into. VANILLA pushes the upward velocity while you are pressed against a wall; JUMP only
  * jumps from the ground when a wall blocks you, which is what a player can do by hand (it gets you over ledges, not
- * up a tall wall). The Grim preset forces JUMP, because Grim simulates the exact vertical motion of a player that
- * is not on a ladder.
+ * up a tall wall).
  */
 @ModuleInfo(
         id = "spider",
@@ -45,13 +42,7 @@ public final class Spider extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode = enumMode("mode", Mode.VANILLA);
-
-    {
-        AntiCheatPresetDefaults.bind(anticheat).setGrim(mode, Mode.JUMP);
-    }
-
     private final NumberValue<Double> climbSpeed = visibleWhen(
             num("climb_speed", 0.2D, 0.05D, 0.6D), () -> mode.get() == Mode.VANILLA);
 

@@ -24,8 +24,6 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleListInfoProvider;
 import combatant.client.features.module.ModuleSubcategory;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.item.FoodUtil;
 
 @ModuleInfo(
@@ -44,16 +42,7 @@ public final class NoSlow extends Module {
         CUSTOM
     }
 
-    // picking grim sets GRIM_TICK (GrimAC 2.3.74 flags every other mode: it closed the offhand use-item trick
-    // behind GRIM and predicts a slowed player on all other ticks); picking vanilla sets no slowdown at all, for
-    // servers with no anticheat. The mode is used as set afterwards.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode = enumMode("mode", Mode.VANILLA, Mode.values());
-
-    {
-        AntiCheatPresetDefaults.bind(anticheat).set(mode, Mode.GRIM_TICK, Mode.VANILLA);
-    }
-
     private final BooleanValue food = bool("food", true);
     private final BooleanValue bow = bool("bow", true);
     private final BooleanValue crossbow = bool("crossbow", true);

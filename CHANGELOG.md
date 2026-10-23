@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Control leases**: `ActionCoordinator` arbitrates rotation, movement keys, jump, sneak, sprint, hotbar, inventory and interaction by named priority tiers (`ActionPriority`, same scale as `RotationManager`). Preemption notifies the loser; ties keep the current holder; slot leases taken directly through `InventorySwap` are respected.
 - **Tasks and actions**: `AutomationTask` + composable actions (`Sequence`, `Selector`, `Parallel`, `Retry`, `Timeout`, `Guard`) and primitives (`Rotate`, `Move`, `Jump`, `Sneak`, `PlaceBlock`, `BreakBlock`, `UseItem`, `InteractEntity`, `Inventory`, `Navigate`). Actions run before the movement packet and release every backend on cancel.
 - **Lifecycle**: tasks are cancelled on module disable, world change, disconnect, respawn and panic/unhook (new `WorldChangeEvent`). Player WASD/jump/sneak and physical mouse look take control back from tasks that yield to manual input.
-- **Placement**: `BlockPlacer` now plans with `PlacementPlanner` and places through `PlaceBlockAction`; a position is only dropped once the server acknowledges the prediction sequence and the block is there (`PlacementTracker`, `PlacementAckMixin`). Rejected cells retry with backoff. Surround, SelfTrap, AutoTrap, HoleFill and AutoWeb build their own `PlacementConstraints` from their per-module anticheat settings.
+- **Placement**: `BlockPlacer` now plans with `PlacementPlanner` and places through `PlaceBlockAction`; a position is only dropped once the server acknowledges the prediction sequence and the block is there (`PlacementTracker`, `PlacementAckMixin`). Rejected cells retry with backoff. Surround, SelfTrap, AutoTrap, HoleFill and AutoWeb build their own `PlacementConstraints` from their own settings.
 - **Navigation**: `NavigationProvider` API with the built-in walker (A*/route follower) and an optional Baritone adapter loaded only when Baritone is installed.
 - **Migrated**: HoleSnap (runtime `MoveAction`), AutoTool (hotbar lease instead of raw slot selection), shared `MovementKeys` replaces three WASD helpers.
 - **SpearAssist**: vanilla already refuses a jab below full charge (`Minecraft.startAttack` -> `cannotAttackWithItem(stack, 0)`), so the redundant `respect_cooldown` toggle and its `MinecraftMixin` hook were removed. New: charge HUD (charge-up bar, Dismount/Knockback/Damage windows with remaining time, predicted stab damage), reach band marker (too close / in range / too far, creative-aware) and optional auto re-charge through the vanilla release path. Rules live in the tested `SpearKinetics`.
@@ -27,13 +27,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Hot configs are written atomically (temp file + move) with a `.bak` of the last valid file, corrupt files are quarantined and recovered, writes are coalesced, unknown keys are preserved, and pending writes flush on shutdown and panic.
 - `.cbcfg` profiles record the Combatant version that saved them; older profiles load unchanged.
 
-### Anticheat Presets
-- The `Custom` anticheat preset is removed; only `Grim` and `Vanilla` remain (a saved `custom` loads as `Vanilla`).
-- Presets no longer clamp or override settings at runtime. Picking a preset in the ClickGUI writes its recommended values (ranges, rotation, rates) into the module's settings once, and the player can change any of them afterwards, e.g. a KillAura reach above 3.0 under Grim. Loading a config never rewrites settings.
+### Removed Anticheat Presets
+- The per-module anticheat preset system (`anticheat_mode` setting, `AntiCheatPreset`, `AntiCheatPresetDefaults`) is removed. Every module keeps the behaviour of its former default preset and uses its settings exactly as set.
 
 ### New Modules
 - **Combat**: `StaticHitboxes` (standing-size ray-cast boxes), `HoverTotem` (hover a totem in an inventory to equip it), `ShiftTap` (W-tap / sneak-tap after hits via runtime leases), `AnchorMacro` and `DoubleAnchor` (place, charge and detonate anchors with self-damage safety, built from runtime actions; new `InteractBlockAction` and `Actions.defer`). Anchor self-damage prediction (AnchorMacro and `AutoAnchor` on existing anchors) no longer lets the anchor shield the player from its own blast.
-- **Movement**: `AutoJump`, `Spider` (vanilla/jump), `NoWeb` (off under Grim), `LongJump` (boost/damage; off under Grim). `Parkour` gains `EdgeJump` aliases; `Freeze` gains `AirStuck` alias, hold-key mode and anticheat preset.
+- **Movement**: `AutoJump`, `Spider` (vanilla/jump), `NoWeb`, `LongJump` (boost/damage). `Parkour` gains `EdgeJump` aliases; `Freeze` gains `AirStuck` alias and hold-key mode.
 - **Player**: `Nuker` (filtered, ordered breaking through `BreakBlockAction`), `LockSlots` (blocks drop/move/swap of locked slots, hotbar tint), `ClickThrough`, `NoEntityTrace`, `QuickUse` (keybind item use with swap-back), `EnderChestPlus` (cached contents in tooltip and `@echest`), `AutoInvTotem` (strict open-inventory totem refill), `ShulkerDropper`, `TunnelBaseFinder` (1x2 tunnel with hazard pauses and storage/spawner alerts).
 - **Misc**: `AutoLeave`, `AutoAccept`, `AutoAuth`, `ServerRPSpoofer`, `DeathCoordinates` (chat + Xaero waypoint), `AntiCheatDetect` (ping-pattern heuristic), `AntiVanish`, `AutoRtp`, `AutoTpa`, `CordSnapper`.
 - **Visuals**: `Skeleton`, `PopChams`, `BedrockEsp`, `BlockNotifier`. `Tracers` arrows gain distance colouring; item physics gains random heading and tumble speed; `LightFinder` gains a strict below-Y=0 mode.
@@ -43,28 +42,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased / Latest Krypton Updates] - 2026-10-09
 
-### Anticheat Compatibility & Presets (GrimAC 2.3.74 & Vanilla Baseline)
-- **Centralized `AntiCheatPreset` System**:
-  - Added `anticheat_mode` enum setting (`CUSTOM`, `GRIM`, `VANILLA`) across combat, movement, and player modules.
-  - Defined canonical server interaction constants: `GRIM_ENTITY_RANGE` (3.0), `GRIM_BLOCK_RANGE` (4.5), alongside vanilla limits (`6.0` entity, `5.5` block).
-- **Combat Preset Bypasses**:
-  - **AutoAnchor & AutoBed**: Clamped block placement and detonation reach to 4.5 blocks; restricted interaction rate to at most one interaction per client tick to prevent interaction spam flags.
-  - **AutoCrystal**: Enforced strict Grim distance bounds: 4.5 block placement range, 3.0 block wall range, 3.0 block break range, and 3.0 block break wall range.
-  - **Criticals**: Under Grim preset, automatically converts packet tricks (`PACKET`, `NO_GROUND`, `VULCAN_297`) to legitimate `JUMP` criticals at vanilla motion (`0.42`), preventing `GroundSpoof`, `Simulation`, and `Timer` flags while preserving damage output. Added unit tests for Grim mode selection.
-  - **KillAura & Reach**: Enforced strict `GRIM_ENTITY_RANGE` (3.0 blocks) attack clamping under Grim.
-  - **Block Protection / Combat Traps**: `AutoTrap`, `AutoWeb`, `HoleFill`, `SelfTrap`, and `Surround` clamp block placement ranges to 4.5 blocks and wall ranges to 3.0 blocks, with crystal-clearing checks restricted to Grim bounds.
-  - **Totem Pop Counter**: Deduplicated totem pop triggers to count once per totem pop instead of once per processing thread.
-- **Movement Preset Bypasses**:
-  - **Speed**: Added new legitimate `BHOP` (Bunny Hop) mode that drives acceleration through input packets (`jump` and `sprint` bits) rather than directly injecting velocities, passing Grim simulation checks cleanly. Covered by `BhopInputTest`.
-  - **Sprint**: Added Grim-compliant sprint blockage checks to prevent omnidirectional sprinting flags when blinded, sneaking, exhausted/hungry, or colliding horizontally.
-  - **NoSlow**: Wired into vanilla item-use slowdown; automatically swaps in `GRIM_TICK` under the Grim preset.
-  - **Timer**: Caps timer speed to 1.0x under Grim, ceases ping/pong packet holding, and disables `Shift` tick accumulation to pass transaction order checks.
-  - **AirJump & ReverseStep**: Safely disabled under Grim to prevent vertical velocity and falling simulation flags.
-  - **Step**: Enforces legitimate step height limits (clamped within 0.6–5.0) and mode switching.
-  - **NoFall**: Automatically maps ground-spoofing modes to `PACKET_JUMP` under Grim, maintaining `MLG` mode as a real-placement alternative.
-  - **Strafe & TargetStrafe**: Automatically switches from Matrix velocity modification to Grim mode.
-  - **SafeWalk**: Fixed edge-walking creep where holding a direction key slowly shifted the player off the block edge.
-  - **Blink**: Movement-only mode now holds movement packets reliably.
+### Fixes & Additions
+- **Totem Pop Counter**: Deduplicated totem pop triggers to count once per totem pop instead of once per processing thread.
+- **Speed**: Added a `BHOP` (Bunny Hop) mode that drives acceleration through input packets (`jump` and `sprint` bits) rather than directly injecting velocities. Covered by `BhopInputTest`.
+- **SafeWalk**: Fixed edge-walking creep where holding a direction key slowly shifted the player off the block edge.
+- **Blink**: Movement-only mode now holds movement packets reliably.
 
 ### Scaffold & Placement Engine Overhaul
 - **Raycast Geometry**: Overhauled placement targeting so clicks satisfy GrimAC raycast geometry (aims at external block face positions from outside the block collision box).

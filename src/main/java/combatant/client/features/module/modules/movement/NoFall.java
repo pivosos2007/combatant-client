@@ -41,8 +41,6 @@ import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import combatant.client.util.block.scaffold.ScaffoldFacePositionFactory;
 import combatant.client.util.block.scaffold.ScaffoldPlacementTarget;
@@ -85,10 +83,6 @@ public class NoFall extends Module {
         NORMAL_MLG_ITEMS = Set.copyOf(items);
     }
 
-    // picking grim sets packet jump (the ground-flag modes claim a ground GrimAC's prediction does
-    // not have: GroundSpoof, NoFall and Simulation flag them) unless MLG is chosen; picking vanilla sets ground
-    // spoof, which a server with no anticheat takes at its word. The mode is used as set afterwards.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Mode> mode =
             enumSetting("mode", "mode", Mode.GROUD_SPOOF, Mode.values());
     private final NumberValue<Float> packetJumpFallDistance =
@@ -116,9 +110,6 @@ public class NoFall extends Module {
     private int mlgSneakTicks;
 
     {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .replaceOnGrim(mode, m -> m != Mode.MLG, Mode.PACKET_JUMP)
-                .replaceOnVanilla(mode, m -> m != Mode.MLG, Mode.GROUD_SPOOF);
         setDefaultBind("GRAVE_ACCENT");
     }
 

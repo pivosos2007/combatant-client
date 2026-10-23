@@ -24,8 +24,6 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
 import combatant.client.util.combat.VulcanReachController;
 
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import java.util.List;
 import java.util.Optional;
 
@@ -36,9 +34,6 @@ import java.util.Optional;
         description = "module.reach.description")
 public class Reach extends Module {
 
-    // grim preset: distance and wallDistance at most 3.0 (GrimAC Reach); vanilla preset: 6.0 for both.
-    // Picked once, then every setting stays as the player sets it.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     public final EnumValue<KillAura.RaycastMode> raycast =
             enumCommon(
                     "reachContext",
@@ -76,12 +71,6 @@ public class Reach extends Module {
                     0.0,
                     6.0
             ), () -> raycast.get() == KillAura.RaycastMode.THROUGH_WALLS);
-
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .cap(distance, AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE)
-                .cap(wallDistance, AntiCheatPreset.GRIM_ENTITY_RANGE, AntiCheatPreset.VANILLA_ENTITY_RANGE);
-    }
 
     private static double boxDistanceSq(AABB box, Vec3 p) {
         double dx = 0.0;

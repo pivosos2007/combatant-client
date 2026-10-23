@@ -25,8 +25,6 @@ import combatant.client.features.module.Notifier;
 import combatant.client.features.module.modules.combat.anchormacro.AnchorSlotPicker.DetonatorPreference;
 import combatant.client.input.CombatantInput;
 import combatant.client.input.InputScope;
-import combatant.client.util.anticheat.AntiCheatPreset;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
 import combatant.client.util.aiming.features.MovementCorrection;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -59,9 +57,6 @@ public abstract class AnchorSequenceModule extends Module {
 
     protected final Minecraft mc = Minecraft.getInstance();
 
-    // grim preset: range <= 4.5, wall range 0, rotation NORMAL; vanilla preset: 5.5 range/wall range, NO_ROTATION.
-    // Picked once, then every setting stays as the player sets it.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final EnumValue<Trigger> trigger = enumMode("trigger", Trigger.KEY, Trigger.values());
     private final KeyBindValue key = visibleWhen(bind("key", "NONE", BindMode.HOLD),
             () -> trigger.get() == Trigger.KEY);
@@ -69,14 +64,6 @@ public abstract class AnchorSequenceModule extends Module {
     private final NumberValue<Double> wallRange = num("wall_range", 0.0D, 0.0D, 6.0D);
     private final EnumValue<PlacementRotationMode> rotation = enumMode(
             "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
-
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .set(rotation, PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION);
-    }
-
     private final EnumValue<MovementCorrection> movementCorrection = visibleWhen(enumMode(
             "movement_correction", MovementCorrection.SILENT, MovementCorrection.values()),
             () -> rotation.get() == PlacementRotationMode.NORMAL);

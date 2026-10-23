@@ -40,8 +40,6 @@ import combatant.client.features.module.modules.player.printer.PrinterTargets;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
-import combatant.client.util.anticheat.AntiCheatPresetDefaults;
-import combatant.client.util.anticheat.AntiCheatPreset;
 import combatant.client.util.block.scaffold.ScaffoldPlacementTarget;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventorySwapPolicy;
@@ -94,10 +92,6 @@ public final class Printer extends Module {
     private final Minecraft mc = Minecraft.getInstance();
     private final BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
 
-    // Picking a preset writes its recommended values into the settings once: grim = range <= 4.5, wall range 0,
-    // rotation NORMAL, 1 block per batch; vanilla = 5.5 range, NO_ROTATION where the state does not depend on the
-    // look, max blocks per batch. Afterwards the settings are used exactly as set.
-    private final EnumValue<AntiCheatPreset> anticheat = enumMode("anticheat_mode", AntiCheatPreset.VANILLA);
     private final NumberValue<Double> range = num("printerRange", "range", 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = num("printerWallRange", "wall_range", 0.0D, 0.0D, 6.0D);
     private final EnumValue<PlacementRotationMode> rotation = enumSetting(
@@ -105,13 +99,6 @@ public final class Printer extends Module {
     private final EnumValue<MovementCorrection> movementCorrection = enumSetting(
             "printerMovementCorrection", "movement_correction", MovementCorrection.SILENT, MovementCorrection.values());
     private final NumberValue<Integer> blocksPerTick = num("printerBlocksPerTick", "blocks_per_tick", 1, 1, 6);
-    {
-        AntiCheatPresetDefaults.bind(anticheat)
-                .cap(range, AntiCheatPreset.GRIM_BLOCK_RANGE, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .cap(wallRange, 0.0D, AntiCheatPreset.VANILLA_BLOCK_RANGE)
-                .set(rotation, PlacementRotationMode.NORMAL, PlacementRotationMode.NO_ROTATION)
-                .cap(blocksPerTick, 1, blocksPerTick.getMax());
-    }
     private final NumberValue<Integer> delay = num("printerDelay", "delay", 1, 0, 20);
     private final NumberValue<Integer> swapBackDelay = num("printerSwapBackDelay", "swap_back_delay", 2, 0, 10);
     private final NumberValue<Integer> scanInterval = num("printerScanInterval", "scan_interval", 4, 1, 40);
