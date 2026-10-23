@@ -34,10 +34,10 @@ import java.util.function.Consumer;
 final class SchematicViewport {
 
     static final float MAX_GAP = 4f;
-    private static final int MAX_FACES = 36_000;
+    private static final int MAX_FACES = 80_000;
     /** Most sprite repeats drawn on one coarse face before the sprite is stretched over it instead. */
     private static final int MAX_TILES = 16;
-    private static final int SYNC_VOLUME = 64_000;
+    private static final int SYNC_VOLUME = 125_000;
     private static final float CLICK_SLOP = 4f;
     private static final long TINT_REFRESH_NANOS = 250_000_000L;
     private static final ExecutorService MESHER = Executors.newSingleThreadExecutor(runnable -> {
@@ -71,7 +71,6 @@ final class SchematicViewport {
     private GpuTextureView atlasView;
     private GpuSampler atlasSampler;
     private boolean faceTinted;
-    private int runFrom, runTo;
     private final float[] cornerX = new float[4], cornerY = new float[4];
     private final float[] tileX = new float[4], tileY = new float[4], tileU = new float[4], tileV = new float[4];
     private final int[] tileC = new int[4];
@@ -81,12 +80,15 @@ final class SchematicViewport {
     private ViewMode facesMode;
     private int facesLayer = -1;
     private float facesGap = -1f;
-    private boolean facesMerge;
+    private SchematicDiff facesDiff;
+    private int facesRevision = -1;
+    private long facesNanos;
     private CompletableFuture<FaceList> pending;
     private ViewMode pendingMode;
     private int pendingLayer;
     private float pendingGap;
-    private boolean pendingMerge;
+    private SchematicDiff pendingDiff;
+    private int pendingRevision = -1;
 
     private byte[] faceStatus = new byte[0];
     private FaceList statusFaces;
@@ -98,6 +100,10 @@ final class SchematicViewport {
     private float x, y, w, h;
     private float alpha;
     private int hovered = -1;
+    private float lastPickX = Float.NaN, lastPickY = Float.NaN, lastPickGap = -1f;
+    private int lastPickRevision = -1, lastPickLayer = -1, lastPickHit = -1;
+    private ViewMode lastPickMode;
+    private FaceList lastPickFaces;
     private boolean orbiting, panning;
     private float lastX, lastY, dragDistance;
 
@@ -163,7 +169,7 @@ final class SchematicViewport {
         frameCamera();
         camera.update(dt, autoRotate && !orbiting);
         camera.computeView(x, y, w, h);
-        hovered = mouseInside && !dragging() ? pick(mouseX, mouseY) : -1;
+        hovered = mouseInside && !dragging() ? cachedPick(mouseX, mouseY) : -1;
         if (faces == null) return;
         refreshStatus();
         frame.build(faces, camera, x, y, w, h);
@@ -214,37 +220,56 @@ final class SchematicViewport {
 
     private void ensureMesh() {
         float meshGap = mode.exploded() ? gap : 0f;
-        // Merged faces cover several blocks but carry one voxel, so per-block diff tints need unmerged faces.
-        boolean merge = diff == null;
+        SchematicDiff meshDiff = diff;
+        int meshRevision = meshDiff == null ? -1 : meshDiff.revision();
         if (pending != null && pending.isDone()) {
             FaceList built = pending.getNow(null);
-            if (built != null) adopt(built, pendingMode, pendingLayer, pendingGap, pendingMerge);
+            if (built != null) adopt(built, pendingMode, pendingLayer, pendingGap, pendingDiff, pendingRevision);
             pending = null;
         }
-        if (faces != null && facesMode == mode && facesLayer == layer && facesGap == meshGap && facesMerge == merge) return;
+        long now = System.nanoTime();
+        boolean sameShape = faces != null && facesMode == mode && facesLayer == layer && facesGap == meshGap;
+        if (sameShape && facesDiff == meshDiff && facesRevision == meshRevision) return;
+        // Merged faces share one diff group; a changed diff only re-meshes at the tint refresh rate.
+        if (sameShape && facesDiff == meshDiff && now - facesNanos < TINT_REFRESH_NANOS) return;
         if (schematic.volume() <= SYNC_VOLUME) {
-            adopt(FaceMesher.build(volume, shapes, paletteColors, mode, layer, meshGap, MAX_FACES, merge), mode, layer, meshGap, merge);
+            adopt(FaceMesher.build(volume, shapes, paletteColors, mode, layer, meshGap, MAX_FACES, mergeGroups(meshDiff)),
+                    mode, layer, meshGap, meshDiff, meshRevision);
             return;
         }
         if (pending != null) return;
         pendingMode = mode;
         pendingLayer = layer;
         pendingGap = meshGap;
-        pendingMerge = merge;
+        pendingDiff = meshDiff;
+        pendingRevision = meshRevision;
         VoxelVolume source = volume;
         combatant.client.features.gui.schematic.view3d.BlockShape[] jobShapes = shapes;
         int[] colors = paletteColors;
         ViewMode jobMode = mode;
         int jobLayer = layer;
-        pending = CompletableFuture.supplyAsync(() -> FaceMesher.build(source, jobShapes, colors, jobMode, jobLayer, meshGap, MAX_FACES, merge), MESHER);
+        java.util.function.IntUnaryOperator groups = mergeGroups(meshDiff);
+        pending = CompletableFuture.supplyAsync(() -> FaceMesher.build(source, jobShapes, colors, jobMode, jobLayer, meshGap, MAX_FACES, groups), MESHER);
     }
 
-    private void adopt(FaceList built, ViewMode builtMode, int builtLayer, float builtGap, boolean builtMerge) {
+    /** Cube faces merge across blocks that tint alike: correct, wrong, and everything else are three groups. */
+    private static java.util.function.IntUnaryOperator mergeGroups(SchematicDiff d) {
+        if (d == null) return voxel -> 0;
+        return voxel -> switch (statusIn(d, voxel)) {
+            case SchematicDiff.CORRECT -> 1;
+            case SchematicDiff.WRONG -> 2;
+            default -> 0;
+        };
+    }
+
+    private void adopt(FaceList built, ViewMode builtMode, int builtLayer, float builtGap, SchematicDiff builtDiff, int builtRevision) {
         faces = built;
         facesMode = builtMode;
         facesLayer = builtLayer;
         facesGap = builtGap;
-        facesMerge = builtMerge;
+        facesDiff = builtDiff;
+        facesRevision = builtRevision;
+        facesNanos = System.nanoTime();
         statusFaces = null;
     }
 
@@ -262,10 +287,10 @@ final class SchematicViewport {
         statusRevision = diff.revision();
         statusNanos = now;
         if (faceStatus.length < faces.count()) faceStatus = new byte[faces.count()];
-        for (int f = 0, n = faces.count(); f < n; f++) faceStatus[f] = statusOf(faces.voxel(f));
+        for (int f = 0, n = faces.count(); f < n; f++) faceStatus[f] = statusIn(diff, faces.voxel(f));
     }
 
-    private byte statusOf(int schematicIndex) {
+    private static byte statusIn(SchematicDiff diff, int schematicIndex) {
         int low = 0, high = diff.cellCount() - 1;
         while (low <= high) {
             int mid = (low + high) >>> 1;
@@ -286,19 +311,14 @@ final class SchematicViewport {
     private void drawScene() {
         Renderer2D.COLOR.quadBatch(footprintBatch);
         faceTinted = statusFaces == faces && statusFaces != null;
-        for (int i = 0, n = frame.visible(); i < n; ) {
-            boolean textured = textured(frame.face(i));
-            int j = i + 1;
-            while (j < n && textured(frame.face(j)) == textured) j++;
-            runFrom = i;
-            runTo = j;
-            if (textured) {
-                Renderer2D.COLOR.texturedQuadBatch(atlasView, atlasSampler, texturedRun);
-            } else {
-                Renderer2D.COLOR.quadBatch(flatRun);
-            }
-            i = j;
+        // At most one flat batch and one textured batch per frame; faces keep back-to-front order inside each.
+        int n = frame.visible();
+        boolean anyFlat = false, anyTextured = false;
+        for (int i = 0; i < n && !(anyFlat && anyTextured); i++) {
+            if (textured(frame.face(i))) anyTextured = true; else anyFlat = true;
         }
+        if (anyFlat) Renderer2D.COLOR.quadBatch(flatRun);
+        if (anyTextured) Renderer2D.COLOR.texturedQuadBatch(atlasView, atlasSampler, texturedRun);
         if (hovered >= 0) Renderer2D.COLOR.quadBatch(hoverBatch);
     }
 
@@ -307,16 +327,16 @@ final class SchematicViewport {
     }
 
     private void drawFlatRun(Renderer2D.QuadBatch batch) {
-        for (int i = runFrom; i < runTo; i++) {
+        for (int i = 0, n = frame.visible(); i < n; i++) {
             int f = frame.face(i);
-            drawFace(batch, f, faceColor(f, faces.color(f)));
+            if (!textured(f)) drawFace(batch, f, faceColor(f, faces.color(f)));
         }
     }
 
     private void drawTexturedRun(Renderer2D.TexturedQuadBatch batch) {
-        for (int i = runFrom; i < runTo; i++) {
+        for (int i = 0, n = frame.visible(); i < n; i++) {
             int f = frame.face(i);
-            drawTexturedFace(batch, f, faceColor(f, faces.light(f)));
+            if (textured(f)) drawTexturedFace(batch, f, faceColor(f, faces.light(f)));
         }
     }
 
@@ -473,6 +493,24 @@ final class SchematicViewport {
     }
 
     // ---------------------------------------------------------------- picking + input
+
+    /** Raycast only when the cursor, camera or meshed scene changed since the last pick. */
+    private int cachedPick(float mx, float my) {
+        int revision = camera.revision();
+        if (mx == lastPickX && my == lastPickY && revision == lastPickRevision && layer == lastPickLayer
+                && gap == lastPickGap && mode == lastPickMode && faces == lastPickFaces && schematic != null) {
+            return lastPickHit;
+        }
+        lastPickX = mx;
+        lastPickY = my;
+        lastPickRevision = revision;
+        lastPickLayer = layer;
+        lastPickGap = gap;
+        lastPickMode = mode;
+        lastPickFaces = faces;
+        lastPickHit = pick(mx, my);
+        return lastPickHit;
+    }
 
     private int pick(float mx, float my) {
         if (schematic == null) return -1;

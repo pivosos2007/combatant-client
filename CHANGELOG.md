@@ -38,6 +38,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Misc**: `AutoLeave`, `AutoAccept`, `AutoAuth`, `ServerRPSpoofer`, `DeathCoordinates` (chat + Xaero waypoint), `AntiCheatDetect` (ping-pattern heuristic), `AntiVanish`, `AutoRtp`, `AutoTpa`, `CordSnapper`.
 - **Visuals**: `Skeleton`, `PopChams`, `BedrockEsp`, `BlockNotifier`. `Tracers` arrows gain distance colouring; item physics gains random heading and tumble speed; `LightFinder` gains a strict below-Y=0 mode.
 
+### Fixes
+- **SchematicBuilder**: the mover's sneak is now paced by `SneakPacing` (held >= 2 ticks, starts >= 3 ticks apart) so rapid bridging / edge-sneak flips no longer trip Vulcan BadPackets K.
+
 ### Removed
 - `SpeedMine` and `SpeedMineGameModeMixin` (`NoDelay` covers fast breaking).
 

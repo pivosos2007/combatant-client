@@ -167,7 +167,7 @@ final class BuildPlanner {
             if (!better(candidate, best)) return;
             BlockHitResult hit = trace(player, eyes, rotation, Math.sqrt(distanceSq) + 0.5);
             if (hit == null || !hit.getBlockPos().equals(support) || hit.getDirection() != face) return;
-            best = candidate;
+            best = new Plan(target, support, face, hit.getLocation(), rotation, exact, distanceSq, sneak);
         }
     }
 
@@ -202,6 +202,62 @@ final class BuildPlanner {
         BlockHitResult hit = trace(player, eyes, rotation, Math.sqrt(distanceSq) + 0.5);
         if (hit == null || !hit.getBlockPos().equals(pos)) return best;
         return new Plan(pos, pos, hit.getDirection(), hit.getLocation(), rotation, true, distanceSq, false);
+    }
+
+    private static final double CURSOR_EPSILON = 1.0e-6;
+
+    /**
+     * Grim {@code PositionPlace}/{@code FabricatedPlace}: the cursor ({@code hit - support}) must lie inside
+     * {@code [0, 1]} on every axis and on the plane of the clicked face of the support's outline (the unit
+     * cube's face when no outline is given).
+     */
+    static boolean cursorValid(BlockPos support, Direction face, Vec3 hit, VoxelShape shape) {
+        double x = hit.x - support.getX();
+        double y = hit.y - support.getY();
+        double z = hit.z - support.getZ();
+        double lo = -CURSOR_EPSILON;
+        double hi = 1.0 + CURSOR_EPSILON;
+        if (x < lo || x > hi || y < lo || y > hi || z < lo || z > hi) return false;
+        Direction.Axis axis = face.getAxis();
+        boolean positive = face.getAxisDirection() == Direction.AxisDirection.POSITIVE;
+        double plane = axis.choose(x, y, z);
+        if (shape == null) return Math.abs(plane - (positive ? 1.0 : 0.0)) <= CURSOR_EPSILON;
+        // The click lands on the outline, so the plane is one of the outline's own faces (a stair's step too).
+        for (AABB box : shape.toAabbs()) {
+            if (Math.abs(plane - (positive ? box.max(axis) : box.min(axis))) <= CURSOR_EPSILON) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Grim {@code RotationPlace}/{@code FarPlace}: the ray from the eyes along {@code rotation} enters the
+     * support's outline through {@code face} no further than {@code reach} away.
+     */
+    static boolean rayHitsFace(Vec3 eyes, Rotation rotation, BlockPos support, VoxelShape shape, Direction face,
+                               double reach) {
+        if (rotation == null || shape == null || shape.isEmpty()) return false;
+        Vec3 end = eyes.add(rotation.directionVector().scale(reach));
+        BlockHitResult hit = shape.clip(eyes, end, support);
+        return hit != null && hit.getDirection() == face && eyes.distanceTo(hit.getLocation()) <= reach;
+    }
+
+    /** Pure click legality: eye-to-support reach, cursor inside the face and, when given, the ray onto the face. */
+    static boolean legalClick(Vec3 eyes, Rotation rotation, BlockPos support, VoxelShape shape, Direction face,
+                              Vec3 hit, double reach) {
+        if (shape == null || shape.isEmpty()) return false;
+        if (!cursorValid(support, face, hit, shape)) return false;
+        if (eyes.distanceToSqr(hit) > reach * reach) return false;
+        if (shape.bounds().move(support).distanceToSqr(eyes) > reach * reach) return false;
+        return rotation == null || rayHitsFace(eyes, rotation, support, shape, face, reach);
+    }
+
+    /**
+     * Whether the click may go out under the anticheats' place checks, within the player's own block
+     * interaction range. {@code rotation == null} skips the ray (the rotation-free mode has none to check).
+     */
+    static boolean legalClick(LocalPlayer player, Rotation rotation, BlockPos support, Direction face, Vec3 hit) {
+        VoxelShape shape = player.level().getBlockState(support).getShape(player.level(), support);
+        return legalClick(player.getEyePosition(), rotation, support, shape, face, hit, player.blockInteractionRange());
     }
 
     /**

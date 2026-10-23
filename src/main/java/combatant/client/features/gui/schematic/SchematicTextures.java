@@ -29,6 +29,10 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.EnderChestBlock;
+import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.lang.reflect.Field;
@@ -77,6 +81,10 @@ final class SchematicTextures {
     }
 
     private static final Entry NONE = new Entry();
+    private static final Identifier PLANKS_SPRITE = Identifier.withDefaultNamespace("block/oak_planks");
+    private static final Identifier OBSIDIAN_SPRITE = Identifier.withDefaultNamespace("block/obsidian");
+    private static final Identifier CONCRETE_SPRITE = Identifier.withDefaultNamespace("block/white_concrete");
+    private static final int MAX_MODEL_QUADS = 10;
     private static final Map<BlockState, Entry> CACHE = new HashMap<>();
     private static final Map<Identifier, Integer> AVERAGES = new HashMap<>();
     private static final List<BlockStateModelPart> PARTS = new ArrayList<>();
@@ -160,6 +168,18 @@ final class SchematicTextures {
             for (int d = 0; d < FACES; d++) any |= fillFace(entry, state, d);
             TextureAtlasSprite particle = null;
             if (!any) {
+                Identifier storage = storageSprite(state);
+                if (storage != null) {
+                    TextureAtlasSprite sprite = atlas.getSprite(storage);
+                    if (sprite != null && sprite != atlas.missingSprite()) {
+                        int tint = state.getBlock() instanceof ShulkerBoxBlock shulker && shulker.getColor() != null
+                                ? 0xFF000000 | shulker.getColor().getTextureDiffuseColor() : WHITE;
+                        for (int d = 0; d < FACES; d++) set(entry, d, 0, sprite, tint);
+                        particle = sprite;
+                    }
+                }
+            }
+            if (!any && particle == null) {
                 particle = fluidSprite(atlas, state);
                 if (particle != null) {
                     int tint = state.getFluidState().is(FluidTags.WATER) ? WATER_TINT : WHITE;
@@ -168,7 +188,7 @@ final class SchematicTextures {
                     particle = model.particleMaterial().sprite();
                     if (particle == null || particle == atlas.missingSprite()) particle = null;
                 }
-            } else if (model != null) {
+            } else if (any && model != null) {
                 particle = model.particleMaterial().sprite();
             }
             // Sides the model has no quad for (slab tops, stair backs...) borrow the particle sprite.
@@ -223,6 +243,14 @@ final class SchematicTextures {
         if (slot == 0) topSprite = sprite;
     }
 
+    /** Block-atlas stand-in for storage blocks whose real model is an entity renderer with no block quads. */
+    private static Identifier storageSprite(BlockState state) {
+        Block block = state.getBlock();
+        if (block instanceof EnderChestBlock) return OBSIDIAN_SPRITE;
+        if (block instanceof ChestBlock) return PLANKS_SPRITE;
+        if (block instanceof ShulkerBoxBlock) return CONCRETE_SPRITE;
+        return null;
+    }
 
     private static TextureAtlasSprite fluidSprite(TextureAtlas atlas, BlockState state) {
         if (state.getFluidState().isEmpty()) return null;
@@ -251,12 +279,20 @@ final class SchematicTextures {
         return 0xFF000000 | colour;
     }
 
+    private static boolean offBlockAtlas(SchematicGhostModel ghost) {
+        for (int i = 0; i < ghost.quadCount; i++) {
+            if (!TextureAtlas.LOCATION_BLOCKS.equals(ghost.atlas[i])) return true;
+        }
+        return false;
+    }
+
     private static BlockShape buildShape(BlockState state) {
         SchematicGhostModel ghost = SchematicGhostModel.bake(state, SchematicTextures::tintOf);
         boolean occludes = ghost.fullCube && state.canOcclude();
         if (ghost.fullCube && occludes) return BlockShape.CUBE;
-        // Glass and other see-through full cubes draw as clean six-sided boxes but never hide what sits behind them.
-        if (ghost.fullCube || ghost.quadCount == 0) {
+        // Detailed models (hoppers, cauldrons...) turn into sub-pixel noise in the overview and models drawn from
+        // another atlas cannot share the block-atlas batch: both fall back to a see-through cube of the entry sprites.
+        if (ghost.fullCube || ghost.quadCount == 0 || ghost.quadCount > MAX_MODEL_QUADS || offBlockAtlas(ghost)) {
             return new BlockShape(true, occludes, 0, new float[0], new float[0], new float[0], new int[0], new byte[0]);
         }
         byte[] cull = new byte[ghost.quadCount];

@@ -209,6 +209,7 @@ final class BuildMover {
     private int pillarProgressBlocks;
     private int pillarIdleTicks;
     private boolean jumpThisTick;
+    private final SneakPacing sneakPacing = new SneakPacing();
     private boolean controlling;
     private boolean holdStill;
     private int replanWait;
@@ -314,6 +315,7 @@ final class BuildMover {
         pillarBaseY = Integer.MIN_VALUE;
         controlling = false;
         holdStill = false;
+        sneakPacing.reset();
         jumpThisTick = false;
         replanWait = 0;
         abortCooldown = 0;
@@ -993,6 +995,11 @@ final class BuildMover {
     }
 
     private void mine(LocalPlayer player, BlockPos pos, int faceIndex) {
+        // Grim MultiActions / Vulcan BadPackets I: no digging while an item is in use or a container is open.
+        if (player.isUsingItem() || player.containerMenu != player.inventoryMenu) {
+            stopMining();
+            return;
+        }
         int[] n = ReachModel.faceNormal(faceIndex);
         if (mining != null && !mining.equals(pos)) stopMining();
         Vec3 eye = player.getEyePosition();
@@ -1103,8 +1110,8 @@ final class BuildMover {
         event.setRight((keys & MovementKeys.RIGHT) != 0);
         event.setJump(jump);
         event.setSprint(sprint);
-        event.setSneak(mode == Mode.BRIDGING && bridgeCell != null
-                || !descending && !sprint && player.onGround() && aboutToFall(player));
+        event.setSneak(sneakPacing.next(mode == Mode.BRIDGING && bridgeCell != null
+                || !descending && !sprint && player.onGround() && aboutToFall(player)));
         jumpThisTick = false;
     }
 

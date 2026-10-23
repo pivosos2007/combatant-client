@@ -204,6 +204,10 @@ public final class SchematicBuilder extends Module {
     private BlockPos restockChest;
     private int restockChestTicks;
     private boolean openChestPending;
+    private BuildPlanner.Plan restockPlan;
+    private int containerOpenTicks;
+    private int containerClickCooldown;
+    private final SneakPacing sneakPacing = new SneakPacing();
 
 
     private Pending pending;
@@ -262,6 +266,10 @@ public final class SchematicBuilder extends Module {
         restockChest = null;
         restockChestTicks = 0;
         openChestPending = false;
+        restockPlan = null;
+        containerOpenTicks = 0;
+        containerClickCooldown = 0;
+        sneakPacing.reset();
     }
 
     public Status status() {
@@ -398,7 +406,7 @@ public final class SchematicBuilder extends Module {
             status = Status.NO_SCHEMATIC;
             return false;
         }
-        if (ClientScreen.current() != null || player.isUsingItem()
+        if (ClientScreen.current() != null || player.isUsingItem() || player.containerMenu != player.inventoryMenu
                 || pauseHealth.get() > 0.0f && player.getHealth() <= pauseHealth.get()) {
             status = Status.PAUSED;
             return false;
@@ -411,18 +419,23 @@ public final class SchematicBuilder extends Module {
         LocalPlayer player = mc.player;
         if (!isEnabled() || player == null) return;
         if (autoWalk.get()) mover.applyInput(event, player);
+        // Grim MultiActions / Vulcan BadPackets I: no sprint while a container is open or being opened.
+        if (player.containerMenu != player.inventoryMenu || openChestPending || restockChest != null) {
+            event.setSprint(false);
+            if (player.isSprinting()) player.setSprinting(false);
+        }
         Pending work = pending;
         if (openChestPending || restockChest != null) {
-            event.setSneak(false);
+            event.setSneak(sneakPacing.apply(false, ticks));
             return;
         }
-        if (work == null) return;
         // Placing against a lever, repeater, hopper or door goes out sneaking so it does not toggle or open;
         // clicking a block to set its delay or note must not, or vanilla places the held block instead.
-        if (work.kind == Kind.PLACE && work.plan.sneak()) {
-            event.setSneak(true);
-        } else if (work.kind == Kind.ADJUST) {
-            event.setSneak(false);
+        // The sneak is held and spaced by SneakPacing so START_SNEAKING packets never come closer than 2 ticks.
+        if (work != null && work.kind == Kind.PLACE && work.plan.sneak()) {
+            event.setSneak(sneakPacing.apply(true, ticks));
+        } else if (work != null && work.kind == Kind.ADJUST || sneakPacing.holding()) {
+            event.setSneak(sneakPacing.apply(false, ticks));
         }
     }
 
@@ -430,6 +443,10 @@ public final class SchematicBuilder extends Module {
         LocalPlayer player = mc.player;
         aimedThisTick = false;
         openChestPending = false;
+        if (player.containerMenu == player.inventoryMenu) {
+            containerOpenTicks = 0;
+            containerClickCooldown = 0;
+        }
         if (restockChest != null && player.containerMenu != player.inventoryMenu) {
             tickOpenRestockChest(player);
             return;
@@ -535,13 +552,22 @@ public final class SchematicBuilder extends Module {
 
     private void post() {
         LocalPlayer player = mc.player;
-        if (openChestPending && restockChest != null && canWork(player)) {
+        if (openChestPending && restockChest != null && restockPlan != null && canWork(player)) {
             openChestPending = false;
-            Vec3 hitVec = Vec3.atCenterOf(restockChest).add(0.0, 0.5, 0.0);
-            BlockHitResult hit = new BlockHitResult(hitVec, Direction.UP, restockChest, false);
-            InteractionResult res = useWithRotation(player, hit, RotationManager.INSTANCE.getServerRotation());
-            if (res != null && res.consumesAction()) {
-                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
+            BuildPlanner.Plan click = restockPlan;
+            if (!player.isShiftKeyDown() && click.target().equals(restockChest)) {
+                Rotation current = effectiveRotate() ? RotationManager.INSTANCE.getCurrentRotation() : null;
+                BlockHitResult hit = effectiveRotate()
+                        ? BuildPlanner.trace(player, current, player.blockInteractionRange() + 0.5)
+                        : new BlockHitResult(click.hit(), click.face(), click.support(), false);
+                if (BuildPlanner.matches(hit, click)
+                        && BuildPlanner.legalClick(player, current, click.support(), click.face(), hit.getLocation())) {
+                    InteractionResult res = useWithRotation(player, new BlockHitResult(hit.getLocation(), click.face(),
+                            click.support(), false), RotationManager.INSTANCE.getServerRotation());
+                    if (res != null && res.consumesAction()) {
+                        player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
+                    }
+                }
             }
             cooldown = Math.max(cooldown, 4);
             return;
@@ -561,6 +587,7 @@ public final class SchematicBuilder extends Module {
     private boolean tryPlace(LocalPlayer player, Pending work) {
         BuildPlanner.Plan plan = work.plan;
         // The sneak goes out with this tick's input packet; the crouched eyes are what the plan aimed from.
+        if (player.isUsingItem() || player.containerMenu != player.inventoryMenu) return false;
         if (plan.sneak() && !(player.isShiftKeyDown() && player.isCrouching())) {
             rotationWaitTicks++;
             return false;
@@ -587,6 +614,11 @@ public final class SchematicBuilder extends Module {
         } else {
             hit = new BlockHitResult(plan.hit(), plan.face(), plan.support(), false);
             facingRotation = null;
+        }
+        if (!BuildPlanner.legalClick(player, effectiveRotate() ? RotationManager.INSTANCE.getCurrentRotation() : null,
+                plan.support(), plan.face(), hit.getLocation())) {
+            rotationWaitTicks++;
+            return false;
         }
 
         ItemStack stack = player.getInventory().getItem(work.hotbarSlot);
@@ -868,6 +900,7 @@ public final class SchematicBuilder extends Module {
     /** One use on the placed block; the world is read again before the next one. */
     private void tryAdjust(LocalPlayer player, Pending work) {
         BuildPlanner.Plan plan = work.plan;
+        if (player.isUsingItem() || player.containerMenu != player.inventoryMenu) return;
         if (player.isShiftKeyDown()) {
             rotationWaitTicks++;
             return;
@@ -881,6 +914,11 @@ public final class SchematicBuilder extends Module {
             }
         } else {
             hit = new BlockHitResult(plan.hit(), plan.face(), plan.target(), false);
+        }
+        if (!BuildPlanner.legalClick(player, effectiveRotate() ? RotationManager.INSTANCE.getCurrentRotation() : null,
+                plan.target(), hit.getDirection(), hit.getLocation())) {
+            rotationWaitTicks++;
+            return;
         }
         InteractionResult result = mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
         if (result != null && result.consumesAction()) {
@@ -1240,6 +1278,13 @@ public final class SchematicBuilder extends Module {
         return count;
     }
 
+    private boolean chestRayOnFace(LocalPlayer player, BuildPlanner.Plan click) {
+        Rotation current = RotationManager.INSTANCE.getCurrentRotation();
+        BlockHitResult hit = BuildPlanner.trace(player, current, player.blockInteractionRange() + 0.5);
+        return BuildPlanner.matches(hit, click)
+                && BuildPlanner.legalClick(player, current, click.support(), click.face(), hit.getLocation());
+    }
+
     private boolean planChestRestock(LocalPlayer player) {
         if (state.missingMaterials().isEmpty()) updateShortfall(player);
         Set<Item> needed = new HashSet<>();
@@ -1258,23 +1303,24 @@ public final class SchematicBuilder extends Module {
             restockChestTicks = 0;
         }
         status = Status.RESTOCKING;
-        double reach = effectiveRange();
-        Vec3 hitVec = Vec3.atCenterOf(target).add(0.0, 0.5, 0.0);
-        if (player.getEyePosition().distanceToSqr(hitVec) <= reach * reach) {
+        // A face of the chest the eyes really see, aimed at a point the ray lands on: never a fixed top face.
+        BuildPlanner.Plan click = BuildPlanner.planClick(player, mc.level, target,
+                Math.min(effectiveRange(), player.blockInteractionRange()));
+        restockPlan = click;
+        if (click != null) {
             mover.holdForClick();
-            Rotation aim = Rotation.lookingAt(hitVec, player.getEyePosition());
             if (effectiveRotate()) {
                 aimedThisTick = true;
-                requestRotation(aim);
+                requestRotation(click.rotation());
             }
             restockChestTicks++;
-            Rotation current = RotationManager.INSTANCE.getCurrentRotation();
-            if (!effectiveRotate() || (current != null && current.angleTo(aim) <= 12.0f) || restockChestTicks >= 6) {
-                openChestPending = true;
-                if (restockChestTicks > 25) {
-                    chestIndex.markCooldown(mc.level, target, ticks + ChestIndex.retryCooldownTicks());
-                    restockChest = null;
-                }
+            // Only once the camera's own ray lands on the planned face of the chest.
+            if (!effectiveRotate() || chestRayOnFace(player, click)) openChestPending = true;
+            if (restockChestTicks > 25) {
+                chestIndex.markCooldown(mc.level, target, ticks + ChestIndex.retryCooldownTicks());
+                restockChest = null;
+                restockPlan = null;
+                openChestPending = false;
             }
             return true;
         }
@@ -1294,6 +1340,10 @@ public final class SchematicBuilder extends Module {
         status = Status.RESTOCKING;
         mover.pause();
         RotationManager.INSTANCE.release(this);
+        containerOpenTicks++;
+        if (containerClickCooldown > 0) containerClickCooldown--;
+        // Grim/Vulcan inventory checks: the first click waits out the open, later clicks keep the delay.
+        if (!ContainerPacing.ready(containerOpenTicks, containerClickCooldown)) return;
         AbstractContainerMenu menu = player.containerMenu;
         int containerSlots = menu.slots.size() - 36;
         if (containerSlots <= 0) {
@@ -1313,6 +1363,7 @@ public final class SchematicBuilder extends Module {
             if (stack.isEmpty() || !needed.contains(stack.getItem())) continue;
             if (!hasRoomFor(player.getInventory(), stack)) break;
             mc.gameMode.handleContainerInput(menu.containerId, i, 0, ContainerInput.QUICK_MOVE, player);
+            containerClickCooldown = ContainerPacing.spacing(delay.get(), donutRules());
             return;
         }
         chestIndex.recordOpenContainer(mc.level, player, restockChest);
@@ -1321,6 +1372,56 @@ public final class SchematicBuilder extends Module {
         restockChest = null;
         restockChestTicks = 0;
         updateShortfall(player);
+    }
+
+    /**
+     * Vulcan BadPackets K: consecutive {@code START_SNEAKING} packets closer than ~90 ms flag. A sneak is held
+     * for at least {@link #MIN_HOLD_TICKS} ticks and a new one starts at least {@link #MIN_START_GAP_TICKS}
+     * ticks after the previous start.
+     */
+    static final class SneakPacing {
+        static final int MIN_HOLD_TICKS = 2;
+        static final int MIN_START_GAP_TICKS = 3;
+        private int startTick = Integer.MIN_VALUE / 2;
+        private boolean sneaking;
+
+        /** The sneak state to send for {@code tick} when the builder {@code wants} to sneak. */
+        boolean apply(boolean wants, int tick) {
+            if (sneaking) {
+                if (!wants && tick - startTick >= MIN_HOLD_TICKS) sneaking = false;
+            } else if (wants && tick - startTick >= MIN_START_GAP_TICKS) {
+                sneaking = true;
+                startTick = tick;
+            }
+            return sneaking;
+        }
+
+        boolean holding() {
+            return sneaking;
+        }
+
+        void reset() {
+            sneaking = false;
+            startTick = Integer.MIN_VALUE / 2;
+        }
+    }
+
+    /** Container click cadence: the first click waits out the open, later clicks keep the configured delay. */
+    static final class ContainerPacing {
+        static final int OPEN_WAIT_TICKS = 2;
+        static final int DONUT_MIN_SPACING = 2;
+
+        private ContainerPacing() {
+        }
+
+        /** {@code openTicks}: ticks since the menu was seen (1 on the first); {@code cooldown}: ticks left to wait. */
+        static boolean ready(int openTicks, int cooldown) {
+            return openTicks > OPEN_WAIT_TICKS && cooldown <= 0;
+        }
+
+        static int spacing(int delay, boolean donutRules) {
+            return donutRules ? Math.max(DONUT_MIN_SPACING, delay) : Math.max(1, delay);
+        }
     }
 
     private static boolean hasRoomFor(Inventory inv, ItemStack incoming) {

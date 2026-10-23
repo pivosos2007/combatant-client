@@ -8,6 +8,7 @@
 package combatant.client.features.gui.schematic.view3d;
 
 import java.util.Arrays;
+import java.util.function.IntUnaryOperator;
 
 /**
  * Turns a voxel volume into the list of faces worth drawing. Plain cubes contribute one box face per exposed side
@@ -30,26 +31,27 @@ public final class FaceMesher {
      * @param shapes per palette index; null entries (and the whole array being null) mean a plain opaque cube
      */
     public static FaceList build(VoxelVolume volume, int[] paletteColors, ViewMode mode, int selected, float gap, int maxFaces) {
-        return build(volume, null, paletteColors, mode, selected, gap, maxFaces, false);
+        return build(volume, null, paletteColors, mode, selected, gap, maxFaces, null);
     }
 
     /** Per-block faces, no merging: every face maps to exactly one voxel. */
     public static FaceList build(VoxelVolume volume, BlockShape[] shapes, int[] paletteColors, ViewMode mode, int selected, float gap, int maxFaces) {
-        return build(volume, shapes, paletteColors, mode, selected, gap, maxFaces, false);
+        return build(volume, shapes, paletteColors, mode, selected, gap, maxFaces, null);
     }
 
     /**
-     * @param merge at full detail, join coplanar cube faces of the same palette entry and class into one larger
-     *              face; such a face reports only its first voxel, so callers that tint per voxel pass false.
+     * @param mergeGroup null for per-block faces; otherwise, at full detail, coplanar cube faces of the same palette
+     *                   entry, class and group (the function maps a schematic voxel index to a group in 0..7) join
+     *                   into one larger face; such a face reports only its first voxel.
      */
     public static FaceList build(VoxelVolume volume, BlockShape[] shapes, int[] paletteColors, ViewMode mode, int selected, float gap,
-                                 int maxFaces, boolean merge) {
+                                 int maxFaces, IntUnaryOperator mergeGroup) {
         FaceList out = new FaceList();
         int maxSize = Math.max(volume.sizeX(), Math.max(volume.sizeY(), volume.sizeZ()));
         for (int step = 1; ; step *= 2) {
             boolean last = step >= MAX_STEP || step >= maxSize;
             out.reset(step);
-            if (emitAll(volume, shapes, paletteColors, mode, selected, gap, step, maxFaces, merge, out)) return out;
+            if (emitAll(volume, shapes, paletteColors, mode, selected, gap, step, maxFaces, mergeGroup, out)) return out;
             if (last) {
                 out.markTruncated();
                 return out;
@@ -58,7 +60,7 @@ public final class FaceMesher {
     }
 
     private static boolean emitAll(VoxelVolume volume, BlockShape[] shapes, int[] colors, ViewMode mode, int selected, float gap,
-                                   int step, int maxFaces, boolean merge, FaceList out) {
+                                   int step, int maxFaces, IntUnaryOperator merge, FaceList out) {
         int sizeY = volume.sizeY();
         if (step == 1) return emitSegment(volume, shapes, colors, mode, selected, gap, 0, sizeY, 1, maxFaces, merge, out);
         int low = Math.max(0, Math.min(sizeY, selected - DETAIL_BAND));
@@ -72,11 +74,11 @@ public final class FaceMesher {
 
     /** Emits the faces of layers [y0, y1) at block size {@code step}; false once the budget is exceeded. */
     private static boolean emitSegment(VoxelVolume volume, BlockShape[] shapes, int[] colors, ViewMode mode, int selected, float gap,
-                                       int y0, int y1, int step, int maxFaces, boolean merge, FaceList out) {
+                                       int y0, int y1, int step, int maxFaces, IntUnaryOperator merge, FaceList out) {
         if (y1 <= y0) return true;
         Segment seg = new Segment(volume, shapes, mode, selected, y0, y1, step);
         seg.fill();
-        boolean greedy = merge && step == 1;
+        boolean greedy = merge != null && step == 1;
         for (int k = 0; k < seg.cy; k++) {
             for (int j = 0; j < seg.cz; j++) {
                 for (int i = 0; i < seg.cx; i++) {
@@ -86,7 +88,7 @@ public final class FaceMesher {
                 }
             }
         }
-        return !greedy || mergeCubes(volume, colors, mode, gap, seg, maxFaces, out);
+        return !greedy || mergeCubes(volume, colors, mode, gap, seg, maxFaces, merge, out);
     }
 
     private static boolean emitBlock(VoxelVolume volume, BlockShape[] shapes, int[] colors, ViewMode mode, float gap, Segment seg,
@@ -125,7 +127,8 @@ public final class FaceMesher {
      * Greedy meshing of the full-detail cube faces: per direction and slice, exposed faces sharing a palette entry
      * and class grow into the largest rectangles. Exploded layers never merge vertically, they sit apart.
      */
-    private static boolean mergeCubes(VoxelVolume volume, int[] colors, ViewMode mode, float gap, Segment seg, int maxFaces, FaceList out) {
+    private static boolean mergeCubes(VoxelVolume volume, int[] colors, ViewMode mode, float gap, Segment seg, int maxFaces,
+                                      IntUnaryOperator group, FaceList out) {
         BlockShape[] shapes = seg.shapes;
         int[] mask = new int[Math.max(seg.cx, Math.max(seg.cy, seg.cz)) * Math.max(seg.cx, Math.max(seg.cy, seg.cz))];
         int[] cell = new int[3];
@@ -147,7 +150,7 @@ public final class FaceMesher {
                             int palette = volume.cell(voxel);
                             BlockShape shape = shapes != null ? shapes[palette] : null;
                             if ((shape == null || shape.cube) && exposed(seg, mode, cell[0], cell[2], cell[1], d, seg.cls[ci])) {
-                                key = palette << 3 | seg.cls[ci];
+                                key = (palette << 3 | seg.cls[ci]) << 3 | (group.applyAsInt(voxel) & 7);
                             }
                         }
                         mask[v * uSize + u] = key;
@@ -165,8 +168,8 @@ public final class FaceMesher {
                         if (out.count() >= maxFaces) return false;
                         place(cell, na, n, ua, u, va, v);
                         int first = seg.voxel[seg.cellIndex(cell[0], cell[2], cell[1])];
-                        byte cls = (byte) (key & 7);
-                        int base = colors[key >> 3];
+                        byte cls = (byte) ((key >> 3) & 7);
+                        int base = colors[key >> 6];
                         int x1 = cell[0] + (ua == 0 ? w : va == 0 ? h : 1);
                         int z1 = cell[2] + (ua == 2 ? w : va == 2 ? h : 1);
                         int yFirst = seg.y0 + cell[1];
