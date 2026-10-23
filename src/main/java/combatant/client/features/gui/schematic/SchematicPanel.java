@@ -120,7 +120,6 @@ public final class SchematicPanel {
     private float colTop, colBottom;
     private float leftPX, leftPW, centrePX, centrePW, rightPX, rightPW;
     private float detailsH, materialsPY, materialsPH;
-    private float refreshW;
     private boolean libraryEmpty;
     private int infoRows;
     private final List<String[]> infoList = new ArrayList<>();
@@ -317,8 +316,7 @@ public final class SchematicPanel {
 
     private void layoutLeft() {
         libraryEmpty = library.headers().isEmpty() && !library.isScanning();
-        refreshW = clamp(leftPW * 0.30f, 64f, 96f);
-        place(Btn.REFRESH, leftPX + leftPW - PAD - refreshW, colTop + (HEADER_H - 30f) * 0.5f, refreshW, 30f);
+        // Refresh lives in the bottom action row (or under the empty-state call to action), not the header.
         if (libraryEmpty) {
             // No files: no search, no Load; the list is the hint and its call to action.
             searchX = -10_000f;
@@ -332,6 +330,7 @@ public final class SchematicPanel {
             float ctaY = emptyY + 10f + 40f + bodyH + 8f + emptyHint.size() * (smallH + 4f) + 16f;
             float ctaW = Math.min(leftW - 32f, 220f);
             place(Btn.OPEN_FOLDER, leftX + (leftW - ctaW) * 0.5f, ctaY, ctaW, 40f);
+            place(Btn.REFRESH, leftX + (leftW - ctaW) * 0.5f, ctaY + 50f, ctaW, 40f);
             return;
         }
         searchX = leftX;
@@ -340,15 +339,18 @@ public final class SchematicPanel {
         searchW = leftW;
         listY = searchY + searchH + 10f;
         float buttonsTop;
-        if (leftW >= 300f) {
+        if (leftW >= 340f) {
             buttonsTop = contentBottom - BUTTON_H;
-            float open = Math.min(150f, leftW * 0.4f);
-            place(Btn.LOAD, leftX, buttonsTop, leftW - open - 8f, BUTTON_H);
-            place(Btn.OPEN_FOLDER, leftX + leftW - open, buttonsTop, open, BUTTON_H);
+            float side = Math.min(120f, leftW * 0.28f);
+            place(Btn.LOAD, leftX, buttonsTop, leftW - side * 2f - 16f, BUTTON_H);
+            place(Btn.REFRESH, leftX + leftW - side * 2f - 8f, buttonsTop, side, BUTTON_H);
+            place(Btn.OPEN_FOLDER, leftX + leftW - side, buttonsTop, side, BUTTON_H);
         } else {
             buttonsTop = contentBottom - BUTTON_H * 2f - 8f;
+            float half = (leftW - 8f) * 0.5f;
             place(Btn.LOAD, leftX, buttonsTop, leftW, BUTTON_H);
-            place(Btn.OPEN_FOLDER, leftX, buttonsTop + BUTTON_H + 8f, leftW, BUTTON_H);
+            place(Btn.REFRESH, leftX, buttonsTop + BUTTON_H + 8f, half, BUTTON_H);
+            place(Btn.OPEN_FOLDER, leftX + half + 8f, buttonsTop + BUTTON_H + 8f, half, BUTTON_H);
         }
         listH = Math.max(ROW_H, buttonsTop - 10f - listY);
     }
@@ -992,7 +994,7 @@ public final class SchematicPanel {
         infoList.clear();
         Schematic schematic = state.schematic();
         if (schematic == null) {
-            infoList.add(infoRow("screen.combatant.schematic.info.folder", library.directory().getFileName().toString()));
+            infoList.add(infoRow("screen.combatant.schematic.info.folder", library.directory().toAbsolutePath().normalize().toString()));
             infoList.add(infoRow("screen.combatant.schematic.info.files", String.valueOf(library.headers().size())));
             return;
         }

@@ -108,8 +108,9 @@ public final class SchematicActions {
                 new ProcessBuilder(command).start();
             } catch (IOException e) {
                 Blaze3D.openPath(dir);
-                mc.execute(() -> Notifier.info(I18n.get("screen.combatant.schematic.status.folder_path", dir.toString())));
             }
+            // The file manager can open behind an exclusive-fullscreen game window, so always say where the folder is.
+            mc.execute(() -> Notifier.info(I18n.get("screen.combatant.schematic.status.folder_path", dir.toString())));
         });
     }
 
