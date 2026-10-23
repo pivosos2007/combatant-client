@@ -45,10 +45,25 @@ public final class FaceList {
             0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0
     };
 
+    /**
+     * Texture coordinate of each corner in units of one block: per direction and corner, the (u, v) pair as 0/1.
+     * u runs left to right and v top to bottom as seen from outside the block, matching the vanilla sprite layout
+     * (up faces have north at the top).
+     */
+    private static final byte[] TEXTURE_UV = {
+            0, 0, 1, 0, 1, 1, 0, 1,
+            0, 1, 0, 0, 1, 0, 1, 1,
+            1, 0, 0, 0, 0, 1, 1, 1,
+            1, 0, 0, 0, 0, 1, 1, 1,
+            1, 0, 0, 0, 0, 1, 1, 1,
+            1, 0, 0, 0, 0, 1, 1, 1
+    };
+
     private float[] box = new float[6 * 256];
     private byte[] dir = new byte[256];
     private byte[] cls = new byte[256];
     private int[] color = new int[256];
+    private int[] light = new int[256];
     private int[] voxel = new int[256];
     private int count;
     private int lodStep = 1;
@@ -76,7 +91,7 @@ public final class FaceList {
         truncated = true;
     }
 
-    void add(int direction, byte faceClass, int argb, int voxelIndex,
+    void add(int direction, byte faceClass, int argb, int lightArgb, int voxelIndex,
              float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         if (count == dir.length) grow();
         int b = count * 6;
@@ -89,6 +104,7 @@ public final class FaceList {
         dir[count] = (byte) direction;
         cls[count] = faceClass;
         color[count] = argb;
+        light[count] = lightArgb;
         voxel[count] = voxelIndex;
         count++;
     }
@@ -99,6 +115,7 @@ public final class FaceList {
         dir = Arrays.copyOf(dir, next);
         cls = Arrays.copyOf(cls, next);
         color = Arrays.copyOf(color, next);
+        light = Arrays.copyOf(light, next);
         voxel = Arrays.copyOf(voxel, next);
     }
 
@@ -112,6 +129,26 @@ public final class FaceList {
 
     public int color(int face) {
         return color[face];
+    }
+
+    /** The same shading as {@link #color} computed from white: the multiply colour for a textured face. */
+    public int light(int face) {
+        return light[face];
+    }
+
+    /** Texture u (axis 0) or v (axis 1) of a corner, as 0 or 1 within one block. */
+    public static int textureUv(int direction, int corner, int axis) {
+        return TEXTURE_UV[direction * 8 + corner * 2 + axis];
+    }
+
+    /** Blocks the face spans along texture u (axis 0) or v (axis 1); more than one only for coarse level-of-detail blocks. */
+    public float textureSpan(int face, int axis) {
+        int d = dir[face];
+        int b = face * 6;
+        float dx = box[b + 3] - box[b], dy = box[b + 4] - box[b + 1], dz = box[b + 5] - box[b + 2];
+        if (d <= DOWN) return axis == 0 ? dx : dz;
+        if (d <= WEST) return axis == 0 ? dz : dy;
+        return axis == 0 ? dx : dy;
     }
 
     /** Schematic index of the voxel (or first voxel of the coarse block) the face belongs to. */

@@ -16,6 +16,8 @@ import combatant.client.features.gui.schematic.view3d.VoxelPicker;
 import combatant.client.features.gui.schematic.view3d.VoxelVolume;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.helpers.ScissorFunction;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.util.schematic.Schematic;
 import combatant.client.util.schematic.SchematicDiff;
 
@@ -33,6 +35,8 @@ final class SchematicViewport {
 
     static final float MAX_GAP = 4f;
     private static final int MAX_FACES = 25_000;
+    /** Most sprite repeats drawn on one coarse face before the sprite is stretched over it instead. */
+    private static final int MAX_TILES = 16;
     private static final int SYNC_VOLUME = 64 * 64 * 64;
     private static final float CLICK_SLOP = 4f;
     private static final long TINT_REFRESH_NANOS = 250_000_000L;
@@ -48,7 +52,10 @@ final class SchematicViewport {
     private final float[] ray = new float[6];
     private final float[] point = new float[16];
     private final VoxelPicker.Solid pickTest = this::pickable;
-    private final Consumer<Renderer2D.QuadBatch> drawScene = this::drawScene;
+    private final Consumer<Renderer2D.QuadBatch> footprintBatch = this::drawFootprint;
+    private final Consumer<Renderer2D.QuadBatch> hoverBatch = this::drawHover;
+    private final Consumer<Renderer2D.QuadBatch> flatRun = this::drawFlatRun;
+    private final Consumer<Renderer2D.TexturedQuadBatch> texturedRun = this::drawTexturedRun;
 
     private ViewMode mode = ViewMode.SOLID_BELOW;
     private float gap = 1f;
@@ -57,6 +64,16 @@ final class SchematicViewport {
     private Schematic schematic;
     private VoxelVolume volume;
     private int[] paletteColors = new int[0];
+    private SchematicTextures.Entry[] textures;
+    private Schematic texturesOwner;
+    private int texturesGeneration = -1;
+    private GpuTextureView atlasView;
+    private GpuSampler atlasSampler;
+    private boolean faceTinted;
+    private int runFrom, runTo;
+    private final float[] cornerX = new float[4], cornerY = new float[4];
+    private final float[] tileX = new float[4], tileY = new float[4], tileU = new float[4], tileV = new float[4];
+    private final int[] tileC = new int[4];
     private int layer;
 
     private FaceList faces;
@@ -137,6 +154,7 @@ final class SchematicViewport {
         alpha = opacity;
         diff = currentDiff != null && currentDiff.schematic() == next ? currentDiff : null;
         bind(next, colors);
+        refreshTextures();
         layer = selectedLayer;
         ensureMesh();
         frameCamera();
@@ -148,7 +166,7 @@ final class SchematicViewport {
         frame.build(faces, camera, x, y, w, h);
         boolean clipped = ScissorFunction.pushRaw(x + 1f, y + 1f, w - 2f, h - 2f);
         try {
-            Renderer2D.COLOR.quadBatch(drawScene);
+            drawScene();
         } finally {
             if (clipped) ScissorFunction.pop();
         }
@@ -165,6 +183,19 @@ final class SchematicViewport {
         hovered = -1;
         camera.clearFrame();
         camera.reset();
+    }
+
+    /** Palette sprites are resolved once per schematic and atlas generation; the per-frame cost is two getters. */
+    private void refreshTextures() {
+        int generation = SchematicTextures.generation();
+        if (textures == null || texturesOwner != schematic || texturesGeneration != generation) {
+            textures = SchematicTextures.resolvePalette(schematic);
+            texturesOwner = schematic;
+            texturesGeneration = generation;
+        }
+        atlasView = SchematicTextures.view();
+        atlasSampler = SchematicTextures.sampler();
+        if (atlasSampler == null) atlasView = null;
     }
 
     private void frameCamera() {
@@ -242,17 +273,111 @@ final class SchematicViewport {
 
     // ---------------------------------------------------------------- drawing
 
-    private void drawScene(Renderer2D.QuadBatch batch) {
-        drawFootprint(batch);
-        boolean tinted = statusFaces == faces && statusFaces != null;
-        for (int i = 0, n = frame.visible(); i < n; i++) {
-            int f = frame.face(i);
-            int color = faces.color(f);
-            if (tinted) color = tint(color, faceStatus[f]);
-            if (hovered >= 0 && faces.voxel(f) == hovered) color = keepAlpha(FaceMesher.mix(color, SchematicUi.ACCENT, 0.45f), color);
-            drawFace(batch, f, SchematicUi.scaleAlpha(color, alpha));
+    private void drawScene() {
+        Renderer2D.COLOR.quadBatch(footprintBatch);
+        faceTinted = statusFaces == faces && statusFaces != null;
+        for (int i = 0, n = frame.visible(); i < n; ) {
+            boolean textured = textured(frame.face(i));
+            int j = i + 1;
+            while (j < n && textured(frame.face(j)) == textured) j++;
+            runFrom = i;
+            runTo = j;
+            if (textured) {
+                Renderer2D.COLOR.texturedQuadBatch(atlasView, atlasSampler, texturedRun);
+            } else {
+                Renderer2D.COLOR.quadBatch(flatRun);
+            }
+            i = j;
         }
-        if (hovered >= 0) drawVoxelBox(batch, hovered, SchematicUi.withAlpha(SchematicUi.ACCENT, Math.round(alpha * 235f)));
+        if (hovered >= 0) Renderer2D.COLOR.quadBatch(hoverBatch);
+    }
+
+    private void drawHover(Renderer2D.QuadBatch batch) {
+        drawVoxelBox(batch, hovered, SchematicUi.withAlpha(SchematicUi.ACCENT, Math.round(alpha * 235f)));
+    }
+
+    private void drawFlatRun(Renderer2D.QuadBatch batch) {
+        for (int i = runFrom; i < runTo; i++) {
+            int f = frame.face(i);
+            drawFace(batch, f, faceColor(f, faces.color(f)));
+        }
+    }
+
+    private void drawTexturedRun(Renderer2D.TexturedQuadBatch batch) {
+        for (int i = runFrom; i < runTo; i++) {
+            int f = frame.face(i);
+            drawTexturedFace(batch, f, faceColor(f, faces.light(f)));
+        }
+    }
+
+    /** Diff-state tint and hover highlight over a face's base colour (map colour when flat, white light when textured). */
+    private int faceColor(int f, int base) {
+        int color = base;
+        if (faceTinted) color = tint(color, faceStatus[f]);
+        if (hovered >= 0 && faces.voxel(f) == hovered) color = keepAlpha(FaceMesher.mix(color, SchematicUi.ACCENT, 0.45f), color);
+        return SchematicUi.scaleAlpha(color, alpha);
+    }
+
+    /** True when the face's block has an atlas sprite on that side, so it can be drawn from the block atlas. */
+    private boolean textured(int f) {
+        if (textures == null || atlasView == null) return false;
+        return textures[volume.cell(faces.voxel(f))].has[faces.direction(f) * SchematicTextures.LAYERS];
+    }
+
+    /**
+     * One face from the block atlas, the sprite repeated once per block it spans (coarse level-of-detail blocks
+     * span several; past {@link #MAX_TILES} tiles the sprite is stretched over the face instead). {@code color}
+     * multiplies the sprite, so the diff and hover tints sit on top of the texture rather than replacing it.
+     */
+    private void drawTexturedFace(Renderer2D.TexturedQuadBatch batch, int f, int color) {
+        int d = faces.direction(f);
+        SchematicTextures.Entry entry = textures[volume.cell(faces.voxel(f))];
+        boolean side = d >= FaceList.EAST;
+        for (int c = 0; c < 4; c++) {
+            int slot = FaceList.textureUv(d, c, 0) + 2 * FaceList.textureUv(d, c, 1);
+            cornerX[slot] = frame.screen(f, c, 0);
+            cornerY[slot] = frame.screen(f, c, 1);
+        }
+        int nu = Math.max(1, (int) Math.ceil(faces.textureSpan(f, 0) - 1.0e-3f));
+        int nv = Math.max(1, (int) Math.ceil(faces.textureSpan(f, 1) - 1.0e-3f));
+        if (nu * nv > MAX_TILES) {
+            nu = 1;
+            nv = 1;
+        }
+        for (int layer = 0; layer < SchematicTextures.LAYERS; layer++) {
+            int slot = d * SchematicTextures.LAYERS + layer;
+            if (!entry.has[slot]) continue;
+            int lit = SchematicTextures.multiply(color, entry.tint[slot]);
+            // Sides fade a little towards their foot, as on the flat faces.
+            int upper = side ? keepAlpha(FaceMesher.mix(lit, 0xFFFFFFFF, 0.05f), lit) : lit;
+            int lower = side ? keepAlpha(FaceMesher.mix(lit, 0xFF000000, 0.14f), lit) : lit;
+            float u0 = entry.uv[slot * 4], v0 = entry.uv[slot * 4 + 1], u1 = entry.uv[slot * 4 + 2], v1 = entry.uv[slot * 4 + 3];
+            for (int tj = 0; tj < nv; tj++) {
+                float b0 = tj / (float) nv, b1 = (tj + 1) / (float) nv;
+                int top = side ? FaceMesher.mix(upper, lower, b0) : upper;
+                int bottom = side ? FaceMesher.mix(upper, lower, b1) : lower;
+                for (int ti = 0; ti < nu; ti++) {
+                    float a0 = ti / (float) nu, a1 = (ti + 1) / (float) nu;
+                    for (int c = 0; c < 4; c++) {
+                        int bu = FaceList.textureUv(d, c, 0), bv = FaceList.textureUv(d, c, 1);
+                        float a = bu == 0 ? a0 : a1, b = bv == 0 ? b0 : b1;
+                        tileX[c] = lerp(lerp(cornerX[0], cornerX[1], a), lerp(cornerX[2], cornerX[3], a), b);
+                        tileY[c] = lerp(lerp(cornerY[0], cornerY[1], a), lerp(cornerY[2], cornerY[3], a), b);
+                        tileU[c] = bu == 0 ? u0 : u1;
+                        tileV[c] = bv == 0 ? v0 : v1;
+                        tileC[c] = bv == 0 ? top : bottom;
+                    }
+                    batch.quad(tileX[0], tileY[0], tileU[0], tileV[0], tileC[0],
+                            tileX[1], tileY[1], tileU[1], tileV[1], tileC[1],
+                            tileX[2], tileY[2], tileU[2], tileV[2], tileC[2],
+                            tileX[3], tileY[3], tileU[3], tileV[3], tileC[3]);
+                }
+            }
+        }
+    }
+
+    private static float lerp(float a, float b, float t) {
+        return a + (b - a) * t;
     }
 
     private void drawFace(Renderer2D.QuadBatch batch, int f, int color) {

@@ -80,7 +80,7 @@ public final class FaceMesher {
         for (int d = 0; d < 6; d++) {
             if (!exposed(seg, mode, i, j, k, d, cls)) continue;
             if (out.count() >= maxFaces) return false;
-            out.add(d, cls, shade(base, d, cls, voxel), voxel, x0, minY, z0, x1, maxY, z1);
+            out.add(d, cls, shade(base, d, cls, voxel), shade(0xFFFFFFFF, d, cls, voxel), voxel, x0, minY, z0, x1, maxY, z1);
         }
         return true;
     }

@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.schematic;
 
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.util.schematic.RedstoneRules;
 import combatant.client.util.schematic.Schematic;
@@ -20,6 +21,8 @@ import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.MapColor;
 
+import java.util.function.Consumer;
+
 /**
  * Top-down picture of one schematic layer. Cells of the same colour on a row are merged into runs and the runs
  * are cached per (schematic, layer, sampling step, diff revision), so a frame draws a few hundred quads instead
@@ -32,9 +35,17 @@ final class SchematicLayerGrid {
     private static final long TINT_REFRESH_NANOS = 250_000_000L;
     /** Cell status for a block the builder could not make exactly; drawn in the warning colour. */
     private static final int ATTENTION = 8;
+    /** Layers with more filled cells than this, or cells smaller than the minimum, use cached averaged colours. */
+    private static final int MAX_TEXTURED_CELLS = 1500;
+    private static final float MIN_TEXTURED_CELL = 5f;
 
     private Schematic paletteOwner;
     private int[] paletteColors = new int[0];
+    private int[] flatColors = new int[0];
+    private SchematicTextures.Entry[] textures = new SchematicTextures.Entry[0];
+    private int texturesGeneration = -1;
+    private boolean cachedTextured;
+    private int cachedTexturesGeneration = -1;
 
     private Schematic cachedSchematic;
     private int cachedLayer = -1;
@@ -50,6 +61,14 @@ final class SchematicLayerGrid {
     private int[] runColor = new int[256];
     private int runCount;
     private int[] cellStatus = new int[0];
+
+    private int[] cellX = new int[256];
+    private int[] cellZ = new int[256];
+    private float[] cellUv = new float[256 * 4];
+    private int[] cellColor = new int[256];
+    private int cellCount;
+    private float drawAlpha;
+    private final Consumer<Renderer2D.TexturedQuadBatch> drawCells = this::drawCells;
 
     float originX;
     float originY;
@@ -76,6 +95,11 @@ final class SchematicLayerGrid {
             float w = Math.min(runLength[i], schematic.sizeX() - runX[i]) * cs;
             float h = Math.min(step, schematic.sizeZ() - runZ[i]) * cs;
             Renderer2D.COLOR.quad(x, y, w, h, SchematicUi.scaleAlpha(runColor[i], alpha));
+        }
+        GpuTextureView view = SchematicTextures.view();
+        if (cellCount > 0 && view != null && SchematicTextures.sampler() != null) {
+            drawAlpha = alpha;
+            Renderer2D.COLOR.texturedQuadBatch(view, SchematicTextures.sampler(), drawCells);
         }
         if (cs >= 9f) drawGridLines(schematic, alpha);
     }
@@ -113,11 +137,28 @@ final class SchematicLayerGrid {
     }
 
     private void ensurePalette(Schematic schematic) {
-        if (paletteOwner == schematic) return;
-        paletteOwner = schematic;
-        paletteColors = new int[schematic.paletteSize()];
-        for (int i = 1; i < paletteColors.length; i++) {
-            paletteColors[i] = colorOf(schematic.paletteState(i));
+        int generation = SchematicTextures.generation();
+        if (paletteOwner == schematic && generation == texturesGeneration) return;
+        if (paletteOwner != schematic) {
+            paletteOwner = schematic;
+            paletteColors = new int[schematic.paletteSize()];
+            for (int i = 1; i < paletteColors.length; i++) {
+                paletteColors[i] = colorOf(schematic.paletteState(i));
+            }
+        }
+        texturesGeneration = generation;
+        textures = SchematicTextures.resolvePalette(schematic);
+        // Flat fallback colour: the atlas average of the block's top sprite, else its map colour.
+        flatColors = new int[paletteColors.length];
+        for (int i = 1; i < flatColors.length; i++) {
+            int average = textures[i].average;
+            if (average == 0) {
+                flatColors[i] = paletteColors[i];
+            } else {
+                int opaque = 0xFF000000 | average;
+                flatColors[i] = RedstoneRules.isComponent(schematic.paletteState(i))
+                        ? SchematicUi.mix(opaque, SchematicUi.REDSTONE, 0.45f) : opaque;
+            }
         }
     }
 
@@ -142,7 +183,9 @@ final class SchematicLayerGrid {
     private void ensureRuns(Schematic schematic, int layer, SchematicDiff diff) {
         int revision = diff == null ? -1 : diff.revision();
         int attentionRevision = SchematicState.INSTANCE.attentionRevision();
-        boolean sameShape = schematic == cachedSchematic && layer == cachedLayer && step == cachedStep && diff == cachedDiff;
+        boolean textured = step == 1 && cellSize >= MIN_TEXTURED_CELL && SchematicTextures.view() != null;
+        boolean sameShape = schematic == cachedSchematic && layer == cachedLayer && step == cachedStep && diff == cachedDiff
+                && textured == cachedTextured && texturesGeneration == cachedTexturesGeneration;
         if (sameShape && revision == cachedDiffRevision && attentionRevision == cachedAttentionRevision) return;
         long now = System.nanoTime();
         if (sameShape && now - lastBuildNanos < TINT_REFRESH_NANOS) return;
@@ -152,6 +195,8 @@ final class SchematicLayerGrid {
         cachedDiff = diff;
         cachedDiffRevision = revision;
         cachedAttentionRevision = attentionRevision;
+        cachedTextured = textured;
+        cachedTexturesGeneration = texturesGeneration;
         lastBuildNanos = now;
         fillStatus(schematic, layer, diff);
         buildRuns(schematic, layer);
@@ -179,9 +224,21 @@ final class SchematicLayerGrid {
 
     private void buildRuns(Schematic schematic, int layer) {
         runCount = 0;
+        cellCount = 0;
         int sizeX = schematic.sizeX();
         int sizeZ = schematic.sizeZ();
         int base = layer * schematic.layerArea();
+        if (cachedTextured) {
+            int filled = 0;
+            for (int i = 0, n = schematic.layerArea(); i < n && filled <= MAX_TEXTURED_CELLS; i++) {
+                if (schematic.paletteIndexAt(base + i) != 0) filled++;
+            }
+            // Past the cap a textured quad per block costs more than it shows: use cached averaged colours.
+            if (filled <= MAX_TEXTURED_CELLS) {
+                buildTexturedCells(schematic, layer);
+                return;
+            }
+        }
         for (int z = 0; z < sizeZ; z += step) {
             int runStart = -1;
             int runColour = 0;
@@ -202,10 +259,59 @@ final class SchematicLayerGrid {
             for (int dx = 0; dx < step && x + dx < sizeX; dx++) {
                 int local = (z + dz) * sizeX + x + dx;
                 int palette = schematic.paletteIndexAt(base + local);
-                if (palette != 0) return tint(paletteColors[palette], cellStatus[local]);
+                if (palette != 0) return tint(flatColors[palette], cellStatus[local]);
             }
         }
         return 0;
+    }
+
+    /** One quad per block from the top-face sprite; blocks without a sprite fall back to a flat averaged cell. */
+    private void buildTexturedCells(Schematic schematic, int layer) {
+        int sizeX = schematic.sizeX();
+        int sizeZ = schematic.sizeZ();
+        int base = layer * schematic.layerArea();
+        for (int z = 0; z < sizeZ; z++) {
+            for (int x = 0; x < sizeX; x++) {
+                int local = z * sizeX + x;
+                int palette = schematic.paletteIndexAt(base + local);
+                if (palette == 0) continue;
+                int status = cellStatus[local];
+                SchematicTextures.Entry entry = textures[palette];
+                int light = tint(SchematicTextures.WHITE, status);
+                boolean drawn = false;
+                for (int layerIndex = 0; layerIndex < SchematicTextures.LAYERS; layerIndex++) {
+                    int slot = SchematicTextures.UP_SLOT + layerIndex;
+                    if (!entry.has[slot]) continue;
+                    addCell(x, z, entry.uv, slot, SchematicTextures.multiply(light, entry.tint[slot]));
+                    drawn = true;
+                }
+                if (!drawn) addRun(x, z, 1, tint(flatColors[palette], status));
+            }
+        }
+    }
+
+    private void addCell(int x, int z, float[] uv, int slot, int color) {
+        if (cellCount == cellX.length) {
+            int next = cellX.length * 2;
+            cellX = java.util.Arrays.copyOf(cellX, next);
+            cellZ = java.util.Arrays.copyOf(cellZ, next);
+            cellUv = java.util.Arrays.copyOf(cellUv, next * 4);
+            cellColor = java.util.Arrays.copyOf(cellColor, next);
+        }
+        cellX[cellCount] = x;
+        cellZ[cellCount] = z;
+        System.arraycopy(uv, slot * 4, cellUv, cellCount * 4, 4);
+        cellColor[cellCount] = color;
+        cellCount++;
+    }
+
+    private void drawCells(Renderer2D.TexturedQuadBatch batch) {
+        float cs = cellSize;
+        for (int i = 0; i < cellCount; i++) {
+            batch.quad(originX + cellX[i] * cs, originY + cellZ[i] * cs, cs, cs,
+                    cellUv[i * 4], cellUv[i * 4 + 1], cellUv[i * 4 + 2], cellUv[i * 4 + 3],
+                    SchematicUi.scaleAlpha(cellColor[i], drawAlpha));
+        }
     }
 
     private static int tint(int color, int status) {

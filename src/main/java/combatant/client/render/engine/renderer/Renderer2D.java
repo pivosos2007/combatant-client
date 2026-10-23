@@ -892,6 +892,31 @@ public final class Renderer2D {
         }
     }
 
+    /**
+     * Like {@link #quadBatch} but for arbitrary CPU-projected quads sampling one texture (e.g. a block atlas), with
+     * per-corner UVs and a per-corner multiply colour. Batched in order with every other COLOR draw.
+     */
+    public void texturedQuadBatch(GpuTextureView samplerView, GpuSampler sampler, Consumer<TexturedQuadBatch> consumer) {
+        if (textured) {
+            throw new IllegalStateException("Quad batching is supported only on Renderer2D.COLOR.");
+        }
+        if (consumer == null || samplerView == null || sampler == null) return;
+
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED, samplerView, sampler);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        try {
+            consumer.accept(new TexturedQuadBatch(mesh));
+        } finally {
+            endAutoBatch(auto);
+        }
+    }
+
     public void line(double x1, double y1, double x2, double y2, int argb) {
         double[] p = {x1, y1, x2, y2};
         path(UiShape.polyline(p, 2, false), UiPaint.solid(argb), UiStroke.of(1.0), false);
@@ -5353,6 +5378,40 @@ public final class Renderer2D {
             int i4 = appendFlatGeometryVertex(mesh, x4, y4, c4);
             double area = (x1 * y2 - x2 * y1) + (x2 * y3 - x3 * y2) + (x3 * y4 - x4 * y3) + (x4 * y1 - x1 * y4);
             // The UI pipeline culls back faces, so keep the winding appendGeometryQuad produces.
+            if (area >= 0.0) {
+                mesh.quad(i1, i4, i3, i2);
+            } else {
+                mesh.quad(i1, i2, i3, i4);
+            }
+        }
+    }
+
+    public static final class TexturedQuadBatch {
+        private final MeshBuilder mesh;
+
+        private TexturedQuadBatch(MeshBuilder mesh) {
+            this.mesh = mesh;
+        }
+
+        /** Axis-aligned textured rect with one multiply colour. */
+        public void quad(double x, double y, double width, double height,
+                         float u0, float v0, float u1, float v1, int argb) {
+            quad(x, y, u0, v0, argb, x + width, y, u1, v0, argb,
+                    x + width, y + height, u1, v1, argb, x, y + height, u0, v1, argb);
+        }
+
+        /** Arbitrary convex quad, wound either way; for CPU-projected geometry. */
+        public void quad(double x1, double y1, float u1, float v1, int c1,
+                         double x2, double y2, float u2, float v2, int c2,
+                         double x3, double y3, float u3, float v3, int c3,
+                         double x4, double y4, float u4, float v4, int c4) {
+            mesh.ensureQuadCapacity();
+            int i1 = mesh.vec2(x1, y1).raw2(u1, v1).color((c1 >>> 16) & 0xFF, (c1 >>> 8) & 0xFF, c1 & 0xFF, (c1 >>> 24) & 0xFF).next();
+            int i2 = mesh.vec2(x2, y2).raw2(u2, v2).color((c2 >>> 16) & 0xFF, (c2 >>> 8) & 0xFF, c2 & 0xFF, (c2 >>> 24) & 0xFF).next();
+            int i3 = mesh.vec2(x3, y3).raw2(u3, v3).color((c3 >>> 16) & 0xFF, (c3 >>> 8) & 0xFF, c3 & 0xFF, (c3 >>> 24) & 0xFF).next();
+            int i4 = mesh.vec2(x4, y4).raw2(u4, v4).color((c4 >>> 16) & 0xFF, (c4 >>> 8) & 0xFF, c4 & 0xFF, (c4 >>> 24) & 0xFF).next();
+            double area = (x1 * y2 - x2 * y1) + (x2 * y3 - x3 * y2) + (x3 * y4 - x4 * y3) + (x4 * y1 - x1 * y4);
+            // Same winding rule as QuadBatch: the UI pipeline culls back faces.
             if (area >= 0.0) {
                 mesh.quad(i1, i4, i3, i2);
             } else {
