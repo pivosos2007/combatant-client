@@ -34,6 +34,7 @@ import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.util.combat.StandingBox;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @ModuleInfo(
         id = "hitbox",
         displayName = "Hitbox",
+        aliases = {"StaticHitboxes", "StaticHitbox", "NoShrinkHitbox"},
         category = ModuleCategory.COMBAT, subcategory = ModuleSubcategory.ATTACK,
         description = "module.hitbox.description")
 public class Hitbox extends Module {
@@ -93,6 +95,10 @@ public class Hitbox extends Module {
                     "hitbox_color",
                     "#78C8FF"
             ), renderEnabled::get);
+    /** Targets keep their standing box while they sneak, crawl, swim or glide, so it does not shrink under the aim. */
+    private final BooleanValue staticHitboxes = bool("hitboxStatic", "static_hitboxes", false);
+    private final BooleanValue staticPlayersOnly =
+            visibleWhen(bool("hitboxStaticPlayersOnly", "static_players_only", true), staticHitboxes::get);
     private final Map<Integer, Long> hitFlashMs = new ConcurrentHashMap<>();
     private final List<AABB> precomputedBoxes = new ArrayList<>();
     private final List<Entity> precomputedEntities = new ArrayList<>();
@@ -356,7 +362,7 @@ public class Hitbox extends Module {
             double dz = pos.z - cam.z;
             if (dx * dx + dy * dy + dz * dz > maxDistSq) continue;
 
-            AABB box = e.getBoundingBox()
+            AABB box = staticBox(e, e.getBoundingBox())
                     .move(pos.subtract(e.position()))
                     .inflate(getPadding());
 
@@ -430,6 +436,13 @@ public class Hitbox extends Module {
             return false;
         }
         return isActiveForHitbox() && isAllowed(e);
+    }
+
+    /** Box to ray-cast {@code target} with: its standing box when static hitboxes apply, else {@code vanilla}. */
+    public AABB staticBox(Entity target, AABB vanilla) {
+        if (!isEnabled() || !staticHitboxes.get() || !(target instanceof LivingEntity) || target == mc.player) return vanilla;
+        if (staticPlayersOnly.get() && !(target instanceof Player)) return vanilla;
+        return StandingBox.of(target, vanilla);
     }
 
     public boolean shouldExpandFor(Entity e) {
