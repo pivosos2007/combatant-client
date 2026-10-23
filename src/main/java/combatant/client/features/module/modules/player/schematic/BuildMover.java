@@ -295,6 +295,15 @@ final class BuildMover {
         return feetY(player) < layerY && lowGroundLayer != layerY;
     }
 
+    /** The walker could not climb to {@code layerY}: build it from below instead of waiting for a climb forever. */
+    void allowBuildFromBelow(int layerY) {
+        lowGroundLayer = layerY;
+    }
+
+    boolean planning() {
+        return stage != Stage.NONE;
+    }
+
     /**
      * A pillar jump is in the air: its support click is due within a few ticks and nothing else may take the
      * click or the rotation, or the block is missed and the jump wasted.

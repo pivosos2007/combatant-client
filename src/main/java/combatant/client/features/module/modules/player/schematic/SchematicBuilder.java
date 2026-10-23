@@ -25,6 +25,8 @@ import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.aiming.features.processors.anglesmooth.impl.LinearAngleSmooth;
 import combatant.client.util.player.inventory.InventorySwap;
+import combatant.client.util.player.inventory.InventoryActionKind;
+import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.schematic.RedstoneRules;
 import combatant.client.util.schematic.Schematic;
 import combatant.client.util.schematic.SchematicAttention;
@@ -96,6 +98,9 @@ public final class SchematicBuilder extends Module {
     private static final int EXACT_WAIT_TICKS = 4;
     private static final int MAX_PLAN_ATTEMPTS = 12;
     private static final int MAX_SCAFFOLD_CHAIN = 6;
+    private static final int RESTOCK_CLICK_WAIT_TICKS = 6;
+    /** Ticks the climb gate may hold with an idle walker before the layer is built from below. */
+    private static final int CLIMB_GATE_TICKS = 40;
     private static final int MAX_CANDIDATES = 96;
     private static final int SHORTFALL_INTERVAL = 20;
     private static final int MISSING_NOTIFY_INTERVAL = 200;
@@ -218,6 +223,8 @@ public final class SchematicBuilder extends Module {
     private Pending pending;
     private int pendingAge;
     private int cooldown;
+    private int restockClickUntil;
+    private int climbGateTicks;
     private int ticks;
     private int placed;
     private int approximatePlaced;
@@ -1070,7 +1077,20 @@ public final class SchematicBuilder extends Module {
     private int collectCandidates(LocalPlayer player, SchematicDiff diff, int low, int high, int openBand) {
         missingThisTick = false;
         if (autoWalk.get() && player.onGround() && hasOpenSupport(diff, low)
-                && mover.climbBeforePlacing(player, state.placement().worldY(low))) return 0;
+                && mover.climbBeforePlacing(player, state.placement().worldY(low))) {
+            // The gate waits for the walker to climb; when it stays idle with no plan, nothing will lift the
+            // feet, so build the layer from below rather than idle forever.
+            if (mover.mode() == BuildMover.Mode.IDLE && !mover.planning()) {
+                if (++climbGateTicks >= CLIMB_GATE_TICKS) {
+                    mover.allowBuildFromBelow(state.placement().worldY(low));
+                    climbGateTicks = 0;
+                }
+            } else {
+                climbGateTicks = 0;
+            }
+            return 0;
+        }
+        climbGateTicks = 0;
         Vec3 eyes = player.getEyePosition();
         Rotation facing = RotationManager.INSTANCE.getCurrentRotation();
         if (facing == null) facing = new Rotation(player.getYRot(), player.getXRot());
@@ -1146,15 +1166,20 @@ public final class SchematicBuilder extends Module {
     /** Swaps a stack from the main inventory into the restock slot; placement resumes on a later tick. */
     private boolean restockFromInventory(LocalPlayer player, Item item) {
         if (player.containerMenu != player.inventoryMenu) return false;
+        // A click queued by an earlier tick is still waiting for the movement lock to take hold.
+        if (ticks < restockClickUntil) return true;
         Inventory inventory = player.getInventory();
         for (int i = 9; i < Inventory.INVENTORY_SIZE; i++) {
             if (inventory.getItem(i).getItem() != item) continue;
             int hotbar = restockSlot.get() - 1;
-            if (InventorySwap.INSTANCE.clickSwap(InventorySwap.mapInventoryToScreenSlot(i), hotbar)) {
-                cooldown = Math.max(cooldown, 2);
-                return true;
-            }
-            return false;
+            int screenSlot = InventorySwap.mapInventoryToScreenSlot(i);
+            // Grim MultiActionsC: the click only goes out on a tick with all movement input and sprint released.
+            boolean queued = InventorySwap.INSTANCE.command(this, InventoryActionKind.INVENTORY_CLICK,
+                    InventorySwapPolicy.GRIM_STRICT, () -> InventorySwap.INSTANCE.clickSwap(screenSlot, hotbar));
+            if (!queued) return false;
+            restockClickUntil = ticks + RESTOCK_CLICK_WAIT_TICKS;
+            cooldown = Math.max(cooldown, 2);
+            return true;
         }
         return false;
     }
