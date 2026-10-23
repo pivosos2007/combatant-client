@@ -1030,6 +1030,31 @@ final class BuildMover {
         miningFace = null;
     }
 
+    /** Whether {@code pos} is one of the support blocks this mover placed and still has to remove. */
+    boolean isHelper(BlockPos pos) {
+        return helpers.containsKey(WalkTerrain.pack(pos.getX(), pos.getY(), pos.getZ()));
+    }
+
+    /**
+     * Terraforming: mines the block at {@code pos} when it can be hit from where the player stands, holding the
+     * player still meanwhile. Returns whether the cell is within reach and being worked on.
+     */
+    boolean mineCell(LocalPlayer player, BlockPos pos, double reach) {
+        Vec3 eye = player.getEyePosition();
+        int face = ReachModel.breakFace(live, eye.x, eye.y, eye.z, pos.getX(), pos.getY(), pos.getZ(), reach);
+        if (face < 0) {
+            if (pos.equals(mining)) stopMining();
+            return false;
+        }
+        holdForClick();
+        mine(player, pos, face);
+        return true;
+    }
+
+    void stopMiningCell() {
+        stopMining();
+    }
+
     // ------------------------------------------------------------------ input
 
     /** Drives the keys while the mover is in charge; leaves the player's own input alone otherwise. */

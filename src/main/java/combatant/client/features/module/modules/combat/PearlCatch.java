@@ -73,7 +73,7 @@ public final class PearlCatch extends Module {
     private Stage stage = Stage.IDLE;
     private int wait;
     private int aimTicks;
-
+    private boolean pendingTrigger;
     public PearlCatch() {
         action(ACTION_TRIGGER, "NONE");
     }
@@ -96,20 +96,10 @@ public final class PearlCatch extends Module {
 
         switch (stage) {
             case IDLE -> {
-                if (pressed) start(player);
+                if (pressed) pendingTrigger = true;
             }
             case WAITING -> {
-                if (--wait > 0) return;
-                if (!has(Items.WIND_CHARGE)) {
-                    warn("notification.pearlcatch.no_wind_charge");
-                    reset();
-                } else if (aimDown.get()) {
-                    stage = Stage.AIMING;
-                    aimTicks = 0;
-                } else {
-                    use(Items.WIND_CHARGE);
-                    reset();
-                }
+                // Handled in RotationUpdateEvent.PRE so item use never goes out post-movement (BadPackets R/X).
             }
             case AIMING -> {
                 if (++aimTicks > AIM_TIMEOUT_TICKS) {
@@ -122,10 +112,30 @@ public final class PearlCatch extends Module {
 
     @EventHandler(priority = 20)
     private void onRotationUpdate(RotationUpdateEvent event) {
-        if (event.getType() != RotationUpdateEvent.Type.PRE || !isEnabled() || stage != Stage.AIMING) return;
+        if (event.getType() != RotationUpdateEvent.Type.PRE || !isEnabled()) return;
         LocalPlayer player = mc.player;
         if (player == null) return;
-
+        if (stage == Stage.IDLE && pendingTrigger) {
+            pendingTrigger = false;
+            start(player);
+            return;
+        }
+        if (stage == Stage.WAITING) {
+            if (--wait > 0) return;
+            if (!has(Items.WIND_CHARGE)) {
+                warn("notification.pearlcatch.no_wind_charge");
+                reset();
+                return;
+            }
+            if (!aimDown.get()) {
+                use(Items.WIND_CHARGE);
+                reset();
+                return;
+            }
+            stage = Stage.AIMING;
+            aimTicks = 0;
+        }
+        if (stage != Stage.AIMING) return;
         RotationTarget target = new RotationTarget(
                 new Rotation(player.getYRot(), 90.0f),
                 null,

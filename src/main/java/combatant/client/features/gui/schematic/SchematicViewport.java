@@ -34,10 +34,10 @@ import java.util.function.Consumer;
 final class SchematicViewport {
 
     static final float MAX_GAP = 4f;
-    private static final int MAX_FACES = 25_000;
+    private static final int MAX_FACES = 36_000;
     /** Most sprite repeats drawn on one coarse face before the sprite is stretched over it instead. */
     private static final int MAX_TILES = 16;
-    private static final int SYNC_VOLUME = 64 * 64 * 64;
+    private static final int SYNC_VOLUME = 64_000;
     private static final float CLICK_SLOP = 4f;
     private static final long TINT_REFRESH_NANOS = 250_000_000L;
     private static final ExecutorService MESHER = Executors.newSingleThreadExecutor(runnable -> {
@@ -81,10 +81,12 @@ final class SchematicViewport {
     private ViewMode facesMode;
     private int facesLayer = -1;
     private float facesGap = -1f;
+    private boolean facesMerge;
     private CompletableFuture<FaceList> pending;
     private ViewMode pendingMode;
     private int pendingLayer;
     private float pendingGap;
+    private boolean pendingMerge;
 
     private byte[] faceStatus = new byte[0];
     private FaceList statusFaces;
@@ -212,33 +214,37 @@ final class SchematicViewport {
 
     private void ensureMesh() {
         float meshGap = mode.exploded() ? gap : 0f;
+        // Merged faces cover several blocks but carry one voxel, so per-block diff tints need unmerged faces.
+        boolean merge = diff == null;
         if (pending != null && pending.isDone()) {
             FaceList built = pending.getNow(null);
-            if (built != null) adopt(built, pendingMode, pendingLayer, pendingGap);
+            if (built != null) adopt(built, pendingMode, pendingLayer, pendingGap, pendingMerge);
             pending = null;
         }
-        if (faces != null && facesMode == mode && facesLayer == layer && facesGap == meshGap) return;
+        if (faces != null && facesMode == mode && facesLayer == layer && facesGap == meshGap && facesMerge == merge) return;
         if (schematic.volume() <= SYNC_VOLUME) {
-            adopt(FaceMesher.build(volume, shapes, paletteColors, mode, layer, meshGap, MAX_FACES), mode, layer, meshGap);
+            adopt(FaceMesher.build(volume, shapes, paletteColors, mode, layer, meshGap, MAX_FACES, merge), mode, layer, meshGap, merge);
             return;
         }
         if (pending != null) return;
         pendingMode = mode;
         pendingLayer = layer;
         pendingGap = meshGap;
+        pendingMerge = merge;
         VoxelVolume source = volume;
         combatant.client.features.gui.schematic.view3d.BlockShape[] jobShapes = shapes;
         int[] colors = paletteColors;
         ViewMode jobMode = mode;
         int jobLayer = layer;
-        pending = CompletableFuture.supplyAsync(() -> FaceMesher.build(source, jobShapes, colors, jobMode, jobLayer, meshGap, MAX_FACES), MESHER);
+        pending = CompletableFuture.supplyAsync(() -> FaceMesher.build(source, jobShapes, colors, jobMode, jobLayer, meshGap, MAX_FACES, merge), MESHER);
     }
 
-    private void adopt(FaceList built, ViewMode builtMode, int builtLayer, float builtGap) {
+    private void adopt(FaceList built, ViewMode builtMode, int builtLayer, float builtGap, boolean builtMerge) {
         faces = built;
         facesMode = builtMode;
         facesLayer = builtLayer;
         facesGap = builtGap;
+        facesMerge = builtMerge;
         statusFaces = null;
     }
 
@@ -331,7 +337,7 @@ final class SchematicViewport {
 
     /**
      * One face from the block atlas, the sprite repeated once per block it spans (coarse level-of-detail blocks
-     * span several; past {@link #MAX_TILES} tiles the sprite is stretched over the face instead). {@code color}
+     * span several; past {@link #MAX_TILES} tiles each axis is capped at 8 repeats and the sprite stretched). {@code color}
      * multiplies the sprite, so the diff and hover tints sit on top of the texture rather than replacing it.
      */
     private void drawTexturedFace(Renderer2D.TexturedQuadBatch batch, int f, int color) {
@@ -355,8 +361,8 @@ final class SchematicViewport {
         int nu = Math.max(1, (int) Math.ceil(faces.textureSpan(f, 0) - 1.0e-3f));
         int nv = Math.max(1, (int) Math.ceil(faces.textureSpan(f, 1) - 1.0e-3f));
         if (nu * nv > MAX_TILES) {
-            nu = 1;
-            nv = 1;
+            nu = Math.min(nu, 8);
+            nv = Math.min(nv, 8);
         }
         for (int layer = 0; layer < SchematicTextures.LAYERS; layer++) {
             int slot = d * SchematicTextures.LAYERS + layer;

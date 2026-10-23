@@ -22,10 +22,14 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Notifier;
 import combatant.client.util.player.inventory.InventorySwapPolicy;
+import combatant.client.util.text.ServerChat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.BlockItem;
@@ -44,7 +48,7 @@ import java.util.List;
 @ModuleInfo(
         id = "shulkerdropper",
         displayName = "ShulkerDropper",
-        aliases = {"DropShulkers", "ShulkerThrower"},
+        aliases = {"DropShulkers", "ShulkerThrower", "ShulkerShopDropper", "ShulkerBuyer", "ShopShulkerDrop"},
         category = ModuleCategory.PLAYER,
         subcategory = ModuleSubcategory.AUTOMATION,
         description = "module.shulkerdropper.description")
@@ -61,21 +65,59 @@ public final class ShulkerDropper extends Module {
     private final NumberValue<Integer> delayTicks = num("shulkerDropperDelayTicks", "delay_ticks", 4, 0, 40);
     private final BooleanValue includeHotbar = bool("shulkerDropperIncludeHotbar", "include_hotbar", true);
     private final BooleanValue keepWatching = bool("shulkerDropperKeepWatching", "keep_watching", false);
+    private final BooleanValue buyFromShop = bool("shulkerDropperBuyFromShop", "buy_from_shop", false);
+    private final NumberValue<Integer> clicksPerBuy = visibleWhen(
+            num("shulkerDropperClicksPerBuy", "clicks_per_buy", 8, 1, 32), buyFromShop::get);
+    private final NumberValue<Integer> shopReopenDelay = visibleWhen(
+            num("shulkerDropperReopenDelay", "reopen_delay_ticks", 20, 1, 60), buyFromShop::get);
 
     private AutomationTask task;
     private int cooldown;
     private int failedPasses;
+    private int shopWait;
 
     @Override
     public void onEnable() {
         task = null;
         cooldown = 0;
         failedPasses = 0;
+        shopWait = 0;
     }
 
     @Override
     public void onDisable() {
         task = null;
+    }
+
+    /** Shop mode: keep /shop open, buy shulker boxes in bulk and throw them straight out of the menu. */
+    private void shopStep(LocalPlayer player) {
+        if (shopWait-- > 0) return;
+        if (!(player.containerMenu instanceof ChestMenu menu)) {
+            ServerChat.command("shop");
+            shopWait = shopReopenDelay.get();
+            return;
+        }
+        int menuSlots = menu.getRowCount() * 9;
+        int shulker = -1;
+        for (int slot = 0; slot < menuSlots; slot++) {
+            if (menu.getSlot(slot).getItem().is(Items.SHULKER_BOX)) {
+                shulker = slot;
+                break;
+            }
+        }
+        if (shulker < 0) {
+            shopWait = Math.max(1, delayTicks.get());
+            return;
+        }
+        for (int i = 0; i < clicksPerBuy.get(); i++) {
+            mc.gameMode.handleContainerInput(menu.containerId, shulker, 0, ContainerInput.PICKUP, player);
+        }
+        for (int slot = menuSlots; slot < menu.slots.size(); slot++) {
+            if (isShulker(menu.getSlot(slot).getItem())) {
+                mc.gameMode.handleContainerInput(menu.containerId, slot, 1, ContainerInput.THROW, player);
+            }
+        }
+        shopWait = Math.max(1, delayTicks.get());
     }
 
     @Override
@@ -84,6 +126,10 @@ public final class ShulkerDropper extends Module {
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null || mc.gameMode == null) {
             setEnabled(false);
+            return;
+        }
+        if (buyFromShop.get()) {
+            shopStep(player);
             return;
         }
         if (task != null) return;

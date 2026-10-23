@@ -175,6 +175,20 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
 
     @Inject(method = "startAttack", at = @At("HEAD"), cancellable = true)
     private void onDoAttack(CallbackInfoReturnable<Boolean> cir) {
+        if (combatant.client.features.module.modules.combat.HitSelect.blocksManualAttack()) {
+            cir.setReturnValue(false);
+            cir.cancel();
+            return;
+        }
+
+        if (combatant.client.features.module.modules.combat.AntiMiss.blocksManualAttack()) {
+            cir.setReturnValue(false);
+            cir.cancel();
+            return;
+        }
+
+        combatant.client.features.module.modules.combat.TotemHit.beforeManualAttack();
+
         AttributeSwap attributeSwap = Modules.get(AttributeSwap.class);
         if (attributeSwap != null && attributeSwap.isEnabled() && attributeSwap.handleManualAttack()) {
             cir.setReturnValue(true);

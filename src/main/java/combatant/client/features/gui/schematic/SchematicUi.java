@@ -69,19 +69,19 @@ final class SchematicUi {
         Themes.Theme t = Theme.theme();
         if (t == null) return;
         TEXT = opaque(t.textPrimary());
-        MUTED = opaque(t.textMuted());
+        MUTED = mix(opaque(t.textMuted()), TEXT, 0.28f);
         ACCENT = opaque(t.accent());
         PANEL_BOTTOM = opaque(t.windowBg());
         PANEL_TOP = mix(opaque(t.windowHeader()), PANEL_BOTTOM, 0.35f);
         SURFACE = mix(opaque(t.surface()), PANEL_BOTTOM, 0.25f);
-        SURFACE_HOVER = mix(opaque(t.surfaceHover()), ACCENT, 0.06f);
-        STROKE = mix(opaque(t.strokeSoft()), PANEL_BOTTOM, 0.2f);
-        FAINT = mix(MUTED, SURFACE, 0.4f);
-        WELL = mix(PANEL_BOTTOM, 0xFF000000, 0.35f);
-        GLASS_RGB = mix(opaque(t.surface()), ACCENT, 0.07f);
-        HOVER_RGB = mix(opaque(t.surfaceHover()), ACCENT, 0.125f);
-        PANEL_STROKE = withAlpha(mix(opaque(t.strokeSoft()), ACCENT, 0.155f), 76);
-        SPLIT = withAlpha(mix(opaque(t.strokeSoft()), ACCENT, 0.12f), 46);
+        SURFACE_HOVER = mix(opaque(t.surfaceHover()), ACCENT, 0.08f);
+        STROKE = mix(opaque(t.strokeSoft()), ACCENT, 0.14f);
+        FAINT = mix(MUTED, SURFACE, 0.22f);
+        WELL = mix(PANEL_BOTTOM, 0xFF000000, 0.42f);
+        GLASS_RGB = mix(opaque(t.surface()), PANEL_BOTTOM, 0.35f);
+        HOVER_RGB = mix(opaque(t.surfaceHover()), ACCENT, 0.16f);
+        PANEL_STROKE = withAlpha(mix(opaque(t.strokeSoft()), ACCENT, 0.22f), 112);
+        SPLIT = withAlpha(mix(opaque(t.strokeSoft()), ACCENT, 0.16f), 68);
         SettingsGuiPalette palette = SettingsGuiPalette.current();
         scrollTrackA = palette.moduleScrollTrackA();
         scrollTrackB = palette.moduleScrollTrackB();
@@ -122,13 +122,14 @@ final class SchematicUi {
     void panel(float x, float y, float w, float h, float radius, float alpha) {
         if (alpha <= 0.001f || w <= 1f || h <= 1f) return;
         float glassAlpha = Mth.clamp(alpha, 0f, 1f);
-        Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, h, radius, 18f, 0.018f, withAlpha(0x000000, Math.round(alpha * 72f)));
+        Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, h, radius, 20f, 0.022f, withAlpha(0x000000, Math.round(alpha * 96f)));
         Renderer2D.COLOR.withLiquidGlassBlurProfile(Renderer2D.BlurQuality.LIQUID_GLASS, 1.38f,
                 () -> Renderer2D.COLOR.liquidGlassRect(x, y, w, h, radius, 0xFFFFFFFF, glassAlpha, 1.0f,
                         Renderer2D.LiquidGlassPreset.HUD_LARGE));
-        int veil = withAlpha(GLASS_RGB, Math.round(alpha * 58f));
-        Renderer2D.COLOR.roundedRect(x, y, w, h, radius, veil);
-        Renderer2D.COLOR.roundedRectStroke(x, y, w, h, radius, 1f, scaleAlpha(PANEL_STROKE, alpha));
+        int veilTop = withAlpha(mix(GLASS_RGB, 0xFF000000, 0.28f), Math.round(alpha * 124f));
+        int veilBottom = withAlpha(mix(GLASS_RGB, 0xFF000000, 0.46f), Math.round(alpha * 148f));
+        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, radius, 1f, veilTop, veilTop, veilBottom, veilBottom);
+        Renderer2D.COLOR.roundedRectStroke(x, y, w, h, radius, 1.1f, scaleAlpha(PANEL_STROKE, alpha));
     }
 
     /** Panel header: cube icon, strong title and a hairline split below. Returns the x just after the title. */
@@ -143,23 +144,26 @@ final class SchematicUi {
 
     /** Inner card (list body, strip): a darker veil, no outline. */
     void section(float x, float y, float w, float h, float alpha) {
-        int fill = withAlpha(mix(GLASS_RGB, 0xFF000000, 0.35f), Math.round(alpha * 92f));
+        int fill = withAlpha(mix(GLASS_RGB, 0xFF000000, 0.45f), Math.round(alpha * 132f));
         Renderer2D.COLOR.roundedRect(x, y, w, h, 12f, fill);
+        Renderer2D.COLOR.roundedRectStroke(x, y, w, h, 12f, 1f, scaleAlpha(SPLIT, alpha));
     }
 
     /** Recessed area such as the 3D viewport or a progress track. */
     void well(float x, float y, float w, float h, float radius, float alpha) {
-        int top = withAlpha(WELL, Math.round(alpha * 190f));
-        int bottom = withAlpha(mix(WELL, ACCENT, 0.05f), Math.round(alpha * 190f));
+        int top = withAlpha(WELL, Math.round(alpha * 212f));
+        int bottom = withAlpha(mix(WELL, ACCENT, 0.05f), Math.round(alpha * 220f));
         Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, radius, 1f, top, top, bottom, bottom);
+        Renderer2D.COLOR.roundedRectStroke(x, y, w, h, radius, 1f, scaleAlpha(SPLIT, alpha));
     }
 
     /** Small rounded label used for dimensions, counts and other row metadata. */
     float chip(float x, float y, String label, int tint, float alpha) {
         float w = width(label, TINY, false) + 14f;
         float h = height(TINY) + 6f;
-        Renderer2D.COLOR.roundedRect(x, y, w, h, h * 0.5f, scaleAlpha(withAlpha(mix(HOVER_RGB, tint, 0.22f), 200), alpha));
-        text(label, x + 7f, y + 3f, TINY, scaleAlpha(mix(MUTED, tint, 0.45f), alpha), false);
+        Renderer2D.COLOR.roundedRect(x, y, w, h, h * 0.5f, scaleAlpha(withAlpha(mix(SURFACE, tint, 0.28f), 215), alpha));
+        Renderer2D.COLOR.roundedRectStroke(x, y, w, h, h * 0.5f, 0.8f, scaleAlpha(withAlpha(tint, 95), alpha));
+        text(label, x + 7f, y + 3f, TINY, scaleAlpha(mix(TEXT, tint, 0.35f), alpha), false);
         return w;
     }
 
@@ -198,23 +202,30 @@ final class SchematicUi {
         float r = Math.min(h * 0.5f, 18f);
         int fill;
         int text;
+        int stroke = 0;
         if (!enabled) {
-            fill = withAlpha(mix(GLASS_RGB, 0xFF000000, 0.2f), 30);
-            text = scaleAlpha(FAINT, 0.75f);
+            fill = withAlpha(mix(GLASS_RGB, 0xFF000000, 0.3f), 52);
+            text = scaleAlpha(FAINT, 0.8f);
         } else if (primary) {
-            int base = mix(ACCENT, 0xFF000000, 0.2f - lift * 0.08f);
-            fill = withAlpha(base, 232);
+            int base = mix(ACCENT, 0xFF000000, 0.16f - lift * 0.08f);
+            fill = withAlpha(base, 240);
             text = luminance(base) > 0.62f ? 0xFF10141A : 0xFFFFFFFF;
-            Renderer2D.COLOR.roundedRectSoftShadow(x, y + 1f, w, h, r, 12f, 0.02f * alpha,
-                    withAlpha(ACCENT, Math.round(alpha * (36f + lift * 40f))));
+            stroke = withAlpha(mix(ACCENT, 0xFFFFFFFF, 0.25f), Math.round(140f + lift * 60f));
+            Renderer2D.COLOR.roundedRectSoftShadow(x, y + 1f, w, h, r, 12f, 0.022f * alpha,
+                    withAlpha(ACCENT, Math.round(alpha * (42f + lift * 44f))));
         } else if (active) {
-            fill = withAlpha(mix(GLASS_RGB, ACCENT, 0.5f), Math.round(150f + lift * 50f));
+            fill = withAlpha(mix(GLASS_RGB, ACCENT, 0.52f), Math.round(170f + lift * 45f));
             text = TEXT;
+            stroke = withAlpha(ACCENT, 130);
         } else {
-            fill = withAlpha(mix(GLASS_RGB, HOVER_RGB, lift), Math.round(78f + lift * 70f));
-            text = mix(MUTED, TEXT, 0.4f + lift * 0.6f);
+            fill = withAlpha(mix(SURFACE, HOVER_RGB, 0.35f + lift * 0.65f), Math.round(142f + lift * 64f));
+            text = mix(MUTED, TEXT, 0.65f + lift * 0.35f);
+            stroke = withAlpha(STROKE, Math.round(72f + lift * 55f));
         }
         Renderer2D.COLOR.roundedRect(x, y + sink, w, h - sink, r, scaleAlpha(fill, alpha));
+        if (stroke != 0) {
+            Renderer2D.COLOR.roundedRectStroke(x, y + sink, w, h - sink, r, 0.9f, scaleAlpha(stroke, alpha));
+        }
         float size = BODY * 0.95f;
         String shown = ellipsize(label, size, w - 20f);
         textCentered(shown, x + w * 0.5f, y + sink * 0.5f + (h - height(size)) * 0.5f, size, scaleAlpha(text, alpha), primary);

@@ -30,6 +30,7 @@ import combatant.client.util.schematic.Schematic;
 import combatant.client.util.schematic.SchematicAttention;
 import combatant.client.util.schematic.SchematicDiff;
 import combatant.client.util.schematic.SchematicMaterials;
+import combatant.client.util.schematic.SchematicPlacement;
 import combatant.client.util.schematic.SchematicState;
 import combatant.client.util.schematic.StateAdjustments;
 import combatant.client.util.schematic.StateComparison;
@@ -42,13 +43,18 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -81,6 +87,7 @@ public final class SchematicBuilder extends Module {
     private static final int ROTATION_PRIORITY = 10;
     private static final int PLAN_TIMEOUT_TICKS = 20;
     private static final int RETRY_AFTER_TICKS = 40;
+    private static final int TERRAFORM_TIMEOUT_TICKS = 400;
     private static final int RECENT_PLACE_TICKS = 10;
     /** A stair or slab clicked before the rotation settled lands in the wrong half; this is how long to wait for it. */
     private static final int EXACT_WAIT_TICKS = 4;
@@ -119,6 +126,8 @@ public final class SchematicBuilder extends Module {
         WALKING,
         PILLARING,
         CLEARING,
+        TERRAFORMING,
+        RESTOCKING,
         DONE
     }
 
@@ -137,12 +146,17 @@ public final class SchematicBuilder extends Module {
     private final BooleanValue restock = bool("restock", true);
     private final NumberValue<Integer> restockSlot = visibleWhen(num("restock_slot", 9, 1, 9), restock::get);
     private final BooleanValue pauseWhenMissing = bool("pause_when_missing", true);
+    private final BooleanValue indexNearbyChests = visibleWhen(bool("index_nearby_chests", true), restock::get);
+    private final NumberValue<Integer> chestScanRange = visibleWhen(
+            num("chest_scan_range", 16, 4, 32), () -> restock.get() && indexNearbyChests.get());
     private final BooleanValue autoAdvanceLayer = bool("auto_advance_layer", true);
     private final BooleanValue strictLayers = bool("strict_layers", true);
     private final EnumValue<ApproximateMode> approximate = enumMode("approximate_states", ApproximateMode.PLACE);
     private final BooleanValue stopOnDamage = bool("stop_on_damage", false);
     private final NumberValue<Float> pauseHealth = num("pause_health", 6.0f, 0.0f, 20.0f);
     private final BooleanValue autoWalk = bool("auto_walk", true);
+    private final BooleanValue terraform = bool("terraform", true);
+    private final BooleanValue terraformAir = visibleWhen(bool("terraform_air", false), terraform::get);
     private final NumberValue<Integer> stuckTimeout = visibleWhen(num("stuck_timeout", 100, 40, 400), autoWalk::get);
     private final BooleanValue autoJumpPillar = visibleWhen(bool("auto_jump_pillar", true), autoWalk::get);
     private final ItemIdSetValue helperBlocks =
@@ -159,10 +173,19 @@ public final class SchematicBuilder extends Module {
     private final LinearAngleSmooth smoothing =
             new LinearAngleSmooth(effectiveSpeedMin, effectiveSpeedMax, effectiveSpeedMin, effectiveSpeedMax);
     private final Map<Long, Integer> retryAfter = new HashMap<>();
+    private BlockPos terraformTarget;
+    private int terraformTicks;
     private final int[] candidateCells = new int[MAX_CANDIDATES];
     private final double[] candidateDistance = new double[MAX_CANDIDATES];
     private final BuildMover mover = new BuildMover(mc, new MoverHost());
     private final BuildSafety safety = new BuildSafety();
+    private final ChestIndex chestIndex = new ChestIndex();
+
+    /** The builder's container index, read by the in-world supply highlight. */
+    public ChestIndex chestIndex() {
+        return chestIndex;
+    }
+
     /** Facing-sensitive targets with only an approximate click from here: when that was first seen. */
     private final Map<Long, Integer> approximateSince = new HashMap<>();
     /** The look direction such a target needs; the walker only counts it from spots that give it. */
@@ -178,6 +201,9 @@ public final class SchematicBuilder extends Module {
     private boolean aimedThisTick;
     private int rotationWaitTicks;
     private int exactWaitTicks;
+    private BlockPos restockChest;
+    private int restockChestTicks;
+    private boolean openChestPending;
 
 
     private Pending pending;
@@ -217,6 +243,7 @@ public final class SchematicBuilder extends Module {
         pendingAge = 0;
         cooldown = 0;
         retryAfter.clear();
+        terraformTarget = null;
         lastHealth = -1.0f;
         lastLevel = mc.level;
         completedLayerNotified = -1;
@@ -232,6 +259,9 @@ public final class SchematicBuilder extends Module {
         hazardDefers.clear();
         adjustClicks.clear();
         lastPlaceTick = ticks;
+        restockChest = null;
+        restockChestTicks = 0;
+        openChestPending = false;
     }
 
     public Status status() {
@@ -309,6 +339,10 @@ public final class SchematicBuilder extends Module {
         }
         if (ticks % GATE_CHECK_INTERVAL == 0) checkGateStall(player);
         if (ticks % ATTENTION_PRUNE_INTERVAL == 0) pruneAttention();
+        if (player.containerMenu != player.inventoryMenu && mc.hitResult instanceof BlockHitResult bhr
+                && SupplyPoint.isContainer(mc.level, bhr.getBlockPos())) {
+            chestIndex.recordOpenContainer(mc.level, player, bhr.getBlockPos());
+        }
     }
 
     /**
@@ -378,6 +412,10 @@ public final class SchematicBuilder extends Module {
         if (!isEnabled() || player == null) return;
         if (autoWalk.get()) mover.applyInput(event, player);
         Pending work = pending;
+        if (openChestPending || restockChest != null) {
+            event.setSneak(false);
+            return;
+        }
         if (work == null) return;
         // Placing against a lever, repeater, hopper or door goes out sneaking so it does not toggle or open;
         // clicking a block to set its delay or note must not, or vanilla places the held block instead.
@@ -391,6 +429,11 @@ public final class SchematicBuilder extends Module {
     private void pre() {
         LocalPlayer player = mc.player;
         aimedThisTick = false;
+        openChestPending = false;
+        if (restockChest != null && player.containerMenu != player.inventoryMenu) {
+            tickOpenRestockChest(player);
+            return;
+        }
         if (!canWork(player)) {
             pending = null;
             mover.pause();
@@ -409,10 +452,28 @@ public final class SchematicBuilder extends Module {
         // the view away from the block under the feet and the jump would land without its support.
         if (pending == null && !(autoWalk.get() && mover.midPillarJump())) {
             pending = chooseAdjustment(player);
-            if (pending == null) pending = choose(player);
+            if (pending == null && terraform.get() && terraform(player)) {
+                status = Status.TERRAFORMING;
+                return;
+            }
+            if (pending == null) {
+                mover.stopMiningCell();
+                terraformTarget = null;
+                pending = choose(player);
+                if (pending == null && status == Status.DONE && terraform.get() && terraformRemaining()) {
+                    status = Status.OUT_OF_REACH;
+                }
+            }
             pendingAge = 0;
         }
         if (pending == null && autoWalk.get() && mover.midPillarJump()) status = Status.OUT_OF_REACH;
+        if (pending == null && status == Status.MISSING_MATERIALS && restock.get()
+                && (indexNearbyChests.get() || SupplyPoint.INSTANCE.pos() != null)) {
+            if (planChestRestock(player)) return;
+        } else {
+            restockChest = null;
+            restockChestTicks = 0;
+        }
         if (pending == null && autoWalk.get()) {
             pending = move(player);
             pendingAge = 0;
@@ -436,6 +497,12 @@ public final class SchematicBuilder extends Module {
                 mover.pause();
             }
             return null;
+        }
+        if (status == Status.RESTOCKING && restockChest != null) {
+            BuildMover.HelperClick click = mover.tickBuild(player);
+            if (click == null) return null;
+            ItemStack stack = player.getInventory().getItem(click.hotbarSlot());
+            return new Pending(click.plan(), click.expected(), stack.getItem(), click.hotbarSlot(), Kind.HELPER);
         }
         if (status != Status.OUT_OF_REACH) {
             mover.pause();
@@ -468,6 +535,17 @@ public final class SchematicBuilder extends Module {
 
     private void post() {
         LocalPlayer player = mc.player;
+        if (openChestPending && restockChest != null && canWork(player)) {
+            openChestPending = false;
+            Vec3 hitVec = Vec3.atCenterOf(restockChest).add(0.0, 0.5, 0.0);
+            BlockHitResult hit = new BlockHitResult(hitVec, Direction.UP, restockChest, false);
+            InteractionResult res = useWithRotation(player, hit, RotationManager.INSTANCE.getServerRotation());
+            if (res != null && res.consumesAction()) {
+                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
+            }
+            cooldown = Math.max(cooldown, 4);
+            return;
+        }
         if (pending == null || cooldown > 0 || !canWork(player)) return;
         int budget = effectiveRotate() ? 1 : effectiveBlocksPerTick();
         for (int i = 0; i < budget && pending != null && cooldown <= 0; i++) {
@@ -1018,10 +1096,116 @@ public final class SchematicBuilder extends Module {
     }
 
     /**
+     * Whether the world block at {@code pos} is in the way of the schematic block {@code expected} (null for an air
+     * cell) and terraforming may mine it: a different block, never a fluid, bedrock or the support under the feet.
+     */
+    private boolean minable(BlockPos pos, BlockState expected) {
+        if (mc.level == null || mc.player == null || !mc.level.hasChunkAt(pos)) return false;
+        BlockState actual = mc.level.getBlockState(pos);
+        if (actual.isAir() || actual.getBlock() instanceof LiquidBlock) return false;
+        if (expected != null && actual.getBlock() == expected.getBlock()) return false;
+        if (actual.getDestroySpeed(mc.level, pos) < 0.0f) return false;
+        if (pos.equals(mc.player.blockPosition().below()) || mover.isHelper(pos)) return false;
+        return true;
+    }
+
+    /** Whether any wrong block of the working layers is left for terraforming to mine. */
+    private boolean terraformRemaining() {
+        SchematicDiff diff = state.currentDiff();
+        if (diff == null || mc.level == null) return false;
+        int high = strictLayers.get() ? state.layer() : Math.max(state.layer(), state.visibleHigh());
+        for (int y = 0; y <= high && y < state.layerCount(); y++) {
+            if (diff.wrong(y) == 0) continue;
+            for (int cell = diff.layerStart(y), end = diff.layerEnd(y); cell < end; cell++) {
+                if (diff.status(cell) != SchematicDiff.WRONG) continue;
+                diff.worldPos(cell, scratch);
+                if (!retryAfter.containsKey(scratch.asLong()) && minable(scratch, diff.expectedState(cell))) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Mines a reachable block that stands where the schematic wants something else (and, with {@code terraform_air},
+     * anything in a schematic air cell). Returns whether a block is being mined this tick.
+     */
+    private boolean terraform(LocalPlayer player) {
+        SchematicDiff diff = state.diff(mc.level);
+        Schematic schematic = state.schematic();
+        if (diff == null || schematic == null) return false;
+        double reach = effectiveRange();
+        if (terraformTarget != null) {
+            if (++terraformTicks <= TERRAFORM_TIMEOUT_TICKS && stillTerraformable(diff, schematic, terraformTarget)
+                    && mover.mineCell(player, terraformTarget, reach)) {
+                return true;
+            }
+            if (terraformTicks > TERRAFORM_TIMEOUT_TICKS) {
+                retryAfter.put(terraformTarget.asLong(), ticks + RETRY_AFTER_TICKS);
+                mover.stopMiningCell();
+            }
+            terraformTarget = null;
+        }
+        Vec3 eyes = player.getEyePosition();
+        double limit = (reach + 0.87) * (reach + 0.87);
+        int high = strictLayers.get() ? state.layer() : Math.max(state.layer(), state.visibleHigh());
+        List<BlockPos> found = new ArrayList<>();
+        for (int y = 0; y <= high && y < state.layerCount(); y++) {
+            if (diff.wrong(y) == 0) continue;
+            for (int cell = diff.layerStart(y), end = diff.layerEnd(y); cell < end; cell++) {
+                if (diff.status(cell) != SchematicDiff.WRONG) continue;
+                diff.worldPos(cell, scratch);
+                if (Vec3.atCenterOf(scratch).distanceToSqr(eyes) > limit || retryAfter.containsKey(scratch.asLong())) continue;
+                if (minable(scratch, diff.expectedState(cell))) found.add(scratch.immutable());
+            }
+        }
+        if (terraformAir.get()) {
+            int r = (int) Math.ceil(reach + 0.87);
+            int ex = Mth.floor(eyes.x), ey = Mth.floor(eyes.y), ez = Mth.floor(eyes.z);
+            for (int x = ex - r; x <= ex + r; x++) {
+                for (int z = ez - r; z <= ez + r; z++) {
+                    int lx = state.placement().localX(x, z), lz = state.placement().localZ(x, z);
+                    for (int y = ey - r; y <= ey + r; y++) {
+                        int ly = state.placement().localY(y);
+                        if (ly > high || !schematic.contains(lx, ly, lz) || schematic.paletteIndex(lx, ly, lz) != 0) continue;
+                        scratch.set(x, y, z);
+                        if (Vec3.atCenterOf(scratch).distanceToSqr(eyes) > limit || retryAfter.containsKey(scratch.asLong())) continue;
+                        if (minable(scratch, null)) found.add(scratch.immutable());
+                    }
+                }
+            }
+        }
+        // Top first so gravity blocks and the ground under later targets stay put; nearest first within a level.
+        found.sort((a, b) -> a.getY() != b.getY() ? Integer.compare(b.getY(), a.getY())
+                : Double.compare(Vec3.atCenterOf(a).distanceToSqr(eyes), Vec3.atCenterOf(b).distanceToSqr(eyes)));
+        for (BlockPos pos : found) {
+            if (mover.mineCell(player, pos, reach)) {
+                terraformTarget = pos;
+                terraformTicks = 0;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean stillTerraformable(SchematicDiff diff, Schematic schematic, BlockPos pos) {
+        SchematicPlacement placement = state.placement();
+        int lx = placement.localX(pos.getX(), pos.getZ()), ly = placement.localY(pos.getY()), lz = placement.localZ(pos.getX(), pos.getZ());
+        if (!schematic.contains(lx, ly, lz)) return false;
+        int index = schematic.paletteIndex(lx, ly, lz);
+        if (index == 0) return terraformAir.get() && minable(pos, null);
+        int cell = diff.cellOf(schematic.index(lx, ly, lz));
+        return cell >= 0 && minable(pos, diff.expectedState(cell));
+    }
+
+    /**
      * Missing cells of the working layers that the inventory has material for, as packed world positions; the
      * walker plans where to stand from these.
      */
     private int walkTargets(LocalPlayer player, long[] out) {
+        if (status == Status.RESTOCKING && restockChest != null && out.length > 0) {
+            out[0] = WalkTerrain.pack(restockChest.getX(), restockChest.getY(), restockChest.getZ());
+            return 1;
+        }
         SchematicDiff diff = state.currentDiff();
         Schematic schematic = state.schematic();
         if (diff == null || schematic == null || mc.level == null) return 0;
@@ -1034,8 +1218,14 @@ public final class SchematicBuilder extends Module {
             if (y < layer && BuildSafety.openCount(diff, y) == 0) continue;
             for (int cell = diff.layerStart(y), end = diff.layerEnd(y); cell < end && count < out.length; cell++) {
                 byte status = diff.status(cell);
-                if (status == SchematicDiff.CORRECT || status == SchematicDiff.WRONG) continue;
-                if (y < layer && !BuildSafety.deferrable(diff, cell)) continue;
+                if (status == SchematicDiff.CORRECT) continue;
+                if (y < layer && !BuildSafety.deferrable(diff, cell) && status != SchematicDiff.WRONG) continue;
+                if (status == SchematicDiff.WRONG || diff.refresh(mc.level, cell) == SchematicDiff.WRONG) {
+                    if (!terraform.get() || retryAfter.containsKey(diff.worldPos(cell, scratch).asLong())) continue;
+                    if (!minable(scratch, diff.expectedState(cell))) continue;
+                    out[count++] = WalkTerrain.pack(scratch.getX(), scratch.getY(), scratch.getZ());
+                    continue;
+                }
                 if (diff.refresh(mc.level, cell) != SchematicDiff.MISSING) continue;
                 if (!safety.eligible(mc.level, diff, cell, openBand)) continue;
                 BlockState expected = diff.expectedState(cell);
@@ -1048,6 +1238,98 @@ public final class SchematicBuilder extends Module {
             }
         }
         return count;
+    }
+
+    private boolean planChestRestock(LocalPlayer player) {
+        if (state.missingMaterials().isEmpty()) updateShortfall(player);
+        Set<Item> needed = new HashSet<>();
+        for (SchematicMaterials.Entry entry : state.missingMaterials()) {
+            needed.add(entry.item());
+        }
+        if (needed.isEmpty()) return false;
+        BlockPos target = chestIndex.findTarget(mc.level, player, needed, indexNearbyChests.get(),
+                chestScanRange.get(), ticks);
+        if (target == null) {
+            restockChest = null;
+            return false;
+        }
+        if (!target.equals(restockChest)) {
+            restockChest = target;
+            restockChestTicks = 0;
+        }
+        status = Status.RESTOCKING;
+        double reach = effectiveRange();
+        Vec3 hitVec = Vec3.atCenterOf(target).add(0.0, 0.5, 0.0);
+        if (player.getEyePosition().distanceToSqr(hitVec) <= reach * reach) {
+            mover.holdForClick();
+            Rotation aim = Rotation.lookingAt(hitVec, player.getEyePosition());
+            if (effectiveRotate()) {
+                aimedThisTick = true;
+                requestRotation(aim);
+            }
+            restockChestTicks++;
+            Rotation current = RotationManager.INSTANCE.getCurrentRotation();
+            if (!effectiveRotate() || (current != null && current.angleTo(aim) <= 12.0f) || restockChestTicks >= 6) {
+                openChestPending = true;
+                if (restockChestTicks > 25) {
+                    chestIndex.markCooldown(mc.level, target, ticks + ChestIndex.retryCooldownTicks());
+                    restockChest = null;
+                }
+            }
+            return true;
+        }
+        if (!autoWalk.get()) return false;
+        pending = move(player);
+        pendingAge = 0;
+        if (pending != null) {
+            status = Status.PILLARING;
+            requestRotation(pending.plan.rotation());
+        } else if (!aimedThisTick) {
+            RotationManager.INSTANCE.release(this);
+        }
+        return true;
+    }
+
+    private void tickOpenRestockChest(LocalPlayer player) {
+        status = Status.RESTOCKING;
+        mover.pause();
+        RotationManager.INSTANCE.release(this);
+        AbstractContainerMenu menu = player.containerMenu;
+        int containerSlots = menu.slots.size() - 36;
+        if (containerSlots <= 0) {
+            player.closeContainer();
+            restockChest = null;
+            return;
+        }
+        chestIndex.recordOpenContainer(mc.level, player, restockChest);
+        updateShortfall(player);
+        Set<Item> needed = new HashSet<>();
+        for (SchematicMaterials.Entry entry : state.missingMaterials()) {
+            needed.add(entry.item());
+        }
+        for (int i = 0; i < containerSlots; i++) {
+            Slot slot = menu.slots.get(i);
+            ItemStack stack = slot.getItem();
+            if (stack.isEmpty() || !needed.contains(stack.getItem())) continue;
+            if (!hasRoomFor(player.getInventory(), stack)) break;
+            mc.gameMode.handleContainerInput(menu.containerId, i, 0, ContainerInput.QUICK_MOVE, player);
+            return;
+        }
+        chestIndex.recordOpenContainer(mc.level, player, restockChest);
+        chestIndex.markCooldown(mc.level, restockChest, ticks + ChestIndex.retryCooldownTicks());
+        player.closeContainer();
+        restockChest = null;
+        restockChestTicks = 0;
+        updateShortfall(player);
+    }
+
+    private static boolean hasRoomFor(Inventory inv, ItemStack incoming) {
+        for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
+            ItemStack cur = inv.getItem(i);
+            if (cur.isEmpty()) return true;
+            if (ItemStack.isSameItemSameComponents(cur, incoming) && cur.getCount() < cur.getMaxStackSize()) return true;
+        }
+        return false;
     }
 
     private final class MoverHost implements BuildMover.Host {

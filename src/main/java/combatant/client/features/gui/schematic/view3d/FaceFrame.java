@@ -81,7 +81,8 @@ public final class FaceFrame {
     private boolean projectFace(FaceList faces, OrbitCamera camera, int f, float minX, float minY, float maxX, float maxY) {
         float cx = faces.centre(f, 0), cy = faces.centre(f, 1), cz = faces.centre(f, 2);
         float ex = camera.eyeX() - cx, ey = camera.eyeY() - cy, ez = camera.eyeZ() - cz;
-        if (ex * faces.normalOf(f, 0) + ey * faces.normalOf(f, 1) + ez * faces.normalOf(f, 2) <= 0f) return false;
+        // Model quads (plants, dust, torches, repeaters) are double-sided: only cube faces are back-face culled.
+        if (!faces.isQuad(f) && ex * faces.normalOf(f, 0) + ey * faces.normalOf(f, 1) + ez * faces.normalOf(f, 2) <= 0f) return false;
         int base = f * 8;
         float lowX = Float.MAX_VALUE, lowY = Float.MAX_VALUE, highX = -Float.MAX_VALUE, highY = -Float.MAX_VALUE;
         for (int c = 0; c < 4; c++) {

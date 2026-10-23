@@ -113,7 +113,7 @@ public final class PlacementExecutor {
             return new BlockHitResult(hit.getLocation(), direction, interactedPos, false);
         }
         if (constraints.constructFailResult()) {
-            return new BlockHitResult(Vec3.atCenterOf(interactedPos), direction, interactedPos, false);
+            return new BlockHitResult(Vec3.atCenterOf(interactedPos).relative(direction, 0.5), direction, interactedPos, false);
         }
         return null;
     }

@@ -22,18 +22,31 @@ import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.util.schematic.SchematicDiff;
+import combatant.client.features.module.ModuleManager;
+import combatant.client.features.module.modules.player.schematic.ChestIndex;
+import combatant.client.features.module.modules.player.schematic.SchematicBuilder;
+import combatant.client.features.module.modules.player.schematic.SupplyPoint;
+import combatant.client.util.schematic.SchematicMaterials;
 import combatant.client.util.schematic.SchematicState;
 import combatant.client.util.schematic.SchematicState.LayerMode;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Ghost render of the active schematic placement. Missing blocks are drawn with their real block model at reduced
@@ -69,7 +82,11 @@ public final class SchematicProjection extends Module {
     private static final double DASH = 0.7;
     private static final double DASH_PERIOD = 1.15;
     private static final double DASH_RANGE = 40.0;
-    private static final float[] FACE_SHADE = {0.55f, 1.0f, 0.82f, 0.82f, 0.66f, 0.66f};
+    private static final float[] FACE_SHADE = SchematicGhostModel.FACE_SHADE;
+    private static final int SUPPLY_REFRESH_TICKS = 10;
+    private static final double[] NO_BOXES = new double[0];
+    private static final int SUPPLY_MARKED = 0, SUPPLY_NEEDED = 1, SUPPLY_INDEXED = 2;
+    private static final int SUPPLY_STRIDE = 7;
 
     private final EnumValue<LayerMode> mode = enumMode("mode", LayerMode.CURRENT_LAYER);
     private final NumberValue<Integer> layerRange =
@@ -79,7 +96,7 @@ public final class SchematicProjection extends Module {
     private final BooleanValue showCorrect = bool("show_correct", false);
     private final NumberValue<Integer> renderDistance = num("render_distance", 64, 8, 256);
     private final NumberValue<Integer> maxBoxes = num("max_boxes", 4000, 100, 30000);
-    private final NumberValue<Integer> opacity = num("opacity", 55, 5, 100);
+    private final NumberValue<Integer> opacity = num("opacity", 72, 5, 100);
     private final BooleanValue blockModels = bool("block_models", true);
     private final BooleanValue outline = bool("outline", true);
     private final NumberValue<Integer> fadeDistance = num("fade_distance", 56, 8, 256);
@@ -93,6 +110,7 @@ public final class SchematicProjection extends Module {
     private final RGBAColorValue correctColor = color("correct_color", "#FF66BB6A");
     private final RGBAColorValue planeColor = color("plane_color", "#FF7FC8FF");
     private final RGBAColorValue boxColor = color("box_color", "#FFFFD27A");
+    private final BooleanValue highlightSupply = bool("highlight_supply_chests", true);
 
     private final Minecraft mc = Minecraft.getInstance();
     private final SchematicState state = SchematicState.INSTANCE;
@@ -107,8 +125,15 @@ public final class SchematicProjection extends Module {
     private byte[] boxStatus = new byte[0];
     /** Bit per {@link net.minecraft.core.Direction} ordinal: that neighbour is a shown full cube. */
     private byte[] boxMask = new byte[0];
+    /** Bit per direction ordinal: that neighbour is the same non-cube model whose touching face is flush. */
+    private byte[] boxSame = new byte[0];
+    private final Long2ObjectOpenHashMap<SchematicGhostModel> flushModels = new Long2ObjectOpenHashMap<>();
+    /** Supply-container boxes for the frame ({@link #SUPPLY_STRIDE} doubles each), swapped whole by the tick thread. */
+    private volatile double[] supplyBoxes = NO_BOXES;
+    private int supplyTicks;
     private SchematicGhostModel[] boxModel = new SchematicGhostModel[0];
     private int boxCount;
+    private long[] sortKeys = new long[0];
 
     /** minX, minY, minZ, maxX, maxY, maxZ in world space (max exclusive). */
     private final double[] bounds = new double[6];
@@ -145,6 +170,8 @@ public final class SchematicProjection extends Module {
     @Override
     public void onDisable() {
         boxCount = 0;
+        supplyBoxes = NO_BOXES;
+        supplyTicks = 0;
         builtDiff = null;
         solid.clear();
         SchematicGhostModel.clearCache();
@@ -180,6 +207,11 @@ public final class SchematicProjection extends Module {
         state.tickDiff(mc, budget / 2, budget - budget / 2);
 
         ticksSinceRebuild++;
+        if (highlightSupply.get()) {
+            if (supplyTicks++ % SUPPLY_REFRESH_TICKS == 0) supplyBoxes = collectSupply();
+        } else {
+            supplyBoxes = NO_BOXES;
+        }
         SchematicDiff diff = state.isPlaced() ? state.diff(mc.level) : null;
         if (diff == null) {
             boxCount = 0;
@@ -233,7 +265,9 @@ public final class SchematicProjection extends Module {
             boxZ = new int[cap];
             boxStatus = new byte[cap];
             boxMask = new byte[cap];
+            boxSame = new byte[cap];
             boxModel = new SchematicGhostModel[cap];
+            sortKeys = new long[cap];
         }
         int range = renderDistance.get();
         int total = countByDistance(diff, player, range);
@@ -260,17 +294,26 @@ public final class SchematicProjection extends Module {
     /** Marks, per box, which face neighbours are shown full cubes, so shared faces and edges are never drawn. */
     private void computeMasks() {
         solid.clear();
+        flushModels.clear();
         for (int i = 0; i < boxCount; i++) {
-            if (boxModel[i].fullCube) solid.add(BlockPos.asLong(boxX[i], boxY[i], boxZ[i]));
+            SchematicGhostModel model = boxModel[i];
+            long key = BlockPos.asLong(boxX[i], boxY[i], boxZ[i]);
+            if (model.fullCube) solid.add(key);
+            else if (model.flush != 0) flushModels.put(key, model);
         }
         net.minecraft.core.Direction[] dirs = net.minecraft.core.Direction.values();
         for (int i = 0; i < boxCount; i++) {
-            int mask = 0;
+            int mask = 0, same = 0;
+            SchematicGhostModel model = boxModel[i];
             for (int d = 0; d < 6; d++) {
                 neighbour.set(boxX[i] + dirs[d].getStepX(), boxY[i] + dirs[d].getStepY(), boxZ[i] + dirs[d].getStepZ());
-                if (solid.contains(neighbour.asLong())) mask |= 1 << d;
+                long key = neighbour.asLong();
+                if (solid.contains(key)) mask |= 1 << d;
+                // A neighbour of the same non-cube model (glass, panes, flush slabs) hides the touching face too.
+                if ((model.flush >> d & 1) != 0 && flushModels.get(key) == model) same |= 1 << d;
             }
             boxMask[i] = (byte) mask;
+            boxSame[i] = (byte) same;
         }
     }
 
@@ -338,29 +381,34 @@ public final class SchematicProjection extends Module {
 
     @Override
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
-        if (!isEnabled() || renderer == null || builtDiff == null) return;
+        if (!isEnabled() || renderer == null) return;
+        boolean haveDiff = builtDiff != null;
+        double[] supply = highlightSupply.get() ? supplyBoxes : NO_BOXES;
+        if (!haveDiff && supply.length == 0) return;
         boolean walls = throughWalls.get();
         Renderer3D.DepthMode depth = walls ? Renderer3D.DepthMode.NONE : Renderer3D.DepthMode.MAIN;
         Vec3 cam = RenderState.cameraPos;
 
-        MeshBuilder tris = renderer.batch(WorldRenderPipelines.WORLD_COLORED, depth);
+        var colorPipe = walls ? WorldRenderPipelines.WORLD_COLORED : WorldRenderPipelines.WORLD_COLORED_DEPTH;
+        var linePipe = walls ? WorldRenderPipelines.WORLD_COLORED_LINES : WorldRenderPipelines.WORLD_COLORED_LINES_DEPTH;
+        MeshBuilder tris = renderer.batch(colorPipe, depth);
         MeshBuilder glow = null;
         MeshBuilder core;
         float previous = RenderState.lineWidth;
         try {
-            if (outline.get() && boxCount > 0) {
+            if (outline.get() && (boxCount > 0 || supply.length > 0)) {
                 RenderState.lineWidth = GLOW_WIDTH;
-                glow = renderer.batch(WorldRenderPipelines.WORLD_COLORED_LINES, depth);
+                glow = renderer.batch(linePipe, depth);
             }
             RenderState.lineWidth = EDGE_WIDTH;
-            core = renderer.batch(WorldRenderPipelines.WORLD_COLORED_LINES, depth);
+            core = renderer.batch(linePipe, depth);
         } finally {
             RenderState.lineWidth = previous;
         }
 
         float time = (System.nanoTime() / 1_000_000L % 3_600_000L) / 1000.0f;
-        if (showLayerPlane.get()) drawLayerPlane(tris, core, cam);
-        if (showBoundingBox.get()) drawBounds(core, cam);
+        if (haveDiff && showLayerPlane.get()) drawLayerPlane(tris, core, cam);
+        if (haveDiff && showBoundingBox.get()) drawBounds(core, cam);
 
         frameRenderer = renderer;
         frameDepth = depth;
@@ -368,11 +416,96 @@ public final class SchematicProjection extends Module {
         frameAtlas = null;
         frameAtlasMesh = null;
         try {
-            drawBoxes(tris, core, glow, cam, time);
+            if (boxCount > 0) drawBoxes(tris, core, glow, cam, time);
+            if (supply.length > 0) drawSupply(supply, tris, core, glow, cam, time);
         } finally {
             frameRenderer = null;
             frameAtlas = null;
             frameAtlasMesh = null;
+        }
+    }
+
+    // ------------------------------------------------------------------ supply chests
+
+    /**
+     * Boxes ({@link #SUPPLY_STRIDE} doubles each: min xyz, max xyz, kind) of the marked supply container and every
+     * container the builder has indexed within the render distance. Tick thread only; frames read the snapshot.
+     */
+    private double[] collectSupply() {
+        ClientLevel level = mc.level;
+        LocalPlayer player = mc.player;
+        if (level == null || player == null) return NO_BOXES;
+        DoubleArrayList out = new DoubleArrayList();
+        BlockPos marked = SupplyPoint.INSTANCE.pos();
+        long markedKey = Long.MIN_VALUE;
+        if (marked != null && SupplyPoint.isContainer(level, marked)) {
+            BlockPos canon = ChestIndex.canonical(level, marked);
+            markedKey = canon.asLong();
+            addSupplyBox(out, level, canon, SUPPLY_MARKED);
+        }
+        SchematicBuilder builder = ModuleManager.get(SchematicBuilder.class);
+        if (builder != null) {
+            ChestIndex index = builder.chestIndex();
+            Set<Item> needed = new HashSet<>();
+            for (SchematicMaterials.Entry entry : state.missingMaterials()) needed.add(entry.item());
+            double range = renderDistance.get();
+            double rangeSq = range * range;
+            for (long key : index.indexedKeys(level)) {
+                if (key == markedKey) continue;
+                BlockPos pos = BlockPos.of(key);
+                if (!level.hasChunkAt(pos) || !SupplyPoint.isContainer(level, pos)) continue;
+                double dx = pos.getX() + 0.5 - player.getX(), dy = pos.getY() + 0.5 - player.getY(),
+                        dz = pos.getZ() + 0.5 - player.getZ();
+                if (dx * dx + dy * dy + dz * dz > rangeSq) continue;
+                addSupplyBox(out, level, pos, index.hasNeeded(level, pos, needed) ? SUPPLY_NEEDED : SUPPLY_INDEXED);
+            }
+        }
+        return out.isEmpty() ? NO_BOXES : out.toDoubleArray();
+    }
+
+    /** Adds the container's block box, widened over the second half of a double chest. */
+    private static void addSupplyBox(DoubleArrayList out, ClientLevel level, BlockPos pos, int kind) {
+        double x1 = pos.getX(), y1 = pos.getY(), z1 = pos.getZ(), x2 = x1 + 1.0, y2 = y1 + 1.0, z2 = z1 + 1.0;
+        BlockState bs = level.getBlockState(pos);
+        if (bs.getBlock() instanceof ChestBlock && bs.hasProperty(ChestBlock.TYPE)
+                && bs.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
+            BlockPos other = pos.relative(ChestBlock.getConnectedDirection(bs));
+            x1 = Math.min(x1, other.getX());
+            y1 = Math.min(y1, other.getY());
+            z1 = Math.min(z1, other.getZ());
+            x2 = Math.max(x2, other.getX() + 1.0);
+            y2 = Math.max(y2, other.getY() + 1.0);
+            z2 = Math.max(z2, other.getZ() + 1.0);
+        }
+        out.add(x1);
+        out.add(y1);
+        out.add(z1);
+        out.add(x2);
+        out.add(y2);
+        out.add(z2);
+        out.add(kind);
+    }
+
+    /** Amber for the marked supply, cyan for indexed containers holding needed materials, muted grey for the rest. */
+    private void drawSupply(double[] boxes, MeshBuilder tris, MeshBuilder core, MeshBuilder glow, Vec3 cam, float time) {
+        final double grow = 0.008;
+        double fadeEnd = Math.max(32.0, fadeDistance.get());
+        double fadeStart = fadeEnd * 0.5;
+        boolean doPulse = pulse.get();
+        for (int i = 0; i + SUPPLY_STRIDE <= boxes.length; i += SUPPLY_STRIDE) {
+            double x1 = boxes[i], y1 = boxes[i + 1], z1 = boxes[i + 2], x2 = boxes[i + 3], y2 = boxes[i + 4], z2 = boxes[i + 5];
+            int kind = (int) boxes[i + 6];
+            int rgb = kind == SUPPLY_MARKED ? 0xFFB300 : kind == SUPPLY_NEEDED ? 0x00E5FF : 0x9AA0A6;
+            double dx = (x1 + x2) * 0.5 - cam.x, dy = (y1 + y2) * 0.5 - cam.y, dz = (z1 + z2) * 0.5 - cam.z;
+            double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            float fade = fade(dist, fadeStart, fadeEnd);
+            float breathe = doPulse && kind != SUPPLY_INDEXED ? 0.88f + 0.12f * (float) Math.sin(time * 3.0f + i) : 1.0f;
+            float fill = (kind == SUPPLY_MARKED ? 0.30f : kind == SUPPLY_NEEDED ? 0.24f : 0.12f) * fade * breathe;
+            float edge = (kind == SUPPLY_INDEXED ? 0.6f : 0.95f) * fade * breathe;
+            flatBox(tris, x1 - grow, y1 - grow, z1 - grow, x2 + grow, y2 + grow, z2 + grow, 0, rgb, fill);
+            int coreA = clampAlpha(edge);
+            int glowA = glow != null && dist < GLOW_DISTANCE ? clampAlpha(edge * 0.28f) : 0;
+            boxEdges(core, glow, x1 - grow, y1 - grow, z1 - grow, x2 + grow, y2 + grow, z2 + grow, 0, rgb, coreA, glowA);
         }
     }
 
@@ -383,8 +516,8 @@ public final class SchematicProjection extends Module {
         int missing = missingColor.getArgb();
         int wrong = wrongColor.getArgb();
         int correct = correctColor.getArgb();
-        // Ghosts are tinted toward the missing colour but stay mostly white so the real texture reads through.
-        int ghostTint = mix(0xFFFFFF, missing & 0xFFFFFF, 0.4f);
+        // Keep true block texture colours; missingColor tints the outline and distant flat fallback.
+        int ghostTint = 0xFFFFFF;
         float missingAlpha = ((missing >>> 24) & 0xFF) / 255.0f;
         float wrongAlpha = ((wrong >>> 24) & 0xFF) / 255.0f;
         float correctAlpha = ((correct >>> 24) & 0xFF) / 255.0f;
@@ -397,9 +530,21 @@ public final class SchematicProjection extends Module {
         int modelBudget = MAX_MODEL_BOXES;
         Frustum frustum = RenderState.frustum;
 
+        int visibleCount = 0;
         for (int i = 0; i < boxCount; i++) {
             int x = boxX[i], y = boxY[i], z = boxZ[i];
             if (frustum != null && !frustum.pointInFrustum(x + 0.5, y + 0.5, z + 0.5)) continue;
+            double dx = x + 0.5 - cam.x, dy = y + 0.5 - cam.y, dz = z + 0.5 - cam.z;
+            float distSq = (float) (dx * dx + dy * dy + dz * dz);
+            sortKeys[visibleCount++] = ((long) Float.floatToRawIntBits(distSq) << 32) | (i & 0xFFFFFFFFL);
+        }
+        Arrays.sort(sortKeys, 0, visibleCount);
+
+        // Back-to-front so translucent ghost models blend cleanly over one another.
+        int modelStart = Math.max(0, visibleCount - MAX_MODEL_BOXES);
+        for (int s = visibleCount - 1; s >= 0; s--) {
+            int i = (int) sortKeys[s];
+            int x = boxX[i], y = boxY[i], z = boxZ[i];
             double dx = x + 0.5 - cam.x, dy = y + 0.5 - cam.y, dz = z + 0.5 - cam.z;
             double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
             float fade = fade(dist, fadeStart, fadeEnd);
@@ -407,26 +552,25 @@ public final class SchematicProjection extends Module {
             int mask = boxMask[i];
 
             if (status == SchematicDiff.MISSING) {
-                float breathe = doPulse ? 0.82f + 0.18f * (float) Math.sin(time * 2.2f + (x + z) * 0.35f + y * 0.2f) : 1.0f;
+                float breathe = doPulse ? 0.88f + 0.12f * (float) Math.sin(time * 2.2f + (x + z) * 0.35f + y * 0.2f) : 1.0f;
                 float alpha = fillOpacity * fade * breathe * missingAlpha;
                 SchematicGhostModel model = boxModel[i];
                 if (alpha > 0.01f) {
-                    if (models && model.quadCount > 0 && dist < modelRange && modelBudget > 0) {
-                        modelBudget--;
-                        drawModel(model, x, y, z, mask, ghostTint, alpha);
+                    if (models && model.quadCount > 0 && dist < modelRange && s >= modelStart) {
+                        drawModel(model, x, y, z, mask | boxSame[i], ghostTint, alpha, cam);
                     } else {
-                        drawShape(tris, model, x, y, z, mask, missing & 0xFFFFFF, alpha * 0.6f);
+                        drawShape(tris, model, x, y, z, mask, missing & 0xFFFFFF, alpha * 0.55f);
                     }
                 }
                 if (doOutline) {
-                    float edge = Math.min(1.0f, 0.9f * fade * (0.75f + 0.25f * breathe) * missingAlpha);
+                    float edge = Math.min(1.0f, 0.85f * fade * (0.8f + 0.2f * breathe) * missingAlpha);
                     drawEdges(core, glow, model, x, y, z, mask, missing & 0xFFFFFF, edge, dist);
                 }
             } else {
                 boolean isWrong = status == SchematicDiff.WRONG;
                 int rgb = (isWrong ? wrong : correct) & 0xFFFFFF;
                 float colorAlpha = isWrong ? wrongAlpha : correctAlpha;
-                float alpha = fillOpacity * fade * colorAlpha * (isWrong ? 0.8f : 0.3f);
+                float alpha = fillOpacity * fade * colorAlpha * (isWrong ? 0.75f : 0.25f);
                 if (alpha > 0.01f) {
                     flatBox(tris, x - OVERLAY_GROW, y - OVERLAY_GROW, z - OVERLAY_GROW,
                             x + 1.0 + OVERLAY_GROW, y + 1.0 + OVERLAY_GROW, z + 1.0 + OVERLAY_GROW,
@@ -459,12 +603,22 @@ public final class SchematicProjection extends Module {
     }
 
     /** Writes the real model quads of the block at reduced alpha, skipping quads hidden by a full-cube neighbour. */
-    private void drawModel(SchematicGhostModel m, int x, int y, int z, int mask, int tint, float alpha) {
+    private void drawModel(SchematicGhostModel m, int x, int y, int z, int mask, int tint, float alpha, Vec3 cam) {
         int a = clampAlpha(alpha) << 24;
         int tr = (tint >>> 16) & 255, tg = (tint >>> 8) & 255, tb = tint & 255;
+        final float inset = 0.996f;
+        final double bx = x + 0.5, by = y + 0.5, bz = z + 0.5;
         for (int q = 0; q < m.quadCount; q++) {
             int cull = m.cullFace[q];
             if (cull >= 0 && (mask >> cull & 1) != 0) continue;
+            int p = q * 12;
+            if (cull >= 0) {
+                int n = q * 3;
+                double vx = x + m.pos[p] - cam.x;
+                double vy = y + m.pos[p + 1] - cam.y;
+                double vz = z + m.pos[p + 2] - cam.z;
+                if (vx * m.normal[n] + vy * m.normal[n + 1] + vz * m.normal[n + 2] >= 0.0) continue;
+            }
             MeshBuilder mesh = atlasMesh(m.atlas[q]);
             if (mesh == null) continue;
             int rgb = m.rgb[q];
@@ -473,14 +627,14 @@ public final class SchematicProjection extends Module {
             int b = tb * (rgb & 255) / 255;
             int argb = a | (r << 16) | (g << 8) | b;
             mesh.ensureQuadCapacity();
-            int p = q * 12, t = q * 8;
-            int i0 = mesh.vec3(x + m.pos[p], y + m.pos[p + 1], z + m.pos[p + 2])
+            int t = q * 8;
+            int i0 = mesh.vec3(bx + (m.pos[p] - 0.5f) * inset, by + (m.pos[p + 1] - 0.5f) * inset, bz + (m.pos[p + 2] - 0.5f) * inset)
                     .vec2(m.uv[t], m.uv[t + 1]).colorArgb(argb).next();
-            int i1 = mesh.vec3(x + m.pos[p + 3], y + m.pos[p + 4], z + m.pos[p + 5])
+            int i1 = mesh.vec3(bx + (m.pos[p + 3] - 0.5f) * inset, by + (m.pos[p + 4] - 0.5f) * inset, bz + (m.pos[p + 5] - 0.5f) * inset)
                     .vec2(m.uv[t + 2], m.uv[t + 3]).colorArgb(argb).next();
-            int i2 = mesh.vec3(x + m.pos[p + 6], y + m.pos[p + 7], z + m.pos[p + 8])
+            int i2 = mesh.vec3(bx + (m.pos[p + 6] - 0.5f) * inset, by + (m.pos[p + 7] - 0.5f) * inset, bz + (m.pos[p + 8] - 0.5f) * inset)
                     .vec2(m.uv[t + 4], m.uv[t + 5]).colorArgb(argb).next();
-            int i3 = mesh.vec3(x + m.pos[p + 9], y + m.pos[p + 10], z + m.pos[p + 11])
+            int i3 = mesh.vec3(bx + (m.pos[p + 9] - 0.5f) * inset, by + (m.pos[p + 10] - 0.5f) * inset, bz + (m.pos[p + 11] - 0.5f) * inset)
                     .vec2(m.uv[t + 6], m.uv[t + 7]).colorArgb(argb).next();
             mesh.quad(i0, i1, i2, i3);
         }

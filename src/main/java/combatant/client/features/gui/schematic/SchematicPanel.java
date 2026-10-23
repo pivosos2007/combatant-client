@@ -427,7 +427,7 @@ public final class SchematicPanel {
         Schematic schematic = state.schematic();
         if (schematic == null) return;
         if (view3d) {
-            grid.layout(schematic, insetX + 6f, insetY + 6f, insetS - 12f, insetS - 12f);
+            grid.layout(schematic, insetX + 6f, insetY + 24f, insetS - 12f, insetS - 30f);
         } else {
             grid.layout(schematic, gridX + 8f, gridY + 8f, gridW - 16f, gridH - 16f);
         }
@@ -814,11 +814,11 @@ public final class SchematicPanel {
 
     private void renderInset(Schematic schematic, SchematicDiff diff, float alpha) {
         boolean hot = SchematicUi.inside(mouseX, mouseY, insetX, insetY, insetS, insetS);
-        ui.section(insetX, insetY, insetS, insetS, alpha * 0.95f);
-        if (hot) Renderer2D.COLOR.roundedRectStroke(insetX, insetY, insetS, insetS, 10f, 1f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha));
+        ui.well(insetX, insetY, insetS, insetS, 10f, alpha * 0.95f);
+        Renderer2D.COLOR.roundedRectStroke(insetX, insetY, insetS, insetS, 10f, 1f,
+                SchematicUi.scaleAlpha(hot ? SchematicUi.ACCENT : SchematicUi.PANEL_STROKE, alpha));
         grid.render(schematic, state.layer(), diff, alpha);
-        ui.text(tr("screen.combatant.schematic.view.tab_2d"), insetX + 8f, insetY + 6f, SchematicUi.TINY,
-                SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), true);
+        ui.chip(insetX + 6f, insetY + 6f, tr("screen.combatant.schematic.view.tab_2d"), SchematicUi.ACCENT, alpha);
     }
 
     private static String formatCount(int count) {
@@ -910,8 +910,7 @@ public final class SchematicPanel {
         int total = Math.max(1, diff.total(layer));
         float x = centreX;
         x = segment(x, barY, w * diff.correct(layer) / total, barH, SchematicUi.GOOD, alpha);
-        x = segment(x, barY, w * diff.wrong(layer) / total, barH, SchematicUi.WARN, alpha);
-        segment(x, barY, w * diff.missing(layer) / total, barH, SchematicUi.BAD, alpha);
+        segment(x, barY, w * diff.wrong(layer) / total, barH, SchematicUi.BAD, alpha);
         int buildTotal = 0, buildCorrect = 0;
         for (int y = 0; y < state.layerCount(); y++) {
             buildTotal += diff.total(y);
@@ -919,7 +918,7 @@ public final class SchematicPanel {
         }
         String text = tr("screen.combatant.schematic.progress", diff.correct(layer), diff.total(layer), diff.missing(layer),
                 diff.wrong(layer), buildTotal == 0 ? 100 : buildCorrect * 100 / buildTotal);
-        ui.text(text, centreX, barY + barH + 6f, SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
+        ui.text(text, centreX, barY + barH + 6f, SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha * 0.9f), false);
     }
 
     private static float segment(float x, float y, float w, float h, int color, float alpha) {
@@ -1020,6 +1019,8 @@ public final class SchematicPanel {
                 String status = tr("screen.combatant.schematic.builder." + builder.status().name().toLowerCase(Locale.ROOT));
                 if (builder.placedCount() > 0) status += " · " + builder.placedCount();
                 infoList.add(infoRow("screen.combatant.schematic.info.builder", status));
+                int chests = builder.chestIndex().indexedKeys(Minecraft.getInstance().level).length;
+                if (chests > 0) infoList.add(infoRow("screen.combatant.schematic.info.chests", String.valueOf(chests)));
             }
         }
         infoList.add(infoRow("screen.combatant.schematic.info.author", schematic.author().isEmpty() ? "-" : schematic.author()));
@@ -1032,7 +1033,12 @@ public final class SchematicPanel {
         float step = smallH + 8f;
         for (int i = 0; i < infoRows && i < infoList.size(); i++) {
             String[] row = infoList.get(i);
-            infoLine(row[0], row[1], infoY + i * step, alpha);
+            float y = infoY + i * step;
+            if ((i & 1) == 1) {
+                Renderer2D.COLOR.roundedRect(rightX - 4f, y - 4f, rightW + 8f, step, 4f,
+                        SchematicUi.scaleAlpha(SchematicUi.withAlpha(SchematicUi.SURFACE, 60), alpha));
+            }
+            infoLine(row[0], row[1], y, alpha);
         }
     }
 
@@ -1044,8 +1050,8 @@ public final class SchematicPanel {
         ui.text(ui.ellipsize(label, SchematicUi.SMALL, rightW * 0.38f - 8f), rightX, y, SchematicUi.SMALL,
                 SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
         float valueX = rightX + rightW * 0.38f;
-        ui.text(ui.ellipsize(value, SchematicUi.SMALL, rightX + rightW - valueX), valueX, y, SchematicUi.SMALL,
-                SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), false);
+        ui.textRight(ui.ellipsize(value, SchematicUi.SMALL, rightX + rightW - valueX), rightX + rightW, y, SchematicUi.SMALL,
+                SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), true);
     }
 
     private void renderMaterials(float alpha) {
@@ -1143,11 +1149,10 @@ public final class SchematicPanel {
         float x = rightX + 6f;
         float w = rightW - 16f;
         float rh = MATERIAL_ROW_H - 2f;
-        if (builderMissing) {
-            Renderer2D.COLOR.roundedRect(x, y, w, rh, 6f, SchematicUi.scaleAlpha(SchematicUi.mix(SchematicUi.SURFACE, SchematicUi.BAD, 0.22f), alpha));
-        } else if (SchematicUi.inside(mouseX, mouseY, x, y, w, rh)) {
-            Renderer2D.COLOR.roundedRect(x, y, w, rh, 6f, SchematicUi.scaleAlpha(SchematicUi.SURFACE_HOVER, alpha));
-        }
+        boolean rowHot = SchematicUi.inside(mouseX, mouseY, x, y, w, rh);
+        int card = builderMissing ? SchematicUi.mix(SchematicUi.SURFACE, SchematicUi.BAD, 0.22f)
+                : rowHot ? SchematicUi.SURFACE_HOVER : SchematicUi.SURFACE;
+        Renderer2D.COLOR.roundedRect(x, y, w, rh, 6f, SchematicUi.scaleAlpha(SchematicUi.withAlpha(card, builderMissing || rowHot ? 255 : 120), alpha));
         Renderer2D.COLOR.item(materialStacks.get(index), x + 4f, y + (rh - 20f) * 0.5f, 1.25f, index);
         if (index < materialRedstone.length && materialRedstone[index]) {
             // Redstone parts carry a small dot so a machine's components stand out from its casing.
@@ -1163,9 +1168,9 @@ public final class SchematicPanel {
         ui.textRight(counts, x + w - 4f, textY, SchematicUi.SMALL, SchematicUi.scaleAlpha(color, alpha), false);
         float fraction = entry.count() <= 0 ? 1f : Math.min(1f, (float) have / entry.count());
         float barX = x + 32f, barW = w - 36f, barY = y + rh - 8f;
-        Renderer2D.COLOR.roundedRect(barX, barY, barW, 3f, 1.5f, SchematicUi.scaleAlpha(SchematicUi.WELL, alpha));
-        int fill = done ? SchematicUi.GOOD : SchematicUi.mix(SchematicUi.BAD, SchematicUi.WARN, fraction);
-        if (fraction > 0f) Renderer2D.COLOR.roundedRect(barX, barY, Math.max(3f, barW * fraction), 3f, 1.5f, SchematicUi.scaleAlpha(fill, alpha));
+        Renderer2D.COLOR.roundedRect(barX, barY, barW, 4f, 2f, SchematicUi.scaleAlpha(SchematicUi.WELL, alpha));
+        int fill = done ? SchematicUi.GOOD : SchematicUi.mix(SchematicUi.ACCENT, SchematicUi.GOOD, fraction);
+        if (fraction > 0f) Renderer2D.COLOR.roundedRect(barX, barY, Math.max(4f, barW * fraction), 4f, 2f, SchematicUi.scaleAlpha(fill, alpha));
     }
 
     private void refreshMaterials() {

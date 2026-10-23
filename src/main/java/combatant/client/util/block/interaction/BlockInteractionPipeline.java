@@ -160,13 +160,14 @@ public final class BlockInteractionPipeline {
                 miningOwner = owner;
                 miningPos = pos.immutable();
                 miningFace = face;
-                if (plan.swing()) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
+                // Dig packets must be accompanied by a main-hand swing (Vulcan BadPackets 9 / Grim NoSwing).
+                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
             }
             return started;
         }
 
         boolean continued = mc.gameMode.continueDestroyBlock(pos, miningFace != null ? miningFace : face);
-        if (continued && plan.swing()) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
+        if (continued) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
         return continued;
     }
 

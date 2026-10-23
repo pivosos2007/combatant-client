@@ -255,7 +255,8 @@ final class SchematicTextures {
         SchematicGhostModel ghost = SchematicGhostModel.bake(state, SchematicTextures::tintOf);
         boolean occludes = ghost.fullCube && state.canOcclude();
         if (ghost.fullCube && occludes) return BlockShape.CUBE;
-        if (ghost.quadCount == 0) {
+        // Glass and other see-through full cubes draw as clean six-sided boxes but never hide what sits behind them.
+        if (ghost.fullCube || ghost.quadCount == 0) {
             return new BlockShape(true, occludes, 0, new float[0], new float[0], new float[0], new int[0], new byte[0]);
         }
         byte[] cull = new byte[ghost.quadCount];

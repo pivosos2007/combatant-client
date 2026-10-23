@@ -61,7 +61,7 @@ public final class SusChunkFinder extends ChunkFinderModule<SusChunkFinder.Score
     private static Map<String, Boolean> defaultSignals() {
         Map<String, Boolean> defaults = new LinkedHashMap<>();
         for (Signal signal : Signal.values()) {
-            defaults.put(signal.id, true);
+            defaults.put(signal.id, signal != Signal.GLOW);
         }
         return defaults;
     }
@@ -79,6 +79,7 @@ public final class SusChunkFinder extends ChunkFinderModule<SusChunkFinder.Score
     protected Scored analyzeChunk(ClientLevel level, LevelChunk chunk) {
         Tally tally = new Tally();
         if (signals.get(Signal.AMETHYST.id)) countHiddenAmethyst(level, chunk, tally);
+        if (signals.get(Signal.GLOW.id)) countGlow(level, chunk, tally);
         countGrowth(level, chunk, tally);
 
         double score = tally.score();
@@ -155,6 +156,39 @@ public final class SusChunkFinder extends ChunkFinderModule<SusChunkFinder.Score
         return false;
     }
 
+    private static final int GLOW_MIN_Y = -58;
+    private static final int GLOW_MAX_Y = 30;
+
+    // Open cell at block light 0 whose neighbours are all <= 4 with the brightest exactly 4 (and an open one at 4):
+    // what a mined-out or built-over amethyst geode leaves behind in server-sent light.
+    private void countGlow(ClientLevel level, LevelChunk chunk, Tally tally) {
+        BlockPos.MutableBlockPos scratch = new BlockPos.MutableBlockPos();
+        ChunkBlocks.forEach(chunk, GLOW_MIN_Y, GLOW_MAX_Y,
+                s -> s.isAir() || s.is(Blocks.AMETHYST_CLUSTER), (x, y, z, state) -> {
+            scratch.set(x, y, z);
+            if (level.getBrightness(LightLayer.BLOCK, scratch) == 0 && isGeodeEdge(level, x, y, z, scratch)) {
+                tally.add(Signal.GLOW, new BlockPos(x, y, z));
+            }
+            return !tally.capped(Signal.GLOW);
+        });
+    }
+
+    private static boolean isGeodeEdge(ClientLevel level, int x, int y, int z, BlockPos.MutableBlockPos scratch) {
+        int brightest = 0;
+        boolean litOpen = false;
+        for (Direction side : Direction.values()) {
+            scratch.set(x + side.getStepX(), y + side.getStepY(), z + side.getStepZ());
+            int light = level.getBrightness(LightLayer.BLOCK, scratch);
+            if (light > 4) return false;
+            brightest = Math.max(brightest, light);
+            if (light == 4 && !litOpen) {
+                BlockState neighbour = level.getBlockState(scratch);
+                litOpen = neighbour.isAir() || neighbour.is(Blocks.AMETHYST_CLUSTER);
+            }
+        }
+        return brightest == 4 && litOpen;
+    }
+
     private static boolean isPlantTarget(BlockState state) {
         Block block = state.getBlock();
         return block == Blocks.KELP
@@ -210,7 +244,9 @@ public final class SusChunkFinder extends ChunkFinderModule<SusChunkFinder.Score
         BAMBOO("bamboo", "bamboo", 2.0, 6),
         BERRIES("berries", "berries", 2.0, 5),
         VINES("vines", "vines", 2.0, 6),
-        DRIPSTONE("dripstone", "dripstone", 2.0, 5);
+        DRIPSTONE("dripstone", "dripstone", 2.0, 5),
+        // Geode light signature (SusChunkV2): open cells at light 0 ringed by light 4. Per cell, off by default.
+        GLOW("glow", "glow cells", 0.5, 40);
 
         private final String id;
         private final String label;

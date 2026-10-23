@@ -155,7 +155,14 @@ public final class CrystalOptimizer extends Module {
             return false;
         }
         // A hit that deals no damage (weakness on bare hands, a stripped weapon) does not break the crystal.
-        return !requireDamage.get() || player.getAttributeValue(Attributes.ATTACK_DAMAGE) > 0.0;
+        if (!requireDamage.get()) return true;
+        double dmg = player.getAttributeValue(Attributes.ATTACK_DAMAGE);
+        var weakness = player.getEffect(net.minecraft.world.effect.MobEffects.WEAKNESS);
+        if (weakness != null && dmg <= 4.0 * (weakness.getAmplifier() + 1)
+                && player.getMainHandItem().isEmpty()) {
+            return false;
+        }
+        return dmg > 0.0;
     }
 
     private void restoreExpired(ClientLevel level) {

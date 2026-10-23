@@ -20,7 +20,7 @@ import java.util.Locale;
 
 @CommandInfo(
         id = "xaero",
-        aliases = {"xmark", "xwp", "waypoint", "marker"},
+        aliases = {"xmark", "xwp", "marker"},
         usage = "@xaero here [name...] | @xaero [add] <x|~> <y|~> <z|~> [name...] | @xaero remove [all|#|name] | @xaero list",
         descriptionKey = "command.xaero.description"
 )

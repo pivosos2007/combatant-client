@@ -29,13 +29,13 @@ import java.util.Locale;
 @CommandInfo(
         id = "schematic",
         aliases = {"schem", "litematic", "build"},
-        usage = "@schematic [menu|load <name>|origin|layer <n>|materials|unload]",
+        usage = "@schematic [menu|load <name>|origin|layer <n>|materials|supply|unload]",
         descriptionKey = "command.schematic.description"
 )
 public final class SchematicCommand implements ClientCommand {
 
     private static final int MATERIAL_LINES = 12;
-    private static final List<String> SUBCOMMANDS = List.of("menu", "load", "origin", "layer", "materials", "unload");
+    private static final List<String> SUBCOMMANDS = List.of("menu", "load", "origin", "layer", "materials", "supply", "unload");
 
     @Override
     public boolean execute(CommandContext ctx) {
@@ -46,6 +46,7 @@ public final class SchematicCommand implements ClientCommand {
             case "origin" -> origin(ctx.arg(1));
             case "layer" -> layer(ctx.arg(1));
             case "materials", "mats" -> materials();
+            case "supply", "chest" -> supply(ctx.arg(1));
             case "unload", "clear" -> {
                 SchematicActions.unload();
                 CommandOutput.success("Schematic unloaded");
@@ -109,6 +110,24 @@ public final class SchematicCommand implements ClientCommand {
             }
         }
         CommandOutput.success("Layer " + (state.layer() + 1) + " / " + state.layerCount());
+    }
+
+    private void supply(String arg) {
+        if (arg != null && (arg.equalsIgnoreCase("clear") || arg.equalsIgnoreCase("off"))) {
+            combatant.client.features.module.modules.player.schematic.SupplyPoint.INSTANCE.clear();
+            CommandOutput.success("Supply chest cleared");
+            return;
+        }
+        var res = combatant.client.features.module.modules.player.schematic.SupplyPoint.INSTANCE.markLooked();
+        switch (res) {
+            case SET -> {
+                BlockPos p = combatant.client.features.module.modules.player.schematic.SupplyPoint.INSTANCE.pos();
+                CommandOutput.success("Supply container set to " + p.getX() + " " + p.getY() + " " + p.getZ());
+            }
+            case NOT_LOOKING -> CommandOutput.error("Look at a chest, barrel or shulker box first");
+            case NOT_CONTAINER -> CommandOutput.error("That block is not a storage container");
+            case NO_WORLD -> CommandOutput.error("Not in a world");
+        }
     }
 
     private void materials() {
