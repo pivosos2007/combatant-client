@@ -8,6 +8,7 @@
 package combatant.client.features.gui.clickgui.sections;
 
 import combatant.client.features.gui.schematic.SchematicPanel;
+import combatant.client.input.InputKeys;
 
 /** ClickGUI tab hosting the schematic menu: the same {@link SchematicPanel} the {@code @schematic} command opens. */
 @ClickGuiSectionInfo(id = "combatant:schematics", label = "Schematics", order = 300)
@@ -40,16 +41,19 @@ public final class SchematicsSection implements ClickGuiSection {
 
     @Override
     public boolean mousePressed(float mouseX, float mouseY, int button) {
+        // The ClickGUI reports Combatant's own button codes (left = 1); the panel uses GLFW's (left = 0).
+        boolean left = button == InputKeys.MOUSE_LEFT;
+        int glfwButton = left ? 0 : button == InputKeys.MOUSE_RIGHT ? 1 : button == InputKeys.MOUSE_MIDDLE ? 2 : button;
         long now = System.nanoTime();
-        boolean doubled = button == 0 && now - lastClickNanos < DOUBLE_CLICK_NANOS
+        boolean doubled = left && now - lastClickNanos < DOUBLE_CLICK_NANOS
                 && Math.abs(mouseX - lastClickX) <= DOUBLE_CLICK_SLOP
                 && Math.abs(mouseY - lastClickY) <= DOUBLE_CLICK_SLOP;
-        if (button == 0) {
+        if (left) {
             lastClickNanos = doubled ? 0L : now;
             lastClickX = mouseX;
             lastClickY = mouseY;
         }
-        return panel.mousePressed(mouseX, mouseY, button, doubled);
+        return panel.mousePressed(mouseX, mouseY, glfwButton, doubled);
     }
 
     @Override

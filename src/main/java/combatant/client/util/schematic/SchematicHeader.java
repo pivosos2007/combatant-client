@@ -32,7 +32,7 @@ public record SchematicHeader(Path path,
 
     public static SchematicHeader failed(Path path, long lastModified, String error) {
         String file = path.getFileName().toString();
-        return new SchematicHeader(path, file, LitematicReader.baseName(path), "", 0, 0, 0, -1, 0, lastModified,
+        return new SchematicHeader(path, file, SchematicFormats.baseName(path), "", 0, 0, 0, -1, 0, lastModified,
                 error == null || error.isBlank() ? "unreadable" : error);
     }
 }

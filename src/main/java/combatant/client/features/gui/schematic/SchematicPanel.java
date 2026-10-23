@@ -19,7 +19,7 @@ import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.util.schematic.LayerStats;
-import combatant.client.util.schematic.LitematicReader;
+import combatant.client.util.schematic.SchematicFormats;
 import combatant.client.util.schematic.RedstoneRules;
 import combatant.client.util.schematic.Schematic;
 import combatant.client.util.schematic.SchematicAttention;
@@ -189,7 +189,7 @@ public final class SchematicPanel {
         tinyH = ui.height(SchematicUi.TINY);
         library.refresh();
         if (selectedPath == null && state.schematic() != null) {
-            selectedPath = library.directory().resolve(state.schematic().fileName() + LitematicReader.EXTENSION);
+            selectedPath = library.resolve(state.schematic().fileName());
         }
         thumbLayer = state.layer();
     }
@@ -631,7 +631,7 @@ public final class SchematicPanel {
         float rh = ROW_H - 6f;
         boolean selected = header.path().equals(selectedPath);
         boolean hovered = SchematicUi.inside(mouseX, mouseY, x, y, w, rh);
-        boolean active = state.schematic() != null && LitematicReader.baseName(header.path()).equals(state.schematic().fileName());
+        boolean active = state.schematic() != null && SchematicFormats.baseName(header.path()).equals(state.schematic().fileName());
         float h = 0f;
         if (slot < rowHover.length) {
             rowHover[slot] = AnimationUtility.approach(rowHover[slot], hovered ? 1f : 0f, frameDt, 14f);
