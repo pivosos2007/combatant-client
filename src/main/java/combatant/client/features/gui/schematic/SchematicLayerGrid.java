@@ -316,9 +316,8 @@ final class SchematicLayerGrid {
 
     private static int tint(int color, int status) {
         return switch (status) {
-            case SchematicDiff.CORRECT -> SchematicUi.mix(color, SchematicUi.GOOD, 0.55f);
-            case SchematicDiff.MISSING -> SchematicUi.mix(color, SchematicUi.BAD, 0.5f);
-            case SchematicDiff.WRONG -> SchematicUi.mix(color, SchematicUi.WARN, 0.6f);
+            case SchematicDiff.CORRECT -> SchematicUi.mix(color, SchematicUi.GOOD, 0.35f);
+            case SchematicDiff.WRONG -> SchematicUi.mix(color, SchematicUi.BAD, 0.55f);
             case ATTENTION -> SchematicUi.mix(color, SchematicUi.WARN, 0.85f);
             default -> color;
         };

@@ -65,6 +65,7 @@ final class SchematicViewport {
     private VoxelVolume volume;
     private int[] paletteColors = new int[0];
     private SchematicTextures.Entry[] textures;
+    private combatant.client.features.gui.schematic.view3d.BlockShape[] shapes;
     private Schematic texturesOwner;
     private int texturesGeneration = -1;
     private GpuTextureView atlasView;
@@ -192,6 +193,8 @@ final class SchematicViewport {
             textures = SchematicTextures.resolvePalette(schematic);
             texturesOwner = schematic;
             texturesGeneration = generation;
+            shapes = SchematicTextures.shapesOf(textures);
+            faces = null;
         }
         atlasView = SchematicTextures.view();
         atlasSampler = SchematicTextures.sampler();
@@ -216,7 +219,7 @@ final class SchematicViewport {
         }
         if (faces != null && facesMode == mode && facesLayer == layer && facesGap == meshGap) return;
         if (schematic.volume() <= SYNC_VOLUME) {
-            adopt(FaceMesher.build(volume, paletteColors, mode, layer, meshGap, MAX_FACES), mode, layer, meshGap);
+            adopt(FaceMesher.build(volume, shapes, paletteColors, mode, layer, meshGap, MAX_FACES), mode, layer, meshGap);
             return;
         }
         if (pending != null) return;
@@ -224,10 +227,11 @@ final class SchematicViewport {
         pendingLayer = layer;
         pendingGap = meshGap;
         VoxelVolume source = volume;
+        combatant.client.features.gui.schematic.view3d.BlockShape[] jobShapes = shapes;
         int[] colors = paletteColors;
         ViewMode jobMode = mode;
         int jobLayer = layer;
-        pending = CompletableFuture.supplyAsync(() -> FaceMesher.build(source, colors, jobMode, jobLayer, meshGap, MAX_FACES), MESHER);
+        pending = CompletableFuture.supplyAsync(() -> FaceMesher.build(source, jobShapes, colors, jobMode, jobLayer, meshGap, MAX_FACES), MESHER);
     }
 
     private void adopt(FaceList built, ViewMode builtMode, int builtLayer, float builtGap) {
@@ -321,6 +325,7 @@ final class SchematicViewport {
     /** True when the face's block has an atlas sprite on that side, so it can be drawn from the block atlas. */
     private boolean textured(int f) {
         if (textures == null || atlasView == null) return false;
+        if (faces.isQuad(f)) return true;
         return textures[volume.cell(faces.voxel(f))].has[faces.direction(f) * SchematicTextures.LAYERS];
     }
 
@@ -330,6 +335,15 @@ final class SchematicViewport {
      * multiplies the sprite, so the diff and hover tints sit on top of the texture rather than replacing it.
      */
     private void drawTexturedFace(Renderer2D.TexturedQuadBatch batch, int f, int color) {
+        if (faces.isQuad(f)) {
+            int lit = SchematicTextures.multiply(color, faces.quadTint(f));
+            batch.quad(
+                    frame.screen(f, 0, 0), frame.screen(f, 0, 1), faces.quadUv(f, 0, 0), faces.quadUv(f, 0, 1), lit,
+                    frame.screen(f, 1, 0), frame.screen(f, 1, 1), faces.quadUv(f, 1, 0), faces.quadUv(f, 1, 1), lit,
+                    frame.screen(f, 2, 0), frame.screen(f, 2, 1), faces.quadUv(f, 2, 0), faces.quadUv(f, 2, 1), lit,
+                    frame.screen(f, 3, 0), frame.screen(f, 3, 1), faces.quadUv(f, 3, 0), faces.quadUv(f, 3, 1), lit);
+            return;
+        }
         int d = faces.direction(f);
         SchematicTextures.Entry entry = textures[volume.cell(faces.voxel(f))];
         boolean side = d >= FaceList.EAST;
@@ -442,9 +456,8 @@ final class SchematicViewport {
 
     private static int tint(int color, byte status) {
         return switch (status) {
-            case SchematicDiff.CORRECT -> keepAlpha(FaceMesher.mix(color, SchematicUi.GOOD, 0.5f), color);
-            case SchematicDiff.MISSING -> keepAlpha(FaceMesher.mix(color, SchematicUi.BAD, 0.55f), color);
-            case SchematicDiff.WRONG -> keepAlpha(FaceMesher.mix(color, SchematicUi.WARN, 0.6f), color);
+            case SchematicDiff.CORRECT -> keepAlpha(FaceMesher.mix(color, SchematicUi.GOOD, 0.35f), color);
+            case SchematicDiff.WRONG -> keepAlpha(FaceMesher.mix(color, SchematicUi.BAD, 0.55f), color);
             default -> color;
         };
     }

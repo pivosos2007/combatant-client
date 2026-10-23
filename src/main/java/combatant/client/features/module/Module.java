@@ -369,6 +369,17 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
         return value;
     }
 
+    /**
+     * Block/item id list where each entry has its own colour. Entries without an explicit colour use {@code defaultColor}
+     * (the module's global colour setting); old plain id lists load with that default.
+     */
+    protected final ColorListValue colorList(String configName, String settingId, TextListSetting.PickerMode pickerMode,
+                                             java.util.Set<String> defaults, ColorValue defaultColor) {
+        ColorListValue value = new ColorListValue(configName, defaults, defaultColor);
+        declare(value, SettingDef.colorList(settingId, value, pickerMode));
+        return value;
+    }
+
     protected final BooleanMapValue group(String configName, Map<String, Boolean> defaults) {
         return group(configName, settingIdFromConfigName(configName), defaults);
     }

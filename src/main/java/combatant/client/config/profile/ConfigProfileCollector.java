@@ -75,6 +75,17 @@ public final class ConfigProfileCollector {
         return entries;
     }
 
+    /** The current settings of one module, in the same entry shape a modules profile stores. */
+    public ConfigProfileEntry collectModule(Module module) {
+        if (module == null) throw new IllegalArgumentException("module is null");
+        String ownerId = AddonManager.moduleProfileOwnerId(module.name());
+        return entry(ownerId, AddonManager.profileDisplayName(ownerId, module.getDisplayName()), module);
+    }
+
+    public String authorName() {
+        return currentAuthorName();
+    }
+
     private ConfigProfileEntry entry(String ownerId, String displayName, ConfigObject owner) {
         Map<String, Object> values = new LinkedHashMap<>();
         if (owner != null) {

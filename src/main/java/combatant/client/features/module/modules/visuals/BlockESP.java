@@ -18,6 +18,7 @@ import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -131,11 +132,28 @@ public class BlockESP extends Module {
                     false
             ), deobfuscationValue::get);
 
-    private final ItemIdSetValue searchBlocksValue =
-            itemList(
+    /** Default colour of every searched block that has no colour of its own. */
+    private final RGBColorValue visibleColor =
+            colorNoAlpha(
+                    "blockEspVisibleColor",
+                    "visible_color",
+                    "#FF0000"
+            );
+
+    private final RGBColorValue chunkColor =
+            colorNoAlpha(
+                    "blockEspChunkColor",
+                    "chunk_color",
+                    "#FFFF00"
+            );
+
+    private final ColorListValue searchBlocksValue =
+            colorList(
                     "blockEspSearchBlocks",
                     "search_blocks",
-                    TextListSetting.PickerMode.BLOCKS
+                    TextListSetting.PickerMode.BLOCKS,
+                    Set.of(),
+                    visibleColor
             );
 
     private final BlockScanContext scanContext = new BlockScanContext(mc, searchBlocksValue);
@@ -171,20 +189,6 @@ public class BlockESP extends Module {
                     4.0f
             );
 
-    private final RGBColorValue visibleColor =
-            colorNoAlpha(
-                    "blockEspVisibleColor",
-                    "visible_color",
-                    "#FF0000"
-            );
-
-    private final RGBColorValue chunkColor =
-            colorNoAlpha(
-                    "blockEspChunkColor",
-                    "chunk_color",
-                    "#FFFF00"
-            );
-
     private final BooleanValue clusterTracersValue =
             visibleWhen(bool(
                     "blockEspClusterTracers",
@@ -199,6 +203,8 @@ public class BlockESP extends Module {
     private ClientLevel lastWorld;
     private final List<Vec3> tracerCenters = new ArrayList<>();
     private final List<Boolean> tracerVisible = new ArrayList<>();
+    private final List<BlockState> tracerStates = new ArrayList<>();
+    private final IdentityHashMap<Block, int[]> frameColors = new IdentityHashMap<>();
     private Map<BlockPos, Target> tracerMapSource;
     private long tracerTick = Long.MIN_VALUE;
     private int tracerSize;
@@ -684,8 +690,7 @@ public class BlockESP extends Module {
             boolean limitDistance = limitDistanceValue.get();
             double maxDistanceSq = (double) maxDistanceValue.get() * (double) maxDistanceValue.get();
             Vec3 eye = limitDistance ? mc.player.getEyePosition() : null;
-            int visibleRgb = visibleColor.getArgb() & 0x00FFFFFF;
-            int chunkRgb = chunkColor.getArgb() & 0x00FFFFFF;
+            frameColors.clear();
             BlockOutlineShapeMode shapeMode = outlineShapeMode.get();
             long tick = mc.level.getGameTime();
 
@@ -718,7 +723,7 @@ public class BlockESP extends Module {
                     target.verifiedTick = tick;
                 }
 
-                int color = 0xFF000000 | (target.visible ? visibleRgb : chunkRgb);
+                int color = 0xFF000000 | targetRgb(state, target.visible);
                 BlockOutlineRenderer.render(renderer, mc.level, target.pos, state, shapeMode, color);
                 if (glowFill.get()) {
                     int fill = ((int) (Math.min(1.0f, glowAlpha.get()) * 255.0f) << 24) | (color & 0x00FFFFFF);
@@ -730,6 +735,31 @@ public class BlockESP extends Module {
         }
 
         renderBlockTracers(renderer, tickDelta);
+    }
+
+    /**
+     * Outline/tracer colour (RGB) for a detected block. Entries that carry their own colour use it when the block is
+     * visible and fade towards the hidden/chunk colour when it is not; entries without one keep the global
+     * visible/chunk colours. Resolved once per block type per frame.
+     */
+    private int targetRgb(BlockState state, boolean visible) {
+        Block block = state.getBlock();
+        int[] pair = frameColors.get(block);
+        if (pair == null) {
+            String id = BuiltInRegistries.BLOCK.getKey(block).toString();
+            int chunk = chunkColor.getArgb() & 0x00FFFFFF;
+            int base = searchBlocksValue.argbFor(id) & 0x00FFFFFF;
+            int hidden = chunk;
+            if (searchBlocksValue.hasOverride(id)) {
+                int r = (((base >> 16) & 0xFF) * 55 + ((chunk >> 16) & 0xFF) * 45) / 100;
+                int g = (((base >> 8) & 0xFF) * 55 + ((chunk >> 8) & 0xFF) * 45) / 100;
+                int b = ((base & 0xFF) * 55 + (chunk & 0xFF) * 45) / 100;
+                hidden = (r << 16) | (g << 8) | b;
+            }
+            pair = new int[]{base, hidden};
+            frameColors.put(block, pair);
+        }
+        return visible ? pair[0] : pair[1];
     }
 
     private void drawBox(Renderer3D renderer, AABB box, int r, int g, int b, int a) {
@@ -779,6 +809,7 @@ public class BlockESP extends Module {
             tracerCluster = cluster;
             tracerCenters.clear();
             tracerVisible.clear();
+            tracerStates.clear();
             if (!cluster) {
                 for (Target target : targets.values()) {
                     if (!withinDistance(target.pos) || !isCurrentTargetBlock(target.pos)) {
@@ -786,6 +817,7 @@ public class BlockESP extends Module {
                     }
                     tracerCenters.add(Vec3.atCenterOf(target.pos));
                     tracerVisible.add(target.visible);
+                    tracerStates.add(target.state);
                 }
             } else {
                 List<List<Target>> clusters = buildClusters(targets.values().stream()
@@ -794,6 +826,7 @@ public class BlockESP extends Module {
                 for (List<Target> group : clusters) {
                     tracerCenters.add(clusterCenter(group));
                     tracerVisible.add(group.stream().anyMatch(target -> target.visible));
+                    tracerStates.add(group.get(0).state);
                 }
             }
         }
@@ -801,11 +834,9 @@ public class BlockESP extends Module {
         if (tracerCenters.isEmpty()) {
             return;
         }
-        int visibleArgb = visibleColor.getArgb();
-        int chunkArgb = chunkColor.getArgb();
         for (int i = 0, n = tracerCenters.size(); i < n; i++) {
             tracers.render3DTracersRaw(renderer, tickDelta, List.of(tracerCenters.get(i)),
-                    tracerVisible.get(i) ? visibleArgb : chunkArgb);
+                    0xFF000000 | targetRgb(tracerStates.get(i), tracerVisible.get(i)));
         }
     }
 

@@ -147,6 +147,12 @@ public final class SettingDef {
         return new SettingDef(Kind.TEXT_LIST, value.getName(), value, null, pickerMode);
     }
 
+    public static SettingDef colorList(String id,
+                                       ColorListValue value,
+                                       TextListSetting.PickerMode pickerMode) {
+        return new SettingDef(Kind.COLOR_LIST, id, value, null, pickerMode);
+    }
+
     public static SettingDef cooldownRules(String id, ItemCooldownRulesValue value) {
         return new SettingDef(Kind.COOLDOWN_RULES, id, value);
     }
@@ -363,6 +369,7 @@ public final class SettingDef {
         COLOR_NO_ALPHA,
         TEXT,
         TEXT_LIST,
+        COLOR_LIST,
         COOLDOWN_RULES,
         PROTOCOL_HEURISTICS,
         GROUP,

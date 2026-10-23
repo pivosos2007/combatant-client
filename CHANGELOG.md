@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Platform
 - Synced with upstream `origin/26.3`: Combatant now targets **Minecraft 26.3**. Local shaders declare explicit SPIR-V interface locations; the UI material-primitive batch binds its `UIGlassFrame` uniform (fixed a first-frame crash).
+- **StorageESP** (Visuals → ESP): per-type toggle, colour and tracer for chests, trapped/ender chests, shulkers (optional dye colour), barrels, spawners, furnaces, hoppers/droppers/dispensers and enchanting tables; box/outline/fill modes, max distance, and dimming of containers you already opened this session.
 
 ### Unified Automation Runtime (`combatant.client.automation`)
 - **Control leases**: `ActionCoordinator` arbitrates rotation, movement keys, jump, sneak, sprint, hotbar, inventory and interaction by named priority tiers (`ActionPriority`, same scale as `RotationManager`). Preemption notifies the loser; ties keep the current holder; slot leases taken directly through `InventorySwap` are respected.

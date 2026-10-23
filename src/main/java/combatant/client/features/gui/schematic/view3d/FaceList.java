@@ -65,6 +65,14 @@ public final class FaceList {
     private int[] color = new int[256];
     private int[] light = new int[256];
     private int[] voxel = new int[256];
+    /** Per face: slot in the model-quad arrays below, or -1 for a box side. */
+    private int[] quadSlot = new int[256];
+    private float[] quadPos = new float[12 * 64];
+    private float[] quadUv = new float[8 * 64];
+    private float[] quadNormal = new float[3 * 64];
+    private float[] quadCentre = new float[3 * 64];
+    private int[] quadTint = new int[64];
+    private int quadCount;
     private int count;
     private int lodStep = 1;
     private boolean truncated;
@@ -83,6 +91,7 @@ public final class FaceList {
 
     void reset(int step) {
         count = 0;
+        quadCount = 0;
         lodStep = step;
         truncated = false;
     }
@@ -106,6 +115,41 @@ public final class FaceList {
         color[count] = argb;
         light[count] = lightArgb;
         voxel[count] = voxelIndex;
+        quadSlot[count] = -1;
+        count++;
+    }
+
+    /** Adds quad {@code q} of a block model translated to {@code (ox, oy, oz)}. */
+    void addQuad(BlockShape shape, int q, byte faceClass, int argb, int lightArgb, int voxelIndex,
+                 float ox, float oy, float oz) {
+        if (count == dir.length) grow();
+        if (quadCount == quadTint.length) growQuads();
+        int s = quadCount++;
+        float cx = 0f, cy = 0f, cz = 0f;
+        for (int c = 0; c < 4; c++) {
+            float x = shape.pos[q * 12 + c * 3] + ox, y = shape.pos[q * 12 + c * 3 + 1] + oy, z = shape.pos[q * 12 + c * 3 + 2] + oz;
+            quadPos[s * 12 + c * 3] = x;
+            quadPos[s * 12 + c * 3 + 1] = y;
+            quadPos[s * 12 + c * 3 + 2] = z;
+            cx += x;
+            cy += y;
+            cz += z;
+        }
+        quadCentre[s * 3] = cx * 0.25f;
+        quadCentre[s * 3 + 1] = cy * 0.25f;
+        quadCentre[s * 3 + 2] = cz * 0.25f;
+        System.arraycopy(shape.uv, q * 8, quadUv, s * 8, 8);
+        System.arraycopy(shape.normal, q * 3, quadNormal, s * 3, 3);
+        quadTint[s] = shape.tint[q];
+        float nx = shape.normal[q * 3], ny = shape.normal[q * 3 + 1], nz = shape.normal[q * 3 + 2];
+        float ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+        int d = ay >= ax && ay >= az ? (ny >= 0f ? UP : DOWN) : ax >= az ? (nx >= 0f ? EAST : WEST) : (nz >= 0f ? SOUTH : NORTH);
+        dir[count] = (byte) d;
+        cls[count] = faceClass;
+        color[count] = argb;
+        light[count] = lightArgb;
+        voxel[count] = voxelIndex;
+        quadSlot[count] = s;
         count++;
     }
 
@@ -117,6 +161,16 @@ public final class FaceList {
         color = Arrays.copyOf(color, next);
         light = Arrays.copyOf(light, next);
         voxel = Arrays.copyOf(voxel, next);
+        quadSlot = Arrays.copyOf(quadSlot, next);
+    }
+
+    private void growQuads() {
+        int next = quadTint.length * 2;
+        quadPos = Arrays.copyOf(quadPos, next * 12);
+        quadUv = Arrays.copyOf(quadUv, next * 8);
+        quadNormal = Arrays.copyOf(quadNormal, next * 3);
+        quadCentre = Arrays.copyOf(quadCentre, next * 3);
+        quadTint = Arrays.copyOf(quadTint, next);
     }
 
     public int direction(int face) {
@@ -164,18 +218,43 @@ public final class FaceList {
         return box[face * 6 + 3 + axis];
     }
 
-    /** One coordinate of a face corner; {@code corner} is 0..3 in the loop order of {@link #CORNERS}. */
+    /** One coordinate of a face corner; {@code corner} is 0..3 in the loop order of {@link #CORNERS} (model quads: vertex order). */
     public float corner(int face, int corner, int axis) {
+        int slot = quadSlot[face];
+        if (slot >= 0) return quadPos[slot * 12 + corner * 3 + axis];
         int pick = CORNERS[dir[face] * 12 + corner * 3 + axis];
         return box[face * 6 + pick * 3 + axis];
     }
 
     public float centre(int face, int axis) {
+        int slot = quadSlot[face];
+        if (slot >= 0) return quadCentre[slot * 3 + axis];
         int d = dir[face];
         int n = NORMALS[d * 3 + axis];
         if (n > 0) return box[face * 6 + 3 + axis];
         if (n < 0) return box[face * 6 + axis];
         return (box[face * 6 + axis] + box[face * 6 + 3 + axis]) * 0.5f;
+    }
+
+    /** True for a face cut from a block model (any orientation) rather than a box side. */
+    public boolean isQuad(int face) {
+        return quadSlot[face] >= 0;
+    }
+
+    /** Outward normal component of a face; unit length for model quads, an axis for box sides. */
+    public float normalOf(int face, int axis) {
+        int slot = quadSlot[face];
+        return slot >= 0 ? quadNormal[slot * 3 + axis] : NORMALS[dir[face] * 3 + axis];
+    }
+
+    /** Atlas u (axis 0) or v (axis 1) of a model quad's vertex. */
+    public float quadUv(int face, int corner, int axis) {
+        return quadUv[quadSlot[face] * 8 + corner * 2 + axis];
+    }
+
+    /** Multiply tint ({@code 0xAARRGGBB}) of a model quad. */
+    public int quadTint(int face) {
+        return quadTint[quadSlot[face]];
     }
 
     public static int normal(int direction, int axis) {

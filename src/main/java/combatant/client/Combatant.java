@@ -609,6 +609,7 @@ public class Combatant implements ClientModInitializer {
         Events.BUS.register(AutomationRuntime.INSTANCE);
         AutomationRuntime.INSTANCE.install();
         Events.BUS.register(combatant.client.automation.placement.PlacementTracker.INSTANCE);
+        Events.BUS.register(combatant.client.config.profile.ConfigServerBindings.INSTANCE);
 
         // -------- КЛЮЧЕВЫЕ ИВЕНТЫ --------
 

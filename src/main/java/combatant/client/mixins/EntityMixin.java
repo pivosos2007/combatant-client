@@ -25,6 +25,7 @@ import combatant.client.events.Events;
 import combatant.client.events.impl.PlayerMoveEvent;
 import combatant.client.events.impl.PlayerStepSuccessEvent;
 import combatant.client.events.impl.PlayerVelocityStrafe;
+import combatant.client.events.impl.VehicleMoveEvent;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.movement.NoPush;
 import combatant.client.features.module.modules.movement.NoStun;
@@ -82,13 +83,28 @@ public abstract class EntityMixin implements IEntity {
     @ModifyVariable(method = "move", at = @At("HEAD"), argsOnly = true, index = 2)
     private Vec3 combatant$onMove(Vec3 movement) {
         Entity self = (Entity) (Object) this;
-        if (!(self instanceof LocalPlayer)) return movement;
+        if (!(self instanceof LocalPlayer)) return combatant$onVehicleMove(self, movement);
         if (!Events.BUS.hasListeners(PlayerMoveEvent.class)) return movement;
 
         PlayerMoveEvent event = new PlayerMoveEvent(combatant$lastMoveType, movement);
         Events.BUS.post(event);
         Vec3 out = event.getMovement();
         return out != null ? out : movement;
+    }
+
+    @Unique
+    private Vec3 combatant$onVehicleMove(Entity self, Vec3 movement) {
+        if (combatant$lastMoveType != MoverType.SELF || !self.level().isClientSide()) return movement;
+        LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
+        if (player == null || player.getVehicle() != self || self.getControllingPassenger() != player) return movement;
+        if (!Events.BUS.hasListeners(VehicleMoveEvent.class)) return movement;
+
+        VehicleMoveEvent event = new VehicleMoveEvent(self, combatant$lastMoveType, movement);
+        Events.BUS.post(event);
+        Vec3 out = event.getMovement();
+        if (out == null || out == movement) return movement;
+        if (event.isAliasesVelocity()) self.setDeltaMovement(out);
+        return out;
     }
 
     @Inject(method = "move", at = @At("RETURN"))

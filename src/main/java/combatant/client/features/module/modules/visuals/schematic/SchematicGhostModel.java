@@ -32,38 +32,50 @@ import java.util.Map;
  *
  * <p>Built once per state and reused by every box that shows it, so a frame only copies floats into the mesh.</p>
  */
-final class SchematicGhostModel {
+public final class SchematicGhostModel {
+
+    /** Fixed, world-independent tint of a tinted quad for previews that have no level to sample ({@code 0xAARRGGBB}). */
+    @FunctionalInterface
+    public interface QuadTint {
+        int tint(BlockState state, BakedQuad quad);
+    }
 
     /** Direction ordinals: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5. */
     static final SchematicGhostModel UNIT_CUBE = new SchematicGhostModel(
             0, new float[0], new float[0], new int[0], new Identifier[0], new byte[0],
-            new float[]{0f, 0f, 0f, 1f, 1f, 1f}, true);
+            new float[0], new int[0], new float[]{0f, 0f, 0f, 1f, 1f, 1f}, true);
 
     private static final float EPS = 1.0E-4f;
     private static final Map<BlockState, SchematicGhostModel> CACHE = new IdentityHashMap<>();
 
-    final int quadCount;
+    public final int quadCount;
     /** 12 floats per quad: four xyz corners. */
-    final float[] pos;
-    /** 8 floats per quad: four uv pairs. */
-    final float[] uv;
+    public final float[] pos;
+    /** 8 floats per quad: four uv pairs (absolute atlas coordinates). */
+    public final float[] uv;
     /** Per-quad multiplicative RGB (biome tint x directional shade), 0xRRGGBB. */
     final int[] rgb;
-    final Identifier[] atlas;
+    public final Identifier[] atlas;
     /** Direction ordinal when the quad lies flat on a block boundary, else -1. */
-    final byte[] cullFace;
+    public final byte[] cullFace;
+    /** 3 floats per quad: unit normal pointing out of the quad's front side. */
+    public final float[] normal;
+    /** Per-quad {@code 0xAARRGGBB} tint without any directional shade; filled only by {@link #bake}, white otherwise. */
+    public final int[] tint;
     /** 6 floats per box: min xyz, max xyz. */
     final float[] shape;
-    final boolean fullCube;
+    public final boolean fullCube;
 
     private SchematicGhostModel(int quadCount, float[] pos, float[] uv, int[] rgb, Identifier[] atlas,
-                                byte[] cullFace, float[] shape, boolean fullCube) {
+                                byte[] cullFace, float[] normal, int[] tint, float[] shape, boolean fullCube) {
         this.quadCount = quadCount;
         this.pos = pos;
         this.uv = uv;
         this.rgb = rgb;
         this.atlas = atlas;
         this.cullFace = cullFace;
+        this.normal = normal;
+        this.tint = tint;
         this.shape = shape;
         this.fullCube = fullCube;
     }
@@ -75,12 +87,21 @@ final class SchematicGhostModel {
     static SchematicGhostModel of(BlockState state, BlockPos pos) {
         SchematicGhostModel cached = CACHE.get(state);
         if (cached != null) return cached;
-        SchematicGhostModel built = build(state, pos);
+        SchematicGhostModel built = build(state, pos, null);
         CACHE.put(state, built);
         return built;
     }
 
-    private static SchematicGhostModel build(BlockState state, BlockPos at) {
+    /**
+     * Geometry of a state for screens without a level: the same baked quads the projection draws, with tints
+     * resolved by {@code tint} instead of the world. Not cached here; the caller owns the result and drops it when
+     * the model set changes.
+     */
+    public static SchematicGhostModel bake(BlockState state, QuadTint tint) {
+        return build(state, null, tint);
+    }
+
+    private static SchematicGhostModel build(BlockState state, BlockPos at, QuadTint tintOf) {
         float[] shape = shapeOf(state);
         boolean full = shape.length == 6 && shape[0] <= EPS && shape[1] <= EPS && shape[2] <= EPS
                 && shape[3] >= 1f - EPS && shape[4] >= 1f - EPS && shape[5] >= 1f - EPS;
@@ -91,6 +112,8 @@ final class SchematicGhostModel {
         List<Integer> rgbList = new ArrayList<>();
         List<Identifier> atlasList = new ArrayList<>();
         List<Byte> cullList = new ArrayList<>();
+        List<float[]> normalList = new ArrayList<>();
+        List<Integer> tintList = new ArrayList<>();
         try {
             BlockStateModel model = mc.getModelManager().getBlockStateModelSet().get(state);
             if (model != null) {
@@ -116,6 +139,8 @@ final class SchematicGhostModel {
                             atlasList.add(quad.materialInfo().sprite().atlasLocation());
                             cullList.add((byte) boundaryFace(p));
                             rgbList.add(quadRgb(mc, state, at, quad, p));
+                            normalList.add(frontNormal(p, quad.direction()));
+                            tintList.add(tintOf != null && quad.materialInfo().isTinted() ? tintOf.tint(state, quad) : 0xFFFFFFFF);
                         }
                     }
                 }
@@ -126,6 +151,8 @@ final class SchematicGhostModel {
             rgbList.clear();
             atlasList.clear();
             cullList.clear();
+            normalList.clear();
+            tintList.clear();
         }
 
         int n = posList.size();
@@ -133,14 +160,36 @@ final class SchematicGhostModel {
         float[] uv = new float[n * 8];
         int[] rgb = new int[n];
         byte[] cull = new byte[n];
+        float[] normal = new float[n * 3];
+        int[] tint = new int[n];
         for (int i = 0; i < n; i++) {
             System.arraycopy(posList.get(i), 0, pos, i * 12, 12);
             System.arraycopy(uvList.get(i), 0, uv, i * 8, 8);
+            System.arraycopy(normalList.get(i), 0, normal, i * 3, 3);
             rgb[i] = rgbList.get(i);
             cull[i] = cullList.get(i);
+            tint[i] = tintList.get(i);
         }
-        return new SchematicGhostModel(n, pos, uv, rgb, atlasList.toArray(new Identifier[0]), cull,
+        return new SchematicGhostModel(n, pos, uv, rgb, atlasList.toArray(new Identifier[0]), cull, normal, tint,
                 shape, full);
+    }
+
+    /** Unit normal of a quad from its diagonals, signed to agree with the quad's lighting direction. */
+    private static float[] frontNormal(float[] p, Direction facing) {
+        float ax = p[6] - p[0], ay = p[7] - p[1], az = p[8] - p[2];
+        float bx = p[9] - p[3], by = p[10] - p[4], bz = p[11] - p[5];
+        float nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+        float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+        if (len < 1.0E-8f) return new float[]{facing.getStepX(), facing.getStepY(), facing.getStepZ()};
+        nx /= len;
+        ny /= len;
+        nz /= len;
+        if (nx * facing.getStepX() + ny * facing.getStepY() + nz * facing.getStepZ() < 0f) {
+            nx = -nx;
+            ny = -ny;
+            nz = -nz;
+        }
+        return new float[]{nx, ny, nz};
     }
 
     private static float[] shapeOf(BlockState state) {
@@ -203,7 +252,7 @@ final class SchematicGhostModel {
             shade = ny > 0.5f ? 1f : ny < -0.5f ? 0.55f : Math.abs(nz) >= Math.abs(nx) ? 0.82f : 0.66f;
         }
         int r = 255, g = 255, b = 255;
-        if (quad.materialInfo().isTinted() && mc.getBlockColors() != null && mc.level != null) {
+        if (at != null && quad.materialInfo().isTinted() && mc.getBlockColors() != null && mc.level != null) {
             var source = mc.getBlockColors().getTintSource(state, quad.materialInfo().tintIndex());
             if (source != null) {
                 int c = source.colorInWorld(state, mc.level, at);

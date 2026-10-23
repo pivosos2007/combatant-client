@@ -37,7 +37,7 @@ public class ItemIdSetValue extends ConfigValue<Set<String>> {
         return copy;
     }
 
-    private static String normalizeStatic(String s) {
+    protected static String normalizeStatic(String s) {
         if (s == null || s.isBlank()) return null;
         s = s.trim().toLowerCase();
         if (!s.contains(":")) s = "minecraft:" + s;

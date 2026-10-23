@@ -13,6 +13,7 @@ import combatant.client.automation.actions.MovementKeys;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.player.inventory.InventorySwap;
+import combatant.client.util.schematic.walk.BridgePlanner;
 import combatant.client.util.schematic.walk.CellSet;
 import combatant.client.util.schematic.walk.PillarPlanner;
 import combatant.client.util.schematic.walk.ReachModel;
@@ -78,6 +79,7 @@ final class BuildMover {
         IDLE,
         WALKING,
         PILLARING,
+        BRIDGING,
         CLEARING
     }
 
@@ -106,6 +108,12 @@ final class BuildMover {
 
         /** Whether a target is worth walking to these eyes for; pistons and observers need a particular look. */
         boolean lookAllows(long target, double eyeX, double eyeY, double eyeZ);
+
+        /** Whether a sideways bridge of temporary blocks may be built when no spot or pillar reaches the targets. */
+        boolean bridgeEnabled();
+
+        /** Most bridge blocks in a row before the builder gives up on a gap. */
+        int bridgeLimit();
     }
 
     /** A support block click the builder should send this tick. */
@@ -149,6 +157,12 @@ final class BuildMover {
     /** A pillar has to beat the walk by this factor: its blocks still need breaking again afterwards. */
     private static final double PILLAR_ADVANTAGE = 1.5;
     private static final int PILLAR_STALL_TICKS = 200;
+    /** A bridge step (lean out, place, step onto the block) that takes longer than this is dropped. */
+    private static final int BRIDGE_TIMEOUT_TICKS = 100;
+    /** How far past the centre of the floor block the body leans: the sneak edge holds it at most 0.3 past the edge. */
+    private static final double BRIDGE_LEAN = 0.8;
+    private static final double BRIDGE_ARRIVED = 0.4;
+    private static final Direction[] BRIDGE_FACES = {Direction.EAST, Direction.WEST, Direction.SOUTH, Direction.NORTH};
 
     private final Minecraft mc;
     private final Host host;
@@ -219,6 +233,15 @@ final class BuildMover {
     private long cpuMaxNanos;
     /** The layer (world y) for which no standing spot level with it reaches anything: build it from below. */
     private int lowGroundLayer = Integer.MIN_VALUE;
+    /** Floor block the bridge grows from and the cell its next block goes into; {@code null} when not bridging. */
+    private BlockPos bridgeFloor;
+    private BlockPos bridgeCell;
+    private Direction bridgeFace;
+    /** The block is in and the body is moving onto it. */
+    private boolean bridgeStepping;
+    private int bridgeTicks;
+    /** Bridge blocks placed since a plan last found something to stand on or climb. */
+    private int bridgeBlocks;
 
     BuildMover(Minecraft mc, Host host) {
         this.mc = mc;
@@ -297,6 +320,10 @@ final class BuildMover {
         rejected.clear();
         warnedUnreachable = false;
         lowGroundLayer = Integer.MIN_VALUE;
+        bridgeCell = null;
+        bridgeFloor = null;
+        bridgeStepping = false;
+        bridgeBlocks = 0;
         cache.clear();
         cacheAge = 0;
         previousTargets = new long[0];
@@ -386,6 +413,7 @@ final class BuildMover {
             return null;
         }
         if (mode == Mode.PILLARING) return tickPillar(player, deadline);
+        if (mode == Mode.BRIDGING) return tickBridge(player);
         if (mode == Mode.WALKING) {
             if (followRoute(player, deadline)) return null;
             if (mode == Mode.WALKING) mode = Mode.IDLE;
@@ -505,6 +533,7 @@ final class BuildMover {
         int lowest = Integer.MAX_VALUE;
         for (int i = 0; i < targetCount; i++) lowest = Math.min(lowest, WalkTerrain.unpackY(targets[i]));
         if (next == null || next.y() < lowest) lowGroundLayer = lowest;
+        if (next != null || column != null) bridgeBlocks = 0;
         boolean pillarWins = column != null
                 && (next == null || PillarPlanner.rate(column) > StandingSpotChooser.rate(next.coverage(), next.cost()) * PILLAR_ADVANTAGE);
         if (next != null && !pillarWins) {
@@ -520,6 +549,7 @@ final class BuildMover {
             startRoute(flood.route(base), base, Mode.PILLARING, MAX_DROP);
             return;
         }
+        if (next == null && column == null && startBridge(player)) return;
         if (!warnedUnreachable) {
             warnedUnreachable = true;
             Notifier.warning(I18n.get("module.schematicbuilder.notify.unreachable"));
@@ -734,6 +764,94 @@ final class BuildMover {
         mode = Mode.IDLE;
     }
 
+    // ------------------------------------------------------------------ bridge
+
+    /**
+     * Nothing reaches the targets by walking or climbing: grow a bridge of temporary blocks from the floor under
+     * the feet towards them, one block at a time. The blocks are tracked like pillar blocks and broken again
+     * afterwards.
+     */
+    private boolean startBridge(LocalPlayer player) {
+        if (!host.bridgeEnabled() || bridgeBlocks >= host.bridgeLimit() || !player.onGround() || helperSlot(player) < 0) {
+            return false;
+        }
+        int x = (int) Math.floor(player.getX()), y = feetY(player), z = (int) Math.floor(player.getZ());
+        int dir = BridgePlanner.choose(live, x, y, z, targets, targetCount, planReach, host::inFootprint, rejected);
+        if (dir < 0) return false;
+        bridgeFace = BRIDGE_FACES[dir];
+        bridgeFloor = new BlockPos(x, y - 1, z);
+        bridgeCell = bridgeFloor.relative(bridgeFace);
+        bridgeStepping = false;
+        bridgeTicks = 0;
+        follower.stop();
+        hasGoal = false;
+        mode = Mode.BRIDGING;
+        return true;
+    }
+
+    private HelperClick tickBridge(LocalPlayer player) {
+        BlockPos cell = bridgeCell;
+        if (cell == null || bridgeFloor == null) {
+            mode = Mode.IDLE;
+            return null;
+        }
+        holdStill = false;
+        if (++bridgeTicks > BRIDGE_TIMEOUT_TICKS) {
+            failBridge();
+            return null;
+        }
+        if (bridgeStepping) {
+            Vec3 pos = player.position();
+            if (player.onGround() && feetY(player) == cell.getY() + 1
+                    && Math.hypot(pos.x - (cell.getX() + 0.5), pos.z - (cell.getZ() + 0.5)) < BRIDGE_ARRIVED) {
+                mode = Mode.IDLE;
+                bridgeCell = null;
+                bridgeFloor = null;
+                bridgeStepping = false;
+                cancelPlan();
+                replanWait = 0;
+            }
+            return null;
+        }
+        if (!mc.level.getBlockState(cell).canBeReplaced()) {
+            // The block is in (or something else filled the gap): walk onto it.
+            bridgeStepping = true;
+            bridgeTicks = 0;
+            bridgeBlocks++;
+            cache.invalidateAround(cell.getX(), cell.getY(), cell.getZ());
+            return null;
+        }
+        int slot = helperSlot(player);
+        ItemStack stack = slot < 0 ? ItemStack.EMPTY : player.getInventory().getItem(slot);
+        if (!(stack.getItem() instanceof BlockItem blockItem)) {
+            Notifier.warning(I18n.get("module.schematicbuilder.notify.no_helper"));
+            failBridge();
+            abortCooldown = ABORT_COOLDOWN_TICKS;
+            return null;
+        }
+        BlockState block = blockItem.getBlock().defaultBlockState();
+        // The click goes against the side of the floor block; only from past its edge does the ray reach that
+        // face, so the body leans out (sneaking, the edge holds it) until a click plan exists.
+        BuildPlanner.Plan plan = BuildPlanner.plan(player, mc.level, cell, block, stack, host.reach(), true);
+        if (plan != null) {
+            holdStill = true;
+            return new HelperClick(plan, slot, block);
+        }
+        Vec3 face = new Vec3(bridgeFloor.getX() + 0.5 + bridgeFace.getStepX() * 0.5,
+                bridgeFloor.getY() + 0.9, bridgeFloor.getZ() + 0.5 + bridgeFace.getStepZ() * 0.5);
+        host.aim(Rotation.lookingAt(face, player.getEyePosition()));
+        return null;
+    }
+
+    private void failBridge() {
+        if (bridgeCell != null) rejected.add(WalkTerrain.pack(bridgeCell.getX(), bridgeCell.getY(), bridgeCell.getZ()));
+        mode = Mode.IDLE;
+        bridgeCell = null;
+        bridgeFloor = null;
+        bridgeStepping = false;
+        abortCooldown = ABORT_COOLDOWN_TICKS / 5;
+    }
+
     /** Hotbar slot of the support block: a listed helper (softest first), else any plain full block the build can spare. */
     int helperSlot(LocalPlayer player) {
         Inventory inventory = player.getInventory();
@@ -938,6 +1056,19 @@ final class BuildMover {
             if (Math.hypot(dx, dz) > CENTER_DISTANCE * 0.5) {
                 keys = MovementKeys.keysTowardPrecise(RotationManager.INSTANCE.getMovementRotation().yaw(), dx, dz);
             }
+        } else if (mode == Mode.BRIDGING && bridgeCell != null && !holdStill && player.onGround()) {
+            Vec3 pos = player.position();
+            double dx, dz;
+            if (bridgeStepping) {
+                dx = bridgeCell.getX() + 0.5 - pos.x;
+                dz = bridgeCell.getZ() + 0.5 - pos.z;
+            } else {
+                dx = bridgeFloor.getX() + 0.5 + bridgeFace.getStepX() * BRIDGE_LEAN - pos.x;
+                dz = bridgeFloor.getZ() + 0.5 + bridgeFace.getStepZ() * BRIDGE_LEAN - pos.z;
+            }
+            if (Math.hypot(dx, dz) > 0.04) {
+                keys = MovementKeys.keysTowardPrecise(RotationManager.INSTANCE.getMovementRotation().yaw(), dx, dz);
+            }
         }
         if (jumpThisTick && player.onGround()) jump = true;
         if (!sprint && player.isSprinting()) player.setSprinting(false);
@@ -947,7 +1078,8 @@ final class BuildMover {
         event.setRight((keys & MovementKeys.RIGHT) != 0);
         event.setJump(jump);
         event.setSprint(sprint);
-        event.setSneak(!descending && !sprint && player.onGround() && aboutToFall(player));
+        event.setSneak(mode == Mode.BRIDGING && bridgeCell != null
+                || !descending && !sprint && player.onGround() && aboutToFall(player));
         jumpThisTick = false;
     }
 

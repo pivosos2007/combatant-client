@@ -34,6 +34,7 @@ public final class OrbitCamera {
     private float upX, upY, upZ;
     private float forwardX, forwardY, forwardZ;
     private float focal = 1f, originX, originY;
+    private int revision;
 
     /**
      * Aims at a box. The first call after {@link #clearFrame} jumps there; later calls (an exploded view growing,
@@ -122,8 +123,12 @@ public final class OrbitCamera {
                 && Math.abs(targetPanX - panX) < 0.05f && Math.abs(targetPanY - panY) < 0.05f;
     }
 
-    /** Recomputes the view basis for a viewport; call once per frame before projecting. */
+    /**
+     * Recomputes the view basis for a viewport; call once per frame before projecting. {@link #revision} only
+     * changes when the resulting view really differs, so callers can reuse whatever they projected last frame.
+     */
     public void computeView(float viewX, float viewY, float viewW, float viewH) {
+        float pEyeX = eyeX, pEyeY = eyeY, pEyeZ = eyeZ, pFocal = focal, pOriginX = originX, pOriginY = originY;
         float cp = (float) Math.cos(pitch), sp = (float) Math.sin(pitch);
         float cy = (float) Math.cos(yaw), sy = (float) Math.sin(yaw);
         float ox = cp * sy, oy = sp, oz = cp * cy;
@@ -144,6 +149,14 @@ public final class OrbitCamera {
         focal = Math.min(viewW, viewH) * 0.5f / (float) Math.tan(FOV * 0.5f);
         originX = viewX + viewW * 0.5f + panX;
         originY = viewY + viewH * 0.5f + panY;
+        if (eyeX != pEyeX || eyeY != pEyeY || eyeZ != pEyeZ || focal != pFocal || originX != pOriginX || originY != pOriginY) {
+            revision++;
+        }
+    }
+
+    /** Bumped whenever {@link #computeView} produced a different eye, orientation or screen mapping. */
+    public int revision() {
+        return revision;
     }
 
     /** Screen position of a world point into {@code out[off], out[off + 1]}; false when it is behind the camera. */

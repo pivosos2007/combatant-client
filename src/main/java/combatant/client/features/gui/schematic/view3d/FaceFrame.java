@@ -23,6 +23,9 @@ public final class FaceFrame {
     private long[] scratch = new long[0];
     private final int[] counts = new int[256];
     private int visible;
+    private FaceList builtFaces;
+    private int builtRevision = -1;
+    private float builtX, builtY, builtW, builtH;
 
     /** Number of faces to draw this frame. */
     public int visible() {
@@ -39,7 +42,21 @@ public final class FaceFrame {
         return screen[face * 8 + corner * 2 + axis];
     }
 
+    /**
+     * Culls, projects and depth-sorts the faces for the camera's current view. When the faces, the view and the
+     * clip are what the previous call saw, the previous result is still exact and nothing is recomputed.
+     */
     public int build(FaceList faces, OrbitCamera camera, float clipX, float clipY, float clipW, float clipH) {
+        if (faces == builtFaces && camera.revision() == builtRevision
+                && clipX == builtX && clipY == builtY && clipW == builtW && clipH == builtH) {
+            return visible;
+        }
+        builtFaces = faces;
+        builtRevision = camera.revision();
+        builtX = clipX;
+        builtY = clipY;
+        builtW = clipW;
+        builtH = clipH;
         ensureCapacity(faces.count());
         visible = 0;
         float near = Float.MAX_VALUE, far = 0f;
@@ -62,10 +79,9 @@ public final class FaceFrame {
     }
 
     private boolean projectFace(FaceList faces, OrbitCamera camera, int f, float minX, float minY, float maxX, float maxY) {
-        int d = faces.direction(f);
         float cx = faces.centre(f, 0), cy = faces.centre(f, 1), cz = faces.centre(f, 2);
         float ex = camera.eyeX() - cx, ey = camera.eyeY() - cy, ez = camera.eyeZ() - cz;
-        if (ex * FaceList.normal(d, 0) + ey * FaceList.normal(d, 1) + ez * FaceList.normal(d, 2) <= 0f) return false;
+        if (ex * faces.normalOf(f, 0) + ey * faces.normalOf(f, 1) + ez * faces.normalOf(f, 2) <= 0f) return false;
         int base = f * 8;
         float lowX = Float.MAX_VALUE, lowY = Float.MAX_VALUE, highX = -Float.MAX_VALUE, highY = -Float.MAX_VALUE;
         for (int c = 0; c < 4; c++) {

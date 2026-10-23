@@ -1121,6 +1121,16 @@ public final class SchematicBuilder extends Module {
             // Only the yaw decides a repeater: the height of the eyes does not matter.
             return dominantLook(dx, yawOnly.contains(key) ? 0.0 : dy, dz, look);
         }
+
+        @Override
+        public boolean bridgeEnabled() {
+            return autoJumpPillar.get();
+        }
+
+        @Override
+        public int bridgeLimit() {
+            return 8;
+        }
     }
 
     /**

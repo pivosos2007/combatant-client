@@ -11,6 +11,9 @@ import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.util.schematic.Schematic;
+import combatant.client.features.gui.schematic.view3d.BlockShape;
+import combatant.client.features.gui.schematic.view3d.FaceList;
+import combatant.client.features.module.modules.visuals.schematic.SchematicGhostModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.block.BlockTintSource;
 import net.minecraft.client.renderer.block.BlockStateModelSet;
@@ -70,6 +73,7 @@ final class SchematicTextures {
         boolean textured;
         /** Atlas-averaged colour of the top face with its tint applied, or 0 when unknown. */
         int average;
+        BlockShape shape = BlockShape.CUBE;
     }
 
     private static final Entry NONE = new Entry();
@@ -125,6 +129,15 @@ final class SchematicTextures {
         return entries;
     }
 
+    static BlockShape[] shapesOf(Entry[] entries) {
+        if (entries == null) return null;
+        BlockShape[] shapes = new BlockShape[entries.length];
+        for (int i = 0; i < entries.length; i++) {
+            shapes[i] = entries[i] == null ? BlockShape.CUBE : entries[i].shape;
+        }
+        return shapes;
+    }
+
     private static Entry of(BlockState state) {
         Entry cached = CACHE.get(state);
         if (cached != null) return cached;
@@ -167,6 +180,7 @@ final class SchematicTextures {
             entry.textured = true;
             for (int d = 0; d < FACES; d++) entry.textured &= entry.has[d * LAYERS];
             if (entry.has[0]) entry.average = multiply(average(topSprite), entry.tint[0]);
+            entry.shape = buildShape(state);
             return entry;
         } catch (RuntimeException e) {
             return NONE;
@@ -235,6 +249,28 @@ final class SchematicTextures {
             return path.contains("leaves") || path.contains("vine") ? FOLIAGE_TINT : GRASS_TINT;
         }
         return 0xFF000000 | colour;
+    }
+
+    private static BlockShape buildShape(BlockState state) {
+        SchematicGhostModel ghost = SchematicGhostModel.bake(state, SchematicTextures::tintOf);
+        boolean occludes = ghost.fullCube && state.canOcclude();
+        if (ghost.fullCube && occludes) return BlockShape.CUBE;
+        if (ghost.quadCount == 0) {
+            return new BlockShape(true, occludes, 0, new float[0], new float[0], new float[0], new int[0], new byte[0]);
+        }
+        byte[] cull = new byte[ghost.quadCount];
+        for (int i = 0; i < ghost.quadCount; i++) {
+            cull[i] = switch (ghost.cullFace[i]) {
+                case 0 -> FaceList.DOWN;
+                case 1 -> FaceList.UP;
+                case 2 -> FaceList.NORTH;
+                case 3 -> FaceList.SOUTH;
+                case 4 -> FaceList.WEST;
+                case 5 -> FaceList.EAST;
+                default -> -1;
+            };
+        }
+        return new BlockShape(false, occludes, ghost.quadCount, ghost.pos, ghost.uv, ghost.normal, ghost.tint, cull);
     }
 
     // ---------------------------------------------------------------- colour maths

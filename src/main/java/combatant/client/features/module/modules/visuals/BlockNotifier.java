@@ -8,7 +8,7 @@
 package combatant.client.features.module.modules.visuals;
 
 import combatant.client.config.values.BooleanValue;
-import combatant.client.config.values.ItemIdSetValue;
+import combatant.client.config.values.ColorListValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
 import combatant.client.events.EventHandler;
@@ -46,19 +46,19 @@ public final class BlockNotifier extends Module {
     private static final int MAX_MARKS = 64;
 
     private final Minecraft mc = Minecraft.getInstance();
-    private final ItemIdSetValue blocks = itemList("blockNotifierBlocks", "blocks", TextListSetting.PickerMode.BLOCKS,
-            Set.of("minecraft:tnt", "minecraft:respawn_anchor"));
+    private final RGBAColorValue color = color("blockNotifierColor", "color", "#80FF9500");
+    private final ColorListValue blocks = colorList("blockNotifierBlocks", "blocks", TextListSetting.PickerMode.BLOCKS,
+            Set.of("minecraft:tnt", "minecraft:respawn_anchor"), color);
     private final NumberValue<Integer> range = num("blockNotifierRange", "range", 32, 4, 128);
     private final BooleanValue chat = bool("blockNotifierChat", "chat", true);
     private final BooleanValue highlight = bool("blockNotifierHighlight", "highlight", true);
     private final NumberValue<Integer> durationSeconds = num("blockNotifierDuration", "duration_seconds", 10, 1, 60);
-    private final RGBAColorValue color = color("blockNotifierColor", "color", "#80FF9500");
     private final BooleanValue throughWalls = bool("blockNotifierThroughWalls", "through_walls", true);
 
     private record Update(BlockPos pos, BlockState state) {
     }
 
-    private record Mark(BlockPos pos, long expiresMs) {
+    private record Mark(BlockPos pos, String blockId, long expiresMs) {
     }
 
     private final ConcurrentLinkedQueue<Update> pending = new ConcurrentLinkedQueue<>();
@@ -105,7 +105,7 @@ public final class BlockNotifier extends Module {
             }
             if (known) continue;
             if (marks.size() >= MAX_MARKS) marks.remove(0);
-            marks.add(new Mark(update.pos(), now + durationSeconds.get() * 1000L));
+            marks.add(new Mark(update.pos(), id, now + durationSeconds.get() * 1000L));
             if (chat.get()) {
                 BlockPos p = update.pos();
                 CommandOutput.warning(I18n.get("notification.blocknotifier.found",
@@ -124,11 +124,11 @@ public final class BlockNotifier extends Module {
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
         if (!isEnabled() || !highlight.get() || renderer == null || marks.isEmpty()) return;
         Renderer3D.DepthMode depth = throughWalls.get() ? Renderer3D.DepthMode.NONE : Renderer3D.DepthMode.MAIN;
-        int argb = color.getArgb();
         for (Mark m : marks) {
             BlockPos p = m.pos();
             AABB box = new AABB(p.getX(), p.getY(), p.getZ(), p.getX() + 1, p.getY() + 1, p.getZ() + 1);
             if (!Renderer3D.Culling.isInFrustum(box)) continue;
+            int argb = blocks.argbFor(m.blockId());
             renderer.filledBox(box, argb, depth);
             renderer.outlineBox(box, argb | 0xFF000000, 2.0f, depth);
         }
