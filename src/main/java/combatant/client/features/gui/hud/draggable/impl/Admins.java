@@ -41,6 +41,7 @@ import combatant.client.util.player.PlayerSkinResolver;
 import combatant.client.util.text.LegacyTextUtil;
 import combatant.client.util.text.TextRenderUtil;
 import combatant.client.util.text.TextRenderUtil.Part;
+import combatant.client.features.relations.VanishProbe;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -188,6 +189,8 @@ public final class Admins extends DraggableHudElement {
         defs.add(SettingDef.bool(headerIconPulse));
         defs.add(SettingDef.number(headerIconPulseSpeed).visibleWhen(headerIconPulse::get));
         defs.add(SettingDef.number(headerIconPulseIntensity).visibleWhen(headerIconPulse::get));
+        defs.add(SettingDef.bool(VanishProbe.INSTANCE.enabledValue()));
+        defs.add(SettingDef.number(VanishProbe.INSTANCE.intervalValue()).visibleWhen(VanishProbe.INSTANCE.enabledValue()::get));
     }
 
     @Override

@@ -5,7 +5,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-package combatant.client.features.module.modules.misc;
+package combatant.client.features.relations;
 
 import java.util.Collection;
 import java.util.HashSet;
@@ -13,10 +13,10 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
 
-/** Pure decision rules for {@link AntiVanish}; no Minecraft state. */
-final class AntiVanishLogic {
+/** Pure decision rules for {@link VanishProbe}; no Minecraft state. */
+final class VanishProbeLogic {
 
-    private AntiVanishLogic() {
+    private VanishProbeLogic() {
     }
 
     /**
@@ -52,10 +52,17 @@ final class AntiVanishLogic {
     }
 
     /**
-     * A tab-list removal is a vanish candidate (rather than a logout) when the player's entity
-     * is still loaded after the grace period; real logouts remove the entity in the same tick.
+     * Names hidden in {@code confirmations} probes in a row; {@code streaks} carries the counts between probes
+     * (lower-case keys). Names that stopped being hidden are dropped from it.
      */
-    static boolean desyncAfterRemoval(boolean entityStillLoaded, boolean backInTabList) {
-        return entityStillLoaded && !backInTabList;
+    static Set<String> confirmed(Set<String> hidden, java.util.Map<String, Integer> streaks, int confirmations) {
+        Set<String> keys = new HashSet<>();
+        for (String name : hidden) keys.add(name.toLowerCase(Locale.ROOT));
+        streaks.keySet().retainAll(keys);
+        Set<String> out = new LinkedHashSet<>();
+        for (String name : hidden) {
+            if (streaks.merge(name.toLowerCase(Locale.ROOT), 1, Integer::sum) >= confirmations) out.add(name);
+        }
+        return out;
     }
 }

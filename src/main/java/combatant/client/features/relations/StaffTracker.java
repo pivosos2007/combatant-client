@@ -10,8 +10,13 @@ package combatant.client.features.relations;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.GameType;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public enum StaffTracker {
@@ -62,6 +67,32 @@ public enum StaffTracker {
         recalc(i);
     }
 
+    /**
+     * Names the server offers for tab completion but keeps out of the tab list (from {@link VanishProbe}). They are
+     * vanished even when out of render distance, where the entity check above cannot see them.
+     */
+    public static void onCompletionProbe(Collection<String> hiddenNames) {
+        Set<String> hidden = new HashSet<>();
+        for (String name : hiddenNames) hidden.add(name.toLowerCase(Locale.ROOT));
+        for (StaffInfo info : map.values()) {
+            boolean now = info.name != null && hidden.remove(info.name.toLowerCase(Locale.ROOT));
+            if (info.completionHidden != now) {
+                info.completionHidden = now;
+                recalc(info);
+            }
+        }
+        // Not tracked yet: no tab entry and no entity ever reached us, so key them by name.
+        for (String name : hiddenNames) {
+            String key = name.toLowerCase(Locale.ROOT);
+            if (!hidden.contains(key)) continue;
+            hidden.remove(key);
+            StaffInfo info = get(UUID.nameUUIDFromBytes(("vanish-probe:" + key).getBytes(StandardCharsets.UTF_8)));
+            info.name = name;
+            info.completionHidden = true;
+            recalc(info);
+        }
+    }
+
     private static void recalc(StaffInfo i) {
         long now = System.currentTimeMillis();
 
@@ -85,8 +116,8 @@ public enum StaffTracker {
             return;
         }
 
-        // entity есть, но нет TAB → VANISH
-        if (i.entityPresent) {
+        // entity есть (или сервер предлагает ник в автодополнении), но нет TAB → VANISH
+        if (i.entityPresent || i.completionHidden) {
             i.status = Status.VANISH;
             return;
         }
@@ -129,6 +160,8 @@ public enum StaffTracker {
 
         public boolean listed = false;
         public boolean entityPresent = false;
+        /** Offered by tab completion while missing from the tab list. */
+        public boolean completionHidden = false;
 
         public long lastEntityGone = 0;
         public long offlineSince = 0;
