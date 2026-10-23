@@ -5551,6 +5551,7 @@
   "setting.schematicbuilder.terraform_air": "Очищать воздушные клетки",
   "setting.schematicbuilder.stuck_timeout": "Таймаут застревания (тики)",
   "setting.schematicbuilder.auto_jump_pillar": "Столб прыжками, если высоко",
+  "setting.schematicbuilder.scaffold": "Подпорки для висящих блоков",
   "setting.schematicbuilder.helper_blocks": "Блоки для столба",
   "setting.schematicbuilder.remove_helpers": "Убирать столб после",
   "module.schematicbuilder.notify.no_placement": "Сначала загрузите схему и задайте точку (@schematic).",

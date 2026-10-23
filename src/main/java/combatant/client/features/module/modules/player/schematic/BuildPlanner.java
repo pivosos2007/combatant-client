@@ -7,6 +7,12 @@
 
 package combatant.client.features.module.modules.player.schematic;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Predicate;
+import net.minecraft.world.level.BlockGetter;
 import combatant.client.mixins.accessors.BlockItemInvoker;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.schematic.RedstoneRules;
@@ -90,13 +96,41 @@ final class BuildPlanner {
      * Whether any neighbour of {@code target} is a block a click can land on. A cell with none cannot be planned
      * from anywhere, so the builder skips it without spending one of its plan attempts.
      */
-    static boolean hasSupport(Level level, BlockPos target) {
+    static boolean hasSupport(BlockGetter level, BlockPos target) {
         for (Direction toSupport : Direction.values()) {
             BlockPos support = target.relative(toSupport);
             BlockState state = level.getBlockState(support);
             if (!state.canBeReplaced() && !state.getShape(level, support).isEmpty()) return true;
         }
         return false;
+    }
+
+    /**
+     * Cells where a temporary helper block gives a floating {@code target} something to click against. Searches
+     * outwards from the target through cells that are air in the world and accepted by {@code free} (the caller
+     * keeps schematic blocks and the player's own space out), at most {@code maxHelpers} cells deep. A returned
+     * cell has a clickable neighbour itself, so it can be placed now; the cells between it and the target follow
+     * once it stands, each leaning on the one before. Nearest chains first, lower cells before higher ones.
+     */
+    static List<BlockPos> scaffoldRoots(BlockGetter level, BlockPos target, Predicate<BlockPos> free, int maxHelpers) {
+        List<BlockPos> roots = new ArrayList<>();
+        Set<BlockPos> seen = new HashSet<>();
+        seen.add(target);
+        List<BlockPos> frontier = List.of(target);
+        for (int depth = 1; depth <= maxHelpers && !frontier.isEmpty(); depth++) {
+            List<BlockPos> next = new ArrayList<>();
+            for (BlockPos from : frontier) {
+                for (Direction direction : Direction.values()) {
+                    BlockPos cell = from.relative(direction);
+                    if (!seen.add(cell)) continue;
+                    if (!level.getBlockState(cell).canBeReplaced() || !free.test(cell)) continue;
+                    if (hasSupport(level, cell)) roots.add(cell);
+                    else next.add(cell);
+                }
+            }
+            frontier = next;
+        }
+        return roots;
     }
 
     static Plan plan(LocalPlayer player, Level level, BlockPos target, BlockState desired, ItemStack stack,

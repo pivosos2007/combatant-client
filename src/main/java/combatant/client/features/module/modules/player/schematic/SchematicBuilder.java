@@ -51,16 +51,19 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
@@ -92,6 +95,7 @@ public final class SchematicBuilder extends Module {
     /** A stair or slab clicked before the rotation settled lands in the wrong half; this is how long to wait for it. */
     private static final int EXACT_WAIT_TICKS = 4;
     private static final int MAX_PLAN_ATTEMPTS = 12;
+    private static final int MAX_SCAFFOLD_CHAIN = 6;
     private static final int MAX_CANDIDATES = 96;
     private static final int SHORTFALL_INTERVAL = 20;
     private static final int MISSING_NOTIFY_INTERVAL = 200;
@@ -159,10 +163,11 @@ public final class SchematicBuilder extends Module {
     private final BooleanValue terraformAir = visibleWhen(bool("terraform_air", false), terraform::get);
     private final NumberValue<Integer> stuckTimeout = visibleWhen(num("stuck_timeout", 100, 40, 400), autoWalk::get);
     private final BooleanValue autoJumpPillar = visibleWhen(bool("auto_jump_pillar", true), autoWalk::get);
-    private final ItemIdSetValue helperBlocks =
-            visibleWhen(itemList("helper_blocks", DEFAULT_HELPER_BLOCKS), () -> autoWalk.get() && autoJumpPillar.get());
-    private final BooleanValue removeHelpers =
-            visibleWhen(bool("remove_helpers", true), () -> autoWalk.get() && autoJumpPillar.get());
+    private final BooleanValue scaffold = visibleWhen(bool("scaffold", true), autoWalk::get);
+    private final ItemIdSetValue helperBlocks = visibleWhen(itemList("helper_blocks", DEFAULT_HELPER_BLOCKS),
+            () -> autoWalk.get() && (autoJumpPillar.get() || scaffold.get()));
+    private final BooleanValue removeHelpers = visibleWhen(bool("remove_helpers", true),
+            () -> autoWalk.get() && (autoJumpPillar.get() || scaffold.get()));
     private final BooleanValue donutSmpSafe = bool("donutsmp_safe", true);
 
     private final Minecraft mc = Minecraft.getInstance();
@@ -461,7 +466,7 @@ public final class SchematicBuilder extends Module {
         }
         if (cooldown > 0) cooldown--;
         if (pending != null && (++pendingAge > PLAN_TIMEOUT_TICKS || !stillValid(player, pending))) {
-            if (pendingAge > PLAN_TIMEOUT_TICKS && pending.kind != Kind.HELPER) {
+            if (pendingAge > PLAN_TIMEOUT_TICKS && pending.kind != Kind.HELPER && pending.kind != Kind.SCAFFOLD) {
                 retryAfter.put(pending.plan.target().asLong(), ticks + RETRY_AFTER_TICKS);
             }
             pending = null;
@@ -510,7 +515,9 @@ public final class SchematicBuilder extends Module {
             return;
         }
         status = pending.kind == Kind.HELPER ? Status.PILLARING : Status.WORKING;
-        if (effectiveRotate() || pending.kind == Kind.HELPER) requestRotation(pending.plan.rotation());
+        if (effectiveRotate() || pending.kind == Kind.HELPER || pending.kind == Kind.SCAFFOLD) {
+            requestRotation(pending.plan.rotation());
+        }
     }
 
     /** Nothing to click from here: let the mover walk, climb or clear up, and report what it is doing. */
@@ -637,7 +644,7 @@ public final class SchematicBuilder extends Module {
         BlockState predicted = BuildPlanner.simulate(player, mc.level, stack, plan.target(), plan.support(),
                 plan.face(), hit.getLocation(), facingRotation);
         if (predicted == null || predicted.getBlock() != work.expected.getBlock()) return false;
-        if (work.kind == Kind.HELPER) return placeHelper(player, work, hit);
+        if (work.kind == Kind.HELPER || work.kind == Kind.SCAFFOLD) return placeHelper(player, work, hit);
         boolean exact = BuildPlanner.exact(predicted, work.expected);
         // The ray reaches the planned face before the rotation settles on the planned point; clicking then puts
         // a stair or slab in the wrong half. Wait for the exact click, but not past half the plan timeout. A
@@ -819,8 +826,56 @@ public final class SchematicBuilder extends Module {
             }
             return new Pending(plan, expected, item, hotbar, Kind.PLACE);
         }
+        return scaffold(player, diff, count);
+    }
+
+    /**
+     * No missing cell could be planned: when floating cells (nothing to click against) are the reason, a helper
+     * block goes into a free schematic-air cell beside the lowest one, so it can be placed on a later tick. The
+     * helper is tracked like a pillar block and broken again once the build is done.
+     */
+    private Pending scaffold(LocalPlayer player, SchematicDiff diff, int count) {
         status = Status.OUT_OF_REACH;
+        if (!scaffold.get() || !autoWalk.get() || missingThisTick || count == 0) return null;
+        int slot = mover.helperSlot(player);
+        if (slot < 0) return null;
+        ItemStack stack = player.getInventory().getItem(slot);
+        if (!(stack.getItem() instanceof BlockItem blockItem)) return null;
+        BlockState helper = blockItem.getBlock().defaultBlockState();
+        Vec3 eyes = player.getEyePosition();
+        AABB body = player.getBoundingBox();
+        List<BlockPos> floating = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            BlockPos target = diff.worldPos(candidateCells[i], scratch).immutable();
+            if (!BuildPlanner.hasSupport(mc.level, target)) floating.add(target);
+        }
+        floating.sort(Comparator.<BlockPos>comparingInt(BlockPos::getY)
+                .thenComparingDouble(pos -> eyes.distanceToSqr(Vec3.atCenterOf(pos))));
+        double reach = effectiveRange();
+        boolean aim = effectiveRotate();
+        int attempts = 0;
+        for (BlockPos target : floating) {
+            List<BlockPos> roots = BuildPlanner.scaffoldRoots(mc.level, target,
+                    pos -> schematicAir(pos) && !body.intersects(new AABB(pos)), MAX_SCAFFOLD_CHAIN);
+            for (BlockPos root : roots) {
+                if (attempts++ >= MAX_PLAN_ATTEMPTS) return null;
+                BuildPlanner.Plan plan = BuildPlanner.plan(player, mc.level, root, helper, stack, reach, aim);
+                if (plan == null || plan.sneak()) continue;
+                return new Pending(plan, helper, stack.getItem(), slot, Kind.SCAFFOLD);
+            }
+        }
         return null;
+    }
+
+    /** Whether the schematic holds nothing at {@code pos}: air inside the footprint, or outside it entirely. */
+    private boolean schematicAir(BlockPos pos) {
+        Schematic schematic = state.schematic();
+        SchematicPlacement placement = state.placement();
+        if (schematic == null || placement == null) return true;
+        int x = placement.localX(pos.getX(), pos.getZ());
+        int y = placement.localY(pos.getY());
+        int z = placement.localZ(pos.getX(), pos.getZ());
+        return !schematic.contains(x, y, z) || schematic.paletteIndexAt(schematic.index(x, y, z)) == 0;
     }
 
     /**
@@ -1552,6 +1607,8 @@ public final class SchematicBuilder extends Module {
         PLACE,
         /** Places a support block under the feet mid pillar jump. */
         HELPER,
+        /** Places a temporary helper block next to a floating cell so it gains something to click against. */
+        SCAFFOLD,
         /** Uses a placed block to step its delay, mode, note or position. */
         ADJUST
     }

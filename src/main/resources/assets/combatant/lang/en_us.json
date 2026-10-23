@@ -5551,6 +5551,7 @@
   "setting.schematicbuilder.terraform_air": "Clear air cells",
   "setting.schematicbuilder.stuck_timeout": "Stuck timeout (ticks)",
   "setting.schematicbuilder.auto_jump_pillar": "Jump-pillar when too high",
+  "setting.schematicbuilder.scaffold": "Scaffold floating blocks",
   "setting.schematicbuilder.helper_blocks": "Pillar blocks",
   "setting.schematicbuilder.remove_helpers": "Remove pillar blocks after",
   "module.schematicbuilder.notify.no_placement": "Load a schematic and set its origin first (@schematic).",
