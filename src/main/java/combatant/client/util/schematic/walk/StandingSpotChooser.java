@@ -117,7 +117,10 @@ public final class StandingSpotChooser {
         double dx = tx + 0.5 - ex, dy = ty + 0.5 - ey, dz = tz + 0.5 - ez;
         if (dx * dx + dy * dy + dz * dz > prefilter) return false;
         if (look != null && !look.accepts(target, ex, ey, ez)) return false;
-        return mode == Mode.PLACE
+        // A target that is already a block (a wrong block to terraform, a chest to open) is clicked or hit on a
+        // visible face; only an empty cell is filled by clicking a neighbour.
+        boolean place = mode == Mode.PLACE && ReachModel.replaceable(terrain.cell(tx, ty, tz));
+        return place
                 ? ReachModel.placeable(terrain, ex, ey, ez, tx, ty, tz, reach)
                 : ReachModel.breakable(terrain, ex, ey, ez, tx, ty, tz, reach);
     }

@@ -219,8 +219,10 @@ public final class SchematicBuilder extends Module {
     private float lastHealth = -1.0f;
     private ClientLevel lastLevel;
     private Status status = Status.IDLE;
-    private int lastShortfallTick = Integer.MIN_VALUE;
-    private int lastMissingNotifyTick = Integer.MIN_VALUE;
+    /** Far enough in the past that {@code ticks - NEVER} neither overflows nor lands under an interval. */
+    private static final int NEVER = Integer.MIN_VALUE / 2;
+    private int lastShortfallTick = NEVER;
+    private int lastMissingNotifyTick = NEVER;
     private int completedLayerNotified = -1;
     private boolean missingThisTick;
 
@@ -251,7 +253,7 @@ public final class SchematicBuilder extends Module {
         lastHealth = -1.0f;
         lastLevel = mc.level;
         completedLayerNotified = -1;
-        lastShortfallTick = Integer.MIN_VALUE;
+        lastShortfallTick = NEVER;
         mover.clearAll();
         footprint = null;
         rotationWaitTicks = 0;
@@ -484,6 +486,12 @@ public final class SchematicBuilder extends Module {
             pendingAge = 0;
         }
         if (pending == null && autoWalk.get() && mover.midPillarJump()) status = Status.OUT_OF_REACH;
+        // Nothing in reach and nothing to walk to because the stock for the remaining cells is gone: that is a
+        // shortfall too, or the walker idles and the chest restock below never starts.
+        if (pending == null && status == Status.OUT_OF_REACH && restock.get() && !state.missingMaterials().isEmpty()
+                && walkTargets(player, gateScratch) == 0) {
+            status = Status.MISSING_MATERIALS;
+        }
         if (pending == null && status == Status.MISSING_MATERIALS && restock.get()
                 && (indexNearbyChests.get() || SupplyPoint.INSTANCE.pos() != null)) {
             if (planChestRestock(player)) return;
@@ -938,7 +946,9 @@ public final class SchematicBuilder extends Module {
     private int workingLayer(SchematicDiff diff, int openBand) {
         int layer = state.layer();
         int top = state.layerCount() - 1;
-        while (safety.layerSettled(mc.level, diff, layer, openBand)) {
+        // A wrong block of the layer counts as done for the diff, but once terraforming mines it the cell is open
+        // again: moving up first would strand it below the working layer.
+        while (safety.layerSettled(mc.level, diff, layer, openBand) && !(terraform.get() && terraformRemaining())) {
             if (layer >= top) {
                 // Power and cells hanging on higher layers were left behind on the way up; come back for them.
                 if (BuildSafety.backlogOpen(diff, top + 1)) return top;
