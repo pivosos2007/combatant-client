@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.schematic;
 
+import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.theme.Theme;
 import combatant.client.features.theme.Themes;
@@ -19,7 +20,11 @@ import net.minecraft.util.Mth;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Drawing primitives for the schematic menu, styled after the proxy manager's matte panels. */
+/**
+ * Drawing primitives for the schematic menu. The look follows the ClickGUI Modules columns: separate frosted
+ * liquid-glass panels with a soft veil, a titled header with a hairline split, filled pill buttons and pill tabs
+ * tinted by the active theme, and the ClickGUI scrollbar colours.
+ */
 final class SchematicUi {
 
     static final int GOOD = 0xFF66BB6A;
@@ -39,11 +44,22 @@ final class SchematicUi {
     static int PANEL_TOP = 0xFF12161E;
     static int PANEL_BOTTOM = 0xFF0B0E14;
     static int WELL = 0xFF0A0D12;
+    /** Tint of the veil over the glass and of filled controls; same derivation as ClickGUI's panelBgGlassDark. */
+    static int GLASS_RGB = 0xFF151922;
+    /** Hover fill colour; same derivation as ClickGUI's rowHover. */
+    static int HOVER_RGB = 0xFF1E2532;
+    /** Hairline panel outline (ClickGUI panelStroke) and separators (ClickGUI split). */
+    static int PANEL_STROKE = 0x4C2A3140;
+    static int SPLIT = 0x282A3140;
+    private static int scrollTrackA = 0x4B232323;
+    private static int scrollTrackB = 0x5F2D2D2D;
+    private static int scrollHandleA = 0x4B2C2C2C;
+    private static int scrollHandleB = 0x5F656565;
 
-    static final float TITLE = 0.95f;
-    static final float BODY = 0.68f;
-    static final float SMALL = 0.56f;
-    static final float TINY = 0.50f;
+    static final float TITLE = 1.0f;
+    static final float BODY = 0.82f;
+    static final float SMALL = 0.72f;
+    static final float TINY = 0.62f;
 
     private final Map<String, String> ellipsized = new HashMap<>();
     private TextRenderer bold;
@@ -62,6 +78,15 @@ final class SchematicUi {
         STROKE = mix(opaque(t.strokeSoft()), PANEL_BOTTOM, 0.2f);
         FAINT = mix(MUTED, SURFACE, 0.4f);
         WELL = mix(PANEL_BOTTOM, 0xFF000000, 0.35f);
+        GLASS_RGB = mix(opaque(t.surface()), ACCENT, 0.07f);
+        HOVER_RGB = mix(opaque(t.surfaceHover()), ACCENT, 0.125f);
+        PANEL_STROKE = withAlpha(mix(opaque(t.strokeSoft()), ACCENT, 0.155f), 76);
+        SPLIT = withAlpha(mix(opaque(t.strokeSoft()), ACCENT, 0.12f), 46);
+        SettingsGuiPalette palette = SettingsGuiPalette.current();
+        scrollTrackA = palette.moduleScrollTrackA();
+        scrollTrackB = palette.moduleScrollTrackB();
+        scrollHandleA = palette.moduleScrollHandleA();
+        scrollHandleB = palette.moduleScrollHandleB();
     }
 
     private static int opaque(int argb) {
@@ -93,56 +118,122 @@ final class SchematicUi {
         return mx >= x && mx <= x + w && my >= y && my <= y + h;
     }
 
+    /** Frosted liquid-glass panel, drawn exactly like a ClickGUI Modules column (HUD_LARGE glass plus a light veil). */
     void panel(float x, float y, float w, float h, float radius, float alpha) {
-        int top = withAlpha(PANEL_TOP, Math.round(alpha * 238f));
-        int bottom = withAlpha(PANEL_BOTTOM, Math.round(alpha * 244f));
-        Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, h, radius, 26f, 0.03f * alpha, withAlpha(0x000000, Math.round(alpha * 90f)));
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, radius, 1f, top, top, bottom, bottom);
-        Renderer2D.COLOR.roundedRectStrokeGradient(x, y, w, h, radius, 1f, 1f,
-                withAlpha(mix(STROKE, ACCENT, 0.35f), Math.round(alpha * 200f)), withAlpha(STROKE, Math.round(alpha * 160f)), 90f);
+        if (alpha <= 0.001f || w <= 1f || h <= 1f) return;
+        float glassAlpha = Mth.clamp(alpha, 0f, 1f);
+        Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, h, radius, 18f, 0.018f, withAlpha(0x000000, Math.round(alpha * 72f)));
+        Renderer2D.COLOR.withLiquidGlassBlurProfile(Renderer2D.BlurQuality.LIQUID_GLASS, 1.38f,
+                () -> Renderer2D.COLOR.liquidGlassRect(x, y, w, h, radius, 0xFFFFFFFF, glassAlpha, 1.0f,
+                        Renderer2D.LiquidGlassPreset.HUD_LARGE));
+        int veil = withAlpha(GLASS_RGB, Math.round(alpha * 58f));
+        Renderer2D.COLOR.roundedRect(x, y, w, h, radius, veil);
+        Renderer2D.COLOR.roundedRectStroke(x, y, w, h, radius, 1f, scaleAlpha(PANEL_STROKE, alpha));
     }
 
+    /** Panel header: cube icon, strong title and a hairline split below. Returns the x just after the title. */
+    float header(String title, float x, float y, float w, float h, float alpha) {
+        float ix = x + 22f;
+        SchematicViewport.drawCubeIcon(ix, y + h * 0.5f + 5f, 7.5f, mix(SURFACE_HOVER, ACCENT, 0.6f), alpha);
+        float tx = x + 40f;
+        text(title, tx, y + (h - height(TITLE)) * 0.5f, TITLE, scaleAlpha(TEXT, alpha), true);
+        Renderer2D.COLOR.quad(x + 14f, y + h, w - 28f, 1f, scaleAlpha(SPLIT, alpha));
+        return tx + width(title, TITLE, true);
+    }
+
+    /** Inner card (list body, strip): a darker veil, no outline. */
     void section(float x, float y, float w, float h, float alpha) {
-        int top = withAlpha(mix(SURFACE, 0xFFFFFFFF, 0.025f), Math.round(alpha * 205f));
-        int bottom = withAlpha(SURFACE, Math.round(alpha * 205f));
-        Renderer2D.COLOR.roundedRectSoftShadow(x, y + 2f, w, h, 10f, 12f, 0.02f * alpha, withAlpha(0x000000, Math.round(alpha * 60f)));
-        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, 10f, 1f, top, top, bottom, bottom);
-        Renderer2D.COLOR.roundedRectStroke(x, y, w, h, 10f, 1f, withAlpha(STROKE, Math.round(alpha * 150f)));
+        int fill = withAlpha(mix(GLASS_RGB, 0xFF000000, 0.35f), Math.round(alpha * 92f));
+        Renderer2D.COLOR.roundedRect(x, y, w, h, 12f, fill);
     }
 
     /** Recessed area such as the 3D viewport or a progress track. */
     void well(float x, float y, float w, float h, float radius, float alpha) {
-        int top = withAlpha(WELL, Math.round(alpha * 235f));
-        int bottom = withAlpha(mix(WELL, ACCENT, 0.05f), Math.round(alpha * 235f));
+        int top = withAlpha(WELL, Math.round(alpha * 190f));
+        int bottom = withAlpha(mix(WELL, ACCENT, 0.05f), Math.round(alpha * 190f));
         Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, radius, 1f, top, top, bottom, bottom);
-        Renderer2D.COLOR.roundedRectStroke(x, y, w, h, radius, 1f, withAlpha(STROKE, Math.round(alpha * 170f)));
     }
 
     /** Small rounded label used for dimensions, counts and other row metadata. */
     float chip(float x, float y, String label, int tint, float alpha) {
-        float w = width(label, TINY, false) + 12f;
-        float h = height(TINY) + 4f;
-        Renderer2D.COLOR.roundedRect(x, y, w, h, h * 0.5f, scaleAlpha(withAlpha(mix(SURFACE_HOVER, tint, 0.18f), 230), alpha));
-        text(label, x + 6f, y + 2f, TINY, scaleAlpha(mix(MUTED, tint, 0.45f), alpha), false);
+        float w = width(label, TINY, false) + 14f;
+        float h = height(TINY) + 6f;
+        Renderer2D.COLOR.roundedRect(x, y, w, h, h * 0.5f, scaleAlpha(withAlpha(mix(HOVER_RGB, tint, 0.22f), 200), alpha));
+        text(label, x + 7f, y + 3f, TINY, scaleAlpha(mix(MUTED, tint, 0.45f), alpha), false);
         return w;
     }
 
-    void button(float x, float y, float w, float h, String label, float hover, float press, boolean active, boolean enabled, float alpha) {
-        float lift = hover * 0.6f + press * 0.4f;
-        int base = enabled ? SURFACE : mix(SURFACE, WELL, 0.5f);
-        int activeFill = mix(SURFACE, ACCENT, 0.22f);
-        int fill = mix(base, active ? activeFill : SURFACE_HOVER, enabled ? (active ? 0.85f : 0f) + lift * 0.6f : 0f);
-        int stroke = mix(STROKE, ACCENT, active ? 0.65f : hover * 0.45f);
-        int text = !enabled ? FAINT : active ? mix(TEXT, ACCENT, 0.35f) : mix(MUTED, TEXT, 0.35f + hover * 0.65f);
-        if (enabled && hover > 0.01f) {
-            Renderer2D.COLOR.roundedRectSoftShadow(x, y + 1f, w, h, 7f, 10f, 0.02f * hover * alpha,
-                    withAlpha(ACCENT, Math.round(hover * alpha * 46f)));
+    /** Recessed pill that holds a group of {@link #tab} segments. */
+    void segmentTrack(float x, float y, float w, float h, float alpha) {
+        Renderer2D.COLOR.roundedRect(x, y, w, h, h * 0.5f, withAlpha(mix(GLASS_RGB, 0xFF000000, 0.4f), Math.round(alpha * 110f)));
+    }
+
+    /** Pill segment label: the sliding selection pill is drawn once per group by {@link #segmentPill}; this adds hover and text. */
+    void tab(float x, float y, float w, float h, String label, float hover, float press, boolean active, boolean enabled, float alpha) {
+        float inset = 3f;
+        float sx = x + inset, sy = y + inset, sw = w - inset * 2f, sh = h - inset * 2f;
+        if (!active && enabled && hover > 0.01f) {
+            Renderer2D.COLOR.roundedRect(sx, sy, sw, sh, sh * 0.5f, withAlpha(HOVER_RGB, Math.round(alpha * hover * (90f + press * 40f))));
         }
+        int text = !enabled ? scaleAlpha(FAINT, 0.8f) : active ? TEXT : mix(MUTED, TEXT, 0.25f + hover * 0.75f);
+        String shown = ellipsize(label, SMALL, sw - 12f);
+        textCentered(shown, x + w * 0.5f, y + (h - height(SMALL)) * 0.5f, SMALL, scaleAlpha(text, alpha), active);
+    }
+
+    /** Accent pill that slides between segments (idea from Anubis' animated segmented control). */
+    void segmentPill(float x, float y, float w, float h, float alpha) {
+        float inset = 3f;
+        Renderer2D.COLOR.roundedRect(x + inset, y + inset, w - inset * 2f, h - inset * 2f, (h - inset * 2f) * 0.5f,
+                withAlpha(mix(GLASS_RGB, ACCENT, 0.55f), Math.round(alpha * 185f)));
+    }
+
+    /**
+     * Filled pill button. Idle is a faint glass fill, hover lifts it, {@code active} tints it with the accent and
+     * {@code primary} is the single accented call to action. Disabled is clearly dimmed.
+     */
+    void button(float x, float y, float w, float h, String label, float hover, float press, boolean active, boolean enabled,
+                boolean primary, float alpha) {
+        float lift = enabled ? hover : 0f;
         float sink = press * 1.5f;
-        Renderer2D.COLOR.roundedRect(x, y + sink, w, h - sink, 7f, scaleAlpha(fill, alpha * 0.94f));
-        Renderer2D.COLOR.roundedRectStroke(x, y + sink, w, h - sink, 7f, 1f, scaleAlpha(stroke, alpha));
-        String shown = ellipsize(label, BODY * 0.92f, w - 12f);
-        textCentered(shown, x + w * 0.5f, y + sink * 0.5f + (h - height(BODY * 0.92f)) * 0.5f, BODY * 0.92f, scaleAlpha(text, alpha), false);
+        float r = Math.min(h * 0.5f, 18f);
+        int fill;
+        int text;
+        if (!enabled) {
+            fill = withAlpha(mix(GLASS_RGB, 0xFF000000, 0.2f), 30);
+            text = scaleAlpha(FAINT, 0.75f);
+        } else if (primary) {
+            int base = mix(ACCENT, 0xFF000000, 0.2f - lift * 0.08f);
+            fill = withAlpha(base, 232);
+            text = luminance(base) > 0.62f ? 0xFF10141A : 0xFFFFFFFF;
+            Renderer2D.COLOR.roundedRectSoftShadow(x, y + 1f, w, h, r, 12f, 0.02f * alpha,
+                    withAlpha(ACCENT, Math.round(alpha * (36f + lift * 40f))));
+        } else if (active) {
+            fill = withAlpha(mix(GLASS_RGB, ACCENT, 0.5f), Math.round(150f + lift * 50f));
+            text = TEXT;
+        } else {
+            fill = withAlpha(mix(GLASS_RGB, HOVER_RGB, lift), Math.round(78f + lift * 70f));
+            text = mix(MUTED, TEXT, 0.4f + lift * 0.6f);
+        }
+        Renderer2D.COLOR.roundedRect(x, y + sink, w, h - sink, r, scaleAlpha(fill, alpha));
+        float size = BODY * 0.95f;
+        String shown = ellipsize(label, size, w - 20f);
+        textCentered(shown, x + w * 0.5f, y + sink * 0.5f + (h - height(size)) * 0.5f, size, scaleAlpha(text, alpha), primary);
+    }
+
+    /** ClickGUI scrollbar: a 3px gradient track with a gradient handle, in the ClickGUI palette. */
+    void scrollbar(float x, float y, float h, int first, int visible, int total, float alpha) {
+        float w = 3.5f;
+        float thumbH = Math.max(22f, h * visible / total);
+        float thumbY = y + (h - thumbH) * first / Math.max(1, total - visible);
+        Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, w * 0.5f, 1f,
+                scaleAlpha(scrollTrackA, alpha), scaleAlpha(scrollTrackB, alpha), scaleAlpha(scrollTrackB, alpha), scaleAlpha(scrollTrackA, alpha));
+        Renderer2D.COLOR.roundedRectGradientQuad(x, thumbY, w, thumbH, w * 0.5f, 1f,
+                scaleAlpha(scrollHandleA, alpha), scaleAlpha(scrollHandleB, alpha), scaleAlpha(scrollHandleB, alpha), scaleAlpha(scrollHandleA, alpha));
+    }
+
+    private static float luminance(int rgb) {
+        float r = ((rgb >> 16) & 0xFF) / 255f, g = ((rgb >> 8) & 0xFF) / 255f, b = (rgb & 0xFF) / 255f;
+        return 0.299f * r + 0.587f * g + 0.114f * b;
     }
 
     void text(String text, float x, float y, float size, int argb, boolean strong) {

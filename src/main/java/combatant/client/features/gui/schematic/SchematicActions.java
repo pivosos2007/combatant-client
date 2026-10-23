@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.schematic;
 
+import com.mojang.blaze3d.Blaze3D;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.Notifier;
 import combatant.client.features.module.modules.player.schematic.SchematicBuilder;
@@ -22,7 +23,10 @@ import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.util.Util;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletionException;
 
@@ -79,6 +83,34 @@ public final class SchematicActions {
             Notifier.warning(I18n.get("screen.combatant.schematic.status.warnings", schematic.warnings().size(),
                     schematic.warnings().getFirst()));
         }
+    }
+
+    /**
+     * Opens the schematics folder in the system file manager, creating it first. Runs the launcher off the render
+     * thread; Windows uses {@code explorer.exe} directly because SDL's URL opener does not reliably open file URIs.
+     */
+    public static void openFolder() {
+        Path dir;
+        try {
+            dir = Files.createDirectories(SchematicLibrary.INSTANCE.directory()).toAbsolutePath().normalize();
+        } catch (IOException | RuntimeException e) {
+            Notifier.error(I18n.get("screen.combatant.schematic.status.open_folder_failed", e.getMessage()));
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        Util.nonCriticalIoPool().execute(() -> {
+            try {
+                String[] command = switch (Util.getPlatform()) {
+                    case WINDOWS -> new String[] {"explorer.exe", dir.toString()};
+                    case OSX -> new String[] {"open", dir.toString()};
+                    default -> new String[] {"xdg-open", dir.toString()};
+                };
+                new ProcessBuilder(command).start();
+            } catch (IOException e) {
+                Blaze3D.openPath(dir);
+                mc.execute(() -> Notifier.info(I18n.get("screen.combatant.schematic.status.folder_path", dir.toString())));
+            }
+        });
     }
 
     public static void unload() {

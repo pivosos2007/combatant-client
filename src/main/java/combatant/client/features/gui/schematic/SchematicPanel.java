@@ -56,13 +56,15 @@ import java.util.Locale;
  */
 public final class SchematicPanel {
 
-    private static final float HEADER_H = 64f;
-    private static final float PAD = 18f;
-    private static final float GAP = 8f;
+    private static final float HEADER_H = 48f;
+    private static final float TOPBAR_H = 56f;
+    private static final float PAD = 14f;
+    private static final float GAP = 14f;
     private static final float BUTTON_H = 36f;
-    private static final float OVERLAY_H = 28f;
-    private static final float ROW_H = 54f;
-    private static final float MATERIAL_ROW_H = 36f;
+    private static final float OVERLAY_H = 30f;
+    private static final float ROW_H = 62f;
+    private static final float MATERIAL_ROW_H = 42f;
+    private static final float PANEL_RADIUS = 14f;
     private static final float STRIP_W = 72f;
     private static final float OPEN_SLIDE = 26f;
     private static final int[] PLAY_SPEEDS = {1, 2, 4, 8};
@@ -115,6 +117,16 @@ public final class SchematicPanel {
     private float infoY;
     private float materialsY, materialsH;
     private float bodyH, smallH, titleH, tinyH;
+    private float colTop, colBottom;
+    private float leftPX, leftPW, centrePX, centrePW, rightPX, rightPW;
+    private float detailsH, materialsPY, materialsPH;
+    private float refreshW;
+    private boolean libraryEmpty;
+    private int infoRows;
+    private final List<String[]> infoList = new ArrayList<>();
+    private List<String> emptyHint = List.of();
+    private float emptyY;
+    private float segView, segMat;
     private float mouseX, mouseY;
     private float openAnim;
     private float frameDt;
@@ -241,8 +253,11 @@ public final class SchematicPanel {
     }
 
     private void renderBody(float alpha) {
-        ui.panel(panelX, panelY, panelW, panelH, 16f, alpha);
-        renderHeader(alpha);
+        if (onClose != null) renderTopBar(alpha);
+        ui.panel(leftPX, colTop, leftPW, colBottom - colTop, PANEL_RADIUS, alpha);
+        ui.panel(centrePX, colTop, centrePW, colBottom - colTop, PANEL_RADIUS, alpha);
+        ui.panel(rightPX, colTop, rightPW, detailsH, PANEL_RADIUS, alpha);
+        if (materialsPH > 1f) ui.panel(rightPX, materialsPY, rightPW, materialsPH, PANEL_RADIUS, alpha);
         renderLeft(alpha);
         renderCentre(alpha);
         renderRight(alpha);
@@ -263,68 +278,149 @@ public final class SchematicPanel {
             panelX = (fixedWidth - panelW) * 0.5f;
             panelY = (fixedHeight - panelH) * 0.5f + (1f - AnimationUtility.easeOutCubic(openAnim)) * OPEN_SLIDE;
         }
-        contentY = panelY + HEADER_H;
-        contentBottom = panelY + panelH - PAD;
-        leftW = clamp(panelW * 0.21f, 280f, 380f);
-        rightW = clamp(panelW * 0.25f, 330f, 440f);
-        leftX = panelX + PAD;
-        rightX = panelX + panelW - PAD - rightW;
-        centreX = leftX + leftW + PAD;
-        centreW = rightX - PAD - centreX;
+        colTop = panelY + (onClose == null ? 0f : TOPBAR_H + GAP);
+        colBottom = panelY + panelH;
+        contentY = colTop + HEADER_H + 12f;
+        contentBottom = colBottom - PAD;
+
+        // Three separate glass columns with gaps; the side columns give way before the preview does.
+        float total = Math.max(1f, panelW - GAP * 2f);
+        float leftO = clamp(total * 0.22f, 200f, 380f);
+        float rightO = clamp(total * 0.26f, 240f, 440f);
+        float sides = leftO + rightO;
+        float maxSides = Math.max(total - 340f, Math.min(sides, total * 0.45f));
+        if (sides > maxSides) {
+            float factor = maxSides / sides;
+            leftO *= factor;
+            rightO *= factor;
+        }
+        float centreO = total - leftO - rightO;
+        leftPX = panelX;
+        leftPW = leftO;
+        centrePX = leftPX + leftO + GAP;
+        centrePW = centreO;
+        rightPX = centrePX + centreO + GAP;
+        rightPW = rightO;
+        leftX = leftPX + PAD;
+        leftW = leftPW - PAD * 2f;
+        centreX = centrePX + PAD;
+        centreW = centrePW - PAD * 2f;
+        rightX = rightPX + PAD;
+        rightW = rightPW - PAD * 2f;
         java.util.Arrays.fill(bShown, false);
 
-        if (onClose != null) place(Btn.CLOSE, panelX + panelW - PAD - 44f, panelY + 14f, 44f, BUTTON_H);
+        if (onClose != null) place(Btn.CLOSE, panelX + panelW - PAD - 44f, panelY + (TOPBAR_H - BUTTON_H) * 0.5f, 44f, BUTTON_H);
         layoutLeft();
         layoutCentre();
         layoutRight();
     }
 
     private void layoutLeft() {
+        libraryEmpty = library.headers().isEmpty() && !library.isScanning();
+        refreshW = clamp(leftPW * 0.30f, 64f, 96f);
+        place(Btn.REFRESH, leftPX + leftPW - PAD - refreshW, colTop + (HEADER_H - 30f) * 0.5f, refreshW, 30f);
+        if (libraryEmpty) {
+            // No files: no search, no Load; the list is the hint and its call to action.
+            searchX = -10_000f;
+            searchY = 0f;
+            searchW = 0f;
+            searchH = 0f;
+            listY = contentY;
+            listH = Math.max(ROW_H, contentBottom - listY);
+            emptyHint = wrap(tr("screen.combatant.schematic.empty_hint"), SchematicUi.SMALL, leftW - 40f, 3);
+            emptyY = listY + Math.max(30f, listH * 0.5f - 100f);
+            float ctaY = emptyY + 10f + 40f + bodyH + 8f + emptyHint.size() * (smallH + 4f) + 16f;
+            float ctaW = Math.min(leftW - 32f, 220f);
+            place(Btn.OPEN_FOLDER, leftX + (leftW - ctaW) * 0.5f, ctaY, ctaW, 40f);
+            return;
+        }
         searchX = leftX;
         searchY = contentY;
         searchH = 38f;
-        searchW = leftW - 98f;
-        place(Btn.REFRESH, leftX + leftW - 90f, contentY, 90f, searchH);
-        float buttonsTop = contentBottom - BUTTON_H * 2f - GAP;
+        searchW = leftW;
         listY = searchY + searchH + 10f;
+        float buttonsTop;
+        if (leftW >= 300f) {
+            buttonsTop = contentBottom - BUTTON_H;
+            float open = Math.min(150f, leftW * 0.4f);
+            place(Btn.LOAD, leftX, buttonsTop, leftW - open - 8f, BUTTON_H);
+            place(Btn.OPEN_FOLDER, leftX + leftW - open, buttonsTop, open, BUTTON_H);
+        } else {
+            buttonsTop = contentBottom - BUTTON_H * 2f - 8f;
+            place(Btn.LOAD, leftX, buttonsTop, leftW, BUTTON_H);
+            place(Btn.OPEN_FOLDER, leftX, buttonsTop + BUTTON_H + 8f, leftW, BUTTON_H);
+        }
         listH = Math.max(ROW_H, buttonsTop - 10f - listY);
-        place(Btn.LOAD, leftX, buttonsTop, leftW, BUTTON_H);
-        place(Btn.OPEN_FOLDER, leftX, buttonsTop + BUTTON_H + GAP, leftW, BUTTON_H);
+    }
+
+    /** Greedy word wrap into at most {@code maxLines} lines, each ellipsized to {@code maxW}. */
+    private List<String> wrap(String text, float size, float maxW, int maxLines) {
+        List<String> lines = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        for (String word : text.split(" ")) {
+            if (cur.length() > 0 && ui.width(cur + " " + word, size, false) > maxW) {
+                lines.add(cur.toString());
+                cur.setLength(0);
+            }
+            if (cur.length() > 0) cur.append(' ');
+            cur.append(word);
+        }
+        if (cur.length() > 0) lines.add(cur.toString());
+        while (lines.size() > maxLines) {
+            String last = lines.remove(lines.size() - 1);
+            lines.set(lines.size() - 1, lines.get(lines.size() - 1) + " " + last);
+        }
+        for (int i = 0; i < lines.size(); i++) lines.set(i, ui.ellipsize(lines.get(i), size, maxW));
+        return lines;
     }
 
     private void layoutCentre() {
+        boolean loaded = state.hasSchematic();
         float ctrlY = contentBottom - BUTTON_H;
-        float[] widths = {64f, 52f, 96f, 72f, 52f, 64f};
-        Btn[] ids = {Btn.LAYER_DOWN10, Btn.LAYER_DOWN, Btn.PLAY, Btn.SPEED, Btn.LAYER_UP, Btn.LAYER_UP10};
-        float total = GAP * (ids.length - 1);
-        for (float w : widths) total += w;
-        float x = centreX + (centreW - total) * 0.5f;
-        for (int i = 0; i < ids.length; i++) {
-            place(ids[i], x, ctrlY, widths[i], BUTTON_H);
-            x += widths[i] + GAP;
-        }
-        progressY = ctrlY - 46f;
+        progressY = ctrlY - 14f - 12f - 6f - smallH;
         gridX = centreX;
-        gridY = contentY + titleH + smallH + 22f;
-        gridW = centreW - STRIP_W - 16f;
-        gridH = Math.max(40f, progressY - 14f - gridY);
         stripX = centreX + centreW - STRIP_W;
+        if (loaded) {
+            float[] widths = {60f, 50f, 90f, 68f, 50f, 60f};
+            Btn[] ids = {Btn.LAYER_DOWN10, Btn.LAYER_DOWN, Btn.PLAY, Btn.SPEED, Btn.LAYER_UP, Btn.LAYER_UP10};
+            float total = 8f * (ids.length - 1);
+            for (float w : widths) total += w;
+            float sc = Math.min(1f, centreW / total);
+            float x = centreX + (centreW - total * sc) * 0.5f;
+            for (int i = 0; i < ids.length; i++) {
+                place(ids[i], x, ctrlY, widths[i] * sc, BUTTON_H);
+                x += widths[i] * sc + 8f * sc;
+            }
+            gridY = contentY + titleH + smallH + 22f;
+            gridW = Math.max(60f, centreW - STRIP_W - 16f);
+            gridH = Math.max(40f, progressY - 14f - gridY);
+            float trackW = Math.min(132f, centreW * 0.5f);
+            float tabH = 34f;
+            float tabY = colTop + (HEADER_H - tabH) * 0.5f;
+            place(Btn.TAB_3D, centrePX + centrePW - PAD - trackW, tabY, trackW * 0.5f, tabH);
+            place(Btn.TAB_2D, centrePX + centrePW - PAD - trackW * 0.5f, tabY, trackW * 0.5f, tabH);
+        } else {
+            gridY = contentY;
+            gridW = centreW;
+            gridH = Math.max(40f, contentBottom - gridY);
+        }
         stripY = gridY;
         stripH = gridH;
-        if (state.hasSchematic()) {
-            place(Btn.TAB_3D, centreX + centreW - 112f - 4f, contentY, 56f, 30f);
-            place(Btn.TAB_2D, centreX + centreW - 56f, contentY, 56f, 30f);
-        }
         insetS = clamp(Math.min(gridW, gridH) * 0.28f, 90f, 220f);
         insetX = gridX + 10f;
         insetY = gridY + gridH - 10f - insetS;
-        gapW = 170f;
+        gapW = Math.min(170f, gridW * 0.4f);
         gapX = gridX + gridW - 12f - gapW;
         gapY = gridY + 10f + tinyH + 8f;
         if (view3dActive()) {
-            place(Btn.VIEW_MODE, gridX + 10f, gridY + 10f, 132f, OVERLAY_H);
-            place(Btn.AUTO_ROTATE, gridX + 10f + 132f + 6f, gridY + 10f, 108f, OVERLAY_H);
-            place(Btn.RESET_VIEW, gridX + 10f + 246f + 6f, gridY + 10f, 92f, OVERLAY_H);
+            float avail = gridW - 20f - 12f;
+            float sc = Math.min(1f, avail / 372f);
+            float x = gridX + 10f;
+            place(Btn.VIEW_MODE, x, gridY + 10f, 144f * sc, OVERLAY_H);
+            x += 144f * sc + 6f;
+            place(Btn.AUTO_ROTATE, x, gridY + 10f, 120f * sc, OVERLAY_H);
+            x += 120f * sc + 6f;
+            place(Btn.RESET_VIEW, x, gridY + 10f, 96f * sc, OVERLAY_H);
         }
         Schematic schematic = state.schematic();
         if (schematic == null) return;
@@ -336,20 +432,47 @@ public final class SchematicPanel {
     }
 
     private void layoutRight() {
-        infoY = contentY;
-        float buttonsY = infoY + 11f * (smallH + 7f) + 10f;
-        float half = (rightW - GAP) * 0.5f;
+        boolean loaded = state.hasSchematic();
+        buildInfoRows();
+        float step = smallH + 8f;
+        float btnH = 34f;
+        float bgap = 8f;
+        int rows = infoList.size();
+        float avail = colBottom - colTop - GAP;
+        float materialsMin = HEADER_H + 110f;
+        if (!loaded) {
+            detailsH = HEADER_H + 12f + rows * step + PAD;
+        } else {
+            while (true) {
+                detailsH = HEADER_H + 12f + rows * step + 10f + 4f * btnH + 3f * bgap + PAD;
+                if (detailsH + materialsMin <= avail || (rows <= 3 && btnH <= 28f)) break;
+                if (rows > 3) {
+                    rows--;
+                } else {
+                    btnH = 28f;
+                    bgap = 6f;
+                }
+            }
+        }
+        infoRows = rows;
+        infoY = colTop + HEADER_H + 12f;
+        materialsPY = colTop + detailsH + GAP;
+        materialsPH = Math.max(0f, colBottom - materialsPY);
+        materialsY = materialsPY + HEADER_H + 10f;
+        materialsH = Math.max(MATERIAL_ROW_H, colBottom - PAD - materialsY);
+        if (!loaded) return;
+        float buttonsY = infoY + infoRows * step + 10f;
+        float half = (rightW - 8f) * 0.5f;
         Btn[] ids = {Btn.ORIGIN_HERE, Btn.ORIGIN_LOOK, Btn.ROTATE, Btn.MIRROR, Btn.BUILDER, Btn.PROJECTION, Btn.LAYER_MODE, Btn.UNLOAD};
         for (int i = 0; i < ids.length; i++) {
-            place(ids[i], rightX + (i % 2) * (half + GAP), buttonsY + (i / 2) * (BUTTON_H + GAP), half, BUTTON_H);
+            place(ids[i], rightX + (i % 2) * (half + 8f), buttonsY + (i / 2) * (btnH + bgap), half, btnH);
         }
-        float tabsY = buttonsY + 4f * (BUTTON_H + GAP) + 10f;
-        float third = (rightW - GAP * 2f) / 3f;
-        place(Btn.TAB_LAYER, rightX, tabsY, third, 32f);
-        place(Btn.TAB_TOTAL, rightX + third + GAP, tabsY, third, 32f);
-        place(Btn.TAB_ISSUES, rightX + (third + GAP) * 2f, tabsY, third, 32f);
-        materialsY = tabsY + 32f + GAP;
-        materialsH = Math.max(MATERIAL_ROW_H, contentBottom - materialsY);
+        float tabH = 34f;
+        float tabsY = materialsPY + (HEADER_H - tabH) * 0.5f;
+        float third = rightW / 3f;
+        place(Btn.TAB_LAYER, rightX, tabsY, third, tabH);
+        place(Btn.TAB_TOTAL, rightX + third, tabsY, third, tabH);
+        place(Btn.TAB_ISSUES, rightX + third * 2f, tabsY, third, tabH);
     }
 
     private void place(Btn id, float x, float y, float w, float h) {
@@ -387,6 +510,9 @@ public final class SchematicPanel {
         frameDt = dt;
         openAnim = AnimationUtility.snap(AnimationUtility.approach(openAnim, 1f, dt, 7f), 1f, 0.001f);
         viewFade = AnimationUtility.snap(AnimationUtility.approach(viewFade, 1f, dt, 9f), 1f, 0.001f);
+        segView = AnimationUtility.snap(AnimationUtility.approach(segView, view3d ? 0f : 1f, dt, 16f), view3d ? 0f : 1f, 0.001f);
+        float matTarget = issuesShown ? 2f : materialsTotal ? 1f : 0f;
+        segMat = AnimationUtility.snap(AnimationUtility.approach(segMat, matTarget, dt, 16f), matTarget, 0.001f);
         for (Btn id : BUTTONS) {
             int i = id.ordinal();
             hover[i] = AnimationUtility.snap(AnimationUtility.approach(hover[i], over(id) ? 1f : 0f, dt, 12f), over(id) ? 1f : 0f, 0.001f);
@@ -427,32 +553,26 @@ public final class SchematicPanel {
         Renderer2D.COLOR.quad(0, 0, fixedWidth, fixedHeight, soft, soft, deep, deep);
     }
 
-    private void renderHeader(float alpha) {
-        float y = panelY + (HEADER_H - titleH) * 0.5f;
-        Renderer2D.COLOR.roundedRect(panelX + PAD, panelY + (HEADER_H - 22f) * 0.5f, 4f, 22f, 2f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha));
-        ui.text(tr("screen.combatant.schematic.title"), panelX + PAD + 14f, y, SchematicUi.TITLE, SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), true);
+    /** Standalone only: a glass pill with the title, the loaded schematic and the close button. */
+    private void renderTopBar(float alpha) {
+        ui.panel(panelX, panelY, panelW, TOPBAR_H, PANEL_RADIUS, alpha);
+        SchematicViewport.drawCubeIcon(panelX + 36f, panelY + TOPBAR_H * 0.5f + 5f, 7.5f,
+                SchematicUi.mix(SchematicUi.SURFACE_HOVER, SchematicUi.ACCENT, 0.6f), alpha);
+        String title = tr("screen.combatant.schematic.title");
+        ui.text(title, panelX + 54f, panelY + (TOPBAR_H - titleH) * 0.5f, SchematicUi.TITLE, SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), true);
         Schematic schematic = state.schematic();
         String sub = schematic == null ? tr("screen.combatant.schematic.none_loaded")
                 : schematic.name() + "  ·  " + schematic.sizeX() + "x" + schematic.sizeY() + "x" + schematic.sizeZ();
-        float titleW = ui.width(tr("screen.combatant.schematic.title"), SchematicUi.TITLE, true);
-        ui.text(ui.ellipsize(sub, SchematicUi.BODY, panelW * 0.4f), panelX + PAD + 14f + titleW + 20f, panelY + (HEADER_H - bodyH) * 0.5f,
+        float titleW = ui.width(title, SchematicUi.TITLE, true);
+        ui.text(ui.ellipsize(sub, SchematicUi.BODY, panelW * 0.5f), panelX + 54f + titleW + 20f, panelY + (TOPBAR_H - bodyH) * 0.5f,
                 SchematicUi.BODY, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-        String keys = ui.ellipsize(tr("screen.combatant.schematic.keys_hint"), SchematicUi.TINY, panelW * 0.3f);
-        float keysRight = panelX + panelW - PAD - (onClose == null ? 0f : 44f + 16f);
-        ui.textRight(keys, keysRight, panelY + (HEADER_H - tinyH) * 0.5f, SchematicUi.TINY,
-                SchematicUi.scaleAlpha(SchematicUi.FAINT, alpha), false);
         drawButton(Btn.CLOSE, "X", false, true, alpha);
-        float lineY = contentY - 10f;
-        int edge = SchematicUi.withAlpha(SchematicUi.STROKE, 0);
-        int mid = SchematicUi.withAlpha(SchematicUi.mix(SchematicUi.STROKE, SchematicUi.ACCENT, 0.3f), Math.round(alpha * 200f));
-        float half = (panelW - PAD * 2f) * 0.5f;
-        Renderer2D.COLOR.quad(panelX + PAD, lineY, half, 1f, edge, mid, mid, edge);
-        Renderer2D.COLOR.quad(panelX + PAD + half, lineY, half, 1f, mid, edge, edge, mid);
     }
 
     private void renderLeft(float alpha) {
-        renderSearch(alpha);
+        ui.header(tr("screen.combatant.schematic.title"), leftPX, colTop, leftPW, HEADER_H, alpha);
         drawButton(Btn.REFRESH, library.isScanning() ? "..." : tr("screen.combatant.schematic.refresh"), false, true, alpha);
+        if (!libraryEmpty) renderSearch(alpha);
         ui.section(leftX, listY, leftW, listH, alpha);
         refreshFiltered();
         int visible = Math.max(1, (int) ((listH - 8f) / ROW_H));
@@ -461,43 +581,52 @@ public final class SchematicPanel {
         for (int i = 0; i < visible && listFirst + i < filtered.size(); i++) {
             renderRow(filtered.get(listFirst + i), listY + 4f + i * ROW_H, i, alpha);
         }
-        if (filtered.size() > visible) renderScrollbar(leftX + leftW - 5f, listY + 6f, listH - 12f, listFirst, visible, filtered.size(), alpha);
+        if (filtered.size() > visible) ui.scrollbar(leftX + leftW - 7f, listY + 8f, listH - 16f, listFirst, visible, filtered.size(), alpha);
         boolean canLoad = selectedPath != null && SchematicActions.loadingPath() == null;
-        drawButton(Btn.LOAD, tr("screen.combatant.schematic.load"), false, canLoad, alpha);
-        drawButton(Btn.OPEN_FOLDER, tr("screen.combatant.schematic.open_folder"), false, true, alpha);
+        drawButton(Btn.LOAD, tr("screen.combatant.schematic.load"), false, canLoad, canLoad, alpha);
+        drawButton(Btn.OPEN_FOLDER, tr("screen.combatant.schematic.open_folder"), false, true, libraryEmpty, alpha);
     }
 
     private void renderEmptyList(float alpha) {
         float cx = leftX + leftW * 0.5f;
-        float cy = listY + Math.min(listH * 0.35f, 120f);
-        if (library.isScanning()) {
+        boolean scanning = library.isScanning();
+        float cy = libraryEmpty ? emptyY + 10f : listY + Math.min(listH * 0.35f, 120f);
+        if (scanning) {
             float spin = (System.nanoTime() / 1_000_000L % 1200L) / 1200f * 360f;
             Renderer2D.COLOR.arcStroke(cx, cy, 16f, 3f, spin, spin + 260f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha));
         } else {
-            SchematicViewport.drawCubeIcon(cx, cy, 18f, SchematicUi.mix(SchematicUi.SURFACE_HOVER, SchematicUi.ACCENT, 0.35f), alpha);
+            SchematicViewport.drawCubeIcon(cx, cy, 20f, SchematicUi.mix(SchematicUi.SURFACE_HOVER, SchematicUi.ACCENT, 0.4f), alpha);
         }
-        String empty = library.isScanning() ? tr("screen.combatant.schematic.scanning") : tr("screen.combatant.schematic.empty");
-        ui.textCentered(ui.ellipsize(empty, SchematicUi.SMALL, leftW - 24f), cx, cy + 32f, SchematicUi.SMALL,
-                SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-        ui.textCentered(ui.ellipsize(tr("screen.combatant.schematic.empty_hint"), SchematicUi.TINY, leftW - 24f), cx, cy + 38f + smallH,
-                SchematicUi.TINY, SchematicUi.scaleAlpha(SchematicUi.FAINT, alpha), false);
+        String title = scanning ? tr("screen.combatant.schematic.scanning")
+                : tr(libraryEmpty ? "screen.combatant.schematic.empty" : "screen.combatant.schematic.no_matches");
+        ui.textCentered(ui.ellipsize(title, SchematicUi.BODY, leftW - 24f), cx, cy + 40f, SchematicUi.BODY,
+                SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), true);
+        if (!libraryEmpty) return;
+        for (int i = 0; i < emptyHint.size(); i++) {
+            ui.textCentered(emptyHint.get(i), cx, cy + 40f + bodyH + 8f + i * (smallH + 4f), SchematicUi.SMALL,
+                    SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
+        }
     }
 
     private void renderSearch(float alpha) {
-        int stroke = searchFocused ? SchematicUi.ACCENT : SchematicUi.STROKE;
-        Renderer2D.COLOR.roundedRect(searchX, searchY, searchW, searchH, 8f, SchematicUi.scaleAlpha(SchematicUi.WELL, alpha * 0.9f));
-        Renderer2D.COLOR.roundedRectStroke(searchX, searchY, searchW, searchH, 8f, 1f, SchematicUi.scaleAlpha(stroke, alpha));
+        float r = searchH * 0.5f;
+        int fill = SchematicUi.withAlpha(SchematicUi.mix(SchematicUi.GLASS_RGB, 0xFF000000, searchFocused ? 0.2f : 0.4f),
+                Math.round(alpha * (searchFocused ? 150f : 120f)));
+        Renderer2D.COLOR.roundedRect(searchX, searchY, searchW, searchH, r, fill);
+        if (searchFocused) {
+            Renderer2D.COLOR.roundedRectStroke(searchX, searchY, searchW, searchH, r, 1f, SchematicUi.scaleAlpha(SchematicUi.withAlpha(SchematicUi.ACCENT, 150), alpha));
+        }
         String shown = search.isEmpty() && !searchFocused ? tr("screen.combatant.schematic.search") : search;
         if (searchFocused && AnimationUtility.blink(500L)) shown += "|";
         int color = search.isEmpty() && !searchFocused ? SchematicUi.FAINT : SchematicUi.TEXT;
-        ui.text(ui.ellipsize(shown, SchematicUi.BODY, searchW - 20f), searchX + 10f, searchY + (searchH - bodyH) * 0.5f,
+        ui.text(ui.ellipsize(shown, SchematicUi.BODY, searchW - 36f), searchX + 18f, searchY + (searchH - bodyH) * 0.5f,
                 SchematicUi.BODY, SchematicUi.scaleAlpha(color, alpha), false);
     }
 
     private void renderRow(SchematicHeader header, float y, int slot, float alpha) {
         float x = leftX + 4f;
-        float w = leftW - 14f;
-        float rh = ROW_H - 4f;
+        float w = leftW - 16f;
+        float rh = ROW_H - 6f;
         boolean selected = header.path().equals(selectedPath);
         boolean hovered = SchematicUi.inside(mouseX, mouseY, x, y, w, rh);
         boolean active = state.schematic() != null && LitematicReader.baseName(header.path()).equals(state.schematic().fileName());
@@ -506,35 +635,32 @@ public final class SchematicPanel {
             rowHover[slot] = AnimationUtility.approach(rowHover[slot], hovered ? 1f : 0f, frameDt, 14f);
             h = rowHover[slot];
         }
-        int fill = selected ? SchematicUi.mix(SchematicUi.SURFACE, SchematicUi.ACCENT, 0.16f + h * 0.05f) : SchematicUi.SURFACE_HOVER;
-        float fillAlpha = selected ? 1f : h;
-        if (fillAlpha > 0.01f) Renderer2D.COLOR.roundedRect(x, y, w, rh, 8f, SchematicUi.scaleAlpha(fill, alpha * fillAlpha));
-        if (selected) Renderer2D.COLOR.roundedRect(x + 1f, y + 9f, 3f, rh - 18f, 1.5f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha));
-        int nameColor = header.failed() ? SchematicUi.BAD : selected ? SchematicUi.mix(SchematicUi.TEXT, SchematicUi.ACCENT, 0.4f) : SchematicUi.TEXT;
-        ui.text(ui.ellipsize(header.name(), SchematicUi.BODY, w - 36f), x + 12f + h * 2f, y + 6f, SchematicUi.BODY, SchematicUi.scaleAlpha(nameColor, alpha), false);
-        if (active) {
-            Renderer2D.COLOR.circle(x + w - 12f, y + 6f + bodyH * 0.5f, 6f, SchematicUi.withAlpha(SchematicUi.GOOD, Math.round(alpha * 50f)));
-            Renderer2D.COLOR.circle(x + w - 12f, y + 6f + bodyH * 0.5f, 3f, SchematicUi.scaleAlpha(SchematicUi.GOOD, alpha));
+        if (selected) {
+            int fill = SchematicUi.withAlpha(SchematicUi.mix(SchematicUi.GLASS_RGB, SchematicUi.ACCENT, 0.42f), Math.round(165f + h * 35f));
+            Renderer2D.COLOR.roundedRect(x, y, w, rh, 10f, SchematicUi.scaleAlpha(fill, alpha));
+            Renderer2D.COLOR.roundedRect(x + 4f, y + 12f, 3f, rh - 24f, 1.5f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha));
+        } else if (h > 0.01f) {
+            Renderer2D.COLOR.roundedRect(x, y, w, rh, 10f, SchematicUi.withAlpha(SchematicUi.HOVER_RGB, Math.round(alpha * h * 120f)));
         }
-        float chipY = y + 11f + bodyH;
+        int nameColor = header.failed() ? SchematicUi.BAD : SchematicUi.TEXT;
+        ui.text(ui.ellipsize(header.name(), SchematicUi.BODY, w - 52f), x + 18f + h * 2f, y + 8f, SchematicUi.BODY,
+                SchematicUi.scaleAlpha(nameColor, alpha), selected);
+        if (active) {
+            Renderer2D.COLOR.circle(x + w - 16f, y + 8f + bodyH * 0.5f, 6f, SchematicUi.withAlpha(SchematicUi.GOOD, Math.round(alpha * 50f)));
+            Renderer2D.COLOR.circle(x + w - 16f, y + 8f + bodyH * 0.5f, 3f, SchematicUi.scaleAlpha(SchematicUi.GOOD, alpha));
+        }
+        float chipY = y + 12f + bodyH;
         if (header.failed()) {
-            float cw = ui.chip(x + 12f, chipY, tr("screen.combatant.schematic.row_failed"), SchematicUi.BAD, alpha);
-            ui.text(ui.ellipsize(header.error(), SchematicUi.TINY, w - cw - 28f), x + 18f + cw, chipY + 2f, SchematicUi.TINY,
+            float cw = ui.chip(x + 18f, chipY, tr("screen.combatant.schematic.row_failed"), SchematicUi.BAD, alpha);
+            ui.text(ui.ellipsize(header.error(), SchematicUi.TINY, w - cw - 40f), x + 26f + cw, chipY + 3f, SchematicUi.TINY,
                     SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
             return;
         }
-        float cx = x + 12f;
+        float cx = x + 18f;
         cx += ui.chip(cx, chipY, header.dimensions(), SchematicUi.ACCENT, alpha) + 6f;
-        if (header.totalBlocks() >= 0) {
+        if (header.totalBlocks() >= 0 && cx + 60f < x + w) {
             ui.chip(cx, chipY, tr("screen.combatant.schematic.blocks_count", header.totalBlocks()), SchematicUi.GOOD, alpha);
         }
-    }
-
-    private void renderScrollbar(float x, float y, float h, int first, int visible, int total, float alpha) {
-        float thumbH = Math.max(18f, h * visible / total);
-        float thumbY = y + (h - thumbH) * first / Math.max(1, total - visible);
-        Renderer2D.COLOR.roundedRect(x, y, 3f, h, 1.5f, SchematicUi.withAlpha(0xFFFFFF, Math.round(alpha * 12f)));
-        Renderer2D.COLOR.roundedRect(x, thumbY, 3f, thumbH, 1.5f, SchematicUi.withAlpha(SchematicUi.ACCENT, Math.round(alpha * 160f)));
     }
 
     private void refreshFiltered() {
@@ -552,7 +678,33 @@ public final class SchematicPanel {
 
     // ---------------------------------------------------------------- centre
 
+    private void renderCentreHeader(float alpha) {
+        Schematic schematic = state.schematic();
+        boolean loaded = schematic != null;
+        float trackW = loaded ? bw[Btn.TAB_3D.ordinal()] + bw[Btn.TAB_2D.ordinal()] : 0f;
+        float limit = centrePX + centrePW - PAD - trackW - 12f;
+        String title = loaded ? schematic.name() : tr("screen.combatant.schematic.panel.preview");
+        String shown = ui.ellipsize(title, SchematicUi.TITLE, Math.max(60f, (limit - centrePX - 40f) * 0.6f));
+        float end = ui.header(shown, centrePX, colTop, centrePW, HEADER_H, alpha);
+        if (loaded) {
+            String dims = schematic.sizeX() + "x" + schematic.sizeY() + "x" + schematic.sizeZ();
+            float chipY = colTop + (HEADER_H - (tinyH + 6f)) * 0.5f;
+            if (end + 90f < limit) end += 10f + ui.chip(end + 10f, chipY, dims, SchematicUi.ACCENT, alpha);
+            float room = limit - end - 16f;
+            if (room > 150f) {
+                ui.text(ui.ellipsize(tr("screen.combatant.schematic.keys_hint"), SchematicUi.SMALL, room), end + 16f,
+                        colTop + (HEADER_H - smallH) * 0.5f, SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.FAINT, alpha), false);
+            }
+            int a = Btn.TAB_3D.ordinal();
+            ui.segmentTrack(bx[a], by[a], trackW, bh[a], alpha);
+            ui.segmentPill(bx[a] + segView * bw[a], by[a], bw[a], bh[a], alpha);
+            drawTab(Btn.TAB_3D, tr("screen.combatant.schematic.view.tab_3d"), view3d, true, alpha);
+            drawTab(Btn.TAB_2D, tr("screen.combatant.schematic.view.tab_2d"), !view3d, true, alpha);
+        }
+    }
+
     private void renderCentre(float alpha) {
+        renderCentreHeader(alpha);
         Schematic schematic = state.schematic();
         Path loading = SchematicActions.loadingPath();
         if (loading != null) {
@@ -564,8 +716,6 @@ public final class SchematicPanel {
             return;
         }
         renderLayerTitle(schematic, alpha);
-        drawButton(Btn.TAB_3D, tr("screen.combatant.schematic.view.tab_3d"), view3d, true, alpha);
-        drawButton(Btn.TAB_2D, tr("screen.combatant.schematic.view.tab_2d"), !view3d, true, alpha);
         SchematicDiff diff = state.currentDiff();
         if (diff != null && diff.schematic() != schematic) diff = null;
         float viewAlpha = alpha * (0.35f + 0.65f * AnimationUtility.easeOutCubic(viewFade));
@@ -683,7 +833,7 @@ public final class SchematicPanel {
         ui.text(blocks + "  ·  " + mode + worldY, centreX, contentY + titleH + 6f, SchematicUi.SMALL,
                 SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
         if (playing) {
-            ui.textRight(tr("screen.combatant.schematic.playing", PLAY_SPEEDS[speedIndex]), centreX + centreW - 128f, contentY + 6f,
+            ui.textRight(tr("screen.combatant.schematic.playing", PLAY_SPEEDS[speedIndex]), centreX + centreW, contentY + 6f,
                     SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha), false);
         }
     }
@@ -788,24 +938,34 @@ public final class SchematicPanel {
     // ---------------------------------------------------------------- right
 
     private void renderRight(float alpha) {
-        renderInfo(alpha);
         boolean loaded = state.hasSchematic();
         boolean placed = state.isPlaced();
+        ui.header(tr("screen.combatant.schematic.panel.details"), rightPX, colTop, rightPW, HEADER_H, alpha);
+        renderInfo(alpha);
+        if (!loaded) {
+            renderMaterialsPlaceholder(alpha);
+            return;
+        }
         drawButton(Btn.ORIGIN_HERE, tr("screen.combatant.schematic.origin_here"), false, loaded, alpha);
         drawButton(Btn.ORIGIN_LOOK, tr("screen.combatant.schematic.origin_look"), false, loaded, alpha);
         drawButton(Btn.ROTATE, tr("screen.combatant.schematic.rotate"), false, placed, alpha);
         drawButton(Btn.MIRROR, tr("screen.combatant.schematic.mirror"), false, placed, alpha);
         boolean building = SchematicActions.builderEnabled();
         drawButton(Btn.BUILDER, tr(building ? "screen.combatant.schematic.builder_stop" : "screen.combatant.schematic.builder_start"),
-                building, placed, alpha);
+                building, placed, placed && !building, alpha);
         drawButton(Btn.PROJECTION, tr("screen.combatant.schematic.projection"), SchematicActions.projectionEnabled(), true, alpha);
         drawButton(Btn.LAYER_MODE, tr("screen.combatant.schematic.layer_mode." + state.layerMode().name().toLowerCase(Locale.ROOT)),
                 false, true, alpha);
         drawButton(Btn.UNLOAD, tr("screen.combatant.schematic.unload"), false, loaded, alpha);
-        drawButton(Btn.TAB_LAYER, tr("screen.combatant.schematic.materials_layer"), !materialsTotal && !issuesShown, loaded, alpha);
-        drawButton(Btn.TAB_TOTAL, tr("screen.combatant.schematic.materials_total"), materialsTotal && !issuesShown, loaded, alpha);
         refreshIssues();
-        drawButton(Btn.TAB_ISSUES, tr("screen.combatant.schematic.attention_tab", issues.size()), issuesShown, loaded, alpha);
+        float tabH = bh[Btn.TAB_LAYER.ordinal()];
+        float tabY = by[Btn.TAB_LAYER.ordinal()];
+        ui.segmentTrack(rightX, tabY, rightW, tabH, alpha);
+        ui.segmentPill(rightX + segMat * (rightW / 3f), tabY, rightW / 3f, tabH, alpha);
+        Renderer2D.COLOR.quad(rightPX + 14f, materialsPY + HEADER_H, rightPW - 28f, 1f, SchematicUi.scaleAlpha(SchematicUi.SPLIT, alpha));
+        drawTab(Btn.TAB_LAYER, tr("screen.combatant.schematic.materials_layer"), !materialsTotal && !issuesShown, loaded, alpha);
+        drawTab(Btn.TAB_TOTAL, tr("screen.combatant.schematic.materials_total"), materialsTotal && !issuesShown, loaded, alpha);
+        drawTab(Btn.TAB_ISSUES, tr("screen.combatant.schematic.attention_tab", issues.size()), issuesShown, loaded, alpha);
         if (issuesShown) {
             renderIssues(alpha);
         } else {
@@ -813,45 +973,64 @@ public final class SchematicPanel {
         }
     }
 
-    private void renderInfo(float alpha) {
-        Schematic schematic = state.schematic();
-        float y = infoY;
-        float step = smallH + 7f;
-        if (schematic == null) {
-            infoLine(tr("screen.combatant.schematic.info.folder"), library.directory().getFileName().toString(), y, alpha);
-            return;
-        }
-        infoLine(tr("screen.combatant.schematic.info.name"), schematic.name(), y, alpha);
-        infoLine(tr("screen.combatant.schematic.info.author"), schematic.author().isEmpty() ? "-" : schematic.author(), y += step, alpha);
-        infoLine(tr("screen.combatant.schematic.info.size"), schematic.sizeX() + " x " + schematic.sizeY() + " x " + schematic.sizeZ(), y += step, alpha);
-        infoLine(tr("screen.combatant.schematic.info.blocks"), String.valueOf(schematic.totalBlocks()), y += step, alpha);
-        infoLine(tr("screen.combatant.schematic.info.palette"), String.valueOf(schematic.paletteSize() - 1), y += step, alpha);
-        infoLine(tr("screen.combatant.schematic.info.regions"), String.valueOf(schematic.regionCount()), y += step, alpha);
-        infoLine(tr("screen.combatant.schematic.info.warnings"), String.valueOf(schematic.warnings().size()), y += step, alpha);
-        renderPlacementInfo(y + step, step, alpha);
+    /** Nothing loaded: the materials card says so instead of showing an empty box. */
+    private void renderMaterialsPlaceholder(float alpha) {
+        ui.header(tr("screen.combatant.schematic.panel.materials"), rightPX, materialsPY, rightPW, HEADER_H, alpha);
+        float cx = rightX + rightW * 0.5f;
+        float cy = materialsPY + HEADER_H + Math.max(40f, (materialsPH - HEADER_H) * 0.38f);
+        SchematicViewport.drawCubeIcon(cx, cy, 16f, SchematicUi.mix(SchematicUi.SURFACE_HOVER, SchematicUi.ACCENT, 0.3f), alpha);
+        ui.textCentered(ui.ellipsize(tr("screen.combatant.schematic.none_loaded"), SchematicUi.BODY, rightW - 16f), cx, cy + 34f,
+                SchematicUi.BODY, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
     }
 
-    private void renderPlacementInfo(float y, float step, float alpha) {
-        SchematicPlacement placement = state.placement();
-        if (placement == null) {
-            infoLine(tr("screen.combatant.schematic.info.origin"), tr("screen.combatant.schematic.info.not_placed"), y, alpha);
+    private static String[] infoRow(String labelKey, String value) {
+        return new String[]{tr(labelKey), value};
+    }
+
+    /** Rows of the info card in priority order, so a short column drops the least useful ones first. */
+    private void buildInfoRows() {
+        infoList.clear();
+        Schematic schematic = state.schematic();
+        if (schematic == null) {
+            infoList.add(infoRow("screen.combatant.schematic.info.folder", library.directory().getFileName().toString()));
+            infoList.add(infoRow("screen.combatant.schematic.info.files", String.valueOf(library.headers().size())));
             return;
         }
-        BlockPos o = placement.origin();
-        infoLine(tr("screen.combatant.schematic.info.origin"), o.getX() + ", " + o.getY() + ", " + o.getZ(), y, alpha);
-        String rotation = switch (placement.rotation()) {
-            case NONE -> "0°";
-            case CLOCKWISE_90 -> "90°";
-            case CLOCKWISE_180 -> "180°";
-            case COUNTERCLOCKWISE_90 -> "270°";
-        };
-        infoLine(tr("screen.combatant.schematic.info.rotation"), rotation, y += step, alpha);
-        infoLine(tr("screen.combatant.schematic.info.mirror"), mirrorName(placement.mirror()), y += step, alpha);
-        SchematicBuilder builder = ModuleManager.get(SchematicBuilder.class);
-        if (builder != null) {
-            String status = tr("screen.combatant.schematic.builder." + builder.status().name().toLowerCase(Locale.ROOT));
-            if (builder.placedCount() > 0) status += " · " + builder.placedCount();
-            infoLine(tr("screen.combatant.schematic.info.builder"), status, y + step, alpha);
+        infoList.add(infoRow("screen.combatant.schematic.info.name", schematic.name()));
+        infoList.add(infoRow("screen.combatant.schematic.info.size", schematic.sizeX() + " x " + schematic.sizeY() + " x " + schematic.sizeZ()));
+        infoList.add(infoRow("screen.combatant.schematic.info.blocks", String.valueOf(schematic.totalBlocks())));
+        SchematicPlacement placement = state.placement();
+        if (placement == null) {
+            infoList.add(infoRow("screen.combatant.schematic.info.origin", tr("screen.combatant.schematic.info.not_placed")));
+        } else {
+            BlockPos o = placement.origin();
+            infoList.add(infoRow("screen.combatant.schematic.info.origin", o.getX() + ", " + o.getY() + ", " + o.getZ()));
+            String rotation = switch (placement.rotation()) {
+                case NONE -> "0°";
+                case CLOCKWISE_90 -> "90°";
+                case CLOCKWISE_180 -> "180°";
+                case COUNTERCLOCKWISE_90 -> "270°";
+            };
+            infoList.add(infoRow("screen.combatant.schematic.info.rotation", rotation));
+            infoList.add(infoRow("screen.combatant.schematic.info.mirror", mirrorName(placement.mirror())));
+            SchematicBuilder builder = ModuleManager.get(SchematicBuilder.class);
+            if (builder != null) {
+                String status = tr("screen.combatant.schematic.builder." + builder.status().name().toLowerCase(Locale.ROOT));
+                if (builder.placedCount() > 0) status += " · " + builder.placedCount();
+                infoList.add(infoRow("screen.combatant.schematic.info.builder", status));
+            }
+        }
+        infoList.add(infoRow("screen.combatant.schematic.info.author", schematic.author().isEmpty() ? "-" : schematic.author()));
+        infoList.add(infoRow("screen.combatant.schematic.info.palette", String.valueOf(schematic.paletteSize() - 1)));
+        infoList.add(infoRow("screen.combatant.schematic.info.regions", String.valueOf(schematic.regionCount())));
+        infoList.add(infoRow("screen.combatant.schematic.info.warnings", String.valueOf(schematic.warnings().size())));
+    }
+
+    private void renderInfo(float alpha) {
+        float step = smallH + 8f;
+        for (int i = 0; i < infoRows && i < infoList.size(); i++) {
+            String[] row = infoList.get(i);
+            infoLine(row[0], row[1], infoY + i * step, alpha);
         }
     }
 
@@ -860,9 +1039,10 @@ public final class SchematicPanel {
     }
 
     private void infoLine(String label, String value, float y, float alpha) {
-        ui.text(label, rightX, y, SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-        float labelW = Math.max(110f, ui.width(label, SchematicUi.SMALL, false) + 12f);
-        ui.text(ui.ellipsize(value, SchematicUi.SMALL, rightW - labelW), rightX + labelW, y, SchematicUi.SMALL,
+        ui.text(ui.ellipsize(label, SchematicUi.SMALL, rightW * 0.38f - 8f), rightX, y, SchematicUi.SMALL,
+                SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
+        float valueX = rightX + rightW * 0.38f;
+        ui.text(ui.ellipsize(value, SchematicUi.SMALL, rightX + rightW - valueX), valueX, y, SchematicUi.SMALL,
                 SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), false);
     }
 
@@ -883,7 +1063,7 @@ public final class SchematicPanel {
             renderMaterialRow(index, materialsY + 4f + i * MATERIAL_ROW_H, isMissing(missing, materials.get(index)), alpha);
         }
         if (materials.size() > visible) {
-            renderScrollbar(rightX + rightW - 5f, materialsY + 6f, materialsH - 12f, materialsFirst, visible, materials.size(), alpha);
+            ui.scrollbar(rightX + rightW - 7f, materialsY + 8f, materialsH - 16f, materialsFirst, visible, materials.size(), alpha);
         }
     }
 
@@ -902,7 +1082,7 @@ public final class SchematicPanel {
             renderIssueRow(materialsFirst + i, materialsY + 4f + i * MATERIAL_ROW_H, alpha);
         }
         if (issues.size() > visible) {
-            renderScrollbar(rightX + rightW - 5f, materialsY + 6f, materialsH - 12f, materialsFirst, visible, issues.size(), alpha);
+            ui.scrollbar(rightX + rightW - 7f, materialsY + 8f, materialsH - 16f, materialsFirst, visible, issues.size(), alpha);
         }
     }
 
@@ -1069,9 +1249,19 @@ public final class SchematicPanel {
     }
 
     private void drawButton(Btn id, String label, boolean active, boolean enabled, float alpha) {
+        drawButton(id, label, active, enabled, false, alpha);
+    }
+
+    private void drawButton(Btn id, String label, boolean active, boolean enabled, boolean primary, float alpha) {
         int i = id.ordinal();
         if (!bShown[i]) return;
-        ui.button(bx[i], by[i], bw[i], bh[i], label, enabled ? hover[i] : 0f, press[i], active, enabled, alpha);
+        ui.button(bx[i], by[i], bw[i], bh[i], label, enabled ? hover[i] : 0f, press[i], active, enabled, primary, alpha);
+    }
+
+    private void drawTab(Btn id, String label, boolean active, boolean enabled, float alpha) {
+        int i = id.ordinal();
+        if (!bShown[i]) return;
+        ui.tab(bx[i], by[i], bw[i], bh[i], label, enabled ? hover[i] : 0f, press[i], active, enabled, alpha);
     }
 
     // ---------------------------------------------------------------- input
@@ -1133,7 +1323,7 @@ public final class SchematicPanel {
             case CLOSE -> requestClose();
             case REFRESH -> library.refresh();
             case LOAD -> SchematicActions.load(selectedPath);
-            case OPEN_FOLDER -> com.mojang.blaze3d.Blaze3D.openUri(library.directory().toUri());
+            case OPEN_FOLDER -> SchematicActions.openFolder();
             case ORIGIN_HERE -> SchematicActions.setOriginHere();
             case ORIGIN_LOOK -> SchematicActions.setOriginLooked();
             case ROTATE -> state.rotateClockwise();
