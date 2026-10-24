@@ -4713,17 +4713,6 @@
   "setting.autowalk.jump_obstacles": "Перепрыгивать препятствия",
   "setting.autowalk.stop_on_damage": "Остановка при уроне",
   "setting.autowalk.stop_below_health": "Остановка при здоровье (0 = выкл.)",
-  "setting.avoidhazards.avoid": "Избегаемые блоки",
-  "setting.avoidhazards.avoid.option.fire": "Огонь",
-  "setting.avoidhazards.avoid.option.lava": "Лава",
-  "setting.avoidhazards.avoid.option.cobweb": "Паутина",
-  "setting.avoidhazards.avoid.option.cactus": "Кактус",
-  "setting.avoidhazards.avoid.option.berry_bush": "Куст сладких ягод",
-  "setting.avoidhazards.avoid.option.magma": "Магмовый блок",
-  "setting.avoidhazards.avoid.option.pressure_plate": "Нажимная плита",
-  "setting.avoidhazards.avoid.option.campfire": "Костёр",
-  "setting.avoidhazards.avoid.option.powder_snow": "Рыхлый снег",
-  "setting.avoidhazards.avoid.option.wither_rose": "Роза визера",
   "setting.holesnap.max_drop": "Макс. спуск, блоки",
   "setting.holesnap.max_rise": "Макс. подъём, блоки",
   "setting.holesnap.types": "Типы ям",
@@ -6002,8 +5991,5 @@
   "setting.rightclickshield.weapon_type.option.all_weapons": "Всё оружие",
   "setting.rightclickshield.delay_ms": "Задержка, мс",
   "module.totemhit.description": "При ударе по сущности с тотемом в руке переключается на меч из хотбара, затем возвращается.",
-  "setting.totemhit.switch_delay_ms": "Задержка возврата, мс",
-  "module.keylava.description": "Ставит ведро лавы на блок, на который вы целитесь, и подбирает его на следующем тике.",
-  "setting.keylava.activation_key": "Клавиша активации",
-  "setting.keylava.restore_delay_ms": "Задержка возврата слота, мс"
+  "setting.totemhit.switch_delay_ms": "Задержка возврата, мс"
 }

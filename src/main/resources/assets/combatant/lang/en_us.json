@@ -4940,17 +4940,6 @@
   "setting.autowalk.jump_obstacles": "Jump over obstacles",
   "setting.autowalk.stop_on_damage": "Stop on damage",
   "setting.autowalk.stop_below_health": "Stop at health (0 = off)",
-  "setting.avoidhazards.avoid": "Blocks to avoid",
-  "setting.avoidhazards.avoid.option.fire": "Fire",
-  "setting.avoidhazards.avoid.option.lava": "Lava",
-  "setting.avoidhazards.avoid.option.cobweb": "Cobweb",
-  "setting.avoidhazards.avoid.option.cactus": "Cactus",
-  "setting.avoidhazards.avoid.option.berry_bush": "Sweet berry bush",
-  "setting.avoidhazards.avoid.option.magma": "Magma block",
-  "setting.avoidhazards.avoid.option.pressure_plate": "Pressure plate",
-  "setting.avoidhazards.avoid.option.campfire": "Campfire",
-  "setting.avoidhazards.avoid.option.powder_snow": "Powder snow",
-  "setting.avoidhazards.avoid.option.wither_rose": "Wither rose",
   "setting.holesnap.max_drop": "Max drop, blocks",
   "setting.holesnap.max_rise": "Max climb, blocks",
   "setting.holesnap.types": "Hole types",
@@ -6002,8 +5991,5 @@
   "setting.rightclickshield.weapon_type.option.all_weapons": "All weapons",
   "setting.rightclickshield.delay_ms": "Delay, ms",
   "module.totemhit.description": "Swaps to a hotbar sword when you hit an entity with a totem in hand, then swaps back.",
-  "setting.totemhit.switch_delay_ms": "Switch back delay, ms",
-  "module.keylava.description": "Places a lava bucket on the block you aim at and picks it back up on the next tick.",
-  "setting.keylava.activation_key": "Activation key",
-  "setting.keylava.restore_delay_ms": "Restore delay, ms"
+  "setting.totemhit.switch_delay_ms": "Switch back delay, ms"
 }

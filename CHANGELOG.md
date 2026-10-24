@@ -65,7 +65,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `Parkour` gains `EdgeJump` aliases; `Freeze` gains the `AirStuck` alias and a hold-key mode.
 
 ### Player
-- **New modules**: `Nuker` (filtered, ordered breaking through `BreakBlockAction`), `AreaMiner` (+ `@areaminer`), `ClickThrough`, `NoEntityTrace`, `EnderChestPlus` (cached contents in tooltip and `@echest`), `ShulkerDropper`, `TunnelBaseFinder` (1x2 tunnel with hazard pauses and storage/spawner alerts), `KeyLava`, `ReBuffNotifier`.
+- **New modules**: `Nuker` (filtered, ordered breaking through `BreakBlockAction`), `AreaMiner` (+ `@areaminer`), `ClickThrough`, `NoEntityTrace`, `EnderChestPlus` (cached contents in tooltip and `@echest`), `ShulkerDropper`, `TunnelBaseFinder` (1x2 tunnel with hazard pauses and storage/spawner alerts), `ReBuffNotifier`.
 - **Offhand**: gained the opt-in `inventory_refill` (open-inventory totem refill with delay, hotbar refill and swap policy), formerly the separate `AutoInvTotem` module.
 
 ### Misc
