@@ -545,13 +545,6 @@ public class Combatant implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        if (System.getProperty("org.lwjgl.system.allocator") == null) {
-            System.setProperty("org.lwjgl.system.allocator", "system");
-        }
-        try {
-            org.lwjgl.system.Configuration.MEMORY_ALLOCATOR.set("system");
-        } catch (Throwable ignored) {
-        }
         NativeMemoryGuard.initialize();
         CombatantRenderEngineBootstrap.init();
         PostProcessManager.register(new NetherPortalRiftPass());
