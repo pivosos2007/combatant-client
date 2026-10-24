@@ -25,6 +25,7 @@ import combatant.client.util.combat.SpearKinetics;
 import combatant.client.util.combat.SpearKinetics.Condition;
 import combatant.client.util.combat.SpearKinetics.ReachBand;
 import combatant.client.util.combat.SpearKinetics.WindowState;
+import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.resources.language.I18n;
@@ -192,7 +193,7 @@ public class SpearAssist extends Module {
     @Override
     public void onRenderHudEngine(Renderer2D renderer, TextRenderer textRenderer, float tickDelta) {
         if (!isEnabled() || !toggles.get("charge_hud") || mc.player == null || mc.level == null) return;
-        if (mc.screen != null || !mc.options.getCameraType().isFirstPerson()) return;
+        if (ClientScreen.current(mc) != null || !mc.options.getCameraType().isFirstPerson()) return;
         LocalPlayer player = mc.player;
         if (!player.isUsingItem()) return;
         ItemStack stack = player.getUseItem();

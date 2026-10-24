@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Placement**: `BlockPlacer` plans with `PlacementPlanner` and places through `PlaceBlockAction`; a position is only dropped once the server acknowledges the prediction sequence and the block is there (`PlacementTracker`, `PlacementAckMixin`). Rejected cells retry with backoff. Surround, SelfTrap, AutoTrap, HoleFill and AutoWeb build their own `PlacementConstraints` from their own settings.
 - **Navigation**: `NavigationProvider` API with the built-in walker (A*/route follower) and an optional Baritone adapter loaded only when Baritone is installed.
 - **Migrated**: HoleSnap (runtime `MoveAction`), AutoTool (hotbar lease instead of raw slot selection), shared `MovementKeys` replaces three WASD helpers.
-- **SpearAssist**: vanilla already refuses a jab below full charge, so the redundant `respect_cooldown` toggle and its `MinecraftMixin` hook were removed. New: charge HUD (charge-up bar, Dismount/Knockback/Damage windows with remaining time, predicted stab damage), reach band marker (too close / in range / too far, creative-aware) and optional auto re-charge through the vanilla release path. Rules live in the tested `SpearKinetics`.
+- **SpearAssist**: vanilla already refuses a jab below full charge, so the redundant `respect_cooldown` toggle and its `MinecraftMixin` hook were removed. New: charge HUD (charge-up bar, Dismount/Knockback/Damage windows with remaining time, predicted stab damage), reach band marker (too close / in range / too far, creative-aware) and optional auto re-charge through the vanilla release path. Rules live in the fully implemented and tested `combatant.client.util.combat.SpearKinetics`.
 
 ### Schematics
 - **Formats**: Litematica `.litematic`, Sponge `.schem` (v1–v3) and vanilla structure `.nbt`, with placement transform (origin, rotation, mirror) and a live world diff that judges redstone by functional state.
@@ -36,6 +36,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - **Tools**: mining picks the fastest tool and now also pulls a faster tool (e.g. a pickaxe) out of the main inventory into the restock slot.
   - **Problems panel**: approximate placements, failed adjustments and blocked cells are listed in the schematic menu.
 
+
+### Security & Resource Hardening
+- **AutoAuth Security**: Excluded sensitive values (passwords) from config profile exports and share codes via `ConfigValue.sensitive()`. Auto-authentication is now restricted to explicitly configured trusted servers (`autoAuthTrustedServers`).
+- **Schematics NBT Bounds**: Replaced unbounded heap parsing (`NbtAccounter.unlimitedHeap()`) in `LitematicReader` and `SchematicFormats` with strict 512 MiB quota and 512 depth limits via `SchematicFormats.nbtAccounter()` to prevent allocation and decompression exhaustion.
+- **Config Share Code Decompression Limits**: Enforced 16 MiB max decompressed payload size in `ConfigProfileBinaryCodec` (`InflaterInputStream`), payload length cap (16 MiB), entry count limit (10,000), value count limit (10,000), collection size limit (10,000), and string length limit (1 MiB).
+- **LWJGL Allocator & Native Stability**: Configured `org.lwjgl.system.allocator=system` in `CombatantMixinPlugin.onLoad` and `Combatant.onInitializeClient()`, switching LWJGL to the system C allocator (`ucrtbase.dll`) to prevent native `EXCEPTION_ACCESS_VIOLATION (0xc0000005)` crashes in `jemalloc` on Windows + Java 25. Hardened `CombatantRenderPipelines.precompile` with `IrisRuntime.runWithNativeShaderBypass` and graceful error recovery.
 ### Anticheat Compatibility (Grim / Vulcan)
 - **Grim RotationPlace**: block clicks are sent before the tick's movement packet, so Grim checks them against the rotation it last received. The builder's click gate now requires a ray along that last-sent rotation to hit the clicked block's full cube within interaction range (`BuildPlanner.grimRayHitsCube`). Live test: 0 flags (8 before).
 - **Grim MultiActionsC**: inventory clicks (restock, tool fetch) only go out on a tick the server sees as stationary and not sneaking, even while the input is locked (`InventorySwap`).

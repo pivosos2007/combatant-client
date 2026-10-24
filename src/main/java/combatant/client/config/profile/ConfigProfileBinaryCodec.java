@@ -20,6 +20,11 @@ public final class ConfigProfileBinaryCodec {
     public static final int VERSION = 1;
     static final int MAGIC = 0x43424346; // CBCF
     private static final int FLAG_COMPRESSED = 1;
+    public static final int MAX_DECOMPRESSED_PAYLOAD_BYTES = 16 * 1024 * 1024; // 16 MiB
+    public static final int MAX_PAYLOAD_LENGTH = 16 * 1024 * 1024; // 16 MiB
+    public static final int MAX_ENTRIES = 10_000;
+    public static final int MAX_VALUES_PER_ENTRY = 10_000;
+
 
     public ConfigProfileBinaryCodec() {
     }
@@ -119,7 +124,9 @@ public final class ConfigProfileBinaryCodec {
         String name = ConfigProfileValueCodec.readString(in);
         String id = ConfigProfileValueCodec.readString(in);
         int payloadLength = ConfigProfileValueCodec.readVarInt(in);
-        if (payloadLength < 0) throw new IOException("Negative payload length");
+        if (payloadLength < 0 || payloadLength > MAX_PAYLOAD_LENGTH) {
+            throw new IOException("Invalid payload length: " + payloadLength);
+        }
         ConfigProfileMeta meta = new ConfigProfileMeta(id, name, type, author, createdAt, updatedAt, version);
         return new Header(meta, flags, payloadLength);
     }
@@ -139,12 +146,18 @@ public final class ConfigProfileBinaryCodec {
 
     private List<ConfigProfileEntry> readPayload(DataInputStream in) throws IOException {
         int entryCount = ConfigProfileValueCodec.readVarInt(in);
-        List<ConfigProfileEntry> entries = new ArrayList<>(Math.max(0, entryCount));
+        if (entryCount < 0 || entryCount > MAX_ENTRIES) {
+            throw new IOException("Invalid entry count: " + entryCount);
+        }
+        List<ConfigProfileEntry> entries = new ArrayList<>(entryCount);
         for (int i = 0; i < entryCount; i++) {
             String ownerId = ConfigProfileValueCodec.readString(in);
             String displayName = ConfigProfileValueCodec.readString(in);
             int valueCount = ConfigProfileValueCodec.readVarInt(in);
-            java.util.Map<String, Object> values = new java.util.LinkedHashMap<>();
+            if (valueCount < 0 || valueCount > MAX_VALUES_PER_ENTRY) {
+                throw new IOException("Invalid value count: " + valueCount);
+            }
+            java.util.Map<String, Object> values = new java.util.LinkedHashMap<>(valueCount);
             for (int j = 0; j < valueCount; j++) {
                 values.put(ConfigProfileValueCodec.readString(in), ConfigProfileValueCodec.readValue(in));
             }
@@ -166,8 +179,18 @@ public final class ConfigProfileBinaryCodec {
 
     private byte[] decompress(byte[] bytes) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int totalRead = 0;
         try (InflaterInputStream zip = new InflaterInputStream(new ByteArrayInputStream(bytes))) {
-            zip.transferTo(out);
+            int n;
+            while ((n = zip.read(buffer)) != -1) {
+                totalRead += n;
+                if (totalRead > MAX_DECOMPRESSED_PAYLOAD_BYTES) {
+                    throw new IOException("Decompressed config profile exceeded limit of "
+                            + MAX_DECOMPRESSED_PAYLOAD_BYTES + " bytes");
+                }
+                out.write(buffer, 0, n);
+            }
         }
         return out.toByteArray();
     }

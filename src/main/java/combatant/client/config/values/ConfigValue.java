@@ -14,6 +14,7 @@ public abstract class ConfigValue<T> {
 
     private final String name; // <---- ЭТО ТЕБЕ НУЖНО
     protected T value;
+    private boolean sensitive;
 
     public ConfigValue(String name, T def) {
         this.name = name;
@@ -39,6 +40,20 @@ public abstract class ConfigValue<T> {
      */
     public void set(T v) {
         this.value = v;
+    }
+
+    public boolean isSensitive() {
+        return sensitive;
+    }
+
+    @SuppressWarnings("unchecked")
+    public <V extends ConfigValue<T>> V sensitive() {
+        this.sensitive = true;
+        return (V) this;
+    }
+
+    public void setSensitive(boolean sensitive) {
+        this.sensitive = sensitive;
     }
 
     /**

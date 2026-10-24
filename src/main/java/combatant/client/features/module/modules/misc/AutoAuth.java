@@ -8,6 +8,10 @@
 package combatant.client.features.module.modules.misc;
 
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.profile.ConfigServerBindings;
+import combatant.client.config.values.SetValue;
+import combatant.client.features.gui.clickgui.settings.TextListSetting;
+import java.util.Set;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.StringValue;
 import combatant.client.events.EventHandler;
@@ -26,9 +30,9 @@ import net.minecraft.client.resources.language.I18n;
 
 /**
  * Answers {@code /login} and {@code /register} prompts from auth plugins with the stored password.
- * Only server system messages are trusted (player chat can be forged), and attempts are capped per session
- * so a wrong password cannot loop. There is no secret-setting facility: the password is saved as plain text
- * in the module config, so it also travels with exported profiles.
+ * Only server system messages are trusted (player chat can be forged), attempts are capped per session,
+ * and auto-auth is restricted to explicitly configured trusted servers. Sensitive values (passwords) are
+ * excluded from config profile exports and share codes.
  */
 @ModuleInfo(
         id = "autoauth",
@@ -43,11 +47,11 @@ public final class AutoAuth extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    private final StringValue password = text("autoAuthPassword", "password", "");
+    private final StringValue password = text("autoAuthPassword", "password", "").sensitive();
+    private final SetValue trustedServers = textList("autoAuthTrustedServers", "trusted_servers", TextListSetting.PickerMode.TEXT);
     private final BooleanValue autoRegister = bool("autoAuthRegister", "auto_register", false);
     private final NumberValue<Integer> delayTicks = num("autoAuthDelayTicks", "delay_ticks", 20, 0, 200);
     private final NumberValue<Integer> maxAttempts = num("autoAuthMaxAttempts", "max_attempts", 2, 1, 5);
-
     private record Request(Prompt prompt, boolean confirm) {
     }
 
@@ -57,6 +61,19 @@ public final class AutoAuth extends Module {
     private long dueTick;
     private long lastSentTick = Long.MIN_VALUE / 2;
     private int attempts;
+
+    public boolean isServerTrusted() {
+        String current = ConfigServerBindings.currentAddress();
+        if (current.isEmpty()) return false;
+        Set<String> trusted = trustedServers.get();
+        if (trusted == null || trusted.isEmpty()) return false;
+        for (String entry : trusted) {
+            if (entry != null && ConfigServerBindings.normalize(entry).equalsIgnoreCase(current)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     @Override
     public void onEnable() {
@@ -75,11 +92,15 @@ public final class AutoAuth extends Module {
         if (!isEnabled() || event.source != PvpChatEvent.Source.GAME_MESSAGE || event.message == null) return;
         Prompt prompt = AuthPromptDetector.detect(event.message);
         if (prompt == Prompt.NONE) return;
+        if (!isServerTrusted()) {
+            String current = ConfigServerBindings.currentAddress();
+            Notifier.warning(I18n.get("notification.autoauth.untrusted_server", current.isEmpty() ? "?" : current));
+            return;
+        }
         if (prompt == Prompt.REGISTER && !autoRegister.get()) return;
         request = new Request(prompt, prompt == Prompt.REGISTER
                 && AuthPromptDetector.registerNeedsConfirmation(event.message));
     }
-
     @EventHandler
     private void onWorldChange(WorldChangeEvent event) {
         request = null;
@@ -109,6 +130,10 @@ public final class AutoAuth extends Module {
         dueTick = 0L;
         request = null;
 
+        if (!isServerTrusted()) {
+            request = null;
+            return;
+        }
         if (attempts >= maxAttempts.get() || tick - lastSentTick < RETRY_COOLDOWN_TICKS) return;
         String command = AuthPromptDetector.buildCommand(pending.prompt(), password.get(), pending.confirm());
         if (command == null) {

@@ -52,12 +52,12 @@ public final class LitematicReader {
     }
 
     public static Schematic read(Path path) throws IOException {
-        CompoundTag root = NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap());
+        CompoundTag root = NbtIo.readCompressed(path, SchematicFormats.nbtAccounter());
         return parse(root, SchematicFormats.baseName(path), LitematicReader::resolveState);
     }
 
     public static SchematicHeader readHeader(Path path, long lastModified) throws IOException {
-        CompoundTag root = NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap());
+        CompoundTag root = NbtIo.readCompressed(path, SchematicFormats.nbtAccounter());
         CompoundTag meta = root.getCompoundOrEmpty("Metadata");
         int[] size = enclosingSize(root);
         long total = meta.getLongOr("TotalBlocks", meta.getIntOr("TotalBlocks", -1));

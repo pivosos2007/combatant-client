@@ -121,15 +121,15 @@ public enum CombatantRenderPipelines {
                 ShaderCostRegistry.analyze(identifier, type, source);
             });
             Runnable compile = () -> {
-                if (RenderSystem.getCompiledPipelineNullable(pipeline) == null) {
-                    throw new IllegalStateException("Failed to compile pipeline " + pipeline.getLocation());
+                try {
+                    if (RenderSystem.getCompiledPipelineNullable(pipeline) == null) {
+                        DebugLog.warn("[Combatant] Pipeline returned null compiled pipeline: " + pipeline.getLocation());
+                    }
+                } catch (Throwable t) {
+                    DebugLog.warn("[Combatant] Pipeline precompile failed: " + pipeline.getLocation() + ": " + t.getMessage());
                 }
             };
-            if (isRigPipeline(pipeline)) {
-                IrisRuntime.runWithNativeShaderBypass(compile);
-            } else {
-                compile.run();
-            }
+            IrisRuntime.runWithNativeShaderBypass(compile);
         }
 
         DebugLog.renderThread("[Combatant] Precompile finished; shader cost audit entries="

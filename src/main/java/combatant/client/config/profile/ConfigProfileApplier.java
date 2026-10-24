@@ -61,7 +61,7 @@ public final class ConfigProfileApplier {
             knownOwners++;
             Map<String, ConfigValue<?>> byName = new HashMap<>();
             for (ConfigValue<?> value : owner.getConfigValues()) {
-                if (value != null && value.getName() != null) byName.put(value.getName(), value);
+                if (value != null && value.getName() != null && !value.isSensitive()) byName.put(value.getName(), value);
             }
             for (String key : entry.values().keySet()) {
                 if (byName.containsKey(key)) knownValues++;
@@ -129,7 +129,7 @@ public final class ConfigProfileApplier {
     private void applyValues(ConfigObject owner, ConfigProfileEntry entry, ApplyCounter counter) {
         Map<String, ConfigValue<?>> byName = new HashMap<>();
         for (ConfigValue<?> value : owner.getConfigValues()) {
-            if (value != null && value.getName() != null) byName.put(value.getName(), value);
+            if (value != null && value.getName() != null && !value.isSensitive()) byName.put(value.getName(), value);
         }
         for (Map.Entry<String, Object> saved : entry.values().entrySet()) {
             ConfigValue<?> value = byName.get(saved.getKey());

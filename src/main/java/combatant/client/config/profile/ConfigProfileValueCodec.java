@@ -27,6 +27,9 @@ enum ConfigProfileValueCodec {
     private static final byte STRING = 6;
     private static final byte LIST = 7;
     private static final byte MAP = 8;
+    public static final int MAX_STRING_LENGTH = 1_048_576; // 1 MiB per string
+    public static final int MAX_COLLECTION_SIZE = 10_000;
+
 
     static void writeValue(DataOutputStream out, Object value) throws IOException {
         if (value == null) {
@@ -80,13 +83,19 @@ enum ConfigProfileValueCodec {
             case STRING -> readString(in);
             case LIST -> {
                 int size = readVarInt(in);
-                List<Object> list = new ArrayList<>(Math.max(0, size));
+                if (size < 0 || size > MAX_COLLECTION_SIZE) {
+                    throw new IOException("Invalid list size: " + size);
+                }
+                List<Object> list = new ArrayList<>(size);
                 for (int i = 0; i < size; i++) list.add(readValue(in));
                 yield list;
             }
             case MAP -> {
                 int size = readVarInt(in);
-                Map<String, Object> map = new LinkedHashMap<>();
+                if (size < 0 || size > MAX_COLLECTION_SIZE) {
+                    throw new IOException("Invalid map size: " + size);
+                }
+                Map<String, Object> map = new LinkedHashMap<>(size);
                 for (int i = 0; i < size; i++) {
                     map.put(readString(in), readValue(in));
                 }
@@ -105,7 +114,9 @@ enum ConfigProfileValueCodec {
 
     static String readString(DataInputStream in) throws IOException {
         int length = readVarInt(in);
-        if (length < 0) throw new IOException("Negative string length: " + length);
+        if (length < 0 || length > MAX_STRING_LENGTH) {
+            throw new IOException("Invalid string length: " + length);
+        }
         byte[] bytes = new byte[length];
         in.readFully(bytes);
         return new String(bytes, StandardCharsets.UTF_8);

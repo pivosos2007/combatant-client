@@ -22,6 +22,13 @@ public final class SchematicFormats {
     /** Litematica, Sponge (WorldEdit, FAWE, Axiom) and vanilla structure-block files, in preference order. */
     public static final List<String> EXTENSIONS = List.of(LitematicReader.EXTENSION, ".schem", ".nbt");
 
+
+    public static final long MAX_SCHEMATIC_NBT_BYTES = 512L * 1024 * 1024; // 512 MiB
+    public static final int MAX_SCHEMATIC_NBT_DEPTH = 512;
+
+    public static NbtAccounter nbtAccounter() {
+        return new NbtAccounter(MAX_SCHEMATIC_NBT_BYTES, MAX_SCHEMATIC_NBT_DEPTH);
+    }
     private SchematicFormats() {
     }
 
@@ -48,7 +55,7 @@ public final class SchematicFormats {
         String extension = extensionOf(path);
         if (extension == null) throw new IOException("Unsupported file type");
         if (extension.equals(LitematicReader.EXTENSION)) return LitematicReader.read(path);
-        CompoundTag root = NbtIo.readCompressed(path, NbtAccounter.unlimitedHeap());
+        CompoundTag root = NbtIo.readCompressed(path, nbtAccounter());
         String name = baseName(path);
         return extension.equals(".schem")
                 ? SpongeSchematicReader.parse(root, name, LitematicReader::resolveState)

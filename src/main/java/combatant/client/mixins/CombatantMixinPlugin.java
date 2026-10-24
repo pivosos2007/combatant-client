@@ -108,6 +108,9 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public void onLoad(String mixinPackage) {
+        if (System.getProperty("org.lwjgl.system.allocator") == null) {
+            System.setProperty("org.lwjgl.system.allocator", "system");
+        }
     }
 
     @Override

@@ -90,7 +90,7 @@ public final class ConfigProfileCollector {
         Map<String, Object> values = new LinkedHashMap<>();
         if (owner != null) {
             for (ConfigValue<?> value : owner.getConfigValues()) {
-                if (value != null && value.getName() != null) {
+                if (value != null && value.getName() != null && !value.isSensitive()) {
                     values.put(value.getName(), value.toJson());
                 }
             }
