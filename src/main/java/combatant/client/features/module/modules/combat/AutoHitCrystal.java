@@ -19,12 +19,9 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.input.CombatantInput;
 import combatant.client.input.InputScope;
-import combatant.client.mixins.accessors.MultiPlayerGameModeAccessor;
-import combatant.client.mixins.accessors.PlayerInventoryAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
@@ -36,10 +33,9 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
 
-import java.util.List;
 import combatant.client.util.combat.AttackUtil;
+import combatant.client.util.player.inventory.InventorySwap;
 
 /**
  * Hit-crystal macro driven by the player's own aim: obsidian on the looked-at block, crystal on top of it, then the
@@ -50,7 +46,7 @@ import combatant.client.util.combat.AttackUtil;
         displayName = "AutoHitCrystal",
         aliases = {"HitCrystal", "CrystalMacro", "ObiCrystal"},
         category = ModuleCategory.COMBAT,
-        subcategory = ModuleSubcategory.ATTACK,
+        subcategory = ModuleSubcategory.LEGIT,
         description = "module.autohitcrystal.description")
 public final class AutoHitCrystal extends Module {
 
@@ -119,6 +115,8 @@ public final class AutoHitCrystal extends Module {
             waitTicks--;
             return;
         }
+        // Attacking or placing while an item is in use flags GrimAC MultiActionsA/E; vanilla blocks both too.
+        if (player.isUsingItem()) return;
 
         switch (state) {
             case OBSIDIAN -> placeObsidian(player);
@@ -135,7 +133,7 @@ public final class AutoHitCrystal extends Module {
 
     private void begin(LocalPlayer player) {
         base = null;
-        originalSlot = ((PlayerInventoryAccessor) player.getInventory()).combatant$getSelectedSlot();
+        originalSlot = InventorySwap.INSTANCE.clientSelectedSlot();
         stateTicks = 0;
         waitTicks = 0;
 
@@ -174,7 +172,7 @@ public final class AutoHitCrystal extends Module {
             reset();
             return;
         }
-        select(player, slot);
+        select(slot);
         if (!interact(player, InteractionHand.MAIN_HAND, hit)) {
             reset();
             return;
@@ -193,6 +191,12 @@ public final class AutoHitCrystal extends Module {
             reset();
             return;
         }
+        // The placement has to be made along the real aim: GrimAC RotationPlace rejects a click on a block the
+        // rotation does not point at, so without that aim the macro waits (the timeout covers it).
+        if (!(mc.hitResult instanceof BlockHitResult hit)
+                || hit.getType() != HitResult.Type.BLOCK || !hit.getBlockPos().equals(base)) {
+            return;
+        }
         InteractionHand hand;
         if (player.getOffhandItem().is(Items.END_CRYSTAL)) {
             hand = InteractionHand.OFF_HAND;
@@ -202,14 +206,9 @@ public final class AutoHitCrystal extends Module {
                 reset();
                 return;
             }
-            select(player, slot);
+            select(slot);
             hand = InteractionHand.MAIN_HAND;
         }
-        BlockHitResult hit = mc.hitResult instanceof BlockHitResult looking
-                && looking.getType() == HitResult.Type.BLOCK && looking.getBlockPos().equals(base)
-                ? looking
-                : new BlockHitResult(new Vec3(base.getX() + 0.5, base.getY() + 1.0, base.getZ() + 0.5),
-                Direction.UP, base, false);
         if (!interact(player, hand, hit)) {
             reset();
             return;
@@ -223,11 +222,15 @@ public final class AutoHitCrystal extends Module {
             reset();
             return;
         }
-        List<EndCrystal> crystals = mc.level.getEntitiesOfClass(EndCrystal.class, new AABB(base.above()), Entity::isAlive);
-        if (crystals.isEmpty()) return; // Wait for the server to spawn it; timeout covers a rejected placement.
+        // GrimAC Reach/hitbox check the look direction: only the crystal under the crosshair is hit.
+        if (!(mc.hitResult instanceof EntityHitResult looking)
+                || !(looking.getEntity() instanceof EndCrystal crystal)
+                || !crystal.isAlive() || !crystal.blockPosition().below().equals(base)) {
+            return; // Wait for the server to spawn it; timeout covers a rejected placement.
+        }
 
-        if (switchBack.get()) restoreSlot(player);
-        mc.gameMode.attack(player, crystals.get(0));
+        if (switchBack.get()) restoreSlot();
+        mc.gameMode.attack(player, crystal);
         AttackUtil.swingMainHand(player);
         finishCycle(player);
     }
@@ -268,21 +271,18 @@ public final class AutoHitCrystal extends Module {
         return -1;
     }
 
-    private void select(LocalPlayer player, int slot) {
-        ((PlayerInventoryAccessor) player.getInventory()).combatant$setSelectedSlot(slot);
-        if (mc.gameMode instanceof MultiPlayerGameModeAccessor accessor) {
-            accessor.combatant$syncSelectedSlot();
-        }
+    private void select(int slot) {
+        InventorySwap.INSTANCE.selectHotbar(slot);
     }
 
-    private void restoreSlot(LocalPlayer player) {
-        if (originalSlot >= 0 && originalSlot < 9) select(player, originalSlot);
+    private void restoreSlot() {
+        if (originalSlot >= 0 && originalSlot < 9) select(originalSlot);
     }
 
     private void reset() {
         LocalPlayer player = mc.player;
         if (state != State.IDLE && switchBack.get() && player != null && mc.gameMode != null) {
-            restoreSlot(player);
+            restoreSlot();
         }
         state = State.IDLE;
         base = null;

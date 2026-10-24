@@ -963,6 +963,12 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
         return category;
     }
 
+    /** Whether the ClickGUI Modules tab lists this module; see {@link ModuleInfo#listed()}. */
+    public boolean isListedInModulesTab() {
+        ModuleInfo info = getClass().getAnnotation(ModuleInfo.class);
+        return info == null || info.listed();
+    }
+
     public ModuleSubcategory getSubcategory() {
         return subcategory;
     }

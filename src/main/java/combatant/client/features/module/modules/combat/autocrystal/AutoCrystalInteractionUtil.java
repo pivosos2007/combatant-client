@@ -53,11 +53,18 @@ public final class AutoCrystalInteractionUtil {
         return new Vec3(pos.getX() + 0.5, pos.getY() + 1.0, pos.getZ() + 0.5);
     }
 
+    /** Distance from {@code point} to the nearest point of {@code box}, squared; zero when the point is inside. */
+    public static double distanceSqToBox(Vec3 point, AABB box) {
+        double dx = Math.max(Math.max(box.minX - point.x, 0.0), point.x - box.maxX);
+        double dy = Math.max(Math.max(box.minY - point.y, 0.0), point.y - box.maxY);
+        double dz = Math.max(Math.max(box.minZ - point.z, 0.0), point.z - box.maxZ);
+        return dx * dx + dy * dy + dz * dz;
+    }
+
     public static BlockHitResult getCrystalInteractResult(
             Level level,
             LocalPlayer player,
             BlockPos pos,
-            Vec3 crystalVec,
             AutoCrystalPlacementMode mode,
             float placeRange,
             float wallRange
@@ -65,7 +72,7 @@ public final class AutoCrystalInteractionUtil {
         if (mode == AutoCrystalPlacementMode.STRICT) {
             return getStrictInteract(level, player, pos, placeRange);
         }
-        return getDefaultInteract(level, player, crystalVec, pos, placeRange, wallRange);
+        return getDefaultInteract(level, player, pos, placeRange, wallRange);
     }
 
     public static BlockHitResult getStrictInteract(Level level, LocalPlayer player, BlockPos pos, float placeRange) {
@@ -119,27 +126,47 @@ public final class AutoCrystalInteractionUtil {
         return null;
     }
 
+    /**
+     * Clicks the top face when the eyes are above it. Otherwise the click goes on the face the eyes can really see,
+     * because GrimAC's PositionPlace rejects a click on a face the eyes are behind. The cursor is the face centre, so
+     * it lies on the clicked face as FabricatedPlace and Vulcan BadPackets 5 require.
+     */
     public static BlockHitResult getDefaultInteract(
             Level level,
             LocalPlayer player,
-            Vec3 crystalVec,
             BlockPos pos,
             float placeRange,
             float wallRange
     ) {
-        if (player == null || level == null || pos == null) {
+        if (player == null || level == null || pos == null || !level.isInWorldBounds(pos.above())) {
             return null;
         }
 
-        double distanceSq = player.getEyePosition().distanceToSqr(crystalVec);
+        Vec3 eyes = player.getEyePosition();
+        Direction face = Direction.UP;
+        Vec3 faceVec = crystalVec(pos);
+        if (eyes.y < faceVec.y) {
+            double best = -Double.MAX_VALUE;
+            for (Direction direction : Direction.values()) {
+                Vec3 candidate = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(direction.getUnitVec3i()).scale(0.5));
+                double outside = eyes.subtract(candidate).dot(Vec3.atLowerCornerOf(direction.getUnitVec3i()));
+                if (outside > best) {
+                    best = outside;
+                    face = direction;
+                    faceVec = candidate;
+                }
+            }
+        }
+
+        double distanceSq = eyes.distanceToSqr(faceVec);
         double placeRangeSq = placeRange * placeRange;
         if (distanceSq > placeRangeSq) {
             return null;
         }
 
         BlockHitResult wallCheck = level.clip(new ClipContext(
-                player.getEyePosition(),
-                crystalVec,
+                eyes,
+                faceVec,
                 ClipContext.Block.COLLIDER,
                 ClipContext.Fluid.NONE,
                 player
@@ -153,12 +180,7 @@ public final class AutoCrystalInteractionUtil {
             }
         }
 
-        return new BlockHitResult(
-                crystalVec,
-                level.isInWorldBounds(pos.above()) ? Direction.UP : Direction.DOWN,
-                pos,
-                false
-        );
+        return new BlockHitResult(faceVec, face, pos, false);
     }
 
     public static BlockHitResult getObsidianInteractResult(Level level, LocalPlayer player, BlockPos pos, float placeRange) {
@@ -178,6 +200,8 @@ public final class AutoCrystalInteractionUtil {
             Vec3 normal = Vec3.atLowerCornerOf(face.getUnitVec3i());
             Vec3 hitVec = Vec3.atCenterOf(support).add(normal.scale(0.5));
             if (eyes.distanceToSqr(hitVec) > rangeSq) continue;
+            // GrimAC PositionPlace: the eyes have to be on the outer side of the clicked face.
+            if (eyes.subtract(hitVec).dot(normal) < 0.0) continue;
 
             BlockHitResult ray = level.clip(new ClipContext(
                     eyes,

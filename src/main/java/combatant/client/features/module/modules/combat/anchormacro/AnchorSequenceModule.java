@@ -62,11 +62,8 @@ public abstract class AnchorSequenceModule extends Module {
             () -> trigger.get() == Trigger.KEY);
     private final NumberValue<Double> range = num("range", 4.5D, 1.0D, 6.0D);
     private final NumberValue<Double> wallRange = num("wall_range", 0.0D, 0.0D, 6.0D);
-    private final EnumValue<PlacementRotationMode> rotation = enumMode(
-            "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
-    private final EnumValue<MovementCorrection> movementCorrection = visibleWhen(enumMode(
-            "movement_correction", MovementCorrection.SILENT, MovementCorrection.values()),
-            () -> rotation.get() == PlacementRotationMode.NORMAL);
+    private final EnumValue<MovementCorrection> movementCorrection = enumMode(
+            "movement_correction", MovementCorrection.SILENT, MovementCorrection.values());
     private final NumberValue<Integer> stepDelay = num("step_delay", 1, 0, 10);
     private final NumberValue<Integer> charges = num("charges", 1, 1, 4);
     private final EnumValue<DetonatorPreference> detonator = enumMode(
@@ -169,11 +166,13 @@ public abstract class AnchorSequenceModule extends Module {
     private AnchorSteps.Config stepsConfig() {
         double reach = range.get();
         double wall = wallRange.get();
-        PlacementRotationMode mode = rotation.get();
+        // Every click needs a server-received rotation that hits the clicked face (Grim RotationPlace), so the
+        // clickless NO_ROTATION mode is not offered.
+        PlacementRotationMode mode = PlacementRotationMode.NORMAL;
         // The swapped slot stays selected until the next step took over.
         int slotReset = stepDelay.get() + 2;
         PlacementConstraints placement = new PlacementConstraints(reach, wall, mode, movementCorrection.get(),
-                mode == PlacementRotationMode.NO_ROTATION, false, 1, slotReset, slotReset, true, 0);
+                false, false, 1, slotReset, slotReset, true, 0);
         InteractBlockAction.Settings interact = new InteractBlockAction.Settings(
                 reach, wall, mode, movementCorrection.get(), slotReset, true, 20);
         return new AnchorSteps.Config(this, charges.get(), detonator.get(), maxSelfDamage.get(),

@@ -16,7 +16,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
-import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -291,8 +290,6 @@ public final class ElytraTarget extends Module {
     private int targetFocusTicks;
     private boolean autoTakeoffPending;
     private boolean queuedAutoTakeoffJump;
-    private boolean queuedAutoTakeoffRelease;
-    private boolean queuedAutoTakeoffStartGlide;
     private int autoTakeoffGlideDelayTicks;
     private int autoTakeoffCooldownTicks;
 
@@ -471,7 +468,6 @@ public final class ElytraTarget extends Module {
     @EventHandler(priority = FIREWORK_SYNC_PRIORITY - 20)
     private void onSyncRecast(EventSync event) {
         if (!isEnabled()) return;
-        if (handleAutoTakeoffSync(event)) return;
         ElytraRecastUtil.INSTANCE.handleSync(this, event);
     }
 
@@ -569,8 +565,6 @@ public final class ElytraTarget extends Module {
         targetFocusTicks = 0;
         autoTakeoffPending = false;
         queuedAutoTakeoffJump = false;
-        queuedAutoTakeoffRelease = false;
-        queuedAutoTakeoffStartGlide = false;
         autoTakeoffGlideDelayTicks = 0;
         autoTakeoffCooldownTicks = 0;
     }
@@ -1138,8 +1132,6 @@ public final class ElytraTarget extends Module {
 
         if (player.onGround() || player.isInWater() || player.isInLava()) {
             queueAutoTakeoffJump();
-            queuedAutoTakeoffStartGlide = false;
-            queuedAutoTakeoffRelease = false;
             if (autoTakeoffGlideDelayTicks <= 0) {
                 autoTakeoffGlideDelayTicks = 1;
             }
@@ -1148,10 +1140,9 @@ public final class ElytraTarget extends Module {
 
         if (autoTakeoffGlideDelayTicks > 0) return;
         if (player.getDeltaMovement().y > 0.0 && player.fallDistance <= 0.0f) return;
-        if (queuedAutoTakeoffStartGlide || queuedAutoTakeoffRelease) return;
-
-        queuedAutoTakeoffRelease = true;
-        queuedAutoTakeoffStartGlide = true;
+        // Legal start: release jump for a tick, then press it so vanilla itself sends START_FALL_FLYING
+        // (Grim ElytraB/C/F: fresh jump edge, no repeated starts, not on ground).
+        ElytraRecastUtil.INSTANCE.request(this, player, ElytraRecastUtil.Mode.GRIM, false, false, false, 0);
     }
 
     private boolean canAutoTakeoffSelf(LocalPlayer player) {
@@ -1183,72 +1174,14 @@ public final class ElytraTarget extends Module {
     private void clearAutoTakeoffState() {
         autoTakeoffPending = false;
         queuedAutoTakeoffJump = false;
-        queuedAutoTakeoffRelease = false;
-        queuedAutoTakeoffStartGlide = false;
         autoTakeoffGlideDelayTicks = 0;
     }
 
     private boolean handleAutoTakeoffMovementInput(MovementInputEvent event) {
-        if (queuedAutoTakeoffRelease) {
-            event.setJump(false);
-            queuedAutoTakeoffRelease = false;
-            return true;
-        }
-
         if (queuedAutoTakeoffJump) {
             event.setJump(true);
             queuedAutoTakeoffJump = false;
             return true;
-        }
-
-        return false;
-    }
-
-    private boolean handleAutoTakeoffSync(EventSync event) {
-        if (!queuedAutoTakeoffStartGlide) return false;
-
-        LocalPlayer player = mc.player;
-        if (player == null) {
-            clearAutoTakeoffState();
-            return false;
-        }
-
-        if (player.isFallFlying()) {
-            clearAutoTakeoffState();
-            autoTakeoffCooldownTicks = AUTO_TAKEOFF_COOLDOWN_TICKS;
-            return true;
-        }
-
-        if (!canAutoTakeoffSelf(player)) {
-            clearAutoTakeoffState();
-            return false;
-        }
-
-        if (!player.onGround()
-                && !player.isInWater()
-                && !player.isInLava()
-                && player.getDeltaMovement().y <= 0.0) {
-            queuedAutoTakeoffStartGlide = false;
-
-            if (player.tryToStartFallFlying()) {
-                queuedAutoTakeoffJump = true;
-            }
-
-            if (player.isFallFlying() && mc.getConnection() != null) {
-                mc.getConnection().send(
-                        new ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING)
-                );
-                clearAutoTakeoffState();
-                autoTakeoffCooldownTicks = AUTO_TAKEOFF_COOLDOWN_TICKS;
-            } else {
-                autoTakeoffGlideDelayTicks = 1;
-            }
-            return true;
-        }
-
-        if (player.onGround() || player.isInWater() || player.isInLava()) {
-            queuedAutoTakeoffStartGlide = false;
-            queuedAutoTakeoffRelease = false;
         }
 
         return false;

@@ -12,13 +12,14 @@ import combatant.client.features.command.CommandContext;
 import combatant.client.features.command.CommandInfo;
 import combatant.client.features.command.CommandOutput;
 import combatant.client.runtime.stability.ModuleStabilityRun;
+import combatant.client.runtime.stability.StabilityScript;
 
 import java.util.List;
 import java.util.Locale;
 
 @CommandInfo(
         id = "stability",
-        usage = "@stability [run|resume [ticks]|only <module> [ticks]|stop]",
+        usage = "@stability [run|resume [ticks]|only <module> [ticks]|script <name>|stop]",
         descriptionKey = "command.stability.description"
 )
 public final class StabilityCommand implements ClientCommand {
@@ -30,7 +31,14 @@ public final class StabilityCommand implements ClientCommand {
             case "only" -> ctx.arg(1) == null
                     ? "Usage: " + metadata().usage()
                     : ModuleStabilityRun.start(false, parseTicks(ctx.arg(2)), ctx.arg(1));
+            case "script" -> ctx.arg(1) == null
+                    ? "Usage: " + metadata().usage()
+                    : StabilityScript.start(ctx.arg(1), false);
             case "stop" -> {
+                if (StabilityScript.running()) {
+                    StabilityScript.stop("stopped");
+                    yield null;
+                }
                 if (!ModuleStabilityRun.running()) yield "No stability run is active.";
                 ModuleStabilityRun.stop("stopped");
                 yield null;
@@ -55,6 +63,6 @@ public final class StabilityCommand implements ClientCommand {
         if (argIndex == 2 && "only".equalsIgnoreCase(ctx.arg(0))) return CommandUtils.suggestModules(token);
         if (argIndex != 1) return List.of();
         String lower = token == null ? "" : token.toLowerCase(Locale.ROOT);
-        return List.of("run", "resume", "only", "stop").stream().filter(value -> value.startsWith(lower)).toList();
+        return List.of("run", "resume", "only", "script", "stop").stream().filter(value -> value.startsWith(lower)).toList();
     }
 }

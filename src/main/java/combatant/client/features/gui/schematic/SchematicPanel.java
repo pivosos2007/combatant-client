@@ -10,7 +10,12 @@ package combatant.client.features.gui.schematic;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.gui.schematic.view3d.FaceList;
 import combatant.client.features.module.ModuleManager;
+import combatant.client.features.module.Module;
 import combatant.client.features.module.modules.player.schematic.SchematicBuilder;
+import combatant.client.features.module.modules.visuals.schematic.SchematicProjection;
+import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.SettingsPanelComponent;
+import combatant.client.features.gui.clickgui.settings.SettingErrorView;
+import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
 import combatant.client.features.theme.Theme;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.animation.AnimationUtility;
@@ -70,13 +75,16 @@ public final class SchematicPanel {
     private static final int[] PLAY_SPEEDS = {1, 2, 4, 8};
     private static final long HAVE_REFRESH_NANOS = 500_000_000L;
     private static final long BUBBLE_HOLD_NANOS = 900_000_000L;
+    /** Input scale handed to the shared settings panel; the ClickGUI settings screen uses the same value. */
+    private static final float SETTINGS_SCALE = 2.0f;
 
     private enum Btn {
         CLOSE, REFRESH, LOAD, OPEN_FOLDER,
         ORIGIN_HERE, ORIGIN_LOOK, ROTATE, MIRROR, BUILDER, PROJECTION, LAYER_MODE, UNLOAD,
         LAYER_DOWN10, LAYER_DOWN, PLAY, SPEED, LAYER_UP, LAYER_UP10,
         TAB_LAYER, TAB_TOTAL, TAB_ISSUES,
-        TAB_3D, TAB_2D, VIEW_MODE, AUTO_ROTATE, RESET_VIEW
+        TAB_3D, TAB_2D, VIEW_MODE, AUTO_ROTATE, RESET_VIEW,
+        BUILDER_SETTINGS, PROJECTION_SETTINGS
     }
 
     private static final Btn[] BUTTONS = Btn.values();
@@ -127,6 +135,10 @@ public final class SchematicPanel {
     private float emptyY;
     private float segView, segMat;
     private float mouseX, mouseY;
+    /** The ClickGUI settings panel reused for the builder/projection module settings. */
+    private final SettingsPanelComponent settingsPanel = new SettingsPanelComponent(SettingRenderSurface.MODULES);
+    private String settingsId;
+    private String settingsClosedId;
     private float openAnim;
     private float frameDt;
 
@@ -261,6 +273,7 @@ public final class SchematicPanel {
         renderCentre(alpha);
         renderRight(alpha);
         renderTooltip(alpha);
+        settingsPanel.render(0f, 0f, 0f, 0f, mouseX, mouseY, SETTINGS_SCALE);
     }
 
     // ---------------------------------------------------------------- layout
@@ -442,18 +455,17 @@ public final class SchematicPanel {
         int rows = infoList.size();
         float avail = colBottom - colTop - GAP;
         float materialsMin = HEADER_H + 110f;
-        if (!loaded) {
-            detailsH = HEADER_H + 12f + rows * step + PAD;
-        } else {
-            while (true) {
-                detailsH = HEADER_H + 12f + rows * step + 10f + 4f * btnH + 3f * bgap + PAD;
-                if (detailsH + materialsMin <= avail || (rows <= 3 && btnH <= 28f)) break;
-                if (rows > 3) {
-                    rows--;
-                } else {
-                    btnH = 28f;
-                    bgap = 6f;
-                }
+        // Builder/projection rows (toggle + settings) are always present; the transform grid only with a schematic.
+        int gridRows = loaded ? 3 : 0;
+        while (true) {
+            int buttonRows = gridRows + 2;
+            detailsH = HEADER_H + 12f + rows * step + 10f + buttonRows * btnH + (buttonRows - 1) * bgap + PAD;
+            if (detailsH + materialsMin <= avail || (rows <= 3 && btnH <= 28f)) break;
+            if (rows > 3) {
+                rows--;
+            } else {
+                btnH = 28f;
+                bgap = 6f;
             }
         }
         infoRows = rows;
@@ -462,13 +474,23 @@ public final class SchematicPanel {
         materialsPH = Math.max(0f, colBottom - materialsPY);
         materialsY = materialsPY + HEADER_H + 10f;
         materialsH = Math.max(MATERIAL_ROW_H, colBottom - PAD - materialsY);
-        if (!loaded) return;
         float buttonsY = infoY + infoRows * step + 10f;
         float half = (rightW - 8f) * 0.5f;
-        Btn[] ids = {Btn.ORIGIN_HERE, Btn.ORIGIN_LOOK, Btn.ROTATE, Btn.MIRROR, Btn.BUILDER, Btn.PROJECTION, Btn.LAYER_MODE, Btn.UNLOAD};
-        for (int i = 0; i < ids.length; i++) {
-            place(ids[i], rightX + (i % 2) * (half + 8f), buttonsY + (i / 2) * (btnH + bgap), half, btnH);
+        if (loaded) {
+            Btn[] ids = {Btn.ORIGIN_HERE, Btn.ORIGIN_LOOK, Btn.ROTATE, Btn.MIRROR, Btn.LAYER_MODE, Btn.UNLOAD};
+            for (int i = 0; i < ids.length; i++) {
+                place(ids[i], rightX + (i % 2) * (half + 8f), buttonsY + (i / 2) * (btnH + bgap), half, btnH);
+            }
         }
+        float toggleW = (rightW - 8f) * 0.62f;
+        float settingsW = rightW - 8f - toggleW;
+        float builderY = buttonsY + gridRows * (btnH + bgap);
+        float projectionY = builderY + btnH + bgap;
+        place(Btn.BUILDER, rightX, builderY, toggleW, btnH);
+        place(Btn.BUILDER_SETTINGS, rightX + toggleW + 8f, builderY, settingsW, btnH);
+        place(Btn.PROJECTION, rightX, projectionY, toggleW, btnH);
+        place(Btn.PROJECTION_SETTINGS, rightX + toggleW + 8f, projectionY, settingsW, btnH);
+        if (!loaded) return;
         float tabH = 34f;
         float tabsY = materialsPY + (HEADER_H - tabH) * 0.5f;
         float third = rightW / 3f;
@@ -943,6 +965,7 @@ public final class SchematicPanel {
         boolean placed = state.isPlaced();
         ui.header(tr("screen.combatant.schematic.panel.details"), rightPX, colTop, rightPW, HEADER_H, alpha);
         renderInfo(alpha);
+        renderModuleRows(placed, alpha);
         if (!loaded) {
             renderMaterialsPlaceholder(alpha);
             return;
@@ -951,10 +974,6 @@ public final class SchematicPanel {
         drawButton(Btn.ORIGIN_LOOK, tr("screen.combatant.schematic.origin_look"), false, loaded, alpha);
         drawButton(Btn.ROTATE, tr("screen.combatant.schematic.rotate"), false, placed, alpha);
         drawButton(Btn.MIRROR, tr("screen.combatant.schematic.mirror"), false, placed, alpha);
-        boolean building = SchematicActions.builderEnabled();
-        drawButton(Btn.BUILDER, tr(building ? "screen.combatant.schematic.builder_stop" : "screen.combatant.schematic.builder_start"),
-                building, placed, placed && !building, alpha);
-        drawButton(Btn.PROJECTION, tr("screen.combatant.schematic.projection"), SchematicActions.projectionEnabled(), true, alpha);
         drawButton(Btn.LAYER_MODE, tr("screen.combatant.schematic.layer_mode." + state.layerMode().name().toLowerCase(Locale.ROOT)),
                 false, true, alpha);
         drawButton(Btn.UNLOAD, tr("screen.combatant.schematic.unload"), false, loaded, alpha);
@@ -972,6 +991,23 @@ public final class SchematicPanel {
         } else {
             renderMaterials(alpha);
         }
+    }
+
+    /** Builder and projection: on/off toggle plus a button that opens the module's full settings. */
+    private void renderModuleRows(boolean placed, float alpha) {
+        boolean building = SchematicActions.builderEnabled();
+        drawButton(Btn.BUILDER, tr(building ? "screen.combatant.schematic.builder_stop" : "screen.combatant.schematic.builder_start"),
+                building, placed || building, placed && !building, alpha);
+        drawButton(Btn.BUILDER_SETTINGS, tr("screen.combatant.schematic.module_settings"), settingsOpenFor(SchematicBuilder.class), true, alpha);
+        boolean projecting = SchematicActions.projectionEnabled();
+        drawButton(Btn.PROJECTION, tr(projecting ? "screen.combatant.schematic.projection_hide" : "screen.combatant.schematic.projection_show"),
+                projecting, true, alpha);
+        drawButton(Btn.PROJECTION_SETTINGS, tr("screen.combatant.schematic.module_settings"), settingsOpenFor(SchematicProjection.class), true, alpha);
+    }
+
+    private boolean settingsOpenFor(Class<? extends Module> type) {
+        Module module = ModuleManager.get(type);
+        return module != null && module.name().equals(settingsId) && settingsPanel.isActive();
     }
 
     /** Nothing loaded: the materials card says so instead of showing an empty box. */
@@ -1276,6 +1312,16 @@ public final class SchematicPanel {
     /** Pointer press in the fixed (virtual) space; {@code doubled} marks a double-click. Always consumed. */
     public boolean mousePressed(float mx, float my, int button, boolean doubled) {
         mouseX = mx;
+        if (settingsPanel.isActive()) {
+            int panelButton = button == 0 ? InputKeys.MOUSE_LEFT : button == 1 ? InputKeys.MOUSE_RIGHT : button == 2 ? InputKeys.MOUSE_MIDDLE : button;
+            if (settingsPanel.mouseClicked(mx, my, panelButton, SETTINGS_SCALE)) return true;
+            // A press outside the settings panel dismisses it; pressing its own button therefore just closes it.
+            settingsClosedId = settingsId;
+            settingsPanel.close();
+            settingsId = null;
+        } else {
+            settingsClosedId = null;
+        }
         mouseY = my;
         if (button != 0) {
             boolean pan = button == 1 || button == 2;
@@ -1336,7 +1382,7 @@ public final class SchematicPanel {
             case ROTATE -> state.rotateClockwise();
             case MIRROR -> state.cycleMirror();
             case BUILDER -> {
-                if (state.isPlaced()) SchematicActions.toggleBuilder();
+                if (state.isPlaced() || SchematicActions.builderEnabled()) SchematicActions.toggleBuilder();
             }
             case PROJECTION -> SchematicActions.toggleProjection();
             case LAYER_MODE -> SchematicActions.cycleLayerMode();
@@ -1364,7 +1410,26 @@ public final class SchematicPanel {
             case VIEW_MODE -> viewport.cycleMode();
             case AUTO_ROTATE -> viewport.toggleAutoRotate();
             case RESET_VIEW -> viewport.resetCamera();
+            case BUILDER_SETTINGS -> toggleModuleSettings(SchematicBuilder.class, "screen.combatant.schematic.builder_title");
+            case PROJECTION_SETTINGS -> toggleModuleSettings(SchematicProjection.class, "screen.combatant.schematic.projection_title");
         }
+    }
+
+    /**
+     * Opens the module's own settings in the shared ClickGUI settings panel (same rows, theme and behaviour as the
+     * Modules tab), docked against the right edge of this panel; pressing the same button again closes it.
+     */
+    private <T extends Module> void toggleModuleSettings(Class<T> type, String titleKey) {
+        T module = ModuleManager.get(type);
+        if (module == null) return;
+        if (module.name().equals(settingsClosedId)) {
+            settingsClosedId = null;
+            return;
+        }
+        settingsId = module.name();
+        settingsPanel.open(module.name(), tr(titleKey), SettingErrorView.withDiagnostics(module, module.getSettings()), false);
+        settingsPanel.setAnchor(panelX + panelW - settingsPanel.panelWidth(SETTINGS_SCALE) - PAD,
+                panelY + (onClose == null ? PAD : TOPBAR_H + GAP));
     }
 
     private void setView3d(boolean next) {
@@ -1407,6 +1472,7 @@ public final class SchematicPanel {
     }
 
     public void mouseReleased(float mx, float my) {
+        settingsPanel.mouseReleased(mx, my, InputKeys.MOUSE_LEFT);
         draggingStrip = false;
         draggingGap = false;
         if (viewport.dragging()) {
@@ -1416,6 +1482,7 @@ public final class SchematicPanel {
     }
 
     public boolean mouseScrolled(float mx, float my, double vertical) {
+        if (settingsPanel.isActive() && settingsPanel.mouseScrolled(mx, my, vertical)) return true;
         int direction = vertical > 0 ? 1 : vertical < 0 ? -1 : 0;
         if (direction == 0) return true;
         if (SchematicUi.inside(mx, my, leftX, listY, leftW, listH)) {
@@ -1432,6 +1499,7 @@ public final class SchematicPanel {
 
     /** @return whether the key was consumed; Escape is left to the host when the panel has no close action. */
     public boolean keyPressed(int key) {
+        if (settingsPanel.isActive() && settingsPanel.keyPressed(key, 0, 0)) return true;
         if (searchFocused) {
             if (key == InputKeys.BACKSPACE) {
                 if (!search.isEmpty()) search = search.substring(0, search.length() - 1);
@@ -1467,6 +1535,7 @@ public final class SchematicPanel {
     }
 
     public boolean charTyped(int codepoint) {
+        if (settingsPanel.isActive() && settingsPanel.charTyped((char) codepoint, 0)) return true;
         if (!searchFocused) return false;
         if (codepoint >= 32 && codepoint != 127 && search.length() < 64) search += Character.toString(codepoint);
         listFirst = 0;
@@ -1475,6 +1544,7 @@ public final class SchematicPanel {
 
     /** The panel is leaving the screen: stop playback. */
     public void removed() {
+        settingsPanel.close();
         playing = false;
     }
 

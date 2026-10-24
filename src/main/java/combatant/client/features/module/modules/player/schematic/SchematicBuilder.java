@@ -86,7 +86,7 @@ import java.util.concurrent.ThreadLocalRandom;
         displayName = "SchematicBuilder",
         aliases = {"Printer", "LitematicaPrinter", "AutoBuild"},
         category = ModuleCategory.PLAYER, subcategory = ModuleSubcategory.AUTOMATION,
-        description = "module.schematicbuilder.description")
+        description = "module.schematicbuilder.description", listed = false)
 public final class SchematicBuilder extends Module {
 
     private static final int ROTATION_PRIORITY = 10;

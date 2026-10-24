@@ -49,7 +49,7 @@ import java.util.concurrent.ConcurrentHashMap;
         displayName = "CrystalOptimizer",
         aliases = {"CrystalRemover", "InstantCrystalRemove", "FastCrystal"},
         category = ModuleCategory.COMBAT,
-        subcategory = ModuleSubcategory.ATTACK,
+        subcategory = ModuleSubcategory.LEGIT,
         description = "module.crystaloptimizer.description")
 public final class CrystalOptimizer extends Module {
 

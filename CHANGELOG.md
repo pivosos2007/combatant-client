@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Schematics
 - **Formats**: Litematica `.litematic`, Sponge `.schem` (v1–v3) and vanilla structure `.nbt`, with placement transform (origin, rotation, mirror) and a live world diff that judges redstone by functional state.
 - **Schematics menu**: a **Schematics** tab in the ClickGui and the `@schematic menu` screen (aliases `schem`, `litematic`, `build`). Searchable library with size/block-count chips, Load / Refresh / Open folder actions, folder path, details and a materials list with inventory counts. The centre is an orbitable, textured 3D model of the schematic.
+- **Schematics tab owns its modules**: SchematicBuilder and SchematicProjection no longer appear in the Modules tab. The Schematics tab has an on/off toggle and a **Settings** button for each, which opens the regular ClickGui settings panel for that module. They stay real modules (keybinds, `@toggle`, config profiles, ModuleList). New `ModuleInfo.listed` flag hides a module from the Modules tab.
 - **SchematicProjection**: in-world ghost blocks and outlines for the loaded schematic, coloured by diff state (missing / wrong / correct), with layer limits.
 - **SchematicBuilder** builds the loaded schematic in survival:
   - **Ordering**: lower layers first, then farthest-first so near blocks never wall off far faces; within a step, the cell closest to the current aim goes first so the view sweeps.
@@ -64,7 +65,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `Parkour` gains `EdgeJump` aliases; `Freeze` gains the `AirStuck` alias and a hold-key mode.
 
 ### Player
-- **New modules**: `Nuker` (filtered, ordered breaking through `BreakBlockAction`), `AreaMiner` (+ `@areaminer`), `LockSlots` (blocks drop/move/swap of locked slots, hotbar tint), `ClickThrough`, `NoEntityTrace`, `QuickUse` (keybind item use with swap-back), `EnderChestPlus` (cached contents in tooltip and `@echest`), `AutoInvTotem` (strict open-inventory totem refill), `ShulkerDropper`, `TunnelBaseFinder` (1x2 tunnel with hazard pauses and storage/spawner alerts), `KeyLava`, `ReBuffNotifier`.
+- **New modules**: `Nuker` (filtered, ordered breaking through `BreakBlockAction`), `AreaMiner` (+ `@areaminer`), `ClickThrough`, `NoEntityTrace`, `EnderChestPlus` (cached contents in tooltip and `@echest`), `ShulkerDropper`, `TunnelBaseFinder` (1x2 tunnel with hazard pauses and storage/spawner alerts), `KeyLava`, `ReBuffNotifier`.
+- **Offhand**: gained the opt-in `inventory_refill` (open-inventory totem refill with delay, hotbar refill and swap policy), formerly the separate `AutoInvTotem` module.
 
 ### Misc
 - **New modules**: `AutoLeave`, `AutoAccept`, `AutoAuth`, `ServerRPSpoofer`, `DeathCoordinates` (chat + Xaero waypoint), `AntiCheatDetect` (ping-pattern heuristic), `AutoRtp`, `AutoTpa`, `CordSnapper`, `NoInvLeak`, `SpawnerProtect`.

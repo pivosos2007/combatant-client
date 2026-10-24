@@ -92,6 +92,7 @@ public final class ModuleStabilityRun {
         if (registered) return;
         registered = true;
         ClientTickEvents.END_CLIENT_TICK.register(ModuleStabilityRun::tick);
+        StabilityScript.register();
     }
 
     public static boolean running() {
@@ -195,7 +196,7 @@ public final class ModuleStabilityRun {
     }
 
     private static void tickAutorun(Minecraft mc) {
-        if (mc.player == null || mc.level == null || !mc.hasSingleplayerServer() || !Files.exists(autorunFlag())) {
+        if (running() || StabilityScript.running() || !StabilityScript.allowedHere(mc) || !Files.exists(autorunFlag())) {
             autorunWait = 0;
             return;
         }
@@ -206,7 +207,19 @@ public final class ModuleStabilityRun {
             only = Files.readString(autorunFlag(), StandardCharsets.UTF_8).trim();
         } catch (IOException ignored) {
         }
-        String error = start(false, DEFAULT_HOLD_TICKS, only == null || only.isEmpty() ? null : only);
+        String error;
+        if (only != null && only.startsWith("script:")) {
+            // Scripts are one-shot: consume the flag so a relaunch does not repeat the scenario.
+            try {
+                Files.deleteIfExists(autorunFlag());
+            } catch (IOException ignored) {
+            }
+            error = StabilityScript.start(only.substring("script:".length()).strip(), true);
+        } else if (!mc.hasSingleplayerServer()) {
+            error = "Module sweeps only run in singleplayer.";
+        } else {
+            error = start(false, DEFAULT_HOLD_TICKS, only == null || only.isEmpty() ? null : only);
+        }
         if (error != null) CommandOutput.error(error);
     }
 
