@@ -627,7 +627,7 @@ public class Font implements GlyphFont {
         if (closed) return;
         closed = true;
         if (texture != null) texture.close();
-        fontInfo.free();
+        // fontInfo is STBTTFontinfo.create(): GC-owned. free() would hand it to je_free and corrupt the heap.
         MemoryUtil.memFree(fontData);
         MemoryUtil.memFree(atlasPixels);
         shaper = null;
