@@ -58,6 +58,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import combatant.client.util.combat.AttackUtil;
 
 /**
  * Moves the player for {@link SchematicBuilder} with nothing but the movement keys: walks to a spot from which
@@ -1025,7 +1026,7 @@ final class BuildMover {
         if (mining == null) selectTool(player, mc.level.getBlockState(pos));
         mining = pos;
         miningFace = hit.getDirection();
-        if (mc.gameMode.continueDestroyBlock(pos, miningFace)) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+        if (mc.gameMode.continueDestroyBlock(pos, miningFace)) AttackUtil.swingMainHand(player);
     }
 
     private void selectTool(LocalPlayer player, BlockState state) {

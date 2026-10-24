@@ -64,6 +64,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import combatant.client.util.combat.AttackUtil;
 
 @ModuleInfo(
         id = "autocrystal",
@@ -1111,7 +1112,7 @@ public class AutoCrystal extends Module {
 
         debugLog("break-attempt id=%d pos=%.2f %.2f %.2f", crystal.getId(), crystal.getX(), crystal.getY(), crystal.getZ());
         mc.gameMode.attack(player, crystal);
-        player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+        AttackUtil.swingMainHand(player);
         lastBreakMs = System.currentTimeMillis();
         crystalTracker.onCrystalAttack(mc, crystal);
         crystalTracker.markNearbyCrystalsDead(mc.level, crystal);

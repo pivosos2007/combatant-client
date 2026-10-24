@@ -18,6 +18,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.network.protocol.game.ServerboundPunchPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Items;
@@ -165,8 +166,19 @@ public enum AttackUtil {
             mc.gameMode.attack(player, target);
         }
 
-        player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+        swingMainHand(player);
         return true;
+    }
+
+    /**
+     * Attack, miss and mining swing as vanilla 26.3 performs it: {@code LivingEntity.swing} only animates
+     * locally, and the server learns about the arm swing from {@link ServerboundPunchPacket}. Skipping the
+     * packet makes every attack look swing-less (Grim PacketOrderB, Vulcan BadPackets "No Swing").
+     */
+    public static void swingMainHand(LocalPlayer player) {
+        if (player == null) return;
+        player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+        if (player.connection != null) player.connection.send(ServerboundPunchPacket.INSTANCE);
     }
 
     public static boolean attackCurrentItem(Minecraft mc, LivingEntity target, boolean keepSprint) {

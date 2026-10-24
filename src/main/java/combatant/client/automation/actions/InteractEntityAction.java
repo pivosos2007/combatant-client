@@ -151,8 +151,7 @@ public final class InteractEntityAction extends AbstractAction {
                 ok = AttackUtil.attack(mc, living, null, null, false, true, keepSprint);
             } else {
                 mc.gameMode.attack(player, entity);
-                player.swing(InteractionHand.MAIN_HAND,
-                        player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+                AttackUtil.swingMainHand(player);
                 ok = true;
             }
             // A refused attack (using an item, attribute-swap suppression) is retried on the next tick.

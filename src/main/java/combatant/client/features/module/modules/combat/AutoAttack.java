@@ -57,6 +57,7 @@ import combatant.client.util.combat.protocol.CombatProtocolHeuristics;
 import combatant.client.util.combat.protocol.ProtocolUtil;
 
 import java.util.LinkedHashMap;
+import combatant.client.util.combat.AttackUtil;
 
 
 @ModuleInfo(
@@ -387,7 +388,7 @@ public class AutoAttack extends Module {
                     return;
                 }
                 case MISS_SWING -> {
-                    mc.player.swing(InteractionHand.MAIN_HAND, mc.player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+                    AttackUtil.swingMainHand(mc.player);
                     return;
                 }
                 case MISS -> {
@@ -510,7 +511,7 @@ public class AutoAttack extends Module {
 
         if (objective.get() == ObjectiveType.BLOCK) {
             for (int i = 0; i < clickCount; i++) {
-                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+                AttackUtil.swingMainHand(player);
                 if (legacyProtocol) {
                     ResetAttackCooldown.resetAttackCooldown(player);
                 }

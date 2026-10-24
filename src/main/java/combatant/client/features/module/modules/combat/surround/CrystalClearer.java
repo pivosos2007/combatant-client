@@ -17,6 +17,7 @@ import net.minecraft.world.phys.AABB;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import combatant.client.util.combat.AttackUtil;
 
 /** Breaks end crystals that sit where a wall block has to go. */
 public final class CrystalClearer {
@@ -51,7 +52,7 @@ public final class CrystalClearer {
 
         for (EndCrystal crystal : blocking) {
             mc.gameMode.attack(player, crystal);
-            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+            AttackUtil.swingMainHand(player);
         }
         cooldown = delayTicks;
     }

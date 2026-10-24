@@ -39,6 +39,7 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
+import combatant.client.util.combat.AttackUtil;
 
 /**
  * Hit-crystal macro driven by the player's own aim: obsidian on the looked-at block, crystal on top of it, then the
@@ -227,7 +228,7 @@ public final class AutoHitCrystal extends Module {
 
         if (switchBack.get()) restoreSlot(player);
         mc.gameMode.attack(player, crystals.get(0));
-        player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+        AttackUtil.swingMainHand(player);
         finishCycle(player);
     }
 
