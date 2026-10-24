@@ -70,6 +70,20 @@ final class UiBackdropRuntime {
         );
         UiLiquidGlassMaterial material = new UiLiquidGlassMaterial(
                 optics, frostedJitter, innerGlow, innerGlowSize, innerGlowColor);
+        // Ice is an optional compositing material, not a new optical mode.
+        if (props != null && (props.bool("glassIce", false)
+                || "ice".equalsIgnoreCase(props.string("glassMaterial", "")))) {
+            var baseIce = combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec.LIGHT;
+            material = material.withIce(new combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec(
+                    props.number("iceSeed", baseIce.seed()),
+                    props.number("iceDensity", baseIce.density()),
+                    props.number("iceFrost", baseIce.frost()),
+                    props.number("iceCracks", baseIce.cracks()),
+                    props.number("iceBlueAbsorption", baseIce.blueAbsorption()),
+                    props.number("iceDisplacementPx", baseIce.displacementPx()),
+                    props.number("iceFacetContrast", baseIce.facetContrast()),
+                    props.number("iceClarity", baseIce.clarity())));
+        }
         if (node != null && bounds != null && optics.interactionStrength() > 0.0f) {
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.getWindow() != null && mc.mouseHandler != null) {

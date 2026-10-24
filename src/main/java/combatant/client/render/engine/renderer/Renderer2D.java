@@ -306,6 +306,10 @@ public final class Renderer2D {
         primitive(primitive, paint, stroke, false);
     }
 
+    public void materialPrimitive(UiPrimitive primitive, UiPaint paint, UiIceMaterialSpec material) {
+        if (material != null) materialPrimitive(primitive, paint, material.asSurface());
+    }
+
     public void materialPrimitive(UiPrimitive primitive, UiPaint paint, UiSurfaceMaterialSpec material) {
         if (primitive == null || paint == null || material == null || primitive.pointCount() < 3) return;
         recordUi(new UiShapeCommand(
@@ -3293,7 +3297,7 @@ public final class Renderer2D {
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
                 preparedBlurQuality, preparedBlurOffset, backdrop,
-                backdropBlend);
+                backdropBlend, liquidGlassMaterial.visual());
         if (batch != null) batch.includeGlassBounds(bounds);
         if (batch == null) {
             endAutoBatch(auto);
@@ -3467,7 +3471,7 @@ public final class Renderer2D {
                 : 0.0f;
         float blurSampleReachFramebufferPx = Math.max(
                 Math.max(frostedJitterFramebufferPx, liquidReachFramebufferPx),
-                chromaticReachFramebufferPx) + 2.0f;
+                chromaticReachFramebufferPx) + liquidGlassMaterial.visual().sampleReachPx() + 2.0f;
 
         float logicalPerFramebufferX = logicalWidth / framebufferWidth;
         float logicalPerFramebufferY = logicalHeight / framebufferHeight;
@@ -3579,7 +3583,7 @@ public final class Renderer2D {
 
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
-                preparedBlurQuality, preparedBlurOffset, backdrop, backdropBlend);
+                preparedBlurQuality, preparedBlurOffset, backdrop, backdropBlend, liquidGlassMaterial.visual());
         if (batch != null) batch.includeGlassBounds(new UiRect((float)x, (float)y, (float)w, (float)h));
         if (batch == null) {
             endAutoBatch(auto);
@@ -4088,7 +4092,7 @@ public final class Renderer2D {
 
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
-                preparedBlurQuality, preparedBlurOffset, backdrop, backdropBlend);
+                preparedBlurQuality, preparedBlurOffset, backdrop, backdropBlend, liquidGlassMaterial.visual());
         if (batch != null) batch.includeGlassBounds(new UiRect((float)x, (float)y, (float)w, (float)h));
         if (batch == null) {
             endAutoBatch(auto);
@@ -4739,6 +4743,21 @@ public final class Renderer2D {
         float accentR = ((accent >>> 16) & 0xFF) / 255.0f;
         float accentG = ((accent >>> 8) & 0xFF) / 255.0f;
         float accentB = (accent & 0xFF) / 255.0f;
+        if (material.mode() == UiSurfaceMaterialSpec.Mode.ICE) {
+            UiIceMaterialSpec ice = material.ice();
+            // Ice parameters occupy the same per-primitive payload as solid materials;
+            // different ice profiles can share a batch without changing draw uniforms.
+            return mesh.vec2(x, y).local2(x, y).color(r, g, b, a)
+                    .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
+                    .vec4(points[0], points[1], points[2], points[3])
+                    .vec4(points[4], points[5], points[6], points[7])
+                    .vec4(points[8], points[9], points[10], points[11])
+                    .vec4(points[12], points[13], points[14], points[15])
+                    .vec4(pointCount, rounding, ice.seed(), ice.density())
+                    .vec4(material.mode().shaderId(), ice.frost(), ice.cracks(), ice.blueAbsorption())
+                    .vec4(ice.displacementPx(), ice.facetContrast(), ice.clarity(), 0f)
+                    .next();
+        }
         return mesh.vec2(x, y).local2(x, y).color(r, g, b, a)
                 .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
                 .vec4(points[0], points[1], points[2], points[3])

@@ -74,6 +74,8 @@ import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMod
 import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
 import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
+import combatant.client.runtime.discovery.CombatantIndex;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.helpers.PlayerHeadRenderer;
@@ -142,6 +144,12 @@ final class XaeroMapSettingsPanel {
     private final List<Entry> entries = new ArrayList<>();
     private final List<Hit> hits = new ArrayList<>();
     private final List<CategoryHit> categoryHits = new ArrayList<>();
+    // A shared navigation hover surface and a separate moving selection surface.
+    // Values persist across UI JS tree rebuilds and are fed as lightweight patches.
+    private float navigationHoverPosition = -1.0f;
+    private float navigationHoverAlpha;
+    private float navigationSelectedPosition = Float.NaN;
+
     private final Set<ConfigOption<?>> boundXaeroOptions = Collections.newSetFromMap(new IdentityHashMap<>());
     private final SearchComponent searchComponent = new SearchComponent();
     private final SettingOverlayHost overlayHost = new SettingOverlayHost();
@@ -336,7 +344,8 @@ final class XaeroMapSettingsPanel {
         // The scripted Browser owns its lifecycle alpha through UiRenderContext so text, images,
         // primitives and glass all decay together. Do not multiply Renderer2D alpha around it as
         // well, otherwise the optical surface fades twice while runtime text only fades once.
-        renderBrowserSurface(layout, lifecycleAlpha);
+        updateNavigationMotion(mouseX, mouseY, dt);
+        renderBrowserSurface(layout, lifecycleAlpha, mouseX, mouseY);
 
         double previousRendererAlpha = Renderer2D.COLOR.getAlpha();
         float previousGuiAlpha = ClickGuiRenderer.getRenderAlphaMultiplier();
@@ -379,7 +388,44 @@ final class XaeroMapSettingsPanel {
         }
     }
 
-    private void renderBrowserSurface(SolidBrowserLayout layout, float lifecycleAlpha) {
+    private void updateNavigationMotion(float mouseX, float mouseY, float dt) {
+        float targetHover = -1.0f;
+        for (int i = 0; i < categoryHits.size(); i++) {
+            if (categoryHits.get(i).contains(mouseX, mouseY)) {
+                targetHover = i;
+                break;
+            }
+        }
+        int targetSelected = selectedCategory.ordinal();
+        if (!Float.isFinite(navigationSelectedPosition)) navigationSelectedPosition = targetSelected;
+        navigationSelectedPosition = animateToward(navigationSelectedPosition, targetSelected, dt, 13.0f);
+        if (targetHover >= 0) {
+            if (navigationHoverPosition < 0.0f) navigationHoverPosition = targetHover;
+            navigationHoverPosition = animateToward(navigationHoverPosition, targetHover, dt, 17.0f);
+        }
+        navigationHoverAlpha = animateToward(navigationHoverAlpha,
+                targetHover >= 0 ? 1.0f : 0.0f, dt, targetHover >= 0 ? 15.0f : 11.0f);
+    }
+
+    private Map<String, Map<String, ?>> navigationVisualPatches() {
+        int alpha = Math.max(0, Math.min(255, Math.round(navigationHoverAlpha * 25.0f)));
+        String hoverColor = String.format(Locale.ROOT, "#%02XFFFFFF", alpha);
+        return Map.of("map-settings:nav-group:hover", Map.of("fill", hoverColor));
+    }
+
+    private Map<String, UiBounds> navigationBoundsPatches(SolidBrowserLayout layout) {
+        float navX = x + layout.navX + 3.0f;
+        float navY = y + layout.navStartY + 3.0f;
+        float rowStep = layout.navRowHeight + layout.navRowGap;
+        float width = Math.max(1.0f, layout.navRowWidth - 6.0f);
+        float height = Math.max(1.0f, layout.navRowHeight - 2.0f);
+        float hoverPosition = navigationHoverPosition < 0 ? navigationSelectedPosition : navigationHoverPosition;
+        return Map.of(
+                "map-settings:nav-group:hover", new UiBounds(navX, navY + Math.max(0, hoverPosition) * rowStep, width, height),
+                "map-settings:nav-group:selected", new UiBounds(navX, navY + navigationSelectedPosition * rowStep, width, height));
+    }
+
+    private void renderBrowserSurface(SolidBrowserLayout layout, float lifecycleAlpha, float mouseX, float mouseY) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getResourceManager() == null) return;
         HudScriptLayouts.pollReloadCombo(mc);
@@ -408,6 +454,9 @@ final class XaeroMapSettingsPanel {
             categories.add(item);
         }
         props.put("categories", categories);
+        boolean devUiKits = CombatantIndex.classNames(CombatantIndex.Kind.CLICK_GUI).contains(
+                "combatant.client.features.gui.clickgui.sections.dev.UiComponentLabSection");
+        props.put("devUiKits", devUiKits);
 
         long signature = CachedUiScriptRuntime.signature(props);
         UiRuntime runtime = scriptRuntime.bake(
@@ -423,9 +472,16 @@ final class XaeroMapSettingsPanel {
                 width,
                 height,
                 () -> props,
-                null
+                null,
+                devUiKits ? () -> navigationBoundsPatches(layout) : null
         );
         if (runtime != null) {
+            if (devUiKits) {
+                // The hover alpha is paint-only: update it after layout rather than
+                // forcing CachedUiScriptRuntime to remeasure the entire tree.
+                runtime.patchPropsByKey(navigationVisualPatches());
+                runtime.input().updateHover(runtime.root(), mouseX, mouseY);
+            }
             // Use the same dedicated Map UI-underlay source as the chrome controls. The map
             // background and both ordinary/direct-textured Xaero tile paths are explicitly mirrored
             // into this target before any Map glass is emitted, so it is the authoritative optical

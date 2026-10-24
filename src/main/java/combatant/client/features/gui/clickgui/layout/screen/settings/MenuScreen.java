@@ -277,9 +277,7 @@ public final class MenuScreen {
         if (button != combatant.client.input.InputKeys.MOUSE_LEFT && button != combatant.client.input.InputKeys.MOUSE_RIGHT) return false;
 
         if (activeThemeEditor != null && themeEditorPreview.mouseClicked(activeThemeEditor, mx, my, button)) {
-            settingsPanel.close();
-            activeThemeEditor = null;
-            themeEditorPreview.reset();
+            // Preview switches are local to the specimen; editing continues.
             return true;
         }
 

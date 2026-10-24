@@ -16,6 +16,7 @@ import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassInteraction;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
 import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiMaterialInteractionState;
 import net.minecraft.client.Minecraft;
@@ -106,6 +107,16 @@ public enum HudRenderUtil {
                                          UiMaterialInteractionState owner,
                                          UiGlassOpticsSpec optics, boolean stacked,
                                          float frostPx, float hoverTiltDegrees) {
+        drawReactiveGlass(x, y, w, h, radius, scale, large, blurAlpha, glassAlpha,
+                owner, optics, stacked, frostPx, hoverTiltDegrees, UiGlassVisual.DEFAULT);
+    }
+
+    public static void drawReactiveGlass(float x, float y, float w, float h,
+                                         float radius, float scale, boolean large,
+                                         float blurAlpha, float glassAlpha,
+                                         UiMaterialInteractionState owner,
+                                         UiGlassOpticsSpec optics, boolean stacked,
+                                         float frostPx, float hoverTiltDegrees, UiGlassVisual visual) {
         if (w <= 0f || h <= 0f) return;
         UiGlassOpticsSpec spec = optics != null ? optics : UiGlassOpticsSpec.LIQUID;
         if (blurAlpha <= 0.001f && glassAlpha <= 0.001f) return;
@@ -132,7 +143,8 @@ public enum HudRenderUtil {
             effectiveOptics = spec.withTilt(spec.tiltXDegrees() + leanX, spec.tiltYDegrees() + leanY);
         }
         UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
-                .withOptics(effectiveOptics).withInteraction(interaction).withFrostedJitter(frostPx);
+                .withOptics(effectiveOptics).withInteraction(interaction).withFrostedJitter(frostPx)
+                .withVisual(visual);
         Runnable draw = () -> drawLiquidGlass(x, y, w, h, radius, scale, large,
                 blurAlpha, glassAlpha);
         Renderer2D renderer = Renderer2D.COLOR;

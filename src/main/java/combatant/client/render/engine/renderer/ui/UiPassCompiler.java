@@ -22,6 +22,7 @@ import combatant.client.render.engine.rhi.resource.TransientTargetDescriptor;
 import combatant.client.render.engine.text.TextRenderSystem;
 import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
+import combatant.client.render.engine.uniform.impl.UiGlassFrameUniforms;
 import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.Minecraft;
@@ -215,6 +216,13 @@ public final class UiPassCompiler {
                         uiBatch = UIBatchUniforms.get();
                     }
                     builder.uniform("UIBatch", uiBatch);
+                }
+                // The material primitive pipeline declares UIGlassFrame for the pointer-lit
+                // satin/metal surface. Capture-aware and mixed-item paths bind it already;
+                // direct RHI lowering must preserve the same pipeline uniform contract.
+                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE) {
+                    builder.uniform(UiGlassFrameUniforms.BLOCK_NAME,
+                            UiGlassFrameUniforms.update(mc, screenW, screenH));
                 }
                 if (batch.clipSnapshot.usesAnalyticPipeline()) {
                     builder.uniform("UIClip", UiClipUniforms.write(batch.clipSnapshot));

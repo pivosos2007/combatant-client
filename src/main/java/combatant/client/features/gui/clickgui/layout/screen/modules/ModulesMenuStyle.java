@@ -12,11 +12,28 @@ import combatant.client.features.theme.Theme;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.animation.AnimationUtility;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassInteraction;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
 
 enum ModulesMenuStyle {
     ;
     static final int MODULE_LIST_ON = 0xFF5DE878;
     static final int MODULE_LIST_OFF = 0xFFFF5E66;
+    private static final UiLiquidGlassMaterial FROZEN_GLASS = UiLiquidGlassMaterial.DEFAULT
+            .withOptics(UiGlassOpticsSpec.LIQUID.withRefraction(0.012f).withBevel(0.085f, 0.042f)
+                    .withChromaticAberration(0f).withMagnification(1.008f)
+                    .withInteractionStrength(0f).withShapeDeformation(false))
+            .withInteraction(new UiGlassInteraction(0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f, true))
+            .withTintStrength(0.16f);
+
+    static UiLiquidGlassMaterial frozenGlass(int seed, boolean compact) {
+        // One ice model for glass and opaque primitives. Per-panel seeds are stable.
+        UiIceMaterialSpec ice = UiIceMaterialSpec.LIGHT.withSeed(seed)
+                .withFreezing(compact ? 0.34f : 0.55f, compact ? 0.16f : 0.38f);
+        return FROZEN_GLASS.withIce(ice);
+    }
 
     private static int text = 0xFFFFFFFF;
     private static int textMuted = 0xBFFFFFFF;
@@ -45,7 +62,7 @@ enum ModulesMenuStyle {
         textMuted = withAlpha(theme.textMuted(), 210);
         textFaint = withAlpha(theme.textMuted(), 135);
 
-        panelBgGlassDark = withAlpha(mix(surface, accent, 0.070f), 116);
+        panelBgGlassDark = withAlpha(mix(surface, 0xFF193B57, 0.45f), 116);
         panelStroke = withAlpha(mix(stroke, accent, 0.155f), 76);
         split = withAlpha(mix(stroke, accent, 0.120f), 22);
         rowHover = withAlpha(mix(surfaceHover, accent, 0.125f), 34);

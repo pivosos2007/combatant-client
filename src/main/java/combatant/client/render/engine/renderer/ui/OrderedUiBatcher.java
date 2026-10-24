@@ -8,6 +8,9 @@
 package combatant.client.render.engine.renderer.ui;
 
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import combatant.client.render.engine.pipeline.UiGlassVisualPipelines;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
+import combatant.client.render.engine.uniform.impl.UiGlassVisualUniforms;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
@@ -216,7 +219,19 @@ public final class OrderedUiBatcher {
                                      Renderer2D.BlurQuality quality, float offsetPx,
                                      UiBackdropRequest backdropRequest,
                                      UiBackdropBlendSpec backdropBlend) {
+        return getOrCreateBlur(type, view, sampler, quality, offsetPx, backdropRequest,
+                backdropBlend, UiGlassVisual.DEFAULT);
+    }
+
+    public DrawBatch getOrCreateBlur(UiBatchType type, GpuTextureView view, GpuSampler sampler,
+                                     Renderer2D.BlurQuality quality, float offsetPx,
+                                     UiBackdropRequest backdropRequest,
+                                     UiBackdropBlendSpec backdropBlend, UiGlassVisual visual) {
         if (!active) return null;
+        UiGlassVisual normalizedVisual = visual != null ? visual : UiGlassVisual.DEFAULT;
+        if (type != UiBatchType.LIQUID_GLASS && normalizedVisual.custom()) {
+            throw new IllegalArgumentException("Custom glass visuals require LIQUID_GLASS geometry");
+        }
         UiBackdropRequest normalizedBackdrop = backdropRequest != null
                 ? backdropRequest
                 : UiBackdropRequest.NONE;
@@ -234,6 +249,7 @@ public final class OrderedUiBatcher {
         if (!order.isEmpty()) {
             Object last = order.get(order.size() - 1);
             if (last instanceof DrawBatch drawBatch
+                    && drawBatch.glassVisual.equals(normalizedVisual)
                     && drawBatch.canMergeBlur(type, view, sampler, normalizedQuality, normalizedOffset,
                     normalizedBackdrop, normalizedBlend, scissor, clip)) {
                 return drawBatch;
@@ -242,6 +258,7 @@ public final class OrderedUiBatcher {
         DrawBatch batch = obtain(type);
         batch.beginBlur(view, sampler, normalizedQuality, normalizedOffset, normalizedBackdrop, normalizedBlend,
                 scissor, clip);
+        batch.glassVisual = normalizedVisual;
         order.add(batch);
         return batch;
     }
@@ -847,6 +864,8 @@ public final class OrderedUiBatcher {
                             ? UiGlassFrameUniforms.update(mc, screenW, screenH) : null;
                     GpuBufferSlice stackData = actualGlassLens
                             ? UiGlassStackUniforms.update(stackBounds) : null;
+                    GpuBufferSlice visualData = actualGlassLens && batch.glassVisual.custom()
+                            ? UiGlassVisualUniforms.update(batch.glassVisual) : null;
                     GpuBufferSlice backdropData = useUiUnderlay
                             ? uploadUiBackdrop(batch.backdropRequest.uiMix()) : null;
                     // Submit main draw and, only for opt-in stacking streams, a glass-only
@@ -868,6 +887,7 @@ public final class OrderedUiBatcher {
                             glassBuilder.uniform(UI_BLEND_BLOCK.name(), blendData);
                             glassBuilder.uniform(UiGlassFrameUniforms.BLOCK_NAME, frameData);
                             glassBuilder.uniform(UiGlassStackUniforms.BLOCK_NAME, stackData);
+                            if (visualData != null) glassBuilder.uniform(UiGlassVisualUniforms.BLOCK_NAME, visualData);
                             glassBuilder.sampler("u_StackTexture",
                                     stackActive ? currentTargetView : sourceView,
                                     stackActive ? backdropSampler : sourceSampler);
@@ -1318,6 +1338,10 @@ public final class OrderedUiBatcher {
     }
 
     private static RenderPipeline pipelineForGlass(DrawBatch batch, boolean uiUnderlay) {
+        if (batch.glassVisual.custom()) {
+            return UiGlassVisualPipelines.resolve(batch.glassVisual.shader(),
+                    batch.clipSnapshot.usesAnalyticPipeline(), uiUnderlay);
+        }
         if (!uiUnderlay) return pipelineFor(batch);
         if (batch.clipSnapshot.usesAnalyticPipeline()) {
             return UiBatchRenderPipelines.UI_LIQUID_GLASS_BATCH_UI_UNDERLAY_ANALYTIC_CLIP;

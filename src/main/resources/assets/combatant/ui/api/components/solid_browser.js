@@ -684,6 +684,7 @@ export class SolidBrowserSurface {
     }
 
     const nav = SolidBrowserSurface._nodes(props.navigationItems);
+    const group = SolidBrowserSurface._slotNode(props.navigationGroup);
     const combined = !!props.combinedNavigation;
     const navX = combined ? l.navX : (l.navWidth - t.navItemSize) * 0.5;
     const navW = combined ? l.navRowWidth : t.navItemSize;
@@ -691,9 +692,16 @@ export class SolidBrowserSurface {
     const navGap = combined ? ui.num(l.navRowGap, 6) : t.navStackGap;
     let navY = combined ? ui.num(l.navStartY, l.headerHeight + t.navHeaderToStackGap)
       : l.headerHeight + t.navHeaderToStackGap;
-    for (let i = 0; i < nav.length; i++) {
-      out.push(SolidBrowserSurface._placeVisual(nav[i], navX, navY, navW, navH));
-      navY += navH + navGap;
+    if (combined && group) {
+      // A single group owns all category rows and the shared moving indicators.
+      const groupedHeight = Math.max(1, ui.num(props.navigationGroupHeight,
+        nav.length * (navH + navGap) - navGap));
+      out.push(SolidBrowserSurface._placeVisual(group, navX, navY, navW, groupedHeight));
+    } else {
+      for (let i = 0; i < nav.length; i++) {
+        out.push(SolidBrowserSurface._placeVisual(nav[i], navX, navY, navW, navH));
+        navY += navH + navGap;
+      }
     }
 
     const footer = SolidBrowserSurface._slotNode(props.navigationFooter);

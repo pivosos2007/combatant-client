@@ -166,6 +166,20 @@ export type UiInlineStyle = {
   materialRoughness?: number;
   materialBevelStrength?: number;
   materialResponse?: number;
+  /** Local, deterministic ice material for solid primitives and optional glass composition. */
+  iceSeed?: number;
+  iceDensity?: number;
+  iceFrost?: number;
+  iceCracks?: number;
+  iceBlueAbsorption?: number;
+  /** Displacement of the captured background in framebuffer pixels; glass only. */
+  iceDisplacementPx?: number;
+  iceFacetContrast?: number;
+  /** Maximum extra clean-source reveal along ice fractures; glass only. */
+  iceClarity?: number;
+  /** Enable ice composition on liquid glass without replacing its optical model. */
+  glassIce?: boolean;
+  glassMaterial?: "ice" | string;
   glassOptics?: "reactive-refraction" | "reactive-smoked" | "etched-glass" | "soft-lens" | string;
   glassRefraction?: number;
   glassBevelWidth?: number;
@@ -627,6 +641,20 @@ export type UiShapeNode = UiNode & {
   materialRoughness?: number;
   materialBevelStrength?: number;
   materialResponse?: number;
+  /** Local, deterministic ice material for solid primitives and optional glass composition. */
+  iceSeed?: number;
+  iceDensity?: number;
+  iceFrost?: number;
+  iceCracks?: number;
+  iceBlueAbsorption?: number;
+  /** Displacement of the captured background in framebuffer pixels; glass only. */
+  iceDisplacementPx?: number;
+  iceFacetContrast?: number;
+  /** Maximum extra clean-source reveal along ice fractures; glass only. */
+  iceClarity?: number;
+  /** Enable ice composition on liquid glass without replacing its optical model. */
+  glassIce?: boolean;
+  glassMaterial?: "ice" | string;
   glassTint?: string | number;
   glassAlpha?: number;
   blurAlpha?: number;

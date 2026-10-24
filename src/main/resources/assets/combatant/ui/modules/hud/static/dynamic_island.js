@@ -18,8 +18,9 @@ function displayShell(p) {
   const h = num(p.height, 35);
   const cut = num(p.bezelCut, 4.5);
   const alpha = num(p.alpha, 1);
-  const nodes = [
-    ui.shape({
+  // Material covers the entire chamfered backdrop; no fake telemetry strip.
+  // Existing theme gradient and backdrop blur remain part of the same shell.
+  const surface = {
       key: "shell:surface",
       shape: "primitive",
       preset: "chamfered",
@@ -33,13 +34,15 @@ function displayShell(p) {
       startColor: colorAlpha(p.displayBgStart || p.displayBg, alpha),
       endColor: colorAlpha(p.displayBgEnd || p.displayBg, alpha),
       angle: num(p.displayBgAngle, 90),
-      materialMode: ui.str(p.displayMaterial, "phosphor-led"),
+      materialMode: "phosphor-led",
       materialAccent: p.phosphor,
-      materialDetailScale: num(p.pixelPitchPx, 4.0),
-      materialRoughness: num(p.offPixelOpacity, 0.13),
-      materialBevelStrength: num(p.displayBevelStrength, 0.30),
-      materialResponse: ui.clamp(num(p.bodyHover, 0) * 0.42 + num(p.bodyPress, 0) * 0.72, 0, 1),
-    }),
+      materialDetailScale: 4.4,
+      materialRoughness: 0.30,
+      materialBevelStrength: 0.55,
+      materialResponse: ui.clamp(num(p.displaySignal, 0.35), 0, 1),
+  };
+  const nodes = [
+    ui.shape(surface),
     ui.shape({
       key: "shell:interaction",
       shape: "primitive",

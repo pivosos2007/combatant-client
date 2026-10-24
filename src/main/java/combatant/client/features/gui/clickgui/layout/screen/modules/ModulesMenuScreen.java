@@ -47,6 +47,7 @@ import java.util.List;
 
 public final class ModulesMenuScreen {
     private static final float INPUT_READY_PROGRESS = 0.72f;
+    private static final UiLiquidGlassMaterial SEARCH_GLASS = ModulesMenuStyle.frozenGlass(17, true);
     private static final float PANEL_W = 115.0f;
     private static final float BASE_PANEL_H = 240.0f;
     private static final float PANEL_H = 255.0f;
@@ -489,7 +490,8 @@ public final class ModulesMenuScreen {
         );
 
         float materialAlpha = alpha >= 0.999f ? 1.0f : alpha;
-        drawLiquidGlass(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale, true, materialAlpha);
+        drawLiquidGlass(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale,
+                true, materialAlpha, panel.frozenGlass);
     }
 
     private void renderPanel(ModulesMenuPanel panel, float mouseX, float mouseY, float alpha) {
@@ -650,7 +652,7 @@ public final class ModulesMenuScreen {
                 int glassRgb = mix(ModulesMenuStyle.panelBgGlassDark(), themeGlass,
                         0.72f + 0.08f * hover);
                 int glassTint = withAlpha(glassRgb, Math.round(alpha * (108.0f + 18.0f * hover)));
-                UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT.withInnerGlow(
+                UiLiquidGlassMaterial material = panel.frozenControl.withInnerGlow(
                         0.006f + hover * 0.006f,
                         2.15f + hover * 0.20f,
                         withAlpha(themeGlass, Math.round(alpha * (4.0f + 4.0f * hover)))
@@ -704,7 +706,7 @@ public final class ModulesMenuScreen {
             int activeThemeGlass = mix(buttonGradient.start(), buttonGradient.end(), 0.50f);
             int activeGlassRgb = mix(ModulesMenuStyle.panelBgGlassDark(), activeThemeGlass, 0.86f);
             int activeGlassTint = withAlpha(activeGlassRgb, Math.round(alpha * 148.0f));
-            UiLiquidGlassMaterial activeMaterial = UiLiquidGlassMaterial.DEFAULT.withInnerGlow(
+            UiLiquidGlassMaterial activeMaterial = panel.frozenControl.withInnerGlow(
                     0.012f + 0.004f * motion,
                     2.45f + 0.18f * motion,
                     withAlpha(activeThemeGlass, Math.round(alpha * 8.0f))
@@ -1458,7 +1460,7 @@ public final class ModulesMenuScreen {
         float materialAlpha = alpha >= 0.999f ? 1.0f : alpha;
         float radius = 6.0f * scale;
 
-        drawLiquidGlass(searchX, searchY, searchW, searchH, radius, false, materialAlpha);
+        drawLiquidGlass(searchX, searchY, searchW, searchH, radius, false, materialAlpha, SEARCH_GLASS);
 
         int veil = withAlpha(ModulesMenuStyle.panelBgGlassDark(), alpha * 0.25f);
         LayoutRender2D.roundedQuad(searchX, searchY, searchW, searchH, radius, veil, veil, veil, veil);
@@ -1500,7 +1502,8 @@ public final class ModulesMenuScreen {
         );
     }
 
-    private void drawLiquidGlass(float x, float y, float w, float h, float radius, boolean panel, float alpha) {
+    private void drawLiquidGlass(float x, float y, float w, float h, float radius,
+                                 boolean panel, float alpha, UiLiquidGlassMaterial material) {
         if (alpha <= 0.001f) return;
 
         float materialAlpha = AnimationUtility.clamp(alpha, 0.0f, 1.0f);
@@ -1510,15 +1513,15 @@ public final class ModulesMenuScreen {
 
         Renderer2D.COLOR.withLiquidGlassBlurProfile(
                 Renderer2D.BlurQuality.LIQUID_GLASS,
-                1.38f,
-                () -> Renderer2D.COLOR.liquidGlassRect(
+                panel ? 1.65f : 1.38f,
+                () -> Renderer2D.COLOR.withLiquidGlassMaterial(material, () -> Renderer2D.COLOR.liquidGlassRect(
                         x, y, w, h,
                         radius,
-                        0xFFFFFFFF,
+                        0xFFB4DBF3,
                         materialAlpha,
                         1.0f,
                         preset
-                )
+                ))
         );
     }
 

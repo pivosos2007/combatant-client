@@ -6,6 +6,7 @@
  */
 
 import { SolidBrowserSurface } from "../../api/components/solid_browser.js";
+import { NavigationGroup } from "../../api/components/navigation_group.js";
 
 function num(value, fallback) {
   const out = Number(value);
@@ -42,22 +43,28 @@ export function buildTemplate(ctx) {
   const navRowWidth = Math.max(34, num(layout.navRowWidth, num(layout.navWidth, 268) - 32));
   const navRowHeight = Math.max(32, num(layout.navRowHeight, 46));
 
-  const navigationItems = categories.map((category, index) => SolidBrowserSurface.navigationItem({
-    key: `map-settings:nav:${str(category.id, index.toString())}`,
-    selected: str(category.id, "") === selected,
-    accent,
-    appearance: "settings-category",
-    tokens: {
-      navItemRadius: 8,
-      hoverMotionMs: 240,
-      stateMotionMs: 190,
-    },
-    width: navRowWidth,
-    height: navRowHeight,
-    label: str(category.label, "Map"),
-    fontSize: 1.12,
-    icon: svg(`map-settings:nav-icon:${index}`, category.icon),
-  }));
+  const devUiKits = !!p.devUiKits;
+  // Keep the old appearance untouched in normal builds until the kit and
+  // navigation transition pass their in-game acceptance checks.
+  const navigationItems = devUiKits ? [] : categories.map((category, index) =>
+    SolidBrowserSurface.navigationItem({
+      key: `map-settings:nav:${str(category.id, index.toString())}`,
+      selected: str(category.id, "") === selected,
+      accent,
+      appearance: "settings-category",
+      tokens: {navItemRadius: 8, hoverMotionMs: 240, stateMotionMs: 190},
+      width: navRowWidth, height: navRowHeight,
+      label: str(category.label, "Map"), fontSize: 1.12,
+      icon: svg(`map-settings:nav-icon:${index}`, category.icon),
+    }));
+  const navigationGroup = devUiKits ? NavigationGroup.create({
+    key: "map-settings:nav-group",
+    items: categories.map(c => ({
+      id: str(c.id, ""), label: str(c.label, "Map"), icon: str(c.icon, "settings-2"),
+    })),
+    selected, accent, surface: "#3518151D", width: navRowWidth,
+    rowHeight: navRowHeight, gap: num(layout.navRowGap, 6), fontSize: 1.12,
+  }) : null;
 
   const selectedCategory = categories.find((category) => str(category.id, "") === selected) || categories[0] || {};
   const title = str(selectedCategory.label, "World Map");
@@ -98,6 +105,9 @@ export function buildTemplate(ctx) {
       class: ui.abs(0, 0, 11, 11),
     }),
     navigationItems,
+    navigationGroup,
+    navigationGroupHeight: categories.length * (navRowHeight + num(layout.navRowGap, 6))
+      - num(layout.navRowGap, 6) + 6,
     detailActive: true,
     detailBackdrop: false,
     detailTitle: title,

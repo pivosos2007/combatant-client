@@ -16,11 +16,14 @@ import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
 import combatant.client.render.engine.renderer.ui.blend.UiBackdropBlendSpec;
 
+import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
+
 import java.util.Objects;
 import java.util.ArrayList;
 import java.util.List;
 
 public final class DrawBatch {
+    public UiGlassVisual glassVisual = UiGlassVisual.DEFAULT;
     public final UiBatchType type;
     public final MeshBuilder mesh;
     public GpuTextureView view;
@@ -46,6 +49,7 @@ public final class DrawBatch {
 
     public void begin(GpuTextureView view, GpuSampler sampler,
                       UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot) {
+        this.glassVisual = UiGlassVisual.DEFAULT;
         this.view = view;
         this.sampler = sampler;
         this.msdfPxRange = 0.0f;

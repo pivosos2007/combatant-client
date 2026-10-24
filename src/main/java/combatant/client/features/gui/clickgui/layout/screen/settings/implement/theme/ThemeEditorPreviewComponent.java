@@ -22,6 +22,7 @@ import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
 import combatant.client.render.helpers.ScissorFunction;
 import net.minecraft.client.Minecraft;
+import combatant.client.input.InputKeys;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -29,16 +30,24 @@ import java.util.Map;
 
 @UiScriptAsset("combatant:modules/clickgui/theme_preview")
 public final class ThemeEditorPreviewComponent {
-private static final float DESIGN_W = 320f;
+    private static final float DESIGN_W = 320f;
     private static final float DESIGN_H = 190f;
 
     private final Minecraft mc = Minecraft.getInstance();
     private final UiScriptModuleHandle previewModuleHandle = HudScriptLayouts.handle(ThemeEditorPreviewComponent.class);
     private final CachedUiScriptRuntime previewRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
     private float previewAnim;
+    // Only the specimen view is interactive. These bounds are supplied by the
+    // same layout pass that renders the script (including UI scaling).
+    private float previewX, previewY, previewUnit;
+    private boolean materialsView;
+    private boolean lightScene;
 
     public void reset() {
         previewAnim = 0f;
+        previewX = previewY = previewUnit = 0f;
+        materialsView = false;
+        lightScene = false;
         previewRuntime.reset();
     }
 
@@ -51,6 +60,7 @@ private static final float DESIGN_W = 320f;
                        float my,
                        float scale) {
         if (editor == null) {
+            previewUnit = 0f;
             previewAnim = AnimationUtility.approach(previewAnim, 0f, AnimationUtility.deltaTime(), 12f);
             return;
         }
@@ -65,12 +75,18 @@ private static final float DESIGN_W = 320f;
         float availableW = Math.max(1f, menuW - safePad * 2f);
         float availableH = Math.max(1f, menuH - safePad * 2f);
         float unit = Math.min(scale, Math.min(availableW / DESIGN_W, availableH / DESIGN_H));
-        if (unit <= 0.05f) return;
+        if (unit <= 0.05f) {
+            previewUnit = 0f;
+            return;
+        }
 
         float panelW = DESIGN_W * unit;
         float panelH = DESIGN_H * unit;
         float panelX = menuX + (menuW - panelW) * 0.5f;
         float panelY = menuY + (menuH - panelH) * 0.5f;
+        previewX = panelX;
+        previewY = panelY;
+        previewUnit = unit;
 
         Themes.ThemeEntry entry = editor.toEntry();
         if (entry == null || entry.theme() == null) return;
@@ -84,6 +100,20 @@ private static final float DESIGN_W = 320f;
     }
 
     public boolean mouseClicked(EditableClickGuiTheme editor, float mx, float my, int button) {
+        if (editor == null || button != InputKeys.MOUSE_LEFT || previewUnit <= 0f) return false;
+        float ux = (mx - previewX) / previewUnit;
+        float uy = (my - previewY) / previewUnit;
+        if (uy < 8f || uy > 31f) return false;
+        // These are the only two toggles in theme_preview.js. They change the
+        // local preview, not the saved theme or any global material setting.
+        if (ux >= 207f && ux <= 268f) {
+            materialsView = !materialsView;
+            return true;
+        }
+        if (materialsView && ux >= 271f && ux <= 307f) {
+            lightScene = !lightScene;
+            return true;
+        }
         return false;
     }
 
@@ -145,6 +175,8 @@ private static final float DESIGN_W = 320f;
         props.put("height", height);
         props.put("unit", unit);
         props.put("alpha", alpha);
+        props.put("previewMaterials", materialsView);
+        props.put("previewLightScene", lightScene);
         props.put("entryName", entry.name() == null || entry.name().isBlank() ? "Custom Theme" : entry.name());
 
         props.put("windowBg", hex(theme.windowBg()));

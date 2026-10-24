@@ -2,6 +2,7 @@
 #extension GL_ARB_separate_shader_objects : require
 
 #include <combatant:ui_aa.glsl>
+#include <combatant:ui_ice_material.glsl>
 
 /*
  * This file is part of the Combatant Client distribution.
@@ -125,17 +126,43 @@ void main() {
         color += grain * (0.018 * (1.0 - roughness * 0.45));
         float diffuse = dot(normal, normalize(vec2(-0.35, -1.0))) * 0.5 + 0.5;
         color = mix(color, accent, edge * bevelStrength * diffuse * 0.12);
-    } else if (mode == 3) {
+    } else if (mode == 3) { // PHOSPHOR LED: emissive pixel substrate across the entire shell.
+        // Physical-pixel coordinates keep dot pitch stable across logical UI scales.
         vec2 physical = local / max(logicalScale, vec2(0.0001));
-        vec2 cell = fract(physical / detailScale) - 0.5;
-        float cellDistance = length(cell);
-        float pixelAa = max(fwidth(cellDistance), 0.015);
-        float pixel = 1.0 - smoothstep(0.28 - pixelAa, 0.38 + pixelAa, cellDistance);
-        float offPixel = pixel * roughness;
-        float emitter = pixel * response;
-        color = mix(color, accent * 0.32, offPixel);
-        color += accent * emitter * (0.16 + bevelStrength * 0.18);
-        color *= 1.0 - edge * 0.08;
+        vec2 physicalSize = v_Rect.zw / max(logicalScale, vec2(0.0001));
+        float pitch = clamp(detailScale, 3.5, 10.0);
+        vec2 grid = physical / pitch;
+        vec2 gridCell = fract(grid) - 0.5;
+        float r = length(gridCell);
+        float aa = max(fwidth(r), 0.012);
+        float pixelShape = 1.0 - smoothstep(0.265 - aa, 0.355 + aa, r);
+        float halo = 1.0 - smoothstep(0.35 + aa, 0.66 + aa, r);
+        // Suppress high frequencies before the pixel spacing becomes sub-Nyquist.
+        float densityFilter = 1.0 - smoothstep(0.33, 0.66, max(fwidth(grid.x), fwidth(grid.y)));
+        vec2 uv = clamp(physical / max(physicalSize, vec2(1.0)), vec2(0.0), vec2(1.0));
+
+        // The whole surface is an LED display, not a gradient with a decorative
+        // progress row. The substrate and unlit cells exist even with no signal.
+        vec3 substrate = color * 0.55 + vec3(0.005, 0.008, 0.014);
+        float off = clamp(roughness, 0.0, 1.0);
+        float inactive = densityFilter * pixelShape;
+        color = substrate + accent * inactive * (0.09 + off * 0.25);
+
+        // Two broad, low-intensity emissive regions behind the content. The CPU
+        // sends real telemetry through response. Light remains local to the cells;
+        // it never resolves into a timeline or a full-surface gradient overlay.
+        vec2 d1 = (uv - vec2(0.24, 0.49)) * vec2(1.05, 1.85);
+        vec2 d2 = (uv - vec2(0.78, 0.53)) * vec2(1.10, 1.90);
+        float fieldA = 1.0 - smoothstep(0.18, 0.55, length(d1));
+        float fieldB = 1.0 - smoothstep(0.16, 0.48, length(d2));
+        float phosphorDrive = 0.16 + 0.55 * clamp(response, 0.0, 1.0);
+        float field = clamp((fieldA * 0.70 + fieldB * 0.55) * phosphorDrive, 0.0, 1.0);
+        float emitted = field * densityFilter;
+        color += accent * (pixelShape * emitted * 0.64 + halo * emitted * bevelStrength * 0.20);
+        // Restrained optical edge belongs to the display body, not a white glow.
+        float grazing = clamp(dot(normal, normalize(vec2(-0.48, -0.88))) * 0.5 + 0.5, 0.0, 1.0);
+        color *= 1.0 - edge * (0.065 + (1.0 - grazing) * 0.055);
+        color += accent * edge * grazing * 0.012;
     } else if (mode == 4) { // GRAPHITE
         vec2 localMicro = local * detailScale;
         vec2 cells = floor(localMicro);
@@ -156,6 +183,15 @@ void main() {
         color += vec3(glossy * (1.0 - roughness) * 0.075);
         color += vec3(edge * pow(grazing, 5.0) * bevelStrength * 0.12);
         color *= 1.0 - edge * (1.0 - grazing) * 0.13;
+    } else if (mode == 7) { // ICE: same shape-aware material used by glass.
+        vec2 surfaceUv = local / max(v_Rect.zw, vec2(1.0));
+        vec2 surfaceSizePx = v_Rect.zw / max(logicalScale, vec2(1e-6));
+        float shapeDistancePx = d / max(min(logicalScale.x, logicalScale.y), 1e-6);
+        vec4 iceShape = vec4(v_Params5.zw, v_Params6.yz);
+        vec4 iceOptics = vec4(v_Params6.w, v_Params7.xyz);
+        CombatantIceSurface ice = combatantIceSurface(
+                surfaceUv, surfaceSizePx, shapeDistancePx, iceShape);
+        color = combatantIceColor(color, ice, normal, iceOptics);
     } else if (mode == 6) { // BRUSHED METAL
         vec2 uv = local / max(v_Rect.zw, vec2(1.0));
         float brush = uv.x * 0.92 + uv.y * 0.065;

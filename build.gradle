@@ -1121,6 +1121,55 @@ tasks.named("processDevResources") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+// Roboto is needed only by the dev-only Google Material 3 component gallery.
+// Keep downloaded font assets out of src/main and ordinary release archives.
+def googleMaterialFontRoot = layout.buildDirectory.dir("generated/dev-ui-fonts")
+sourceSets.dev.resources.srcDir(googleMaterialFontRoot)
+
+tasks.register("prepareDevUiFonts") {
+    group = "development"
+    description = "Fetch pinned Roboto faces and the license for the dev UI component gallery."
+    outputs.dir(googleMaterialFontRoot)
+    doLast {
+        def outputDir = googleMaterialFontRoot.get().file("assets/combatant/font").asFile
+        outputDir.mkdirs()
+        def upstream = "https://raw.githubusercontent.com/googlefonts/roboto-2/v2.138/"
+        [
+            "roboto_regular.ttf": "src/hinted/Roboto-Regular.ttf",
+            "roboto_medium.ttf": "src/hinted/Roboto-Medium.ttf",
+            "Roboto-LICENSE.txt": "LICENSE"
+        ].each { String filename, String upstreamPath ->
+            File targetFile = new File(outputDir, filename)
+            if (targetFile.isFile() && targetFile.length() > 1000) return
+            File tempFile = new File(outputDir, filename + ".partial")
+            try {
+                new URL(upstream + upstreamPath).openStream().withCloseable { stream ->
+                    tempFile.withOutputStream { output -> output << stream }
+                }
+                if (tempFile.length() <= 1000) {
+                    throw new GradleException("Invalid Roboto asset: ${upstreamPath}")
+                }
+                if (filename.endsWith(".ttf")) {
+                    byte[] signature = new byte[4]
+                    tempFile.withInputStream { input -> input.read(signature) }
+                    if (!((signature[0] == 0 && signature[1] == 1)
+                            || (signature[0] == 79 && signature[1] == 84))) {
+                        throw new GradleException("Roboto asset is not a font: ${upstreamPath}")
+                    }
+                }
+                java.nio.file.Files.move(tempFile.toPath(), targetFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            } finally {
+                tempFile.delete()
+            }
+        }
+    }
+}
+
+tasks.named("processDevResources") {
+    dependsOn tasks.named("prepareDevUiFonts")
+}
+
 tasks.named("processDuplexCourierResources") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     inputs.property "version", duplexCourierVersion

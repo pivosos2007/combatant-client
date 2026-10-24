@@ -48,6 +48,7 @@ import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.profiler.RenderProfiler2D;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiMaterialInteractionState;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ScissorFunction;
@@ -86,7 +87,7 @@ public final class TargetHud extends DraggableHudElement {
             .withFluid(0.37f, 0.54f).withCleanReveal(0.72f)
             .withInteractionStrength(0.92f).withChromaticAberration(0.75f)
             .withMagnification(1.006f).withShapeDeformation(false).withSpecular(false)
-            .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.IMPACT_EDGE);
+            .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.STATIC);
 
     private static final float BASE_WIDTH = 112.0f;
     private static final float BASE_HEIGHT = 40.0f;
@@ -1527,7 +1528,7 @@ public final class TargetHud extends DraggableHudElement {
                 : TARGET_GLASS;
         HudRenderUtil.drawReactiveGlass(x, y, width, height, radius, glassScale, true,
                 alphaFactor, alphaFactor,
-                mainGlassFluid, optics, false, 0f, 0.65f);
+                mainGlassFluid, optics, false, 0f, 0.65f, UiGlassVisual.IMPACT);
         if (isGradientPanelStyle()) {
             float strength = themeGradientStrength.get() / 100.0f;
             HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(
@@ -1560,7 +1561,7 @@ public final class TargetHud extends DraggableHudElement {
                 .withInteractionStrength(0f).withChromaticAberration(0.38f);
         HudRenderUtil.drawReactiveGlass(x, y, width, height, radius, scaleFactor, true,
                 alphaFactor, alphaFactor,
-                null, chipOptics, true, 0f, 0f);
+                null, chipOptics, true, 0f, 0f, UiGlassVisual.IMPACT);
     }
 
     private void drawItem(Renderer2D renderer,

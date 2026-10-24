@@ -53,7 +53,18 @@ final class UiTextNodeRenderer {
             textY += textRenderer.lineOffsetY(context.textRenderer(), style);
         } else {
             textX = textX(node, context, text, bounds, style);
-            textY = bounds.y() + style.paddingTop()
+            // Optional physical glyph centering for controls (buttons, tabs, chips, etc.).
+            // "text-align" only affects the horizontal axis.  Use actual measured
+            // glyph height rather than assuming that the font size equals its ink box.
+            String verticalAlign = node.props().string("verticalAlign", "top").trim().toLowerCase(java.util.Locale.ROOT);
+            float contentHeight = Math.max(0.0f, bounds.height() - style.paddingTop() - style.paddingBottom());
+            float glyphHeight = textRenderer.measureHeight(context.textRenderer(), style);
+            float verticalOffset = switch (verticalAlign) {
+                case "center", "middle" -> (contentHeight - glyphHeight) * 0.5f;
+                case "bottom", "end" -> contentHeight - glyphHeight;
+                default -> 0.0f;
+            };
+            textY = bounds.y() + style.paddingTop() + verticalOffset
                     + textRenderer.lineOffsetY(context.textRenderer(), style);
         }
         textY += node.props().number("textOffsetY", 0.0f);

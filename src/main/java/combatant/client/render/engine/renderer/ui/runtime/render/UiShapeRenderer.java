@@ -35,6 +35,18 @@ public final class UiShapeRenderer {
         if (props == null) return null;
         UiSurfaceMaterialSpec base = UiMaterialCatalog.solid(props.string("materialMode", ""));
         if (base == null) return null;
+        if (base.mode() == UiSurfaceMaterialSpec.Mode.ICE) {
+            UiIceMaterialSpec ice = new UiIceMaterialSpec(
+                    props.number("iceSeed", base.ice().seed()),
+                    props.number("iceDensity", props.number("materialDetailScale", base.ice().density())),
+                    props.number("iceFrost", props.number("materialRoughness", base.ice().frost())),
+                    props.number("iceCracks", props.number("materialBevelStrength", base.ice().cracks())),
+                    props.number("iceBlueAbsorption", base.ice().blueAbsorption()),
+                    props.number("iceDisplacementPx", base.ice().displacementPx()),
+                    props.number("iceFacetContrast", base.ice().facetContrast()),
+                    props.number("iceClarity", base.ice().clarity()));
+            return ice.asSurface().withAccent(resolveColor(props.get("materialAccent"), base.accentArgb(), 1.0f));
+        }
         return base.withAccent(resolveColor(props.get("materialAccent"), base.accentArgb(), 1.0f))
                 .withParameters(
                         props.number("materialDetailScale", base.detailScale()),

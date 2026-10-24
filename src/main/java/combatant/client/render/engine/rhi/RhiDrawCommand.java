@@ -225,6 +225,24 @@ public final class RhiDrawCommand {
 
         private void validateBindings() {
             if (pipelineSpec.metadata().domain() == PipelineDomain.UNKNOWN) return;
+            // A missing per-frame UBO reaches RenderPearl as a null GpuBufferSlice
+            // and crashes inside GlCommandEncoder.setupDraw(). Report the actual
+            // missing shader binding at command construction instead.
+            if (pipelineSpec.metadata().requiresUniform("UIGlassFrame")) {
+                boolean frameBound = false;
+                if (uniforms != null) {
+                    for (RhiUniformBinding uniform : uniforms) {
+                        if ("UIGlassFrame".equals(uniform.name())) {
+                            frameBound = true;
+                            break;
+                        }
+                    }
+                }
+                if (!frameBound) {
+                    throw new IllegalStateException("RHI draw '" + label
+                            + "' missing required UIGlassFrame uniform for pipeline " + pipeline.getLocation());
+                }
+            }
             if (uniforms != null) {
                 for (RhiUniformBinding uniform : uniforms) {
                     if (!pipelineSpec.uniformLayout().hasUniform(uniform.name())) {

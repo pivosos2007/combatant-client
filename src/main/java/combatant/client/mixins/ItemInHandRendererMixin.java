@@ -7,6 +7,8 @@
 
 package combatant.client.mixins;
 
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -36,6 +38,16 @@ import combatant.client.render.iris.IrisRuntime;
 @Environment(EnvType.CLIENT)
 @Mixin(value = FirstPersonHandsAndItemsRenderer.class, priority = 1100)
 public abstract class ItemInHandRendererMixin {
+
+    @ModifyExpressionValue(
+            method = "submitHandsWithItems",
+            at = @At(value = "FIELD", target = "Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;xRot:F")
+    )
+    private float combatant$useCameraPitch(float original,
+                                         @Local(argsOnly = true) FirstPersonHandsAndItemsRenderState handRenderState) {
+        // The shared avatar state includes silent rotations; first-person map tilt uses the view pitch.
+        return handRenderState.viewXRot;
+    }
 
     @Shadow
     private void renderPlayerArm(

@@ -578,30 +578,16 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         return rotation != null ? Mth.clamp(rotation.pitch(), -90.0f, 90.0f) : original;
     }
 
-    @ModifyExpressionValue(
+    @Inject(
             method = "applyInput",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/player/LocalPlayer;getYRot()F"
             )
     )
-    private float combatant$visualTickYaw(float original) {
+    private void combatant$updateBodyYawOnInput(CallbackInfo ci) {
+        // applyInput's yaw/pitch reads drive first-person hand sway and must retain camera angles.
         combatant$updateVisualBodyYaw();
-
-        Rotation rotation = RotationManager.INSTANCE.getCurrentRotation();
-        return rotation != null ? rotation.yaw() : original;
-    }
-
-    @ModifyExpressionValue(
-            method = "applyInput",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/player/LocalPlayer;getXRot()F"
-            )
-    )
-    private float combatant$visualTickPitch(float original) {
-        Rotation rotation = RotationManager.INSTANCE.getCurrentRotation();
-        return rotation != null ? Mth.clamp(rotation.pitch(), -90.0f, 90.0f) : original;
     }
 
     @Inject(

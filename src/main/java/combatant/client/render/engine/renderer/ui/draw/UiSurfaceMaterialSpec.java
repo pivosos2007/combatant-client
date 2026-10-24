@@ -12,8 +12,16 @@ public record UiSurfaceMaterialSpec(Mode mode,
                                     float roughness,
                                     float bevelStrength,
                                     float response,
-                                    int accentArgb) implements UiMaterialSpec {
+                                    int accentArgb,
+                                    UiIceMaterialSpec ice) implements UiMaterialSpec {
     @Override public Family family() { return Family.SOLID; }
+
+    public static final UiSurfaceMaterialSpec ICE = UiIceMaterialSpec.LIGHT.asSurface();
+
+    public UiSurfaceMaterialSpec(Mode mode, float detailScale, float roughness,
+                                 float bevelStrength, float response, int accentArgb) {
+        this(mode, detailScale, roughness, bevelStrength, response, accentArgb, UiIceMaterialSpec.LIGHT);
+    }
 
     public static final UiSurfaceMaterialSpec GRAPHITE = new UiSurfaceMaterialSpec(
             Mode.GRAPHITE, 0.36f, 0.88f, 0.24f, 0.0f, 0xFF77838F);
@@ -29,6 +37,7 @@ public record UiSurfaceMaterialSpec(Mode mode,
             Mode.PHOSPHOR_LED, 4.0f, 0.13f, 0.30f, 0.0f, 0xFF7FA2FF);
 
     public UiSurfaceMaterialSpec {
+        ice = ice != null ? ice : UiIceMaterialSpec.LIGHT;
         mode = mode != null ? mode : Mode.SOFT_TOUCH;
         detailScale = finiteClamp(detailScale, 0.01f, 64.0f);
         roughness = finiteClamp(roughness, 0.0f, 1.0f);
@@ -37,16 +46,19 @@ public record UiSurfaceMaterialSpec(Mode mode,
     }
 
     public UiSurfaceMaterialSpec withAccent(int argb) {
-        return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength, response, argb);
+        return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength, response, argb, ice);
     }
 
     public UiSurfaceMaterialSpec withResponse(float value) {
-        return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength, value, accentArgb);
+        return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength, value, accentArgb, ice);
     }
 
     public UiSurfaceMaterialSpec withParameters(float scale, float roughnessValue,
                                                 float bevel, float responseValue) {
-        return new UiSurfaceMaterialSpec(mode, scale, roughnessValue, bevel, responseValue, accentArgb);
+        UiIceMaterialSpec appearance = mode == Mode.ICE
+                ? new UiIceMaterialSpec(ice.seed(), scale, roughnessValue, bevel,
+                        ice.blueAbsorption(), ice.displacementPx(), ice.facetContrast(), ice.clarity()) : ice;
+        return new UiSurfaceMaterialSpec(mode, scale, roughnessValue, bevel, responseValue, accentArgb, appearance);
     }
 
     public enum Mode {
@@ -55,7 +67,8 @@ public record UiSurfaceMaterialSpec(Mode mode,
         PHOSPHOR_LED(3),
         GRAPHITE(4),
         CERAMIC(5),
-        BRUSHED_METAL(6);
+        BRUSHED_METAL(6),
+        ICE(7);
 
         private final int shaderId;
 
