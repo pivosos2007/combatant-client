@@ -24,6 +24,10 @@ import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.apache.logging.log4j.core.config.Property;
+import combatant.client.events.EventHandler;
+import combatant.client.events.Events;
+import combatant.client.events.impl.PacketEvent;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -96,6 +100,14 @@ public final class ModuleStabilityRun {
 
     /** Starts (or resumes) the sweep; returns an error message when it cannot start. */
     public static String start(boolean fresh, int hold) {
+        return start(fresh, hold, null);
+    }
+
+    /**
+     * Starts the sweep, or only {@code onlyModule} when given (its verdict is appended to the same progress
+     * file); returns an error message when it cannot start.
+     */
+    public static String start(boolean fresh, int hold, String onlyModule) {
         Minecraft mc = Minecraft.getInstance();
         if (running()) return "A stability run is already active.";
         if (mc.player == null || mc.level == null || !mc.hasSingleplayerServer()) {
@@ -104,22 +116,29 @@ public final class ModuleStabilityRun {
         holdTicks = Math.max(1, hold);
         try {
             Files.createDirectories(directory());
-            if (fresh) Files.deleteIfExists(progressFile());
-            Map<String, String> verdicts = readVerdicts();
-            List<Module> pending = new ArrayList<>();
-            for (Module module : ModuleManager.getModules()) {
-                String verdict = verdicts.get(module.name());
-                if (RUNNING.equals(verdict)) {
-                    append(module, "CRASHED", "JVM exited while this module was being toggled");
-                } else if (verdict == null) {
-                    pending.add(module);
+            if (onlyModule != null) {
+                Module module = ModuleManager.get(onlyModule);
+                if (module == null) return "Module not found: " + onlyModule;
+                queue = new ArrayDeque<>(List.of(module));
+            } else {
+                if (fresh) Files.deleteIfExists(progressFile());
+                Map<String, String> verdicts = readVerdicts();
+                List<Module> pending = new ArrayList<>();
+                for (Module module : ModuleManager.getModules()) {
+                    String verdict = verdicts.get(module.name());
+                    if (RUNNING.equals(verdict)) {
+                        append(module, "CRASHED", "JVM exited while this module was being toggled");
+                    } else if (verdict == null) {
+                        pending.add(module);
+                    }
                 }
+                queue = new ArrayDeque<>(pending);
             }
-            queue = new ArrayDeque<>(pending);
         } catch (IOException e) {
             return "Cannot write " + directory() + ": " + e.getMessage();
         }
         installAppender();
+        Events.BUS.register(PacketValidator.INSTANCE);
         phase = Phase.APPLY;
         CommandOutput.send("Stability run: " + queue.size() + " modules, " + holdTicks + " ticks each. Progress: "
                 + progressFile());
@@ -182,7 +201,12 @@ public final class ModuleStabilityRun {
         }
         if (++autorunWait < AUTORUN_DELAY_TICKS) return;
         autorunWait = 0;
-        String error = start(false, DEFAULT_HOLD_TICKS);
+        String only = null;
+        try {
+            only = Files.readString(autorunFlag(), StandardCharsets.UTF_8).trim();
+        } catch (IOException ignored) {
+        }
+        String error = start(false, DEFAULT_HOLD_TICKS, only == null || only.isEmpty() ? null : only);
         if (error != null) CommandOutput.error(error);
     }
 
@@ -241,6 +265,7 @@ public final class ModuleStabilityRun {
         phase = Phase.IDLE;
         queue = new ArrayDeque<>();
         removeAppender();
+        Events.BUS.unregister(PacketValidator.INSTANCE);
         Map<String, Integer> counts = new LinkedHashMap<>();
         try {
             writeReport(counts);
@@ -335,6 +360,61 @@ public final class ModuleStabilityRun {
         context.updateLoggers();
         appender.stop();
         appender = null;
+    }
+
+    private static void capture(String text) {
+        synchronized (capturedErrors) {
+            if (capturedErrors.size() < MAX_CAPTURED_ERRORS && !capturedErrors.contains(text)) capturedErrors.add(text);
+        }
+    }
+
+    /**
+     * Flags outgoing movement the vanilla server rejects ("Invalid move player packet received": NaN or
+     * infinite position/rotation, or a coordinate beyond the world limit) and records the code that sent it.
+     */
+    public static final class PacketValidator {
+        static final PacketValidator INSTANCE = new PacketValidator();
+        private static final double MAX_HORIZONTAL = 3.0E7;
+        private static final double MAX_VERTICAL = 2.0E7;
+
+        private PacketValidator() {
+        }
+
+        @EventHandler
+        public void onSent(PacketEvent.SendPost event) {
+            if (current == null || !(event.getPacket() instanceof ServerboundMovePlayerPacket move)) return;
+            String problem = invalidMove(move);
+            if (problem != null) capture("invalid move packet (" + problem + ") from " + combatantCallers());
+        }
+
+        static String invalidMove(ServerboundMovePlayerPacket move) {
+            if (move.hasPosition()) {
+                double x = move.getX(0.0), y = move.getY(0.0), z = move.getZ(0.0);
+                if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {
+                    return "position " + x + ", " + y + ", " + z;
+                }
+                if (Math.abs(x) > MAX_HORIZONTAL || Math.abs(z) > MAX_HORIZONTAL || Math.abs(y) > MAX_VERTICAL) {
+                    return "position out of range " + x + ", " + y + ", " + z;
+                }
+            }
+            if (move.hasRotation()) {
+                float yaw = move.getYRot(0.0f), pitch = move.getXRot(0.0f);
+                if (!Float.isFinite(yaw) || !Float.isFinite(pitch)) return "rotation " + yaw + ", " + pitch;
+            }
+            return null;
+        }
+
+        private static String combatantCallers() {
+            List<String> frames = StackWalker.getInstance().walk(stream -> stream
+                    .filter(frame -> frame.getClassName().startsWith("combatant.")
+                            && !frame.getClassName().startsWith(ModuleStabilityRun.class.getName())
+                            && !frame.getClassName().startsWith("combatant.client.events."))
+                    .limit(6)
+                    .map(frame -> frame.getClassName().substring(frame.getClassName().lastIndexOf('.') + 1)
+                            + "." + frame.getMethodName() + ":" + frame.getLineNumber())
+                    .toList());
+            return frames.isEmpty() ? "vanilla code (position/rotation set earlier)" : String.join(" < ", frames);
+        }
     }
 
     /** Records errors and exceptions logged while a module is under test. */

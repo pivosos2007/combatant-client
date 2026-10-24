@@ -18,24 +18,26 @@ import java.util.Locale;
 
 @CommandInfo(
         id = "stability",
-        usage = "@stability [run|resume|stop] [ticks]",
+        usage = "@stability [run|resume [ticks]|only <module> [ticks]|stop]",
         descriptionKey = "command.stability.description"
 )
 public final class StabilityCommand implements ClientCommand {
     @Override
     public boolean execute(CommandContext ctx) {
         String action = ctx.arg(0) == null ? "run" : ctx.arg(0).toLowerCase(Locale.ROOT);
-        switch (action) {
-            case "run", "resume" -> {
-                String error = ModuleStabilityRun.start("run".equals(action), parseTicks(ctx.arg(1)));
-                if (error != null) CommandOutput.error(error);
-            }
+        String error = switch (action) {
+            case "run", "resume" -> ModuleStabilityRun.start("run".equals(action), parseTicks(ctx.arg(1)));
+            case "only" -> ctx.arg(1) == null
+                    ? "Usage: " + metadata().usage()
+                    : ModuleStabilityRun.start(false, parseTicks(ctx.arg(2)), ctx.arg(1));
             case "stop" -> {
-                if (ModuleStabilityRun.running()) ModuleStabilityRun.stop("stopped");
-                else CommandOutput.warning("No stability run is active.");
+                if (!ModuleStabilityRun.running()) yield "No stability run is active.";
+                ModuleStabilityRun.stop("stopped");
+                yield null;
             }
-            default -> CommandOutput.warning("Usage: " + metadata().usage());
-        }
+            default -> "Usage: " + metadata().usage();
+        };
+        if (error != null) CommandOutput.warning(error);
         return true;
     }
 
@@ -50,8 +52,9 @@ public final class StabilityCommand implements ClientCommand {
 
     @Override
     public List<String> suggest(CommandContext ctx, int argIndex, String token) {
+        if (argIndex == 2 && "only".equalsIgnoreCase(ctx.arg(0))) return CommandUtils.suggestModules(token);
         if (argIndex != 1) return List.of();
         String lower = token == null ? "" : token.toLowerCase(Locale.ROOT);
-        return List.of("run", "resume", "stop").stream().filter(value -> value.startsWith(lower)).toList();
+        return List.of("run", "resume", "only", "stop").stream().filter(value -> value.startsWith(lower)).toList();
     }
 }
