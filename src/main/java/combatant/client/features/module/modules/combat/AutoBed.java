@@ -196,6 +196,7 @@ public class AutoBed extends Module {
             CombatRotationModeUtil.MODE_ROTATIONS,
             CombatRotationModeUtil.MODE_NO_ROTATIONS
     );
+
     private final EnumValue<MovementCorrection> movementCorrection = visibleWhen(enumCommon(
             "autobedMovementCorrection",
             "movement_correction",
@@ -1123,7 +1124,6 @@ public class AutoBed extends Module {
     private boolean usesRotationSettings() {
         return effUsesRotations();
     }
-
     private boolean serverRotationHits(AABB box, double range) {
         Rotation server = RotationManager.INSTANCE.getServerRotation();
         if (server == null) return false;

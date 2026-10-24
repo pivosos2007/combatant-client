@@ -78,10 +78,9 @@ public final class AutoCrystalPlacementPlanner {
             return false;
         }
 
-        Vec3 crystalPos = crystal.position();
         double maxRangeSq = Math.max(context.breakRange(), context.breakWallRange());
         maxRangeSq *= maxRangeSq;
-        if (player.getEyePosition().distanceToSqr(crystalPos) > maxRangeSq) {
+        if (AutoCrystalInteractionUtil.distanceSqToBox(player.getEyePosition(), crystal.getBoundingBox()) > maxRangeSq) {
             return false;
         }
 
@@ -159,8 +158,7 @@ public final class AutoCrystalPlacementPlanner {
                 continue;
             }
 
-            Vec3 crystalPos = crystal.position();
-            if (player.getEyePosition().distanceToSqr(crystalPos) > maxRangeSq) {
+            if (AutoCrystalInteractionUtil.distanceSqToBox(player.getEyePosition(), crystal.getBoundingBox()) > maxRangeSq) {
                 continue;
             }
 
@@ -202,7 +200,7 @@ public final class AutoCrystalPlacementPlanner {
             return null;
         }
 
-        BlockHitResult interactResult = context.getInteractResult(pos, crystalVec);
+        BlockHitResult interactResult = context.getInteractResult(pos);
         if (interactResult == null) {
             debug.recordInteractFail();
             return null;
@@ -243,7 +241,7 @@ public final class AutoCrystalPlacementPlanner {
 
         AutoCrystalPlaceValidationResult validatePlaceCrystal(BlockPos pos, boolean calcPhase);
 
-        BlockHitResult getInteractResult(BlockPos pos, Vec3 crystalVec);
+        BlockHitResult getInteractResult(BlockPos pos);
 
         boolean isDeadCrystal(int id);
 

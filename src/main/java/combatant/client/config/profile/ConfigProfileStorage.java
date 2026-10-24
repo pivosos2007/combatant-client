@@ -8,6 +8,7 @@
 package combatant.client.config.profile;
 
 import combatant.client.config.ConfigPaths;
+import combatant.client.config.persist.AtomicFileStore;
 import combatant.client.util.logging.DebugLog;
 
 import java.io.IOException;
@@ -91,7 +92,7 @@ public final class ConfigProfileStorage {
             if (moveSource) {
                 Files.move(source, dest, StandardCopyOption.REPLACE_EXISTING);
             } else {
-                Files.write(dest, bytes);
+                writeValidated(dest, bytes);
             }
         }
         return new ImportResult(meta, dest);
@@ -111,8 +112,30 @@ public final class ConfigProfileStorage {
         if (snapshot == null) throw new IllegalArgumentException("snapshot is null");
         Files.createDirectories(directory(snapshot.meta().type()));
         Path path = file(snapshot.meta().type(), snapshot.meta().getId());
-        Files.write(path, codec.write(snapshot));
+        ConfigProfileSnapshot stamped = new ConfigProfileSnapshot(
+                snapshot.meta().withCombatantVersion(currentCombatantVersion()), snapshot.entries());
+        writeValidated(path, codec.write(stamped));
         DebugLog.config("Config profile saved: %s", path.toAbsolutePath());
+    }
+
+    /** Atomic write that only rotates a decodable existing profile into {@code .bak}. */
+    void writeValidated(Path path, byte[] bytes) throws IOException {
+        AtomicFileStore.write(path, bytes, existing -> {
+            try {
+                codec.read(existing);
+                return true;
+            } catch (IOException | RuntimeException e) {
+                return false;
+            }
+        });
+    }
+
+    private static String currentCombatantVersion() {
+        try {
+            return combatant.client.runtime.CombatantBuild.version();
+        } catch (Throwable t) {
+            return "";
+        }
     }
 
     public boolean delete(ConfigProfileType type, String idOrName) throws IOException {

@@ -30,6 +30,7 @@ public enum WorldWideLineMeshCompiler {
     ;
 
     private static final float WIDE_LINE_EPSILON = 1.01f;
+    private static final java.util.Map<RenderPipeline, MeshBuilder> POOL = new java.util.IdentityHashMap<>(4);
     private static final int POSITION_OFFSET = 0;
     private static final int COLOR_OFFSET = 12;
     private static final int MIN_POSITION_COLOR_STRIDE = 16;
@@ -57,6 +58,12 @@ public enum WorldWideLineMeshCompiler {
         return null;
     }
 
+    /**
+     * Compiles the wide-line mesh into a pooled builder (one per wide pipeline, render-thread confined).
+     * The returned builder is owned by this class and is only valid until the next {@code compile} call for the
+     * same pipeline; callers must upload it immediately and must NOT close it. The dynamic mesh upload copies the
+     * data synchronously and the resulting handle does not reference the builder.
+     */
     public static MeshBuilder compile(WorldDrawCommand command) {
         MeshBuilder source = command.mesh();
         if (source.isBuilding()) source.end();
@@ -64,18 +71,23 @@ public enum WorldWideLineMeshCompiler {
         RenderPipeline pipeline = widePipeline(command.pipeline());
         if (pipeline == null) return null;
 
+        int stride = source.getVertexStride();
+        if (stride < MIN_POSITION_COLOR_STRIDE) {
+            return null;
+        }
+
         int lineCount = source.getIndicesCount() / 2;
-        MeshBuilder out = new MeshBuilder(pipeline);
+        MeshBuilder out = POOL.get(pipeline);
+        if (out == null) {
+            out = new MeshBuilder(pipeline);
+            POOL.put(pipeline, out);
+        }
+        if (out.isBuilding()) out.close();
         out.beginWorld(new net.minecraft.world.phys.Vec3(source.cameraAnchorX(), 0.0, source.cameraAnchorZ()));
         out.reserve(Math.max(4, lineCount * 4), Math.max(6, lineCount * 6));
 
         ByteBuffer vertices = source.vertexBufferView();
         ByteBuffer indices = source.indexBufferView();
-        int stride = source.getVertexStride();
-        if (stride < MIN_POSITION_COLOR_STRIDE) {
-            out.close();
-            return null;
-        }
 
         long vertexBase = memAddress0(vertices);
         long indexBase = memAddress0(indices);

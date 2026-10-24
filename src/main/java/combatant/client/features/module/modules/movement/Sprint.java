@@ -55,6 +55,7 @@ public final class Sprint extends Module {
             enumMode("default_reset_mode", ResetMode.LEGIT, ResetMode.values());
     private final BooleanValue omniDirectional =
             bool("omni_directional", false);
+
     private final BooleanValue vulcanBypass =
             visibleWhen(bool("omni_directional_vulcan_bypass", true), omniDirectional::get);
     private final BooleanValue avoidSwimStartForce =

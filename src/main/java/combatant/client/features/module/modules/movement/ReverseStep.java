@@ -30,7 +30,6 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;

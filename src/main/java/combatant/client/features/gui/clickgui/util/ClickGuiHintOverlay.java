@@ -11,10 +11,13 @@ import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.text.Fonts;
+import combatant.client.features.theme.Theme;
 import combatant.client.render.engine.text.TextRenderer;
 
 public enum ClickGuiHintOverlay {
     ;
+    private static final float TEXT_ALPHA = 0.84f;
+    private static final float SHADOW_ALPHA = 0.36f;
 
     private static TextRenderer comfortaa;
     private static long fontGeneration = Long.MIN_VALUE;
@@ -42,16 +45,18 @@ public enum ClickGuiHintOverlay {
         float totalH = visible * lineH + Math.max(0, visible - 1) * lineGap;
         float x = areaX + padX;
         float y = areaY + areaH - padY - totalH;
-        int text = withAlpha(0xFFEAF1F8, 0.84f * a);
-        int shadow = withAlpha(0xFF000000, 0.36f * a);
+        int text = withAlpha(Theme.theme().textPrimary() | 0xFF000000, TEXT_ALPHA * a);
+        int shadow = withAlpha(0xFF000000, SHADOW_ALPHA * a);
+        float maxW = Math.max(1f, areaW - padX * 2f);
 
         int index = 0;
         for (String line : lines) {
             if (line == null || line.isBlank()) continue;
 
             float lineY = y + index * (lineH + lineGap);
-            ClickGuiRenderer.drawText(font, line, x + 0.7f * ui, lineY + 0.8f * ui, size, shadow, false);
-            ClickGuiRenderer.drawText(font, line, x, lineY, size, text, false);
+            String fitted = ClickGuiRenderer.fitText(font, line, size, maxW);
+            ClickGuiRenderer.drawText(font, fitted, x + 0.7f * ui, lineY + 0.8f * ui, size, shadow, false);
+            ClickGuiRenderer.drawText(font, fitted, x, lineY, size, text, false);
             index++;
         }
     }
@@ -63,7 +68,7 @@ public enum ClickGuiHintOverlay {
             fontGeneration = generation;
         }
         if (comfortaa == null) {
-            comfortaa = BuiltinFontCatalog.COMFORTAA.renderer(ClickGuiRenderer.getInterRegular());
+            comfortaa = BuiltinFontCatalog.ONEST_REGULAR.renderer(ClickGuiRenderer.getInterRegular());
         }
         return comfortaa;
     }

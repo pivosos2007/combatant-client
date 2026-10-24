@@ -16,12 +16,13 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.util.valueproviders.IntProvider;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.FeatureSorter;
-import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.dimension.LevelStem;
@@ -29,6 +30,7 @@ import net.minecraft.world.level.levelgen.WorldGenerationContext;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
 import net.minecraft.world.level.levelgen.feature.AbstractOreFeature;
+import net.minecraft.world.level.levelgen.feature.BlockReplacement;
 import net.minecraft.world.level.levelgen.feature.Feature;
 import net.minecraft.world.level.levelgen.feature.ScatteredOreFeature;
 import net.minecraft.world.level.levelgen.heightproviders.HeightProvider;
@@ -60,17 +62,31 @@ import java.util.List;
 public final class OreSimulation {
 
     /** One placed feature, resolved against the vanilla registries. */
-    public record OreSpec(ResourceKey<PlacedFeature> key, int step, int index,
+    public record OreSpec(ResourceKey<PlacedFeature> key, PlacedFeature placed, int step, int index,
                           List<PlacementModifier> modifiers, int size, float discardChanceOnAirExposure,
-                          boolean scattered) {
+                          boolean scattered, List<Block> oreBlocks) {
+
+        /** Buried ores (discard chance 1) are never next to air, which makes the air check draw-free. */
+        public boolean buried() {
+            return discardChanceOnAirExposure >= 1.0f;
+        }
+    }
+
+    /** One predicted ore block; {@code mined} marks a spot of a buried ore that now reads as air. */
+    public record Hit(BlockPos pos, ResourceKey<PlacedFeature> key, boolean mined) {
     }
 
     private final List<OreSpec> specs;
     private final ChunkGenerator generator;
+    private final TagKey<Block> baseStone;
+    private final boolean biomeCheck;
 
-    private OreSimulation(List<OreSpec> specs, ChunkGenerator generator) {
+    private OreSimulation(List<OreSpec> specs, ChunkGenerator generator, TagKey<Block> baseStone,
+                          boolean biomeCheck) {
         this.specs = specs;
         this.generator = generator;
+        this.baseStone = baseStone;
+        this.biomeCheck = biomeCheck;
     }
 
     /**
@@ -79,10 +95,21 @@ public final class OreSimulation {
      */
     @SafeVarargs
     public static OreSimulation forNether(ResourceKey<PlacedFeature>... features) {
+        return build(LevelStem.NETHER, BlockTags.BASE_STONE_NETHER, false, features);
+    }
+
+    /** Same as {@link #forNether} for the overworld; biome membership is read from the client level. */
+    @SafeVarargs
+    public static OreSimulation forOverworld(ResourceKey<PlacedFeature>... features) {
+        return build(LevelStem.OVERWORLD, BlockTags.BASE_STONE_OVERWORLD, true, features);
+    }
+
+    private static OreSimulation build(ResourceKey<LevelStem> stem, TagKey<Block> baseStone, boolean biomeCheck,
+                                       ResourceKey<PlacedFeature>[] features) {
         HolderLookup.Provider lookup = VanillaRegistries.createWorldLookup();
         ChunkGenerator generator = WorldPresets.createNormalWorldDimensions(lookup)
-                .get(LevelStem.NETHER)
-                .orElseThrow(() -> new IllegalStateException("vanilla preset has no nether"))
+                .get(stem)
+                .orElseThrow(() -> new IllegalStateException("vanilla preset has no " + stem.identifier()))
                 .generator();
 
         // Same call the server makes in ChunkGenerator, with the same biome order, so the
@@ -101,11 +128,15 @@ public final class OreSimulation {
             }
             int step = findStep(steps, placed);
             if (step < 0) continue; // not generated in this dimension
-            specs.add(new OreSpec(key, step, steps.get(step).indexMapping().applyAsInt(placed),
+            List<Block> oreBlocks = new ArrayList<>();
+            for (BlockReplacement target : ore.targetStates()) {
+                oreBlocks.add(target.state().getBlock());
+            }
+            specs.add(new OreSpec(key, placed, step, steps.get(step).indexMapping().applyAsInt(placed),
                     List.copyOf(placed.placement()), ore.size(), ore.discardChanceOnAirExposure(),
-                    feature instanceof ScatteredOreFeature));
+                    feature instanceof ScatteredOreFeature, List.copyOf(oreBlocks)));
         }
-        return new OreSimulation(List.copyOf(specs), generator);
+        return new OreSimulation(List.copyOf(specs), generator, baseStone, biomeCheck);
     }
 
     private static int findStep(List<FeatureSorter.StepFeatureData> steps, PlacedFeature placed) {
@@ -121,22 +152,29 @@ public final class OreSimulation {
 
     /**
      * Predicted ore blocks in one chunk, filtered against what the client can see: a spot
-     * must still hold nether stone (or the ore itself) and pass the air-exposure rule.
+     * must still hold base stone (or the ore itself) and pass the air-exposure rule.
      */
     public List<BlockPos> simulate(Level level, long worldSeed, int chunkX, int chunkZ) {
+        List<BlockPos> out = new ArrayList<>();
+        for (Hit hit : simulateHits(level, worldSeed, chunkX, chunkZ)) {
+            if (!hit.mined()) out.add(hit.pos());
+        }
+        return out;
+    }
+
+    /** Like {@link #simulate} but keeps the source feature and the mined-spot flag of each hit. */
+    public List<Hit> simulateHits(Level level, long worldSeed, int chunkX, int chunkZ) {
         WorldGenerationContext context = new WorldGenerationContext(generator, level);
         WorldgenRandom random = new WorldgenRandom(new XoroshiroRandomSource(0L));
         int minX = chunkX << 4;
         int minZ = chunkZ << 4;
         long decorationSeed = random.setDecorationSeed(worldSeed, minX, minZ);
 
-        List<BlockPos> out = new ArrayList<>();
+        List<Hit> out = new ArrayList<>();
         for (OreSpec spec : specs) {
             random.setFeatureSeed(decorationSeed, spec.index(), spec.step());
-            if (!placeAll(level, random, context, spec, new BlockPos(minX, 0, minZ), out)) {
-                // Unknown modifier: the random stream is no longer trustworthy for this spec.
-                continue;
-            }
+            // An unknown modifier leaves the random stream untrustworthy for this spec only.
+            placeAll(level, random, context, spec, new BlockPos(minX, 0, minZ), out);
         }
         return out;
     }
@@ -145,12 +183,12 @@ public final class OreSimulation {
     // every remaining modifier and the ore placement before the next one starts. Recursion
     // over the modifier list reproduces that call order.
     private boolean placeAll(Level level, WorldgenRandom random, WorldGenerationContext context,
-                             OreSpec spec, BlockPos origin, List<BlockPos> out) {
+                             OreSpec spec, BlockPos origin, List<Hit> out) {
         return apply(level, random, context, spec, 0, origin, out);
     }
 
     private boolean apply(Level level, WorldgenRandom random, WorldGenerationContext context,
-                          OreSpec spec, int modifierIndex, BlockPos pos, List<BlockPos> out) {
+                          OreSpec spec, int modifierIndex, BlockPos pos, List<Hit> out) {
         if (modifierIndex == spec.modifiers().size()) {
             if (spec.scattered()) {
                 placeScattered(level, random, spec, pos, out);
@@ -186,15 +224,19 @@ public final class OreSimulation {
             return apply(level, random, context, spec, next, new BlockPos(pos.getX(), y, pos.getZ()), out);
         }
         if (modifier instanceof BiomeFilter) {
-            // Every nether biome carries the debris features, and the filter draws no randoms.
+            // The nether carries its features in every biome; the overworld does not (emerald is
+            // mountain-only), so there the client's own biome at the position decides.
+            if (biomeCheck && !level.getBiome(pos).value().getGenerationSettings().hasFeature(spec.placed())) {
+                return true;
+            }
             return apply(level, random, context, spec, next, pos, out);
         }
         return false;
     }
 
     /** ScatteredOreFeature.place. */
-    private static void placeScattered(Level level, WorldgenRandom random, OreSpec spec, BlockPos origin,
-                                       List<BlockPos> out) {
+    private void placeScattered(Level level, WorldgenRandom random, OreSpec spec, BlockPos origin,
+                                List<Hit> out) {
         int attempts = random.nextInt(spec.size() + 1);
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         for (int i = 0; i < attempts; i++) {
@@ -203,13 +245,13 @@ public final class OreSimulation {
             int dy = Math.round((random.nextFloat() - random.nextFloat()) * range);
             int dz = Math.round((random.nextFloat() - random.nextFloat()) * range);
             cursor.setWithOffset(origin, dx, dy, dz);
-            if (canPlaceOre(level, random, spec, cursor)) out.add(cursor.immutable());
+            tryPlace(level, random, spec, cursor, out);
         }
     }
 
     /** OreFeature.place + doPlace. */
-    private static void placeVein(Level level, WorldgenRandom random, OreSpec spec, BlockPos origin,
-                                  List<BlockPos> out) {
+    private void placeVein(Level level, WorldgenRandom random, OreSpec spec, BlockPos origin,
+                           List<Hit> out) {
         int size = spec.size();
         float angle = random.nextFloat() * (float) Math.PI;
         float spread = size / 8.0f;
@@ -279,7 +321,7 @@ public final class OreSimulation {
                         if (visited.get(bit)) continue;
                         visited.set(bit);
                         cursor.set(x, y, z);
-                        if (canPlaceOre(level, random, spec, cursor)) out.add(cursor.immutable());
+                        tryPlace(level, random, spec, cursor, out);
                     }
                 }
             }
@@ -288,19 +330,37 @@ public final class OreSimulation {
 
     /**
      * OreFeature.canPlaceOre against the final world. The target test accepts the ore itself
-     * (already generated) as well as nether stone, since the client sees the finished chunk.
+     * (already generated) as well as the dimension's base stone, since the client sees the
+     * finished chunk. A buried ore draws no randoms for its air check, so a spot that now reads
+     * as an open, tunnel-like air pocket can be reported as mined without shifting the stream.
      */
-    private static boolean canPlaceOre(Level level, WorldgenRandom random, OreSpec spec, BlockPos pos) {
+    private void tryPlace(Level level, WorldgenRandom random, OreSpec spec, BlockPos.MutableBlockPos pos,
+                          List<Hit> out) {
         BlockState state = level.getBlockState(pos);
-        if (!state.is(BlockTags.BASE_STONE_NETHER) && !state.is(Blocks.ANCIENT_DEBRIS)) return false;
+        if (!state.is(baseStone) && !spec.oreBlocks().contains(state.getBlock())) {
+            if (spec.buried() && state.isAir() && looksTunnelled(level, pos)) {
+                out.add(new Hit(pos.immutable(), spec.key(), true));
+            }
+            return;
+        }
 
         float discard = spec.discardChanceOnAirExposure();
         // shouldSkipAirCheck: draws a random only for chances strictly between 0 and 1.
         boolean skipAirCheck = discard <= 0.0f || (discard < 1.0f && random.nextFloat() >= discard);
-        if (skipAirCheck) return true;
-        for (Direction direction : Direction.values()) {
-            if (level.getBlockState(pos.relative(direction)).isAir()) return false;
+        if (!skipAirCheck) {
+            for (Direction direction : Direction.values()) {
+                if (level.getBlockState(pos.relative(direction)).isAir()) return;
+            }
         }
-        return true;
+        out.add(new Hit(pos.immutable(), spec.key(), false));
+    }
+
+    // Natural caves leave open pockets (5-6 air neighbours) while a dug tunnel is 1 block wide.
+    private static boolean looksTunnelled(Level level, BlockPos pos) {
+        int air = 0;
+        for (Direction direction : Direction.values()) {
+            if (level.getBlockState(pos.relative(direction)).isAir()) air++;
+        }
+        return air >= 1 && air <= 3;
     }
 }

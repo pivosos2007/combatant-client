@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.renderer.ui;
 
-import combatant.client.render.engine.command.UiItemCommand;
+import combatant.client.render.engine.command.UiCommandKind;
 import combatant.client.render.engine.core.ViewportContext;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.player.LocalPlayer;
@@ -42,12 +42,7 @@ public final class UiItemSubmission {
         }
 
         GuiGraphicsExtractor context = ViewportContext.getCurrentContext();
-        UiRenderDispatcher.record(new UiItemCommand(
-                stack,
-                (int) Math.round(x),
-                (int) Math.round(y),
-                Math.max(scaleX, scaleY)
-        ));
+        UiRenderDispatcher.record(UiCommandKind.ITEM);
 
         boolean auto = UiRenderDispatcher.beginAutoBatch();
         ItemBatch batch = combatant.client.render.engine.renderer.Renderer2D.UI_BATCHER.getOrCreateItemBatch(context, stack);

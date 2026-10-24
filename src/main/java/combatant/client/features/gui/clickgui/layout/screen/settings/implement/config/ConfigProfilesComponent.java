@@ -8,6 +8,7 @@
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.config;
 
 import combatant.client.util.text.SingleLineTextInput;
+import combatant.client.util.text.ClipboardUtil;
 
 import combatant.client.config.profile.*;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
@@ -76,6 +77,14 @@ public final class ConfigProfilesComponent {
     private float saveHoverAnim;
     private float savePulseAnim;
 
+    private final ConfigSharePreviewPanel preview = new ConfigSharePreviewPanel();
+    private ConfigProfileSnapshot pendingImport;
+    private String hoverHint;
+    private Rect pasteButton = Rect.ZERO;
+    private Rect importButton = Rect.ZERO;
+    private Rect folderButton = Rect.ZERO;
+    private final float[] toolHoverAnim = new float[3];
+
     private static boolean inside(ConfigProfileCardComponent.ActionHit hit, float mx, float my) {
         return hit != null && ClickGuiMath.insideRect(mx, my, hit.x(), hit.y(), hit.w(), hit.h());
     }
@@ -89,6 +98,7 @@ public final class ConfigProfilesComponent {
 
     public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my, float scale) {
         hits.clear();
+        hoverHint = null;
         SettingsGuiPalette palette = SettingsGuiPalette.current();
 
         float areaX = menuX + 31f * scale;
@@ -125,6 +135,7 @@ public final class ConfigProfilesComponent {
         }
 
         renderStatus(areaX, areaY, areaW, scale, palette);
+        if (preview.isActive()) preview.render(areaX, areaY, areaW, areaH, mx, my, scale, palette);
     }
 
     public boolean mousePressedScrollbar(float mx, float my, int button) {
@@ -145,6 +156,7 @@ public final class ConfigProfilesComponent {
     }
 
     public void scroll(float mx, float my, float menuX, float menuY, float menuW, float menuH, double amount, float scale) {
+        if (preview.isOpen()) return;
         if (diffPanelComponent.scroll(mx, my, amount)) return;
 
         float x = menuX + 31f * scale;
@@ -157,6 +169,14 @@ public final class ConfigProfilesComponent {
 
     public boolean click(float mx, float my, int button) {
         if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
+
+        if (preview.isOpen()) {
+            String pressed = preview.click(mx, my);
+            if (pressed != null) {
+                handlePreviewButton(pressed);
+                return true;
+            }
+        }
 
         if (selectedDiff != null || diffError != null) {
             ConfigDiffPanelComponent.HeaderAction diffAction = diffPanelComponent.headerAction(mx, my, button);
@@ -187,6 +207,18 @@ public final class ConfigProfilesComponent {
             saveCurrent();
             return true;
         }
+        if (pasteButton.contains(mx, my)) {
+            pasteCode();
+            return true;
+        }
+        if (importButton.contains(mx, my)) {
+            importFromDialog();
+            return true;
+        }
+        if (folderButton.contains(mx, my)) {
+            ConfigFileDialogs.openProfilesFolder();
+            return true;
+        }
         if (isScrollbarHovered(mx, my)) return true;
 
         for (CardEntryHit entryHit : hits) {
@@ -200,6 +232,21 @@ public final class ConfigProfilesComponent {
                     renameInput.layout(hit.title().x(), hit.title().w() - 5f * renameScale,
                             ClickGuiRenderer.getInterMedium(), 8.8f * renameScale);
                 }
+                return true;
+            }
+            if (inside(hit.copy(), mx, my)) {
+                select(entryHit.meta());
+                copyProfileCode(entryHit.meta());
+                return true;
+            }
+            if (inside(hit.export(), mx, my)) {
+                select(entryHit.meta());
+                exportProfile(entryHit.meta());
+                return true;
+            }
+            if (inside(hit.bind(), mx, my)) {
+                select(entryHit.meta());
+                toggleBind(entryHit.meta());
                 return true;
             }
             if (inside(hit.diff(), mx, my)) {
@@ -326,6 +373,7 @@ public final class ConfigProfilesComponent {
         savePulseAnim = AnimationUtility.snap(AnimationUtility.approach(savePulseAnim, 0f, dt, 7f), 0f, 0.01f);
         renderSaveButton(saveButton, saveHoverAnim, savePulseAnim, scale, palette);
         if (saveHover) SystemCursor.set(SystemCursor.CursorType.MOVE);
+        renderToolButtons(dt, mx, my, scale, palette);
     }
 
     private float updateHover(float current, boolean hovered, float dt) {
@@ -415,6 +463,50 @@ public final class ConfigProfilesComponent {
         ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), label, x + 17.4f * scale, y + 4.2f * scale, textSize, textColor, false);
     }
 
+    private void renderToolButtons(float dt, float mx, float my, float scale, SettingsGuiPalette palette) {
+        float size = saveButton.h();
+        float gap = 4.5f * scale;
+        float y = saveButton.y();
+        float x0 = saveButton.x() + saveButton.w() + 5.5f * scale;
+        pasteButton = new Rect(x0, y, size, size);
+        importButton = new Rect(x0 + size + gap, y, size, size);
+        folderButton = new Rect(x0 + (size + gap) * 2f, y, size, size);
+        renderToolIcon(0, pasteButton, "clipboard", ClickGuiI18n.tr("clickgui.settings.config.hint.paste", "Paste share code"), dt, mx, my, scale, palette);
+        renderToolIcon(1, importButton, "folder-input", ClickGuiI18n.tr("clickgui.settings.config.hint.import", "Import .cbcfg file"), dt, mx, my, scale, palette);
+        renderToolIcon(2, folderButton, "folder-open", ClickGuiI18n.tr("clickgui.settings.config.hint.folder", "Open profiles folder"), dt, mx, my, scale, palette);
+    }
+
+    private void renderToolIcon(int idx, Rect rect, String icon, String hint, float dt, float mx, float my, float scale, SettingsGuiPalette palette) {
+        boolean hover = rect.contains(mx, my);
+        toolHoverAnim[idx] = updateHover(toolHoverAnim[idx], hover, dt);
+        float h = toolHoverAnim[idx];
+        if (hover) {
+            SystemCursor.set(SystemCursor.CursorType.MOVE);
+            hoverHint = hint;
+        }
+        int bgA = SettingsGuiPalette.mix(palette.panelPillBase(), palette.menuCategoryHoverLeft(), 0.14f + h * 0.24f);
+        int bgB = SettingsGuiPalette.mix(palette.panelPillBase(), palette.menuCategoryHoverRight(), 0.14f + h * 0.24f);
+        LayoutRender2D.roundedQuad(rect.x(), rect.y(), rect.w(), rect.h(), 3.6f * scale, bgA, bgB, bgB, bgA);
+        int iconColor = SettingsGuiPalette.mix(palette.panelText(), palette.menuCategoryText(), 0.2f + h * 0.35f);
+        float inset = 4f * scale;
+        Renderer2D.COLOR.svg(icon, rect.x() + inset, rect.y() + inset, rect.w() - inset * 2f, rect.h() - inset * 2f, SvgRenderOptions.overrideColor(iconColor));
+    }
+
+    private void updateCardHint(CardHit hit, boolean bound, float mx, float my) {
+        if (inside(hit.copy(), mx, my)) {
+            hoverHint = ClickGuiI18n.tr("clickgui.settings.config.hint.copy", "Copy share code");
+        } else if (inside(hit.export(), mx, my)) {
+            hoverHint = ClickGuiI18n.tr("clickgui.settings.config.hint.export", "Export .cbcfg file");
+        } else if (inside(hit.bind(), mx, my)) {
+            String addr = ConfigServerBindings.currentAddress();
+            hoverHint = addr.isEmpty()
+                    ? ClickGuiI18n.tr("clickgui.settings.config.hint.bind_offline", "Join a server to bind auto-load")
+                    : bound
+                    ? ClickGuiI18n.tr("clickgui.settings.config.hint.unbind", "Unbind from %s", addr)
+                    : ClickGuiI18n.tr("clickgui.settings.config.hint.bind", "Auto-load on %s", addr);
+        }
+    }
+
     private void drawSegment(Rect rect, String label, boolean active, float hover, float scale, SettingsGuiPalette palette) {
         float size = 7.5f * scale;
         float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), label, size);
@@ -466,6 +558,7 @@ public final class ConfigProfilesComponent {
             return;
         }
         boolean clipped = ScissorFunction.pushRaw(x, y, w, h);
+        String boundAddress = ConfigServerBindings.currentAddress();
         for (int i = 0; i < entries.size(); i++) {
             int col = i % columns;
             int row = i / columns;
@@ -474,13 +567,15 @@ public final class ConfigProfilesComponent {
             if (cy + cardH < y || cy > y + h) continue;
             ConfigProfileMeta meta = entries.get(i);
             boolean selectedState = selected != null && selected.getId().equals(meta.getId()) && selected.type() == meta.type();
-            CardHit hit = cardComponent.render(meta, cx, cy, cardW, cardH, mx, my, selectedState, scale, palette);
+            boolean bound = ConfigServerBindings.INSTANCE.isBound(meta.type(), meta.getId(), boundAddress);
+            CardHit hit = cardComponent.render(meta, cx, cy, cardW, cardH, mx, my, selectedState, bound, scale, palette);
             if (isEditing(meta)) {
                 editingTitleRect = new Rect(hit.title().x(), hit.title().y(), hit.title().w(), hit.title().h());
                 renderRenameInput(editingTitleRect, scale, palette);
             }
             if (inside(hit.title(), mx, my)) SystemCursor.set(SystemCursor.CursorType.MOVE);
             hits.add(new CardEntryHit(meta, hit));
+            updateCardHint(hit, bound, mx, my);
         }
         if (clipped) ScissorFunction.pop();
 
@@ -533,6 +628,10 @@ public final class ConfigProfilesComponent {
     }
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (preview.isOpen()) {
+            if (keyCode == combatant.client.input.InputKeys.ESCAPE) handlePreviewButton("cancel");
+            return true;
+        }
         if (!isRenaming()) return false;
         if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
             cancelRename();
@@ -649,13 +748,14 @@ public final class ConfigProfilesComponent {
     }
 
     private void renderStatus(float x, float y, float w, float scale, SettingsGuiPalette palette) {
-        if (statusMessage == null || statusMessage.isBlank()) return;
-        if (System.currentTimeMillis() > statusUntilMs) {
-            clearStatus();
-            return;
+        String message = statusMessage;
+        if (message == null || message.isBlank() || System.currentTimeMillis() > statusUntilMs) {
+            if (message != null) clearStatus();
+            message = hoverHint;
         }
+        if (message == null || message.isBlank()) return;
         float size = 6.8f * scale;
-        String text = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), statusMessage, size, w - 176f * scale);
+        String text = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), message, size, w - 275f * scale);
         float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), text, size);
         ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), text, x + w - tw, y + 7.2f * scale, size, palette.panelMuted(), false);
     }
@@ -783,6 +883,142 @@ public final class ConfigProfilesComponent {
         } catch (Exception e) {
             setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.delete_failed", "Delete failed"));
             DebugLog.error("Failed to delete config profile", e);
+        }
+    }
+
+    private void copyProfileCode(ConfigProfileMeta meta) {
+        try {
+            String code = ConfigProfileService.INSTANCE.profileCode(meta.type(), meta.getId());
+            ClipboardUtil.copy(code);
+            setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.copied", "Copied code: %s", meta.name()));
+            GuiSound.BUTTON_YES.feedback(0.8);
+        } catch (Exception e) {
+            setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.copy_failed", "Copy failed"));
+            DebugLog.error("Failed to copy profile share code", e);
+        }
+    }
+
+    private void pasteCode() {
+        try {
+            ConfigShareCodec.Decoded decoded = ConfigProfileService.INSTANCE.decodeShareCode(ClipboardUtil.get());
+            pendingImport = decoded.snapshot();
+            ConfigProfileMeta meta = pendingImport.meta();
+            ConfigProfileApplier.Inspection info = ConfigProfileService.INSTANCE.inspect(pendingImport);
+            boolean isModule = decoded.kind() == ConfigShareCodec.Kind.MODULE;
+            List<ConfigSharePreviewPanel.Button> btns = isModule
+                    ? List.of(
+                    new ConfigSharePreviewPanel.Button("apply", ClickGuiI18n.tr("clickgui.settings.config.preview.apply", "Apply")),
+                    new ConfigSharePreviewPanel.Button("cancel", ClickGuiI18n.tr("clickgui.settings.config.preview.cancel", "Cancel")))
+                    : List.of(
+                    new ConfigSharePreviewPanel.Button("save_apply", ClickGuiI18n.tr("clickgui.settings.config.preview.save_apply", "Save & Apply")),
+                    new ConfigSharePreviewPanel.Button("save", ClickGuiI18n.tr("clickgui.settings.config.preview.save", "Save")),
+                    new ConfigSharePreviewPanel.Button("apply", ClickGuiI18n.tr("clickgui.settings.config.preview.apply", "Apply")),
+                    new ConfigSharePreviewPanel.Button("cancel", ClickGuiI18n.tr("clickgui.settings.config.preview.cancel", "Cancel")));
+            preview.open(
+                    isModule
+                            ? ClickGuiI18n.tr("clickgui.settings.config.preview.module_title", "Import Module Settings")
+                            : ClickGuiI18n.tr("clickgui.settings.config.preview.profile_title", "Import Profile"),
+                    btns
+            );
+            preview
+                    .line(ClickGuiI18n.tr("clickgui.settings.config.preview.name", "Name"), meta.name(), false)
+                    .line(ClickGuiI18n.tr("clickgui.settings.config.preview.type", "Type"), meta.type().folderName(), false)
+                    .line(ClickGuiI18n.tr("clickgui.settings.config.preview.author", "Author"), meta.author(), false)
+                    .line(ClickGuiI18n.tr("clickgui.settings.config.preview.entries", "Matched"),
+                            info.knownOwners() + " (" + info.knownValues() + " settings)", false);
+            if (info.unknownOwners() > 0 || info.unknownValues() > 0) {
+                preview.line(ClickGuiI18n.tr("clickgui.settings.config.preview.unknown", "Skipped"),
+                        info.unknownOwners() + " owners / " + info.unknownValues() + " settings", true);
+            }
+            GuiSound.BUTTON.feedback(0.75);
+        } catch (ConfigShareCodec.ShareCodeException e) {
+            setStatus(switch (e.failure()) {
+                case NOT_A_CODE -> ClickGuiI18n.tr("clickgui.settings.config.status.not_a_code", "Clipboard has no share code");
+                case UNSUPPORTED_VERSION -> ClickGuiI18n.tr("clickgui.settings.config.status.unsupported_code", "Newer share-code version");
+                case CORRUPT -> ClickGuiI18n.tr("clickgui.settings.config.status.corrupt_code", "Corrupt share code");
+                case EMPTY -> ClickGuiI18n.tr("clickgui.settings.config.status.empty_code", "Share code is empty");
+            });
+            GuiSound.BUTTON.feedback(0.65);
+        }
+    }
+
+    private void handlePreviewButton(String id) {
+        ConfigProfileSnapshot snap = pendingImport;
+        preview.close();
+        pendingImport = null;
+        if (snap == null || "cancel".equals(id)) {
+            GuiSound.BUTTON.feedback(0.65);
+            return;
+        }
+        try {
+            if ("save".equals(id) || "save_apply".equals(id)) {
+                ConfigProfileMeta saved = ConfigProfileService.INSTANCE.importSnapshot(snap);
+                type = saved.type();
+                selected = saved;
+                setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.imported", "Imported: %s", saved.name()));
+            }
+            if ("apply".equals(id) || "save_apply".equals(id)) {
+                ConfigProfileApplier.ApplyResult res = ConfigProfileService.INSTANCE.applySnapshot(snap);
+                setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.applied", "Applied: %s, missing: %s/%s", res.appliedOwners(), res.missingOwners(), res.missingValues()));
+            }
+            GuiSound.BUTTON_YES.feedback(0.85);
+        } catch (Exception e) {
+            setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.import_failed", "Import failed"));
+            DebugLog.error("Failed to import share code", e);
+        }
+    }
+
+    private void importFromDialog() {
+        if (ConfigFileDialogs.busy()) return;
+        ConfigFileDialogs.openProfile(path -> {
+            try {
+                ConfigProfileStorage.ImportResult res = ConfigProfileService.INSTANCE.importProfileFile(path, false);
+                if (res.meta() != null) {
+                    type = res.meta().type();
+                    selected = res.meta();
+                    setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.imported", "Imported: %s", res.meta().name()));
+                    GuiSound.BUTTON_YES.feedback(0.85);
+                } else {
+                    setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.import_failed", "Import failed"));
+                }
+            } catch (Exception e) {
+                setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.import_failed", "Import failed"));
+                DebugLog.error("Failed to import profile file", e);
+            }
+        }, ConfigFileDialogs::openProfilesFolder);
+    }
+
+    private void exportProfile(ConfigProfileMeta meta) {
+        if (ConfigFileDialogs.busy()) return;
+        String suggested = meta.getId() + ConfigProfileStorage.EXTENSION;
+        ConfigFileDialogs.saveProfile(suggested, dest -> {
+            try {
+                Path written = ConfigProfileService.INSTANCE.exportProfileFile(meta.type(), meta.getId(), dest);
+                setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.exported", "Exported: %s", written.getFileName()));
+                GuiSound.BUTTON_YES.feedback(0.85);
+            } catch (Exception e) {
+                setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.export_failed", "Export failed"));
+                DebugLog.error("Failed to export profile file", e);
+            }
+        }, ConfigFileDialogs::openProfilesFolder);
+    }
+
+    private void toggleBind(ConfigProfileMeta meta) {
+        String address = ConfigServerBindings.currentAddress();
+        if (address.isEmpty()) {
+            setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.bind_offline", "Join a multiplayer server first"));
+            GuiSound.BUTTON.feedback(0.65);
+            return;
+        }
+        try {
+            boolean bound = ConfigServerBindings.INSTANCE.toggle(meta.type(), meta.getId(), address);
+            setStatus(bound
+                    ? ClickGuiI18n.tr("clickgui.settings.config.status.bound", "Bound %s to %s", meta.name(), address)
+                    : ClickGuiI18n.tr("clickgui.settings.config.status.unbound", "Unbound from %s", address));
+            GuiSound.BUTTON_YES.feedback(0.8);
+        } catch (Exception e) {
+            setStatus(ClickGuiI18n.tr("clickgui.settings.config.status.bind_failed", "Bind failed"));
+            DebugLog.error("Failed to bind profile to server", e);
         }
     }
 

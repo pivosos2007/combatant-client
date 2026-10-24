@@ -17,6 +17,7 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.player.Input;
+import combatant.client.mixins.accessors.InputAccessor;
 import net.minecraft.world.entity.projectile.FireworkRocketEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -33,7 +34,7 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.ElytraTarget;
-import combatant.client.mixins.accessors.InputAccessor;
+import combatant.client.util.player.ElytraRecastUtil;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
@@ -68,9 +69,10 @@ public class ElytraFly extends Module {
     private static final double DIVE_BOOST_MULTIPLIER = 2.0;
     private static final double PACKET_START_COLLISION_XZ_CONTRACT = 0.25;
     private static final double PACKET_START_COLLISION_Y_OFFSET = -0.3;
-    public final BooleanValue noCrash = bool("elytrafly_no_crash", true);
+    private static final double VANILLA_FIREWORK_BOOST = 0.1;
+    public final BooleanValue noCrash = bool("elytrafly_no_crash", false);
     private final Minecraft mc = Minecraft.getInstance();
-    private final EnumValue<Mode> mode = enumMode("elytrafly_mode", Mode.BOOST, Mode.values());
+    private final EnumValue<Mode> mode = enumMode("elytrafly_mode", Mode.FIREWORK, Mode.values());
     private final BooleanValue instantStart = bool("elytrafly_instant_start", false);
     private final BooleanValue instantStop = bool("elytrafly_instant_stop", false);
     private final BooleanValue speedEnabled =
@@ -124,9 +126,9 @@ public class ElytraFly extends Module {
     private final NumberValue<Float> fireworkPitch =
             visibleWhen(num("elytrafly_firework_pitch", 0.0f, -90.0f, 90.0f), () -> mode.get() == Mode.FIREWORK && fireworkSilentRotation.get());
     private final BooleanValue fireworkVelocityControl =
-            visibleWhen(bool("elytrafly_firework_velocity_control", true), () -> mode.get() == Mode.FIREWORK);
+            visibleWhen(bool("elytrafly_firework_velocity_control", false), () -> mode.get() == Mode.FIREWORK);
     private final NumberValue<Float> fireworkVelocityFactor =
-            visibleWhen(num("elytrafly_firework_velocity_factor", 0.1f, 0.0f, 2.0f), () -> mode.get() == Mode.FIREWORK && fireworkVelocityControl.get());
+            visibleWhen(num("elytrafly_firework_velocity_factor", 1.0f, 0.0f, 20.0f), () -> mode.get() == Mode.FIREWORK && fireworkVelocityControl.get());
     private final BooleanValue packetAutoStart =
             visibleWhen(bool("elytrafly_packet_auto_start", true), () -> mode.get() == Mode.PACKET);
     private final EnumValue<PacketSubMode> packetSubMode =
@@ -149,7 +151,6 @@ public class ElytraFly extends Module {
     @Override
     public void onEnable() {
         resetRuntimeState();
-        needsToRestart = false;
         lastMode = mode.get();
     }
 
@@ -158,7 +159,6 @@ public class ElytraFly extends Module {
         RotationManager.INSTANCE.clear(this);
         InventorySwap.INSTANCE.releaseHotbar(this);
         resetRuntimeState();
-        needsToRestart = true;
     }
 
     @Override
@@ -173,13 +173,13 @@ public class ElytraFly extends Module {
         tickFireworkCooldown();
 
         if (shouldNotOperate(player)) {
+            ElytraRecastUtil.INSTANCE.reset(this);
             needsToRestart = false;
             resetModeState(mode.get());
             return;
         }
 
-        boolean stop = shouldStopOperating(player);
-        if (stop && player.isFallFlying()) {
+        if (shouldStopOperating(player) && player.isFallFlying()) {
             player.stopFallFlying();
             sendStartGlidingPacket(player);
             needsToRestart = false;
@@ -187,16 +187,26 @@ public class ElytraFly extends Module {
         }
 
         if (player.isFallFlying()) {
+            ElytraRecastUtil.INSTANCE.reset(this);
             applyTickMode(player);
 
             if (durabilityExploit.get() && shouldRunDurabilityExploit()) {
                 sendStartGlidingPacket(player);
                 needsToRestart = true;
             }
-        } else if (shouldStartOperating(player)) {
+        } else if (needsToRestart && durabilityExploit.get()) {
+            // Blatant (durability exploit only): forged start packet.
             suppressJumpInput(player);
             player.startFallFlying();
             sendStartGlidingPacket(player);
+        } else if (mode.get() != Mode.PACKET && instantStart.get() && mc.options.keyJump.isDown()) {
+            // Legal start: release jump for a tick, then press it so vanilla sends START_FALL_FLYING itself.
+            needsToRestart = false;
+            ElytraRecastUtil.INSTANCE.request(this, player, ElytraRecastUtil.Mode.GRIM, false, true, false, 0);
+            ElytraRecastUtil.INSTANCE.tick(this, player);
+        } else {
+            needsToRestart = false;
+            ElytraRecastUtil.INSTANCE.reset(this);
         }
     }
 
@@ -310,24 +320,6 @@ public class ElytraFly extends Module {
 
         double lift = -Math.sin(Math.toRadians(pitch)) * getVanillaPitchLiftFactor();
         return velocity.add(0.0, lift, 0.0);
-    }
-
-    private boolean shouldStopOperating(LocalPlayer player) {
-        if (player == null) return false;
-        return instantStop.get() && mc.options.keyShift.isDown() && player.onGround()
-                || notInFluid.get() && isInLiquid(player);
-    }
-
-    private boolean shouldStartOperating(LocalPlayer player) {
-        if (player == null) return false;
-        return (instantStart.get() && mc.options.keyJump.isDown() && player.getDeltaMovement().y != 0.0)
-                || needsToRestart;
-    }
-
-    private boolean shouldRunDurabilityExploit() {
-        if (mode.get() == Mode.VANILLA) return false;
-        if (mode.get() != Mode.STATIC) return true;
-        return !staticDurabilityExploitNotWhileNoMove.get() || !MovementUtil.isMoving();
     }
 
     private void applyTickMode(LocalPlayer player) {
@@ -520,9 +512,13 @@ public class ElytraFly extends Module {
         }
     }
 
+    /**
+     * Reproduces the vanilla rocket boost ({@code v += look * 0.1 + (look * 1.5 - v) * 0.5}) but with the
+     * rotation the server actually knows (silent rotation), so Grim's prediction sees the same look vector.
+     */
     @EventHandler
     private void onFirework(FireworkEvent event) {
-        if (!isEnabled() || mode.get() != Mode.FIREWORK || !fireworkVelocityControl.get()) return;
+        if (!isEnabled() || mode.get() != Mode.FIREWORK) return;
 
         LocalPlayer player = mc.player;
         if (player == null || !player.isFallFlying()) return;
@@ -536,28 +532,22 @@ public class ElytraFly extends Module {
         Rotation moveRotation = RotationManager.INSTANCE.getMovementRotation();
         Vec3 lookVector = moveRotation.directionVector();
         Vec3 wantedFireworkVelocity = lookVector.scale(1.5);
-        double factor = fireworkVelocityFactor.get();
+
+        double boost = fireworkVelocityControl.get()
+                ? VANILLA_FIREWORK_BOOST * fireworkVelocityFactor.get()
+                : VANILLA_FIREWORK_BOOST;
 
         event.setVector(currentVelocity.add(
-                lookVector.x * factor + (wantedFireworkVelocity.x - currentVelocity.x) * 0.5,
-                lookVector.y * factor + (wantedFireworkVelocity.y - currentVelocity.y) * 0.5,
-                lookVector.z * factor + (wantedFireworkVelocity.z - currentVelocity.z) * 0.5
+                lookVector.x * boost + (wantedFireworkVelocity.x - currentVelocity.x) * 0.5,
+                lookVector.y * boost + (wantedFireworkVelocity.y - currentVelocity.y) * 0.5,
+                lookVector.z * boost + (wantedFireworkVelocity.z - currentVelocity.z) * 0.5
         ));
     }
 
-    private void suppressJumpInput(LocalPlayer player) {
-        if (player == null || player.input == null) return;
-
-        Input input = player.input.keyPresses;
-        ((InputAccessor) player.input).setPlayerInput(new Input(
-                input.forward(),
-                input.backward(),
-                input.left(),
-                input.right(),
-                false,
-                input.shift(),
-                input.sprint()
-        ));
+    @EventHandler(priority = -1000)
+    private void onMovementInput(MovementInputEvent event) {
+        if (!isEnabled()) return;
+        ElytraRecastUtil.INSTANCE.handleMovementInput(this, event);
     }
 
     private void sendStartGlidingPacket(LocalPlayer player) {
@@ -718,6 +708,33 @@ public class ElytraFly extends Module {
         return player != null && (player.isInWater() || player.isInLava());
     }
 
+    private boolean shouldStopOperating(LocalPlayer player) {
+        if (player == null) return false;
+        return instantStop.get() && mc.options.keyShift.isDown() && player.onGround()
+                || notInFluid.get() && isInLiquid(player);
+    }
+
+    private boolean shouldRunDurabilityExploit() {
+        if (mode.get() == Mode.VANILLA) return false;
+        if (mode.get() != Mode.STATIC) return true;
+        return !staticDurabilityExploitNotWhileNoMove.get() || !MovementUtil.isMoving();
+    }
+
+    private void suppressJumpInput(LocalPlayer player) {
+        if (player == null || player.input == null) return;
+
+        Input input = player.input.keyPresses;
+        ((InputAccessor) player.input).setPlayerInput(new Input(
+                input.forward(),
+                input.backward(),
+                input.left(),
+                input.right(),
+                false,
+                input.shift(),
+                input.sprint()
+        ));
+    }
+
     private void tickFireworkCooldown() {
         if (fireworkSkipTicks > 0) {
             fireworkSkipTicks--;
@@ -735,9 +752,11 @@ public class ElytraFly extends Module {
     }
 
     private void resetRuntimeState() {
+        needsToRestart = false;
         resetBoostState();
         fireworkSkipTicks = 0;
         queuedFireworkUse = false;
+        ElytraRecastUtil.INSTANCE.reset(this);
     }
 
     private void resetModeState(Mode currentMode) {

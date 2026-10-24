@@ -69,10 +69,14 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity,
         matrices.translate(0.0F, baseY, 0.0F);
 
         if (((IItemEntityRenderState) state).combatant$isOnGround()) {
+            if (module.isItemPhysicsRandomYaw()) {
+                // Deterministic per-item heading so items on the ground do not all face the same way.
+                matrices.rotateDegrees(Axis.YP, state.bobOffset * 360.0F / (float) (Math.PI * 2.0));
+            }
             matrices.rotateDegrees(Axis.XP, 90.0F);
         } else {
             float rotation = ItemEntity.getSpin(state.ageInTicks, state.bobOffset);
-            matrices.rotateDegrees(Axis.XP, rotation * 300.0F);
+            matrices.rotateDegrees(Axis.XP, rotation * module.getItemPhysicsTumbleSpeed());
         }
 
         ItemEntityRenderer.submitMultipleFromCount(matrices, queue, state.lightCoords, state, this.random, box);

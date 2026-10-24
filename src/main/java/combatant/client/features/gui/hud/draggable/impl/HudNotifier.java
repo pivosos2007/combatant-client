@@ -69,6 +69,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
     private static final float BASE_TOGGLE_H = 12f;
     private static final float BASE_PREVIEW_ICON_SIZE = 12f;
     private static final float BASE_PROGRESS_H = 1.35f;
+    private static final float BASE_MAX_TEXT_W = 260f;
     private static final float GLASS_BLUR_ALPHA = 255f;
     private static final float GLASS_PASS_ALPHA = 255f;
     private static final float TEXT_ALPHA_FACTOR = 0.88f;
@@ -168,6 +169,22 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
                                              float lineScale,
                                              float iconScale,
                                              float baseScale) {
+        // Metrics depend only on these inputs; the toast's own line/type/visual are mutable.
+        MetricsKey key = new MetricsKey(lineRenderer, iconRenderer, lineScale, iconScale, baseScale,
+                toast.line, toast.type, toast.visual);
+        if (toast.metricsValue != null && key.equals(toast.metricsKey)) return toast.metricsValue;
+        ToastMetrics metrics = computeToastMetrics(toast, lineRenderer, iconRenderer, lineScale, iconScale, baseScale);
+        toast.metricsKey = key;
+        toast.metricsValue = metrics;
+        return metrics;
+    }
+
+    private static ToastMetrics computeToastMetrics(Toast toast,
+                                             TextRenderer lineRenderer,
+                                             TextRenderer iconRenderer,
+                                             float lineScale,
+                                             float iconScale,
+                                             float baseScale) {
         boolean moduleToggle = toast.visual == ToastVisual.MODULE_TOGGLE;
         String icon = iconFor(toast.type);
         boolean previewToast = PREVIEW_KEY.equals(toast.key);
@@ -178,7 +195,8 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
                 ? (previewToast ? BASE_PREVIEW_ICON_SIZE : BASE_TOGGLE_H) * baseScale
                 : measureHeight(iconRenderer, iconScale);
         float pipeW = measureWidth(lineRenderer, "|", lineScale);
-        float textW = measureWidth(lineRenderer, toast.line, lineScale);
+        String line = ellipsize(lineRenderer, toast.line, lineScale, BASE_MAX_TEXT_W * baseScale);
+        float textW = measureWidth(lineRenderer, line, lineScale);
         float textH = measureHeight(lineRenderer, lineScale);
 
         float leftPad = BASE_LEFT_PAD * baseScale;
@@ -195,7 +213,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         float textX = pipeX + pipeW + pipeTextGap;
         float textY = (boxH - textH) * 0.5f + (0.8f * baseScale);
 
-        return new ToastMetrics(boxW, boxH, radius, textScale(lineScale), iconScale, iconX, iconY, iconW, iconH, pipeX, textX, textY);
+        return new ToastMetrics(boxW, boxH, radius, textScale(lineScale), iconScale, iconX, iconY, iconW, iconH, pipeX, textX, textY, line);
     }
 
     private static float textScale(float value) {
@@ -203,17 +221,31 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
     }
 
     private static ToastPalette paletteFor() {
-        int progressTrack = 0x33FFFFFF;
-        int progressFill = 0xC4FFFFFF;
-        int bg = 0x52000000;
+        Themes.Theme theme = Theme.theme();
+        if (theme == null) {
+            return new ToastPalette(0x52000000, 0x52000000, 0xFFF7FAFF, 0x33FFFFFF, 0xC4FFFFFF, 0xFFFFFFFF);
+        }
+        int text = theme.textPrimary() | 0xFF000000;
+        int bg = HudRenderUtil.setAlpha(theme.windowBg(), 0x52);
         return new ToastPalette(
                 bg,
                 bg,
-                0xFFF7FAFF,
-                progressTrack,
-                progressFill,
+                text,
+                HudRenderUtil.setAlpha(theme.textMuted(), 0x40),
+                HudRenderUtil.setAlpha(theme.accent(), 0xE0),
                 0xFFFFFFFF
         );
+    }
+
+    private static String ellipsize(TextRenderer renderer, String text, float scale, float maxW) {
+        if (text == null || text.isEmpty() || measureWidth(renderer, text, scale) <= maxW) return text;
+        String ellipsis = "...";
+        float ellipsisW = measureWidth(renderer, ellipsis, scale);
+        int end = text.length();
+        while (end > 1 && measureWidth(renderer, text.substring(0, end), scale) + ellipsisW > maxW) {
+            end--;
+        }
+        return text.substring(0, end).stripTrailing() + ellipsis;
     }
 
     private static NotifyType resolveType(String text, Boolean enabled) {
@@ -244,7 +276,10 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
             case YES -> 0xFF6DFF56;
             case NO -> 0xFFFF5656;
             case WARN -> 0xFFF5FF5E;
-            case INFO -> 0xFF4AA3FF;
+            case INFO -> {
+                Themes.Theme theme = Theme.theme();
+                yield theme != null ? theme.accent() | 0xFF000000 : 0xFF4AA3FF;
+            }
         };
     }
 
@@ -810,7 +845,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         applyColor(colorTmp, pipe);
         lineRenderer.render("|", x + metrics.pipeX, y + metrics.textY, colorTmp, false);
         applyColor(colorTmp, text);
-        lineRenderer.render(toast.line, x + metrics.textX, y + metrics.textY, colorTmp, false);
+        lineRenderer.render(metrics.line, x + metrics.textX, y + metrics.textY, colorTmp, false);
         lineRenderer.end();
     }
 
@@ -1032,6 +1067,8 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         private Boolean stateEnabled;
         private long startMs;
         private boolean layoutReady;
+        private MetricsKey metricsKey;
+        private ToastMetrics metricsValue;
         private float layoutX;
         private float layoutY;
 
@@ -1068,7 +1105,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
             int outMs = Math.max(1, fade > 0 ? fade : DEFAULT_EXIT_MS);
             float out = 1f;
             if (age > duration - outMs) {
-                out = clamp01((float) (duration - age) / (float) outMs);
+                out = AnimationUtility.easeInOutCubic(clamp01((float) (duration - age) / (float) outMs));
             }
 
             return clamp01(enter * out);
@@ -1080,6 +1117,16 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
             float t = AnimationUtility.easeInOutCubic((float) age / (float) TOGGLE_TRANSITION_MS);
             return enabled ? t : 1f - t;
         }
+    }
+
+    private record MetricsKey(TextRenderer lineRenderer,
+                              TextRenderer iconRenderer,
+                              float lineScale,
+                              float iconScale,
+                              float baseScale,
+                              String line,
+                              NotifyType type,
+                              ToastVisual visual) {
     }
 
     private record LayoutSize(float width, float height) {
@@ -1107,7 +1154,8 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
                                 float iconH,
                                 float pipeX,
                                 float textX,
-                                float textY) {
+                                float textY,
+                                String line) {
     }
 
     private record ToastPalette(int bgLeft,

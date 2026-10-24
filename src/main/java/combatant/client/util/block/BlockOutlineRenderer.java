@@ -21,18 +21,40 @@ import combatant.client.render.engine.uniform.MeshBuilder;
 public enum BlockOutlineRenderer {
     ;
 
+    /**
+     * Collision context used to resolve outline shapes. Resolve once per frame and pass it to
+     * {@link #render(Renderer3D, ClientLevel, BlockPos, BlockState, BlockOutlineShapeMode, int, CollisionContext)}
+     * when rendering many blocks.
+     */
+    public static CollisionContext shapeContext() {
+        Minecraft mc = Minecraft.getInstance();
+        Entity cameraEntity = mc != null ? mc.getCameraEntity() : null;
+        return cameraEntity != null ? CollisionContext.of(cameraEntity) : CollisionContext.empty();
+    }
+
     public static void render(Renderer3D renderer,
                               ClientLevel world,
                               BlockPos pos,
                               BlockState state,
                               BlockOutlineShapeMode mode,
                               int argb) {
+        render(renderer, world, pos, state, mode, argb,
+                mode == BlockOutlineShapeMode.VOXEL_SHAPE ? shapeContext() : null);
+    }
+
+    public static void render(Renderer3D renderer,
+                              ClientLevel world,
+                              BlockPos pos,
+                              BlockState state,
+                              BlockOutlineShapeMode mode,
+                              int argb,
+                              CollisionContext context) {
         if (renderer == null || world == null || pos == null || state == null || state.isAir()) {
             return;
         }
 
         if (mode == BlockOutlineShapeMode.VOXEL_SHAPE) {
-            renderVoxelShape(renderer, world, pos, state, argb);
+            renderVoxelShape(renderer, world, pos, state, argb, context != null ? context : shapeContext());
         } else {
             renderBox(renderer, new AABB(pos), argb);
         }
@@ -49,10 +71,8 @@ public enum BlockOutlineRenderer {
                                          ClientLevel world,
                                          BlockPos pos,
                                          BlockState state,
-                                         int argb) {
-        Minecraft mc = Minecraft.getInstance();
-        Entity cameraEntity = mc != null ? mc.getCameraEntity() : null;
-        CollisionContext context = cameraEntity != null ? CollisionContext.of(cameraEntity) : CollisionContext.empty();
+                                         int argb,
+                                         CollisionContext context) {
         VoxelShape shape = state.getShape(world, pos, context);
         if (shape.isEmpty()) {
             renderBox(renderer, new AABB(pos), argb);

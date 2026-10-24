@@ -48,6 +48,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import combatant.client.util.combat.AttackUtil;
 
 @ModuleInfo(
         id = "projectilepuncher",
@@ -474,7 +475,7 @@ public final class ProjectilePuncher extends Module {
                 break;
             }
             mc.gameMode.attack(mc.player, target);
-            mc.player.swing(InteractionHand.MAIN_HAND, mc.player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+            AttackUtil.swingMainHand(mc.player);
         }
     }
 

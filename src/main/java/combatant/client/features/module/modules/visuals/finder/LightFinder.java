@@ -12,6 +12,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.module.ModuleCategory;
@@ -48,6 +50,7 @@ public final class LightFinder extends ChunkFinderModule<LightFinder.Lit> {
     private final NumberValue<Integer> minLight = num("min_light", 8, 1, 15);
     private final NumberValue<Integer> minLitSpots = num("min_lit_spots", 5, 2, 60);
     private final BooleanValue ignoreLava = bool("ignore_lava", true);
+    private final BooleanValue subZeroStrict = bool("sub_zero_strict", false);
 
     public LightFinder() {
         super(4, "#40FFB000", "#FFFFB000", 2, 3000L);
@@ -55,13 +58,16 @@ public final class LightFinder extends ChunkFinderModule<LightFinder.Lit> {
 
     @Override
     protected String analysisSignature() {
-        return minY.get() + "|" + maxY.get() + "|" + minLight.get() + "|" + minLitSpots.get() + "|" + ignoreLava.get();
+        return minY.get() + "|" + maxY.get() + "|" + minLight.get() + "|" + minLitSpots.get() + "|" + ignoreLava.get()
+                + "|" + subZeroStrict.get();
     }
 
     @Override
     protected Lit analyzeChunk(ClientLevel level, LevelChunk chunk) {
+        boolean strict = subZeroStrict.get();
         int bottom = Math.min(minY.get(), maxY.get());
-        int top = Math.max(minY.get(), maxY.get());
+        int top = effectiveTop(Math.max(minY.get(), maxY.get()), strict);
+        if (bottom > top) return null;
         List<BlockPos> lava = ignoreLava.get() ? lavaIn(chunk, bottom - LAVA_REACH, top + LAVA_REACH) : List.of();
 
         int baseX = chunk.getPos().getMinBlockX();
@@ -88,9 +94,25 @@ public final class LightFinder extends ChunkFinderModule<LightFinder.Lit> {
             }
         }
 
+        if (strict) {
+            BlockPos redstone = ChunkBlocks.first(chunk, bottom, top, LightFinder::isRedstoneComponent);
+            if (redstone != null && count < minLitSpots.get()) {
+                return new Lit("redstone components below Y=0", redstone);
+            }
+        }
         if (count < minLitSpots.get()) return null;
         BlockPos center = new BlockPos((int) (sumX / count), (int) (sumY / count), (int) (sumZ / count));
-        return new Lit(count + " lit spots underground", center);
+        return new Lit(count + (strict ? " lit spots below Y=0" : " lit spots underground"), center);
+    }
+
+    /** Upper scan bound: in sub-zero mode nothing at or above Y=0 is considered. */
+    static int effectiveTop(int top, boolean subZeroStrict) {
+        return subZeroStrict ? Math.min(top, -1) : top;
+    }
+
+    private static boolean isRedstoneComponent(BlockState state) {
+        return state.is(Blocks.REDSTONE_WIRE) || state.is(Blocks.REPEATER) || state.is(Blocks.COMPARATOR)
+                || state.is(Blocks.REDSTONE_TORCH) || state.is(Blocks.REDSTONE_WALL_TORCH);
     }
 
     private static List<BlockPos> lavaIn(LevelChunk chunk, int minY, int maxY) {

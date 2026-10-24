@@ -25,6 +25,7 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Notifier;
+import combatant.client.runtime.error.FailureIsolation;
 import combatant.client.features.relations.CategoryRules;
 import combatant.client.features.relations.CategoryType;
 import combatant.client.features.relations.EntityFilters;
@@ -87,34 +88,39 @@ public class DefineTarget extends Module {
 
         AttackEntityCallback.EVENT.register((player, world, hand, target, hitResult) -> {
             if (!isEnabled()) return InteractionResult.PASS;
-            if (target instanceof Player targetPlayer) {
-                String name = targetPlayer.getGameProfile().name();
-                CategoryType type = CategoryRules.determine(name);
+            try {
+                if (target instanceof Player targetPlayer) {
+                    String name = targetPlayer.getGameProfile().name();
+                    CategoryType type = CategoryRules.determine(name);
 
-                boolean block = switch (type) {
-                    case FRIEND -> blockCategories.get("friends");
-                    case STAFF -> blockCategories.get("staff");
-                    case ENEMY -> blockCategories.get("enemies");
-                    case BEDWARS_SELF -> bedwarsRelations.get() && bedwarsBlockCategories.get("bedwars_self");
-                    case BEDWARS_ENEMY -> bedwarsRelations.get() && bedwarsBlockCategories.get("bedwars_enemy");
-                    default -> false;
-                };
+                    boolean block = switch (type) {
+                        case FRIEND -> blockCategories.get("friends");
+                        case STAFF -> blockCategories.get("staff");
+                        case ENEMY -> blockCategories.get("enemies");
+                        case BEDWARS_SELF -> bedwarsRelations.get() && bedwarsBlockCategories.get("bedwars_self");
+                        case BEDWARS_ENEMY -> bedwarsRelations.get() && bedwarsBlockCategories.get("bedwars_enemy");
+                        default -> false;
+                    };
 
-                if (block) {
-                    notifyBlock(target);
-                    return InteractionResult.FAIL;
+                    if (block) {
+                        notifyBlock(target);
+                        return InteractionResult.FAIL;
+                    }
                 }
-            }
-            boolean blockEntities = blockCategories.get("entities");
-            if (blockEntities) {
-                var id = BuiltInRegistries.ENTITY_TYPE.getKey(target.getType());
-                if (id != null && EntityFilters.get().isIgnoredEntity(id.toString())) {
-                    notifyBlock(target);
-                    return InteractionResult.FAIL;
+                boolean blockEntities = blockCategories.get("entities");
+                if (blockEntities) {
+                    var id = BuiltInRegistries.ENTITY_TYPE.getKey(target.getType());
+                    if (id != null && EntityFilters.get().isIgnoredEntity(id.toString())) {
+                        notifyBlock(target);
+                        return InteractionResult.FAIL;
+                    }
                 }
-            }
 
-            return InteractionResult.PASS;
+                return InteractionResult.PASS;
+            } catch (RuntimeException e) {
+                FailureIsolation.reportModule(this, "attack callback", e);
+                return InteractionResult.PASS;
+            }
         });
     }
 

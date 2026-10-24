@@ -202,6 +202,31 @@ public final class Cooldowns extends DraggableHudElement {
         return stacks;
     }
 
+    private record ItemInfo(ItemStack stack, String hoverName) {
+    }
+
+    private static final Map<Item, ItemInfo> ITEM_INFO = new java.util.HashMap<>();
+    private static net.minecraft.locale.Language itemInfoLanguage;
+
+    /**
+     * Row stacks are only read (copied before being queued for drawing), so one stack per item is
+     * shared. The hover name is language dependent, so the cache is dropped when the language changes.
+     */
+    private static ItemInfo itemInfo(Item item) {
+        net.minecraft.locale.Language language = net.minecraft.locale.Language.getInstance();
+        if (language != itemInfoLanguage) {
+            ITEM_INFO.clear();
+            itemInfoLanguage = language;
+        }
+        ItemInfo info = ITEM_INFO.get(item);
+        if (info == null) {
+            ItemStack stack = new ItemStack(item);
+            info = new ItemInfo(stack, stack.getHoverName().getString());
+            ITEM_INFO.put(item, info);
+        }
+        return info;
+    }
+
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.number(scaleValue));
@@ -623,8 +648,9 @@ public final class Cooldowns extends DraggableHudElement {
                 int remainingTicks = ((ItemCooldownEntryAccessor) entry).getEndTick() - nowTick;
                 if (remainingTicks <= 0) return;
                 Item item = id != null ? BuiltInRegistries.ITEM.getValue(id) : Items.AIR;
-                ItemStack stack = new ItemStack(item);
-                String name = stack.isEmpty() ? (id != null ? id.getPath() : "Unknown") : stack.getHoverName().getString();
+                ItemInfo info = itemInfo(item);
+                ItemStack stack = info.stack();
+                String name = stack.isEmpty() ? (id != null ? id.getPath() : "Unknown") : info.hoverName();
                 String key = "vanilla:" + (id != null ? id.toString() : name);
                 float progress = clamp01(manager.getCooldownPercent(stack, tickDelta));
                 rows.add(new Row(key, stack, name, formatSeconds(remainingTicks / 20.0f), remainingTicks,
@@ -650,11 +676,12 @@ public final class Cooldowns extends DraggableHudElement {
                     int remainingTicks = snapshot.cooling()
                             ? Math.max(1, Math.round(seconds * 20.0f))
                             : Math.max(1, Math.round(Math.max(1.0f, seconds) * 20.0f));
-                    ItemStack stack = new ItemStack(item);
+                    ItemInfo info = itemInfo(item);
+                    ItemStack stack = info.stack();
                     rows.add(new Row(
                             "pvp:" + BuiltInRegistries.ITEM.getKey(item),
                             stack,
-                            stack.getHoverName().getString(),
+                            info.hoverName(),
                             text,
                             remainingTicks,
                             snapshot.cooling() ? stateColor : (uiMuted != 0 ? uiMuted : theme().textMuted()),
@@ -671,11 +698,12 @@ public final class Cooldowns extends DraggableHudElement {
                 Float secondsLeft = PvpState.getSecondsLeft();
                 if (secondsLeft != null && secondsLeft > 0.0f) {
                     int remainingTicks = Math.max(1, Math.round(secondsLeft * 20.0f));
-                    ItemStack pearlStack = new ItemStack(Items.ENDER_PEARL);
+                    ItemInfo pearlInfo = itemInfo(Items.ENDER_PEARL);
+                    ItemStack pearlStack = pearlInfo.stack();
                     rows.add(new Row(
                             "pvpban:" + BuiltInRegistries.ITEM.getKey(Items.ENDER_PEARL),
                             pearlStack,
-                            pearlStack.getHoverName().getString(),
+                            pearlInfo.hoverName(),
                             formatSeconds(secondsLeft),
                             remainingTicks,
                             PVP_BLOCKED_COLOR,
@@ -683,11 +711,12 @@ public final class Cooldowns extends DraggableHudElement {
                             pvpTagProgress(secondsLeft),
                             true
                     ));
-                    ItemStack chorusStack = new ItemStack(Items.CHORUS_FRUIT);
+                    ItemInfo chorusInfo = itemInfo(Items.CHORUS_FRUIT);
+                    ItemStack chorusStack = chorusInfo.stack();
                     rows.add(new Row(
                             "pvpban:" + BuiltInRegistries.ITEM.getKey(Items.CHORUS_FRUIT),
                             chorusStack,
-                            chorusStack.getHoverName().getString(),
+                            chorusInfo.hoverName(),
                             formatSeconds(secondsLeft),
                             remainingTicks,
                             PVP_BLOCKED_COLOR,

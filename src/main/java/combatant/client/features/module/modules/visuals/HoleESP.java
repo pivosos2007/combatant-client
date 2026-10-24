@@ -8,6 +8,7 @@
 package combatant.client.features.module.modules.visuals;
 
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
 import combatant.client.features.module.Module;
@@ -17,6 +18,7 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.pipeline.WorldRenderPipelines;
+import combatant.client.render.engine.renderer.GlowSurfaces;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -62,6 +64,10 @@ public final class HoleESP extends Module {
             num("holeesp_line_width", "line_width", 0.5f, 0.01f, 5.0f);
     private final BooleanValue culling =
             bool("holeesp_culling", "culling", true);
+    private final ModeValue style =
+            modeSetting("holeesp_style", "style", "Glow", "Flat", "Glow");
+    private final BooleanValue scanBand =
+            visibleWhen(bool("holeesp_scan_band", "scan_band", true), () -> "Glow".equals(style.get()));
     private final RGBAColorValue indestructibleColor =
             color("holeesp_indestructible_color", "indestructible_color", "#FF7A00FF");
     private final RGBAColorValue bedrockColor =
@@ -202,7 +208,12 @@ public final class HoleESP extends Module {
         int fillTop = colorForDistance(box, hole.argb(), 0);
         int line = colorForDistance(box, hole.argb(), (hole.argb() >>> 24) & 0xFF);
 
-        addVerticalFadeBox(renderer, box, fillBottom, fillTop);
+        if ("Glow".equals(style.get())) {
+            float rimAlpha = ((line >>> 24) & 0xFF) / 255.0f;
+            GlowSurfaces.box(renderer, box, fillBottom, fillTop, rimAlpha, scanBand.get() ? 1.0f : 0.0f, true, false, false);
+        } else {
+            addVerticalFadeBox(renderer, box, fillBottom, fillTop);
+        }
         addBottomOutline(renderer, box, line);
     }
 

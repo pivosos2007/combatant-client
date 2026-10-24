@@ -28,7 +28,7 @@ import java.util.Map;
  */
 public final class OpenTypeShaper {
     private static final float EM_SIZE = 1024f;
-    private static final int CACHE_LIMIT = 384;
+    private static final int CACHE_LIMIT = 4096;
     private static final FontRenderContext CONTEXT = new FontRenderContext(null, true, true);
     private final Font font;
     private final Map<Integer, Integer> characterMap = new HashMap<>();

@@ -240,7 +240,7 @@ final class ScriptedListHudPanel {
         if (module == null) return false;
 
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
-        LinkedHashMap<String, Object> props = panel.toProps();
+        // Props are only materialised when the cached tree has to be (re)built.
         float logicalWidth = panel.logical(panel.width);
         float logicalHeight = panel.logical(panel.height);
         UiRuntime baked = runtime.bake(
@@ -255,7 +255,7 @@ final class ScriptedListHudPanel {
                 0.0f,
                 logicalWidth,
                 logicalHeight,
-                () -> props,
+                panel::toProps,
                 panel::patches
         );
         if (baked == null) return false;

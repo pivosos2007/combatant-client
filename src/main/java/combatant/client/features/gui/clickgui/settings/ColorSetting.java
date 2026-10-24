@@ -140,5 +140,10 @@ public class ColorSetting extends Setting {
         float presetScrollbarHandleY, presetScrollbarHandleH;
         float savePresetX, savePresetY, savePresetW, savePresetH;
         float deletePresetX, deletePresetY, deletePresetW, deletePresetH;
+
+        /** True while a drag or hex edit is in progress, i.e. the value is still changing. */
+        boolean busy() {
+            return sbFocused || hFocused || aFocused || rFocused || gFocused || bFocused || aRgbFocused || hexFocused;
+        }
     }
 }

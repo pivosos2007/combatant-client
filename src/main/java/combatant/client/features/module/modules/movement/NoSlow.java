@@ -43,7 +43,6 @@ public final class NoSlow extends Module {
     }
 
     private final EnumValue<Mode> mode = enumMode("mode", Mode.VANILLA, Mode.values());
-
     private final BooleanValue food = bool("food", true);
     private final BooleanValue bow = bool("bow", true);
     private final BooleanValue crossbow = bool("crossbow", true);

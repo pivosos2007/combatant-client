@@ -369,12 +369,16 @@ public enum ModuleManager {
                 if (!m.isEnabled()) continue;
                 try (ProfilerPhase.Scope scope = moduleScope("module:world:", m);
                      RenderProfiler3D.Section ignored = RenderProfiler3D.section(PROFILER_3D ? "module:" + m.name() : null)) {
-                    runModule(m, "world engine", () -> {
-                        if (ModuleExtensionManager.beforeWorldRender(m, renderer, depthRenderer, tickDelta)) {
-                            m.onRenderWorldEngine(renderer, depthRenderer, tickDelta);
-                            ModuleExtensionManager.afterWorldRender(m, renderer, depthRenderer, tickDelta);
+                    if (m.isEnabled()) {
+                        try {
+                            if (ModuleExtensionManager.beforeWorldRender(m, renderer, depthRenderer, tickDelta)) {
+                                m.onRenderWorldEngine(renderer, depthRenderer, tickDelta);
+                                ModuleExtensionManager.afterWorldRender(m, renderer, depthRenderer, tickDelta);
+                            }
+                        } catch (RuntimeException e) {
+                            FailureIsolation.reportModule(m, "world engine", e);
                         }
-                    });
+                    }
                 }
             }
             if (phase == WorldPhase.END_MAIN) {
@@ -396,7 +400,13 @@ public enum ModuleManager {
         for (Module m : snapshot) {
             if (!m.isEnabled()) continue;
             try (ProfilerPhase.Scope scope = moduleScope("module:world_post_prepare:", m)) {
-                runModule(m, "world post prepare", () -> m.onPrepareWorldPostProcess(tickDelta));
+                if (m.isEnabled()) {
+                    try {
+                        m.onPrepareWorldPostProcess(tickDelta);
+                    } catch (RuntimeException e) {
+                        FailureIsolation.reportModule(m, "world post prepare", e);
+                    }
+                }
             }
         }
     }

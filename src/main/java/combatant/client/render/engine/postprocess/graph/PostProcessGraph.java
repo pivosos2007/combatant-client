@@ -59,10 +59,10 @@ public final class PostProcessGraph implements AutoCloseable {
         }
         if (activePasses.isEmpty()) return false;
 
-        String gpuGraphLabel = phase == PostProcessPass.Phase.PRE_HAND
-                ? "3d:post_graph:pre_hand"
-                : "3d:post_graph:post_hand";
-        try (RenderCostProfiler.Scope ignoredGraph = RenderCostProfiler.postPass("graph:" + phase);
+        boolean preHand = phase == PostProcessPass.Phase.PRE_HAND;
+        String gpuGraphLabel = preHand ? "3d:post_graph:pre_hand" : "3d:post_graph:post_hand";
+        String cpuGraphLabel = preHand ? "graph:PRE_HAND" : "graph:POST_HAND";
+        try (RenderCostProfiler.Scope ignoredGraph = RenderCostProfiler.postPass(cpuGraphLabel);
              TracyGpuProfiler.Scope ignoredGpuGraph = TracyGpuProfiler.beginZone(gpuGraphLabel)) {
             boolean preferStorageTargets = false;
             for (PostProcessPass pass : activePasses) {

@@ -118,8 +118,9 @@ public class DropESP extends Module {
                     () -> isMatteMode() || presentationMode.get() != WorldUiPresentationService.Mode.SCREEN);
     private final RGBColorValue specialColorValue = colorNoAlpha("dropEspSpecialColor", SETTING_SPECIAL_ITEMS_COLOR, "#FFAA00");
     private final ItemIdSetValue topIgnore = TopEnchantUtil.ignoreValue();
-    private final ItemIdSetValue specialItemsValue =
-            itemList("dropEspSpecialItems", SETTING_SPECIAL_ITEM_IDS, TextListSetting.PickerMode.ITEMS);
+    private final ColorListValue specialItemsValue =
+            colorList("dropEspSpecialItems", SETTING_SPECIAL_ITEM_IDS, TextListSetting.PickerMode.ITEMS,
+                    java.util.Set.of(), specialColorValue);
 
     {
         setting(SettingDef.colorNoAlpha(SETTING_ILLEGAL_ENCHANT_COLOR, IllegalItemUtil.illegalColorValue()));
@@ -634,7 +635,7 @@ public class DropESP extends Module {
             info.color = TopEnchantUtil.topColor();
         } else if (special) {
             info.sortPriority = 800;
-            info.color = specialColorValue.getArgb();
+            info.color = specialItemsValue.argbFor(id) | 0xFF000000;
         } else {
             info.sortPriority = switch (rarity) {
                 case EPIC -> 400;

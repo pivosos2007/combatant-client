@@ -1505,11 +1505,29 @@ public final class DynamicIsland extends AbstractHudElement {
         return Math.max(0f, secondsLeft - sinceUpdate / 1000f);
     }
 
+    private record WidthKey(TextRenderer renderer, String text, int scaleBits) {
+    }
+
+    private record WidthValue(float width, long expiresMs) {
+    }
+
+    private static final long WIDTH_CACHE_TTL_MS = 500L;
+    private final java.util.HashMap<WidthKey, WidthValue> widthCache = new java.util.HashMap<>();
+
     private float measureWidth(TextRenderer renderer, String text, float scale) {
         if (renderer == null || text == null || text.isEmpty()) return 0f;
+        // The title is measured several times per frame at the same scales; glyph metrics may change
+        // as fallback glyphs load, so entries expire quickly.
+        long nowMs = Util.getMillis();
+        WidthKey key = new WidthKey(renderer, text, Float.floatToIntBits(scale));
+        WidthValue cached = widthCache.get(key);
+        if (cached != null && cached.expiresMs() > nowMs) return cached.width();
         renderer.begin(scale, true, false);
         try {
-            return (float) renderer.getWidth(text, false);
+            float width = (float) renderer.getWidth(text, false);
+            if (widthCache.size() >= 32) widthCache.clear();
+            widthCache.put(key, new WidthValue(width, nowMs + WIDTH_CACHE_TTL_MS));
+            return width;
         } finally {
             renderer.end();
         }

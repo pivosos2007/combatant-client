@@ -9,20 +9,14 @@ package combatant.client.render.engine.command;
 
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.RenderFrameContext;
-import combatant.client.render.engine.renderer.ui.clip.UiClipSnapshot;
-import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 
 /**
- * Semantic UI command stream used for normalized metadata, telemetry, clip snapshots and
- * backdrop planning. Executable rendering work is owned separately by UiPassCompiler.
+ * Semantic UI command counters used for normalized telemetry. Executable rendering work is owned
+ * separately by UiPassCompiler, so only the per-kind counts of the recorded draws are kept.
  */
 public final class UiSemanticCommandBuffer {
-    private final List<UiCommand> commands = new ArrayList<>();
-    private final List<UiRecordedCommand> entries = new ArrayList<>();
+    private final int[] counts = new int[UiCommandKind.values().length];
+    private int size;
     private final UiCommandStats stats = new UiCommandStats();
 
     public void beginFrame(RenderFrameContext context) {
@@ -31,29 +25,17 @@ public final class UiSemanticCommandBuffer {
         }
     }
 
-    public void add(UiCommand command) {
-        add(command, UiScissorSnapshot.NONE, UiClipSnapshot.NONE);
-    }
-
-    public void add(UiCommand command, UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot) {
-        if (command == null) return;
+    public void record(UiCommandKind kind) {
+        if (kind == null) return;
         RenderFrameContext ctx = CombatantRenderSystem.currentContext();
         if (ctx != null) stats.beginFrame(ctx.frameId());
-        commands.add(command);
-        entries.add(new UiRecordedCommand(command, scissorSnapshot, clipSnapshot));
-        stats.record(command);
+        counts[kind.ordinal()]++;
+        size++;
+        stats.record(kind);
     }
 
-    public List<UiCommand> commands() {
-        return Collections.unmodifiableList(commands);
-    }
-
-    public List<UiCommand> snapshot() {
-        return Collections.unmodifiableList(commands);
-    }
-
-    public List<UiRecordedCommand> entries() {
-        return Collections.unmodifiableList(entries);
+    public int count(UiCommandKind kind) {
+        return counts[kind.ordinal()];
     }
 
     public UiCommandStats stats() {
@@ -65,12 +47,12 @@ public final class UiSemanticCommandBuffer {
     }
 
     public void clear() {
-        commands.clear();
-        entries.clear();
+        java.util.Arrays.fill(counts, 0);
+        size = 0;
     }
 
     public int size() {
-        return commands.size();
+        return size;
     }
 
 }

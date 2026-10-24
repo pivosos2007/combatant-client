@@ -57,6 +57,7 @@ import java.util.Set;
 @ModuleInfo(
         id = "nofall",
         displayName = "NoFall",
+        aliases = {"AutoMLG", "MLG"},
         category = ModuleCategory.MOVEMENT, subcategory = ModuleSubcategory.BASIC,
         description = "module.nofall.description")
 public class NoFall extends Module {

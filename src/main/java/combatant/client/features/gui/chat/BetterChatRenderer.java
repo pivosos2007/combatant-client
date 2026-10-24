@@ -2729,10 +2729,12 @@ lastHoverWasOutsideSuggest = false;
         return max;
     }
 
+    private static final DateTimeFormatter TIME_SECONDS_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
+    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
+
     private static String formatTimestamp(long ms, boolean withSeconds) {
         LocalDateTime dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(ms), ZoneId.systemDefault());
-        DateTimeFormatter fmt = DateTimeFormatter.ofPattern(withSeconds ? "HH:mm:ss" : "HH:mm");
-        return dt.format(fmt);
+        return dt.format(withSeconds ? TIME_SECONDS_FORMAT : TIME_FORMAT);
     }
 
     private static String formatDate(long ms) {

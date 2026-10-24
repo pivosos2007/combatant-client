@@ -267,7 +267,7 @@ public final class UiMeshGeometry {
         }
     }
 
-    private static int appendFlatGeometryVertex(MeshBuilder mesh, double x, double y, int argb) {
+    public static int appendFlatGeometryVertex(MeshBuilder mesh, double x, double y, int argb) {
         return mesh.vec2(x, y)
                 .local2(x, y)
                 .color((argb >>> 16) & 0xFF, (argb >>> 8) & 0xFF, argb & 0xFF, (argb >>> 24) & 0xFF)

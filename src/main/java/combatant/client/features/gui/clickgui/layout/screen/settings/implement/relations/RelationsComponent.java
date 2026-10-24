@@ -1765,7 +1765,7 @@ public final class RelationsComponent {
     }
 
     private TextRenderer relationHeaderBold() {
-        return BuiltinFontCatalog.INTER_BOLD.renderer(ClickGuiRenderer.getInterMedium());
+        return BuiltinFontCatalog.ONEST_BOLD.renderer(ClickGuiRenderer.getInterMedium());
     }
 
     private void renderStatus(float x,

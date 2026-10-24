@@ -290,7 +290,7 @@ public final class Renderer2D {
     public void box(UiBoxShape box, UiPaint paint, UiStroke stroke, boolean fill) {
         if (box == null || paint == null) return;
         UiStroke safeStroke = stroke == null ? UiStroke.NONE : stroke;
-        recordUi(new UiShapeCommand(UiShape.box(box), paint, safeStroke, fill));
+        recordUi(UiCommandKind.SHAPE);
         if (box.isSquircle()) {
             renderSquircleSdf(box, paint, safeStroke, fill);
         } else {
@@ -308,12 +308,7 @@ public final class Renderer2D {
 
     public void materialPrimitive(UiPrimitive primitive, UiPaint paint, UiSurfaceMaterialSpec material) {
         if (primitive == null || paint == null || material == null || primitive.pointCount() < 3) return;
-        recordUi(new UiShapeCommand(
-                UiShape.polyline(primitive.points(), primitive.pointCount(), true),
-                paint,
-                UiStroke.NONE,
-                true
-        ));
+        recordUi(UiCommandKind.SHAPE);
         if (primitive.shaderEligible()) {
             renderMaterialPrimitiveSdf(primitive, paint, material);
         } else {
@@ -329,8 +324,7 @@ public final class Renderer2D {
     private void primitive(UiPrimitive primitive, UiPaint paint, UiStroke stroke, boolean fill) {
         if (primitive == null || paint == null || primitive.pointCount() < 3) return;
         UiStroke safeStroke = stroke != null ? stroke : UiStroke.NONE;
-        UiShape semanticShape = UiShape.polyline(primitive.points(), primitive.pointCount(), true);
-        recordUi(new UiShapeCommand(semanticShape, paint, safeStroke, fill));
+        recordUi(UiCommandKind.SHAPE);
         if (primitive.shaderEligible()) {
             renderPrimitiveSdf(primitive, paint, safeStroke, fill);
         } else {
@@ -356,12 +350,12 @@ public final class Renderer2D {
 
     public void shape(UiShape shape, UiPaint paint, UiStroke stroke, boolean fill) {
         if (shape == null || paint == null) return;
-        recordUi(new UiShapeCommand(shape, paint, stroke == null ? UiStroke.NONE : stroke, fill));
+        recordUi(UiCommandKind.SHAPE);
     }
 
     public void path(UiShape path, UiPaint paint, UiStroke stroke, boolean fill) {
         if (path == null || paint == null) return;
-        recordUi(new UiPathCommand(path, paint, stroke == null ? UiStroke.NONE : stroke, fill));
+        recordUi(UiCommandKind.PATH);
     }
 
     /**
@@ -399,7 +393,7 @@ public final class Renderer2D {
 
     public void effect(UiEffectSpec effect) {
         if (effect == null) return;
-        recordUi(new UiEffectRegionCommand(effect));
+        recordUi(UiCommandKind.EFFECT_REGION);
     }
 
     // Use this path when the current projection is already the target space
@@ -695,7 +689,7 @@ public final class Renderer2D {
         if (samplerView == null || sampler == null) return;
         if (w == 0.0 || h == 0.0) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.rect(x, y, w, h), UiPaint.solid(argb), 0f, 0f, 1f, 1f, false));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED, samplerView, sampler);
         if (batch == null) {
@@ -738,8 +732,7 @@ public final class Renderer2D {
         if (samplerView == null || sampler == null) return;
         if (w == 0.0 || h == 0.0) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.rect(x, y, w, h), UiPaint.solid(argb),
-                (float) u0, (float) v0, (float) u1, (float) v1, false));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED, samplerView, sampler);
         if (batch == null) {
@@ -848,7 +841,7 @@ public final class Renderer2D {
         if (w == 0.0 || h == 0.0) return;
         if (pxRange <= 0.0f || atlasWidth <= 0 || atlasHeight <= 0) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.rect(x, y, w, h), UiPaint.solid(topLeft), 0f, 0f, 1f, 1f, false));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateMsdf(samplerView, sampler, pxRange, atlasWidth, atlasHeight);
         if (batch == null) {
@@ -887,6 +880,31 @@ public final class Renderer2D {
         QuadBatch quadBatch = new QuadBatch(mesh);
         try {
             consumer.accept(quadBatch);
+        } finally {
+            endAutoBatch(auto);
+        }
+    }
+
+    /**
+     * Like {@link #quadBatch} but for arbitrary CPU-projected quads sampling one texture (e.g. a block atlas), with
+     * per-corner UVs and a per-corner multiply colour. Batched in order with every other COLOR draw.
+     */
+    public void texturedQuadBatch(GpuTextureView samplerView, GpuSampler sampler, Consumer<TexturedQuadBatch> consumer) {
+        if (textured) {
+            throw new IllegalStateException("Quad batching is supported only on Renderer2D.COLOR.");
+        }
+        if (consumer == null || samplerView == null || sampler == null) return;
+
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED, samplerView, sampler);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        try {
+            consumer.accept(new TexturedQuadBatch(mesh));
         } finally {
             endAutoBatch(auto);
         }
@@ -2407,8 +2425,7 @@ public final class Renderer2D {
         }
         if (samplerView == null || sampler == null) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.roundedRect(x, y, w, h, radius), UiPaint.solid(argb),
-                (float) texX1, (float) texY1, (float) texX2, (float) texY2, false));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
         if (batch == null) {
@@ -2443,8 +2460,7 @@ public final class Renderer2D {
         }
         if (samplerView == null || sampler == null) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.roundedRect(x, y, w, h, radius), UiPaint.solid(argb),
-                (float) texX1, (float) texY1, (float) texX2, (float) texY2, true));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
         if (batch == null) {
@@ -2480,9 +2496,7 @@ public final class Renderer2D {
         }
         if (samplerView == null || sampler == null) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.roundedRect(x, y, w, h, radius),
-                UiPaint.linear(startArgb, endArgb, angleDeg, 0.0f),
-                (float) texX1, (float) texY1, (float) texX2, (float) texY2, true));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
         if (batch == null) {
@@ -3199,7 +3213,7 @@ public final class Renderer2D {
     public void texQuad(double x, double y, double width, double height,
                         double texX1, double texY1, double texX2, double texY2,
                         int argb) {
-        recordUi(new UiShapeCommand(UiShape.rect(x, y, width, height), UiPaint.solid(argb), UiStroke.NONE, true));
+        recordUi(UiCommandKind.SHAPE);
         if (texturedTriangles == null) return;
         texturedTriangles.alpha = alpha;
         texturedTriangles.ensureQuadCapacity();
@@ -5145,8 +5159,8 @@ public final class Renderer2D {
         UiRenderDispatcher.beginLayer();
     }
 
-    private static void recordUi(UiCommand command) {
-        UiRenderDispatcher.record(command);
+    private static void recordUi(UiCommandKind kind) {
+        UiRenderDispatcher.record(kind);
     }
 
     public static void flushUiLayer() {
@@ -5341,6 +5355,57 @@ public final class Renderer2D {
                          int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
             appendGeometryQuad(mesh, x, y, width, height,
                     cTopLeft, cTopRight, cBottomRight, cBottomLeft);
+        }
+
+        /** Arbitrary convex quad with per-corner colours, wound either way; for CPU-projected geometry. */
+        public void quad(double x1, double y1, int c1, double x2, double y2, int c2,
+                         double x3, double y3, int c3, double x4, double y4, int c4) {
+            mesh.ensureQuadCapacity();
+            int i1 = appendFlatGeometryVertex(mesh, x1, y1, c1);
+            int i2 = appendFlatGeometryVertex(mesh, x2, y2, c2);
+            int i3 = appendFlatGeometryVertex(mesh, x3, y3, c3);
+            int i4 = appendFlatGeometryVertex(mesh, x4, y4, c4);
+            double area = (x1 * y2 - x2 * y1) + (x2 * y3 - x3 * y2) + (x3 * y4 - x4 * y3) + (x4 * y1 - x1 * y4);
+            // The UI pipeline culls back faces, so keep the winding appendGeometryQuad produces.
+            if (area >= 0.0) {
+                mesh.quad(i1, i4, i3, i2);
+            } else {
+                mesh.quad(i1, i2, i3, i4);
+            }
+        }
+    }
+
+    public static final class TexturedQuadBatch {
+        private final MeshBuilder mesh;
+
+        private TexturedQuadBatch(MeshBuilder mesh) {
+            this.mesh = mesh;
+        }
+
+        /** Axis-aligned textured rect with one multiply colour. */
+        public void quad(double x, double y, double width, double height,
+                         float u0, float v0, float u1, float v1, int argb) {
+            quad(x, y, u0, v0, argb, x + width, y, u1, v0, argb,
+                    x + width, y + height, u1, v1, argb, x, y + height, u0, v1, argb);
+        }
+
+        /** Arbitrary convex quad, wound either way; for CPU-projected geometry. */
+        public void quad(double x1, double y1, float u1, float v1, int c1,
+                         double x2, double y2, float u2, float v2, int c2,
+                         double x3, double y3, float u3, float v3, int c3,
+                         double x4, double y4, float u4, float v4, int c4) {
+            mesh.ensureQuadCapacity();
+            int i1 = mesh.vec2(x1, y1).raw2(u1, v1).color((c1 >>> 16) & 0xFF, (c1 >>> 8) & 0xFF, c1 & 0xFF, (c1 >>> 24) & 0xFF).next();
+            int i2 = mesh.vec2(x2, y2).raw2(u2, v2).color((c2 >>> 16) & 0xFF, (c2 >>> 8) & 0xFF, c2 & 0xFF, (c2 >>> 24) & 0xFF).next();
+            int i3 = mesh.vec2(x3, y3).raw2(u3, v3).color((c3 >>> 16) & 0xFF, (c3 >>> 8) & 0xFF, c3 & 0xFF, (c3 >>> 24) & 0xFF).next();
+            int i4 = mesh.vec2(x4, y4).raw2(u4, v4).color((c4 >>> 16) & 0xFF, (c4 >>> 8) & 0xFF, c4 & 0xFF, (c4 >>> 24) & 0xFF).next();
+            double area = (x1 * y2 - x2 * y1) + (x2 * y3 - x3 * y2) + (x3 * y4 - x4 * y3) + (x4 * y1 - x1 * y4);
+            // Same winding rule as QuadBatch: the UI pipeline culls back faces.
+            if (area >= 0.0) {
+                mesh.quad(i1, i4, i3, i2);
+            } else {
+                mesh.quad(i1, i2, i3, i4);
+            }
         }
     }
 

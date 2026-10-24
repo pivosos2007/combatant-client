@@ -126,7 +126,6 @@ public class Timer extends Module {
     @Override
     public void onEnable() {
         tickTimer = 1f;
-        externalTickTimer = 1f;
         if (mode.get() == Mode.VULCAN) {
             vulcanWindowHead = 0;
             vulcanWindowCount = 0;
@@ -146,7 +145,6 @@ public class Timer extends Module {
     @Override
     public void onDisable() {
         tickTimer = 1f;
-        externalTickTimer = 1f;
         vulcanWindowHead = 0;
         vulcanWindowCount = 0;
         vulcanFastCount = 0;
@@ -331,7 +329,7 @@ public class Timer extends Module {
     public void onPostPlayerUpdate(PostPlayerUpdateEvent event) {
         if (mode.get() != Mode.SHIFT) return;
 
-        // the shifted ticks are tick packets Grim counts against one 50 ms of wall clock
+        // the shifted ticks are tick packets counted against one 50 ms of wall clock
         if (energy < 0.9f) {
             setEnabled(false);
             return;

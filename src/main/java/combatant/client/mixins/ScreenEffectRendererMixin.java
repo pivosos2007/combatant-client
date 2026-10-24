@@ -7,6 +7,8 @@
 
 package combatant.client.mixins;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ScreenEffectRenderer;
@@ -17,15 +19,16 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Player;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.NoRender;
-import combatant.client.mixins.accessors.InGameOverlayRendererAccessor;
 
+/**
+ * Wraps (not redirects) the overlay calls so other mods that hook the same calls, such as Punchy, still apply.
+ */
 @Mixin(ScreenEffectRenderer.class)
 public abstract class ScreenEffectRendererMixin {
 
-    @Redirect(
+    @WrapOperation(
             method = "submit",
             at = @At(
                     value = "INVOKE",
@@ -36,7 +39,8 @@ public abstract class ScreenEffectRendererMixin {
     private static void combatant$maybeRenderFireOverlay(
             PoseStack matrices,
             SubmitNodeCollector vertexConsumers,
-            TextureAtlasSprite sprite
+            TextureAtlasSprite sprite,
+            Operation<Void> original
     ) {
         Minecraft client = Minecraft.getInstance();
         Player player = client.player;
@@ -56,10 +60,10 @@ public abstract class ScreenEffectRendererMixin {
             return;
         }
 
-        InGameOverlayRendererAccessor.callRenderFireOverlay(matrices, vertexConsumers, sprite);
+        original.call(matrices, vertexConsumers, sprite);
     }
 
-    @Redirect(
+    @WrapOperation(
             method = "submit",
             at = @At(
                     value = "INVOKE",
@@ -75,17 +79,14 @@ public abstract class ScreenEffectRendererMixin {
             float v1,
             PoseStack matrices,
             SubmitNodeCollector vertexConsumers,
-            int color
+            int color,
+            Operation<Void> original
     ) {
         NoRender noRender = Modules.get(NoRender.class);
         if (noRender != null && noRender.off("block_overlay")) {
             return;
         }
 
-        InGameOverlayRendererAccessor.callRenderInWallOverlay(
-                atlasLocation, u0, v0, u1, v1, matrices, vertexConsumers, color);
+        original.call(atlasLocation, u0, v0, u1, v1, matrices, vertexConsumers, color);
     }
 }
-
-
-

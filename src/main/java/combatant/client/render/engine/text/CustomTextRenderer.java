@@ -42,6 +42,7 @@ public class CustomTextRenderer implements TextRenderer {
     /** One optional, lazily created bitmap atlas per MSDF face. */
     private GlyphFont smallBitmapFont;
     private boolean smallBitmapUnavailable;
+    private long fontsEpoch;
     private double requestedScale = 1.0;
     private TextBackendPreference backendPreference = TextBackendPreference.AUTO;
 
@@ -134,6 +135,7 @@ public class CustomTextRenderer implements TextRenderer {
         }
 
         this.fonts = fresh;
+        fontsEpoch++;
         GlyphFont oldSmall = smallBitmapFont;
         smallBitmapFont = null;
         smallBitmapUnavailable = false;
@@ -678,9 +680,10 @@ public class CustomTextRenderer implements TextRenderer {
     public void destroy() {
         mesh.close();
         liquidGlassMesh.close();
-        if (fonts == null) return;
-        for (GlyphFont f : this.fonts) {
-            f.close();
+        GlyphFont[] current = this.fonts;
+        this.fonts = null;
+        for (GlyphFont f : current) {
+            if (f != null) f.close();
         }
         if (smallBitmapFont != null) {
             smallBitmapFont.close();
@@ -688,6 +691,19 @@ public class CustomTextRenderer implements TextRenderer {
         }
     }
 
+    /**
+     * Identifies every font-resource input of width measurement: the font set (rebuild epoch),
+     * per-atlas readiness and the lazily created small bitmap atlas. Equal tokens mean the same
+     * fonts in the same readiness state, so cached widths stay valid.
+     */
+    long measureStateToken() {
+        long bits = smallBitmapFont == null ? (smallBitmapUnavailable ? 1 : 0) : (smallBitmapFont.isReady() ? 3 : 2);
+        GlyphFont[] current = fonts;
+        if (current != null) {
+            for (GlyphFont f : current) bits = (bits << 1) | (f != null && f.isReady() ? 1L : 0L);
+        }
+        return (fontsEpoch << 24) | (bits & 0xFFFFFFL);
+    }
     record GlyphSelection(GlyphFont font, double glyphScale, double shadowOffset) {
     }
 }

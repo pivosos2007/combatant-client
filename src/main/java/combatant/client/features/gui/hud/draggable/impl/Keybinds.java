@@ -178,15 +178,24 @@ public final class Keybinds extends DraggableHudElement {
         return out.toString();
     }
 
+    private static final java.util.concurrent.ConcurrentHashMap<String, String> FORMATTED_BINDS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Pure function of {@code raw}; memoised because it is called per bound module every frame. */
     private static String formatBind(String raw) {
         if (raw == null || raw.isBlank()) return "";
+        String cached = FORMATTED_BINDS.get(raw);
+        if (cached != null) return cached;
         String[] parts = raw.trim().toUpperCase(Locale.ROOT).split("\\+");
         List<String> out = new ArrayList<>(parts.length);
         for (String part : parts) {
             String mapped = formatBindPart(part.trim());
             if (!mapped.isEmpty()) out.add(mapped);
         }
-        return String.join("+", out);
+        String formatted = String.join("+", out);
+        if (FORMATTED_BINDS.size() >= 512) FORMATTED_BINDS.clear();
+        FORMATTED_BINDS.put(raw, formatted);
+        return formatted;
     }
 
     private static String formatBindPart(String value) {

@@ -137,7 +137,8 @@ enum UnifiedSettingRenderer {
         float knob = sh - m(4f, 2.4f);
         float kx = sx + m(2f, 1.2f) + (sw - knob - m(4f, 2.4f)) * AnimationUtility.easeInOutCubic(ui.anim);
         float ky = sy + (sh - knob) * 0.5f;
-        int knobCol = UnifiedSettingsSkin.mix(0xFFECEEF2, 0xFFFFFFFF, ui.anim * 0.55f + ui.hoverAnim * 0.18f);
+        int knobCol = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_PRIMARY, UnifiedSettingsSkin.TEXT_MUTED, 0.18f) | 0xFF000000,
+                UnifiedSettingsSkin.CHECK_COLOR | 0xFF000000, ui.anim * 0.55f + ui.hoverAnim * 0.18f);
         ClickGuiRenderer.drawRoundedRect(kx, ky, knob, knob, knob * 0.5f, knobCol);
 
         float labelX = sx + sw + m(9f, 6f);
@@ -368,7 +369,8 @@ enum UnifiedSettingRenderer {
         float knobH = m(7.2f, 4.2f);
         float knobX = trackX + fillW - knobW * 0.5f;
         float knobY = trackY - (knobH - trackH) * 0.5f;
-        int knobCol = UnifiedSettingsSkin.mix(0xFFE1E1E1, UnifiedSettingsSkin.accentGradientStart(1f), 0.25f + ui.hoverAnim * 0.20f);
+        int knobCol = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_PRIMARY, UnifiedSettingsSkin.TEXT_MUTED, 0.20f) | 0xFF000000,
+                UnifiedSettingsSkin.accentGradientStart(1f), 0.25f + ui.hoverAnim * 0.20f);
         ClickGuiRenderer.drawRoundedRect(knobX, knobY, knobW, knobH, knobW * 0.5f, knobCol);
     }
 
@@ -4187,7 +4189,7 @@ enum UnifiedSettingRenderer {
         float size = Math.min(m(13f, 6f), Math.max(m(10f, 4.8f), (w - m(4f, 4f)) / Math.max(1f, label.length()) * 1.45f));
         float tw = UnifiedSettingsSkin.textWidth(font, label, size);
         float ty = y + (h - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f - m(0.2f, 0.2f);
-        int labelColor = active ? 0xFFFFFFFF : UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, 0xFFFFFFFF, hoverAnim * 0.62f);
+        int labelColor = active ? UnifiedSettingsSkin.TEXT_PRIMARY : UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.TEXT_PRIMARY, hoverAnim * 0.62f);
         ClickGuiRenderer.drawText(font, label, x + Math.max(m(2f, 2f), (w - tw) * 0.5f), ty, size, labelColor, false);
     }
 

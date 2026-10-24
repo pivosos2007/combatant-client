@@ -129,6 +129,11 @@ public class WorldTweaks extends Module {
                     () -> changeTime.get() && !syncSystemTime.get());
     private final BooleanValue itemPhysicsEnabled =
             bool("worldTweaksItemPhysics", SETTING_ITEM_PHYSICS, true);
+    private final BooleanValue itemPhysicsRandomYaw =
+            visibleWhen(bool("worldTweaksItemPhysicsRandomYaw", "item_physics_random_yaw", true), itemPhysicsEnabled::get);
+    private final NumberValue<Float> itemPhysicsTumbleSpeed =
+            visibleWhen(num("worldTweaksItemPhysicsTumbleSpeed", "item_physics_tumble_speed", 300.0f, 0.0f, 900.0f),
+                    itemPhysicsEnabled::get);
     private boolean wasOverridingTime;
 
     private static int getHourTicks(int hour) {
@@ -225,6 +230,14 @@ public class WorldTweaks extends Module {
 
     public boolean isItemPhysicsEnabled() {
         return isEnabled() && itemPhysicsEnabled.get();
+    }
+
+    public boolean isItemPhysicsRandomYaw() {
+        return itemPhysicsRandomYaw.get();
+    }
+
+    public float getItemPhysicsTumbleSpeed() {
+        return itemPhysicsTumbleSpeed.get();
     }
 
     public int getTimeOfDayTicks() {

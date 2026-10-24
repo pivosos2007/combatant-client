@@ -24,7 +24,6 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -38,6 +37,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.events.Events;
 import combatant.client.events.impl.CrosshairTargetUpdateEvent;
+import combatant.client.events.impl.WorldChangeEvent;
 import combatant.client.features.gui.chat.BetterChatStoreManager;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.Modules;
@@ -103,35 +103,19 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         }
     }
 
-    @Inject(
-            method = "handleKeybinds",
-            at = @At("HEAD")
-    )
-    private void spearassist$blockAttackInput(CallbackInfo ci) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-
-        SpearAssist assist = Modules.get(SpearAssist.class);
-        if (assist == null || !assist.isEnabled() || !assist.respectCooldownEnabled()) {
-            return;
-        }
-
-        ItemStack stack = mc.player.getMainHandItem();
-        if (!SpearAssist.isSpear(stack)) return;
-
-        float cooldown = mc.player.getAttackStrengthScale(0.0F);
-        if (cooldown < 0.99F) {
-            // ВАЖНО: гасим сам ввод
-            mc.options.keyAttack.setDown(false);
-        }
-    }
-
     @WrapOperation(method = "handleKeybinds",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/KeyMapping;consumeClick()Z"))
     private boolean combatant$protectOffhandKey(KeyMapping key, Operation<Boolean> original) {
-        if (key == Minecraft.getInstance().options.keySwapOffhand
+        Minecraft mc = Minecraft.getInstance();
+        if (key == mc.options.keySwapOffhand
                 && InventorySlotLocks.isLocked(InventorySlotLocks.OFFHAND)) {
             original.call(key); // drain the pressed key, but do not send the vanilla swap packet
+            return false;
+        }
+        // Drop and offhand swap both move the selected hotbar stack out of its slot.
+        if ((key == mc.options.keyDrop || key == mc.options.keySwapOffhand) && mc.player != null
+                && InventorySlotLocks.blocks(mc.player.getInventory().getSelectedSlot(), null)) {
+            original.call(key);
             return false;
         }
         return original.call(key);
@@ -191,6 +175,20 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
 
     @Inject(method = "startAttack", at = @At("HEAD"), cancellable = true)
     private void onDoAttack(CallbackInfoReturnable<Boolean> cir) {
+        if (combatant.client.features.module.modules.combat.HitSelect.blocksManualAttack()) {
+            cir.setReturnValue(false);
+            cir.cancel();
+            return;
+        }
+
+        if (combatant.client.features.module.modules.combat.AntiMiss.blocksManualAttack()) {
+            cir.setReturnValue(false);
+            cir.cancel();
+            return;
+        }
+
+        combatant.client.features.module.modules.combat.TotemHit.beforeManualAttack();
+
         AttributeSwap attributeSwap = Modules.get(AttributeSwap.class);
         if (attributeSwap != null && attributeSwap.isEnabled() && attributeSwap.handleManualAttack()) {
             cir.setReturnValue(true);
@@ -350,6 +348,7 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         if (fc != null && fc.isEnabled()) {
             fc.toggle();
         }
+        Events.BUS.post(new WorldChangeEvent(WorldChangeEvent.Reason.DISCONNECT, null));
     }
 
     @Inject(method = "setLevel", at = @At("HEAD"))
@@ -358,6 +357,7 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         if (fc != null && fc.isEnabled()) {
             fc.toggle();
         }
+        Events.BUS.post(new WorldChangeEvent(WorldChangeEvent.Reason.LEVEL_CHANGE, world));
     }
 
     @Inject(method = "setLevel", at = @At("TAIL"))

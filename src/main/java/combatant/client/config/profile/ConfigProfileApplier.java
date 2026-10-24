@@ -35,6 +35,42 @@ public final class ConfigProfileApplier {
         return new ApplyResult(counter.appliedOwners, counter.missingOwners, counter.missingValues);
     }
 
+    /**
+     * Dry run: how much of the snapshot this client could apply. Touches no setting. Theme entries always
+     * count as known because themes are imported rather than resolved against existing owners.
+     */
+    public Inspection inspect(ConfigProfileSnapshot snapshot) {
+        int knownOwners = 0;
+        int unknownOwners = 0;
+        int knownValues = 0;
+        int unknownValues = 0;
+        if (snapshot == null) return new Inspection(0, 0, 0, 0);
+        boolean themes = snapshot.meta().type() == ConfigProfileType.THEMES;
+        for (ConfigProfileEntry entry : snapshot.entries()) {
+            if (themes) {
+                knownOwners++;
+                knownValues += entry.values().size();
+                continue;
+            }
+            ConfigObject owner = resolveOwner(entry.ownerId());
+            if (owner == null) {
+                unknownOwners++;
+                unknownValues += entry.values().size();
+                continue;
+            }
+            knownOwners++;
+            Map<String, ConfigValue<?>> byName = new HashMap<>();
+            for (ConfigValue<?> value : owner.getConfigValues()) {
+                if (value != null && value.getName() != null && !value.isSensitive()) byName.put(value.getName(), value);
+            }
+            for (String key : entry.values().keySet()) {
+                if (byName.containsKey(key)) knownValues++;
+                else unknownValues++;
+            }
+        }
+        return new Inspection(knownOwners, unknownOwners, knownValues, unknownValues);
+    }
+
     private void applyEntries(ConfigProfileSnapshot snapshot, ApplyCounter counter) {
         if (snapshot.meta().type() == ConfigProfileType.THEMES) {
             applyThemeEntries(snapshot, counter);
@@ -93,7 +129,7 @@ public final class ConfigProfileApplier {
     private void applyValues(ConfigObject owner, ConfigProfileEntry entry, ApplyCounter counter) {
         Map<String, ConfigValue<?>> byName = new HashMap<>();
         for (ConfigValue<?> value : owner.getConfigValues()) {
-            if (value != null && value.getName() != null) byName.put(value.getName(), value);
+            if (value != null && value.getName() != null && !value.isSensitive()) byName.put(value.getName(), value);
         }
         for (Map.Entry<String, Object> saved : entry.values().entrySet()) {
             ConfigValue<?> value = byName.get(saved.getKey());
@@ -153,5 +189,8 @@ public final class ConfigProfileApplier {
     }
 
     public record ApplyResult(int appliedOwners, int missingOwners, int missingValues) {
+    }
+
+    public record Inspection(int knownOwners, int unknownOwners, int knownValues, int unknownValues) {
     }
 }

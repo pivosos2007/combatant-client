@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.combat;
 
+import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.*;
 import combatant.client.util.combat.*;
 import lombok.Getter;
@@ -200,6 +201,7 @@ public class KillAura extends Module {
                     SprintResetMode.DEFAULT,
                     SprintResetMode.values()
             );
+
     private final EnumValue<Criticals.SelectionMode> criticalsSelection =
             visibleWhen(enumCommon(
                     "killauraCriticals",

@@ -30,6 +30,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.Objects;
+import combatant.client.util.combat.AttackUtil;
 
 /**
  * Shared execution layer for block actions.
@@ -160,13 +161,14 @@ public final class BlockInteractionPipeline {
                 miningOwner = owner;
                 miningPos = pos.immutable();
                 miningFace = face;
-                if (plan.swing()) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
+                // Dig packets must be accompanied by a main-hand swing (Vulcan BadPackets 9 / Grim NoSwing).
+                AttackUtil.swingMainHand(player);
             }
             return started;
         }
 
         boolean continued = mc.gameMode.continueDestroyBlock(pos, miningFace != null ? miningFace : face);
-        if (continued && plan.swing()) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
+        if (continued) AttackUtil.swingMainHand(player);
         return continued;
     }
 

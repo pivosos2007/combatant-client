@@ -22,6 +22,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
+import combatant.client.config.values.RGBAColorValue;
+import combatant.client.util.render.ArrowPlacement;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
@@ -86,6 +88,14 @@ public class Tracers extends Module {
             visibleWhen(num("tracersArrowRadius", SETTING_ARROW_RADIUS, BASE_RADIUS, 20.0f, 140.0f), this::isArrowsMode);
     private final NumberValue<Float> arrowSize =
             visibleWhen(num("tracersArrowSize", SETTING_ARROW_SIZE, 1.0f, 0.5f, 2.0f), this::isArrowsMode);
+    private final BooleanValue arrowDistanceColor =
+            visibleWhen(bool("tracersArrowDistanceColor", "arrow_distance_color", false), this::isArrowsMode);
+    private final RGBAColorValue arrowNearColor =
+            visibleWhen(color("tracersArrowNearColor", "arrow_near_color", "#FFFF3B30"),
+                    () -> isArrowsMode() && arrowDistanceColor.get());
+    private final RGBAColorValue arrowFarColor =
+            visibleWhen(color("tracersArrowFarColor", "arrow_far_color", "#FF34C759"),
+                    () -> isArrowsMode() && arrowDistanceColor.get());
     private float animationStep;
     private float animatedYaw;
     private float animatedPitch;
@@ -114,11 +124,8 @@ public class Tracers extends Module {
     }
 
     private static float radiusFactorForDistance(double distance) {
-        if (distance <= ARROW_DISTANCE_NEAR) return ARROW_RADIUS_MIN_FACTOR;
-        if (distance >= ARROW_DISTANCE_FAR) return ARROW_RADIUS_MAX_FACTOR;
-        float t = (float) ((distance - ARROW_DISTANCE_NEAR) / (ARROW_DISTANCE_FAR - ARROW_DISTANCE_NEAR));
-        t = Mth.clamp(t, 0.0f, 1.0f);
-        return Mth.lerp(t, ARROW_RADIUS_MIN_FACTOR, ARROW_RADIUS_MAX_FACTOR);
+        return ArrowPlacement.radiusFactor(distance, ARROW_DISTANCE_NEAR, ARROW_DISTANCE_FAR,
+                ARROW_RADIUS_MIN_FACTOR, ARROW_RADIUS_MAX_FACTOR);
     }
 
     private static void queueArrow(double x, double y, float angleRad, int argb, float scale) {
@@ -203,6 +210,7 @@ public class Tracers extends Module {
         Vec3 look = getActiveCameraLook(tickDelta);
         Vec3 start = camPos.add(look.scale(10.0));
 
+        MeshBuilder mesh = null;
         for (Player p : mc.level.players()) {
             if (p == mc.player) continue;
             if (!traceFriendsValue.get() && CategoryService.isFriend(p)) continue;
@@ -210,14 +218,14 @@ public class Tracers extends Module {
             int c = resolveColor(p);
             Vec3 targetWorld = obtainEntityLerpedPos(p, tickDelta);
 
-            renderer.line(
-                    start.x, start.y, start.z,
-                    targetWorld.x, targetWorld.y, targetWorld.z,
-                    (c >> 16) & 255,
-                    (c >> 8) & 255,
-                    c & 255,
-                    (c >> 24) & 255
-            );
+            if (mesh == null) {
+                mesh = renderer.lines();
+                if (mesh == null) return;
+            }
+            mesh.ensureLineCapacity();
+            int i1 = mesh.vec3(start.x, start.y, start.z).color((c >> 16) & 255, (c >> 8) & 255, c & 255, (c >> 24) & 255).next();
+            int i2 = mesh.vec3(targetWorld.x, targetWorld.y, targetWorld.z).color((c >> 16) & 255, (c >> 8) & 255, c & 255, (c >> 24) & 255).next();
+            mesh.line(i1, i2);
         }
     }
 
@@ -261,22 +269,20 @@ public class Tracers extends Module {
             double relX = targetWorld.x - camPos.x;
             double relZ = targetWorld.z - camPos.z;
 
-            double yawRad = Math.toRadians(yaw);
-            double cos = Math.cos(yawRad);
-            double sin = Math.sin(yawRad);
-            double rotY = -(relZ * cos - relX * sin);
-            double rotX = -(relX * cos + relZ * sin);
-            float angleDeg = (float) Math.toDegrees(Math.atan2(rotY, rotX));
+            double angleDeg = ArrowPlacement.screenAngleDeg(relX, relZ, yaw);
 
             double dist = targetWorld.distanceTo(camPos);
             float radiusFactor = shouldUseAdaptiveRadius() ? radiusFactorForDistance(dist) : 1.0f;
             double radius = animationStep * radiusFactor;
-            double x2 = radius * Mth.cos((float) Math.toRadians(angleDeg)) + centerX + animatedYaw;
-            double y2 = radius * Mth.sin((float) Math.toRadians(angleDeg)) + centerY + animatedPitch;
+            ArrowPlacement.Point point = ArrowPlacement.onCircle(angleDeg, radius, centerX + animatedYaw, centerY + animatedPitch);
 
-            int color = withAlpha(resolveColor(player), ARROW_ALPHA);
+            int baseColor = arrowDistanceColor.get()
+                    ? ArrowPlacement.distanceColor(dist, ARROW_DISTANCE_NEAR, ARROW_DISTANCE_FAR,
+                    arrowNearColor.getArgb(), arrowFarColor.getArgb())
+                    : resolveColor(player);
+            int color = withAlpha(baseColor, ARROW_ALPHA);
             float rotRad = (float) Math.toRadians(angleDeg + ARROW_ROTATION_OFFSET_DEG);
-            queueArrow(x2, y2, rotRad, color, scale * arrowSize.get());
+            queueArrow(point.x(), point.y(), rotRad, color, scale * arrowSize.get());
         }
         flushArrows(textureId, arrowCount);
     }
@@ -333,12 +339,16 @@ public class Tracers extends Module {
         int g = (argb >> 8) & 255;
         int b = argb & 255;
 
+        MeshBuilder mesh = null;
         for (Vec3 targetWorld : targets) {
-            renderer.line(
-                    start.x, start.y, start.z,
-                    targetWorld.x, targetWorld.y, targetWorld.z,
-                    r, g, b, a
-            );
+            if (mesh == null) {
+                mesh = renderer.lines();
+                if (mesh == null) return;
+            }
+            mesh.ensureLineCapacity();
+            int i1 = mesh.vec3(start.x, start.y, start.z).color(r, g, b, a).next();
+            int i2 = mesh.vec3(targetWorld.x, targetWorld.y, targetWorld.z).color(r, g, b, a).next();
+            mesh.line(i1, i2);
         }
     }
 

@@ -73,6 +73,8 @@ public final class InventorySwap {
     private int lastEntityActionTick = Integer.MIN_VALUE;
     private int lastBlockActionTick = Integer.MIN_VALUE;
     private boolean lastInputMoving;
+    /** Grim (2.3.74) also flags MultiActionsC while the last input packet held sneak. */
+    private boolean lastInputSneaking;
     private int movementLockTicks;
     private boolean sendingLockedInput;
     // True from the tick's flying packet until the next START_CLIENT_TICK. Grim's Post check flags a held-slot change
@@ -142,7 +144,7 @@ public final class InventorySwap {
             if (packet instanceof ServerboundMovePlayerPacket) flyingSentThisTick = true;
         } else if (packet instanceof ServerboundPlayerInputPacket(Input input)) {
             boolean moving = input.forward() || input.backward() || input.left() || input.right();
-            if (isMovementLocked() && !sendingLockedInput && moving && mc.getConnection() != null) {
+            if (isMovementLocked() && !sendingLockedInput && (moving || input.shift()) && mc.getConnection() != null) {
                 event.cancel();
                 sendingLockedInput = true;
                 try {
@@ -153,9 +155,11 @@ public final class InventorySwap {
                     sendingLockedInput = false;
                 }
                 lastInputMoving = false;
+                lastInputSneaking = false;
                 return;
             }
             lastInputMoving = moving;
+            lastInputSneaking = input.shift();
         } else if (packet instanceof ServerboundUseItemPacket) {
             lastUseItemTick = packetTick;
         } else if (packet instanceof ServerboundPunchPacket) {
@@ -230,6 +234,7 @@ public final class InventorySwap {
         event.setSneak(false);
         event.setSprint(false);
         lastInputMoving = false;
+        lastInputSneaking = false;
     }
 
     @EventHandler(priority = -10000)
@@ -624,6 +629,26 @@ public final class InventorySwap {
             interaction.handleContainerInput(handler.containerId, slotA, 0, ContainerInput.PICKUP, player);
             interaction.handleContainerInput(handler.containerId, slotB, 0, ContainerInput.PICKUP, player);
             interaction.handleContainerInput(handler.containerId, slotA, 0, ContainerInput.PICKUP, player);
+            return true;
+        } finally {
+            endInternalSwap();
+        }
+    }
+
+    /** Throws the whole stack of a container screen slot out (Ctrl+Q); must run inside {@link #command}. */
+    public boolean throwSlot(int slotId) {
+        if (!inventoryAccessAllowed(inventoryActionOwner)) return false;
+        LocalPlayer player = mc.player;
+        MultiPlayerGameMode interaction = mc.gameMode;
+        AbstractContainerMenu handler = player != null ? player.containerMenu : null;
+        if (player == null || interaction == null || handler == null) return false;
+        if (slotId < 0 || slotId >= handler.slots.size()) return false;
+        if (InventorySlotLocks.blocks(handler, slotId, 1, ContainerInput.THROW,
+                player, executingActionOwner())) return false;
+
+        beginInternalSwap();
+        try {
+            interaction.handleContainerInput(handler.containerId, slotId, 1, ContainerInput.THROW, player);
             return true;
         } finally {
             endInternalSwap();
@@ -1120,13 +1145,22 @@ public final class InventorySwap {
     }
 
     private boolean isGrimMovingForInventory(LocalPlayer player) {
-        if (isMovementLocked()) return false;
-        if (player.isSprinting() && (!player.isSwimming() || player.onGround())) return true;
-        if (lastInputMoving) return true;
-        if (player.input == null) return false;
-        Input input = player.input.keyPresses;
-        if (input == null) return false;
-        return input.forward() || input.backward() || input.left() || input.right();
+        Input input = player.input != null ? player.input.keyPresses : null;
+        boolean keys = input != null && (input.forward() || input.backward() || input.left() || input.right());
+        return grimMovingForInventory(isMovementLocked(), player.isSprinting(),
+                player.isSwimming() && !player.onGround(), lastInputMoving, lastInputSneaking, keys);
+    }
+
+    /**
+     * Mirrors Grim MultiActionsC: a window click is flagged while sprinting or when the last input packet the server
+     * has seen held movement or sneak. The movement lock only clears the keys of the coming tick, so the input the
+     * server already has is checked even while locked.
+     */
+    static boolean grimMovingForInventory(boolean movementLocked, boolean sprinting, boolean swimmingOffGround,
+                                          boolean lastInputMoving, boolean lastInputSneaking, boolean movementKeys) {
+        if (sprinting && !swimmingOffGround) return true;
+        if (lastInputMoving || lastInputSneaking) return true;
+        return !movementLocked && movementKeys;
     }
 
     private void runGuarded(Runnable action) {

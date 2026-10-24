@@ -47,7 +47,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -78,7 +77,6 @@ public class AutoAnchor extends Module {
     private static final double TEXT_WORLD_SCALE = 0.025;
     private static final double TEXT_SCALE = 1.0;
     private static final double TEXT_GAP_SCALE = 1.0;
-    private final BooleanValue strictInteractions = boolCommon("strict_interactions", CommonSettingSchemas.STRICT_INTERACTIONS, false);
     private final Minecraft mc = Minecraft.getInstance();
 
     private final BooleanValue placeEnabled = boolCommon("autoanchorPlace", CommonSettingSchemas.PLACE, true);
@@ -198,6 +196,7 @@ public class AutoAnchor extends Module {
             CombatRotationModeUtil.MODE_ROTATIONS,
             CombatRotationModeUtil.MODE_NO_ROTATIONS
     );
+
     private final EnumValue<MovementCorrection> movementCorrection = visibleWhen(enumCommon(
             "autoanchorMovementCorrection",
             "movement_correction",
@@ -305,7 +304,6 @@ public class AutoAnchor extends Module {
     public void onTick() {
         if (!isEnabled()) return;
         renderTick++;
-        InventorySwap.INSTANCE.tick();
         purgeExpiredRenderPositions();
         if (System.currentTimeMillis() - lastDamageUpdateMs > DAMAGE_RESET_MS && renderPositions.isEmpty()) {
             renderDamage = 0.0f;
@@ -319,6 +317,8 @@ public class AutoAnchor extends Module {
             return;
         }
         if (!isEnabled()) return;
+        // Lease expiry may send the slot restore, which must precede this tick's movement packet.
+        InventorySwap.INSTANCE.tick();
 
         if (mc.player == null || mc.level == null || mc.gameMode == null) {
             clearCombatState();
@@ -467,14 +467,7 @@ public class AutoAnchor extends Module {
             return;
         }
 
-        if (strictInteractions.get()) {
-            if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
-            BlockHitResult hit = refreshed.hitResult();
-            if (hit != null) {
-                if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return;
-                if (!isFaceFacingEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection())) return;
-            }
-        }
+        if (!canInteractThisTick(refreshed.hitResult())) return;
         boolean placed = AutoAnchorActionUtil.placeAnchor(
                 mc,
                 this,
@@ -696,11 +689,7 @@ public class AutoAnchor extends Module {
         );
         if (anchorHit == null) return;
 
-        if (strictInteractions.get()) {
-            if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
-            if (!serverRotationHits(new AABB(anchorHit.getBlockPos()), effPlaceRange())) return;
-            if (!isFaceFacingEye(mc.player.getEyePosition(), anchorHit.getBlockPos(), anchorHit.getDirection())) return;
-        }
+        if (!canInteractThisTick(anchorHit)) return;
         boolean charged = AutoAnchorActionUtil.chargeAnchor(
                 mc,
                 anchorHit,
@@ -741,11 +730,7 @@ public class AutoAnchor extends Module {
         );
         if (anchorHit == null) return;
 
-        if (strictInteractions.get()) {
-            if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
-            if (!serverRotationHits(new AABB(anchorHit.getBlockPos()), effPlaceRange())) return;
-            if (!isFaceFacingEye(mc.player.getEyePosition(), anchorHit.getBlockPos(), anchorHit.getDirection())) return;
-        }
+        if (!canInteractThisTick(anchorHit)) return;
         boolean detonated = AutoAnchorActionUtil.detonateAnchor(
                 mc,
                 anchorHit,
@@ -1074,24 +1059,22 @@ public class AutoAnchor extends Module {
     private boolean usesRotationSettings() {
         return effUsesRotations();
     }
+    /**
+     * One block interaction per tick, and only while the rotation the server has received hits the clicked block
+     * (Grim RotationPlace/MultiPlace) from the side of the clicked face (Grim PositionPlace).
+     */
+    private boolean canInteractThisTick(BlockHitResult hit) {
+        if (mc.player == null || hit == null) return false;
+        if (lastInteractionTick == mc.player.tickCount) return false;
+        if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return false;
+        return AutoAnchorInteractionUtil.faceFacesEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection());
+    }
 
     private boolean serverRotationHits(AABB box, double range) {
         Rotation server = RotationManager.INSTANCE.getServerRotation();
         if (server == null) return false;
         Vec3 eye = mc.player.getEyePosition();
         return box.contains(eye) || box.clip(eye, eye.add(server.directionVector().scale(range))).isPresent();
-    }
-
-    private static boolean isFaceFacingEye(Vec3 eye, BlockPos pos, Direction face) {
-        if (face == null) return true;
-        return switch (face) {
-            case DOWN -> eye.y <= pos.getY();
-            case UP -> eye.y >= pos.getY() + 1.0;
-            case NORTH -> eye.z <= pos.getZ();
-            case SOUTH -> eye.z >= pos.getZ() + 1.0;
-            case WEST -> eye.x <= pos.getX();
-            case EAST -> eye.x >= pos.getX() + 1.0;
-        };
     }
 
     private String buildDamageText() {

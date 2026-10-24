@@ -514,7 +514,9 @@ public class Predictions extends Module {
         }
 
         List<TrajectoryResult> results = simulateProjectiles(tickDelta);
-        AimPrediction rawAim = mc.player != null ? computeAimPrediction(mc.player, tickDelta) : null;
+        // The aim simulation only feeds the aim trajectory, the aim indicator and the aim-driven target HUD.
+        boolean aimNeeded = aimTrajectoryValue.get() || aimIndicatorValue.get() || targetHudOnAimValue.get();
+        AimPrediction rawAim = aimNeeded && mc.player != null ? computeAimPrediction(mc.player, tickDelta) : null;
         AimPrediction aim = smoothAimPrediction(rawAim);
         updatePredictionTarget(aim);
 

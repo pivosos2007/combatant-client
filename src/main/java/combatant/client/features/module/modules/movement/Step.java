@@ -105,6 +105,7 @@ public final class Step extends Module {
     private final EnumValue<PacketMode> packetMode =
             visibleWhen(enumSetting("stepPacketMode", "packet_mode", PacketMode.FULL, PacketMode.values()), () -> mode.get() == Mode.INSTANT);
     private final BooleanValue useTimer = visibleWhen(bool("stepUseTimer", "use_timer", false), () -> mode.get() == Mode.INSTANT);
+
     private final NumberValue<Float> timerSpeed =
             visibleWhen(num("stepTimerSpeed", "timer_speed", 0.6f, 0.1f, 1.0f), () -> mode.get() == Mode.INSTANT && useTimer.get());
     private final NumberValue<Integer> timerTicks =

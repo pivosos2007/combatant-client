@@ -1503,9 +1503,9 @@ final class XaeroMapSurface {
         float x = areaX + (areaWidth - width) * 0.5f;
         float y = areaY + areaHeight - height - 18.0f;
         Renderer2D.COLOR.roundedRect(x, y, width, height, 7.0f,
-                withAlpha(0xFF0B1016, 0.88f * alpha));
+                withAlpha(combatant.client.features.theme.Theme.theme().windowBg() | 0xFF000000, 0.88f * alpha));
         ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), transientStatus,
-                x + 9.0f, y + 4.0f, textSize, withAlpha(0xFFF4F7FA, alpha), false);
+                x + 9.0f, y + 4.0f, textSize, withAlpha(combatant.client.features.theme.Theme.theme().textPrimary() | 0xFF000000, alpha), false);
     }
 
     private static int floorBlock(double value) {
@@ -1850,12 +1850,14 @@ final class XaeroMapSurface {
         float width = (float) Math.abs(b.x() - a.x());
         float height = (float) Math.abs(b.y() - a.y());
         Renderer2D renderer = Renderer2D.COLOR;
-        renderer.quad(x, y, width, height, 0x284FD6BE);
+        int accent = combatant.client.features.theme.Theme.theme().accent();
+        renderer.quad(x, y, width, height, (accent & 0x00FFFFFF) | 0x28000000);
         float stroke = 1.5f;
-        renderer.quad(x, y, width, stroke, 0xC855D6BE);
-        renderer.quad(x, y + height - stroke, width, stroke, 0xC855D6BE);
-        renderer.quad(x, y, stroke, height, 0xC855D6BE);
-        renderer.quad(x + width - stroke, y, stroke, height, 0xC855D6BE);
+        int edge = (accent & 0x00FFFFFF) | 0xC8000000;
+        renderer.quad(x, y, width, stroke, edge);
+        renderer.quad(x, y + height - stroke, width, stroke, edge);
+        renderer.quad(x, y, stroke, height, edge);
+        renderer.quad(x + width - stroke, y, stroke, height, edge);
     }
 
     private void centerOnPlayer(MapProcessor processor, MapDimension dimension) {

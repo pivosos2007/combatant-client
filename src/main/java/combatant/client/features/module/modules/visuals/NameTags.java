@@ -211,6 +211,8 @@ public class NameTags extends Module {
     private final Minecraft mc = Minecraft.getInstance();
     private final ItemIdSetValue topIgnore = TopEnchantUtil.ignoreValue();
     private final List<RenderEntry> renderQueue = new ArrayList<>();
+    private static final Comparator<WorldRenderEntry> WORLD_QUEUE_FAR_FIRST =
+            Comparator.comparingDouble(WorldRenderEntry::distance).reversed();
     private final List<WorldRenderEntry> worldRenderQueue = new ArrayList<>();
     private final List<ItemBatchRenderer.WorldItemRow> worldItemRows = new ArrayList<>();
     private final List<Player> playerBuffer = new ArrayList<>();
@@ -540,6 +542,7 @@ public class NameTags extends Module {
         if (!isEnabled() || renderer == null || mc.level == null || mc.player == null) return;
         if (presentationMode.get() == PresentationMode.TWO_D) return;
 
+        clearAgCache();
         ensureFontCache(TextRenderer.get());
         StatusEffectView.sync(mc);
         TotemPopCounter.tick();
@@ -618,7 +621,7 @@ public class NameTags extends Module {
             ));
         }
 
-        worldRenderQueue.sort(Comparator.comparingDouble(WorldRenderEntry::distance).reversed());
+        worldRenderQueue.sort(WORLD_QUEUE_FAR_FIRST);
         for (int i = 0; i < worldRenderQueue.size(); i++) {
             WorldRenderEntry entry = worldRenderQueue.get(i);
             worldItemRows.add(new ItemBatchRenderer.WorldItemRow(entry.player(), entry.worldItems(), i * 31));
@@ -958,8 +961,7 @@ public class NameTags extends Module {
                 : EquipmentLayout.empty();
 
         if (entry.renderSlots()) {
-            double enchantHeight = WorldTextRenderer.measure(
-                    nameRenderer, "Ag", SMALL_TEXT_SCALE, false).height() + 1.0;
+            double enchantHeight = agHeight(nameRenderer, SMALL_TEXT_SCALE) + 1.0;
 
             for (int i = 0; i < entry.slots().length; i++) {
                 ItemStack stack = entry.slots()[i];
@@ -1067,7 +1069,7 @@ public class NameTags extends Module {
         TextRenderer badgeRenderer = BuiltinFontCatalog.INTER_MEDIUM.renderer(fallbackRenderer);
         double textScale = TOTEM_BADGE_TEXT_SCALE * (0.94 + 0.06 * anim);
         double textX = iconX + iconSize + TOTEM_BADGE_TEXT_GAP;
-        double textH = WorldTextRenderer.measure(badgeRenderer, "Ag", textScale, false).height();
+        double textH = agHeight(badgeRenderer, textScale);
         double textY = layout.totemBadgeY() + (layout.totemBadgeH() - textH) * 0.5 - 0.1;
         int textColor = withAlpha(0xFFFFFF, Math.round(255.0f * materialAlpha));
         drawWorldText(
@@ -1132,8 +1134,8 @@ public class NameTags extends Module {
         TextRenderer levelRenderer = cachedLevelTr != null ? cachedLevelTr : fallbackRenderer;
         TextRenderer timeRenderer = cachedTimeTr != null ? cachedTimeTr : fallbackRenderer;
         double rowTextScale = SMALL_TEXT_SCALE * EFFECT_ROW_SCALE;
-        double levelHeight = WorldTextRenderer.measure(levelRenderer, "Ag", rowTextScale, false).height();
-        double timeHeight = WorldTextRenderer.measure(timeRenderer, "Ag", rowTextScale, false).height();
+        double levelHeight = agHeight(levelRenderer, rowTextScale);
+        double timeHeight = agHeight(timeRenderer, rowTextScale);
         int levelGap = scaleRow(EFFECT_ROW_LEVEL_GAP);
         int timeGap = scaleRow(EFFECT_ROW_TIME_GAP);
 
@@ -1189,9 +1191,37 @@ public class NameTags extends Module {
                 : RuntimeTextLayout.width(renderer, text, scale, false);
     }
 
+    // Per world-frame cache of the "Ag" line height. Keyed on renderer identity + scale; cleared at the start of
+    // every world frame and on resource reload, so font/scale changes can never be served stale.
+    private static final int AG_CACHE_SIZE = 8;
+    private static final TextRenderer[] AG_RENDERERS = new TextRenderer[AG_CACHE_SIZE];
+    private static final long[] AG_SCALES = new long[AG_CACHE_SIZE];
+    private static final double[] AG_HEIGHTS = new double[AG_CACHE_SIZE];
+    private static int agCount;
+
+    private static void clearAgCache() {
+        java.util.Arrays.fill(AG_RENDERERS, 0, agCount, null);
+        agCount = 0;
+    }
+
+    private static double agHeight(TextRenderer renderer, double scale) {
+        long scaleBits = Double.doubleToLongBits(scale);
+        for (int i = 0; i < agCount; i++) {
+            if (AG_RENDERERS[i] == renderer && AG_SCALES[i] == scaleBits) return AG_HEIGHTS[i];
+        }
+        double height = WorldTextRenderer.measure(renderer, "Ag", scale, false).height();
+        if (agCount < AG_CACHE_SIZE) {
+            AG_RENDERERS[agCount] = renderer;
+            AG_SCALES[agCount] = scaleBits;
+            AG_HEIGHTS[agCount] = height;
+            agCount++;
+        }
+        return height;
+    }
+
     private static double layoutTextHeight(TextRenderer renderer, double scale, boolean worldText) {
         return worldText
-                ? WorldTextRenderer.measure(renderer, "Ag", scale, false).height()
+                ? agHeight(renderer, scale)
                 : RuntimeTextLayout.height(renderer, scale, false);
     }
 
@@ -1668,6 +1698,7 @@ public class NameTags extends Module {
     }
 
     public void onResourceReload() {
+        clearAgCache();
         cachedNameTr = null;
         cachedHpTr = null;
         cachedLevelTr = null;

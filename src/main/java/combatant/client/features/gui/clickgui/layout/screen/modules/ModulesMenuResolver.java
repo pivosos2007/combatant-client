@@ -37,6 +37,7 @@ enum ModulesMenuResolver {
 
         for (Module module : ModuleManager.getModules()) {
             if (module == null) continue;
+            if (!module.isListedInModulesTab()) continue;
             if (!category.matches(module.getCategory())) continue;
             ModuleSubcategoryDefinition resolvedSubcategory = ModuleSubcategoryRegistry.resolve(module);
             if (subcategory != null

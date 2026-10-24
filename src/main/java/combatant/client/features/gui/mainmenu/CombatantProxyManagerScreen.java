@@ -106,8 +106,8 @@ public final class CombatantProxyManagerScreen extends Screen {
 
     @Override
     protected void init() {
-        titleRenderer = BuiltinFontCatalog.INTER_BOLD.renderer(TextRenderer.get());
-        bodyRenderer = BuiltinFontCatalog.INTER_MEDIUM.renderer(titleRenderer);
+        titleRenderer = BuiltinFontCatalog.ONEST_BOLD.renderer(TextRenderer.get());
+        bodyRenderer = BuiltinFontCatalog.ONEST_MEDIUM.renderer(titleRenderer);
         loadProxy();
     }
 
@@ -247,7 +247,7 @@ public final class CombatantProxyManagerScreen extends Screen {
         float hoverAnim = AnimationUtility.easeOutCubic(fieldHover[i]);
         float focusAnim = AnimationUtility.easeOutCubic(fieldFocus[i]);
         int fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 188), withAlpha(c.surfaceHover, 208), hoverAnim * 0.45f + focusAnim * 0.16f);
-        int fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 176), withAlpha(0xFF0D1118, 196), 0.18f);
+        int fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 176), withAlpha(c.shadow, 196), 0.18f);
         int stroke = focused ? HudRenderUtil.mixColor(c.strokeSoft, c.accentSoft, 0.55f) : HudRenderUtil.mixColor(c.stroke, c.strokeSoft, hoverAnim * 0.72f);
         Renderer2D.COLOR.roundedRectGradientQuad(x, fy, w, FIELD_H, 3f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
         Renderer2D.COLOR.roundedRectStrokeGradient(x, fy, w, FIELD_H, 3f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(stroke, 0xFFFFFFFF, 0.04f), stroke, 90f);
@@ -282,7 +282,7 @@ public final class CombatantProxyManagerScreen extends Screen {
         float pressAnim = AnimationUtility.easeOutCubic(press);
         float active = selected ? 1f : 0f;
         int fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 170), withAlpha(c.surfaceHover, 210), hoverAnim * 0.42f + active * 0.38f + pressAnim * 0.10f);
-        int fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 158), withAlpha(0x1A2418, 210), active * 0.24f + hoverAnim * 0.16f);
+        int fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 158), withAlpha(c.accentSoft, 210), active * 0.24f + hoverAnim * 0.16f);
         int stroke = HudRenderUtil.mixColor(c.stroke, selected ? c.accentSoft : c.strokeSoft, active * 0.70f + hoverAnim * 0.30f + pressAnim * 0.10f);
         int text = selected ? HudRenderUtil.mixColor(c.title, c.accent, 0.28f) : HudRenderUtil.mixColor(c.muted, c.title, hoverAnim * 0.35f);
         Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, 3f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
@@ -303,10 +303,10 @@ public final class CombatantProxyManagerScreen extends Screen {
             stroke = HudRenderUtil.mixColor(withAlpha(0x352A2A, 215), withAlpha(0x8C5054, 235), 0.22f + hoverAnim * 0.58f + pressAnim * 0.12f);
             text = HudRenderUtil.mixColor(withAlpha(0xD0A0A0, 255), withAlpha(0xFFB2B2, 255), 0.24f + hoverAnim * 0.56f + pressAnim * 0.08f);
         } else {
-            fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 176), withAlpha(0x223746, 212), 0.20f + hoverAnim * 0.44f + pressAnim * 0.10f);
-            fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 166), withAlpha(0x13292F, 220), 0.16f + hoverAnim * 0.40f + pressAnim * 0.08f);
-            stroke = HudRenderUtil.mixColor(c.stroke, withAlpha(0x466A76, 228), 0.18f + hoverAnim * 0.50f + pressAnim * 0.10f);
-            text = HudRenderUtil.mixColor(withAlpha(0xD0D8E4, 255), withAlpha(0xEEF8FF, 255), 0.18f + hoverAnim * 0.38f + pressAnim * 0.08f);
+            fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 176), withAlpha(c.accentSoft, 212), 0.20f + hoverAnim * 0.44f + pressAnim * 0.10f);
+            fillBottom = HudRenderUtil.mixColor(withAlpha(c.surface, 166), withAlpha(c.accentSoft, 220), 0.12f + hoverAnim * 0.34f + pressAnim * 0.08f);
+            stroke = HudRenderUtil.mixColor(c.stroke, withAlpha(c.strokeSoft, 228), 0.18f + hoverAnim * 0.50f + pressAnim * 0.10f);
+            text = HudRenderUtil.mixColor(withAlpha(c.label, 255), withAlpha(c.title, 255), 0.18f + hoverAnim * 0.38f + pressAnim * 0.08f);
         }
         Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, h, 3f * SCALE, 7f * SCALE, 0.018f + hoverAnim * 0.015f, c.shadow);
         Renderer2D.COLOR.roundedRectGradientQuad(x, y, w, h, 3f * SCALE, 1f, fillTop, fillTop, fillBottom, fillBottom);
@@ -465,26 +465,44 @@ public final class CombatantProxyManagerScreen extends Screen {
     private PanelColors colors(float alpha) {
         int titleAlpha = Math.round(alpha * 255f);
         int labelAlpha = Math.round(alpha * 155f);
+        Themes.Theme t = Theme.theme();
+        int bg = t != null ? t.windowBg() : 0xFF0D0F14;
+        int header = t != null ? t.windowHeader() : 0xFF14171F;
+        int surface = t != null ? t.surface() : 0xFF1A1D24;
+        int surfaceHover = t != null ? t.surfaceHover() : 0xFF1A1F28;
+        int stroke = t != null ? t.windowStroke() : 0xFF252A36;
+        int strokeSoft = t != null ? t.strokeSoft() : 0xFF3A4A5A;
+        int text = t != null ? t.textPrimary() : 0xFFFFFFFF;
+        int muted = t != null ? t.textMuted() : 0xFF808890;
+        int accent = t != null ? t.accent() : 0xFFFFD700;
+        int accentSoft = t != null ? t.accentSoft() : accent;
+        int bgBase = HudRenderUtil.mixColor(bg, 0xFF000000, 0.30f);
+        int bgLight = HudRenderUtil.mixColor(bg, surface, 0.18f);
+        int bgDark = HudRenderUtil.mixColor(bg, 0xFF000000, 0.55f);
+        int headerBase = HudRenderUtil.mixColor(header, 0xFF000000, 0.12f);
+        int headerLight = HudRenderUtil.mixColor(header, surface, 0.30f);
+        int headerDark = HudRenderUtil.mixColor(header, 0xFF000000, 0.30f);
+        int shadow = HudRenderUtil.mixColor(bg, 0xFF000000, 0.80f);
         return new PanelColors(
-                withAlpha(0x0D0F14, Math.round(alpha * 120f)),
-                withAlpha(0x101218, Math.round(alpha * 120f)),
-                withAlpha(0x0D0F14, Math.round(alpha * 120f)),
-                withAlpha(0x08090C, Math.round(alpha * 120f)),
-                withAlpha(0x14171F, Math.round(alpha * 150f)),
-                withAlpha(0x181B24, Math.round(alpha * 150f)),
-                withAlpha(0x14171F, Math.round(alpha * 150f)),
-                withAlpha(0x10131A, Math.round(alpha * 150f)),
-                withAlpha(0x252A36, Math.round(alpha * 100f)),
-                withAlpha(0x3A4A5A, Math.round(alpha * 150f)),
-                withAlpha(0x060810, Math.round(alpha * 80f)),
-                withAlpha(0xFFFFFF, titleAlpha),
-                withAlpha(0xFFFFFF, labelAlpha),
-                withAlpha(0x808890, titleAlpha),
-                withAlpha(0x606878, labelAlpha),
-                withAlpha(0x1A1D24, Math.round(alpha * 160f)),
-                withAlpha(0x1A1F28, Math.round(alpha * 200f)),
-                withAlpha(0xFFD700, titleAlpha),
-                withAlpha(0x4A3A10, Math.round(alpha * 180f))
+                withAlpha(bgBase, Math.round(alpha * 120f)),
+                withAlpha(bgLight, Math.round(alpha * 120f)),
+                withAlpha(bgBase, Math.round(alpha * 120f)),
+                withAlpha(bgDark, Math.round(alpha * 120f)),
+                withAlpha(headerBase, Math.round(alpha * 150f)),
+                withAlpha(headerLight, Math.round(alpha * 150f)),
+                withAlpha(headerBase, Math.round(alpha * 150f)),
+                withAlpha(headerDark, Math.round(alpha * 150f)),
+                withAlpha(stroke, Math.round(alpha * 100f)),
+                withAlpha(strokeSoft, Math.round(alpha * 150f)),
+                withAlpha(shadow, Math.round(alpha * 80f)),
+                withAlpha(text, titleAlpha),
+                withAlpha(text, labelAlpha),
+                withAlpha(HudRenderUtil.mixColor(muted, text, 0.22f), titleAlpha),
+                withAlpha(muted, Math.max(labelAlpha, Math.round(alpha * 190f))),
+                withAlpha(surface, Math.round(alpha * 160f)),
+                withAlpha(surfaceHover, Math.round(alpha * 200f)),
+                withAlpha(accent, titleAlpha),
+                withAlpha(accentSoft, Math.round(alpha * 180f))
         );
     }
 

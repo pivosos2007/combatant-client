@@ -115,7 +115,7 @@ public final class AutoClicker extends Module {
         switch (verdict) {
             case ATTACK -> AttackUtil.attack(mc, (LivingEntity) entity);
             case SWING -> {
-                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+                AttackUtil.swingMainHand(player);
                 player.resetAttackStrengthTicker();
             }
             case SKIP -> {

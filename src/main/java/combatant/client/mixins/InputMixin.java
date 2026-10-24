@@ -32,19 +32,11 @@ public abstract class InputMixin {
         if (!sprintAllow && !noSlowAllow) return;
 
         ClientInput input = (ClientInput) (Object) this;
-        if (input.keyPresses == null) return;
-
-        if (sprintAllow) {
-            if (input.keyPresses.forward()
-                    || input.keyPresses.backward()
-                    || input.keyPresses.left()
-                    || input.keyPresses.right()) {
-                cir.setReturnValue(true);
-            }
-        } else if (noSlowAllow) {
-            if (input.keyPresses.forward()) {
-                cir.setReturnValue(true);
-            }
+        if (input.keyPresses != null && (input.keyPresses.forward()
+                || input.keyPresses.backward()
+                || input.keyPresses.left()
+                || input.keyPresses.right())) {
+            cir.setReturnValue(true);
         }
     }
 }

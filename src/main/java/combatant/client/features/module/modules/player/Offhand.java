@@ -29,6 +29,9 @@ import combatant.client.util.item.FoodUtil;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventorySlotLocks;
 import combatant.client.util.player.inventory.InventorySwapPolicy;
+import combatant.client.util.combat.TapRules;
+import combatant.client.util.player.inventory.TotemSlotPicker;
+import combatant.client.util.screen.ClientScreen;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.pvp.client.CooldownsState;
 import combatant.client.util.target.TargetingUtil;
@@ -36,6 +39,7 @@ import combatant.client.util.world.ExplosionDamageUtil;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -49,6 +53,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.LinkedHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 
 @ModuleInfo(
@@ -171,6 +176,27 @@ public final class Offhand extends Module {
     private final EnumValue<EatMode> eatMode = enumSetting("offhand_eat_mode", "eat_mode", EatMode.EXACT, EatMode.values());
     private final BooleanValue returnSlot = bool("offhand_return_slot", "return_slot", true);
 
+    // Opt-in: after a pop (or with an empty offhand) open the inventory like a human, wait a random
+    // delay, move a totem to the offhand / hotbar slot through InventorySwap and close it again.
+    private final BooleanValue inventoryRefill = bool("offhand_inventory_refill", "inventory_refill", false);
+    private final BooleanValue refillOpenInventory = visibleWhen(
+            bool("offhand_refill_open_inventory", "refill_open_inventory", true), inventoryRefill::get);
+    private final NumberValue<Integer> refillMinDelay = visibleWhen(
+            num("offhand_refill_min_delay", "refill_min_delay_ticks", 2, 0, 20), inventoryRefill::get);
+    private final NumberValue<Integer> refillMaxDelay = visibleWhen(
+            num("offhand_refill_max_delay", "refill_max_delay_ticks", 5, 0, 20), inventoryRefill::get);
+    private final NumberValue<Integer> refillHotbarSlot = visibleWhen(
+            num("offhand_refill_hotbar_slot", "refill_hotbar_slot", 0, 0, 9), inventoryRefill::get);
+    private final BooleanValue refillSaveEnchanted = visibleWhen(
+            bool("offhand_refill_save_enchanted", "refill_save_enchanted", true), inventoryRefill::get);
+    private final BooleanValue refillPreferHotbar = visibleWhen(
+            bool("offhand_refill_prefer_hotbar", "refill_prefer_hotbar", false), inventoryRefill::get);
+    private final BooleanValue refillCloseAfter = visibleWhen(
+            bool("offhand_refill_close_after", "refill_close_after", true), inventoryRefill::get);
+    private final EnumValue<InventorySwapPolicy> refillPolicy = visibleWhen(
+            enumSetting("offhand_refill_policy", "refill_policy", InventorySwapPolicy.GRIM_STRICT,
+                    InventorySwapPolicy.values()), inventoryRefill::get);
+
     {
         addAction(ACTION_CONSUME, "V");
     }
@@ -213,6 +239,19 @@ public final class Offhand extends Module {
     private boolean useActionQueued;
     private boolean restoreActionQueued;
 
+    private static final int REFILL_OFFHAND_BUTTON = 40;
+    private static final int REFILL_SESSION_TIMEOUT_TICKS = 80;
+
+    private enum RefillPhase { IDLE, OPENING, WAIT_BEFORE, SWAPPING, WAIT_AFTER, CLOSING }
+
+    private RefillPhase refillPhase = RefillPhase.IDLE;
+    private int refillWait;
+    private int refillSessionTicks;
+    private boolean refillWeOpened;
+    private boolean refillSwapPending;
+    private boolean refillHadTotem;
+    private boolean refillPopped;
+
     @HudAction(id = "consume", label = "Consume", description = "Eat suitable food or an apple when offered", icon = "apple")
     public HudActionRegistry.State hudConsume() {
         LocalPlayer player = mc.player;
@@ -240,6 +279,14 @@ public final class Offhand extends Module {
 
     @Override
     public void onTick() {
+        if (!isEnabled()) return;
+        // Refill first: it yields to (and aborts for) any swap Offhand's own policy has pending, so
+        // only one path owns the offhand slot per tick.
+        tickRefill();
+        tickOffhand();
+    }
+
+    private void tickOffhand() {
         if (!isEnabled()) return;
 
         LocalPlayer player = mc.player;
@@ -360,9 +407,221 @@ public final class Offhand extends Module {
         clearSuggestion();
         InventorySwap.INSTANCE.cancelQueuedInventoryActions(this);
         resetOffhandSwapState();
+        resetRefillSession();
+        refillHadTotem = false;
+        refillPopped = false;
         InventorySwap.INSTANCE.releaseInventory(this);
         inventoryLeaseReleaseTick = -1;
         forcedTotemUntilTick = -1;
+    }
+
+    @Override
+    public void onEnable() {
+        resetRefillSession();
+        refillHadTotem = false;
+        refillPopped = false;
+    }
+
+    private void tickRefill() {
+        LocalPlayer player = mc.player;
+        if (!inventoryRefill.get()) {
+            if (refillPhase != RefillPhase.IDLE) refillAbort();
+            refillHadTotem = false;
+            refillPopped = false;
+            return;
+        }
+        if (player == null || mc.level == null || mc.gameMode == null) {
+            resetRefillSession();
+            refillHadTotem = false;
+            return;
+        }
+
+        boolean hasTotem = player.getOffhandItem().is(Items.TOTEM_OF_UNDYING);
+        if (refillHadTotem && !hasTotem) refillPopped = true;
+        refillHadTotem = hasTotem;
+
+        if (refillPhase == RefillPhase.IDLE) {
+            if (!player.isAlive()) return;
+            if (hasTotem) {
+                refillPopped = false;
+                return;
+            }
+            // Offhand's own policy owns the slot while it has a swap in flight or an emergency totem to place.
+            if (offhandSwapPending || restoreInventoryPending) return;
+            if (shouldHoldTotem(player, effectiveHealth(player)) && findTotemSlot(player) >= 0) return;
+            if (!(refillPopped || player.getOffhandItem().isEmpty()) || refillFindSource(player, -1) < 0) return;
+            refillBegin(player);
+            return;
+        }
+
+        if (!player.isAlive() || ++refillSessionTicks > REFILL_SESSION_TIMEOUT_TICKS
+                || offhandSwapPending && !refillSwapPending) {
+            refillAbort();
+            return;
+        }
+
+        switch (refillPhase) {
+            case OPENING -> {
+                if (ClientScreen.current() instanceof InventoryScreen) refillEnterWait(RefillPhase.WAIT_BEFORE);
+                else if (refillWait-- <= 0) refillAbort();
+            }
+            case WAIT_BEFORE -> {
+                if (!(ClientScreen.current() instanceof InventoryScreen)) {
+                    refillAbort();
+                } else if (refillWait-- <= 0) {
+                    refillPhase = RefillPhase.SWAPPING;
+                    refillSwap(player);
+                }
+            }
+            case SWAPPING -> {
+                if (!refillSwapPending) {
+                    if (refillNeedsMore(player)) refillEnterWait(RefillPhase.WAIT_BEFORE);
+                    else refillEnterWait(RefillPhase.WAIT_AFTER);
+                }
+            }
+            case WAIT_AFTER -> {
+                if (refillWait-- <= 0) refillClose(player);
+            }
+            case CLOSING -> {
+                if (!refillSwapPending) refillFinish();
+            }
+            default -> { }
+        }
+    }
+
+    private void refillBegin(LocalPlayer player) {
+        refillSessionTicks = 0;
+        refillWeOpened = false;
+        if (ClientScreen.current() instanceof InventoryScreen) {
+            refillEnterWait(RefillPhase.WAIT_BEFORE);
+            return;
+        }
+        if (!refillOpenInventory.get() || ClientScreen.current() != null) return;
+        refillWeOpened = true;
+        ClientScreen.show(new InventoryScreen(player));
+        refillPhase = RefillPhase.OPENING;
+        refillWait = 3;
+    }
+
+    private void refillEnterWait(RefillPhase next) {
+        refillPhase = next;
+        refillWait = TapRules.pickTicks(refillMinDelay.get(), refillMaxDelay.get(),
+                ThreadLocalRandom.current().nextDouble());
+    }
+
+    private boolean refillNeedsMore(LocalPlayer player) {
+        return refillOffhandNeeded(player) || refillHotbarNeeded(player);
+    }
+
+    private boolean refillOffhandNeeded(LocalPlayer player) {
+        return !player.getOffhandItem().is(Items.TOTEM_OF_UNDYING)
+                && !offhandSwapPending
+                && !InventorySlotLocks.blocks(InventorySlotLocks.OFFHAND, this)
+                && refillFindSource(player, refillHotbarIndex()) >= 0;
+    }
+
+    private boolean refillHotbarNeeded(LocalPlayer player) {
+        int slot = refillHotbarIndex();
+        return slot >= 0 && !player.getInventory().getItem(slot).is(Items.TOTEM_OF_UNDYING)
+                && refillFindSource(player, slot) >= 0;
+    }
+
+    private int refillHotbarIndex() {
+        return refillHotbarSlot.get() - 1;
+    }
+
+    /** Queues one swap: offhand first, then the hotbar slot. */
+    private void refillSwap(LocalPlayer player) {
+        boolean toOffhand = refillOffhandNeeded(player);
+        int hotbar = refillHotbarIndex();
+        int source = toOffhand ? refillFindSource(player, hotbar)
+                : refillHotbarNeeded(player) ? refillFindSource(player, hotbar) : -1;
+        if (source < 0) {
+            refillEnterWait(RefillPhase.WAIT_AFTER);
+            return;
+        }
+        int screenSlot = InventorySwap.mapInventoryToScreenSlot(source);
+        int button = toOffhand ? REFILL_OFFHAND_BUTTON : hotbar;
+        if (screenSlot < 0) {
+            refillAbort();
+            return;
+        }
+        refillSwapPending = true;
+        boolean accepted = InventorySwap.INSTANCE.command(this, InventoryActionKind.INVENTORY_CLICK, refillPolicy.get(), () -> {
+            try {
+                LocalPlayer current = mc.player;
+                if (isEnabled() && inventoryRefill.get() && !(toOffhand && offhandSwapPending)
+                        && current != null && ClientScreen.current() instanceof InventoryScreen
+                        && current.containerMenu.getSlot(screenSlot).getItem().is(Items.TOTEM_OF_UNDYING)) {
+                    InventorySwap.INSTANCE.clickSwap(screenSlot, button);
+                }
+            } finally {
+                refillSwapPending = false;
+            }
+        });
+        if (!accepted) {
+            refillSwapPending = false;
+            refillAbort();
+        }
+    }
+
+    private void refillClose(LocalPlayer player) {
+        if (!refillWeOpened || !refillCloseAfter.get()) {
+            refillFinish();
+            return;
+        }
+        refillPhase = RefillPhase.CLOSING;
+        refillSwapPending = true;
+        boolean accepted = InventorySwap.INSTANCE.command(this, InventoryActionKind.INVENTORY_CLOSE, refillPolicy.get(), () -> {
+            try {
+                LocalPlayer current = mc.player;
+                if (current != null && ClientScreen.current() instanceof InventoryScreen) current.closeContainer();
+            } finally {
+                refillSwapPending = false;
+            }
+        });
+        if (!accepted) {
+            refillSwapPending = false;
+            if (ClientScreen.current() instanceof InventoryScreen) player.closeContainer();
+            refillFinish();
+        }
+    }
+
+    private void refillFinish() {
+        refillPopped = false;
+        resetRefillSession();
+    }
+
+    /** Gives up the session; closes the screen if the refill opened it. */
+    private void refillAbort() {
+        // Cancelling by owner would also drop Offhand's own queued swaps, so only cancel the refill's
+        // actions when Offhand has nothing of its own in flight.
+        if (!offhandSwapPending) InventorySwap.INSTANCE.cancelQueuedInventoryActions(this);
+        LocalPlayer player = mc.player;
+        if (refillWeOpened && player != null && ClientScreen.current() instanceof InventoryScreen) {
+            player.closeContainer();
+        }
+        refillPopped = false;
+        resetRefillSession();
+    }
+
+    private void resetRefillSession() {
+        refillPhase = RefillPhase.IDLE;
+        refillWait = 0;
+        refillSessionTicks = 0;
+        refillWeOpened = false;
+        refillSwapPending = false;
+    }
+
+    private int refillFindSource(LocalPlayer player, int excludedSlot) {
+        boolean[] totem = new boolean[36];
+        boolean[] enchanted = new boolean[36];
+        for (int i = 0; i < 36; i++) {
+            ItemStack stack = player.getInventory().getItem(i);
+            totem[i] = stack.is(Items.TOTEM_OF_UNDYING);
+            enchanted[i] = totem[i] && stack.isEnchanted();
+        }
+        return TotemSlotPicker.pick(totem, enchanted, refillSaveEnchanted.get(), refillPreferHotbar.get(), excludedSlot);
     }
 
     public boolean shouldHoldTotemNow(LocalPlayer player) {

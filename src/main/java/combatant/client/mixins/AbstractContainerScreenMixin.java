@@ -28,6 +28,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.features.module.Modules;
+import combatant.client.features.module.modules.misc.NoInvLeak;
+import net.minecraft.client.renderer.RenderPipelines;
 import combatant.client.features.module.modules.movement.InventoryMove;
 
 @Mixin(AbstractContainerScreen.class)
@@ -78,6 +80,23 @@ public abstract class AbstractContainerScreenMixin {
         result.add(Component.translatable("combatant.inventory.locked_by", reason)
                 .withStyle(ChatFormatting.LIGHT_PURPLE));
         cir.setReturnValue(result);
+    }
+
+    @Inject(method = "extractSlot", at = @At("HEAD"), cancellable = true)
+    private void combatant$noInvLeakSlot(GuiGraphicsExtractor graphics, Slot slot,
+                                         int mouseX, int mouseY, CallbackInfo ci) {
+        if (!NoInvLeak.hidesSlot(slot)) return;
+        if (NoInvLeak.drawsPlaceholder()) {
+            graphics.fill(RenderPipelines.GUI, slot.x, slot.y, slot.x + 16, slot.y + 16, 0xFF3A3A3A);
+        }
+        ci.cancel();
+    }
+
+    @Inject(method = "getTooltipFromContainerItem", at = @At("RETURN"), cancellable = true)
+    private void combatant$noInvLeakTooltip(ItemStack stack, CallbackInfoReturnable<List<Component>> cir) {
+        if (NoInvLeak.hidesTooltipOf(hoveredSlot)) {
+            cir.setReturnValue(List.of(Component.literal(NoInvLeak.MASK)));
+        }
     }
 
 

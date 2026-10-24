@@ -473,7 +473,7 @@ public final class CustomTabList extends AbstractHudElement {
         float y = baseY + snapshot.headerTop() + 3f + (lineH - TabRichTextRenderer.height(HEADER_TEXT_SIZE)) * 0.5f;
         for (Component line : snapshot.headerLines()) {
             drawCentered(renderer, line, baseX + drawWidth * 0.5f, y,
-                    drawWidth - SHELL_PAD_X * 2f, HEADER_TEXT_SIZE, 0xFFFFFFFF, alpha);
+                    drawWidth - SHELL_PAD_X * 2f, HEADER_TEXT_SIZE, uiText, alpha);
             y += lineH;
         }
     }
@@ -484,7 +484,7 @@ public final class CustomTabList extends AbstractHudElement {
         float y = baseY + snapshot.footerTop() + 3f + (lineH - TabRichTextRenderer.height(FOOTER_TEXT_SIZE)) * 0.5f;
         for (Component line : snapshot.footerLines()) {
             drawCentered(renderer, line, baseX + drawWidth * 0.5f, y,
-                    drawWidth - SHELL_PAD_X * 2f, FOOTER_TEXT_SIZE, 0xFFFFFFFF, alpha);
+                    drawWidth - SHELL_PAD_X * 2f, FOOTER_TEXT_SIZE, uiText, alpha);
             y += lineH;
         }
     }
