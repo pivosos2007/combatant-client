@@ -106,6 +106,9 @@ final class BuildMover {
         /** Ends the builder's silent hotbar lease so a tool switch is what the server sees. */
         void releaseHotbar();
 
+        /** Swaps a main-inventory stack into the restock hotbar slot; {@code false} when no click could be queued. */
+        boolean fetchIntoHotbar(int inventorySlot);
+
         /** Whether a target is worth walking to these eyes for; pistons and observers need a particular look. */
         boolean lookAllows(long target, double eyeX, double eyeY, double eyeZ);
 
@@ -1038,6 +1041,16 @@ final class BuildMover {
             }
         }
         if (best != inventory.getSelectedSlot()) InventorySwap.INSTANCE.selectHotbar(best);
+        // A faster tool further in the inventory: bring it to the hotbar for the blocks after this one.
+        int stored = -1;
+        for (int i = 9; i < Inventory.INVENTORY_SIZE; i++) {
+            float speed = inventory.getItem(i).getDestroySpeed(state);
+            if (speed > bestSpeed) {
+                bestSpeed = speed;
+                stored = i;
+            }
+        }
+        if (stored >= 0) host.fetchIntoHotbar(stored);
     }
 
     private void stopMining() {

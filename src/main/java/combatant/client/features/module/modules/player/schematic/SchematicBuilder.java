@@ -110,6 +110,8 @@ public final class SchematicBuilder extends Module {
     private static final int HAZARD_DEFER_LIMIT = 3;
     /** Nothing placed for this long and nothing left to walk to: the next band opens early. */
     private static final int GATE_STALL_TICKS = 300;
+    /** No placement for this long while our own pillar and helper blocks stand: clear them, they may hide faces. */
+    private static final int HELPER_STALL_TICKS = 400;
     private static final int GATE_CHECK_INTERVAL = 20;
     /** At most one use per tick reaches the server; a gap lets the client see the new delay or note first. */
     private static final int ADJUST_CLICK_DELAY = 2;
@@ -206,6 +208,10 @@ public final class SchematicBuilder extends Module {
     private final Map<Long, Integer> adjustClicks = new HashMap<>();
     private final long[] gateScratch = new long[1];
     private int lastPlaceTick;
+    /** Clearing helpers before the build is done because placement stalled behind them. */
+    private boolean midBuildClear;
+    /** {@link #placed} when helpers were last cleared mid-build: no second clear without progress in between. */
+    private int clearedAtPlaced = -1;
     private int adjusted;
     private int[] footprint;
     private boolean aimedThisTick;
@@ -277,6 +283,8 @@ public final class SchematicBuilder extends Module {
         hazardDefers.clear();
         adjustClicks.clear();
         lastPlaceTick = ticks;
+        midBuildClear = false;
+        clearedAtPlaced = -1;
         restockChest = null;
         restockChestTicks = 0;
         openChestPending = false;
@@ -547,6 +555,18 @@ public final class SchematicBuilder extends Module {
             mover.pause();
             return null;
         }
+        if (midBuildClear || helperStall()) {
+            // Pillars and helper blocks stay until the end, and from the spots left they can hide every face
+            // still to place. Take them down with the end-of-build clean-up, then go on building.
+            midBuildClear = true;
+            if (mover.tickClear(player, effectiveRange())) {
+                status = Status.CLEARING;
+                return null;
+            }
+            midBuildClear = false;
+            clearedAtPlaced = placed;
+            lastPlaceTick = ticks;
+        }
         BuildMover.HelperClick click = mover.tickBuild(player);
         status = switch (mover.mode()) {
             case WALKING -> Status.WALKING;
@@ -556,6 +576,11 @@ public final class SchematicBuilder extends Module {
         if (click == null) return null;
         ItemStack stack = player.getInventory().getItem(click.hotbarSlot());
         return new Pending(click.plan(), click.expected(), stack.getItem(), click.hotbarSlot(), Kind.HELPER);
+    }
+
+    private boolean helperStall() {
+        return removeHelpers.get() && mover.hasHelpers() && !mover.midPillarJump()
+                && ticks - lastPlaceTick >= HELPER_STALL_TICKS && placed != clearedAtPlaced;
     }
 
     private void requestRotation(Rotation rotation) {
@@ -677,6 +702,7 @@ public final class SchematicBuilder extends Module {
             player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
             placed++;
             lastPlaceTick = ticks;
+            midBuildClear = false;
             if (!exact) {
                 approximatePlaced++;
                 state.flag(plan.target(), work.expected, SchematicAttention.Reason.APPROXIMATE);
@@ -1585,6 +1611,19 @@ public final class SchematicBuilder extends Module {
         @Override
         public void releaseHotbar() {
             InventorySwap.INSTANCE.releaseHotbar(SchematicBuilder.this);
+        }
+
+        @Override
+        public boolean fetchIntoHotbar(int inventorySlot) {
+            LocalPlayer player = mc.player;
+            if (player == null || player.containerMenu != player.inventoryMenu || ticks < restockClickUntil) return false;
+            int hotbar = restockSlot.get() - 1;
+            int screenSlot = InventorySwap.mapInventoryToScreenSlot(inventorySlot);
+            // Same Grim-safe click as restocking: it only goes out on a tick with movement input released.
+            boolean queued = InventorySwap.INSTANCE.command(SchematicBuilder.this, InventoryActionKind.INVENTORY_CLICK,
+                    InventorySwapPolicy.GRIM_STRICT, () -> InventorySwap.INSTANCE.clickSwap(screenSlot, hotbar));
+            if (queued) restockClickUntil = ticks + RESTOCK_CLICK_WAIT_TICKS;
+            return queued;
         }
 
         @Override
