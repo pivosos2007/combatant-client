@@ -53,6 +53,7 @@ public final class MsdfFont implements GlyphFont {
      * can never observe a half-written value.
      */
     private final WidthEntry[] widthCache = new WidthEntry[WIDTH_CACHE_SLOTS];
+    private boolean closed;
 
     private MsdfFont(MsdfAtlas atlas, float targetHeight) {
         this.atlas = atlas;
@@ -427,6 +428,8 @@ public final class MsdfFont implements GlyphFont {
 
     @Override
     public void close() {
+        if (closed) return;
+        closed = true;
         java.util.Arrays.fill(widthCache, null);
         atlas.release();
     }

@@ -680,9 +680,10 @@ public class CustomTextRenderer implements TextRenderer {
     public void destroy() {
         mesh.close();
         liquidGlassMesh.close();
-        if (fonts == null) return;
-        for (GlyphFont f : this.fonts) {
-            f.close();
+        GlyphFont[] current = this.fonts;
+        this.fonts = null;
+        for (GlyphFont f : current) {
+            if (f != null) f.close();
         }
         if (smallBitmapFont != null) {
             smallBitmapFont.close();
