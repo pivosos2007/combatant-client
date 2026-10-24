@@ -290,7 +290,7 @@ public final class Renderer2D {
     public void box(UiBoxShape box, UiPaint paint, UiStroke stroke, boolean fill) {
         if (box == null || paint == null) return;
         UiStroke safeStroke = stroke == null ? UiStroke.NONE : stroke;
-        recordUi(new UiShapeCommand(UiShape.box(box), paint, safeStroke, fill));
+        recordUi(UiCommandKind.SHAPE);
         if (box.isSquircle()) {
             renderSquircleSdf(box, paint, safeStroke, fill);
         } else {
@@ -308,12 +308,7 @@ public final class Renderer2D {
 
     public void materialPrimitive(UiPrimitive primitive, UiPaint paint, UiSurfaceMaterialSpec material) {
         if (primitive == null || paint == null || material == null || primitive.pointCount() < 3) return;
-        recordUi(new UiShapeCommand(
-                UiShape.polyline(primitive.points(), primitive.pointCount(), true),
-                paint,
-                UiStroke.NONE,
-                true
-        ));
+        recordUi(UiCommandKind.SHAPE);
         if (primitive.shaderEligible()) {
             renderMaterialPrimitiveSdf(primitive, paint, material);
         } else {
@@ -329,8 +324,7 @@ public final class Renderer2D {
     private void primitive(UiPrimitive primitive, UiPaint paint, UiStroke stroke, boolean fill) {
         if (primitive == null || paint == null || primitive.pointCount() < 3) return;
         UiStroke safeStroke = stroke != null ? stroke : UiStroke.NONE;
-        UiShape semanticShape = UiShape.polyline(primitive.points(), primitive.pointCount(), true);
-        recordUi(new UiShapeCommand(semanticShape, paint, safeStroke, fill));
+        recordUi(UiCommandKind.SHAPE);
         if (primitive.shaderEligible()) {
             renderPrimitiveSdf(primitive, paint, safeStroke, fill);
         } else {
@@ -356,12 +350,12 @@ public final class Renderer2D {
 
     public void shape(UiShape shape, UiPaint paint, UiStroke stroke, boolean fill) {
         if (shape == null || paint == null) return;
-        recordUi(new UiShapeCommand(shape, paint, stroke == null ? UiStroke.NONE : stroke, fill));
+        recordUi(UiCommandKind.SHAPE);
     }
 
     public void path(UiShape path, UiPaint paint, UiStroke stroke, boolean fill) {
         if (path == null || paint == null) return;
-        recordUi(new UiPathCommand(path, paint, stroke == null ? UiStroke.NONE : stroke, fill));
+        recordUi(UiCommandKind.PATH);
     }
 
     /**
@@ -399,7 +393,7 @@ public final class Renderer2D {
 
     public void effect(UiEffectSpec effect) {
         if (effect == null) return;
-        recordUi(new UiEffectRegionCommand(effect));
+        recordUi(UiCommandKind.EFFECT_REGION);
     }
 
     // Use this path when the current projection is already the target space
@@ -695,7 +689,7 @@ public final class Renderer2D {
         if (samplerView == null || sampler == null) return;
         if (w == 0.0 || h == 0.0) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.rect(x, y, w, h), UiPaint.solid(argb), 0f, 0f, 1f, 1f, false));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED, samplerView, sampler);
         if (batch == null) {
@@ -738,8 +732,7 @@ public final class Renderer2D {
         if (samplerView == null || sampler == null) return;
         if (w == 0.0 || h == 0.0) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.rect(x, y, w, h), UiPaint.solid(argb),
-                (float) u0, (float) v0, (float) u1, (float) v1, false));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED, samplerView, sampler);
         if (batch == null) {
@@ -848,7 +841,7 @@ public final class Renderer2D {
         if (w == 0.0 || h == 0.0) return;
         if (pxRange <= 0.0f || atlasWidth <= 0 || atlasHeight <= 0) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.rect(x, y, w, h), UiPaint.solid(topLeft), 0f, 0f, 1f, 1f, false));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateMsdf(samplerView, sampler, pxRange, atlasWidth, atlasHeight);
         if (batch == null) {
@@ -2432,8 +2425,7 @@ public final class Renderer2D {
         }
         if (samplerView == null || sampler == null) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.roundedRect(x, y, w, h, radius), UiPaint.solid(argb),
-                (float) texX1, (float) texY1, (float) texX2, (float) texY2, false));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
         if (batch == null) {
@@ -2468,8 +2460,7 @@ public final class Renderer2D {
         }
         if (samplerView == null || sampler == null) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.roundedRect(x, y, w, h, radius), UiPaint.solid(argb),
-                (float) texX1, (float) texY1, (float) texX2, (float) texY2, true));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
         if (batch == null) {
@@ -2505,9 +2496,7 @@ public final class Renderer2D {
         }
         if (samplerView == null || sampler == null) return;
 
-        recordUi(new UiTextureDrawCommand(samplerView, sampler, UiShape.roundedRect(x, y, w, h, radius),
-                UiPaint.linear(startArgb, endArgb, angleDeg, 0.0f),
-                (float) texX1, (float) texY1, (float) texX2, (float) texY2, true));
+        recordUi(UiCommandKind.TEXTURE);
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.TEXTURED_SHAPE, samplerView, sampler);
         if (batch == null) {
@@ -3224,7 +3213,7 @@ public final class Renderer2D {
     public void texQuad(double x, double y, double width, double height,
                         double texX1, double texY1, double texX2, double texY2,
                         int argb) {
-        recordUi(new UiShapeCommand(UiShape.rect(x, y, width, height), UiPaint.solid(argb), UiStroke.NONE, true));
+        recordUi(UiCommandKind.SHAPE);
         if (texturedTriangles == null) return;
         texturedTriangles.alpha = alpha;
         texturedTriangles.ensureQuadCapacity();
@@ -5170,8 +5159,8 @@ public final class Renderer2D {
         UiRenderDispatcher.beginLayer();
     }
 
-    private static void recordUi(UiCommand command) {
-        UiRenderDispatcher.record(command);
+    private static void recordUi(UiCommandKind kind) {
+        UiRenderDispatcher.record(kind);
     }
 
     public static void flushUiLayer() {

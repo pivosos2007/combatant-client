@@ -210,6 +210,7 @@ public class Tracers extends Module {
         Vec3 look = getActiveCameraLook(tickDelta);
         Vec3 start = camPos.add(look.scale(10.0));
 
+        MeshBuilder mesh = null;
         for (Player p : mc.level.players()) {
             if (p == mc.player) continue;
             if (!traceFriendsValue.get() && CategoryService.isFriend(p)) continue;
@@ -217,14 +218,14 @@ public class Tracers extends Module {
             int c = resolveColor(p);
             Vec3 targetWorld = obtainEntityLerpedPos(p, tickDelta);
 
-            renderer.line(
-                    start.x, start.y, start.z,
-                    targetWorld.x, targetWorld.y, targetWorld.z,
-                    (c >> 16) & 255,
-                    (c >> 8) & 255,
-                    c & 255,
-                    (c >> 24) & 255
-            );
+            if (mesh == null) {
+                mesh = renderer.lines();
+                if (mesh == null) return;
+            }
+            mesh.ensureLineCapacity();
+            int i1 = mesh.vec3(start.x, start.y, start.z).color((c >> 16) & 255, (c >> 8) & 255, c & 255, (c >> 24) & 255).next();
+            int i2 = mesh.vec3(targetWorld.x, targetWorld.y, targetWorld.z).color((c >> 16) & 255, (c >> 8) & 255, c & 255, (c >> 24) & 255).next();
+            mesh.line(i1, i2);
         }
     }
 
@@ -338,12 +339,16 @@ public class Tracers extends Module {
         int g = (argb >> 8) & 255;
         int b = argb & 255;
 
+        MeshBuilder mesh = null;
         for (Vec3 targetWorld : targets) {
-            renderer.line(
-                    start.x, start.y, start.z,
-                    targetWorld.x, targetWorld.y, targetWorld.z,
-                    r, g, b, a
-            );
+            if (mesh == null) {
+                mesh = renderer.lines();
+                if (mesh == null) return;
+            }
+            mesh.ensureLineCapacity();
+            int i1 = mesh.vec3(start.x, start.y, start.z).color(r, g, b, a).next();
+            int i2 = mesh.vec3(targetWorld.x, targetWorld.y, targetWorld.z).color(r, g, b, a).next();
+            mesh.line(i1, i2);
         }
     }
 

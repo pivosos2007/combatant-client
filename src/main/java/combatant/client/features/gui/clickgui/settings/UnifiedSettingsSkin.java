@@ -62,9 +62,23 @@ enum UnifiedSettingsSkin {
     static int MODERN_TRACK_TOP = 0xD20F1011;
     static int MODERN_TRACK_BOTTOM = 0xE20B0C0E;
 
+    private static Themes.Theme syncedTheme;
+    private static Themes.ThemeEntry syncedEntry;
+    private static SettingRenderSurface syncedSurface;
+    private static boolean synced;
+
     static void syncTheme() {
         Themes.Theme theme = Theme.theme();
         if (theme == null) return;
+        // Theme/ThemeEntry are immutable records and the animated variants are identity-cached, so
+        // the derived palette only changes when either instance or the render surface changes.
+        Themes.ThemeEntry currentEntry = Theme.currentEntry();
+        SettingRenderSurface currentSurface = SettingRenderContext.current();
+        if (synced && theme == syncedTheme && currentEntry == syncedEntry && currentSurface == syncedSurface) return;
+        syncedTheme = theme;
+        syncedEntry = currentEntry;
+        syncedSurface = currentSurface;
+        synced = true;
 
         int accent = forceAlpha(theme.accent(), 255);
         int accentSoft = forceAlpha(theme.accentSoft(), 255);

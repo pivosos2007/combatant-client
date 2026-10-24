@@ -169,6 +169,22 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
                                              float lineScale,
                                              float iconScale,
                                              float baseScale) {
+        // Metrics depend only on these inputs; the toast's own line/type/visual are mutable.
+        MetricsKey key = new MetricsKey(lineRenderer, iconRenderer, lineScale, iconScale, baseScale,
+                toast.line, toast.type, toast.visual);
+        if (toast.metricsValue != null && key.equals(toast.metricsKey)) return toast.metricsValue;
+        ToastMetrics metrics = computeToastMetrics(toast, lineRenderer, iconRenderer, lineScale, iconScale, baseScale);
+        toast.metricsKey = key;
+        toast.metricsValue = metrics;
+        return metrics;
+    }
+
+    private static ToastMetrics computeToastMetrics(Toast toast,
+                                             TextRenderer lineRenderer,
+                                             TextRenderer iconRenderer,
+                                             float lineScale,
+                                             float iconScale,
+                                             float baseScale) {
         boolean moduleToggle = toast.visual == ToastVisual.MODULE_TOGGLE;
         String icon = iconFor(toast.type);
         boolean previewToast = PREVIEW_KEY.equals(toast.key);
@@ -1051,6 +1067,8 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         private Boolean stateEnabled;
         private long startMs;
         private boolean layoutReady;
+        private MetricsKey metricsKey;
+        private ToastMetrics metricsValue;
         private float layoutX;
         private float layoutY;
 
@@ -1099,6 +1117,16 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
             float t = AnimationUtility.easeInOutCubic((float) age / (float) TOGGLE_TRANSITION_MS);
             return enabled ? t : 1f - t;
         }
+    }
+
+    private record MetricsKey(TextRenderer lineRenderer,
+                              TextRenderer iconRenderer,
+                              float lineScale,
+                              float iconScale,
+                              float baseScale,
+                              String line,
+                              NotifyType type,
+                              ToastVisual visual) {
     }
 
     private record LayoutSize(float width, float height) {

@@ -7,13 +7,11 @@
 
 package combatant.client.render.engine.renderer.ui;
 
-import combatant.client.render.engine.command.UiCommand;
+import combatant.client.render.engine.command.UiCommandKind;
 import combatant.client.render.engine.command.UiSemanticCommandBuffer;
 import combatant.client.render.engine.command.UiStatsSnapshot;
 import combatant.client.render.engine.core.RenderFrameContext;
 import combatant.client.render.engine.rhi.CombatantRhi;
-import combatant.client.render.helpers.ClipFunction;
-import combatant.client.render.helpers.ScissorFunction;
 
 /** Coordinates UI recording, compilation, and execution. */
 public final class UiRendererSubsystem {
@@ -31,8 +29,8 @@ public final class UiRendererSubsystem {
         semanticCommands.beginFrame(context);
     }
 
-    public void record(UiCommand command) {
-        semanticCommands.add(command, ScissorFunction.currentSnapshot(), ClipFunction.currentSnapshot());
+    public void record(UiCommandKind kind) {
+        semanticCommands.record(kind);
     }
 
     public boolean hasPendingCommands() {

@@ -121,11 +121,15 @@ public class Hitbox extends Module {
     //                      STATE
     // ======================================================
 
+    private static final Matrix4f SCRATCH_MV = new Matrix4f();
+    private static final Matrix4f SCRATCH_ROTATION = new Matrix4f();
+    private static final Quaternionf SCRATCH_CAM_ROT = new Quaternionf();
+
     private static PoseStack buildTransformStack() {
-        Matrix4f mv = new Matrix4f(RenderSystem.getModelViewMatrixCopy());
-        Quaternionf camRot = new Quaternionf(RenderState.cameraRotation).conjugate();
-        Matrix4f rotation = new Matrix4f().rotation(camRot);
-        Matrix4f transform = mv.invert().mul(rotation);
+        // mv = inverse(modelView) * rotation(conjugate(camRot)); scratch objects never escape this method.
+        Matrix4f transform = SCRATCH_MV.set(RenderSystem.getModelViewMatrixCopy())
+                .invert()
+                .mul(SCRATCH_ROTATION.rotation(SCRATCH_CAM_ROT.set(RenderState.cameraRotation).conjugate()));
         PoseStack stack = new PoseStack();
         stack.last().pose().set(transform);
         return stack;
@@ -252,8 +256,9 @@ public class Hitbox extends Module {
             }
         }
 
+        if (!ignoreGroups.get("entities")) return true;
         var id = BuiltInRegistries.ENTITY_TYPE.getKey(e.getType());
-        return id == null || !ignoreGroups.get("entities") || !EntityFilters.get().isIgnoredEntity(id.toString());
+        return id == null || !EntityFilters.get().isIgnoredEntity(id.toString());
     }
 
     /**
@@ -286,12 +291,12 @@ public class Hitbox extends Module {
         lines.begin();
         tris.begin();
 
+        float[] rgba = resolveColor(null);
         for (int i = 0; i < precomputedBoxes.size(); i++) {
             AABB box = precomputedBoxes.get(i);
             Entity e = precomputedEntities.get(i);
 
             float flash = getHitFlashFactor(e);
-            float[] rgba = resolveColor(e);
 
             float r = rgba[0], g = rgba[1], b = rgba[2];
             float fillA = Math.min(1.0f, (0.18f + 0.12f * flash) * 1.17f); //Р°Р»СЊС„Р° С‚СѓС‚
@@ -351,8 +356,10 @@ public class Hitbox extends Module {
                 cam.x + maxDist, cam.y + maxDist, cam.z + maxDist
         );
 
+        ESP esp = Modules.get(ESP.class);
         List<Entity> list = mc.level.getEntities(mc.player, search,
-                e -> e instanceof LivingEntity && e.isAlive() && isAllowed(e) && !isRenderedByEspReplacement(e));
+                e -> e instanceof LivingEntity && e.isAlive() && isAllowed(e)
+                        && !(esp != null && esp.shouldRenderHitboxReplacement(e)));
 
         for (Entity e : list) {
             Vec3 pos = obtainEntityLerpedPos(e, tickDelta);
@@ -414,6 +421,7 @@ public class Hitbox extends Module {
     // ======================================================
 
     private float getHitFlashFactor(Entity e) {
+        if (hitFlashMs.isEmpty()) return 0f;
         Long t0 = hitFlashMs.get(e.getId());
         if (t0 == null) return 0f;
 

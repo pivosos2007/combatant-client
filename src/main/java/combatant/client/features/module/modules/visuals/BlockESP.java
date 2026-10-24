@@ -21,6 +21,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.*;
@@ -693,8 +694,17 @@ public class BlockESP extends Module {
             frameColors.clear();
             BlockOutlineShapeMode shapeMode = outlineShapeMode.get();
             long tick = mc.level.getGameTime();
+            CollisionContext shapeContext = shapeMode == BlockOutlineShapeMode.VOXEL_SHAPE
+                    ? BlockOutlineRenderer.shapeContext() : null;
+            boolean glow = glowFill.get();
 
             for (Target target : renderTargets.values()) {
+                // Margin keeps wide-line fringes of blocks just outside the frustum.
+                BlockPos tp = target.pos;
+                if (!Renderer3D.Culling.isInFrustum(new AABB(tp.getX() - 0.5, tp.getY() - 0.5, tp.getZ() - 0.5,
+                        tp.getX() + 1.5, tp.getY() + 1.5, tp.getZ() + 1.5))) {
+                    continue;
+                }
                 if (limitDistance) {
                     double dx = target.pos.getX() + 0.5 - eye.x;
                     double dy = target.pos.getY() + 0.5 - eye.y;
@@ -724,8 +734,8 @@ public class BlockESP extends Module {
                 }
 
                 int color = 0xFF000000 | targetRgb(state, target.visible);
-                BlockOutlineRenderer.render(renderer, mc.level, target.pos, state, shapeMode, color);
-                if (glowFill.get()) {
+                BlockOutlineRenderer.render(renderer, mc.level, target.pos, state, shapeMode, color, shapeContext);
+                if (glow) {
                     int fill = ((int) (Math.min(1.0f, glowAlpha.get()) * 255.0f) << 24) | (color & 0x00FFFFFF);
                     GlowSurfaces.box(renderer, new AABB(target.pos), fill, fill, 0.55f, 1.0f, false, true, false);
                 }

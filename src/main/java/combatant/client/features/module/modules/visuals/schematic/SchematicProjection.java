@@ -641,7 +641,7 @@ public final class SchematicProjection extends Module {
     }
 
     private MeshBuilder atlasMesh(Identifier atlas) {
-        if (atlas.equals(frameAtlas)) return frameAtlasMesh;
+        if (atlas == frameAtlas || atlas.equals(frameAtlas)) return frameAtlasMesh;
         frameAtlas = atlas;
         frameAtlasMesh = frameRenderer.batchTextured(
                 frameThroughWalls ? WorldRenderPipelines.WORLD_TEXTURED : WorldRenderPipelines.WORLD_TEXTURED_DEPTH,

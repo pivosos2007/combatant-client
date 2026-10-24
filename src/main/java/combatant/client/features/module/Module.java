@@ -34,6 +34,7 @@ import combatant.client.input.CombatantInput;
 import combatant.client.input.InputScope;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.locale.Language;
 import net.minecraft.client.Minecraft;
 
 import java.util.*;
@@ -931,8 +932,21 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
         return name();
     }
 
+    private record DisplayNameCache(Language language, String name, String value) {
+    }
+
+    private volatile DisplayNameCache displayNameCache;
+
     public String getDisplayName() {
-        return translateFirst(displayName, "module." + name(), "module." + name() + ".name");
+        Language language = Language.getInstance();
+        String name = name();
+        DisplayNameCache cache = displayNameCache;
+        if (cache != null && cache.language == language && Objects.equals(cache.name, name)) {
+            return cache.value;
+        }
+        String value = translateFirst(displayName, "module." + name, "module." + name + ".name");
+        displayNameCache = new DisplayNameCache(language, name, value);
+        return value;
     }
 
     public List<String> getAliases() {
