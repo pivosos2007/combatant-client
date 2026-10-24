@@ -49,7 +49,8 @@ public final class DistributionCapabilities {
     }
 
     public static String currentTargetId() {
-        return targetId(System.getProperty("os.name", ""), System.getProperty("os.arch", ""));
+        return targetId(AndroidRuntime.isAndroid() ? "android" : System.getProperty("os.name", ""),
+                System.getProperty("os.arch", ""));
     }
 
     public static boolean isJavetAvailable() {
@@ -129,7 +130,9 @@ public final class DistributionCapabilities {
         String arch = osArch == null ? "" : osArch.toLowerCase(Locale.ROOT);
 
         String platform;
-        if (os.startsWith("windows")) {
+        if (os.contains("android")) {
+            platform = "android";
+        } else if (os.startsWith("windows")) {
             platform = "windows";
         } else if (os.equals("linux") || os.contains("linux")) {
             platform = "linux";

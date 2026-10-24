@@ -271,7 +271,10 @@ public final class UiShapeRenderer {
         }
 
         if (UiShapeGeometry.isBoxShape(shape, props)) {
-            UiBoxShape boxShape = UiShapeGeometry.buildBoxShape(props, style, shape, x, y, w, h, context.transform().scale());
+            float cornerMorph = props.get("cornerMorphTo") != null
+                    ? UiReactiveVisual.signal(node, "selected") : 0.0f;
+            UiBoxShape boxShape = UiShapeGeometry.buildBoxShape(
+                    props, style, shape, x, y, w, h, context.transform().scale(), cornerMorph);
             UiPaint fillPaint = buildPaint(props, fill, linearGradient, gradientStart, gradientEnd, gradientAngle, gradientOffset, alpha);
             if ((fillPaint.solidColor() >>> 24) > 0 || linearGradient || hasFillCornerColors(props)) {
                 renderer.box(boxShape, fillPaint);

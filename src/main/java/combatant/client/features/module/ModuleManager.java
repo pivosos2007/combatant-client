@@ -414,7 +414,7 @@ public enum ModuleManager {
     // ---------------------------
 
     public static void handleModuleKeybinds() {
-        if (!RuntimeGate.canRunModules()) return;
+        if (!RuntimeGate.canRunModules() || !CombatantInput.bindings().hasPendingGamePress()) return;
         boolean previousSuppression = suppressToggleSound;
         boolean soundSuppressedThisPass = previousSuppression;
         try {

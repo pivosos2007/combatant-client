@@ -599,6 +599,12 @@ export type UiShapeNode = UiNode & {
   cornerTopRight?: UiCornerSpec;
   cornerBottomRight?: UiCornerSpec;
   cornerBottomLeft?: UiCornerSpec;
+  /**
+   * Morph each rounded corner toward this logical-pixel radius with the parent
+   * selected-state motion. Useful for Material 3 connected button groups and
+   * other composable controls. Omit to retain static corner geometry.
+   */
+  cornerMorphTo?: number;
   /** Flexible per-edge modifiers. */
   edges?: UiEdgeMap;
   edgeTop?: UiEdgeSpec;

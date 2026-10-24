@@ -81,6 +81,21 @@ public final class UiRenderPipelines {
             .withCull(true)
             .build();
 
+    /** Compose an already premultiplied offscreen material target exactly once. */
+    @PipelineRegister
+    public static final RenderPipeline UI_MATERIAL_COMPOSITE = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_material_composite"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("pos2_tex_color.vert"))
+            .withFragmentShader(shader("pos_tex_color.frag"))
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA)
+            .withCull(true)
+            .build();
+
     @PipelineRegister
     public static final RenderPipeline UI_MAP_TILE_LIGHT = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_map_tile_light"))

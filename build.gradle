@@ -218,12 +218,14 @@ dependencies {
 
     // Javet core only. Native V8 binaries are copied into resources/javet/natives.
     bundledLibrary "com.caoccao.javet:javet:${javetVersion}"
+    testImplementation "com.caoccao.javet:javet:${javetVersion}"
 
     // Javet in minimal V8 mode only: no Node runtime. The canonical remap jar
     // stays universal; release slim artifacts retain only their target native.
     javetNativeBundle "com.caoccao.javet:javet-v8-windows-x86_64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-linux-x86_64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-linux-arm64:${javetVersion}"
+    javetNativeBundle "com.caoccao.javet:javet-v8-android:${javetVersion}@aar"
     javetNativeBundle "com.caoccao.javet:javet-v8-macos-x86_64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-macos-arm64:${javetVersion}"
 
@@ -1043,14 +1045,24 @@ tasks.register("generateFontMsdf", Exec) {
 }
 
 
-tasks.register("unpackJavetNatives", Copy) {
+ext.combatantJavetNativeResourcePath = { String path ->
+    if (path.startsWith("jni/")) {
+        return path.startsWith("jni/arm64-v8a/") && path.endsWith(".so")
+                ? "android/" + path.substring("jni/".length()) : null
+    }
+    return path.tokenize('/').last()
+}
+
+tasks.register("unpackJavetNatives", Sync) {
     group = "runtime assets"
     description = "Copies bundled Javet V8 native binaries into generated resources."
     into javetNativeGeneratedResources.map { it.dir("javet/natives") }
     from({ configurations.javetNativeBundle.collect { zipTree(it) } }) {
         include "**/*.dll", "**/*.so", "**/*.dylib"
         eachFile { details ->
-            details.path = details.name
+            String resourcePath = combatantJavetNativeResourcePath(details.path)
+            if (resourcePath == null) details.exclude()
+            else details.path = resourcePath
         }
         includeEmptyDirs = false
     }
@@ -1064,7 +1076,9 @@ tasks.register("syncJavetNatives", Copy) {
     from({ configurations.javetNativeBundle.collect { zipTree(it) } }) {
         include "**/*.dll", "**/*.so", "**/*.dylib"
         eachFile { details ->
-            details.path = details.name
+            String resourcePath = combatantJavetNativeResourcePath(details.path)
+            if (resourcePath == null) details.exclude()
+            else details.path = resourcePath
         }
         includeEmptyDirs = false
     }

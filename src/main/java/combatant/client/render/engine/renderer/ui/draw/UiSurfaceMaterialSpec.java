@@ -13,14 +13,32 @@ public record UiSurfaceMaterialSpec(Mode mode,
                                     float bevelStrength,
                                     float response,
                                     int accentArgb,
-                                    UiIceMaterialSpec ice) implements UiMaterialSpec {
+                                    UiIceMaterialSpec ice,
+                                    UiMaterialLightingSpec lighting,
+                                    boolean microtextureEnabled) implements UiMaterialSpec {
     @Override public Family family() { return Family.SOLID; }
+    @Override public boolean samplesBackdrop() { return lighting != null && lighting.enabled(); }
 
     public static final UiSurfaceMaterialSpec ICE = UiIceMaterialSpec.LIGHT.asSurface();
 
     public UiSurfaceMaterialSpec(Mode mode, float detailScale, float roughness,
+                                 float bevelStrength, float response, int accentArgb,
+                                 UiIceMaterialSpec ice) {
+        this(mode, detailScale, roughness, bevelStrength, response, accentArgb,
+                ice, UiMaterialLightingSpec.NONE, false);
+    }
+
+    public UiSurfaceMaterialSpec(Mode mode, float detailScale, float roughness,
                                  float bevelStrength, float response, int accentArgb) {
-        this(mode, detailScale, roughness, bevelStrength, response, accentArgb, UiIceMaterialSpec.LIGHT);
+        this(mode, detailScale, roughness, bevelStrength, response, accentArgb,
+                UiIceMaterialSpec.LIGHT, UiMaterialLightingSpec.NONE, false);
+    }
+
+    public UiSurfaceMaterialSpec(Mode mode, float detailScale, float roughness,
+                                 float bevelStrength, float response, int accentArgb,
+                                 UiIceMaterialSpec ice, UiMaterialLightingSpec lighting) {
+        this(mode, detailScale, roughness, bevelStrength, response, accentArgb,
+                ice, lighting, false);
     }
 
     public static final UiSurfaceMaterialSpec GRAPHITE = new UiSurfaceMaterialSpec(
@@ -38,6 +56,7 @@ public record UiSurfaceMaterialSpec(Mode mode,
 
     public UiSurfaceMaterialSpec {
         ice = ice != null ? ice : UiIceMaterialSpec.LIGHT;
+        lighting = lighting != null ? lighting : UiMaterialLightingSpec.NONE;
         mode = mode != null ? mode : Mode.SOFT_TOUCH;
         detailScale = finiteClamp(detailScale, 0.01f, 64.0f);
         roughness = finiteClamp(roughness, 0.0f, 1.0f);
@@ -46,11 +65,11 @@ public record UiSurfaceMaterialSpec(Mode mode,
     }
 
     public UiSurfaceMaterialSpec withAccent(int argb) {
-        return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength, response, argb, ice);
+        return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength, response, argb, ice, lighting, microtextureEnabled);
     }
 
     public UiSurfaceMaterialSpec withResponse(float value) {
-        return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength, value, accentArgb, ice);
+        return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength, value, accentArgb, ice, lighting, microtextureEnabled);
     }
 
     public UiSurfaceMaterialSpec withParameters(float scale, float roughnessValue,
@@ -58,7 +77,19 @@ public record UiSurfaceMaterialSpec(Mode mode,
         UiIceMaterialSpec appearance = mode == Mode.ICE
                 ? new UiIceMaterialSpec(ice.seed(), scale, roughnessValue, bevel,
                         ice.blueAbsorption(), ice.displacementPx(), ice.facetContrast(), ice.clarity()) : ice;
-        return new UiSurfaceMaterialSpec(mode, scale, roughnessValue, bevel, responseValue, accentArgb, appearance);
+        return new UiSurfaceMaterialSpec(mode, scale, roughnessValue, bevel, responseValue, accentArgb, appearance, lighting, microtextureEnabled);
+    }
+
+    /** Add environment lighting without changing the legacy pointer highlight. */
+    public UiSurfaceMaterialSpec withLighting(UiMaterialLightingSpec value) {
+        return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength,
+                response, accentArgb, ice, value, microtextureEnabled);
+    }
+
+    /** Optional tile-based micro-roughness; existing materials remain visually unchanged. */
+    public UiSurfaceMaterialSpec withMicrotexture(boolean enabled) {
+        return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength,
+                response, accentArgb, ice, lighting, enabled);
     }
 
     public enum Mode {

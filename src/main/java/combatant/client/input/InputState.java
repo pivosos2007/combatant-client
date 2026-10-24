@@ -15,10 +15,10 @@ public final class InputState {
     private volatile double mouseX;
     private volatile double mouseY;
 
-    public void apply(InputKey key, InputAction action) {
+    /** Returns whether the physical state actually changed (REPEAT is not a new edge). */
+    public boolean apply(InputKey key, InputAction action) {
         Set<Integer> pressed = key.device() == InputDevice.KEYBOARD ? keyboard : mouse;
-        if (action.isDown()) pressed.add(key.physicalKey());
-        else pressed.remove(key.physicalKey());
+        return action.isDown() ? pressed.add(key.physicalKey()) : pressed.remove(key.physicalKey());
     }
 
     public boolean isPressed(InputKey key) {

@@ -4,7 +4,7 @@ def combatantReleaseFontProfile = providers.gradleProperty("combatantReleaseFont
         .map { it.trim().toLowerCase(java.util.Locale.ROOT) }
         .orElse("base")
 def combatantReleaseSlimTargets = providers.gradleProperty("combatantReleaseSlimTargets")
-        .orElse("windows-x86_64,linux-x86_64,linux-arm64,macos-x86_64,macos-arm64")
+        .orElse("windows-x86_64,linux-x86_64,linux-arm64,macos-x86_64,macos-arm64,android-arm64")
         .map { value -> value.split(',').collect { it.trim().toLowerCase(java.util.Locale.ROOT) }.findAll { !it.isEmpty() } }
 def combatantReleaseDevEnabled = providers.gradleProperty("combatantDev")
         .orElse(providers.gradleProperty("dev"))
@@ -20,7 +20,8 @@ def combatantSupportedSlimTargets = new LinkedHashSet<String>([
         "linux-x86_64",
         "linux-arm64",
         "macos-x86_64",
-        "macos-arm64"
+        "macos-arm64",
+        "android-arm64"
 ])
 
 def combatantMediaTargets = new LinkedHashSet<String>([
@@ -34,7 +35,8 @@ def combatantJavetModuleByTarget = [
         "linux-x86_64"  : "javet-v8-linux-x86_64",
         "linux-arm64"   : "javet-v8-linux-arm64",
         "macos-x86_64"  : "javet-v8-macos-x86_64",
-        "macos-arm64"   : "javet-v8-macos-arm64"
+        "macos-arm64"   : "javet-v8-macos-arm64",
+        "android-arm64" : "javet-v8-android"
 ]
 
 def combatantBuiltinFontRoot = "assets/combatant/font/"
@@ -255,7 +257,8 @@ def combatantResolveJavetNativeNames = { String target ->
             if (entry.isDirectory()) return
             String lower = entry.name.toLowerCase(java.util.Locale.ROOT)
             if (lower.endsWith('.dll') || lower.endsWith('.so') || lower.endsWith('.dylib')) {
-                names.add(entry.name.tokenize('/').last())
+                String resourcePath = project.ext.combatantJavetNativeResourcePath(entry.name)
+                if (resourcePath != null) names.add(resourcePath)
             }
         }
     }
@@ -402,10 +405,10 @@ def registerCombatantReleaseProfile = { String taskName, Map spec ->
                 if (spec.target == 'universal') {
                     combatantSupportedSlimTargets.each { target ->
                         def names = combatantResolveJavetNativeNames(target)
-                        boolean present = names.any { nativeName -> entryNames.contains("javet/natives/${nativeName}") }
+                        boolean present = names.any { nativeName -> entryNames.contains('javet/natives/' + nativeName) }
                         if (present) javetTargets.add(target)
                     }
-                } else if (selectedJavetNames.any { nativeName -> entryNames.contains("javet/natives/${nativeName}") }) {
+                } else if (selectedJavetNames.any { nativeName -> entryNames.contains('javet/natives/' + nativeName) }) {
                     javetTargets.add(spec.target)
                 }
 
@@ -434,8 +437,7 @@ def registerCombatantReleaseProfile = { String taskName, Map spec ->
                         dropNative = true
                     }
                     if (!dropNative && spec.target != 'universal' && name.startsWith('javet/natives/')) {
-                        String leaf = name.tokenize('/').last()
-                        dropNative = !selectedJavetNames.contains(leaf)
+                        dropNative = !selectedJavetNames.contains(name.substring('javet/natives/'.length()))
                     }
                     if (!dropNative) {
                         includedNativeResources.add(name)
@@ -514,8 +516,7 @@ def registerCombatantReleaseProfile = { String taskName, Map spec ->
                             drop = true
                         }
                         if (!drop && spec.target != 'universal' && name.startsWith('javet/natives/')) {
-                            String leaf = name.tokenize('/').last()
-                            if (!selectedJavetNames.contains(leaf)) drop = true
+                            if (!selectedJavetNames.contains(name.substring('javet/natives/'.length()))) drop = true
                         }
                         if (!drop && spec.fontProfile == 'base'
                                 && combatantBaseFontOptionalPrefixes.any { name.startsWith(it) }) {

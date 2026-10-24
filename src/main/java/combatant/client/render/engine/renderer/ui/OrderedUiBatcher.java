@@ -525,7 +525,9 @@ public final class OrderedUiBatcher {
                     break;
                 }
                 if (orderedEntry instanceof DrawBatch orderedBatch
-                        && orderedBatch.backdropRequest.requiresCapturedScene()) {
+                        && (orderedBatch.backdropRequest.requiresCapturedScene()
+                        || (orderedBatch.type.requiresMaterialScene() && orderedBatch.materialLightingSource ==
+                        combatant.client.render.engine.renderer.ui.draw.UiMaterialLightingSpec.Source.CAPTURED_SCENE))) {
                     hasCapturedSceneBackdrop = true;
                     break;
                 }
@@ -707,6 +709,80 @@ public final class OrderedUiBatcher {
                 drawCalls++;
                 vertices += batch.mesh.getVertexCount();
                 indices += batch.mesh.getIndicesCount();
+
+                if (batch.type.requiresMaterialScene()) {
+                    // Ordered scene sampling: flush all earlier draws before capturing them.
+                    // Rendering samples ONLY the read snapshot; its output uses a separate transient.
+                    flushPendingDraws(pendingDraws);
+                    boolean current = batch.materialLightingSource ==
+                            combatant.client.render.engine.renderer.ui.draw.UiMaterialLightingSpec.Source.CURRENT_TARGET;
+                    GpuTextureView readView = current
+                            ? UiBlurResources.captureCurrentTarget(mc, mainColorView)
+                            : (UiBlurResources.isWorldSourceReady() ? liquidSourceView : null);
+                    GpuSampler readSampler = current
+                            ? PostProcessManager.getSampler() : liquidSourceSampler;
+                    TextureTarget materialTarget = UiSceneResources.materialOutput(mc);
+                    GpuTextureView materialWrite = materialTarget != null
+                            ? materialTarget.getColorTextureView() : null;
+                    GpuSampler materialSampler = PostProcessManager.getSampler();
+                    if (readView != null && readSampler != null && materialWrite != null
+                            && materialSampler != null && readView != mainColorView
+                            && readView != materialWrite && materialWrite != mainColorView
+                            && !batch.clipSnapshot.usesMsaaStencil()) {
+                        if (uiBatch == null) {
+                            UIBatchUniforms.update(screenW, screenH);
+                            uiBatch = UIBatchUniforms.get();
+                        }
+                        UiMaterialMicroAtlas.Binding micro = batch.type.usesMaterialTexture()
+                                ? UiMaterialMicroAtlas.resolve() : null;
+                        RenderPipeline materialPipeline = micro == null && batch.type.usesMaterialTexture()
+                                ? UiBatchRenderPipelines.UI_MATERIAL_SCENE_PRIMITIVE_BATCH
+                                : pipelineFor(batch);
+                        MeshRenderer materialDraw = MeshRenderer.begin()
+                                .attachments(materialWrite, null)
+                                .clearColor(0x00000000)
+                                .pipeline(materialPipeline)
+                                .mesh(batch.mesh)
+                                .uniform("UIBatch", uiBatch)
+                                .uniform(UiGlassFrameUniforms.BLOCK_NAME,
+                                        UiGlassFrameUniforms.update(mc, screenW, screenH))
+                                .sampler("u_SceneLight", readView, readSampler);
+                        if (micro != null) materialDraw.sampler("u_MaterialMicro", micro.view(), micro.sampler());
+                        bindAnalyticClip(materialDraw, batch);
+                        materialDraw.end();
+                        int meshW = Math.max(1, Math.round(screenW / uiScale));
+                        int meshH = Math.max(1, Math.round(screenH / uiScale));
+                        MeshBuilder composite = UiBlurResources.ensureCompositeMesh(meshW, meshH);
+                        if (composite != null) {
+                            int mirrorStart = pendingDraws.size();
+                            MeshRenderer.begin()
+                                    .attachments(mainColorView, null)
+                                    .pipeline(UiRenderPipelines.UI_MATERIAL_COMPOSITE)
+                                    .mesh(composite)
+                                    .sampler("u_Texture", materialWrite, materialSampler)
+                                    .endTo(pendingDraws);
+                            mirrorNewDraws(pendingDraws, mirrorStart,
+                                    batch.clipSnapshot.usesMsaaStencil() ? null : secondaryReplayView);
+                            drawCalls++;
+                        }
+                    } else {
+                        // Unavailable snapshot / unsupported MSAA clip: keep the material visible
+                        // using the original non-scene pipeline, never sample an active writer.
+                        if (uiBatch == null) {
+                            UIBatchUniforms.update(screenW, screenH);
+                            uiBatch = UIBatchUniforms.get();
+                        }
+                        MeshRenderer.begin()
+                                .attachments(mainColorView, null)
+                                .pipeline(UiBatchRenderPipelines.UI_MATERIAL_PRIMITIVE_BATCH)
+                                .mesh(batch.mesh)
+                                .uniform("UIBatch", uiBatch)
+                                .uniform(UiGlassFrameUniforms.BLOCK_NAME,
+                                        UiGlassFrameUniforms.update(mc, screenW, screenH))
+                                .end();
+                    }
+                    continue;
+                }
 
                 if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS) {
                     flushPendingDraws(pendingDraws);
@@ -991,9 +1067,13 @@ public final class OrderedUiBatcher {
                     continue;
                 }
 
+                UiMaterialMicroAtlas.Binding materialMicro = batch.type.usesMaterialTexture()
+                        ? UiMaterialMicroAtlas.resolve() : null;
                 MeshRenderer builder = MeshRenderer.begin()
                         .attachments(mainColorView, null)
-                        .pipeline(pipelineFor(batch))
+                        .pipeline(batch.type == UiBatchType.MATERIAL_TEXTURED_PRIMITIVE
+                                && materialMicro == null
+                                ? UiBatchRenderPipelines.UI_MATERIAL_PRIMITIVE_BATCH : pipelineFor(batch))
                         .mesh(batch.mesh);
 
                 if (batch.type.needsUiBatch) {
@@ -1003,9 +1083,13 @@ public final class OrderedUiBatcher {
                     }
                     builder.uniform("UIBatch", uiBatch);
                 }
-                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE) {
+                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE || batch.type == UiBatchType.MATERIAL_TEXTURED_PRIMITIVE) {
                     builder.uniform(UiGlassFrameUniforms.BLOCK_NAME,
                             UiGlassFrameUniforms.update(mc, screenW, screenH));
+                    if (batch.type.usesMaterialTexture()) {
+                        if (materialMicro != null)
+                            builder.sampler("u_MaterialMicro", materialMicro.view(), materialMicro.sampler());
+                    }
                 }
                 bindAnalyticClip(builder, batch);
                 if (batch.type.usesSampler) {
@@ -1144,10 +1228,14 @@ public final class OrderedUiBatcher {
                 drawCalls++;
                 vertices += batch.mesh.getVertexCount();
                 indices += batch.mesh.getIndicesCount();
+                UiMaterialMicroAtlas.Binding materialMicro = batch.type.usesMaterialTexture()
+                        ? UiMaterialMicroAtlas.resolve() : null;
                 MeshRenderer builder = MeshRenderer.begin()
                         .attachments(mainColorView, null)
                         .clearColor(UiMsaaClipLayer.consumePendingColorClear(mainColorView))
-                        .pipeline(pipelineFor(batch))
+                        .pipeline(batch.type == UiBatchType.MATERIAL_TEXTURED_PRIMITIVE
+                                && materialMicro == null
+                                ? UiBatchRenderPipelines.UI_MATERIAL_PRIMITIVE_BATCH : pipelineFor(batch))
                         .mesh(batch.mesh);
 
                 if (batch.type.needsUiBatch) {
@@ -1157,9 +1245,13 @@ public final class OrderedUiBatcher {
                     }
                     builder.uniform("UIBatch", uiBatch);
                 }
-                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE) {
+                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE || batch.type == UiBatchType.MATERIAL_TEXTURED_PRIMITIVE) {
                     builder.uniform(UiGlassFrameUniforms.BLOCK_NAME,
                             UiGlassFrameUniforms.update(mc, screenW, screenH));
+                    if (batch.type.usesMaterialTexture()) {
+                        if (materialMicro != null)
+                            builder.sampler("u_MaterialMicro", materialMicro.view(), materialMicro.sampler());
+                    }
                 }
                 bindAnalyticClip(builder, batch);
                 if (batch.type.usesSampler) {

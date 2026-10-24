@@ -54,8 +54,8 @@ export class GoogleMaterial3 {
     const disabled=!!props.disabled;
     return ui.button({key,class:ui.abs(0,0,w,h,disabled?'':'cursor-pointer'),
       stateValues:{disabled, selected:!!props.selected},
-      stateMotions:{hover:{durationMs:150,easing:'out-cubic'},press:{durationMs:110,easing:'out-cubic'},
-        selected:{durationMs:170,easing:'out-cubic'}},
+      stateMotions:{hover:{durationMs:90,easing:'out-cubic'},press:{durationMs:75,easing:'out-cubic'},
+        selected:{durationMs:180,easing:'out-cubic'}},
       ...(!disabled && props.onClick?{onClick:props.onClick}:{}),children});
   }
   static stateLayer(key,w,h,radius,fg,disabled=false) {
@@ -123,8 +123,9 @@ export class GoogleMaterial3 {
       GoogleMaterial3.shape(`${key}:handle`,hx,(32-handleSize)/2,handleSize,handleSize,handleSize/2,
         p.outline,undefined,0,{fillReactive:{base:p.outline,mix:p.onPrimary,
           mixTerms:{selected:1}},stateSource:'parent'}),
-      ...(selected&&props.icons?[ui.svg({key:`${key}:check`,asset:'check',tint:p.onPrimaryContainer,
-        class:ui.abs(hx+4,10,16,12),interactive:false})]:[]),
+      ...(props.icons?[ui.svg({key:`${key}:check`,asset:'check',tint:p.primaryContainer,
+        tintReactive:{base:p.primaryContainer,alphaBase:0,alphaTerms:{selected:1}},
+        stateSource:'parent',class:ui.abs(hx+4,10,16,12),interactive:false})]:[]),
       GoogleMaterial3.stateLayer(`${key}:hover`,52,32,16,p.primary,disabled)
     ],props);
   }
@@ -139,9 +140,10 @@ export class GoogleMaterial3 {
         p.onSurfaceVariant,2,{fillReactive:{base:p.primary,alphaBase:0,alphaTerms:{selected:1}},
           strokeReactive:{base:p.onSurfaceVariant,mix:p.primary,mixTerms:{selected:1}},
           stateSource:'parent'}),
-      ...(active?[ui.svg({key:`${key}:mark`,asset:indeterminate?'minus':'check',tint:p.onPrimary,
-        class:ui.abs(13,13,14,14),interactive:false})]:[])
-    ],props);
+      ui.svg({key:`${key}:mark`,asset:indeterminate?'minus':'check',tint:p.onPrimary,
+        tintReactive:{base:p.onPrimary,alphaBase:0,alphaTerms:{selected:1}},
+        stateSource:'parent',class:ui.abs(13,13,14,14),interactive:false})
+    ],{...props,selected:active});
   }
   static radio(props={}) {
     const key=ui.str(props.key,'m3-radio'),p=GoogleMaterial3.colors(props.colors);
@@ -159,7 +161,7 @@ export class GoogleMaterial3 {
   static chip(props={}) {
     const key=ui.str(props.key,'m3-chip'),p=GoogleMaterial3.colors(props.colors),
       label=ui.str(props.label,'Filter'),variant=ui.str(props.variant,'filter');
-    const selected=!!props.selected,icon=props.icon|| (variant==='filter'&&selected?'check':null);
+    const selected=!!props.selected,icon=props.icon|| (variant==='filter'?'check':null);
     const width=Math.max(70,N(props.width,44+label.length*8));
     const fg=p.onSurface, bg=selected?p.secondaryContainer:'#00000000';
     return GoogleMaterial3.action(key,width,32,[
@@ -168,7 +170,10 @@ export class GoogleMaterial3 {
           strokeReactive:{base:p.outline,alphaBase:1,alphaTerms:{selected:-1}},
           stateSource:'parent'}),
       GoogleMaterial3.stateLayer(`${key}:state`,width,32,8,fg,!!props.disabled),
-      ...(icon?[ui.svg({key:`${key}:icon`,asset:icon,tint:fg,class:ui.abs(9,7,18,18),interactive:false})]:[]),
+      ...(icon?[ui.svg({key:`${key}:icon`,asset:icon,tint:fg,
+        ...(variant==='filter'&&!props.icon?{tintReactive:{base:fg,alphaBase:0,alphaTerms:{selected:1}},
+          stateSource:'parent'}:{}),
+        class:ui.abs(9,7,18,18),interactive:false})]:[]),
       GoogleMaterial3.text(`${key}:label`,label,icon?32:12,0,width-(icon?42:24),32,
         {color:fg,align:'center',size:14})
     ],props);
@@ -222,33 +227,39 @@ export class GoogleMaterial3 {
     children.push(GoogleMaterial3.shape(`${key}:outline`,0,0,w,40,20,'#00000000',p.outline,1));
     return GoogleMaterial3.surface(key,w,40,children);
   }
-  /** M3 connected group: independent shape silhouettes, shared moving selection pill. */
+  /**
+   * M3 Expressive connected group (small, 40dp): 2dp spacing, 8dp inner corners,
+   * 20dp outer corners, 20dp checked corners. A selected segment morphs its
+   * OWN outline. It is not a fourth pill drawn over three outlined tracks.
+   * Reference: androidx.compose.material3.ButtonGroupDefaults and MDC-Android.
+   */
   static connectedButtonGroup(props={}) {
     const key=ui.str(props.key,'m3-connected'),items=Array.isArray(props.items)?props.items:[],
       p=GoogleMaterial3.colors(props.colors),w=Math.max(1,N(props.width,420));
     if (!items.length) return GoogleMaterial3.surface(key,w,40,[]);
     const gap=2,each=(w-gap*(items.length-1))/items.length,selected=ui.str(props.selected,'');
-    const selectedIndex=Math.max(0,items.findIndex(v=>v.id===selected));
     const children=[];
     for(let i=0;i<items.length;i++) {
-      const corner=8, radii=[i===0?20:corner,i===items.length-1?20:corner,
-        i===items.length-1?20:corner,i===0?20:corner];
-      children.push(GoogleMaterial3.cornerBox(`${key}:track:${i}`,
-        i*(each+gap),0,each,40,radii,p.surfaceContainerLow,p.outline,1));
-    }
-    // A single animated selection surface belongs to the group, not individual items.
-    // The dev runtime can patch this node's bounds using computed group bounds.
-    children.push(GoogleMaterial3.shape(`${key}:selection`,
-      selectedIndex*(each+gap),0,each,40,20,p.secondaryContainer,p.outline,1));
-    for(let i=0;i<items.length;i++) {
-      const v=items[i],active=v.id===selected,k=`${key}:${ui.str(v.id,String(i))}`;
-      const content=[
-        GoogleMaterial3.shape(`${k}:state`,0,0,each,40,20,'#00000000',undefined,0,
-          {fillReactive:{base:p.onSurface,alphaBase:0,alphaTerms:{hover:.08,press:.10}},
-          stateSource:'parent'}),
-        GoogleMaterial3.text(`${k}:label`,v.label,12,0,each-24,40,{color:p.onSurface,
-          reactive:{base:p.onSurface,mix:p.onSecondaryContainer,mixTerms:{selected:1}}})
-      ];
+      const v=items[i],active=ui.str(v.id,'')===selected,
+        k=`${key}:${ui.str(v.id,String(i))}`;
+      const radii=[i===0?20:8,i===items.length-1?20:8,
+        i===items.length-1?20:8,i===0?20:8];
+      const surface=GoogleMaterial3.cornerBox(`${k}:surface`,0,0,each,40,radii,
+        p.surfaceContainerLow,p.outline,1,{
+          cornerMorphTo:20,stateSource:'parent',
+          fillReactive:{base:p.surfaceContainerLow,mix:p.secondaryContainer,mixTerms:{selected:1}}
+        });
+      const state=GoogleMaterial3.cornerBox(`${k}:state`,0,0,each,40,radii,
+        '#00000000',undefined,0,{
+          cornerMorphTo:20,stateSource:'parent',
+          fillReactive:{base:p.onSurface,alphaBase:0,
+            alphaTerms:{hover:0.08,press:0.10}}
+        });
+      const content=[surface,state,
+        GoogleMaterial3.text(`${k}:label`,v.label,12,0,each-24,40,{
+          color:p.onSurface,
+          reactive:{base:p.onSurface,mix:p.onSecondaryContainer,mixTerms:{selected:1}}
+        })];
       children.push({...GoogleMaterial3.action(k,each,40,content,{...v,selected:active}),
         style:S(i*(each+gap),0,each,40)});
     }

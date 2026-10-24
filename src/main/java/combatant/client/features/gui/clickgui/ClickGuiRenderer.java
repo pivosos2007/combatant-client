@@ -164,6 +164,11 @@ public enum ClickGuiRenderer {
         if (textEditor != null) {
             textEditor.handleMouseMove(mouseX, mouseY);
         }
+        if (picker == null && protocolHeuristicsEditor == null && textEditor == null
+                && isInputReady()) {
+            ClickGuiSection section = getActiveSection();
+            if (section != null) section.mouseMoved(mouseX, mouseY);
+        }
     }
 
     public static void onMouseButton(double x, double y, int button, boolean pressed) {
@@ -188,6 +193,11 @@ public enum ClickGuiRenderer {
         }
         if (textEditor != null) {
             textEditor.handleMouseMove(mouseX, mouseY);
+        }
+        if (picker == null && protocolHeuristicsEditor == null && textEditor == null
+                && isInputReady()) {
+            ClickGuiSection section = getActiveSection();
+            if (section != null) section.mouseMoved(mouseX, mouseY);
         }
     }
 

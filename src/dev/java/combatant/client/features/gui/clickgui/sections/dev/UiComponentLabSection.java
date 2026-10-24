@@ -39,6 +39,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
     private final UiScriptModuleHandle handle = HudScriptLayouts.handle("combatant:modules/dev/component_gallery");
     private final CachedUiScriptRuntime scripts = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
     private UiRuntime runtime;
+    private UiRuntime actionsBoundTo;
     private float x, y, width, height;
     private String kit = "google";
     private String page = "buttons";
@@ -51,7 +52,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
     private int radio, clicks;
     private float slider = 45f;
     private boolean sliderDragging;
-    private float animatedTab = Float.NaN, animatedSwitch = Float.NaN, animatedSegment = Float.NaN;
+    private float animatedTab = Float.NaN, animatedSwitch = Float.NaN;
 
     @Override
     public void layout(float x, float y, float width, float height) {
@@ -67,20 +68,34 @@ public final class UiComponentLabSection implements ClickGuiSection {
         m.put("height", height);
         m.put("kit", kit);
         m.put("page", page);
-        m.put("tab", tab);
-        m.put("chip", chip);
-        m.put("segment", segment);
-        m.put("list", list);
-        m.put("radio", radio);
-        m.put("focus", focus);
-        m.put("value", textInput.text());
-        m.put("caret", textInput.cursor());
-        m.put("caretOffset", caretOffset());
-        m.put("slider", slider);
-        m.put("enabled", enabled);
-        m.put("checked", checked);
-        m.put("clicks", clicks);
-        m.put("last", last);
+        // Only active-page props contribute to the tree signature. In particular,
+        // clicking a button must not launch a new Javet render just because the
+        // dev event counter changed on a different page.
+        switch (page) {
+            case "selection" -> {
+                m.put("chip", chip);
+                m.put("segment", segment);
+                m.put("radio", radio);
+                m.put("enabled", enabled);
+                m.put("checked", checked);
+            }
+            case "inputs" -> {
+                m.put("focus", focus);
+                m.put("value", textInput.text());
+                m.put("caret", textInput.cursor());
+                m.put("caretOffset", caretOffset());
+                m.put("slider", slider);
+            }
+            case "navigation" -> {
+                m.put("tab", tab);
+                m.put("list", list);
+            }
+            case "states" -> {
+                m.put("clicks", clicks);
+                m.put("last", last);
+            }
+            default -> { }
+        }
         return m;
     }
 
@@ -102,6 +117,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
         if (minecraft == null || minecraft.getResourceManager() == null || ClickGuiRenderer.currentRenderer() == null) return;
         if (handle.consumeChanged()) {
             runtime = null;
+            actionsBoundTo = null;
             scripts.reset();
         }
         if (!handle.ensureLoaded(minecraft.getResourceManager())) {
@@ -110,15 +126,12 @@ public final class UiComponentLabSection implements ClickGuiSection {
         }
         UiScriptModule script = handle.module();
         if (script == null) return;
-        float dt = Math.max(0f, Math.min(.1f, AnimationUtility.deltaTime()));
+        float dt = Math.max(0f, Math.min(.1f, AnimationUtility.deltaTime(AnimationUtility.Mode.NANOS)));
         float targetTab = switch (tab) { case "activity" -> 1f; case "settings" -> 2f; default -> 0f; };
-        float targetSegment = switch (segment) { case "day" -> 0f; case "month" -> 2f; default -> 1f; };
-        if (!Float.isFinite(animatedSegment)) animatedSegment = targetSegment;
         if (!Float.isFinite(animatedTab)) animatedTab = targetTab;
         if (!Float.isFinite(animatedSwitch)) animatedSwitch = enabled ? 1f : 0f;
         float response = 1f - (float) Math.exp(-14f * dt);
         animatedTab += (targetTab - animatedTab) * response;
-        animatedSegment += (targetSegment - animatedSegment) * response;
         animatedSwitch += ((enabled ? 1f : 0f) - animatedSwitch) * response;
         Map<String, Object> m = model();
         TextRenderer font = Fonts.renderer("Roboto", FontInfo.Type.Regular, ClickGuiRenderer.getOnestMedium());
@@ -126,7 +139,10 @@ public final class UiComponentLabSection implements ClickGuiSection {
                 width, height, font, x, y, width, height, () -> m, null, this::animatedBounds);
         if (next == null) return;
         runtime = next;
-        registerActions(runtime);
+        if (actionsBoundTo != next) {
+            registerActions(next);
+            actionsBoundTo = next;
+        }
         runtime.input().updateHover(runtime.root(), mouseX, mouseY);
         if (sliderDragging) adjustSlider(mouseX);
         updateTextInputArea();
@@ -155,14 +171,6 @@ public final class UiComponentLabSection implements ClickGuiSection {
                     b.x() + animatedTab * itemWidth + 12f, b.y() + 45f,
                     Math.max(1f, itemWidth - 24f), 3f));
         }
-        UiNode group = find(runtime.root(), "lab:segments");
-        if (group != null && "selection".equals(page)) {
-            UiBounds b = group.bounds();
-            float gap = 2f;
-            float each = (b.width() - 2f * gap) / 3f;
-            patches.put("lab:segments:selection", new UiBounds(
-                    b.x() + animatedSegment * (each + gap), b.y(), each, 40f));
-        }
         UiNode toggle = find(runtime.root(), "lab:switch");
         if (toggle != null && "selection".equals(page)) {
             UiBounds b = toggle.bounds();
@@ -171,6 +179,9 @@ public final class UiComponentLabSection implements ClickGuiSection {
             patches.put("lab:switch:handle", new UiBounds(
                     b.x() + left, b.y() + (32f - handleSize) * .5f,
                     handleSize, handleSize));
+            patches.put("lab:switch:check", new UiBounds(
+                    b.x() + left + (handleSize - 16f) * .5f,
+                    b.y() + (32f - 12f) * .5f, 16f, 12f));
         }
         return patches;
     }
@@ -276,6 +287,13 @@ public final class UiComponentLabSection implements ClickGuiSection {
         UiBounds b = node.bounds();
         float fraction = Math.max(0f, Math.min(1f, (pointerX - b.x()) / Math.max(1f, b.width())));
         slider = Math.round(fraction * 100f);
+    }
+
+    @Override
+    public void mouseMoved(float mouseX, float mouseY) {
+        if (runtime == null || runtime.root() == null) return;
+        runtime.input().updateHover(runtime.root(), mouseX, mouseY);
+        if (sliderDragging) adjustSlider(mouseX);
     }
 
     @Override

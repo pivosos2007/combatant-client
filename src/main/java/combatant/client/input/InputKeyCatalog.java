@@ -13,10 +13,18 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class InputKeyCatalog {
     private static final Map<String, InputKey> BY_NAME = new HashMap<>();
     private static final Map<PhysicalId, InputKey> BY_PHYSICAL = new HashMap<>();
+    // SDL physical scancodes and mouse buttons are small integer ranges.
+    private static final InputKey[] KEYBOARD_BY_CODE = new InputKey[512];
+    private static final InputKey[] MOUSE_BY_CODE = new InputKey[16];
+    // HUD/held-bind checks can run every render frame. Cache immutable parsed chords.
+    // Cap retained configuration strings to avoid unbounded growth from dynamic input.
+    private static final int MAX_CACHED_CHORDS = 512;
+    private static final Map<String, InputChord> PARSED_CHORDS = new ConcurrentHashMap<>();
 
     static {
         for (char letter = 'A'; letter <= 'Z'; letter++) {
@@ -123,6 +131,10 @@ public final class InputKeyCatalog {
     private static void register(InputKey key, String... aliases) {
         BY_NAME.put(normalize(key.canonicalName()), key);
         BY_PHYSICAL.put(new PhysicalId(key.device(), key.physicalKey()), key);
+        InputKey[] direct = key.device() == InputDevice.KEYBOARD ? KEYBOARD_BY_CODE : MOUSE_BY_CODE;
+        if (key.physicalKey() >= 0 && key.physicalKey() < direct.length) {
+            direct[key.physicalKey()] = key;
+        }
         for (String alias : aliases) BY_NAME.put(normalize(alias), key);
 
         if (key.device() == InputDevice.KEYBOARD) {
@@ -145,15 +157,18 @@ public final class InputKeyCatalog {
     }
 
     public static InputKey keyboardEvent(int physicalKey, int shortcutKey) {
-        InputKey known = BY_PHYSICAL.get(new PhysicalId(InputDevice.KEYBOARD, physicalKey));
+        InputKey known = physicalKey >= 0 && physicalKey < KEYBOARD_BY_CODE.length
+                ? KEYBOARD_BY_CODE[physicalKey]
+                : BY_PHYSICAL.get(new PhysicalId(InputDevice.KEYBOARD, physicalKey));
         String canonical = known != null ? known.canonicalName() : "UNKNOWN";
         return new InputKey(physicalKey, shortcutKey, InputDevice.KEYBOARD, canonical);
     }
 
     public static InputKey mouseEvent(int button) {
-        InputKey known = BY_PHYSICAL.get(new PhysicalId(InputDevice.MOUSE, button));
-        String canonical = known != null ? known.canonicalName() : "MOUSE_" + button;
-        return new InputKey(button, button, InputDevice.MOUSE, canonical);
+        InputKey known = button >= 0 && button < MOUSE_BY_CODE.length
+                ? MOUSE_BY_CODE[button]
+                : BY_PHYSICAL.get(new PhysicalId(InputDevice.MOUSE, button));
+        return known != null ? known : new InputKey(button, button, InputDevice.MOUSE, "MOUSE_" + button);
     }
 
     public static InputKey fromName(String name) {
@@ -173,7 +188,20 @@ public final class InputKeyCatalog {
     }
 
     public static InputChord parseChord(String serialized) {
-        if (serialized == null || serialized.isBlank()) return new InputChord(List.of());
+        if (serialized == null || serialized.isBlank()) return EMPTY_CHORD;
+        InputChord cached = PARSED_CHORDS.get(serialized);
+        if (cached != null) return cached;
+        InputChord parsed = parseChordUncached(serialized);
+        if (PARSED_CHORDS.size() < MAX_CACHED_CHORDS) {
+            InputChord existing = PARSED_CHORDS.putIfAbsent(serialized, parsed);
+            if (existing != null) return existing;
+        }
+        return parsed;
+    }
+
+    private static final InputChord EMPTY_CHORD = new InputChord(List.of());
+
+    private static InputChord parseChordUncached(String serialized) {
         Map<PhysicalId, InputKey> unique = new LinkedHashMap<>();
         for (String part : serialized.split("\\+")) {
             InputKey key = fromName(part);

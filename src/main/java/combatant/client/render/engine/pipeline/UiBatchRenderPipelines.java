@@ -197,6 +197,56 @@ public final class UiBatchRenderPipelines {
             .build();
 
     @PipelineRegister
+    public static final RenderPipeline UI_MATERIAL_TEXTURED_PRIMITIVE_BATCH = new ExtendedRenderPipelineBuilder(
+            UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_material_textured_primitive_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS7,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_material_primitive_fast.vert"))
+            .withFragmentShader(shader("ui_material_textured_primitive_batch.frag"))
+            .withSampler("u_MaterialMicro")
+            .withContract(RenderPipelineContract.UI_WARPED)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_MATERIAL_SCENE_TEXTURED_PRIMITIVE_BATCH = new ExtendedRenderPipelineBuilder(
+            UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_material_scene_textured_primitive_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS7,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_material_primitive_fast.vert"))
+            .withFragmentShader(shader("ui_material_scene_textured_primitive_batch.frag"))
+            .withSampler("u_SceneLight")
+            .withSampler("u_MaterialMicro")
+            .withContract(RenderPipelineContract.UI_WARPED)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+
+    // Scene-lit material variant: source scene sampled only from an immutable snapshot.
+    @PipelineRegister
+    public static final RenderPipeline UI_MATERIAL_SCENE_PRIMITIVE_BATCH = new ExtendedRenderPipelineBuilder(
+            UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_material_scene_primitive_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS7,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_material_primitive_fast.vert"))
+            .withFragmentShader(shader("ui_material_scene_primitive_batch.frag"))
+            .withSampler("u_SceneLight")
+            .withContract(RenderPipelineContract.UI_WARPED)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+
+    @PipelineRegister
     public static final RenderPipeline UI_ROUNDED_GLOW_BATCH = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_rounded_glow_batch"))
             .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)

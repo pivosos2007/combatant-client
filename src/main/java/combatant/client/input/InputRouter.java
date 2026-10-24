@@ -21,9 +21,10 @@ public final class InputRouter {
     }
 
     public <T extends InputButtonEvent> T route(T event) {
-        state.apply(event.key(), event.action());
+        boolean changed = state.apply(event.key(), event.action());
         if (event instanceof MouseInputEvent mouse) state.updateMousePosition(mouse.x(), mouse.y());
-        bindings.onStateChanged(event.focus());
+        if (changed) bindings.onStateChanged(event.key(), event.focus());
+        else bindings.onFocusChanged(event.focus());
         return Events.BUS.post(event);
     }
 

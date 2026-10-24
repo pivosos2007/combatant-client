@@ -4706,7 +4706,21 @@ public final class Renderer2D {
         float rounding = Math.min(primitive.rounding(), (float) Math.min(w, h) * 0.45f);
 
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.MATERIAL_PRIMITIVE, null, null);
+        boolean physicalTexture = material.mode() == UiSurfaceMaterialSpec.Mode.SATIN_TITANIUM
+                || material.mode() == UiSurfaceMaterialSpec.Mode.BRUSHED_METAL
+                || material.mode() == UiSurfaceMaterialSpec.Mode.GRAPHITE
+                || material.mode() == UiSurfaceMaterialSpec.Mode.SOFT_TOUCH
+                || material.mode() == UiSurfaceMaterialSpec.Mode.CERAMIC;
+        boolean hasAtlas = physicalTexture && material.microtextureEnabled()
+                && combatant.client.render.engine.renderer.ui.UiMaterialMicroAtlas.resolve() != null;
+        boolean sceneLit = physicalTexture && material.lighting().enabled();
+        UiBatchType materialType = sceneLit
+                ? (hasAtlas ? UiBatchType.MATERIAL_SCENE_TEXTURED_PRIMITIVE : UiBatchType.MATERIAL_SCENE_PRIMITIVE)
+                : (hasAtlas ? UiBatchType.MATERIAL_TEXTURED_PRIMITIVE : UiBatchType.MATERIAL_PRIMITIVE);
+        DrawBatch batch = UI_BATCHER.getOrCreate(materialType, null, null);
+        if (batch != null && materialType.requiresMaterialScene()) {
+            batch.materialLightingSource = material.lighting().source();
+        }
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -4764,7 +4778,7 @@ public final class Renderer2D {
                 .vec4(points[4], points[5], points[6], points[7])
                 .vec4(points[8], points[9], points[10], points[11])
                 .vec4(points[12], points[13], points[14], points[15])
-                .vec4(pointCount, rounding, 0.0f, 1.0f)
+                .vec4(pointCount, rounding, material.lighting().strength(), material.lighting().samplingRadiusPx())
                 .vec4(material.mode().shaderId(), material.detailScale(), material.roughness(), material.response())
                 .vec4(accentR, accentG, accentB, material.bevelStrength())
                 .next();
