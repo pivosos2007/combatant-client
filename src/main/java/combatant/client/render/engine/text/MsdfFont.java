@@ -750,7 +750,6 @@ public final class MsdfFont implements GlyphFont {
                             sdfEmScale = STBTruetype.stbtt_ScaleForMappingEmToPixels(info2, sdfAtlasSize);
                             extraRows = Math.min(768, 4096 - atlasHeight);
                         } else {
-                            info2.free();
                             MemoryUtil.memFree(data);
                         }
                     }
@@ -810,7 +809,6 @@ public final class MsdfFont implements GlyphFont {
             }
 
             if (glyphs.isEmpty() && (shaper == null || glyphIds.isEmpty())) {
-                if (nativeFont != null) nativeFont.free();
                 if (nativeFontData != null) MemoryUtil.memFree(nativeFontData);
                 setLastError("msdf glyphs empty/unresolvable: " + jsonId);
                 warnBadAtlas(jsonId, "glyphs-empty", glyphArray == null
@@ -845,7 +843,6 @@ public final class MsdfFont implements GlyphFont {
             ByteBuffer[] uploadBacking = new ByteBuffer[1];
             Texture texture = uploadTexture(image, extraRows, uploadBacking);
             if (texture == null) {
-                if (nativeFont != null) nativeFont.free();
                 if (nativeFontData != null) MemoryUtil.memFree(nativeFontData);
                 setLastError("msdf texture upload failed: " + pngId);
                 warnBadAtlas(jsonId, "texture-upload", "texture " + pngId + " could not be uploaded to the GPU");
@@ -1018,7 +1015,8 @@ public final class MsdfFont implements GlyphFont {
                 released = true;
                 if (texture != null) texture.close();
                 if (uploadPixels != null) MemoryUtil.memFree(uploadPixels);
-                if (nativeFont != null) nativeFont.free();
+                // nativeFont comes from STBTTFontinfo.create(): a GC-owned buffer. Calling free() on it hands a
+                // pointer jemalloc never allocated to je_free and corrupts the native heap.
                 if (nativeFontData != null) MemoryUtil.memFree(nativeFontData);
             }
         }

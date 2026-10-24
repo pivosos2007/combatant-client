@@ -64,7 +64,6 @@ public class Font implements GlyphFont {
         fontData.put(buffer.duplicate()).flip();
         fontInfo = STBTTFontinfo.create();
         if (!STBTruetype.stbtt_InitFont(fontInfo, fontData)) {
-            fontInfo.free();
             MemoryUtil.memFree(fontData);
             throw new IllegalArgumentException("Invalid TrueType font");
         }
