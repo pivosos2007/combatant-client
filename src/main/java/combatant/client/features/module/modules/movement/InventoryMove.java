@@ -134,6 +134,7 @@ public class InventoryMove extends Module {
 
     @Override
     public void onDisable() {
+        flushHeldPackets();
         resetGrimState();
         syncMovementKeysFromPhysical();
     }
@@ -275,6 +276,7 @@ public class InventoryMove extends Module {
                 syncMovementKeysFromPhysical();
             }
         } else if (grimPhase == GrimPhase.ACTIVE) {
+            flushHeldPackets();
             resetGrimState();
         }
 

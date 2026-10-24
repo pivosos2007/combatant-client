@@ -43,6 +43,7 @@ import combatant.client.config.values.StringValue;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
+import combatant.client.runtime.error.FailureIsolation;
 import combatant.client.features.module.ModuleSubcategory;
 
 import java.util.UUID;
@@ -77,13 +78,17 @@ public class FakePlayer extends Module {
     public FakePlayer() {
         AttackEntityCallback.EVENT.register((player, world, hand, target, hitResult) -> {
             if (!isEnabled()) return InteractionResult.PASS;
-            if (mc.player == null || mc.level == null) return InteractionResult.PASS;
-            if (hand != InteractionHand.MAIN_HAND) return InteractionResult.PASS;
-            if (fakePlayer == null || target != fakePlayer) return InteractionResult.PASS;
-            if (!(player instanceof Player attacker)) return InteractionResult.PASS;
-            if (fakePlayer.hurtTime > 0) return InteractionResult.PASS;
+            try {
+                if (mc.player == null || mc.level == null) return InteractionResult.PASS;
+                if (hand != InteractionHand.MAIN_HAND) return InteractionResult.PASS;
+                if (fakePlayer == null || target != fakePlayer) return InteractionResult.PASS;
+                if (!(player instanceof Player attacker)) return InteractionResult.PASS;
+                if (fakePlayer.hurtTime > 0) return InteractionResult.PASS;
 
-            handleAttack(attacker, fakePlayer);
+                handleAttack(attacker, fakePlayer);
+            } catch (RuntimeException e) {
+                FailureIsolation.reportModule(this, "attack callback", e);
+            }
             return InteractionResult.PASS;
         });
     }

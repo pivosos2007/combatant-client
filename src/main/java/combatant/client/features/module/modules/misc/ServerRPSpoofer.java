@@ -13,6 +13,7 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.common.ClientboundResourcePackPushPacket;
 import net.minecraft.network.protocol.common.ServerboundResourcePackPacket;
@@ -54,11 +55,11 @@ public final class ServerRPSpoofer extends Module {
         if (!isEnabled() || connection == null) return false;
         UUID id = packet.id();
         connection.send(new ServerboundResourcePackPacket(id, Action.ACCEPTED));
-        SCHEDULER.schedule(() -> {
+        SCHEDULER.schedule(() -> Minecraft.getInstance().execute(() -> {
             if (!connection.isConnected()) return;
             if (sendDownloaded.get()) connection.send(new ServerboundResourcePackPacket(id, Action.DOWNLOADED));
             connection.send(new ServerboundResourcePackPacket(id, Action.SUCCESSFULLY_LOADED));
-        }, delayMs.get(), TimeUnit.MILLISECONDS);
+        }), delayMs.get(), TimeUnit.MILLISECONDS);
         return true;
     }
 }

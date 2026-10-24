@@ -18,6 +18,7 @@ Combatant client commands start with `@` and are handled locally instead of bein
 | `@runtime` | `@panic`, `@jarreplace` | `@runtime [status\|panic\|resume\|jar\|source]` | Shows or changes the client runtime and panic state. | — |
 | `@schematic` | `@schem`, `@litematic`, `@build` | `@schematic [menu\|load <name>\|origin [here\|look]\|layer <n\|up\|down>\|materials\|unload]` | Opens the schematic menu, loads `.litematic` files from `schematics/`, sets the origin, picks the layer and lists materials. | — |
 | `@serverinfo` | `@server`, `@sinfo` | `@serverinfo` | Shows information about the current world or server. | — |
+| `@stability` | — | `@stability [run\|resume\|stop] [ticks]` | Toggles every module in turn and writes `combatant/stability/report.md` with failures, logged errors and crashes. A file named `combatant/stability/autorun` starts the run on world join and quits the game when it ends. | Singleplayer world |
 | `@staff` | `@staffs`, `@admin` | `@staff [list\|add\|remove\|toggle\|clear] [player]` | Manages the client staff list. | — |
 | `@toggle` | `@t` | `@toggle <module> [on\|off\|toggle]` | Enables, disables, or toggles a module. | — |
 | `@tps` | `@servertps` | `@tps` | Shows estimated server ticks per second. | Multiplayer server |

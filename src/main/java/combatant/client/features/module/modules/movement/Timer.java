@@ -126,7 +126,6 @@ public class Timer extends Module {
     @Override
     public void onEnable() {
         tickTimer = 1f;
-        externalTickTimer = 1f;
         if (mode.get() == Mode.VULCAN) {
             vulcanWindowHead = 0;
             vulcanWindowCount = 0;
@@ -146,7 +145,6 @@ public class Timer extends Module {
     @Override
     public void onDisable() {
         tickTimer = 1f;
-        externalTickTimer = 1f;
         vulcanWindowHead = 0;
         vulcanWindowCount = 0;
         vulcanFastCount = 0;

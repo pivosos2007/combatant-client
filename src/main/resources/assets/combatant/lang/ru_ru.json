@@ -3180,6 +3180,7 @@
   "command.serverinfo.description": "Показывает информацию о текущем мире или сервере.",
   "command.staff.description": "Управляет списком персонала клиента.",
   "command.toggle.description": "Включает, отключает или переключает модуль.",
+  "command.stability.description": "Только в одиночной игре: по очереди переключает каждый модуль и сообщает об ошибках, записях в логе и вылетах.",
   "command.tps.description": "Показывает расчётное количество серверных тиков в секунду.",
   "command.username.description": "Показывает текущее имя Minecraft и UUID.",
   "command.xaero.description": "Добавляет, показывает или удаляет точки Xaero.",

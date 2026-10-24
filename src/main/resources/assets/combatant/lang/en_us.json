@@ -3396,6 +3396,7 @@
   "command.serverinfo.description": "Shows information about the current world or server.",
   "command.staff.description": "Manages the client staff list.",
   "command.toggle.description": "Enables, disables, or toggles a module.",
+  "command.stability.description": "Singleplayer only: toggles every module in turn and reports failures, logged errors and crashes.",
   "command.tps.description": "Shows estimated server ticks per second.",
   "command.username.description": "Shows the current Minecraft username and UUID.",
   "command.xaero.description": "Adds, lists, or removes Xaero waypoints.",

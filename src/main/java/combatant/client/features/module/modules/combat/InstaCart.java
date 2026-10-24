@@ -408,6 +408,11 @@ public final class InstaCart extends Module {
     }
 
     private void reset(boolean releaseRotation) {
+        if (previousSlot >= 0) {
+            // Switching the slot cancels the draw server-side without firing; release would shoot.
+            if (mc.player != null && mc.player.isUsingItem()) mc.player.stopUsingItem();
+            restoreSlot();
+        }
         phase = Phase.IDLE;
         phaseTicks = 0;
         acted = false;

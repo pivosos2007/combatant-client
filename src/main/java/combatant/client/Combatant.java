@@ -546,6 +546,7 @@ public class Combatant implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         NativeMemoryGuard.initialize();
+        combatant.client.runtime.stability.ModuleStabilityRun.register();
         CombatantRenderEngineBootstrap.init();
         PostProcessManager.register(new NetherPortalRiftPass());
         PostProcessManager.register(new SleepOverlayPass());

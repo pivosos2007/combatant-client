@@ -146,6 +146,7 @@ public final class Velocity extends Module {
     private final NumberValue<Float> vulcan297ExemptRatio = visibleWhen(num("velocityVulcan297ExemptRatio", "vulcan297_exempt_ratio", 0.0f, 0.0f, 1.0f), this::isVulcan297Mode);
     private final BooleanMapValue vulcan297Exempts = visibleWhen(group("velocityVulcan297Exempts", "vulcan297_exempts", vulcan297ExemptDefaults()), this::isVulcan297Mode);
     private final Queue<DelayedPacket> delayedPackets = new ArrayDeque<>();
+    private Connection delayedConnection;
     private int pause;
     private int transactionBuffer;
     private boolean reversalHandlingVelocity;
@@ -224,6 +225,9 @@ public final class Velocity extends Module {
                     && isLocalPlayerVelocity(packet)
                     && delay.get() > 0) {
                 event.cancel();
+                Connection current = mc.getConnection() != null ? mc.getConnection().getConnection() : null;
+                if (current != delayedConnection) delayedPackets.clear();
+                delayedConnection = current;
                 delayedPackets.add(new DelayedPacket(packet, delay.get()));
                 return;
             }
@@ -854,6 +858,12 @@ public final class Velocity extends Module {
     }
 
     private void processDelayedPackets() {
+        Connection current = mc.getConnection() != null ? mc.getConnection().getConnection() : null;
+        if (mc.player == null || mc.level == null || current == null || current != delayedConnection) {
+            delayedPackets.clear();
+            delayedConnection = null;
+            return;
+        }
         int size = delayedPackets.size();
         for (int i = 0; i < size; i++) {
             DelayedPacket delayed = delayedPackets.poll();
@@ -1015,6 +1025,7 @@ public final class Velocity extends Module {
 
     private void resetState() {
         delayedPackets.clear();
+        delayedConnection = null;
         pause = 0;
         transactionBuffer = 0;
         reversalHandlingVelocity = false;
