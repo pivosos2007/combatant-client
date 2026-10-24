@@ -50,32 +50,32 @@ A complete feature list and detailed documentation will be added separately.
 
 Combatant requires:
 
-- Minecraft 26.2
-- Fabric Loader 0.19.3
-- Fabric API [`0.152.2+26.2`](https://modrinth.com/mod/fabric-api/version/0.152.2%2B26.2)
+- Minecraft 26.3
+- Fabric Loader 0.19.5
+- Fabric API [`0.163.0+26.3`](https://modrinth.com/mod/fabric-api/version/0.163.0%2B26.3) or newer
 - Java 25
-- Sodium [`sodium-fabric-0.9.2+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.2-fabric)
+- Sodium `0.9.2` – `0.9.x` for 26.3: [`0.9.2`](https://modrinth.com/mod/sodium/version/mc26.3-0.9.2-fabric) (stable) or [`0.9.3-beta.1`](https://modrinth.com/mod/sodium/version/mc26.3-0.9.3-beta.1-fabric) (beta; the version Combatant is built against)
 
 Addon/API projects should target the same Minecraft, Fabric Loader, Fabric API, Java, and Sodium versions as the client.
 
 ## Supported mods
 
-Combatant includes optional compatibility integrations for Iris, ImmediatelyFast, ViaFabricPlus, Entity Culling, Xaero's Minimap, and Xaero's World Map. The Xaero integration can create, list, and remove waypoints through the `@xaero` command; see the complete [`Client Commands`](CLIENT_COMMANDS.md) reference for its syntax and all other client commands.
+Combatant includes optional compatibility integrations for Iris, ImmediatelyFast, ViaFabricPlus, Entity Culling, More Culling, Litematica, Xaero's Minimap, and Xaero's World Map. The Xaero integration can create, list, and remove waypoints through the `@xaero` command; see the complete [`Client Commands`](CLIENT_COMMANDS.md) reference for its syntax and all other client commands.
 
 ## How to install
 
-1. Install Minecraft 26.2 with Fabric Loader 0.19.3.
+1. Install Minecraft 26.3 with Fabric Loader 0.19.5.
 2. Use Java 25 for the game profile.
 3. Download the Combatant jar from the GitHub release.
 4. Download the required dependency jars:
-   - Fabric API [`0.152.2+26.2`](https://modrinth.com/mod/fabric-api/version/0.152.2%2B26.2)
-   - Sodium [`sodium-fabric-0.9.2+mc26.2`](https://modrinth.com/mod/sodium/version/mc26.2-0.9.2-fabric)
-5. Put `combatant-0.1.3.jar`, Fabric API, and Sodium into your Minecraft `mods` folder.
-6. Start the Fabric 26.2 profile.
+   - Fabric API [`0.163.0+26.3`](https://modrinth.com/mod/fabric-api/version/0.163.0%2B26.3) or newer
+   - Sodium [`0.9.2`](https://modrinth.com/mod/sodium/version/mc26.3-0.9.2-fabric) or [`0.9.3-beta.1`](https://modrinth.com/mod/sodium/version/mc26.3-0.9.3-beta.1-fabric) for 26.3
+5. Put `combatant-0.3.0.jar`, Fabric API, and Sodium into your Minecraft `mods` folder.
+6. Start the Fabric 26.3 profile.
 
 ## Renderer backends
 
-Combatant supports both renderer backends available for Minecraft 26.2:
+Combatant supports both renderer backends available for Minecraft 26.3:
 
 - OpenGL
 - Vulkan

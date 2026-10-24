@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Platform
 - Synced with upstream `origin/26.3`: Combatant now targets **Minecraft 26.3**. Local shaders declare explicit SPIR-V interface locations; the UI material-primitive batch binds its `UIGlassFrame` uniform (fixed a first-frame crash).
+- **Sodium**: Combatant now accepts any Sodium `0.9.x` from `0.9.2` (`>=0.9.2 <0.10.0`) instead of exactly `0.9.2+mc26.3`, and is built against `0.9.3-beta.1+mc26.3`. Verified at runtime with 0.9.3-beta.1 together with Iris 1.11.7, Lithium, More Culling 1.9.0, Entity Culling, ImmediatelyFast, Litematica, EMF/ETF and the rest of a 25-mod pack. README requirements updated from 26.2 to 26.3.
 
 ### Unified Automation Runtime (`combatant.client.automation`)
 - **Control leases**: `ActionCoordinator` arbitrates rotation, movement keys, jump, sneak, sprint, hotbar, inventory and interaction by named priority tiers (`ActionPriority`, same scale as `RotationManager`). Preemption notifies the loser; ties keep the current holder; slot leases taken directly through `InventorySwap` are respected.
@@ -91,6 +92,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixes
 - SchematicBuilder: fixed a tick overflow in the shortfall/notification timers; cells without support no longer use up plan attempts; reach is tested against real geometry.
 - Crash investigation: in-game `ZipException: invalid LOC header` / `NoClassDefFoundError` crashes when enabling modules or clicking in the ClickGui were caused by replacing the mod jar (or recompiling dev classes) while the game was running, not by module code. A smoke run enabling all 199 toggleable modules one by one produced no failures.
+- **More Culling 1.9.0 crash**: More Culling 1.9.0 added a `Direction` parameter to `CullingUtils.shouldCullPaintingBack`, so Combatant's compat mixin failed to apply, the resource reload aborted and the game crashed natively on startup. The compat hooks now take no target arguments (they bind to any signature) and are optional (`require = 0`), so a future change in More Culling skips the hook instead of crashing.
 
 ### Removed
 - **Anticheat presets**: the per-module preset system (`anticheat_mode`, `AntiCheatPreset`, `AntiCheatPresetDefaults`) is gone. Every module keeps its former default behaviour and uses its settings exactly as set.
