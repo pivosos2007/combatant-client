@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.player.schematic;
 
+import combatant.client.util.aiming.RotationManager;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -252,6 +253,7 @@ final class BuildPlanner {
     }
 
     private static final double CURSOR_EPSILON = 1.0e-6;
+    private static final double GRIM_CUBE_MARGIN = 2.0e-3;
 
     /**
      * Grim {@code PositionPlace}/{@code FabricatedPlace}: the cursor ({@code hit - support}) must lie inside
@@ -304,7 +306,24 @@ final class BuildPlanner {
      */
     static boolean legalClick(LocalPlayer player, Rotation rotation, BlockPos support, Direction face, Vec3 hit) {
         VoxelShape shape = player.level().getBlockState(support).getShape(player.level(), support);
-        return legalClick(player.getEyePosition(), rotation, support, shape, face, hit, player.blockInteractionRange());
+        Vec3 eyes = player.getEyePosition();
+        double reach = player.blockInteractionRange();
+        if (!legalClick(eyes, rotation, support, shape, face, hit, reach)) return false;
+        // The click leaves at the start of the tick, before this tick's movement packet: Grim judges it against the
+        // rotation last sent, then again once the new one arrives (which also accepts the last one).
+        return rotation == null || grimRayHitsCube(eyes, RotationManager.INSTANCE.getServerRotation(), support, reach);
+    }
+
+    /**
+     * Grim {@code RotationPlace.didRayTraceHit}: the ray along {@code sent} from the eyes meets the clicked
+     * block's full cube within {@code reach}, whatever the block's own outline. A slightly shrunk cube leaves
+     * room for float differences against Grim's look vector.
+     */
+    static boolean grimRayHitsCube(Vec3 eyes, Rotation sent, BlockPos support, double reach) {
+        if (sent == null) return false;
+        AABB cube = new AABB(support).deflate(GRIM_CUBE_MARGIN);
+        if (cube.contains(eyes)) return true;
+        return cube.clip(eyes, eyes.add(sent.directionVector().scale(reach))).isPresent();
     }
 
     /**
