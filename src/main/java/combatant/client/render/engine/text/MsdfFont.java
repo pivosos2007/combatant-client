@@ -492,6 +492,8 @@ public final class MsdfFont implements GlyphFont {
         private final it.unimi.dsi.fastutil.ints.IntOpenHashSet unpackableIds = new it.unimi.dsi.fastutil.ints.IntOpenHashSet();
         private int refs;
         private boolean released;
+        private boolean staleWarned;
+        private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger("Combatant/MsdfFont");
 
         private MsdfAtlas(Texture texture,
                           float distanceRange,
@@ -548,7 +550,12 @@ public final class MsdfFont implements GlyphFont {
             if (shaper == null) return null;
             OpenTypeShaper.ShapedRun run = shaper.shape(text);
             // Measure uses OpenType metrics without requiring a render context.
-            // Upload new glyphs only from the actual render thread.
+            // Upload new glyphs only from the actual render thread, and never into a released atlas: a font still
+            // held after a resource reload would otherwise write into freed native pixels and corrupt the heap.
+            if (released) {
+                if (RenderSystem.isOnRenderThread()) warnStaleUse();
+                return run;
+            }
             if (!RenderSystem.isOnRenderThread()) return run;
             boolean complete = true;
             for (OpenTypeShaper.PositionedGlyph slot : run.glyphs()) {
@@ -570,7 +577,18 @@ public final class MsdfFont implements GlyphFont {
             return complete ? run : null;
         }
 
+        /** Logged once per atlas: a font kept past a resource reload asked a released atlas for new glyphs. */
+        private void warnStaleUse() {
+            if (staleWarned) return;
+            staleWarned = true;
+            LOGGER.warn("MSDF atlas used after release (font kept past a resource reload); new glyph upload skipped");
+        }
+
         private boolean packGlyphById(int id) {
+            if (released) {
+                warnStaleUse();
+                return false;
+            }
             if (nativeFont == null || uploadPixels == null) return false;
             try (MemoryStack stack = MemoryStack.stackPush()) {
                 IntBuffer wOut = stack.mallocInt(1);
