@@ -17,6 +17,8 @@ import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.features.gui.preview.render.VisualPreviewBackgroundRenderer;
+import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.theme.Theme;
 import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.FastFps;
 import net.minecraft.client.Minecraft;
@@ -64,8 +66,10 @@ public enum VisualPreviewRenderer {
     private static void renderBackgroundBase(float width, float height) {
         Renderer2D renderer = Renderer2D.COLOR;
         renderer.begin();
+        int base = HudRenderUtil.mixColor(Theme.theme().windowBg() | 0xFF000000, 0xFF000000, 0.20f);
+        int lift = HudRenderUtil.mixColor(Theme.theme().windowHeader() | 0xFF000000, Theme.theme().accent() | 0xFF000000, 0.12f);
         renderer.quad(0.0, 0.0, width, height,
-                0xFF17313A, 0xFF10252F, 0xFF091820, 0xFF0D2028);
+                lift, base, HudRenderUtil.mixColor(base, 0xFF000000, 0.45f), base);
         renderer.render();
     }
 
@@ -85,12 +89,12 @@ public enum VisualPreviewRenderer {
 
         if (scene.screen().provider().showSceneTitle()) {
             ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getInterMedium(),
+                    ClickGuiRenderer.getOnestMedium(),
                     scene.screen().provider().title() + " | " + Math.max(0, FastFps.getFps()) + " FPS",
                     20.0f * scale,
                     17.0f * scale,
                     titleSize,
-                    0xFFF2F5F8,
+                    Theme.theme().textPrimary() | 0xFF000000,
                     false
             );
         }

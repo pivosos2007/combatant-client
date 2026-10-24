@@ -14,6 +14,8 @@ import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.theme.Theme;
+import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
@@ -137,12 +139,12 @@ public final class SwapTooltip extends AbstractHudElement {
                 hb,
                 rb,
                 1.0f,
-                HudRenderUtil.scaleAlpha(GLASS_VEIL, alpha)
+                HudRenderUtil.scaleAlpha(glassVeil(), alpha)
         );
 
         ViewportContext.scaledProjection();
         tr.begin(textScale, false, false);
-        int textColor = HudRenderUtil.scaleAlpha(color != 0 ? color : 0xFFFFFFFF, alpha);
+        int textColor = HudRenderUtil.scaleAlpha(color != 0 ? color : themeText(), alpha);
         renderText(tr, settings, x + padX, y + padY, textColor, alpha);
         tr.end();
 
@@ -212,6 +214,16 @@ public final class SwapTooltip extends AbstractHudElement {
                 () -> Renderer2D.COLOR.liquidGlassRect(
                         x, y, w, h, radius, GLASS_TINT, alpha, 1.0f,
                         Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL));
+    }
+
+    private static int glassVeil() {
+        Themes.Theme theme = Theme.theme();
+        return theme != null ? HudRenderUtil.setAlpha(theme.windowBg(), 0x2A) : GLASS_VEIL;
+    }
+
+    private static int themeText() {
+        Themes.Theme theme = Theme.theme();
+        return theme != null ? theme.textPrimary() | 0xFF000000 : 0xFFFFFFFF;
     }
 
     private static void resetState() {

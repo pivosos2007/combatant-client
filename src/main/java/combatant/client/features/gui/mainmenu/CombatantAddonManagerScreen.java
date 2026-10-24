@@ -135,8 +135,8 @@ public final class CombatantAddonManagerScreen extends Screen {
 
     @Override
     protected void init() {
-        titleRenderer = BuiltinFontCatalog.INTER_BOLD.renderer(TextRenderer.get());
-        bodyRenderer = BuiltinFontCatalog.INTER_MEDIUM.renderer(titleRenderer);
+        titleRenderer = BuiltinFontCatalog.ONEST_BOLD.renderer(TextRenderer.get());
+        bodyRenderer = BuiltinFontCatalog.ONEST_MEDIUM.renderer(titleRenderer);
         ensureSelection();
     }
 
@@ -325,7 +325,7 @@ public final class CombatantAddonManagerScreen extends Screen {
         float iconBox = 24f * SCALE;
         float iconX = x + 7f * SCALE;
         float iconY = y + 8f * SCALE;
-        Renderer2D.COLOR.roundedRectGradientQuad(iconX, iconY, iconBox, iconBox, 3f * SCALE, 1f, withAlpha(c.surface, 170), withAlpha(c.surfaceHover, 180), withAlpha(0xFF0D1118, 184), withAlpha(0xFF0D1118, 184));
+        Renderer2D.COLOR.roundedRectGradientQuad(iconX, iconY, iconBox, iconBox, 3f * SCALE, 1f, withAlpha(c.surface, 170), withAlpha(c.surfaceHover, 180), withAlpha(c.detailBottom, 184), withAlpha(c.detailBottom, 184));
         Renderer2D.COLOR.roundedRectStrokeGradient(iconX, iconY, iconBox, iconBox, 3f * SCALE, 1f, 0.5f, HudRenderUtil.mixColor(c.stroke, c.strokeSoft, 0.35f), c.stroke, 90f);
         drawSvgGradient(addonIcon(addon), iconX + 6.2f * SCALE, iconY + 6.2f * SCALE, 11.6f * SCALE, 11.6f * SCALE, c);
 
@@ -411,7 +411,7 @@ public final class CombatantAddonManagerScreen extends Screen {
     private void renderMetricLine(float x, float y, float w, String label, String value, String svg, PanelColors c, boolean hovered) {
         float r = 3.5f * SCALE;
         int fillTop = HudRenderUtil.mixColor(withAlpha(c.surface, 144), withAlpha(c.surfaceHover, 166), hovered ? 0.34f : 0.12f);
-        int fillBottom = HudRenderUtil.mixColor(withAlpha(0xFF0D1118, 158), withAlpha(c.surface, 150), hovered ? 0.18f : 0.05f);
+        int fillBottom = HudRenderUtil.mixColor(withAlpha(c.detailBottom, 158), withAlpha(c.surface, 150), hovered ? 0.18f : 0.05f);
         int stroke = HudRenderUtil.mixColor(c.stroke, c.strokeSoft, hovered ? 0.42f : 0.20f);
         Renderer2D.COLOR.roundedRectCornersQuad(x, y, w, METRIC_H, r, r, r, r, 1f, fillTop, fillTop, fillBottom, fillBottom);
         Renderer2D.COLOR.roundedRectStrokeCorners(x, y, w, METRIC_H, r, r, r, r, 0.55f, stroke);
@@ -425,7 +425,7 @@ public final class CombatantAddonManagerScreen extends Screen {
     private void renderSelectedDetails(float x, float y, float w, PanelColors c, AddonSnapshot selected, float mouseX, float mouseY) {
         float h = 42f * SCALE;
         Renderer2D.COLOR.roundedRectCornersQuad(x, y, w, h, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, 1f,
-                withAlpha(c.surface, 160), withAlpha(c.surfaceHover, 170), withAlpha(0xFF0D1118, 178), withAlpha(0xFF0D1118, 178));
+                withAlpha(c.surface, 160), withAlpha(c.surfaceHover, 170), withAlpha(c.detailBottom, 178), withAlpha(c.detailBottom, 178));
         Renderer2D.COLOR.roundedRectStrokeCorners(x, y, w, h, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, LEFT_CARD_R, 0.55f, HudRenderUtil.mixColor(c.stroke, c.strokeSoft, 0.36f));
         if (selected == null) {
             drawCentered(bodyRenderer, tr("screen.combatant.addon_manager.empty"), x + w * 0.5f, y + 17f * SCALE, BODY_FONT, c.mutedLabel);
@@ -434,7 +434,7 @@ public final class CombatantAddonManagerScreen extends Screen {
         float iconBox = 18f * SCALE;
         float iconX = x + 6f * SCALE;
         float iconY = y + 7f * SCALE;
-        Renderer2D.COLOR.roundedRectGradientQuad(iconX, iconY, iconBox, iconBox, 3f * SCALE, 1f, withAlpha(c.surface, 176), withAlpha(c.surfaceHover, 186), withAlpha(0xFF0D1118, 190), withAlpha(0xFF0D1118, 190));
+        Renderer2D.COLOR.roundedRectGradientQuad(iconX, iconY, iconBox, iconBox, 3f * SCALE, 1f, withAlpha(c.surface, 176), withAlpha(c.surfaceHover, 186), withAlpha(c.detailBottom, 190), withAlpha(c.detailBottom, 190));
         Renderer2D.COLOR.roundedRectStrokeGradient(iconX, iconY, iconBox, iconBox, 3f * SCALE, 1f, 0.5f, c.stroke, c.strokeSoft, 90f);
         drawSvgGradient(addonIcon(selected), iconX + 4.3f * SCALE, iconY + 4.3f * SCALE, 9.4f * SCALE, 9.4f * SCALE, c);
 
@@ -521,7 +521,7 @@ public final class CombatantAddonManagerScreen extends Screen {
         UiPrimitive pill = parallelogram(x, y, w, 9f * SCALE, 2.6f * SCALE, 0.72f * SCALE);
         Renderer2D.COLOR.primitive(pill, UiPaint.linear(
                 HudRenderUtil.mixColor(withAlpha(c.surface, 170), color, 0.09f),
-                withAlpha(0xFF0D1118, 178), 90f, 0f));
+                withAlpha(c.detailBottom, 178), 90f, 0f));
         Renderer2D.COLOR.primitiveStroke(pill,
                 UiPaint.solid(withAlpha(HudRenderUtil.mixColor(c.stroke, color, 0.42f), 118)),
                 UiStroke.of(0.42f * SCALE));
@@ -538,10 +538,10 @@ public final class CombatantAddonManagerScreen extends Screen {
                 : HudRenderUtil.mixColor(c.strokeSoft, c.accentSoft, 0.22f + hoverAnim * 0.38f);
         int tint = destructive
                 ? HudRenderUtil.mixColor(withAlpha(0x241518, 255), withAlpha(0x59282C, 255), 0.20f + hoverAnim * 0.30f)
-                : HudRenderUtil.mixColor(c.surfaceHover, withAlpha(0x203543, 255), 0.22f + hoverAnim * 0.24f);
+                : HudRenderUtil.mixColor(c.surfaceHover, HudRenderUtil.mixColor(c.accentSoft, c.surfaceHover, 0.55f), 0.22f + hoverAnim * 0.24f);
         int text = destructive
                 ? HudRenderUtil.mixColor(withAlpha(0xD7A7A7, 255), withAlpha(0xFFD1D1, 255), 0.20f + hoverAnim * 0.58f)
-                : HudRenderUtil.mixColor(withAlpha(0xD6DEE8, 255), withAlpha(0xF4FBFF, 255), 0.18f + hoverAnim * 0.48f);
+                : HudRenderUtil.mixColor(withAlpha(c.label, 255), withAlpha(c.title, 255), 0.18f + hoverAnim * 0.48f);
 
         // A real two-part button: dark socket at the nominal bounds and a raised glass cap.
         // Hover lifts it slightly; press collapses the cap back into the socket.
@@ -894,43 +894,60 @@ public final class CombatantAddonManagerScreen extends Screen {
         Themes.Theme theme = Theme.theme();
         int themeAccent = theme != null ? theme.accent() : 0xFFFFFFFF;
         int themeAccentSoft = theme != null ? theme.accentSoft() : themeAccent;
+        int themeBg = theme != null ? theme.windowBg() : 0xFF0D0F14;
+        int themeHeader = theme != null ? theme.windowHeader() : 0xFF14171F;
+        int themeSurface = theme != null ? theme.surface() : 0xFF1A1D24;
+        int themeSurfaceHover = theme != null ? theme.surfaceHover() : 0xFF1A1F28;
+        int themeStroke = theme != null ? theme.windowStroke() : 0xFF252A36;
+        int themeStrokeSoft = theme != null ? theme.strokeSoft() : 0xFF3A4A5A;
+        int themeText = theme != null ? theme.textPrimary() : 0xFFFFFFFF;
+        int themeMuted = theme != null ? theme.textMuted() : 0xFF808890;
+        int shadowTint = HudRenderUtil.mixColor(themeBg, 0xFF000000, 0.80f);
 
-        int bgTopLeft = withAlpha(0x0D0F14, bgAlpha);
-        int bgTopRight = withAlpha(0x101218, bgAlpha);
-        int bgBottomLeft = withAlpha(0x08090C, bgAlpha);
-        int bgBottomRight = withAlpha(0x0D0F14, bgAlpha);
-        int headerTopLeft = withAlpha(0x14171F, headerAlpha);
-        int headerTopRight = withAlpha(0x181B24, headerAlpha);
-        int headerBottomLeft = withAlpha(0x10131A, headerAlpha);
-        int headerBottomRight = withAlpha(0x14171F, headerAlpha);
-        int stroke = withAlpha(0x252A36, strokeAlpha);
-        int strokeSoft = withAlpha(0x3A4A5A, Math.round(alpha * 150f));
-        int surface = withAlpha(0x1A1D24, Math.round(alpha * 160f));
-        int surfaceHover = withAlpha(0x1A1F28, Math.round(alpha * 200f));
+        int bgBase = HudRenderUtil.mixColor(themeBg, 0xFF000000, 0.30f);
+        int bgLight = HudRenderUtil.mixColor(themeBg, themeSurface, 0.18f);
+        int bgDark = HudRenderUtil.mixColor(themeBg, 0xFF000000, 0.55f);
+        int headerBase = HudRenderUtil.mixColor(themeHeader, 0xFF000000, 0.12f);
+        int headerLight = HudRenderUtil.mixColor(themeHeader, themeSurface, 0.30f);
+        int headerDark = HudRenderUtil.mixColor(themeHeader, 0xFF000000, 0.30f);
+        int bgTopLeft = withAlpha(bgBase, bgAlpha);
+        int bgTopRight = withAlpha(bgLight, bgAlpha);
+        int bgBottomLeft = withAlpha(bgDark, bgAlpha);
+        int bgBottomRight = withAlpha(bgBase, bgAlpha);
+        int headerTopLeft = withAlpha(headerBase, headerAlpha);
+        int headerTopRight = withAlpha(headerLight, headerAlpha);
+        int headerBottomLeft = withAlpha(headerDark, headerAlpha);
+        int headerBottomRight = withAlpha(headerBase, headerAlpha);
+        int stroke = withAlpha(themeStroke, strokeAlpha);
+        int strokeSoft = withAlpha(themeStrokeSoft, Math.round(alpha * 150f));
+        int surface = withAlpha(themeSurface, Math.round(alpha * 160f));
+        int surfaceHover = withAlpha(themeSurfaceHover, Math.round(alpha * 200f));
         int accent = withAlpha(themeAccent, titleAlpha);
         int accentSoft = withAlpha(themeAccentSoft, Math.round(alpha * 180f));
-        int detailTop = withAlpha(0x1A1D24, Math.round(alpha * 160f));
-        int detailBottom = withAlpha(0x0D1118, Math.round(alpha * 185f));
-        int statusTop = withAlpha(0x1A1D24, Math.round(alpha * 150f));
-        int statusBottom = withAlpha(0x0D1118, Math.round(alpha * 175f));
+        int detailFloor = HudRenderUtil.mixColor(themeBg, 0xFF000000, 0.40f);
+        int detailTop = withAlpha(themeSurface, Math.round(alpha * 160f));
+        int detailBottom = withAlpha(detailFloor, Math.round(alpha * 185f));
+        int statusTop = withAlpha(themeSurface, Math.round(alpha * 150f));
+        int statusBottom = withAlpha(detailFloor, Math.round(alpha * 175f));
         int iconTop = withAlpha(themeAccent, titleAlpha);
         int iconBottom = withAlpha(HudRenderUtil.mixColor(themeAccent, themeAccentSoft, 0.58f), titleAlpha);
-        int iconShadow = withAlpha(0x060810, Math.round(alpha * 150f));
+        int iconShadow = withAlpha(shadowTint, Math.round(alpha * 150f));
+        int mutedText = HudRenderUtil.mixColor(themeMuted, themeText, 0.22f);
 
         return new PanelColors(
                 bgTopLeft, bgTopRight, bgBottomRight, bgBottomLeft,
                 headerTopLeft, headerTopRight, headerBottomRight, headerBottomLeft,
                 stroke, strokeSoft,
-                withAlpha(0x060810, shadowAlpha),
-                withAlpha(0xFFFFFF, titleAlpha),
-                withAlpha(0xFFFFFF, labelAlpha),
-                withAlpha(0x808890, titleAlpha),
-                withAlpha(0x606878, labelAlpha),
+                withAlpha(shadowTint, shadowAlpha),
+                withAlpha(themeText, titleAlpha),
+                withAlpha(themeText, labelAlpha),
+                withAlpha(mutedText, titleAlpha),
+                withAlpha(themeMuted, Math.max(labelAlpha, Math.round(alpha * 190f))),
                 surface, surfaceHover,
                 accent, accentSoft,
                 detailTop, detailBottom,
                 statusTop, statusBottom,
-                withAlpha(0x3A4A5A, Math.round(alpha * 132f)),
+                withAlpha(themeStrokeSoft, Math.round(alpha * 132f)),
                 iconTop, iconBottom, iconShadow
         );
     }

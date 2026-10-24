@@ -294,18 +294,16 @@ enum UnifiedSettingsSkin {
         return (modules() ? modules : settings) * scale();
     }
 
+    // One family (Onest) for every settings surface; the Inter split is gone.
     static TextRenderer fontRegular() {
-        if (modernSettings()) return ClickGuiRenderer.getInterRegular();
         return BuiltinFontCatalog.ONEST_REGULAR.renderer(ClickGuiRenderer.getInterRegular());
     }
 
     static TextRenderer fontMedium() {
-        if (modernSettings()) return ClickGuiRenderer.getInterMedium();
         return BuiltinFontCatalog.ONEST_MEDIUM.renderer(fontRegular());
     }
 
     static TextRenderer fontSemibold() {
-        if (modernSettings()) return BuiltinFontCatalog.INTER_BOLD.renderer(ClickGuiRenderer.getInterMedium());
         return BuiltinFontCatalog.ONEST_BOLD.renderer(fontMedium());
     }
 

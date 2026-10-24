@@ -19,6 +19,9 @@ import combatant.client.runtime.RuntimeGate;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 import java.util.ArrayList;
+
+import combatant.client.features.theme.Theme;
+import combatant.client.features.theme.Themes;
 import java.util.Collections;
 import java.util.List;
 
@@ -39,8 +42,9 @@ public enum DebugHudReplacement {
     private static final float LINE_GAP = 1.0f;
     private static final float BACKGROUND_PAD_X = 3.0f;
     private static final float BACKGROUND_PAD_Y = 1.0f;
-    private static final int TEXT_COLOR = 0xFFE0E0E0;
-    private static final int BACKGROUND_COLOR = 0x78000000;
+    private static final int FALLBACK_TEXT_COLOR = 0xFFE0E0E0;
+    private static final int FALLBACK_BACKGROUND_COLOR = 0x78000000;
+    private static final int BACKGROUND_ALPHA = 0x78;
 
     private static volatile Snapshot snapshot = Snapshot.EMPTY;
 
@@ -75,7 +79,7 @@ public enum DebugHudReplacement {
 
     private static void render(Snapshot captured) {
         TextRenderer fallback = TextRenderer.get();
-        TextRenderer text = BuiltinFontCatalog.MONSTERRAT.renderer(fallback);
+        TextRenderer text = BuiltinFontCatalog.ONEST_MEDIUM.renderer(fallback);
         if (text == null) text = fallback;
 
         ViewportContext viewport = ViewportContext.current();
@@ -139,7 +143,7 @@ public enum DebugHudReplacement {
                     y - BACKGROUND_PAD_Y,
                     line.width() + BACKGROUND_PAD_X * 2.0,
                     Math.max(1.0, lineHeight),
-                    BACKGROUND_COLOR
+                    themeBackground()
             );
         }
     }
@@ -164,7 +168,8 @@ public enum DebugHudReplacement {
     private static void renderLegacyLine(TextRenderer text, String raw, double x, double y) {
         if (raw == null || raw.isEmpty()) return;
 
-        int color = TEXT_COLOR;
+        int defaultColor = themeText();
+        int color = defaultColor;
         StringBuilder run = new StringBuilder(raw.length());
         double cursor = x;
 
@@ -175,7 +180,7 @@ public enum DebugHudReplacement {
                     cursor = text.render(run.toString(), cursor, y, new RenderColor(color), true);
                     run.setLength(0);
                 }
-                color = applyLegacyColor(raw.charAt(++i), color);
+                color = applyLegacyColor(raw.charAt(++i), color, defaultColor);
                 continue;
             }
             run.append(c);
@@ -186,7 +191,7 @@ public enum DebugHudReplacement {
         }
     }
 
-    private static int applyLegacyColor(char code, int current) {
+    private static int applyLegacyColor(char code, int current, int defaultColor) {
         return switch (Character.toLowerCase(code)) {
             case '0' -> 0xFF000000;
             case '1' -> 0xFF0000AA;
@@ -204,9 +209,19 @@ public enum DebugHudReplacement {
             case 'd' -> 0xFFFF55FF;
             case 'e' -> 0xFFFFFF55;
             case 'f' -> 0xFFFFFFFF;
-            case 'r' -> TEXT_COLOR;
+            case 'r' -> defaultColor;
             default -> current;
         };
+    }
+
+    private static int themeText() {
+        Themes.Theme theme = Theme.theme();
+        return theme != null ? theme.textPrimary() | 0xFF000000 : FALLBACK_TEXT_COLOR;
+    }
+
+    private static int themeBackground() {
+        Themes.Theme theme = Theme.theme();
+        return theme != null ? (theme.windowBg() & 0x00FFFFFF) | (BACKGROUND_ALPHA << 24) : FALLBACK_BACKGROUND_COLOR;
     }
 
     private static String stripLegacyFormatting(String raw) {

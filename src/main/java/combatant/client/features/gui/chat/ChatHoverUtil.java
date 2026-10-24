@@ -7,6 +7,7 @@
 
 package combatant.client.features.gui.chat;
 
+import combatant.client.features.theme.Theme;
 import combatant.client.util.item.TopEnchantUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
@@ -31,6 +32,10 @@ import java.util.Set;
  */
 public enum ChatHoverUtil {
     ;
+
+    private static int mutedHoverColor() {
+        return Theme.theme().textMuted() | 0xFF000000;
+    }
 
     public static HoverTip fromHover(HoverEvent hover, Minecraft mc) {
         switch (hover) {
@@ -146,7 +151,7 @@ public enum ChatHoverUtil {
         } catch (Throwable ignored) {
         }
 
-        lines.add(new ColoredLine("ID: " + BuiltInRegistries.ITEM.getKey(copy.getItem()), 0xFF888888));
+        lines.add(new ColoredLine("ID: " + BuiltInRegistries.ITEM.getKey(copy.getItem()), mutedHoverColor()));
         if (fromCache) {
             lines.add(new ColoredLine(I18n.get("better_chat.hover.cached"), 0xFFFFD700));
         }
@@ -158,7 +163,7 @@ public enum ChatHoverUtil {
         List<ColoredLine> lines = new ArrayList<>();
         content.name.ifPresent(t -> lines.add(new ColoredLine(t.getString(), 0)));
         lines.add(new ColoredLine(I18n.get("better_chat.hover.entity", content.type.getDescription().getString()), 0));
-        lines.add(new ColoredLine("UUID: " + content.uuid, 0xFF888888));
+        lines.add(new ColoredLine("UUID: " + content.uuid, mutedHoverColor()));
         boolean online = false;
         if (mc != null && mc.player != null && mc.player.connection != null) {
             online = mc.player.connection.getOnlinePlayers().stream()
@@ -189,7 +194,7 @@ public enum ChatHoverUtil {
         List<ColoredLine> lines = List.of(
                 new ColoredLine(name, 0),
                 new ColoredLine(I18n.get("better_chat.hover.online_player"), 0xFF8CF0FF),
-                new ColoredLine("UUID: " + uuid, 0xFF888888)
+                new ColoredLine("UUID: " + uuid, mutedHoverColor())
         );
         return new HoverTip(lines, uuid, false, ItemStack.EMPTY);
     }

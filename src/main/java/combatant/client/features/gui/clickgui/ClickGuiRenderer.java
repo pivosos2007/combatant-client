@@ -901,6 +901,13 @@ public enum ClickGuiRenderer {
         finishingClose = false;
     }
 
+    private static final float TAB_BAR_SLIDE_DISTANCE = 18.0f;
+    private static final float TAB_BAR_INNER_PAD = 4.0f;
+    private static final float TAB_BAR_SURFACE_ALPHA = 185.0f / 255.0f;
+    private static final float TAB_BAR_SHADOW_BLUR = 10.0f;
+    private static final float TAB_BAR_SHADOW_SPREAD = 1.5f;
+    private static final float TAB_BAR_SHADOW_ALPHA = 0.23f;
+
     private static void drawTabs() {
         float eased = easeOutCubic(lifecycleAnim);
         if (eased <= 0.001f) return;
@@ -911,9 +918,9 @@ public enum ClickGuiRenderer {
         if (islandShell) return;
 
         TextRenderer tabFont = getOnestBold();
-        float y = tabBarY - (1.0f - eased) * 18.0f;
+        float y = tabBarY - (1.0f - eased) * TAB_BAR_SLIDE_DISTANCE;
         float outerRadius = tabBarH * 0.5f;
-        float outerPad = 4.0f;
+        float outerPad = TAB_BAR_INNER_PAD;
         float innerX = tabAnimX + outerPad;
         float innerY = y + outerPad;
         float innerW = Math.max(1.0f, tabAnimW - outerPad * 2.0f);
@@ -923,7 +930,7 @@ public enum ClickGuiRenderer {
         // The category rail is intentionally a translucent glass substrate rather than
         // another opaque panel. Keep the paint near ~185/255 and let the backdrop blur
         // carry most of the separation from the world behind it.
-        float outerSurfaceAlpha = 185.0f / 255.0f;
+        float outerSurfaceAlpha = TAB_BAR_SURFACE_ALPHA;
         int outerLeft = scaleAlpha(mixColor(theme().surface(), theme().windowBg(), 0.34f), outerSurfaceAlpha * eased);
         int outerRight = scaleAlpha(mixColor(theme().surfaceHover(), theme().windowBg(), 0.22f), outerSurfaceAlpha * eased);
         int outerStrokeLeft = scaleAlpha(mixColor(theme().strokeSoft(), theme().accentSoft(), 0.18f), 0.50f * eased);
@@ -963,9 +970,9 @@ public enum ClickGuiRenderer {
                         tabBarW,
                         tabBarH,
                         outerRadius,
-                        10.0f,
-                        1.5f,
-                        scaleAlpha(0xCC000000, 0.23f * eased)
+                        TAB_BAR_SHADOW_BLUR,
+                        TAB_BAR_SHADOW_SPREAD,
+                        scaleAlpha(0xCC000000, TAB_BAR_SHADOW_ALPHA * eased)
                 );
                 drawRoundedRectGradient(tabBarX, y, tabBarW, tabBarH, outerRadius, outerLeft, outerRight, 0.0f);
                 drawRoundedRectStrokeGradient(tabBarX, y, tabBarW, tabBarH, outerRadius, 1.0f, outerStrokeLeft, outerStrokeRight, 0.0f);
@@ -1137,10 +1144,11 @@ public enum ClickGuiRenderer {
         return 1.0f - inv * inv * inv;
     }
 
+    /** Baseline UI regular face. Historical name kept for API stability; resolves to Onest Regular. */
     public static TextRenderer getInterRegular() {
         ensureFontBindingsCurrent();
         if (interRegular == null) {
-            interRegular = BuiltinFontCatalog.INTER_REGULAR.renderer(TextRenderer.get());
+            interRegular = BuiltinFontCatalog.ONEST_REGULAR.renderer(TextRenderer.get());
         }
         return interRegular;
     }
@@ -1149,10 +1157,11 @@ public enum ClickGuiRenderer {
         return renderer;
     }
 
+    /** Baseline UI medium face. Historical name kept for API stability; resolves to Onest Medium. */
     public static TextRenderer getInterMedium() {
         ensureFontBindingsCurrent();
         if (interMedium == null) {
-            interMedium = BuiltinFontCatalog.INTER_MEDIUM.renderer(getInterRegular());
+            interMedium = BuiltinFontCatalog.ONEST_MEDIUM.renderer(getInterRegular());
         }
         return interMedium;
     }

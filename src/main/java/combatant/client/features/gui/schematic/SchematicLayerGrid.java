@@ -105,7 +105,7 @@ final class SchematicLayerGrid {
     }
 
     private void drawGridLines(Schematic schematic, float alpha) {
-        int line = SchematicUi.withAlpha(0xFFFFFF, Math.round(alpha * 14f));
+        int line = SchematicUi.withAlpha(SchematicUi.TEXT, Math.round(alpha * 14f));
         float w = cellSize * schematic.sizeX();
         float h = cellSize * schematic.sizeZ();
         for (int x = 1; x < schematic.sizeX(); x++) {

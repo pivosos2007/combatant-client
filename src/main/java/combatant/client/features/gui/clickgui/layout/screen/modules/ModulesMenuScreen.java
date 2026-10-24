@@ -95,6 +95,7 @@ public final class ModulesMenuScreen {
     private TextRenderer comfortaa;
     private long fontGeneration = Long.MIN_VALUE;
 
+    private static final String PREVIEW_ACTION_HOVER_KEY = "\u0000preview-action";
     private String frameHoverDescriptionId;
     private String frameHoverDescription;
     private ModulesMenuCategory frameHoverDescriptionCategory;
@@ -1373,8 +1374,11 @@ public final class ModulesMenuScreen {
             panel.previewH = actionH;
             if (y + actionH >= clipY && y <= clipY + clipH) {
                 boolean hovered = inside(mouseX, mouseY, settingsX, y, settingsW, actionH);
-                int left = withAlpha(hovered ? ModulesMenuStyle.rowHover() : ModulesMenuStyle.panelBgGlassDark(), alpha * (hovered ? 0.92f : 0.72f));
-                int right = withAlpha(hovered ? ModulesMenuStyle.categoryFxPrimary(panel.category, alpha) : ModulesMenuStyle.panelStroke(), alpha * (hovered ? 0.54f : 0.46f));
+                float previewHover = panel.hoverAnim(PREVIEW_ACTION_HOVER_KEY, hovered);
+                int left = withAlpha(mix(ModulesMenuStyle.panelBgGlassDark(), ModulesMenuStyle.rowHover(), previewHover),
+                        alpha * (0.72f + 0.20f * previewHover));
+                int right = withAlpha(mix(ModulesMenuStyle.panelStroke(), ModulesMenuStyle.categoryFxPrimary(panel.category, 1.0f), previewHover),
+                        alpha * (0.46f + 0.08f * previewHover));
                 LayoutRender2D.roundedQuad(settingsX, y, settingsW, actionH, 6.0f * scale, left, right, right, left);
                 LayoutRender2D.roundedStrokeQuad(
                         settingsX, y, settingsW, actionH, 6.0f * scale, 0.45f * scale,
@@ -1474,7 +1478,7 @@ public final class ModulesMenuScreen {
             ClickGuiRenderer.drawText(regular, draw, tx, ty, 8f * scale, color, false);
         } else {
             ClickGuiSearch.editor().render(tx, ty, searchW - 16f * scale, searchH, regular, 8f * scale,
-                    color, withAlpha(0xFF588CEF, alpha * 0.55f), ClickGuiSearch.isActive());
+                    color, withAlpha(ModulesMenuStyle.themeAccent(), alpha * 0.55f), ClickGuiSearch.isActive());
         }
         if (clip) ScissorFunction.pop();
     }
@@ -1613,7 +1617,7 @@ public final class ModulesMenuScreen {
             regular = BuiltinFontCatalog.ONEST_REGULAR.renderer(ClickGuiRenderer.getInterRegular());
         if (medium == null) medium = BuiltinFontCatalog.ONEST_MEDIUM.renderer(regular);
         if (semibold == null) semibold = BuiltinFontCatalog.ONEST_BOLD.renderer(medium);
-        if (comfortaa == null) comfortaa = BuiltinFontCatalog.COMFORTAA.renderer(regular);
+        if (comfortaa == null) comfortaa = regular;
     }
 
     private String bindingLabel(ModuleComponent.CardEntry entry) {

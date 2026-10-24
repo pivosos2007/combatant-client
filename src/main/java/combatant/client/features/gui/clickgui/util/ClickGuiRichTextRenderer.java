@@ -83,11 +83,11 @@ public final class ClickGuiRichTextRenderer {
 
     private static TextRenderer font(Style style) {
         if (style != null && style.isBold()) {
-            return BuiltinFontCatalog.INTER_MEDIUM.renderer(ClickGuiRenderer.getInterMedium());
+            return BuiltinFontCatalog.ONEST_BOLD.renderer(ClickGuiRenderer.getInterMedium());
         }
         if (style != null && style.isItalic()) {
-            // Inter has no dedicated italic builtin face; use the typed regular fallback explicitly.
-            return BuiltinFontCatalog.INTER_REGULAR.renderer(ClickGuiRenderer.getInterRegular());
+            // Onest has no dedicated italic builtin face; use the regular face explicitly.
+            return ClickGuiRenderer.getInterRegular();
         }
         return ClickGuiRenderer.getInterMedium();
     }

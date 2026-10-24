@@ -94,8 +94,8 @@ final class SchematicUi {
     }
 
     void init() {
-        bold = BuiltinFontCatalog.INTER_BOLD.renderer(TextRenderer.get());
-        body = BuiltinFontCatalog.INTER_MEDIUM.renderer(bold);
+        bold = BuiltinFontCatalog.ONEST_BOLD.renderer(TextRenderer.get());
+        body = BuiltinFontCatalog.ONEST_MEDIUM.renderer(bold);
     }
 
     void clearCaches() {
