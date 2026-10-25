@@ -121,10 +121,11 @@ final class ScriptedArmorHudPanel {
                  int themeAccentStart,
                  int themeAccentEnd,
                  float themeAccentAngle,
-                 List<LinkedHashMap<String, Object>> items) {
+                 List<LinkedHashMap<String, Object>> items, String materialMode) {
 
         LinkedHashMap<String, Object> toProps() {
             LinkedHashMap<String, Object> out = new LinkedHashMap<>();
+            out.put("materialMode", materialMode);
             out.put("width", width);
             out.put("height", height);
             out.put("scale", scale);
@@ -151,6 +152,7 @@ final class ScriptedArmorHudPanel {
 
         long treeSignature() {
             long h = 0xcbf29ce484222325L;
+            h = CachedUiScriptRuntime.mix(h, materialMode);
             h = CachedUiScriptRuntime.mix(h, width);
             h = CachedUiScriptRuntime.mix(h, height);
             h = CachedUiScriptRuntime.mix(h, scale);

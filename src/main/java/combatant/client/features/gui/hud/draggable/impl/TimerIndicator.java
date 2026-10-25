@@ -13,6 +13,8 @@ import combatant.client.render.engine.text.BuiltinFontCatalog;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.util.Mth;
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.ModeValue;
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
 import combatant.client.config.values.RGBColorValue;
@@ -48,6 +50,7 @@ public final class TimerIndicator extends DraggableHudElement {
     private static final float TH_RADIUS = 3f;
 
     private final HudGlobalConfig hud = HudGlobalConfig.get();
+    private final ModeValue surfaceMaterial = mode("timer_indicator_surface_material", HudMaterialChoice.DEFAULT, HudMaterialChoice.OPTIONS);
 
     private final NumberValue<Double> scale = num("scale", 1.0, 0.5, 5.0);
     private final BooleanValue alwaysShow = bool("always_show", true);
@@ -65,6 +68,12 @@ public final class TimerIndicator extends DraggableHudElement {
         int pct = Math.round(Mth.clamp(value, 0f, 1f) * 100f);
         if (pct >= 100) return "100%";
         return pct + "%";
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
     }
 
     @Override
@@ -118,7 +127,12 @@ public final class TimerIndicator extends DraggableHudElement {
             drawBlur(x, y, boxW, boxH, radius, bg);
         }
 
-        HudRenderUtil.drawHudBackground(renderer, x, y, boxW, boxH, radius, 1.0f, bg, useSync && gradient.get());
+        if (!HudMaterialChoice.draw(renderer, surfaceMaterial.get(), x, y,
+                boxW, boxH, radius, bg, bg)) {
+            HudRenderUtil.drawHudBackground(renderer, x, y, boxW, boxH, radius, 1.0f, bg, useSync && gradient.get());
+        }
+        HudMaterialChoice.drawDefaultClimate(renderer, surfaceMaterial.get(),
+                x, y, boxW, boxH, radius);
 
         int start = resolveBarStart(useSync);
         int end = resolveBarEnd(useSync);

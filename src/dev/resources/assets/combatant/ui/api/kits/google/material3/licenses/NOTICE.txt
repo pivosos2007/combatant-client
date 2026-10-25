@@ -1,0 +1,7 @@
+Google Material icons (home and settings): Google LLC, Apache License 2.0.
+Upstream reference: https://github.com/google/material-design-icons
+Adapted SVG paths are included only in the Combatant development source set.
+Google Material Web component behavior and tokens are referenced from:
+https://github.com/material-components/material-web (Apache License 2.0).
+The JavaScript components are native Combatant implementations, not copies of
+upstream Lit/DOM components.

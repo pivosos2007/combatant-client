@@ -62,6 +62,7 @@ public class HitEffect extends Module {
     private static final String SETTING_COLOR2 = "color2";
     private static final String SETTING_WAVE_RADIUS = "wave_radius";
     private static final String SETTING_WAVE_DURATION = "wave_duration";
+    private static final String SETTING_HIT_PARTICLES = "hit_particles";
     private static final String SETTING_HIT_PARTICLE_COUNT = "hit_particle_count";
     private static final String SETTING_HIT_PARTICLE_SIZE = "hit_particle_size";
     private static final String SETTING_HIT_PARTICLE_LIFE = "hit_particle_life_ms";
@@ -92,19 +93,22 @@ public class HitEffect extends Module {
     private final Minecraft mc = Minecraft.getInstance();
     private final Random random = new Random();
 
+    // Legacy "particles" / "bubbles" modes deserialize as NONE; the independently
+    // enabled particles toggle retains the old particles-only default.
     private final EnumValue<EffectMode> effectMode =
-            enumSetting("hitEffectMode", SETTING_EFFECT_MODE, EffectMode.PARTICLES, EffectMode.values());
+            enumSetting("hitEffectMode", SETTING_EFFECT_MODE, EffectMode.NONE, EffectMode.values());
+    private final BooleanValue hitParticlesEnabled = bool("hitEffectHitParticles", SETTING_HIT_PARTICLES, true);
     private final ModeValue colorMode =
             visibleWhen(modeSetting("hitEffectColorMode", SETTING_COLOR_MODE, "Theme",
                     "Static", "Rainbow", "LightRainbow", "Sky", "Fade", "DoubleColor", "Analogous", "Theme"),
-                    () -> !isBlastMode());
+                    this::usesColorSettings);
     private final NumberValue<Integer> colorSpeed =
-            visibleWhen(num("hitEffectColorSpeed", SETTING_COLOR_SPEED, 18, 2, 54), () -> !isBlastMode());
+            visibleWhen(num("hitEffectColorSpeed", SETTING_COLOR_SPEED, 18, 2, 54), this::usesColorSettings);
     private final RGBAColorValue colorValue =
-            visibleWhen(color("hitEffectColor", SETTING_COLOR, "#FF8ED4FF"), () -> !isBlastMode());
+            visibleWhen(color("hitEffectColor", SETTING_COLOR, "#FF8ED4FF"), this::usesColorSettings);
     private final RGBAColorValue colorValue2 =
             visibleWhen(color("hitEffectColor2", SETTING_COLOR2, "#FFFF7D9A"),
-                    () -> !isBlastMode() && usesSecondaryColor());
+                    () -> usesColorSettings() && usesSecondaryColor());
     private final BooleanValue depthTest = bool("hitEffectDepthTest", SETTING_DEPTH_TEST, true);
     private final BooleanValue onlyPlayers = bool("hitEffectOnlyPlayers", SETTING_ONLY_PLAYERS, true);
 
@@ -114,16 +118,16 @@ public class HitEffect extends Module {
             visibleWhen(num("hitEffectWaveDuration", SETTING_WAVE_DURATION, 1500, 200, 6000), this::isWaveMode);
 
     private final NumberValue<Integer> hitParticleCount =
-            visibleWhen(num("hitEffectParticleCount", SETTING_HIT_PARTICLE_COUNT, 18, 1, 80), this::isParticleMode);
+            visibleWhen(num("hitEffectParticleCount", SETTING_HIT_PARTICLE_COUNT, 18, 1, 80), hitParticlesEnabled::get);
     private final NumberValue<Float> hitParticleSize =
-            visibleWhen(num("hitEffectParticleSize", SETTING_HIT_PARTICLE_SIZE, 0.105f, 0.04f, 0.4f), this::isParticleMode);
+            visibleWhen(num("hitEffectParticleSize", SETTING_HIT_PARTICLE_SIZE, 0.105f, 0.04f, 0.4f), hitParticlesEnabled::get);
     private final NumberValue<Integer> hitParticleLifeMs =
-            visibleWhen(num("hitEffectParticleLifeMs", SETTING_HIT_PARTICLE_LIFE, 1250, 250, 4500), this::isParticleMode);
+            visibleWhen(num("hitEffectParticleLifeMs", SETTING_HIT_PARTICLE_LIFE, 1250, 250, 4500), hitParticlesEnabled::get);
     private final EnumValue<ParticleTextureMode> hitParticleTexture =
             visibleWhen(enumSetting("hitEffectParticleTexture", SETTING_HIT_PARTICLE_TEXTURE,
-                    ParticleTextureMode.RANDOM, ParticleTextureMode.values()), this::isParticleMode);
+                    ParticleTextureMode.RANDOM, ParticleTextureMode.values()), hitParticlesEnabled::get);
     private final BooleanValue hitParticleRandomColor =
-            visibleWhen(bool("hitEffectParticleRandomColor", SETTING_HIT_PARTICLE_RANDOM_COLOR, false), this::isParticleMode);
+            visibleWhen(bool("hitEffectParticleRandomColor", SETTING_HIT_PARTICLE_RANDOM_COLOR, false), hitParticlesEnabled::get);
     private final NumberValue<Float> blastRadius =
             visibleWhen(num("hitEffectBlastRadius", SETTING_BLAST_RADIUS, 8.0f, 1.0f, 16.0f), this::isBlastMode);
     private final NumberValue<Integer> blastDurationMs =
@@ -222,25 +226,23 @@ public class HitEffect extends Module {
         if (onlyPlayers.get() && !(target instanceof Player)) return;
 
         if (isWaveMode()) {
-            Vec3 pos = target.position().add(0.0, -0.1, 0.0);
-            addWave(pos);
-            return;
-        }
-        if (isBlastMode()) {
+            addWave(target.position().add(0.0, -0.1, 0.0));
+        } else if (isBlastMode()) {
             addBlast(target.position().add(0.0, 0.02, 0.0));
-            return;
         }
 
-        Vec3 hitPoint = resolveHitPoint(target);
-        boolean critical = mc.player instanceof Player attacker && isCritical(attacker);
-        spawnHitParticles(living, hitPoint, critical);
+        if (hitParticlesEnabled.get()) {
+            Vec3 hitPoint = resolveHitPoint(target);
+            boolean critical = mc.player instanceof Player attacker && isCritical(attacker);
+            spawnHitParticles(living, hitPoint, critical);
+        }
     }
 
     @Override
     public void onTick() {
         if (!isEnabled() || mc.player == null || mc.level == null) return;
 
-        if (!isParticleMode()) {
+        if (!hitParticlesEnabled.get()) {
             hitParticles.clear();
             return;
         }
@@ -278,10 +280,9 @@ public class HitEffect extends Module {
 
         if (isWaveMode()) {
             renderWaveEffect(renderer);
-            return;
         }
 
-        if (!hitParticles.isEmpty()) {
+        if (hitParticlesEnabled.get() && !hitParticles.isEmpty()) {
             renderHitParticles(renderer, tickDelta);
         }
     }
@@ -530,8 +531,8 @@ public class HitEffect extends Module {
         return new ParticleTexture(TextureStorage.RANDOM_PARTICLES[idx], idx);
     }
 
-    private boolean isParticleMode() {
-        return effectMode.get() == EffectMode.PARTICLES;
+    private boolean usesColorSettings() {
+        return isWaveMode() || hitParticlesEnabled.get();
     }
 
     private boolean isWaveMode() {
@@ -621,7 +622,7 @@ public class HitEffect extends Module {
     }
 
     public enum EffectMode implements EnumValue.IdProvider, EnumValue.AliasProvider {
-        PARTICLES("particles", List.of("bubbles")),
+        NONE("none", List.of("particles", "bubbles")),
         WAVE("wave", List.of()),
         BLAST("blast", List.of());
 

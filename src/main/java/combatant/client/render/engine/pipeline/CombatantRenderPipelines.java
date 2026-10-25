@@ -156,11 +156,15 @@ public enum CombatantRenderPipelines {
     public static RenderPipeline analyticClipTextPipeline(RenderPipeline pipeline) {
         if (pipeline == UiRenderPipelines.UI_TEXT) return UiRenderPipelines.UI_TEXT_ANALYTIC_CLIP;
         if (pipeline == UiRenderPipelines.UI_TEXT_FAST) return UiRenderPipelines.UI_TEXT_FAST_ANALYTIC_CLIP;
+        if (pipeline == UiRenderPipelines.UI_TEXT_MASK) return UiRenderPipelines.UI_TEXT_MASK_ANALYTIC_CLIP;
+        if (pipeline == UiRenderPipelines.UI_TEXT_MASK_FAST) return UiRenderPipelines.UI_TEXT_MASK_FAST_ANALYTIC_CLIP;
         if (pipeline == UiRenderPipelines.UI_TEXT_MSDF) return UiRenderPipelines.UI_TEXT_MSDF_ANALYTIC_CLIP;
         if (pipeline == UiRenderPipelines.UI_TEXT_MSDF_FAST) {
             return UiRenderPipelines.UI_TEXT_MSDF_FAST_ANALYTIC_CLIP;
         }
-        if (pipeline == UiRenderPipelines.UI_TEXT_ANALYTIC_CLIP
+        if (pipeline == UiRenderPipelines.UI_TEXT_MASK_ANALYTIC_CLIP
+                || pipeline == UiRenderPipelines.UI_TEXT_MASK_FAST_ANALYTIC_CLIP
+                || pipeline == UiRenderPipelines.UI_TEXT_ANALYTIC_CLIP
                 || pipeline == UiRenderPipelines.UI_TEXT_FAST_ANALYTIC_CLIP
                 || pipeline == UiRenderPipelines.UI_TEXT_MSDF_ANALYTIC_CLIP
                 || pipeline == UiRenderPipelines.UI_TEXT_MSDF_FAST_ANALYTIC_CLIP) {

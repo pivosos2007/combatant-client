@@ -25,8 +25,8 @@ import java.util.Map;
 final class ModulesMenuPanel {
     final ModulesMenuCategory category;
     final int index;
-    final UiLiquidGlassMaterial frozenGlass;
-    final UiLiquidGlassMaterial frozenControl;
+    final UiLiquidGlassMaterial glass;
+    final UiLiquidGlassMaterial controlGlass;
     final List<ModuleHit> hits = new ArrayList<>();
     final List<SettingHit> settingHits = new ArrayList<>();
     final List<SubcategoryHit> subcategoryHits = new ArrayList<>();
@@ -85,8 +85,8 @@ final class ModulesMenuPanel {
     ModulesMenuPanel(ModulesMenuCategory category, int index) {
         this.category = category;
         this.index = index;
-        this.frozenGlass = ModulesMenuStyle.frozenGlass(index + 1, false);
-        this.frozenControl = ModulesMenuStyle.frozenGlass(index + 1, true);
+        this.glass = ModulesMenuStyle.glass();
+        this.controlGlass = ModulesMenuStyle.glass();
         this.selectedSubcategory = defaultSubcategory();
     }
 

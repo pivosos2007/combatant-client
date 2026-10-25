@@ -36,6 +36,8 @@ import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
+import combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
@@ -92,6 +94,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
     private static final String PREVIEW_LINE = "Fermenting...";
     private static final String PREVIEW_ICON = "vanilla/u1f9ea";
 
+    private final ModeValue surfaceMaterial = HudMaterialChoice.setting("hud_notifier");
     private final NumberValue<Integer> durationMs = new NumberValue<>("duration_ms", 2000, 500, 6000);
     private final NumberValue<Integer> fadeMs = new NumberValue<>("fade_ms", 250, 0, 1500);
     private final NumberValue<Double> scaleValue = new NumberValue<>("scale", 1.35, 0.5, 3.0);
@@ -328,6 +331,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
+        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
         defs.add(SettingDef.number(durationMs));
         defs.add(SettingDef.number(fadeMs));
         defs.add(SettingDef.number(scaleValue));
@@ -718,38 +722,29 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         float sideBottomR = Math.max(1f, metrics.boxH * 0.5f);
         float sideTopR = 0f;
 
-        drawGlassPill(
-                renderer,
-                x,
-                y,
-                metrics.boxW,
-                metrics.boxH,
-                sideTopR,
-                sideTopR,
-                sideBottomR,
-                sideBottomR,
-                glassTint,
-                anim
-        );
+        // ICE is a glass visual, not an opaque PBR layer painted over the lens.
+        if ("Ice".equals(surfaceMaterial.get())) {
+            renderer.withLiquidGlassMaterial(UiLiquidGlassMaterial.DEFAULT.withIce(UiIceMaterialSpec.LIGHT),
+                    () -> drawGlassPill(renderer, x, y, metrics.boxW, metrics.boxH,
+                            sideTopR, sideTopR, sideBottomR, sideBottomR, glassTint, anim));
+        } else {
+            drawGlassPill(renderer, x, y, metrics.boxW, metrics.boxH,
+                    sideTopR, sideTopR, sideBottomR, sideBottomR, glassTint, anim);
+        }
 
         int bgMixed = HudRenderUtil.mixColor(bgLeft, bgRight, 0.5f);
         int bgA = (bgMixed >>> 24) & 0xFF;
         int bgSolid = HudRenderUtil.glassBackground(anim);
+        // Preserve the original asymmetric toast silhouette and translucent
+        // background. A selected material only modifies that existing glass.
         renderer.roundedRectCornersQuad(
-                x,
-                y,
-                metrics.boxW,
-                metrics.boxH,
-                sideTopR,
-                sideTopR,
-                sideBottomR,
-                sideBottomR,
-                1.0f,
-                bgSolid,
-                bgSolid,
-                bgSolid,
-                bgSolid
+                x, y, metrics.boxW, metrics.boxH,
+                sideTopR, sideTopR, sideBottomR, sideBottomR,
+                1.0f, bgSolid, bgSolid, bgSolid, bgSolid
         );
+        HudMaterialChoice.drawGlassOverlay(renderer, surfaceMaterial.get(), x, y,
+                metrics.boxW, metrics.boxH,
+                sideTopR, sideTopR, sideBottomR, sideBottomR, bgSolid, bgSolid);
 
         float progressInsetX = 0.45f * baseScale;
         float progressInsetY = 0.08f * baseScale;
@@ -1120,6 +1115,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
     @Override
     public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
         super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
         event.svg("toggle-left")
                 .svg("toggle-right")
                 .svg("toggle-track")

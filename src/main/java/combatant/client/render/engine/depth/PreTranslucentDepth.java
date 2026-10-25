@@ -18,6 +18,8 @@ import combatant.client.mixininterface.IMsaaTexture;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.RenderFrameContext;
 import combatant.client.render.engine.msaa.MsaaWorldTarget;
+import combatant.client.render.iris.IrisRuntime;
+import combatant.client.util.logging.DebugLog;
 
 /**
  * Captures the main framebuffer depth BEFORE translucent layers.
@@ -39,24 +41,21 @@ public enum PreTranslucentDepth {
     private static long capturedFrameId = Long.MIN_VALUE;
 
     public static void captureFrom(RenderTarget source) {
-        if (source == null) return;
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null) return;
-
+        captured = false;
+        capturedMsaa = false;
+        capturedFrameId = Long.MIN_VALUE;
+        msaaDepthView = null;
+        if (source == null || source.getDepthTexture() == null) return;
         int w = source.width;
         int h = source.height;
         if (w <= 0 || h <= 0) return;
 
-        captured = false;
-        capturedMsaa = false;
-        capturedFrameId = Long.MIN_VALUE;
-
         boolean isMsaa = source.getDepthTexture() instanceof IMsaaTexture msaa && msaa.combatant$isMsaa();
         if (isMsaa) {
             int samples = ((IMsaaTexture) source.getDepthTexture()).combatant$getSamples();
-            ensureMsaaDepthCopy(w, h, samples);
-            if (msaaDepthCopy != null && source.getDepthTexture() != null) {
-                try {
+            try {
+                ensureMsaaDepthCopy(w, h, samples);
+                if (msaaDepthCopy != null) {
                     RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(
                             source.getDepthTexture(),
                             msaaDepthCopy,
@@ -70,26 +69,45 @@ public enum PreTranslucentDepth {
                     if (CombatantRenderSystem.rhi().msaa().eagerPreTranslucentDepthResolve()) {
                         captured = resolveMsaaDepthCopy();
                     }
-                } catch (IllegalArgumentException ignored) {
-                    // A resize can race this capture point on some setups: framebuffer.textureHeight
-                    // may already report the new window size while the backing MSAA depth texture
-                    // is still the previous one. Do not crash the render thread; skip this frame and
-                    // force a fresh allocation on the next capture.
-                    releaseMsaaDepthCopy();
-                    capturedMsaa = false;
-                    msaaDepthView = null;
+                }
+            } catch (RuntimeException failure) {
+                // In particular, a resized framebuffer can still expose its previous MSAA image.
+                releaseMsaaDepthCopy();
+                capturedMsaa = false;
+                DebugLog.warnOnChange("pre-translucent-depth.msaa.capture.failed",
+                        failure.getClass().getName() + ":" + failure.getMessage(),
+                        "[PreTranslucentDepth] MSAA capture failed: %s: %s",
+                        failure.getClass().getSimpleName(), failure.getMessage());
+            }
+            // OpenGL supports depth-only framebuffer blits, even though it does not implement
+            // MsaaControl.resolveDepthSnapshot(view, view). Keep a single-sample depth copy
+            // for post-process consumers rather than exposing a non-sampleable MSAA view.
+            if (!CombatantRenderSystem.rhi().msaa().supportsDepthSnapshotResolve()) {
+                try {
+                    ensureResolvedDepthCopy(w, h);
+                    captured = depthCopy != null
+                            && CombatantRenderSystem.rhi().msaa().resolve(source, depthCopy, false, true);
+                    if (captured) capturedFrameId = currentFrameId();
+                } catch (RuntimeException failure) {
+                    DebugLog.warnOnChange("pre-translucent-depth.msaa.resolve.failed",
+                            failure.getClass().getName() + ":" + failure.getMessage(),
+                            "[PreTranslucentDepth] MSAA depth resolve failed: %s: %s",
+                            failure.getClass().getSimpleName(), failure.getMessage());
                 }
             }
         } else {
-            msaaDepthView = null;
-            capturedMsaa = false;
-            depthCopy = CombatantRenderSystem.resources().persistentFramebuffer(
-                    "combatant-pretrans-depth", w, h, true, "PreTranslucentDepth");
-            depthCopyW = w;
-            depthCopyH = h;
-            depthCopy.copyDepthFrom(source);
-            captured = true;
-            capturedFrameId = currentFrameId();
+            try {
+                ensureResolvedDepthCopy(w, h);
+                if (depthCopy == null || depthCopy.getDepthTextureView() == null) return;
+                depthCopy.copyDepthFrom(source);
+                captured = true;
+                capturedFrameId = currentFrameId();
+            } catch (RuntimeException failure) {
+                DebugLog.warnOnChange("pre-translucent-depth.capture.failed",
+                        failure.getClass().getName() + ":" + failure.getMessage(),
+                        "[PreTranslucentDepth] capture failed: %s: %s",
+                        failure.getClass().getSimpleName(), failure.getMessage());
+            }
         }
     }
 
@@ -101,7 +119,13 @@ public enum PreTranslucentDepth {
         captureFrom(fb);
     }
 
+    public static boolean hasCapturedThisFrame() {
+        return capturedFrameId == currentFrameId() && (captured || capturedMsaa);
+    }
+
     public static GpuTextureView getDepthView() {
+        // Do not accept a stale vanilla snapshot; Iris keeps its existing capture path.
+        if (!IrisRuntime.isShaderpackRendererActive() && !hasCapturedThisFrame()) return null;
         if (MsaaWorldTarget.isActive() && capturedMsaa && msaaDepthView != null) {
             return msaaDepthView;
         }
@@ -121,7 +145,7 @@ public enum PreTranslucentDepth {
 
 
     public static GpuTextureView getCapturedDepthView() {
-        if (capturedFrameId != currentFrameId()) {
+        if (!hasCapturedThisFrame()) {
             return null;
         }
         if (captured && depthCopy != null) {
@@ -135,6 +159,7 @@ public enum PreTranslucentDepth {
 
     public static GpuTextureView getDepthViewFor(GpuTextureView colorAttachment) {
         int requiredSamples = samples(colorAttachment);
+        if (!IrisRuntime.isShaderpackRendererActive() && !hasCapturedThisFrame()) return null;
         if (requiredSamples > 1
                 && capturedMsaa
                 && msaaDepthView != null

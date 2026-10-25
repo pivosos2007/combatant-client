@@ -254,10 +254,19 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
 
     @Override
     public RhiPatchPipeline createPatchPipeline(PatchPipelineDescriptor descriptor) {
+        return createNativeGraphicsPipeline(descriptor);
+    }
+
+    @Override
+    public RhiMeshPipeline createMeshPipeline(MeshPipelineDescriptor descriptor) {
+        return createNativeGraphicsPipeline(descriptor);
+    }
+
+    private VulkanPatchPipeline createNativeGraphicsPipeline(NativeGraphicsDescriptor descriptor) {
         requireOpen();
         if (descriptor == null) throw new IllegalArgumentException("descriptor");
         RhiCapabilities capabilities = RhiCapabilities.current();
-        if (!capabilities.nativeTessellationSubmission()) {
+        if (descriptor.controlPoints() > 0 && !capabilities.nativeTessellationSubmission()) {
             throw new UnsupportedOperationException("Native Vulkan tessellation submission is unavailable");
         }
         if (descriptor.geometryShader() != null && !capabilities.nativeGeometrySubmission()) {
@@ -283,10 +292,12 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             modules.add(compileStage(device, descriptor.vertexShader(), CombatantShaderSources.VERT_EXTENSION,
                     shaderc_vertex_shader, VK_SHADER_STAGE_VERTEX_BIT, stack));
-            modules.add(compileStage(device, descriptor.tessControlShader(), CombatantShaderSources.TESS_CONTROL_EXTENSION,
-                    shaderc_tess_control_shader, VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, stack));
-            modules.add(compileStage(device, descriptor.tessEvaluationShader(), CombatantShaderSources.TESS_EVALUATION_EXTENSION,
-                    shaderc_tess_evaluation_shader, VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, stack));
+            if (descriptor.controlPoints() > 0) {
+                modules.add(compileStage(device, descriptor.tessControlShader(), CombatantShaderSources.TESS_CONTROL_EXTENSION,
+                        shaderc_tess_control_shader, VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, stack));
+                modules.add(compileStage(device, descriptor.tessEvaluationShader(), CombatantShaderSources.TESS_EVALUATION_EXTENSION,
+                        shaderc_tess_evaluation_shader, VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, stack));
+            }
             if (descriptor.geometryShader() != null) {
                 modules.add(compileStage(device, descriptor.geometryShader(), CombatantShaderSources.GEOMETRY_EXTENSION,
                         shaderc_geometry_shader, VK_SHADER_STAGE_GEOMETRY_BIT, stack));
@@ -294,10 +305,8 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
             modules.add(compileStage(device, descriptor.fragmentShader(), CombatantShaderSources.FRAG_EXTENSION,
                     shaderc_fragment_shader, VK_SHADER_STAGE_FRAGMENT_BIT, stack));
 
-            int resourceStages = VK_SHADER_STAGE_VERTEX_BIT
-                    | VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT
-                    | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT
-                    | VK_SHADER_STAGE_FRAGMENT_BIT;
+            int resourceStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            if (descriptor.controlPoints() > 0) resourceStages |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
             if (descriptor.geometryShader() != null) resourceStages |= VK_SHADER_STAGE_GEOMETRY_BIT;
             descriptorSetLayout = createDescriptorSetLayout(device, descriptor.resources(), resourceStages, stack, descriptor.label());
             pipelineLayout = createPipelineLayout(device, descriptorSetLayout, stack, descriptor.label());
@@ -333,7 +342,7 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
                     .pVertexBindingDescriptions(bindings);
             VkPipelineInputAssemblyStateCreateInfo inputAssembly = VkPipelineInputAssemblyStateCreateInfo.calloc(stack)
                     .sType$Default()
-                    .topology(VK_PRIMITIVE_TOPOLOGY_PATCH_LIST);
+                    .topology(descriptor.controlPoints() > 0 ? VK_PRIMITIVE_TOPOLOGY_PATCH_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
             VkPipelineTessellationStateCreateInfo tessellation = VkPipelineTessellationStateCreateInfo.calloc(stack)
                     .sType$Default()
                     .patchControlPoints(descriptor.controlPoints());
@@ -382,7 +391,7 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
                     .pStages(stageInfos)
                     .pVertexInputState(vertexInput)
                     .pInputAssemblyState(inputAssembly)
-                    .pTessellationState(tessellation)
+                    .pTessellationState(descriptor.controlPoints() > 0 ? tessellation : null)
                     .pRasterizationState(raster)
                     .pMultisampleState(multisample)
                     .pDepthStencilState(depthStencil)
@@ -614,12 +623,28 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
                         stack.longs(vertex.vkBuffer()), stack.longs(0L));
                 vkCmdBindIndexBuffer(commandBuffer, index.vkBuffer(), 0L,
                         mesh.indexType() == IndexType.SHORT ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
-                vkCmdDrawIndexed(commandBuffer, mesh.indexCount(), 1, mesh.firstIndex(), mesh.baseVertex(), 0);
+                if (command.indirectCommands() != null) {
+                    if (!(command.indirectCommands() instanceof VulkanStorageBuffer indirect))
+                        throw new IllegalArgumentException("Indirect buffer belongs to another GPU backend");
+                    vkCmdDrawIndexedIndirect(commandBuffer, indirect.vkBuffer(),
+                            indirect.bindingOffset(command.indirectOffset()), 1, 20);
+                } else {
+                    vkCmdDrawIndexed(commandBuffer, mesh.indexCount(), 1, mesh.firstIndex(), mesh.baseVertex(), 0);
+                }
                 stats.drawCall();
             } finally {
                 vkCmdEndRenderingKHR(commandBuffer);
             }
         }
+    }
+
+    @Override
+    public void drawMeshIndirect(MeshIndirectDrawCommand command) {
+        if (command == null) throw new IllegalArgumentException("command");
+        drawPatches(new PatchDrawCommand(command.label(), command.pipeline(),
+                List.of(command.colorAttachment()), null, command.mesh(),
+                command.storageBindings(), command.sampledTextures(), List.of(), List.of(),
+                command.indirectCommands(), command.indirectOffset()));
     }
 
     @Override
@@ -1073,7 +1098,7 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
         }
     }
 
-    private static void validatePatchTarget(PatchPipelineDescriptor descriptor,
+    private static void validatePatchTarget(NativeGraphicsDescriptor descriptor,
                                             List<VulkanGpuTextureView> colors,
                                             VulkanGpuTextureView depth) {
         if (colors.size() != descriptor.colorFormats().size()) {
@@ -1286,10 +1311,10 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
         }
     }
 
-    private static final class VulkanPatchPipeline implements RhiPatchPipeline {
+    private static final class VulkanPatchPipeline implements RhiMeshPipeline {
         private final VulkanDevice ownerDevice;
         private final VkDevice device;
-        private final PatchPipelineDescriptor descriptor;
+        private final NativeGraphicsDescriptor descriptor;
         private final long descriptorSetLayout;
         private final long pipelineLayout;
         private final long pipeline;
@@ -1297,7 +1322,7 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
 
         private VulkanPatchPipeline(VulkanDevice ownerDevice,
                                     VkDevice device,
-                                    PatchPipelineDescriptor descriptor,
+                                    NativeGraphicsDescriptor descriptor,
                                     long descriptorSetLayout,
                                     long pipelineLayout,
                                     long pipeline) {

@@ -6,11 +6,13 @@
 package combatant.client.render.engine.pipeline;
 
 import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.pipeline.UniformType;
 import combatant.client.render.engine.shader.CombatantShaderSources;
 import combatant.client.render.engine.uniform.impl.UiGlassVisualUniforms;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
 import combatant.client.render.engine.vertex.CombatantVertexFormats;
 import net.minecraft.resources.Identifier;
 
@@ -25,6 +27,20 @@ public final class UiGlassVisualPipelines {
 
     public static RenderPipeline resolve(Identifier shader, boolean analyticClip, boolean underlay) {
         return PIPELINES.computeIfAbsent(new Key(shader, analyticClip, underlay), UiGlassVisualPipelines::build);
+    }
+
+    /** Compiles the dynamically generated shader variants before any glass draw. */
+    public static void prewarm(Identifier shader) {
+        if (shader == null) return;
+        RenderSystem.assertOnRenderThread();
+        for (boolean clip : new boolean[]{false, true}) {
+            for (boolean underlay : new boolean[]{false, true}) {
+                RenderPipeline pipeline = resolve(shader, clip, underlay);
+                if (RenderSystem.getCompiledPipelineNullable(pipeline) == null) {
+                    throw new IllegalStateException("Cannot precompile glass pipeline " + pipeline.getLocation());
+                }
+            }
+        }
     }
 
     private static RenderPipeline build(Key key) {
@@ -49,6 +65,9 @@ public final class UiGlassVisualPipelines {
                 .withBlend(BlendFunction.TRANSLUCENT)
                 .withCull(false);
         if (key.analyticClip()) builder.withUniform("UIClip", UniformType.UNIFORM_BUFFER);
+        if (UiGlassVisual.usesIceTextures(key.shader())) {
+            builder.withSampler("u_MaterialMicro").withSampler("u_MaterialColor");
+        }
         if (key.underlay()) {
             builder.withUniform("UIBackdrop", UniformType.UNIFORM_BUFFER).withSampler("u_UiUnderlayTexture");
         }

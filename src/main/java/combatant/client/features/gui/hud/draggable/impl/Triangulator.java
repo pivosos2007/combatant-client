@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+
 
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
@@ -107,6 +109,7 @@ public final class Triangulator extends DraggableHudElement {
     );
     private static final SolveResult PREVIEW_RESULT = solveStatic(PREVIEW_THROWS, 6.0);
 
+    private final ModeValue surfaceMaterial = HudMaterialChoice.setting("triangulator");
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final ScriptedTriangulatorHudPanel scriptedPanel = new ScriptedTriangulatorHudPanel();
@@ -330,6 +333,7 @@ public final class Triangulator extends DraggableHudElement {
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
+        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(colorMode));
         defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));
@@ -359,6 +363,12 @@ public final class Triangulator extends DraggableHudElement {
         defs.add(SettingDef.number(autoResetDistance).visibleWhen(autoReset::get));
         defs.add(SettingDef.number(maxCachedThrows));
         defs.add(SettingDef.number(cacheLifetimeSec));
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
     }
 
     @Override
@@ -662,6 +672,8 @@ public final class Triangulator extends DraggableHudElement {
                         state.confidenceText(),
                         state.statusColor(),
                         panelRows
+                ,
+                        HudMaterialChoice.shaderMode(surfaceMaterial.get())
                 )
         );
     }

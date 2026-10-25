@@ -29,6 +29,7 @@ import combatant.client.render.engine.rhi.pipeline.DepthPolicy;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineSpec;
 import combatant.client.render.engine.uniform.MeshBuilder;
+import combatant.client.util.logging.DebugLog;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -123,7 +124,18 @@ public final class WorldPassCompiler {
             uploaded = CombatantRenderSystem.rhi().dynamicMeshes().upload(drawMesh);
             RenderPipelineSpec spec = RenderPipelineRegistry.global().require(drawPipeline);
             GpuTextureView depthAttachment = resolveDepthView(ctx, command.depthMode(), spec, framebuffer, colorView);
-            if (command.depthMode() == Renderer3D.DepthMode.ENTITY_ONLY && depthAttachment == null) return null;
+            // PRE_TRANSLUCENT is an explicit depth contract, never an alias for X-ray.
+            // A pipeline can request it through its spec even if depthMode != PRE_DEPTH.
+            DepthPolicy depthPolicy = effectiveDepthPolicy(command.depthMode(), spec);
+            if ((command.depthMode() == Renderer3D.DepthMode.ENTITY_ONLY
+                    || depthPolicy == DepthPolicy.PRE_TRANSLUCENT)
+                    && depthAttachment == null) {
+                DebugLog.warnOnChange("world3d.required-depth.missing",
+                        command.depthMode() + "/" + depthPolicy + "/" + samples(colorView),
+                        "[Renderer3D] required depth unavailable: mode=%s policy=%s samples=%d; skipping draw",
+                        command.depthMode(), depthPolicy, samples(colorView));
+                return null;
+            }
             RhiDrawCommand.Builder draw = RhiDrawCommand.builder("Combatant Renderer3D World Command")
                     .pipeline(drawPipeline)
                     .pipelineSpec(spec)

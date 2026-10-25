@@ -77,7 +77,8 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
         if (logicalSize <= 0L) throw new IllegalArgumentException("Storage buffer size must be positive");
         long alignment = Math.max(1L, backend.combatant$minStorageBufferOffsetAlignment());
         this.uploadStride = align(logicalSize, alignment);
-        long ringSlots = Math.multiplyExact((long) SUBMIT_RING_SIZE, MAX_UPLOADS_PER_SUBMIT);
+        long ringSlots = descriptor.gpuOwned() ? SUBMIT_RING_SIZE
+                : Math.multiplyExact((long) SUBMIT_RING_SIZE, MAX_UPLOADS_PER_SUBMIT);
         long physicalSize = Math.multiplyExact(uploadStride, ringSlots);
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -92,10 +93,16 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
                     .usage(usage)
                     .sharingMode(VK_SHARING_MODE_EXCLUSIVE);
 
-            VmaAllocationCreateInfo allocationInfo = VmaAllocationCreateInfo.calloc(stack)
-                    .usage(VMA_MEMORY_USAGE_AUTO)
-                    .flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-                            | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+            // Compute outputs never receive CPU snapshots: keep these SSBOs in device-local VRAM.
+            // Params still use the old host-visible upload ring.
+            VmaAllocationCreateInfo allocationInfo = VmaAllocationCreateInfo.calloc(stack);
+            if (descriptor.gpuOwned()) {
+                allocationInfo.usage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
+            } else {
+                allocationInfo.usage(VMA_MEMORY_USAGE_AUTO)
+                        .flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                                | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+            }
 
             LongBuffer pBuffer = stack.mallocLong(1);
             PointerBuffer pAllocation = stack.mallocPointer(1);
@@ -119,7 +126,7 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
             this.mappedAddress = info.pMappedData();
         }
 
-        if (buffer == 0L || allocation == 0L || mappedAddress == 0L) {
+        if (buffer == 0L || allocation == 0L || (mappedAddress == 0L && !descriptor.gpuOwned())) {
             if (buffer != 0L && allocation != 0L) {
                 vmaDestroyBuffer(allocator, buffer, allocation);
             }
@@ -143,6 +150,7 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
         if (logicalOffset < 0L || logicalOffset > logicalSize) {
             throw new IndexOutOfBoundsException("Storage binding offset outside logical buffer: " + logicalOffset);
         }
+        if (descriptor.gpuOwned()) selectGpuOwnedSubmitSlot();
         return Math.addExact(currentUploadBase, logicalOffset);
     }
 
@@ -155,6 +163,7 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
     public void upload(ByteBuffer source, long destinationOffset) {
         ensureOpen();
         if (source == null) return;
+        if (descriptor.gpuOwned()) throw new IllegalStateException("GPU-owned buffer cannot accept CPU snapshot uploads");
         if (destinationOffset < 0L) throw new IllegalArgumentException("destinationOffset");
 
         ByteBuffer src = source.duplicate();
@@ -177,6 +186,22 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
         destination.put(src);
         vmaFlushAllocation(allocator, allocation, physicalOffset, bytes);
         if (stats != null) stats.storageBufferUpload(bytes);
+    }
+
+    private void selectGpuOwnedSubmitSlot() {
+        VulkanCommandEncoder encoder = ownerDevice.createCommandEncoder();
+        if (!(encoder instanceof IVulkanCommandEncoderAccess access))
+            throw new IllegalStateException("Vulkan command encoder submit access unavailable");
+        long submitIndex = access.combatant$currentSubmitIndex();
+        if (submitIndex == activeSubmitIndex) return;
+        int slot = Math.floorMod(submitIndex, SUBMIT_RING_SIZE);
+        long previousOwner = submitRingOwners[slot];
+        if (previousOwner != Long.MIN_VALUE && previousOwner > access.combatant$completedSubmitIndex())
+            throw new IllegalStateException("GPU-owned SSBO submit slot is still in flight: " + descriptor.label());
+        submitRingOwners[slot] = submitIndex;
+        activeSubmitIndex = submitIndex;
+        activeSubmitSlot = slot;
+        currentUploadBase = Math.multiplyExact((long) slot, uploadStride);
     }
 
     private void beginUploadSnapshot() {

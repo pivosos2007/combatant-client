@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+
 
 import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.TextSizing;
@@ -99,6 +101,7 @@ public final class Cooldowns extends DraggableHudElement {
     };
     private static ItemStack[] previewStacks;
 
+    private final ModeValue surfaceMaterial = HudMaterialChoice.setting("cooldowns");
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final ScriptedListHudPanel scriptedPanel = new ScriptedListHudPanel();
@@ -204,6 +207,7 @@ public final class Cooldowns extends DraggableHudElement {
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
+        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(layoutMode));
         defs.add(SettingDef.mode(colorMode));
@@ -230,6 +234,12 @@ public final class Cooldowns extends DraggableHudElement {
         defs.add(SettingDef.bool(headerIconPulse));
         defs.add(SettingDef.number(headerIconPulseSpeed).visibleWhen(headerIconPulse::get));
         defs.add(SettingDef.number(headerIconPulseIntensity).visibleWhen(headerIconPulse::get));
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
     }
 
     @Override
@@ -528,6 +538,8 @@ public final class Cooldowns extends DraggableHudElement {
                         resolveStrokeGradientEnd(),
                         true,
                         panelRows
+                ,
+                        HudMaterialChoice.shaderMode(surfaceMaterial.get())
                 )
         );
         foregroundReady = false;

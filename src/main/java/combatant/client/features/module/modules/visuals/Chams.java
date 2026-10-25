@@ -19,7 +19,6 @@ import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.*;
-import net.irisshaders.iris.mixinterface.ItemInHandInterface;
 import net.irisshaders.iris.pathways.HandRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
@@ -57,7 +56,6 @@ import combatant.client.render.engine.uniform.impl.HandGlassUniforms;
 import combatant.client.render.engine.uniform.impl.HandMetallicUniforms;
 import combatant.client.render.engine.uniform.impl.HandRiftUniforms;
 import combatant.client.render.engine.uniform.impl.HandSmokeUniforms;
-import combatant.client.render.iris.IrisHandMaskState;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
@@ -533,18 +531,23 @@ public class Chams extends Module {
         }
 
         boolean prevRendering3D = RenderState.rendering3D;
+        boolean previousSolidPhase = HandRenderer.INSTANCE.isRenderingSolid();
         RenderState.rendering3D = true;
         RenderSystem.backupProjectionMatrix();
         ViewModel viewModel = Modules.get(ViewModel.class);
-        boolean hmiReplay = viewModel != null && viewModel.beginHmiReplayPass();
+        boolean hmiReplay = false;
         try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams_hand_mask")) {
+            hmiReplay = viewModel != null && viewModel.beginHmiReplayPass();
             renderIrisHandMaskPhase(renderer, cameraRenderState, positionMatrix, dispatcher, tickDelta, true);
             renderIrisHandMaskPhase(renderer, cameraRenderState, positionMatrix, dispatcher, tickDelta, false);
         } finally {
-            if (hmiReplay) viewModel.endHmiReplayPass();
-            ((IrisHandRendererAccessor) HandRenderer.INSTANCE).combatant$setRenderingSolid(false);
-            RenderSystem.restoreProjectionMatrix();
-            RenderState.rendering3D = prevRendering3D;
+            try {
+                if (hmiReplay) viewModel.endHmiReplayPass();
+            } finally {
+                ((IrisHandRendererAccessor) HandRenderer.INSTANCE).combatant$setRenderingSolid(previousSolidPhase);
+                RenderSystem.restoreProjectionMatrix();
+                RenderState.rendering3D = prevRendering3D;
+            }
         }
 
         markHandMaskReady();
@@ -564,20 +567,18 @@ public class Chams extends Module {
         handMatrices.pushPose();
         var modelView = RenderSystem.getModelViewStack();
         modelView.pushMatrix();
-        modelView.set(handMatrices.last().pose());
-
-        SubmitNodeStorage handSubmits = new SubmitNodeStorage();
-        IrisHandMaskState.renderBothPhases(() ->
-                ((ItemInHandInterface) renderer.firstPersonHandsAndItemsRenderer).iris$renderHandsWithCustomRenderer(
-                        HandRenderer.INSTANCE,
-                        tickDelta,
-                        new PoseStack(),
-                        handSubmits,
-                        mc.player,
-                        mc.getEntityRenderDispatcher().getPackedLightCoords(mc.player, tickDelta)
-                )
-        );
         try {
+            modelView.set(handMatrices.last().pose());
+
+            SubmitNodeStorage handSubmits = new SubmitNodeStorage();
+            var playerState = renderer.gameRenderState().levelRenderState.playerRenderState;
+            // Iris 1.11.7 submits hands through the vanilla 26.3 API. Its legacy
+            // ItemInHandInterface is not implemented by FirstPersonHandsAndItemsRenderer.
+            // The Iris hand-phase mixin filters solid/translucent items using renderingSolid.
+            renderer.firstPersonHandsAndItemsRenderer.submitHandsWithItems(
+                    tickDelta, new PoseStack(), handSubmits,
+                    playerState, playerState.firstPersonHandsAndItems);
+
             combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
                     "combatant:iris-hand-mask", dispatcher, handSubmits,
                     handMask.getColorTextureView(), handMask.getDepthTextureView(),

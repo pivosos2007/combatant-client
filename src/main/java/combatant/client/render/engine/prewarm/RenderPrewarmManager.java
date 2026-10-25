@@ -18,6 +18,8 @@ import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.ui.ItemBatchRenderer;
+import combatant.client.render.engine.renderer.ui.UiPbrTextureSets;
+import combatant.client.render.engine.pipeline.UiGlassVisualPipelines;
 import combatant.client.render.engine.svg.SvgMsdfRegistry;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.runtime.RuntimeGate;
@@ -44,6 +46,7 @@ public enum RenderPrewarmManager {
     private static boolean pickerCatalogPending;
     private static boolean gpuLifecycleReady;
     private static boolean gpuPrewarmPending;
+    private static boolean materialDependenciesPending;
     private static String pendingGpuReason = "deferred";
     private static boolean gpuAtlasPending;
     private static int atlasWarmModeIndex;
@@ -106,6 +109,12 @@ public enum RenderPrewarmManager {
         runReadyWarmup();
     }
 
+    /** Called when a material-producing module changes its active state. */
+    public static void onVisualConfigurationChanged() {
+        materialDependenciesPending = true;
+        runReadyWarmup();
+    }
+
     private static void requestGpuPrewarm(String reason) {
         gpuPrewarmPending = true;
         if (reason != null && !reason.isBlank()) {
@@ -132,6 +141,37 @@ public enum RenderPrewarmManager {
         }
 
         runPendingGpuPrewarm();
+        runPendingMaterialPrewarm();
+    }
+
+    private static void runPendingMaterialPrewarm() {
+        if (!warmupBarrierReady() || !materialDependenciesPending) return;
+        materialDependenciesPending = false;
+        RenderPrewarmCollectEvent event = new RenderPrewarmCollectEvent("active visuals changed");
+        Events.BUS.post(event);
+        prewarmMaterialSets(event);
+    }
+
+    private static int prewarmMaterialSets(RenderPrewarmCollectEvent event) {
+        for (Identifier shader : event.glassVisualShaders()) {
+            try {
+                UiGlassVisualPipelines.prewarm(shader);
+            } catch (RuntimeException failure) {
+                DebugLog.warnOnce("prewarm-glass-visual:" + shader,
+                        "Failed to precompile glass visual %s", shader, failure);
+            }
+        }
+        int materialSets = 0;
+        for (var mode : event.pbrMaterials()) {
+            try {
+                UiPbrTextureSets.resolve(mode);
+                materialSets++;
+            } catch (RuntimeException failure) {
+                DebugLog.warnOnce("prewarm-ui-pbr:" + mode,
+                        "Failed to prewarm UI PBR textures for %s", mode, failure);
+            }
+        }
+        return materialSets;
     }
 
     private static void runPendingGpuPrewarm() {
@@ -160,6 +200,11 @@ public enum RenderPrewarmManager {
             DebugLog.warnOnce("prewarm-clickgui-ui", "Failed to prewarm ClickGUI UI objects", failure);
         }
 
+        // Collect expected PBR dependencies from the accessible core UI and from
+        // enabled module/HUD contributors. No screen-specific texture upload on draw.
+        // This runs only behind the device + published-resource lifecycle barrier.
+        int materialSets = prewarmMaterialSets(event);
+
         int menuTextures = 0;
         Minecraft mc = Minecraft.getInstance();
         try {
@@ -179,6 +224,8 @@ public enum RenderPrewarmManager {
         double elapsedMs = (System.nanoTime() - startedNs) / 1_000_000.0;
         DebugLog.renderThread("[Combatant][Prewarm] %s: gpu phase; fonts=%d/%d svg-msdf=%d/%d menu-textures=%d/%d (%.2f ms)",
                 reason, fonts, event.fonts().size(), svg, event.svgMsdfIcons().size(), menuTextures, 4, elapsedMs);
+        DebugLog.renderThread("[Combatant][Prewarm] PBR texture sets ready=%d/%d, dynamic glass shaders=%d",
+                materialSets, event.pbrMaterials().size(), event.glassVisualShaders().size());
     }
 
     /**

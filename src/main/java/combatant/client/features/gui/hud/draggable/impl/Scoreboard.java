@@ -24,6 +24,7 @@ import net.minecraft.world.scores.Objective;
 import net.minecraft.world.scores.PlayerScoreEntry;
 import net.minecraft.world.scores.PlayerTeam;
 import combatant.client.config.SettingDef;
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudGlobalConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
@@ -649,8 +650,17 @@ public final class Scoreboard extends DraggableHudElement {
         return text == null || text.getString().isBlank();
     }
 
+    private final ModeValue surfaceMaterial = HudMaterialChoice.setting("scoreboard");
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
+    }
+
     @Override
     protected void defineSettings(List<SettingDef> defs) {
+        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
         defs.add(SettingDef.bind(toggleBind, BindMode.PRESS));
         defs.add(SettingDef.number(scale));
         defs.add(SettingDef.mode(fontMode));
@@ -1065,7 +1075,10 @@ public final class Scoreboard extends DraggableHudElement {
                                 float height,
                                 float radius,
                                 float drawScale) {
-        if (isGradientPanelStyle()) {
+        if (HudMaterialChoice.draw(renderer, surfaceMaterial.get(), x, y, width, height,
+                radius, uiBgPrimary, uiBgSecondary)) {
+            // Existing stroke remains a separate pass.
+        } else if (isGradientPanelStyle()) {
             renderer.roundedRectGradient(x, y, width, height, radius, BASE_SOFTNESS,
                     uiBgPrimary, uiBgSecondary, 90.0f);
         } else if (isThemeMode()) {
@@ -1074,6 +1087,9 @@ public final class Scoreboard extends DraggableHudElement {
             renderer.roundedRectGradientQuad(x, y, width, height, radius, BASE_SOFTNESS,
                     uiBgPrimary, uiBgSecondary, uiBgPrimary, uiBgSecondary);
         }
+
+        HudMaterialChoice.drawDefaultClimate(renderer, surfaceMaterial.get(),
+                x, y, width, height, radius);
 
         if (strokeEnabled.get()) {
             HudRenderUtil.drawHudStroke(

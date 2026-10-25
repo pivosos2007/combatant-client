@@ -156,6 +156,8 @@ function shell(p) {
     ui.shape({
       key: "fill",
       shape: "rounded-gradient",
+      materialMode: c(p.materialMode, ""),
+      materialMicrotexture: true, materialThemeSync: true,
       class: abs(0, 0, w, h),
       radius: r,
       softness,
@@ -168,7 +170,7 @@ function shell(p) {
       strokeEndColor: hasStrokeControl ? withAlpha(strokeEnd, strokeAlpha) : alpha(strokeEnd, strokeAlpha),
       strokeAngle: 90,
     }),
-    ui.shape({
+    ...((!p.materialMode || p.materialMode === "voronoi") ? [ui.shape({
       key: "top-glint",
       shape: "rounded-gradient",
       class: abs(1, 1, Math.max(0, w - 2), Math.max(1, h * 0.42)),
@@ -177,7 +179,7 @@ function shell(p) {
       startColor: alpha("#FFFFFFFF", 0.065 * paintAlpha),
       endColor: alpha("#FFFFFFFF", 0),
       angle: 90,
-    }),
+    })] : []),
   ].filter(Boolean);
 }
 

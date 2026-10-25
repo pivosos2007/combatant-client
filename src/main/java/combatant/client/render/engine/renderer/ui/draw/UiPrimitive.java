@@ -25,13 +25,16 @@ public final class UiPrimitive {
     private final int pointCount;
     private final float rounding;
     private final boolean convex;
+    // Exact per-corner radii for material-only SDF lowering; null for polygon shapes.
+    private final float[] cornerRadii;
 
-    private UiPrimitive(double[] points, int pointCount, float rounding) {
+    private UiPrimitive(double[] points, int pointCount, float rounding, float[] cornerRadii) {
         this.pointCount = Math.max(0, Math.min(pointCount, points != null ? points.length / 2 : 0));
         this.points = this.pointCount == 0 ? new double[0] : Arrays.copyOf(points, this.pointCount * 2);
         this.bounds = computeBounds(this.points, this.pointCount);
         this.rounding = Float.isFinite(rounding) ? Math.max(0.0f, rounding) : 0.0f;
         this.convex = isConvexClockwise(this.points, this.pointCount);
+        this.cornerRadii = cornerRadii != null ? Arrays.copyOf(cornerRadii, 4) : null;
     }
 
     public static Builder builder(double x, double y, double width, double height) {
@@ -56,6 +59,14 @@ public final class UiPrimitive {
 
     public float rounding() {
         return rounding;
+    }
+
+    public boolean hasRoundedCorners() {
+        return cornerRadii != null;
+    }
+
+    public float[] cornerRadii() {
+        return cornerRadii != null ? Arrays.copyOf(cornerRadii, 4) : null;
     }
 
     public boolean isConvex() {
@@ -118,6 +129,7 @@ public final class UiPrimitive {
         private Preset preset = Preset.RECT;
         private float cut = Float.NaN;
         private float rounding;
+        private float[] roundedCorners;
         private final UiCornerSpec[] corners = {
                 UiCornerSpec.SQUARE, UiCornerSpec.SQUARE, UiCornerSpec.SQUARE, UiCornerSpec.SQUARE
         };
@@ -157,6 +169,17 @@ public final class UiPrimitive {
          */
         public Builder rounding(double rounding) {
             this.rounding = finitePositive(rounding);
+            return this;
+        }
+
+        /** Analytic TL/TR/BR/BL arcs for material surfaces, not polygonal chamfers. */
+        public Builder roundedCorners(float tl, float tr, float br, float bl) {
+            this.preset = Preset.RECT;
+            this.customPoints = null;
+            this.customPointCount = 0;
+            this.rounding = 0f;
+            this.roundedCorners = new float[]{finitePositive(tl), finitePositive(tr),
+                    finitePositive(br), finitePositive(bl)};
             return this;
         }
 
@@ -248,7 +271,7 @@ public final class UiPrimitive {
             }
             double[] path = new double[PATH_CAPACITY * 2];
             int count = emitBase(path);
-            if (count < 3) return new UiPrimitive(path, count, rounding);
+            if (count < 3) return new UiPrimitive(path, count, rounding, roundedCorners);
             applyBilinearCornerWarp(path, count);
             for (int i = 0; i < count; i++) {
                 path[i * 2] += vertexOffsetX[i];
@@ -256,7 +279,7 @@ public final class UiPrimitive {
             }
             count = removeDuplicateClosingPoint(path, count);
             ensureClockwise(path, count);
-            return new UiPrimitive(path, count, rounding);
+            return new UiPrimitive(path, count, rounding, roundedCorners);
         }
 
         private int emitBase(double[] path) {

@@ -1,3 +1,11 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+#ifndef COMBATANT_UI_GEOMETRY_GLSL
+#define COMBATANT_UI_GEOMETRY_GLSL
 /* Shared signed-distance geometry for UI shape and material shaders. */
 float roundedBoxSdf(vec2 p, vec2 halfSize, float radius) {
     float r = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
@@ -55,3 +63,5 @@ float chamferSdf(vec2 p, vec2 halfSize, vec4 cutX, vec4 cutY) {
     float bl = cornerCut(left, bottom, cutX.w, cutY.w);
     return max(d, max(max(tl, tr), max(br, bl)));
 }
+
+#endif // COMBATANT_UI_GEOMETRY_GLSL

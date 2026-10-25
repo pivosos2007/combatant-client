@@ -8,10 +8,14 @@
 package combatant.client.features.gui.hud.draggable;
 
 import combatant.client.config.values.ConfigValue;
+import combatant.client.config.values.BooleanValue;
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+import combatant.client.features.gui.hud.HudClimateSurface;
 import combatant.client.features.gui.hud.BaseHudElement;
 import combatant.client.features.gui.hud.HudAnchorX;
 import combatant.client.features.gui.hud.HudAnchorY;
 import combatant.client.features.gui.hud.WidgetAnchorSide;
+import combatant.client.runtime.CombatantBuild;
 import lombok.Getter;
 
 import java.util.Map;
@@ -22,6 +26,7 @@ import java.util.Map;
 public abstract class DraggableHudElement extends BaseHudElement {
 
     private final DraggableLayoutValue layoutValue = new DraggableLayoutValue("layout");
+    protected final BooleanValue environmentalEffects = bool("environmental_effects", CombatantBuild.isDevelopmentBuild());
     @Getter
     private boolean positionInitialized = false;
     @Getter
@@ -52,6 +57,16 @@ public abstract class DraggableHudElement extends BaseHudElement {
 
     protected DraggableHudElement(String id, String title, String description, boolean defaultEnabled) {
         super(id, title, description, defaultEnabled);
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        if (environmentalEffectsEnabled()) HudClimateSurface.declarePrewarm(event);
+    }
+
+    public boolean environmentalEffectsEnabled() {
+        return CombatantBuild.isDevelopmentBuild() && environmentalEffects.get();
     }
 
     public DraggableLayoutValue layoutValue() {

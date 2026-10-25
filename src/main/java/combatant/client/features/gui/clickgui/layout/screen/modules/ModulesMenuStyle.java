@@ -21,18 +21,26 @@ enum ModulesMenuStyle {
     ;
     static final int MODULE_LIST_ON = 0xFF5DE878;
     static final int MODULE_LIST_OFF = 0xFFFF5E66;
-    private static final UiLiquidGlassMaterial FROZEN_GLASS = UiLiquidGlassMaterial.DEFAULT
+    private static final UiLiquidGlassMaterial GLASS = UiLiquidGlassMaterial.DEFAULT
             .withOptics(UiGlassOpticsSpec.LIQUID.withRefraction(0.012f).withBevel(0.085f, 0.042f)
                     .withChromaticAberration(0f).withMagnification(1.008f)
                     .withInteractionStrength(0f).withShapeDeformation(false))
             .withInteraction(new UiGlassInteraction(0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f, true))
             .withTintStrength(0.16f);
 
-    static UiLiquidGlassMaterial frozenGlass(int seed, boolean compact) {
-        // One ice model for glass and opaque primitives. Per-panel seeds are stable.
-        UiIceMaterialSpec ice = UiIceMaterialSpec.LIGHT.withSeed(seed)
+    static UiLiquidGlassMaterial glass() {
+        // Preserve the existing glass optics; ICE is not active in ModulesMenu.
+        return GLASS;
+    }
+
+    /**
+     * Preserved appearance profile for future environment-driven materials.
+     * Not applied until biome temperature / weather transitions are implemented.
+     * Original seeds: each panel uses index + 1; the search surface uses 17.
+     */
+    static UiIceMaterialSpec futureIceProfile(int seed, boolean compact) {
+        return UiIceMaterialSpec.LIGHT.withSeed(seed)
                 .withFreezing(compact ? 0.34f : 0.55f, compact ? 0.16f : 0.38f);
-        return FROZEN_GLASS.withIce(ice);
     }
 
     private static int text = 0xFFFFFFFF;

@@ -204,15 +204,12 @@ public final class UiPassCompiler {
                 vertices += batch.mesh.getVertexCount();
                 indices += batch.mesh.getIndicesCount();
 
-                UiMaterialMicroAtlas.Binding materialMicro = batch.type.usesMaterialTexture()
-                        ? UiMaterialMicroAtlas.resolve() : null;
+                UiPbrTextureSets.Binding materialMicro = batch.type.usesMaterialTexture()
+                        ? UiPbrTextureSets.resolve(batch.materialMode) : null;
                 MeshRenderer builder = MeshRenderer.begin()
                         .attachments(mainColorView, null)
                         .clearColor(UiMsaaClipLayer.consumePendingColorClear(mainColorView))
-                        .pipeline(batch.type == UiBatchType.MATERIAL_TEXTURED_PRIMITIVE
-                                && materialMicro == null
-                                ? combatant.client.render.engine.pipeline.UiBatchRenderPipelines.UI_MATERIAL_PRIMITIVE_BATCH
-                                : pipelineFor(batch))
+                        .pipeline(pipelineFor(batch))
                         .mesh(batch.mesh);
 
                 if (batch.type.needsUiBatch) {
@@ -231,7 +228,7 @@ public final class UiPassCompiler {
                             UiGlassFrameUniforms.update(mc, screenW, screenH));
                     if (batch.type.usesMaterialTexture()) {
                         if (materialMicro != null)
-                            builder.sampler("u_MaterialMicro", materialMicro.view(), materialMicro.sampler());
+                            materialMicro.bind(builder);
                     }
                 }
                 if (batch.clipSnapshot.usesAnalyticPipeline()) {

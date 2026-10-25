@@ -34,10 +34,19 @@ public final class Std430StructLayout {
         }
 
         public int elementOffset(int index) {
+            if (arrayLength == 0) throw new IllegalStateException(name + " requires a runtime array length");
             if (index < 0 || index >= arrayLength) {
                 throw new IndexOutOfBoundsException(name + "[" + index + "] length=" + arrayLength);
             }
             return offset + index * arrayStride;
+        }
+
+        public int elementOffset(int index, int runtimeArrayLength) {
+            if (arrayLength != 0) throw new IllegalStateException(name + " is not a runtime array");
+            if (runtimeArrayLength < 0) throw new IllegalArgumentException("runtimeArrayLength");
+            if (index < 0 || index >= runtimeArrayLength)
+                throw new IndexOutOfBoundsException(name + "[" + index + "] length=" + runtimeArrayLength);
+            return Math.addExact(offset, Math.multiplyExact(index, arrayStride));
         }
     }
 
@@ -77,7 +86,19 @@ public final class Std430StructLayout {
         return size;
     }
 
+    public boolean runtimeSized() {
+        return !members.isEmpty() && members.get(members.size() - 1).arrayLength() == 0;
+    }
+
+    public int size(int runtimeArrayLength) {
+        if (!runtimeSized()) throw new IllegalStateException("Layout has no runtime array");
+        if (runtimeArrayLength < 0) throw new IllegalArgumentException("runtimeArrayLength");
+        Member tail = members.get(members.size() - 1);
+        return Math.addExact(tail.offset(), Math.multiplyExact(tail.arrayStride(), runtimeArrayLength));
+    }
+
     public int arrayStride() {
+        if (runtimeSized()) throw new IllegalStateException("Runtime-sized blocks cannot be array elements");
         return Std430Type.align(size, alignment);
     }
 
@@ -100,7 +121,16 @@ public final class Std430StructLayout {
         }
 
         public Builder array(String name, Std430Type type, int length) {
+            if (length < 1) throw new IllegalArgumentException("length");
             return add(name, type, null, length, true);
+        }
+
+        public Builder runtimeArray(String name, Std430Type type) {
+            return add(name, type, null, 0, true);
+        }
+
+        public Builder runtimeStructArray(String name, Std430StructLayout layout) {
+            return add(name, null, layout, 0, true);
         }
 
         public Builder struct(String name, Std430StructLayout layout) {
@@ -108,13 +138,16 @@ public final class Std430StructLayout {
         }
 
         public Builder structArray(String name, Std430StructLayout layout, int length) {
+            if (length < 1) throw new IllegalArgumentException("length");
             return add(name, null, layout, length, true);
         }
 
         private Builder add(String name, Std430Type type, Std430StructLayout nested, int length, boolean array) {
             if (name == null || name.isBlank()) throw new IllegalArgumentException("name");
             if (type == null && nested == null) throw new IllegalArgumentException("type");
-            if (length < 1) throw new IllegalArgumentException("length");
+            if (nested != null && nested.runtimeSized()) throw new IllegalArgumentException("Nested runtime array");
+            if (!specs.isEmpty() && specs.get(specs.size() - 1).length == 0)
+                throw new IllegalArgumentException("Runtime array must be the last member");
             if (specs.stream().anyMatch(spec -> spec.name.equals(name))) {
                 throw new IllegalArgumentException("Duplicate std430 member: " + name);
             }
@@ -137,7 +170,8 @@ public final class Std430StructLayout {
                 cursor = Math.addExact(cursor, occupied);
                 structAlignment = Math.max(structAlignment, alignment);
             }
-            return new Std430StructLayout(members, structAlignment, Std430Type.align(cursor, structAlignment));
+            return new Std430StructLayout(members, structAlignment,
+                    specs.get(specs.size() - 1).length == 0 ? cursor : Std430Type.align(cursor, structAlignment));
         }
 
         private record MemberSpec(String name, Std430Type type, Std430StructLayout nested, int length, boolean array) { }

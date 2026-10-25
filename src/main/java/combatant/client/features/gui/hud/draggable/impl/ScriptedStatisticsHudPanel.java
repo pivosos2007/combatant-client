@@ -135,7 +135,7 @@ final class ScriptedStatisticsHudPanel {
                  ScriptedListHudPanel.Palette palette,
                  List<LinkedHashMap<String, Object>> rows,
                  float graphDomainMax,
-                 List<Float> graphValues) {
+                 List<Float> graphValues, String materialMode) {
 
         Panel {
             playTime = playTime != null ? playTime : "00:00";
@@ -145,6 +145,7 @@ final class ScriptedStatisticsHudPanel {
             rows = rows != null ? rows : List.of();
             graphDomainMax = Float.isFinite(graphDomainMax) && graphDomainMax > 0.0f ? graphDomainMax : 1.0f;
             graphValues = graphValues != null ? graphValues : List.of();
+            materialMode = materialMode != null ? materialMode : "";
         }
 
         LinkedHashMap<String, Object> toProps() {
@@ -167,6 +168,7 @@ final class ScriptedStatisticsHudPanel {
             out.put("showPlayTime", showPlayTime);
             out.put("showGraph", showGraph);
             out.put("separateGraph", separateGraph);
+            out.put("materialMode", materialMode);
             out.put("blur", blur);
             out.put("blurAlpha", blurAlpha);
             out.put("layout", layout);
@@ -198,6 +200,7 @@ final class ScriptedStatisticsHudPanel {
 
         long treeSignature() {
             long h = 0xcbf29ce484222325L;
+            h = CachedUiScriptRuntime.mix(h, materialMode);
             h = CachedUiScriptRuntime.mix(h, width);
             h = CachedUiScriptRuntime.mix(h, height);
             h = CachedUiScriptRuntime.mix(h, mainHeight);

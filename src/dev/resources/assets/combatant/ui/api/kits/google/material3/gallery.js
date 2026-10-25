@@ -90,21 +90,48 @@ export function renderGoogleMaterial3Gallery(data,cw,page) {
     H('inp:progress','Progress indicators',602);
     place(M.progress({key:'lab:progress',width:Math.min(500,cw-60),value:ui.num(data.slider,45)/100}),
       24,665,Math.min(500,cw-60),8);
+    sep('inp:select-sep',720);
+    H('inp:select-head','Select',743);
+    D('inp:select-sub','Choose an option from an anchored menu.',782);
+    const valueNames={system:'System default',light:'Light',dark:'Dark',dynamic:'Dynamic colors'};
+    place(M.select({key:'lab:select-field',label:'Appearance',variant:'outlined',
+      width:Math.min(340,cw-55),value:valueNames[data.selectValue]||valueNames.system,
+      onClick:'lab:overlay:select'}),24,828,Math.min(340,cw-55),56);
   } else if(page==='navigation'){
-    H('nav:head','Navigation components',20);D('nav:sub','Primary tabs and composed navigation',61);
+    H('nav:head','Navigation components',20);
+    D('nav:sub','Primary tabs and composed navigation',61);
     place(M.tabs({key:'lab:tabs',width:Math.min(570,cw-40),selected:data.tab||'overview',
       items:[{id:'overview',label:'Overview',onClick:'lab:tab:overview'},
         {id:'activity',label:'Activity',onClick:'lab:tab:activity'},
         {id:'settings',label:'Settings',onClick:'lab:tab:settings'}]}),24,124,Math.min(570,cw-40),48);
-    sep('nav:sep',224);
-    H('nav:list-head','List items',255);
+    sep('nav:top-separator',204);
+    // Rail and its companion list are independent components, not a single
+    // 900px-high fixed-position column. On narrow previews the same examples
+    // stack and are reachable through the host's retained scroll container.
+    const sideBySide=cw>=660;
+    const listX=sideBySide?Math.min(310,Math.round(cw*0.34)):24;
+    const listY=sideBySide?300:611;
+    const listWidth=Math.max(130,Math.min(490,cw-listX-24));
+    H('nav:rail-head','Navigation rail',242);
+    place(M.navigationRail({key:'lab:rail',selected:data.rail||'home',items:[
+      {id:'home',label:'Home',icon:'material3/home',onClick:'lab:rail:home'},
+      {id:'favorites',label:'Saved',icon:'heart-pulse',onClick:'lab:rail:favorites'},
+      {id:'settings',label:'Settings',icon:'material3/settings',onClick:'lab:rail:settings'}
+    ]}),24,301,96,260);
+    if(sideBySide) {
+      detail.push(M.shape('nav:column-rule',listX-22,249,1,322,0,P.outlineVariant));
+      detail.push(T('nav:list-head','List items',listX,242,listWidth,35,{size:24,medium:true}));
+    } else {
+      sep('nav:stack-rule',577);
+      H('nav:list-head','List items',585);
+    }
     for(let i=0;i<3;i++){
       const id=['profile','notifications','settings'][i];
-      place(M.listItem({key:`lab:list:${id}`,width:Math.min(480,cw-50),
+      const supporting=i===1?'Choose what you want to receive':undefined;
+      place(M.listItem({key:`lab:list:${id}`,width:listWidth,
         title:['Profile','Notifications','Preferences'][i],
-        supporting:i===1?'Choose what you want to receive':undefined,
-        icon:['user','heart-pulse','palette'][i],selected:data.list===id,
-        onClick:`lab:list:${id}`}),24,314+i*84,Math.min(480,cw-50),i===1?72:56);
+        supporting,icon:['user','heart-pulse','palette'][i],selected:data.list===id,
+        onClick:`lab:list:${id}`}),listX,listY+i*78,listWidth,supporting?72:56);
     }
   } else if(page==='surfaces'){
     H('surf:head','Cards',20);D('surf:sub','Material 3 filled, elevated and outlined surfaces',61);
@@ -123,6 +150,41 @@ export function renderGoogleMaterial3Gallery(data,cw,page) {
       onClick:action('save')}),24,620,115,40);
     place(M.button({key:'surf:cancel',label:'Cancel',variant:'text',width:115,
       onClick:action('cancel')}),154,620,115,40);
+  } else if(page==='overlays'){
+    H('overlay:head','Menus and dialogs',20);
+    D('overlay:sub','Temporary surfaces render above the page and its scroll clip.',61);
+    place(M.button({key:'lab:menu-trigger',label:'Open menu',variant:'outlined',width:152,
+      onClick:'lab:overlay:menu'}),24,124,152,40);
+    place(M.button({key:'lab:dialog-trigger',label:'Open dialog',variant:'filled',width:152,
+      onClick:'lab:overlay:dialog'}),195,124,152,40);
+    sep('overlay:sep',211);
+    H('overlay:search-head','Search',240);
+    D('overlay:search-desc','Live input and local suggestions',282);
+    place(M.searchBar({key:'lab:search:field',width:Math.min(490,cw-55),
+      value:data.search||'',focused:data.focus==='search',onClick:'lab:focus:search'}),
+      24,334,Math.min(490,cw-55),56);
+    const q=ui.str(data.search,'').trim().toLowerCase();
+    const results=['Account','Appearance','Audio','Controls','Language','Notifications','Privacy'];
+    const filtered=results.filter(v=>!q||v.toLowerCase().includes(q)).slice(0,5);
+    if(data.focus==='search'||q){
+      for(let i=0;i<filtered.length;i++){
+        const name=filtered[i],y=414+i*52;
+        place(M.listItem({key:`lab:result:${name.toLowerCase()}`,width:Math.min(490,cw-55),
+          title:name,onClick:`lab:result:${name.toLowerCase()}`}),24,y,Math.min(490,cw-55),52);
+      }
+      if(!filtered.length) D('overlay:noresults','No results',420);
+    }
+    sep('overlay:sep2',724);
+    H('overlay:badge-head','Badges',752);
+    place(M.badge({key:'lab:badge:number',label:'3'}),24,820,24,16);
+    place(M.badge({key:'lab:badge:dot'}),98,825,6,6);
+    sep('overlay:sep3',872);
+    H('overlay:feedback-head','Feedback',892);
+    D('overlay:feedback-desc','Tooltip on hover; snackbar with action and timeout.',934);
+    place(M.button({key:'lab:tooltip:trigger',label:'Hover for tooltip',variant:'outlined',
+      width:190,onClick:'lab:tooltip:noop'}),24,990,190,40);
+    place(M.button({key:'lab:snackbar:trigger',label:'Show snackbar',variant:'filled',
+      width:162,onClick:'lab:snackbar:show'}),238,990,162,40);
   } else if(page==='states'){
     H('states:head','Component states',20);D('states:sub','Selected, unselected, disabled, hover and pressed',61);
     place(M.button({key:'states:enabled',label:'Enabled',width:142,onClick:action('enabled')}),24,126,142,40);

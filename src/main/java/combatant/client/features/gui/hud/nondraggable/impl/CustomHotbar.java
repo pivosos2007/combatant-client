@@ -19,6 +19,12 @@ import combatant.client.config.SettingDef;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.hud.HudClimateSurface;
+import combatant.client.runtime.CombatantBuild;
+import combatant.client.features.gui.hud.draggable.impl.HudMaterialChoice;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
+import combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec;
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
 import combatant.client.mixins.accessors.PlayerInventoryAccessor;
 import combatant.client.util.player.inventory.InventorySlotLocks;
@@ -67,6 +73,8 @@ public final class CustomHotbar extends AbstractHudElement {
             new BooleanValue("custom_divider_color", false);
     private final NumberValue<Integer> accentAlpha =
             new NumberValue<>("accent_alpha", 255, 0, 255);
+    private final ModeValue surfaceMaterial = new ModeValue("surface_material", "Default", HudMaterialChoice.OPTIONS);
+    private final BooleanValue environmentalEffects = new BooleanValue("environmental_effects", CombatantBuild.isDevelopmentBuild());
     private CustomHotbar() {
         super("vanilla_hotbar", "Hotbar", "hud.static.vanilla_hotbar.description", true);
     }
@@ -285,8 +293,16 @@ public final class CustomHotbar extends AbstractHudElement {
 
     private static void drawGlass(float x, float y, float w, float h, float radius) {
         float glassScale = RADIUS <= 0.0f ? 1.0f : radius / RADIUS;
+        CustomHotbar config = get();
+        String selected = config.surfaceMaterial.get();
+        UiGlassVisual visual = "Ice".equals(selected)
+                ? UiGlassVisual.ice(UiIceMaterialSpec.LIGHT)
+                : HudClimateSurface.glassVisual(config.environmentalEffects.get());
         HudRenderUtil.drawReactiveGlass(x, y, w, h, radius, glassScale, false,
-                1f, 1f, null, HOTBAR_GLASS, false);
+                1f, 1f, null, HOTBAR_GLASS, false, 0f, 0f, visual);
+        HudMaterialChoice.drawGlassOverlay(Renderer2D.COLOR, selected,
+                x, y, w, h, radius, radius, radius, radius,
+                HudRenderUtil.glassBackground(), theme().accentSoft());
     }
 
     private static int withSelectorAlpha(int argb, int alpha) {
@@ -308,11 +324,21 @@ public final class CustomHotbar extends AbstractHudElement {
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.mode(offHandMode));
+        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        defs.add(SettingDef.bool(environmentalEffects).common("setting.common.environmental_effects")
+                .visibleWhen(CombatantBuild::isDevelopmentBuild));
         defs.add(SettingDef.bool(customSelectColor));
         defs.add(SettingDef.colorNoAlpha(selectColor).visibleWhen(customSelectColor::get));
         defs.add(SettingDef.bool(customDividerColor));
         defs.add(SettingDef.colorNoAlpha(dividerColor).visibleWhen(customDividerColor::get));
         defs.add(SettingDef.number(accentAlpha));
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
+        if (environmentalEffects.get()) HudClimateSurface.declarePrewarm(event);
     }
 
     public boolean isHudHotbarEnabled() {

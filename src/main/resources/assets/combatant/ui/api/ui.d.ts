@@ -160,6 +160,15 @@ export type UiInlineStyle = {
   blurBrightness?: number;
   blurAlpha?: number;
   liquidGlass?: boolean;
+  /** Optional Voronoi structure on top of the current material (primitive shapes only). */
+  structureMode?: "voronoi" | "voronoi-cracks" | "voronoi-crystal" | "voronoi-relief" | string;
+  structureCellSize?: number;
+  structureJitter?: number;
+  structureLineWidth?: number;
+  structureDepth?: number;
+  structureOpacity?: number;
+  structureSeed?: number;
+  structureColor?: string | number;
   materialMode?: string;
   materialAccent?: string | number;
   materialDetailScale?: number;
@@ -641,6 +650,15 @@ export type UiShapeNode = UiNode & {
   /** Enables the existing liquid-glass material on compatible analytic primitives. */
   liquidGlass?: boolean;
   glassPreset?: "light" | "balanced" | "heavy" | "hud-small" | "hud-large" | "health" | string;
+  /** Optional Voronoi structure on top of the current material (primitive shapes only). */
+  structureMode?: "voronoi" | "voronoi-cracks" | "voronoi-crystal" | "voronoi-relief" | string;
+  structureCellSize?: number;
+  structureJitter?: number;
+  structureLineWidth?: number;
+  structureDepth?: number;
+  structureOpacity?: number;
+  structureSeed?: number;
+  structureColor?: string | number;
   materialMode?: string;
   materialAccent?: string | number;
   materialDetailScale?: number;

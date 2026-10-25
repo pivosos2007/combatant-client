@@ -47,6 +47,19 @@ public record UiPaint(UiPaintKind kind,
         return color != null ? color.getRGB() : 0;
     }
 
+    /** Scales source alpha without modifying the authored sRGB colors or gradient. */
+    public UiPaint withAlphaScale(float opacity) {
+        float factor = Float.isFinite(opacity) ? Math.max(0f, Math.min(1f, opacity)) : 0f;
+        return new UiPaint(kind,
+                scaledAlpha(topLeft, factor), scaledAlpha(topRight, factor),
+                scaledAlpha(bottomRight, factor), scaledAlpha(bottomLeft, factor),
+                angleDeg, offsetPx);
+    }
+
+    private static int scaledAlpha(int color, float factor) {
+        return (color & 0x00FFFFFF) | (Math.round(((color >>> 24) & 255) * factor) << 24);
+    }
+
     public boolean isSolid() {
         return kind == UiPaintKind.SOLID || (topLeft == topRight && topLeft == bottomRight && topLeft == bottomLeft);
     }

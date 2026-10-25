@@ -554,6 +554,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
 
     @Inject(method = "renderLevel", at = @At("HEAD"))
     private void combatant$beginWorldMsaa(CallbackInfo ci) {
+        PreTranslucentDepth.reset();
         CombatantWorldMatrices.reset();
         if (ClickGuiRenderer.suppressesBackgroundRendering() || VisualPreviewRuntime.isActive()) return;
         if (IrisRuntime.isModLoaded()) {
@@ -588,8 +589,11 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                                                       boolean renderTerrain) {
         if (ClickGuiRenderer.suppressesBackgroundRendering() || VisualPreviewRuntime.isActive()) return;
         renderer.render(resources, renderBlockOutline, camera, fog, clearColor, renderSky, renderTerrain);
-        if (!IrisRuntime.isShaderpackRendererActive()) {
-            PreTranslucentDepth.captureFrom(minecraft.gameRenderer.mainRenderTarget());
+        // A snapshot taken here would be AFTER translucent rendering and violate PRE_DEPTH.
+        // If the early capture failed, do not replace it with misleading final-world depth.
+        if (!IrisRuntime.isShaderpackRendererActive() && !PreTranslucentDepth.hasCapturedThisFrame()) {
+            DebugLog.warnOnChange("pretranslucent-depth.no-opaque-snapshot", "vanilla-world",
+                    "[PreTranslucentDepth] no opaque depth snapshot: vanilla capture hook missing or failed");
         }
     }
 

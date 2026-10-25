@@ -325,6 +325,7 @@ public final class CompactHudStatModel {
     public LinkedHashMap<String, LinkedHashMap<String, Object>> runtimePatches() {
         LinkedHashMap<String, LinkedHashMap<String, Object>> patches = new LinkedHashMap<>(12);
         putPropPatch(patches, "compact-stat:" + id, "renderBlurAlpha", background.blurAlpha);
+        putPropPatch(patches, "fill", "materialMode", background.materialMode);
         putPropPatch(patches, "fill", "startColor", color(background.primary));
         putPropPatch(patches, "fill", "endColor", color(background.secondary));
         // These are renderer props, not layout-only values; patch them directly instead of
@@ -562,6 +563,7 @@ public final class CompactHudStatModel {
 
     public static final class Background {
         private String effect = "None";
+        private String materialMode = "";
         private boolean theme;
         private float blurAlpha;
         private int primary;
@@ -609,7 +611,13 @@ public final class CompactHudStatModel {
             return this;
         }
 
+        public Background setMaterial(String value) {
+            this.materialMode = value != null ? value : "";
+            return this;
+        }
+
         private void writeTo(LinkedHashMap<String, Object> props) {
+            props.put("materialMode", materialMode);
             props.put("backgroundEffect", effect);
             props.put("backgroundTheme", theme);
             props.put("blurAlpha", blurAlpha);
@@ -628,6 +636,7 @@ public final class CompactHudStatModel {
 
         private long mixStructure(long h) {
             h = CompactHudStatModel.mix(h, effect);
+            h = CompactHudStatModel.mix(h, materialMode);
             return h;
         }
 

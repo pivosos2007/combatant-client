@@ -47,7 +47,7 @@ import java.util.List;
 
 public final class ModulesMenuScreen {
     private static final float INPUT_READY_PROGRESS = 0.72f;
-    private static final UiLiquidGlassMaterial SEARCH_GLASS = ModulesMenuStyle.frozenGlass(17, true);
+    private static final UiLiquidGlassMaterial SEARCH_GLASS = ModulesMenuStyle.glass();
     private static final float PANEL_W = 115.0f;
     private static final float BASE_PANEL_H = 240.0f;
     private static final float PANEL_H = 255.0f;
@@ -72,6 +72,12 @@ public final class ModulesMenuScreen {
 
     private static final float LIQUID_GLASS_LOGICAL_SCALE = 3.0f;
     private static float ACTIVE_PORT_SCALE = LIQUID_GLASS_LOGICAL_SCALE;
+
+    /** Modules ClickGUI always follows weather; no user HUD opt-out applies. */
+    private static UiLiquidGlassMaterial climateGlass(UiLiquidGlassMaterial base) {
+        var visual = combatant.client.features.gui.hud.HudClimateSurface.glassVisual(true);
+        return visual.custom() ? base.withVisual(visual) : base;
+    }
 
     private final List<ModulesMenuPanel> panels = new ArrayList<>();
 
@@ -491,7 +497,7 @@ public final class ModulesMenuScreen {
 
         float materialAlpha = alpha >= 0.999f ? 1.0f : alpha;
         drawLiquidGlass(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale,
-                true, materialAlpha, panel.frozenGlass);
+                true, materialAlpha, panel.glass);
     }
 
     private void renderPanel(ModulesMenuPanel panel, float mouseX, float mouseY, float alpha) {
@@ -652,12 +658,12 @@ public final class ModulesMenuScreen {
                 int glassRgb = mix(ModulesMenuStyle.panelBgGlassDark(), themeGlass,
                         0.72f + 0.08f * hover);
                 int glassTint = withAlpha(glassRgb, Math.round(alpha * (108.0f + 18.0f * hover)));
-                UiLiquidGlassMaterial material = panel.frozenControl.withInnerGlow(
+                UiLiquidGlassMaterial material = panel.controlGlass.withInnerGlow(
                         0.006f + hover * 0.006f,
                         2.15f + hover * 0.20f,
                         withAlpha(themeGlass, Math.round(alpha * (4.0f + 4.0f * hover)))
                 );
-                renderer.withLiquidGlassMaterial(material, () -> renderer.liquidGlassRect(
+                renderer.withLiquidGlassMaterial(climateGlass(material), () -> renderer.liquidGlassRect(
                         x, rowY, itemW, rowH, radius,
                         glassTint,
                         alpha * (0.92f + hover * 0.04f),
@@ -706,12 +712,12 @@ public final class ModulesMenuScreen {
             int activeThemeGlass = mix(buttonGradient.start(), buttonGradient.end(), 0.50f);
             int activeGlassRgb = mix(ModulesMenuStyle.panelBgGlassDark(), activeThemeGlass, 0.86f);
             int activeGlassTint = withAlpha(activeGlassRgb, Math.round(alpha * 148.0f));
-            UiLiquidGlassMaterial activeMaterial = panel.frozenControl.withInnerGlow(
+            UiLiquidGlassMaterial activeMaterial = panel.controlGlass.withInnerGlow(
                     0.012f + 0.004f * motion,
                     2.45f + 0.18f * motion,
                     withAlpha(activeThemeGlass, Math.round(alpha * 8.0f))
             );
-            renderer.withLiquidGlassMaterial(activeMaterial, () -> renderer.liquidGlassCompound(
+            renderer.withLiquidGlassMaterial(climateGlass(activeMaterial), () -> renderer.liquidGlassCompound(
                     activeShape,
                     activeGlassTint,
                     alpha * 0.98f,
@@ -1514,7 +1520,7 @@ public final class ModulesMenuScreen {
         Renderer2D.COLOR.withLiquidGlassBlurProfile(
                 Renderer2D.BlurQuality.LIQUID_GLASS,
                 panel ? 1.65f : 1.38f,
-                () -> Renderer2D.COLOR.withLiquidGlassMaterial(material, () -> Renderer2D.COLOR.liquidGlassRect(
+                () -> Renderer2D.COLOR.withLiquidGlassMaterial(climateGlass(material), () -> Renderer2D.COLOR.liquidGlassRect(
                         x, y, w, h,
                         radius,
                         0xFFB4DBF3,

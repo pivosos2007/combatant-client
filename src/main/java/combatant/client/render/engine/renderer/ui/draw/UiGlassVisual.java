@@ -22,9 +22,20 @@ public record UiGlassVisual(Identifier shader, List<Float> parameters, float sam
             .withVector(0, 1f, 28f, 6f, 0.45f);
     public static UiGlassVisual ice(UiIceMaterialSpec material) {
         UiIceMaterialSpec ice = Objects.requireNonNull(material, "material");
+        UiMaterialTextureSpec texture = ice.texture();
         return shader("ui_glass_ice_blend.frag", ice.displacementPx())
                 .withVector(0, ice.seed(), ice.density(), ice.frost(), ice.cracks())
-                .withVector(1, ice.blueAbsorption(), ice.displacementPx(), ice.facetContrast(), ice.clarity());
+                .withVector(1, ice.blueAbsorption(), ice.displacementPx(), ice.facetContrast(), ice.clarity())
+                .withVector(2, texture.tileSizePx(), texture.normalStrength(), texture.heightStrength(), texture.roughnessVariation())
+                .withVector(3, texture.specularStrength(), texture.tintStrength(), texture.directionDegrees(), ice.frost());
+    }
+
+    public boolean usesIceTextures() {
+        return usesIceTextures(shader);
+    }
+
+    public static boolean usesIceTextures(Identifier shader) {
+        return shader != null && shader.equals(Identifier.fromNamespaceAndPath("combatant", "shaders/ui_glass_ice_blend.frag"));
     }
 
     public UiGlassVisual {

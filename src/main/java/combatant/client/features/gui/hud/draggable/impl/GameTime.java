@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+
 
 import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.TextSizing;
@@ -75,6 +77,7 @@ public final class GameTime extends DraggableHudElement implements ScriptableHud
     private static final int ICON_THUNDER_SNOW_DAY = 0xEA02;
     private static final int ICON_THUNDER_SNOW_NIGHT = 0xEA0A;
 
+    private final ModeValue surfaceMaterial = mode("gametime_surface_material", HudMaterialChoice.DEFAULT, HudMaterialChoice.OPTIONS);
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final BooleanValue showWeather = bool("game_time_weather", "weather", true);
@@ -145,6 +148,12 @@ public final class GameTime extends DraggableHudElement implements ScriptableHud
         if (target >= current) return target;
         float next = AnimationUtility.approach(current, target, AnimationUtility.deltaTime(), 12.0f);
         return AnimationUtility.snap(next, target, 0.25f);
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
     }
 
     @Override
@@ -248,7 +257,7 @@ public final class GameTime extends DraggableHudElement implements ScriptableHud
                         strokeEnabled.get(), strokeAlpha.get() / 255.0f,
                         isThemeMode() && strokeGradient.get(),
                         resolveStrokeGradientStart(), resolveStrokeGradientEnd()
-                );
+                ).setMaterial(HudMaterialChoice.shaderMode(surfaceMaterial.get()));
         scriptModel.icon().glyph(icon, "WeatherIcons", iconX - baseX, iconY - baseY, iconW, iconH, iconScale, resolvedIconColor);
         scriptModel.divider().set(dividerX - baseX, dividerY - baseY, dividerW, dividerH,
                 HudRenderUtil.setAlpha(uiValueColor, 0x52));

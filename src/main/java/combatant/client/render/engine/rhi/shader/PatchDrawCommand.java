@@ -20,7 +20,8 @@ public record PatchDrawCommand(String label,
                                List<StorageBinding> storageBindings,
                                List<SampledTextureBinding> sampledTextures,
                                List<StorageImageBinding> storageImages,
-                               List<SampledVolumeBinding> sampledVolumes) {
+                               List<SampledVolumeBinding> sampledVolumes,
+                               @Nullable RhiStorageBuffer indirectCommands, long indirectOffset) {
     public PatchDrawCommand {
         label = label == null || label.isBlank() ? "combatant-patches" : label;
         if (pipeline == null || colorAttachments == null || colorAttachments.isEmpty()
@@ -32,6 +33,16 @@ public record PatchDrawCommand(String label,
         sampledTextures = sampledTextures == null || sampledTextures.isEmpty() ? List.of() : List.copyOf(sampledTextures);
         storageImages = storageImages == null || storageImages.isEmpty() ? List.of() : List.copyOf(storageImages);
         sampledVolumes = sampledVolumes == null || sampledVolumes.isEmpty() ? List.of() : List.copyOf(sampledVolumes);
+        if (indirectCommands != null && (!indirectCommands.descriptor().indirectSource()
+                || indirectOffset < 0 || (indirectOffset & 3) != 0 || indirectOffset > indirectCommands.descriptor().byteSize() - 20))
+            throw new IllegalArgumentException("Invalid indexed-indirect draw range");
+    }
+
+    public PatchDrawCommand(String label, RhiPatchPipeline pipeline, List<GpuTextureView> colors,
+                            @Nullable GpuTextureView depth, GpuMeshHandle mesh,
+                            List<StorageBinding> buffers, List<SampledTextureBinding> samplers,
+                            List<StorageImageBinding> images, List<SampledVolumeBinding> volumes) {
+        this(label, pipeline, colors, depth, mesh, buffers, samplers, images, volumes, null, 0L);
     }
 
     public PatchDrawCommand(String label,

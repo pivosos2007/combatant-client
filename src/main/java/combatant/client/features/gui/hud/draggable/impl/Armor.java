@@ -7,6 +7,10 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+
+import combatant.client.config.values.ModeValue;
+
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
@@ -50,6 +54,7 @@ public final class Armor extends DraggableHudElement {
     private static final float DEFAULT_SLOT_GAP = 2f;
     private static final float DEFAULT_MARGIN = 16f;
 
+    private final ModeValue surfaceMaterial = mode("armor_surface_material", HudMaterialChoice.DEFAULT, HudMaterialChoice.OPTIONS);
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final ScriptedArmorHudPanel scriptedPanel = new ScriptedArmorHudPanel();
@@ -79,6 +84,12 @@ public final class Armor extends DraggableHudElement {
             if (stack != null && !stack.isEmpty()) return true;
         }
         return false;
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
     }
 
     @Override
@@ -185,6 +196,8 @@ public final class Armor extends DraggableHudElement {
                         accentGradient.end(),
                         accentGradient.angleDeg(),
                         items
+                ,
+                        HudMaterialChoice.shaderMode(surfaceMaterial.get())
                 )
         );
     }

@@ -292,7 +292,7 @@ public final class CombatantGlBackend implements CombatantRhi {
 
                 BindingCounts emitted = bindDrawState(pass, command, bindPipeline, bindings);
                 stats.pipelineUse(command.pipeline, command.pipelineSpec, emitted.uniforms(), emitted.samplers(), bindPipeline);
-                command.mesh.drawIndexed(pass, command.label);
+                command.mesh.drawIndexed(pass, command.label, command.instanceCount);
                 stats.drawCall();
             } finally {
                 RenderState.lineWidth = previousLineWidth;
@@ -405,6 +405,7 @@ public final class CombatantGlBackend implements CombatantRhi {
 
     private static boolean multiDrawCandidate(RhiDrawCommand command) {
         return drawable(command)
+                && command.instanceCount == 1
                 && !CombatantRenderPipelines.isRigPipeline(command.pipeline);
     }
 

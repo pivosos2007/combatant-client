@@ -28,8 +28,8 @@ vm.runInContext(gallerySource,context,{filename:'component_gallery.inlined.js'})
 const allNodes=(n,out=[])=>{if(!n||typeof n!=='object')return out;
   if(Array.isArray(n)){n.forEach(v=>allNodes(v,out));return out;}
   if(typeof n.type==='string'){out.push(n);allNodes(n.children,out);}return out;};
-const pages=['buttons','selection','inputs','navigation','surfaces','states'];
-for(const [w,h] of [[1920,1080],[1366,768],[1280,720]]){
+const pages=['buttons','selection','inputs','navigation','surfaces','overlays','states'];
+for(const [w,h] of [[1920,1080],[1649,928],[1366,768],[1280,720]]){
  for(const page of pages){
   const tree=context.buildTemplate({props:{width:w,height:h,kit:'google',page,segment:'week',radio:1,enabled:true,checked:true}});
   const nodes=allNodes(tree);const keys=nodes.map(n=>n.key).filter(Boolean);
@@ -45,16 +45,48 @@ for(const [w,h] of [[1920,1080],[1366,768],[1280,720]]){
    }
   }
   if(page==='selection'){
-   const tracks=nodes.filter(n=>n.key?.startsWith('lab:segments:track:'));
-   assert.equal(tracks.length,3,'Expected three connected tracks');
-   assert.equal(tracks[1].props?.shape,'box','Middle uses independent per-corner geometry');
-   assert.equal(tracks[1].props.cornerTL.radius,8,'Middle has rounded inner corners');
-   const indicator=nodes.filter(n=>n.key==='lab:segments:selection');
-   assert.equal(indicator.length,1,'Selection pill must be shared');
-   assert.equal(indicator[0].props?.radius,20,'Selection pill must be fully rounded');
+   const surfaces=nodes.filter(n=>/^lab:segments:(day|week|month):container$/.test(n.key||''));
+   const hoverLayers=nodes.filter(n=>/^lab:segments:(day|week|month):state$/.test(n.key||''));
+   assert.equal(surfaces.length,3,'Each segment needs one analytic surface');
+   assert.equal(hoverLayers.length,3,'Each segment needs a matching interactive state layer');
+   assert(surfaces.every(n=>n.props.shape==='box' && n.props.cornerMorphTo===20),
+     'All segment silhouettes must animate their true corner geometry');
+   assert(surfaces.every(n=>n.props.cornerMorphOnPress!==true),
+     'Connected selection geometry must not combine press and selection clocks');
+   assert(surfaces.every(n=>n.props.strokeWidth===1),
+     'One outline per segment, not overlay outlines');
+   assert.equal(surfaces[1].props.cornerTL.radius,8,'Unselected inner corner uses 8dp');
+   assert(!nodes.some(n=>/lab:segments:(selection|track:\d+)/.test(n.key||'')),
+     'Old overlapping track/selection geometry leaked into connected group');
+  }
+  if(page==='inputs') assert(nodes.some(n=>n.key==='lab:select-field'),'Missing select field');
+  if(page==='navigation') {
+   const listNodes=nodes.filter(n=>/^lab:list:(profile|notifications|settings)$/.test(n.key||''));
+   assert.equal(listNodes.length,3,'Navigation must show all three examples');
+   const previewHeight=Math.min(910,Math.max(560,h-120))-165;
+   if(w>=1280){
+    assert(nodes.some(n=>n.key==='nav:column-rule'),'Wide navigation should have two columns');
+    if(previewHeight>=560) assert(listNodes.every(n=>n.style.top+n.style.height<=previewHeight),
+      'Wide navigation list is clipped by its own viewport');
+   }
+  }
+  if(page==='overlays'){
+   assert(nodes.some(n=>n.key==='lab:menu-trigger'),'Missing menu trigger');
+   assert(nodes.some(n=>n.key==='lab:dialog-trigger'),'Missing dialog trigger');
   }
   console.log(`OK ${w}x${h} ${page}: ${nodes.length} nodes`);
  }
+}
+// Every selection position must retain the same true geometry and stable keys.
+for(const selected of ['day','week','month']){
+ vm.runInContext(`globalThis.__connected = GoogleMaterial3.connectedButtonGroup({key:'check:connected',width:420,selected:'${selected}',items:[{id:'day',label:'Day'},{id:'week',label:'Week'},{id:'month',label:'Month'}]});`,context);
+ const ns=allNodes(context.__connected);
+ const buttons=ns.filter(n=>/^check:connected:(day|week|month)$/.test(n.key||''));
+ assert.equal(buttons.length,3,'Three interactive segments required');
+ assert.equal(buttons.filter(n=>n.props.stateValues.selected).length,1,'Exactly one selected segment');
+ const layers=ns.filter(n=>/^check:connected:(day|week|month):(container|state)$/.test(n.key||''));
+ assert.equal(layers.length,6,'No redundant moving track or stroke layers');
+ assert(layers.every(n=>n.props.cornerMorphTo===20 && n.props.stateSource==='parent'));
 }
 // Structural check of the Google classic capsule; only the group receives its outline.
 vm.runInContext(`globalThis.__segmented=GoogleMaterial3.segmented({key:'test:seg',width:360,selected:'week',items:[{id:'day',label:'Day'},{id:'week',label:'Week'},{id:'month',label:'Month'}]});`,context);
@@ -69,6 +101,12 @@ assert(!/alphaTerms:\s*\{[^}]*active\s*:/.test(googleSource),'Unrecognized activ
 assert(/press:\s*\{durationMs:110/.test(googleSource),'Press motion absent');
 assert(/alphaTerms:\s*\{selected:1/.test(googleSource),'Selection transition absent');
 const devSection=load('dev/java/combatant/client/features/gui/clickgui/sections/dev/UiComponentLabSection.java');
-assert(devSection.includes('animatedSegment * (each + gap)'),'Animated connected selection must track computed bounds');
+assert(!devSection.includes('lab:segments:selection'),'Connected selection must be native per-segment geometry, not patched overlay');
 assert(!devSection.includes('GLFW'),'Native input integration regressed');
 console.log('All component gallery and motion-contract tests passed.');
+
+const renderer=load('java/combatant/client/render/engine/renderer/Renderer2D.java');
+assert(renderer.includes('isAnalyticRoundedBox(box)'), 'Round-per-corner boxes must render through analytic SDF path');
+assert(renderer.includes('roundedRectStrokeCorners(b.x(), b.y()'), 'Analytic border path is required');
+console.log('Analytic rounded-box rendering path verified in source.');
+assert(renderer.includes('double qRight = x + w + fringe'), 'Analytic AA border needs a fragment fringe beyond bounds');

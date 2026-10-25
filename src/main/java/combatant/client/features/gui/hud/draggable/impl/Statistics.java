@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+
 
 import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
@@ -85,6 +87,7 @@ public final class Statistics extends DraggableHudElement {
         defaultLayout(20.0f, 150.0f);
     }
 
+    private final ModeValue surfaceMaterial = HudMaterialChoice.setting("statistics");
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final ScriptedStatisticsHudPanel scriptedPanel = new ScriptedStatisticsHudPanel();
@@ -172,6 +175,7 @@ public final class Statistics extends DraggableHudElement {
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
+        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(layoutMode));
         defs.add(SettingDef.group("statistics_information", information));
@@ -198,6 +202,12 @@ public final class Statistics extends DraggableHudElement {
         defs.add(SettingDef.bool(headerIconPulse));
         defs.add(SettingDef.number(headerIconPulseSpeed).visibleWhen(headerIconPulse::get));
         defs.add(SettingDef.number(headerIconPulseIntensity).visibleWhen(headerIconPulse::get));
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
     }
 
     @Override
@@ -449,6 +459,8 @@ public final class Statistics extends DraggableHudElement {
                         infoRows,
                         GRAPH_CEILING_BPS,
                         graphValues
+                ,
+                        HudMaterialChoice.shaderMode(surfaceMaterial.get())
                 )
         );
     }

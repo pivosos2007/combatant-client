@@ -57,7 +57,7 @@ public final class MsdfFont implements GlyphFont {
     private MsdfFont(MsdfAtlas atlas, float targetHeight) {
         this.atlas = atlas;
         this.height = Math.max(1, Math.round(targetHeight));
-        this.pixelScale = targetHeight / atlas.lineHeight;
+        this.pixelScale = this.height / atlas.lineHeight;
         atlas.retain();
     }
 
@@ -76,6 +76,14 @@ public final class MsdfFont implements GlyphFont {
 
     public static String getLastError() {
         return lastError;
+    }
+
+    double lineHeightEm() { return atlas.lineHeight; }
+
+    double ascenderEm() { return atlas.ascender; }
+
+    static float sdfPixelDistanceScale(float distanceRange) {
+        return 255.0f / distanceRange;
     }
 
     private static void setLastError(String reason) {
@@ -582,7 +590,7 @@ public final class MsdfFont implements GlyphFont {
                 // in RGB yields the same signed-distance coverage for glyphs not
                 // present in the pre-generated RGB MSDF asset.
                 ByteBuffer sdf = STBTruetype.stbtt_GetGlyphSDF(nativeFont, sdfEmScale, id,
-                        padding, (byte) 128, 128.0f / distanceRange,
+                        padding, (byte) 128, sdfPixelDistanceScale(distanceRange),
                         wOut, hOut, xOut, yOut);
                 int w = wOut.get(0), h = hOut.get(0);
                 try {

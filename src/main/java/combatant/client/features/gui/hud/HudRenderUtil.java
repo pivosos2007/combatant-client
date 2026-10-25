@@ -144,7 +144,8 @@ public enum HudRenderUtil {
         }
         UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
                 .withOptics(effectiveOptics).withInteraction(interaction).withFrostedJitter(frostPx)
-                .withVisual(visual);
+                .withVisual(visual == null || !visual.custom()
+                        ? HudClimateSurface.glassVisual(true) : visual);
         Runnable draw = () -> drawLiquidGlass(x, y, w, h, radius, scale, large,
                 blurAlpha, glassAlpha);
         Renderer2D renderer = Renderer2D.COLOR;

@@ -27,6 +27,7 @@ import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.profiler.RenderProfiler2D;
 import combatant.client.render.engine.profiler.RenderProfiler3D;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.prewarm.RenderPrewarmManager;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.render.engine.renderer.ui.ItemBatchRenderer;
@@ -555,6 +556,7 @@ public enum ModuleManager {
         if (suppressToggleNotifications) {
             return;
         }
+        if (enabled) RenderPrewarmManager.onVisualConfigurationChanged();
         ModuleStateListener[] snapshot = listenerSnapshot;
         for (int i = 0; i < snapshot.length; i++) {
             try {

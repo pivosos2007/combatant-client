@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+
 
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
@@ -58,6 +60,7 @@ public final class Keybinds extends DraggableHudElement {
     private static final String MODE_PRESS = "Press";
     private static final String MODE_HOLD = "Hold";
 
+    private final ModeValue surfaceMaterial = HudMaterialChoice.setting("keybinds");
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final ScriptedListHudPanel scriptedPanel = new ScriptedListHudPanel();
@@ -222,6 +225,7 @@ public final class Keybinds extends DraggableHudElement {
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
+        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(layoutMode));
         defs.add(SettingDef.mode(colorMode));
@@ -247,6 +251,12 @@ public final class Keybinds extends DraggableHudElement {
         defs.add(SettingDef.bool(headerIconPulse));
         defs.add(SettingDef.number(headerIconPulseSpeed).visibleWhen(headerIconPulse::get));
         defs.add(SettingDef.number(headerIconPulseIntensity).visibleWhen(headerIconPulse::get));
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
     }
 
     @Override
@@ -484,6 +494,8 @@ public final class Keybinds extends DraggableHudElement {
                         resolveStrokeGradientEnd(),
                         true,
                         panelRows
+                ,
+                        HudMaterialChoice.shaderMode(surfaceMaterial.get())
                 )
         );
     }

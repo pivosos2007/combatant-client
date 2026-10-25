@@ -17,6 +17,7 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
 import combatant.client.config.SettingDef;
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudGlobalConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
@@ -91,8 +92,17 @@ public final class Radar extends DraggableHudElement {
         return new EnumValue<>(FIELD_KEY_PREFIX + slot, def, FIELD_OPTIONS);
     }
 
+    private final ModeValue surfaceMaterial = HudMaterialChoice.setting("radar");
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
+    }
+
     @Override
     protected void defineSettings(List<SettingDef> defs) {
+        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
         defs.add(SettingDef.mode(mode));
         defs.add(SettingDef.mode(colorMode));
         defs.add(SettingDef.number(size));
@@ -178,7 +188,12 @@ public final class Radar extends DraggableHudElement {
             drawBlur(baseX, baseY, size, size, radius, bg);
         }
         boolean useGradient = syncTheme && gradient.get();
-        HudRenderUtil.drawHudBackground(renderer, baseX, baseY, size, size, radius, 1.0f, bg, useGradient);
+        if (!HudMaterialChoice.draw(renderer, surfaceMaterial.get(), baseX, baseY,
+                size, size, radius, bg, bg)) {
+            HudRenderUtil.drawHudBackground(renderer, baseX, baseY, size, size, radius, 1.0f, bg, useGradient);
+        }
+        HudMaterialChoice.drawDefaultClimate(renderer, surfaceMaterial.get(),
+                baseX, baseY, size, size, radius);
 
         int stroke = HudRenderUtil.setAlpha(theme().accent(), 0x55);
         renderer.roundedRectStroke(baseX, baseY, size, size, radius, 1.0f,

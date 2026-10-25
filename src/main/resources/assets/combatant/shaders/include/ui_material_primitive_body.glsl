@@ -1,13 +1,15 @@
-
-#include <combatant:ui_aa.glsl>
-#include <combatant:ui_ice_material.glsl>
-
 /*
  * This file is part of the Combatant Client distribution.
  * Copyright (c) 2026 pivosos2007.
  *
  * Licensed under the GNU General Public License v3.0.
  */
+
+#include <combatant:ui_aa.glsl>
+#include <combatant:ui_geometry.glsl>
+#include <combatant:ui_voronoi_structure.glsl>
+#include <combatant:ui_climate_droplets.glsl>
+
 
 layout(location = 1) in vec4 v_Local;
 layout(location = 2) in vec4 v_Color;
@@ -19,6 +21,11 @@ layout(location = 7) in vec4 v_Params4;
 layout(location = 8) in vec4 v_Params5;
 layout(location = 9) in vec4 v_Params6;
 layout(location = 10) in vec4 v_Params7;
+#ifdef COMBATANT_MATERIAL_MICROTEXTURE
+layout(location = 11) in vec4 v_Params8;
+layout(location = 12) in vec4 v_Params9;
+layout(location = 13) in vec4 v_Params10;
+#endif
 
 layout(location = 0) out vec4 fragColor;
 
@@ -36,6 +43,8 @@ layout (std140) uniform UIGlassFrame {
 
 #ifdef COMBATANT_MATERIAL_MICROTEXTURE
 uniform sampler2D u_MaterialMicro;
+uniform sampler2D u_MaterialColor;
+#include <combatant:ui_ice_material.glsl>
 #endif
 
 #ifdef COMBATANT_SCENE_LIT_MATERIAL
@@ -60,6 +69,10 @@ vec3 materialSceneIllumination(vec2 normal, float radiusPx) {
     sum += texture(u_SceneLight, clamp(uv - t, 0.001, 0.999)).rgb * 0.05;
     return sum;
 }
+#endif
+
+#ifdef COMBATANT_MATERIAL_MICROTEXTURE
+#include <combatant:ui_pbr_surface.glsl>
 #endif
 
 vec2 primitivePoint(int index) {
@@ -104,7 +117,12 @@ void main() {
     float invW = abs(v_Local.z) > 0.000001 ? v_Local.z : 1.0;
     vec2 local = v_Local.xy / invW - v_Rect.xy;
     int count = int(clamp(floor(v_Params5.x + 0.5), 3.0, 8.0));
-    float d = primitiveSdf(local, count, max(v_Params5.y, 0.0));
+    // Negative vertex count marks a true four-radius rounded box. Its radii
+    // occupy the otherwise unused 5th/6th polygon vertex slots (v_Params3).
+    float d = v_Params5.x < 0.0
+            ? roundedCornersSdf(local - v_Rect.zw * 0.5, v_Rect.zw * 0.5,
+                    normalizeRadii(v_Params3, v_Rect.zw))
+            : primitiveSdf(local, count, max(v_Params5.y, 0.0));
     float alpha = coverage(d, analyticAa(d, logicalScale));
     if (alpha <= 0.001) discard;
 
@@ -122,7 +140,60 @@ void main() {
     float bevelWidth = mix(1.5, 6.5, bevelStrength);
     float edge = 1.0 - smoothstep(0.0, bevelWidth, max(-d, 0.0));
 
-    if (mode == 1) {
+    if (mode == 9) { // Opt-in environmental film for non-glass materials.
+        vec2 physical = local / max(logicalScale, vec2(1e-6));
+        vec2 rainNormal = vec2(0.0), waterNormal = vec2(0.0);
+        float rainTrail = 0.0, rainShine = 0.0;
+        float waterTrail = 0.0, waterShine = 0.0;
+        float rain = clamp(v_Params5.z, 0.0, 1.0);
+        float water = clamp(v_Params5.w, 0.0, 1.0);
+        float frost = clamp(v_Params6.y, 0.0, 1.0);
+        float snow = clamp(v_Params6.z, 0.0, 1.0);
+        float condensation = clamp(v_Params6.w, 0.0, 1.0);
+        float dropA = 0.0, dropB = 0.0;
+        if (rain > 0.002) dropA = combatantClimateDroplets(physical, uGlassClock.x, rain,
+                25.0, 52.0, 7.31, rainNormal, rainTrail, rainShine);
+        if (water > 0.002) dropB = combatantClimateDroplets(physical, uGlassClock.x, water,
+                42.0, 26.0, 31.73, waterNormal, waterTrail, waterShine);
+        // Humidity is a thin low-contrast film, NOT thousands of extra beads.
+        float film = condensation * (0.55 + 0.45 * hash21(floor(physical / 24.0)));
+        float wetted = clamp(max(dropA, rainTrail * 0.70) * rain
+                           + max(dropB, waterTrail * 0.70) * water,
+                           0.0, 1.0);
+        float glint = clamp(rainShine * rain + waterShine * water, 0.0, 1.0);
+        float facet = 1.0 - smoothstep(0.0, mix(3.0, 20.0, frost),
+                                       max(-d, 0.0) / max(min(logicalScale.x, logicalScale.y), 1e-6));
+        float cold = (frost * facet + snow * 0.14) *
+                     (0.45 + 0.55 * hash21(floor(physical / 6.0)));
+        // Underlying material remains readable. Water bends its highlight;
+        // it is not an opaque white disk or an artificial flood fill.
+        vec3 wetTint = mix(vec3(0.055, 0.085, 0.115), vec3(0.76, 0.87, 0.96),
+                           clamp(glint * 1.2, 0.0, 1.0));
+        vec3 frostTint = vec3(0.72, 0.86, 0.98);
+        float outAlpha = clamp(wetted * (0.29 + glint * 0.24) +
+                               glint * 0.18 + film * 0.07 + cold * 0.37,
+                               0.0, 0.64);
+        color = mix(wetTint, frostTint, clamp(cold / max(wetted + cold, 1e-3), 0.0, 1.0));
+        fragColor = vec4(color, alpha * v_Color.a * outAlpha);
+        return;
+    }
+
+    #ifdef COMBATANT_MATERIAL_MICROTEXTURE
+    if (mode == 1 || mode == 2 || mode == 4 || mode == 5 || mode == 6) {
+        color = uiPbrSurface(local, normal, edge, mode);
+        fragColor = vec4(clamp(color, 0.0, 1.0), v_Color.a * alpha);
+        return;
+    }
+    #endif
+
+    if (mode == 8) { // CELLULAR_STRUCTURE: composited over the pre-existing base.
+        vec2 physical = local / max(logicalScale, vec2(0.0001));
+        vec4 structure = uiVoronoiStructure(physical,
+                v_Params6.y, v_Params6.w, v_Params6.z, v_Params7.w,
+                v_Params5.z, int(floor(v_Params5.w + 0.5)), color);
+        fragColor = vec4(structure.rgb, v_Color.a * alpha * structure.a);
+        return;
+    } else if (mode == 1) {
         vec2 uv = local / max(v_Rect.zw, vec2(1.0));
         // Anisotropy is locked to the top face. No phase jump when the whole
         // hexagon shifts down on hover/press.
@@ -210,14 +281,25 @@ void main() {
         color += vec3(edge * pow(grazing, 5.0) * bevelStrength * 0.12);
         color *= 1.0 - edge * (1.0 - grazing) * 0.13;
     } else if (mode == 7) { // ICE: same shape-aware material used by glass.
+        #ifdef COMBATANT_MATERIAL_MICROTEXTURE
         vec2 surfaceUv = local / max(v_Rect.zw, vec2(1.0));
         vec2 surfaceSizePx = v_Rect.zw / max(logicalScale, vec2(1e-6));
         float shapeDistancePx = d / max(min(logicalScale.x, logicalScale.y), 1e-6);
         vec4 iceShape = vec4(v_Params5.zw, v_Params6.yz);
         vec4 iceOptics = vec4(v_Params6.w, v_Params7.xyz);
         CombatantIceSurface ice = combatantIceSurface(
-                surfaceUv, surfaceSizePx, shapeDistancePx, iceShape);
+                surfaceUv, surfaceSizePx, shapeDistancePx, iceShape, v_Params8,
+                vec4(v_Params9.yz, v_Params10.xy));
         color = combatantIceColor(color, ice, normal, iceOptics);
+        #ifdef COMBATANT_SCENE_LIT_MATERIAL
+        vec3 environment = iceLinear(materialSceneIllumination(ice.facetNormal, v_Params10.w));
+        color = iceSrgb(iceLinear(color) * mix(vec3(1.0), environment * 1.5, v_Params10.z));
+        #endif
+        #else
+        // A texture-free pipeline can occur during capability changes. Preserve the
+        // ice silhouette and supplied tint instead of dropping the entire primitive.
+        color = mix(color, accent, 0.14 + 0.20 * edge * bevelStrength);
+        #endif
     } else if (mode == 6) { // BRUSHED METAL
         vec2 uv = local / max(v_Rect.zw, vec2(1.0));
         float brush = uv.x * 0.92 + uv.y * 0.065;
@@ -235,23 +317,6 @@ void main() {
         color *= 1.0 - edge * (1.0 - grazing) * 0.12;
     }
 
-#ifdef COMBATANT_MATERIAL_MICROTEXTURE
-    // Microheight/roughness/scratches atlas in surface-local coordinates. No texture movement
-    // during panel translation. Static source tile avoids costly per-fragment random generation.
-    if (mode == 1 || mode == 2 || mode == 4 || mode == 5 || mode == 6) {
-        // One repeat per ~96 logical surface pixels; derivatives attenuate fine detail.
-        vec2 pMicro = local / 96.0;
-        vec2 tileUv = fract(pMicro);
-        vec4 micro = textureGrad(u_MaterialMicro, tileUv, dFdx(pMicro), dFdy(pMicro));
-        float microFootprint = max(length(dFdx(pMicro * 256.0)),
-                                    length(dFdy(pMicro * 256.0)));
-        float detail = mode == 4 ? micro.r : mode == 2 ? micro.g
-                : (mode == 1 || mode == 6) ? micro.b : micro.a;
-        // Non-color texture: range-centered small perturbation, never thematic albedo.
-        color *= 1.0 + (detail - 0.5) * (mode == 5 ? 0.007 : 0.034)
-                * (1.0 - roughness * 0.30) * (1.0 - smoothstep(1.0, 3.2, microFootprint));
-    }
-#endif
 #ifdef COMBATANT_SCENE_LIT_MATERIAL
     if (mode == 1 || mode == 2 || mode == 4 || mode == 5 || mode == 6) {
         float strength = clamp(v_Params5.z, 0.0, 1.0);

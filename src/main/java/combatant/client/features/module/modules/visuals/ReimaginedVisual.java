@@ -16,6 +16,7 @@ import combatant.client.config.values.*;
 import combatant.client.features.module.*;
 import combatant.client.features.module.Module;
 import combatant.client.render.engine.postprocess.*;
+import combatant.client.render.effects.weather.ProceduralRainRenderer;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.shader.RhiStorageImage;
 import net.minecraft.client.Minecraft;
@@ -43,6 +44,9 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     private static final String SETTING_EFFECTS = "effects";
     private static final String EFFECT_SHADER_SKY = "shader_sky";
     private static final String EFFECT_DEPTH_OF_FIELD = "depth_of_field";
+    private static final String EFFECT_PROCEDURAL_RAIN = "procedural_rain";
+    private static final String SETTING_RAIN_DENSITY = "procedural_rain_density";
+    private static final String SETTING_RAIN_DISTANCE = "procedural_rain_distance";
     private static final String SETTING_SKYBOX_SHADER_SYNC_THEME = "skybox_shader_sync_theme";
     private static final String SETTING_SKYBOX_SHADER_COLOR = "skybox_shader_color";
     private static final String SETTING_SKYBOX_SHADER_MOTION_SPEED = "skybox_shader_motion_speed";
@@ -123,6 +127,13 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
                     this::isShaderSkyboxSettingsVisible
             ));
     private final Minecraft mc = Minecraft.getInstance();
+    private final NumberValue<Float> proceduralRainDensity = visibleWhen(
+            num("reimaginedVisualRainDensity", SETTING_RAIN_DENSITY, 1.0f, 0.4f, 2.0f),
+            this::isProceduralRainSelected);
+    private final NumberValue<Integer> proceduralRainDistance = visibleWhen(
+            num("reimaginedVisualRainDistance", SETTING_RAIN_DISTANCE, 96, 32, 120),
+            this::isProceduralRainSelected);
+    private final ProceduralRainRenderer proceduralRainRenderer = new ProceduralRainRenderer();
     private final NumberValue<Float> dofFarStart =
             depthOfFieldNotAppliedWithIris(visibleWhen(num("reimaginedVisualDofFarStart", SETTING_DOF_FAR_START, 4.0f, 0.0f, 512.0f),
                     this::isDepthOfFieldSettingsVisible));
@@ -147,6 +158,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
 
     {
         PostProcessManager.register(this);
+        PostProcessManager.register(proceduralRainRenderer);
     }
 
     private static float clampStarAmount(float value) {
@@ -157,6 +169,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
         LinkedHashMap<String, Boolean> defaults = new LinkedHashMap<>();
         defaults.put(EFFECT_SHADER_SKY, true);
         defaults.put(EFFECT_DEPTH_OF_FIELD, false);
+        defaults.put(EFFECT_PROCEDURAL_RAIN, false);
         return defaults;
     }
 
@@ -253,9 +266,31 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
         return mask;
     }
 
-    @Override
-    public WorldPhase getWorldPhase() {
-        return WorldPhase.END_MAIN;
+    /** Only replace vanilla precipitation while the GPU implementation is healthy. */
+    public static boolean isProceduralRainEnabledStatic() {
+        ReimaginedVisual module = module();
+        return module != null && module.isEnabled() && module.isProceduralRainSelected()
+                && module.proceduralRainRenderer.healthy();
+    }
+
+    /** Weather extraction must not hide vanilla rain before GPU precipitation has rendered. */
+    public static boolean shouldSuppressVanillaRainStatic() {
+        ReimaginedVisual module = module();
+        return module != null && isProceduralRainEnabledStatic()
+                && module.mc != null && module.mc.level != null
+                && module.proceduralRainRenderer.recentlySubmittedForWorld(module.mc.level);
+    }
+
+    private boolean isProceduralRainSelected() {
+        return isEffectSelected(EFFECT_PROCEDURAL_RAIN);
+    }
+
+    public float getProceduralRainDensity() {
+        return proceduralRainDensity.get();
+    }
+
+    public int getProceduralRainDistance() {
+        return proceduralRainDistance.get();
     }
 
     @Override
@@ -270,7 +305,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     }
 
     public boolean needsWorldSceneDepthCapture() {
-        return isActive();
+        return isActive() || isProceduralRainEnabledStatic();
     }
 
     public boolean needsPreTranslucentDepthCapture() {
@@ -278,7 +313,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     }
 
     public boolean needsResolvedMainDepthCapture() {
-        return false;
+        return isProceduralRainEnabledStatic();
     }
 
     @Override
@@ -460,6 +495,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
 
     @Override
     public void onEnable() {
+        proceduralRainRenderer.reset();
         depthSamplerSupported = true;
         dofFocusResolveSupported = true;
         dofComputeSupported = true;
@@ -467,6 +503,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
 
     @Override
     public void onDisable() {
+        proceduralRainRenderer.reset();
         closeDofFocusTarget();
         dofComputeBackend.close();
     }
@@ -474,6 +511,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     @Override
     public void releaseBackendResources(CombatantRhi owner) {
         dofComputeBackend.release(owner);
+        proceduralRainRenderer.releaseBackendResources(owner);
         closeDofFocusTarget();
         dofComputeSupported = true;
         dofFocusResolveSupported = true;

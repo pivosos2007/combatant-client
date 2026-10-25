@@ -40,6 +40,12 @@ public final class UiInputDispatcher {
         return state;
     }
 
+    /** Programmatic focus for popup dismissal and keyboard-driven controls. */
+    public void focus(UiNode node) {
+        focusManager.focus(node);
+        state.setFocusedNode(node);
+    }
+
     /** Maps render-space pointer coordinates back into the retained tree's logical units. */
     public void setCoordinateTransform(UiRenderTransform transform) {
         coordinateTransform = transform != null ? transform : UiRenderTransform.IDENTITY;
@@ -102,8 +108,13 @@ public final class UiInputDispatcher {
         state.setPressedNode(hit.node());
         if (hit.node() != null) {
             hit.node().state().setActive(true);
-            focusManager.focus(hit.node());
-            state.setFocusedNode(hit.node());
+            if (logicalEvent.button() == 0 && hit.node().props().bool("materialRipple", false)) {
+                // Pointer positions are already normalized by CombatantInput.
+                hit.node().state().beginRipple(
+                        logicalEvent.x() - hit.node().bounds().x(),
+                        logicalEvent.y() - hit.node().bounds().y(), System.nanoTime());
+            }
+            focus(hit.node());
         }
         return hit.hit();
     }
@@ -121,7 +132,10 @@ public final class UiInputDispatcher {
 
         UiHitResult hit = updateHoverLogical(root, logicalEvent.x(), logicalEvent.y());
         UiNode pressed = state.pressedNode();
-        if (pressed != null) pressed.state().setActive(false);
+        if (pressed != null) {
+            pressed.state().setActive(false);
+            if (logicalEvent.button() == 0) pressed.state().endRipple(System.nanoTime());
+        }
         state.setPressedNode(null);
         if (pressed != null && pressed == hit.node()) {
             String eventName = switch (logicalEvent.button()) {

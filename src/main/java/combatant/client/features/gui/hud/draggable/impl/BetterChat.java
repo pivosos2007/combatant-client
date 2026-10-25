@@ -16,6 +16,10 @@ import combatant.client.config.values.BindMode;
 import combatant.client.config.values.KeyBindValue;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
+import combatant.client.config.values.ModeValue;
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+import combatant.client.config.SettingDef;
+import java.util.List;
 import combatant.client.config.values.RGBColorValue;
 import combatant.client.features.gui.chat.BetterChatRenderer;
 import combatant.client.features.gui.clickgui.settings.FunctionBindSetting;
@@ -49,6 +53,7 @@ public final class BetterChat extends DraggableHudElement {
     private final NumberValue<Integer> maxLines = num("lines", 12, 4, 20);
     private final NumberValue<Double> fadeSeconds = num("fade_seconds", 14.98, 3.0, 30.0);
     private final NumberValue<Integer> liquidGlassAlpha = num("liquid_glass_alpha", 230, 0, 255);
+    private final ModeValue surfaceMaterial = HudMaterialChoice.setting("better_chat");
     private final BooleanValue hideVanilla = bool("hide_vanilla", true);
     private final BooleanValue stackDuplicates = bool("stack_duplicates", true);
     private final BooleanValue antiSpam = bool("anti_spam", true);
@@ -78,6 +83,20 @@ public final class BetterChat extends DraggableHudElement {
             new BooleanValue("cache_entity_hovers", true);
     private final NumberValue<Integer> hoverCacheSize =
             new NumberValue<>("hover_cache_size", 512, 64, 4096);
+
+    @Override
+    protected void defineSettings(List<SettingDef> defs) {
+        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
+    }
+
+    public String surfaceMaterial() { return surfaceMaterial.get(); }
+    public boolean environmentalEffects() { return environmentalEffectsEnabled(); }
 
     public static BetterChat get() {
         return DraggableHudElementRegistry.get(BetterChat.class);

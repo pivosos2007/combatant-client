@@ -41,6 +41,8 @@ public enum RenderPrewarmContributors {
     }
 
     private static void collectCoreGui(RenderPrewarmCollectEvent event) {
+        // ModulesMenu currently uses plain glass. PBR sets are collected only
+        // from active modules/HUD or other features that actually render them.
         for (AssetAutoLoader.FontDefinition font : AssetAutoLoader.fontAssets()) {
             if (font.prewarm()) {
                 event.font(font.info());

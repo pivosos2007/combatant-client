@@ -20,6 +20,30 @@ public final class UiState {
     private final UiMaterialInteractionState materialInteraction = new UiMaterialInteractionState();
     public UiMaterialInteractionState materialInteraction() { return materialInteraction; }
 
+    // Per-control pointer ripple. The input pipeline owns its origin and lifetime.
+    private long rippleStartNanos;
+    private long rippleReleaseNanos;
+    private float rippleLocalX;
+    private float rippleLocalY;
+
+    public void beginRipple(float localX, float localY, long nowNanos) {
+        rippleLocalX = localX;
+        rippleLocalY = localY;
+        rippleStartNanos = nowNanos;
+        rippleReleaseNanos = 0L;
+    }
+
+    public void endRipple(long nowNanos) {
+        if (rippleStartNanos > 0L && rippleReleaseNanos == 0L) {
+            rippleReleaseNanos = nowNanos;
+        }
+    }
+
+    public long rippleStartNanos() { return rippleStartNanos; }
+    public long rippleReleaseNanos() { return rippleReleaseNanos; }
+    public float rippleLocalX() { return rippleLocalX; }
+    public float rippleLocalY() { return rippleLocalY; }
+
     private boolean hovered;
     private boolean active;
     private boolean focused;

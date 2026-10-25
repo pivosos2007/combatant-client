@@ -583,6 +583,7 @@ public final class UiBlurResources {
      * there; this method only prevents stale GL/Vulkan views from crossing into the new backend.
      */
     public static void onBackendChanged() {
+        UiPbrTextureSets.close();
         COMPUTE_BLUR.close();
         effects = null;
         glassSource = null;

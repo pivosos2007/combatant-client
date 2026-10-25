@@ -186,9 +186,22 @@ public final class UiBatchRenderPipelines {
     @PipelineRegister
     public static final RenderPipeline UI_MATERIAL_PRIMITIVE_BATCH = new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_material_primitive_batch"))
-            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS7, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("ui_material_primitive_fast.vert"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS10, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_material_primitive_textured_fast.vert"))
             .withFragmentShader(shader("ui_material_primitive_batch.frag"))
+            .withContract(RenderPipelineContract.UI_WARPED)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_MATERIAL_PRIMITIVE_BATCH_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_material_primitive_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS10, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_material_primitive_textured_fast.vert"))
+            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("ui_material_primitive_batch.frag")))
             .withContract(RenderPipelineContract.UI_WARPED)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
@@ -200,11 +213,29 @@ public final class UiBatchRenderPipelines {
     public static final RenderPipeline UI_MATERIAL_TEXTURED_PRIMITIVE_BATCH = new ExtendedRenderPipelineBuilder(
             UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_material_textured_primitive_batch"))
-            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS7,
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS10,
                     com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("ui_material_primitive_fast.vert"))
+            .withVertexShader(shader("ui_material_primitive_textured_fast.vert"))
             .withFragmentShader(shader("ui_material_textured_primitive_batch.frag"))
             .withSampler("u_MaterialMicro")
+            .withSampler("u_MaterialColor")
+            .withContract(RenderPipelineContract.UI_WARPED)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_MATERIAL_TEXTURED_PRIMITIVE_BATCH_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(
+            UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_material_textured_primitive_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS10,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_material_primitive_textured_fast.vert"))
+            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("ui_material_textured_primitive_batch.frag")))
+            .withSampler("u_MaterialMicro")
+            .withSampler("u_MaterialColor")
             .withContract(RenderPipelineContract.UI_WARPED)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
@@ -216,12 +247,31 @@ public final class UiBatchRenderPipelines {
     public static final RenderPipeline UI_MATERIAL_SCENE_TEXTURED_PRIMITIVE_BATCH = new ExtendedRenderPipelineBuilder(
             UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_material_scene_textured_primitive_batch"))
-            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS7,
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS10,
                     com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("ui_material_primitive_fast.vert"))
+            .withVertexShader(shader("ui_material_primitive_textured_fast.vert"))
             .withFragmentShader(shader("ui_material_scene_textured_primitive_batch.frag"))
             .withSampler("u_SceneLight")
             .withSampler("u_MaterialMicro")
+            .withSampler("u_MaterialColor")
+            .withContract(RenderPipelineContract.UI_WARPED)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_MATERIAL_SCENE_TEXTURED_PRIMITIVE_BATCH_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(
+            UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_material_scene_textured_primitive_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS10,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_material_primitive_textured_fast.vert"))
+            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("ui_material_scene_textured_primitive_batch.frag")))
+            .withSampler("u_SceneLight")
+            .withSampler("u_MaterialMicro")
+            .withSampler("u_MaterialColor")
             .withContract(RenderPipelineContract.UI_WARPED)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
@@ -234,10 +284,26 @@ public final class UiBatchRenderPipelines {
     public static final RenderPipeline UI_MATERIAL_SCENE_PRIMITIVE_BATCH = new ExtendedRenderPipelineBuilder(
             UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_material_scene_primitive_batch"))
-            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS7,
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS10,
                     com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("ui_material_primitive_fast.vert"))
+            .withVertexShader(shader("ui_material_primitive_textured_fast.vert"))
             .withFragmentShader(shader("ui_material_scene_primitive_batch.frag"))
+            .withSampler("u_SceneLight")
+            .withContract(RenderPipelineContract.UI_WARPED)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_MATERIAL_SCENE_PRIMITIVE_BATCH_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(
+            UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_material_scene_primitive_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS10,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_material_primitive_textured_fast.vert"))
+            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("ui_material_scene_primitive_batch.frag")))
             .withSampler("u_SceneLight")
             .withContract(RenderPipelineContract.UI_WARPED)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)

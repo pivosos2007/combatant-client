@@ -35,17 +35,16 @@ final class FontRasterSelection {
         return Double.isFinite(density) && density > 0.0 ? density : 1.0;
     }
 
-    /**
-     * 27px raster height corresponds to 18 logical pixels at legacy scale 1.
-     * Use the horizontally oversampled bitmap at normal UI sizes, rather than
-     * forcing MSDF sampling below its ideal on-screen distance-field footprint.
-     */
+    static boolean supportsPixelMasks() {
+        return ViewportContext.activeMode() != ViewportContext.ProjectionMode.CUSTOM;
+    }
+
     static boolean preferSmallBitmap(double requestedScale, double pixelDensity, boolean big,
                                      boolean warped) {
         if (big || warped || !Double.isFinite(requestedScale) || requestedScale <= 0.0
                 || !Double.isFinite(pixelDensity) || pixelDensity <= 0.0) return false;
         double physicalHeight = 18.0 * requestedScale * pixelDensity;
-        return physicalHeight >= 11.0 && physicalHeight <= 22.0;
+        return physicalHeight > 0.0 && physicalHeight <= 32.0;
     }
 
     static int selectAtlas(GlyphFont[] fonts, double requestedScale, double pixelDensity, boolean big) {

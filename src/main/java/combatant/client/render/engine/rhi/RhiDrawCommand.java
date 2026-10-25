@@ -35,6 +35,7 @@ public final class RhiDrawCommand {
     public final OptionalInt clearColor;
     public final OptionalDouble clearDepth;
     public final GpuMeshHandle mesh;
+    public final int instanceCount;
     public final @Nullable Matrix4f transform;
     public final boolean applyWorldCameraY;
     public final float lineWidth;
@@ -52,6 +53,7 @@ public final class RhiDrawCommand {
         this.clearColor = colors.getFirst().clearColor();
         this.clearDepth = b.clearDepth;
         this.mesh = b.mesh;
+        this.instanceCount = b.instanceCount;
         this.transform = b.transform;
         this.applyWorldCameraY = b.applyWorldCameraY;
         this.lineWidth = b.lineWidth;
@@ -90,6 +92,7 @@ public final class RhiDrawCommand {
                 .colorAttachment(colorAttachment)
                 .depthAttachment(null)
                 .mesh(mesh)
+                .instanceCount(instanceCount)
                 .transform(transform)
                 .applyWorldCameraY(applyWorldCameraY)
                 .lineWidth(lineWidth)
@@ -110,6 +113,7 @@ public final class RhiDrawCommand {
         private @Nullable GpuTextureView depthAttachment;
         private OptionalDouble clearDepth = OptionalDouble.empty();
         private GpuMeshHandle mesh;
+        private int instanceCount = 1;
         private @Nullable Matrix4f transform;
         private boolean applyWorldCameraY;
         private float lineWidth = 1.0f;
@@ -172,6 +176,13 @@ public final class RhiDrawCommand {
 
         public Builder mesh(GpuMeshHandle mesh) {
             this.mesh = mesh;
+            return this;
+        }
+
+        /** Instance count for GPU-driven draws; ordinary world/UI primitives use one. */
+        public Builder instanceCount(int count) {
+            if (count < 1) throw new IllegalArgumentException("instanceCount must be positive");
+            this.instanceCount = count;
             return this;
         }
 

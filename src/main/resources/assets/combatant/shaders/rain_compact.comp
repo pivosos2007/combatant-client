@@ -1,0 +1,99 @@
+#version 430 core
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_RoofMap;
+layout(std430, binding = 3) readonly buffer RainFrame {
+    mat4 u_ViewProjection;
+    vec4 u_Frame;       // seconds, precipitation, density, max distance
+    vec4 u_WindScreen;  // wind X,Z, framebuffer width,height
+    vec4 u_Camera;      // camera Y, thunder, depthScale, depthBias
+    vec4 u_NearAnchor;
+    vec4 u_MidAnchor;
+    vec4 u_FarAnchor;
+    vec4 u_Extra;
+};
+struct Drop { vec4 center; vec4 motion; };
+layout(std430, binding = 4) writeonly buffer RainVisible { Drop visible[]; };
+layout(std430, binding = 5) buffer RainIndirect {
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    uint vertexOffset;
+    uint firstInstance;
+} drawCommand;
+const uint COUNT = 156160u;
+uint mixHash(uint x) {
+    x ^= x >> 16u; x *= 0x7feb352du;
+    x ^= x >> 15u; x *= 0x846ca68bu;
+    return x ^ (x >> 16u);
+}
+float rand01(uint n) { return float(mixHash(n) & 0x00ffffffu) * (1.0 / 16777216.0); }
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= COUNT || u_Frame.y <= 0.003) return;
+    uint k = id;
+    int width, rows;
+    float stepXZ, stepY, lod;
+    vec4 anchor;
+    if (id < 40960u) {
+        width = 64; rows = 10; stepXZ = 0.75; stepY = 4.0;
+        anchor = u_NearAnchor; lod = 0.0;
+    } else if (id < 104960u) {
+        k -= 40960u;
+        width = 80; rows = 10; stepXZ = 1.75; stepY = 8.0;
+        anchor = u_MidAnchor; lod = 1.0;
+    } else {
+        k -= 104960u;
+        width = 80; rows = 8; stepXZ = 3.0; stepY = 16.0;
+        anchor = u_FarAnchor; lod = 2.0;
+    }
+    int ix = int(k % uint(width)) - width / 2;
+    int iz = int((k / uint(width)) % uint(width)) - width / 2;
+    int iy = int(k / uint(width * width)) - rows / 2;
+    int cellX = int(anchor.x) + ix;
+    int cellZ = int(anchor.y) + iz;
+    int slabY = int(floor(u_Camera.x / stepY)) + iy;
+    uint seed = mixHash(uint(cellX) * 1664525u ^ uint(cellZ) * 1013904223u
+        ^ uint(slabY) * 374761393u ^ uint(int(lod)) * 668265263u);
+    float density = clamp(u_Frame.z, 0.4, 2.0);
+    float occupancy = min(1.0, density * (lod < 0.5 ? 0.44 : (lod < 1.5 ? 0.36 : 0.33)));
+    if (rand01(seed ^ 0x75d345afu) > occupancy) return;
+    float rx = rand01(seed ^ 0x31415927u);
+    float rz = rand01(seed ^ 0x27182818u);
+    float speed = mix(13.5, 25.0, rand01(seed ^ 0xa341316cu));
+    float phase = fract(rand01(seed ^ 0xc8013ea4u) - u_Frame.x * speed / stepY);
+    float dropY = (float(slabY) + phase) * stepY;
+    float age = (1.0 - phase) * stepY / speed;
+    vec2 wind = u_WindScreen.xy * mix(0.65, 1.45, rand01(seed ^ 0xad90777du));
+    vec2 localXZ = vec2(float(ix), float(iz)) * stepXZ
+        + (vec2(rx,rz) - 0.5) * stepXZ - anchor.zw + age * wind;
+    vec3 relative = vec3(localXZ.x, dropY - u_Camera.x, localXZ.y);
+    float dist = length(relative);
+    float maxDist = min(u_Frame.w, lod < 0.5 ? 25.0 : (lod < 1.5 ? 71.0 : 119.0));
+    float minDist = lod < 0.5 ? 0.2 : (lod < 1.5 ? 18.0 : 60.0);
+    if (dist < minDist || dist > maxDist || abs(relative.y) > float(rows) * stepY * 0.50) return;
+    // Toroidal roof precipitation map from loaded chunks, not vanilla rain columns.
+    vec2 worldXZ = (vec2(float(cellX), float(cellZ)) + vec2(rx,rz) - 0.5) * stepXZ + age * wind;
+    ivec2 roofIndex = ivec2(floor(worldXZ * 0.5)) & ivec2(127);
+    vec4 roof = texelFetch(u_RoofMap, roofIndex, 0);
+    float roofHeight = dot(floor(roof.rg * 255.0 + 0.5), vec2(1.0, 256.0)) - 64.0;
+    if (roof.b < 0.5 || dropY <= roofHeight + 0.04) return;
+    float exposure = mix(0.014, 0.022, rand01(seed ^ 0x39c2a947u));
+    float trail = min(speed * exposure, dropY - roofHeight - 0.04);
+    vec3 tail = relative + vec3(wind.x, -speed, wind.y) * (trail / speed);
+    vec4 headClip = u_ViewProjection * vec4(relative, 1.0);
+    vec4 tailClip = u_ViewProjection * vec4(tail, 1.0);
+    if (headClip.w <= 0.01 || tailClip.w <= 0.01) return;
+    vec2 a = headClip.xy / headClip.w;
+    vec2 b = tailClip.xy / tailClip.w;
+    if ((a.x > 1.12 && b.x > 1.12) || (a.x < -1.12 && b.x < -1.12)
+        || (a.y > 1.12 && b.y > 1.12) || (a.y < -1.12 && b.y < -1.12)) return;
+    // GPU compaction into a bounded SSBO, with no CPU readback or per-drop draw calls.
+    uint destination = atomicAdd(drawCommand.instanceCount, 1u);
+    if (destination >= COUNT) { atomicMin(drawCommand.instanceCount, COUNT); return; }
+    visible[destination].center = vec4(relative, dist);
+    visible[destination].motion = vec4(wind.x, wind.y, speed, trail);
+    // radius + LOD reconstructed in vertex shader from a deterministic hash of candidate data.
+    // Store radius and LOD in the second record via separate params? motion gets both wind and speed;
+    // LOD derives from distance ranges where zones overlap, so write it via center.w encoded sign-free.
+    visible[destination].center.w = dist + lod * 256.0;
+}

@@ -69,6 +69,17 @@ public class Font implements GlyphFont {
             throw new IllegalArgumentException("Invalid TrueType font");
         }
 
+        float rasterHeight;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer asc = stack.mallocInt(1), desc = stack.mallocInt(1), gap = stack.mallocInt(1);
+            STBTruetype.stbtt_GetFontVMetrics(fontInfo, asc, desc, gap);
+            this.ascent = asc.get(0);
+            float bodyHeight = asc.get(0) - desc.get(0);
+            // Match the line-height normalization of the MSDF and physical-mask backends.
+            rasterHeight = height * bodyHeight / Math.max(1f, bodyHeight + gap.get(0));
+            this.scale = STBTruetype.stbtt_ScaleForPixelHeight(fontInfo, rasterHeight);
+        }
+
         // Keep the upload pixels until close(), since shaped glyphs are appended
         // on demand. A zero-filled atlas also prevents sampling uninitialized pixels.
         ByteBuffer bitmap = MemoryUtil.memCalloc(SIZE * SIZE);
@@ -119,34 +130,34 @@ public class Font implements GlyphFont {
         STBTruetype.stbtt_PackSetSkipMissingCodepoints(packContext, true);
 
         STBTTPackRange.Buffer packRange = STBTTPackRange.create(cdata.length);
-        packRange.put(STBTTPackRange.create().set(height, 32, null, 95, cdata[0], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 160, null, 96, cdata[1], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 256, null, 128, cdata[2], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 880, null, 144, cdata[3], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 1024, null, 256, cdata[4], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 8734, null, 1, cdata[5], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0xEA00, null, 64, cdata[6], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2000, null, 112, cdata[7], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2070, null, 48, cdata[8], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x20A0, null, 48, cdata[9], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2100, null, 80, cdata[10], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2150, null, 64, cdata[11], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2190, null, 112, cdata[12], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2200, null, 256, cdata[13], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2300, null, 256, cdata[14], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2460, null, 160, cdata[15], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2500, null, 128, cdata[16], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2580, null, 32, cdata[17], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x25A0, null, 96, cdata[18], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2600, null, 256, cdata[19], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2700, null, 192, cdata[20], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2900, null, 128, cdata[21], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x2B00, null, 256, cdata[22], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x1F300, null, 256, cdata[23], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x1F500, null, 256, cdata[24], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x1F600, null, 256, cdata[25], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0x1FA00, null, 256, cdata[26], (byte) 2, (byte) 2));
-        packRange.put(STBTTPackRange.create().set(height, 0xFB00, null, 7, cdata[27], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 32, null, 95, cdata[0], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 160, null, 96, cdata[1], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 256, null, 128, cdata[2], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 880, null, 144, cdata[3], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 1024, null, 256, cdata[4], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 8734, null, 1, cdata[5], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0xEA00, null, 64, cdata[6], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2000, null, 112, cdata[7], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2070, null, 48, cdata[8], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x20A0, null, 48, cdata[9], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2100, null, 80, cdata[10], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2150, null, 64, cdata[11], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2190, null, 112, cdata[12], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2200, null, 256, cdata[13], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2300, null, 256, cdata[14], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2460, null, 160, cdata[15], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2500, null, 128, cdata[16], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2580, null, 32, cdata[17], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x25A0, null, 96, cdata[18], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2600, null, 256, cdata[19], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2700, null, 192, cdata[20], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2900, null, 128, cdata[21], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x2B00, null, 256, cdata[22], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x1F300, null, 256, cdata[23], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x1F500, null, 256, cdata[24], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x1F600, null, 256, cdata[25], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0x1FA00, null, 256, cdata[26], (byte) 2, (byte) 2));
+        packRange.put(STBTTPackRange.create().set(rasterHeight, 0xFB00, null, 7, cdata[27], (byte) 2, (byte) 2));
         packRange.flip();
 
         STBTruetype.stbtt_PackFontRanges(packContext, fontData, 0, packRange);
@@ -157,13 +168,6 @@ public class Font implements GlyphFont {
         TextRenderSystem.glyphAtlases().registerPage("bitmap:" + height + ":"
                 + Integer.toHexString(System.identityHashCode(this)), texture, SIZE, SIZE, false);
         FontDebugStats.noteBitmapAtlasPage();
-        scale = STBTruetype.stbtt_ScaleForPixelHeight(fontInfo, height);
-
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            IntBuffer ascent = stack.mallocInt(1);
-            STBTruetype.stbtt_GetFontVMetrics(fontInfo, ascent, null, null);
-            this.ascent = ascent.get(0);
-        }
 
         int registeredGlyphs = 0;
         for (int i = 0; i < cdata.length; i++) {

@@ -41,6 +41,7 @@ public record FrameGraphBufferDescriptor(StorageBufferDescriptor buffer)
         return a.elementCapacity() == b.elementCapacity()
                 && a.access() == b.access()
                 && a.indirectSource() == b.indirectSource()
+                && a.gpuOwned() == b.gpuOwned()
                 && layoutCompatible(a.elementLayout(), b.elementLayout());
     }
 
@@ -48,7 +49,7 @@ public record FrameGraphBufferDescriptor(StorageBufferDescriptor buffer)
     public String debugDescription() {
         return "bytes=" + buffer.byteSize() + " capacity=" + buffer.elementCapacity()
                 + " stride=" + buffer.elementLayout().arrayStride() + " access=" + buffer.access()
-                + " indirect=" + buffer.indirectSource();
+                + " indirect=" + buffer.indirectSource() + " gpuOwned=" + buffer.gpuOwned();
     }
 
     private static boolean layoutCompatible(Std430StructLayout a, Std430StructLayout b) {

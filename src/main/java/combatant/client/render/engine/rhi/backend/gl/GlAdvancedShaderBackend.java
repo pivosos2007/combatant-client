@@ -223,10 +223,19 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
 
     @Override
     public RhiPatchPipeline createPatchPipeline(PatchPipelineDescriptor descriptor) {
+        return createNativeGraphicsPipeline(descriptor);
+    }
+
+    @Override
+    public RhiMeshPipeline createMeshPipeline(MeshPipelineDescriptor descriptor) {
+        return createNativeGraphicsPipeline(descriptor);
+    }
+
+    private GlPatchPipeline createNativeGraphicsPipeline(NativeGraphicsDescriptor descriptor) {
         requireOpen();
         if (descriptor == null) throw new IllegalArgumentException("descriptor");
         RhiCapabilities caps = RhiCapabilities.current();
-        if (!caps.nativeTessellationSubmission()) {
+        if (descriptor.controlPoints() > 0 && !caps.nativeTessellationSubmission()) {
             throw new UnsupportedOperationException("Native OpenGL tessellation backend is unavailable");
         }
         if (descriptor.geometryShader() != null && !caps.nativeGeometrySubmission()) {
@@ -238,12 +247,15 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
         int vs = compileStage(GL20C.GL_VERTEX_SHADER,
                 CombatantShaderSources.load(rm, descriptor.vertexShader(), com.mojang.renderpearl.api.pipeline.ShaderType.VERTEX),
                 descriptor.vertexShader());
-        int tcs = compileStage(GL40C.GL_TESS_CONTROL_SHADER,
-                CombatantShaderSources.loadNativeStage(rm, descriptor.tessControlShader(), CombatantShaderSources.TESS_CONTROL_EXTENSION),
-                descriptor.tessControlShader());
-        int tes = compileStage(GL40C.GL_TESS_EVALUATION_SHADER,
-                CombatantShaderSources.loadNativeStage(rm, descriptor.tessEvaluationShader(), CombatantShaderSources.TESS_EVALUATION_EXTENSION),
-                descriptor.tessEvaluationShader());
+        int tcs = 0, tes = 0;
+        if (descriptor.controlPoints() > 0) {
+            tcs = compileStage(GL40C.GL_TESS_CONTROL_SHADER,
+                    CombatantShaderSources.loadNativeStage(rm, descriptor.tessControlShader(), CombatantShaderSources.TESS_CONTROL_EXTENSION),
+                    descriptor.tessControlShader());
+            tes = compileStage(GL40C.GL_TESS_EVALUATION_SHADER,
+                    CombatantShaderSources.loadNativeStage(rm, descriptor.tessEvaluationShader(), CombatantShaderSources.TESS_EVALUATION_EXTENSION),
+                    descriptor.tessEvaluationShader());
+        }
         int gs = 0;
         int fs = 0;
         int program = 0;
@@ -263,8 +275,8 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
             throw t;
         } finally {
             GL20C.glDeleteShader(vs);
-            GL20C.glDeleteShader(tcs);
-            GL20C.glDeleteShader(tes);
+            if (tcs != 0) GL20C.glDeleteShader(tcs);
+            if (tes != 0) GL20C.glDeleteShader(tes);
             if (gs != 0) GL20C.glDeleteShader(gs);
             if (fs != 0) GL20C.glDeleteShader(fs);
         }
@@ -439,13 +451,22 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
                     }
                     GL20C.glEnableVertexAttribArray(location);
                 }
-                GL40C.glPatchParameteri(GL40C.GL_PATCH_VERTICES, pipeline.controlPoints());
-                GL32C.glDrawElementsBaseVertex(
-                        GL40C.GL_PATCHES,
-                        mesh.indexCount(),
-                        glIndexType(mesh.indexType()),
-                        (long) mesh.firstIndex() * mesh.indexType().bytes,
-                        mesh.baseVertex());
+                int topology = pipeline.controlPoints() > 0 ? GL40C.GL_PATCHES : GL11C.GL_TRIANGLES;
+                if (pipeline.controlPoints() > 0) GL40C.glPatchParameteri(GL40C.GL_PATCH_VERTICES, pipeline.controlPoints());
+                if (command.indirectCommands() != null) {
+                    if (!(command.indirectCommands() instanceof GlStorageBuffer indirect))
+                        throw new IllegalArgumentException("Indirect buffer belongs to a different GPU backend");
+                    int previousIndirect = GL11C.glGetInteger(GL40C.GL_DRAW_INDIRECT_BUFFER_BINDING);
+                    try {
+                        GL15C.glBindBuffer(GL40C.GL_DRAW_INDIRECT_BUFFER, indirect.id);
+                        GL40C.glDrawElementsIndirect(topology, glIndexType(mesh.indexType()), command.indirectOffset());
+                    } finally {
+                        GL15C.glBindBuffer(GL40C.GL_DRAW_INDIRECT_BUFFER, previousIndirect);
+                    }
+                } else {
+                    GL32C.glDrawElementsBaseVertex(topology, mesh.indexCount(), glIndexType(mesh.indexType()),
+                            (long) mesh.firstIndex() * mesh.indexType().bytes, mesh.baseVertex());
+                }
                 stats.drawCall();
             } finally {
                 GL30C.glBindVertexArray(previousVao);
@@ -459,6 +480,15 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
             if (scissorWasEnabled) GlStateManager._enableScissorTest();
             GlNativeStateTracker.restoreBlaze3dProgram();
         }
+    }
+
+    @Override
+    public void drawMeshIndirect(MeshIndirectDrawCommand command) {
+        if (command == null) throw new IllegalArgumentException("command");
+        drawPatches(new PatchDrawCommand(command.label(), command.pipeline(),
+                List.of(command.colorAttachment()), null, command.mesh(),
+                command.storageBindings(), command.sampledTextures(), List.of(), List.of(),
+                command.indirectCommands(), command.indirectOffset()));
     }
 
     @Override
@@ -958,7 +988,7 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
         return type == IndexType.SHORT ? GL11C.GL_UNSIGNED_SHORT : GL11C.GL_UNSIGNED_INT;
     }
 
-    private static void applyRasterState(PatchPipelineDescriptor descriptor) {
+    private static void applyRasterState(NativeGraphicsDescriptor descriptor) {
         switch (descriptor.depthMode()) {
             case DISABLED -> {
                 GlStateManager._disableDepthTest();
@@ -1038,13 +1068,13 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
         }
     }
 
-    private static final class GlPatchPipeline implements RhiPatchPipeline {
-        private final PatchPipelineDescriptor descriptor;
+    private static final class GlPatchPipeline implements RhiMeshPipeline {
+        private final NativeGraphicsDescriptor descriptor;
         private final int program;
         private final int vao;
         private boolean closed;
 
-        private GlPatchPipeline(PatchPipelineDescriptor descriptor, int program) {
+        private GlPatchPipeline(NativeGraphicsDescriptor descriptor, int program) {
             this.descriptor = descriptor;
             this.program = program;
             this.vao = GL30C.glGenVertexArrays();

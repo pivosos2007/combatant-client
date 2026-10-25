@@ -379,6 +379,7 @@ tasks.register("verifyGeneratedUniformPacking", Exec) {
     dependsOn tasks.named("verifyUniformCodegen")
     inputs.files(file("tools/uniform-codegen/CodegenSmoke.java"),
             file("tools/uniform-codegen/UniformCodegen.java"),
+            file("src/main/java/combatant/client/render/engine/uniform/ShaderUniformBindings.java"),
             file("src/main/java/combatant/client/render/engine/rhi/shader/Std430Type.java"),
             file("src/main/java/combatant/client/render/engine/rhi/shader/Std430StructLayout.java"))
     commandLine "${System.getProperty('java.home')}/bin/java",
@@ -423,7 +424,7 @@ tasks.register("verifyUniformBindingContracts", Exec) {
     inputs.dir(generatedUniformResources)
     commandLine "${System.getProperty('java.home')}/bin/java",
             file("tools/uniform-codegen/UniformCodegen.java"), "verify",
-            generatedUniformResources.get().file("combatant/uniform-bindings-v2.tsv").asFile,
+            generatedUniformResources.get().file("combatant/uniform-bindings-v3.tsv").asFile,
             file("src/main/java")
 }
 

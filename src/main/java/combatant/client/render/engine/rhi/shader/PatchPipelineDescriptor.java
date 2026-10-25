@@ -28,7 +28,7 @@ public record PatchPipelineDescriptor(String label,
                                       AdvancedCullMode cullMode,
                                       List<GpuFormat> colorFormats,
                                       @Nullable GpuFormat depthFormat,
-                                      int samples) {
+                                      int samples) implements NativeGraphicsDescriptor {
     public PatchPipelineDescriptor {
         if (vertexShader == null || tessControlShader == null || tessEvaluationShader == null || fragmentShader == null) {
             throw new IllegalArgumentException("patch pipeline requires vertex/tess-control/tess-evaluation/fragment stages");
