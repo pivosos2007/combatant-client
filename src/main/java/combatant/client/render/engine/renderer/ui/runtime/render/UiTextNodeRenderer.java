@@ -22,6 +22,19 @@ final class UiTextNodeRenderer {
     }
 
     void render(UiNode node, UiBounds bounds, UiStyle style, UiRenderContext context) {
+        // Optional retained font/position morph used by floating labels. It is
+        // paint-only: intrinsic layout and hit areas remain stable through focus.
+        float textMorph = 0.0f;
+        if (node.props().get("fontSizeMorphTo") != null || node.props().get("textMorphOffsetY") != null) {
+            textMorph = UiReactiveVisual.signal(node, node.props().string("textMorphSignal", "selected"));
+            if (node.props().get("fontSizeMorphTo") != null) {
+                float size = style.fontSize() + (node.props().number("fontSizeMorphTo", style.fontSize())
+                        - style.fontSize()) * textMorph;
+                float lineHeight = style.lineHeight() != null ? style.lineHeight() : style.fontSize() * 1.4f;
+                float targetLeading = Math.max(1.0f, lineHeight * size / Math.max(1.0f, style.fontSize()));
+                style = UiStyle.builder(style).fontSize(size).lineHeight(targetLeading).build();
+            }
+        }
         String text = node.props().string("text", "");
         UiTextRenderer.TextLayout textLayout = textRenderer.layout(context.textRenderer(), text, style);
         if (textLayout.lines().isEmpty()) return;
@@ -53,10 +66,22 @@ final class UiTextNodeRenderer {
             textY += textRenderer.lineOffsetY(context.textRenderer(), style);
         } else {
             textX = textX(node, context, text, bounds, style);
-            textY = bounds.y() + style.paddingTop()
+            // Optional physical glyph centering for controls (buttons, tabs, chips, etc.).
+            // "text-align" only affects the horizontal axis.  Use actual measured
+            // glyph height rather than assuming that the font size equals its ink box.
+            String verticalAlign = node.props().string("verticalAlign", "top").trim().toLowerCase(java.util.Locale.ROOT);
+            float contentHeight = Math.max(0.0f, bounds.height() - style.paddingTop() - style.paddingBottom());
+            float glyphHeight = textRenderer.measureHeight(context.textRenderer(), style);
+            float verticalOffset = switch (verticalAlign) {
+                case "center", "middle" -> (contentHeight - glyphHeight) * 0.5f;
+                case "bottom", "end" -> contentHeight - glyphHeight;
+                default -> 0.0f;
+            };
+            textY = bounds.y() + style.paddingTop() + verticalOffset
                     + textRenderer.lineOffsetY(context.textRenderer(), style);
         }
-        textY += node.props().number("textOffsetY", 0.0f);
+        textY += node.props().number("textOffsetY", 0.0f)
+                + node.props().number("textMorphOffsetY", 0.0f) * textMorph;
         float textOffsetX = node.props().number("textOffsetX", 0.0f);
         boolean runtimeMarquee = node.props().bool("runtimeMarquee", false);
         float runtimeMarqueeOffset = runtimeMarquee

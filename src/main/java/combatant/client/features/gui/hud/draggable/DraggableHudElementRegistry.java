@@ -234,7 +234,9 @@ public enum DraggableHudElementRegistry {
             try (ProfilerPhase.Scope widgetScope =
                          ProfilerPhase.scope("2d:widget:" + w.getId());
                  RenderProfiler2D.Section ignored = RenderProfiler2D.section("widget:" + w.getId())) {
-                w.renderEngineSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+                combatant.client.features.gui.hud.HudClimateSurface.withEnabled(
+                    w.environmentalEffectsEnabled(),
+                    () -> w.renderEngineSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH));
             }
         }
     }
@@ -366,7 +368,9 @@ public enum DraggableHudElementRegistry {
         try (ProfilerPhase.Scope widgetScope =
                      ProfilerPhase.scope("2d:widget:" + w.getId());
              RenderProfiler2D.Section ignored = RenderProfiler2D.section("widget:" + w.getId())) {
-            w.renderEngineSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH);
+            combatant.client.features.gui.hud.HudClimateSurface.withEnabled(
+                    w.environmentalEffectsEnabled(),
+                    () -> w.renderEngineSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH));
         }
         try (ProfilerPhase.Scope widgetScope =
                      ProfilerPhase.scope("2d:widget_fg:" + w.getId());

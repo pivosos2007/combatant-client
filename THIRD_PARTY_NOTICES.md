@@ -2,6 +2,15 @@
 
 This file accompanies Combatant's source-level credits. File-level provenance headers identify adapted code where applicable.
 
+## ambientCG UI material textures
+
+Combatant bundles packed derivatives of ambientCG Metal027, Plastic012B, Metal032,
+Metal061B and Porcelain001 (supplied 2K PNG sets), under CC0 1.0 Universal.
+Source URLs, input SHA-256 fingerprints, channel layouts and conversion details:
+`tools/materials/README.md` and `tools/materials/SOURCE_AUDIT.md`.
+License: `THIRD_PARTY_LICENSES/ambientCG-CC0-1.0.txt`.
+Runtime files: `assets/combatant/textures/ui/pbr/{graphite,soft_touch,satin_titanium,brushed_metal,ceramic}/*.ktx`.
+
 ## GFBS-glTF 1.5.1
 
 Combatant includes source adapted from GFBS-glTF 1.5.1, commit `8906d4083c23b5d5bbf5191a0555d149a5272900`.

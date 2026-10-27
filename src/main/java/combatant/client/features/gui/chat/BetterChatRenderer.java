@@ -38,6 +38,11 @@ import combatant.client.features.gui.chat.rich.BetterChatMessage;
 import combatant.client.features.gui.chat.rich.ItemNode;
 import combatant.client.features.gui.chat.rich.TextNode;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.hud.HudClimateSurface;
+import combatant.client.features.gui.hud.draggable.impl.HudMaterialChoice;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
+import combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.gui.hud.draggable.impl.BetterChat;
@@ -468,16 +473,16 @@ public enum BetterChatRenderer {
                     clipRadius, clipRadius, 0.0f, 0.0f
             );
         }
-        drawMessageBubbles(frame.bubbles(), activeChatSurface);
-
-        // Keep the cheap rectangular reject for embedded items, then let shape/text/MSDF pipelines
-        // consume the same analytic rounded boundary. Clip selection is orthogonal to fast/warped text.
+        // Apply the same physical scissor to the material/glass bubbles as to
+        // the glyphs. Previously the material batches were emitted before it.
+        // The analytic shape clip above still provides the rounded boundary.
         boolean contentScissor = clipBounds != null && ScissorFunction.pushRaw(
                 clipBounds.x() - CLIP_AA_GUARD,
                 clipBounds.y() - CLIP_AA_GUARD,
                 clipBounds.w() + CLIP_AA_GUARD * 2.0f,
                 clipBounds.h() + CLIP_AA_GUARD * 2.0f
         );
+        drawMessageBubbles(frame.bubbles(), activeChatSurface);
         for (FrameLine line : frame.lines()) {
             float alpha = activeChatSurface ? 1f : fade(line.message().ageSeconds());
             if (alpha <= 0.01f) continue;
@@ -631,15 +636,37 @@ lastHoverWasOutsideSuggest = false;
         float configuredAlpha = settings != null ? settings.liquidGlassAlphaFactor() : (230f / 255f);
         float blurStrength = configuredAlpha * drawAlpha;
         float glassScale = MESSAGE_RADIUS <= 0.0f ? 1.0f : radius / MESSAGE_RADIUS;
-        HudRenderUtil.drawLiquidGlassCorners(
+        withChatGlassVisual(settings, () -> HudRenderUtil.drawLiquidGlassCorners(
                 x, y, w, h,
                 radius, radius, radius, radius,
                 glassScale, false,
                 blurStrength, drawAlpha * 0.94f,
                 theme().accent()
-        );
+        ));
         drawRoundedRect(x, y, w, h, radius,
                 withAlpha(theme().windowBg(), Math.round(0x08 * drawAlpha)));
+        drawChatMaterial(settings, x, y, w, h, radius, drawAlpha);
+    }
+
+    private static void withChatGlassVisual(BetterChat settings, Runnable action) {
+        UiGlassVisual visual = settings != null && "Ice".equals(settings.surfaceMaterial())
+                ? UiGlassVisual.ice(UiIceMaterialSpec.LIGHT)
+                : HudClimateSurface.glassVisual(settings == null || settings.environmentalEffects());
+        if (!visual.custom()) {
+            action.run();
+        } else {
+            renderer.withLiquidGlassMaterial(UiLiquidGlassMaterial.DEFAULT.withVisual(visual), action);
+        }
+    }
+
+    private static void drawChatMaterial(BetterChat settings,
+                                         float x, float y, float w, float h,
+                                         float radius, float alpha) {
+        if (settings == null || alpha <= 0.001f) return;
+        int base = withAlpha(theme().windowBg(), Math.round(160f * alpha));
+        int accent = withAlpha(theme().accentSoft(), Math.round(92f * alpha));
+        HudMaterialChoice.drawGlassOverlay(renderer, settings.surfaceMaterial(),
+                x, y, w, h, radius, radius, radius, radius, base, accent);
     }
 
     private static HoverTip renderBubbleTimestamps(TextRenderer tsRenderer,
@@ -1980,13 +2007,13 @@ lastHoverWasOutsideSuggest = false;
     private static void drawLiquidHoverPill(float x, float y, float w, float h, float radius, float alpha) {
         if (renderer == null || w <= 0f || h <= 0f || alpha <= 0.001f) return;
         flushRenderer();
-        renderer.withLiquidGlassBlurProfile(
+        withChatGlassVisual(BetterChat.get(), () -> renderer.withLiquidGlassBlurProfile(
                 Renderer2D.BlurQuality.LIQUID_GLASS, HudRenderUtil.HUD_GLASS_KAWASE_OFFSET_PX,
                 () -> renderer.liquidGlassRect(
                         x, y, w, h, Math.max(1.0f, radius),
                         withAlpha(theme().accentSoft(), 0x24),
                         Mth.clamp(alpha, 0.0f, 1.0f), 1.0f,
-                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL, 1.0f));
+                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL, 1.0f)));
         drawRoundedRect(x, y, w, h, radius, withAlpha(theme().surfaceHover(), 0x32));
         drawRoundedRectStrokeGradient(x, y, w, h, radius, 0.55f,
                 withAlpha(theme().accentSoft(), 0x50),
@@ -2037,17 +2064,18 @@ lastHoverWasOutsideSuggest = false;
                 : Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL;
 
         flushRenderer();
-        renderer.withLiquidGlassBlurProfile(
+        withChatGlassVisual(settings, () -> renderer.withLiquidGlassBlurProfile(
                 Renderer2D.BlurQuality.LIQUID_GLASS, HudRenderUtil.HUD_GLASS_KAWASE_OFFSET_PX,
                 () -> renderer.liquidGlassRect(
                         x, y, w, h, glassRadius,
                         withAlpha(theme().accent(), Math.round(configuredAlpha * (softPanel ? 32f : 22f))),
-                        materialAlpha, 1.0f, preset, softPanel ? 1.05f : 1.0f));
+                        materialAlpha, 1.0f, preset, softPanel ? 1.05f : 1.0f)));
 
         int veilAlpha = Math.round((softPanel ? 0x16 : 0x0C) * drawAlpha);
         if (veilAlpha > 0) {
             drawRoundedRect(x, y, w, h, glassRadius, withAlpha(theme().windowBg(), veilAlpha));
         }
+        drawChatMaterial(settings, x, y, w, h, glassRadius, drawAlpha);
     }
 
     private static String fitText(TextRenderer font, String text, float size, float maxWidth) {

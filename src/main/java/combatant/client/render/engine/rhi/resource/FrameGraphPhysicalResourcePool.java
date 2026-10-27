@@ -186,7 +186,8 @@ public final class FrameGraphPhysicalResourcePool implements AutoCloseable {
         if (descriptor instanceof FrameGraphBufferDescriptor bufferDescriptor) {
             StorageBufferDescriptor buffer = bufferDescriptor.buffer();
             RhiStorageBuffer created = rhi.advancedShaders().createStorageBuffer(new StorageBufferDescriptor(
-                    label, buffer.elementLayout(), buffer.elementCapacity(), buffer.access(), buffer.indirectSource()));
+                    label, buffer.elementLayout(), buffer.elementCapacity(), buffer.access(),
+                    buffer.indirectSource(), buffer.gpuOwned()));
             return new Entry(new FrameGraphPhysicalResource(allocation.allocationId(), descriptor,
                     null, null, created, null, created));
         }

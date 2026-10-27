@@ -14,6 +14,8 @@ import net.minecraft.util.Util;
 import combatant.client.config.ConfigValueAliasProvider;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.SettingDef;
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
@@ -120,8 +122,17 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
         return List.of();
     }
 
+    private final ModeValue surfaceMaterial = HudMaterialChoice.setting("module_list");
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
+    }
+
     @Override
     protected void defineSettings(List<SettingDef> defs) {
+        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(colorMode));
         defs.add(SettingDef.mode(bgEffect));
@@ -322,8 +333,13 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
                 Row row = rows.get(i);
                 int drawTop = blur ? HudRenderUtil.scaleAlpha(row.fillTop, 0.42f) : row.fillTop;
                 int drawBottom = blur ? HudRenderUtil.scaleAlpha(row.fillBottom, 0.42f) : row.fillBottom;
-                renderer.roundedRectGradientQuad(row.x, row.y, row.w, lineH, radius, softness,
-                        drawTop, drawTop, drawBottom, drawBottom);
+                if (!HudMaterialChoice.draw(renderer, surfaceMaterial.get(), row.x, row.y,
+                        row.w, lineH, radius, drawTop, drawBottom)) {
+                    renderer.roundedRectGradientQuad(row.x, row.y, row.w, lineH, radius, softness,
+                            drawTop, drawTop, drawBottom, drawBottom);
+                }
+                HudMaterialChoice.drawDefaultClimate(renderer, surfaceMaterial.get(),
+                        row.x, row.y, row.w, lineH, radius);
             }
         } finally {
             if (autoBatch) renderer.render();

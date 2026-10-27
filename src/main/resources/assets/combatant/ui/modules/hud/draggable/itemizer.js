@@ -21,7 +21,7 @@ function keyText(id, text, x, y, w, a, tint, size = 11) {
   });
 }
 
-function card(row, index, pal, isChat, hovered, blur) {
+function card(row, index, pal, isChat, hovered, blur, materialMode) {
   const x = num(row.x, 0);
   const y = num(row.y, 0);
   const w = num(row.w, 30);
@@ -50,11 +50,16 @@ function card(row, index, pal, isChat, hovered, blur) {
       alpha: panelA * 0.85, brightness: 1.0,
     }));
   }
-  nodes.push(ui.roundedGradient({
+  const panelPaint = {
     key: `${index}:panel`, x, y, w, h, radius: 3 * scale,
     startColor: rgba(bgTop, panelA),
     endColor: rgba(bgBottom, panelA), angle: 90,
-  }));
+  };
+  nodes.push(materialMode
+    ? ui.shape({ ...panelPaint, shape: "rounded-gradient",
+        materialMode: str(materialMode, ""), materialMicrotexture: true, materialThemeSync: true,
+        style: ui.absolute(x, y, w, h) })
+    : ui.roundedGradient(panelPaint));
   nodes.push(ui.roundedGradient({
     key: `${index}:icon-bg`, x, y, w: 16 * scale, h, radius: 3 * scale,
     startColor: rgba(bgTop, panelA),
@@ -124,7 +129,7 @@ export function render(ctx) {
   const chat = props.chat === true;
   const hovered = num(props.hovered, -1);
   for (let i = 0; i < items.length; i++) {
-    nodes.push(...card(items[i], i, palette, chat, hovered, props.blur === true));
+    nodes.push(...card(items[i], i, palette, chat, hovered, props.blur === true, props.materialMode));
   }
   return ui.root({
     key: "itemizer",

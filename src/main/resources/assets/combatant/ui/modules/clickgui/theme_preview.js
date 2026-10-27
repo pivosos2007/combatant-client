@@ -83,12 +83,97 @@ function swatches(p) {
   ];
 }
 
+// The existing theme editor owns only two local, non-persistent preview toggles.
+// They are intentionally not general-purpose UI controls or new theme settings.
+function specimenControls(p, unit, a) {
+  const materials = b(p.previewMaterials, false);
+  const tint = alpha(c(p.accent, "#FF90BAD5"), a);
+  const muted = alpha(c(p.textMuted, "#AFFFFFFF"), a);
+  const result = [
+    rounded("theme-preview:materials-toggle", 207 * unit, 8 * unit, 61 * unit, 23 * unit,
+      5 * unit, alpha(c(p.surfaceHover, "#44394452"), a), tint, 0.6 * unit),
+    text("theme-preview:materials-toggle-label", materials ? "THEME" : "MATERIALS",
+      210 * unit, 16.2 * unit, 55 * unit, 10 * unit, tint, 8.2 * unit, "medium", "text-align-center"),
+  ];
+  if (materials) {
+    result.push(
+      rounded("theme-preview:scene-toggle", 271 * unit, 8 * unit, 36 * unit, 23 * unit,
+        5 * unit, alpha(c(p.surface, "#44394452"), a), muted, 0.55 * unit),
+      text("theme-preview:scene-toggle-label", b(p.previewLightScene, false) ? "LIGHT" : "DARK",
+        273 * unit, 16.2 * unit, 32 * unit, 10 * unit, muted, 7.8 * unit, "medium", "text-align-center")
+    );
+  }
+  return result;
+}
+
+function materialSpecimens(p, w, h, unit, a) {
+  const light = b(p.previewLightScene, false);
+  const accent = alpha(c(p.accentSoft, "#FF90BAD5"), a);
+  const sceneA = light ? "#FFECF2F7" : "#FF0B121C";
+  const sceneB = light ? "#FFCFDCE6" : "#FF1E3040";
+  const border = light ? "#FFB2C4D1" : "#FF405061";
+  const themeG = grad(p, "windowGradient", c(p.windowBg, "#D0181D24"), c(p.windowHeader, "#D0222A34"));
+  const result = [
+    ui.blurSurface({ key: "theme-preview:blur", x: 0, y: 0, w, h, radius: 12 * unit, alpha: 0.55 * a }),
+    gradientShape("theme-preview:root", 0, 0, w, h, 12 * unit, themeG.a, themeG.b, themeG.angle),
+    text("theme-preview:title", c(p.entryName, "Custom Theme"), 14 * unit, 14 * unit,
+      180 * unit, 11 * unit, alpha(c(p.textPrimary, "#FFFFFFFF"), a), 13.32 * unit, "semibold"),
+    rect("theme-preview:header-line", 14 * unit, 34 * unit, w - 28 * unit,
+      Math.max(0.45, 0.5 * unit), alpha(c(p.strokeSoft, "#33FFFFFF"), 0.42 * a)),
+  ];
+  const materials = [
+    { name: "GRAPHITE", id: "graphite", rgb: "#FF3D4751", x: 14, y: 44, detail: 0.36, rough: 0.88 },
+    { name: "SOFT TOUCH", id: "soft-touch", rgb: "#FF5B6670", x: 165, y: 44, detail: 0.34, rough: 0.86 },
+    { name: "SATIN TITANIUM", id: "satin-titanium", rgb: "#FF778995", x: 14, y: 111, detail: 0.18, rough: 0.42 },
+    { name: "CERAMIC", id: "ceramic", rgb: "#FFDFE7EB", x: 165, y: 111, detail: 0.22, rough: 0.22 },
+  ];
+  materials.forEach((m) => {
+    const x = m.x * unit, y = m.y * unit;
+    const cw = 141 * unit, ch = 57 * unit;
+    // These are real primitive material submissions, not colored mockups.
+    result.push(gradientShape(`theme-preview:scene:${m.id}`, x, y, cw, ch,
+      5 * unit, alpha(sceneA, a), alpha(sceneB, a), 105,
+      { stroke: alpha(border, a * 0.6), strokeWidth: 0.4 * unit }));
+    // Fine calibration lines behind each tile reveal the light/dark scene.
+    for (let i = 1; i <= 4; i++) {
+      result.push(rect(`theme-preview:grid:${m.id}:${i}`,
+        x + i * 28 * unit, y + 2 * unit, 0.5 * unit, ch - 4 * unit,
+        alpha(border, a * 0.32)));
+    }
+    result.push(ui.shape({
+      key: `theme-preview:material:${m.id}`,
+      shape: "primitive", preset: "chamfered",
+      class: abs(x + 6 * unit, y + 6 * unit, cw - 12 * unit, ch - 12 * unit),
+      chamfer: 5 * unit,
+      fill: alpha(m.rgb, a),
+      materialMode: m.id,
+      materialAccent: accent,
+      materialDetailScale: m.detail,
+      materialRoughness: m.rough,
+      materialBevelStrength: 0.45,
+      materialResponse: m.id === "satin-titanium" ? 0.55 : 0,
+    }));
+    result.push(text(`theme-preview:label:${m.id}`, m.name,
+      x + 14 * unit, y + 20 * unit, cw - 28 * unit, 14 * unit,
+      alpha(m.id === "ceramic" ? "#FF22323D" : "#FFECF4FC", a),
+      10.1 * unit, "semibold"));
+  });
+  result.push(...specimenControls(p, unit, a));
+  return ui.root({
+    key: "theme-preview:root-node",
+    class: cls(`w-${s(w)}`, `h-${s(h)}`),
+    children: result,
+  });
+}
+
 export function buildTemplate(ctx) {
   const p = ctx.props || {};
   const w = n(p.width, 320);
   const h = n(p.height, 190);
   const unit = n(p.unit, 1);
   const a = n(p.alpha, 1);
+
+  if (b(p.previewMaterials, false)) return materialSpecimens(p, w, h, unit, a);
 
   const rootR = 12 * unit;
   const textPrimary = alpha(c(p.textPrimary, "#FFFFFFFF"), a);
@@ -114,7 +199,6 @@ export function buildTemplate(ctx) {
     gradientShape("theme-preview:header-glass", 1.4 * unit, 1.2 * unit, Math.max(1, w - 2.8 * unit), 36 * unit, Math.max(0, rootR - 1.2 * unit), alpha("#2DFFFFFF", a), alpha("#04FFFFFF", a), 90),
 
     text("theme-preview:title", c(p.entryName, "Custom Theme"), 14 * unit, 14 * unit, 180 * unit, 11 * unit, textPrimary, 13.32 * unit, "semibold", "text-effect-Flow"),
-    text("theme-preview:caption", "Theme specimen", w - 112 * unit, 15.8 * unit, 98 * unit, 9 * unit, textMuted, 9.36 * unit, "medium", "text-align-right"),
     rect("theme-preview:header-line", 14 * unit, 34 * unit, w - 28 * unit, Math.max(0.45, 0.5 * unit), alpha(c(p.strokeSoft, "#33FFFFFF"), 0.42 * a)),
 
     gradientShape("theme-preview:surface-card", 14 * unit, 44 * unit, 164 * unit, 132 * unit, 10 * unit, surfaceG.a, surfaceG.b, surfaceG.angle, {
@@ -183,6 +267,7 @@ export function buildTemplate(ctx) {
     gradientShape("theme-preview:gradient-strip-b", 249 * unit, 164 * unit, 44 * unit, 4.5 * unit, 2.25 * unit, surfaceG.a, surfaceG.b, surfaceG.angle)
   );
 
+  children.push(...specimenControls(p, unit, a));
   return ui.root({
     key: "theme-preview:root-node",
     class: cls(`w-${s(w)}`, `h-${s(h)}`),

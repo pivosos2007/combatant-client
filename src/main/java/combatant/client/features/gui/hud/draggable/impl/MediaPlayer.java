@@ -30,6 +30,7 @@ import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiMaterialInteractionState;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.text.FontInfo;
@@ -80,11 +81,7 @@ public final class MediaPlayer extends DraggableHudElement {
             .withRefraction(0.011f).withBevel(0.25f, 0.046f)
             .withFluid(0.68f, 0.78f).withCleanReveal(0.76f)
             .withInteractionStrength(0.52f).withChromaticAberration(0.52f)
-            .withMagnification(1.005f).withShapeDeformation(false).withSpecular(false)
-            .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.FLOW);
-    // Preserve a visibly dispersive rim when playback is stopped; FLOW is additive.
-    private static final UiGlassOpticsSpec MEDIA_IDLE_GLASS = MEDIA_GLASS
-            .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.STATIC);
+            .withMagnification(1.005f).withShapeDeformation(false).withSpecular(false);
     private static final UiGlassOpticsSpec MEDIA_TIME_GLASS = MEDIA_GLASS
             .withRefraction(0.006f).withBevel(0.24f, 0.030f)
             .withFluid(0.55f, 0.82f).withInteractionStrength(0.30f)
@@ -139,6 +136,12 @@ public final class MediaPlayer extends DraggableHudElement {
     private final BooleanValue gradient =
             new BooleanValue("media_player_gradient", true);
     private float anim = 0f;
+    // Wave motion is independent of the static glass optics and the HUD open animation.
+    // Using elapsed time rather than frame-based lerp keeps fades stable at different FPS.
+    private static final float FLOW_ATTACK_SECONDS = 0.38f;
+    private static final float FLOW_RELEASE_SECONDS = 0.52f;
+    private float flowMotion;
+    private long flowMotionPreviousNanos;
     private MediaSessionService.Snapshot currentSnapshot = MediaSessionService.Snapshot.empty(MediaSessionService.isMediaAvailable());
 
     private final UiMaterialInteractionState timeLensFluid = new UiMaterialInteractionState();
@@ -153,15 +156,20 @@ public final class MediaPlayer extends DraggableHudElement {
     private long lastTransportPosition;
 
     private void updateGlassTransport(MediaSessionService.Snapshot snapshot) {
+        boolean playing = snapshot != null && snapshot.hasSession() && snapshot.isPlaying();
+        updateFlowMotion(playing);
         if (snapshot == null || !snapshot.hasSession()) {
+            // Keep the glass response alive while the wave finishes fading out.
+            if (flowMotion > 0.001f) glassFluid.opticalActivity(0.34f);
             transportInitialized = false;
             return;
         }
-        boolean playing = snapshot.isPlaying();
         String track = snapshot.owner() + "\u0000" + snapshot.title() + "\u0000" + snapshot.artist();
         long position = snapshot.predictedPositionSeconds();
+        // Keep the existing interaction baseline. Only the FLOW shader's wave
+        // coverage follows playback; the static refraction/chroma stay intact.
+        glassFluid.opticalActivity(0.34f);
         if (playing) {
-            glassFluid.opticalActivity(0.34f);
             timeLensFluid.opticalActivity(0.18f);
         }
         if (transportInitialized) {
@@ -180,6 +188,25 @@ public final class MediaPlayer extends DraggableHudElement {
         lastTransportTrack = track;
         lastTransportPosition = position;
     }
+    private void updateFlowMotion(boolean playing) {
+        long now = System.nanoTime();
+        if (flowMotionPreviousNanos == 0L) {
+            flowMotionPreviousNanos = now;
+            return;
+        }
+        float dt = (now - flowMotionPreviousNanos) * 1.0e-9f;
+        flowMotionPreviousNanos = now;
+        if (!(dt > 0f) || !Float.isFinite(dt)) return;
+        // A long stalled frame must not snap the wave into its next state.
+        dt = Math.min(dt, 0.10f);
+        float target = playing ? 1f : 0f;
+        float responseSeconds = playing ? FLOW_ATTACK_SECONDS : FLOW_RELEASE_SECONDS;
+        float response = 1f - (float) Math.exp(-dt / responseSeconds);
+        flowMotion += (target - flowMotion) * response;
+        if (flowMotion < 0.0001f) flowMotion = 0f;
+        if (flowMotion > 0.9999f) flowMotion = 1f;
+    }
+
     private float playHover;
     private float shuffleHover;
     private float prevHover;
@@ -935,9 +962,12 @@ public final class MediaPlayer extends DraggableHudElement {
     }
 
     private void drawGlass(float x, float y, float w, float h, float radius, float scale, int accentSoft) {
-        UiGlassOpticsSpec optics = currentSnapshot.isPlaying() ? MEDIA_GLASS : MEDIA_IDLE_GLASS;
+        // Always keep the same shader. Only its animated body-wave coverage
+        // eases in/out with playback; static chroma, bevel and blur are unchanged.
+        float easedWave = flowMotion * flowMotion * (3f - 2f * flowMotion);
+        UiGlassVisual visual = UiGlassVisual.FLOW.withVector(0, 1f, 1f, 1f, easedWave);
         HudRenderUtil.drawReactiveGlass(x, y, w, h, radius, scale, true,
-                1f, anim, glassFluid, optics, false, 0f, 0.55f);
+                1f, anim, glassFluid, MEDIA_GLASS, false, 0f, 0.55f, visual);
         if (isGradientPanelStyle()) {
             float strength = (themeGradientStrength.get() / 100.0f) * (themeMix.get() / 100.0f);
             HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(Math.round(34.0f * strength * anim));

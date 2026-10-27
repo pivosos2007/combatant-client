@@ -16,7 +16,9 @@ public enum ModuleBindInputHandler {
 
     @EventHandler
     private void onInput(InputButtonEvent event) {
-        if (event.action() != InputAction.PRESS || ClickGuiRenderer.isBlockingModuleKeybinds()) return;
+        if (event.action() != InputAction.PRESS
+                || !CombatantInput.bindings().hasPendingGamePress()
+                || ClickGuiRenderer.isBlockingModuleKeybinds()) return;
         ModuleManager.handleModuleKeybinds();
     }
 }

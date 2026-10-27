@@ -567,6 +567,7 @@ public class Combatant implements ClientModInitializer {
             // Minecraft can still extract one final GUI frame while disconnecting.
             ClientRuntime.beginShutdown("client stopping");
             combatant.client.config.ConfigSerializer.flushPending();
+            combatant.client.render.engine.renderer.ui.UiPbrTextureSets.close();
             // Restore process-level security state before subsystem shutdown.
             NativeMemoryGuard.shutdown();
             MediaSessionService.get().shutdown();

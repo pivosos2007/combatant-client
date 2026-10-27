@@ -26,11 +26,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.features.gui.chat.BetterChatRenderer;
-import combatant.client.features.gui.clickgui.ClickGuiEditorScreen;
-import combatant.client.features.gui.clickgui.ClickGuiPickerScreen;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
-import combatant.client.features.gui.clickgui.ClickGuiScreen;
-import combatant.client.features.gui.preview.VisualPreviewScreen;
 import combatant.client.features.gui.hud.nondraggable.StaticHudElementRegistry;
 import combatant.client.features.gui.hud.nondraggable.impl.DynamicIsland;
 import combatant.client.features.module.ModuleManager;
@@ -40,12 +36,10 @@ import combatant.client.features.module.modules.visuals.Freecam;
 import combatant.client.features.module.modules.visuals.FreeLook;
 import combatant.client.features.module.modules.visuals.Zoom;
 import combatant.client.runtime.RuntimeGate;
-import combatant.client.input.InputAction;
 import combatant.client.input.InputKeys;
 import combatant.client.input.event.MouseInputEvent;
 import combatant.client.input.event.ScrollInputEvent;
 import combatant.client.input.minecraft.MinecraftInputAdapter;
-import combatant.client.util.logging.DebugLog;
 import combatant.client.util.player.inventory.InventorySwap;
 
 @Mixin(MouseHandler.class)
@@ -150,9 +144,6 @@ public class MouseHandlerMixin {
         if (RuntimeGate.canRunClientLogic()
                 && ModuleManager.isEnabled("clickgui")
                 && ClientScreen.current() == null) {
-            DebugLog.info("[CLICK] button=%d action=%d x=%.2f y=%.2f",
-                    event.key().physicalKey(), action, lastX, lastY);
-
             ClickGuiRenderer.onMouseButton(lastX, lastY, event.key().physicalKey(), event.action().isDown());
 
             ci.cancel();

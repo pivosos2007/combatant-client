@@ -15,6 +15,7 @@ import combatant.client.features.gui.clickgui.settings.SettingRenderContext;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.features.module.ModuleSubcategoryDefinition;
+import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,6 +25,8 @@ import java.util.Map;
 final class ModulesMenuPanel {
     final ModulesMenuCategory category;
     final int index;
+    final UiLiquidGlassMaterial glass;
+    final UiLiquidGlassMaterial controlGlass;
     final List<ModuleHit> hits = new ArrayList<>();
     final List<SettingHit> settingHits = new ArrayList<>();
     final List<SubcategoryHit> subcategoryHits = new ArrayList<>();
@@ -82,6 +85,8 @@ final class ModulesMenuPanel {
     ModulesMenuPanel(ModulesMenuCategory category, int index) {
         this.category = category;
         this.index = index;
+        this.glass = ModulesMenuStyle.glass();
+        this.controlGlass = ModulesMenuStyle.glass();
         this.selectedSubcategory = defaultSubcategory();
     }
 

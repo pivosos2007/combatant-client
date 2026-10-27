@@ -15,14 +15,23 @@ class FontRasterSelectionTest {
     }
     @Test void highDpiOrLargeHudKeepsMsdf() {
         assertFalse(FontRasterSelection.preferSmallBitmap(1.0, 2.0, false, false));
-        assertFalse(FontRasterSelection.preferSmallBitmap(1.5, 1.0, false, false));
+        assertFalse(FontRasterSelection.preferSmallBitmap(2.0, 1.0, false, false));
         assertFalse(FontRasterSelection.preferSmallBitmap(1.0, 1.0, true, false));
         assertFalse(FontRasterSelection.preferSmallBitmap(1.0, 1.0, false, true));
     }
-    @Test void tinyAndInvalidFootprintsKeepMsdf() {
-        assertFalse(FontRasterSelection.preferSmallBitmap(0.25, 1.0, false, false));
+    @Test void tinyTextUsesPhysicalMasksWhileInvalidFootprintsKeepMsdf() {
+        assertTrue(FontRasterSelection.preferSmallBitmap(0.25, 1.0, false, false));
+        assertTrue(FontRasterSelection.preferSmallBitmap(10.0 / 18.0, 1.0, false, false));
+        assertTrue(FontRasterSelection.preferSmallBitmap(10.0 / 18.0, 2.0, false, false));
         assertFalse(FontRasterSelection.preferSmallBitmap(-1, 1.0, false, false));
         assertFalse(FontRasterSelection.preferSmallBitmap(Double.NaN, 1.0, false, false));
         assertFalse(FontRasterSelection.preferSmallBitmap(1.0, Double.POSITIVE_INFINITY, false, false));
+    }
+
+    @Test void sameFramebufferFootprintUsesSameBackendRegardlessOfLogicalScale() {
+        for (double physicalHeight : new double[]{8, 10, 12, 18, 24, 32, 48}) {
+            boolean nativeChoice = FontRasterSelection.preferSmallBitmap(physicalHeight / 18, 1, false, false);
+            assertEquals(nativeChoice, FontRasterSelection.preferSmallBitmap(physicalHeight / 36, 2, false, false));
+        }
     }
 }

@@ -171,10 +171,15 @@ public record GpuMeshHandle(GpuBuffer vertexBuffer,
      * meshes draw thousands of instances from unrelated vertex ranges.
      */
     public void drawIndexed(RenderPass pass, String label) {
+        drawIndexed(pass, label, 1);
+    }
+
+    public void drawIndexed(RenderPass pass, String label, int instanceCount) {
+        if (instanceCount < 1) throw new IllegalArgumentException("instanceCount");
         // Cheap volatile read when nothing is pending; see DynamicMeshWrites.
         combatant.client.render.engine.rhi.upload.DynamicMeshWrites.flushPending();
         validateForDraw(label);
-        pass.drawIndexed(indexCount, 1, firstIndex, baseVertex, 0);
+        pass.drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, 0);
     }
 
     public String debugString() {

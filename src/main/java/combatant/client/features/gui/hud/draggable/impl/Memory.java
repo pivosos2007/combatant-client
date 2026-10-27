@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+
 
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
@@ -59,6 +61,7 @@ public final class Memory extends DraggableHudElement implements ScriptableHudSt
     private static final String EFFECT_NONE = "None";
     private static final String EFFECT_BLUR = "Blur";
 
+    private final ModeValue surfaceMaterial = mode("memory_surface_material", HudMaterialChoice.DEFAULT, HudMaterialChoice.OPTIONS);
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final NumberValue<Double> scale = num("memory_scale", 2.37, 0.5, 5.0);
@@ -128,6 +131,12 @@ public final class Memory extends DraggableHudElement implements ScriptableHudSt
         if (target >= current) return target;
         float next = AnimationUtility.approach(current, target, AnimationUtility.deltaTime(), 12.0f);
         return AnimationUtility.snap(next, target, 0.25f);
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
     }
 
     @Override
@@ -248,7 +257,7 @@ public final class Memory extends DraggableHudElement implements ScriptableHudSt
                         strokeEnabled.get(), strokeAlpha.get() / 255.0f,
                         isThemeMode() && strokeGradient.get(),
                         resolveStrokeGradientStart(), resolveStrokeGradientEnd()
-                );
+                ).setMaterial(HudMaterialChoice.shaderMode(surfaceMaterial.get()));
         scriptModel.icon().texture(MEMORY_ICON.toString(), iconX - baseX, iconY - baseY, iconSize, iconSize, resolvedIconColor);
         scriptModel.divider().set(dividerX - baseX, dividerY - baseY, dividerW, dividerH,
                 HudRenderUtil.setAlpha(uiMetaColor, 0x52));

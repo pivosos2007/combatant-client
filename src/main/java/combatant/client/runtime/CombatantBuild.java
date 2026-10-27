@@ -14,6 +14,8 @@ import net.fabricmc.loader.api.FabricLoader;
 public final class CombatantBuild {
     private static final String MOD_ID = "combatant";
     private static final String FALLBACK_VERSION = "dev";
+    private static final boolean DEVELOPMENT_BUILD =
+            CombatantBuild.class.getResource("/combatant-dev.mixins.json") != null;
     private static volatile String cachedVersion;
 
     private CombatantBuild() {
@@ -38,6 +40,6 @@ public final class CombatantBuild {
     }
 
     public static boolean isDevelopmentBuild() {
-        return !DistributionCapabilities.isReleaseArtifact();
+        return DEVELOPMENT_BUILD;
     }
 }

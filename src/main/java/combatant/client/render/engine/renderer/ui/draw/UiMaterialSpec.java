@@ -11,7 +11,7 @@ package combatant.client.render.engine.renderer.ui.draw;
  * texture capture and blur describe the destination, not the surface's physical appearance.
  * Each family has a dedicated shader path rather than an all-purpose fragment shader.
  */
-public sealed interface UiMaterialSpec permits UiSurfaceMaterialSpec, UiLiquidGlassMaterial, UiHoneycombMaterialSpec {
+public sealed interface UiMaterialSpec permits UiSurfaceMaterialSpec, UiLiquidGlassMaterial, UiHoneycombMaterialSpec, UiIceMaterialSpec {
     Family family();
 
     default boolean samplesBackdrop() {

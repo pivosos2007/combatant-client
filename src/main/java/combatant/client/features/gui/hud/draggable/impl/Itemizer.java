@@ -6,6 +6,10 @@
  */
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+
+import combatant.client.config.values.ModeValue;
+
 import combatant.client.config.SettingDef;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
@@ -66,6 +70,7 @@ public final class Itemizer extends DraggableHudElement {
     private static final float EVENT_LIFE = 1.8f;
     public static Itemizer INSTANCE;
 
+    private final ModeValue surfaceMaterial = mode("itemizer_surface_material", HudMaterialChoice.DEFAULT, HudMaterialChoice.OPTIONS);
     private final Minecraft mc = Minecraft.getInstance();
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(Itemizer.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
@@ -130,6 +135,12 @@ public final class Itemizer extends DraggableHudElement {
     @Override
     public void onTick() {
         syncActions();
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
     }
 
     @Override
@@ -359,6 +370,7 @@ public final class Itemizer extends DraggableHudElement {
         props.put("width", layoutW);
         props.put("height", layoutH);
         props.put("blur", blur.get());
+        props.put("materialMode", HudMaterialChoice.shaderMode(surfaceMaterial.get()));
         props.put("chat", chat);
         props.put("hovered", hovered);
         Themes.Theme theme = Theme.theme();
@@ -402,6 +414,7 @@ public final class Itemizer extends DraggableHudElement {
         hash = CachedUiScriptRuntime.mix(hash, props.get("hovered").toString());
         hash = CachedUiScriptRuntime.mix(hash, (boolean) props.get("chat") ? 1 : 0);
         hash = CachedUiScriptRuntime.mix(hash, blur.get() ? 1 : 0);
+        hash = CachedUiScriptRuntime.mix(hash, surfaceMaterial.get());
         hash = CachedUiScriptRuntime.mix(hash, bgAlpha.get());
         hash = CachedUiScriptRuntime.mix(hash, themeMix.get());
         Themes.Theme selectedTheme = Theme.theme();

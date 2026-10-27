@@ -11,6 +11,7 @@ import com.caoccao.javet.interop.V8Host;
 import com.caoccao.javet.interop.V8Runtime;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.runtime.distribution.DistributionCapabilities;
+import combatant.client.runtime.distribution.AndroidRuntime;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -35,6 +36,10 @@ public final class JavetRuntimeBootstrap {
         if (owner == null) throw new IllegalArgumentException("Javet runtime owner must not be null");
         if (shuttingDown) throw new IllegalStateException("Javet runtime is shutting down");
         if (!isJavetRuntimeAvailable()) {
+            if (AndroidRuntime.isAndroid()) {
+                throw new IllegalStateException("Bundled Android Javet V8 native is unavailable for "
+                        + DistributionCapabilities.currentTargetId() + ". Use a universal or Android ARM64 distribution.");
+            }
             throw new IllegalStateException(DistributionCapabilities.javetUnavailableReason());
         }
 
@@ -58,7 +63,7 @@ public final class JavetRuntimeBootstrap {
         // diagnostics and intentional omissions, but it must never veto a native
         // resource that is physically present in the running artifact.
         return JavetNativeResourceLoader.hasBundledNativeForCurrentRuntime()
-                || DistributionCapabilities.isJavetAvailable();
+                || (!AndroidRuntime.isAndroid() && DistributionCapabilities.isJavetAvailable());
     }
 
     public static void closeRuntime(AutoCloseable owner, V8Runtime runtime) {

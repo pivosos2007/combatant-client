@@ -160,12 +160,35 @@ export type UiInlineStyle = {
   blurBrightness?: number;
   blurAlpha?: number;
   liquidGlass?: boolean;
+  /** Optional Voronoi structure on top of the current material (primitive shapes only). */
+  structureMode?: "voronoi" | "voronoi-cracks" | "voronoi-crystal" | "voronoi-relief" | string;
+  structureCellSize?: number;
+  structureJitter?: number;
+  structureLineWidth?: number;
+  structureDepth?: number;
+  structureOpacity?: number;
+  structureSeed?: number;
+  structureColor?: string | number;
   materialMode?: string;
   materialAccent?: string | number;
   materialDetailScale?: number;
   materialRoughness?: number;
   materialBevelStrength?: number;
   materialResponse?: number;
+  /** Local, deterministic ice material for solid primitives and optional glass composition. */
+  iceSeed?: number;
+  iceDensity?: number;
+  iceFrost?: number;
+  iceCracks?: number;
+  iceBlueAbsorption?: number;
+  /** Displacement of the captured background in framebuffer pixels; glass only. */
+  iceDisplacementPx?: number;
+  iceFacetContrast?: number;
+  /** Maximum extra clean-source reveal along ice fractures; glass only. */
+  iceClarity?: number;
+  /** Enable ice composition on liquid glass without replacing its optical model. */
+  glassIce?: boolean;
+  glassMaterial?: "ice" | string;
   glassOptics?: "reactive-refraction" | "reactive-smoked" | "etched-glass" | "soft-lens" | string;
   glassRefraction?: number;
   glassBevelWidth?: number;
@@ -585,6 +608,12 @@ export type UiShapeNode = UiNode & {
   cornerTopRight?: UiCornerSpec;
   cornerBottomRight?: UiCornerSpec;
   cornerBottomLeft?: UiCornerSpec;
+  /**
+   * Morph each rounded corner toward this logical-pixel radius with the parent
+   * selected-state motion. Useful for Material 3 connected button groups and
+   * other composable controls. Omit to retain static corner geometry.
+   */
+  cornerMorphTo?: number;
   /** Flexible per-edge modifiers. */
   edges?: UiEdgeMap;
   edgeTop?: UiEdgeSpec;
@@ -621,12 +650,35 @@ export type UiShapeNode = UiNode & {
   /** Enables the existing liquid-glass material on compatible analytic primitives. */
   liquidGlass?: boolean;
   glassPreset?: "light" | "balanced" | "heavy" | "hud-small" | "hud-large" | "health" | string;
+  /** Optional Voronoi structure on top of the current material (primitive shapes only). */
+  structureMode?: "voronoi" | "voronoi-cracks" | "voronoi-crystal" | "voronoi-relief" | string;
+  structureCellSize?: number;
+  structureJitter?: number;
+  structureLineWidth?: number;
+  structureDepth?: number;
+  structureOpacity?: number;
+  structureSeed?: number;
+  structureColor?: string | number;
   materialMode?: string;
   materialAccent?: string | number;
   materialDetailScale?: number;
   materialRoughness?: number;
   materialBevelStrength?: number;
   materialResponse?: number;
+  /** Local, deterministic ice material for solid primitives and optional glass composition. */
+  iceSeed?: number;
+  iceDensity?: number;
+  iceFrost?: number;
+  iceCracks?: number;
+  iceBlueAbsorption?: number;
+  /** Displacement of the captured background in framebuffer pixels; glass only. */
+  iceDisplacementPx?: number;
+  iceFacetContrast?: number;
+  /** Maximum extra clean-source reveal along ice fractures; glass only. */
+  iceClarity?: number;
+  /** Enable ice composition on liquid glass without replacing its optical model. */
+  glassIce?: boolean;
+  glassMaterial?: "ice" | string;
   glassTint?: string | number;
   glassAlpha?: number;
   blurAlpha?: number;

@@ -150,10 +150,11 @@ final class ScriptedInventoryHudPanel {
                  int gridDivider,
                  String layout,
                  ScriptedListHudPanel.Palette palette,
-                 List<LinkedHashMap<String, Object>> items) {
+                 List<LinkedHashMap<String, Object>> items, String materialMode) {
         Panel {
             renderScale = Math.max(0.0001f, renderScale);
             items = items != null ? items : List.of();
+            materialMode = materialMode != null ? materialMode : "";
         }
 
         float logical(float renderValue) {
@@ -174,6 +175,7 @@ final class ScriptedInventoryHudPanel {
             out.put("countLabelWidth", logical(countLabelWidth));
             out.put("countValueWidth", logical(countValueWidth));
             out.put("activeCount", itemCount);
+            out.put("materialMode", materialMode);
             out.put("blur", blur);
             out.put("blurAlpha", blurAlpha);
             out.put("shadowControlled", true);
@@ -219,6 +221,7 @@ final class ScriptedInventoryHudPanel {
 
         long treeSignature() {
             long h = 0xcbf29ce484222325L;
+            h = CachedUiScriptRuntime.mix(h, materialMode);
             h = CachedUiScriptRuntime.mix(h, "inventory");
             h = CachedUiScriptRuntime.mix(h, logical(width));
             h = CachedUiScriptRuntime.mix(h, logical(height));

@@ -70,7 +70,20 @@ public final class CodegenSmoke {
                     };
                     """);
             Path runtimeManifest = temp.resolve("runtime.manifest");
-            put(runtimeManifest, "runtime.frag\nruntime.comp\n");
+            put(shaders.resolve("rain.comp"), """
+                    struct Drop { vec4 center; vec4 motion; vec2 uv[2]; };
+                    layout(std430) buffer RainVisible { uint count; Drop visible[]; };
+                    """);
+            put(shaders.resolve("scalars.comp"), """
+                    layout(std430) buffer Scalars { vec4 header; float count; uint values[]; };
+                    """);
+            put(shaders.resolve("vectors.comp"), """
+                    layout(std430) buffer Vectors { vec3 values[]; };
+                    """);
+            put(shaders.resolve("matrices.comp"), """
+                    layout(std430) buffer Matrices { mat2x3 values[]; };
+                    """);
+            put(runtimeManifest, "runtime.frag\nruntime.comp\nrain.comp\nscalars.comp\nvectors.comp\nmatrices.comp\n");
             Path testSources = Files.createDirectories(temp.resolve("test-sources"));
             Path contractSource = testSources.resolve("RuntimeUniformUse.java");
             put(contractSource, """
@@ -78,14 +91,18 @@ public final class CodegenSmoke {
                     class RuntimeUniformUse {
                         static final ShaderUniformBindings.Block BLOCK = ShaderUniformBindings.block("RuntimeBlock");
                         static final ShaderUniformBindings.Writer WRITER = BLOCK.writer();
+                        static final ShaderUniformBindings.Block RAIN = ShaderUniformBindings.block("RainVisible");
+                        static final ShaderUniformBindings.Writer DROPS = RAIN.writer(2);
                         static void test() {
                             WRITER.vec4("uBlendParams", 1f, 2f, 3f, 4f).vec4("uBlendTone0", 1f, 2f, 3f, 4f);
+                            DROPS.vec4("visible.center", 1, 1f, 2f, 3f, 4f)
+                                    .floats("visible.uv", new float[]{1f, 2f}, 1, 0).ints("count", new int[]{2});
                         }
                     }
                     """);
             put(stubs.resolve("combatant/client/render/engine/rhi/uniform/CombatantUniformAllocator.java"), """
                     package combatant.client.render.engine.rhi.uniform;
-                    import com.mojang.blaze3d.buffers.GpuBufferSlice;
+                    import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
                     import java.nio.ByteBuffer;
                     public final class CombatantUniformAllocator {
                         public interface UniformWriter { void write(ByteBuffer buffer); }
@@ -94,8 +111,8 @@ public final class CodegenSmoke {
                         }
                     }
                     """);
-            put(stubs.resolve("com/mojang/blaze3d/buffers/GpuBufferSlice.java"), """
-                    package com.mojang.blaze3d.buffers;
+            put(stubs.resolve("com/mojang/renderpearl/api/buffers/GpuBufferSlice.java"), """
+                    package com.mojang.renderpearl.api.buffers;
                     public final class GpuBufferSlice { }
                     """);
             put(stubs.resolve("combatant/client/render/engine/core/CombatantRenderSystem.java"), """
@@ -130,6 +147,14 @@ public final class CodegenSmoke {
                         }
                         private static void check(boolean condition, String description) {
                             if (!condition) throw new AssertionError(description);
+                        }
+                        private static void fails(Class<? extends Throwable> type, Runnable action) {
+                            try { action.run(); }
+                            catch (Throwable error) {
+                                if (type.isInstance(error)) return;
+                                throw new AssertionError("Unexpected failure", error);
+                            }
+                            throw new AssertionError("Expected " + type.getSimpleName());
                         }
                         public static void main(String[] args) {
                             SmokeStd140Binding.Writer writer = new SmokeStd140Binding.Writer()
@@ -187,6 +212,44 @@ public final class CodegenSmoke {
                             check(storageLayout.member("one").array()
                                     && storageLayout.member("one").arrayStride() == 16,
                                     "std430 one-element arrays retain array metadata");
+                            var rain = combatant.client.render.engine.uniform.ShaderUniformBindings.block("RainVisible");
+                            check(rain.runtimeSized() && rain.size() == 16 && rain.size(2) == 112, "SSBO prefix and capacity");
+                            check(rain.member("visible").stride() == 48 && rain.member("visible.motion").offset() == 16,
+                                    "nested runtime metadata");
+                            check(rain.storageLayout().size(2) == 112 && rain.storageLayout().runtimeSized(), "runtime storage descriptor");
+                            var rainWriter = rain.writer(2).vec4("visible.center", 1, 1f, 2f, 3f, 4f)
+                                    .floats("visible.uv", new float[]{7f, 8f}, 1, 1)
+                                    .ints("count", new int[]{2});
+                            same(1f, rainWriter.buffer().getFloat(64), "runtime struct array offset");
+                            same(7f, rainWriter.buffer().getFloat(104), "nested fixed array offset");
+                            var generatedRain = new RainVisibleBinding.Writer(2).setVisibleCenter(1, 1f, 2f, 3f, 4f)
+                                    .setVisibleUv(1, 1, 7f, 8f).setCount(2);
+                            check(generatedRain.buffer().equals(rainWriter.buffer()), "typed/runtime packing agreement");
+                            ByteBuffer target = ByteBuffer.allocate(120);
+                            target.position(4);
+                            rainWriter.write(target);
+                            check(target.position() == 116, "runtime write advances by dynamic size");
+                            fails(IllegalStateException.class, () -> rain.writer());
+                            fails(IllegalArgumentException.class, () -> rain.writer(-1));
+                            fails(ArithmeticException.class, () -> rain.size(Integer.MAX_VALUE));
+                            fails(IndexOutOfBoundsException.class, () -> generatedRain.setVisibleCenter(2, 0f, 0f, 0f, 0f));
+                            fails(IndexOutOfBoundsException.class, () -> rainWriter.vec4("visible.center", -1, 0f, 0f, 0f, 0f));
+                            fails(IndexOutOfBoundsException.class, () -> rain.writer(0).vec4("visible.center", 0, 0f, 0f, 0f, 0f));
+                            fails(IndexOutOfBoundsException.class, () -> rainWriter.floats("visible.uv", new float[]{0f, 0f}, 1, 2));
+                            fails(IllegalArgumentException.class, () -> rainWriter.floats("visible.uv", new float[]{0f, 0f}, 1));
+                            fails(IllegalArgumentException.class, () -> rainWriter.write(ByteBuffer.allocate(111)));
+                            check(new RainVisibleBinding.Writer(0).byteSize() == 16, "zero elements retain prefix");
+                            var scalars = combatant.client.render.engine.uniform.ShaderUniformBindings.block("Scalars");
+                            check(scalars.size(3) == 32 && ScalarsBinding.size(0) == 20, "unrounded scalar tail");
+                            check(scalars.writer(3).ints("values", new int[]{-1}, 2).buffer().getInt(28) == -1, "uint bits");
+                            var vectors = combatant.client.render.engine.uniform.ShaderUniformBindings.block("Vectors");
+                            check(vectors.writer(0).byteSize() == 0 && VectorsBinding.size(2) == 32, "runtime-only vec3 array");
+                            same(3f, vectors.writer(2).floats("values", new float[]{1f, 2f, 3f}, 1).buffer().getFloat(24), "vec3 stride");
+                            var matrices = combatant.client.render.engine.uniform.ShaderUniformBindings.block("Matrices");
+                            var matrixWriter = matrices.writer(2).floats("values", new float[]{1f, 2f, 3f, 4f, 5f, 6f}, 1);
+                            var generatedMatrices = new MatricesBinding.Writer(2).setValues(1, 1f, 2f, 3f, 4f, 5f, 6f);
+                            same(4f, matrixWriter.buffer().getFloat(48), "rectangular matrix column stride");
+                            check(matrixWriter.buffer().equals(generatedMatrices.buffer()), "matrix typed/runtime packing agreement");
                             System.out.println("byte-level std140/std430 generated and runtime binding checks passed");
                         }
                     }
@@ -196,11 +259,22 @@ public final class CodegenSmoke {
                     shaders.toString(), manifest.toString(), generated.toString());
             run(workspace, javaCommand(), generator.toString(), "generate",
                     shaders.toString(), runtimeManifest.toString(), runtimeGenerated.toString(), classes.toString());
-            Path contract = classes.resolve("combatant/uniform-bindings-v2.tsv");
+            put(shaders.resolve("rain.vert"), Files.readString(shaders.resolve("rain.comp"))
+                    .replace("buffer RainVisible", "readonly buffer RainVisible"));
+            run(workspace, javaCommand(), generator.toString(), "discover", shaders.toString(), classes.toString());
+            Path contract = classes.resolve("combatant/uniform-bindings-v3.tsv");
             run(workspace, javaCommand(), generator.toString(), "verify", contract.toString(), testSources.toString());
             put(contractSource, Files.readString(contractSource).replace("uBlendParams", "u_BlendParams"));
             runExpectFailure(workspace, "RuntimeBlock.u_BlendParams is missing",
                     javaCommand(), generator.toString(), "verify", contract.toString(), testSources.toString());
+            put(contractSource, Files.readString(contractSource).replace("u_BlendParams", "uBlendParams")
+                    .replace("visible.uv", "visible.missing"));
+            runExpectFailure(workspace, "RainVisible.visible.missing is missing",
+                    javaCommand(), generator.toString(), "verify", contract.toString(), testSources.toString());
+            put(shaders.resolve("rain.vert"), Files.readString(shaders.resolve("rain.vert"))
+                    .replace("vec4 motion", "vec3 motion"));
+            runExpectFailure(workspace, "Incompatible GLSL layout for block RainVisible@std430",
+                    javaCommand(), generator.toString(), "discover", shaders.toString(), classes.toString());
             List<String> compile = new ArrayList<>(List.of(javacCommand(), "--release", "17", "-d", classes.toString(),
                     type.toString(), struct.toString(), runtime.toString()));
             try (Stream<Path> sources = Files.walk(temp)) {

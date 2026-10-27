@@ -79,6 +79,8 @@ public enum ClickGuiRenderer {
     private static final String MODULES_TAB_ID = "combatant:modules";
     private static final String SETTINGS_TAB_ID = "combatant:settings";
     private static final String MAP_TAB_ID = "combatant:map";
+    // Present only in dev builds. The gallery, like Map, completely covers the 3D scene.
+    private static final String UI_KITS_TAB_ID = "combatant:component_lab";
     private static final float TAB_HEIGHT = 34f;
     private static final float TAB_GAP = 0f;
     private static final float TAB_PAD_X = 18f;
@@ -164,6 +166,11 @@ public enum ClickGuiRenderer {
         if (textEditor != null) {
             textEditor.handleMouseMove(mouseX, mouseY);
         }
+        if (picker == null && protocolHeuristicsEditor == null && textEditor == null
+                && isInputReady()) {
+            ClickGuiSection section = getActiveSection();
+            if (section != null) section.mouseMoved(mouseX, mouseY);
+        }
     }
 
     public static void onMouseButton(double x, double y, int button, boolean pressed) {
@@ -188,6 +195,11 @@ public enum ClickGuiRenderer {
         }
         if (textEditor != null) {
             textEditor.handleMouseMove(mouseX, mouseY);
+        }
+        if (picker == null && protocolHeuristicsEditor == null && textEditor == null
+                && isInputReady()) {
+            ClickGuiSection section = getActiveSection();
+            if (section != null) section.mouseMoved(mouseX, mouseY);
         }
     }
 
@@ -556,14 +568,15 @@ public enum ClickGuiRenderer {
     }
 
     /**
-     * The Map section owns the entire viewport and renders from Xaero map data, not the live
-     * GameRenderer world target. While it is the active main ClickGUI section there is no reason
-     * to submit the 3D world or Combatant HUD layers hidden behind it.
+     * Map and the dev-only component gallery fully cover the viewport. Their own UI content
+     * does not sample the live 3D target, so skip world submission, HUD, and world post passes.
+     * Resolve this from the selected tab, not the existence of the dev section: switching back
+     * to Modules/Settings immediately restores ordinary scene rendering.
      */
     public static boolean suppressesBackgroundRendering() {
         return MC != null
                 && ClientScreen.current() instanceof ClickGuiScreen
-                && MAP_TAB_ID.equals(activeTabId)
+                && (MAP_TAB_ID.equals(activeTabId) || UI_KITS_TAB_ID.equals(activeTabId))
                 && !closingForExit
                 && lifecycleAnim > 0.001f;
     }

@@ -205,19 +205,20 @@ export function render(ctx) {
     color: "#36000000",
   }));
 
-  nodes.push(ui.roundedGradient({
+  const basePaint = {
     key: "armor:matte-base",
-    x: 0,
-    y: 0,
-    w: width,
-    h: height,
-    radius,
+    x: 0, y: 0, w: width, h: height, radius,
     startColor: colors.top,
     endColor: colors.bottom,
     angle: themeAngle,
-  }));
+  };
+  nodes.push(p.materialMode
+    ? ui.shape({ ...basePaint, shape: "rounded-gradient",
+        materialMode: c(p.materialMode, ""), materialMicrotexture: true, materialThemeSync: true,
+        style: ui.absolute(0, 0, width, height) })
+    : ui.roundedGradient(basePaint));
 
-  nodes.push(ui.roundedGradient({
+  if ((!p.materialMode || p.materialMode === "voronoi")) nodes.push(ui.roundedGradient({
     key: "armor:theme-veil",
     x: 0,
     y: 0,
@@ -230,7 +231,7 @@ export function render(ctx) {
   }));
 
   // Soft middle veil keeps the panel matte instead of looking like glossy glass.
-  nodes.push(ui.roundedGradient({
+  if ((!p.materialMode || p.materialMode === "voronoi")) nodes.push(ui.roundedGradient({
     key: "armor:matte-veil",
     x: 0.55 * scale,
     y: 0.55 * scale,

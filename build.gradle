@@ -223,12 +223,14 @@ dependencies {
 
     // Javet core only. Native V8 binaries are copied into resources/javet/natives.
     bundledLibrary "com.caoccao.javet:javet:${javetVersion}"
+    testImplementation "com.caoccao.javet:javet:${javetVersion}"
 
     // Javet in minimal V8 mode only: no Node runtime. The canonical remap jar
     // stays universal; release slim artifacts retain only their target native.
     javetNativeBundle "com.caoccao.javet:javet-v8-windows-x86_64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-linux-x86_64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-linux-arm64:${javetVersion}"
+    javetNativeBundle "com.caoccao.javet:javet-v8-android:${javetVersion}@aar"
     javetNativeBundle "com.caoccao.javet:javet-v8-macos-x86_64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-macos-arm64:${javetVersion}"
 
@@ -382,6 +384,7 @@ tasks.register("verifyGeneratedUniformPacking", Exec) {
     dependsOn tasks.named("verifyUniformCodegen")
     inputs.files(file("tools/uniform-codegen/CodegenSmoke.java"),
             file("tools/uniform-codegen/UniformCodegen.java"),
+            file("src/main/java/combatant/client/render/engine/uniform/ShaderUniformBindings.java"),
             file("src/main/java/combatant/client/render/engine/rhi/shader/Std430Type.java"),
             file("src/main/java/combatant/client/render/engine/rhi/shader/Std430StructLayout.java"))
     commandLine "${System.getProperty('java.home')}/bin/java",
@@ -426,7 +429,7 @@ tasks.register("verifyUniformBindingContracts", Exec) {
     inputs.dir(generatedUniformResources)
     commandLine "${System.getProperty('java.home')}/bin/java",
             file("tools/uniform-codegen/UniformCodegen.java"), "verify",
-            generatedUniformResources.get().file("combatant/uniform-bindings-v2.tsv").asFile,
+            generatedUniformResources.get().file("combatant/uniform-bindings-v3.tsv").asFile,
             file("src/main/java")
 }
 
@@ -1048,14 +1051,24 @@ tasks.register("generateFontMsdf", Exec) {
 }
 
 
-tasks.register("unpackJavetNatives", Copy) {
+ext.combatantJavetNativeResourcePath = { String path ->
+    if (path.startsWith("jni/")) {
+        return path.startsWith("jni/arm64-v8a/") && path.endsWith(".so")
+                ? "android/" + path.substring("jni/".length()) : null
+    }
+    return path.tokenize('/').last()
+}
+
+tasks.register("unpackJavetNatives", Sync) {
     group = "runtime assets"
     description = "Copies bundled Javet V8 native binaries into generated resources."
     into javetNativeGeneratedResources.map { it.dir("javet/natives") }
     from({ configurations.javetNativeBundle.collect { zipTree(it) } }) {
         include "**/*.dll", "**/*.so", "**/*.dylib"
         eachFile { details ->
-            details.path = details.name
+            String resourcePath = combatantJavetNativeResourcePath(details.path)
+            if (resourcePath == null) details.exclude()
+            else details.path = resourcePath
         }
         includeEmptyDirs = false
     }
@@ -1069,7 +1082,9 @@ tasks.register("syncJavetNatives", Copy) {
     from({ configurations.javetNativeBundle.collect { zipTree(it) } }) {
         include "**/*.dll", "**/*.so", "**/*.dylib"
         eachFile { details ->
-            details.path = details.name
+            String resourcePath = combatantJavetNativeResourcePath(details.path)
+            if (resourcePath == null) details.exclude()
+            else details.path = resourcePath
         }
         includeEmptyDirs = false
     }
@@ -1124,6 +1139,55 @@ processResources {
 
 tasks.named("processDevResources") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// Roboto is needed only by the dev-only Google Material 3 component gallery.
+// Keep downloaded font assets out of src/main and ordinary release archives.
+def googleMaterialFontRoot = layout.buildDirectory.dir("generated/dev-ui-fonts")
+sourceSets.dev.resources.srcDir(googleMaterialFontRoot)
+
+tasks.register("prepareDevUiFonts") {
+    group = "development"
+    description = "Fetch pinned Roboto faces and the license for the dev UI component gallery."
+    outputs.dir(googleMaterialFontRoot)
+    doLast {
+        def outputDir = googleMaterialFontRoot.get().file("assets/combatant/font").asFile
+        outputDir.mkdirs()
+        def upstream = "https://raw.githubusercontent.com/googlefonts/roboto-2/v2.138/"
+        [
+            "roboto_regular.ttf": "src/hinted/Roboto-Regular.ttf",
+            "roboto_medium.ttf": "src/hinted/Roboto-Medium.ttf",
+            "Roboto-LICENSE.txt": "LICENSE"
+        ].each { String filename, String upstreamPath ->
+            File targetFile = new File(outputDir, filename)
+            if (targetFile.isFile() && targetFile.length() > 1000) return
+            File tempFile = new File(outputDir, filename + ".partial")
+            try {
+                new URL(upstream + upstreamPath).openStream().withCloseable { stream ->
+                    tempFile.withOutputStream { output -> output << stream }
+                }
+                if (tempFile.length() <= 1000) {
+                    throw new GradleException("Invalid Roboto asset: ${upstreamPath}")
+                }
+                if (filename.endsWith(".ttf")) {
+                    byte[] signature = new byte[4]
+                    tempFile.withInputStream { input -> input.read(signature) }
+                    if (!((signature[0] == 0 && signature[1] == 1)
+                            || (signature[0] == 79 && signature[1] == 84))) {
+                        throw new GradleException("Roboto asset is not a font: ${upstreamPath}")
+                    }
+                }
+                java.nio.file.Files.move(tempFile.toPath(), targetFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            } finally {
+                tempFile.delete()
+            }
+        }
+    }
+}
+
+tasks.named("processDevResources") {
+    dependsOn tasks.named("prepareDevUiFonts")
 }
 
 tasks.named("processDuplexCourierResources") {

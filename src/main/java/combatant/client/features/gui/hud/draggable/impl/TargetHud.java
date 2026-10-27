@@ -31,6 +31,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import combatant.client.config.SettingDef;
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
@@ -48,6 +49,8 @@ import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.profiler.RenderProfiler2D;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
+import combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiMaterialInteractionState;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ScissorFunction;
@@ -86,7 +89,7 @@ public final class TargetHud extends DraggableHudElement {
             .withFluid(0.37f, 0.54f).withCleanReveal(0.72f)
             .withInteractionStrength(0.92f).withChromaticAberration(0.75f)
             .withMagnification(1.006f).withShapeDeformation(false).withSpecular(false)
-            .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.IMPACT_EDGE);
+            .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.STATIC);
 
     private static final float BASE_WIDTH = 112.0f;
     private static final float BASE_HEIGHT = 40.0f;
@@ -455,8 +458,17 @@ public final class TargetHud extends DraggableHudElement {
         return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
+    private final ModeValue surfaceMaterial = HudMaterialChoice.setting("target");
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
+    }
+
     @Override
     protected void defineSettings(List<SettingDef> defs) {
+        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
         defs.add(SettingDef.number(scale));
         defs.add(SettingDef.number(holdMs));
         defs.add(SettingDef.bool(totemPopCounter)
@@ -588,6 +600,10 @@ public final class TargetHud extends DraggableHudElement {
             float panelH = panelDrawH - PANEL_INSET * 2f * scaleFactor;
             float panelRadius = PANEL_RADIUS * scaleFactor;
 
+            // TargetHUD is glass-backed regardless of the selected surface coat.
+            // Replacing the glass pass also disabled its hit optics and the glass
+            // treatment of effect/equipment chips. The selected material is a
+            // separate translucent layer drawn by drawBackground().
             boolean glassEnabled = true;
             TotemPopSnapshot totemPopSnapshot = resolveTotemPopSnapshot(displayTarget);
             updateTotemPopAnimation(displayTarget, totemPopSnapshot, dt);
@@ -601,7 +617,7 @@ public final class TargetHud extends DraggableHudElement {
                 );
             }
 
-            drawGlass(panelX, panelY, panelW, panelH, panelRadius, alphaFactor);
+            if (glassEnabled) drawGlass(panelX, panelY, panelW, panelH, panelRadius, alphaFactor);
 
             drawBackground(renderer, panelX, panelY, panelW, panelH, panelRadius, alphaFactor, glassEnabled);
             if (strokeEnabled.get()) {
@@ -736,10 +752,18 @@ public final class TargetHud extends DraggableHudElement {
                                 float radius,
                                 float alphaFactor,
                                 boolean glassEnabled) {
-        if (glassEnabled) return;
+        if (glassEnabled) {
+            HudMaterialChoice.drawGlassOverlay(renderer, surfaceMaterial.get(),
+                    x, y, width, height, radius, radius, radius, radius,
+                    HudRenderUtil.scaleAlpha(uiBgPrimary, alphaFactor),
+                    HudRenderUtil.scaleAlpha(uiBgSecondary, alphaFactor));
+            return;
+        }
 
         int primary = HudRenderUtil.scaleAlpha(uiBgPrimary, alphaFactor);
         int secondary = HudRenderUtil.scaleAlpha(uiBgSecondary, alphaFactor);
+        if (HudMaterialChoice.draw(renderer, surfaceMaterial.get(), x, y, width, height,
+                radius, primary, secondary)) return;
 
         if (isThemeMode()) {
             if (isAccentPanelStyle() || isGradientPanelStyle()) {
@@ -750,6 +774,8 @@ public final class TargetHud extends DraggableHudElement {
         } else {
             renderer.roundedRectGradientQuad(x, y, width, height, radius, 1.0f, primary, secondary, primary, secondary);
         }
+        HudMaterialChoice.drawDefaultClimate(renderer, surfaceMaterial.get(),
+                x, y, width, height, radius);
     }
 
     private void drawFace(Renderer2D renderer,
@@ -1550,7 +1576,9 @@ public final class TargetHud extends DraggableHudElement {
                 : TARGET_GLASS;
         HudRenderUtil.drawReactiveGlass(x, y, width, height, radius, glassScale, true,
                 alphaFactor, alphaFactor,
-                mainGlassFluid, optics, false, 0f, 0.65f);
+                mainGlassFluid, optics, false, 0f, 0.65f,
+                "Ice".equals(surfaceMaterial.get()) && hit <= 0.001f
+                        ? UiGlassVisual.ice(UiIceMaterialSpec.LIGHT) : UiGlassVisual.IMPACT);
         if (isGradientPanelStyle()) {
             float strength = themeGradientStrength.get() / 100.0f;
             HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(
@@ -1583,7 +1611,7 @@ public final class TargetHud extends DraggableHudElement {
                 .withInteractionStrength(0f).withChromaticAberration(0.38f);
         HudRenderUtil.drawReactiveGlass(x, y, width, height, radius, scaleFactor, true,
                 alphaFactor, alphaFactor,
-                null, chipOptics, true, 0f, 0f);
+                null, chipOptics, true, 0f, 0f, UiGlassVisual.IMPACT);
     }
 
     private void drawItem(Renderer2D renderer,

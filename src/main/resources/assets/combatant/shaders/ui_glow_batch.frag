@@ -39,10 +39,17 @@ void main() {
     if (kind < 1.5) {
         float outside = step(0.0, d);
         alpha = clamp(1.0 - max(d, 0.0) / glowRadius, 0.0, 1.0) * outside;
-    } else {
+    } else if (kind < 2.5) {
         float mask = 1.0 - smoothstep(0.0, softness, d);
         float radial = 1.0 - smoothstep(0.0, glowRadius, length(frag - v_Params2.xy));
         alpha = radial * radial * mask;
+    } else {
+        // Material 3 bounded ripple: an expanding disk intersected analytically
+        // with the same rounded-rectangle SDF as the component surface.
+        float mask = 1.0 - smoothstep(-softness, softness, d);
+        float distanceToOrigin = length(frag - v_Params2.xy);
+        float disk = 1.0 - smoothstep(glowRadius-softness, glowRadius+softness, distanceToOrigin);
+        alpha = disk * mask;
     }
 
     fragColor = vec4(v_Color.rgb, v_Color.a * alpha);

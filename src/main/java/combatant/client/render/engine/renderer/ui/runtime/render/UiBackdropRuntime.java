@@ -70,6 +70,21 @@ final class UiBackdropRuntime {
         );
         UiLiquidGlassMaterial material = new UiLiquidGlassMaterial(
                 optics, frostedJitter, innerGlow, innerGlowSize, innerGlowColor);
+        // Ice is an optional compositing material, not a new optical mode.
+        if (props != null && (props.bool("glassIce", false)
+                || "ice".equalsIgnoreCase(props.string("glassMaterial", ""))
+                || "ice".equalsIgnoreCase(props.string("materialMode", "")))) {
+            var baseIce = combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec.LIGHT;
+            material = material.withIce(new combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec(
+                    props.number("iceSeed", baseIce.seed()),
+                    props.number("iceDensity", baseIce.density()),
+                    props.number("iceFrost", baseIce.frost()),
+                    props.number("iceCracks", baseIce.cracks()),
+                    props.number("iceBlueAbsorption", baseIce.blueAbsorption()),
+                    props.number("iceDisplacementPx", baseIce.displacementPx()),
+                    props.number("iceFacetContrast", baseIce.facetContrast()),
+                    props.number("iceClarity", baseIce.clarity())));
+        }
         if (node != null && bounds != null && optics.interactionStrength() > 0.0f) {
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.getWindow() != null && mc.mouseHandler != null) {
@@ -92,6 +107,16 @@ final class UiBackdropRuntime {
                         props != null && props.bool("glassDismiss", false));
                 material = material.withInteraction(interaction);
             }
+        }
+
+        // Scripted draggable HUDs use the same weather film as native HUD glass.
+        // Preserve explicitly selected ICE visuals until the ICE/climate blend
+        // can be performed in one specialized optical shader.
+        if (combatant.client.features.gui.hud.HudClimateSurface.materialHudScopeActive()
+                && (props == null || props.bool("environmentalEffects", true))
+                && !material.visual().custom()) {
+            var climateVisual = combatant.client.features.gui.hud.HudClimateSurface.glassVisual(true);
+            if (climateVisual.custom()) material = material.withVisual(climateVisual);
         }
 
         final UiLiquidGlassMaterial resolvedMaterial = material;

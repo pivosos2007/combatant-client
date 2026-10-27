@@ -34,7 +34,7 @@ public final class UniformCodegen {
     private static final String PACKAGE = "combatant.client.render.engine.uniform.generated";
     private static final Pattern BLOCK = Pattern.compile("\\blayout\\s*\\(([^)]*)\\)\\s*(?:(?:readonly|writeonly|coherent|restrict|volatile)\\s+)*(uniform|buffer)\\s+(\\w+)\\s*\\{");
     private static final Pattern STRUCT = Pattern.compile("\\bstruct\\s+(\\w+)\\s*\\{([^{}]*)}\\s*;", Pattern.DOTALL);
-    private static final Pattern MEMBER = Pattern.compile("^(\\w+)\\s+(\\w+)\\s*(?:\\[\\s*([^]]+)\\s*])?$");
+    private static final Pattern MEMBER = Pattern.compile("^(\\w+)\\s+(\\w+)\\s*(?:\\[\\s*([^]]*)\\s*])?$");
     private static final Pattern DEFINE = Pattern.compile("(?m)^\\s*#define\\s+(\\w+)\\s+([^\\r\\n]+)");
     private static final Pattern INTEGER_CONSTANT = Pattern.compile("\\bconst\\s+int\\s+(\\w+)\\s*=\\s*([^;]+);");
     private static final Pattern LOCAL_IMPORT = Pattern.compile("(?m)^\\s*#include\\s+<combatant:([A-Za-z0-9_./-]+)>[ \t]*$");
@@ -183,7 +183,10 @@ public final class UniformCodegen {
         if (!Files.isDirectory(sourceRoot)) throw new IllegalArgumentException("Missing Java source root " + sourceRoot);
         Map<String, Map<String, String>> contracts = new LinkedHashMap<>();
         String block = null;
-        for (String line : Files.readAllLines(metadataFile, StandardCharsets.UTF_8)) {
+        List<String> metadataLines = Files.readAllLines(metadataFile, StandardCharsets.UTF_8);
+        if (metadataLines.isEmpty() || !metadataLines.getFirst().equals("COMBATANT_UNIFORM_BINDINGS\t3"))
+            throw new IllegalArgumentException("Unsupported uniform metadata header in " + metadataFile);
+        for (String line : metadataLines) {
             String[] fields = line.split("\\t", -1);
             if (fields[0].equals("block")) {
                 if (fields.length != 5 || contracts.containsKey(fields[1])) throw new IllegalArgumentException("Bad block in metadata: " + line);
@@ -202,9 +205,9 @@ public final class UniformCodegen {
         }
         if (block != null || contracts.isEmpty()) throw new IllegalArgumentException("Incomplete or empty generated uniform metadata");
         Pattern declaredBlock = Pattern.compile("\\b([A-Za-z_]\\w*)\\s*=\\s*ShaderUniformBindings\\.block\\(\\s*\"([^\"]+)\"\\s*\\)");
-        Pattern declaredWriter = Pattern.compile("\\b([A-Za-z_]\\w*)\\s*=\\s*([A-Za-z_]\\w*)\\.writer\\(\\)");
+        Pattern declaredWriter = Pattern.compile("\\b([A-Za-z_]\\w*)\\s*=\\s*([A-Za-z_]\\w*)\\.writer\\([^;]*?\\)");
         Pattern selectedWriter = Pattern.compile("\\b([A-Za-z_]\\w*)\\s*=\\s*[^;]*?\\?\\s*([A-Za-z_]\\w*)\\s*:\\s*([A-Za-z_]\\w*)\\s*;");
-        Pattern write = Pattern.compile("\\.(vec4|mat4)\\s*\\(\\s*\"([^\"]+)\"");
+        Pattern write = Pattern.compile("\\.(vec4|mat4|floats|ints)\\s*\\(\\s*\"([^\"]+)\"");
         Pattern memberRead = Pattern.compile("\\b([A-Za-z_]\\w*)\\.member\\(\\s*\"([^\"]+)\"");
         int checked = 0;
         try (Stream<Path> paths = Files.walk(sourceRoot)) {
@@ -245,8 +248,7 @@ public final class UniformCodegen {
                 matcher = write.matcher(source);
                 while (matcher.find()) {
                     int start = matcher.start();
-                    int afterBoundary = Math.max(source.lastIndexOf(';', start),
-                            Math.max(source.lastIndexOf('{', start), source.lastIndexOf('}', start))) + 1;
+                    int afterBoundary = expressionStart(source, start);
                     String expression = source.substring(afterBoundary, start);
                     String binding = null;
                     int lastPosition = -1;
@@ -264,7 +266,12 @@ public final class UniformCodegen {
                                 + matcher.group(1) + "(\"" + matcher.group(2) + "\")");
                     }
                     String actual = contracts.get(binding).get(matcher.group(2));
-                    if (!matcher.group(1).equals(actual)) {
+                    boolean compatible = actual != null && switch (matcher.group(1)) {
+                        case "floats" -> actual.matches("float|vec[234]|mat[234](x[234])?");
+                        case "ints" -> actual.matches("int|uint|bool|[iub]vec[234]");
+                        default -> matcher.group(1).equals(actual);
+                    };
+                    if (!compatible) {
                         throw new IllegalArgumentException(java + ": " + binding + "." + matcher.group(2)
                                 + " is " + (actual == null ? "missing" : actual) + ", but written as " + matcher.group(1));
                     }
@@ -274,6 +281,17 @@ public final class UniformCodegen {
         }
         if (checked == 0) throw new IllegalArgumentException("No Java uniform bindings were verified");
         System.out.println("Verified " + checked + " static Java GLSL binding references");
+    }
+
+    private static int expressionStart(String source, int end) {
+        int parentheses = 0;
+        for (int i = end - 1; i >= 0; i--) {
+            char c = source.charAt(i);
+            if (c == ')') parentheses++;
+            else if (c == '(') parentheses--;
+            else if (parentheses == 0 && (c == ';' || c == '{' || c == '}')) return i + 1;
+        }
+        return 0;
     }
 
     private static boolean isShaderSource(Path path) {
@@ -325,29 +343,33 @@ public final class UniformCodegen {
     }
 
     private static void writeMetadata(Path output, List<MetadataBinding> bindings) throws IOException {
-        Path target = output.resolve("combatant/uniform-bindings-v2.tsv");
+        Path target = output.resolve("combatant/uniform-bindings-v3.tsv");
         Files.createDirectories(target.getParent());
         // Remove artifacts left by older generator versions so they cannot be packaged accidentally.
         Files.deleteIfExists(target.resolveSibling("uniform-bindings-v1.tsv"));
-        StringBuilder text = new StringBuilder("COMBATANT_UNIFORM_BINDINGS\t2\n");
+        Files.deleteIfExists(target.resolveSibling("uniform-bindings-v2.tsv"));
+        StringBuilder text = new StringBuilder("COMBATANT_UNIFORM_BINDINGS\t3\n");
         for (MetadataBinding metadata : bindings) {
             Binding binding = metadata.binding;
             text.append("block\t").append(metadata.key).append('\t').append(binding.blockName).append('\t')
                     .append(binding.standard.name().toLowerCase(Locale.ROOT)).append('\t')
                     .append(binding.layout.size).append('\n');
-            for (Member member : binding.layout.members) {
-                if (member.nested != null) {
-                    throw new IllegalArgumentException(binding.source + ": struct metadata requires an explicit runtime schema extension: " + member.name);
-                }
-                text.append("member\t").append(member.name).append('\t').append(member.type).append('\t')
-                        .append(member.offset).append('\t').append(member.array ? member.count : 1).append('\t')
-                        .append(member.array ? member.stride : 0).append('\n');
-            }
+            appendMetadata(text, binding.layout, "");
             text.append("end\n");
         }
         String value = text.toString();
         if (!Files.exists(target) || !Files.readString(target, StandardCharsets.UTF_8).equals(value)) {
             Files.writeString(target, value, StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void appendMetadata(StringBuilder text, Layout layout, String prefix) {
+        for (Member member : layout.members) {
+            String path = prefix + member.name;
+            text.append("member\t").append(path).append('\t').append(member.type).append('\t')
+                    .append(member.offset).append('\t').append(member.count).append('\t')
+                    .append(member.stride).append('\n');
+            if (member.nested != null) appendMetadata(text, member.nested, path + ".");
         }
     }
 
@@ -397,6 +419,7 @@ public final class UniformCodegen {
                 throw new IllegalArgumentException(file + ": nested block declaration is invalid: " + blockName);
             String body = withoutComments.substring(block.end(), close);
             List<Member> members = parseMembers(body, defines, file + " " + blockName);
+            validateRuntimeArrays(members, block.group(2).equals("buffer"), file + " " + blockName);
             Standard standard = std140 ? Standard.STD140 : Standard.STD430;
             Layout layout = layout(members, structs, standard, new HashSet<>(), file);
             String className = upperCamel(blockName) + "Binding";
@@ -431,11 +454,20 @@ public final class UniformCodegen {
             if (members.stream().anyMatch(member -> member.name.equals(name)))
                 throw new IllegalArgumentException(context + ": duplicate member " + name);
             boolean array = m.group(3) != null;
-            int count = array ? evaluate(m.group(3), defines, new HashSet<>()) : 1;
-            if (count <= 0) throw new IllegalArgumentException(context + ": array must have positive fixed length: " + name);
+            boolean runtimeArray = array && m.group(3).isBlank();
+            int count = runtimeArray ? 0 : array ? evaluate(m.group(3), defines, new HashSet<>()) : 1;
+            if (!runtimeArray && count <= 0) throw new IllegalArgumentException(context + ": array must have positive fixed length: " + name);
             members.add(new Member(type, name, array, count));
         }
         return members;
+    }
+
+    private static void validateRuntimeArrays(List<Member> members, boolean storage, String context) {
+        for (int i = 0; i < members.size(); i++) {
+            if (members.get(i).count == 0 && (!storage || i != members.size() - 1)) {
+                throw new IllegalArgumentException(context + ": runtime array must be the last member of a storage block: " + members.get(i).name);
+            }
+        }
     }
 
     private static int evaluate(String expression, Map<String, String> defines, Set<String> seen) {
@@ -538,6 +570,7 @@ public final class UniformCodegen {
             else {
                 List<Member> nested = structs.get(m.type);
                 if (nested == null) throw new IllegalArgumentException(context + ": unsupported GLSL member type " + m.type);
+                validateRuntimeArrays(nested, false, context + " struct " + m.type);
                 if (!visiting.add(m.type)) throw new IllegalArgumentException(context + ": recursive GLSL struct " + m.type);
                 try { m.nested = layout(nested, structs, standard, visiting, context); }
                 finally { visiting.remove(m.type); }
@@ -554,12 +587,17 @@ public final class UniformCodegen {
             members.add(m);
         }
         maximumAlignment = Math.max(maximumAlignment, standard == Standard.STD140 ? 16 : 1);
-        return new Layout(members, maximumAlignment, align(cursor, maximumAlignment));
+        return new Layout(members, maximumAlignment, runtimeArray(members) == null ? align(cursor, maximumAlignment) : cursor);
+    }
+
+    private static Member runtimeArray(List<Member> members) {
+        return !members.isEmpty() && members.getLast().count == 0 ? members.getLast() : null;
     }
 
     private static int align(int size, int alignment) { return Math.multiplyExact((Math.addExact(size, alignment - 1) / alignment), alignment); }
 
     private static String emit(Binding b) {
+        Member runtime = runtimeArray(b.layout.members);
         StringBuilder out = new StringBuilder();
         line(out, "/* Generated by tools/uniform-codegen/UniformCodegen.java from " + Path.of(b.source).getFileName().toString() + ". DO NOT EDIT. */");
         line(out, "package " + PACKAGE + ";");
@@ -568,7 +606,7 @@ public final class UniformCodegen {
         line(out, "import java.nio.ByteOrder;");
         line(out, "import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;");
         if (b.standard == Standard.STD140) {
-            line(out, "import com.mojang.blaze3d.buffers.GpuBufferSlice;");
+            line(out, "import com.mojang.renderpearl.api.buffers.GpuBufferSlice;");
             line(out, "import combatant.client.render.engine.core.CombatantRenderSystem;");
         }
         if (b.standard == Standard.STD430) {
@@ -588,19 +626,31 @@ public final class UniformCodegen {
         if (b.standard == Standard.STD430) {
             line(out, "    public static final Std430StructLayout LAYOUT = " + layoutExpression(b.layout, "        ") + ";");
         }
+        if (runtime != null) {
+            line(out, "    public static int size(int runtimeArrayLength) {");
+            line(out, "        if (runtimeArrayLength < 0) throw new IllegalArgumentException(\"runtimeArrayLength\");");
+            line(out, "        return Math.addExact(SIZE, Math.multiplyExact(" + runtime.stride + ", runtimeArrayLength));");
+            line(out, "    }");
+        }
         line(out, "");
         line(out, "    private " + b.className + "() { }");
         line(out, "");
         line(out, "    public static final class Writer implements CombatantUniformAllocator.UniformWriter {");
-        line(out, "        private final ByteBuffer data = ByteBuffer.allocateDirect(SIZE).order(ByteOrder.nativeOrder());");
-        line(out, "        private final ByteBuffer readView = data.asReadOnlyBuffer().order(data.order());");
-        line(out, "        public int byteSize() { return SIZE; }");
-        line(out, "        public ByteBuffer buffer() { return readView.position(0).limit(SIZE); }");
+        line(out, "        private final ByteBuffer data;");
+        line(out, "        private final ByteBuffer readView;");
+        if (runtime != null) line(out, "        private final int runtimeArrayLength;");
+        line(out, "        public Writer(" + (runtime == null ? "" : "int runtimeArrayLength") + ") {");
+        if (runtime != null) line(out, "            this.runtimeArrayLength = runtimeArrayLength;");
+        line(out, "            data = ByteBuffer.allocateDirect(" + (runtime == null ? "SIZE" : "size(runtimeArrayLength)") + ").order(ByteOrder.nativeOrder());");
+        line(out, "            readView = data.asReadOnlyBuffer().order(data.order());");
+        line(out, "        }");
+        line(out, "        public int byteSize() { return data.capacity(); }");
+        line(out, "        public ByteBuffer buffer() { return readView.position(0).limit(byteSize()); }");
         line(out, "        @Override public void write(ByteBuffer target) {");
-        line(out, "            if (target.remaining() < SIZE) throw new IllegalArgumentException(\"GPU destination smaller than \" + SIZE);");
+        line(out, "            if (target.remaining() < byteSize()) throw new IllegalArgumentException(\"GPU destination smaller than \" + byteSize());");
         line(out, "            int position = target.position();");
-        line(out, "            target.put(position, data, 0, SIZE);");
-        line(out, "            target.position(position + SIZE);");
+        line(out, "            target.put(position, data, 0, byteSize());");
+        line(out, "            target.position(position + byteSize());");
         line(out, "        }");
         if (b.standard == Standard.STD140) {
             line(out, "        public GpuBufferSlice upload(int expectedWritesPerFrame) {");
@@ -619,13 +669,13 @@ public final class UniformCodegen {
         StringBuilder sb = new StringBuilder("Std430StructLayout.builder()");
         for (Member m : l.members) {
             if (m.nested != null) {
-                sb.append(m.array ? ".structArray(\"" : ".struct(\"").append(m.name).append("\", ")
+                sb.append(m.count == 0 ? ".runtimeStructArray(\"" : m.array ? ".structArray(\"" : ".struct(\"").append(m.name).append("\", ")
                         .append(layoutExpression(m.nested, prefix + "    "));
-                if (m.array) sb.append(", ").append(m.count);
+                if (m.array && m.count != 0) sb.append(", ").append(m.count);
                 sb.append(")");
             } else {
-                sb.append(m.array ? ".array(\"" : ".member(\"").append(m.name).append("\", Std430Type.")
-                        .append(m.type.toUpperCase(Locale.ROOT)).append(m.array ? ", " + m.count + ")" : ")");
+                sb.append(m.count == 0 ? ".runtimeArray(\"" : m.array ? ".array(\"" : ".member(\"").append(m.name).append("\", Std430Type.")
+                        .append(m.type.toUpperCase(Locale.ROOT)).append(m.array && m.count != 0 ? ", " + m.count + ")" : ")");
             }
         }
         return sb.append(".build()").toString();
@@ -686,7 +736,7 @@ public final class UniformCodegen {
                 if (!args.isEmpty()) args.append(", ");
                 args.append("int ").append(i.variable);
                 checks.append("            if (").append(i.variable).append(" < 0 || ").append(i.variable).append(" >= ")
-                        .append(i.count).append(") throw new IndexOutOfBoundsException(\"").append(path).append(m.name)
+                        .append(i.count == 0 ? "runtimeArrayLength" : Integer.toString(i.count)).append(") throw new IndexOutOfBoundsException(\"").append(path).append(m.name)
                         .append(" ").append(i.variable).append("=\" + ").append(i.variable).append(");\n");
             }
             int componentCount = value.columns * value.rows;
@@ -752,7 +802,16 @@ public final class UniformCodegen {
         if (!selected.className.equals("SecondBinding")) throw new AssertionError("automatic class name");
         mustFail("layout(std140) uniform First { float a; }; layout(std430) buffer Second { float b; };",
                 null, "multiple std140/std430 blocks");
-        mustFail("layout(std430) buffer Bad { float a[]; };", null, "unsupported GLSL declaration");
+        Binding rain = parse("struct Drop { vec4 center; vec4 motion; }; layout(std430) buffer RainVisible { Drop visible[]; };", "rain.comp", null);
+        assertEq(0, rain.layout.size, "runtime-only prefix size");
+        assertEq(32, rain.layout.members.getFirst().stride, "runtime struct stride");
+        Binding tail = parse("layout(std430) buffer Tail { vec4 header; float count; float values[]; };", "tail.comp", null);
+        assertEq(20, tail.layout.size, "runtime prefix is not rounded to block alignment");
+        assertEq(4, tail.layout.members.getLast().stride, "runtime scalar stride");
+        mustFail("layout(std140) uniform Bad { float a[]; };", null, "last member of a storage block");
+        mustFail("layout(std430) buffer Bad { float a[]; float b; };", null, "last member of a storage block");
+        mustFail("struct Child { float a[]; }; layout(std430) buffer Bad { Child children[]; };", null, "last member of a storage block");
+        mustFail("layout(std430) buffer Bad { float a[0]; };", null, "positive fixed length");
         mustFail("layout(std430) buffer Bad { double a; };", null, "unsupported GLSL member type");
         mustFail("layout(std140, row_major) uniform Bad { mat3 a; };", null, "row_major");
         mustFail("#define N N\nlayout(std140) uniform Bad { vec4 a[N]; };", null, "Recursive");

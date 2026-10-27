@@ -201,8 +201,27 @@ final class UiShapeGeometry {
         return UiEdgeSpec.straight();
     }
 
+    private static UiCornerSpec morphRoundedCorner(UiCornerSpec source, float target, float t) {
+        if (t <= 0.0f) return source;
+        float rx = source.radiusX() + (target - source.radiusX()) * t;
+        float ry = source.radiusY() + (target - source.radiusY()) * t;
+        return UiCornerSpec.rounded(rx, ry);
+    }
+
     static UiBoxShape buildBoxShape(UiProps props, UiStyle style, String shape,
                                      double x, double y, double w, double h, float renderScale) {
+        return buildBoxShape(props, style, shape, x, y, w, h, renderScale, 0.0f);
+    }
+
+    /**
+     * Optional per-corner selection morph. The original shape contract and all
+     * existing callers retain their previous geometry when cornerMorphTo is absent.
+     * Only the shape renderer supplies the animated state; no frame-by-frame JS
+     * tree rebuild or duplicated overlay is required.
+     */
+    static UiBoxShape buildBoxShape(UiProps props, UiStyle style, String shape,
+                                     double x, double y, double w, double h, float renderScale,
+                                     float cornerMorph) {
         float radius = props.number("radius", style.radius()) * renderScale;
         float cut = props.number("cut", props.number("chamfer", style.radius())) * renderScale;
 
@@ -222,6 +241,15 @@ final class UiShapeGeometry {
         UiCornerSpec tr = corner(props, "TR", "TopRight", defaultCorner, radius, cut, renderScale);
         UiCornerSpec br = corner(props, "BR", "BottomRight", defaultCorner, radius, cut, renderScale);
         UiCornerSpec bl = corner(props, "BL", "BottomLeft", defaultCorner, radius, cut, renderScale);
+
+        if (props.get("cornerMorphTo") != null) {
+            float t = Math.max(0.0f, Math.min(1.0f, cornerMorph));
+            float target = Math.max(0.0f, props.number("cornerMorphTo", 0.0f) * renderScale);
+            tl = morphRoundedCorner(tl, target, t);
+            tr = morphRoundedCorner(tr, target, t);
+            br = morphRoundedCorner(br, target, t);
+            bl = morphRoundedCorner(bl, target, t);
+        }
 
         UiBoxShape.Builder builder = UiBoxShape.rect(x, y, w, h)
                 .corners(tl, tr, br, bl);

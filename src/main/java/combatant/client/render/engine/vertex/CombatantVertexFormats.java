@@ -227,6 +227,39 @@ public enum CombatantVertexFormats {
             .addAttribute("Params7", CombatantVertexFormatElements.PARAMS7)
             .build();
 
+    /** Dedicated surface-local PBR variant: extra per-instance material parameters. */
+    public static final VertexFormat POS2_LOCAL_COLOR_RECT_PARAMS8 = VertexFormat.builder(0)
+            .addAttribute("Position", CombatantVertexFormatElements.POS2)
+            .addAttribute("Local", CombatantVertexFormatElements.LOCAL)
+            .addAttribute("Color", CombatantVertexFormatElements.COLOR)
+            .addAttribute("Rect", CombatantVertexFormatElements.RECT)
+            .addAttribute("Params", CombatantVertexFormatElements.PARAMS)
+            .addAttribute("Params2", CombatantVertexFormatElements.PARAMS2)
+            .addAttribute("Params3", CombatantVertexFormatElements.PARAMS3)
+            .addAttribute("Params4", CombatantVertexFormatElements.PARAMS4)
+            .addAttribute("Params5", CombatantVertexFormatElements.PARAMS5)
+            .addAttribute("Params6", CombatantVertexFormatElements.PARAMS6)
+            .addAttribute("Params7", CombatantVertexFormatElements.PARAMS7)
+            .addAttribute("Params8", CombatantVertexFormatElements.PARAMS8)
+            .build();
+
+    public static final VertexFormat POS2_LOCAL_COLOR_RECT_PARAMS10 = VertexFormat.builder(0)
+            .addAttribute("Position", CombatantVertexFormatElements.POS2)
+            .addAttribute("Local", CombatantVertexFormatElements.LOCAL)
+            .addAttribute("Color", CombatantVertexFormatElements.COLOR)
+            .addAttribute("Rect", CombatantVertexFormatElements.RECT)
+            .addAttribute("Params", CombatantVertexFormatElements.PARAMS)
+            .addAttribute("Params2", CombatantVertexFormatElements.PARAMS2)
+            .addAttribute("Params3", CombatantVertexFormatElements.PARAMS3)
+            .addAttribute("Params4", CombatantVertexFormatElements.PARAMS4)
+            .addAttribute("Params5", CombatantVertexFormatElements.PARAMS5)
+            .addAttribute("Params6", CombatantVertexFormatElements.PARAMS6)
+            .addAttribute("Params7", CombatantVertexFormatElements.PARAMS7)
+            .addAttribute("Params8", CombatantVertexFormatElements.PARAMS8)
+            .addAttribute("Params9", CombatantVertexFormatElements.PARAMS9)
+            .addAttribute("Params10", CombatantVertexFormatElements.PARAMS10)
+            .build();
+
     /**
      * Canonical imported PBR surface vertex. The layout is shaderpack-neutral and intentionally
      * carries both glTF UV sets so adapter code can honor per-texture texCoord selection.

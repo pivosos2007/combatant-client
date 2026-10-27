@@ -16,11 +16,16 @@ import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
 import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
 import combatant.client.render.engine.renderer.ui.blend.UiBackdropBlendSpec;
 
+import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
+
 import java.util.Objects;
 import java.util.ArrayList;
 import java.util.List;
 
 public final class DrawBatch {
+    public UiGlassVisual glassVisual = UiGlassVisual.DEFAULT;
+    public combatant.client.render.engine.renderer.ui.draw.UiMaterialLightingSpec.Source materialLightingSource =
+            combatant.client.render.engine.renderer.ui.draw.UiMaterialLightingSpec.Source.NONE;
     public final UiBatchType type;
     public final MeshBuilder mesh;
     public GpuTextureView view;
@@ -39,6 +44,8 @@ public final class DrawBatch {
     public UiClipSnapshot clipSnapshot = UiClipSnapshot.NONE;
     public UiScissorSnapshot scissorSnapshot = UiScissorSnapshot.NONE;
 
+    public combatant.client.render.engine.renderer.ui.draw.UiSurfaceMaterialSpec.Mode materialMode;
+
     public DrawBatch(UiBatchType type) {
         this.type = type;
         this.mesh = new MeshBuilder(type.pipeline);
@@ -46,6 +53,9 @@ public final class DrawBatch {
 
     public void begin(GpuTextureView view, GpuSampler sampler,
                       UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot) {
+        this.materialMode = null;
+        this.glassVisual = UiGlassVisual.DEFAULT;
+        this.materialLightingSource = combatant.client.render.engine.renderer.ui.draw.UiMaterialLightingSpec.Source.NONE;
         this.view = view;
         this.sampler = sampler;
         this.msdfPxRange = 0.0f;
@@ -106,6 +116,7 @@ public final class DrawBatch {
                             UiScissorSnapshot scissorSnapshot, UiClipSnapshot clipSnapshot) {
         if (this.type != type || !sameState(this.scissorSnapshot, scissorSnapshot)
                 || !sameState(this.clipSnapshot, clipSnapshot)) return false;
+        if (type.requiresMaterialScene() || type.usesMaterialTexture()) return false;
         if (!type.usesSampler) return true;
         return this.view == view && this.sampler == sampler;
     }

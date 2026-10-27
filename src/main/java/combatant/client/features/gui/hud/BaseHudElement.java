@@ -21,6 +21,7 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.TextRenderer;
 import net.minecraft.client.resources.language.I18n;
 import combatant.client.runtime.error.ErrorHandler;
+import combatant.client.runtime.CombatantBuild;
 import combatant.client.runtime.error.FailureIsolation;
 
 import java.util.*;
@@ -136,7 +137,12 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
 
     protected final BooleanValue bool(String configName, String settingId, boolean def) {
         BooleanValue value = new BooleanValue(configName, def);
-        declare(value, SettingDef.bool(settingId, value));
+        SettingDef settingDef = SettingDef.bool(settingId, value);
+        if ("environmental_effects".equals(configName)) {
+            settingDef = settingDef.common("setting.common.environmental_effects")
+                    .visibleWhen(CombatantBuild::isDevelopmentBuild);
+        }
+        declare(value, settingDef);
         return value;
     }
 

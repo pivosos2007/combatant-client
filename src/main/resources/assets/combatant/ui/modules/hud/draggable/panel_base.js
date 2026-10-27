@@ -108,6 +108,8 @@ export class HudPanelLayout {
     return ui.shape({
       key,
       shape: "rounded-corners",
+      materialMode: key === "header" || key === "body" || key === "plate" ? c(this.p.materialMode, "") : "",
+      materialMicrotexture: true, materialThemeSync: true,
       style: ui.absolute(x, y, w, h, style),
       radiusTL: n(radii[0], 0),
       radiusTR: n(radii[1], 0),
@@ -220,7 +222,7 @@ export class HudPanelLayout {
         strokeAngle: 90,
       }
     ));
-    nodes.push(this.glintShape(
+    if (!this.p.materialMode || this.p.materialMode === "voronoi") nodes.push(this.glintShape(
       "header:top-glint",
       1,
       1,
@@ -246,7 +248,7 @@ export class HudPanelLayout {
           strokeAngle: 90,
         }
       ));
-      nodes.push(this.glintShape(
+      if (!this.p.materialMode || this.p.materialMode === "voronoi") nodes.push(this.glintShape(
         "body:top-glint",
         1,
         bodyY + 1,
@@ -308,7 +310,7 @@ export class HudPanelLayout {
         strokeAngle: 90,
       }
     ));
-    nodes.push(this.glintShape(
+    if (!this.p.materialMode || this.p.materialMode === "voronoi") nodes.push(this.glintShape(
       "plate:top-glint",
       1,
       1,

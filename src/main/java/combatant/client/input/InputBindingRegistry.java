@@ -13,9 +13,16 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Edge-triggered bindings. The physical-key index avoids revisiting every chord
+ * for an unrelated keyboard/mouse event; all registry mutations remain serialized.
+ */
 public final class InputBindingRegistry {
     private final InputState state;
     private final Map<String, Binding> bindings = new HashMap<>();
+    private final Map<PhysicalId, Set<Binding>> byPhysicalKey = new HashMap<>();
+    // Exact number of queued game-scope presses (not just bindings with pending presses).
+    private int pendingGamePresses;
 
     InputBindingRegistry(InputState state) {
         this.state = state;
@@ -28,14 +35,30 @@ public final class InputBindingRegistry {
         InputChord chord = InputKeyCatalog.parseChord(serializedChord);
         if (chord.isEmpty()) return;
         Binding binding = bindings.computeIfAbsent(id, ignored -> new Binding());
-        binding.chords.add(chord);
+        if (!binding.chords.add(chord)) return;
+        for (InputKey key : chord.keys()) {
+            byPhysicalKey.computeIfAbsent(PhysicalId.of(key), ignored -> new LinkedHashSet<>()).add(binding);
+        }
+        // As before, registering a chord while held never synthesizes a press edge.
         binding.held = binding.isHeld(state);
         DebugLog.info("[InputBindings] Registered %s = %s", id, serializedChord);
     }
 
     public synchronized void unbind(String id) {
         if (id == null) return;
-        if (bindings.remove(id) != null) DebugLog.info("[InputBindings] Unregistered %s", id);
+        Binding binding = bindings.remove(id);
+        if (binding == null) return;
+        pendingGamePresses -= binding.pendingGame;
+        for (InputChord chord : binding.chords) {
+            for (InputKey key : chord.keys()) {
+                PhysicalId physical = PhysicalId.of(key);
+                Set<Binding> indexed = byPhysicalKey.get(physical);
+                if (indexed == null) continue;
+                indexed.remove(binding);
+                if (indexed.isEmpty()) byPhysicalKey.remove(physical);
+            }
+        }
+        DebugLog.info("[InputBindings] Unregistered %s", id);
     }
 
     public synchronized boolean consumePress(String id, InputScope scope) {
@@ -47,12 +70,20 @@ public final class InputBindingRegistry {
             return true;
         }
         if (!CombatantInput.focus().snapshot().allowsGameBindings()) {
+            // Clearing one binding is consistent with the original consumer behavior.
+            pendingGamePresses -= binding.pendingGame;
             binding.pendingGame = 0;
             return false;
         }
         if (binding.pendingGame == 0) return false;
         binding.pendingGame--;
+        pendingGamePresses--;
         return true;
+    }
+
+    /** A cheap guard for the module-keybind handler on ordinary game input. */
+    public synchronized boolean hasPendingGamePress() {
+        return pendingGamePresses != 0;
     }
 
     public synchronized boolean isHeld(String id, InputScope scope) {
@@ -77,18 +108,24 @@ public final class InputBindingRegistry {
     }
 
     public synchronized void onFocusChanged(InputFocus.Snapshot focus) {
-        if (focus.allowsGameBindings()) return;
-        // Presses queued in-game must not be replayed after opening/closing a screen.
+        if (focus.allowsGameBindings() || pendingGamePresses == 0) return;
+        // Queued in-game presses must not replay after closing a screen.
         for (Binding binding : bindings.values()) binding.pendingGame = 0;
+        pendingGamePresses = 0;
     }
 
-    synchronized void onStateChanged(InputFocus.Snapshot focus) {
+    synchronized void onStateChanged(InputKey changedKey, InputFocus.Snapshot focus) {
         onFocusChanged(focus);
-        for (Binding binding : bindings.values()) {
+        Set<Binding> affected = byPhysicalKey.get(PhysicalId.of(changedKey));
+        if (affected == null) return;
+        for (Binding binding : affected) {
             boolean held = binding.isHeld(state);
             if (held && !binding.held) {
                 binding.pendingGlobal++;
-                if (focus.allowsGameBindings()) binding.pendingGame++;
+                if (focus.allowsGameBindings()) {
+                    binding.pendingGame++;
+                    pendingGamePresses++;
+                }
             }
             binding.held = held;
         }
@@ -99,6 +136,13 @@ public final class InputBindingRegistry {
             binding.held = false;
             binding.pendingGame = 0;
             binding.pendingGlobal = 0;
+        }
+        pendingGamePresses = 0;
+    }
+
+    private record PhysicalId(InputDevice device, int key) {
+        private static PhysicalId of(InputKey key) {
+            return new PhysicalId(key.device(), key.physicalKey());
         }
     }
 

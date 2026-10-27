@@ -12,8 +12,44 @@ import org.junit.jupiter.api.Test;
 import java.nio.ByteBuffer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class Std430StructLayoutTest {
+    @Test
+    void runtimeScalarTailUsesItsOffsetWithoutTrailingBlockPadding() {
+        Std430StructLayout layout = Std430StructLayout.builder()
+                .member("header", Std430Type.VEC4)
+                .member("count", Std430Type.UINT)
+                .runtimeArray("values", Std430Type.FLOAT)
+                .build();
+
+        assertEquals(20, layout.size());
+        assertEquals(20, layout.size(0));
+        assertEquals(32, layout.size(3));
+        assertEquals(28, layout.member("values").elementOffset(2, 3));
+        assertThrows(IndexOutOfBoundsException.class, () -> layout.member("values").elementOffset(3, 3));
+        assertThrows(IllegalStateException.class, () -> layout.member("values").elementOffset(0));
+        assertThrows(IllegalArgumentException.class, () -> layout.size(-1));
+        assertThrows(ArithmeticException.class, () -> layout.size(Integer.MAX_VALUE));
+        assertThrows(IllegalStateException.class, layout::arrayStride);
+        assertThrows(IllegalArgumentException.class, () -> Std430StructLayout.builder().struct("nested", layout));
+        assertThrows(IllegalArgumentException.class, () -> Std430StructLayout.builder()
+                .runtimeArray("values", Std430Type.FLOAT).member("after", Std430Type.FLOAT));
+    }
+
+    @Test
+    void runtimeStructArrayRetainsNestedLayoutAndStride() {
+        Std430StructLayout drop = Std430StructLayout.builder()
+                .member("center", Std430Type.VEC4).member("motion", Std430Type.VEC4).build();
+        Std430StructLayout layout = Std430StructLayout.builder().runtimeStructArray("visible", drop).build();
+
+        assertEquals(0, layout.size());
+        assertEquals(96, layout.size(3));
+        assertEquals(32, layout.member("visible").arrayStride());
+        assertEquals(drop, layout.member("visible").structLayout());
+        assertEquals(64, layout.member("visible").elementOffset(2, 3));
+    }
+
     @Test
     void vec3CanShareItsFourthLaneWithScalar() {
         Std430StructLayout layout = Std430StructLayout.builder()

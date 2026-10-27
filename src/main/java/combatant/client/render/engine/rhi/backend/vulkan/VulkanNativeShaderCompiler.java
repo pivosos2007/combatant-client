@@ -33,6 +33,12 @@ final class VulkanNativeShaderCompiler implements AutoCloseable {
 
     ByteBuffer compile(String label, String source, int shaderKind) {
         if (closed) throw new IllegalStateException("Vulkan native shader compiler is closed");
+        // Native shaders compiled here target Vulkan GLSL; supply the correct instance builtin.
+        if (label != null && label.contains("rain_instanced.") && source.startsWith("#version")) {
+            int endVersion = source.indexOf('\n');
+            if (endVersion >= 0) source = source.substring(0, endVersion + 1)
+                    + "#define VULKAN 1\n" + source.substring(endVersion + 1);
+        }
         ByteBuffer sourceUtf8 = MemoryUtil.memUTF8(source, false);
         ByteBuffer nameUtf8 = MemoryUtil.memUTF8(label == null ? "combatant-native" : label);
         ByteBuffer entryUtf8 = MemoryUtil.memUTF8("main");

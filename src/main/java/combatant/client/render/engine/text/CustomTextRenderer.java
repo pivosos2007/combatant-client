@@ -39,8 +39,7 @@ public class CustomTextRenderer implements TextRenderer {
     /** Source selected by scale/preference before per-run glyph coverage. */
     private GlyphFont baseFont;
     private int fontIndex;
-    /** One optional, lazily created bitmap atlas per MSDF face. */
-    private GlyphFont smallBitmapFont;
+    private GlyphMaskFont smallBitmapFont;
     private boolean smallBitmapUnavailable;
     private long fontsEpoch;
     private double requestedScale = 1.0;
@@ -176,7 +175,7 @@ public class CustomTextRenderer implements TextRenderer {
         this.requestedScale = requestedScale;
         this.fontIndex = resolveFontIndex(requestedScale, big, true);
         this.font = fonts[fontIndex];
-        if (font.isMsdf() && !fontFace.isAtlasOnly()
+        if (!fontFace.isAtlasOnly() && FontRasterSelection.supportsPixelMasks() && !RenderWarpStack.active()
                 && backendPreference != TextBackendPreference.MSDF
                 && (backendPreference == TextBackendPreference.BITMAP_ATLAS
                     || FontRasterSelection.preferSmallBitmap(requestedScale,
@@ -198,8 +197,16 @@ public class CustomTextRenderer implements TextRenderer {
      */
     private GlyphFont sourceFor(String text) {
         GlyphFont selected = baseFont != null ? baseFont : fonts[0];
-        if (text == null || text.isEmpty() || !selected.isMsdf() || selected.canShape(text)
-                || fontFace.isAtlasOnly()) return selected;
+        if (text == null || text.isEmpty()) return selected;
+        // Masks are valid only in an axis-aligned, physical-pixel UI pass.
+        // A warp pushed after begin() must not reuse an earlier mask selection.
+        if (selected instanceof GlyphMaskFont) {
+            if (RenderWarpStack.active() || !selected.canShape(text)) return fonts[fontIndex];
+            return selected;
+        }
+        if (!selected.isMsdf() || selected.canShape(text) || fontFace.isAtlasOnly()
+                || !FontRasterSelection.supportsPixelMasks() || RenderWarpStack.active())
+            return selected;
         GlyphFont bitmap = smallBitmapFont();
         return bitmap != null && bitmap.canShape(text) ? bitmap : selected;
     }
@@ -208,8 +215,12 @@ public class CustomTextRenderer implements TextRenderer {
         return sourceFor(cluster).canShape(cluster);
     }
 
-    private void prepareTextSource(String text) {
+    private void prepareTextSource(String text, double x, double y, boolean shadow) {
         GlyphFont next = sourceFor(text);
+        if (next instanceof GlyphMaskFont mask && !mask.prepare(text, x, y, requestedScale / 1.5,
+                shadow, requestedScale / 1.5)) {
+            next = fonts[fontIndex];
+        }
         if (next == font) return;
         flushActiveMesh();
         font = next;
@@ -217,7 +228,7 @@ public class CustomTextRenderer implements TextRenderer {
         scale = requestedScale / fontScale;
     }
 
-    private GlyphFont smallBitmapFont() {
+    private GlyphMaskFont smallBitmapFont() {
         if (smallBitmapFont != null) return smallBitmapFont;
         if (smallBitmapUnavailable) return null;
         if (fontFace.isAtlasOnly()) {
@@ -225,16 +236,8 @@ public class CustomTextRenderer implements TextRenderer {
             return null;
         }
         try (InputStream stream = fontFace.toStream()) {
-            byte[] bytes = FontUtils.readBytes(stream);
-            ByteBuffer source = MemoryUtil.memAlloc(bytes.length);
-            try {
-                source.put(bytes).flip();
-                // Only one bitmap page per face; the MSDF nominal sizes share an atlas.
-                smallBitmapFont = new Font(source, 27);
-                return smallBitmapFont;
-            } finally {
-                MemoryUtil.memFree(source);
-            }
+            smallBitmapFont = new GlyphMaskFont(stream, fonts[0]);
+            return smallBitmapFont;
         } catch (Exception exception) {
             smallBitmapUnavailable = true;
             return null; // Atlas-only/missing TrueType must never disable MSDF.
@@ -308,8 +311,7 @@ public class CustomTextRenderer implements TextRenderer {
 
     @Override
     public double getHeight(boolean shadow) {
-        GlyphFont activeFont = building ? this.font : fonts[0];
-        return (activeFont.height() + 1 + (shadow ? 1 : 0)) * scale / 1.5;
+        return (28 + (shadow ? 1 : 0)) * (building ? requestedScale : 1.0) / 1.5;
     }
 
     @Override
@@ -322,7 +324,7 @@ public class CustomTextRenderer implements TextRenderer {
     public double render(String text, double x, double y, RenderColor color, boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
-        prepareTextSource(text);
+        prepareTextSource(text, x, y, shadow);
         ensureMeshStarted();
 
         double width;
@@ -345,7 +347,7 @@ public class CustomTextRenderer implements TextRenderer {
     public double renderGradient(String text, double x, double y, Font.GlyphGradient gradient, boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
-        prepareTextSource(text);
+        prepareTextSource(text, x, y, shadow);
         ensureMeshStarted();
 
         double width;
@@ -369,7 +371,7 @@ public class CustomTextRenderer implements TextRenderer {
     public double renderQuadGradient(String text, double x, double y, Font.GlyphQuadGradient gradient, boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
-        prepareTextSource(text);
+        prepareTextSource(text, x, y, shadow);
         ensureMeshStarted();
 
         double width;
@@ -518,7 +520,7 @@ public class CustomTextRenderer implements TextRenderer {
                                        boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
-        prepareTextSource(text);
+        prepareTextSource(text, x, y, shadow);
         ensureMeshStarted();
 
         double glyphScale = scale / 1.5;
@@ -639,9 +641,11 @@ public class CustomTextRenderer implements TextRenderer {
                     "Combatant UI Text",
                     drawnFont,
                     mesh,
-                    fastUiText
-                            ? (drawnFont.isMsdf() ? UiRenderPipelines.UI_TEXT_MSDF_FAST : UiRenderPipelines.UI_TEXT_FAST)
-                            : (drawnFont.isMsdf() ? UiRenderPipelines.UI_TEXT_MSDF : UiRenderPipelines.UI_TEXT),
+                    drawnFont instanceof GlyphMaskFont
+                            ? (fastUiText ? UiRenderPipelines.UI_TEXT_MASK_FAST : UiRenderPipelines.UI_TEXT_MASK)
+                            : (fastUiText
+                                ? (drawnFont.isMsdf() ? UiRenderPipelines.UI_TEXT_MSDF_FAST : UiRenderPipelines.UI_TEXT_FAST)
+                                : (drawnFont.isMsdf() ? UiRenderPipelines.UI_TEXT_MSDF : UiRenderPipelines.UI_TEXT)),
                     TextPlacementMode.UI
             );
         } else {

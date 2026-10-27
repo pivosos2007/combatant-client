@@ -111,6 +111,16 @@ public interface AdvancedShaderBackend extends AutoCloseable {
 
     RhiPatchPipeline createPatchPipeline(PatchPipelineDescriptor descriptor);
 
+    /** Compile a native triangle pipeline (no tessellation requirement) with SSBO descriptor bindings. */
+    default RhiMeshPipeline createMeshPipeline(MeshPipelineDescriptor descriptor) {
+        throw new UnsupportedOperationException("Native SSBO graphics pipeline unavailable");
+    }
+
+    /** Draw using a GPU-generated VkDrawIndexedIndirectCommand / GL DrawElementsIndirectCommand. */
+    default void drawMeshIndirect(MeshIndirectDrawCommand command) {
+        throw new UnsupportedOperationException("GPU indirect graphics draws unavailable");
+    }
+
     void dispatch(ComputeDispatchCommand command);
 
     void barrier(RhiResourceBarrier barrier);

@@ -335,7 +335,7 @@ final class ScriptedListHudPanel {
                  boolean headerIconGradient, int headerIconGradientStart, int headerIconGradientEnd, float headerIconGradientAngle,
                  String layout, boolean strokeEnabled, float strokeAlpha, boolean strokeGradient,
                  int strokeStartColor, int strokeEndColor, boolean shadowControlled,
-                 List<LinkedHashMap<String, Object>> rows) {
+                 List<LinkedHashMap<String, Object>> rows, String materialMode) {
         Panel(Variant variant,
               Palette palette,
               float x,
@@ -364,7 +364,7 @@ final class ScriptedListHudPanel {
               int strokeStartColor,
               int strokeEndColor,
               boolean shadowControlled,
-              List<LinkedHashMap<String, Object>> rows) {
+              List<LinkedHashMap<String, Object>> rows, String materialMode) {
             this.variant = variant;
             this.palette = palette;
             this.x = x;
@@ -394,6 +394,7 @@ final class ScriptedListHudPanel {
             this.strokeEndColor = strokeEndColor;
             this.shadowControlled = shadowControlled;
             this.rows = rows != null ? rows : List.of();
+            this.materialMode = materialMode != null ? materialMode : "";
         }
 
         float logical(float renderValue) {
@@ -447,6 +448,7 @@ final class ScriptedListHudPanel {
             out.put("countLabelWidth", logical(countLabelWidth));
             out.put("countValueWidth", logical(countValueWidth));
             out.put("activeCount", activeCount);
+            out.put("materialMode", materialMode);
             out.put("blur", blur);
             out.put("blurAlpha", blurAlpha);
             out.put("headerIconColor", hex(headerIconColor));
@@ -488,6 +490,7 @@ final class ScriptedListHudPanel {
 
         long treeSignature() {
             long h = 0xcbf29ce484222325L;
+            h = CachedUiScriptRuntime.mix(h, materialMode);
             h = CachedUiScriptRuntime.mix(h, variant.id);
             h = mixVariant(h);
             h = mixPalette(h);

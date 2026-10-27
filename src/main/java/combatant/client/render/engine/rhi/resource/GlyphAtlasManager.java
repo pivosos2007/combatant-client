@@ -32,6 +32,10 @@ public final class GlyphAtlasManager {
         registerPage("legacy_page_" + pages.size(), null, 0, 0, false);
     }
 
+    public void unregisterPage(String id) {
+        pages.remove(id);
+    }
+
     public void onGlyphUploaded(int bytes) {
         glyphCount++;
         uploadedBytes += Math.max(0, bytes);

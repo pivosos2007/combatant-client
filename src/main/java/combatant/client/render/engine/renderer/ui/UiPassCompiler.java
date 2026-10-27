@@ -21,6 +21,7 @@ import combatant.client.render.engine.rhi.resource.TransientTargetDescriptor;
 import combatant.client.render.engine.text.TextRenderSystem;
 import combatant.client.render.engine.uniform.impl.MsdfTextUniforms;
 import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
+import combatant.client.render.engine.uniform.impl.UiGlassFrameUniforms;
 import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.render.engine.uniform.impl.UiGlassFrameUniforms;
@@ -196,6 +197,8 @@ public final class UiPassCompiler {
                 vertices += batch.mesh.getVertexCount();
                 indices += batch.mesh.getIndicesCount();
 
+                UiPbrTextureSets.Binding materialMicro = batch.type.usesMaterialTexture()
+                        ? UiPbrTextureSets.resolve(batch.materialMode) : null;
                 MeshRenderer builder = MeshRenderer.begin()
                         .attachments(mainColorView, null)
                         .clearColor(UiMsaaClipLayer.consumePendingColorClear(mainColorView))
@@ -209,9 +212,17 @@ public final class UiPassCompiler {
                     }
                     builder.uniform("UIBatch", uiBatch);
                 }
-                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE) {
+                // The material primitive pipeline declares UIGlassFrame for the pointer-lit
+                // satin/metal surface. Capture-aware and mixed-item paths bind it already;
+                // direct RHI lowering must preserve the same pipeline uniform contract.
+                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE
+                        || batch.type == UiBatchType.MATERIAL_TEXTURED_PRIMITIVE) {
                     builder.uniform(UiGlassFrameUniforms.BLOCK_NAME,
                             UiGlassFrameUniforms.update(mc, screenW, screenH));
+                    if (batch.type.usesMaterialTexture()) {
+                        if (materialMicro != null)
+                            materialMicro.bind(builder);
+                    }
                 }
                 if (batch.clipSnapshot.usesAnalyticPipeline()) {
                     builder.uniform("UIClip", UiClipUniforms.write(batch.clipSnapshot));
@@ -317,7 +328,7 @@ public final class UiPassCompiler {
             }
             if (!(entry instanceof DrawBatch batch)) return false;
             if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS) return false;
-            if (batch.type.usesPreparedGlass()) return false;
+            if (batch.type.usesPreparedGlass() || batch.type.requiresMaterialScene()) return false;
         }
         return true;
     }
@@ -338,7 +349,7 @@ public final class UiPassCompiler {
             }
             if (entry instanceof DrawBatch batch) {
                 if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS
-                        || batch.type.usesPreparedGlass()) {
+                        || batch.type.usesPreparedGlass() || batch.type.requiresMaterialScene()) {
                     return false;
                 }
                 hasDraws = true;
@@ -395,6 +406,7 @@ public final class UiPassCompiler {
 
         LinkedHashMap<String, TransientTargetDescriptor> descriptors = new LinkedHashMap<>();
         boolean needsEffectsTarget = false;
+        boolean needsMaterialOutput = false;
         boolean needsCapturedScene = false;
         boolean needsCurrentTargetSnapshot = false;
         boolean needsUiUnderlay = false;
@@ -408,6 +420,13 @@ public final class UiPassCompiler {
             }
             if (!(entry instanceof DrawBatch batch)) continue;
             needsEffectsTarget |= batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS;
+            if (batch.type.requiresMaterialScene()) {
+                needsMaterialOutput = true;
+                needsCurrentTargetSnapshot |= batch.materialLightingSource
+                        == combatant.client.render.engine.renderer.ui.draw.UiMaterialLightingSpec.Source.CURRENT_TARGET;
+                needsCapturedScene |= batch.materialLightingSource
+                        == combatant.client.render.engine.renderer.ui.draw.UiMaterialLightingSpec.Source.CAPTURED_SCENE;
+            }
             needsCapturedScene |= batch.backdropRequest.requiresCapturedScene();
             needsCurrentTargetSnapshot |=
                     (batch.backdropRequest.sceneSource() == combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest.SceneSource.CURRENT_TARGET
@@ -430,6 +449,11 @@ public final class UiPassCompiler {
                 Renderer2D.BlurQuality quality = rendererQuality(batch.backdropRequest.uiBlur().quality());
                 declareBlurChain(descriptors, "ui-underlay", quality.iterations, screenWidth, screenHeight);
             }
+        }
+        if (needsMaterialOutput) {
+            TransientTargetDescriptor descriptor = TransientTargetDescriptor.frame(
+                    "combatant-ui-material-output", screenWidth, screenHeight, false, "Renderer2D.materialOutput");
+            descriptors.putIfAbsent(descriptor.logicalKey(), descriptor);
         }
         if (needsEffectsTarget) {
             TransientTargetDescriptor descriptor = TransientTargetDescriptor.frame(

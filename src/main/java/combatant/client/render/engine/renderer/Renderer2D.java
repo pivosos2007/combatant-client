@@ -290,12 +290,56 @@ public final class Renderer2D {
     public void box(UiBoxShape box, UiPaint paint, UiStroke stroke, boolean fill) {
         if (box == null || paint == null) return;
         UiStroke safeStroke = stroke == null ? UiStroke.NONE : stroke;
+        // Rounded/square per-corner boxes must not fall back to polygon fills and
+        // polyline strokes: the resulting segmented UI exhibits seams, jagged joins
+        // and nonuniform antialiasing. Use the existing analytic SHAPE GPU path.
+        // Complex corners/edges still require the flexible polygon path.
+        if (!textured && isAnalyticRoundedBox(box) && (fill || paint.isSolid())) {
+            UiRect b = box.bounds();
+            float tl = box.topLeft().radiusX();
+            float tr = box.topRight().radiusX();
+            float br = box.bottomRight().radiusX();
+            float bl = box.bottomLeft().radiusX();
+            if (fill) {
+                int cTL = paint.topLeft();
+                int cTR = paint.topRight();
+                int cBR = paint.bottomRight();
+                int cBL = paint.bottomLeft();
+                if (paint.kind() == UiPaintKind.LINEAR_GRADIENT) {
+                    computeLinearGradientColors((float) b.width(), (float) b.height(),
+                            paint.topLeft(), paint.topRight(), paint.angleDeg(), paint.offsetPx(), gradientTmp);
+                    cTL = gradientTmp[0];
+                    cTR = gradientTmp[1];
+                    cBR = gradientTmp[2];
+                    cBL = gradientTmp[3];
+                }
+                roundedRectCornersQuad(b.x(), b.y(), b.width(), b.height(),
+                        tl, tr, br, bl, 0.0f, cTL, cTR, cBR, cBL);
+            } else if (safeStroke.enabled()) {
+                roundedRectStrokeCorners(b.x(), b.y(), b.width(), b.height(),
+                        tl, tr, br, bl, 0.0f, safeStroke.thickness(), paint.solidColor());
+            }
+            return;
+        }
         recordUi(UiCommandKind.SHAPE);
         if (box.isSquircle()) {
             renderSquircleSdf(box, paint, safeStroke, fill);
         } else {
             renderFlexibleBoxFallback(box, paint, safeStroke, fill);
         }
+    }
+
+    private static boolean isAnalyticRoundedBox(UiBoxShape box) {
+        if (box.form() != UiBoxForm.RECT || !box.hasOnlyStraightEdges()) return false;
+        boolean rounded = false;
+        for (int i = 0; i < 4; i++) {
+            UiCornerSpec c = box.corner(i);
+            if (c.kind() == UiCornerKind.SQUARE) continue;
+            if (c.kind() != UiCornerKind.ROUNDED || Math.abs(c.radiusX() - c.radiusY()) > 0.001f)
+                return false;
+            rounded |= c.radiusX() > 0.001f;
+        }
+        return rounded;
     }
 
     public void primitive(UiPrimitive primitive, UiPaint paint) {
@@ -306,6 +350,10 @@ public final class Renderer2D {
         primitive(primitive, paint, stroke, false);
     }
 
+    public void materialPrimitive(UiPrimitive primitive, UiPaint paint, UiIceMaterialSpec material) {
+        if (material != null) materialPrimitive(primitive, paint, material.asSurface());
+    }
+
     public void materialPrimitive(UiPrimitive primitive, UiPaint paint, UiSurfaceMaterialSpec material) {
         if (primitive == null || paint == null || material == null || primitive.pointCount() < 3) return;
         recordUi(UiCommandKind.SHAPE);
@@ -314,6 +362,23 @@ public final class Renderer2D {
         } else {
             renderPrimitiveFallback(primitive, paint, UiStroke.NONE, true);
         }
+    }
+
+    /**
+     * Draw a Voronoi/Cellular structure OVER an existing surface using the common
+     * material primitive batch and its existing analytic SDF/clip. No PBR bindings,
+     * framebuffer capture or material-specific render target is needed.
+     */
+    public void cellularPrimitive(UiPrimitive primitive, UiPaint tint, UiCellularStructureSpec structure) {
+        if (primitive == null || tint == null || structure == null || structure.opacity() <= 0f) return;
+        // Do not replace a complex shape with a solid fallback: that would paint
+        // over the underlying base material when the analytic path is unavailable.
+        if (!primitive.shaderEligible()) return;
+        recordUi(UiCommandKind.SHAPE);
+        UiSurfaceMaterialSpec batchKey = new UiSurfaceMaterialSpec(
+                UiSurfaceMaterialSpec.Mode.CELLULAR_STRUCTURE, 1f, 0.5f, structure.depth(),
+                0f, tint.solidColor());
+        renderMaterialPrimitiveSdf(primitive, tint, batchKey, structure);
     }
 
     /**
@@ -1431,10 +1496,15 @@ public final class Renderer2D {
         float stroke = Math.max(0.0f, thickness);
         float phase = offset - (float) Math.floor(offset);
 
-        int i1 = mesh.vec2(x, y).local2(x, y).color(sr, sg, sb, sa).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, stroke, phase).vec4(er, eg, eb, ea).next();
-        int i2 = mesh.vec2(x, y + h).local2(x, y + h).color(sr, sg, sb, sa).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, stroke, phase).vec4(er, eg, eb, ea).next();
-        int i3 = mesh.vec2(x + w, y + h).local2(x + w, y + h).color(sr, sg, sb, sa).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, stroke, phase).vec4(er, eg, eb, ea).next();
-        int i4 = mesh.vec2(x + w, y).local2(x + w, y).color(sr, sg, sb, sa).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, stroke, phase).vec4(er, eg, eb, ea).next();
+        // Rasterize outside the mathematical stroke boundary as well. Keep the
+        // original rounded-rectangle coordinates in SDF uniforms.
+        double fringe = 2.0 + Math.max(0.0, softness) + stroke * 0.5;
+        double qx = x - fringe, qy = y - fringe;
+        double qr = x + w + fringe, qb = y + h + fringe;
+        int i1 = mesh.vec2(qx, qy).local2(qx, qy).color(sr, sg, sb, sa).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, stroke, phase).vec4(er, eg, eb, ea).next();
+        int i2 = mesh.vec2(qx, qb).local2(qx, qb).color(sr, sg, sb, sa).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, stroke, phase).vec4(er, eg, eb, ea).next();
+        int i3 = mesh.vec2(qr, qb).local2(qr, qb).color(sr, sg, sb, sa).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, stroke, phase).vec4(er, eg, eb, ea).next();
+        int i4 = mesh.vec2(qr, qy).local2(qr, qy).color(sr, sg, sb, sa).vec4(x, y, w, h).vec4(clampedRadius, 0.0f, stroke, phase).vec4(er, eg, eb, ea).next();
         mesh.quad(i1, i2, i3, i4);
 
         endAutoBatch(auto);
@@ -1463,16 +1533,22 @@ public final class Renderer2D {
         float stroke = Math.max(0.0f, thickness);
 
         UiRect bounds = UiRect.of(x, y, w, h);
-        int i1 = appendGeometryVertex(mesh, x, y, argb, bounds,
+        // The SDF must shade outside the mathematical silhouette too. A tight quad
+        // clips fractional-pixel coverage and produces stair-stepped outside edges.
+        // v_Rect remains the original (unexpanded) bounds for exact SDF geometry.
+        final double fringe = 2.0 + Math.max(0.0, softness);
+        double qx = x - fringe, qy = y - fringe;
+        double qRight = x + w + fringe, qBottom = y + h + fringe;
+        int i1 = appendGeometryVertex(mesh, qx, qy, argb, bounds,
                 UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, stroke, 0f,
                 cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
-        int i2 = appendGeometryVertex(mesh, x, y + h, argb, bounds,
+        int i2 = appendGeometryVertex(mesh, qx, qBottom, argb, bounds,
                 UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, stroke, 0f,
                 cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
-        int i3 = appendGeometryVertex(mesh, x + w, y + h, argb, bounds,
+        int i3 = appendGeometryVertex(mesh, qRight, qBottom, argb, bounds,
                 UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, stroke, 0f,
                 cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
-        int i4 = appendGeometryVertex(mesh, x + w, y, argb, bounds,
+        int i4 = appendGeometryVertex(mesh, qRight, qy, argb, bounds,
                 UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, stroke, 0f,
                 cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
         mesh.quad(i1, i2, i3, i4);
@@ -1534,16 +1610,22 @@ public final class Renderer2D {
         normalizeCornerRadii(w, h, radiusTL, radiusTR, radiusBR, radiusBL, cornerRadiiTmp);
 
         UiRect bounds = UiRect.of(x, y, w, h);
-        int i1 = appendGeometryVertex(mesh, x, y, cTopLeft, bounds,
+        // The SDF must shade outside the mathematical silhouette too. A tight quad
+        // clips fractional-pixel coverage and produces stair-stepped outside edges.
+        // v_Rect remains the original (unexpanded) bounds for exact SDF geometry.
+        final double fringe = 2.0 + Math.max(0.0, softness);
+        double qx = x - fringe, qy = y - fringe;
+        double qRight = x + w + fringe, qBottom = y + h + fringe;
+        int i1 = appendGeometryVertex(mesh, qx, qy, cTopLeft, bounds,
                 UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, 0f, 1f,
                 cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
-        int i2 = appendGeometryVertex(mesh, x, y + h, cBottomLeft, bounds,
+        int i2 = appendGeometryVertex(mesh, qx, qBottom, cBottomLeft, bounds,
                 UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, 0f, 1f,
                 cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
-        int i3 = appendGeometryVertex(mesh, x + w, y + h, cBottomRight, bounds,
+        int i3 = appendGeometryVertex(mesh, qRight, qBottom, cBottomRight, bounds,
                 UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, 0f, 1f,
                 cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
-        int i4 = appendGeometryVertex(mesh, x + w, y, cTopRight, bounds,
+        int i4 = appendGeometryVertex(mesh, qRight, qy, cTopRight, bounds,
                 UiFastShapeParams.KIND_ROUNDED_CORNERS, softness, 0f, 1f,
                 cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3]);
         mesh.quad(i1, i2, i3, i4);
@@ -2315,6 +2397,29 @@ public final class Renderer2D {
         endAutoBatch(auto);
     }
 
+    /** Analytically clipped expanding ripple disk; uses the existing GLOW batch.
+     * The caller supplies a framebuffer-space center and radius. */
+    public void rippleMasked(double x, double y, double w, double h,
+                             float cornerRadius, float aaPx, float diskRadius,
+                             float cx, float cy, int argb) {
+        if (diskRadius <= 0f || ((argb >>> 24) & 0xFF) == 0) return;
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.GLOW, null, null);
+        if (batch == null) { endAutoBatch(auto); return; }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+        UiRect bounds = UiRect.of(x, y, w, h);
+        float corner = clampRoundedRadius(cornerRadius, w, h);
+        float aa = Math.max(.5f, aaPx);
+        int i1 = appendGlowVertex(mesh,x,y,argb,bounds,3f,corner,aa,diskRadius,cx,cy);
+        int i2 = appendGlowVertex(mesh,x,y+h,argb,bounds,3f,corner,aa,diskRadius,cx,cy);
+        int i3 = appendGlowVertex(mesh,x+w,y+h,argb,bounds,3f,corner,aa,diskRadius,cx,cy);
+        int i4 = appendGlowVertex(mesh,x+w,y,argb,bounds,3f,corner,aa,diskRadius,cx,cy);
+        mesh.quad(i1,i2,i3,i4);
+        endAutoBatch(auto);
+    }
+
     public void roundedRectGradientQuad(double x, double y, double w, double h,
                                         float radius, float softness,
                                         int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
@@ -2345,6 +2450,16 @@ public final class Renderer2D {
         float clampedRadius = clampRoundedRadius(radius, maskW, maskH);
         UiFastShapeParams params = UiFastShapeParams.rounded(clampedRadius, UiStroke.NONE, true, softness);
         UiRect bounds = UiRect.of(maskX, maskY, maskW, maskH);
+        // An exact-bounds quad clips the outer half of analytically antialiased
+        // edges; its coverage then jumps as the quad crosses pixel centers.
+        // Keep the SDF bounds unchanged and add only rasterization fringe.
+        if (!warped && x == maskX && y == maskY && w == maskW && h == maskH) {
+            double fringe = 2.0 + Math.max(0.0, softness);
+            x -= fringe;
+            y -= fringe;
+            w += fringe * 2.0;
+            h += fringe * 2.0;
+        }
 
         int i1;
         int i2;
@@ -2386,6 +2501,13 @@ public final class Renderer2D {
         float stroke = Math.max(0.0f, thickness);
         UiFastShapeParams params = UiFastShapeParams.rounded(clampedRadius, UiStroke.of(stroke), false, softness);
         UiRect bounds = UiRect.of(x, y, w, h);
+        if (!warped) {
+            double fringe = 2.0 + Math.max(0.0, softness);
+            x -= fringe;
+            y -= fringe;
+            w += fringe * 2.0;
+            h += fringe * 2.0;
+        }
 
         int i1;
         int i2;
@@ -3307,7 +3429,7 @@ public final class Renderer2D {
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
                 preparedBlurQuality, preparedBlurOffset, backdrop,
-                backdropBlend);
+                backdropBlend, liquidGlassMaterial.visual());
         if (batch != null) batch.includeGlassBounds(bounds);
         if (batch == null) {
             endAutoBatch(auto);
@@ -3481,7 +3603,7 @@ public final class Renderer2D {
                 : 0.0f;
         float blurSampleReachFramebufferPx = Math.max(
                 Math.max(frostedJitterFramebufferPx, liquidReachFramebufferPx),
-                chromaticReachFramebufferPx) + 2.0f;
+                chromaticReachFramebufferPx) + liquidGlassMaterial.visual().sampleReachPx() + 2.0f;
 
         float logicalPerFramebufferX = logicalWidth / framebufferWidth;
         float logicalPerFramebufferY = logicalHeight / framebufferHeight;
@@ -3593,7 +3715,7 @@ public final class Renderer2D {
 
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
-                preparedBlurQuality, preparedBlurOffset, backdrop, backdropBlend);
+                preparedBlurQuality, preparedBlurOffset, backdrop, backdropBlend, liquidGlassMaterial.visual());
         if (batch != null) batch.includeGlassBounds(new UiRect((float)x, (float)y, (float)w, (float)h));
         if (batch == null) {
             endAutoBatch(auto);
@@ -4102,7 +4224,7 @@ public final class Renderer2D {
 
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreateBlur(UiBatchType.LIQUID_GLASS, src, sampler,
-                preparedBlurQuality, preparedBlurOffset, backdrop, backdropBlend);
+                preparedBlurQuality, preparedBlurOffset, backdrop, backdropBlend, liquidGlassMaterial.visual());
         if (batch != null) batch.includeGlassBounds(new UiRect((float)x, (float)y, (float)w, (float)h));
         if (batch == null) {
             endAutoBatch(auto);
@@ -4585,7 +4707,8 @@ public final class Renderer2D {
         float strokeWidth = !fill && stroke != null ? stroke.thickness() : 0.0f;
         float flags = fill ? 1.0f : 2.0f;
         float packedFlags = mode * 16.0f + flags;
-        double outset = !fill ? strokeWidth * 0.5 : 0.0;
+        // Preserve smooth SDF coverage across the fractional outer edge.
+        double outset = (!fill ? strokeWidth * 0.5 : 0.0) + 2.0;
 
         boolean auto = beginAutoBatch();
         DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.PRIMITIVE, null, null);
@@ -4685,8 +4808,30 @@ public final class Renderer2D {
         endAutoBatch(auto);
     }
 
+    /** Weather film on any convex SDF primitive. No glass capture or PBR texture required. */
+    public void climatePrimitive(UiPrimitive primitive, UiPaint paint, UiMaterialClimateSpec climate) {
+        if (primitive == null || paint == null || climate == null || !climate.active()
+                || !primitive.shaderEligible()) return;
+        renderMaterialPrimitiveSdf(primitive, paint,
+                new UiSurfaceMaterialSpec(UiSurfaceMaterialSpec.Mode.CLIMATE_LAYER,
+                        1f, 0.5f, 0f, 0f, 0xFFFFFFFF), null, climate);
+    }
+
     private void renderMaterialPrimitiveSdf(UiPrimitive primitive, UiPaint paint,
                                             UiSurfaceMaterialSpec material) {
+        renderMaterialPrimitiveSdf(primitive, paint, material, null, null);
+    }
+
+    private void renderMaterialPrimitiveSdf(UiPrimitive primitive, UiPaint paint,
+                                            UiSurfaceMaterialSpec material,
+                                            UiCellularStructureSpec structure) {
+        renderMaterialPrimitiveSdf(primitive, paint, material, structure, null);
+    }
+
+    private void renderMaterialPrimitiveSdf(UiPrimitive primitive, UiPaint paint,
+                                            UiSurfaceMaterialSpec material,
+                                            UiCellularStructureSpec structure,
+                                            UiMaterialClimateSpec climate) {
         if (textured || primitive == null || paint == null || material == null) return;
         UiRect bounds = primitive.bounds();
         double x = bounds.x();
@@ -4714,9 +4859,32 @@ public final class Renderer2D {
             primitivePointsTmp[i * 2 + 1] = primitive.localY(i);
         }
         float rounding = Math.min(primitive.rounding(), (float) Math.min(w, h) * 0.45f);
+        // Shared material vertex layout: two unused polygon slots carry TL/TR/BR/BL radii.
+        // The negative count is a geometry discriminator, not a new vertex attribute.
+        int materialVertexCount = primitive.pointCount();
+        if (primitive.hasRoundedCorners()) {
+            float[] radii = primitive.cornerRadii();
+            System.arraycopy(radii, 0, primitivePointsTmp, 8, 4);
+            materialVertexCount = -4;
+            rounding = 0f;
+        }
 
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.MATERIAL_PRIMITIVE, null, null);
+        boolean physicalTexture = material.mode() == UiSurfaceMaterialSpec.Mode.SATIN_TITANIUM
+                || material.mode() == UiSurfaceMaterialSpec.Mode.BRUSHED_METAL
+                || material.mode() == UiSurfaceMaterialSpec.Mode.GRAPHITE
+                || material.mode() == UiSurfaceMaterialSpec.Mode.SOFT_TOUCH
+                || material.mode() == UiSurfaceMaterialSpec.Mode.CERAMIC
+                || material.mode() == UiSurfaceMaterialSpec.Mode.ICE;
+        boolean hasAtlas = physicalTexture && material.microtextureEnabled();
+        boolean sceneLit = physicalTexture && material.lighting().enabled();
+        UiBatchType materialType = sceneLit
+                ? (hasAtlas ? UiBatchType.MATERIAL_SCENE_TEXTURED_PRIMITIVE : UiBatchType.MATERIAL_SCENE_PRIMITIVE)
+                : (hasAtlas ? UiBatchType.MATERIAL_TEXTURED_PRIMITIVE : UiBatchType.MATERIAL_PRIMITIVE);
+        DrawBatch batch = UI_BATCHER.getOrCreateMaterial(materialType, material.mode(), material.lighting().source(), bounds);
+        if (batch != null && materialType.requiresMaterialScene()) {
+            batch.materialLightingSource = material.lighting().source();
+        }
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -4725,13 +4893,13 @@ public final class Renderer2D {
         mesh.alpha = alpha;
         mesh.ensureQuadCapacity();
         int i1 = appendMaterialPrimitiveVertex(mesh, x, y, cTL, bounds, primitivePointsTmp,
-                primitive.pointCount(), rounding, material);
+                materialVertexCount, rounding, material, structure, climate);
         int i2 = appendMaterialPrimitiveVertex(mesh, x, y + h, cBL, bounds, primitivePointsTmp,
-                primitive.pointCount(), rounding, material);
+                materialVertexCount, rounding, material, structure, climate);
         int i3 = appendMaterialPrimitiveVertex(mesh, x + w, y + h, cBR, bounds, primitivePointsTmp,
-                primitive.pointCount(), rounding, material);
+                materialVertexCount, rounding, material, structure, climate);
         int i4 = appendMaterialPrimitiveVertex(mesh, x + w, y, cTR, bounds, primitivePointsTmp,
-                primitive.pointCount(), rounding, material);
+                materialVertexCount, rounding, material, structure, climate);
         mesh.quad(i1, i2, i3, i4);
         endAutoBatch(auto);
     }
@@ -4744,25 +4912,90 @@ public final class Renderer2D {
                                                      float[] points,
                                                      int pointCount,
                                                      float rounding,
-                                                     UiSurfaceMaterialSpec material) {
+                                                     UiSurfaceMaterialSpec material,
+                                                     UiCellularStructureSpec structure,
+                                                     UiMaterialClimateSpec climate) {
         int a = (argb >>> 24) & 0xFF;
         int r = (argb >>> 16) & 0xFF;
         int g = (argb >>> 8) & 0xFF;
         int b = argb & 0xFF;
+        if (climate != null) {
+            // The existing 10-vec4 material vertex format also carries the climate film.
+            // v_Params5 = geometry, rain, exit water; v_Params6 = mode, frost, snow, condensation.
+            return mesh.vec2(x, y).local2(x, y).color(r, g, b, a)
+                    .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
+                    .vec4(points[0], points[1], points[2], points[3])
+                    .vec4(points[4], points[5], points[6], points[7])
+                    .vec4(points[8], points[9], points[10], points[11])
+                    .vec4(points[12], points[13], points[14], points[15])
+                    .vec4(pointCount, rounding, climate.rain(), climate.waterExit())
+                    .vec4(UiSurfaceMaterialSpec.Mode.CLIMATE_LAYER.shaderId(),
+                            climate.frost(), climate.snow(), climate.condensation())
+                    .vec4(1f, 1f, 1f, 1f)
+                    .vec4(0f, 0f, 0f, 0f)
+                    .vec4(0f, 0f, 0f, 0f)
+                    .vec4(0f, 0f, 0f, 0f)
+                    .next();
+        }
+        if (structure != null) {
+            // Structure parameters are packed in existing material vertices; no
+            // vertex layout changes, so the backend and the PBR agent stay untouched.
+            int tint = argb;
+            return mesh.vec2(x, y).local2(x, y)
+                    .color((tint >>> 16) & 255, (tint >>> 8) & 255, tint & 255,
+                            Math.round(((tint >>> 24) & 255) * structure.opacity()))
+                    .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
+                    .vec4(points[0], points[1], points[2], points[3])
+                    .vec4(points[4], points[5], points[6], points[7])
+                    .vec4(points[8], points[9], points[10], points[11])
+                    .vec4(points[12], points[13], points[14], points[15])
+                    .vec4(pointCount, rounding, structure.seed(), structure.profile().ordinal())
+                    .vec4(UiSurfaceMaterialSpec.Mode.CELLULAR_STRUCTURE.shaderId(),
+                            structure.cellSizePx(), structure.seamWidthPx(), structure.jitter())
+                    .vec4(1f, 1f, 1f, structure.depth())
+                    .vec4(0f, 0f, 0f, 0f)
+                    .vec4(0f, 0f, 0f, 0f)
+                    .vec4(0f, 0f, 0f, 0f)
+                    .next();
+        }
         int accent = material.accentArgb();
         float accentR = ((accent >>> 16) & 0xFF) / 255.0f;
         float accentG = ((accent >>> 8) & 0xFF) / 255.0f;
         float accentB = (accent & 0xFF) / 255.0f;
-        return mesh.vec2(x, y).local2(x, y).color(r, g, b, a)
+        if (material.mode() == UiSurfaceMaterialSpec.Mode.ICE) {
+            UiIceMaterialSpec ice = material.ice();
+            UiMaterialTextureSpec texture = material.texture();
+            // Ice parameters occupy the same per-primitive payload as solid materials;
+            // different ice profiles can share a batch without changing draw uniforms.
+            return mesh.vec2(x, y).local2(x, y).color(r, g, b, a)
+                    .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
+                    .vec4(points[0], points[1], points[2], points[3])
+                    .vec4(points[4], points[5], points[6], points[7])
+                    .vec4(points[8], points[9], points[10], points[11])
+                    .vec4(points[12], points[13], points[14], points[15])
+                    .vec4(pointCount, rounding, ice.seed(), ice.density())
+                    .vec4(material.mode().shaderId(), ice.frost(), ice.cracks(), ice.blueAbsorption())
+                    .vec4(ice.displacementPx(), ice.facetContrast(), ice.clarity(), 0f)
+                    .vec4(texture.tileSizePx(), texture.normalStrength(), texture.heightStrength(), texture.roughnessVariation())
+                    .vec4(0f, texture.specularStrength(), texture.tintStrength(), 0f)
+                    .vec4(texture.directionDegrees(), material.roughness(), material.lighting().strength(), material.lighting().samplingRadiusPx())
+                    .next();
+        }
+        MeshBuilder vertex = mesh.vec2(x, y).local2(x, y).color(r, g, b, a)
                 .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
                 .vec4(points[0], points[1], points[2], points[3])
                 .vec4(points[4], points[5], points[6], points[7])
                 .vec4(points[8], points[9], points[10], points[11])
                 .vec4(points[12], points[13], points[14], points[15])
-                .vec4(pointCount, rounding, 0.0f, 1.0f)
+                .vec4(pointCount, rounding, material.lighting().strength(), material.lighting().samplingRadiusPx())
                 .vec4(material.mode().shaderId(), material.detailScale(), material.roughness(), material.response())
-                .vec4(accentR, accentG, accentB, material.bevelStrength())
-                .next();
+                .vec4(accentR, accentG, accentB, material.bevelStrength());
+        UiMaterialTextureSpec texture = material.texture();
+        vertex.vec4(texture.tileSizePx(), texture.normalStrength(),
+                texture.heightStrength(), texture.roughnessVariation());
+        vertex.vec4(texture.metallic(), texture.specularStrength(), texture.tintStrength(), texture.anisotropy());
+        vertex.vec4(texture.directionDegrees(), 0f, 0f, 0f);
+        return vertex.next();
     }
 
     private static int appendPrimitiveVertex(MeshBuilder mesh,

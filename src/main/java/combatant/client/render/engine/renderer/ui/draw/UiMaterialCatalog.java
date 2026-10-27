@@ -14,6 +14,7 @@ public final class UiMaterialCatalog {
 
     public static UiSurfaceMaterialSpec solid(String name) {
         return switch (normalize(name)) {
+            case "ice", "light-ice" -> UiSurfaceMaterialSpec.ICE;
             case "graphite" -> UiSurfaceMaterialSpec.GRAPHITE;
             case "ceramic" -> UiSurfaceMaterialSpec.CERAMIC;
             case "brushed-metal", "brushed", "brushedmetal" -> UiSurfaceMaterialSpec.BRUSHED_METAL;

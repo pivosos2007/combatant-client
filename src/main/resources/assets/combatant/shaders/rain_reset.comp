@@ -1,0 +1,17 @@
+#version 430 core
+layout(local_size_x = 1) in;
+// GL DrawElementsIndirectCommand and VkDrawIndexedIndirectCommand share the five uint layout.
+layout(std430, binding = 5) buffer RainIndirect {
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    uint vertexOffset;
+    uint firstInstance;
+} drawCommand;
+void main() {
+    drawCommand.indexCount = 6u;
+    drawCommand.instanceCount = 0u;
+    drawCommand.firstIndex = 0u;
+    drawCommand.vertexOffset = 0u;
+    drawCommand.firstInstance = 0u;
+}

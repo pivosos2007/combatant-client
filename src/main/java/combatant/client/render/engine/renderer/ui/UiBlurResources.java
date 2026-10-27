@@ -43,7 +43,6 @@ public final class UiBlurResources {
     private static TextureTarget effects;
     private static TextureTarget glassSource;
     private static TextureTarget uiUnderlay;
-    private static TextureTarget currentTargetSnapshot;
     private static TextureTarget glassOverlay;
     private static Renderer2D.Deferred2DLayer activeUiUnderlayLayer;
     private static long activeUiUnderlayFrame = Long.MIN_VALUE;
@@ -78,7 +77,7 @@ public final class UiBlurResources {
         effects = null;
         glassSource = null;
         uiUnderlay = null;
-        currentTargetSnapshot = null;
+        UiSceneResources.beginFrame();
         glassOverlay = null;
         worldSourceReady = false;
         SURFACE_FRAME_CACHE.clear();
@@ -203,20 +202,6 @@ public final class UiBlurResources {
      * by large UI-native glass surfaces (for example the Map browser) that must refract everything
      * already drawn in the current screen, without depending on replay into the UI-underlay target.</p>
      */
-    private static TextureTarget ensureCurrentTargetSnapshot(Minecraft minecraft) {
-        if (minecraft == null) return null;
-        int width = minecraft.getWindow().getWidth();
-        int height = minecraft.getWindow().getHeight();
-        if (width <= 0 || height <= 0) return null;
-        currentTargetSnapshot = CombatantRenderSystem.resources().frameTransient(
-                TransientTargetDescriptor.frame(
-                        "combatant-ui-current-target-snapshot", width, height, false,
-                        "Renderer2D.currentTargetSnapshot"
-                )
-        );
-        return currentTargetSnapshot;
-    }
-
     public static @Nullable GpuTextureView captureCurrentTarget(
             Minecraft minecraft,
             RenderTarget source) {
@@ -239,22 +224,9 @@ public final class UiBlurResources {
     public static @Nullable GpuTextureView captureCurrentTarget(
             Minecraft minecraft,
             @Nullable GpuTextureView sourceView, boolean invalidatesSurfaceBlur) {
-        if (minecraft == null || sourceView == null) return null;
-        TextureTarget target = ensureCurrentTargetSnapshot(minecraft);
-        if (target == null || target.getColorTextureView() == null) return null;
-        try {
-            if (!CombatantRenderSystem.rhi().textureBlitter().copyFast(
-                    sourceView, target.getColorTextureView())) {
-                return null;
-            }
-        } catch (Throwable ignored) {
-            return null;
-        }
-
-        // The snapshot handle is reused inside one frame while its contents are intentionally
-        // replaced at each ordered capture point. Never let a previous blur of this handle survive.
-        if (invalidatesSurfaceBlur) SURFACE_FRAME_CACHE.clear();
-        return target.getColorTextureView();
+        GpuTextureView view = UiSceneResources.captureCurrentTarget(minecraft, sourceView);
+        if (view != null && invalidatesSurfaceBlur) SURFACE_FRAME_CACHE.clear();
+        return view;
     }
 
     private static boolean copyMainColor(RenderTarget source, TextureTarget target) {
@@ -594,8 +566,7 @@ public final class UiBlurResources {
 
     static boolean isCurrentTargetSnapshotSource(@Nullable GpuTextureView sourceView) {
         return sourceView != null
-                && currentTargetSnapshot != null
-                && sourceView == currentTargetSnapshot.getColorTextureView();
+                && UiSceneResources.isCurrentTargetSnapshot(sourceView);
     }
 
     static String blurSourceDomain(@Nullable GpuTextureView sourceView) {
@@ -632,11 +603,12 @@ public final class UiBlurResources {
      * there; this method only prevents stale GL/Vulkan views from crossing into the new backend.
      */
     public static void onBackendChanged() {
+        UiPbrTextureSets.close();
         COMPUTE_BLUR.close();
         effects = null;
         glassSource = null;
         uiUnderlay = null;
-        currentTargetSnapshot = null;
+        UiSceneResources.beginFrame();
         glassOverlay = null;
         activeUiUnderlayLayer = null;
         activeUiUnderlayFrame = Long.MIN_VALUE;

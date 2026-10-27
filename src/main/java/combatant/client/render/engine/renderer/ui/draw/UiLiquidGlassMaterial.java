@@ -7,15 +7,32 @@
 
 package combatant.client.render.engine.renderer.ui.draw;
 
-/** Material data consumed by Combatant's single shared glass surface pipeline. */
+/** Material data consumed by Combatant's shared glass surface pipeline and optional visual specialization. */
 public record UiLiquidGlassMaterial(UiGlassOpticsSpec optics,
                                     float frostedJitterPx,
                                     float innerGlowStrength,
                                     float innerGlowSizePx,
                                     int innerGlowArgb,
                                     float tintStrength,
-                                    UiGlassInteraction interaction) implements UiMaterialSpec {
+                                    UiGlassInteraction interaction,
+                                    UiGlassVisual visual) implements UiMaterialSpec {
     @Override public Family family() { return Family.GLASS; }
+
+    public UiLiquidGlassMaterial(UiGlassOpticsSpec optics, float frostedJitterPx,
+                                 float innerGlowStrength, float innerGlowSizePx, int innerGlowArgb,
+                                 float tintStrength, UiGlassInteraction interaction) {
+        this(optics, frostedJitterPx, innerGlowStrength, innerGlowSizePx, innerGlowArgb,
+                tintStrength, interaction, UiGlassVisual.DEFAULT);
+    }
+
+    public UiLiquidGlassMaterial withVisual(UiGlassVisual value) {
+        return new UiLiquidGlassMaterial(optics, frostedJitterPx, innerGlowStrength, innerGlowSizePx,
+                innerGlowArgb, tintStrength, interaction, value);
+    }
+
+    public UiLiquidGlassMaterial withIce(UiIceMaterialSpec material) {
+        return withVisual(UiGlassVisual.ice(material));
+    }
 
     public UiLiquidGlassMaterial(UiGlassOpticsSpec optics, float frostedJitterPx,
                                  float innerGlowStrength, float innerGlowSizePx, int innerGlowArgb) {
@@ -32,7 +49,7 @@ public record UiLiquidGlassMaterial(UiGlassOpticsSpec optics,
 
     public UiLiquidGlassMaterial withInteraction(UiGlassInteraction state) {
         return new UiLiquidGlassMaterial(optics, frostedJitterPx, innerGlowStrength,
-                innerGlowSizePx, innerGlowArgb, tintStrength, state);
+                innerGlowSizePx, innerGlowArgb, tintStrength, state, visual);
     }
 
     public static final UiLiquidGlassMaterial DEFAULT = new UiLiquidGlassMaterial(
@@ -46,6 +63,7 @@ public record UiLiquidGlassMaterial(UiGlassOpticsSpec optics,
     }
 
     public UiLiquidGlassMaterial {
+        visual = visual != null ? visual : UiGlassVisual.DEFAULT;
         optics = optics != null ? optics : UiGlassOpticsSpec.LIQUID;
         interaction = interaction != null ? interaction : UiGlassInteraction.FRAME_POINTER;
         frostedJitterPx = finiteClamp(frostedJitterPx, 0f, 4f);
@@ -64,22 +82,22 @@ public record UiLiquidGlassMaterial(UiGlassOpticsSpec optics,
 
     public UiLiquidGlassMaterial withFrostedJitter(float jitterPx) {
         return new UiLiquidGlassMaterial(optics, jitterPx, innerGlowStrength, innerGlowSizePx,
-                innerGlowArgb, tintStrength, interaction);
+                innerGlowArgb, tintStrength, interaction, visual);
     }
 
     public UiLiquidGlassMaterial withInnerGlow(float strength, float sizePx, int argb) {
         return new UiLiquidGlassMaterial(optics, frostedJitterPx, strength, sizePx, argb,
-                tintStrength, interaction);
+                tintStrength, interaction, visual);
     }
 
     public UiLiquidGlassMaterial withOptics(UiGlassOpticsSpec value) {
         return new UiLiquidGlassMaterial(value, frostedJitterPx, innerGlowStrength, innerGlowSizePx,
-                innerGlowArgb, tintStrength, interaction);
+                innerGlowArgb, tintStrength, interaction, visual);
     }
 
     public UiLiquidGlassMaterial withTintStrength(float strength) {
         return new UiLiquidGlassMaterial(optics, frostedJitterPx, innerGlowStrength, innerGlowSizePx,
-                innerGlowArgb, strength, interaction);
+                innerGlowArgb, strength, interaction, visual);
     }
 
     public boolean hasFrostedJitter() {

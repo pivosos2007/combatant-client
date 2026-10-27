@@ -35,13 +35,95 @@ public final class UiShapeRenderer {
         if (props == null) return null;
         UiSurfaceMaterialSpec base = UiMaterialCatalog.solid(props.string("materialMode", ""));
         if (base == null) return null;
-        return base.withAccent(resolveColor(props.get("materialAccent"), base.accentArgb(), 1.0f))
+        boolean themed = props.bool("materialThemeSync", false);
+        int accent = resolveColor(props.get("materialAccent"),
+                themed ? combatant.client.features.theme.Theme.theme().accent() : base.accentArgb(), 1.0f);
+        if (base.mode() == UiSurfaceMaterialSpec.Mode.ICE) {
+            UiIceMaterialSpec ice = new UiIceMaterialSpec(
+                    props.number("iceSeed", base.ice().seed()),
+                    props.number("iceDensity", props.number("materialDetailScale", base.ice().density())),
+                    props.number("iceFrost", props.number("materialRoughness", base.ice().frost())),
+                    props.number("iceCracks", props.number("materialBevelStrength", base.ice().cracks())),
+                    props.number("iceBlueAbsorption", base.ice().blueAbsorption()),
+                    props.number("iceDisplacementPx", base.ice().displacementPx()),
+                    props.number("iceFacetContrast", base.ice().facetContrast()),
+                    props.number("iceClarity", base.ice().clarity()));
+            return ice.asSurface().withAccent(accent);
+        }
+        boolean microtexture = props.bool("materialMicrotexture", base.microtextureEnabled());
+        UiSurfaceMaterialSpec resolved = themed && microtexture
+                ? base.withMicrotexture(base.texture().withTintStrength(1.0f))
+                : base.withMicrotexture(microtexture);
+        return resolved.withAccent(accent)
                 .withParameters(
                         props.number("materialDetailScale", base.detailScale()),
                         props.number("materialRoughness", base.roughness()),
                         props.number("materialBevelStrength", base.bevelStrength()),
                         props.number("materialResponse", base.response())
                 );
+    }
+
+    /** Exact analytic TL/TR/BR/BL arcs for material and structure overlays. */
+    private static boolean drawRoundedMaterial(Renderer2D renderer, UiProps props,
+                                               double x, double y, double w, double h,
+                                               float tl, float tr, float br, float bl,
+                                               UiPaint fillPaint, boolean glassActive) {
+        UiSurfaceMaterialSpec material = surfaceMaterial(props);
+        boolean voronoiSelection = "voronoi".equalsIgnoreCase(props.string("materialMode", ""));
+        String structureMode = props.string("structureMode", voronoiSelection ? "voronoi" : "")
+                .strip().toLowerCase(Locale.ROOT);
+        UiCellularStructureSpec preset = switch (structureMode) {
+            case "voronoi", "cells", "voronoi-cells" -> UiCellularStructureSpec.CELLS;
+            case "voronoi-cracks", "cracks" -> UiCellularStructureSpec.CRACKS;
+            case "voronoi-crystal", "crystalline" -> UiCellularStructureSpec.CRYSTALLINE;
+            case "voronoi-relief", "cellular-relief" -> UiCellularStructureSpec.RELIEF;
+            default -> null;
+        };
+        boolean defaultHudWeather = material == null && preset == null && !glassActive
+                && props.get("materialMode") != null
+                && combatant.client.features.gui.hud.HudClimateSurface.materialHudScopeActive()
+                && combatant.client.features.gui.hud.HudClimateSurface.materialClimate().active();
+        if ((material == null && preset == null && !defaultHudWeather)
+                || w <= 0.0 || h <= 0.0) return false;
+        UiPrimitive primitive = UiPrimitive.builder(x, y, w, h)
+                .roundedCorners(tl, tr, br, bl).build();
+        if (material != null) {
+            // ICE on Liquid Glass is already handled by UiBackdropRuntime as a
+            // glass visual. Never paint solid ICE on top of that scene.
+            if (!(glassActive && material.mode() == UiSurfaceMaterialSpec.Mode.ICE)) {
+                renderer.materialPrimitive(primitive,
+                        glassActive ? fillPaint.withAlphaScale(0.22f) : fillPaint, material);
+            }
+        } else if (!glassActive) {
+            // Structure-only keeps the exact themed fill and four independently
+            // rounded corners. It does not silently substitute a PBR material.
+            int a = fillPaint.topLeft(), b = fillPaint.topRight();
+            int c = fillPaint.bottomRight(), d = fillPaint.bottomLeft();
+            if (fillPaint.kind() == UiPaintKind.LINEAR_GRADIENT) {
+                int[] colors = new int[4];
+                computeLinearGradientCornerColors((float) w, (float) h,
+                        a, c, fillPaint.angleDeg(), fillPaint.offsetPx(), colors);
+                a = colors[0]; b = colors[1]; c = colors[2]; d = colors[3];
+            }
+            renderer.roundedRectCornersQuad(x, y, w, h, tl, tr, br, bl, a, b, c, d);
+        }
+        if (preset != null) {
+            UiCellularStructureSpec structure = new UiCellularStructureSpec(preset.profile(),
+                    props.number("structureCellSize", preset.cellSizePx()),
+                    props.number("structureJitter", preset.jitter()),
+                    props.number("structureLineWidth", preset.seamWidthPx()),
+                    props.number("structureDepth", preset.depth()),
+                    props.number("structureOpacity", preset.opacity()),
+                    props.number("structureSeed", preset.seed()));
+            int tint = resolveColor(props.get("structureColor"),
+                    combatant.client.features.theme.Theme.theme().accent(), 1.0f);
+            renderer.cellularPrimitive(primitive, UiPaint.solid(tint), structure);
+        }
+        if (!glassActive && props.bool("environmentalEffects", true)) {
+            combatant.client.features.gui.hud.HudClimateSurface.drawMaterialClimate(renderer,
+                    primitive, 0.8f);
+        }
+        return true;
     }
 
     private static boolean hasFillCornerColors(UiProps props) {
@@ -177,6 +259,11 @@ public final class UiShapeRenderer {
         int fill = UiRenderColors.applyAlpha(UiReactiveVisual.color(node, "fill", style.backgroundColor() != null ? style.backgroundColor() : 0x00000000), alpha);
         int stroke = UiRenderColors.applyAlpha(UiReactiveVisual.color(node, "stroke", style.strokeColor() != null ? style.strokeColor() : 0x00000000), alpha);
         float strokeWidth = context.renderLength(props.number("strokeWidth", style.strokeWidth()));
+        if (props.get("strokeWidthMorphTo") != null) {
+            float target = context.renderLength(props.number("strokeWidthMorphTo", style.strokeWidth()));
+            float motion = UiReactiveVisual.signal(node, props.string("strokeWidthMorphSignal", "selected"));
+            strokeWidth += (target - strokeWidth) * motion;
+        }
         double x = bounds.x();
         double y = bounds.y();
         double w = Math.max(0.0, context.renderLength(props.number("renderWidth", primitiveLogicalBounds.width())));
@@ -245,10 +332,41 @@ public final class UiShapeRenderer {
             UiPaint fillPaint = buildPaint(props, fill, linearGradient, gradientStart, gradientEnd, gradientAngle, gradientOffset, alpha);
             if ((fillPaint.solidColor() >>> 24) > 0 || linearGradient || hasFillCornerColors(props)) {
                 UiSurfaceMaterialSpec material = surfaceMaterial(props);
+                boolean glassActive = props.bool("liquidGlass", style.liquidGlass());
                 if (material != null) {
-                    renderer.materialPrimitive(primitive, fillPaint, material);
-                } else {
+                    if (!(glassActive && material.mode() == UiSurfaceMaterialSpec.Mode.ICE)) {
+                        renderer.materialPrimitive(primitive,
+                                glassActive ? fillPaint.withAlphaScale(0.22f) : fillPaint, material);
+                    }
+                } else if (!glassActive || !"voronoi".equalsIgnoreCase(props.string("materialMode", ""))) {
                     renderer.primitive(primitive, fillPaint);
+                }
+            }
+            // Optional structure is an independent translucent material layer;
+            // it never replaces the underlying solid, PBR or glass appearance.
+            String structureName = props.string("structureMode",
+                    "voronoi".equalsIgnoreCase(props.string("materialMode", "")) ? "voronoi" : "")
+                    .strip().toLowerCase(Locale.ROOT);
+            if (!structureName.isEmpty() && primitive.shaderEligible()) {
+                UiCellularStructureSpec preset = switch (structureName) {
+                    case "voronoi", "cells", "voronoi-cells" -> UiCellularStructureSpec.CELLS;
+                    case "voronoi-cracks", "cracks" -> UiCellularStructureSpec.CRACKS;
+                    case "voronoi-crystal", "crystalline" -> UiCellularStructureSpec.CRYSTALLINE;
+                    case "voronoi-relief", "cellular-relief" -> UiCellularStructureSpec.RELIEF;
+                    default -> null;
+                };
+                if (preset != null) {
+                    UiCellularStructureSpec structure = new UiCellularStructureSpec(
+                            preset.profile(),
+                            context.renderLength(props.number("structureCellSize", preset.cellSizePx())),
+                            props.number("structureJitter", preset.jitter()),
+                            context.renderLength(props.number("structureLineWidth", preset.seamWidthPx())),
+                            props.number("structureDepth", preset.depth()),
+                            props.number("structureOpacity", preset.opacity()),
+                            props.number("structureSeed", preset.seed()));
+                    int structureTint = resolveColor(props.get("structureColor"),
+                            combatant.client.features.theme.Theme.theme().accent(), alpha);
+                    renderer.cellularPrimitive(primitive, UiPaint.solid(structureTint), structure);
                 }
             }
             if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
@@ -259,7 +377,12 @@ public final class UiShapeRenderer {
         }
 
         if (UiShapeGeometry.isBoxShape(shape, props)) {
-            UiBoxShape boxShape = UiShapeGeometry.buildBoxShape(props, style, shape, x, y, w, h, context.transform().scale());
+            float cornerMorph = props.get("cornerMorphTo") != null
+                    ? Math.max(UiReactiveVisual.signal(node, "selected"),
+                            props.bool("cornerMorphOnPress", false) ? UiReactiveVisual.signal(node, "press") : 0.0f)
+                    : 0.0f;
+            UiBoxShape boxShape = UiShapeGeometry.buildBoxShape(
+                    props, style, shape, x, y, w, h, context.transform().scale(), cornerMorph);
             UiPaint fillPaint = buildPaint(props, fill, linearGradient, gradientStart, gradientEnd, gradientAngle, gradientOffset, alpha);
             if ((fillPaint.solidColor() >>> 24) > 0 || linearGradient || hasFillCornerColors(props)) {
                 renderer.box(boxShape, fillPaint);
@@ -429,7 +552,9 @@ public final class UiShapeRenderer {
             }
             case "rounded", "rounded-rect", "rounded_rect" -> {
                 float radius = context.renderLength(props.number("radius", style.radius()));
-                if ((fill >>> 24) > 0) {
+                if ((fill >>> 24) > 0 && !drawRoundedMaterial(renderer, props, x, y, w, h,
+                        radius, radius, radius, radius, UiPaint.solid(fill),
+                        props.bool("liquidGlass", style.liquidGlass()))) {
                     renderer.roundedRect(x, y, w, h, radius, fill);
                 }
                 if ((stroke >>> 24) > 0 && strokeWidth > 0.0f) {
@@ -441,7 +566,14 @@ public final class UiShapeRenderer {
                 float radius = context.renderLength(props.number("radius", style.radius()));
                 int start = resolveColor(props.get("startColor"), fill, alpha);
                 int end = resolveColor(props.get("endColor"), fill, alpha);
-                if (hasFillCornerColors(props)) {
+                UiPaint roundedFill = buildPaint(props, fill, hasLinearGradient(props),
+                        start, end, props.number("angle", 90.0f),
+                        context.renderLength(props.number("offset", 0.0f)), alpha);
+                if (drawRoundedMaterial(renderer, props, x, y, w, h,
+                        radius, radius, radius, radius, roundedFill,
+                        props.bool("liquidGlass", style.liquidGlass()))) {
+                    // Material already submitted, retain the existing stroke below.
+                } else if (hasFillCornerColors(props)) {
                     renderer.roundedRectGradientQuad(x, y, w, h, radius,
                             resolveColor(first(props, "topLeftColor", "cTopLeft"), start, alpha),
                             resolveColor(first(props, "topRightColor", "cTopRight"), end, alpha),
@@ -518,7 +650,13 @@ public final class UiShapeRenderer {
                 float radiusTR = props.get("radiusTR") != null ? context.renderLength(props.number("radiusTR", 0.0f)) : radius;
                 float radiusBR = props.get("radiusBR") != null ? context.renderLength(props.number("radiusBR", 0.0f)) : radius;
                 float radiusBL = props.get("radiusBL") != null ? context.renderLength(props.number("radiusBL", 0.0f)) : radius;
-                if (hasFillCornerColors(props)) {
+                UiPaint cornerPaint = buildPaint(props, fill, hasLinearGradient(props),
+                        gradientStart, gradientEnd, gradientAngle, gradientOffset, alpha);
+                if (drawRoundedMaterial(renderer, props, x, y, w, h,
+                        radiusTL, radiusTR, radiusBR, radiusBL, cornerPaint,
+                        props.bool("liquidGlass", style.liquidGlass()))) {
+                    // Corner-aware stroke and blur continue through their original paths.
+                } else if (hasFillCornerColors(props)) {
                     renderer.roundedRectCornersQuad(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL,
                             resolveColor(first(props, "topLeftColor", "cTopLeft"), gradientStart, alpha),
                             resolveColor(first(props, "topRightColor", "cTopRight"), gradientEnd, alpha),

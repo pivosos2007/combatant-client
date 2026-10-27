@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.draggable.impl;
 
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+
 
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
@@ -61,6 +63,7 @@ public final class Fps extends DraggableHudElement implements ScriptableHudStatW
     private static final long DIGIT_ANIMATION_DURATION_MS = 200L;
     private static final float DIGIT_ANIMATION_OFFSET = 8.0f;
 
+    private final ModeValue surfaceMaterial = mode("fps_surface_material", HudMaterialChoice.DEFAULT, HudMaterialChoice.OPTIONS);
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final NumberValue<Double> scale = num("fps_scale", 2.37, 0.5, 5.0);
@@ -128,6 +131,12 @@ public final class Fps extends DraggableHudElement implements ScriptableHudStatW
         if (target >= current) return target;
         float next = AnimationUtility.approach(current, target, AnimationUtility.deltaTime(), 12.0f);
         return AnimationUtility.snap(next, target, 0.25f);
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        HudMaterialChoice.collectPrewarm(event, surfaceMaterial.get());
     }
 
     @Override
@@ -239,7 +248,7 @@ public final class Fps extends DraggableHudElement implements ScriptableHudStatW
                         strokeEnabled.get(), strokeAlpha.get() / 255.0f,
                         isThemeMode() && strokeGradient.get(),
                         resolveStrokeGradientStart(), resolveStrokeGradientEnd()
-                );
+                ).setMaterial(HudMaterialChoice.shaderMode(surfaceMaterial.get()));
         scriptModel.icon().texture(FPS_ICON.toString(), iconX - baseX, iconY - baseY, iconSize, iconSize, resolvedIconColor);
         scriptModel.divider().set(dividerX - baseX, dividerY - baseY, dividerW, dividerH,
                 HudRenderUtil.setAlpha(uiMetaColor, 0x52));

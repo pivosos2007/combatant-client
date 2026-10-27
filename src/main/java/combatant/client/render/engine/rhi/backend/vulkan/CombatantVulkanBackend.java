@@ -267,7 +267,7 @@ public final class CombatantVulkanBackend implements CombatantRhi {
                         samplerBinds,
                         bindPipeline
                 );
-                command.mesh.drawIndexed(pass, command.label);
+                command.mesh.drawIndexed(pass, command.label, command.instanceCount);
                 stats.drawCall();
             } finally {
                 if (pushMv) RenderSystem.getModelViewStack().popMatrix();

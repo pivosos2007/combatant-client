@@ -24,7 +24,10 @@ public enum UiBatchType {
     PATH(UiBatchRenderPipelines.UI_PATH_BATCH, UiBatchRenderPipelines.UI_PATH_BATCH_ANALYTIC_CLIP, true, false),
     SHAPE(UiBatchRenderPipelines.UI_SHAPE_BATCH, UiBatchRenderPipelines.UI_SHAPE_BATCH_ANALYTIC_CLIP, true, false),
     PRIMITIVE(UiBatchRenderPipelines.UI_PRIMITIVE_BATCH, true, false),
-    MATERIAL_PRIMITIVE(UiBatchRenderPipelines.UI_MATERIAL_PRIMITIVE_BATCH, true, false),
+    MATERIAL_PRIMITIVE(UiBatchRenderPipelines.UI_MATERIAL_PRIMITIVE_BATCH, UiBatchRenderPipelines.UI_MATERIAL_PRIMITIVE_BATCH_ANALYTIC_CLIP, true, false),
+    MATERIAL_SCENE_PRIMITIVE(UiBatchRenderPipelines.UI_MATERIAL_SCENE_PRIMITIVE_BATCH, UiBatchRenderPipelines.UI_MATERIAL_SCENE_PRIMITIVE_BATCH_ANALYTIC_CLIP, true, false),
+    MATERIAL_TEXTURED_PRIMITIVE(UiBatchRenderPipelines.UI_MATERIAL_TEXTURED_PRIMITIVE_BATCH, UiBatchRenderPipelines.UI_MATERIAL_TEXTURED_PRIMITIVE_BATCH_ANALYTIC_CLIP, true, false),
+    MATERIAL_SCENE_TEXTURED_PRIMITIVE(UiBatchRenderPipelines.UI_MATERIAL_SCENE_TEXTURED_PRIMITIVE_BATCH, UiBatchRenderPipelines.UI_MATERIAL_SCENE_TEXTURED_PRIMITIVE_BATCH_ANALYTIC_CLIP, true, false),
     GLOW(UiBatchRenderPipelines.UI_GLOW_BATCH, true, false),
     TEXTURED_SHAPE(UiBatchRenderPipelines.UI_TEXTURED_SHAPE_BATCH, UiBatchRenderPipelines.UI_TEXTURED_SHAPE_BATCH_ANALYTIC_CLIP, true, true),
     BLUR(UiBatchRenderPipelines.UI_BLUR_BATCH, UiBatchRenderPipelines.UI_BLUR_BATCH_ANALYTIC_CLIP, true, true),
@@ -56,6 +59,13 @@ public enum UiBatchType {
 
     public boolean supportsAnalyticClip() {
         return analyticClipPipeline != null;
+    }
+
+    public boolean requiresMaterialScene() {
+        return this == MATERIAL_SCENE_PRIMITIVE || this == MATERIAL_SCENE_TEXTURED_PRIMITIVE;
+    }
+    public boolean usesMaterialTexture() {
+        return this == MATERIAL_TEXTURED_PRIMITIVE || this == MATERIAL_SCENE_TEXTURED_PRIMITIVE;
     }
 
     /** Materials that sample both the captured clean scene and its shared Kawase blur. */

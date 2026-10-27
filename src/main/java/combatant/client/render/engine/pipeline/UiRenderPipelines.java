@@ -81,6 +81,21 @@ public final class UiRenderPipelines {
             .withCull(true)
             .build();
 
+    /** Compose an already premultiplied offscreen material target exactly once. */
+    @PipelineRegister
+    public static final RenderPipeline UI_MATERIAL_COMPOSITE = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_material_composite"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("pos2_tex_color.vert"))
+            .withFragmentShader(shader("pos_tex_color.frag"))
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA)
+            .withCull(true)
+            .build();
+
     @PipelineRegister
     public static final RenderPipeline UI_MAP_TILE_LIGHT = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_map_tile_light"))
@@ -286,6 +301,62 @@ public final class UiRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(true)
             .build();
+    /** Four-tap pixel-area resolve of 4x physical-resolution grayscale glyph masks. */
+    @PipelineRegister
+    public static final RenderPipeline UI_TEXT_MASK = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_text_mask"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("pos2_tex_color.vert"))
+            .withFragmentShader(shader("text_mask.frag"))
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_TEXT_MASK_FAST = new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_text_mask_fast"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_pos_tex_color_fast.vert"))
+            .withFragmentShader(shader("text_mask.frag"))
+            .withSampler("u_Texture")
+            .withContract(RenderPipelineContract.UI_FAST)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_TEXT_MASK_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_text_mask"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("pos2_tex_color.vert"))
+            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("text_mask.frag")))
+            .withSampler("u_Texture")
+            .withContract(RenderPipelineContract.UI_EXTENDED)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_TEXT_MASK_FAST_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_text_mask_fast"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_pos_tex_color_fast.vert"))
+            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("text_mask.frag")))
+            .withSampler("u_Texture")
+            .withContract(RenderPipelineContract.UI_FAST)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build();
+
     /**
      * UI MSDF text (pos2 + tex + color).
      */

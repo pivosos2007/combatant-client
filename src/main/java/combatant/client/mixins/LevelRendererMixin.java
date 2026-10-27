@@ -12,10 +12,12 @@ import com.llamalad7.mixinextras.sugar.Local;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.framegraph.FrameGraphBuilder;
 import com.mojang.blaze3d.framegraph.FramePass;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.resource.ResourceHandle;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.DeltaTracker;
@@ -23,6 +25,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LevelTargetBundle;
+import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
+import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
@@ -45,9 +49,13 @@ import combatant.client.mixins.accessors.GameRendererAccessor;
 import combatant.client.mixins.accessors.LevelRendererAccessor;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.depth.EntityDepthLayer;
+import combatant.client.render.engine.depth.PreTranslucentDepth;
 import combatant.client.render.engine.depth.WorldSceneDepth;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.render.sky.CustomSkyboxRenderer;
+
+import java.util.Optional;
+import java.util.OptionalDouble;
 
 @Mixin(LevelRenderer.class)
 public abstract class LevelRendererMixin {
@@ -233,6 +241,64 @@ public abstract class LevelRendererMixin {
             WorldSceneDepth.beginFrame(source.width, source.height);
             WorldSceneDepth.captureMain(source);
         });
+    }
+
+    /**
+     * In Minecraft 26.3 solid and classic translucent geometry share the SAME frame-graph
+     * pass and the SAME RenderPass. A separate frame-graph pass after addMainPass() is
+     * already too late. Close the solid pass, snapshot its depth, then resume translucent
+     * drawing in a new pass that LOADS the existing color/depth attachments.
+     *
+     * FrontendRenderPass.close() is idempotent; the vanilla try-with-resources closes
+     * the original pass again on exit.
+     */
+    @WrapOperation(
+            method = "lambda$addMainPass$0",
+            // Only the synthetic lambda name stays unmapped. The invoked Minecraft method
+            // still needs to be remapped in production Fabric builds.
+            at = @At(value = "INVOKE", target =
+                    "Lnet/minecraft/client/renderer/LevelRenderer;executeClassicTransparency(Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;Lcom/mojang/renderpearl/api/commands/RenderPass;)V",
+                    remap = true),
+            remap = false
+    )
+    private void combatant$snapshotBeforeClassicTransparency(
+            LevelRenderer renderer,
+            ChunkSectionsToRender sections,
+            FeatureRenderDispatcher.PreparedFrame prepared,
+            RenderPass solidPass,
+            Operation<Void> original
+    ) {
+        if (IrisRuntime.isShaderpackRendererActive()) {
+            original.call(renderer, sections, prepared, solidPass);
+            return;
+        }
+
+        RenderTarget framebuffer = combatant$getFramebuffer(targets.main);
+        if (framebuffer == null || framebuffer.getColorTextureView() == null
+                || framebuffer.getDepthTextureView() == null) {
+            original.call(renderer, sections, prepared, solidPass);
+            return;
+        }
+
+        solidPass.close();
+        PreTranslucentDepth.captureFrom(framebuffer);
+        try (RenderPass translucentPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+                () -> "Minecraft translucent (pre-translucent depth snapshot)",
+                framebuffer.getColorTextureView(), Optional.empty(),
+                framebuffer.getDepthTextureView(), OptionalDouble.empty())) {
+            RenderSystem.bindDefaultUniforms(translucentPass);
+            original.call(renderer, sections, prepared, translucentPass);
+        }
+    }
+
+    /** In the OIT path executeOit starts AFTER the opaque RenderPass has closed. */
+    @Inject(method = "executeOit", at = @At("HEAD"))
+    private void combatant$snapshotBeforeOit(ChunkSectionsToRender sections,
+                                             FeatureRenderDispatcher.PreparedFrame prepared,
+                                             CallbackInfo ci) {
+        if (!IrisRuntime.isShaderpackRendererActive()) {
+            PreTranslucentDepth.captureFrom(combatant$getFramebuffer(targets.main));
+        }
     }
 
     @Inject(method = "addSkyPass", at = @At("HEAD"), cancellable = true)

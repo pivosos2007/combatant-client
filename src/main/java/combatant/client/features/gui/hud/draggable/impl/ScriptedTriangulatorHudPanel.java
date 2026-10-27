@@ -202,7 +202,7 @@ final class ScriptedTriangulatorHudPanel {
                  String secondaryLine,
                  String confidenceText,
                  int statusColor,
-                 List<LinkedHashMap<String, Object>> rows) {
+                 List<LinkedHashMap<String, Object>> rows, String materialMode) {
         Panel(Palette palette,
               float x,
               float y,
@@ -237,7 +237,7 @@ final class ScriptedTriangulatorHudPanel {
               String secondaryLine,
               String confidenceText,
               int statusColor,
-              List<LinkedHashMap<String, Object>> rows) {
+              List<LinkedHashMap<String, Object>> rows, String materialMode) {
             this.palette = palette;
             this.x = x;
             this.y = y;
@@ -273,6 +273,7 @@ final class ScriptedTriangulatorHudPanel {
             this.confidenceText = confidenceText != null ? confidenceText : "";
             this.statusColor = statusColor;
             this.rows = rows != null ? rows : List.of();
+            this.materialMode = materialMode != null ? materialMode : "";
         }
 
         float logical(float renderValue) {
@@ -291,6 +292,7 @@ final class ScriptedTriangulatorHudPanel {
             out.put("countLabelWidth", logical(countLabelWidth));
             out.put("countValueWidth", logical(countValueWidth));
             out.put("activeCount", activeCount);
+            out.put("materialMode", materialMode);
             out.put("blur", blur);
             out.put("blurAlpha", blurAlpha);
             out.put("shadowControlled", true);
@@ -323,6 +325,7 @@ final class ScriptedTriangulatorHudPanel {
 
         long treeSignature() {
             long h = 0xcbf29ce484222325L;
+            h = CachedUiScriptRuntime.mix(h, materialMode);
             h = CachedUiScriptRuntime.mix(h, logical(width));
             h = CachedUiScriptRuntime.mix(h, logical(height));
             h = CachedUiScriptRuntime.mix(h, TextSizing.sizeForScale(fontScale / renderScale));

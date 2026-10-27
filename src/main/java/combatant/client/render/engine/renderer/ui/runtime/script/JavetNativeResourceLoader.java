@@ -10,45 +10,66 @@ package combatant.client.render.engine.renderer.ui.runtime.script;
 import com.caoccao.javet.enums.JSRuntimeType;
 import com.caoccao.javet.interop.loader.IJavetLibLoadingListener;
 import com.caoccao.javet.interop.loader.JavetLibLoader;
+import combatant.client.runtime.distribution.AndroidRuntime;
+import combatant.client.runtime.distribution.DistributionCapabilities;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Loads Javet V8 natives from Combatant resources when they are bundled under
- * /javet/natives. If the resource bundle is not present, Javet's own classpath
- * loader is left untouched so dev-runtime native jars can still work.
+ * /javet/natives. On desktop, an absent bundle leaves Javet's classpath loader
+ * available for development. Android must never fall back to Linux/glibc binaries.
  */
 enum JavetNativeResourceLoader {
     ;
 
-    private static final AtomicBoolean INSTALLED = new AtomicBoolean(false);
+    private static boolean installed;
     private static final String RESOURCE_ROOT = "/javet/natives/";
 
     static boolean hasBundledNativeForCurrentRuntime() {
-        String libFileName = detectLibFileName();
-        return libFileName != null && resourceExists(libFileName);
+        NativeLibrary library = detectLibrary();
+        return library != null && resourceExists(library.resourcePath());
     }
 
-    static void install() {
-        if (!INSTALLED.compareAndSet(false, true)) return;
-        String libFileName = detectLibFileName();
-        if (libFileName == null || !resourceExists(libFileName)) {
+    static synchronized void install() {
+        if (installed) return;
+        NativeLibrary library = detectLibrary();
+        if (library == null || !resourceExists(library.resourcePath())) {
+            if (AndroidRuntime.isAndroid()) {
+                throw new IllegalStateException("Bundled Javet V8 native is missing or unsupported for "
+                        + DistributionCapabilities.currentTargetId() + "; refusing to load Linux/glibc natives on Android.");
+            }
             return;
         }
-        JavetLibLoader.setLibLoadingListener(new CombatantJavetLibLoadingListener(libFileName));
+        JavetLibLoader.setLibLoadingListener(new CombatantJavetLibLoadingListener(library));
+        installed = true;
     }
 
-    private static String detectLibFileName() {
+    private static NativeLibrary detectLibrary() {
         try {
-            return new JavetLibLoader(JSRuntimeType.V8).getLibFileName();
+            return selectLibrary(DistributionCapabilities.currentTargetId(),
+                    new JavetLibLoader(JSRuntimeType.V8).getLibFileName());
         } catch (Throwable ignored) {
             return null;
         }
+    }
+
+    static NativeLibrary selectLibrary(String target, String javetFileName) {
+        if (target.startsWith("android-")) {
+            if (!target.equals("android-arm64")) return null;
+            // Javet 5.0.9 appends its own filename before System.load() in its JNI classloader.
+            // On OpenJDK that name says Linux, but the extracted bytes must be the Android ABI.
+            return new NativeLibrary("android/arm64-v8a/libjavet-v8-android.v."
+                    + JavetLibLoader.LIB_VERSION + ".so", javetFileName);
+        }
+        return new NativeLibrary(javetFileName, javetFileName);
+    }
+
+    record NativeLibrary(String resourcePath, String fileName) {
     }
 
     private static boolean resourceExists(String libFileName) {
@@ -59,12 +80,12 @@ enum JavetNativeResourceLoader {
         }
     }
 
-    private static final class CombatantJavetLibLoadingListener implements IJavetLibLoadingListener {
-        private final String libFileName;
+    static final class CombatantJavetLibLoadingListener implements IJavetLibLoadingListener {
+        private final NativeLibrary library;
         private volatile File libPath;
 
-        private CombatantJavetLibLoadingListener(String libFileName) {
-            this.libFileName = libFileName;
+        CombatantJavetLibLoadingListener(NativeLibrary library) {
+            this.library = library;
         }
 
         @Override
@@ -96,16 +117,16 @@ enum JavetNativeResourceLoader {
         }
 
         private File extractNativeDirectory() {
-            String resource = RESOURCE_ROOT + libFileName;
+            String resource = RESOURCE_ROOT + library.resourcePath();
             try (InputStream stream = JavetNativeResourceLoader.class.getResourceAsStream(resource)) {
                 if (stream == null) {
                     throw new UnsatisfiedLinkError("Missing Javet native resource: " + resource);
                 }
                 Path dir = Files.createTempDirectory("combatant-javet-v8-");
-                Path target = dir.resolve(libFileName);
+                Path target = dir.resolve(library.fileName());
                 Files.copy(stream, target, StandardCopyOption.REPLACE_EXISTING);
-                target.toFile().deleteOnExit();
                 dir.toFile().deleteOnExit();
+                target.toFile().deleteOnExit();
                 return dir.toFile();
             } catch (IOException e) {
                 UnsatisfiedLinkError error = new UnsatisfiedLinkError("Failed to extract Javet native: " + resource);

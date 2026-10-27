@@ -157,6 +157,7 @@ public final class DynamicIsland extends AbstractHudElement {
     private float repeatPress;
     private float bodyHover;
     private float bodyPress;
+    private float ledSignalEnvelope;
     private float progressHover;
     private float progressPress;
     private float mainBodyX;
@@ -445,6 +446,8 @@ public final class DynamicIsland extends AbstractHudElement {
         defs.add(SettingDef.number(themeGradientStrength)
                 .visibleWhen(() -> syncTheme.get() && HudRenderUtil.PANEL_STYLE_GRADIENT.equals(panelStyle.get())));
         defs.add(SettingDef.number(themeAlpha).visibleWhen(syncTheme::get));
+        // One phosphor backdrop, no extra display presets or per-pixel settings.
+        // Existing blur control applies to the same chamfered shell in every island state.
         defs.add(SettingDef.bool(blur));
         defs.add(SettingDef.number(blurAlpha).visibleWhen(blur::get));
         defs.add(SettingDef.color(bgColor).visibleWhen(() -> !syncTheme.get()));
@@ -691,6 +694,7 @@ public final class DynamicIsland extends AbstractHudElement {
             resetControls();
         }
         updateInteractionAnimation(isInteractiveScreen(currentScreen), dt);
+        updateLedSignal(dt);
 
         if (!renderScripted(renderer, fallback, titleRenderer, metaRenderer, ctx, tickDelta, screenW, screenH, drawWidth, drawHeight,
                 drawMainWidth, mainX, alpha, compactContentAlpha, expandedContentAlpha, bezelCut, accent)) {
@@ -797,8 +801,7 @@ public final class DynamicIsland extends AbstractHudElement {
                 "endColor", scaleHexAlpha(stringProp(props, "displayBgEnd", "#FF050608"), rootAlpha),
                 "angle", numberProp(props, "displayBgAngle", 90.0f),
                 "materialAccent", phosphor,
-                "materialResponse", clamp01(numberProp(props, "bodyHover", 0.0f) * 0.42f
-                        + numberProp(props, "bodyPress", 0.0f) * 0.72f),
+                "materialResponse", clamp01(numberProp(props, "displaySignal", 0.0f)),
                 "blurAlpha", surfaceBlurAlpha,
                 "blurBrightness", 1.0f);
         float shellInteraction = numberProp(props, "bodyHover", 0.0f) * 0.025f
@@ -1147,10 +1150,8 @@ public final class DynamicIsland extends AbstractHudElement {
         props.put("displayBgStart", hex(uiDisplayBgStart));
         props.put("displayBgEnd", hex(uiDisplayBgEnd));
         props.put("displayBgAngle", uiDisplayBgAngle);
-        props.put("displayMaterial", "phosphor-led");
-        props.put("pixelPitchPx", 4.0f);
-        props.put("offPixelOpacity", 0.13f);
-        props.put("displayBevelStrength", 0.30f);
+        // Internal material defaults, not additional settings.
+        props.put("displaySignal", ledSignalEnvelope);
         props.put("phosphor", hex(modePhosphor));
         props.put("phosphorDim", hex(modePhosphorDim));
         props.put("matrixOff", hex(modeMatrixOff));
@@ -1496,6 +1497,34 @@ public final class DynamicIsland extends AbstractHudElement {
         uiMatrixOff = HudRenderUtil.setAlpha(HudRenderUtil.mixColor(uiPhosphor, uiDisplayBg, 0.86f), 255);
         uiTextPrimary = textColor.getArgb() | 0xFF000000;
         uiTextSecondary = mutedColor.getArgb() | 0xFF000000;
+    }
+
+    private void updateLedSignal(float dt) {
+        float signal = switch (currentMode) {
+            // Circular seconds phase is continuous at the minute boundary. Unlike
+            // an accumulating progress bar, it never jumps from 100% to 0%.
+            case TIME -> {
+                LocalTime now = LocalTime.now();
+                double seconds = now.getSecond() + now.getNano() * 1.0e-9;
+                yield 0.5f + 0.5f * (float) Math.cos(seconds * (Math.PI * 2.0 / 60.0));
+            }
+            case PVP -> {
+                Float max = PvpState.getMaxSeconds();
+                yield max != null && max > 0f
+                        ? clamp(predictedPvpSeconds() / max, 0f, 1f) : 0f;
+            }
+            case MUSIC -> {
+                long duration = currentSnapshot != null ? currentSnapshot.durationSeconds() : 0L;
+                yield duration > 0L ? clamp((float) currentSnapshot.predictedPositionSeconds() / duration, 0f, 1f) : 0f;
+            }
+            // Keep the LED substrate visible behind the native active tab pill.
+            case CLICKGUI -> 0.35f;
+        };
+        // Frame-rate independent phosphor attack/release; release is slower than attack.
+        float seconds = clamp(dt, 0f, 0.25f);
+        float rate = signal > ledSignalEnvelope ? 10f : 4f;
+        float blend = 1f - (float) Math.exp(-seconds * rate);
+        ledSignalEnvelope += (signal - ledSignalEnvelope) * blend;
     }
 
     private float predictedPvpSeconds() {

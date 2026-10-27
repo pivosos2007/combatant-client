@@ -18,6 +18,10 @@ public interface ClickGuiSection {
     default void renderGlassPass(float alphaFactor) {
     }
 
+    /** Pointer movement delivered by CombatantInput as it arrives, without tick-lag. */
+    default void mouseMoved(float mouseX, float mouseY) {
+    }
+
     default boolean mousePressed(float mouseX, float mouseY, int button) {
         return false;
     }
