@@ -100,6 +100,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Right seed: quartz 53/53 and debris 6/6 verified; debris boxes 202/202 and 214/215 real without anti-xray, 185/188 and 190/194 with anti-xray engine mode 2.
   - Wrong seed (both DonutSMP seeds on another world): server hash matches neither, quartz 2/70 and 1/75, nothing drawn.
   - Debris on its own Paper feature seed: quartz 128/128, debris 0/5, nothing drawn.
+- **OrePredictor**: shares the ore replay, so its biome filter also reads the vanilla biome (the client receives no biome feature lists), and a server that hides its seed hash (sends 0) no longer triggers the "seed does NOT match" warning.
 - **New modules**: `StorageESP` (per-type toggle, colour and tracer for chests, trapped/ender chests, shulkers with optional dye colour, barrels, spawners, furnaces, hoppers/droppers/dispensers and enchanting tables; box/outline/fill modes, max distance, dimming of containers already opened this session), `Skeleton`, `PopChams`, `BedrockEsp`, `BlockNotifier`, `Waypoints` (+ `@waypoint`).
 - **Finders**: `LuckyFinder`, `OrePredictor`, `PrimeChunkFinder`, `RtpBaseFinder`; `LightFinder` gains a strict below-Y=0 mode.
 - **Shaders**: animated glow surface (pixel-width rim, climbing scan band, fresnel and sheen) for HoleESP, BlockESP and BlockHighlight; procedural glow ring for JumpCircles and soft core/halo/flare sprites for Trails and TargetESP ghosts. Each has an opt-out setting that keeps the old look.
