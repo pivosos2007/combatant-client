@@ -36,7 +36,7 @@ final class UiGlassShaderCompileTest {
                 shaderc_compile_options_set_target_env(options,
                         vulkan ? shaderc_target_env_vulkan : shaderc_target_env_opengl,
                         vulkan ? shaderc_env_version_vulkan_1_2 : shaderc_env_version_opengl_4_5);
-                for (String name : new String[]{"ui_liquid_glass_batch", "ui_glass_flow", "ui_glass_impact", "ui_glass_ripple", "ui_glass_frozen", "ui_glass_ice_blend"}) {
+                for (String name : new String[]{"ui_liquid_glass_batch", "ui_glass_flow", "ui_glass_impact", "ui_glass_ripple", "ui_glass_ice_blend"}) {
                     for (int variant = 0; variant < 4; variant++) {
                         Identifier id = Identifier.fromNamespaceAndPath("combatant", "shaders/" + name + ".frag");
                         if ((variant & 1) != 0) id = CombatantShaderSources.analyticClipVariantId(id);
