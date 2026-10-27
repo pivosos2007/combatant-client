@@ -17,8 +17,8 @@ import combatant.client.automation.FailureReason;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapMode;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
+import combatant.client.util.player.inventory.InventorySearchScope;
+import combatant.client.util.player.inventory.InventorySwapRequest;
 import combatant.client.util.player.inventory.SlotResult;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -33,10 +33,10 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * Uses an item found by predicate. Main hand: the item is brought into hand through {@link InventorySwap}
- * ({@code withSwap}, so the module's {@link InventorySwapPolicy} decides when a silent swap or inventory click may
- * run) and used in the {@link ExecutionPhase#AFTER_ROTATION} phase, against the rotation the server has seen. Off hand:
- * used in place.
+ * Uses an item found by predicate. Main hand: the item is brought into hand through {@link InventorySwap#execute}
+ * (silent swap, or an inventory click, both gated by the backend's Grim window rules; a use the window does not
+ * allow yet is simply retried next tick) and used in the {@link ExecutionPhase#AFTER_ROTATION} phase, against the
+ * rotation the server has seen. Off hand: used in place.
  *
  * <p>Resources: INTERACTION always; ROTATION when an aim is configured; HOTBAR when the item is not in the selected
  * slot; INVENTORY when it has to be fetched from the main inventory.
@@ -46,19 +46,14 @@ import java.util.function.Supplier;
  */
 public final class UseItemAction extends AbstractAction {
 
-    private static final int MAX_PENDING_TICKS = 40;
-
     private final Predicate<ItemStack> item;
     private final InteractionHand hand;
-    private final InventorySwapMode mode;
-    private final InventorySwapPolicy policy;
+    private final InventorySearchScope scope;
     private final boolean swing;
     private final AimRequirement aim;
     private final BooleanSupplier effect;
     private final int effectTimeoutTicks;
 
-    private boolean queued;
-    private long queuedTick;
     private boolean used;
     private long usedTick;
     private ActionResult useFailure;
@@ -67,8 +62,7 @@ public final class UseItemAction extends AbstractAction {
         super("UseItem");
         this.item = b.item;
         this.hand = b.hand;
-        this.mode = b.mode;
-        this.policy = b.policy;
+        this.scope = b.scope;
         this.swing = b.swing;
         this.aim = b.aim;
         this.effect = b.effect;
@@ -82,8 +76,7 @@ public final class UseItemAction extends AbstractAction {
     public static final class Builder {
         private final Predicate<ItemStack> item;
         private InteractionHand hand = InteractionHand.MAIN_HAND;
-        private InventorySwapMode mode = InventorySwapMode.SILENT_FULL;
-        private InventorySwapPolicy policy = InventorySwapPolicy.NONE;
+        private InventorySearchScope scope = InventorySearchScope.FULL;
         private boolean swing = true;
         private AimRequirement aim;
         private BooleanSupplier effect;
@@ -98,15 +91,9 @@ public final class UseItemAction extends AbstractAction {
             return this;
         }
 
-        /** How the item reaches the hand; ignored for the off hand. */
-        public Builder mode(InventorySwapMode mode) {
-            this.mode = Objects.requireNonNull(mode, "mode");
-            return this;
-        }
-
-        /** Module-provided policy deciding when swaps and the use itself are allowed. */
-        public Builder policy(InventorySwapPolicy policy) {
-            this.policy = policy != null ? policy : InventorySwapPolicy.NONE;
+        /** Where the item may come from; ignored for the off hand. */
+        public Builder scope(InventorySearchScope scope) {
+            this.scope = Objects.requireNonNull(scope, "scope");
             return this;
         }
 
@@ -151,9 +138,6 @@ public final class UseItemAction extends AbstractAction {
         }
         if (useFailure != null) return useFailure;
         if (used) return observeEffect(ctx);
-        if (queued && ctx.tick() - queuedTick > MAX_PENDING_TICKS) {
-            return ActionResult.failure(FailureReason.TIMEOUT, "swap/use never ran");
-        }
         if (!acquire(ctx, ActionResource.INTERACTION)) return ActionResult.RUNNING;
 
         if (aim != null) {
@@ -162,7 +146,6 @@ public final class UseItemAction extends AbstractAction {
                 return ActionResult.failure(FailureReason.INVALID_TARGET, "no aim goal");
             }
         }
-        if (queued) return ActionResult.RUNNING;
 
         Source source = locate(player);
         if (source == null) return ActionResult.failure(FailureReason.MISSING_ITEM, "no matching item");
@@ -192,7 +175,7 @@ public final class UseItemAction extends AbstractAction {
         if (!inHand.isEmpty() && item.test(inHand)) {
             return new Source(new SlotResult(selected, true, inHand), false, false);
         }
-        SlotResult found = swap.findSlotForMode(item, mode);
+        SlotResult found = swap.find(item, scope);
         if (!found.found()) return null;
         return new Source(found, true, found.isInventory());
     }
@@ -200,7 +183,7 @@ public final class UseItemAction extends AbstractAction {
     private void perform(ActionContext ctx) {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
-        if (player == null || mc.gameMode == null || used || queued) return;
+        if (player == null || mc.gameMode == null || used) return;
         if (aim != null && !aim.aligned(this)) return;
 
         Source source = locate(player);
@@ -227,16 +210,15 @@ public final class UseItemAction extends AbstractAction {
         };
 
         InventorySwap swap = InventorySwap.INSTANCE;
-        boolean accepted;
-        if (hand == InteractionHand.OFF_HAND) {
-            accepted = swap.command(InventoryActionKind.USE_ITEM, policy, use);
+        // In hand (or off hand) the item is used in place; otherwise it is swapped in. A false return means the
+        // Grim window does not allow the swap/use right now; the next tick tries again.
+        if (hand == InteractionHand.OFF_HAND || !source.needsHotbar) {
+            swap.command(null, InventoryActionKind.USE_ITEM, use);
         } else {
-            accepted = swap.withSwap(source.slot, mode, policy, InventoryActionKind.USE_ITEM, use);
-        }
-        if (!accepted) return;
-        if (!used && useFailure == null) {
-            queued = true;
-            queuedTick = ctx.tick();
+            swap.execute(InventorySwapRequest.builder(item, use)
+                    .scope(scope)
+                    .actionKind(InventoryActionKind.USE_ITEM)
+                    .build());
         }
     }
 

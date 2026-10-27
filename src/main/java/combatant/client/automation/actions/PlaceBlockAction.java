@@ -39,9 +39,10 @@ import java.util.function.Predicate;
  *
  * <p>Holds INTERACTION, the main-hand HOTBAR slot (when the item is not in the offhand), ROTATION
  * (NORMAL mode) and SNEAK (while clicking an interactable support). Every tick it re-solves the
- * support face of the next cell, requests the rotation, and clicks in
- * {@link ExecutionPhase#AFTER_ROTATION}, only while it owns the active rotation and the rotation of
- * that tick hits the support. NORMAL mode clicks one cell per tick; NO_ROTATION up to
+ * support face of the next cell and clicks in {@link ExecutionPhase#AFTER_ROTATION}. NORMAL mode
+ * clicks one cell per tick, only while it owns the active rotation and the rotation the server
+ * already has hits the support (see {@link PlacementExecutor}); the cell is aimed at a tick ahead,
+ * and while one cell goes out the next is aimed at. NO_ROTATION clicks up to
  * {@code placementsPerTick}. Clicks are not serialised: later cells go out while earlier ones await
  * their acknowledgement. Ends with SUCCESS when something was confirmed and nothing was rejected
  * or timed out; per-cell results stay readable through {@link #entries()}.
@@ -201,7 +202,11 @@ public final class PlaceBlockAction extends AbstractAction {
                 rotationPlan = new BlockInteractionPipeline.RotationPlan(
                         true, List.of(), 2, 4.0f, false, constraints.movementCorrection(), ctx.priority());
             }
-            ScaffoldPlacementTarget support = current.target.support();
+            // A cell is clicked once the rotation the server already has points at it (PlacementExecutor). When the
+            // current cell goes out this tick, the next one is aimed at meanwhile, so placing keeps one cell a tick.
+            boolean clicksNow = PlacementExecutor.readyToClick(player, current.target.support(), constraints)
+                    && (sneakReady || !PlacementPlanner.needsSneak(player, current.target.support()));
+            ScaffoldPlacementTarget support = (clicksNow ? nextToAim(player, current) : current).target.support();
             BlockInteractionPipeline.INSTANCE.rotateTo(
                     this, support.getRotation(), support.getHitVec(), rotationPlan, null);
         }
@@ -306,6 +311,19 @@ public final class PlaceBlockAction extends AbstractAction {
             if (entry.awaitsClick()) return entry;
         }
         return null;
+    }
+
+    /** The next cell after {@code current} that still awaits its click, re-solved; {@code current} when none. */
+    private Entry nextToAim(LocalPlayer player, Entry current) {
+        boolean after = false;
+        for (Entry entry : entries) {
+            if (entry == current) {
+                after = true;
+            } else if (after && entry.awaitsClick() && refresh(player, entry)) {
+                return entry;
+            }
+        }
+        return current;
     }
 
     private void syncTickets() {

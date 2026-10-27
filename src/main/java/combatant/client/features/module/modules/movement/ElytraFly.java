@@ -36,6 +36,7 @@ import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.ElytraTarget;
 import combatant.client.util.player.ElytraRecastUtil;
 import combatant.client.util.aiming.RotationManager;
+import combatant.client.util.aiming.RotationUtil;
 import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
@@ -70,6 +71,7 @@ public class ElytraFly extends Module {
     private static final double PACKET_START_COLLISION_XZ_CONTRACT = 0.25;
     private static final double PACKET_START_COLLISION_Y_OFFSET = -0.3;
     private static final double VANILLA_FIREWORK_BOOST = 0.1;
+    private static final int CONTROL_FIREWORK_COOLDOWN = 5;
     public final BooleanValue noCrash = bool("elytrafly_no_crash", false);
     private final Minecraft mc = Minecraft.getInstance();
     private final EnumValue<Mode> mode = enumMode("elytrafly_mode", Mode.FIREWORK, Mode.values());
@@ -116,7 +118,21 @@ public class ElytraFly extends Module {
     private final NumberValue<Float> boostDiveEfficiency =
             visibleWhen(num("elytrafly_boost_dive_efficiency", 0.8f, 0.4f, 1.5f), () -> mode.get() == Mode.BOOST && boostDiveMechanics.get());
     private final BooleanValue fireworkConsiderInventory =
-            visibleWhen(bool("elytrafly_firework_consider_inventory", false), () -> mode.get() == Mode.FIREWORK);
+            visibleWhen(bool("elytrafly_firework_consider_inventory", false), () -> mode.get() == Mode.FIREWORK || mode.get() == Mode.CONTROL);
+    private final NumberValue<Float> controlSpeedTarget =
+            visibleWhen(num("elytrafly_control_speed_target", 30.0f, 10.0f, 80.0f), () -> mode.get() == Mode.CONTROL);
+    private final NumberValue<Float> controlClimbPitch =
+            visibleWhen(num("elytrafly_control_climb_pitch", 40.0f, 5.0f, 80.0f), () -> mode.get() == Mode.CONTROL);
+    private final NumberValue<Float> controlDivePitch =
+            visibleWhen(num("elytrafly_control_dive_pitch", 35.0f, 5.0f, 80.0f), () -> mode.get() == Mode.CONTROL);
+    private final NumberValue<Float> controlTurnSpeed =
+            visibleWhen(num("elytrafly_control_turn_speed", 12.0f, 1.0f, 60.0f), () -> mode.get() == Mode.CONTROL);
+    private final BooleanValue controlHoldAltitude =
+            visibleWhen(bool("elytrafly_control_hold_altitude", true), () -> mode.get() == Mode.CONTROL);
+    private final NumberValue<Float> controlMinSpeed =
+            visibleWhen(num("elytrafly_control_min_speed", 18.0f, 5.0f, 60.0f), () -> mode.get() == Mode.CONTROL);
+    private final BooleanValue controlAutoFirework =
+            visibleWhen(bool("elytrafly_control_auto_firework", true), () -> mode.get() == Mode.CONTROL);
     private final NumberValue<Integer> fireworkCooldownMin =
             visibleWhen(num("elytrafly_firework_cooldown_min", 20, 0, 300), () -> mode.get() == Mode.FIREWORK);
     private final NumberValue<Integer> fireworkCooldownMax =
@@ -143,6 +159,10 @@ public class ElytraFly extends Module {
     private int groundCheckCooldown;
     private int fireworkSkipTicks;
     private boolean queuedFireworkUse;
+    private boolean controlActive;
+    private boolean controlHolding;
+    private float controlHeading;
+    private double controlHoldY;
 
     {
         setDefaultBind("LEFT_ALT+L");
@@ -241,16 +261,23 @@ public class ElytraFly extends Module {
             return;
         }
 
+        if (mode.get() == Mode.CONTROL) {
+            if (player.isFallFlying()) {
+                applyControl(player);
+                return;
+            }
+            controlActive = false;
+        }
+
         if (mode.get() == Mode.FIREWORK && fireworkSilentRotation.get() && queuedFireworkUse && player.isFallFlying()) {
-            queueSilentRotation(player, fireworkPitch.get(), FIREWORK_ROTATION_PRIORITY, 3);
+            queueSilentRotation(player.getYRot(), fireworkPitch.get(), FIREWORK_ROTATION_PRIORITY, 3);
             return;
         }
 
         RotationManager.INSTANCE.clear(this);
     }
 
-    private void queueSilentRotation(LocalPlayer player, float pitch, int priority, int resetTicks) {
-        float yaw = player.getYRot();
+    private void queueSilentRotation(float yaw, float pitch, int priority, int resetTicks) {
         Rotation rotation = new Rotation(yaw, Mth.clamp(pitch, -90.0f, 90.0f), false);
         RotationTarget plan = new RotationTarget(
                 rotation,
@@ -418,6 +445,99 @@ public class ElytraFly extends Module {
         return !mc.level.getBlockCollisions(player, collisionBox).iterator().hasNext();
     }
 
+    /**
+     * CONTROL mode: the module never touches velocity. It only picks a smooth silent rotation; vanilla elytra
+     * physics (client and the server/Grim simulation) turn that rotation into travel.
+     * Heading = camera yaw + WASD offset (held when no keys); pitch = climb / dive / hold-altitude or speed glide.
+     */
+    private void applyControl(LocalPlayer player) {
+        Rotation server = RotationManager.INSTANCE.getServerRotation();
+        Rotation base = server != null && server != Rotation.ZERO
+                ? server
+                : new Rotation(player.getYRot(), player.getXRot(), true);
+
+        Vec3 velocity = player.getDeltaMovement();
+        double speed = velocity.length();
+        double targetSpeed = controlSpeedTarget.get() / 20.0;
+        double minSpeed = controlMinSpeed.get() / 20.0;
+        boolean climb = mc.options.keyJump.isDown() && !mc.options.keyShift.isDown();
+        boolean dive = mc.options.keyShift.isDown() && !mc.options.keyJump.isDown();
+
+        if (!controlActive) {
+            controlActive = true;
+            controlHolding = false;
+            controlHeading = base.yaw();
+        }
+
+        float forward = (mc.options.keyUp.isDown() ? 1.0f : 0.0f) - (mc.options.keyDown.isDown() ? 1.0f : 0.0f);
+        float strafe = (mc.options.keyRight.isDown() ? 1.0f : 0.0f) - (mc.options.keyLeft.isDown() ? 1.0f : 0.0f);
+        if (forward != 0.0f || strafe != 0.0f) {
+            controlHeading = player.getYRot() + (float) Math.toDegrees(Math.atan2(strafe, forward));
+        }
+
+        float up = controlClimbPitch.get();
+        float down = controlDivePitch.get();
+        // Climbing trades speed for height: fade the climb out near stall speed so we never hang below flying speed.
+        float climbGuard = (float) Mth.clamp((speed - 0.5 * minSpeed) / (0.5 * minSpeed), 0.25, 1.0);
+        float maxUp = up * climbGuard;
+
+        float desiredPitch;
+        boolean belowHoldAltitude = false;
+        if (climb) {
+            controlHolding = false;
+            desiredPitch = -maxUp;
+        } else if (dive) {
+            controlHolding = false;
+            desiredPitch = down;
+        } else if (controlHoldAltitude.get()) {
+            if (!controlHolding) {
+                controlHolding = true;
+                controlHoldY = player.getY();
+            }
+            double altitudeError = controlHoldY - player.getY();
+            belowHoldAltitude = altitudeError > 1.0;
+            desiredPitch = Mth.clamp((float) (velocity.y * 25.0 - altitudeError * 4.0), -maxUp, down);
+        } else {
+            controlHolding = false;
+            desiredPitch = Mth.clamp((float) ((targetSpeed - speed) / targetSpeed * 60.0), -maxUp, down);
+        }
+
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        // Randomised per-tick step: never an exactly repeated delta (AimDuplicateLook), never a snap.
+        float step = controlTurnSpeed.get() * (0.85f + 0.3f * random.nextFloat());
+        float yawDiff = RotationUtil.angleDifference(controlHeading, base.yaw());
+        float pitchDiff = desiredPitch - base.pitch();
+        float yawStep = Mth.clamp(yawDiff, -step, step);
+        float pitchStep = Mth.clamp(pitchDiff, -step, step);
+        float yawRemaining = yawDiff - yawStep;
+        float pitchRemaining = pitchDiff - pitchStep;
+
+        float newYaw = base.yaw() + yawStep;
+        float newPitch = base.pitch() + pitchStep;
+        if (Math.abs(yawRemaining) < 1.0f && Math.abs(pitchRemaining) < 1.0f) {
+            // Settled: keep a tiny human-like drift so consecutive rotation packets are not identical.
+            newYaw += (random.nextFloat() - 0.5f) * 0.5f;
+            newPitch += (random.nextFloat() - 0.5f) * 0.4f;
+        }
+        newPitch = Mth.clamp(newPitch, -90.0f, 90.0f);
+
+        queueSilentRotation(newYaw, newPitch, FIREWORK_ROTATION_PRIORITY, 2);
+
+        boolean settled = Math.abs(yawRemaining) <= 10.0f && Math.abs(pitchRemaining) <= 8.0f;
+        // Gliding alone always loses height, so climbing and holding an altitude from below both need rockets.
+        boolean needBoost = speed < minSpeed || ((climb || belowHoldAltitude) && speed < targetSpeed);
+        if (controlAutoFirework.get() && settled && needBoost && shouldUseFirework(player)) {
+            queuedFireworkUse = true;
+        }
+    }
+
+    private boolean serverRotationIsControlRotation(EventSync event) {
+        Rotation current = RotationManager.INSTANCE.getCurrentRotation();
+        return RotationManager.INSTANCE.ownsActiveRotation(this)
+                && Math.abs(RotationUtil.angleDifference(event.getYaw(), current.yaw())) < 1.0E-3f
+                && Math.abs(event.getPitch() - current.pitch()) < 1.0E-3f;
+    }
+
     private boolean shouldUseFirework(LocalPlayer player) {
         if (player == null || !player.isFallFlying() || player.isUsingItem()) return false;
         if (fireworkSkipTicks > 0) return false;
@@ -460,6 +580,7 @@ public class ElytraFly extends Module {
         LocalPlayer player = mc.player;
         queuedFireworkUse = false;
         if (player == null || !player.isFallFlying()) return;
+        if (mode.get() == Mode.CONTROL && !serverRotationIsControlRotation(event)) return;
 
         if (FireworkUseController.INSTANCE.use(
                 event.getYaw(),
@@ -470,7 +591,7 @@ public class ElytraFly extends Module {
                 0,
                 true
         )) {
-            fireworkSkipTicks = randomFireworkCooldown();
+            fireworkSkipTicks = mode.get() == Mode.CONTROL ? CONTROL_FIREWORK_COOLDOWN : randomFireworkCooldown();
         }
     }
 
@@ -755,6 +876,8 @@ public class ElytraFly extends Module {
         needsToRestart = false;
         resetBoostState();
         fireworkSkipTicks = 0;
+        controlActive = false;
+        controlHolding = false;
         queuedFireworkUse = false;
         ElytraRecastUtil.INSTANCE.reset(this);
     }
@@ -763,9 +886,13 @@ public class ElytraFly extends Module {
         if (currentMode == Mode.BOOST) {
             resetBoostState();
         }
-        if (currentMode == Mode.FIREWORK) {
+        if (currentMode == Mode.FIREWORK || currentMode == Mode.CONTROL) {
             fireworkSkipTicks = 0;
             queuedFireworkUse = false;
+        }
+        if (currentMode == Mode.CONTROL) {
+            controlActive = false;
+            controlHolding = false;
         }
     }
 
@@ -781,6 +908,7 @@ public class ElytraFly extends Module {
         VANILLA,
         BOOST,
         FIREWORK,
+        CONTROL,
         PACKET
     }
 

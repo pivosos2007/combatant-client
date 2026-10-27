@@ -8,15 +8,8 @@
 package combatant.client.features.module.modules.visuals.finder;
 
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
-import combatant.client.events.EventHandler;
-import combatant.client.events.Events;
-import combatant.client.events.impl.PacketEvent;
-import combatant.client.features.module.Module;
-import combatant.client.features.module.ModuleCategory;
-import combatant.client.features.module.ModuleInfo;
-import combatant.client.features.module.ModuleSubcategory;
-import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.util.finder.FinderAlerts;
 import combatant.client.util.finder.FinderRender;
@@ -49,6 +42,7 @@ import net.minecraft.world.level.block.RedstoneTorchBlock;
 import net.minecraft.world.level.block.TargetBlock;
 import net.minecraft.world.level.block.TripWireHookBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.BitSet;
@@ -58,6 +52,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Flags chunks where someone is building below Y=0 by watching the server's light and block updates.
@@ -68,13 +63,17 @@ import java.util.Map;
  * so the chunk is flagged. Redstone components appearing or disappearing below Y=0 flag their chunk too. Chunks you
  * have stood in yourself are ignored, since your own torches would otherwise light them up.</p>
  */
-@ModuleInfo(
-        id = "primechunkfinder",
-        displayName = "PrimeChunkFinder",
-        aliases = {"DeepslateFinder", "LightChangeFinder"},
-        category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
-        description = "module.primechunkfinder.description")
-public final class PrimeChunkFinder extends Module {
+public final class PrimeChunkTracker {
+
+    /** Settings the owning module declares; read live so edits apply immediately. */
+    public record Settings(NumberValue<Integer> markerY,
+                           BooleanValue tracers,
+                           BooleanValue chatAlerts,
+                           BooleanValue soundAlerts,
+                           BooleanValue watchRedstone,
+                           RGBAColorValue fillColor,
+                           RGBAColorValue lineColor) {
+    }
 
     private static final int SECTION_BYTES = 2048;
     private static final int MAX_FLAGGED = 256;
@@ -86,17 +85,16 @@ public final class PrimeChunkFinder extends Module {
     private static final int TORCH_LIGHT = 14;
     private static final long GONE_TORCH_MS = 5000L;
     private static final long REDSTONE_ALERT_COOLDOWN_MS = 15000L;
-    private static final double PLATE_Y = 63.0;
     private static final byte[] ZERO_SECTION = new byte[SECTION_BYTES];
 
     private final Minecraft mc = Minecraft.getInstance();
+    private final Settings settings;
+    private final Supplier<String> alertSource;
 
-    private final RGBAColorValue fillColor = color("fill_color", "#40D8D8FF");
-    private final RGBAColorValue lineColor = color("line_color", "#FFD8D8FF");
-    private final BooleanValue tracers = bool("tracers", true);
-    private final BooleanValue chatAlerts = bool("chat_alerts", true);
-    private final BooleanValue soundAlerts = bool("sound_alerts", true);
-    private final BooleanValue watchRedstone = bool("watch_redstone", true);
+    public PrimeChunkTracker(Settings settings, Supplier<String> alertSource) {
+        this.settings = settings;
+        this.alertSource = alertSource;
+    }
 
     // Per chunk: light section Y -> last known 2048-byte block-light nibble array. Access-ordered so trimming drops
     // the chunks seen least recently.
@@ -106,20 +104,18 @@ public final class PrimeChunkFinder extends Module {
     private final Map<Long, Long> redstoneNotified = new HashMap<>();
     // Torches broken a moment ago: the light they used to emit is still in the next packet's diff.
     private final Map<Long, long[]> goneTorches = new HashMap<>();
-    private final Object packetListener = new PacketListener();
 
+    private boolean running;
     private ClientLevel lastLevel;
 
-    @Override
-    public void onEnable() {
+    public void start() {
+        running = true;
         reset();
         snapshotLoadedChunks();
-        Events.BUS.registerOwned(this, packetListener);
     }
 
-    @Override
-    public void onDisable() {
-        Events.BUS.unregister(packetListener);
+    public void stop() {
+        running = false;
         reset();
     }
 
@@ -132,9 +128,7 @@ public final class PrimeChunkFinder extends Module {
         lastLevel = null;
     }
 
-    @Override
-    public void onTick() {
-        if (!isEnabled()) return;
+    public void tick() {
         ClientLevel level = mc.level;
         if (level == null || mc.player == null) {
             reset();
@@ -152,24 +146,20 @@ public final class PrimeChunkFinder extends Module {
 
     // ---- packets -------------------------------------------------------------------------------------------
 
-    private final class PacketListener {
-        @EventHandler
-        private void onPacketReceive(PacketEvent.Receive event) {
-            Packet<?> packet = event.getPacket();
-            if (!(packet instanceof ClientboundLevelChunkWithLightPacket
-                    || packet instanceof ClientboundLightUpdatePacket
-                    || packet instanceof ClientboundBlockUpdatePacket
-                    || packet instanceof ClientboundSectionBlocksUpdatePacket)) {
-                return;
-            }
-            // Queued before the client applies the packet, so the world still shows the old state in here.
-            mc.execute(() -> handle(packet));
+    public void onPacket(Packet<?> packet) {
+        if (!(packet instanceof ClientboundLevelChunkWithLightPacket
+                || packet instanceof ClientboundLightUpdatePacket
+                || packet instanceof ClientboundBlockUpdatePacket
+                || packet instanceof ClientboundSectionBlocksUpdatePacket)) {
+            return;
         }
+        // Queued before the client applies the packet, so the world still shows the old state in here.
+        mc.execute(() -> handle(packet));
     }
 
     private void handle(Packet<?> packet) {
         ClientLevel level = mc.level;
-        if (!isEnabled() || level == null) return;
+        if (!running || level == null) return;
         if (packet instanceof ClientboundLevelChunkWithLightPacket chunk) {
             baseline(level, chunk.x(), chunk.z(), chunk.lightData());
         } else if (packet instanceof ClientboundLightUpdatePacket update) {
@@ -332,7 +322,7 @@ public final class PrimeChunkFinder extends Module {
         if (isTorchLike(old) && (!isTorchLike(fresh) || fresh.getLightEmission() < old.getLightEmission())) {
             goneTorches.put(pos.asLong(), new long[]{System.currentTimeMillis() + GONE_TORCH_MS, TORCH_LIGHT});
         }
-        if (!watchRedstone.get() || pos.getY() >= 0) return;
+        if (!settings.watchRedstone().get() || pos.getY() >= 0) return;
         if (!isRedstone(fresh) && !isRedstone(old)) return;
         long key = ChunkPos.pack(pos);
         if (isOwnChunk(key)) return;
@@ -378,7 +368,7 @@ public final class PrimeChunkFinder extends Module {
             oldest.remove();
         }
         if (alert && (fresh || why.equals("redstone"))) {
-            FinderAlerts.found(getDisplayName(), why, x, y, z, chatAlerts.get(), soundAlerts.get());
+            FinderAlerts.found(alertSource.get(), why, x, y, z, settings.chatAlerts().get(), settings.soundAlerts().get());
         }
     }
 
@@ -390,24 +380,24 @@ public final class PrimeChunkFinder extends Module {
         }
     }
 
-    @Override
-    public WorldPhase getWorldPhase() {
-        return WorldPhase.END_MAIN;
-    }
-
-    @Override
-    public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
+    public void render(Renderer3D renderer, ShaderBoxModule style) {
         ClientLevel level = mc.level;
-        if (!isEnabled() || renderer == null || level == null || flagged.isEmpty()) return;
+        if (renderer == null || level == null || flagged.isEmpty()) return;
         FinderRender draw = FinderRender.begin(renderer, 1.5f);
-        int fill = fillColor.getArgb();
-        int line = lineColor.getArgb();
+        double y = settings.markerY().get();
+        int fill = settings.fillColor().getArgb();
+        int line = settings.lineColor().getArgb();
+        // Shader modes take their alpha from the module's shader settings, so tint with an opaque colour.
+        int shaderColor = line | 0xFF000000;
         for (long key : flagged) {
             int cx = ChunkPos.getX(key);
             int cz = ChunkPos.getZ(key);
             if (level.getChunkSource().getChunk(cx, cz, false) == null) continue;
-            draw.chunkPlate(cx, cz, PLATE_Y, fill, line);
-            if (tracers.get()) draw.tracer(new Vec3((cx << 4) + 8.0, PLATE_Y, (cz << 4) + 8.0), line);
+            double minX = cx << 4;
+            double minZ = cz << 4;
+            AABB slab = new AABB(minX, y, minZ, minX + 16.0, y + ChunkMarkers.SHADER_SLAB_HEIGHT, minZ + 16.0);
+            if (!style.drawShaderBox(renderer, slab, shaderColor)) draw.chunkPlate(cx, cz, y, fill, line);
+            if (settings.tracers().get()) draw.tracer(new Vec3(minX + 8.0, y, minZ + 8.0), line);
         }
     }
 

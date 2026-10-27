@@ -282,6 +282,7 @@ public final class ElytraTarget extends Module {
     private boolean attackWindowActive;
     private PursuitPhase pursuitPhase = PursuitPhase.NONE;
     private boolean pursuitRotationActive;
+    private boolean emergencyAvoidQueued;
     private int restartFallFlyingTicks;
     private int hitStatusTicks = HIT_STATUS_READY_TICKS;
     private boolean queuedFireworkUse;
@@ -368,7 +369,8 @@ public final class ElytraTarget extends Module {
         target = validSelf && validTarget ? combatTarget : null;
         updateTargetFocus(target);
         TargetManager.setElytraTarget(target);
-        boolean emergencyAvoidQueued = queueEmergencyAvoidanceRotation(player);
+        // Evaluated this tick in onRotationUpdate (PRE), right before the rotation is consumed.
+        boolean emergencyAvoidQueued = this.emergencyAvoidQueued;
 
         if (!validSelf || !validTarget) {
             clearPursuitState();
@@ -480,7 +482,8 @@ public final class ElytraTarget extends Module {
             return;
         }
 
-        if (queueEmergencyAvoidanceRotation(player)) {
+        emergencyAvoidQueued = queueEmergencyAvoidanceRotation(player);
+        if (emergencyAvoidQueued) {
             pursuitRotationActive = false;
             return;
         }
@@ -557,6 +560,7 @@ public final class ElytraTarget extends Module {
         attackWindowActive = false;
         pursuitPhase = PursuitPhase.NONE;
         pursuitRotationActive = false;
+        emergencyAvoidQueued = false;
         restartFallFlyingTicks = 0;
         hitStatusTicks = HIT_STATUS_READY_TICKS;
         queuedFireworkUse = false;

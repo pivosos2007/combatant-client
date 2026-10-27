@@ -8,7 +8,6 @@
 package combatant.client.features.module.modules.combat;
 
 import net.minecraft.client.Minecraft;
-import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
@@ -25,16 +24,14 @@ public class TPSSync extends Module {
 
     private static final String SETTING_START_TPS = "start_tps";
     private final Minecraft mc = Minecraft.getInstance();
-    private final BooleanValue enabled =
-            new BooleanValue("tpssync_enabled", true);
     private final NumberValue<Float> startTps =
             num("tpssync_start_tps", SETTING_START_TPS, 19.0f, 1.0f, 20.0f);
     private final NumberValue<Float> minScale =
-            num("tpssync_min_scale", "min_scale", 0.0f, 0.0f, 1.0f);
+            num("tpssync_min_scale", "min_scale", 0.1f, 0.05f, 1.0f);
 
     /** сколько серверных тиков прошло за клиентский */
     public float getServerTickDelta() {
-        if (!isEnabled() || !enabled.get()) return 1.0f;
+        if (!isEnabled()) return 1.0f;
         if (mc == null || mc.level == null) return 1.0f;
 
         float tps = NetworkStatsUtil.getTps(mc);

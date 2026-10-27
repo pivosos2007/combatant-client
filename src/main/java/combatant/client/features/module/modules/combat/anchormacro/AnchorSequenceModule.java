@@ -164,23 +164,29 @@ public abstract class AnchorSequenceModule extends Module {
     }
 
     private AnchorSteps.Config stepsConfig() {
-        double reach = range.get();
-        double wall = wallRange.get();
+        double reach = effectiveRange();
+        double wall = Math.min(wallRange.get(), interactionRange());
         // Every click needs a server-received rotation that hits the clicked face (Grim RotationPlace), so the
         // clickless NO_ROTATION mode is not offered.
         PlacementRotationMode mode = PlacementRotationMode.NORMAL;
         // The swapped slot stays selected until the next step took over.
         int slotReset = stepDelay.get() + 2;
         PlacementConstraints placement = new PlacementConstraints(reach, wall, mode, movementCorrection.get(),
-                false, false, 1, slotReset, slotReset, true, 0);
+                false, 1, slotReset, slotReset, true, 0);
         InteractBlockAction.Settings interact = new InteractBlockAction.Settings(
                 reach, wall, mode, movementCorrection.get(), slotReset, true, 20);
         return new AnchorSteps.Config(this, charges.get(), detonator.get(), maxSelfDamage.get(),
                 selfPredictTicks.get(), allowTotemPop.get(), placement, interact);
     }
 
+    /** The range setting, capped at the block interaction range the server measures every click against. */
     protected final double effectiveRange() {
-        return range.get();
+        return Math.min(range.get(), interactionRange());
+    }
+
+    private double interactionRange() {
+        LocalPlayer player = mc.player;
+        return player != null ? player.blockInteractionRange() : Double.MAX_VALUE;
     }
 
     protected final void warn(String key) {

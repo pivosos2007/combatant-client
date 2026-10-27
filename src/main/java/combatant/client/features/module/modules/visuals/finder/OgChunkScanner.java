@@ -21,9 +21,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import combatant.client.config.values.BooleanMapValue;
-import combatant.client.features.module.ModuleCategory;
-import combatant.client.features.module.ModuleInfo;
-import combatant.client.features.module.ModuleSubcategory;
+
 import combatant.client.util.finder.ChunkBlocks;
 
 import java.util.LinkedHashMap;
@@ -37,13 +35,7 @@ import java.util.function.Predicate;
  * 67Client and "many chests below y=0" from WaterClient's ChunkFinder. Checks run strongest
  * first and stop at the first hit, so a chunk costs one pass in the common case.</p>
  */
-@ModuleInfo(
-        id = "ogchunkfinder",
-        displayName = "OGChunkFinder",
-        aliases = {"BaseFinder", "OldChunkFinder"},
-        category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
-        description = "module.ogchunkfinder.description")
-public final class OGChunkFinder extends ChunkFinderModule<OGChunkFinder.Found> {
+public final class OgChunkScanner {
 
     private static final String REPEATERS = "powered_repeaters";
     private static final String LIGHTS = "light_near_zero";
@@ -65,13 +57,13 @@ public final class OGChunkFinder extends ChunkFinderModule<OGChunkFinder.Found> 
     private static final int CHEST_MIN = 10;
     private static final int HONEY_FULL = 5;
 
-    private final BooleanMapValue signals = group("signals", defaultSignals());
+    private final BooleanMapValue signals;
 
-    public OGChunkFinder() {
-        super(24, "#4050FF00", "#FF50FF00", 4, 3000L);
+    public OgChunkScanner(BooleanMapValue signals) {
+        this.signals = signals;
     }
 
-    private static Map<String, Boolean> defaultSignals() {
+    public static Map<String, Boolean> defaultSignals() {
         Map<String, Boolean> defaults = new LinkedHashMap<>();
         defaults.put(REPEATERS, true);
         defaults.put(LIGHTS, true);
@@ -85,8 +77,7 @@ public final class OGChunkFinder extends ChunkFinderModule<OGChunkFinder.Found> 
         return defaults;
     }
 
-    @Override
-    protected String analysisSignature() {
+    public String signature() {
         StringBuilder signature = new StringBuilder();
         for (String key : defaultSignals().keySet()) {
             signature.append(signals.get(key) ? '1' : '0');
@@ -94,14 +85,13 @@ public final class OGChunkFinder extends ChunkFinderModule<OGChunkFinder.Found> 
         return signature.toString();
     }
 
-    @Override
-    protected Found analyzeChunk(ClientLevel level, LevelChunk chunk) {
+    public Found analyze(ClientLevel level, LevelChunk chunk) {
         Found hit;
-        if (signals.get(REPEATERS) && (hit = countAtLeast(chunk, -64, 320, OGChunkFinder::isPoweredRepeater,
+        if (signals.get(REPEATERS) && (hit = countAtLeast(chunk, -64, 320, OgChunkScanner::isPoweredRepeater,
                 POWERED_REPEATER_MIN, "Powered repeaters")) != null) return hit;
         if (signals.get(LIGHTS) && (hit = firstMatch(chunk, -1, 1, s -> isPlacedLight(s.getBlock()),
                 "Light source at y=0")) != null) return hit;
-        if (signals.get(ROTATED_DEEPSLATE) && (hit = countAtLeast(chunk, 0, 63, OGChunkFinder::isRotatedDeepslate,
+        if (signals.get(ROTATED_DEEPSLATE) && (hit = countAtLeast(chunk, 0, 63, OgChunkScanner::isRotatedDeepslate,
                 DEEPSLATE_MIN, "Rotated deepslate")) != null) return hit;
         if (signals.get(COBBLED_DEEPSLATE) && (hit = countAtLeast(chunk, 0, 50, s -> s.is(Blocks.COBBLED_DEEPSLATE),
                 DEEPSLATE_MIN, "Cobbled deepslate")) != null) return hit;
@@ -184,6 +174,6 @@ public final class OGChunkFinder extends ChunkFinderModule<OGChunkFinder.Found> 
                 || block == Blocks.PEARLESCENT_FROGLIGHT;
     }
 
-    public record Found(String reason, BlockPos evidence) implements ChunkFinderModule.Hit {
+    public record Found(String reason, BlockPos evidence) implements ChunkMarkers.Hit {
     }
 }

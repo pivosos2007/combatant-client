@@ -37,6 +37,7 @@ import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.util.combat.StandingBox;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -60,7 +61,7 @@ public class Hitbox extends Module {
                     "hitboxPadding",
                     "padding",
                     2.0f,
-                    0.2f,
+                    0.0f,
                     3.0f
             );
     private final BooleanValue softDisable =
@@ -109,12 +110,19 @@ public class Hitbox extends Module {
     }
 
     private static Map<String, Boolean> ignoreCategoryDefaults() {
-        return Map.of(
-                "friends", false,
-                "staff", false,
-                "enemies", false,
-                "entities", false
-        );
+        Map<String, Boolean> defaults = new LinkedHashMap<>();
+        defaults.put("friends", false);
+        defaults.put("staff", false);
+        defaults.put("enemies", false);
+        defaults.put("entities", false);
+        return defaults;
+    }
+
+    @Override
+    public void onDisable() {
+        hitFlashMs.clear();
+        precomputedBoxes.clear();
+        precomputedEntities.clear();
     }
 
     // ======================================================

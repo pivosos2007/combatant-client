@@ -15,7 +15,6 @@ import combatant.client.automation.ActionResult;
 import combatant.client.automation.FailureReason;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -33,8 +32,8 @@ import java.util.function.IntSupplier;
  *   <li>{@link #lease}: silently leases the server-side slot (HOTBAR), re-leasing every tick, until a condition ends.
  *       The client selection is untouched and the server slot is restored on release.</li>
  *   <li>{@link #swapScreenSlots}: one pickup swap of two container screen slots (INVENTORY plus an inventory lease).
- *       It is issued through the policy gate, which may queue it until the policy's window opens, and succeeds when
- *       the expected slot content is observed.</li>
+ *       It goes through the backend's Grim gate, which may queue it until the server sees a stationary player, and
+ *       succeeds when the expected slot content is observed.</li>
  * </ul>
  */
 public final class InventoryAction extends AbstractAction {
@@ -53,7 +52,6 @@ public final class InventoryAction extends AbstractAction {
     private final int holdTicks;
     private final int screenSlotA;
     private final int screenSlotB;
-    private final InventorySwapPolicy policy;
     private final BooleanSupplier expected;
     private final int timeoutTicks;
 
@@ -63,7 +61,7 @@ public final class InventoryAction extends AbstractAction {
     private long issuedTick;
 
     private InventoryAction(String name, Mode mode, IntSupplier slot, int leaseTicks, BooleanSupplier keepHolding,
-                            int holdTicks, int screenSlotA, int screenSlotB, InventorySwapPolicy policy,
+                            int holdTicks, int screenSlotA, int screenSlotB,
                             BooleanSupplier expected, int timeoutTicks) {
         super(name);
         this.mode = mode;
@@ -73,7 +71,6 @@ public final class InventoryAction extends AbstractAction {
         this.holdTicks = holdTicks;
         this.screenSlotA = screenSlotA;
         this.screenSlotB = screenSlotB;
-        this.policy = policy != null ? policy : InventorySwapPolicy.NONE;
         this.expected = expected;
         this.timeoutTicks = Math.max(1, timeoutTicks);
     }
@@ -81,7 +78,7 @@ public final class InventoryAction extends AbstractAction {
     /** Selects a hotbar slot for real (the player sees it) and succeeds once the selection is observed. */
     public static InventoryAction select(int hotbarSlot) {
         if (hotbarSlot < 0 || hotbarSlot > 8) throw new IllegalArgumentException("hotbar slot " + hotbarSlot);
-        return new InventoryAction("SelectHotbar", Mode.SELECT, () -> hotbarSlot, 1, null, 0, -1, -1, null, null, 20);
+        return new InventoryAction("SelectHotbar", Mode.SELECT, () -> hotbarSlot, 1, null, 0, -1, -1, null, 20);
     }
 
     /**
@@ -92,40 +89,40 @@ public final class InventoryAction extends AbstractAction {
      */
     public static InventoryAction lease(IntSupplier slot, int leaseTicks, BooleanSupplier keepHolding) {
         return new InventoryAction("LeaseHotbar", Mode.LEASE, Objects.requireNonNull(slot, "slot"), leaseTicks,
-                Objects.requireNonNull(keepHolding, "keepHolding"), -1, -1, -1, null, null, 20);
+                Objects.requireNonNull(keepHolding, "keepHolding"), -1, -1, -1, null, 20);
     }
 
     /** Leases {@code hotbarSlot} for {@code ticks} ticks once granted, then succeeds. */
     public static InventoryAction leaseFor(int hotbarSlot, int ticks) {
         if (hotbarSlot < 0 || hotbarSlot > 8) throw new IllegalArgumentException("hotbar slot " + hotbarSlot);
         return new InventoryAction("LeaseHotbar", Mode.LEASE, () -> hotbarSlot, 2, null, Math.max(1, ticks), -1, -1,
-                null, null, 20);
+                null, 20);
     }
 
     /**
      * One pickup swap of two container screen slots.
      *
-     * @param expected      true once the swap's result is visible in the client inventory (required: a queued strict
+     * @param expected      true once the swap's result is visible in the client inventory (required: a queued
      *                      swap runs later, and the result is the only proof it ran)
-     * @param timeoutTicks  how long to wait for the policy window and the result before failing
+     * @param timeoutTicks  how long to wait for the click window and the result before failing
      */
-    public static InventoryAction swapScreenSlots(int screenSlotA, int screenSlotB, InventorySwapPolicy policy,
+    public static InventoryAction swapScreenSlots(int screenSlotA, int screenSlotB,
                                                   BooleanSupplier expected, int timeoutTicks) {
         if (screenSlotA < 0 || screenSlotB < 0 || screenSlotA == screenSlotB) {
             throw new IllegalArgumentException("slots " + screenSlotA + ", " + screenSlotB);
         }
-        return new InventoryAction("SwapSlots", Mode.SWAP, null, 1, null, 0, screenSlotA, screenSlotB, policy,
+        return new InventoryAction("SwapSlots", Mode.SWAP, null, 1, null, 0, screenSlotA, screenSlotB,
                 Objects.requireNonNull(expected, "expected"), timeoutTicks);
     }
 
     /**
-     * Throws the whole stack of one container screen slot out, through the same policy gate as a swap. Succeeds when
+     * Throws the whole stack of one container screen slot out, through the same gate as a swap. Succeeds when
      * {@code expected} reports the result (normally: the slot no longer holds the stack).
      */
-    public static InventoryAction dropScreenSlot(int screenSlot, InventorySwapPolicy policy,
+    public static InventoryAction dropScreenSlot(int screenSlot,
                                                  BooleanSupplier expected, int timeoutTicks) {
         if (screenSlot < 0) throw new IllegalArgumentException("slot " + screenSlot);
-        return new InventoryAction("DropSlot", Mode.DROP, null, 1, null, 0, screenSlot, -1, policy,
+        return new InventoryAction("DropSlot", Mode.DROP, null, 1, null, 0, screenSlot, -1,
                 Objects.requireNonNull(expected, "expected"), timeoutTicks);
     }
 
@@ -133,7 +130,7 @@ public final class InventoryAction extends AbstractAction {
      * Moves the item currently at main-inventory index {@code inventorySlot} (0..35, 0..8 = hotbar) into hotbar slot
      * {@code hotbarSlot}; the previous hotbar content goes to the source slot.
      */
-    public static InventoryAction moveToHotbar(int inventorySlot, int hotbarSlot, InventorySwapPolicy policy,
+    public static InventoryAction moveToHotbar(int inventorySlot, int hotbarSlot,
                                                int timeoutTicks) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) throw new IllegalStateException("no player");
@@ -148,7 +145,7 @@ public final class InventoryAction extends AbstractAction {
             LocalPlayer p = Minecraft.getInstance().player;
             return p != null && ItemStack.matches(p.getInventory().getItem(hotbarSlot), moving);
         };
-        return swapScreenSlots(source, target, policy, arrived, timeoutTicks);
+        return swapScreenSlots(source, target, arrived, timeoutTicks);
     }
 
     @Override
@@ -200,7 +197,7 @@ public final class InventoryAction extends AbstractAction {
         if (!swap.leaseInventory(this, 3)) return ActionResult.RUNNING;
         if (issued) return ActionResult.RUNNING;
 
-        boolean accepted = swap.command(this, InventoryActionKind.INVENTORY_CLICK, policy, () -> {
+        boolean accepted = swap.command(this, InventoryActionKind.INVENTORY_CLICK, () -> {
             if (!isLive()) return;
             executed = mode == Mode.DROP ? swap.throwSlot(screenSlotA) : swap.pickupSwap(screenSlotA, screenSlotB);
         });

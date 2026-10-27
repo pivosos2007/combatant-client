@@ -89,4 +89,11 @@ class ProtectionFocusTest {
         assertFalse(ProtectionFocus.isWorn(0, 0, 50));
         assertFalse(ProtectionFocus.isWorn(5, -1, 50));
     }
+
+    @Test
+    void durabilityFactorScalesBetweenIntactAndAboutToBreak() {
+        assertEquals(1.0, ProtectionFocus.durabilityFactor(0, 100, 0.3), 1e-9);
+        assertEquals(0.7, ProtectionFocus.durabilityFactor(100, 100, 0.3), 1e-9);
+        assertEquals(1.0, ProtectionFocus.durabilityFactor(5, 0, 0.3), 1e-9);
+    }
 }

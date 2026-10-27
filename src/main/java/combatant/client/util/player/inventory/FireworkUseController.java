@@ -21,9 +21,11 @@ import combatant.client.features.module.modules.combat.KillAura;
 /**
  * Shared firework-use path for elytra modules.
  * <p>
- * The important part is not the delay itself. Firework use is routed through
- * InventorySwap, so internal selected-slot/swing packets are marked as inventory
- * controller activity and do not poison AttackPressing/KillAura cooldown timing.
+ * Firework use is routed through {@link InventorySwap#execute}: the rocket slot is selected before the use packet
+ * and the slot restore waits for the start of the next client tick, so no held-slot change ever follows the use in
+ * the same Grim packet window (PacketOrderE) or after the movement packet (Post). A use the window does not allow
+ * right now returns {@code false}; the caller retries on a later tick. Internal selected-slot/swing packets are
+ * marked as inventory controller activity and do not poison AttackPressing/KillAura cooldown timing.
  */
 public final class FireworkUseController {
     public static final FireworkUseController INSTANCE = new FireworkUseController();
@@ -95,7 +97,7 @@ public final class FireworkUseController {
                 .actionKind(InventoryActionKind.USE_ITEM)
                 .build();
 
-        return InventorySwap.INSTANCE.command(request) && accepted[0];
+        return InventorySwap.INSTANCE.execute(request) && accepted[0];
     }
 
     private boolean useWithTemporaryRotation(LocalPlayer player, float yaw, float pitch, InteractionHand hand) {
@@ -109,7 +111,7 @@ public final class FireworkUseController {
             if (!result.consumesAction()) {
                 return false;
             }
-            InventorySwap.INSTANCE.swingHand(hand, InventorySwap.INSTANCE.defaultPolicy());
+            InventorySwap.INSTANCE.swingHand(hand);
             return true;
         } finally {
             player.setYRot(oldYaw);

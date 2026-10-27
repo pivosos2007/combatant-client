@@ -98,7 +98,7 @@ public final class Criticals extends Module {
                     4.0f,
                     1.0f,
                     6.0f
-            ), () -> mode.get() == Mode.JUMP);
+            ), () -> mode.get() == Mode.JUMP || usesSprintStopTargeting());
     private final BooleanValue optimizeForCooldown =
             visibleWhen(bool(
                     "optimize_for_cooldown",
@@ -110,7 +110,7 @@ public final class Criticals extends Module {
                     "can_be_seen",
                     "can_be_seen",
                     true
-            ), () -> mode.get() == Mode.JUMP);
+            ), () -> mode.get() == Mode.JUMP || mode.get() == Mode.TIMER || usesSprintStopTargeting());
     private final EnumValue<PacketMode> packetMode =
             visibleWhen(enumMode(
                     "packet_mode",
@@ -148,9 +148,13 @@ public final class Criticals extends Module {
     private int vulcan297JumpRecoveryTicks;
     private int vulcan297LandingRecoveryTicks;
     private boolean vulcan297WasAirborne;
+    private int lineOfSightAge = -1;
+    private int lineOfSightTargetId = Integer.MIN_VALUE;
+    private boolean lineOfSightResult;
 
     @Override
     public void onEnable() {
+        lineOfSightAge = -1;
         adjustNextJump = false;
         lastJumpInputAge = -1;
         resetVulcan297State();
@@ -160,6 +164,7 @@ public final class Criticals extends Module {
 
     @Override
     public void onDisable() {
+        lineOfSightAge = -1;
         adjustNextJump = false;
         lastJumpInputAge = -1;
         resetVulcan297State();
@@ -521,8 +526,22 @@ public final class Criticals extends Module {
         Entity target = getPreferredTarget();
         if (player == null || target == null || !target.isAlive()) return null;
         if (player.distanceToSqr(target) > rangeValue * rangeValue) return null;
-        if (canBeSeen.get() && !player.hasLineOfSight(target)) return null;
+        if (canBeSeen.get() && !hasCachedLineOfSight(player, target)) return null;
         return target;
+    }
+
+    /** One line-of-sight raycast per target per tick; every event in the tick shares the result. */
+    private boolean hasCachedLineOfSight(LocalPlayer player, Entity target) {
+        if (player.tickCount != lineOfSightAge || target.getId() != lineOfSightTargetId) {
+            lineOfSightAge = player.tickCount;
+            lineOfSightTargetId = target.getId();
+            lineOfSightResult = player.hasLineOfSight(target);
+        }
+        return lineOfSightResult;
+    }
+
+    private boolean usesSprintStopTargeting() {
+        return whenSprinting.get() && stopSprintingMode.get() != StopSprintingMode.NONE;
     }
 
     private LocalPlayer currentPlayer() {
@@ -539,7 +558,7 @@ public final class Criticals extends Module {
         if (getMode() != Mode.JUMP) return false;
         if (!allowsCriticalHit(true)) return false;
         if (player.distanceToSqr(target) > jumpRange.get() * jumpRange.get()) return false;
-        if (canBeSeen.get() && !player.hasLineOfSight(target)) return false;
+        if (canBeSeen.get() && !hasCachedLineOfSight(player, target)) return false;
         return !optimizeForCooldown.get() || !shouldWaitForJump();
     }
 
@@ -563,7 +582,7 @@ public final class Criticals extends Module {
         if (getMode() != Mode.JUMP) return false;
         if (!allowsCriticalHit(true)) return false;
         if (player.distanceToSqr(target) > jumpRange.get() * jumpRange.get()) return false;
-        return !canBeSeen.get() || player.hasLineOfSight(target);
+        return !canBeSeen.get() || hasCachedLineOfSight(player, target);
     }
 
     private boolean canUseKillAuraJumpCriticalState(Entity target) {
@@ -571,7 +590,7 @@ public final class Criticals extends Module {
         if (player == null || target == null) return false;
         if (!allowsCriticalHit(true)) return false;
         if (player.distanceToSqr(target) > jumpRange.get() * jumpRange.get()) return false;
-        return !canBeSeen.get() || player.hasLineOfSight(target);
+        return !canBeSeen.get() || hasCachedLineOfSight(player, target);
     }
 
     private boolean shouldAutoJumpCrit(Entity target) {

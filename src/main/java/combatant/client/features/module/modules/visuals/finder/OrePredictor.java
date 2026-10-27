@@ -140,7 +140,7 @@ public final class OrePredictor extends Module {
                 current = overworldSimulation;
                 if (current == null || current.isCompletedExceptionally()) {
                     current = CompletableFuture.supplyAsync(() -> OreSimulation.forOverworld(
-                            OVERWORLD_FEATURES.keySet().toArray(OrePredictor::newKeyArray)));
+                            List.copyOf(OVERWORLD_FEATURES.keySet()), List.of()));
                     overworldSimulation = current;
                 }
             }
@@ -155,17 +155,12 @@ public final class OrePredictor extends Module {
                 current = netherSimulation;
                 if (current == null || current.isCompletedExceptionally()) {
                     current = CompletableFuture.supplyAsync(() -> OreSimulation.forNether(
-                            NETHER_FEATURES.keySet().toArray(OrePredictor::newKeyArray)));
+                            List.copyOf(NETHER_FEATURES.keySet()), List.of()));
                     netherSimulation = current;
                 }
             }
         }
         return current;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static ResourceKey<PlacedFeature>[] newKeyArray(int size) {
-        return (ResourceKey<PlacedFeature>[]) new ResourceKey<?>[size];
     }
 
     @EventHandler
@@ -234,7 +229,7 @@ public final class OrePredictor extends Module {
         if (sim == null) return null;
 
         ChunkPos pos = chunk.getPos();
-        List<OreSimulation.Hit> hits = sim.simulateHits(level, parseSeed(scannedSeed), pos.x(), pos.z());
+        List<OreSimulation.Hit> hits = sim.simulateHits(level, parseSeed(scannedSeed), pos.x(), pos.z(), 0);
         List<Ore> ores = new ArrayList<>();
         // Several diamond or gold features can claim the same block; draw it once.
         Set<Long> seen = new HashSet<>();

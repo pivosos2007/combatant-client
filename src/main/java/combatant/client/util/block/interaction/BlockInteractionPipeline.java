@@ -24,6 +24,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -47,6 +48,8 @@ import combatant.client.util.combat.AttackUtil;
 public final class BlockInteractionPipeline {
 
     public static final BlockInteractionPipeline INSTANCE = new BlockInteractionPipeline();
+
+    private static final double CUBE_RAY_MARGIN = 2.0e-3;
 
     private final Minecraft mc = Minecraft.getInstance();
 
@@ -309,8 +312,12 @@ public final class BlockInteractionPipeline {
     }
 
     public static BlockHitResult trace(LocalPlayer player, Rotation rotation, double range) {
-        if (player == null || player.level() == null || rotation == null) return null;
-        Vec3 eyes = player.getEyePosition();
+        return player == null ? null : trace(player, player.getEyePosition(), rotation, range);
+    }
+
+    /** The block the ray from {@code eyes} along {@code rotation} hits first within {@code range}. */
+    public static BlockHitResult trace(LocalPlayer player, Vec3 eyes, Rotation rotation, double range) {
+        if (player == null || player.level() == null || eyes == null || rotation == null) return null;
         Vec3 end = eyes.add(rotation.directionVector().scale(Math.max(0.0, range)));
         HitResult hit = player.level().clip(new ClipContext(
                 eyes,
@@ -320,6 +327,51 @@ public final class BlockInteractionPipeline {
                 player
         ));
         return hit instanceof BlockHitResult blockHit ? blockHit : null;
+    }
+
+    /**
+     * Whether the look ray along {@code rotation} from {@code eyes} meets the full cube of {@code pos} within
+     * {@code reach}, walls and the block's own outline ignored. This is GrimAC's RotationPlace test; it may run it
+     * before the rotation of the click's own tick arrives (a slot change or a late movement packet settles queued
+     * clicks first), with the last rotation and position it received. A slightly shrunk cube leaves room for float
+     * differences against the server's look vector.
+     */
+    public static boolean rayMeetsCube(Vec3 eyes, Rotation rotation, BlockPos pos, double reach) {
+        if (eyes == null || rotation == null || pos == null) return false;
+        AABB cube = new AABB(pos).deflate(CUBE_RAY_MARGIN);
+        if (cube.contains(eyes)) return true;
+        return cube.clip(eyes, eyes.add(rotation.directionVector().scale(Math.max(0.0, reach)))).isPresent();
+    }
+
+    /**
+     * {@link #rayMeetsCube} with the look the server already has: the rotation and eyes of the last movement packet.
+     * A click backed by it passes RotationPlace whenever GrimAC settles it, before or after the rotation of the
+     * click's own tick arrives.
+     */
+    public static boolean serverLookMeetsCube(LocalPlayer player, BlockPos pos, double reach) {
+        return player != null && rayMeetsCube(FaceVisibility.serverEyePosition(player),
+                RotationManager.INSTANCE.getServerRotation(), pos, reach);
+    }
+
+    /**
+     * Whether the unit cube of {@code pos} is within {@code range} of the current eyes and of the eyes the server
+     * last received: a click sent before this tick's movement packet is measured from the latter (vanilla's
+     * interaction range, GrimAC FarPlace).
+     */
+    public static boolean cubeWithinReach(LocalPlayer player, BlockPos pos, double range) {
+        if (player == null || pos == null) return false;
+        AABB cube = new AABB(pos);
+        double rangeSq = range * range;
+        return cube.distanceToSqr(player.getEyePosition()) <= rangeSq
+                && cube.distanceToSqr(FaceVisibility.serverEyePosition(player)) <= rangeSq;
+    }
+
+    /** Like {@link #cubeWithinReach} for a single point, e.g. the cursor of a planned click. */
+    public static boolean pointWithinReach(LocalPlayer player, Vec3 point, double range) {
+        if (player == null || point == null) return false;
+        double rangeSq = range * range;
+        return player.getEyePosition().distanceToSqr(point) <= rangeSq
+                && FaceVisibility.serverEyePosition(player).distanceToSqr(point) <= rangeSq;
     }
 
     public static Direction faceFor(LocalPlayer player, BlockPos pos) {

@@ -33,6 +33,9 @@ import combatant.client.automation.actions.InventoryAction;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.MaceItem;
+import combatant.client.util.item.EnchantUtil;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.GameTickEvent;
 import combatant.client.features.module.Module;
@@ -72,6 +75,9 @@ public class AutoTool extends Module {
             bool("autoToolRestore", "restore", true);
     private final NumberValue<Integer> restoreDelayMs =
             visibleWhen(num("autoToolRestoreDelayMs", SETTING_RESTORE_DELAY, 300, 0, 1000), restore::get);
+
+    private static final float MACE_SMASH_SCORE = 1000.0f;
+    private static final float CHARGED_STRENGTH = 0.9f;
 
     private final Minecraft mc = Minecraft.getInstance();
     private final ToolSelection picker = new ToolSelection();
@@ -163,7 +169,7 @@ public class AutoTool extends Module {
         desiredSlot = -1;
         // Without "restore" the tool stays in hand: make the leased slot the real selection once the lease is gone.
         if (finished.result().isSuccess() && !restore.get() && slot >= 0 && isEnabled() && mc.player != null) {
-            InventorySwap.INSTANCE.selectHotbar(slot);
+            InventorySwap.INSTANCE.restoreHotbar(slot);
         }
     }
 
@@ -198,18 +204,25 @@ public class AutoTool extends Module {
         for (int slot = 0; slot < 9; slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
             if (stack.isEmpty()) continue;
-            picker.offer(slot, weaponScore(stack, sharpness), durabilityLeft(stack), false);
+            picker.offer(slot, weaponScore(player, stack, sharpness), durabilityLeft(stack), false);
         }
         return picker.result();
     }
 
-    private float weaponScore(ItemStack stack, Holder<Enchantment> sharpness) {
+    private float weaponScore(LocalPlayer player, ItemStack stack, Holder<Enchantment> sharpness) {
+        // A smash attack with a mace dwarfs every other weapon; its slow dps proxy would never pick it.
+        if (stack.is(Items.MACE) && MaceItem.canSmashAttack(player)) return MACE_SMASH_SCORE;
         scratchDamage = 0.0;
         scratchAttackSpeed = 0.0;
         stack.forEachModifier(EquipmentSlot.MAINHAND, weaponCollector);
         if (sharpness != null) {
             int level = EnchantmentHelper.getItemEnchantmentLevel(sharpness, stack);
             if (level > 0) scratchDamage += 0.5 * level + 0.5;
+        }
+        // Swapping to another item resets the attack cooldown, so it is scored by damage per second; the weapon
+        // already in hand with a charged cooldown lands its next hit at full strength at once.
+        if (stack == player.getMainHandItem() && player.getAttackStrengthScale(0.0f) >= CHARGED_STRENGTH) {
+            return ToolSelection.chargedHitScore(scratchDamage);
         }
         return ToolSelection.weaponScore(scratchDamage, scratchAttackSpeed);
     }
@@ -223,9 +236,7 @@ public class AutoTool extends Module {
     }
 
     private static Holder<Enchantment> enchantmentHolder(ClientLevel level, ResourceKey<Enchantment> key) {
-        Registry<Enchantment> registry = level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
-        Enchantment enchantment = registry.getValue(key);
-        return enchantment == null ? null : registry.wrapAsHolder(enchantment);
+        return EnchantUtil.holder(level, key);
     }
 
     private static float durabilityLeft(ItemStack stack) {

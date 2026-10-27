@@ -12,12 +12,15 @@ import net.minecraft.world.item.ItemStack;
 import java.util.Objects;
 import java.util.function.Predicate;
 
+/**
+ * "Find an item, bring it to the server-held hand slot, run {@code action}". Defaults: whole inventory,
+ * silent swap, restore afterwards.
+ */
 public final class InventorySwapRequest {
     private final Predicate<ItemStack> predicate;
     private final InventorySearchScope scope;
     private final InventorySwapVisibility visibility;
-    private final Boolean restore;
-    private final InventorySwapPolicy policyOverride;
+    private final boolean restore;
     private final InventoryActionKind actionKind;
     private final Runnable action;
 
@@ -26,7 +29,6 @@ public final class InventorySwapRequest {
         this.scope = builder.scope;
         this.visibility = builder.visibility;
         this.restore = builder.restore;
-        this.policyOverride = builder.policyOverride;
         this.actionKind = builder.actionKind;
         this.action = builder.action;
     }
@@ -47,12 +49,8 @@ public final class InventorySwapRequest {
         return visibility;
     }
 
-    public boolean restore(boolean defaultRestore) {
-        return restore != null ? restore : defaultRestore;
-    }
-
-    public InventorySwapPolicy policy(InventorySwapPolicy defaultPolicy) {
-        return policyOverride != null ? policyOverride : defaultPolicy;
+    public boolean restore() {
+        return restore;
     }
 
     public InventoryActionKind actionKind() {
@@ -66,10 +64,9 @@ public final class InventorySwapRequest {
     public static final class Builder {
         private final Predicate<ItemStack> predicate;
         private final Runnable action;
-        private InventorySearchScope scope;
-        private InventorySwapVisibility visibility;
-        private Boolean restore;
-        private InventorySwapPolicy policyOverride;
+        private InventorySearchScope scope = InventorySearchScope.FULL;
+        private InventorySwapVisibility visibility = InventorySwapVisibility.SILENT;
+        private boolean restore = true;
         private InventoryActionKind actionKind = InventoryActionKind.GENERIC;
 
         private Builder(Predicate<ItemStack> predicate, Runnable action) {
@@ -78,22 +75,17 @@ public final class InventorySwapRequest {
         }
 
         public Builder scope(InventorySearchScope scope) {
-            this.scope = scope;
+            this.scope = scope != null ? scope : InventorySearchScope.FULL;
             return this;
         }
 
         public Builder visibility(InventorySwapVisibility visibility) {
-            this.visibility = visibility;
+            this.visibility = visibility != null ? visibility : InventorySwapVisibility.SILENT;
             return this;
         }
 
         public Builder restore(boolean restore) {
             this.restore = restore;
-            return this;
-        }
-
-        public Builder policy(InventorySwapPolicy policy) {
-            this.policyOverride = policy;
             return this;
         }
 

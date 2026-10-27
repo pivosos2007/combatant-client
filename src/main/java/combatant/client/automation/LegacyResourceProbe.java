@@ -23,7 +23,7 @@ final class LegacyResourceProbe implements ResourceProbe {
             case HOTBAR -> swap.isHotbarLeased() && !swap.isHotbarLeasedBy(requester)
                     && !swap.isHotbarLeasedBy(requester.slotOwner());
             case INVENTORY -> (swap.isInventoryLeased() && !swap.isInventoryLeasedBy(requester))
-                    || swap.hasPendingStrictActions();
+                    || swap.hasPendingActions();
             default -> false;
         };
     }

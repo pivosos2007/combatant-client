@@ -31,9 +31,9 @@ import combatant.client.input.InputScope;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySearchScope;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.player.inventory.InventorySwapRequest;
 import combatant.client.util.player.inventory.InventorySwapVisibility;
+import combatant.client.util.player.inventory.PacketWindow;
 import combatant.client.util.sound.MiscAlertSound;
 import combatant.client.util.target.TargetManager;
 import net.minecraft.client.Minecraft;
@@ -49,7 +49,6 @@ import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.Potion;
@@ -173,7 +172,7 @@ public final class AutoPotion extends Module {
             return;
         }
 
-        if (requiresInventoryClick(pendingPotions) && isMovingForInventory(player)) {
+        if (requiresInventoryClick(pendingPotions) && !PacketWindow.INSTANCE.stationaryForClick()) {
             pendingPotions.clear();
             return;
         }
@@ -407,13 +406,15 @@ public final class AutoPotion extends Module {
                     .scope(InventorySearchScope.FULL)
                     .visibility(InventorySwapVisibility.SILENT)
                     .restore(true)
-                    .policy(InventorySwapPolicy.NONE)
                     .actionKind(InventoryActionKind.USE_ITEM)
                     .build();
 
+            // One use per tick: the silent swap restores at the next tick start, and a second swap + use in
+            // the same window would put a held-slot change after a right click.
             if (InventorySwap.INSTANCE.execute(request)) {
                 replenished.add(candidate.familyId);
                 warnedPotions.remove(candidate.familyId);
+                break;
             }
         }
 
@@ -471,13 +472,6 @@ public final class AutoPotion extends Module {
             }
         }
         return false;
-    }
-
-    private boolean isMovingForInventory(LocalPlayer player) {
-        if (player.isSprinting()) return true;
-        if (player.input == null || player.input.keyPresses == null) return false;
-        Input input = player.input.keyPresses;
-        return input.forward() || input.backward() || input.left() || input.right();
     }
 
     private boolean hasHealingPotionSelected() {
@@ -578,7 +572,7 @@ public final class AutoPotion extends Module {
 
     private void usePotion(LocalPlayer player) {
         InteractionResult result = InventorySwap.INSTANCE.useItem(InteractionHand.MAIN_HAND);
-        if (result != null && result.consumesAction()) player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
+        if (result != null && result.consumesAction()) InventorySwap.INSTANCE.swingHand(InteractionHand.MAIN_HAND);
     }
 
     private String semiBindingName() {

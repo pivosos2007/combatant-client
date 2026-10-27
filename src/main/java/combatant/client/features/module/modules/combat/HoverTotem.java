@@ -17,7 +17,8 @@ import combatant.client.mixins.accessors.AbstractContainerScreenAccessor;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySlotLocks;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
+import combatant.client.util.player.inventory.InventoryMover;
+import combatant.client.config.values.BooleanValue;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -32,7 +33,7 @@ import net.minecraft.world.item.Items;
         displayName = "HoverTotem",
         aliases = {"HoverTotems"},
         category = ModuleCategory.COMBAT,
-        subcategory = ModuleSubcategory.PROTECT,
+        subcategory = ModuleSubcategory.LEGIT,
         description = "module.hovertotem.description")
 public final class HoverTotem extends Module {
 
@@ -41,15 +42,16 @@ public final class HoverTotem extends Module {
     private final Minecraft mc = Minecraft.getInstance();
 
     private final EnumValue<Target> target = enumSetting("hoverTotemTarget", "target", Target.OFFHAND, Target.values());
-    private final NumberValue<Integer> hotbarSlot = num("hoverTotemHotbarSlot", "hotbar_slot", 9, 1, 9);
+    private final NumberValue<Integer> hotbarSlot = visibleWhen(
+            num("hoverTotemHotbarSlot", "hotbar_slot", 9, 1, 9), () -> target.get() != Target.OFFHAND);
     private final NumberValue<Integer> delay = num("hoverTotemDelay", "delay_ticks", 2, 0, 20);
-    private final EnumValue<InventorySwapPolicy> policy =
-            enumSetting("hoverTotemPolicy", "policy", InventorySwapPolicy.LEGIT, InventorySwapPolicy.values());
+    private final BooleanValue closeAfter = bool("hoverTotemCloseAfter", "close_after", false);
 
     private int hoveredIndex = -1;
     private int hoverTicks;
     private int containerId = -1;
     private boolean pending;
+    private int pendingSince;
 
     @Override
     public void onDisable() {
@@ -65,7 +67,14 @@ public final class HoverTotem extends Module {
             reset();
             return;
         }
-        if (pending) return;
+        if (pending) {
+            // A queued click that was dropped never clears the flag itself.
+            if (!InventorySwap.INSTANCE.hasQueuedInventoryAction(this, InventoryActionKind.INVENTORY_CLICK)
+                    && player.tickCount - pendingSince > 2) {
+                pending = false;
+            }
+            return;
+        }
 
         Slot slot = ((AbstractContainerScreenAccessor) screen).combatant$getHoveredSlot();
         if (slot == null || slot.index != hoveredIndex || screen.getMenu().containerId != containerId) {
@@ -79,24 +88,22 @@ public final class HoverTotem extends Module {
 
         int button = buttonFor(player, slot);
         if (button < 0) return;
-        if (button == OFFHAND_BUTTON && InventorySlotLocks.blocks(InventorySlotLocks.OFFHAND, this)) return;
 
-        int slotIndex = slot.index;
-        int menuId = containerId;
         pending = true;
-        boolean accepted = InventorySwap.INSTANCE.command(this, InventoryActionKind.INVENTORY_CLICK, policy.get(), () -> {
-            try {
-                LocalPlayer current = mc.player;
-                if (!isEnabled() || current == null || current.containerMenu.containerId != menuId) return;
-                if (slotIndex < 0 || slotIndex >= current.containerMenu.slots.size()) return;
-                if (!current.containerMenu.getSlot(slotIndex).getItem().is(Items.TOTEM_OF_UNDYING)) return;
-                InventorySwap.INSTANCE.clickSwap(slotIndex, button);
-            } finally {
-                pending = false;
-            }
-        });
+        boolean accepted = InventoryMover.menuSlotToButton(this, containerId, slot.index, button,
+                InventoryMover::isTotem, () -> {
+                    pending = false;
+                    if (closeAfter.get() && !needsMore(mc.player)) {
+                        InventorySwap.INSTANCE.command(this, InventoryActionKind.INVENTORY_CLOSE,
+                                () -> mc.player.closeContainer());
+                    }
+                });
         if (!accepted) pending = false;
         hoverTicks = 0;
+        // The click may be dropped (stale slot, menu change) without running `after`; never wait on it forever.
+        if (accepted) {
+            pendingSince = mc.player.tickCount;
+        }
     }
 
     /** Swap button for moving the hovered slot's totem: 40 = offhand, 0..8 = hotbar slot, -1 = nothing to do. */
@@ -111,6 +118,14 @@ public final class HoverTotem extends Module {
         if (mode != Target.HOTBAR && own != OFFHAND_BUTTON && !offhandHasTotem) return OFFHAND_BUTTON;
         if (mode != Target.OFFHAND && own != hotbar && !hotbarHasTotem) return hotbar;
         return -1;
+    }
+
+    /** True while a wanted destination (offhand / hotbar slot) still holds no totem. */
+    private boolean needsMore(LocalPlayer player) {
+        Target mode = target.get();
+        if (mode != Target.HOTBAR && !player.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) return true;
+        return mode != Target.OFFHAND
+                && !player.getInventory().getItem(hotbarSlot.get() - 1).is(Items.TOTEM_OF_UNDYING);
     }
 
     private void reset() {

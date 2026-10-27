@@ -9,6 +9,7 @@ package combatant.client.automation.placement;
 
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.block.interaction.BlockInteractionPipeline;
+import combatant.client.util.block.interaction.FaceVisibility;
 import combatant.client.util.block.scaffold.ScaffoldPlacementTarget;
 import combatant.client.util.block.scaffold.ScaffoldTargetFinder;
 import net.minecraft.client.player.LocalPlayer;
@@ -68,8 +69,7 @@ public final class PlacementPlanner {
             if (inaccessible != null) inaccessible.add(pos);
             return null;
         }
-        ScaffoldPlacementTarget support = ScaffoldTargetFinder.findTarget(
-                player, pos, slot.stack(), NO_OFFSETS, null, constraints.wallRange() > 0.0);
+        ScaffoldPlacementTarget support = findVisibleSupport(player, pos, slot.stack());
         if (support == null) return null;
         if (!canReach(player, support.getInteractedBlockPos(), support.getRotation(), constraints)) {
             if (inaccessible != null) inaccessible.add(pos);
@@ -86,10 +86,18 @@ public final class PlacementPlanner {
                                                       BlockPos pos,
                                                       ItemStack stack,
                                                       PlacementConstraints constraints) {
-        ScaffoldPlacementTarget support = ScaffoldTargetFinder.findTarget(
-                player, pos, stack, NO_OFFSETS, null, constraints.wallRange() > 0.0);
+        ScaffoldPlacementTarget support = findVisibleSupport(player, pos, stack);
         if (support == null) return null;
         return canReach(player, support.getInteractedBlockPos(), support.getRotation(), constraints) ? support : null;
+    }
+
+    /**
+     * The best support whose clicked face the eyes see now and from where the server last saw them. No vanilla
+     * ray enters a face from behind (GrimAC PositionPlace), so wall range never widens the faces on offer.
+     */
+    private static ScaffoldPlacementTarget findVisibleSupport(LocalPlayer player, BlockPos pos, ItemStack stack) {
+        return ScaffoldTargetFinder.findTarget(player, pos, stack, NO_OFFSETS, null, false, null, null,
+                (support, face) -> FaceVisibility.isVisible(player, support, face));
     }
 
     /** Occupied by a block that does not yield, or (unless ignored) by a pickable entity. */

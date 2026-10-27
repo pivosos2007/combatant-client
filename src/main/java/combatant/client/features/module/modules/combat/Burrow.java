@@ -177,8 +177,7 @@ public final class Burrow extends Module {
     private PlacementConstraints placementConstraints() {
         return new PlacementConstraints(
                 range.get(), range.get(), rotation.get(), movementCorrection.get(),
-                rotation.get() == PlacementRotationMode.NO_ROTATION, false, 1,
-                swapBackDelay.get(), swapBackDelay.get(), true, 0);
+                false, 1, swapBackDelay.get(), swapBackDelay.get(), true, 0);
     }
 
     @Override

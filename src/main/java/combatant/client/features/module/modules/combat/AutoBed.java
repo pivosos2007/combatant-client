@@ -27,6 +27,8 @@ import combatant.client.render.engine.text.WorldTextRenderer;
 import combatant.client.render.engine.world.WorldUiPresentationService;
 import combatant.client.util.aiming.RestrictedSingleUseAction;
 import combatant.client.util.aiming.RotationManager;
+import combatant.client.util.block.interaction.BlockInteractionPipeline;
+import combatant.client.util.block.interaction.FaceVisibility;
 import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
@@ -77,7 +79,7 @@ public class AutoBed extends Module {
     private static final double TEXT_SCALE = 1.0;
     private static final double TEXT_GAP_SCALE = 1.0;
 
-    private final BooleanValue strictInteractions = boolCommon("strict_interactions", CommonSettingSchemas.STRICT_INTERACTIONS, false);
+    private final BooleanValue strictInteractions = boolCommon("strict_interactions", CommonSettingSchemas.STRICT_INTERACTIONS, true);
     private final Minecraft mc = Minecraft.getInstance();
 
     private final BooleanValue placeEnabled = boolCommon("autobedPlace", "place", CommonSettingSchemas.PLACE, true);
@@ -226,33 +228,42 @@ public class AutoBed extends Module {
             CommonSettingSchemas.PLACEMENT_RENDER,
             true
     );
-    private final EnumValue<RenderMode> renderMode = enumCommon(
+    private final EnumValue<RenderMode> renderMode = visibleWhen(enumCommon(
             "autobedRenderMode",
             "render_mode",
             CommonSettingSchemas.PLACEMENT_RENDER_MODE,
             RenderMode.FADE,
             RenderMode.values()
-    );
-    private final BooleanValue renderSelfDamage = boolCommon("autobedRenderSelfDamage", "render_self_damage", CommonSettingSchemas.RENDER_SELF_DAMAGE, true);
-    private final BooleanValue drawDamage = boolCommon("autobedRenderDamage", "render_damage", CommonSettingSchemas.RENDER_DAMAGE, true);
-    private final RGBAColorValue fillColor = common(color("autobedFillColor", "#5A285AFF"), CommonSettingSchemas.FILL_COLOR);
-    private final RGBAColorValue lineColor = common(color("autobedLineColor", "#FFAA55FF"), CommonSettingSchemas.LINE_COLOR);
-    private final NumberValue<Float> lineWidth = numCommon("autobedLineWidth", "line_width", CommonSettingSchemas.LINE_WIDTH, 2.0f, 1.0f, 6.0f);
-    private final RGBAColorValue textColor = common(color("autobedTextColor", "#FFFFFFFF"), CommonSettingSchemas.TEXT_COLOR);
+    ), renderEnabled::get);
+    private final BooleanValue renderSelfDamage = visibleWhen(
+            boolCommon("autobedRenderSelfDamage", "render_self_damage", CommonSettingSchemas.RENDER_SELF_DAMAGE, true),
+            () -> renderEnabled.get() && this.drawDamage.get());
+    private final BooleanValue drawDamage = visibleWhen(
+            boolCommon("autobedRenderDamage", "render_damage", CommonSettingSchemas.RENDER_DAMAGE, true),
+            renderEnabled::get);
+    private final RGBAColorValue fillColor = visibleWhen(
+            common(color("autobedFillColor", "#5A285AFF"), CommonSettingSchemas.FILL_COLOR), renderEnabled::get);
+    private final RGBAColorValue lineColor = visibleWhen(
+            common(color("autobedLineColor", "#FFAA55FF"), CommonSettingSchemas.LINE_COLOR), renderEnabled::get);
+    private final NumberValue<Float> lineWidth = visibleWhen(
+            numCommon("autobedLineWidth", "line_width", CommonSettingSchemas.LINE_WIDTH, 2.0f, 1.0f, 6.0f), renderEnabled::get);
+    private final RGBAColorValue textColor = visibleWhen(
+            common(color("autobedTextColor", "#FFFFFFFF"), CommonSettingSchemas.TEXT_COLOR),
+            () -> renderEnabled.get() && drawDamage.get());
     private final NumberValue<Float> billboardSize = visibleWhen(numCommon(
             "autobedBillboardSize", "billboard_size", CommonSettingSchemas.BILLBOARD_SIZE, 0.72f, 0.35f, 1.50f),
-            drawDamage::get);
+            () -> renderEnabled.get() && drawDamage.get());
     private final BooleanValue billboardDynamicScale = visibleWhen(boolCommon(
             "autobedBillboardDynamicScale", "billboard_dynamic_scale", CommonSettingSchemas.BILLBOARD_DYNAMIC_SCALE, true),
-            drawDamage::get);
+            () -> renderEnabled.get() && drawDamage.get());
     private final NumberValue<Float> billboardDynamicScaleCoefficient = visibleWhen(numCommon(
             "autobedBillboardDynamicScaleCoefficient", "billboard_dynamic_scale_coefficient",
             CommonSettingSchemas.BILLBOARD_DYNAMIC_SCALE_COEFFICIENT, 0.25f, 0.0f, 1.0f),
-            () -> drawDamage.get() && billboardDynamicScale.get());
+            () -> renderEnabled.get() && drawDamage.get() && billboardDynamicScale.get());
     private final NumberValue<Integer> slideDelay = visibleWhen(numCommon("autobedSlideDelay", "slide_delay", CommonSettingSchemas.SLIDE_DELAY, 200, 1, 1000),
-            () -> renderMode.get() == RenderMode.SLIDE);
+            () -> renderEnabled.get() && renderMode.get() == RenderMode.SLIDE);
     private final NumberValue<Integer> fadeTime = visibleWhen(numCommon("autobedFadeTime", "fade_time", CommonSettingSchemas.FADE_TIME, 500, 100, 2000),
-            () -> renderMode.get() == RenderMode.FADE);
+            () -> renderEnabled.get() && renderMode.get() == RenderMode.FADE);
 
     private final AutoBedPlanner planner = new AutoBedPlanner();
     private final AutoBedPlanner.Context plannerContext = new PlannerContext();
@@ -486,8 +497,8 @@ public class AutoBed extends Module {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             BlockHitResult hit = refreshed.placeHitResult();
             if (hit != null) {
-                if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return;
-                if (!isFaceFacingEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection())) return;
+                if (!BlockInteractionPipeline.serverLookMeetsCube(mc.player, hit.getBlockPos(), effPlaceRange())) return;
+                if (!FaceVisibility.isVisible(mc.player, hit.getBlockPos(), hit.getDirection())) return;
             }
         }
         boolean placed = AutoBedActionUtil.placeBed(
@@ -521,8 +532,8 @@ public class AutoBed extends Module {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             BlockHitResult hit = refreshed.explodeHitResult();
             if (hit != null) {
-                if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return;
-                if (!isFaceFacingEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection())) return;
+                if (!BlockInteractionPipeline.serverLookMeetsCube(mc.player, hit.getBlockPos(), effPlaceRange())) return;
+                if (!FaceVisibility.isVisible(mc.player, hit.getBlockPos(), hit.getDirection())) return;
             }
         }
         setPendingBed(refreshed, false);
@@ -600,8 +611,8 @@ public class AutoBed extends Module {
             if (mc.player != null && lastInteractionTick == mc.player.tickCount) return;
             BlockHitResult hit = data.explodeHitResult();
             if (hit != null) {
-                if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return;
-                if (!isFaceFacingEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection())) return;
+                if (!BlockInteractionPipeline.serverLookMeetsCube(mc.player, hit.getBlockPos(), effPlaceRange())) return;
+                if (!FaceVisibility.isVisible(mc.player, hit.getBlockPos(), hit.getDirection())) return;
             }
         }
         boolean exploded = AutoBedActionUtil.explodeBed(
@@ -1106,7 +1117,7 @@ public class AutoBed extends Module {
     }
 
     private float effPlaceRange() {
-        return placeRange.get();
+        return mc.player == null ? placeRange.get() : Math.min(placeRange.get(), (float) mc.player.blockInteractionRange());
     }
 
     private float effWallRange() {
@@ -1124,24 +1135,7 @@ public class AutoBed extends Module {
     private boolean usesRotationSettings() {
         return effUsesRotations();
     }
-    private boolean serverRotationHits(AABB box, double range) {
-        Rotation server = RotationManager.INSTANCE.getServerRotation();
-        if (server == null) return false;
-        Vec3 eye = mc.player.getEyePosition();
-        return box.contains(eye) || box.clip(eye, eye.add(server.directionVector().scale(range))).isPresent();
-    }
 
-    private static boolean isFaceFacingEye(Vec3 eye, BlockPos pos, Direction face) {
-        if (face == null) return true;
-        return switch (face) {
-            case DOWN -> eye.y <= pos.getY();
-            case UP -> eye.y >= pos.getY() + 1.0;
-            case NORTH -> eye.z <= pos.getZ();
-            case SOUTH -> eye.z >= pos.getZ() + 1.0;
-            case WEST -> eye.x <= pos.getX();
-            case EAST -> eye.x >= pos.getX() + 1.0;
-        };
-    }
 
     private String buildDamageText() {
         String main = ExplosionRenderUtil.formatDamage(renderDamage);

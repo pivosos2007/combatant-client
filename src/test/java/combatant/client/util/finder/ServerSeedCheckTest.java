@@ -39,4 +39,10 @@ class ServerSeedCheckTest {
         assertEquals(Optional.of(false), ServerSeedCheck.matches(managerFor(DONUT_SEED), DONUT_SEED + 1));
         assertEquals(Optional.of(false), ServerSeedCheck.matches(managerFor(DONUT_SEED), 0L));
     }
+
+    @Test
+    void zeroHashMeansTheServerHidesItsSeed() {
+        BiomeManager hidden = new BiomeManager((x, y, z) -> null, 0L);
+        assertEquals(Optional.empty(), ServerSeedCheck.matches(hidden, DONUT_SEED));
+    }
 }

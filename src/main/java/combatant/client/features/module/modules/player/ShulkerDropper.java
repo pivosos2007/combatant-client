@@ -21,14 +21,16 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Notifier;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.text.ServerChat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ChestMenu;
-import net.minecraft.world.inventory.ContainerInput;
+import combatant.client.config.values.StringValue;
+import combatant.client.util.player.inventory.InventoryActionKind;
+import combatant.client.util.player.inventory.InventorySwap;
+import combatant.client.util.player.inventory.PacketWindow;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.Slot;
@@ -41,7 +43,7 @@ import java.util.List;
 
 /**
  * Throws every shulker box out of your inventory, one stack at a time through the shared inventory runtime
- * (InventoryAction, with the chosen swap policy and a delay between throws). Switches itself off when the inventory
+ * (InventoryAction, with a delay between throws). Switches itself off when the inventory
  * is clean unless "keep watching" is on. A throw the server refuses ends the pass; after a few failed passes the
  * module gives up instead of spamming clicks.
  */
@@ -60,12 +62,14 @@ public final class ShulkerDropper extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    private final EnumValue<InventorySwapPolicy> policy = enumSetting(
-            "shulkerDropperPolicy", "policy", InventorySwapPolicy.LEGIT, InventorySwapPolicy.values());
     private final NumberValue<Integer> delayTicks = num("shulkerDropperDelayTicks", "delay_ticks", 4, 0, 40);
-    private final BooleanValue includeHotbar = bool("shulkerDropperIncludeHotbar", "include_hotbar", true);
-    private final BooleanValue keepWatching = bool("shulkerDropperKeepWatching", "keep_watching", false);
     private final BooleanValue buyFromShop = bool("shulkerDropperBuyFromShop", "buy_from_shop", false);
+    private final BooleanValue includeHotbar = visibleWhen(
+            bool("shulkerDropperIncludeHotbar", "include_hotbar", true), () -> !buyFromShop.get());
+    private final BooleanValue keepWatching = visibleWhen(
+            bool("shulkerDropperKeepWatching", "keep_watching", false), () -> !buyFromShop.get());
+    private final StringValue shopCommand = visibleWhen(
+            text("shulkerDropperShopCommand", "shop_command", "shop"), buyFromShop::get);
     private final NumberValue<Integer> clicksPerBuy = visibleWhen(
             num("shulkerDropperClicksPerBuy", "clicks_per_buy", 8, 1, 32), buyFromShop::get);
     private final NumberValue<Integer> shopReopenDelay = visibleWhen(
@@ -86,18 +90,38 @@ public final class ShulkerDropper extends Module {
 
     @Override
     public void onDisable() {
+        AutomationTask running = task;
         task = null;
+        if (running != null) running.cancel("ShulkerDropper disabled");
+        InventorySwap.INSTANCE.cancelQueuedInventoryActions(this);
     }
 
-    /** Shop mode: keep /shop open, buy shulker boxes in bulk and throw them straight out of the menu. */
+    /**
+     * Shop mode: keep the shop open, buy shulker boxes in bulk and throw them straight out of the menu. One kind of
+     * click per tick (bought boxes are thrown first, one stack per tick, then the next purchase), all through the
+     * serialized click queue and only while the server sees a stationary player.
+     */
     private void shopStep(LocalPlayer player) {
-        if (shopWait-- > 0) return;
+        if (shopWait > 0) {
+            shopWait--;
+            return;
+        }
         if (!(player.containerMenu instanceof ChestMenu menu)) {
-            ServerChat.command("shop");
+            ServerChat.command(shopCommandName());
             shopWait = shopReopenDelay.get();
             return;
         }
+        if (!PacketWindow.INSTANCE.stationaryForClick()) return;
         int menuSlots = menu.getRowCount() * 9;
+        for (int slot = menuSlots; slot < menu.slots.size(); slot++) {
+            if (!isShulker(menu.getSlot(slot).getItem())) continue;
+            int throwSlot = slot;
+            if (InventorySwap.INSTANCE.command(this, InventoryActionKind.INVENTORY_CLICK,
+                    () -> InventorySwap.INSTANCE.throwSlot(throwSlot))) {
+                shopWait = Math.max(1, delayTicks.get());
+            }
+            return;
+        }
         int shulker = -1;
         for (int slot = 0; slot < menuSlots; slot++) {
             if (menu.getSlot(slot).getItem().is(Items.SHULKER_BOX)) {
@@ -109,15 +133,21 @@ public final class ShulkerDropper extends Module {
             shopWait = Math.max(1, delayTicks.get());
             return;
         }
-        for (int i = 0; i < clicksPerBuy.get(); i++) {
-            mc.gameMode.handleContainerInput(menu.containerId, shulker, 0, ContainerInput.PICKUP, player);
-        }
-        for (int slot = menuSlots; slot < menu.slots.size(); slot++) {
-            if (isShulker(menu.getSlot(slot).getItem())) {
-                mc.gameMode.handleContainerInput(menu.containerId, slot, 1, ContainerInput.THROW, player);
+        int buySlot = shulker;
+        int clicks = clicksPerBuy.get();
+        if (InventorySwap.INSTANCE.command(this, InventoryActionKind.INVENTORY_CLICK, () -> {
+            for (int i = 0; i < clicks; i++) {
+                if (!InventorySwap.INSTANCE.pickupClick(buySlot, 0)) break;
             }
+        })) {
+            shopWait = Math.max(1, delayTicks.get());
         }
-        shopWait = Math.max(1, delayTicks.get());
+    }
+
+    private String shopCommandName() {
+        String name = shopCommand.get().trim();
+        while (name.startsWith("/")) name = name.substring(1);
+        return name.isEmpty() ? "shop" : name;
     }
 
     @Override
@@ -169,12 +199,11 @@ public final class ShulkerDropper extends Module {
     }
 
     private void startPass(InventoryMenu menu, List<Slot> shulkers) {
-        InventorySwapPolicy swapPolicy = policy.get();
         int wait = delayTicks.get();
         List<Action> steps = new ArrayList<>(shulkers.size() * 2);
         for (Slot slot : shulkers) {
             int screenSlot = slot.index;
-            steps.add(InventoryAction.dropScreenSlot(screenSlot, swapPolicy,
+            steps.add(InventoryAction.dropScreenSlot(screenSlot,
                     () -> !isShulker(menu.getSlot(screenSlot).getItem()), DROP_TIMEOUT_TICKS));
             if (wait > 0) steps.add(Actions.waitTicks(wait));
         }

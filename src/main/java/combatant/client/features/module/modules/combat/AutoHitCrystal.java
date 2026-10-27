@@ -22,6 +22,7 @@ import combatant.client.input.InputScope;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
@@ -35,6 +36,8 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 
 import combatant.client.util.combat.AttackUtil;
+import combatant.client.features.module.modules.combat.autocrystal.AutoCrystalInteractionUtil;
+import combatant.client.util.block.interaction.FaceVisibility;
 import combatant.client.util.player.inventory.InventorySwap;
 
 /**
@@ -51,6 +54,8 @@ import combatant.client.util.player.inventory.InventorySwap;
 public final class AutoHitCrystal extends Module {
 
     private static final int TIMEOUT_TICKS = 20;
+    /** Stays inside the interaction ranges GrimAC's FarPlace and Reach checks allow. */
+    private static final double REACH_MARGIN = 0.1;
 
     private final Minecraft mc = Minecraft.getInstance();
 
@@ -172,7 +177,12 @@ public final class AutoHitCrystal extends Module {
             reset();
             return;
         }
-        select(slot);
+        if (!clickable(player, hit)) {
+            return;
+        }
+        if (!InventorySwap.INSTANCE.selectHotbar(slot)) {
+            return; // The Grim window does not allow the slot change yet; retry next tick.
+        }
         if (!interact(player, InteractionHand.MAIN_HAND, hit)) {
             reset();
             return;
@@ -197,6 +207,9 @@ public final class AutoHitCrystal extends Module {
                 || hit.getType() != HitResult.Type.BLOCK || !hit.getBlockPos().equals(base)) {
             return;
         }
+        if (!clickable(player, hit)) {
+            return;
+        }
         InteractionHand hand;
         if (player.getOffhandItem().is(Items.END_CRYSTAL)) {
             hand = InteractionHand.OFF_HAND;
@@ -206,7 +219,9 @@ public final class AutoHitCrystal extends Module {
                 reset();
                 return;
             }
-            select(slot);
+            if (!InventorySwap.INSTANCE.selectHotbar(slot)) {
+                return; // Retry next tick.
+            }
             hand = InteractionHand.MAIN_HAND;
         }
         if (!interact(player, hand, hit)) {
@@ -229,6 +244,11 @@ public final class AutoHitCrystal extends Module {
             return; // Wait for the server to spawn it; timeout covers a rejected placement.
         }
 
+        double reach = player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE) - REACH_MARGIN;
+        if (AutoCrystalInteractionUtil.distanceSqToBox(FaceVisibility.serverEyePosition(player),
+                crystal.getBoundingBox()) > reach * reach) {
+            return; // Out of reach of the position the server last saw; wait.
+        }
         if (switchBack.get()) restoreSlot();
         mc.gameMode.attack(player, crystal);
         AttackUtil.swingMainHand(player);
@@ -252,6 +272,18 @@ public final class AutoHitCrystal extends Module {
         return true;
     }
 
+    /**
+     * GrimAC judges a click sent before the movement packet from the last position the server received: the clicked
+     * face must face those eyes (PositionPlace) and the block must be in reach of them (FarPlace). The crosshair hit
+     * comes from the interpolated render eye, which can differ from both on the edge.
+     */
+    private boolean clickable(LocalPlayer player, BlockHitResult hit) {
+        if (!FaceVisibility.isVisible(player, hit.getBlockPos(), hit.getDirection())) return false;
+        double range = player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE) - REACH_MARGIN;
+        return AutoCrystalInteractionUtil.distanceSqToBox(FaceVisibility.serverEyePosition(player),
+                new AABB(hit.getBlockPos())) <= range * range;
+    }
+
     private boolean isBase(BlockPos pos) {
         var block = mc.level.getBlockState(pos).getBlock();
         return block == Blocks.OBSIDIAN || block == Blocks.BEDROCK;
@@ -271,12 +303,8 @@ public final class AutoHitCrystal extends Module {
         return -1;
     }
 
-    private void select(int slot) {
-        InventorySwap.INSTANCE.selectHotbar(slot);
-    }
-
     private void restoreSlot() {
-        if (originalSlot >= 0 && originalSlot < 9) select(originalSlot);
+        if (originalSlot >= 0 && originalSlot < 9) InventorySwap.INSTANCE.restoreHotbar(originalSlot);
     }
 
     private void reset() {

@@ -42,7 +42,6 @@ import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.block.scaffold.ScaffoldPlacementTarget;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.schematic.StateAdjustments;
 import combatant.client.util.schematic.StateComparison;
 import net.minecraft.client.Minecraft;
@@ -339,7 +338,7 @@ public final class Printer extends Module {
                 break;
             }
         }
-        submit("PrinterRestock", InventoryAction.moveToHotbar(from, to, InventorySwapPolicy.LEGIT, 60),
+        submit("PrinterRestock", InventoryAction.moveToHotbar(from, to, 60),
                 finished -> {
                     task = null;
                     nextBatch = ticks + delay.get();
@@ -377,7 +376,7 @@ public final class Printer extends Module {
     private PlacementConstraints constraints(boolean forceRotate) {
         PlacementRotationMode mode = forceRotate ? PlacementRotationMode.NORMAL : rotation.get();
         return new PlacementConstraints(range.get(), wallRange.get(), mode, movementCorrection.get(),
-                mode == PlacementRotationMode.NO_ROTATION, false, 1, swapBackDelay.get(), swapBackDelay.get(), true, 0);
+                false, 1, swapBackDelay.get(), swapBackDelay.get(), true, 0);
     }
 
     @Override

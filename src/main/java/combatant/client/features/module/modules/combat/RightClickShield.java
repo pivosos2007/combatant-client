@@ -138,7 +138,7 @@ public final class RightClickShield extends Module {
         if (mc.options != null) mc.options.keyUse.setDown(false);
         if (mc.player != null && previousSlot >= 0
                 && InventorySwap.INSTANCE.clientSelectedSlot() == shieldSlot) {
-            InventorySwap.INSTANCE.selectHotbar(previousSlot);
+            InventorySwap.INSTANCE.restoreHotbar(previousSlot);
         }
         resetState();
     }

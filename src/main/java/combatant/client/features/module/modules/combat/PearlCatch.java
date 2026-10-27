@@ -24,7 +24,6 @@ import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySearchScope;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.player.inventory.InventorySwapRequest;
 import combatant.client.util.player.inventory.InventorySwapVisibility;
 import combatant.client.util.screen.ClientScreen;
@@ -186,7 +185,6 @@ public final class PearlCatch extends Module {
                 .scope(fromInventory.get() ? InventorySearchScope.FULL : InventorySearchScope.HOTBAR)
                 .visibility(InventorySwapVisibility.SILENT)
                 .restore(switchBack.get())
-                .policy(InventorySwapPolicy.NONE)
                 .actionKind(InventoryActionKind.USE_ITEM)
                 .build();
         return InventorySwap.INSTANCE.execute(request) && used[0];
@@ -220,6 +218,7 @@ public final class PearlCatch extends Module {
         stage = Stage.IDLE;
         wait = 0;
         aimTicks = 0;
+        pendingTrigger = false;
         RotationManager.INSTANCE.release(this);
     }
 

@@ -18,9 +18,7 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.chunk.LevelChunk;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.NumberValue;
-import combatant.client.features.module.ModuleCategory;
-import combatant.client.features.module.ModuleInfo;
-import combatant.client.features.module.ModuleSubcategory;
+
 import combatant.client.util.finder.ChunkBlocks;
 
 import java.util.EnumMap;
@@ -35,13 +33,7 @@ import java.util.Map;
  * berries and long vines mean someone spent hours nearby. Each signal has a weight and a
  * per-chunk cap so one freak kelp forest cannot flag a chunk alone.</p>
  */
-@ModuleInfo(
-        id = "suschunkfinder",
-        displayName = "SusChunkFinder",
-        aliases = {"GrowthFinder", "OPChunkFinder"},
-        category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
-        description = "module.suschunkfinder.description")
-public final class SusChunkFinder extends ChunkFinderModule<SusChunkFinder.Scored> {
+public final class SusChunkScanner {
 
     // Growth below/above this band is either bedrock-level noise or open sky farms.
     private static final int SCAN_MIN_Y = -12;
@@ -51,14 +43,15 @@ public final class SusChunkFinder extends ChunkFinderModule<SusChunkFinder.Score
     private static final int AMETHYST_CLUSTER_LIGHT = 5;
     private static final int MAX_COLUMN = 40;
 
-    private final NumberValue<Integer> sensitivity = num("sensitivity", 5, 1, 10);
-    private final BooleanMapValue signals = group("signals", defaultSignals());
+    private final NumberValue<Integer> sensitivity;
+    private final BooleanMapValue signals;
 
-    public SusChunkFinder() {
-        super(4, "#40CB40FF", "#FFCB40FF", 3, 3000L);
+    public SusChunkScanner(NumberValue<Integer> sensitivity, BooleanMapValue signals) {
+        this.sensitivity = sensitivity;
+        this.signals = signals;
     }
 
-    private static Map<String, Boolean> defaultSignals() {
+    public static Map<String, Boolean> defaultSignals() {
         Map<String, Boolean> defaults = new LinkedHashMap<>();
         for (Signal signal : Signal.values()) {
             defaults.put(signal.id, signal != Signal.GLOW);
@@ -66,8 +59,7 @@ public final class SusChunkFinder extends ChunkFinderModule<SusChunkFinder.Score
         return defaults;
     }
 
-    @Override
-    protected String analysisSignature() {
+    public String signature() {
         StringBuilder signature = new StringBuilder().append(sensitivity.get()).append('|');
         for (Signal signal : Signal.values()) {
             signature.append(signals.get(signal.id) ? '1' : '0');
@@ -75,8 +67,7 @@ public final class SusChunkFinder extends ChunkFinderModule<SusChunkFinder.Score
         return signature.toString();
     }
 
-    @Override
-    protected Scored analyzeChunk(ClientLevel level, LevelChunk chunk) {
+    public Scored analyze(ClientLevel level, LevelChunk chunk) {
         Tally tally = new Tally();
         if (signals.get(Signal.AMETHYST.id)) countHiddenAmethyst(level, chunk, tally);
         if (signals.get(Signal.GLOW.id)) countGlow(level, chunk, tally);
@@ -105,7 +96,7 @@ public final class SusChunkFinder extends ChunkFinderModule<SusChunkFinder.Score
     }
 
     private void countGrowth(ClientLevel level, LevelChunk chunk, Tally tally) {
-        ChunkBlocks.forEach(chunk, SCAN_MIN_Y, SCAN_MAX_Y, SusChunkFinder::isPlantTarget, (x, y, z, state) -> {
+        ChunkBlocks.forEach(chunk, SCAN_MIN_Y, SCAN_MAX_Y, SusChunkScanner::isPlantTarget, (x, y, z, state) -> {
             inspectPlant(level, new BlockPos(x, y, z), state, tally);
             return true;
         });
@@ -261,6 +252,6 @@ public final class SusChunkFinder extends ChunkFinderModule<SusChunkFinder.Score
         }
     }
 
-    public record Scored(String reason, BlockPos evidence, double score) implements ChunkFinderModule.Hit {
+    public record Scored(String reason, BlockPos evidence, double score) implements ChunkMarkers.Hit {
     }
 }

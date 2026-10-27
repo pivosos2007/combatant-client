@@ -11,7 +11,6 @@ import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySearchScope;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapMode;
 import combatant.client.util.player.inventory.InventorySwapRequest;
 import combatant.client.util.player.inventory.InventorySwapVisibility;
 import net.minecraft.client.Minecraft;
@@ -55,7 +54,7 @@ public final class CombatBlockUseUtil {
                                                   InventorySearchScope scope) {
         if (heldHand != null) return true;
         if (predicate == null) return false;
-        return InventorySwap.INSTANCE.findSlotForMode(predicate, silentModeFor(scope)).found();
+        return InventorySwap.INSTANCE.find(predicate, scope).found();
     }
 
     public static boolean useOn(Minecraft mc, InteractionHand hand, BlockHitResult hitResult) {
@@ -70,15 +69,6 @@ public final class CombatBlockUseUtil {
     public static boolean useOnWithRubberHand(Minecraft mc, InteractionHand hand, BlockHitResult hitResult) {
         if (!canUse(mc, hitResult) || hand == null) return false;
         return RubberHandUseUtil.runBlockUse(mc, () -> useOn(mc, hand, hitResult));
-    }
-
-    private static InventorySwapMode silentModeFor(InventorySearchScope scope) {
-        InventorySearchScope safeScope = scope != null ? scope : InventorySearchScope.FULL;
-        return switch (safeScope) {
-            case HOTBAR -> InventorySwapMode.SILENT;
-            case INVENTORY -> InventorySwapMode.INVENTORY_SILENT;
-            case FULL -> InventorySwapMode.SILENT_FULL;
-        };
     }
 
     private static boolean canUse(Minecraft mc, BlockHitResult hitResult) {

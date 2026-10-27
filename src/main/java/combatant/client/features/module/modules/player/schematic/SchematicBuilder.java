@@ -26,7 +26,6 @@ import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.aiming.features.processors.anglesmooth.impl.LinearAngleSmooth;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventoryActionKind;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.schematic.RedstoneRules;
 import combatant.client.util.schematic.Schematic;
 import combatant.client.util.schematic.SchematicAttention;
@@ -695,7 +694,7 @@ public final class SchematicBuilder extends Module {
             return false;
         }
 
-        selectSlot(work.hotbarSlot);
+        if (!selectSlot(work.hotbarSlot)) return false;
         InteractionResult result = useWithRotation(player, new BlockHitResult(hit.getLocation(), plan.face(),
                 plan.support(), false), facingRotation);
         if (result != null && result.consumesAction()) {
@@ -773,7 +772,7 @@ public final class SchematicBuilder extends Module {
     /** A support block under the feet mid-jump: no exactness rules, but it is remembered for clean-up. */
     private boolean placeHelper(LocalPlayer player, Pending work, BlockHitResult hit) {
         BuildPlanner.Plan plan = work.plan;
-        selectSlot(work.hotbarSlot);
+        if (!selectSlot(work.hotbarSlot)) return false;
         InteractionResult result = mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND,
                 new BlockHitResult(hit.getLocation(), plan.face(), plan.support(), false));
         if (result != null && result.consumesAction()) {
@@ -784,12 +783,12 @@ public final class SchematicBuilder extends Module {
         return true;
     }
 
-    private void selectSlot(int hotbarSlot) {
+    /** Puts the work's slot in hand; {@code false} while the Grim window does not allow the slot change yet. */
+    private boolean selectSlot(int hotbarSlot) {
         if (silentSwap.get()) {
-            InventorySwap.INSTANCE.leaseHotbar(this, hotbarSlot, 2);
-        } else {
-            InventorySwap.INSTANCE.selectHotbar(hotbarSlot);
+            return InventorySwap.INSTANCE.leaseHotbar(this, hotbarSlot, 2);
         }
+        return InventorySwap.INSTANCE.selectHotbar(hotbarSlot);
     }
 
     private boolean stillValid(LocalPlayer player, Pending work) {
@@ -1201,7 +1200,7 @@ public final class SchematicBuilder extends Module {
             int screenSlot = InventorySwap.mapInventoryToScreenSlot(i);
             // Grim MultiActionsC: the click only goes out on a tick with all movement input and sprint released.
             boolean queued = InventorySwap.INSTANCE.command(this, InventoryActionKind.INVENTORY_CLICK,
-                    InventorySwapPolicy.GRIM_STRICT, () -> InventorySwap.INSTANCE.clickSwap(screenSlot, hotbar));
+                    () -> InventorySwap.INSTANCE.clickSwap(screenSlot, hotbar));
             if (!queued) return false;
             restockClickUntil = ticks + RESTOCK_CLICK_WAIT_TICKS;
             cooldown = Math.max(cooldown, 2);
@@ -1621,7 +1620,7 @@ public final class SchematicBuilder extends Module {
             int screenSlot = InventorySwap.mapInventoryToScreenSlot(inventorySlot);
             // Same Grim-safe click as restocking: it only goes out on a tick with movement input released.
             boolean queued = InventorySwap.INSTANCE.command(SchematicBuilder.this, InventoryActionKind.INVENTORY_CLICK,
-                    InventorySwapPolicy.GRIM_STRICT, () -> InventorySwap.INSTANCE.clickSwap(screenSlot, hotbar));
+                    () -> InventorySwap.INSTANCE.clickSwap(screenSlot, hotbar));
             if (queued) restockClickUntil = ticks + RESTOCK_CLICK_WAIT_TICKS;
             return queued;
         }

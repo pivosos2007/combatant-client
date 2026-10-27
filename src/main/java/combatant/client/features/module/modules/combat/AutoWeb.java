@@ -225,14 +225,10 @@ public final class AutoWeb extends Module {
         return PlacementSlot.find(mc.player, AutoWeb::isWeb);
     }
 
-    private boolean effConstructFailResult() {
-        return rotation.get() == PlacementRotationMode.NO_ROTATION;
-    }
-
     private PlacementConstraints placementConstraints() {
         return new PlacementConstraints(
                 range.get(), wallRange.get(), rotation.get(), MovementCorrection.SILENT,
-                effConstructFailResult(), true, 1, 0, 0, true, 0);
+                true, 1, 0, 0, true, 0);
     }
 
     private static boolean isWeb(ItemStack stack) {

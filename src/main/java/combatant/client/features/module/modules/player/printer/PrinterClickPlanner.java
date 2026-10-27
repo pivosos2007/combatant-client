@@ -33,8 +33,8 @@ import net.minecraft.world.phys.shapes.CollisionContext;
  * Candidates are pruned by {@link PlacementOrientation.Requirement#allows}, then each survivor is run through the
  * block's own placement rule with the player turned to the aim rotation, exactly what the server will do. The
  * returned target is pinned and carries a {@link PlacementTarget.ClickCheck} that repeats the simulation with the
- * rotation of the tick the click goes out, so a block whose facing follows the look is never clicked while the
- * rotation is still turning.
+ * rotation the server judges the click with (the one it already has), so a block whose facing follows the look is
+ * never clicked while the rotation is still turning.
  */
 public final class PrinterClickPlanner {
 

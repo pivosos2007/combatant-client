@@ -31,6 +31,7 @@ import combatant.client.util.aiming.data.Rotation;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.BiPredicate;
 
 public enum ScaffoldTargetFinder {
     ;
@@ -81,6 +82,25 @@ public enum ScaffoldTargetFinder {
             ScaffoldFacePositionFactory facePositionFactory,
             Vec3 placementEyePos
     ) {
+        return findTarget(player, targetPos, stack, offsets, comparator, considerFacingAwayFaces,
+                facePositionFactory, placementEyePos, null);
+    }
+
+    /**
+     * @param faceFilter support faces the caller allows (support position, clicked face); null allows every face
+     *                   the facing-away rule leaves
+     */
+    public static ScaffoldPlacementTarget findTarget(
+            LocalPlayer player,
+            BlockPos targetPos,
+            ItemStack stack,
+            List<BlockPos> offsets,
+            Comparator<BlockPos> comparator,
+            boolean considerFacingAwayFaces,
+            ScaffoldFacePositionFactory facePositionFactory,
+            Vec3 placementEyePos,
+            BiPredicate<BlockPos, Direction> faceFilter
+    ) {
         if (player == null || player.level() == null || stack == null || stack.isEmpty()) return null;
         if (isBlockSolid(player.level().getBlockState(targetPos), player, targetPos)) {
             return null;
@@ -113,7 +133,8 @@ public enum ScaffoldTargetFinder {
                     targetMode,
                     eyePos,
                     baseRotation,
-                    considerFacingAwayFaces
+                    considerFacingAwayFaces,
+                    faceFilter
             );
             if (targetPlan == null) {
                 continue;
@@ -161,7 +182,8 @@ public enum ScaffoldTargetFinder {
             TargetMode targetMode,
             Vec3 eyePos,
             Rotation baseRotation,
-            boolean considerFacingAwayFaces
+            boolean considerFacingAwayFaces,
+            BiPredicate<BlockPos, Direction> faceFilter
     ) {
         TargetPlan bestPlan = null;
         float bestAngle = Float.MAX_VALUE;
@@ -182,6 +204,7 @@ public enum ScaffoldTargetFinder {
             if (!considerFacingAwayFaces && pointsAwayFromPlayer(eyePos, targetPositionOnBlock, direction)) {
                 continue;
             }
+            if (faceFilter != null && !faceFilter.test(interactedPos, direction)) continue;
 
             Rotation targetRotation = Rotation.lookingAt(targetPositionOnBlock, eyePos).normalize();
             float angle = baseRotation.angleTo(targetRotation);

@@ -19,7 +19,6 @@ import java.util.concurrent.ThreadLocalRandom;
  * @param wallRange            reach through walls: supports closer than this need no line of sight
  * @param rotate               aiming mode
  * @param movementCorrection   movement correction while the rotation is held
- * @param constructFailResult  click on the planned face even when the trace misses it
  * @param ignoreEntityCollision place into cells occupied by entities
  * @param sneakTicks           ticks to sneak before clicking an interactable support (at least 1 is used)
  * @param slotResetMinTicks    lower bound of the ticks the swapped hotbar slot is kept after the click
@@ -32,7 +31,6 @@ public record PlacementConstraints(
         double wallRange,
         PlacementRotationMode rotate,
         MovementCorrection movementCorrection,
-        boolean constructFailResult,
         boolean ignoreEntityCollision,
         int sneakTicks,
         int slotResetMinTicks,

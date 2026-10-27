@@ -182,183 +182,183 @@ public final class ProjectilePuncher extends Module {
             );
     private final ClickScheduler clicker = new ClickScheduler(cpsMin.get(), cpsMax.get());
     private final NumberValue<Float> linearHorMin =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherLinearHorizontalMin",
                     "linear_horizontal_min",
                     CommonSettingSchemas.ANGLESMOOTH_HORIZONTAL_MIN,
                     180f,
                     0f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.LINEAR);
     private final NumberValue<Float> linearHorMax =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherLinearHorizontalMax",
                     "linear_horizontal_max",
                     CommonSettingSchemas.ANGLESMOOTH_HORIZONTAL_MAX,
                     180f,
                     0f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.LINEAR);
     private final NumberValue<Float> linearVertMin =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherLinearVerticalMin",
                     "linear_vertical_min",
                     CommonSettingSchemas.ANGLESMOOTH_VERTICAL_MIN,
                     180f,
                     0f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.LINEAR);
     private final NumberValue<Float> linearVertMax =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherLinearVerticalMax",
                     "linear_vertical_max",
                     CommonSettingSchemas.ANGLESMOOTH_VERTICAL_MAX,
                     180f,
                     0f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.LINEAR);
     private final NumberValue<Float> sigmoidHorMin =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSigmoidHorizontalMin",
                     "sigmoid_horizontal_min",
                     CommonSettingSchemas.ANGLESMOOTH_HORIZONTAL_MIN,
                     180f,
                     0f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SIGMOID);
     private final NumberValue<Float> sigmoidHorMax =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSigmoidHorizontalMax",
                     "sigmoid_horizontal_max",
                     CommonSettingSchemas.ANGLESMOOTH_HORIZONTAL_MAX,
                     180f,
                     0f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SIGMOID);
     private final NumberValue<Float> sigmoidVertMin =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSigmoidVerticalMin",
                     "sigmoid_vertical_min",
                     CommonSettingSchemas.ANGLESMOOTH_VERTICAL_MIN,
                     180f,
                     0f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SIGMOID);
     private final NumberValue<Float> sigmoidVertMax =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSigmoidVerticalMax",
                     "sigmoid_vertical_max",
                     CommonSettingSchemas.ANGLESMOOTH_VERTICAL_MAX,
                     180f,
                     0f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SIGMOID);
     private final NumberValue<Float> sigmoidSteepness =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSigmoidSteepness",
                     "sigmoid_steepness",
                     CommonSettingSchemas.ANGLESMOOTH_STEEPNESS,
                     10f,
                     0f,
                     20f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SIGMOID);
     private final NumberValue<Float> sigmoidMidpoint =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSigmoidMidpoint",
                     "sigmoid_midpoint",
                     CommonSettingSchemas.ANGLESMOOTH_MIDPOINT,
                     0.3f,
                     0f,
                     1f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SIGMOID);
     private final NumberValue<Float> smartYawMin =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSmartYawMin",
                     "smart_yaw_min",
                     CommonSettingSchemas.ANGLESMOOTH_YAW_MIN,
                     70f,
                     1f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SMART);
     private final NumberValue<Float> smartYawMax =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSmartYawMax",
                     "smart_yaw_max",
                     CommonSettingSchemas.ANGLESMOOTH_YAW_MAX,
                     95f,
                     1f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SMART);
     private final NumberValue<Float> smartPitchMin =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSmartPitchMin",
                     "smart_pitch_min",
                     CommonSettingSchemas.ANGLESMOOTH_PITCH_MIN,
                     45f,
                     1f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SMART);
     private final NumberValue<Float> smartPitchMax =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSmartPitchMax",
                     "smart_pitch_max",
                     CommonSettingSchemas.ANGLESMOOTH_PITCH_MAX,
                     70f,
                     1f,
                     180f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SMART);
     private final NumberValue<Float> smartSnapThreshold =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSmartSnapThreshold",
                     "smart_snap_threshold",
                     CommonSettingSchemas.ANGLESMOOTH_SNAP_THRESHOLD,
                     1.2f,
                     0.05f,
                     10.0f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SMART);
     private final NumberValue<Float> smartJitterYaw =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSmartJitterYaw",
                     "smart_jitter_yaw",
                     CommonSettingSchemas.ANGLESMOOTH_JITTER_YAW,
                     0.8f,
                     0.0f,
                     6.0f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SMART);
     private final NumberValue<Float> smartJitterPitch =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSmartJitterPitch",
                     "smart_jitter_pitch",
                     CommonSettingSchemas.ANGLESMOOTH_JITTER_PITCH,
                     0.4f,
                     0.0f,
                     4.0f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SMART);
     private final BooleanValue smartDecelerateEnabled =
-            boolCommon(
+            visibleWhen(boolCommon(
                     "projectilePuncherSmartDecelerateEnabled",
                     "smart_decelerate_enabled",
                     CommonSettingSchemas.ANGLESMOOTH_DECELERATE_ENABLED,
                     true
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SMART);
     private final NumberValue<Float> smartDecelerateAngle =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSmartDecelerateAngle",
                     "smart_decelerate_angle",
                     CommonSettingSchemas.ANGLESMOOTH_DECELERATE_ANGLE,
                     35.0f,
                     1.0f,
                     120.0f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SMART && smartDecelerateEnabled.get());
     private final NumberValue<Float> smartDecelerateMinFactor =
-            numCommon(
+            visibleWhen(numCommon(
                     "projectilePuncherSmartDecelerateMinFactor",
                     "smart_decelerate_min_factor",
                     CommonSettingSchemas.ANGLESMOOTH_DECELERATE_MIN_FACTOR,
                     0.22f,
                     0.05f,
                     1.0f
-            );
+            ), () -> rotationMode.get() == KillAura.AngleSmoothMode.SMART && smartDecelerateEnabled.get());
     private final LinearAngleSmooth linearSmooth = new LinearAngleSmooth(
             linearHorMin, linearHorMax, linearVertMin, linearVertMax
     );

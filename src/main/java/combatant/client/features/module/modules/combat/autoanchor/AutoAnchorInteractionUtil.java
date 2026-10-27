@@ -7,6 +7,8 @@
 
 package combatant.client.features.module.modules.combat.autoanchor;
 
+import combatant.client.util.block.interaction.BlockInteractionPipeline;
+import combatant.client.util.block.interaction.FaceVisibility;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -52,6 +54,8 @@ public final class AutoAnchorInteractionUtil {
             float range,
             float wallRange
     ) {
+        // Air place clicks the empty cell itself. Off by default: anticheats reject a click on air (GrimAC
+        // AirLiquidPlace), so the normal path clicks a real support block.
         if (existingAnchor || allowAirPlace) {
             return getAnchorInteractResult(level, player, pos, mode, range, wallRange);
         }
@@ -96,11 +100,11 @@ public final class AutoAnchorInteractionUtil {
         BlockHitResult best = null;
 
         for (Direction direction : Direction.values()) {
-            if (!faceFacesEye(eyes, pos, direction)) continue;
+            if (!FaceVisibility.isVisible(player, pos, direction)) continue;
             Vec3 normal = Vec3.atLowerCornerOf(direction.getUnitVec3i());
             Vec3 sample = Vec3.atCenterOf(pos).add(normal.scale(0.5));
             double distanceSq = eyes.distanceToSqr(sample);
-            if (distanceSq > range * range) continue;
+            if (!BlockInteractionPipeline.pointWithinReach(player, sample, range)) continue;
             if (!isVisibleOrWithinWallRange(level, player, eyes, sample, pos, distanceSq, wallRange)) continue;
 
             if (distanceSq < bestDistance) {
@@ -124,7 +128,7 @@ public final class AutoAnchorInteractionUtil {
         double bestDistance = Double.MAX_VALUE;
         BlockHitResult best = null;
         for (Direction direction : Direction.values()) {
-            if (!faceFacesEye(eyes, pos, direction)) continue;
+            if (!FaceVisibility.isVisible(player, pos, direction)) continue;
             BlockHitResult candidate = getBestSupportFacePoint(level, player, pos, direction, range, wallRange);
             if (candidate == null) continue;
             double distanceSq = eyes.distanceToSqr(candidate.getLocation());
@@ -134,22 +138,6 @@ public final class AutoAnchorInteractionUtil {
             }
         }
         return best;
-    }
-
-
-    /**
-     * Whether the clicked {@code face} of {@code pos} looks toward the eye (Grim PositionPlace flags clicks on a face
-     * the eye is behind). An eye inside the block faces no face.
-     */
-    public static boolean faceFacesEye(Vec3 eye, BlockPos pos, Direction face) {
-        return switch (face) {
-            case DOWN -> eye.y <= pos.getY();
-            case UP -> eye.y >= pos.getY() + 1.0;
-            case NORTH -> eye.z <= pos.getZ();
-            case SOUTH -> eye.z >= pos.getZ() + 1.0;
-            case WEST -> eye.x <= pos.getX();
-            case EAST -> eye.x >= pos.getX() + 1.0;
-        };
     }
 
     public static BlockHitResult getPlaceSupportInteract(Level level,
@@ -194,11 +182,11 @@ public final class AutoAnchorInteractionUtil {
                                                        float range,
                                                        float wallRange) {
         Vec3 eyes = player.getEyePosition();
-        if (!faceFacesEye(eyes, support, face)) return null;
+        if (!FaceVisibility.isVisible(player, support, face)) return null;
         Vec3 normal = Vec3.atLowerCornerOf(face.getUnitVec3i());
         Vec3 hitVec = Vec3.atCenterOf(support).add(normal.scale(0.5));
         double distanceSq = eyes.distanceToSqr(hitVec);
-        if (distanceSq > range * range) return null;
+        if (!BlockInteractionPipeline.pointWithinReach(player, hitVec, range)) return null;
         if (!isVisibleOrWithinWallRange(level, player, eyes, hitVec, support, distanceSq, wallRange)) return null;
         return new BlockHitResult(hitVec, face, support, false);
     }
@@ -210,7 +198,7 @@ public final class AutoAnchorInteractionUtil {
                                                           float range,
                                                           float wallRange) {
         Vec3 eyes = player.getEyePosition();
-        if (!faceFacesEye(eyes, support, face)) return null;
+        if (!FaceVisibility.isVisible(player, support, face)) return null;
         double bestDistance = Double.MAX_VALUE;
         Vec3 bestPoint = null;
 
@@ -218,7 +206,7 @@ public final class AutoAnchorInteractionUtil {
             for (float b = 0.2f; b <= 0.8f; b += 0.3f) {
                 Vec3 point = pointOnFace(support, face, a, b);
                 double distanceSq = eyes.distanceToSqr(point);
-                if (distanceSq > range * range) continue;
+                if (!BlockInteractionPipeline.pointWithinReach(player, point, range)) continue;
                 if (!isVisibleOrWithinWallRange(level, player, eyes, point, support, distanceSq, wallRange)) continue;
                 if (distanceSq < bestDistance) {
                     bestDistance = distanceSq;

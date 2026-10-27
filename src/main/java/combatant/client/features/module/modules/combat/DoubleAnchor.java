@@ -33,7 +33,7 @@ import net.minecraft.world.phys.Vec3;
         id = "doubleanchor",
         displayName = "DoubleAnchor",
         aliases = {"DoubleAnchorBomb", "AnchorDouble"},
-        category = ModuleCategory.COMBAT, subcategory = ModuleSubcategory.ATTACK,
+        category = ModuleCategory.COMBAT, subcategory = ModuleSubcategory.LEGIT,
         description = "module.doubleanchor.description")
 public final class DoubleAnchor extends AnchorSequenceModule {
 

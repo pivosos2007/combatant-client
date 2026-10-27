@@ -30,7 +30,6 @@ import combatant.client.util.target.TargetManager;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySearchScope;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.player.inventory.InventorySwapRequest;
 import combatant.client.util.player.inventory.InventorySwapVisibility;
 import net.minecraft.client.Minecraft;
@@ -232,7 +231,6 @@ public final class TargetPearl extends Module {
                     .scope(InventorySearchScope.FULL)
                     .visibility(InventorySwapVisibility.SILENT)
                     .restore(true)
-                    .policy(InventorySwapPolicy.NONE)
                     .actionKind(InventoryActionKind.USE_ITEM)
                     .build();
             used = InventorySwap.INSTANCE.execute(request);

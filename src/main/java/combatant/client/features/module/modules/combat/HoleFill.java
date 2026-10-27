@@ -160,6 +160,8 @@ public final class HoleFill extends Module {
                     double py = pos.getY();
                     double pz = pos.getZ() + 0.5D;
                     if (player.distanceToSqr(px, py, pz) > placementRangeSq || !isHole(level, pos)) continue;
+                    // A block never goes into the cell the player stands in: the server rejects it every time.
+                    if (player.getBoundingBox().intersects(new AABB(pos))) continue;
 
                     double nearestEnemySq = Double.MAX_VALUE;
                     for (Player opponent : opponents) {
@@ -220,14 +222,10 @@ public final class HoleFill extends Module {
         return PlacementSlot.find(mc.player, this::isTargetItem);
     }
 
-    private boolean effConstructFailResult() {
-        return rotation.get() == PlacementRotationMode.NO_ROTATION;
-    }
-
     private PlacementConstraints placementConstraints() {
         return new PlacementConstraints(
                 range.get(), wallRange.get(), rotation.get(), MovementCorrection.SILENT,
-                effConstructFailResult(), false, 1, 0, 0, true, 0);
+                false, 1, 0, 0, true, 0);
     }
 
     private double effPlaceRange() {

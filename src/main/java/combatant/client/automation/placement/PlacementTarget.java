@@ -17,14 +17,15 @@ import net.minecraft.world.phys.BlockHitResult;
  * One block to place: the cell, the support face to click, and what to place with.
  *
  * @param pinned the support is fixed by the caller (directional blocks) and is never re-solved
- * @param check  optional last gate before the click, evaluated against this tick's rotation; null accepts
+ * @param check  optional last gate before the click, evaluated with the rotation the server judges the click with
+ *               (the one it already has in NORMAL mode, the planned one without rotating); null accepts
  */
 public record PlacementTarget(BlockPos pos, ScaffoldPlacementTarget support, PlacementSlot slot,
                               boolean pinned, ClickCheck check) {
 
     @FunctionalInterface
     public interface ClickCheck {
-        boolean accepts(LocalPlayer player, Rotation rotationOfThisTick, BlockHitResult hit);
+        boolean accepts(LocalPlayer player, Rotation clickRotation, BlockHitResult hit);
     }
 
     public PlacementTarget(BlockPos pos, ScaffoldPlacementTarget support, PlacementSlot slot) {

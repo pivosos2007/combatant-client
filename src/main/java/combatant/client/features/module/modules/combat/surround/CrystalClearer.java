@@ -25,6 +25,7 @@ import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.data.RotationWithVector;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.aiming.raytrace.RotationRaytrace;
+import combatant.client.util.block.interaction.FaceVisibility;
 import combatant.client.util.combat.AttackUtil;
 
 /** Breaks end crystals that sit where a wall block has to go. */
@@ -57,7 +58,7 @@ public final class CrystalClearer {
 
         double reach = Math.min(range, player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE) - REACH_MARGIN);
         double reachSq = reach * reach;
-        Vec3 eyes = player.getEyePosition();
+        Vec3 eyes = FaceVisibility.serverEyePosition(player);
         EndCrystal nearest = null;
         double nearestSq = Double.MAX_VALUE;
         for (BlockPos cell : cells) {
@@ -72,7 +73,10 @@ public final class CrystalClearer {
         if (nearest == null) return;
 
         EndCrystal crystal = nearest;
-        RotationWithVector aim = RotationRaytrace.raytraceBox(eyes, crystal.getBoundingBox(), reach, reach);
+        // GrimAC measures the hit from the last position the server received; aim slightly inside the box so the
+        // rounding of the sent rotation cannot turn the hit into a miss.
+        RotationWithVector aim = RotationRaytrace.raytraceBox(eyes, crystal.getBoundingBox().deflate(AutoCrystalInteractionUtil.AIM_INSET),
+                reach + AutoCrystalInteractionUtil.AIM_INSET, reach + AutoCrystalInteractionUtil.AIM_INSET);
         if (aim == null) return;
 
         RotationManager.INSTANCE.setRotationTarget(new RotationTarget(
@@ -91,9 +95,8 @@ public final class CrystalClearer {
         if (mc.gameMode == null || player.isUsingItem() || !crystal.isAlive() || crystal.isRemoved()) return;
         Rotation rotation = RotationManager.INSTANCE.getCurrentRotation();
         if (rotation == null) return;
-        Vec3 eyes = player.getEyePosition();
-        AABB box = crystal.getBoundingBox();
-        if (!box.contains(eyes) && box.clip(eyes, eyes.add(rotation.directionVector().scale(reach))).isEmpty()) return;
+        Vec3 eyes = FaceVisibility.serverEyePosition(player);
+        if (!AutoCrystalInteractionUtil.rayHitsBox(eyes, rotation.directionVector(), crystal.getBoundingBox(), reach)) return;
 
         mc.gameMode.attack(player, crystal);
         AttackUtil.swingMainHand(player);

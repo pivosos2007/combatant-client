@@ -187,8 +187,6 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
             return;
         }
 
-        combatant.client.features.module.modules.combat.TotemHit.beforeManualAttack();
-
         AttributeSwap attributeSwap = Modules.get(AttributeSwap.class);
         if (attributeSwap != null && attributeSwap.isEnabled() && attributeSwap.handleManualAttack()) {
             cir.setReturnValue(true);

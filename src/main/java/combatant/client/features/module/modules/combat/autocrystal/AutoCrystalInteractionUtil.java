@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.combat.autocrystal;
 
+import combatant.client.util.block.interaction.FaceVisibility;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -49,6 +50,17 @@ public final class AutoCrystalInteractionUtil {
         return hit != null && hit.getBlockPos().equals(pos) && hit.getDirection() == face;
     }
 
+    /** Margin the aim keeps inside an entity box so rotation rounding cannot turn a hit into a miss. */
+    public static final double AIM_INSET = 0.1;
+
+    /** Whether a ray from {@code eye} along {@code direction} reaches {@code box} within {@code range}. */
+    public static boolean rayHitsBox(Vec3 eye, Vec3 direction, AABB box, double range) {
+        if (eye == null || direction == null || box == null) {
+            return false;
+        }
+        return box.contains(eye) || box.clip(eye, eye.add(direction.scale(range))).isPresent();
+    }
+
     public static Vec3 crystalVec(BlockPos pos) {
         return new Vec3(pos.getX() + 0.5, pos.getY() + 1.0, pos.getZ() + 0.5);
     }
@@ -81,6 +93,7 @@ public final class AutoCrystalInteractionUtil {
         }
 
         Vec3 eyes = player.getEyePosition();
+        Vec3 sentEyes = FaceVisibility.serverEyePosition(player);
         Vec3[] samples = {
                 new Vec3(pos.getX() + 0.5, pos.getY() + 0.999, pos.getZ() + 0.5),
                 new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.001),
@@ -99,7 +112,7 @@ public final class AutoCrystalInteractionUtil {
         double placeRangeSq = placeRange * placeRange;
         for (int i = 0; i < samples.length; i++) {
             Vec3 sample = samples[i];
-            if (eyes.distanceToSqr(sample) > placeRangeSq) {
+            if (eyes.distanceToSqr(sample) > placeRangeSq || sentEyes.distanceToSqr(sample) > placeRangeSq) {
                 continue;
             }
 
@@ -116,7 +129,7 @@ public final class AutoCrystalInteractionUtil {
             if (!pos.equals(hit.getBlockPos())) {
                 continue;
             }
-            if (hit.getDirection() != faces[i]) {
+            if (hit.getDirection() != faces[i] || !FaceVisibility.isVisible(player, pos, faces[i])) {
                 continue;
             }
 
@@ -127,9 +140,11 @@ public final class AutoCrystalInteractionUtil {
     }
 
     /**
-     * Clicks the top face when the eyes are above it. Otherwise the click goes on the face the eyes can really see,
-     * because GrimAC's PositionPlace rejects a click on a face the eyes are behind. The cursor is the face centre, so
-     * it lies on the clicked face as FabricatedPlace and Vulcan BadPackets 5 require.
+     * Clicks the top face when it is visible. Otherwise the click goes on the face the eyes can really see, because
+     * GrimAC's PositionPlace rejects a click on a face the eyes are behind; visible means from the eyes now and from
+     * the position the server last received, which judges a click sent before the movement packet. The cursor is the
+     * face centre, so it lies on the clicked face as FabricatedPlace and Vulcan BadPackets 5 require. Both eyes
+     * must also be within place range (FarPlace).
      */
     public static BlockHitResult getDefaultInteract(
             Level level,
@@ -142,23 +157,17 @@ public final class AutoCrystalInteractionUtil {
             return null;
         }
 
-        Vec3 eyes = player.getEyePosition();
-        Direction face = Direction.UP;
-        Vec3 faceVec = crystalVec(pos);
-        if (eyes.y < faceVec.y) {
-            double best = -Double.MAX_VALUE;
-            for (Direction direction : Direction.values()) {
-                Vec3 candidate = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(direction.getUnitVec3i()).scale(0.5));
-                double outside = eyes.subtract(candidate).dot(Vec3.atLowerCornerOf(direction.getUnitVec3i()));
-                if (outside > best) {
-                    best = outside;
-                    face = direction;
-                    faceVec = candidate;
-                }
-            }
+        Direction face = FaceVisibility.isVisible(player, pos, Direction.UP)
+                ? Direction.UP
+                : FaceVisibility.bestFace(player, pos);
+        if (face == null) {
+            return null;
         }
+        Vec3 faceVec = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(0.5));
 
-        double distanceSq = eyes.distanceToSqr(faceVec);
+        Vec3 eyes = player.getEyePosition();
+        double distanceSq = Math.max(eyes.distanceToSqr(faceVec),
+                FaceVisibility.serverEyePosition(player).distanceToSqr(faceVec));
         double placeRangeSq = placeRange * placeRange;
         if (distanceSq > placeRangeSq) {
             return null;
@@ -189,6 +198,7 @@ public final class AutoCrystalInteractionUtil {
         }
 
         Vec3 eyes = player.getEyePosition();
+        Vec3 sentEyes = FaceVisibility.serverEyePosition(player);
         double rangeSq = placeRange * placeRange;
         for (Direction direction : Direction.values()) {
             BlockPos support = pos.relative(direction);
@@ -199,9 +209,9 @@ public final class AutoCrystalInteractionUtil {
             Direction face = direction.getOpposite();
             Vec3 normal = Vec3.atLowerCornerOf(face.getUnitVec3i());
             Vec3 hitVec = Vec3.atCenterOf(support).add(normal.scale(0.5));
-            if (eyes.distanceToSqr(hitVec) > rangeSq) continue;
-            // GrimAC PositionPlace: the eyes have to be on the outer side of the clicked face.
-            if (eyes.subtract(hitVec).dot(normal) < 0.0) continue;
+            if (eyes.distanceToSqr(hitVec) > rangeSq || sentEyes.distanceToSqr(hitVec) > rangeSq) continue;
+            // GrimAC PositionPlace: the eyes, now and as the server last saw them, must be in front of the clicked face.
+            if (!FaceVisibility.isVisible(player, support, face)) continue;
 
             BlockHitResult ray = level.clip(new ClipContext(
                     eyes,

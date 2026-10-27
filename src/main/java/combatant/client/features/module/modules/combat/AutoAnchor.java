@@ -30,6 +30,8 @@ import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
+import combatant.client.util.block.interaction.BlockInteractionPipeline;
+import combatant.client.util.block.interaction.FaceVisibility;
 import combatant.client.util.combat.CombatRotationModeUtil;
 import combatant.client.util.combat.CombatEntityQuery;
 import combatant.client.util.combat.ExplosionDamageRules;
@@ -1040,8 +1042,9 @@ public class AutoAnchor extends Module {
     }
 
 
+    /** The place range, capped at the block interaction range the server measures clicks against. */
     private float effPlaceRange() {
-        return placeRange.get();
+        return mc.player == null ? placeRange.get() : Math.min(placeRange.get(), (float) mc.player.blockInteractionRange());
     }
 
     private float effWallRange() {
@@ -1066,15 +1069,8 @@ public class AutoAnchor extends Module {
     private boolean canInteractThisTick(BlockHitResult hit) {
         if (mc.player == null || hit == null) return false;
         if (lastInteractionTick == mc.player.tickCount) return false;
-        if (!serverRotationHits(new AABB(hit.getBlockPos()), effPlaceRange())) return false;
-        return AutoAnchorInteractionUtil.faceFacesEye(mc.player.getEyePosition(), hit.getBlockPos(), hit.getDirection());
-    }
-
-    private boolean serverRotationHits(AABB box, double range) {
-        Rotation server = RotationManager.INSTANCE.getServerRotation();
-        if (server == null) return false;
-        Vec3 eye = mc.player.getEyePosition();
-        return box.contains(eye) || box.clip(eye, eye.add(server.directionVector().scale(range))).isPresent();
+        if (!BlockInteractionPipeline.serverLookMeetsCube(mc.player, hit.getBlockPos(), effPlaceRange())) return false;
+        return FaceVisibility.isVisible(mc.player, hit.getBlockPos(), hit.getDirection());
     }
 
     private String buildDamageText() {

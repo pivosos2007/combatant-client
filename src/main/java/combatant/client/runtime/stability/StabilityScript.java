@@ -15,6 +15,7 @@ import combatant.client.features.module.ModuleManager;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
 import net.minecraft.client.multiplayer.ServerData;
 
 import java.io.IOException;
@@ -44,6 +45,8 @@ import java.util.Map;
  * key forward on                  forward|back|left|right|jump|sneak|sprint|use|attack
  * look 90 10                      yaw pitch (client view)
  * mark crystal-start              label in the log
+ * probe                           logs position, speed, gliding and held items without sending anything
+ * screenshot storageesp-glow      saves screenshots/storageesp-glow.png
  * </pre>
  *
  * Only runs in singleplayer or on a loopback server; held keys and enabled modules are released when it ends.
@@ -178,6 +181,15 @@ public final class StabilityScript {
             }
             case "mark" -> {
             }
+            case "probe" -> {
+                var p = mc.player;
+                log(String.format(Locale.ROOT, "  pos=%.2f %.2f %.2f speed=%.3f gliding=%s main=%s off=%s rockets=%d",
+                        p.getX(), p.getY(), p.getZ(), p.getDeltaMovement().length(), p.isFallFlying(),
+                        p.getMainHandItem().getItem(), p.getOffhandItem().getItem(),
+                        p.getInventory().countItem(net.minecraft.world.item.Items.FIREWORK_ROCKET)));
+            }
+            case "screenshot" -> Screenshot.grab(mc.gameDirectory, parts[1] + ".png", mc.gameRenderer.mainRenderTarget(), 1,
+                    message -> log("  " + message.getString()));
             default -> throw new IllegalArgumentException("unknown step");
         }
     }

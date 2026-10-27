@@ -8,6 +8,8 @@
 package combatant.client.features.module.modules.combat;
 
 import combatant.client.config.values.BooleanMapValue;
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.GameTickEvent;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
@@ -91,8 +93,9 @@ public class SpearAssist extends Module {
         };
     }
 
-    @Override
-    public void onTick() {
+    /** Pre-tick hook: the release goes out before this tick's movement packet, as a vanilla client orders it (Grim Post). */
+    @EventHandler
+    private void onGameTick(GameTickEvent event) {
         if (!isEnabled() || mc.player == null || mc.gameMode == null || !toggles.get("auto_recharge")) return;
         LocalPlayer player = mc.player;
         if (!player.isUsingItem()) return;

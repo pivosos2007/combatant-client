@@ -12,12 +12,7 @@ import combatant.client.config.subsystem.RuntimeConfig;
 import combatant.client.config.subsystem.SecurityConfig;
 import combatant.client.config.subsystem.VisualConfig;
 import combatant.client.config.values.BooleanValue;
-import combatant.client.config.values.EnumValue;
-import combatant.client.config.values.NumberValue;
 import combatant.client.util.logging.DebugMode;
-import combatant.client.util.player.inventory.InventorySearchScope;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
-import combatant.client.util.player.inventory.InventorySwapVisibility;
 
 import java.util.List;
 import java.util.Set;
@@ -137,102 +132,6 @@ public final class MainConfig implements ConfigAggregate, ConfigNameProvider, Se
 
     public void setClickGuiHudEditorHintsEnabled(boolean enabled) {
         visual.setClickGuiHudEditorHintsEnabled(enabled);
-    }
-
-    public InventorySwapPolicy getInventorySwapPolicy() {
-        return inventory.getInventorySwapPolicy();
-    }
-
-    public void setInventorySwapPolicy(InventorySwapPolicy policy) {
-        inventory.setInventorySwapPolicy(policy);
-    }
-
-    public InventorySearchScope getInventorySwapScope() {
-        return inventory.getInventorySwapScope();
-    }
-
-    public void setInventorySwapScope(InventorySearchScope scope) {
-        inventory.setInventorySwapScope(scope);
-    }
-
-    public InventorySwapVisibility getInventorySwapVisibility() {
-        return inventory.getInventorySwapVisibility();
-    }
-
-    public void setInventorySwapVisibility(InventorySwapVisibility visibility) {
-        inventory.setInventorySwapVisibility(visibility);
-    }
-
-    public boolean isInventorySwapRestore() {
-        return inventory.isInventorySwapRestore();
-    }
-
-    public void setInventorySwapRestore(boolean restore) {
-        inventory.setInventorySwapRestore(restore);
-    }
-
-    public boolean isInventorySwapPreferHotbar() {
-        return inventory.isInventorySwapPreferHotbar();
-    }
-
-    public void setInventorySwapPreferHotbar(boolean preferHotbar) {
-        inventory.setInventorySwapPreferHotbar(preferHotbar);
-    }
-
-    public int getInventorySwapLegitWaitTicks() {
-        return inventory.getInventorySwapLegitWaitTicks();
-    }
-
-    public void setInventorySwapLegitWaitTicks(int ticks) {
-        inventory.setInventorySwapLegitWaitTicks(ticks);
-    }
-
-    public int getInventorySwapStrictInventoryWaitTicks() {
-        return inventory.getInventorySwapStrictInventoryWaitTicks();
-    }
-
-    public void setInventorySwapStrictInventoryWaitTicks(int ticks) {
-        inventory.setInventorySwapStrictInventoryWaitTicks(ticks);
-    }
-
-    public int getInventorySwapStrictMovementLockTicks() {
-        return inventory.getInventorySwapStrictMovementLockTicks();
-    }
-
-    public void setInventorySwapStrictMovementLockTicks(int ticks) {
-        inventory.setInventorySwapStrictMovementLockTicks(ticks);
-    }
-
-    public EnumValue<InventorySwapPolicy> inventorySwapPolicyValue() {
-        return inventory.inventorySwapPolicyValue();
-    }
-
-    public EnumValue<InventorySearchScope> inventorySwapScopeValue() {
-        return inventory.inventorySwapScopeValue();
-    }
-
-    public EnumValue<InventorySwapVisibility> inventorySwapVisibilityValue() {
-        return inventory.inventorySwapVisibilityValue();
-    }
-
-    public BooleanValue inventorySwapRestoreValue() {
-        return inventory.inventorySwapRestoreValue();
-    }
-
-    public BooleanValue inventorySwapPreferHotbarValue() {
-        return inventory.inventorySwapPreferHotbarValue();
-    }
-
-    public NumberValue<Integer> inventorySwapLegitWaitTicksValue() {
-        return inventory.inventorySwapLegitWaitTicksValue();
-    }
-
-    public NumberValue<Integer> inventorySwapStrictInventoryWaitTicksValue() {
-        return inventory.inventorySwapStrictInventoryWaitTicksValue();
-    }
-
-    public NumberValue<Integer> inventorySwapStrictMovementLockTicksValue() {
-        return inventory.inventorySwapStrictMovementLockTicksValue();
     }
 
     public boolean isMultitask() {

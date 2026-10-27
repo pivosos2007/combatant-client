@@ -65,8 +65,10 @@ public final class Surround extends Module {
     private final EnumValue<BlockPriority> blockPriority = enumCommon(
             "surroundBlockPriority", "block_priority",
             CommonSettingSchemas.SHELL_BLOCK_PRIORITY, BlockPriority.ANY, BlockPriority.values());
-    private final NumberValue<Integer> blocksPerTick = numCommon(
-            "surroundBlocksPerTick", "blocks_per_tick", CommonSettingSchemas.SHELL_BLOCKS_PER_TICK, 4, 1, 8);
+    // Rotating places one cell per tick (one rotation per movement packet); only rotation-free placing batches.
+    private final NumberValue<Integer> blocksPerTick = visibleWhen(numCommon(
+            "surroundBlocksPerTick", "blocks_per_tick", CommonSettingSchemas.SHELL_BLOCKS_PER_TICK, 4, 1, 8),
+            () -> this.rotation.get() == PlacementRotationMode.NO_ROTATION);
     private final BooleanValue dynamicHitbox = boolCommon(
             "surroundDynamicHitbox", "dynamic_hitbox", CommonSettingSchemas.SHELL_DYNAMIC_HITBOX, true);
     private final BooleanValue support = boolCommon("surroundSupport", "support", CommonSettingSchemas.SHELL_SUPPORT, true);
@@ -281,14 +283,10 @@ public final class Surround extends Module {
         return player == null ? null : ShellBlocks.find(player, blockPriority.get());
     }
 
-    private boolean effConstructFailResult() {
-        return rotation.get() == PlacementRotationMode.NO_ROTATION;
-    }
-
     private PlacementConstraints placementConstraints() {
         return new PlacementConstraints(
                 range.get(), wallRange.get(), rotation.get(), movementCorrection.get(),
-                effConstructFailResult(), false, 1, swapBackDelay.get(), swapBackDelay.get(), true, 0);
+                false, 1, swapBackDelay.get(), swapBackDelay.get(), true, 0);
     }
 
     @Override

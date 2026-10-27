@@ -20,6 +20,7 @@ import combatant.client.automation.placement.PlacementSlot;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
+import combatant.client.util.block.interaction.FaceVisibility;
 import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import combatant.client.util.player.inventory.InventorySwap;
 import net.minecraft.client.Minecraft;
@@ -41,9 +42,10 @@ import java.util.function.Function;
  * button, ...). The item is brought to the hand through a silent hotbar lease of {@code slotOwner}, like placements.
  *
  * <p>Holds INTERACTION, the hotbar slot (main hand) and, in NORMAL mode, ROTATION: every tick it requests the rotation
- * to the block centre and clicks in {@link ExecutionPhase#AFTER_ROTATION} once it owns the active rotation and this
- * tick's rotation traces onto the block. NO_ROTATION clicks the block at once, on the traced face when the current
- * look already hits it.
+ * to the block centre and clicks in {@link ExecutionPhase#AFTER_ROTATION} once it owns the active rotation and the
+ * rotation the server already has traces onto the block, so the click follows the aim by a tick (see
+ * {@link PlacementExecutor}). NO_ROTATION clicks the block at once, on the traced face when the current look already
+ * hits it.
  *
  * <p>Success: the optional effect predicate turned true within {@code effectTimeoutTicks} after the click, or at the
  * click when there is none.
@@ -182,23 +184,41 @@ public final class InteractBlockAction extends AbstractAction {
         clickedTick = tickNow;
     }
 
-    /** The click target: the traced hit of this tick's rotation, or a synthetic hit inside wall range. */
+    /**
+     * The click target. NORMAL clicks along the look the server already has, from the eyes it already has (see
+     * {@link PlacementExecutor}), so the rotation requested on one tick clicks on the next; NO_ROTATION clicks along
+     * the camera. The traced hit when it lands on the block; otherwise, inside wall range, the face the eyes see best
+     * (NORMAL once the look's ray meets the block's cube; the server ignores walls). Reach is capped at the player's
+     * block interaction range, and the face has to face, and the block be in reach of, the eyes the server judges
+     * the click from (see {@link FaceVisibility}).
+     */
     private BlockHitResult resolveHit(LocalPlayer player, boolean normal) {
-        Rotation rotation = normal ? PlacementExecutor.rotationOfThisTick(player)
+        Rotation rotation = normal ? RotationManager.INSTANCE.getServerRotation()
                 : new Rotation(player.getYRot(), player.getXRot(), true);
-        BlockHitResult traced = BlockInteractionPipeline.trace(player, rotation, Math.max(settings.range(),
-                settings.wallRange()));
-        double distanceSq = player.getEyePosition().distanceToSqr(Vec3.atCenterOf(pos));
+        Vec3 eyes = normal ? FaceVisibility.serverEyePosition(player) : player.getEyePosition();
+        double interactionRange = player.blockInteractionRange();
+        double range = Math.min(settings.range(), interactionRange);
+        double wall = Math.min(settings.wallRange(), interactionRange);
+        double reach = Math.max(range, wall);
+        if (normal && !BlockInteractionPipeline.rayMeetsCube(eyes, rotation, pos, reach)) return null;
+        BlockHitResult traced = BlockInteractionPipeline.trace(player, eyes, rotation, reach);
+        double distanceSq = eyes.distanceToSqr(Vec3.atCenterOf(pos));
         if (traced != null && traced.getType() == HitResult.Type.BLOCK && pos.equals(traced.getBlockPos())
-                && distanceSq <= settings.range() * settings.range()) {
-            return traced;
+                && distanceSq <= range * range) {
+            return clickable(player, traced, range) ? traced : null;
         }
-        double wall = settings.wallRange();
         boolean withinWall = wall > 0.0 && distanceSq <= wall * wall;
-        boolean withinReach = !normal && distanceSq <= settings.range() * settings.range();
+        boolean withinReach = !normal && distanceSq <= range * range;
         if (!withinWall && !withinReach) return null;
-        Direction side = player.getEyeY() >= pos.getY() + 0.5 ? Direction.UP : Direction.DOWN;
-        return new BlockHitResult(Vec3.atCenterOf(pos), side, pos, false);
+        Direction side = FaceVisibility.bestFace(player, pos);
+        if (side == null) return null;
+        BlockHitResult synthetic = new BlockHitResult(BlockInteractionPipeline.faceCenter(pos, side), side, pos, false);
+        return clickable(player, synthetic, reach) ? synthetic : null;
+    }
+
+    private static boolean clickable(LocalPlayer player, BlockHitResult hit, double reach) {
+        return FaceVisibility.isVisible(player, hit.getBlockPos(), hit.getDirection())
+                && BlockInteractionPipeline.cubeWithinReach(player, hit.getBlockPos(), reach);
     }
 
     @Override

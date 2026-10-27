@@ -131,6 +131,6 @@ public final class LightFinder extends ChunkFinderModule<LightFinder.Lit> {
         return false;
     }
 
-    public record Lit(String reason, BlockPos evidence) implements ChunkFinderModule.Hit {
+    public record Lit(String reason, BlockPos evidence) implements ChunkMarkers.Hit {
     }
 }

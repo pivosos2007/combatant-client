@@ -83,6 +83,14 @@ public final class ToolSelection {
         return (float) (damage * speed);
     }
 
+    /** Attack speed of a vanilla sword; a charged hit is scored as if it came at that rate. */
+    private static final double CHARGED_HIT_SPEED = 1.6;
+
+    /** Score of the weapon already in hand with a fully charged cooldown: its next hit needs no wait. */
+    public static float chargedHitScore(double bonusDamage) {
+        return (float) ((HAND_DAMAGE + bonusDamage) * CHARGED_HIT_SPEED);
+    }
+
     /** Fraction of durability left; items without durability count as fully intact. */
     public static float durabilityLeft(int damage, int maxDamage) {
         if (maxDamage <= 0) return 1.0f;

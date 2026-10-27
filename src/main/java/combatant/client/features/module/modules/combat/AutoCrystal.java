@@ -52,6 +52,7 @@ import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.data.RotationWithVector;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.aiming.raytrace.RotationRaytrace;
+import combatant.client.util.block.interaction.FaceVisibility;
 import combatant.client.util.combat.CombatRotationModeUtil;
 import combatant.client.util.combat.CombatBlockUseUtil;
 import combatant.client.util.combat.ExplosionRenderUtil;
@@ -75,6 +76,8 @@ import combatant.client.util.combat.AttackUtil;
 public class AutoCrystal extends Module {
 
     private static final int ROTATION_PRIORITY = 35;
+    /** Keeps the RotationPlace ray inside the interaction range GrimAC measures it against. */
+    private static final double ROTATION_PLACE_MARGIN = 0.05;
     private static final int HOTBAR_RESET_TICKS = 2;
     private static final String ACTION_BASE = "base";
 
@@ -525,7 +528,7 @@ public class AutoCrystal extends Module {
 
         if (!usesRotationSettings()) {
             RotationManager.INSTANCE.clear(this);
-            tryPlaceCrystal(candidate.pos(), false);
+            tryPlaceCrystal(candidate.pos());
             return;
         }
 
@@ -542,7 +545,7 @@ public class AutoCrystal extends Module {
                 rotationResetThreshold.get(),
                 true,
                 movementCorrection.get(),
-                new RestrictedSingleUseAction(() -> tryPlaceCrystal(candidate.pos(), true))
+                new RestrictedSingleUseAction(() -> tryPlaceCrystal(candidate.pos()))
         );
         RotationManager.INSTANCE.setRotationTarget(rotationTarget, ROTATION_PRIORITY, this);
     }
@@ -976,11 +979,13 @@ public class AutoCrystal extends Module {
             return true;
         }
 
+        // GrimAC measures the hit from the eye of the last movement packet; aim slightly inside the box so rounding of
+        // the sent rotation cannot turn the hit into a miss.
         RotationWithVector rotation = RotationRaytrace.raytraceBox(
-                mc.player.getEyePosition(),
-                crystal.getBoundingBox(),
-                effBreakRange(),
-                effBreakWallRange()
+                FaceVisibility.serverEyePosition(mc.player),
+                crystal.getBoundingBox().deflate(AutoCrystalInteractionUtil.AIM_INSET),
+                effBreakRange() + AutoCrystalInteractionUtil.AIM_INSET,
+                effBreakWallRange() + AutoCrystalInteractionUtil.AIM_INSET
         );
         if (rotation == null) {
             return false;
@@ -1023,7 +1028,7 @@ public class AutoCrystal extends Module {
         }
 
         if (!usesRotationSettings()) {
-            placeBase(refreshed, false);
+            placeBase(refreshed);
             return true;
         }
 
@@ -1035,13 +1040,13 @@ public class AutoCrystal extends Module {
                 rotationResetThreshold.get(),
                 true,
                 movementCorrection.get(),
-                new RestrictedSingleUseAction(() -> placeBase(refreshed, true))
+                new RestrictedSingleUseAction(() -> placeBase(refreshed))
         );
         RotationManager.INSTANCE.setRotationTarget(rotationTarget, ROTATION_PRIORITY, this);
         return true;
     }
 
-    private void placeBase(AutoCrystalBasePlanner.BaseData data, boolean callback) {
+    private void placeBase(AutoCrystalBasePlanner.BaseData data) {
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null || mc.gameMode == null || data == null) {
             return;
@@ -1064,7 +1069,7 @@ public class AutoCrystal extends Module {
             return;
         }
 
-        if (!rotationClicks(refreshed.hitResult(), callback)) {
+        if (!rotationClicks(refreshed.hitResult())) {
             return;
         }
 
@@ -1087,7 +1092,7 @@ public class AutoCrystal extends Module {
         }
     }
 
-    private void tryPlaceCrystal(BlockPos pos, boolean callback) {
+    private void tryPlaceCrystal(BlockPos pos) {
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null || mc.gameMode == null || pos == null) {
             debugLog("place-skip reason=invalid-state pos=%s", pos);
@@ -1121,7 +1126,7 @@ public class AutoCrystal extends Module {
         debugLog("place-attempt pos=%s hand=%s slot=%d hit=%s side=%s",
                 pos, hand.hand(), hand.hotbarSlot(), hitResult.getBlockPos(), hitResult.getDirection());
 
-        if (!rotationClicks(hitResult, callback)) {
+        if (!rotationClicks(hitResult)) {
             debugLog("place-skip reason=rotation-not-sent pos=%s", pos);
             return;
         }
@@ -1162,7 +1167,9 @@ public class AutoCrystal extends Module {
 
         AABB box = crystal.getBoundingBox();
         double range = effBreakRange();
-        if (AutoCrystalInteractionUtil.distanceSqToBox(player.getEyePosition(), box) > range * range
+        Vec3 sentEye = FaceVisibility.serverEyePosition(player);
+        if (AutoCrystalInteractionUtil.distanceSqToBox(sentEye, box) > range * range
+                || AutoCrystalInteractionUtil.distanceSqToBox(player.getEyePosition(), box) > range * range
                 || !rotationHitsBox(box, range, callback)) {
             debugLog("break-skip reason=reach id=%d", crystal.getId());
             return;
@@ -1213,39 +1220,63 @@ public class AutoCrystal extends Module {
         AutoCrystalPlaceData candidate = bestCandidate;
         if (removed && candidate != null && target != null && findCrystalHand(mc.player) != null) {
             // tryPlaceCrystal re-validates the spot and damage against the world as it is now.
-            tryPlaceCrystal(candidate.pos(), false);
+            tryPlaceCrystal(candidate.pos());
         }
     }
 
-    /** The rotation the next movement packet carries, or the last one the server saw when none is pending yet. */
-    private Rotation outgoingRotation(boolean callback) {
-        Rotation pending = callback ? RotationManager.INSTANCE.getCurrentRotation() : null;
-        return pending != null ? pending : RotationManager.INSTANCE.getServerRotation();
+    /**
+     * The rotations the next movement packet may carry: the pending rotation (or the camera rotation when none is
+     * pending, which is what the packet falls back to), and for actions sent before the tick's rotation step also the
+     * last one the server saw. All of them have to satisfy GrimAC, since which one ends up sent is not settled yet.
+     */
+    private List<Rotation> outgoingRotations(boolean callback) {
+        LocalPlayer player = mc.player;
+        if (player == null) return List.of();
+        Rotation pending = RotationManager.INSTANCE.getCurrentRotation();
+        Rotation next = pending != null ? pending : new Rotation(player.getYRot(), player.getXRot());
+        Rotation server = callback ? null : RotationManager.INSTANCE.getServerRotation();
+        if (server == null || server == Rotation.ZERO) return List.of(next);
+        return List.of(next, server);
     }
 
-    // GrimAC raytraces entity hits and placements against the rotation of the movement packet that follows them. An
-    // action sent before this tick's rotation step therefore only goes out when the last sent rotation already
-    // satisfies it; inside the rotation callback the pending rotation is the one that is sent.
+    // GrimAC Reach/Hitboxes queue an attack with the position of the last movement packet and raytrace it with the
+    // rotation of the packet that follows. That holds with or without rotation settings: without them the camera
+    // rotation goes out, so the attack is only made while the camera already points at the crystal.
     private boolean rotationHitsBox(AABB box, double range, boolean callback) {
-        if (!usesRotationSettings()) return true;
-        Rotation rotation = outgoingRotation(callback);
-        if (rotation == null || mc.player == null) return false;
-        Vec3 eye = mc.player.getEyePosition();
-        return box.contains(eye) || box.clip(eye, eye.add(rotation.directionVector().scale(range))).isPresent();
+        if (mc.player == null) return false;
+        Vec3 eye = FaceVisibility.serverEyePosition(mc.player);
+        List<Rotation> rotations = outgoingRotations(callback);
+        if (rotations.isEmpty()) return false;
+        for (Rotation rotation : rotations) {
+            if (!AutoCrystalInteractionUtil.rayHitsBox(eye, rotation.directionVector(), box, range)) return false;
+        }
+        return true;
     }
 
-    private boolean rotationClicks(BlockHitResult hit, boolean callback) {
-        if (!usesRotationSettings()) return true;
-        Rotation rotation = outgoingRotation(callback);
-        if (rotation == null || hit == null || mc.player == null) return false;
-        Vec3 eye = mc.player.getEyePosition();
-        double range = effPlaceRange() + 1.0;
-        if (strictInteractions.get()) {
-            return AutoCrystalInteractionUtil.rayEntersFace(
-                    eye, rotation.directionVector(), hit.getBlockPos(), hit.getDirection(), range);
+    // GrimAC RotationPlace raytraces a click with the eyes and rotation it holds when it settles the click: usually
+    // those of the next movement packet, but the last ones it received when a slot change, a transaction reply or a
+    // late movement packet settles the click first, and for every click after one miss. A click therefore needs the
+    // look the server already has as well as the next one, within the block interaction range. Inside the rotation
+    // callback this delays a fresh aim by a tick.
+    private boolean rotationClicks(BlockHitResult hit) {
+        LocalPlayer player = mc.player;
+        if (hit == null || player == null) return false;
+        double range = player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE) - ROTATION_PLACE_MARGIN;
+        if (!clickRayHits(FaceVisibility.serverEyePosition(player), RotationManager.INSTANCE.getServerRotation(),
+                hit, range)) {
+            return false;
         }
-        AABB block = new AABB(hit.getBlockPos());
-        return block.contains(eye) || block.clip(eye, eye.add(rotation.directionVector().scale(range))).isPresent();
+        Rotation pending = RotationManager.INSTANCE.getCurrentRotation();
+        Rotation next = pending != null ? pending : new Rotation(player.getYRot(), player.getXRot());
+        return clickRayHits(player.getEyePosition(), next, hit, range);
+    }
+
+    private boolean clickRayHits(Vec3 eye, Rotation rotation, BlockHitResult hit, double range) {
+        if (rotation == null) return false;
+        return strictInteractions.get() && usesRotationSettings()
+                ? AutoCrystalInteractionUtil.rayEntersFace(
+                        eye, rotation.directionVector(), hit.getBlockPos(), hit.getDirection(), range)
+                : AutoCrystalInteractionUtil.rayHitsBox(eye, rotation.directionVector(), new AABB(hit.getBlockPos()), range);
     }
 
     private boolean isCrystalBlocked(int id) {

@@ -29,7 +29,6 @@ import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySearchScope;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.player.inventory.InventorySwapRequest;
 import combatant.client.util.player.inventory.InventorySwapVisibility;
 import combatant.client.util.player.inventory.SlotResult;
@@ -80,7 +79,7 @@ public final class InstaCart extends Module {
     private final KeyBindValue triggerKey = bind("instaCartTriggerKey", "trigger_key", "NONE", BindMode.PRESS);
     private final EnumValue<Shooter> shooter = enumSetting("instaCartShooter", "shooter", Shooter.CROSSBOW, Shooter.values());
     private final NumberValue<Double> range = num("instaCartRange", "range", 4.5, 2.0, 6.0);
-    private final NumberValue<Double> safeDistance = num("instaCartSafeDistance", "safe_distance", 4.0, 0.0, 8.0);
+    private final NumberValue<Double> safeDistance = num("instaCartSafeDistance", "safe_distance", 3.0, 0.0, 6.0);
     private final NumberValue<Integer> bowChargeTicks = num("instaCartBowCharge", "bow_charge_ticks", 6, 3, 20);
     private final BooleanValue igniteFire = bool("instaCartIgnite", "ignite_fire", false);
 
@@ -320,7 +319,6 @@ public final class InstaCart extends Module {
                 .scope(InventorySearchScope.FULL)
                 .visibility(InventorySwapVisibility.SILENT)
                 .restore(true)
-                .policy(InventorySwapPolicy.NONE)
                 .actionKind(InventoryActionKind.BLOCK_INTERACT)
                 .build();
         acted = InventorySwap.INSTANCE.execute(request);
@@ -337,7 +335,6 @@ public final class InstaCart extends Module {
                 .scope(InventorySearchScope.FULL)
                 .visibility(InventorySwapVisibility.SILENT)
                 .restore(true)
-                .policy(InventorySwapPolicy.NONE)
                 .actionKind(InventoryActionKind.USE_ITEM)
                 .build();
         InventorySwap.INSTANCE.execute(request);
@@ -351,6 +348,7 @@ public final class InstaCart extends Module {
         }
         previousSlot = InventorySwap.INSTANCE.clientSelectedSlot();
         if (!InventorySwap.INSTANCE.selectHotbar(bow.slot())) {
+            InventorySwap.INSTANCE.selectHotbar(previousSlot);
             previousSlot = -1;
             reset(true);
             return;
@@ -369,7 +367,7 @@ public final class InstaCart extends Module {
     }
 
     private void restoreSlot() {
-        if (previousSlot >= 0) InventorySwap.INSTANCE.selectHotbar(previousSlot);
+        if (previousSlot >= 0) InventorySwap.INSTANCE.restoreHotbar(previousSlot);
         previousSlot = -1;
     }
 

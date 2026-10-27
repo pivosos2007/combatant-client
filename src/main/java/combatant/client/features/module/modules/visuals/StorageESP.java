@@ -8,12 +8,11 @@
 package combatant.client.features.module.modules.visuals;
 
 import combatant.client.config.values.BooleanValue;
-import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.PacketEvent;
-import combatant.client.features.module.Module;
+import combatant.client.features.module.modules.visuals.finder.ShaderBoxModule;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
@@ -65,17 +64,11 @@ import java.util.Map;
         aliases = {"ChestESP", "ContainerESP", "StorageFinder"},
         category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
         description = "module.storageesp.description")
-public final class StorageESP extends Module {
+public final class StorageESP extends ShaderBoxModule {
 
     private static final double INSET = 1.0 / 16.0;
     private static final double CHEST_HEIGHT = 14.0 / 16.0;
     private static final int OPENED_LIMIT = 4096;
-
-    public enum RenderMode {
-        BOX,
-        OUTLINE,
-        FILL
-    }
 
     private enum Kind {
         CHEST("chest", "#FFFFA52E"),
@@ -97,7 +90,10 @@ public final class StorageESP extends Module {
         }
     }
 
-    private final EnumValue<RenderMode> renderMode = enumMode("render_mode", RenderMode.BOX);
+    public StorageESP() {
+        super(RenderMode.BOX, RenderMode.values());
+    }
+
     private final NumberValue<Integer> maxDistance = num("max_distance", 96, 8, 512);
     private final NumberValue<Integer> lineWidth = num("line_width", 2, 1, 6);
     private final BooleanValue dimOpened = bool("dim_opened", true);
@@ -253,13 +249,15 @@ public final class StorageESP extends Module {
                     base = scaleAlpha(base, dimFactor);
                 }
 
-                int line = mode == RenderMode.FILL ? 0 : base;
-                int fill = switch (mode) {
-                    case OUTLINE -> 0;
-                    case BOX -> scaleAlpha(base, 0.2f);
-                    case FILL -> scaleAlpha(base, 0.45f);
-                };
-                draw.box(found.box, fill, line);
+                if (!drawShaderBox(renderer, found.box, base)) {
+                    int line = mode == RenderMode.FILL ? 0 : base;
+                    int fill = switch (mode) {
+                        case OUTLINE, GLOW, SHADER -> 0;
+                        case BOX -> scaleAlpha(base, 0.2f);
+                        case FILL -> scaleAlpha(base, 0.45f);
+                    };
+                    draw.box(found.box, fill, line);
+                }
                 if (tracers.get(found.kind).get()) draw.tracer(center, base);
             }
         }

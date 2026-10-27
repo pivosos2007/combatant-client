@@ -183,14 +183,10 @@ public final class AutoTrap extends Module {
         return PlacementSlot.find(mc.player, AutoTrap::isTargetBlock);
     }
 
-    private boolean effConstructFailResult() {
-        return rotation.get() == PlacementRotationMode.NO_ROTATION;
-    }
-
     private PlacementConstraints placementConstraints() {
         return new PlacementConstraints(
                 range.get(), wallRange.get(), rotation.get(), movementCorrection.get(),
-                effConstructFailResult(), false, 1, 0, 0, true, 0);
+                false, 1, 0, 0, true, 0);
     }
 
     private static boolean isTargetBlock(ItemStack stack) {

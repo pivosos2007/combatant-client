@@ -15,14 +15,13 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.tags.BlockTags;
-import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.util.valueproviders.IntProvider;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.biome.FeatureSorter;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.biome.FeatureSorter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.dimension.LevelStem;
@@ -46,6 +45,7 @@ import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Replays vanilla ore decoration for one chunk from the world seed, the "OreSim" technique.
@@ -58,17 +58,28 @@ import java.util.List;
  * <p>The random sequence must match vanilla call for call: {@link #simulate} walks the placed
  * feature's modifiers in order and gives up on any modifier type it does not model, because a
  * single missed call shifts every later prediction.</p>
+ *
+ * <p>A replay is only right when the server generated its chunks exactly like this client's version with the
+ * given seed. {@link #calibrate} checks that against the world: ores that generate next to air (nether quartz and
+ * gold) are never hidden by anti-xray, so their predicted air-exposed blocks must show the ore.</p>
  */
 public final class OreSimulation {
 
     /** One placed feature, resolved against the vanilla registries. */
     public record OreSpec(ResourceKey<PlacedFeature> key, PlacedFeature placed, int step, int index,
                           List<PlacementModifier> modifiers, int size, float discardChanceOnAirExposure,
-                          boolean scattered, List<Block> oreBlocks) {
+                          boolean scattered, List<BlockReplacement> targets, boolean calibration) {
 
         /** Buried ores (discard chance 1) are never next to air, which makes the air check draw-free. */
         public boolean buried() {
             return discardChanceOnAirExposure >= 1.0f;
+        }
+
+        boolean isOre(BlockState state) {
+            for (BlockReplacement target : targets) {
+                if (state.is(target.state().getBlock())) return true;
+            }
+            return false;
         }
     }
 
@@ -76,36 +87,42 @@ public final class OreSimulation {
     public record Hit(BlockPos pos, ResourceKey<PlacedFeature> key, boolean mined) {
     }
 
-    private final List<OreSpec> specs;
-    private final ChunkGenerator generator;
-    private final TagKey<Block> baseStone;
-    private final boolean biomeCheck;
+    /** Calibration samples of one chunk: predicted air-exposed blocks of the calibration ores, and how many hold them. */
+    public record Calibration(int exposed, int matched) {
+    }
 
-    private OreSimulation(List<OreSpec> specs, ChunkGenerator generator, TagKey<Block> baseStone,
-                          boolean biomeCheck) {
+    private final List<OreSpec> specs;
+    private final List<OreSpec> calibrationSpecs;
+    private final ChunkGenerator generator;
+    // The client never receives biome generation settings, so the biome filter reads the vanilla biome by key.
+    private final HolderGetter<Biome> vanillaBiomes;
+
+    private OreSimulation(List<OreSpec> specs, List<OreSpec> calibrationSpecs, ChunkGenerator generator,
+                          HolderGetter<Biome> vanillaBiomes) {
         this.specs = specs;
+        this.calibrationSpecs = calibrationSpecs;
         this.generator = generator;
-        this.baseStone = baseStone;
-        this.biomeCheck = biomeCheck;
+        this.vanillaBiomes = vanillaBiomes;
     }
 
     /**
-     * Builds the vanilla registries and resolves the given nether features. Slow (hundreds of
-     * milliseconds), so callers run it off the client thread once and cache the result.
+     * Builds the vanilla registries and resolves the given nether features; {@code calibration} lists features used
+     * only by {@link #calibrate}. Slow (hundreds of milliseconds), so callers run it off the client thread once and
+     * cache the result.
      */
-    @SafeVarargs
-    public static OreSimulation forNether(ResourceKey<PlacedFeature>... features) {
-        return build(LevelStem.NETHER, BlockTags.BASE_STONE_NETHER, false, features);
+    public static OreSimulation forNether(List<ResourceKey<PlacedFeature>> ores,
+                                          List<ResourceKey<PlacedFeature>> calibration) {
+        return build(LevelStem.NETHER, ores, calibration);
     }
 
-    /** Same as {@link #forNether} for the overworld; biome membership is read from the client level. */
-    @SafeVarargs
-    public static OreSimulation forOverworld(ResourceKey<PlacedFeature>... features) {
-        return build(LevelStem.OVERWORLD, BlockTags.BASE_STONE_OVERWORLD, true, features);
+    /** Same as {@link #forNether} for the overworld. */
+    public static OreSimulation forOverworld(List<ResourceKey<PlacedFeature>> ores,
+                                             List<ResourceKey<PlacedFeature>> calibration) {
+        return build(LevelStem.OVERWORLD, ores, calibration);
     }
 
-    private static OreSimulation build(ResourceKey<LevelStem> stem, TagKey<Block> baseStone, boolean biomeCheck,
-                                       ResourceKey<PlacedFeature>[] features) {
+    private static OreSimulation build(ResourceKey<LevelStem> stem, List<ResourceKey<PlacedFeature>> ores,
+                                       List<ResourceKey<PlacedFeature>> calibration) {
         HolderLookup.Provider lookup = VanillaRegistries.createWorldLookup();
         ChunkGenerator generator = WorldPresets.createNormalWorldDimensions(lookup)
                 .get(stem)
@@ -119,8 +136,15 @@ public final class OreSimulation {
                 biomes, biome -> biome.value().getGenerationSettings().features(), true);
 
         HolderGetter<PlacedFeature> placedFeatures = lookup.lookupOrThrow(Registries.PLACED_FEATURE);
+        return new OreSimulation(resolve(steps, placedFeatures, ores, false),
+                resolve(steps, placedFeatures, calibration, true), generator, lookup.lookupOrThrow(Registries.BIOME));
+    }
+
+    private static List<OreSpec> resolve(List<FeatureSorter.StepFeatureData> steps,
+                                         HolderGetter<PlacedFeature> placedFeatures,
+                                         List<ResourceKey<PlacedFeature>> keys, boolean calibration) {
         List<OreSpec> specs = new ArrayList<>();
-        for (ResourceKey<PlacedFeature> key : features) {
+        for (ResourceKey<PlacedFeature> key : keys) {
             PlacedFeature placed = placedFeatures.getOrThrow(key).value();
             Feature feature = placed.feature().value();
             if (!(feature instanceof AbstractOreFeature ore)) {
@@ -128,15 +152,11 @@ public final class OreSimulation {
             }
             int step = findStep(steps, placed);
             if (step < 0) continue; // not generated in this dimension
-            List<Block> oreBlocks = new ArrayList<>();
-            for (BlockReplacement target : ore.targetStates()) {
-                oreBlocks.add(target.state().getBlock());
-            }
             specs.add(new OreSpec(key, placed, step, steps.get(step).indexMapping().applyAsInt(placed),
                     List.copyOf(placed.placement()), ore.size(), ore.discardChanceOnAirExposure(),
-                    feature instanceof ScatteredOreFeature, List.copyOf(oreBlocks)));
+                    feature instanceof ScatteredOreFeature, List.copyOf(ore.targetStates()), calibration));
         }
-        return new OreSimulation(List.copyOf(specs), generator, baseStone, biomeCheck);
+        return List.copyOf(specs);
     }
 
     private static int findStep(List<FeatureSorter.StepFeatureData> steps, PlacedFeature placed) {
@@ -150,33 +170,105 @@ public final class OreSimulation {
         return specs;
     }
 
+    public List<OreSpec> calibrationSpecs() {
+        return calibrationSpecs;
+    }
+
     /**
      * Predicted ore blocks in one chunk, filtered against what the client can see: a spot
      * must still hold base stone (or the ore itself) and pass the air-exposure rule.
+     *
+     * @param indexOffset added to every feature index, for servers whose chunks were generated by a version with a
+     *                    different feature list (see {@link #calibrate})
      */
-    public List<BlockPos> simulate(Level level, long worldSeed, int chunkX, int chunkZ) {
+    public List<BlockPos> simulate(Level level, long worldSeed, int chunkX, int chunkZ, int indexOffset) {
         List<BlockPos> out = new ArrayList<>();
-        for (Hit hit : simulateHits(level, worldSeed, chunkX, chunkZ)) {
+        for (Hit hit : simulateHits(level, worldSeed, chunkX, chunkZ, indexOffset)) {
             if (!hit.mined()) out.add(hit.pos());
         }
         return out;
     }
 
     /** Like {@link #simulate} but keeps the source feature and the mined-spot flag of each hit. */
-    public List<Hit> simulateHits(Level level, long worldSeed, int chunkX, int chunkZ) {
+    public List<Hit> simulateHits(Level level, long worldSeed, int chunkX, int chunkZ, int indexOffset) {
+        return run(level, worldSeed, chunkX, chunkZ, specs, indexOffset);
+    }
+
+    /**
+     * Checks the replay against the chunk: the calibration ores' predicted blocks that touch air are visible through
+     * any anti-xray, so with the right seed, index offset and generation they show the ore. Otherwise they are
+     * mostly plain stone.
+     */
+    public Calibration calibrate(Level level, long worldSeed, int chunkX, int chunkZ, int indexOffset) {
+        int exposed = 0;
+        int matched = 0;
+        for (Hit hit : run(level, worldSeed, chunkX, chunkZ, calibrationSpecs, indexOffset)) {
+            if (hit.mined() || !touchesAir(level, hit.pos())) continue;
+            exposed++;
+            OreSpec spec = specFor(calibrationSpecs, hit.key());
+            if (spec != null && spec.isOre(level.getBlockState(hit.pos()))) matched++;
+        }
+        return new Calibration(exposed, matched);
+    }
+
+    private static OreSpec specFor(List<OreSpec> from, ResourceKey<PlacedFeature> key) {
+        for (OreSpec spec : from) {
+            if (spec.key().equals(key)) return spec;
+        }
+        return null;
+    }
+
+    private static boolean touchesAir(Level level, BlockPos pos) {
+        for (Direction direction : Direction.values()) {
+            if (level.getBlockState(pos.relative(direction)).isAir()) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Every block the buried ores' veins (ancient debris) claim in one chunk, before any check against the world.
+     * Checks the debris replay on its own, apart from {@link #calibrate}: a server can generate one feature from a
+     * separate seed (Paper {@code feature-seeds}), so quartz may line up while debris does not. Debris generates
+     * buried, but lava does not stop it and players' tunnels expose it, and an exposed block is never hidden by
+     * anti-xray; such a block lies in this set with the right replay and almost never otherwise.
+     */
+    public List<BlockPos> veinBlocks(Level level, long worldSeed, int chunkX, int chunkZ, int indexOffset) {
+        RawHits raw = new RawHits();
+        run(level, worldSeed, chunkX, chunkZ, specs, indexOffset, raw);
+        List<BlockPos> out = new ArrayList<>(raw.size());
+        for (Hit hit : raw) out.add(hit.pos());
+        return out;
+    }
+
+    private List<Hit> run(Level level, long worldSeed, int chunkX, int chunkZ, List<OreSpec> which, int indexOffset) {
+        List<Hit> out = new ArrayList<>();
+        run(level, worldSeed, chunkX, chunkZ, which, indexOffset, out);
+        return out;
+    }
+
+    private void run(Level level, long worldSeed, int chunkX, int chunkZ, List<OreSpec> which, int indexOffset,
+                     List<Hit> out) {
         WorldGenerationContext context = new WorldGenerationContext(generator, level);
         WorldgenRandom random = new WorldgenRandom(new XoroshiroRandomSource(0L));
         int minX = chunkX << 4;
         int minZ = chunkZ << 4;
         long decorationSeed = random.setDecorationSeed(worldSeed, minX, minZ);
 
-        List<Hit> out = new ArrayList<>();
-        for (OreSpec spec : specs) {
-            random.setFeatureSeed(decorationSeed, spec.index(), spec.step());
+        for (OreSpec spec : which) {
+            if (out instanceof RawHits && !spec.buried()) {
+                throw new IllegalArgumentException(spec.key().identifier() + " reads randoms in its world checks");
+            }
+            random.setFeatureSeed(decorationSeed, spec.index() + indexOffset, spec.step());
             // An unknown modifier leaves the random stream untrustworthy for this spec only.
             placeAll(level, random, context, spec, new BlockPos(minX, 0, minZ), out);
         }
-        return out;
+    }
+
+    /**
+     * Collects every block a buried ore's vein would claim, before any check against the world. Buried ores read no
+     * random in those checks, so skipping them leaves the stream unchanged.
+     */
+    private static final class RawHits extends ArrayList<Hit> {
     }
 
     // Vanilla streams positions through the modifiers lazily, so each position runs through
@@ -224,9 +316,11 @@ public final class OreSimulation {
             return apply(level, random, context, spec, next, new BlockPos(pos.getX(), y, pos.getZ()), out);
         }
         if (modifier instanceof BiomeFilter) {
-            // The nether carries its features in every biome; the overworld does not (emerald is
-            // mountain-only), so there the client's own biome at the position decides.
-            if (biomeCheck && !level.getBiome(pos).value().getGenerationSettings().hasFeature(spec.placed())) {
+            // Vanilla's filter: the feature must belong to the biome at the position (in the nether this skips the
+            // plain quartz/gold features in basalt deltas, which carry their own variants). The client only knows
+            // the biome's key, so the vanilla biome decides; an unknown (custom) biome is let through.
+            var biome = level.getBiome(pos).unwrapKey().flatMap(vanillaBiomes::get);
+            if (biome.isPresent() && !biome.get().value().getGenerationSettings().hasFeature(spec.placed())) {
                 return true;
             }
             return apply(level, random, context, spec, next, pos, out);
@@ -329,15 +423,26 @@ public final class OreSimulation {
     }
 
     /**
-     * OreFeature.canPlaceOre against the final world. The target test accepts the ore itself
-     * (already generated) as well as the dimension's base stone, since the client sees the
-     * finished chunk. A buried ore draws no randoms for its air check, so a spot that now reads
-     * as an open, tunnel-like air pocket can be reported as mined without shifting the stream.
+     * OreFeature.canPlaceOre against the final world: the feature's own target rule (netherrack, the
+     * nether base-stone tag, ...) or the ore itself, since the client sees the finished chunk. The
+     * rules used by vanilla ores read no random. A buried ore draws no randoms for its air check, so
+     * a spot that now reads as an open, tunnel-like air pocket can be reported as mined without
+     * shifting the stream.
+     *
+     * <p>A buried spot no player can see may show an anti-xray block instead of the real one (Paper hides
+     * ores with stone in engine mode 1 and fills hidden spots with random ores in modes 2 and 3), so there
+     * any block anti-xray may put is accepted.</p>
      */
     private void tryPlace(Level level, WorldgenRandom random, OreSpec spec, BlockPos.MutableBlockPos pos,
                           List<Hit> out) {
+        if (out instanceof RawHits) {
+            out.add(new Hit(pos.immutable(), spec.key(), false));
+            return;
+        }
         BlockState state = level.getBlockState(pos);
-        if (!state.is(baseStone) && !spec.oreBlocks().contains(state.getBlock())) {
+        boolean accepted = spec.isOre(state) || matchesTarget(spec, state, pos, random)
+                || spec.buried() && ANTI_XRAY_BLOCKS.contains(state.getBlock()) && !touchesAir(level, pos);
+        if (!accepted) {
             if (spec.buried() && state.isAir() && looksTunnelled(level, pos)) {
                 out.add(new Hit(pos.immutable(), spec.key(), true));
             }
@@ -354,6 +459,28 @@ public final class OreSimulation {
         }
         out.add(new Hit(pos.immutable(), spec.key(), false));
     }
+
+    private static boolean matchesTarget(OreSpec spec, BlockState state, BlockPos pos, WorldgenRandom random) {
+        for (BlockReplacement target : spec.targets()) {
+            if (target.target().test(state, pos, random)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Blocks Paper's default anti-xray settings may show at hidden spots instead of the real block (its hidden-blocks
+     * lists; base stone already passes the target rule). Blocks that also lie buried naturally (magma, gravel, soul
+     * sand/soil, clay) are left out: accepting them would draw boxes where generation never put the ore.
+     */
+    private static final Set<Block> ANTI_XRAY_BLOCKS = Set.of(
+            Blocks.ANCIENT_DEBRIS, Blocks.BONE_BLOCK, Blocks.GLOWSTONE, Blocks.NETHER_BRICKS,
+            Blocks.NETHER_GOLD_ORE, Blocks.NETHER_QUARTZ_ORE, Blocks.POLISHED_BLACKSTONE_BRICKS,
+            Blocks.COAL_ORE, Blocks.DEEPSLATE_COAL_ORE, Blocks.COPPER_ORE, Blocks.DEEPSLATE_COPPER_ORE,
+            Blocks.IRON_ORE, Blocks.DEEPSLATE_IRON_ORE, Blocks.GOLD_ORE, Blocks.DEEPSLATE_GOLD_ORE,
+            Blocks.REDSTONE_ORE, Blocks.DEEPSLATE_REDSTONE_ORE, Blocks.LAPIS_ORE, Blocks.DEEPSLATE_LAPIS_ORE,
+            Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE, Blocks.EMERALD_ORE, Blocks.DEEPSLATE_EMERALD_ORE,
+            Blocks.RAW_COPPER_BLOCK, Blocks.RAW_IRON_BLOCK, Blocks.OBSIDIAN, Blocks.MOSSY_COBBLESTONE,
+            Blocks.CHEST, Blocks.ENDER_CHEST);
 
     // Natural caves leave open pockets (5-6 air neighbours) while a dug tunnel is 1 block wide.
     private static boolean looksTunnelled(Level level, BlockPos pos) {

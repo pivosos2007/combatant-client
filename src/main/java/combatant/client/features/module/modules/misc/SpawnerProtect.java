@@ -43,7 +43,6 @@ import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import combatant.client.util.block.interaction.BlockInteractionPipeline.MiningPlan;
 import combatant.client.util.block.interaction.BlockInteractionPipeline.RotationPlan;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ServerData;
@@ -347,7 +346,7 @@ public final class SpawnerProtect extends Module {
         }
         if (slot == selected) return null;
         if (slot < 9) return InventoryAction.select(slot);
-        return InventoryAction.moveToHotbar(slot, selected, InventorySwapPolicy.LEGIT, 40);
+        return InventoryAction.moveToHotbar(slot, selected, 40);
     }
 
     private Action walkStep(BlockPos target, double reach) {

@@ -58,4 +58,15 @@ public enum ProtectionFocus {
         if (maxDamage <= 0) return false;
         return (double) damage / maxDamage > percent / 100.0;
     }
+
+    /**
+     * Multiplier for a piece's score from its remaining durability: 1 when intact, {@code 1 - weight} when about to
+     * break. Pieces without durability count as intact.
+     */
+    public static double durabilityFactor(int damage, int maxDamage, double weight) {
+        if (maxDamage <= 0) return 1.0;
+        double left = Math.max(0.0, Math.min(1.0, (maxDamage - damage) / (double) maxDamage));
+        double w = Math.max(0.0, Math.min(1.0, weight));
+        return 1.0 - w + w * left;
+    }
 }

@@ -7,6 +7,8 @@
 
 package combatant.client.features.module.modules.combat.autobed;
 
+import combatant.client.util.block.interaction.BlockInteractionPipeline;
+import combatant.client.util.block.interaction.FaceVisibility;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -164,14 +166,6 @@ public final class AutoBedInteractionUtil {
         return best;
     }
 
-    public static BlockHitResult getSyntheticBedInteractResult(LocalPlayer player, BlockPos pos, float range) {
-        if (player == null || pos == null) return null;
-        Vec3 vec = Vec3.atCenterOf(pos);
-        if (player.getEyePosition().distanceToSqr(vec) > range * range) return null;
-        Direction side = player.getEyeY() >= pos.getY() + 0.5 ? Direction.UP : Direction.DOWN;
-        return new BlockHitResult(vec, side, pos, false);
-    }
-
     public static float yawForFacing(Direction facing) {
         if (facing == null) return 0.0f;
         return switch (facing) {
@@ -189,15 +183,10 @@ public final class AutoBedInteractionUtil {
                                                          float range,
                                                          float wallRange) {
         if (level == null || player == null || pos == null) return null;
-
-        Vec3 vec = Vec3.atCenterOf(pos);
-        Vec3 eyes = player.getEyePosition();
-        double distanceSq = eyes.distanceToSqr(vec);
-        if (distanceSq > range * range) return null;
-        if (!isVisibleOrWithinWallRange(level, player, eyes, vec, pos, distanceSq, wallRange)) return null;
-
-        Direction side = player.getEyeY() >= pos.getY() + 0.5 ? Direction.UP : Direction.DOWN;
-        return new BlockHitResult(vec, side, pos, false);
+        // The face centre of the face the server-known eyes and the current eyes both look at.
+        Direction side = FaceVisibility.bestFace(player, pos);
+        if (side == null) return null;
+        return getSupportFaceCenter(level, player, pos, side, range, wallRange);
     }
 
     public static BlockHitResult getStrictBlockInteract(Level level,
@@ -211,14 +200,12 @@ public final class AutoBedInteractionUtil {
         double bestDistance = Double.MAX_VALUE;
         BlockHitResult best = null;
         for (Direction direction : Direction.values()) {
-            Vec3 normal = Vec3.atLowerCornerOf(direction.getUnitVec3i());
-            Vec3 sample = Vec3.atCenterOf(pos).add(normal.scale(0.5));
-            double distanceSq = eyes.distanceToSqr(sample);
-            if (distanceSq > range * range) continue;
-            if (!isVisibleOrWithinWallRange(level, player, eyes, sample, pos, distanceSq, wallRange)) continue;
+            BlockHitResult candidate = getSupportFaceCenter(level, player, pos, direction, range, wallRange);
+            if (candidate == null) continue;
+            double distanceSq = eyes.distanceToSqr(candidate.getLocation());
             if (distanceSq < bestDistance) {
                 bestDistance = distanceSq;
-                best = new BlockHitResult(sample, direction, pos, false);
+                best = candidate;
             }
         }
         return best;
@@ -234,18 +221,13 @@ public final class AutoBedInteractionUtil {
         Vec3 eyes = player.getEyePosition();
         double bestDistance = Double.MAX_VALUE;
         BlockHitResult best = null;
-        for (float x = 0.1f; x <= 0.9f; x += 0.2f) {
-            for (float y = 0.1f; y <= 0.9f; y += 0.2f) {
-                for (float z = 0.1f; z <= 0.9f; z += 0.2f) {
-                    Vec3 point = new Vec3(pos.getX() + x, pos.getY() + y, pos.getZ() + z);
-                    double distanceSq = eyes.distanceToSqr(point);
-                    if (distanceSq > range * range) continue;
-                    if (!isVisibleOrWithinWallRange(level, player, eyes, point, pos, distanceSq, wallRange)) continue;
-                    if (distanceSq < bestDistance) {
-                        bestDistance = distanceSq;
-                        best = new BlockHitResult(point, Direction.UP, pos, false);
-                    }
-                }
+        for (Direction face : Direction.values()) {
+            BlockHitResult candidate = getBestSupportFacePoint(level, player, pos, face, range, wallRange);
+            if (candidate == null) continue;
+            double distanceSq = eyes.distanceToSqr(candidate.getLocation());
+            if (distanceSq < bestDistance) {
+                bestDistance = distanceSq;
+                best = candidate;
             }
         }
         return best;
@@ -257,11 +239,12 @@ public final class AutoBedInteractionUtil {
                                                        Direction face,
                                                        float range,
                                                        float wallRange) {
+        if (!FaceVisibility.isVisible(player, support, face)) return null;
         Vec3 eyes = player.getEyePosition();
         Vec3 normal = Vec3.atLowerCornerOf(face.getUnitVec3i());
         Vec3 hitVec = Vec3.atCenterOf(support).add(normal.scale(0.5));
         double distanceSq = eyes.distanceToSqr(hitVec);
-        if (distanceSq > range * range) return null;
+        if (!BlockInteractionPipeline.pointWithinReach(player, hitVec, range)) return null;
         if (!isVisibleOrWithinWallRange(level, player, eyes, hitVec, support, distanceSq, wallRange)) return null;
         return new BlockHitResult(hitVec, face, support, false);
     }
@@ -272,6 +255,7 @@ public final class AutoBedInteractionUtil {
                                                           Direction face,
                                                           float range,
                                                           float wallRange) {
+        if (!FaceVisibility.isVisible(player, support, face)) return null;
         Vec3 eyes = player.getEyePosition();
         double bestDistance = Double.MAX_VALUE;
         Vec3 bestPoint = null;
@@ -279,7 +263,7 @@ public final class AutoBedInteractionUtil {
             for (float b = 0.2f; b <= 0.8f; b += 0.3f) {
                 Vec3 point = pointOnFace(support, face, a, b);
                 double distanceSq = eyes.distanceToSqr(point);
-                if (distanceSq > range * range) continue;
+                if (!BlockInteractionPipeline.pointWithinReach(player, point, range)) continue;
                 if (!isVisibleOrWithinWallRange(level, player, eyes, point, support, distanceSq, wallRange)) continue;
                 if (distanceSq < bestDistance) {
                     bestDistance = distanceSq;

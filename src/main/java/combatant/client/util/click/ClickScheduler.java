@@ -32,12 +32,18 @@ public final class ClickScheduler {
 
     public ClickScheduler(int minCps, int maxCps) {
         setCps(minCps, maxCps);
-        fill();
     }
 
+    /**
+     * Applies a CPS range. The click pattern is rebuilt only when the range changed: callers set it every tick, and
+     * a rebuild restarts the pattern, which would read the same never-clicking slot tick after tick.
+     */
     public void setCps(int minCps, int maxCps) {
-        this.minCps = Math.max(1, minCps);
-        this.maxCps = Math.max(this.minCps, maxCps);
+        int min = Math.max(1, minCps);
+        int max = Math.max(min, maxCps);
+        if (min == this.minCps && max == this.maxCps) return;
+        this.minCps = min;
+        this.maxCps = max;
         fill();
     }
 

@@ -7,31 +7,22 @@
 
 package combatant.client.features.module.modules.visuals.finder;
 
-import combatant.client.config.common.CommonSettingSchemas;
-
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.block.entity.TrialSpawnerBlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
-import combatant.client.events.EventHandler;
-import combatant.client.events.impl.PacketEvent;
-import combatant.client.features.module.HudPhase;
-import combatant.client.features.module.Module;
-import combatant.client.features.module.ModuleCategory;
-import combatant.client.features.module.ModuleInfo;
-import combatant.client.features.module.ModuleSubcategory;
-import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.Renderer3D;
@@ -48,18 +39,25 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * Spawner ESP with type labels, the 16-block activation ring and alerts for new finds.
  * Merges WaterClient's SpawnerNotifier and 67Client's SpawnerNametags.
  */
-@ModuleInfo(
-        id = "spawnerfinder",
-        displayName = "SpawnerFinder",
-        aliases = {"SpawnerESP", "SpawnerNotifier", "SpawnerNametags"},
-        category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
-        description = "module.spawnerfinder.description")
-public final class SpawnerFinder extends Module {
+public final class SpawnerTracker {
+
+    /** Settings the owning module declares; read live so edits apply immediately. */
+    public record Settings(NumberValue<Integer> maxDistance,
+                           BooleanValue nametags,
+                           BooleanValue activationRing,
+                           BooleanValue tracers,
+                           BooleanValue trialSpawners,
+                           BooleanValue chatAlerts,
+                           RGBAColorValue boxColor,
+                           RGBAColorValue ringColor,
+                           RGBAColorValue activeColor) {
+    }
 
     // Vanilla spawners only run while a player is within this many blocks.
     private static final double ACTIVATION_RANGE = 16.0;
@@ -68,60 +66,47 @@ public final class SpawnerFinder extends Module {
     private static final float LABEL_RADIUS = 3.6f;
     private static final float LABEL_TEXT_SCALE = 0.8f;
 
-    private final NumberValue<Integer> maxDistance = num("max_distance", 128, 16, 512);
-    private final BooleanValue nametags = bool("nametags", true);
-    private final BooleanValue activationRing = bool("activation_ring", true);
-    private final BooleanValue tracers = boolCommon("tracers", CommonSettingSchemas.FINDER_TRACERS, false);
-    private final BooleanValue trialSpawners = bool("trial_spawners", true);
-    private final BooleanValue chatAlerts = boolCommon("chat_alerts", CommonSettingSchemas.FINDER_CHAT_ALERTS, true);
-    private final RGBAColorValue boxColor = color("box_color", "#FFFF5050");
-    private final RGBAColorValue ringColor = color("ring_color", "#90FF5050");
-    // Shows at a glance which spawners are running because you stand in their range.
-    private final RGBAColorValue activeColor = color("active_color", "#FF50FF50");
-
     private final Minecraft mc = Minecraft.getInstance();
+    private final Settings settings;
+    private final Supplier<String> alertSource;
     private final LoadedChunkScanner<List<Found>> scanner = new LoadedChunkScanner<>(
-            SpawnerFinder::findSpawners,
+            SpawnerTracker::findSpawners,
             () -> Math.min(mc.options.renderDistance().get(), 16),
             8,
             1500L);
     private final Set<Long> alerted = new HashSet<>();
     private final List<Label> labels = new ArrayList<>();
 
-    @Override
-    public void onEnable() {
-        scanner.clear();
-        alerted.clear();
+    public SpawnerTracker(Settings settings, Supplier<String> alertSource) {
+        this.settings = settings;
+        this.alertSource = alertSource;
     }
 
-    @Override
-    public void onDisable() {
+    public void reset() {
         scanner.clear();
         alerted.clear();
         labels.clear();
     }
 
-    @EventHandler
-    private void onPacketReceive(PacketEvent.Receive event) {
-        scanner.onPacket(event.getPacket());
+    public void onPacket(Packet<?> packet) {
+        scanner.onPacket(packet);
         // The spawned mob type arrives in block-entity data, sometimes after the chunk itself.
-        if (event.getPacket() instanceof ClientboundBlockEntityDataPacket data) {
+        if (packet instanceof ClientboundBlockEntityDataPacket data) {
             scanner.markDirty(data.getPos().getX() >> 4, data.getPos().getZ() >> 4);
         }
     }
 
-    @Override
-    public void onTick() {
-        if (!isEnabled() || mc.level == null || mc.player == null) return;
+    public void tick() {
+        if (mc.level == null || mc.player == null) return;
         scanner.tick(mc);
 
         for (List<Found> spawners : scanner.results().values()) {
             for (Found spawner : spawners) {
                 if (!shown(spawner)) continue;
                 if (alerted.add(spawner.pos.asLong())) {
-                    FinderAlerts.found(getDisplayName(), spawner.type + " spawner",
+                    FinderAlerts.found(alertSource.get(), spawner.type + " spawner",
                             spawner.pos.getX(), spawner.pos.getY(), spawner.pos.getZ(),
-                            chatAlerts.get(), false);
+                            settings.chatAlerts().get(), false);
                 }
             }
         }
@@ -147,23 +132,17 @@ public final class SpawnerFinder extends Module {
     }
 
     private boolean shown(Found spawner) {
-        return !spawner.trial || trialSpawners.get();
+        return !spawner.trial || settings.trialSpawners().get();
     }
 
     private boolean inRange(LocalPlayer player, BlockPos pos) {
-        double max = maxDistance.get();
+        double max = settings.maxDistance().get();
         return player.distanceToSqr(Vec3.atCenterOf(pos)) <= max * max;
     }
 
-    @Override
-    public WorldPhase getWorldPhase() {
-        return WorldPhase.END_MAIN;
-    }
-
-    @Override
-    public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
+    public void render(Renderer3D renderer, ShaderBoxModule style) {
         LocalPlayer player = mc.player;
-        if (!isEnabled() || renderer == null || player == null) return;
+        if (renderer == null || player == null) return;
         FinderRender draw = FinderRender.begin(renderer, 1.5f);
         double activeSq = ACTIVATION_RANGE * ACTIVATION_RANGE;
         for (List<Found> spawners : scanner.results().values()) {
@@ -171,27 +150,25 @@ public final class SpawnerFinder extends Module {
                 if (!shown(spawner) || !inRange(player, spawner.pos)) continue;
                 BlockPos p = spawner.pos;
                 boolean active = player.distanceToSqr(Vec3.atCenterOf(p)) <= activeSq;
-                int box = active ? activeColor.getArgb() : boxColor.getArgb();
-                int fill = (box & 0x00FFFFFF) | 0x30000000;
-                draw.blockBox(p.getX(), p.getY(), p.getZ(), fill, box);
-                if (activationRing.get()) draw.ring(Vec3.atCenterOf(p), ACTIVATION_RANGE, ringColor.getArgb());
-                if (tracers.get()) draw.tracer(Vec3.atCenterOf(p), box);
+                int box = active ? settings.activeColor().getArgb() : settings.boxColor().getArgb();
+                if (!style.drawShaderBox(renderer, new AABB(p), box)) {
+                    int fill = (box & 0x00FFFFFF) | 0x30000000;
+                    draw.blockBox(p.getX(), p.getY(), p.getZ(), fill, box);
+                }
+                if (settings.activationRing().get()) {
+                    draw.ring(Vec3.atCenterOf(p), ACTIVATION_RANGE, settings.ringColor().getArgb());
+                }
+                if (settings.tracers().get()) draw.tracer(Vec3.atCenterOf(p), box);
             }
         }
     }
 
-    @Override
-    public HudPhase getHudPhase() {
-        return HudPhase.BEFORE_MISC_OVERLAYS;
-    }
-
     // Plates go in the main pass and text in the foreground pass, the same split Predictions
     // uses so labels sit above other ESP plates.
-    @Override
-    public void onRenderHudEngine(Renderer2D renderer, TextRenderer textRenderer, GuiGraphicsExtractor ctx, float tickDelta) {
+    public void renderHud(Renderer2D renderer, TextRenderer textRenderer, float tickDelta) {
         labels.clear();
         LocalPlayer player = mc.player;
-        if (!isEnabled() || !nametags.get() || player == null) return;
+        if (!settings.nametags().get() || player == null) return;
 
         TextRenderer font = BuiltinFontCatalog.ONEST_MEDIUM.renderer(textRenderer);
         for (List<Found> spawners : scanner.results().values()) {
@@ -214,9 +191,8 @@ public final class SpawnerFinder extends Module {
         }
     }
 
-    @Override
-    public void onRenderHudEngineForeground(Renderer2D renderer, TextRenderer textRenderer, GuiGraphicsExtractor ctx, float tickDelta) {
-        if (!isEnabled() || labels.isEmpty()) return;
+    public void renderHudForeground(Renderer2D renderer, TextRenderer textRenderer) {
+        if (labels.isEmpty()) return;
         TextRenderer font = BuiltinFontCatalog.ONEST_MEDIUM.renderer(textRenderer);
         font.begin(LABEL_TEXT_SCALE);
         for (Label label : labels) {

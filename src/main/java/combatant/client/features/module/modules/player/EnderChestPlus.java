@@ -16,9 +16,10 @@ import combatant.client.features.module.ModuleSubcategory;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.ContainerScreen;
-import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import combatant.client.util.player.inventory.ContainerKinds;
+import combatant.client.util.screen.ClientScreen;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.inventory.Slot;
@@ -52,6 +53,7 @@ public final class EnderChestPlus extends Module {
 
     private final List<ItemStack> cache = new ArrayList<>();
     private boolean hasCache;
+    private Object cacheConnection;
 
     public EnderChestPlus() {
         if (!tooltipRegistered) {
@@ -63,12 +65,13 @@ public final class EnderChestPlus extends Module {
     private void appendTooltip(ItemStack stack, List<Component> lines) {
         if (!isEnabled() || !tooltip.get() || !stack.is(Items.ENDER_CHEST)) return;
         if (!hasCache) {
-            lines.add(Component.literal("Ender chest: not opened yet").withStyle(ChatFormatting.GRAY));
+            lines.add(Component.translatable("tooltip.enderchestplus.not_opened").withStyle(ChatFormatting.GRAY));
             return;
         }
         int shown = 0;
         Map<String, Integer> totals = totals();
-        lines.add(Component.literal("Ender chest: " + totals.size() + " kinds").withStyle(ChatFormatting.LIGHT_PURPLE));
+        lines.add(Component.translatable("tooltip.enderchestplus.kinds", totals.size())
+                .withStyle(ChatFormatting.LIGHT_PURPLE));
         for (Map.Entry<String, Integer> entry : totals.entrySet()) {
             if (shown++ >= tooltipLines.get()) {
                 lines.add(Component.literal("...").withStyle(ChatFormatting.GRAY));
@@ -79,16 +82,34 @@ public final class EnderChestPlus extends Module {
     }
 
     @Override
+    public void onEnable() {
+        forgetOtherServer();
+    }
+
+    @Override
     public void onDisable() {
-        // The cache is kept: re-enabling shows the last known contents.
+        // The cache is kept: re-enabling on the same server shows the last known contents.
+    }
+
+    /** The ender chest belongs to one server; a new connection must not show the previous server's contents. */
+    private void forgetOtherServer() {
+        Object connection = mc.getConnection();
+        if (connection == cacheConnection) return;
+        cache.clear();
+        hasCache = false;
+        cacheConnection = connection;
     }
 
     @Override
     public void onTick() {
-        if (!isEnabled() || mc.player == null) return;
-        if (!(combatant.client.util.screen.ClientScreen.current() instanceof ContainerScreen screen)) return;
-        if (!screen.getTitle().getString().equalsIgnoreCase(I18n.get("container.enderchest"))) return;
-        if (!(screen.getMenu() instanceof ChestMenu menu) || menu.slots.size() < ROWS_SLOTS) return;
+        if (!isEnabled()) return;
+        forgetOtherServer();
+        if (mc.player == null) return;
+        if (!(ClientScreen.current() instanceof ContainerScreen screen)) return;
+        AbstractContainerMenu menu = screen.getMenu();
+        if (menu != mc.player.containerMenu || !ContainerKinds.isEnderChest(menu, screen.getTitle())) return;
+        // State id 0 is the menu before the server sent its contents; copying then would wipe a good cache.
+        if (menu.getStateId() == 0 || menu.slots.size() < ROWS_SLOTS) return;
         cache.clear();
         for (int i = 0; i < ROWS_SLOTS; i++) {
             Slot slot = menu.slots.get(i);

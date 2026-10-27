@@ -65,6 +65,11 @@ public class RubberHand extends Module {
     }
 
     @Override
+    public void onDisable() {
+        didAttackThisHold = false;
+    }
+
+    @Override
     public void onTick() {
         if (!isEnabled()) return;
         if (mc.player == null) return;

@@ -31,7 +31,7 @@ import java.util.concurrent.ThreadLocalRandom;
         displayName = "JumpReset",
         aliases = {"JumpOnHit", "KBJump"},
         category = ModuleCategory.COMBAT,
-        subcategory = ModuleSubcategory.PROTECT,
+        subcategory = ModuleSubcategory.LEGIT,
         description = "module.jumpreset.description")
 public final class JumpReset extends Module {
 
@@ -39,23 +39,28 @@ public final class JumpReset extends Module {
 
     private final EnumValue<Trigger> trigger = enumSetting("jumpResetTrigger", "trigger", Trigger.HURT_TIME, Trigger.values());
     private final NumberValue<Integer> chance = num("jumpResetChance", "chance", 100, 0, 100);
-    private final NumberValue<Integer> minHurtTime = num("jumpResetMinHurtTime", "min_hurt_time", 6, 1, 10);
-    private final NumberValue<Integer> maxHurtTime = num("jumpResetMaxHurtTime", "max_hurt_time", 10, 1, 10);
+    private final NumberValue<Integer> minHurtTime = visibleWhen(
+            num("jumpResetMinHurtTime", "min_hurt_time", 6, 1, 10), () -> trigger.get() == Trigger.HURT_TIME);
+    private final NumberValue<Integer> maxHurtTime = visibleWhen(
+            num("jumpResetMaxHurtTime", "max_hurt_time", 10, 1, 10), () -> trigger.get() == Trigger.HURT_TIME);
     private final NumberValue<Integer> cooldown = num("jumpResetCooldown", "cooldown", 10, 0, 40);
     private final BooleanValue onlyWhenSprinting = bool("jumpResetOnlyWhenSprinting", "only_when_sprinting", false);
     private final BooleanValue requireForward = bool("jumpResetRequireForward", "require_forward", false);
 
     private volatile boolean pendingJump;
+    private volatile boolean packetHit;
     private boolean handledThisHurt;
     private int lastJumpTick = Integer.MIN_VALUE;
 
     @Override
     public void onDisable() {
         pendingJump = false;
+        packetHit = false;
         handledThisHurt = false;
         lastJumpTick = Integer.MIN_VALUE;
     }
 
+    /** Netty thread: only records that an upward knockback packet arrived; the checks run on the client thread. */
     @EventHandler(priority = 100)
     private void onPacket(PacketEvent.Receive event) {
         if (!isEnabled() || trigger.get() != Trigger.PACKET) return;
@@ -63,9 +68,7 @@ public final class JumpReset extends Module {
         if (player == null) return;
         if (!(event.getPacket() instanceof ClientboundSetEntityMotionPacket packet)) return;
         if (packet.id() != player.getId() || packet.movement().y <= 0.0) return;
-        if (canJump(player) && roll()) {
-            pendingJump = true;
-        }
+        packetHit = true;
     }
 
     @Override
@@ -74,6 +77,7 @@ public final class JumpReset extends Module {
         LocalPlayer player = mc.player;
         if (player == null) {
             pendingJump = false;
+            packetHit = false;
             return;
         }
         if (player.hurtTime <= 0) {
@@ -92,11 +96,21 @@ public final class JumpReset extends Module {
         }
     }
 
+    /**
+     * Runs in the first player tick after the knockback packet was applied, so the PACKET trigger still jumps on the
+     * tick the knockback lands rather than a tick later through {@link #onTick}.
+     */
     @EventHandler
     private void onMovementInput(MovementInputEvent event) {
+        LocalPlayer player = mc.player;
+        if (packetHit) {
+            packetHit = false;
+            if (isEnabled() && player != null && trigger.get() == Trigger.PACKET && canJump(player) && roll()) {
+                pendingJump = true;
+            }
+        }
         if (!pendingJump) return;
         pendingJump = false;
-        LocalPlayer player = mc.player;
         if (!isEnabled() || player == null || !player.onGround()) return;
         event.setJump(true);
         lastJumpTick = player.tickCount;

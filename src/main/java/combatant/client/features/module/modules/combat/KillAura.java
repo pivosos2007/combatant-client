@@ -22,7 +22,6 @@ import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.common.impl.TargetFilters;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.RotationUpdateEvent;
-import combatant.client.events.impl.SprintControlEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -67,7 +66,7 @@ import java.util.List;
         description = "module.killaura.description")
 public class KillAura extends Module {
 
-    private static final int MAX_CPS = 100;
+    private static final int MAX_CPS = 20;
     private static final String IGNORE_BOTS = "ignore_bots";
     private final Minecraft mc = Minecraft.getInstance();
     private final NumberValue<Double> range =
@@ -75,7 +74,7 @@ public class KillAura extends Module {
                     "killauraRange",
                     "range",
                     CommonSettingSchemas.COMBAT_RANGE,
-                    3.2,
+                    3.0,
                     1.0,
                     6.0
             );
@@ -139,23 +138,23 @@ public class KillAura extends Module {
                     6.0
             ), this::usesRotationSettings);
     private final NumberValue<Integer> cpsMin =
-            numCommon(
+            visibleWhen(numCommon(
                     "killauraCpsMin",
                     "cps_min",
                     CommonSettingSchemas.COMBAT_CPS_MIN,
                     8,
                     1,
                     MAX_CPS
-            );
+            ), this::isLegacyAttackProtocol);
     private final NumberValue<Integer> cpsMax =
-            numCommon(
+            visibleWhen(numCommon(
                     "killauraCpsMax",
                     "cps_max",
                     CommonSettingSchemas.COMBAT_CPS_MAX,
                     12,
                     1,
                     MAX_CPS
-            );
+            ), this::isLegacyAttackProtocol);
     private final BooleanValue breakShields =
             boolCommon(
                     "killauraBreakShields",
@@ -631,8 +630,6 @@ public class KillAura extends Module {
         LivingEntity target = currentTarget;
         if (target == null) return;
 
-        syncModuleTargetState();
-
         if (!isInRange(target)) return;
         boolean legacyProtocol = isLegacyAttackProtocol();
 
@@ -739,19 +736,6 @@ public class KillAura extends Module {
         );
 
         return filterAntiBotTargets(TargetingUtil.findTargets(mc, settings));
-    }
-
-    @EventHandler
-    private void onSprintControl(SprintControlEvent event) {
-        if (!isEnabled()) return;
-        if (event.getSource() != SprintControlEvent.Source.MOVEMENT_TICK
-                && event.getSource() != SprintControlEvent.Source.INPUT) {
-            return;
-        }
-
-        if (shouldBlockSprinting(currentTarget)) {
-            event.setSprint(false);
-        }
     }
 
     private void clearTargetImmediate() {
@@ -1143,14 +1127,6 @@ public class KillAura extends Module {
                 freeCorrection,
                 null
         );
-    }
-
-    private boolean shouldBlockSprinting(LivingEntity target) {
-        ElytraTarget elytraTarget = Modules.get(ElytraTarget.class);
-        if (elytraTarget != null && elytraTarget.isRunning()) {
-            return false;
-        }
-        return false;
     }
 
     public double getRange() {

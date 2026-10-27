@@ -26,6 +26,11 @@ import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
 import net.minecraft.world.entity.player.Input;
 import combatant.client.config.values.BooleanMapValue;
+import combatant.client.config.values.NumberValue;
+import combatant.client.features.module.Modules;
+import combatant.client.features.module.modules.player.XCarry;
+import combatant.client.util.player.inventory.PacketWindow;
+import net.minecraft.world.inventory.InventoryMenu;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.SetValue;
@@ -65,12 +70,11 @@ public class InventoryMove extends Module {
 
     private static final long STOP_TIMEOUT_MS = 100L;
     private static final long RESUME_DELAY_MS = 40L;
-    private static final double STOP_VELOCITY = 0.03;
     private static final String TOGGLE_JUMP = "Jump";
     private static final String TOGGLE_SNEAK = "Sneak";
     private static final String TOGGLE_SPRINT = "Sprint";
     private final Minecraft mc = Minecraft.getInstance();
-    private final EnumValue<Mode> mode = enumSetting("mode", "mode", Mode.NORMAL, Mode.values());
+    private final EnumValue<Mode> mode = enumSetting("mode", "mode", Mode.GRIM, Mode.values());
     private final BooleanValue cancelServerClose =
             visibleWhen(bool("cancel_server_close", true), () -> mode.get() == Mode.GRIM);
     private final BooleanValue textFieldDisablesMovement = bool("text_fields_disable", true);
@@ -79,6 +83,7 @@ public class InventoryMove extends Module {
             textList("allowed_screens", "allowed_screens", TextListSetting.PickerMode.SCREENS, defaultAllowedScreens());
     private final SetValue blockedScreens =
             textList("blocked_screens", "blocked_screens", TextListSetting.PickerMode.SCREENS, defaultBlockedScreens());
+    private final NumberValue<Integer> screenSlowdown = num("screen_slowdown", "screen_slowdown", 0, 0, 90);
     private final List<ServerboundContainerClickPacket> heldPackets = new ArrayList<>();
     private GrimPhase grimPhase = GrimPhase.IDLE;
     private long phaseStartedAt = 0L;
@@ -88,6 +93,16 @@ public class InventoryMove extends Module {
     private boolean movementBlocked = false;
     private boolean closeOnMove = false;
 
+    /**
+     * Movement multiplier applied while a screen that allows movement is open (1.0 = untouched). Vanilla slows
+     * movement while using items; this is the same idea for open screens, as a percentage of speed removed.
+     */
+    public float screenMovementScale() {
+        int percent = screenSlowdown.get();
+        if (percent <= 0 || mc.player == null || ClientScreen.current() == null) return 1.0F;
+        return isMovementAllowed(ClientScreen.current()) ? 1.0F - percent / 100.0F : 1.0F;
+    }
+
     private static Set<String> defaultAllowedScreens() {
         LinkedHashSet<String> screens = new LinkedHashSet<>();
         screens.add(AbstractContainerScreen.class.getName());
@@ -95,12 +110,6 @@ public class InventoryMove extends Module {
         screens.add(ScreenCatalog.CLICK_GUI);
         screens.add(ScreenCatalog.CLICK_GUI_EDITOR);
         screens.add(ScreenCatalog.CLICK_GUI_PICKER);
-        screens.add("pivosos2007.gui.clickgui.ClickGuiScreen");
-        screens.add("pivosos2007.gui.clickgui.ClickGuiPickerScreen");
-        screens.add("pivosos2007.gui.clickgui.ClickGuiEditorScreen");
-        screens.add("pivosos2007.features.gui.clickgui.ClickGuiScreen");
-        screens.add("pivosos2007.features.gui.clickgui.ClickGuiEditorScreen");
-        screens.add("pivosos2007.features.gui.clickgui.ClickGuiPickerScreen");
         screens.add(CreativeModeInventoryScreen.class.getName());
         screens.add(InventoryScreen.class.getName());
         screens.add(ContainerScreen.class.getName());
@@ -291,7 +300,7 @@ public class InventoryMove extends Module {
             case STOPPING -> {
                 movementBlocked = true;
                 releaseMovementKeys();
-                if (isPlayerStopped() || elapsed >= STOP_TIMEOUT_MS) {
+                if (PacketWindow.INSTANCE.stationaryForClick() || elapsed >= STOP_TIMEOUT_MS) {
                     grimPhase = heldPackets.isEmpty() ? GrimPhase.CLOSING : GrimPhase.FLUSHING;
                     phaseStartedAt = System.currentTimeMillis();
                 }
@@ -355,7 +364,8 @@ public class InventoryMove extends Module {
 
     private void closeInventoryNow() {
         if (mc.player == null || mc.getConnection() == null) return;
-        if (pendingCloseSyncId >= 0) {
+        // XCarry keeps the crafting grid and cursor: the server must never see a close, so none is sent.
+        if (pendingCloseSyncId >= 0 && !(Modules.enabled(XCarry.class) && mc.player.containerMenu instanceof InventoryMenu)) {
             allowClosePacket = true;
             try {
                 mc.getConnection().send(new ServerboundContainerClosePacket(pendingCloseSyncId));
@@ -401,7 +411,7 @@ public class InventoryMove extends Module {
         if (screen == null || screen instanceof AbstractContainerScreen<?>) return false;
 
         String name = screen.getClass().getName();
-        return name.startsWith("net.minecraft.client.gui.screen.");
+        return name.startsWith("net.minecraft.client.gui.screens.");
     }
 
     private boolean isClickGuiTextInputActive(Screen screen) {
@@ -421,12 +431,6 @@ public class InventoryMove extends Module {
     private int syncId(Screen screen) {
         if (!(screen instanceof AbstractContainerScreen<?> handled)) return -1;
         return handled.getMenu().containerId;
-    }
-
-    private boolean isPlayerStopped() {
-        if (mc.player == null) return true;
-        return Math.abs(mc.player.getDeltaMovement().x) < STOP_VELOCITY
-                && Math.abs(mc.player.getDeltaMovement().z) < STOP_VELOCITY;
     }
 
     private void resetGrimState() {
@@ -478,19 +482,9 @@ public class InventoryMove extends Module {
         return combatant.client.input.minecraft.MinecraftInputAdapter.isPressed(key);
     }
 
-    private boolean hasPhysicalMovementInput() {
-        return mc.getWindow() != null
-                && (isPhysicallyPressed(mc.options.keyUp)
-                || isPhysicallyPressed(mc.options.keyDown)
-                || isPhysicallyPressed(mc.options.keyLeft)
-                || isPhysicallyPressed(mc.options.keyRight)
-                || (movementToggles.get(TOGGLE_JUMP) && isPhysicallyPressed(mc.options.keyJump))
-                || (movementToggles.get(TOGGLE_SNEAK) && isPhysicallyPressed(mc.options.keyShift)));
-    }
-
     private boolean hasGrimInventoryMovementRisk() {
         if (mc.player == null) return false;
-        if (mc.player.isSprinting() && (!mc.player.isSwimming() || mc.player.onGround())) return true;
+        if (mc.player.isSprinting() && (!mc.player.isSwimming() || !mc.player.onGround())) return true;
         if (hasPhysicalGrimMovingInput()) return true;
         if (mc.player.input == null || mc.player.input.keyPresses == null) return false;
 

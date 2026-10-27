@@ -34,8 +34,9 @@ class OreSimulationTest {
     @Test
     void resolvesBothDebrisFeaturesInTheNether() {
         OreSimulation sim = OreSimulation.forNether(
-                OrePlacements.ORE_ANCIENT_DEBRIS_LARGE,
-                OrePlacements.ORE_ANCIENT_DEBRIS_SMALL);
+                List.of(OrePlacements.ORE_ANCIENT_DEBRIS_LARGE, OrePlacements.ORE_ANCIENT_DEBRIS_SMALL),
+                List.of(OrePlacements.ORE_QUARTZ_NETHER, OrePlacements.ORE_GOLD_NETHER,
+                        OrePlacements.ORE_QUARTZ_DELTAS, OrePlacements.ORE_GOLD_DELTAS));
 
         List<OreSimulation.OreSpec> specs = sim.specs();
         assertEquals(2, specs.size(), "both debris features should generate in the nether");
@@ -49,5 +50,11 @@ class OreSimulationTest {
         assertEquals(1.0f, large.discardChanceOnAirExposure());
         assertEquals(1.0f, small.discardChanceOnAirExposure());
         assertTrue(!large.modifiers().isEmpty() && !small.modifiers().isEmpty());
+
+        // Calibration needs ores that generate next to air, where anti-xray cannot hide them.
+        assertEquals(4, sim.calibrationSpecs().size(), "quartz and gold, plain and delta variants");
+        for (OreSimulation.OreSpec spec : sim.calibrationSpecs()) {
+            assertEquals(0.0f, spec.discardChanceOnAirExposure(), spec.key().identifier().toString());
+        }
     }
 }
