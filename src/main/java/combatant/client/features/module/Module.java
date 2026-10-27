@@ -34,6 +34,7 @@ import combatant.client.input.CombatantInput;
 import combatant.client.input.InputScope;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.locale.Language;
 import net.minecraft.client.Minecraft;
 
 import java.util.*;
@@ -350,6 +351,9 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     protected final ItemIdSetValue itemList(String configName) {
         return itemList(configName, settingIdFromConfigName(configName), TextListSetting.PickerMode.ITEMS);
     }
+    protected final ItemIdSetValue itemList(String configName, java.util.Set<String> defaults) {
+        return itemList(configName, settingIdFromConfigName(configName), TextListSetting.PickerMode.ITEMS, defaults);
+    }
 
     protected final ItemIdSetValue itemList(String configName, TextListSetting.PickerMode pickerMode) {
         return itemList(configName, settingIdFromConfigName(configName), pickerMode);
@@ -358,6 +362,22 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     protected final ItemIdSetValue itemList(String configName, String settingId, TextListSetting.PickerMode pickerMode) {
         ItemIdSetValue value = new ItemIdSetValue(configName);
         declare(value, SettingDef.textList(settingId, value, pickerMode));
+        return value;
+    }
+    protected final ItemIdSetValue itemList(String configName, String settingId, TextListSetting.PickerMode pickerMode, java.util.Set<String> defaults) {
+        ItemIdSetValue value = new ItemIdSetValue(configName, defaults);
+        declare(value, SettingDef.textList(settingId, value, pickerMode));
+        return value;
+    }
+
+    /**
+     * Block/item id list where each entry has its own colour. Entries without an explicit colour use {@code defaultColor}
+     * (the module's global colour setting); old plain id lists load with that default.
+     */
+    protected final ColorListValue colorList(String configName, String settingId, TextListSetting.PickerMode pickerMode,
+                                             java.util.Set<String> defaults, ColorValue defaultColor) {
+        ColorListValue value = new ColorListValue(configName, defaults, defaultColor);
+        declare(value, SettingDef.colorList(settingId, value, pickerMode));
         return value;
     }
 
@@ -912,8 +932,21 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
         return name();
     }
 
+    private record DisplayNameCache(Language language, String name, String value) {
+    }
+
+    private volatile DisplayNameCache displayNameCache;
+
     public String getDisplayName() {
-        return translateFirst(displayName, "module." + name(), "module." + name() + ".name");
+        Language language = Language.getInstance();
+        String name = name();
+        DisplayNameCache cache = displayNameCache;
+        if (cache != null && cache.language == language && Objects.equals(cache.name, name)) {
+            return cache.value;
+        }
+        String value = translateFirst(displayName, "module." + name, "module." + name + ".name");
+        displayNameCache = new DisplayNameCache(language, name, value);
+        return value;
     }
 
     public List<String> getAliases() {
@@ -928,6 +961,12 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
 
     public ModuleCategory getCategory() {
         return category;
+    }
+
+    /** Whether the ClickGUI Modules tab lists this module; see {@link ModuleInfo#listed()}. */
+    public boolean isListedInModulesTab() {
+        ModuleInfo info = getClass().getAnnotation(ModuleInfo.class);
+        return info == null || info.listed();
     }
 
     public ModuleSubcategory getSubcategory() {

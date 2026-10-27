@@ -115,7 +115,6 @@ public enum CommonSettingSchemas {
     public static final CommonSettingSchema INVENTORY_SEARCH_SCOPE = key("inventory.search_scope", "swap_scope");
     public static final CommonSettingSchema INVENTORY_SWAP_VISIBILITY = key("inventory.swap_visibility", "swap_visibility");
     public static final CommonSettingSchema INVENTORY_RESTORE_ITEM = key("inventory.restore_item", "restore_item");
-    public static final CommonSettingSchema INVENTORY_PREFER_HOTBAR = key("inventory.prefer_hotbar", "prefer_hotbar");
     public static final CommonSettingSchema INTERACTION_IGNORE_OPEN_INVENTORY = key("interaction.ignore_open_inventory", "ignore_open_inventory");
     public static final CommonSettingSchema COMBAT_ONLY_PLAYERS = key("combat.only_players");
     public static final CommonSettingSchema COMBAT_ONLY_BLOCKING = key("combat.only_blocking");

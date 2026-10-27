@@ -155,7 +155,7 @@ public final class WorldPassCompiler {
             return compiled;
         } finally {
             if (uploaded != null) uploaded.close();
-            if (temporaryMesh && drawMesh != null) drawMesh.close();
+            // Wide-line meshes are pooled by WorldWideLineMeshCompiler and must not be closed here.
         }
     }
 

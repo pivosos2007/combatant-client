@@ -1021,8 +1021,10 @@ public final class UiShapeRenderer {
                                  double cut,
                                  float alpha,
                                  UiRenderContext context) {
-        // The glass draw uses the same prepared blur as its optical scene.
-        if (!props.bool("blur", false) || props.bool("liquidGlass", style.liquidGlass())) return;
+        // The glass draw uses the same prepared blur as its optical scene. Soft-shadow shapes use "blur" as their
+        // shadow radius (a number), so only a boolean "blur" asks for the backdrop blur.
+        if (!(props.get("blur") instanceof Boolean backdrop) || !backdrop
+                || props.bool("liquidGlass", style.liquidGlass())) return;
         float quality = props.number("blurQuality", style.blurQuality());
         float brightness = props.number("blurBrightness", style.blurBrightness());
         float blurAlpha = props.number("blurAlpha", style.blurAlpha()) * alpha;

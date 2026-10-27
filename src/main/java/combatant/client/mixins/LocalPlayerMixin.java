@@ -24,6 +24,7 @@ import combatant.client.events.impl.*;
 import combatant.client.features.module.modules.movement.*;
 import combatant.client.util.combat.SprintController;
 import combatant.client.util.screen.ClientScreen;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
@@ -60,6 +61,7 @@ import combatant.client.mixins.accessors.LocalPlayerAccessor;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.data.Rotation;
+import combatant.client.util.aiming.RotationUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -512,10 +514,28 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
 
     @Unique
     private boolean shouldFreezeNow() {
-        boolean freezeModule = Modules.enabled(Freeze.class);
+        if (Freeze.isActive()) return true;
         Freecam freecam = Modules.get(Freecam.class);
-        boolean freecamFreeze = freecam != null && freecam.freezePlayer() && freecam.isCameraInput();
-        return freezeModule || freecamFreeze;
+        if (freecam == null || !freecam.freezePlayer() || !freecam.isCameraInput()) return false;
+        // Freecam keeps sending movement packets, so the server simulates every tick. Hold the player only where
+        // vanilla physics holds it too (standing with no horizontal motion), never in mid-air or mid-slide.
+        LocalPlayer self = (LocalPlayer) (Object) this;
+        Vec3 motion = self.getDeltaMovement();
+        return frozen || (self.onGround() && motion.x == 0.0 && motion.z == 0.0);
+    }
+
+    /**
+     * Vanilla sends movement packets only while the player is the camera. Freecam views through its own entity,
+     * and a player that stops reporting while still answering transactions is flagged (GrimAC BadPacketsR), so the
+     * player keeps reporting like vanilla while Freecam is on.
+     */
+    @Inject(method = "isControlledCamera", at = @At("HEAD"), cancellable = true)
+    private void combatant$freecamKeepsReporting(CallbackInfoReturnable<Boolean> cir) {
+        Freecam freecam = Modules.get(Freecam.class);
+        if (freecam != null && freecam.isEnabled() && freecam.camEntity != null
+                && Minecraft.getInstance().getCameraEntity() == freecam.camEntity) {
+            cir.setReturnValue(true);
+        }
     }
 
     @Inject(method = "sendPosition", at = @At("HEAD"), cancellable = true)
@@ -560,7 +580,15 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         if (event != null && event.hasRotationOverride()) return event.getYaw();
 
         Rotation rotation = RotationManager.INSTANCE.getCurrentRotation();
-        return rotation != null ? rotation.yaw() : original;
+        float targetYaw = rotation != null ? rotation.yaw() : original;
+        // Rotation targets are normalised to [-180, 180] while the player's own yaw is unbounded: sending either one
+        // as-is makes the yaw jump by a multiple of 360 when a target takes over or lets go, which vanilla never
+        // does. Send the same direction as the shortest turn from the last sent yaw instead.
+        Rotation server = RotationManager.INSTANCE.getServerRotation();
+        if (server != null && server != Rotation.ZERO) {
+            return server.yaw() + RotationUtil.angleDifference(targetYaw, server.yaw());
+        }
+        return targetYaw;
     }
 
     @ModifyExpressionValue(
@@ -625,7 +653,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
 
     @Inject(method = "sendPosition", at = @At("HEAD"), cancellable = true)
     private void cancelPackets(CallbackInfo ci) {
-        if (Modules.enabled(Freeze.class)) {
+        if (Freeze.isActive()) {
             ci.cancel();
         }
     }
@@ -633,6 +661,11 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
     @Inject(method = "aiStep", at = @At("HEAD"), cancellable = true)
     private void combatant$freezeTickMovement(CallbackInfo ci) {
         LocalPlayer p = (LocalPlayer) (Object) this;
+
+        // Something other than the hold moved the player (a server teleport): follow it instead of snapping back.
+        if (frozen && (p.getX() != savedX || p.getY() != savedY || p.getZ() != savedZ)) {
+            frozen = false;
+        }
 
         if (!shouldFreezeNow()) {
             if (frozen) {
@@ -878,17 +911,24 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         cir.setReturnValue(base.scale(mult));
     }
 
-    @Inject(method = "closeContainer", at = @At("HEAD"), cancellable = true)
-    private void combatant$inventoryMove$deferCloseHandledScreen(CallbackInfo ci) {
+    @Inject(method = "modifyInput", at = @At("RETURN"), cancellable = true)
+    private void combatant$inventoryMove$screenSlowdown(Vec2 input, CallbackInfoReturnable<Vec2> cir) {
         InventoryMove module = Modules.get(InventoryMove.class);
         if (module == null || !module.isEnabled()) return;
-        if (module.shouldCancelCloseHandledScreen()) {
-            ci.cancel();
-        }
+        float scale = module.screenMovementScale();
+        if (scale < 1.0F) cir.setReturnValue(cir.getReturnValue().scale(scale));
     }
 
+    // One handler instead of two competing HEAD injectors, so the order is explicit: InventoryMove first (it may
+    // hold the close back until Grim sees a stationary player and flushes its buffered clicks), then XCarry.
     @Inject(method = "closeContainer", at = @At("HEAD"), cancellable = true)
-    private void combatant$keepInventoryOpen(CallbackInfo ci) {
+    private void combatant$closeContainer(CallbackInfo ci) {
+        InventoryMove move = Modules.get(InventoryMove.class);
+        if (move != null && move.isEnabled() && move.shouldCancelCloseHandledScreen()) {
+            ci.cancel();
+            return;
+        }
+
         if (!Modules.enabled(XCarry.class)) return;
 
         // Cancel only when closing own inventory screen (PlayerScreenHandler) to retain crafting/cursor items

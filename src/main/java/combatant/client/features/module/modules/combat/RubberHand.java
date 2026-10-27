@@ -65,6 +65,11 @@ public class RubberHand extends Module {
     }
 
     @Override
+    public void onDisable() {
+        didAttackThisHold = false;
+    }
+
+    @Override
     public void onTick() {
         if (!isEnabled()) return;
         if (mc.player == null) return;
@@ -120,7 +125,7 @@ public class RubberHand extends Module {
 
     private void performAttack(LocalPlayer player, Entity target) {
         mc.gameMode.attack(player, target);
-        player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+        AttackUtil.swingMainHand(player);
         didAttackThisHold = true;
     }
 }

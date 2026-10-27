@@ -34,6 +34,16 @@ public interface LocalPlayerAccessor {
     @Accessor("positionReminder")
     void combatant$setTicksSinceLastPositionPacketSent(int ticks);
 
+    /** Position carried by the last movement packet that included one. */
+    @Accessor("xLast")
+    double combatant$getLastSentX();
+
+    @Accessor("yLast")
+    double combatant$getLastSentY();
+
+    @Accessor("zLast")
+    double combatant$getLastSentZ();
+
     @Accessor("wasSprinting")
     void combatant$setLastSprinting(boolean sprinting);
 

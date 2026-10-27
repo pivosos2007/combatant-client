@@ -271,7 +271,7 @@ public final class CombatantMainMenuScreen extends Screen {
             String label = tr(BUTTON_LABEL_KEYS[hoveredButton]);
             float labelY = gridLayout.originY() + gridLayout.radius() + 13f * MENU_SCALE;
             drawCenteredText(labelFont, label, fixedWidth * 0.5f, labelY,
-                    0.70f * MENU_SCALE, withAlpha(0xFFF3F7FC, Math.round(opacity * hover * 232f)));
+                    0.70f * MENU_SCALE, withAlpha(Theme.theme().textPrimary(), Math.round(opacity * hover * 236f)));
         }
     }
 
@@ -292,7 +292,7 @@ public final class CombatantMainMenuScreen extends Screen {
 
         UiPrimitive well = pointyHex(centerX, planeY, radius, 0.0f);
         Renderer2D.COLOR.primitive(well,
-                UiPaint.linear(withAlpha(0xFF05080D, Math.round(opacity * 116f)),
+                UiPaint.linear(withAlpha(HudRenderUtil.mixColor(theme.windowBg(), 0xFF000000, 0.65f), Math.round(opacity * 116f)),
                         withAlpha(accentSoft, Math.round(opacity * 66f)), 90f, 0f));
         Renderer2D.COLOR.primitiveStroke(well,
                 UiPaint.solid(withAlpha(accent, Math.round(opacity * (78f + hover * 46f)))),
@@ -391,7 +391,7 @@ public final class CombatantMainMenuScreen extends Screen {
         LED_TEXT_RENDERER.render(clock, time, timeX, timeY, clockStyle, coreColor);
         drawCenteredText(dateFont, date.toUpperCase(Locale.ROOT), fixedWidth * 0.5f,
                 centerY + timeHeight * 0.5f + 4.5f * MENU_SCALE,
-                DATE_FONT, withAlpha(0xFFE4EBF3, Math.round(opacity * 192f)));
+                DATE_FONT, withAlpha(Theme.theme().textPrimary(), Math.round(opacity * 200f)));
     }
 
     private void renderAuthWarning(GuiGraphicsExtractor context, float opacity) {
@@ -408,8 +408,8 @@ public final class CombatantMainMenuScreen extends Screen {
                 .rounding(1.2f * MENU_SCALE)
                 .build();
         Renderer2D.COLOR.primitive(panel,
-                UiPaint.linear(withAlpha(0xFF080C12, Math.round(opacity * 208f)),
-                        withAlpha(HudRenderUtil.mixColor(0xFF101720, accent, 0.26f + hover * 0.10f),
+                UiPaint.linear(withAlpha(HudRenderUtil.mixColor(theme.windowBg(), 0xFF000000, 0.55f), Math.round(opacity * 208f)),
+                        withAlpha(HudRenderUtil.mixColor(HudRenderUtil.mixColor(theme.windowBg(), theme.surface(), 0.5f), accent, 0.26f + hover * 0.10f),
                                 Math.round(opacity * 224f)), 0f, 0f));
         Renderer2D.COLOR.primitiveStroke(panel,
                 UiPaint.solid(withAlpha(accent, Math.round(opacity * (116f + hover * 72f)))),
@@ -428,12 +428,12 @@ public final class CombatantMainMenuScreen extends Screen {
         float textX = headX + AUTH_WARNING_HEAD + 8f * MENU_SCALE;
         drawText(titleFont, tr("screen.combatant.main_menu.auth_warning.title"), textX,
                 bounds.y + 8.8f * MENU_SCALE, 0.68f * MENU_SCALE,
-                withAlpha(0xFFFFFFFF, Math.round(opacity * 246f)));
+                withAlpha(Theme.theme().textPrimary(), Math.round(opacity * 246f)));
         String message = tr("screen.combatant.main_menu.auth_warning.body", entry.getName());
         drawText(bodyFont,
                 ellipsize(bodyFont, message, 0.52f * MENU_SCALE, bounds.x + bounds.w - textX - 15f * MENU_SCALE),
                 textX, bounds.y + 22f * MENU_SCALE, 0.52f * MENU_SCALE,
-                withAlpha(0xFFD5DDE7, Math.round(opacity * 216f)));
+                withAlpha(HudRenderUtil.mixColor(Theme.theme().textMuted(), Theme.theme().textPrimary(), 0.7f), Math.round(opacity * 226f)));
     }
 
     private void renderFooter(float opacity) {
@@ -441,7 +441,7 @@ public final class CombatantMainMenuScreen extends Screen {
         String openSource = tr("screen.combatant.main_menu.open_source");
         String version = "v" + CombatantBuild.displayVersion();
 
-        int color = withAlpha(0xFF9AA5B1, Math.round(opacity * 188f));
+        int color = withAlpha(Theme.theme().textMuted(), Math.round(opacity * 205f));
         float textHeight = measureHeight(font, FOOTER_FONT);
         float textY = fixedHeight - FOOTER_MARGIN - textHeight;
 

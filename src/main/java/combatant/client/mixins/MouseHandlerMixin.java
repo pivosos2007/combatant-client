@@ -10,6 +10,7 @@ package combatant.client.mixins;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import combatant.client.automation.AutomationRuntime;
 import combatant.client.features.gui.mainmenu.CombatantProxyManagerScreen;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
@@ -225,6 +226,7 @@ public class MouseHandlerMixin {
         if (aimAssist != null && aimAssist.isEnabled()) {
             aimAssist.onManualMouseTurn(dx, dy);
         }
+        AutomationRuntime.INSTANCE.onManualMouseTurn(dx, dy);
         player.turn(dx, dy);
     }
 

@@ -37,8 +37,6 @@ import combatant.client.features.module.ModuleSubcategory;
         category = ModuleCategory.COMBAT, subcategory = ModuleSubcategory.ATTACK,
         description = "module.macekill.description")
 public final class MaceKill extends Module {
-    public static boolean cancelCrit;
-
     private final Minecraft mc = Minecraft.getInstance();
     private final NumberValue<Integer> fallHeight =
             num("height", 22, 1, 170);
@@ -49,7 +47,7 @@ public final class MaceKill extends Module {
         if (!(event.getPacket() instanceof ServerboundAttackPacket packet)) return;
 
         Entity ent = getEntity(packet);
-        if (ent == null || cancelCrit) return;
+        if (ent == null) return;
 
         if (!isHoldingMace()) return;
 

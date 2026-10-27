@@ -8,7 +8,7 @@
 package combatant.client.render.engine.renderer.ui;
 
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
-import combatant.client.render.engine.command.UiCommand;
+import combatant.client.render.engine.command.UiCommandKind;
 import combatant.client.render.engine.command.UiStatsSnapshot;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -34,8 +34,8 @@ public final class UiRenderDispatcher {
         SUBSYSTEM.beginFrame(CombatantRenderSystem.ensureFrameContext());
     }
 
-    public static void record(UiCommand command) {
-        SUBSYSTEM.record(command);
+    public static void record(UiCommandKind kind) {
+        SUBSYSTEM.record(kind);
     }
 
     public static boolean hasPendingCommands() {

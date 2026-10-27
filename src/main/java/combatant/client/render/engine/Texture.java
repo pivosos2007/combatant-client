@@ -67,6 +67,12 @@ public class Texture extends AbstractTexture {
         var image = getImage();
 
         buffer.rewind();
+        long imageBytes = (long) image.getWidth() * image.getHeight() * image.format().components();
+        if (buffer.remaining() > imageBytes) {
+            image.close();
+            throw new IllegalArgumentException("Texture upload of " + buffer.remaining()
+                    + " bytes exceeds " + imageBytes + "-byte image");
+        }
         MemoryUtil.memCopy(MemoryUtil.memAddress(buffer), image.getPointer(), buffer.remaining());
 
         RenderSystem.getDevice().createCommandEncoder().writeToTexture(texture, image);

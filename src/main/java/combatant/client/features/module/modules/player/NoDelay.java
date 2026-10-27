@@ -67,7 +67,6 @@ public final class NoDelay extends Module {
     private static final String TYPE_FAST_INTERACT = "Fast interact";
     private static final String TYPE_SHIELD_COOLDOWN = "Shield Cooldown";
 
-
     private final BooleanMapValue types = group("noDelayTypes", SETTING_TYPES, defaultTypes());
     private final BooleanValue useDelay =
             visibleWhen(bool("noDelayUseDelay", SETTING_USE_DELAY, true), () -> types.get(TYPE_FAST_THROW));

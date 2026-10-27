@@ -25,7 +25,7 @@ import java.util.Comparator;
 import java.util.List;
 
 public final class AutoAnchorPlanner {
-    private static final float ANCHOR_POWER = 5.0f;
+    public static final float ANCHOR_POWER = 5.0f;
     private static final double TARGET_MAX_DISTANCE_SQ = 144.0;
     private static final float MIN_RAW_DAMAGE = 1.5f;
     private static final int MAX_PLACE_DAMAGE_EVALUATIONS = 64;
@@ -198,12 +198,14 @@ public final class AutoAnchorPlanner {
             return null;
         }
 
-        float damage = ExplosionDamageUtil.getExplosionDamage(
+        // An existing anchor removes itself before exploding, so it must not shield anyone from its own blast.
+        BlockPos cleared = shell.existingAnchor() ? shell.pos() : null;
+        float damage = ExplosionDamageUtil.getExplosionDamageThroughClearedCell(
                 target,
                 shell.anchorVec(),
                 ANCHOR_POWER,
                 context.predictTicks(),
-                false
+                cleared
         );
         if (damage < MIN_RAW_DAMAGE) {
             return null;
@@ -214,12 +216,12 @@ public final class AutoAnchorPlanner {
         }
         lastCandidates++;
 
-        float selfDamage = ExplosionDamageUtil.getExplosionDamage(
+        float selfDamage = ExplosionDamageUtil.getExplosionDamageThroughClearedCell(
                 player,
                 shell.anchorVec(),
                 ANCHOR_POWER,
                 context.selfPredictTicks(),
-                false
+                cleared
         );
         boolean overrideDamage = context.shouldOverrideMaxSelfDamage(damage, selfDamage);
         if (selfDamage > context.maxSelfDamage() && !overrideDamage) {

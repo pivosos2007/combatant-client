@@ -98,10 +98,17 @@ public record Rotation(float yaw, float pitch, boolean isNormalized) {
         RotationDelta diff = base.rotationDeltaTo(this);
         float g1 = quantizeDelta(diff.deltaYaw(), (float) gcd);
         float g2 = quantizeDelta(diff.deltaPitch(), (float) gcd);
-
+        // Avoid exact 0-pitch delta during large horizontal snaps (Vulcan Aim D / G) while staying on the GCD grid.
+        if (Math.abs(g1) > 2.75f && g2 == 0.0f && Math.abs(base.pitch) < 85.0f) {
+            g2 = (diff.deltaPitch() >= 0.0f ? 1.0f : -1.0f) * (float) gcd;
+        }
+        // Vulcan Aim B: yaw delta that is a multiple of 0.5 (mod 0.25 and mod 0.1 both zero) is flagged; nudge one gcd step.
+        if (Math.abs(g1) > 0.0f && Math.abs(Math.IEEEremainder(g1, 0.5f)) < 1.0e-4f) {
+            g1 += (g1 >= 0.0f ? 1.0f : -1.0f) * (float) gcd;
+        }
         float ny = base.yaw + g1;
-        float np = base.pitch + g2;
-        return new Rotation(ny, Mth.clamp(np, -90.0f, 90.0f), true);
+        float np = Mth.clamp(base.pitch + g2, -90.0f, 90.0f);
+        return new Rotation(ny, np, true);
     }
 
     public float angleTo(Rotation other) {

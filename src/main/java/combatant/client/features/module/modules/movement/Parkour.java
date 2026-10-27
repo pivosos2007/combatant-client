@@ -15,10 +15,12 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
+import combatant.client.features.module.modules.movement.rules.MovementRules;
 
 @ModuleInfo(
         id = "parkour",
         displayName = "Parkour",
+        aliases = {"EdgeJump", "AutoEdgeJump"},
         category = ModuleCategory.MOVEMENT, subcategory = ModuleSubcategory.BASIC,
         description = "module.parkour.description")
 public final class Parkour extends Module {
@@ -33,27 +35,16 @@ public final class Parkour extends Module {
             return;
         }
 
-        if (!mc.player.onGround()) {
-            return;
-        }
-        if (event.isJump()) {
-            return;
-        }
-        if (event.isSneak()) {
-            return;
-        }
-        if (!event.isForward() && !event.isBackward() && !event.isLeft() && !event.isRight()) {
-            return;
-        }
-
-        boolean hasGroundBelow = mc.level.getBlockCollisions(
+        boolean moving = event.isForward() || event.isBackward() || event.isLeft() || event.isRight();
+        boolean supportBelow = mc.level.getBlockCollisions(
                 mc.player,
                 mc.player.getBoundingBox()
                         .inflate(-jumpFactor.get(), 0.0, -jumpFactor.get())
                         .move(0.0, -0.99, 0.0)
         ).iterator().hasNext();
 
-        if (!hasGroundBelow && mc.player.getDeltaMovement().y <= 0.0) {
+        if (MovementRules.edgeJump(mc.player.onGround(), event.isSneak(), event.isJump(), moving,
+                supportBelow, mc.player.getDeltaMovement().y)) {
             event.setJump(true);
         }
     }

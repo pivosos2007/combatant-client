@@ -45,4 +45,11 @@ public @interface ModuleInfo {
     String description() default "";
 
     boolean enabledByDefault() default false;
+
+    /**
+     * Whether the ClickGUI Modules tab lists this module (category lists and search). A module with
+     * {@code listed = false} is still a regular module (keybinds, config, ModuleList HUD) and is controlled
+     * from a dedicated tab instead.
+     */
+    boolean listed() default true;
 }

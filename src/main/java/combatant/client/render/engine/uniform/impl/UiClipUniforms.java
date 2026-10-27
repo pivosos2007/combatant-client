@@ -17,6 +17,7 @@ import combatant.client.render.engine.renderer.ui.draw.UiCornerRadii;
 import combatant.client.render.engine.renderer.ui.draw.UiRect;
 import combatant.client.render.engine.renderer.ui.draw.UiShape;
 import combatant.client.render.engine.renderer.ui.draw.UiShapeKind;
+import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;
 import combatant.client.render.engine.uniform.ShaderUniformBindings;
 
 import java.util.Arrays;
@@ -40,15 +41,26 @@ public enum UiClipUniforms {
     private static final int EXPECTED_WRITES_PER_FRAME = 128;
     private static final Data DATA = new Data();
 
+    // The allocator slice is valid for one frame and snapshots are immutable, so identical
+    // (frame, snapshot instance) pairs share one slice instead of repacking ~100 values per draw.
+    private static long lastFrameId = Long.MIN_VALUE;
+    private static UiClipSnapshot lastSnapshot;
+
     public static GpuBufferSlice write(UiClipSnapshot snapshot) {
         if (snapshot == null || !snapshot.usesAnalyticPipeline()) {
             throw new IllegalArgumentException("Analytic clip uniform requires an active analytic snapshot");
         }
+        CombatantUniformAllocator allocator = CombatantRenderSystem.uniforms();
+        long frameId = allocator.frameId();
+        if (snapshot == lastSnapshot && frameId == lastFrameId && allocator.hasCurrent(UNIFORM_NAME)) {
+            return allocator.current(UNIFORM_NAME);
+        }
         DATA.set(snapshot);
         DATA.pack();
-        return CombatantRenderSystem.uniforms().write(
-                UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, WRITER
-        );
+        GpuBufferSlice slice = allocator.write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, WRITER);
+        lastSnapshot = snapshot;
+        lastFrameId = frameId;
+        return slice;
     }
 
     private static final class Data {

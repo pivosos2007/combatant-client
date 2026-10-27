@@ -14,6 +14,7 @@ import combatant.client.config.subsystem.MapUiConfig;
 import combatant.client.features.map.location.PlayerLocationService;
 import combatant.client.features.relations.CategoryService;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.features.theme.Theme;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
@@ -538,7 +539,7 @@ final class XaeroMapElements {
             ));
             renderer.roundedRect(
                     x, y, badgeWidth, badgeHeight, radius,
-                    withAlpha(0x0A1017, alpha * (0.18f + 0.07f * highlight))
+                    withAlpha(Theme.theme().windowBg(), alpha * (0.18f + 0.07f * highlight))
             );
         });
 
@@ -553,7 +554,7 @@ final class XaeroMapElements {
                     cx - symbolWidth * 0.5f,
                     y + (badgeHeight - symbolSize) * 0.5f - 0.35f * scale,
                     symbolSize,
-                    withAlpha(0xFFF8FBFD, alpha),
+                    withAlpha(Theme.theme().textPrimary() | 0xFF000000, alpha),
                     false
             );
         } else {
@@ -754,7 +755,7 @@ final class XaeroMapElements {
         float padX = hover ? 8.0f : 5.5f;
         float padY = hover ? 4.0f : 3.0f;
         float radius = hover ? 7.0f : 5.5f;
-        List<TextRenderUtil.Part> parts = TextRenderUtil.flattenStyled(styled(value), 0xFFF5F8FC);
+        List<TextRenderUtil.Part> parts = TextRenderUtil.flattenStyled(styled(value), Theme.theme().textPrimary() | 0xFF000000);
         float textWidth = styledWidth(parts, size);
         float boxWidth = textWidth + padX * 2.0f;
         float boxHeight = size + padY * 2.0f;
@@ -782,7 +783,7 @@ final class XaeroMapElements {
             ));
             Renderer2D.COLOR.roundedRect(
                     boxX, boxY, boxWidth, boxHeight, radius,
-                    hover ? withAlpha(accent, 0.24f) : 0x24080D14
+                    hover ? withAlpha(accent, 0.24f) : withAlpha(Theme.theme().windowBg(), 0.14f)
             );
         });
         drawStyled(parts, textX, textY, size);

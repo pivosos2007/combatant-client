@@ -22,6 +22,9 @@ import combatant.client.features.module.WorldPhase;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
+import combatant.client.automation.placement.PlacementConstraints;
+import combatant.client.automation.placement.PlacementRotationMode;
+import combatant.client.automation.placement.PlacementSlot;
 import combatant.client.util.block.placer.BlockPlacer;
 import combatant.client.util.target.TargetingUtil;
 import net.minecraft.client.Minecraft;
@@ -30,7 +33,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.core.Direction;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
@@ -76,8 +78,9 @@ public final class AutoTrap extends Module {
     private final EnumValue<TrapMode> mode = enumSetting("autoTrapMode", "mode", TrapMode.FULL, TrapMode.values());
     private final NumberValue<Double> predictTicks = num("autoTrapPredictTicks", "predict_ticks", 0.5D, 0.0D, 3.0D);
     private final BooleanValue autoDisable = bool("autoTrapAutoDisable", "auto_disable", false);
-    private final EnumValue<BlockPlacer.RotationMode> rotation = enumSetting(
-            "autoTrapRotation", "rotation", BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.values());
+    private final EnumValue<PlacementRotationMode> rotation = enumSetting(
+            "autoTrapRotation", "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
+
     private final EnumValue<MovementCorrection> movementCorrection = enumSetting(
             "autoTrapMovementCorrection", "movement_correction", MovementCorrection.SILENT, MovementCorrection.values());
     private final NumberValue<Integer> delay = num("autoTrapDelay", "delay", 0, 0, 10);
@@ -88,20 +91,14 @@ public final class AutoTrap extends Module {
             "autoTrapLineWidth", "line_width", CommonSettingSchemas.LINE_WIDTH, 2.0F, 1.0F, 6.0F);
 
     private final BlockPlacer blockPlacer = new BlockPlacer(
-            this, this, 10,
+            this, 10,
             this::findPlacementSlot,
-            this::effPlaceRange,
-            this::effWallRange,
+            this::placementConstraints,
             delay::get,
             delay::get,
-            () -> 0,
-            () -> 0,
             () -> 1,
-            this::effConstructFailResult,
             () -> true,
-            () -> false,
-            this::effRotation,
-            movementCorrection::get
+            () -> false
     );
     private final List<BlockPos> currentTargets = new ArrayList<>();
     private final PlacementPreviewRenderer placementPreview = new PlacementPreviewRenderer();
@@ -182,32 +179,14 @@ public final class AutoTrap extends Module {
         return target instanceof Player player ? player : null;
     }
 
-    private BlockPlacer.PlacementSlot findPlacementSlot(BlockPos ignored) {
-        LocalPlayer player = mc.player;
-        if (player == null) return null;
-        ItemStack offhand = player.getOffhandItem();
-        if (isTargetBlock(offhand)) return new BlockPlacer.PlacementSlot(-1, InteractionHand.OFF_HAND, offhand);
-        for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = player.getInventory().getItem(slot);
-            if (isTargetBlock(stack)) return new BlockPlacer.PlacementSlot(slot, InteractionHand.MAIN_HAND, stack);
-        }
-        return null;
+    private PlacementSlot findPlacementSlot(BlockPos ignored) {
+        return PlacementSlot.find(mc.player, AutoTrap::isTargetBlock);
     }
 
-    private double effPlaceRange() {
-        return range.get();
-    }
-
-    private double effWallRange() {
-        return wallRange.get();
-    }
-
-    private BlockPlacer.RotationMode effRotation() {
-        return rotation.get();
-    }
-
-    private boolean effConstructFailResult() {
-        return effRotation() == BlockPlacer.RotationMode.NO_ROTATION;
+    private PlacementConstraints placementConstraints() {
+        return new PlacementConstraints(
+                range.get(), wallRange.get(), rotation.get(), movementCorrection.get(),
+                false, 1, 0, 0, true, 0);
     }
 
     private static boolean isTargetBlock(ItemStack stack) {
@@ -239,7 +218,7 @@ public final class AutoTrap extends Module {
     }
 
     private BlockState previewBlockState() {
-        BlockPlacer.PlacementSlot slot = findPlacementSlot(null);
+        PlacementSlot slot = findPlacementSlot(null);
         return slot != null && slot.stack().getItem() instanceof BlockItem item
                 ? item.getBlock().defaultBlockState() : null;
     }

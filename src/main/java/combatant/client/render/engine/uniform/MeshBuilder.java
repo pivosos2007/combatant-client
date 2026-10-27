@@ -22,6 +22,7 @@ import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.renderer.RenderWarp;
 import combatant.client.render.engine.renderer.RenderWarpStack;
+import combatant.client.util.logging.DebugLog;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -186,7 +187,7 @@ public final class MeshBuilder implements AutoCloseable {
     }
 
     public MeshBuilder vec3(double x, double y, double z) {
-        debugVertexWriteCapacity(12, "Position3");
+        checkVertexWrite(12, "Position3");
 
         long p = verticesPtr;
 
@@ -199,7 +200,7 @@ public final class MeshBuilder implements AutoCloseable {
     }
 
     public MeshBuilder vec2(double x, double y) {
-        debugVertexWriteCapacity(8, "Position2");
+        checkVertexWrite(8, "Position2");
 
         RenderWarp warp = RenderWarpStack.current();
         if (warp.active()) {
@@ -218,7 +219,7 @@ public final class MeshBuilder implements AutoCloseable {
     }
 
     public MeshBuilder raw2(double x, double y) {
-        debugVertexWriteCapacity(8, "Raw2");
+        checkVertexWrite(8, "Raw2");
 
         long p = verticesPtr;
 
@@ -230,7 +231,7 @@ public final class MeshBuilder implements AutoCloseable {
     }
 
     public MeshBuilder local2(double x, double y) {
-        debugVertexWriteCapacity(16, "Local");
+        checkVertexWrite(16, "Local");
 
         RenderWarp warp = RenderWarpStack.current();
         double invW = warp.active() ? warp.interpolationInvW(x, y) : 1.0;
@@ -252,7 +253,7 @@ public final class MeshBuilder implements AutoCloseable {
      * geometrically by the grid instead of encoded into a four-vertex quad.
      */
     public MeshBuilder rawLocal2(double x, double y) {
-        debugVertexWriteCapacity(16, "Local");
+        checkVertexWrite(16, "Local");
 
         long p = verticesPtr;
         memPutFloat(p, (float) x);
@@ -265,7 +266,7 @@ public final class MeshBuilder implements AutoCloseable {
     }
 
     public MeshBuilder vec4(float x, float y, float z, float w) {
-        debugVertexWriteCapacity(16, "Vec4");
+        checkVertexWrite(16, "Vec4");
 
         long p = verticesPtr;
 
@@ -286,7 +287,7 @@ public final class MeshBuilder implements AutoCloseable {
      * Color as bytes 0..255
      */
     public MeshBuilder color(int r, int g, int b, int a) {
-        debugVertexWriteCapacity(4, "Color");
+        checkVertexWrite(4, "Color");
 
         long p = verticesPtr;
 
@@ -330,7 +331,7 @@ public final class MeshBuilder implements AutoCloseable {
 
     /** Writes four raw unsigned 8-bit vertex components. */
     public MeshBuilder u8x4(int x, int y, int z, int w) {
-        debugVertexWriteCapacity(4, "U8x4");
+        checkVertexWrite(4, "U8x4");
         long p = verticesPtr;
         memPutByte(p, checkedUnsignedByte(x, "x"));
         memPutByte(p + 1, checkedUnsignedByte(y, "y"));
@@ -342,7 +343,7 @@ public final class MeshBuilder implements AutoCloseable {
 
     /** Writes four normalized unsigned 8-bit components from [0, 1] floats. */
     public MeshBuilder unorm8x4(float x, float y, float z, float w) {
-        debugVertexWriteCapacity(4, "UNorm8x4");
+        checkVertexWrite(4, "UNorm8x4");
         long p = verticesPtr;
         memPutByte(p, (byte) quantizeUnorm8(x));
         memPutByte(p + 1, (byte) quantizeUnorm8(y));
@@ -354,7 +355,7 @@ public final class MeshBuilder implements AutoCloseable {
 
     /** Writes one raw unsigned 32-bit vertex component. Java stores it in an int bit-pattern. */
     public MeshBuilder uint(int value) {
-        debugVertexWriteCapacity(Integer.BYTES, "UInt");
+        checkVertexWrite(Integer.BYTES, "UInt");
         memPutInt(verticesPtr, value);
         verticesPtr += Integer.BYTES;
         return this;
@@ -380,7 +381,7 @@ public final class MeshBuilder implements AutoCloseable {
     }
 
     public void line(int i1, int i2) {
-        debugIndexWriteCapacity(2, "line");
+        checkIndexWrite(2, "line");
 
         long p = indicesPtr + indicesCount * 4L;
 
@@ -391,7 +392,7 @@ public final class MeshBuilder implements AutoCloseable {
     }
 
     public void triangle(int i1, int i2, int i3) {
-        debugIndexWriteCapacity(3, "triangle");
+        checkIndexWrite(3, "triangle");
 
         long p = indicesPtr + indicesCount * 4L;
 
@@ -403,7 +404,7 @@ public final class MeshBuilder implements AutoCloseable {
     }
 
     public void quad(int i1, int i2, int i3, int i4) {
-        debugIndexWriteCapacity(6, "quad");
+        checkIndexWrite(6, "quad");
 
         long p = indicesPtr + indicesCount * 4L;
 
@@ -420,7 +421,7 @@ public final class MeshBuilder implements AutoCloseable {
 
     /** Writes one four-control-point patch index group without triangulating it. */
     public void patch4(int i1, int i2, int i3, int i4) {
-        debugIndexWriteCapacity(4, "patch4");
+        checkIndexWrite(4, "patch4");
         long p = indicesPtr + indicesCount * 4L;
         memPutInt(p, i1);
         memPutInt(p + 4, i2);
@@ -452,41 +453,56 @@ public final class MeshBuilder implements AutoCloseable {
             return;
         }
 
-        int vNeedBytes = (vertexI + addVertices) * vertexStride;
+        long vNeedBytes = (long) (vertexI + addVertices) * vertexStride;
         if (vNeedBytes > vertices.capacity()) {
-            int offset = getVerticesOffset();
-            int newSize = Math.max(vertices.capacity() * 2, vertices.capacity() + addVertices * vertexStride);
-
-            ByteBuffer oldVertices = vertices;
-            ByteBuffer newVertices = allocateDirect(newSize);
-            memCopy(memAddress0(oldVertices), memAddress0(newVertices), offset);
-
-            FRAME_STATS.vertexReallocs++;
-            FRAME_STATS.allocatedBytes += newSize;
-            FRAME_STATS.maxVertexBytes = Math.max(FRAME_STATS.maxVertexBytes, newSize);
-
-            vertices = newVertices;
-            verticesPtrStart = memAddress0(vertices);
-            verticesPtr = verticesPtrStart + offset;
-            freeDirect(oldVertices);
+            growVertices(vNeedBytes);
         }
 
-        int iNeedBytes = (indicesCount + addIndices) * Integer.BYTES;
+        long iNeedBytes = ((long) indicesCount + addIndices) * Integer.BYTES;
         if (iNeedBytes > indices.capacity()) {
-            int newSize = Math.max(indices.capacity() * 2, indices.capacity() + addIndices * Integer.BYTES);
-
-            ByteBuffer oldIndices = indices;
-            ByteBuffer newIndices = allocateDirect(newSize);
-            memCopy(memAddress0(oldIndices), memAddress0(newIndices), (long) indicesCount * 4L);
-
-            FRAME_STATS.indexReallocs++;
-            FRAME_STATS.allocatedBytes += newSize;
-            FRAME_STATS.maxIndexBytes = Math.max(FRAME_STATS.maxIndexBytes, newSize);
-
-            indices = newIndices;
-            indicesPtr = memAddress0(indices);
-            freeDirect(oldIndices);
+            growIndices(iNeedBytes);
         }
+    }
+
+    private void growVertices(long requiredBytes) {
+        int offset = getVerticesOffset();
+        int newSize = grownSize(vertices.capacity(), requiredBytes);
+
+        ByteBuffer oldVertices = vertices;
+        ByteBuffer newVertices = allocateDirect(newSize);
+        memCopy(memAddress0(oldVertices), memAddress0(newVertices), offset);
+
+        FRAME_STATS.vertexReallocs++;
+        FRAME_STATS.allocatedBytes += newSize;
+        FRAME_STATS.maxVertexBytes = Math.max(FRAME_STATS.maxVertexBytes, newSize);
+
+        vertices = newVertices;
+        verticesPtrStart = memAddress0(vertices);
+        verticesPtr = verticesPtrStart + offset;
+        freeDirect(oldVertices);
+    }
+
+    private void growIndices(long requiredBytes) {
+        int newSize = grownSize(indices.capacity(), requiredBytes);
+
+        ByteBuffer oldIndices = indices;
+        ByteBuffer newIndices = allocateDirect(newSize);
+        memCopy(memAddress0(oldIndices), memAddress0(newIndices), (long) indicesCount * Integer.BYTES);
+
+        FRAME_STATS.indexReallocs++;
+        FRAME_STATS.allocatedBytes += newSize;
+        FRAME_STATS.maxIndexBytes = Math.max(FRAME_STATS.maxIndexBytes, newSize);
+
+        indices = newIndices;
+        indicesPtr = memAddress0(indices);
+        freeDirect(oldIndices);
+    }
+
+    private static int grownSize(int capacity, long requiredBytes) {
+        if (requiredBytes > MAX_BUFFER_BYTES) {
+            throw new OutOfMemoryError("MeshBuilder buffer request is too large: " + requiredBytes);
+        }
+        return (int) Math.min(MAX_BUFFER_BYTES, Math.max((long) capacity * 2L, requiredBytes));
     }
 
     /**
@@ -726,6 +742,49 @@ public final class MeshBuilder implements AutoCloseable {
         if (vertices == null || indices == null) {
             throw new IllegalStateException(owner + ": MeshBuilder has no CPU buffers; call begin()/reserve() before writing.");
         }
+    }
+
+    /**
+     * Every raw vertex write goes through here. Release builds used to skip all checks, so a caller that
+     * forgot {@link #ensureCapacity} wrote past the native buffer and corrupted the allocator heap; the
+     * crash then surfaced at an unrelated later free. Grow instead, and name the caller once in the log.
+     */
+    private void checkVertexWrite(int bytes, String attribute) {
+        if (DEBUG) {
+            debugVertexWriteCapacity(bytes, attribute);
+            return;
+        }
+        ByteBuffer current = vertices;
+        if (current == null) {
+            throw new IllegalStateException("MeshBuilder." + attribute + " write without CPU buffers: format=" + format);
+        }
+        long needed = (verticesPtr - verticesPtrStart) + bytes;
+        if (needed > current.capacity()) {
+            reportUnreservedWrite(attribute);
+            growVertices(needed);
+        }
+    }
+
+    private void checkIndexWrite(int addIndices, String primitive) {
+        if (DEBUG) {
+            debugIndexWriteCapacity(addIndices, primitive);
+            return;
+        }
+        ByteBuffer current = indices;
+        if (current == null) {
+            throw new IllegalStateException("MeshBuilder." + primitive + " write without CPU buffers: format=" + format);
+        }
+        long needed = ((long) indicesCount + addIndices) * Integer.BYTES;
+        if (needed > current.capacity()) {
+            reportUnreservedWrite(primitive);
+            growIndices(needed);
+        }
+    }
+
+    private void reportUnreservedWrite(String operation) {
+        DebugLog.errorOnce("mesh-unreserved:" + format + ':' + operation,
+                "MeshBuilder.{} wrote past reserved capacity (format={}); buffer grown instead of overflowing native memory",
+                operation, format, new IllegalStateException("missing ensureCapacity() before write"));
     }
 
     private void debugVertexWriteCapacity(int bytes, String attribute) {

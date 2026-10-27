@@ -44,7 +44,10 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.mixins.accessors.PlayerInventoryAccessor;
 import combatant.client.util.player.InteractionUtil;
 import combatant.client.util.player.MovementUtil;
+import combatant.client.util.player.inventory.InventoryActionKind;
+import combatant.client.util.player.inventory.InventorySearchScope;
 import combatant.client.util.player.inventory.InventorySwap;
+import combatant.client.util.player.inventory.InventorySwapRequest;
 
 @Deprecated
 //работает только на ванилах без ач
@@ -75,6 +78,7 @@ public class Phase extends Module {
             visibleWhen(bool("strict", false), () -> mode.get() == Mode.FORCE_MINE);
     public int clipTimer;
     public int afterPearlTime;
+    private boolean pearlQueued;
 
     @Override
     public void onEnable() {
@@ -173,6 +177,7 @@ public class Phase extends Module {
 
         if (clipTimer > 0) clipTimer--;
         if (afterPearlTime > 0) afterPearlTime--;
+        if (pearlQueued) throwQueuedPearl();
 
         if (isMode(Mode.BREAK_ASSIST)
                 && (mc.player.horizontalCollision || playerInsideBlock())
@@ -196,7 +201,7 @@ public class Phase extends Module {
             if (bestTool == -1) return;
 
             int prevItem = ((PlayerInventoryAccessor) mc.player.getInventory()).combatant$getSelectedSlot();
-            InventorySwap.INSTANCE.selectHotbar(bestTool);
+            if (!InventorySwap.INSTANCE.selectHotbar(bestTool)) return;
             final BlockPos target = blockToBreak;
             final Direction face = mc.player.getDirection();
             InteractionUtil.sendSequencedPacket(id ->
@@ -204,7 +209,7 @@ public class Phase extends Module {
             InteractionUtil.sendSequencedPacket(id ->
                     new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, target, face, id));
             mc.player.swing(InteractionHand.MAIN_HAND, mc.player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
-            if (silent.get()) InventorySwap.INSTANCE.selectHotbar(prevItem);
+            if (silent.get()) InventorySwap.INSTANCE.restoreHotbar(prevItem);
         }
 
         if (isMode(Mode.FORCE_MINE)
@@ -254,22 +259,31 @@ public class Phase extends Module {
             if (mc.player.horizontalCollision && !playerInsideBlock() && clipTimer <= 0 && mc.player.tickCount > 60) {
                 if (mc.options.keyShift.isDown()) return;
 
-                int epSlot = findEPSlot();
-                int prevItem = ((PlayerInventoryAccessor) mc.player.getInventory()).combatant$getSelectedSlot();
-
-                if (epSlot != -1) {
-                    InventorySwap.INSTANCE.selectHotbar(epSlot);
-                    InteractionUtil.sendSequencedPacket(id ->
-                            new ServerboundUseItemPacket(InteractionHand.MAIN_HAND, id, mc.player.getYRot(), mc.player.getXRot()));
-                    sendPacket(ServerboundPunchPacket.INSTANCE);
-                    InventorySwap.INSTANCE.selectHotbar(prevItem);
-                    if (autoDisable.get()) {
-                        setEnabled(false);
-                    }
-                }
+                // Item use and slot change after the movement packet are Grim Post violations: the throw is issued
+                // at the start of the next pre-movement sync, along the rotation this tick's packet carries.
+                pearlQueued = findEPSlot() != -1;
                 clipTimer = 20;
                 afterPearlTime = afterPearl.get();
             }
+        }
+    }
+
+    private void throwQueuedPearl() {
+        Minecraft mc = Minecraft.getInstance();
+        boolean thrown = InventorySwap.INSTANCE.execute(InventorySwapRequest.builder(
+                        stack -> stack.is(net.minecraft.world.item.Items.ENDER_PEARL),
+                        () -> {
+                            InteractionUtil.sendSequencedPacket(id ->
+                                    new ServerboundUseItemPacket(InteractionHand.MAIN_HAND, id, mc.player.getYRot(), mc.player.getXRot()));
+                            sendPacket(ServerboundPunchPacket.INSTANCE);
+                        })
+                .scope(InventorySearchScope.HOTBAR)
+                .actionKind(InventoryActionKind.USE_ITEM)
+                .build());
+        if (!thrown) return;
+        pearlQueued = false;
+        if (autoDisable.get()) {
+            setEnabled(false);
         }
     }
 

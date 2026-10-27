@@ -48,7 +48,8 @@ public final class MapSection implements ClickGuiSection {
         // otherwise large UI-underlay glass surfaces only see later map tiles and sample transparent
         // black wherever no tile draw covered the dedicated target.
         UiBlurResources.requestUiUnderlay(UiDeferredScheduler.layerForCurrentPhase(false));
-        renderer.quad(x, y, width, height, 0xFF090B0E);
+        renderer.quad(x, y, width, height, combatant.client.features.gui.hud.HudRenderUtil.mixColor(
+                combatant.client.features.theme.Theme.theme().windowBg() | 0xFF000000, 0xFF000000, 0.55f));
 
         if (fatalFailure) {
             drawStatus(tr("gui.combatant.map.error.incompatible", "World Map integration is incompatible"));
@@ -154,7 +155,7 @@ public final class MapSection implements ClickGuiSection {
                 x + (width - textWidth) * 0.5f,
                 y + (height - fontSize) * 0.5f,
                 fontSize,
-                0xFFB7BEC9,
+                combatant.client.features.theme.Theme.theme().textMuted() | 0xFF000000,
                 false
         );
     }

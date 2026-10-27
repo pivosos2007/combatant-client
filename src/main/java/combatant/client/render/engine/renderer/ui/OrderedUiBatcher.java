@@ -270,6 +270,9 @@ public final class OrderedUiBatcher {
         UiBackdropBlendSpec normalizedBlend = backdropBlend != null
                 ? backdropBlend
                 : UiBackdropBlendSpec.NORMAL;
+        if (normalizedBackdrop.requiresCapturedScene()) {
+            UiBlurResources.noteWorldSourceDemand();
+        }
         if (type == UiBatchType.LIQUID_GLASS
                 && normalizedBackdrop.requiresUiUnderlayCapture()) {
             UiBlurResources.requestUiUnderlay(UiDeferredScheduler.layerForCurrentPhase(false));
@@ -373,6 +376,9 @@ public final class OrderedUiBatcher {
                 ? backdropRequest.withCaptureBounds(bounds)
                 : UiBackdropRequest.capturedSceneGlass(bounds, UiBlurQuality.LIQUID_GLASS,
                 Renderer2D.LIQUID_GLASS_KAWASE_OFFSET_PX);
+        if (normalizedBackdrop.requiresCapturedScene()) {
+            UiBlurResources.noteWorldSourceDemand();
+        }
         if (normalizedBackdrop.requiresUiUnderlayCapture()) {
             UiBlurResources.requestUiUnderlay(UiDeferredScheduler.layerForCurrentPhase(false));
         }
@@ -578,6 +584,7 @@ public final class OrderedUiBatcher {
             MeshBuilder fxCompositeMesh = null;
 
             if (hasCapturedSceneBackdrop) {
+                UiBlurResources.noteWorldSourceDemand();
                 /*
                  * The HUD/world glass source is captured before GUI extraction. Never perform a
                  * fallback copy of the active main framebuffer from inside a batch flush: doing so
@@ -1708,9 +1715,10 @@ public final class OrderedUiBatcher {
 
         resetSharedBlur();
 
-        String blurProfile = blurProfile(sourceView, quality);
-        try (ProfilerPhase.Scope ignoredCpu = ProfilerPhase.scope("ui:blur_prepare:" + blurProfile);
-             TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("2d:ui_blur_" + blurProfile)) {
+        int blurProfileSource = blurProfileSource(sourceView);
+        int blurProfileLevel = (quality != null ? quality : Renderer2D.DEFAULT_BLUR_QUALITY).ordinal();
+        try (ProfilerPhase.Scope ignoredCpu = ProfilerPhase.scope(BLUR_CPU_LABELS[blurProfileSource][blurProfileLevel]);
+             TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone(BLUR_GPU_LABELS[blurProfileSource][blurProfileLevel])) {
             GpuSampler blurSampler = PostProcessManager.getSampler();
             if (blurSampler == null) {
                 return 0;
@@ -1823,19 +1831,33 @@ public final class OrderedUiBatcher {
         return new UiRect(left, top, right - left, bottom - top);
     }
 
-    private static String blurProfile(@Nullable GpuTextureView sourceView,
-                                      Renderer2D.BlurQuality quality) {
-        String source = UiBlurResources.isUiUnderlaySource(sourceView)
-                ? "ui_underlay"
-                : (UiBlurResources.isCapturedWorldSource(sourceView) ? "captured_world" : "surface");
-        String level = switch (quality != null ? quality : Renderer2D.DEFAULT_BLUR_QUALITY) {
-            case LOW -> "low";
-            case MEDIUM -> "medium";
-            case HIGH -> "high";
-            case ULTRA -> "ultra";
-            case LIQUID_GLASS -> "liquid_glass";
-        };
-        return source + "_" + level;
+    private static final String[] BLUR_PROFILE_SOURCES = {"ui_underlay", "captured_world", "surface"};
+    // Profiler labels are built once; the blur path must not concatenate strings per prepare.
+    private static final String[][] BLUR_CPU_LABELS = blurLabels("ui:blur_prepare:");
+    private static final String[][] BLUR_GPU_LABELS = blurLabels("2d:ui_blur_");
+
+    private static String[][] blurLabels(String prefix) {
+        Renderer2D.BlurQuality[] qualities = Renderer2D.BlurQuality.values();
+        String[][] labels = new String[BLUR_PROFILE_SOURCES.length][qualities.length];
+        for (int s = 0; s < BLUR_PROFILE_SOURCES.length; s++) {
+            for (Renderer2D.BlurQuality quality : qualities) {
+                String level = switch (quality) {
+                    case LOW -> "low";
+                    case MEDIUM -> "medium";
+                    case HIGH -> "high";
+                    case ULTRA -> "ultra";
+                    case LIQUID_GLASS -> "liquid_glass";
+                };
+                labels[s][quality.ordinal()] = prefix + BLUR_PROFILE_SOURCES[s] + "_" + level;
+            }
+        }
+        return labels;
+    }
+
+    private static int blurProfileSource(@Nullable GpuTextureView sourceView) {
+        return UiBlurResources.isUiUnderlaySource(sourceView)
+                ? 0
+                : (UiBlurResources.isCapturedWorldSource(sourceView) ? 1 : 2);
     }
 
     private static boolean drawKawasePass(TextureTarget target,

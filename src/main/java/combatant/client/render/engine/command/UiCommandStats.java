@@ -29,10 +29,10 @@ public final class UiCommandStats {
         compiledPasses = compiledOrderedBatches = compiledCaptureAwarePasses = rhiDrawCommands = backendDrawCalls = 0;
     }
 
-    public void record(UiCommand command) {
-        if (command == null) return;
+    public void record(UiCommandKind kind) {
+        if (kind == null) return;
         recordedCommands++;
-        switch (command.kind()) {
+        switch (kind) {
             case SHAPE -> shapeCommands++;
             case PATH -> pathCommands++;
             case TEXTURE -> textureCommands++;

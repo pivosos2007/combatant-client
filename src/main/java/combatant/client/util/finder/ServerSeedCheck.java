@@ -12,6 +12,7 @@ import net.minecraft.world.level.biome.BiomeManager;
 
 import java.lang.reflect.Field;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 /**
  * Checks a candidate world seed against the one the connected server uses.
@@ -31,18 +32,30 @@ public final class ServerSeedCheck {
     private ServerSeedCheck() {
     }
 
-    /** {@code empty} when the hashed seed cannot be read, which says nothing about the seed. */
+    /** {@code empty} when the hashed seed cannot be read or the server hides it, which says nothing about the seed. */
     public static Optional<Boolean> matches(Level level, long candidateSeed) {
         return level == null ? Optional.empty() : matches(level.getBiomeManager(), candidateSeed);
     }
 
     static Optional<Boolean> matches(BiomeManager manager, long candidateSeed) {
+        OptionalLong hashed = hashedSeed(manager);
+        return hashed.isEmpty() ? Optional.empty()
+                : Optional.of(hashed.getAsLong() == BiomeManager.obfuscateSeed(candidateSeed));
+    }
+
+    /** The seed hash the server sent; {@code empty} when unreadable or 0, the value a server that hides it sends. */
+    public static OptionalLong hashedSeed(Level level) {
+        return level == null ? OptionalLong.empty() : hashedSeed(level.getBiomeManager());
+    }
+
+    static OptionalLong hashedSeed(BiomeManager manager) {
         Field field = zoomSeedField();
-        if (field == null || manager == null) return Optional.empty();
+        if (field == null || manager == null) return OptionalLong.empty();
         try {
-            return Optional.of(field.getLong(manager) == BiomeManager.obfuscateSeed(candidateSeed));
+            long hashed = field.getLong(manager);
+            return hashed == 0L ? OptionalLong.empty() : OptionalLong.of(hashed);
         } catch (IllegalAccessException e) {
-            return Optional.empty();
+            return OptionalLong.empty();
         }
     }
 

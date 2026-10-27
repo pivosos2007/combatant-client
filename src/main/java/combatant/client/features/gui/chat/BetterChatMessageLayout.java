@@ -37,12 +37,13 @@ final class BetterChatMessageLayout {
             List<CachedLine> cached = lines(message, fontSize, maxWidth);
             for (int line = cached.size() - 1; line >= 0; line--) {
                 CachedLine value = cached.get(line);
-                lines.addFirst(new VisualLine(message, messageIndex, group,
+                lines.add(new VisualLine(message, messageIndex, group,
                         value.startChar(), value.endChar(), value.glyphs()));
             }
             seenMessages++;
             if (lines.size() >= maxLines) break;
         }
+        Collections.reverse(lines);
         return new LayoutResult(lines, seenMessages);
     }
 

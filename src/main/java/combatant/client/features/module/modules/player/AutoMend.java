@@ -24,19 +24,16 @@ import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySearchScope;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.player.inventory.InventorySwapRequest;
 import combatant.client.util.player.inventory.InventorySwapVisibility;
+import combatant.client.util.player.inventory.PacketWindow;
+import combatant.client.util.item.EnchantUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Holder;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantment;
@@ -67,8 +64,6 @@ public final class AutoMend extends Module {
             num("autoMendRepairBelow", "repair_below", 85.0F, 5.0F, 99.0F);
     private final EnumValue<Mode> mode =
             enumSetting("autoMendMode", "mode", Mode.NORMAL, Mode.values());
-    private final NumberValue<Integer> packetBurst =
-            visibleWhen(num("autoMendPacketBurst", "packet_burst", 3, 2, 8), () -> mode.get() == Mode.PACKET);
     private final NumberValue<Integer> cooldownTicks =
             num("autoMendCooldownTicks", "cooldown_ticks", 1, 0, 20);
 
@@ -102,7 +97,7 @@ public final class AutoMend extends Module {
 
         if (pendingRotation || player.isUsingItem() || !needsRepair(player)) return;
         if (!hasExperienceBottle(player)) return;
-        if (requiresInventoryClick() && isMovingForInventory(player)) return;
+        if (requiresInventoryClick() && !PacketWindow.INSTANCE.stationaryForClick()) return;
 
         pendingRotation = true;
     }
@@ -141,26 +136,22 @@ public final class AutoMend extends Module {
                 .scope(InventorySearchScope.FULL)
                 .visibility(InventorySwapVisibility.SILENT)
                 .restore(true)
-                .policy(InventorySwapPolicy.NONE)
                 .actionKind(InventoryActionKind.USE_ITEM)
                 .build();
 
+        // PACKET mode keeps throwing every tick; NORMAL waits out the cooldown. One use per tick either way.
         if (InventorySwap.INSTANCE.execute(request)) {
-            cooldown = cooldownTicks.get();
+            cooldown = mode.get() == Mode.PACKET ? 0 : cooldownTicks.get();
         }
     }
 
     private void useExperience(LocalPlayer player) {
-        int count = mode.get() == Mode.PACKET ? packetBurst.get() : 1;
-        for (int i = 0; i < count; i++) {
-            InteractionResult result = InventorySwap.INSTANCE.useItem(InteractionHand.MAIN_HAND);
-            if (result == null || !result.consumesAction()) break;
-            player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getInteractAnimation(), false);
-        }
+        InteractionResult result = InventorySwap.INSTANCE.useItem(InteractionHand.MAIN_HAND);
+        if (result != null && result.consumesAction()) InventorySwap.INSTANCE.swingHand(InteractionHand.MAIN_HAND);
     }
 
     private boolean needsRepair(LocalPlayer player) {
-        Holder<Enchantment> mending = getEnchantmentEntry(Enchantments.MENDING);
+        Holder<Enchantment> mending = EnchantUtil.holder(mc.level, Enchantments.MENDING);
         if (mending == null) return false;
 
         if (targets.get(TARGET_ARMOR)) {
@@ -182,13 +173,6 @@ public final class AutoMend extends Module {
         return remaining <= repairBelow.get();
     }
 
-    private Holder<Enchantment> getEnchantmentEntry(ResourceKey<Enchantment> key) {
-        if (mc.level == null) return null;
-        Registry<Enchantment> registry = mc.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
-        Enchantment enchantment = registry.getValue(key);
-        return enchantment != null ? registry.wrapAsHolder(enchantment) : null;
-    }
-
     private boolean hasExperienceBottle(LocalPlayer player) {
         for (int slot = 0; slot < 36; slot++) {
             if (player.getInventory().getItem(slot).is(Items.EXPERIENCE_BOTTLE)) return true;
@@ -200,13 +184,6 @@ public final class AutoMend extends Module {
         Predicate<ItemStack> predicate = stack -> stack != null && !stack.isEmpty() && stack.is(Items.EXPERIENCE_BOTTLE);
         return !InventorySwap.INSTANCE.findHotbar(predicate).found()
                 && InventorySwap.INSTANCE.findInventory(predicate).found();
-    }
-
-    private boolean isMovingForInventory(LocalPlayer player) {
-        if (player.isSprinting()) return true;
-        if (player.input == null || player.input.keyPresses == null) return false;
-        Input input = player.input.keyPresses;
-        return input.forward() || input.backward() || input.left() || input.right();
     }
 
     private void resetState(boolean releaseRotation) {

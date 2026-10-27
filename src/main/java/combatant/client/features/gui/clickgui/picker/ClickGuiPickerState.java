@@ -214,7 +214,10 @@ public final class ClickGuiPickerState {
 
         PickerDetailOwner detailOwner = detailOwner();
         if (detailOwner != null && inside(mx, my, detailX, detailY, detailW, detailH)) {
-            if (detailOwner.mouseClickedPickerDetails(mx, my, button)) return;
+            if (detailOwner.mouseClickedPickerDetails(mx, my, button)) {
+                refreshFiltered(false);
+                return;
+            }
         }
 
         if (handleScrollbarMouseDown(mx, my)) return;

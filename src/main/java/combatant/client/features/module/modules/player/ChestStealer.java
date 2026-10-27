@@ -16,19 +16,16 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
+import combatant.client.util.player.inventory.ContainerKinds;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
@@ -44,6 +41,8 @@ import java.util.concurrent.ThreadLocalRandom;
         description = "module.cheststealer.description")
 public final class ChestStealer extends Module {
 
+    private static final long TICK_MS = 50L;
+
     private final Minecraft mc = Minecraft.getInstance();
 
     private final NumberValue<Integer> delayMs =
@@ -54,14 +53,18 @@ public final class ChestStealer extends Module {
             bool("chestStealerAutoClose", "auto_close", true);
     private final BooleanValue ignoreEnderChest =
             bool("chestStealerIgnoreEnderChest", "ignore_ender_chest", true);
+    private final EnumValue<Order> order =
+            enumSetting("chestStealerOrder", "order", Order.SLOT, Order.values());
     private final EnumValue<FilterMode> filterMode =
             enumSetting("chestStealerFilterMode", "filter_mode", FilterMode.ALL, FilterMode.values());
     private final ItemIdSetValue filterItems = visibleWhen(
             itemList("chestStealerFilterItems", "filter_items", TextListSetting.PickerMode.ITEMS),
             () -> filterMode.get() != FilterMode.ALL);
 
-    private long nextActionAtNs;
+    private long tickCounter;
+    private long nextActionTick;
     private boolean pendingAction;
+    private boolean closed;
     private int activeContainerId = -1;
     private long generation;
 
@@ -78,6 +81,7 @@ public final class ChestStealer extends Module {
     @Override
     public void onTick() {
         if (!isEnabled()) return;
+        tickCounter++;
 
         LocalPlayer player = mc.player;
         if (player == null || mc.gameMode == null) {
@@ -86,50 +90,55 @@ public final class ChestStealer extends Module {
         }
 
         Screen screen = ClientScreen.current();
-        if (!(screen instanceof AbstractContainerScreen<?>) || screen instanceof InventoryScreen) {
-            resetState();
-            return;
-        }
-
         AbstractContainerMenu menu = player.containerMenu;
-        if (menu == null) {
+        if (!(screen instanceof AbstractContainerScreen<?> handled) || menu == null
+                || handled.getMenu() != menu || !ContainerKinds.isLootable(menu)) {
             resetState();
             return;
         }
 
-        if (ignoreEnderChest.get() && isEnderChest(screen)) return;
+        if (ignoreEnderChest.get() && ContainerKinds.isEnderChest(menu, screen.getTitle())) return;
 
         if (menu.containerId != activeContainerId) {
             generation++;
             activeContainerId = menu.containerId;
             pendingAction = false;
+            closed = false;
             scheduleNextAction();
             return;
         }
 
-        if (pendingAction || System.nanoTime() < nextActionAtNs) return;
+        if (pendingAction || closed || tickCounter < nextActionTick) return;
 
         int playerStart = InventorySwap.playerInventoryStart(menu);
         if (playerStart <= 0 || playerStart > menu.slots.size()) return;
 
-        int slotId = firstLootableSlot(menu, playerStart);
+        int slotId = pickSlot(player, menu, playerStart);
         if (slotId >= 0) {
-            Slot slot = menu.slots.get(slotId);
-            if (slot != null && canAccept(player, slot.getItem())) {
-                queueQuickMove(menu.containerId, slotId);
-                return;
-            }
+            queueQuickMove(menu.containerId, slotId);
+            return;
         }
 
         if (autoClose.get()) queueClose(menu.containerId);
     }
 
-    private int firstLootableSlot(AbstractContainerMenu menu, int containerSlots) {
+    /** The first (or, in best-first order, the most valuable) container slot whose stack passes the filter and fits. */
+    private int pickSlot(LocalPlayer player, AbstractContainerMenu menu, int containerSlots) {
+        int best = -1;
+        int bestValue = Integer.MIN_VALUE;
         for (int i = 0; i < containerSlots; i++) {
             Slot slot = menu.slots.get(i);
-            if (slot != null && slot.hasItem() && !slot.getItem().isEmpty() && passesFilter(slot.getItem())) return i;
+            if (slot == null || !slot.hasItem()) continue;
+            ItemStack stack = slot.getItem();
+            if (stack.isEmpty() || !passesFilter(stack) || !canAccept(player, stack)) continue;
+            if (order.get() == Order.SLOT) return i;
+            int value = value(stack);
+            if (value > bestValue) {
+                bestValue = value;
+                best = i;
+            }
         }
-        return -1;
+        return best;
     }
 
     /** An empty list never filters, so switching the mode before picking items does not auto-close every chest. */
@@ -142,6 +151,16 @@ public final class ChestStealer extends Module {
         return mode == FilterMode.WHITELIST ? listed : !listed;
     }
 
+    private static int value(ItemStack stack) {
+        String path = BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath();
+        int value = stack.getRarity().ordinal() * 100;
+        if (path.equals("totem_of_undying") || path.equals("elytra") || path.equals("enchanted_golden_apple")) value += 1000;
+        else if (path.startsWith("netherite_")) value += 700;
+        else if (path.startsWith("diamond_")) value += 500;
+        else if (path.endsWith("shulker_box") || path.equals("ender_pearl") || path.equals("golden_apple")) value += 300;
+        if (stack.isEnchanted()) value += 150;
+        return value;
+    }
 
     private boolean canAccept(LocalPlayer player, ItemStack incoming) {
         if (player == null || incoming == null || incoming.isEmpty()) return false;
@@ -160,18 +179,18 @@ public final class ChestStealer extends Module {
         long expectedGeneration = generation;
         pendingAction = true;
         boolean accepted = InventorySwap.INSTANCE.command(
+                null,
                 InventoryActionKind.INVENTORY_CLICK,
-                InventorySwapPolicy.LEGIT,
                 () -> {
                     try {
                         if (generation != expectedGeneration) return;
                         LocalPlayer player = mc.player;
-                        if (player == null || mc.gameMode == null || player.containerMenu == null) return;
+                        if (player == null || player.containerMenu == null) return;
                         AbstractContainerMenu menu = player.containerMenu;
                         if (menu.containerId != containerId || slotId < 0 || slotId >= menu.slots.size()) return;
                         Slot slot = menu.slots.get(slotId);
                         if (slot == null || !slot.hasItem() || slot.getItem().isEmpty()) return;
-                        mc.gameMode.handleContainerInput(containerId, slotId, 0, ContainerInput.QUICK_MOVE, player);
+                        InventorySwap.INSTANCE.quickMove(slotId);
                     } finally {
                         if (generation == expectedGeneration) {
                             pendingAction = false;
@@ -187,8 +206,8 @@ public final class ChestStealer extends Module {
         long expectedGeneration = generation;
         pendingAction = true;
         boolean accepted = InventorySwap.INSTANCE.command(
+                null,
                 InventoryActionKind.INVENTORY_CLOSE,
-                InventorySwapPolicy.LEGIT,
                 () -> {
                     try {
                         if (generation != expectedGeneration) return;
@@ -200,7 +219,7 @@ public final class ChestStealer extends Module {
                     } finally {
                         if (generation == expectedGeneration) {
                             pendingAction = false;
-                            nextActionAtNs = Long.MAX_VALUE;
+                            closed = true;
                         }
                     }
                 }
@@ -208,24 +227,21 @@ public final class ChestStealer extends Module {
         if (!accepted) pendingAction = false;
     }
 
+    /** Delays are counted in client ticks (50 ms each), rounded up, so every click lands on a tick boundary. */
     private void scheduleNextAction() {
         int delay = delayMs.get();
         if (randomDelay.get() && delay > 0) {
             int spread = Math.max(5, Math.min(40, delay / 3));
             delay = Math.max(0, delay + ThreadLocalRandom.current().nextInt(-spread, spread + 1));
         }
-        nextActionAtNs = System.nanoTime() + delay * 1_000_000L;
-    }
-
-    private boolean isEnderChest(Screen screen) {
-        if (screen == null || screen.getTitle() == null) return false;
-        return screen.getTitle().getString().equalsIgnoreCase(I18n.get("container.enderchest"));
+        nextActionTick = tickCounter + (delay + TICK_MS - 1) / TICK_MS;
     }
 
     private void resetState() {
         generation++;
-        nextActionAtNs = 0L;
+        nextActionTick = 0L;
         pendingAction = false;
+        closed = false;
         activeContainerId = -1;
     }
 
@@ -233,5 +249,10 @@ public final class ChestStealer extends Module {
         ALL,
         WHITELIST,
         BLACKLIST
+    }
+
+    public enum Order {
+        SLOT,
+        BEST_FIRST
     }
 }

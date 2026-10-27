@@ -798,14 +798,19 @@ public final class Scoreboard extends DraggableHudElement {
         float maxLabelW = 0.0f;
         float maxValueW = 0.0f;
         float maxFooterW = 0.0f;
+        float[] measuredValueWidths = new float[lines.size()];
+        int measureIndex = -1;
         for (SidebarLine line : lines) {
+            measureIndex++;
             if (line.footer()) {
                 maxFooterW = Math.max(maxFooterW, measureStyledText(bodyRenderer, line.label(), uiFooterColor, textScale));
                 continue;
             }
             maxLabelW = Math.max(maxLabelW, measureStyledText(bodyRenderer, line.label(), uiLabelColor, textScale));
             if (redNumbers.get() && !isBlankText(line.value())) {
-                maxValueW = Math.max(maxValueW, measureStyledText(bodyRenderer, line.value(), uiValueColor, textScale));
+                float valueWidth = measureStyledText(bodyRenderer, line.value(), uiValueColor, textScale);
+                measuredValueWidths[measureIndex] = valueWidth;
+                maxValueW = Math.max(maxValueW, valueWidth);
             }
         }
 
@@ -872,7 +877,9 @@ public final class Scoreboard extends DraggableHudElement {
         }
 
         boolean footerStarted = false;
+        int drawIndex = -1;
         for (SidebarLine line : lines) {
+            drawIndex++;
             if (line.footer()) {
                 if (!footerStarted && bodyCount > 0) {
                     cursorY += footerGap;
@@ -898,7 +905,7 @@ public final class Scoreboard extends DraggableHudElement {
             }
             if (redNumbers.get() && !isBlankText(line.value())) {
                 float valueW = customFont
-                        ? measureStyledText(bodyRenderer, line.value(), uiValueColor, textScale)
+                        ? measuredValueWidths[drawIndex]
                         : measureVanillaText(line.value(), uiValueColor, vanillaTextScale);
                 float valueX = x + width - padX - valueW;
                 if (customFont) {
@@ -997,12 +1004,14 @@ public final class Scoreboard extends DraggableHudElement {
             resolved.add(new SidebarLine(label, value, isBlankText(value)));
         });
 
-        ServerDumpUtil.dumpScoreboardSidebar(
-                objective,
-                visibleEntries,
-                resolved.stream().map(line -> line.label().getString()).toList(),
-                resolved.stream().map(line -> line.value().getString()).toList()
-        );
+        if (combatant.client.util.logging.DebugLog.serverOnly()) {
+            ServerDumpUtil.dumpScoreboardSidebar(
+                    objective,
+                    visibleEntries,
+                    resolved.stream().map(line -> line.label().getString()).toList(),
+                    resolved.stream().map(line -> line.value().getString()).toList()
+            );
+        }
 
         return resolved.isEmpty() && preview ? previewLinesSample : resolved;
     }

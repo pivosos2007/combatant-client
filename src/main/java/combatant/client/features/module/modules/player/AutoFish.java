@@ -18,7 +18,6 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Notifier;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySwap;
-import combatant.client.util.player.inventory.InventorySwapPolicy;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.resources.language.I18n;
@@ -150,8 +149,8 @@ public final class AutoFish extends Module {
 
         rodSwapPending = true;
         boolean accepted = InventorySwap.INSTANCE.command(
+                null,
                 InventoryActionKind.INVENTORY_CLICK,
-                InventorySwapPolicy.LEGIT,
                 () -> {
                     try {
                         if (mc.player == null) return;
@@ -160,7 +159,7 @@ public final class AutoFish extends Module {
                         } else {
                             int selected = InventorySwap.INSTANCE.clientSelectedSlot();
                             if (bestSlot >= 0 && bestSlot < 9) {
-                                InventorySwap.INSTANCE.selectHotbar(bestSlot);
+                                if (!InventorySwap.INSTANCE.selectHotbar(bestSlot)) return;
                             } else {
                                 InventorySwap.INSTANCE.swapInventoryToHotbar(bestSlot, selected);
                             }

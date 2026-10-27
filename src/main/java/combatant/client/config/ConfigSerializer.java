@@ -19,32 +19,24 @@ import combatant.client.features.module.Module;
 import combatant.client.features.relations.EntityFilters;
 import combatant.client.util.logging.DebugLog;
 
-import java.io.IOException;
+import combatant.client.config.persist.AtomicFileStore;
+import combatant.client.config.persist.ConfigDocument;
+import combatant.client.config.persist.ConfigWriteScheduler;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
 public enum ConfigSerializer {
     ;
 
     private static final Path CONFIG_DIR = ConfigPaths.root();
     private static final long SAVE_DEBOUNCE_MS = 220L;
-    private static final ScheduledExecutorService SAVE_EXECUTOR =
-            Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "Combatant-ConfigSaver");
-                t.setDaemon(true);
-                return t;
-            });
-    private static final Object SAVE_LOCK = new Object();
-    private static final Map<Path, String> PENDING_TEXT = new HashMap<>();
-    private static final Map<Path, ScheduledFuture<?>> PENDING_TASKS = new HashMap<>();
-    private static final Map<Path, Long> PENDING_TOKENS = new HashMap<>();
+    private static final ConfigWriteScheduler SCHEDULER =
+            new ConfigWriteScheduler(SAVE_DEBOUNCE_MS, ConfigWriteScheduler.fileSink());
     // One Json5 instance for utilities (player relations, filters, debug config, etc.)
     private static final Json5 JSON5 = Json5.builder(builder -> builder
             .trailingComma()  // allow trailing commas
@@ -57,7 +49,6 @@ public enum ConfigSerializer {
             .setPrettyPrinting()
             .disableHtmlEscaping()
             .create();
-    private static long SAVE_TOKEN_SEQ = 0L;
 
     // =============================================================
     //   Bulk load / save helpers
@@ -138,23 +129,7 @@ public enum ConfigSerializer {
             return;
         }
         if (write == null) return;
-
-        long token;
-        synchronized (SAVE_LOCK) {
-            token = ++SAVE_TOKEN_SEQ;
-            PENDING_TEXT.put(write.path, write.text);
-            PENDING_TOKENS.put(write.path, token);
-
-            ScheduledFuture<?> prev = PENDING_TASKS.get(write.path);
-            if (prev != null) prev.cancel(false);
-
-            ScheduledFuture<?> task = SAVE_EXECUTOR.schedule(
-                    () -> flushPending(write.path, token),
-                    SAVE_DEBOUNCE_MS,
-                    TimeUnit.MILLISECONDS
-            );
-            PENDING_TASKS.put(write.path, task);
-        }
+        SCHEDULER.schedule(write.path, write.document);
     }
 
     public static void load(ConfigObject obj) {
@@ -274,7 +249,7 @@ public enum ConfigSerializer {
 
             String text = GSON.toJson(root) + "\n";
             Path out = moduleFile(obj);
-            return new PendingWrite(out, text);
+            return new PendingWrite(out, ConfigDocument.json(GSON, text, retiredKeys(obj)));
         } catch (Exception e) {
             DebugLog.error("Failed to serialize config %s", e, fileOf(obj).toAbsolutePath());
             return null;
@@ -284,8 +259,8 @@ public enum ConfigSerializer {
     private static void loadModule(ConfigObject obj) {
         try {
             Path path = moduleFile(obj);
-
-            if (!Files.exists(path)) {
+            String txt = readConfigText(path, JSON_VALIDATOR);
+            if (txt == null) {
                 DebugLog.config("Config defaults created: %s", path.toAbsolutePath());
                 save(obj);
                 return;
@@ -293,7 +268,6 @@ public enum ConfigSerializer {
 
             DebugLog.config("Config loading: %s", path.toAbsolutePath());
 
-            String txt = Files.readString(path);
             JsonElement parsed = GSON.fromJson(txt, JsonElement.class);
             if (!(parsed instanceof JsonObject root)) return;
 
@@ -336,7 +310,7 @@ public enum ConfigSerializer {
 
             String text = GSON.toJson(root) + "\n";
             Path out = jsonFile(obj);
-            return new PendingWrite(out, text);
+            return new PendingWrite(out, ConfigDocument.json(GSON, text, retiredKeys(obj)));
         } catch (Exception e) {
             DebugLog.error("Failed to serialize config %s", e, fileOf(obj).toAbsolutePath());
             return null;
@@ -346,7 +320,8 @@ public enum ConfigSerializer {
     private static void loadJson(ConfigObject obj) {
         try {
             Path path = jsonFile(obj);
-            if (!Files.exists(path)) {
+            String txt = readConfigText(path, JSON_VALIDATOR);
+            if (txt == null) {
                 if (loadLegacySubsystem(obj)) {
                     DebugLog.config("Config migrated to subsystem: %s", path.toAbsolutePath());
                     save(obj);
@@ -359,7 +334,6 @@ public enum ConfigSerializer {
 
             DebugLog.config("Config loading: %s", path.toAbsolutePath());
 
-            String txt = Files.readString(path);
             JsonElement parsed = GSON.fromJson(txt, JsonElement.class);
             if (!(parsed instanceof JsonObject root)) return;
 
@@ -405,7 +379,7 @@ public enum ConfigSerializer {
             if (obj instanceof EntityFilters) {
                 DebugLog.config("[EntityFilters][SAVE] to=%s data=%s", out.toAbsolutePath(), text);
             }
-            return new PendingWrite(out, sb);
+            return new PendingWrite(out, ConfigDocument.json5(JSON5, sb, retiredKeys(obj)));
         } catch (Exception e) {
             DebugLog.error("Failed to serialize config %s", e, fileOf(obj).toAbsolutePath());
             return null;
@@ -415,7 +389,8 @@ public enum ConfigSerializer {
     private static void loadJson5(ConfigObject obj) {
         try {
             Path path = utilFile(obj);
-            if (!Files.exists(path)) {
+            String txt = readConfigText(path, JSON5_VALIDATOR);
+            if (txt == null) {
                 if (loadLegacySubsystem(obj)) {
                     DebugLog.config("Config migrated to subsystem: %s", path.toAbsolutePath());
                     save(obj);
@@ -428,7 +403,6 @@ public enum ConfigSerializer {
 
             DebugLog.config("Config loading: %s", path.toAbsolutePath());
 
-            String txt = Files.readString(path);
             Json5Element parsed = JSON5.parse(txt);
 
             if (!(parsed instanceof Json5Object root)) {
@@ -689,46 +663,58 @@ public enum ConfigSerializer {
             return;
         }
         if (write == null) return;
-        clearPending(write.path);
-        writeConfig(write.path, write.text);
+        SCHEDULER.writeNow(write.path, write.document);
+    }
+
+    /** Synchronously writes every debounced save still pending (client stop, panic JAR replacement). */
+    public static void flushPending() {
+        SCHEDULER.flushAll();
+    }
+
+    /** Number of files with a debounced save waiting for the quiet period. */
+    public static int pendingSaveCount() {
+        return SCHEDULER.pendingCount();
     }
 
     // =============================================================
-    //   Async write helpers
+    //   Recovering read / unknown-field helpers
     // =============================================================
 
-    private static void flushPending(Path path, long token) {
-        String text;
-        synchronized (SAVE_LOCK) {
-            Long current = PENDING_TOKENS.get(path);
-            if (current == null || current != token) return;
-            text = PENDING_TEXT.remove(path);
-            PENDING_TOKENS.remove(path);
-            PENDING_TASKS.remove(path);
-        }
-        if (text != null) {
-            writeConfig(path, text);
-        }
-    }
-
-    private static void clearPending(Path path) {
-        synchronized (SAVE_LOCK) {
-            ScheduledFuture<?> prev = PENDING_TASKS.remove(path);
-            if (prev != null) prev.cancel(false);
-            PENDING_TEXT.remove(path);
-            PENDING_TOKENS.remove(path);
-        }
-    }
-
-    private static void writeConfig(Path out, String text) {
+    private static final AtomicFileStore.Validator JSON_VALIDATOR = bytes -> ConfigDocument.parseObject(bytes) != null;
+    private static final AtomicFileStore.Validator ANY_JSON_VALIDATOR = bytes -> {
+        if (bytes == null || bytes.length == 0) return false;
         try {
-            Path parent = out.getParent();
-            Files.createDirectories(parent != null ? parent : CONFIG_DIR);
-            Files.writeString(out, text);
-            DebugLog.config("Config saved: %s", out.toAbsolutePath());
-        } catch (IOException e) {
-            DebugLog.error("Failed to save config %s", e, out.toAbsolutePath());
+            JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8));
+            return true;
+        } catch (RuntimeException e) {
+            return false;
         }
+    };
+    private static final AtomicFileStore.Validator JSON5_VALIDATOR = bytes -> {
+        try {
+            return JSON5.parse(new String(bytes, StandardCharsets.UTF_8)) instanceof Json5Object;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    };
+
+    /** Reads a config validating it, recovering from {@code .bak} when needed; null when nothing usable exists. */
+    private static String readConfigText(Path path, AtomicFileStore.Validator validator) {
+        AtomicFileStore.ReadResult result = AtomicFileStore.readRecovering(path, validator);
+        return result.found() ? new String(result.bytes(), StandardCharsets.UTF_8) : null;
+    }
+
+    /** Top-level keys that are retired spellings of known values and must not be preserved as "unknown". */
+    private static Set<String> retiredKeys(ConfigObject obj) {
+        Set<String> out = new HashSet<>();
+        if (isModule(obj)) out.add("settings");
+        if (obj instanceof ConfigValueAliasProvider provider) {
+            for (ConfigValue<?> v : obj.getConfigValues()) {
+                List<String> aliases = provider.getLegacyValueNames(v.getName());
+                if (aliases != null) out.addAll(aliases);
+            }
+        }
+        return out;
     }
 
     private record JsonLookup(JsonElement element, boolean alias) {
@@ -743,6 +729,25 @@ public enum ConfigSerializer {
         }
     }
 
-    private record PendingWrite(Path path, String text) {
+    private record PendingWrite(Path path, ConfigDocument document) {
+    }
+
+    // =============================================================
+    //   Auxiliary JSON stores (theme, presets, proxy, addon state)
+    // =============================================================
+
+    /** Debounced atomic write of a JSON-object file that is not a ConfigObject; unknown top-level keys on disk are kept. */
+    public static void requestJsonWrite(Path path, String jsonText) {
+        SCHEDULER.schedule(path, ConfigDocument.json(GSON, jsonText, Set.of()));
+    }
+
+    /** Drops a debounced write that has not hit disk yet (call before deleting the file). */
+    public static void discardPendingWrite(Path path) {
+        SCHEDULER.cancel(path);
+    }
+
+    /** Validated read of a JSON file with {@code .bak} recovery; null if absent or unusable. */
+    public static String readJsonRecovering(Path path) {
+        return readConfigText(path, ANY_JSON_VALIDATOR);
     }
 }

@@ -84,7 +84,6 @@ final class ScaffoldPlacementGeometryTest {
         Rotation atClick = Rotation.lookingAt(click, now);
         assertFalse(ScaffoldPlacementGeometry.isSafe(now, next, atClick, support, Direction.SOUTH, shape));
     }
-
     @ParameterizedTest
     @ValueSource(doubles = {0.0, 0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.8})
     void theChosenAimHitsTheBlockBeforeAndAfterTheTicksMovement(double beyondEdge) {

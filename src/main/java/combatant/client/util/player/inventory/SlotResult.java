@@ -9,6 +9,7 @@ package combatant.client.util.player.inventory;
 
 import net.minecraft.world.item.ItemStack;
 
+/** A found item; {@code slot} is always the player-inventory index (0-8 hotbar, 9-35 main, 40 offhand). */
 public record SlotResult(int slot, boolean found, ItemStack stack) {
     public static SlotResult empty() {
         return new SlotResult(-1, false, ItemStack.EMPTY);

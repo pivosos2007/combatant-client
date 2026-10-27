@@ -161,13 +161,24 @@ public final class UiDeferredScheduler {
             pushedModelView = true;
             modelView.identity();
 
-            String layerLabel = switch (layer) {
-                case AFTER_VANILLA_GUI -> "after_vanilla_gui";
-                case SCREEN_ABSOLUTE_TOP -> "screen_absolute_top";
-                default -> "before_vanilla_gui";
-            };
-            try (ProfilerPhase.Scope ignoredCpu = ProfilerPhase.scope("ui:deferred_drain:" + layerLabel);
-                 TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("2d:deferred_" + layerLabel)) {
+            String cpuLabel;
+            String gpuLabel;
+            switch (layer) {
+                case AFTER_VANILLA_GUI -> {
+                    cpuLabel = "ui:deferred_drain:after_vanilla_gui";
+                    gpuLabel = "2d:deferred_after_vanilla_gui";
+                }
+                case SCREEN_ABSOLUTE_TOP -> {
+                    cpuLabel = "ui:deferred_drain:screen_absolute_top";
+                    gpuLabel = "2d:deferred_screen_absolute_top";
+                }
+                default -> {
+                    cpuLabel = "ui:deferred_drain:before_vanilla_gui";
+                    gpuLabel = "2d:deferred_before_vanilla_gui";
+                }
+            }
+            try (ProfilerPhase.Scope ignoredCpu = ProfilerPhase.scope(cpuLabel);
+                 TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone(gpuLabel)) {
                 for (int i = 0, size = DRAINING.size(); i < size; ) {
                     Deferred2DSubmit command = DRAINING.get(i);
                     if (command == null) {

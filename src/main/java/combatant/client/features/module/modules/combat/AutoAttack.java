@@ -31,7 +31,6 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import combatant.client.config.common.CommonSettingSchemas;
@@ -52,11 +51,11 @@ import combatant.client.util.click.ClickHumanizer;
 import combatant.client.util.click.ClickScheduler;
 import combatant.client.util.combat.CombatStrikeController;
 import combatant.client.util.item.FoodUtil;
-import combatant.client.util.player.ResetAttackCooldown;
 import combatant.client.util.combat.protocol.CombatProtocolHeuristics;
 import combatant.client.util.combat.protocol.ProtocolUtil;
 
 import java.util.LinkedHashMap;
+import combatant.client.util.combat.AttackUtil;
 
 
 @ModuleInfo(
@@ -66,7 +65,7 @@ import java.util.LinkedHashMap;
         description = "module.triggerbot.description")
 public class AutoAttack extends Module {
 
-    private static final int MAX_CPS = 100;
+    private static final int MAX_CPS = 20;
     private static final String TOGGLE_HUMANIZE_MISS = "miss";
     private static final String TOGGLE_HUMANIZE_SWING = "miss_swing";
     private static final String TOGGLE_HUMANIZE_PAUSE = "pause";
@@ -95,7 +94,7 @@ public class AutoAttack extends Module {
                     8,
                     1,
                     MAX_CPS
-            ), () -> objective.get() != ObjectiveType.BLOCK && !isAutoMode());
+            ), () -> objective.get() != ObjectiveType.BLOCK && !isAutoMode() && isLegacyAttackProtocol());
     private final NumberValue<Integer> cpsMax =
             visibleWhen(numCommon(
                     "autoattack_cps_max",
@@ -104,7 +103,7 @@ public class AutoAttack extends Module {
                     12,
                     1,
                     MAX_CPS
-            ), () -> objective.get() != ObjectiveType.BLOCK && !isAutoMode());
+            ), () -> objective.get() != ObjectiveType.BLOCK && !isAutoMode() && isLegacyAttackProtocol());
     private final ClickScheduler clicker = new ClickScheduler(cpsMin.get(), cpsMax.get());
     private final BooleanValue delayOnBroken =
             visibleWhen(bool(
@@ -387,7 +386,7 @@ public class AutoAttack extends Module {
                     return;
                 }
                 case MISS_SWING -> {
-                    mc.player.swing(InteractionHand.MAIN_HAND, mc.player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+                    AttackUtil.swingMainHand(mc.player);
                     return;
                 }
                 case MISS -> {
@@ -434,7 +433,7 @@ public class AutoAttack extends Module {
         return switch (objective.get()) {
             case ENEMY -> hit instanceof EntityHitResult eHit && isValidTarget(eHit.getEntity());
             case ENTITY -> hit instanceof EntityHitResult;
-            case BLOCK -> hit instanceof BlockHitResult;
+            case BLOCK -> false;
             case ANY -> true;
         };
     }
@@ -506,15 +505,6 @@ public class AutoAttack extends Module {
                 );
             }
             return;
-        }
-
-        if (objective.get() == ObjectiveType.BLOCK) {
-            for (int i = 0; i < clickCount; i++) {
-                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
-                if (legacyProtocol) {
-                    ResetAttackCooldown.resetAttackCooldown(player);
-                }
-            }
         }
     }
 

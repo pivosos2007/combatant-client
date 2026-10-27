@@ -12,6 +12,7 @@ import combatant.client.features.module.modules.misc.NameProtect;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 
 import combatant.client.render.engine.color.RenderColor;
+import combatant.client.render.engine.renderer.RenderWarpStack;
 import combatant.client.render.engine.renderer.ui.blend.UiBackdropBlendSpec;
 import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
 
@@ -28,6 +29,12 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
     // JDK's extended grapheme cluster matcher follows Unicode text boundaries,
     // including ZWJ emoji, regional-indicator flags and combining marks.
     private static final Pattern GRAPHEME_CLUSTER = Pattern.compile("\\X");
+    private static final int WIDTH_CACHE_SLOTS = 512;
+
+    private record WidthEntry(String text, int length, int flags, long scaleBits, long densityBits,
+                              long fontsGeneration, long nameProtectRevision, long fontState,
+                              double width) {
+    }
 
     private final TextRenderer primary;
     private final TextRenderer fallback;
@@ -41,6 +48,8 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
     private boolean ownsActiveRenderer;
     private boolean primedPrimary;
     private TextBackendPreference backendPreference = TextBackendPreference.AUTO;
+    private boolean measuredWithFallback;
+    private final WidthEntry[] widthCache = new WidthEntry[WIDTH_CACHE_SLOTS];
 
     public LanguageFallbackTextRenderer(TextRenderer primary) {
         this(primary, VanillaTextRenderer.INSTANCE);
@@ -103,6 +112,61 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
     @Override
     public double getWidth(String text, int length, boolean shadow) {
         if (text == null || text.isEmpty() || length <= 0) return 0.0;
+        CustomTextRenderer custom = widthCacheablePrimary();
+        if (custom == null) return measureWidth(text, length, shadow);
+
+        int requested = Math.min(length, text.length());
+        TextBackendPreference measuredPreference = building ? backendPreference : TextBackendPreference.AUTO;
+        int flags = (shadow ? 1 : 0)
+                | (big ? 2 : 0)
+                | (building ? 4 : 0)
+                | (custom.isBuilding() ? 8 : 0)
+                | (RenderWarpStack.active() ? 16 : 0)
+                | (measuredPreference.ordinal() << 5);
+        long scaleBits = Double.doubleToLongBits(scale);
+        long densityBits = Double.doubleToLongBits(FontRasterSelection.activePixelDensity());
+        long fontsGeneration = Fonts.generation();
+        long nameProtectRevision = NameProtect.revision();
+        long fontState = custom.measureStateToken();
+
+        int hash = text.hashCode();
+        int slot = ((hash ^ (hash >>> 16)) + requested * 0x9E3779B1) & (WIDTH_CACHE_SLOTS - 1);
+        WidthEntry cached = widthCache[slot];
+        if (cached != null
+                && cached.length == requested
+                && cached.flags == flags
+                && cached.scaleBits == scaleBits
+                && cached.densityBits == densityBits
+                && cached.fontsGeneration == fontsGeneration
+                && cached.nameProtectRevision == nameProtectRevision
+                && cached.fontState == fontState
+                && (cached.text == text || cached.text.equals(text))) {
+            return cached.width;
+        }
+
+        measuredWithFallback = false;
+        double width = measureWidth(text, length, shadow);
+        // Runs measured by the vanilla fallback depend on Minecraft's font state, which has no
+        // invalidation signal here, so only primary-font measurements are cached.
+        if (!measuredWithFallback) {
+            widthCache[slot] = new WidthEntry(text, requested, flags, scaleBits, densityBits,
+                    fontsGeneration, nameProtectRevision, fontState, width);
+        }
+        return width;
+    }
+
+    /**
+     * The custom primary whose measurement state is fully described by the cache key, or null when
+     * an external begin() owns the primary (its scale/font selection is unknown here).
+     */
+    private CustomTextRenderer widthCacheablePrimary() {
+        if (!(primary instanceof CustomTextRenderer custom)) return null;
+        if (!custom.isBuilding()) return custom;
+        boolean ownedByThis = building && (primedPrimary || (activeRenderer == primary && ownsActiveRenderer));
+        return ownedByThis ? custom : null;
+    }
+
+    private double measureWidth(String text, int length, boolean shadow) {
         int rawEnd = safeUtf16End(text, length);
         String measured = NameProtect.applyMeasure(text.substring(0, rawEnd));
         boolean implicitBegin = !building;
@@ -116,8 +180,10 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
 
     private double measureRuns(String measured, boolean shadow) {
         int end = measured.length();
-        double width = visitRuns(measured, end, (renderer, start, finish) ->
-                measureWithRenderer(renderer, () -> renderer.getWidth(measured.substring(start, finish), false)));
+        double width = visitRuns(measured, end, (renderer, start, finish) -> {
+            if (renderer != primary) measuredWithFallback = true;
+            return measureWithRenderer(renderer, () -> renderer.getWidth(measured.substring(start, finish), false));
+        });
         if (!shadow) return width;
         // The primary font owns line metrics, including its scaled shadow offset.
         // A fixed +1 is incorrect for both unscaledLogical and non-default font scales.

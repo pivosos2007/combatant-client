@@ -70,6 +70,7 @@ public class ProjectileUtilMixin {
                                                  double maxDistance) {
         Hitbox hb = Modules.get(Hitbox.class);
         AABB bb = target.getBoundingBox();
+        if (hb != null) bb = hb.staticBox(target, bb);
         if (hb == null || !hb.shouldExpandFor(target)) {
             return bb;
         }

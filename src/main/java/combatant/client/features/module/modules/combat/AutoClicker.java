@@ -61,13 +61,10 @@ public final class AutoClicker extends Module {
     // Ordered at initialization to prevent constructing the scheduler with min > max.
     private final ClickScheduler clicker =
             new ClickScheduler(Math.min(minCps.get(), maxCps.get()), Math.max(minCps.get(), maxCps.get()));
-    private int appliedMin = -1;
-    private int appliedMax = -1;
 
     @Override
     public void onEnable() {
-        appliedMin = -1;
-        appliedMax = -1;
+        clicker.reset();
     }
 
     /**
@@ -83,15 +80,8 @@ public final class AutoClicker extends Module {
         if (player == null || mc.level == null || mc.gameMode == null) return;
         if (ClientScreen.current() != null || player.isUsingItem() || player.isSpectator()) return;
 
-        // setCps refills the click pattern, so only call it when a setting actually changed.
         // Effective values are kept ordered (min <= max) without modifying saved user settings.
-        int min = Math.min(minCps.get(), maxCps.get());
-        int max = Math.max(minCps.get(), maxCps.get());
-        if (min != appliedMin || max != appliedMax) {
-            clicker.setCps(min, max);
-            appliedMin = min;
-            appliedMax = max;
-        }
+        clicker.setCps(Math.min(minCps.get(), maxCps.get()), Math.max(minCps.get(), maxCps.get()));
 
         clicker.tick();
         if (!clicker.shouldClick()) return;
@@ -115,7 +105,7 @@ public final class AutoClicker extends Module {
         switch (verdict) {
             case ATTACK -> AttackUtil.attack(mc, (LivingEntity) entity);
             case SWING -> {
-                player.swing(InteractionHand.MAIN_HAND, player.getItemInHand(InteractionHand.MAIN_HAND).getAttackAnimation(), false);
+                AttackUtil.swingMainHand(player);
                 player.resetAttackStrengthTicker();
             }
             case SKIP -> {

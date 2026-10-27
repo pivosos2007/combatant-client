@@ -64,7 +64,6 @@ public class Font implements GlyphFont {
         fontData.put(buffer.duplicate()).flip();
         fontInfo = STBTTFontinfo.create();
         if (!STBTruetype.stbtt_InitFont(fontInfo, fontData)) {
-            fontInfo.free();
             MemoryUtil.memFree(fontData);
             throw new IllegalArgumentException("Invalid TrueType font");
         }
@@ -632,7 +631,7 @@ public class Font implements GlyphFont {
         if (closed) return;
         closed = true;
         if (texture != null) texture.close();
-        fontInfo.free();
+        // fontInfo is STBTTFontinfo.create(): GC-owned. free() would hand it to je_free and corrupt the heap.
         MemoryUtil.memFree(fontData);
         MemoryUtil.memFree(atlasPixels);
         shaper = null;

@@ -153,6 +153,18 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         this.manualPos = false;
     }
 
+    /** Width the panel renders with at {@code menuScale}; hosts that anchor it themselves use it to align the right edge. */
+    public float panelWidth(float menuScale) {
+        return DROPDOWN_PANEL_W * panelScale(menuScale);
+    }
+
+    /** Pins the panel's top-left corner as if the user had dragged it there; the next {@code open} resets it. */
+    public void setAnchor(float x, float y) {
+        this.manualPos = true;
+        this.manualX = x;
+        this.manualY = y;
+    }
+
     public void close() {
         boolean soundClose = openTarget;
         String closingId = targetId;

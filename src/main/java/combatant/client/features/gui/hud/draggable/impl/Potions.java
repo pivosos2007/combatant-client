@@ -512,13 +512,15 @@ public final class Potions extends DraggableHudElement {
         List<Row> rows = new ArrayList<>();
         Set<String> activeKeys = new HashSet<>();
         if (mc != null && mc.player != null) {
-            mc.player.getActiveEffects().stream()
-                    .sorted((a, b) -> String.CASE_INSENSITIVE_ORDER.compare(
-                            I18n.get(a.getDescriptionId()),
-                            I18n.get(b.getDescriptionId())
-                    ))
-                    .forEach(inst -> {
-                        String name = I18n.get(inst.getDescriptionId());
+            var effects = mc.player.getActiveEffects();
+            List<Map.Entry<String, net.minecraft.world.effect.MobEffectInstance>> named = new ArrayList<>(effects.size());
+            for (var effect : effects) {
+                named.add(Map.entry(I18n.get(effect.getDescriptionId()), effect));
+            }
+            named.sort((a, b) -> String.CASE_INSENSITIVE_ORDER.compare(a.getKey(), b.getKey()));
+            named.forEach(namedEffect -> {
+                        var inst = namedEffect.getValue();
+                        String name = namedEffect.getKey();
                         String amp = inst.getAmplifier() > 0 ? Integer.toString(inst.getAmplifier() + 1) : "";
                         String duration = formatDuration(inst);
                         Identifier effectId = inst.getEffect().unwrapKey().map(ResourceKey::identifier).orElse(null);

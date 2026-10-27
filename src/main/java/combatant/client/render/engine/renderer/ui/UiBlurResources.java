@@ -54,6 +54,9 @@ public final class UiBlurResources {
     private static int blurRegionTargetHeight = -1;
     private static UiBlurRegion blurRegionMeshBounds;
     private static boolean worldSourceReady;
+    private static final long WORLD_SOURCE_DEMAND_HOLD_FRAMES = 2;
+    private static long deferredFrameSerial;
+    private static long worldSourceDemandSerial = Long.MIN_VALUE / 2;
     private static boolean blurBeforeNextShapeClipRequested;
     private static boolean pendingClipBlurFullFrame;
     private static @Nullable UiRect pendingClipBlurBounds;
@@ -62,6 +65,7 @@ public final class UiBlurResources {
     }
 
     public static void beginDeferredFrame() {
+        deferredFrameSerial++;
         blurBeforeNextShapeClipRequested = false;
         pendingClipBlurFullFrame = false;
         pendingClipBlurBounds = null;
@@ -239,12 +243,14 @@ public final class UiBlurResources {
     }
 
     public static void requestBeforeNextShapeClip() {
+        noteWorldSourceDemand();
         blurBeforeNextShapeClipRequested = true;
         pendingClipBlurFullFrame = true;
         pendingClipBlurBounds = null;
     }
 
     public static void requestBeforeNextShapeClip(@Nullable UiRect bounds) {
+        noteWorldSourceDemand();
         blurBeforeNextShapeClipRequested = true;
         if (bounds == null) {
             pendingClipBlurFullFrame = true;
@@ -263,7 +269,21 @@ public final class UiBlurResources {
         UiDeferredScheduler.deferAction(() -> prepareCapturedWorldBlur(bounds));
     }
 
+    /**
+     * Records that something consumes the captured world source. Readers recorded during extraction
+     * (before the capture point of the same frame) make the copy happen this frame exactly; readers
+     * that only appear after the capture (immediate mode) keep the copy alive for the following frames.
+     */
+    public static void noteWorldSourceDemand() {
+        worldSourceDemandSerial = deferredFrameSerial;
+    }
+
     public static void captureWorldSource() {
+        if (deferredFrameSerial - worldSourceDemandSerial > WORLD_SOURCE_DEMAND_HOLD_FRAMES) {
+            // No reader was recorded this frame or in the previous frames: skip the full-frame copy.
+            worldSourceReady = false;
+            return;
+        }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null) return;
         RenderTarget framebuffer = minecraft.gameRenderer.mainRenderTarget();

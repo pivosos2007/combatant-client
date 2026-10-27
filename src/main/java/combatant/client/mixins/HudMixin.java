@@ -219,6 +219,18 @@ public abstract class HudMixin {
         InventorySlotLocks.renderLockOverlay(ctx, x, ctx.guiHeight() - 19);
     }
 
+    @Inject(method = "extractItemHotbar", at = @At("TAIL"))
+    private void combatant$hotbarSlotLockOverlay(GuiGraphicsExtractor ctx, DeltaTracker delta, CallbackInfo ci) {
+        if (minecraft.player == null || !InventorySlotLocks.hasLockedPlayerSlot()) return;
+        int left = ctx.guiWidth() / 2 - 90 + 2;
+        int y = ctx.guiHeight() - 19;
+        for (int slot = 0; slot < 9; slot++) {
+            if (InventorySlotLocks.isLocked(slot)) {
+                InventorySlotLocks.renderLockOverlay(ctx, left + slot * 20, y);
+            }
+        }
+    }
+
     @Inject(
             method = "extractItemHotbar(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V",
             at = @At("HEAD"),

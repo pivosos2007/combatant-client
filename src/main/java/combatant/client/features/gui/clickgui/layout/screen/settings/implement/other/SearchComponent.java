@@ -17,7 +17,15 @@ import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ScissorFunction;
 
+import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
+import combatant.client.features.theme.Theme;
+
 public final class SearchComponent {
+    private static final float CORNER_RADIUS = 3f;
+    private static final float STROKE_WIDTH = 0.5f;
+    private static final float DIVIDER_X = 65.5f;
+    private static final float BLUR_STRENGTH = 135f / 255f;
+
     public void render(float x, float y, float w, float h) {
         render(x, y, w, h, CLICK_GUI_MODEL);
     }
@@ -28,32 +36,38 @@ public final class SearchComponent {
         String text = state.text() == null ? "" : state.text();
         float scale = w / 80f;
 
-        ClickGuiRenderer.drawBlur(x, y, w, h, 3f * scale, 0xFF000000, 135f / 255f);
+        SettingsGuiPalette palette = SettingsGuiPalette.current();
+        float radius = CORNER_RADIUS * scale;
+        ClickGuiRenderer.drawBlur(x, y, w, h, radius, palette.panelBlurTint(), BLUR_STRENGTH);
         LayoutRender2D.roundedQuad(
-                x, y, w, h, 3f * scale,
-                LayoutRender2D.argb(108, 18, 19, 20),
-                LayoutRender2D.argb(108, 5, 6, 7),
-                LayoutRender2D.argb(108, 5, 6, 7),
-                LayoutRender2D.argb(108, 18, 19, 20)
+                x, y, w, h, radius,
+                palette.panelBgLeft(),
+                palette.panelBgRight(),
+                palette.panelBgRight(),
+                palette.panelBgLeft()
         );
-        LayoutRender2D.roundedStroke(x, y, w, h, 3f * scale, 0.5f * scale, LayoutRender2D.argb(150, 18, 19, 20));
+        LayoutRender2D.roundedStroke(x, y, w, h, radius, STROKE_WIDTH * scale,
+                typing ? palette.glassEdgeStrong() : palette.panelStroke());
 
-        float dividerX = x + 65.5f * scale;
-        LayoutRender2D.rect(dividerX, y + 4f * scale, 0.5f * scale, h - 8f * scale, LayoutRender2D.argb(38, 155, 155, 155));
+        float dividerX = x + DIVIDER_X * scale;
+        LayoutRender2D.rect(dividerX, y + 4f * scale, 0.5f * scale, h - 8f * scale, palette.panelDivider());
 
-        String display = text.isEmpty() && !typing ? state.placeholder() : text;
         float tx = x + 4f * scale;
         float ts = 12f * scale;
-        float th = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), ts);
+        TextRenderer font = ClickGuiRenderer.getInterRegular();
+        String display = text.isEmpty() && !typing
+                ? ClickGuiRenderer.fitText(font, state.placeholder(), ts, Math.max(1f, DIVIDER_X * scale - 6f * scale))
+                : text;
+        float th = ClickGuiRenderer.textHeight(font, ts);
         float ty = y + (h - th) * 0.5f - 0.5f * scale;
         boolean clipped = ScissorFunction.pushRaw(x + scale, y, w - 16f * scale, h);
         SingleLineTextInput editor = state.editor();
         if (editor != null && (!text.isEmpty() || typing)) {
-            editor.render(tx, ty, w - 17f * scale, h, ClickGuiRenderer.getInterRegular(), ts,
-                    0xFFFFFFFF, 0x805D8CFF, typing);
+            editor.render(tx, ty, w - 17f * scale, h, font, ts,
+                    palette.panelText(), LayoutRender2D.alpha(Theme.theme().accent() | 0xFF000000, 0.5f), typing);
         } else {
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), display, tx, ty, ts,
-                    typing ? 0xFFFFFFFF : 0xFF878894, false);
+            ClickGuiRenderer.drawText(font, display, tx, ty, ts,
+                    typing ? palette.panelText() : palette.panelMuted(), false);
         }
         if (clipped) ScissorFunction.pop();
 
@@ -64,7 +78,7 @@ public final class SearchComponent {
         float iconH = ClickGuiRenderer.textHeight(icons, iconSize);
         float iconX = dividerX + (w - (dividerX - x) - iconW) * 0.5f;
         float iconY = y + (h - iconH) * 0.5f - 0.35f * scale;
-        int iconColor = typing ? 0xFFF5F5FF : 0xFF878894;
+        int iconColor = typing ? palette.panelText() : palette.panelMuted();
         ClickGuiRenderer.drawText(icons, icon, iconX, iconY, iconSize, iconColor, false);
     }
 

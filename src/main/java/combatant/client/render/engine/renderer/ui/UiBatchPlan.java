@@ -20,7 +20,7 @@ import java.util.List;
  */
 public final class UiBatchPlan {
     public static final UiBatchPlan EMPTY = new UiBatchPlan(
-            List.of(), 0, 0, 0, 0, 0, 0, 0, 0, 0, UiBackdropPlan.EMPTY
+            List.of(), 0, 0, 0, 0, 0, 0, 0, 0, 0
     );
 
     @FunctionalInterface
@@ -69,7 +69,6 @@ public final class UiBatchPlan {
     private final int orderedBatchCount;
     private final int rhiDrawCommandCount;
     private final int backendDrawCallCount;
-    private final UiBackdropPlan backdropPlan;
 
     public UiBatchPlan(List<Pass> passes,
                        int commandCount,
@@ -81,22 +80,6 @@ public final class UiBatchPlan {
                        int orderedBatchCount,
                        int rhiDrawCommandCount,
                        int backendDrawCallCount) {
-        this(passes, commandCount, shapeCount, pathCount, textureCount,
-                itemCount, effectCount, orderedBatchCount, rhiDrawCommandCount, backendDrawCallCount,
-                UiBackdropPlan.EMPTY);
-    }
-
-    public UiBatchPlan(List<Pass> passes,
-                       int commandCount,
-                       int shapeCount,
-                       int pathCount,
-                       int textureCount,
-                       int itemCount,
-                       int effectCount,
-                       int orderedBatchCount,
-                       int rhiDrawCommandCount,
-                       int backendDrawCallCount,
-                       UiBackdropPlan backdropPlan) {
         this.passes = passes == null || passes.isEmpty() ? List.of() : List.copyOf(passes);
         this.commandCount = Math.max(0, commandCount);
         this.shapeCount = Math.max(0, shapeCount);
@@ -107,7 +90,6 @@ public final class UiBatchPlan {
         this.orderedBatchCount = Math.max(0, orderedBatchCount);
         this.rhiDrawCommandCount = Math.max(0, rhiDrawCommandCount);
         this.backendDrawCallCount = Math.max(0, backendDrawCallCount);
-        this.backdropPlan = backdropPlan != null ? backdropPlan : UiBackdropPlan.EMPTY;
     }
 
     public List<Pass> passes() {
@@ -159,10 +141,6 @@ public final class UiBatchPlan {
         return backendDrawCallCount;
     }
 
-    public UiBackdropPlan backdropPlan() {
-        return backdropPlan;
-    }
-
     UiBatchPlan withExecutionStats(int rhiDrawCommands, int backendDrawCalls) {
         return new UiBatchPlan(
                 passes,
@@ -174,8 +152,7 @@ public final class UiBatchPlan {
                 effectCount,
                 orderedBatchCount,
                 rhiDrawCommands,
-                backendDrawCalls,
-                backdropPlan
+                backendDrawCalls
         );
     }
 }

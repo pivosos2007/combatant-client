@@ -212,7 +212,8 @@ public final class RotationManager {
             float speed = 0.25f + 0.4f * Math.min(1.0f, diffToPlayer / 30.0f);
             float yawDiff = RotationUtil.angleDifference(playerRotation.yaw(), currentRotation.yaw());
             float newYaw = currentRotation.yaw() + yawDiff * speed;
-            float newPitch = Mth.lerp(speed, currentRotation.pitch(), playerRotation.pitch());
+            float newPitch = Mth.clamp(Mth.lerp(speed, currentRotation.pitch(), playerRotation.pitch()), -90.0f, 90.0f);
+            // normalize() quantizes relative to the last sent server rotation (== currentRotation once emitted).
             setCurrentRotation(new Rotation(newYaw, newPitch, false).normalize(), currentRotationProvider);
             return;
         }

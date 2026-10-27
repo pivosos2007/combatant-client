@@ -412,20 +412,39 @@ public final class TargetHud extends DraggableHudElement {
         }
     }
 
+    private record TrimKey(TextRenderer renderer, String text, int maxWidthBits, int scaleBits) {
+    }
+
+    private record TrimValue(String result, long expiresMs) {
+    }
+
+    private static final long TRIM_CACHE_TTL_MS = 1000L;
+    private static final java.util.HashMap<TrimKey, TrimValue> TRIM_CACHE = new java.util.HashMap<>();
+
     private static String trimText(TextRenderer renderer, String text, float maxWidth, float scale) {
         if (text == null || text.isEmpty()) return "";
         renderer.begin(scale, false, false);
         try {
             if (renderer.getWidth(text, false) <= maxWidth) return text;
+            // Overflow path measures once per removed character; memoise it. Glyph metrics can change
+            // as fallback glyphs load, so entries also expire after TRIM_CACHE_TTL_MS.
+            long nowMs = System.currentTimeMillis();
+            TrimKey key = new TrimKey(renderer, text, Float.floatToIntBits(maxWidth), Float.floatToIntBits(scale));
+            TrimValue cached = TRIM_CACHE.get(key);
+            if (cached != null && cached.expiresMs() > nowMs) return cached.result();
             String value = text;
+            String result = "";
             while (!value.isEmpty()) {
                 String candidate = value + "...";
                 if (renderer.getWidth(candidate, false) <= maxWidth) {
-                    return candidate;
+                    result = candidate;
+                    break;
                 }
                 value = value.substring(0, value.length() - 1);
             }
-            return "";
+            if (TRIM_CACHE.size() >= 32) TRIM_CACHE.clear();
+            TRIM_CACHE.put(key, new TrimValue(result, nowMs + TRIM_CACHE_TTL_MS));
+            return result;
         } finally {
             renderer.end();
         }
@@ -614,12 +633,16 @@ public final class TargetHud extends DraggableHudElement {
             drawFace(renderer, textRenderer, ctx, displayTarget, panelX, panelY, scaleFactor, alphaFactor, totemPopSnapshot);
             drawContent(renderer, textRenderer, displayTarget, panelX, panelY, panelDrawW, scaleFactor, alphaFactor, now, dt);
             if (effectsAnimation > 0.01f) {
-                EffectLayout drawEffects = buildEffectLayout(displayTarget, preview, textRenderer, scaleFactor);
+                EffectLayout drawEffects = scaleFactor == hudScale
+                        ? boundsEffects
+                        : buildEffectLayout(displayTarget, preview, textRenderer, scaleFactor);
                 float effectsY = panelY - drawEffects.height();
                 drawEffects(renderer, textRenderer, drawEffects, panelX, effectsY, panelW, scaleFactor, alphaFactor * effectsAnimation, glassEnabled);
             }
             if (equipmentAnimation > 0.01f) {
-                EquipmentLayout drawEquipment = buildEquipmentLayout(displayTarget, preview, textRenderer, scaleFactor);
+                EquipmentLayout drawEquipment = scaleFactor == hudScale
+                        ? boundsEquipment
+                        : buildEquipmentLayout(displayTarget, preview, textRenderer, scaleFactor);
                 drawEquipment(renderer, textRenderer, ctx, drawEquipment, panelX, panelY + panelH, panelW, drawEquipment.height(), scaleFactor, alphaFactor * equipmentAnimation, glassEnabled);
             }
         }

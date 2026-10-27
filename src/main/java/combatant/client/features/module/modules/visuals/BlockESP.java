@@ -18,14 +18,17 @@ import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.*;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.module.*;
 import combatant.client.render.engine.RenderState;
+import combatant.client.render.engine.renderer.GlowSurfaces;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.util.block.*;
 import combatant.client.util.logging.DebugLog;
@@ -130,11 +133,28 @@ public class BlockESP extends Module {
                     false
             ), deobfuscationValue::get);
 
-    private final ItemIdSetValue searchBlocksValue =
-            itemList(
+    /** Default colour of every searched block that has no colour of its own. */
+    private final RGBColorValue visibleColor =
+            colorNoAlpha(
+                    "blockEspVisibleColor",
+                    "visible_color",
+                    "#FF0000"
+            );
+
+    private final RGBColorValue chunkColor =
+            colorNoAlpha(
+                    "blockEspChunkColor",
+                    "chunk_color",
+                    "#FFFF00"
+            );
+
+    private final ColorListValue searchBlocksValue =
+            colorList(
                     "blockEspSearchBlocks",
                     "search_blocks",
-                    TextListSetting.PickerMode.BLOCKS
+                    TextListSetting.PickerMode.BLOCKS,
+                    Set.of(),
+                    visibleColor
             );
 
     private final BlockScanContext scanContext = new BlockScanContext(mc, searchBlocksValue);
@@ -156,6 +176,10 @@ public class BlockESP extends Module {
                     BlockOutlineShapeMode.values()
             );
 
+    private final BooleanValue glowFill =
+            bool("blockEspGlowFill", "glow_fill", true);
+    private final NumberValue<Float> glowAlpha =
+            visibleWhen(num("blockEspGlowAlpha", "glow_alpha", 0.16f, 0.0f, 1.0f), glowFill::get);
     private final NumberValue<Float> lineWidth =
             numCommon(
                     "blockEspLineWidth",
@@ -164,20 +188,6 @@ public class BlockESP extends Module {
                     1.5f,
                     0.5f,
                     4.0f
-            );
-
-    private final RGBColorValue visibleColor =
-            colorNoAlpha(
-                    "blockEspVisibleColor",
-                    "visible_color",
-                    "#FF0000"
-            );
-
-    private final RGBColorValue chunkColor =
-            colorNoAlpha(
-                    "blockEspChunkColor",
-                    "chunk_color",
-                    "#FFFF00"
             );
 
     private final BooleanValue clusterTracersValue =
@@ -192,6 +202,14 @@ public class BlockESP extends Module {
     private final Set<Long> queuedReconcileTargets = ConcurrentHashMap.newKeySet();
     private volatile Map<BlockPos, Target> renderTargets = new ConcurrentHashMap<>();
     private ClientLevel lastWorld;
+    private final List<Vec3> tracerCenters = new ArrayList<>();
+    private final List<Boolean> tracerVisible = new ArrayList<>();
+    private final List<BlockState> tracerStates = new ArrayList<>();
+    private final IdentityHashMap<Block, int[]> frameColors = new IdentityHashMap<>();
+    private Map<BlockPos, Target> tracerMapSource;
+    private long tracerTick = Long.MIN_VALUE;
+    private int tracerSize;
+    private boolean tracerCluster;
     private BlockScanMode lastMode;
     private int lastSearchBlocksHash;
     private int lastScanSignature = Integer.MIN_VALUE;
@@ -673,12 +691,20 @@ public class BlockESP extends Module {
             boolean limitDistance = limitDistanceValue.get();
             double maxDistanceSq = (double) maxDistanceValue.get() * (double) maxDistanceValue.get();
             Vec3 eye = limitDistance ? mc.player.getEyePosition() : null;
-            int visibleRgb = visibleColor.getArgb() & 0x00FFFFFF;
-            int chunkRgb = chunkColor.getArgb() & 0x00FFFFFF;
+            frameColors.clear();
             BlockOutlineShapeMode shapeMode = outlineShapeMode.get();
             long tick = mc.level.getGameTime();
+            CollisionContext shapeContext = shapeMode == BlockOutlineShapeMode.VOXEL_SHAPE
+                    ? BlockOutlineRenderer.shapeContext() : null;
+            boolean glow = glowFill.get();
 
             for (Target target : renderTargets.values()) {
+                // Margin keeps wide-line fringes of blocks just outside the frustum.
+                BlockPos tp = target.pos;
+                if (!Renderer3D.Culling.isInFrustum(new AABB(tp.getX() - 0.5, tp.getY() - 0.5, tp.getZ() - 0.5,
+                        tp.getX() + 1.5, tp.getY() + 1.5, tp.getZ() + 1.5))) {
+                    continue;
+                }
                 if (limitDistance) {
                     double dx = target.pos.getX() + 0.5 - eye.x;
                     double dy = target.pos.getY() + 0.5 - eye.y;
@@ -707,14 +733,43 @@ public class BlockESP extends Module {
                     target.verifiedTick = tick;
                 }
 
-                int color = 0xFF000000 | (target.visible ? visibleRgb : chunkRgb);
-                BlockOutlineRenderer.render(renderer, mc.level, target.pos, state, shapeMode, color);
+                int color = 0xFF000000 | targetRgb(state, target.visible);
+                BlockOutlineRenderer.render(renderer, mc.level, target.pos, state, shapeMode, color, shapeContext);
+                if (glow) {
+                    int fill = ((int) (Math.min(1.0f, glowAlpha.get()) * 255.0f) << 24) | (color & 0x00FFFFFF);
+                    GlowSurfaces.box(renderer, new AABB(target.pos), fill, fill, 0.55f, 1.0f, false, true, false);
+                }
             }
         } finally {
             RenderState.lineWidth = previousLineWidth;
         }
 
         renderBlockTracers(renderer, tickDelta);
+    }
+
+    /**
+     * Outline/tracer colour (RGB) for a detected block. Entries that carry their own colour use it when the block is
+     * visible and fade towards the hidden/chunk colour when it is not; entries without one keep the global
+     * visible/chunk colours. Resolved once per block type per frame.
+     */
+    private int targetRgb(BlockState state, boolean visible) {
+        Block block = state.getBlock();
+        int[] pair = frameColors.get(block);
+        if (pair == null) {
+            String id = BuiltInRegistries.BLOCK.getKey(block).toString();
+            int chunk = chunkColor.getArgb() & 0x00FFFFFF;
+            int base = searchBlocksValue.argbFor(id) & 0x00FFFFFF;
+            int hidden = chunk;
+            if (searchBlocksValue.hasOverride(id)) {
+                int r = (((base >> 16) & 0xFF) * 55 + ((chunk >> 16) & 0xFF) * 45) / 100;
+                int g = (((base >> 8) & 0xFF) * 55 + ((chunk >> 8) & 0xFF) * 45) / 100;
+                int b = ((base & 0xFF) * 55 + (chunk & 0xFF) * 45) / 100;
+                hidden = (r << 16) | (g << 8) | b;
+            }
+            pair = new int[]{base, hidden};
+            frameColors.put(block, pair);
+        }
+        return visible ? pair[0] : pair[1];
     }
 
     private void drawBox(Renderer3D renderer, AABB box, int r, int g, int b, int a) {
@@ -754,24 +809,44 @@ public class BlockESP extends Module {
             return;
         }
 
-        if (!clusterTracersValue.get()) {
-            for (Target target : renderTargets.values()) {
-                if (!withinDistance(target.pos) || !isCurrentTargetBlock(target.pos)) {
-                    continue;
+        boolean cluster = clusterTracersValue.get();
+        Map<BlockPos, Target> targets = renderTargets;
+        long tick = mc.level == null ? Long.MIN_VALUE : mc.level.getGameTime();
+        if (tracerMapSource != targets || tracerTick != tick || tracerSize != targets.size() || tracerCluster != cluster) {
+            tracerMapSource = targets;
+            tracerTick = tick;
+            tracerSize = targets.size();
+            tracerCluster = cluster;
+            tracerCenters.clear();
+            tracerVisible.clear();
+            tracerStates.clear();
+            if (!cluster) {
+                for (Target target : targets.values()) {
+                    if (!withinDistance(target.pos) || !isCurrentTargetBlock(target.pos)) {
+                        continue;
+                    }
+                    tracerCenters.add(Vec3.atCenterOf(target.pos));
+                    tracerVisible.add(target.visible);
+                    tracerStates.add(target.state);
                 }
-                int color = target.visible ? visibleColor.getArgb() : chunkColor.getArgb();
-                tracers.render3DTracersRaw(renderer, tickDelta, List.of(Vec3.atCenterOf(target.pos)), color);
+            } else {
+                List<List<Target>> clusters = buildClusters(targets.values().stream()
+                        .filter(target -> withinDistance(target.pos) && isCurrentTargetBlock(target.pos))
+                        .toList());
+                for (List<Target> group : clusters) {
+                    tracerCenters.add(clusterCenter(group));
+                    tracerVisible.add(group.stream().anyMatch(target -> target.visible));
+                    tracerStates.add(group.get(0).state);
+                }
             }
-            return;
         }
 
-        List<List<Target>> clusters = buildClusters(renderTargets.values().stream()
-                .filter(target -> withinDistance(target.pos) && isCurrentTargetBlock(target.pos))
-                .toList());
-        for (List<Target> cluster : clusters) {
-            boolean anyVisible = cluster.stream().anyMatch(target -> target.visible);
-            int color = anyVisible ? visibleColor.getArgb() : chunkColor.getArgb();
-            tracers.render3DTracersRaw(renderer, tickDelta, List.of(clusterCenter(cluster)), color);
+        if (tracerCenters.isEmpty()) {
+            return;
+        }
+        for (int i = 0, n = tracerCenters.size(); i < n; i++) {
+            tracers.render3DTracersRaw(renderer, tickDelta, List.of(tracerCenters.get(i)),
+                    0xFF000000 | targetRgb(tracerStates.get(i), tracerVisible.get(i)));
         }
     }
 

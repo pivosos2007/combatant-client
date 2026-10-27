@@ -8,6 +8,7 @@
 package combatant.client.mixins;
 
 import combatant.client.features.module.modules.misc.NameProtect;
+import combatant.client.features.module.modules.misc.NoInvLeak;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSink;
 import net.minecraft.util.StringDecomposer;
@@ -33,7 +34,7 @@ public abstract class StringDecomposerMixin {
                                                     FormattedCharSink sink,
                                                     CallbackInfoReturnable<Boolean> cir) {
         if (COMBATANT$REPLACING.get()) return;
-        String replaced = NameProtect.applyDisplay(text);
+        String replaced = NoInvLeak.applyDisplay(NameProtect.applyDisplay(text));
         if (replaced == text) return;
         COMBATANT$REPLACING.set(true);
         try {
@@ -53,7 +54,7 @@ public abstract class StringDecomposerMixin {
                                                         FormattedCharSink sink,
                                                         CallbackInfoReturnable<Boolean> cir) {
         if (COMBATANT$REPLACING.get()) return;
-        String replaced = NameProtect.applyDisplay(text);
+        String replaced = NoInvLeak.applyDisplay(NameProtect.applyDisplay(text));
         if (replaced == text) return;
         COMBATANT$REPLACING.set(true);
         try {
@@ -75,7 +76,7 @@ public abstract class StringDecomposerMixin {
                                                         FormattedCharSink sink,
                                                         CallbackInfoReturnable<Boolean> cir) {
         if (offset != 0 || COMBATANT$REPLACING.get()) return;
-        String replaced = NameProtect.applyDisplay(text);
+        String replaced = NoInvLeak.applyDisplay(NameProtect.applyDisplay(text));
         if (replaced == text) return;
 
         COMBATANT$REPLACING.set(true);

@@ -559,7 +559,7 @@ public final class CombatantAltManagerScreen extends Screen {
         float padX = 3.2f * SCALE;
         float badgeW = width(bodyRenderer, label, BADGE_FONT) + padX * 2f + 2f * SCALE;
         float badgeH = 7f * SCALE;
-        int accent = HudRenderUtil.mixColor(c.strokeSoft, 0xFF72C7FF, 0.38f);
+        int accent = HudRenderUtil.mixColor(c.strokeSoft, c.accentSoft, 0.55f);
         UiPrimitive badge = parallelogram(x, y, badgeW, badgeH, 2.1f * SCALE, 0.55f * SCALE);
         Renderer2D.COLOR.primitive(badge, UiPaint.linear(
                 withAlpha(HudRenderUtil.mixColor(c.surface, accent, 0.10f), 132),
@@ -1065,6 +1065,8 @@ public final class CombatantAltManagerScreen extends Screen {
         int windowBg = theme != null ? theme.windowBg() : 0xFF111823;
         int surfaceTheme = theme != null ? theme.surface() : 0xFF18202B;
         int surfaceHoverTheme = theme != null ? theme.surfaceHover() : 0xFF263345;
+        int textPrimary = theme != null ? theme.textPrimary() : 0xFFFFFFFF;
+        int textMuted = theme != null ? theme.textMuted() : 0xFF8797A9;
 
         int surface = withAlpha(HudRenderUtil.mixColor(windowBg, surfaceTheme, 0.42f), Math.round(alpha * 222f));
         int surfaceHover = withAlpha(HudRenderUtil.mixColor(surfaceTheme, surfaceHoverTheme, 0.46f), Math.round(alpha * 238f));
@@ -1077,11 +1079,11 @@ public final class CombatantAltManagerScreen extends Screen {
                 surface, surfaceHover, surface, surfaceHover,
                 surfaceHover, surfaceHover, surface, surface,
                 stroke, strokeSoft,
-                withAlpha(0x02050A, Math.round(alpha * 150f)),
-                withAlpha(0xFFFFFF, titleAlpha),
-                withAlpha(0xE9F2FC, labelAlpha),
-                withAlpha(0xB8C5D3, Math.round(alpha * 228f)),
-                withAlpha(0x8797A9, Math.round(alpha * 194f)),
+                withAlpha(HudRenderUtil.mixColor(windowBg, 0xFF000000, 0.80f), Math.round(alpha * 150f)),
+                withAlpha(textPrimary, titleAlpha),
+                withAlpha(HudRenderUtil.mixColor(textMuted, textPrimary, 0.82f), labelAlpha),
+                withAlpha(HudRenderUtil.mixColor(textMuted, textPrimary, 0.45f), Math.round(alpha * 228f)),
+                withAlpha(textMuted, Math.round(alpha * 205f)),
                 surface, surfaceHover, accent, accentSoft
         );
     }

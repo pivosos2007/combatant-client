@@ -40,6 +40,8 @@ public enum SettingFactory {
                     : def.value() instanceof ItemIdSetValue iv
                     ? new TextListSetting(def.getId(), iv, def.pickerMode())
                     : null;
+            case COLOR_LIST -> def.value() instanceof ColorListValue v
+                    ? new ColorListSetting(def.getId(), v, def.pickerMode()) : null;
             case COOLDOWN_RULES -> def.value() instanceof ItemCooldownRulesValue v
                     ? new CooldownRulesSetting(def.getId(), v) : null;
             case PROTOCOL_HEURISTICS -> def.value() instanceof BooleanMapValue v

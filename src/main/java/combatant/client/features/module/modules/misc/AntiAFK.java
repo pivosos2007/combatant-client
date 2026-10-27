@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
+import combatant.client.util.combat.AttackUtil;
 
 /**
  * Keeps idle-kick checks fed with small, irregular activity: a jump, an arm swing, a short look
@@ -127,7 +128,7 @@ public final class AntiAFK extends Module {
     private void perform(LocalPlayer player, Action action) {
         switch (action) {
             case JUMP -> jumpTicks = 1;
-            case SWING -> player.swing(InteractionHand.MAIN_HAND, net.minecraft.world.item.component.SwingAnimation.DEFAULT, false);
+            case SWING -> AttackUtil.swingMainHand(player);
             case LOOK -> lookAround(player);
             case STRAFE -> {
                 strafeDirection = -strafeDirection;

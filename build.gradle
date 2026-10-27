@@ -194,6 +194,11 @@ dependencies {
     // Entity Culling (optional): typed compile-time API for shader ESP visibility compat.
     compileOnly "maven.modrinth:entityculling:${project.entityculling_version}"
 
+    // Litematica (optional): the Printer module reads its placements and schematic world through an isolated adapter
+    // (compat.litematica.impl) that is only class-loaded when the mod is present. Compile-only, never bundled.
+    compileOnly "maven.modrinth:litematica:${project.litematica_version}"
+    compileOnly "maven.modrinth:malilib:${project.malilib_version}"
+
     bundledLibrary "de.marhali:json5-java:3.0.0"
 
     // glTF 2.0 decoding foundation. GFBS-glTF-derived importer code converts JglTF models

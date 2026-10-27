@@ -28,6 +28,9 @@ import combatant.client.features.module.modules.combat.surround.SurroundPlanner.
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.util.aiming.features.MovementCorrection;
+import combatant.client.automation.placement.PlacementConstraints;
+import combatant.client.automation.placement.PlacementRotationMode;
+import combatant.client.automation.placement.PlacementSlot;
 import combatant.client.util.block.placer.BlockPlacer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -59,8 +62,10 @@ public final class SelfTrap extends Module {
     private final EnumValue<BlockPriority> blockPriority = enumCommon(
             "selfTrapBlockPriority", "block_priority",
             CommonSettingSchemas.SHELL_BLOCK_PRIORITY, BlockPriority.ANY, BlockPriority.values());
-    private final NumberValue<Integer> blocksPerTick = numCommon(
-            "selfTrapBlocksPerTick", "blocks_per_tick", CommonSettingSchemas.SHELL_BLOCKS_PER_TICK, 4, 1, 8);
+    // Rotating places one cell per tick (one rotation per movement packet); only rotation-free placing batches.
+    private final NumberValue<Integer> blocksPerTick = visibleWhen(numCommon(
+            "selfTrapBlocksPerTick", "blocks_per_tick", CommonSettingSchemas.SHELL_BLOCKS_PER_TICK, 4, 1, 8),
+            () -> this.rotation.get() == PlacementRotationMode.NO_ROTATION);
     private final BooleanValue dynamicHitbox = boolCommon(
             "selfTrapDynamicHitbox", "dynamic_hitbox", CommonSettingSchemas.SHELL_DYNAMIC_HITBOX, true);
     private final BooleanValue support = boolCommon("selfTrapSupport", "support", CommonSettingSchemas.SHELL_SUPPORT, true);
@@ -80,8 +85,8 @@ public final class SelfTrap extends Module {
     private final BooleanValue autoDisable = bool("selfTrapAutoDisable", "auto_disable", false);
     private final BooleanValue warnNoBlocks = boolCommon(
             "selfTrapWarnNoBlocks", "warn_no_blocks", CommonSettingSchemas.SHELL_WARN_NO_BLOCKS, true);
-    private final EnumValue<BlockPlacer.RotationMode> rotation = enumSetting(
-            "selfTrapRotation", "rotation", BlockPlacer.RotationMode.NORMAL, BlockPlacer.RotationMode.values());
+    private final EnumValue<PlacementRotationMode> rotation = enumSetting(
+            "selfTrapRotation", "rotation", PlacementRotationMode.NORMAL, PlacementRotationMode.values());
     private final EnumValue<MovementCorrection> movementCorrection = enumSetting(
             "selfTrapMovementCorrection", "movement_correction", MovementCorrection.SILENT, MovementCorrection.values());
     private final NumberValue<Double> range = numCommon(
@@ -96,22 +101,14 @@ public final class SelfTrap extends Module {
             "selfTrapLineWidth", "line_width", CommonSettingSchemas.LINE_WIDTH, 2.0F, 1.0F, 6.0F);
 
     private final BlockPlacer blockPlacer = new BlockPlacer(
-            this, this, 10,
+            this, 10,
             this::findPlacementSlot,
-            this::effPlaceRange,
-            this::effWallRange,
+            this::placementConstraints,
             delay::get,
             delay::get,
-            swapBackDelay::get,
-            swapBackDelay::get,
-            () -> 1,
-            this::effConstructFailResult,
+            blocksPerTick::get,
             () -> true,
-            placeWhileUsing::get,
-            () -> false,
-            this::effBlocksPerTick,
-            this::effRotation,
-            movementCorrection::get
+            placeWhileUsing::get
     );
     private final CrystalClearer crystalClearer = new CrystalClearer();
     private final List<BlockPos> currentTargets = new ArrayList<>();
@@ -158,6 +155,7 @@ public final class SelfTrap extends Module {
 
         updateTargets();
 
+
         warnIfOutOfBlocks(player);
         if (render.get()) placementPreview.tick(mc.level, currentTargets, previewBlockState(), lineColor.getArgb());
         blockPlacer.tick();
@@ -175,7 +173,7 @@ public final class SelfTrap extends Module {
         if (!isEnabled() || !attackCrystals.get()) return;
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null) return;
-        crystalClearer.clear(mc, player, currentTargets, effCrystalRange(), crystalDelay.get());
+        crystalClearer.clear(mc, player, currentTargets, range.get(), crystalDelay.get());
     }
 
     private void warnIfOutOfBlocks(LocalPlayer player) {
@@ -208,33 +206,15 @@ public final class SelfTrap extends Module {
         blockPlacer.update(needed);
     }
 
-    private BlockPlacer.PlacementSlot findPlacementSlot(BlockPos ignored) {
+    private PlacementSlot findPlacementSlot(BlockPos ignored) {
         LocalPlayer player = mc.player;
         return player == null ? null : ShellBlocks.find(player, blockPriority.get());
     }
 
-    private double effPlaceRange() {
-        return range.get();
-    }
-
-    private double effWallRange() {
-        return wallRange.get();
-    }
-
-    private double effCrystalRange() {
-        return range.get();
-    }
-
-    private BlockPlacer.RotationMode effRotation() {
-        return rotation.get();
-    }
-
-    private boolean effConstructFailResult() {
-        return effRotation() == BlockPlacer.RotationMode.NO_ROTATION;
-    }
-
-    private int effBlocksPerTick() {
-        return blocksPerTick.get();
+    private PlacementConstraints placementConstraints() {
+        return new PlacementConstraints(
+                range.get(), wallRange.get(), rotation.get(), movementCorrection.get(),
+                false, 1, swapBackDelay.get(), swapBackDelay.get(), true, 0);
     }
 
     @Override
@@ -250,7 +230,7 @@ public final class SelfTrap extends Module {
     }
 
     private BlockState previewBlockState() {
-        BlockPlacer.PlacementSlot slot = mc.player == null ? null : ShellBlocks.find(mc.player, blockPriority.get());
+        PlacementSlot slot = mc.player == null ? null : ShellBlocks.find(mc.player, blockPriority.get());
         return slot != null && slot.stack().getItem() instanceof BlockItem item
                 ? item.getBlock().defaultBlockState() : null;
     }

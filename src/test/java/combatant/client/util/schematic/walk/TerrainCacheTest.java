@@ -1,0 +1,52 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+package combatant.client.util.schematic.walk;
+
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class TerrainCacheTest {
+
+    @Test
+    void readsEachCellOnceUntilInvalidated() {
+        int[] reads = {0};
+        GridWorld world = new GridWorld().block(-17, 3, 40);
+        TerrainCache cache = new TerrainCache((x, y, z) -> {
+            reads[0]++;
+            return world.cell(x, y, z);
+        });
+        assertEquals(WalkTerrain.SOLID, cache.cell(-17, 3, 40));
+        assertEquals(WalkTerrain.SOLID, cache.cell(-17, 3, 40));
+        assertEquals(WalkTerrain.OPEN, cache.cell(-17, 4, 40));
+        assertEquals(2, reads[0]);
+
+        world.set(-17, 3, 40, WalkTerrain.OPEN);
+        assertEquals(WalkTerrain.SOLID, cache.cell(-17, 3, 40), "stale until told");
+        cache.invalidateAround(-17, 4, 40);
+        assertEquals(WalkTerrain.OPEN, cache.cell(-17, 3, 40));
+        assertEquals(3, reads[0]);
+
+        cache.clear();
+        cache.cell(-17, 4, 40);
+        assertEquals(4, reads[0]);
+    }
+
+    @Test
+    void manySectionsAcrossTheSignBoundary() {
+        GridWorld world = new GridWorld();
+        TerrainCache cache = new TerrainCache(world);
+        for (int x = -100; x <= 100; x += 7) {
+            for (int z = -100; z <= 100; z += 7) {
+                for (int y = -70; y <= 70; y += 35) assertEquals(world.cell(x, y, z), cache.cell(x, y, z));
+            }
+        }
+        assertEquals(cache.misses(), cache.lookups());
+        for (int x = -100; x <= 100; x += 7) assertEquals(world.cell(x, -1, 5), cache.cell(x, -1, 5));
+    }
+}

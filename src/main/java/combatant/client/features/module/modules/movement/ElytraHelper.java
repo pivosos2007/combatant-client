@@ -13,7 +13,6 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -73,11 +72,8 @@ public class ElytraHelper extends Module {
     private boolean pendingFirework = false;
     private boolean queuedFireworkUse = false;
     private boolean queuedJump = false;
-    private boolean queuedStartGlide = false;
     private boolean pendingAutoTakeoff = false;
-    private boolean queuedAutoTakeoffRelease = false;
-    private int queuedAutoTakeoffJumpTicks = 0;
-    // Delay before START_FALL_FLYING during auto takeoff
+    // Ticks to wait after the takeoff jump before attempting the in-air glide start
     private int glideDelayTicks = 0;
     private static final int FIREWORK_HUD_GLIDE_GRACE_TICKS = 24;
     private LocalPlayer fireworkHudPlayer;
@@ -161,7 +157,7 @@ public class ElytraHelper extends Module {
         }
         if (isRecastActive()) {
             handleRecast(player);
-        } else {
+        } else if (!pendingAutoTakeoff) {
             ElytraRecastUtil.INSTANCE.reset(this);
         }
     }
@@ -171,10 +167,7 @@ public class ElytraHelper extends Module {
         if (client == null) return;
         InventorySwap.INSTANCE.releaseHotbar(this);
         queuedJump = false;
-        queuedStartGlide = false;
         pendingAutoTakeoff = false;
-        queuedAutoTakeoffRelease = false;
-        queuedAutoTakeoffJumpTicks = 0;
         pendingFirework = false;
         queuedFireworkUse = false;
         glideDelayTicks = 0;
@@ -213,7 +206,6 @@ public class ElytraHelper extends Module {
         if (player.isFallFlying()) {
             pendingAutoTakeoff = false;
             queuedJump = false;
-            queuedStartGlide = false;
             if (canQueueManualFirework(player, true)) {
                 queueFireworkUse();
             }
@@ -232,7 +224,6 @@ public class ElytraHelper extends Module {
 
         // Queue jump for sync phase; water and lava are allowed.
         pendingAutoTakeoff = true;
-        queuedStartGlide = false;
         if (canJumpNow(player)) {
             queueJump();
             glideDelayTicks = player.onGround() ? 1 : 0;
@@ -275,9 +266,6 @@ public class ElytraHelper extends Module {
     private void clearAutoTakeoff() {
         pendingAutoTakeoff = false;
         queuedJump = false;
-        queuedStartGlide = false;
-        queuedAutoTakeoffRelease = false;
-        queuedAutoTakeoffJumpTicks = 0;
         glideDelayTicks = 0;
     }
 
@@ -298,16 +286,12 @@ public class ElytraHelper extends Module {
 
         if (player.isInWater() || player.isInLava()) {
             queueJump();
-            queuedStartGlide = false;
-            queuedAutoTakeoffRelease = false;
             glideDelayTicks = 0;
             return;
         }
 
         if (player.onGround()) {
             queueJump();
-            queuedStartGlide = false;
-            queuedAutoTakeoffRelease = false;
             if (glideDelayTicks <= 0) {
                 glideDelayTicks = 1;
             }
@@ -322,12 +306,10 @@ public class ElytraHelper extends Module {
             return;
         }
 
-        if (queuedStartGlide || queuedAutoTakeoffRelease) {
-            return;
-        }
-
-        queuedAutoTakeoffRelease = true;
-        queuedStartGlide = true;
+        // Legal start: release jump for a tick, then press it so vanilla itself sends START_FALL_FLYING
+        // (Grim ElytraB/C/F: fresh jump edge, no repeated starts, not on ground).
+        ElytraRecastUtil.INSTANCE.request(this, player, ElytraRecastUtil.Mode.GRIM, false, false, false, 0);
+        ElytraRecastUtil.INSTANCE.tick(this, player);
     }
 
     @EventHandler(priority = -1000)
@@ -335,18 +317,6 @@ public class ElytraHelper extends Module {
         if (!isEnabled()) return;
 
         if (ElytraRecastUtil.INSTANCE.handleMovementInput(this, event)) {
-            return;
-        }
-
-        if (queuedAutoTakeoffRelease) {
-            event.setJump(false);
-            queuedAutoTakeoffRelease = false;
-            return;
-        }
-
-        if (queuedAutoTakeoffJumpTicks > 0) {
-            event.setJump(true);
-            queuedAutoTakeoffJumpTicks--;
             return;
         }
 
@@ -371,32 +341,6 @@ public class ElytraHelper extends Module {
         LocalPlayer player = client.player;
         MultiPlayerGameMode manager = client.gameMode;
         if (player == null || manager == null) return;
-
-        if (queuedStartGlide) {
-            if (player.isFallFlying()) {
-                queuedStartGlide = false;
-                pendingAutoTakeoff = false;
-            } else if (!player.onGround()
-                    && !player.isInWater()
-                    && !player.isInLava()
-                    && player.getDeltaMovement().y <= 0.0) {
-                queuedStartGlide = false;
-                if (player.tryToStartFallFlying()) {
-                    pendingAutoTakeoff = false;
-                    queuedAutoTakeoffJumpTicks = 1;
-                }
-                if (player.isFallFlying() && client.getConnection() != null) {
-                    client.getConnection().send(
-                            new ServerboundPlayerCommandPacket(player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING)
-                    );
-                } else {
-                    glideDelayTicks = 1;
-                }
-            } else if (player.onGround() || player.isInWater() || player.isInLava()) {
-                queuedStartGlide = false;
-                queuedAutoTakeoffRelease = false;
-            }
-        }
 
         if (ElytraRecastUtil.INSTANCE.handleSync(this, event)) {
             return;

@@ -108,6 +108,7 @@ public class Trails extends Module {
     private final BooleanValue onlySelf = bool("trailsOnlySelf", SETTING_ONLY_SELF, false);
     private final BooleanValue hideFirstPerson = bool("trailsHideFirstPerson", SETTING_HIDE_FIRST_PERSON, true);
     private final BooleanValue depthTest = bool("trailsDepthTest", SETTING_DEPTH_TEST, true);
+    private final BooleanValue glowSprites = bool("trailsGlowSprites", "glow_sprites", true);
     private final ModeValue trailMode =
             modeSetting("trailsTrailMode", SETTING_TRAIL_MODE, "Tail", "Tail", "Trail");
     private final RGBAColorValue colorValue = color("trailsColor", SETTING_COLOR, "#8800FF00");
@@ -366,12 +367,23 @@ public class Trails extends Module {
         }
     }
 
+    /** Soft procedural glow when enabled, otherwise the baked firefly texture on the given pipeline. */
+    private MeshBuilder fireflyMesh(Renderer3D renderer, RenderPipeline texturedPipeline, boolean useDepth,
+                                    Renderer3D.DepthMode depthMode) {
+        if (glowSprites.get()) {
+            return renderer.batch(
+                    useDepth ? WorldRenderPipelines.WORLD_GLOW_SPRITE_DEPTH : WorldRenderPipelines.WORLD_GLOW_SPRITE,
+                    depthMode);
+        }
+        return renderer.batchTextured(texturedPipeline, TextureStorage.FIRE_FLY, depthMode);
+    }
+
     private void renderClassicFireflyTail(Renderer3D renderer, float tickDelta, boolean useDepth) {
         RenderPipeline pipeline = useDepth
                 ? WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE_DEPTH
                 : WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE;
         Renderer3D.DepthMode depthMode = useDepth ? Renderer3D.DepthMode.PRE_DEPTH : Renderer3D.DepthMode.NONE;
-        MeshBuilder mesh = renderer.batchTextured(pipeline, TextureStorage.FIRE_FLY, depthMode);
+        MeshBuilder mesh = fireflyMesh(renderer, pipeline, useDepth, depthMode);
         if (mesh == null) return;
 
         Quaternionf camRot = RenderState.cameraRotation;
@@ -750,7 +762,7 @@ public class Trails extends Module {
         Quaternionf camRot = RenderState.cameraRotation;
 
         if (particleTexture.get() == ParticleTextureMode.BLOOM) {
-            MeshBuilder mesh = renderer.batchTextured(pipeline, TextureStorage.FIRE_FLY, depthMode);
+            MeshBuilder mesh = fireflyMesh(renderer, pipeline, useDepth, depthMode);
             if (mesh == null) return;
             for (Particle3D p : extraParticles) {
                 renderParticle(mesh, p, tickDelta, camRot);

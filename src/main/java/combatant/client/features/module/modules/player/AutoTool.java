@@ -26,9 +26,16 @@ import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.EntityHitResult;
+import combatant.client.automation.ActionPriority;
+import combatant.client.automation.AutomationRuntime;
+import combatant.client.automation.AutomationTask;
+import combatant.client.automation.actions.InventoryAction;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.MaceItem;
+import combatant.client.util.item.EnchantUtil;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.GameTickEvent;
 import combatant.client.features.module.Module;
@@ -41,6 +48,7 @@ import combatant.client.util.player.BreakSpeedUtil;
 import combatant.client.util.player.ToolSelection;
 import combatant.client.util.player.inventory.InventorySwap;
 
+import java.util.Set;
 import java.util.function.BiConsumer;
 
 @ModuleInfo(
@@ -68,6 +76,9 @@ public class AutoTool extends Module {
     private final NumberValue<Integer> restoreDelayMs =
             visibleWhen(num("autoToolRestoreDelayMs", SETTING_RESTORE_DELAY, 300, 0, 1000), restore::get);
 
+    private static final float MACE_SMASH_SCORE = 1000.0f;
+    private static final float CHARGED_STRENGTH = 0.9f;
+
     private final Minecraft mc = Minecraft.getInstance();
     private final ToolSelection picker = new ToolSelection();
 
@@ -83,16 +94,18 @@ public class AutoTool extends Module {
         }
     };
 
-    private int originalSlot = -1;
+    /** Lease slack in ticks; the action renews it every tick, so it only lapses if the runtime stops ticking. */
+    private static final int LEASE_TICKS = 3;
+
+    private AutomationTask task;
+    private int desiredSlot = -1;
+    private boolean fresh;
     private long lastBreakMs = 0L;
 
     @Override
     public void onDisable() {
-        if (mc != null && mc.player != null && originalSlot >= 0) {
-            InventorySwap.INSTANCE.selectHotbar(originalSlot);
-        }
-        originalSlot = -1;
-        lastBreakMs = 0L;
+        // Disabling cancels the task, which releases the hotbar lease and restores the server slot.
+        resetState();
     }
 
     @EventHandler
@@ -119,31 +132,44 @@ public class AutoTool extends Module {
                 return;
             }
         }
-
-        restoreIfIdle();
     }
 
     private void equip(int bestSlot) {
-        int selected = selectedSlot();
-        if (bestSlot >= 0 && bestSlot != selected) {
-            if (originalSlot < 0) {
-                originalSlot = selected;
-            }
-            InventorySwap.INSTANCE.selectHotbar(bestSlot);
+        if (bestSlot >= 0) {
+            desiredSlot = bestSlot;
+            if (task == null && bestSlot != selectedSlot()) startTask();
         }
+        fresh = true;
         lastBreakMs = System.currentTimeMillis();
     }
 
-    private void restoreIfIdle() {
-        if (originalSlot < 0) return;
-        if (!restore.get()) {
-            originalSlot = -1;
-            return;
+    /** Runs while the player is breaking/attacking, then for the restore delay; the hotbar lease selects the tool and restores the previous slot on release. */
+    private void startTask() {
+        task = AutomationRuntime.INSTANCE.submit(AutomationTask
+                .builder(this, "AutoTool", InventoryAction.lease(() -> desiredSlot, LEASE_TICKS, this::shouldHold))
+                .priority(ActionPriority.BACKGROUND)
+                .yieldToManualInput(Set.of())
+                .onFinish(this::onTaskFinished)
+                .build());
+    }
+
+    private boolean shouldHold() {
+        if (fresh) {
+            fresh = false;
+            return true;
         }
-        long now = System.currentTimeMillis();
-        if (now - lastBreakMs >= restoreDelayMs.get()) {
-            InventorySwap.INSTANCE.selectHotbar(originalSlot);
-            originalSlot = -1;
+        long grace = restore.get() ? restoreDelayMs.get() : 0L;
+        return System.currentTimeMillis() - lastBreakMs < grace;
+    }
+
+    private void onTaskFinished(AutomationTask finished) {
+        if (finished != task) return;
+        task = null;
+        int slot = desiredSlot;
+        desiredSlot = -1;
+        // Without "restore" the tool stays in hand: make the leased slot the real selection once the lease is gone.
+        if (finished.result().isSuccess() && !restore.get() && slot >= 0 && isEnabled() && mc.player != null) {
+            InventorySwap.INSTANCE.restoreHotbar(slot);
         }
     }
 
@@ -157,7 +183,7 @@ public class AutoTool extends Module {
         // Progress per tick, not raw destroy speed: it carries Efficiency and the correct-tool-for-drops penalty.
         float baseline = BreakSpeedUtil.progressPerTick(player, level, pos, state, ItemStack.EMPTY);
         Holder<Enchantment> preferred = preferredEnchantment(level);
-        picker.reset(baseline, selectedSlot(), guardFraction(), preferred == null ? 0.0f : PREFERRED_BONUS);
+        picker.reset(baseline, heldSlot(), guardFraction(), preferred == null ? 0.0f : PREFERRED_BONUS);
         for (int slot = 0; slot < 9; slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
             if (stack.isEmpty()) continue;
@@ -174,22 +200,29 @@ public class AutoTool extends Module {
         if (player == null || level == null) return -1;
 
         Holder<Enchantment> sharpness = enchantmentHolder(level, Enchantments.SHARPNESS);
-        picker.reset(ToolSelection.weaponScore(0.0, 0.0), selectedSlot(), guardFraction(), 0.0f);
+        picker.reset(ToolSelection.weaponScore(0.0, 0.0), heldSlot(), guardFraction(), 0.0f);
         for (int slot = 0; slot < 9; slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
             if (stack.isEmpty()) continue;
-            picker.offer(slot, weaponScore(stack, sharpness), durabilityLeft(stack), false);
+            picker.offer(slot, weaponScore(player, stack, sharpness), durabilityLeft(stack), false);
         }
         return picker.result();
     }
 
-    private float weaponScore(ItemStack stack, Holder<Enchantment> sharpness) {
+    private float weaponScore(LocalPlayer player, ItemStack stack, Holder<Enchantment> sharpness) {
+        // A smash attack with a mace dwarfs every other weapon; its slow dps proxy would never pick it.
+        if (stack.is(Items.MACE) && MaceItem.canSmashAttack(player)) return MACE_SMASH_SCORE;
         scratchDamage = 0.0;
         scratchAttackSpeed = 0.0;
         stack.forEachModifier(EquipmentSlot.MAINHAND, weaponCollector);
         if (sharpness != null) {
             int level = EnchantmentHelper.getItemEnchantmentLevel(sharpness, stack);
             if (level > 0) scratchDamage += 0.5 * level + 0.5;
+        }
+        // Swapping to another item resets the attack cooldown, so it is scored by damage per second; the weapon
+        // already in hand with a charged cooldown lands its next hit at full strength at once.
+        if (stack == player.getMainHandItem() && player.getAttackStrengthScale(0.0f) >= CHARGED_STRENGTH) {
+            return ToolSelection.chargedHitScore(scratchDamage);
         }
         return ToolSelection.weaponScore(scratchDamage, scratchAttackSpeed);
     }
@@ -203,9 +236,7 @@ public class AutoTool extends Module {
     }
 
     private static Holder<Enchantment> enchantmentHolder(ClientLevel level, ResourceKey<Enchantment> key) {
-        Registry<Enchantment> registry = level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
-        Enchantment enchantment = registry.getValue(key);
-        return enchantment == null ? null : registry.wrapAsHolder(enchantment);
+        return EnchantUtil.holder(level, key);
     }
 
     private static float durabilityLeft(ItemStack stack) {
@@ -217,12 +248,20 @@ public class AutoTool extends Module {
         return durabilityGuard.get() / 100.0f;
     }
 
+    /** The slot the server believes is in hand: the lease slot while the tool lease is active. */
+    private int heldSlot() {
+        return InventorySwap.INSTANCE.effectiveSelectedSlot();
+    }
+
     private int selectedSlot() {
         return ((PlayerInventoryAccessor) mc.player.getInventory()).combatant$getSelectedSlot();
     }
 
     private void resetState() {
-        originalSlot = -1;
+        if (task != null) task.cancel("AutoTool reset");
+        task = null;
+        desiredSlot = -1;
+        fresh = false;
         lastBreakMs = 0L;
     }
 

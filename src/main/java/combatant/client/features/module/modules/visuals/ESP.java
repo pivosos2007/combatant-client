@@ -642,6 +642,7 @@ public class ESP extends Module {
     @Override
     public void onDisable() {
         shaderEspComputeBlur.close();
+        destroyShaderBuffers();
         closeShaderEspRenderDispatcher();
     }
 
@@ -1000,10 +1001,24 @@ public class ESP extends Module {
         }
 
         boolean sizeChanged = width != shaderBufferW || height != shaderBufferH;
-        if (shaderMask == null) {
-            shaderMask = new TextureTarget("combatant-shader-esp-mask", width, height, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
-            shaderBlurBuffer = createShaderBuffer("combatant-shader-esp-blur", width, height);
-            shaderEffectBuffer = createShaderBuffer("combatant-shader-esp-effect", width, height);
+        if (shaderMask == null || shaderBlurBuffer == null || shaderEffectBuffer == null) {
+            destroyShaderBuffers();
+            TextureTarget mask = null;
+            TextureTarget blur = null;
+            TextureTarget effect = null;
+            try {
+                mask = new TextureTarget("combatant-shader-esp-mask", width, height, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
+                blur = createShaderBuffer("combatant-shader-esp-blur", width, height);
+                effect = createShaderBuffer("combatant-shader-esp-effect", width, height);
+            } catch (RuntimeException e) {
+                if (mask != null) mask.destroyBuffers();
+                if (blur != null) blur.destroyBuffers();
+                if (effect != null) effect.destroyBuffers();
+                throw e;
+            }
+            shaderMask = mask;
+            shaderBlurBuffer = blur;
+            shaderEffectBuffer = effect;
             shaderBufferW = width;
             shaderBufferH = height;
         } else if (sizeChanged) {
@@ -1013,7 +1028,17 @@ public class ESP extends Module {
             shaderBufferW = width;
             shaderBufferH = height;
         }
+    }
 
+    private void destroyShaderBuffers() {
+        if (shaderMask != null) shaderMask.destroyBuffers();
+        if (shaderBlurBuffer != null) shaderBlurBuffer.destroyBuffers();
+        if (shaderEffectBuffer != null) shaderEffectBuffer.destroyBuffers();
+        shaderMask = null;
+        shaderBlurBuffer = null;
+        shaderEffectBuffer = null;
+        shaderBufferW = 0;
+        shaderBufferH = 0;
     }
 
     /** Half-float target so blurs and glow gradients do not band; falls back to 8-bit if the device refuses it. */

@@ -60,7 +60,13 @@ public abstract class ClientPacketListenerMixin {
         ClientLevel level = Minecraft.getInstance().level;
         var autoCrystal = Modules.get(combatant.client.features.module.modules.combat.AutoCrystal.class);
         if (level == null || autoCrystal == null) return;
-        if (level.getEntity(packet.getId()) instanceof EndCrystal crystal) autoCrystal.onCrystalSpawned(crystal);
+        if (level.getEntity(packet.getId()) instanceof EndCrystal crystal) {
+            try {
+                autoCrystal.onCrystalSpawned(crystal);
+            } catch (RuntimeException e) {
+                combatant.client.runtime.error.FailureIsolation.reportModule(autoCrystal, "onCrystalSpawned", e);
+            }
+        }
     }
 
     @Inject(method = "handleRemoveEntities", at = @At("HEAD"))
@@ -83,7 +89,12 @@ public abstract class ClientPacketListenerMixin {
         if (!combatant$removingCrystal) return;
         combatant$removingCrystal = false;
         var autoCrystal = Modules.get(combatant.client.features.module.modules.combat.AutoCrystal.class);
-        if (autoCrystal != null) autoCrystal.onCrystalsRemoved();
+        if (autoCrystal == null) return;
+        try {
+            autoCrystal.onCrystalsRemoved();
+        } catch (RuntimeException e) {
+            combatant.client.runtime.error.FailureIsolation.reportModule(autoCrystal, "onCrystalsRemoved", e);
+        }
     }
 
     @Unique

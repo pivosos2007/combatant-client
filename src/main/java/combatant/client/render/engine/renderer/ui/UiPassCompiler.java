@@ -10,7 +10,6 @@ package combatant.client.render.engine.renderer.ui;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
-import combatant.client.render.engine.command.UiCommand;
 import combatant.client.render.engine.command.UiSemanticCommandBuffer;
 import combatant.client.render.engine.command.UiCommandKind;
 import combatant.client.render.engine.renderer.MeshRenderer;
@@ -25,6 +24,7 @@ import combatant.client.render.engine.uniform.impl.UIBatchUniforms;
 import combatant.client.render.engine.uniform.impl.UiGlassFrameUniforms;
 import combatant.client.render.engine.uniform.impl.UiClipUniforms;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.render.engine.uniform.impl.UiGlassFrameUniforms;
 import net.minecraft.client.Minecraft;
 
 import java.util.ArrayList;
@@ -81,16 +81,11 @@ public final class UiPassCompiler {
 
         if (semanticCommands != null) {
             commandCount = semanticCommands.size();
-            for (UiCommand command : semanticCommands.commands()) {
-                UiCommandKind kind = command.kind();
-                switch (kind) {
-                    case SHAPE -> shapes++;
-                    case PATH -> paths++;
-                    case TEXTURE -> textures++;
-                    case ITEM -> items++;
-                    case EFFECT_REGION -> effects++;
-                }
-            }
+            shapes = semanticCommands.count(UiCommandKind.SHAPE);
+            paths = semanticCommands.count(UiCommandKind.PATH);
+            textures = semanticCommands.count(UiCommandKind.TEXTURE);
+            items = semanticCommands.count(UiCommandKind.ITEM);
+            effects = semanticCommands.count(UiCommandKind.EFFECT_REGION);
         }
 
         int orderedBatches = 0;
@@ -108,7 +103,6 @@ public final class UiPassCompiler {
             semanticCommands.stats().addCompiledCaptureAwarePasses(captureAwarePasses);
         }
 
-        UiBackdropPlan backdropPlan = UiBackdropPlan.compile(semanticCommands);
         return new UiBatchPlan(
                 executablePasses,
                 commandCount,
@@ -119,8 +113,7 @@ public final class UiPassCompiler {
                 effects,
                 orderedBatches,
                 0,
-                0,
-                backdropPlan
+                0
         );
     }
 

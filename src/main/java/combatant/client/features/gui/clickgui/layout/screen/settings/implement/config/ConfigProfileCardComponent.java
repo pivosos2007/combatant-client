@@ -27,6 +27,7 @@ public final class ConfigProfileCardComponent {
                           float mx,
                           float my,
                           boolean selected,
+                          boolean serverBound,
                           float scale,
                           SettingsGuiPalette palette) {
         boolean hover = ClickGuiMath.insideRect(mx, my, x, y, w, h);
@@ -67,13 +68,13 @@ public final class ConfigProfileCardComponent {
         float titleSize = 8.8f * scale;
         float titleX = textX;
         float titleY = y + 3.8f * scale;
-        float titleW = w - 72f * scale;
+        float titleW = w - 80f * scale;
         float titleH = 10f * scale;
         String title = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterMedium(), meta.name(), titleSize, titleW);
         ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), title, titleX, titleY, titleSize, palette.moduleTitleText(), false);
 
         float authorSize = 6.8f * scale;
-        String author = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), meta.author(), authorSize, w - 72f * scale);
+        String author = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), meta.author(), authorSize, w - 80f * scale);
         ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), author, textX, y + 14.4f * scale, authorSize, palette.moduleDescriptionText(), false);
 
         LayoutRender2D.rectQuad(
@@ -121,37 +122,56 @@ public final class ConfigProfileCardComponent {
         float downloadX = trashX - gap - btn;
         float diffX = downloadX - gap - btn;
 
-        drawAction(diffX, by, btn, "diff", mx, my, scale, palette);
-        drawAction(downloadX, by, btn, "download", mx, my, scale, palette);
-        drawAction(trashX, by, btn, "trash-2", mx, my, scale, palette);
+        drawAction(diffX, by, btn, "diff", false, mx, my, scale, palette);
+        drawAction(downloadX, by, btn, "download", false, mx, my, scale, palette);
+        drawAction(trashX, by, btn, "trash-2", false, mx, my, scale, palette);
+
+        // Share row, top right: copy code, export file, bind to the current server.
+        float small = 12f * scale;
+        float smallGap = 3f * scale;
+        float smallY = y + 4.4f * scale;
+        float bindX = x + w - 7f * scale - small;
+        float exportX = bindX - smallGap - small;
+        float copyX = exportX - smallGap - small;
+        drawAction(copyX, smallY, small, "share-2", false, mx, my, scale, palette);
+        drawAction(exportX, smallY, small, "folder-output", false, mx, my, scale, palette);
+        drawAction(bindX, smallY, small, "map-pin", serverBound, mx, my, scale, palette);
 
         return new CardHit(x, y, w, h,
                 new ActionHit(titleX, titleY - scale, titleW, titleH, CardActionType.RENAME),
                 new ActionHit(diffX, by, btn, btn, CardActionType.DIFF),
                 new ActionHit(downloadX, by, btn, btn, CardActionType.APPLY),
-                new ActionHit(trashX, by, btn, btn, CardActionType.DELETE));
+                new ActionHit(trashX, by, btn, btn, CardActionType.DELETE),
+                new ActionHit(copyX, smallY, small, small, CardActionType.COPY),
+                new ActionHit(exportX, smallY, small, small, CardActionType.EXPORT),
+                new ActionHit(bindX, smallY, small, small, CardActionType.BIND));
         }
     }
 
-    private void drawAction(float x, float y, float size, String icon, float mx, float my, float scale, SettingsGuiPalette palette) {
+    private void drawAction(float x, float y, float size, String icon, boolean active, float mx, float my, float scale, SettingsGuiPalette palette) {
         boolean hover = ClickGuiMath.insideRect(mx, my, x, y, size, size);
         int bgA = hover ? SettingsGuiPalette.mix(palette.moduleCardTop(), palette.menuCategoryHoverLeft(), 0.36f) : LayoutRender2D.alpha(palette.moduleCardTop(), 0.88f);
         int bgB = hover ? SettingsGuiPalette.mix(palette.moduleCardTopStrong(), palette.menuCategoryHoverRight(), 0.28f) : LayoutRender2D.alpha(palette.moduleCardTopStrong(), 0.88f);
+        if (active) {
+            bgA = SettingsGuiPalette.mix(bgA, palette.menuCategorySelectedLeft(), 0.55f);
+            bgB = SettingsGuiPalette.mix(bgB, palette.menuCategorySelectedRight(), 0.55f);
+        }
         LayoutRender2D.roundedQuad(x, y, size, size, 4f * scale, bgA, bgB, bgB, bgA);
+        float inset = size >= 15f * scale ? 4f * scale : 2.6f * scale;
         Renderer2D.COLOR.svg(
                 icon,
-                x + 4f * scale,
-                y + 4f * scale,
-                size - 8f * scale,
-                size - 8f * scale,
+                x + inset,
+                y + inset,
+                size - inset * 2f,
+                size - inset * 2f,
                 SvgRenderOptions.overrideColor(palette.menuCategoryText())
         );
     }
 
-    public enum CardActionType {SELECT, RENAME, DIFF, APPLY, DELETE}
+    public enum CardActionType {SELECT, RENAME, DIFF, APPLY, DELETE, COPY, EXPORT, BIND}
 
     public record CardHit(float x, float y, float w, float h, ActionHit title, ActionHit diff, ActionHit apply,
-                          ActionHit delete) {
+                          ActionHit delete, ActionHit copy, ActionHit export, ActionHit bind) {
     }
 
     public record ActionHit(float x, float y, float w, float h, CardActionType type) {

@@ -1,6 +1,7 @@
 package combatant.client.features.module.modules.movement;
 
 import combatant.client.config.values.EnumValue;
+
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
