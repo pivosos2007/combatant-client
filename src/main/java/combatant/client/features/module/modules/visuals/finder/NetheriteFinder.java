@@ -25,6 +25,7 @@ import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
 import combatant.client.config.values.StringValue;
 import combatant.client.events.EventHandler;
+import combatant.client.features.command.CommandOutput;
 import combatant.client.events.impl.PacketEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
@@ -191,6 +192,8 @@ public final class NetheriteFinder extends Module {
     private Candidate active;
     private boolean serverConfirmed;
     private boolean noSeedReported;
+    // The server's seed hash in hex ("hidden" when it sends none), quoted so a player can check seeds against it.
+    private String serverHash = "hidden";
     private final OffsetVote debrisVote = new OffsetVote();
     // Index offset of the debris features, set by the debris check.
     private int debrisOffset;
@@ -289,25 +292,27 @@ public final class NetheriteFinder extends Module {
             if (ServerSeedCheck.matches(mc.level, candidate).orElse(false)) confirmed.add(candidate);
         }
         OptionalLong hashed = ServerSeedCheck.hashedSeed(mc.level);
+        serverHash = hashed.isPresent() ? Long.toHexString(hashed.getAsLong()) : "hidden";
+        // A hash that matches none is not reported yet: servers may send a fake one (DonutSMP's nether fits a seed
+        // its hash rejects), so the terrain check decides and its result quotes the hash.
         if (!confirmed.isEmpty()) {
             seeds = confirmed;
             serverConfirmed = true;
-            Notifier.info("NetheriteFinder: the server confirms seed " + confirmed.getFirst()
-                    + ", checking its ore generation");
-        } else if (hashed.isPresent()) {
-            Notifier.warning("NetheriteFinder: this nether's seed is not " + describe(seeds) + " (server seed hash "
-                    + Long.toHexString(hashed.getAsLong()) + "). Set its real seed in the module settings.");
+            report(Notifier.Type.INFO, "seed confirmed by server",
+                    "the server confirms seed " + confirmed.getFirst() + ", checking its ore generation.");
         }
         for (long candidate : seeds) candidates.add(new Candidate(candidate));
     }
 
-    private static String describe(List<Long> seeds) {
-        StringBuilder text = new StringBuilder();
-        for (int i = 0; i < seeds.size(); i++) {
-            if (i > 0) text.append(i == seeds.size() - 1 ? " or " : ", ");
-            text.append(seeds.get(i));
-        }
-        return text.toString();
+    /** HUD toasts cut long text, so the toast stays short and the client-side chat gets the whole message. */
+    private static void report(Notifier.Type type, String toast, String details) {
+        Notifier.message("NetheriteFinder: " + toast, type);
+        CommandOutput.send("NetheriteFinder: " + details, switch (type) {
+            case SUCCESS -> CommandOutput.Tone.SUCCESS;
+            case WARNING -> CommandOutput.Tone.WARNING;
+            case ERROR -> CommandOutput.Tone.ERROR;
+            case INFO -> CommandOutput.Tone.INFO;
+        });
     }
 
     /** Reports each check's verdict once; a debris offset other than the one predicted with re-predicts every chunk. */
@@ -320,12 +325,12 @@ public final class NetheriteFinder extends Module {
                 debrisOffset = debrisVote.offset();
                 scanner.rescanAll();
             }
-            Notifier.success("NetheriteFinder: debris predictions verified (" + detail
-                    + (debrisOffset != 0 ? ", feature index offset " + debrisOffset : "") + ")");
+            report(Notifier.Type.SUCCESS, "debris verified", "debris predictions verified (" + detail
+                    + (debrisOffset != 0 ? ", feature index offset " + debrisOffset : "") + ").");
         } else {
-            Notifier.warning("NetheriteFinder: this server places ancient debris apart from the world seed (best "
-                    + detail + " while quartz/gold fit), e.g. Paper feature-seeds. Debris cannot be predicted "
-                    + "here" + (showUnverified.get() ? "." : "; boxes hidden."));
+            report(Notifier.Type.WARNING, "debris not predictable, see chat", "this server places ancient debris "
+                    + "apart from the world seed (best " + detail + " while quartz/gold fit), e.g. Paper "
+                    + "feature-seeds. Debris cannot be predicted here" + (showUnverified.get() ? "." : "; boxes hidden."));
         }
     }
 
@@ -337,11 +342,12 @@ public final class NetheriteFinder extends Module {
             if (candidate.quartz.verdict == Verdict.MATCH) {
                 active = candidate;
                 int offset = candidate.quartz.offset();
-                Notifier.info("NetheriteFinder: seed " + candidate.seed + " fits this world ("
-                        + candidate.quartz.detail() + " exposed quartz/gold blocks where it puts them"
-                        + (offset != 0 ? ", feature index offset " + offset : "") + "). Boxes appear once "
-                        + DEBRIS_MIN_SAMPLES + " visible ancient debris (touching air or lava) confirm the debris "
-                        + "prediction.");
+                report(Notifier.Type.INFO, "seed fits, checking debris", "seed " + candidate.seed + " fits this "
+                        + "world (" + candidate.quartz.detail() + " exposed quartz/gold blocks where it puts them"
+                        + (offset != 0 ? ", feature index offset " + offset : "")
+                        + (serverConfirmed ? "" : "; the server's seed hash " + serverHash + " does not match it, "
+                        + "so the server hides or fakes its hash") + "). Boxes appear once " + DEBRIS_MIN_SAMPLES
+                        + " visible ancient debris (touching air or lava) confirm the debris prediction.");
                 // Chunks scanned while the seed was open hold no prediction yet.
                 scanner.rescanAll();
                 return;
@@ -355,7 +361,8 @@ public final class NetheriteFinder extends Module {
             if (!detail.isEmpty()) detail.append(", ");
             detail.append(candidate.seed).append(": ").append(candidate.quartz.detail());
         }
-        Notifier.warning("NetheriteFinder: no tried seed generates this nether's quartz/gold (" + detail + ")."
+        report(Notifier.Type.WARNING, "no seed fits, see chat", "no tried seed generates this nether's quartz/gold ("
+                + detail + "; server seed hash " + serverHash + ")."
                 + (serverConfirmed ? " The server's seed hash matches, so its generator differs from vanilla."
                 : " Set the server's real nether seed in the module settings."));
     }
